@@ -950,6 +950,17 @@ plan_tree_walker(Node *node,
 				return true;
 			break;
 
+		case T_CustomScan:
+			if (walk_scan_node_fields((Scan *) node, walker, context))
+				return true;
+			if (walker((Node *) ((CustomScan *) node)->custom_plans, context))
+				return true;
+			if (walker((Node *) ((CustomScan *) node)->custom_exprs, context))
+				return true;
+			if (walker((Node *) ((CustomScan *) node)->custom_scan_tlist, context))
+				return true;
+			break;
+
 		case T_Join:
 			/* Abstract: really should see only subclasses. */
 			return walk_join_node_fields((Join *) node, walker, context);

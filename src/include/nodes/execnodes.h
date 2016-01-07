@@ -1683,7 +1683,7 @@ typedef struct BitmapHeapScanState
 	struct HeapScanDescData *ss_currentScanDesc;
 	List	   *bitmapqualorig;
 	Node	   *tbm;
-	struct TBMIterateResult *tbmres;
+	TBMIterateResult *tbmres;
 } BitmapHeapScanState;
 
 /* ----------------
@@ -2579,6 +2579,50 @@ typedef struct PartitionSelectorState
 	ExprState *propagationExprState;                    /* ExprState for evaluating propagation expression */
 
 } PartitionSelectorState;
+
+/* ----------------
+ *	 CustomScanState information
+ *
+ *		CustomScan nodes are used to execute custom code within executor.
+ *
+ * Core code must avoid assuming that the CustomScanState is only as large as
+ * the structure declared here; providers are allowed to make it the first
+ * element in a larger structure, and typically would need to do so.  The
+ * struct is actually allocated by the CreateCustomScanState method associated
+ * with the plan node.  Any additional fields can be initialized there, or in
+ * the BeginCustomScan method.
+ * ----------------
+ */
+struct ExplainState;			/* avoid including explain.h here */
+struct CustomScanState;
+
+typedef struct CustomExecMethods
+{
+	const char *CustomName;
+
+	/* Executor methods: mark/restore are optional, the rest are required */
+	void		(*BeginCustomScan) (struct CustomScanState *node,
+												EState *estate,
+												int eflags);
+	TupleTableSlot *(*ExecCustomScan) (struct CustomScanState *node);
+	void		(*EndCustomScan) (struct CustomScanState *node);
+	void		(*ReScanCustomScan) (struct CustomScanState *node);
+	void		(*MarkPosCustomScan) (struct CustomScanState *node);
+	void		(*RestrPosCustomScan) (struct CustomScanState *node);
+
+	/* Optional: print additional information in EXPLAIN */
+	void		(*ExplainCustomScan) (struct CustomScanState *node,
+												  List *ancestors,
+												  struct ExplainState *es);
+} CustomExecMethods;
+
+typedef struct CustomScanState
+{
+	ScanState	ss;
+	uint32		flags;			/* mask of CUSTOMPATH_* flags, see relation.h */
+	List	   *custom_ps;		/* list of child PlanState nodes, if any */
+	const CustomExecMethods *methods;
+} CustomScanState;
 
 extern void sendInitGpmonPkts(Plan *node, EState *estate);
 extern void initGpmonPktForResult(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate);

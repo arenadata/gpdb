@@ -98,6 +98,7 @@ typedef enum NodeTag
 	T_RowTrigger,
 	T_AssertOp,
 	T_PartitionSelector,
+	T_CustomScan,
 	T_Plan_End,
 	/* this one isn't a subclass of Plan: */
 	T_PlanInvalItem,
@@ -156,6 +157,7 @@ typedef enum NodeTag
 	T_RowTriggerState,
 	T_AssertOpState,
 	T_PartitionSelectorState,
+	T_CustomScanState,
 	T_PlanState_End,
 	T_TupleDescNode,
 

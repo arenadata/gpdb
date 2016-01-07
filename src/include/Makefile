@@ -21,7 +21,8 @@ SUBDIRS = access bootstrap catalog commands executor gpmon lib libpq mb \
 	nodes optimizer parser postmaster regex replication rewrite storage \
 	tcop utils port port/win32 port/win32_msvc port/win32_msvc/sys \
 	port/win32/arpa port/win32/netinet port/win32/sys \
-	portability
+	portability \
+	cdb
 
 # Install all headers
 install: all installdirs
@@ -53,6 +54,9 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdistributedsnapshot.h   $(DESTDIR)$(includedir_internal_cdb)
+# These headers are needed for test/regress?
+	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-fe.h   '$(DESTDIR)$(includedir)'
+	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-int.h   '$(DESTDIR)$(includedir)'
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq' \

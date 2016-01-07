@@ -3108,6 +3108,43 @@ _readFunctionScan(const char ** str)
 }
 
 /*
+ * _readCustomScan
+ */
+static CustomScan *
+_readCustomScan(const char ** str)
+{
+	READ_LOCALS(CustomScan);
+
+	readScanInfo(str, (Scan *)local_node);
+
+	READ_UINT_FIELD(flags);
+	READ_NODE_FIELD(custom_plans);
+	READ_NODE_FIELD(custom_exprs);
+	READ_NODE_FIELD(custom_private);
+	READ_NODE_FIELD(custom_scan_tlist);
+	READ_BITMAPSET_FIELD(custom_relids);
+
+	/*
+	 * Reconstruction of methods using library and symbol name
+	 */
+
+	ALLOCATE_LOCAL(local_node->methods, CustomScanMethods, 1);
+	READ_STRING_FIELD(methods->CustomName);
+	READ_STRING_FIELD(methods->LibraryName);
+	READ_STRING_FIELD(methods->SymbolName);
+
+	local_node->methods->CreateCustomScanState =
+		(Node *(*)(CustomScan*))load_external_function(
+			local_node->methods->LibraryName,
+			local_node->methods->SymbolName,
+			true /* signal not found */,
+			NULL /* nowhere to save library handle */
+		);
+
+	READ_DONE();
+}
+
+/*
  * _readValuesScan
  */
 static ValuesScan *
@@ -4074,6 +4111,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_FunctionScan:
 				return_value = _readFunctionScan(str);
+				break;
+			case T_CustomScan:
+				return_value = _readCustomScan(str);
 				break;
 			case T_ValuesScan:
 				return_value = _readValuesScan(str);

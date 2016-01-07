@@ -663,6 +663,26 @@ _outFunctionScan(StringInfo str, FunctionScan *node)
 }
 
 static void
+_outCustomScan(StringInfo str, CustomScan *node)
+{
+	WRITE_NODE_TYPE("CUSTOMSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+
+	WRITE_UINT_FIELD(flags);
+	WRITE_NODE_FIELD(custom_plans);
+	WRITE_NODE_FIELD(custom_exprs);
+	WRITE_NODE_FIELD(custom_private);
+	WRITE_NODE_FIELD(custom_scan_tlist);
+	WRITE_BITMAPSET_FIELD(custom_relids);
+
+	// serialize CustomScanMethods
+	WRITE_STRING_FIELD(methods->CustomName);
+	WRITE_STRING_FIELD(methods->LibraryName);
+	WRITE_STRING_FIELD(methods->SymbolName);
+}
+
+static void
 _outValuesScan(StringInfo str, ValuesScan *node)
 {
 	WRITE_NODE_TYPE("VALUESSCAN");
@@ -3841,6 +3861,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_FunctionScan:
 				_outFunctionScan(str, obj);
+				break;
+			case T_CustomScan:
+				_outCustomScan(str, obj);
 				break;
 			case T_ValuesScan:
 				_outValuesScan(str, obj);

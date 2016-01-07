@@ -102,6 +102,16 @@
 #include "cdb/memquota.h"
 #include "cdb/cdbtargeteddispatch.h"
 
+#ifndef PG95
+/* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
+ExecutorStart_hook_type ExecutorStart_hook = NULL;
+#ifdef LATER
+ExecutorRun_hook_type ExecutorRun_hook = NULL;
+ExecutorFinish_hook_type ExecutorFinish_hook = NULL;
+#endif
+ExecutorEnd_hook_type ExecutorEnd_hook = NULL;
+#endif
+
 extern bool cdbpathlocus_querysegmentcatalogs;
 
 
@@ -241,6 +251,14 @@ CopyDirectDispatchFromPlanToSliceTable(PlannedStmt *stmt, EState *estate)
  */
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
+{
+	if (ExecutorStart_hook)
+		(*ExecutorStart_hook) (queryDesc, eflags);
+	else
+		standard_ExecutorStart(queryDesc, eflags);
+}
+void
+standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	EState	   *estate;
 	MemoryContext oldcontext;
@@ -981,6 +999,15 @@ ExecutorRun(QueryDesc *queryDesc,
  */
 void
 ExecutorEnd(QueryDesc *queryDesc)
+{
+	if (ExecutorEnd_hook)
+		(*ExecutorEnd_hook) (queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
+}
+
+void
+standard_ExecutorEnd(QueryDesc *queryDesc)
 {
 	EState	   *estate;
 	MemoryContext oldcontext;

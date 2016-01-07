@@ -74,6 +74,16 @@ struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
  * If this is called in QD or utility mode, this will return true.
  */
 
+#ifndef PG95
+// define some hooks from postgres 8.3 and later
+typedef void (*ExecutorStart_hook_type) (QueryDesc *queryDesc, int eflags);
+extern PGDLLIMPORT ExecutorStart_hook_type ExecutorStart_hook;
+
+/* Hook for plugins to get control in ExecutorEnd() */
+typedef void (*ExecutorEnd_hook_type) (QueryDesc *queryDesc);
+extern PGDLLIMPORT ExecutorEnd_hook_type ExecutorEnd_hook;
+#endif
+
 /*
  * prototypes from functions in execAmi.c
  */
@@ -201,6 +211,11 @@ typedef struct ScanMethod
 	/* Function that does RestroPos in a scan. */
 	void (*restrPosMethod)(ScanState *scanState);
 } ScanMethod;
+
+#ifndef PG95
+extern void standard_ExecutorStart(QueryDesc *queryDesc, int eflags);
+extern void standard_ExecutorEnd(QueryDesc *queryDesc);
+#endif
 
 extern void ExecutorStart(QueryDesc *queryDesc, int eflags);
 extern TupleTableSlot *ExecutorRun(QueryDesc *queryDesc,

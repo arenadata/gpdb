@@ -44,5 +44,5 @@ OBJS = execAmi.o execGrouping.o execJunk.o execMain.o \
        execDynamicScan.o execDynamicIndexScan.o \
        execIndexscan.o \
        execHHashagg.o execGpmon.o execWorkfile.o execHeapScan.o execAOScan.o \
-       execAOCSScan.o nodeBitmapAppendOnlyscan.o
+       execAOCSScan.o nodeBitmapAppendOnlyscan.o nodeCustom.o
 include $(top_srcdir)/src/backend/common.mk

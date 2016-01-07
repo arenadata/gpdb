@@ -2531,6 +2531,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_BitmapIndexScan:
 		case T_TidScan:
 		case T_FunctionScan:
+		case T_CustomScan:
 		case T_ValuesScan:
 		{
 			initGpmonPktFuncs[nodeTag(node) - T_Plan_Start](node, &gpmon_pkt, estate);

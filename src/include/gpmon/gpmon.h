@@ -429,6 +429,7 @@ typedef enum PerfmonNodeType
     PMNT_BitmapHeapScan,
     PMNT_BitmapTableScan,
     PMNT_BitmapIndexScan,
+    PMNT_CustomScan,
     PMNT_DML,
     PMNT_DynamicIndexScan,
     PMNT_DynamicTableScan,

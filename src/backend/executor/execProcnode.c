@@ -106,6 +106,7 @@
 #include "executor/nodeMergejoin.h"
 #include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
+#include "executor/nodeCustom.h"
 #include "executor/nodeRepeat.h"
 #include "executor/nodeResult.h"
 #include "executor/nodeRowTrigger.h"
@@ -448,6 +449,18 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			{
 			result = (PlanState *) ExecInitFunctionScan((FunctionScan *) node,
 														estate, eflags);
+			}
+			END_MEMORY_ACCOUNT();
+			break;
+
+		case T_CustomScan:
+			curMemoryAccount = CREATE_EXECUTOR_MEMORY_ACCOUNT(
+				isAlienPlanNode, node, CustomScan
+			);
+
+			START_MEMORY_ACCOUNT(curMemoryAccount);
+			{
+			result = (PlanState *) ExecInitCustomScan((CustomScan *) node, estate, eflags);
 			}
 			END_MEMORY_ACCOUNT();
 			break;
@@ -827,6 +840,7 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_TidScan,
 		&&Exec_Jmp_SubqueryScan,
 		&&Exec_Jmp_FunctionScan,
+		&&Exec_Jmp_CustomScan,
 		&&Exec_Jmp_TableFunctionScan,
 		&&Exec_Jmp_ValuesScan,
 		&&Exec_Jmp_NestLoop,
@@ -945,6 +959,10 @@ Exec_Jmp_SubqueryScan:
 
 Exec_Jmp_FunctionScan:
 	result = ExecFunctionScan((FunctionScanState *) node);
+	goto Exec_Jmp_Done;
+
+Exec_Jmp_CustomScan:
+	result = ExecCustomScan((CustomScanState *) node);
 	goto Exec_Jmp_Done;
 
 Exec_Jmp_TableFunctionScan:
@@ -1103,6 +1121,10 @@ Exec_Jmp_Done:
 
 		case T_FunctionScanState:
 			result = ExecFunctionScan((FunctionScanState *) node);
+			break;
+
+		case T_CustomScanState:
+			result = ExecCustomScan((CustomScanState *) node);
 			break;
 
 		case T_TableFunctionState:
@@ -1362,6 +1384,9 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_FunctionScan:
 			return ExecCountSlotsFunctionScan((FunctionScan *) node);
+
+		case T_CustomScan:
+			return ExecCountSlotsCustomScan((CustomScan *) node);
 
 		case T_TableFunctionScan:
 			return ExecCountSlotsTableFunction((TableFunctionScan *) node);
@@ -1643,6 +1668,10 @@ ExecEndNode(PlanState *node)
 			ExecEndFunctionScan((FunctionScanState *) node);
 			break;
 
+		case T_CustomScanState:
+			ExecEndCustomScan((CustomScanState *) node);
+			break;
+
 		case T_TableFunctionState:
 			ExecEndTableFunction((TableFunctionState *) node);
 			break;
@@ -1831,6 +1860,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 
 		case T_FunctionScanState:
 			nameTag = "FunctionScan";
+			break;
+
+		case T_CustomScanState:
+			nameTag = "CustomScan";
 			break;
 
 		case T_TableFunctionState:

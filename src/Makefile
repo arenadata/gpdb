@@ -23,7 +23,7 @@ all install installdirs uninstall distprep:
 	$(MAKE) -C bin $@
 	$(MAKE) -C pl $@
 	$(MAKE) -C makefiles $@
-	$(MAKE) -C test/regress $@
+#	$(MAKE) -C test/regress $@
 	$(MAKE) -C tools/fsync $@
 
 install: install-local
