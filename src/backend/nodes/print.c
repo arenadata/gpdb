@@ -525,6 +525,8 @@ plannode_type(Plan *p)
 			return "SUBQUERYSCAN";
 		case T_FunctionScan:
 			return "FUNCTIONSCAN";
+		case T_CustomScan:
+			return "CUSTOMSCAN";
 		case T_ValuesScan:
 			return "VALUESSCAN";
 		case T_BitmapAppendOnlyScan:

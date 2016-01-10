@@ -661,6 +661,33 @@ _copyFunctionScan(FunctionScan *from)
 }
 
 /*
+ * _copyFunctionScan
+ */
+static CustomScan *
+_copyCustomScan(CustomScan *from)
+{
+	CustomScan *newnode = makeNode(CustomScan);
+
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+
+	COPY_SCALAR_FIELD(flags);
+	COPY_NODE_FIELD(custom_plans);
+	COPY_NODE_FIELD(custom_exprs);
+	COPY_NODE_FIELD(custom_private);
+	COPY_NODE_FIELD(custom_scan_tlist);
+	COPY_BITMAPSET_FIELD(custom_relids);
+
+	COPY_STRING_FIELD(methods->CustomName);
+	COPY_STRING_FIELD(methods->LibraryName);
+	COPY_STRING_FIELD(methods->SymbolName);
+
+	return newnode;
+}
+
+/*
  * _copyValuesScan
  */
 static ValuesScan *
@@ -4402,6 +4429,9 @@ copyObject(void *from)
 			break;
 		case T_FunctionScan:
 			retval = _copyFunctionScan(from);
+			break;
+		case T_CustomScan:
+			retval = _copyCustomScan(from);
 			break;
 		case T_ValuesScan:
 			retval = _copyValuesScan(from);

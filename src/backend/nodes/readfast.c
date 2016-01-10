@@ -3135,8 +3135,8 @@ _readCustomScan(const char ** str)
 
 	local_node->methods->CreateCustomScanState =
 		(Node *(*)(CustomScan*))load_external_function(
-			local_node->methods->LibraryName,
-			local_node->methods->SymbolName,
+			(char*)local_node->methods->LibraryName,
+			(char*)local_node->methods->SymbolName,
 			true /* signal not found */,
 			NULL /* nowhere to save library handle */
 		);

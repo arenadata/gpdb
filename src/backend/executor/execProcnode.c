@@ -840,7 +840,6 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_TidScan,
 		&&Exec_Jmp_SubqueryScan,
 		&&Exec_Jmp_FunctionScan,
-		&&Exec_Jmp_CustomScan,
 		&&Exec_Jmp_TableFunctionScan,
 		&&Exec_Jmp_ValuesScan,
 		&&Exec_Jmp_NestLoop,
@@ -861,7 +860,8 @@ ExecProcNode(PlanState *node)
 		&&Exec_Jmp_SplitUpdate,
 		&&Exec_Jmp_RowTrigger,
 		&&Exec_Jmp_AssertOp,
-		&&Exec_Jmp_PartitionSelector
+		&&Exec_Jmp_PartitionSelector,
+		&&Exec_Jmp_CustomScan
 	};
 
 	COMPILE_ASSERT((T_Plan_End - T_Plan_Start) == (T_PlanState_End - T_PlanState_Start));
