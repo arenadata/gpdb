@@ -339,13 +339,44 @@ plan_tree_mutator(Node *node,
 				
 				FLATCOPY(newextscan, extscan, ExternalScan);
 				SCANMUTATE(newextscan, extscan);
-				
+
 				MUTATE(newextscan->uriList, extscan->uriList, List *);
 				MUTATE(newextscan->fmtOpts, extscan->fmtOpts, List *);
 				newextscan->fmtType = extscan->fmtType;
 				newextscan->isMasterOnly = extscan->isMasterOnly;
 				
 				return (Node *) newextscan;
+			}
+			break;
+
+		case T_CustomScan:
+			{
+				CustomScan    *custscan = (CustomScan *) node;
+				CustomScan    *newcustscan;
+
+				FLATCOPY(newcustscan, custscan, CustomScan);
+				SCANMUTATE(newcustscan, custscan);
+
+				MUTATE(newcustscan->custom_plans, custscan->custom_plans, List *);
+				MUTATE(newcustscan->custom_plans, custscan->custom_exprs, List *);
+				MUTATE(newcustscan->custom_plans, custscan->custom_exprs, List *);
+				MUTATE(newcustscan->custom_plans, custscan->custom_scan_tlist, List *);
+
+				newcustscan->custom_relids = bms_copy(custscan->custom_relids);
+
+				CustomScanMethods* newcsm = (CustomScanMethods*)palloc0(sizeof(CustomScanMethods));
+
+#define CSM_COPY_STRING_FIELD(fld)	\
+	(newcsm->fld = custscan->methods->fld ? pstrdup(custscan->methods->fld) : (char*) NULL)
+
+				CSM_COPY_STRING_FIELD(CustomName);
+				CSM_COPY_STRING_FIELD(LibraryName);
+				CSM_COPY_STRING_FIELD(SymbolName);
+				newcsm->CreateCustomScanState = custscan->methods->CreateCustomScanState;
+
+				newcustscan->methods = newcsm;
+
+				return (Node *) newcustscan;
 			}
 			break;
 			
