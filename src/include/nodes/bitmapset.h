@@ -13,7 +13,7 @@
  *
  * Copyright (c) 2003-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/nodes/bitmapset.h,v 1.8 2006/03/05 15:58:56 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/bitmapset.h,v 1.10 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

@@ -4,14 +4,14 @@
  *	  POSTGRES type cache code
  *
  * The type cache exists to speed lookup of certain information about data
- * types that is not directly available from a type's pg_type row.  In
- * particular, we use a type's default btree opclass, or the default hash
+ * types that is not directly available from a type's pg_type row.  For
+ * example, we use a type's default btree opclass, or the default hash
  * opclass if no btree opclass exists, to determine which operators should
  * be used for grouping and sorting the type (GROUP BY, ORDER BY ASC/DESC).
  *
  * Several seemingly-odd choices have been made to support use of the type
  * cache by the generic array comparison routines array_eq() and array_cmp().
- * Because these routines are used as index support operations, they cannot
+ * Because those routines are used as index support operations, they cannot
  * leak memory.  To allow them to execute efficiently, all information that
  * either of them would like to re-use across calls is made available in the
  * type cache.
@@ -36,7 +36,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/typcache.c,v 1.22 2006/10/04 00:30:01 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/typcache.c,v 1.27.2.1 2010/09/02 03:17:06 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -49,6 +49,7 @@
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "utils/builtins.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -87,6 +88,9 @@ static TupleDesc *RecordCacheArray = NULL;
 static int32 RecordCacheArrayLen = 0;	/* allocated length of array */
 static int32 NextRecordTypmod = 0;		/* number of entries used */
 
+static void TypeCacheRelCallback(Datum arg, Oid relid);
+
+
 /*
  * lookup_type_cache
  *
@@ -118,6 +122,9 @@ lookup_type_cache(Oid type_id, int flags)
 		ctl.hash = oid_hash;
 		TypeCacheHash = hash_create("Type information cache", 64,
 									&ctl, HASH_ELEM | HASH_FUNCTION);
+
+		/* Also set up a callback for relcache SI invalidations */
+		CacheRegisterRelcacheCallback(TypeCacheRelCallback, (Datum) 0);
 	}
 
 	/* Try to look up an existing entry */
@@ -172,17 +179,30 @@ lookup_type_cache(Oid type_id, int flags)
 	/* If we haven't already found the opclass, try to do so */
 	if ((flags & (TYPECACHE_EQ_OPR | TYPECACHE_LT_OPR | TYPECACHE_GT_OPR |
 				  TYPECACHE_CMP_PROC |
-				  TYPECACHE_EQ_OPR_FINFO | TYPECACHE_CMP_PROC_FINFO)) &&
-		typentry->btree_opc == InvalidOid)
+				  TYPECACHE_EQ_OPR_FINFO | TYPECACHE_CMP_PROC_FINFO |
+				  TYPECACHE_BTREE_OPFAMILY)) &&
+		typentry->btree_opf == InvalidOid)
 	{
-		typentry->btree_opc = GetDefaultOpClass(type_id,
-												BTREE_AM_OID);
-		/* Only care about hash opclass if no btree opclass... */
-		if (typentry->btree_opc == InvalidOid)
+		Oid			opclass;
+
+		opclass = GetDefaultOpClass(type_id, BTREE_AM_OID);
+		if (OidIsValid(opclass))
 		{
-			if (typentry->hash_opc == InvalidOid)
-				typentry->hash_opc = GetDefaultOpClass(type_id,
-													   HASH_AM_OID);
+			typentry->btree_opf = get_opclass_family(opclass);
+			typentry->btree_opintype = get_opclass_input_type(opclass);
+		}
+		/* Only care about hash opclass if no btree opclass... */
+		if (typentry->btree_opf == InvalidOid)
+		{
+			if (typentry->hash_opf == InvalidOid)
+			{
+				opclass = GetDefaultOpClass(type_id, HASH_AM_OID);
+				if (OidIsValid(opclass))
+				{
+					typentry->hash_opf = get_opclass_family(opclass);
+					typentry->hash_opintype = get_opclass_input_type(opclass);
+				}
+			}
 		}
 		else
 		{
@@ -200,37 +220,42 @@ lookup_type_cache(Oid type_id, int flags)
 	if ((flags & (TYPECACHE_EQ_OPR | TYPECACHE_EQ_OPR_FINFO)) &&
 		typentry->eq_opr == InvalidOid)
 	{
-		if (typentry->btree_opc != InvalidOid)
-			typentry->eq_opr = get_opclass_member(typentry->btree_opc,
-												  InvalidOid,
-												  BTEqualStrategyNumber);
+		if (typentry->btree_opf != InvalidOid)
+			typentry->eq_opr = get_opfamily_member(typentry->btree_opf,
+												   typentry->btree_opintype,
+												   typentry->btree_opintype,
+												   BTEqualStrategyNumber);
 		if (typentry->eq_opr == InvalidOid &&
-			typentry->hash_opc != InvalidOid)
-			typentry->eq_opr = get_opclass_member(typentry->hash_opc,
-												  InvalidOid,
-												  HTEqualStrategyNumber);
+			typentry->hash_opf != InvalidOid)
+			typentry->eq_opr = get_opfamily_member(typentry->hash_opf,
+												   typentry->hash_opintype,
+												   typentry->hash_opintype,
+												   HTEqualStrategyNumber);
 	}
 	if ((flags & TYPECACHE_LT_OPR) && typentry->lt_opr == InvalidOid)
 	{
-		if (typentry->btree_opc != InvalidOid)
-			typentry->lt_opr = get_opclass_member(typentry->btree_opc,
-												  InvalidOid,
-												  BTLessStrategyNumber);
+		if (typentry->btree_opf != InvalidOid)
+			typentry->lt_opr = get_opfamily_member(typentry->btree_opf,
+												   typentry->btree_opintype,
+												   typentry->btree_opintype,
+												   BTLessStrategyNumber);
 	}
 	if ((flags & TYPECACHE_GT_OPR) && typentry->gt_opr == InvalidOid)
 	{
-		if (typentry->btree_opc != InvalidOid)
-			typentry->gt_opr = get_opclass_member(typentry->btree_opc,
-												  InvalidOid,
-												  BTGreaterStrategyNumber);
+		if (typentry->btree_opf != InvalidOid)
+			typentry->gt_opr = get_opfamily_member(typentry->btree_opf,
+												   typentry->btree_opintype,
+												   typentry->btree_opintype,
+												   BTGreaterStrategyNumber);
 	}
 	if ((flags & (TYPECACHE_CMP_PROC | TYPECACHE_CMP_PROC_FINFO)) &&
 		typentry->cmp_proc == InvalidOid)
 	{
-		if (typentry->btree_opc != InvalidOid)
-			typentry->cmp_proc = get_opclass_proc(typentry->btree_opc,
-												  InvalidOid,
-												  BTORDER_PROC);
+		if (typentry->btree_opf != InvalidOid)
+			typentry->cmp_proc = get_opfamily_proc(typentry->btree_opf,
+												   typentry->btree_opintype,
+												   typentry->btree_opintype,
+												   BTORDER_PROC);
 	}
 
 	/*
@@ -264,7 +289,7 @@ lookup_type_cache(Oid type_id, int flags)
 	 */
 	if ((flags & TYPECACHE_TUPDESC) &&
 		typentry->tupDesc == NULL &&
-		typentry->typtype == 'c')
+		typentry->typtype == TYPTYPE_COMPOSITE)
 	{
 		Relation	rel;
 
@@ -499,38 +524,53 @@ assign_record_type_typmod(TupleDesc tupDesc)
 }
 
 /*
- * flush_rowtype_cache
+ * TypeCacheRelCallback
+ *		Relcache inval callback function
  *
- * If a typcache entry exists for a rowtype, delete the entry's cached
- * tuple descriptor link.  This is called from relcache.c when a cached
- * relation tupdesc is about to be dropped.
+ * Delete the cached tuple descriptor (if any) for the given rel's composite
+ * type, or for all composite types if relid == InvalidOid.
+ *
+ * This is called when a relcache invalidation event occurs for the given
+ * relid.  We must scan the whole typcache hash since we don't know the
+ * type OID corresponding to the relid.  We could do a direct search if this
+ * were a syscache-flush callback on pg_type, but then we would need all
+ * ALTER-TABLE-like commands that could modify a rowtype to issue syscache
+ * invals against the rel's pg_type OID.  The extra SI signaling could very
+ * well cost more than we'd save, since in most usages there are not very
+ * many entries in a backend's typcache.  The risk of bugs-of-omission seems
+ * high, too.
+ *
+ * Another possibility, with only localized impact, is to maintain a second
+ * hashtable that indexes composite-type typcache entries by their typrelid.
+ * But it's still not clear it's worth the trouble.
  */
-void
-flush_rowtype_cache(Oid type_id)
+static void
+TypeCacheRelCallback(Datum arg, Oid relid)
 {
+	HASH_SEQ_STATUS status;
 	TypeCacheEntry *typentry;
 
-	if (TypeCacheHash == NULL)
-		return;					/* no table, so certainly no entry */
+	/* TypeCacheHash must exist, else this callback wouldn't be registered */
+	hash_seq_init(&status, TypeCacheHash);
+	while ((typentry = (TypeCacheEntry *) hash_seq_search(&status)) != NULL)
+	{
+		if (typentry->tupDesc == NULL)
+			continue;	/* not composite, or tupdesc hasn't been requested */
 
-	typentry = (TypeCacheEntry *) hash_search(TypeCacheHash,
-											  (void *) &type_id,
-											  HASH_FIND, NULL);
-	if (typentry == NULL)
-		return;					/* no matching entry */
-	if (typentry->tupDesc == NULL)
-		return;					/* tupdesc hasn't been requested */
-
-	/*
-	 * Release our refcount and free the tupdesc if none remain. (Can't use
-	 * DecrTupleDescRefCount because this reference is not logged in current
-	 * resource owner.)
-	 */
-	Assert(typentry->tupDesc->tdrefcount > 0);
-	if (--typentry->tupDesc->tdrefcount == 0)
-		FreeTupleDesc(typentry->tupDesc);
-
-	typentry->tupDesc = NULL;
+		/* Delete if match, or if we're zapping all composite types */
+		if (relid == typentry->typrelid || relid == InvalidOid)
+		{
+			/*
+			 * Release our refcount, and free the tupdesc if none remain.
+			 * (Can't use DecrTupleDescRefCount because this reference is not
+			 * logged in current resource owner.)
+			 */
+			Assert(typentry->tupDesc->tdrefcount > 0);
+			if (--typentry->tupDesc->tdrefcount == 0)
+				FreeTupleDesc(typentry->tupDesc);
+			typentry->tupDesc = NULL;
+		}
+	}
 }
 
 

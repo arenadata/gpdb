@@ -15,7 +15,7 @@
  * this module.
  *
  * To allow reusing existing combo cids, we also keep a hash table that
- * maps cmin,cmax pairs to combo cids.  This keeps the data structure size
+ * maps cmin,cmax pairs to combo cids.	This keeps the data structure size
  * reasonable in most cases, since the number of unique pairs used by any
  * one transaction is likely to be small.
  *
@@ -50,8 +50,6 @@
 #include "utils/tqual.h"
 #include "cdb/cdbdtxcontextinfo.h"
 
-#include "miscadmin.h"
-#include "storage/proc.h"
 #include "access/twophase.h"  /* max_prepared_xacts */
 
 #include "storage/buffile.h"

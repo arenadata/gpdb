@@ -49,7 +49,6 @@ bool		Gp_is_writer; 		/* is this qExec a "writer" process. */
 
 int 		gp_session_id;    /* global unique id for session. */
 
-
 char		*qdHostname;		/*QD hostname */
 int			qdPostmasterPort;	/*Master Segment Postmaster port. */
 char       *gp_qd_callback_info;	/* info for QE to call back to QD */
@@ -57,8 +56,6 @@ char       *gp_qd_callback_info;	/* info for QE to call back to QD */
 bool 		gp_is_callback;		/* are we executing a callback query? */
 
 bool		gp_use_dispatch_agent;	/* Use experimental code for Query Dispatch Agent */
-
-unsigned long gp_qd_proc_offset;	/* the proc entry for the original backend on the QD */
 
 int         gp_command_count;          /* num of commands from client */
 
@@ -69,8 +66,6 @@ bool		Debug_print_prelim_plan;	/* Shall we log argument of
 bool		Debug_print_slice_table;	/* Shall we log the slice table? */
 
 bool		Debug_print_dispatch_plan;	/* Shall we log the plan we'll dispatch? */
-
-bool		Debug_print_plannedstmt;	/* Shall we log the final planned statement? */
 
 bool            gp_backup_directIO = false;     /* disable\enable direct I/O dump */
 
@@ -217,7 +212,7 @@ int			Gp_interconnect_hash_multiplier=2;	/* sets the size of the hash table used
 
 int			interconnect_setup_timeout=7200;
 
-int			Gp_interconnect_type = INTERCONNECT_TYPE_TCP;
+int			Gp_interconnect_type = INTERCONNECT_TYPE_UDPIFC;
 
 bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
 
@@ -312,13 +307,11 @@ bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 #ifdef USE_ASSERT_CHECKING
 bool		gp_mk_sort_check = false;
 #endif
-bool 		trace_sort = false;
 int			gp_sort_flags = 0;
 int			gp_dbg_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 
 bool		gp_enable_hash_partitioned_tables = FALSE;
-bool		gp_foreign_data_access = FALSE;
 bool		gp_setwith_alter_storage = FALSE;
 
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
@@ -341,7 +334,6 @@ int		gp_hashagg_compress_spill_files = 0;
 
 int gp_workfile_compress_algorithm = 0;
 bool gp_workfile_checksumming = false;
-bool gp_workfile_caching = false;
 int gp_workfile_caching_loglevel = DEBUG1;
 int gp_sessionstate_loglevel = DEBUG1;
 /* Maximum disk space to use for workfiles on a segment, in kilobytes */
@@ -657,7 +649,7 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source __attri
 
 	if (doit)
 	{
-		if (newval < 0)
+		if (newval <= 0)
 			return false;
 
 		gp_connections_per_thread = newval;
@@ -672,7 +664,7 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source __attri
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
-void disconnectAndDestroyAllGangs(void);
+void disconnectAndDestroyAllGangs(bool resetSession);
 
 bool
 assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribute__((unused)) )
@@ -692,7 +684,7 @@ assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribut
 		 * will wipe them out.
 		 */
 		if (newval != gp_use_dispatch_agent && Gp_role != GP_ROLE_UTILITY)
-			disconnectAndDestroyAllGangs();
+			disconnectAndDestroyAllGangs(true);
 		gp_use_dispatch_agent = newval;
 	}
 
@@ -957,36 +949,15 @@ gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource sour
 {
 	int newtype = 0;
 
-	if (newval == NULL || newval[0] == 0 ||
-		!pg_strcasecmp("tcp", newval))
-		newtype = INTERCONNECT_TYPE_TCP;
-	else if (!pg_strcasecmp("udp", newval))
-		newtype = INTERCONNECT_TYPE_UDP;
+	if (newval == NULL || newval[0] == 0)
+		newtype = INTERCONNECT_TYPE_UDPIFC;
 	else if (!pg_strcasecmp("udpifc", newval))
 		newtype = INTERCONNECT_TYPE_UDPIFC;
-	else if (!pg_strcasecmp("nil", newval))
-		newtype = INTERCONNECT_TYPE_NIL;
 	else
-		elog(ERROR, "Unknown interconnect type. (current type is '%s')", gpvars_show_gp_interconnect_type());
+		elog(ERROR, "Only support UDPIFC, (current type is '%s')", gpvars_show_gp_interconnect_type());
 
 	if (doit)
 	{
-		if (newtype == INTERCONNECT_TYPE_NIL)
-		{
-			if (Gp_role == GP_ROLE_DISPATCH)
-				elog(WARNING, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
-			else
-				elog(LOG, "Nil-Interconnect diagnostic mode enabled (tuple will be dropped).");
-
-		}
-		else if (Gp_interconnect_type == INTERCONNECT_TYPE_NIL)
-		{
-			if (Gp_role == GP_ROLE_DISPATCH)
-				elog(WARNING, "Nil-Interconnect diagnostic mode disabled.");
-			else
-				elog(LOG, "Nil-Interconnect diagnostic mode disabled.");
-		}
-
 		Gp_interconnect_type = newtype;
 	}
 
@@ -996,18 +967,7 @@ gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource sour
 const char *
 gpvars_show_gp_interconnect_type(void)
 {
-	switch(Gp_interconnect_type)
-	{
-		case INTERCONNECT_TYPE_UDP:
-			return "UDP";
-		case INTERCONNECT_TYPE_UDPIFC:
-			return "UDPIFC";
-		case INTERCONNECT_TYPE_NIL:
-			return "NIL";
-		case INTERCONNECT_TYPE_TCP:
-		default:
-			return "TCP";
-	}
+	return "UDPIFC";
 }                               /* gpvars_show_gp_log_interconnect */
 
 /*

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.92 2006/10/04 00:30:10 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.104 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -57,9 +57,10 @@ typedef struct Trigger
 	char	   *tgname;
 	Oid			tgfoid;
 	int16		tgtype;
-	bool		tgenabled;
+	char		tgenabled;
 	bool		tgisconstraint;
 	Oid			tgconstrrelid;
+	Oid			tgconstraint;
 	bool		tgdeferrable;
 	bool		tginitdeferred;
 	int16		tgnargs;
@@ -144,6 +145,8 @@ typedef struct RelationData
 	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1 =
 								 * valid, 2 = temporarily forced */
 	SubTransactionId rd_createSubid;	/* rel was created in current xact */
+	SubTransactionId rd_newRelfilenodeSubid;	/* new relfilenode assigned in
+												 * current xact */
 
 	/*
 	 * Debugging information, Values from CREATE TABLE, if present.
@@ -158,11 +161,15 @@ typedef struct RelationData
 	 * survived into; or zero if the rel was not created in the current top
 	 * transaction.  This should be relied on only for optimization purposes;
 	 * it is possible for new-ness to be "forgotten" (eg, after CLUSTER).
+	 * Likewise, rd_newRelfilenodeSubid is the ID of the highest
+	 * subtransaction the relfilenode change has survived into, or zero if not
+	 * changed in the current transaction (or we have forgotten changing it).
 	 */
 	Form_pg_class rd_rel;		/* RELATION tuple */
 	TupleDesc	rd_att;			/* tuple descriptor */
 	Oid			rd_id;			/* relation's object id */
 	List	   *rd_indexlist;	/* list of OIDs of indexes on relation */
+	Bitmapset  *rd_indexattr;	/* identifies columns used in indexes */
 	Oid			rd_oidindex;	/* OID of unique index on OID, if any */
 	LockInfoData rd_lockInfo;	/* lock mgr's info for locking relation */
 	RuleLock   *rd_rules;		/* rewrite rules */
@@ -183,16 +190,15 @@ typedef struct RelationData
 	Form_pg_index rd_index;		/* pg_index tuple describing this index */
 	struct HeapTupleData *rd_indextuple;		/* all of pg_index tuple */
 	/* "struct HeapTupleData *" avoids need to include htup.h here	*/
-	oidvector  *rd_indclass;	/* extracted pointer to rd_index field */
 	Form_pg_am	rd_am;			/* pg_am tuple for index's AM */
 
 	/*
 	 * index access support info (used only for an index relation)
 	 *
 	 * Note: only default operators and support procs for each opclass are
-	 * cached, namely those with subtype zero.	The arrays are indexed by
-	 * strategy or support number, which is a sufficient identifier given that
-	 * restriction.
+	 * cached, namely those with lefttype and righttype equal to the opclass's
+	 * opcintype.  The arrays are indexed by strategy or support number, which
+	 * is a sufficient identifier given that restriction.
 	 *
 	 * Note: rd_amcache is available for index AMs to cache private data about
 	 * an index.  This must be just a cache since it may get reset at any time
@@ -203,9 +209,12 @@ typedef struct RelationData
 	 */
 	MemoryContext rd_indexcxt;	/* private memory cxt for this stuff */
 	RelationAmInfo *rd_aminfo;	/* lookup info for funcs found in pg_am */
+	Oid		   *rd_opfamily;	/* OIDs of op families for each index col */
+	Oid		   *rd_opcintype;	/* OIDs of opclass declared input data types */
 	Oid		   *rd_operator;	/* OIDs of index operators */
 	RegProcedure *rd_support;	/* OIDs of support procedures */
 	FmgrInfo   *rd_supportinfo; /* lookup info for support procedures */
+	int16	   *rd_indoption;	/* per-column AM-specific flags */
 	List	   *rd_indexprs;	/* index expression trees, if any */
 	List	   *rd_indpred;		/* index predicate tree, if any */
 	void	   *rd_amcache;		/* available for use by index AM */

@@ -9,14 +9,13 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execUtils.c,v 1.140.2.3 2007/02/06 17:35:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execUtils.c,v 1.154 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 /*
  * INTERFACE ROUTINES
  *		CreateExecutorState		Create/delete executor working state
- *		CreateSubExecutorState
  *		FreeExecutorState
  *		CreateExprContext
  *		CreateStandaloneExprContext
@@ -49,6 +48,7 @@
 #include "access/appendonlywriter.h"
 #include "catalog/index.h"
 #include "executor/execdebug.h"
+#include "executor/execUtils.h"
 #include "parser/parsetree.h"
 #include "utils/memutils.h"
 #include "utils/relcache.h"
@@ -59,15 +59,13 @@
 #include "nodes/execnodes.h"
 
 #include "cdb/cdbutil.h"
-#include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/memquota.h"
-#include "catalog/catalog.h" // isMasterOnly()
 #include "executor/spi.h"
 #include "utils/elog.h"
 #include "miscadmin.h"
@@ -89,8 +87,6 @@ int			NIndexTupleProcessed;
 
 DynamicTableScanInfo *dynamicTableScanInfo = NULL;
 
-static EState *InternalCreateExecutorState(MemoryContext qcontext,
-										   bool is_subquery);
 static void ShutdownExprContext(ExprContext *econtext);
 
 
@@ -175,7 +171,9 @@ DisplayTupleCount(FILE *statfp)
 EState *
 CreateExecutorState(void)
 {
+	EState	   *estate;
 	MemoryContext qcontext;
+	MemoryContext oldcontext;
 
 	/*
 	 * Create the per-query context for this Executor run.
@@ -186,57 +184,6 @@ CreateExecutorState(void)
 									 ALLOCSET_DEFAULT_INITSIZE,
 									 ALLOCSET_DEFAULT_MAXSIZE);
 
-	EState *estate = InternalCreateExecutorState(qcontext, false);
-
-	/*
-	 * Initialize dynamicTableScanInfo. Since this is shared by subqueries,
-	 * this can not be put inside InternalCreateExecutorState.
-	 */
-	MemoryContext oldcontext = MemoryContextSwitchTo(qcontext);
-	
-	estate->dynamicTableScanInfo = palloc0(sizeof(DynamicTableScanInfo));
-	estate->dynamicTableScanInfo->memoryContext = qcontext;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	return estate;
-}
-
-/* ----------------
- *		CreateSubExecutorState
- *
- *		Create and initialize an EState node for a sub-query.
- *
- * Ideally, sub-queries probably shouldn't have their own EState at all,
- * but right now this is necessary because they have their own rangetables
- * and we access the rangetable via the EState.  It is critical that a
- * sub-query share the parent's es_query_cxt, else structures allocated by
- * the sub-query (especially its result tuple descriptor) may disappear
- * too soon during executor shutdown.
- * ----------------
- */
-EState *
-CreateSubExecutorState(EState *parent_estate)
-{
-    EState *es = InternalCreateExecutorState(parent_estate->es_query_cxt, true);
-
-    es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
-
-	es->subplanLevel = parent_estate->subplanLevel + 1;
-	/* Subqueries share the same dynamicTableScanInfo with their parents. */
-	es->dynamicTableScanInfo = parent_estate->dynamicTableScanInfo;
-    return es;
-}
-
-/*
- * Guts of CreateExecutorState/CreateSubExecutorState
- */
-static EState *
-InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
-{
-	EState	   *estate;
-	MemoryContext oldcontext;
-
 	/*
 	 * Make the EState node within the per-query context.  This way, we don't
 	 * need a separate pfree() operation for it at shutdown.
@@ -246,6 +193,12 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate = makeNode(EState);
 
 	/*
+	 * Initialize dynamicTableScanInfo.
+	 */
+	estate->dynamicTableScanInfo = palloc0(sizeof(DynamicTableScanInfo));
+	estate->dynamicTableScanInfo->memoryContext = qcontext;
+
+	/*
 	 * Initialize all fields of the Executor State structure
 	 */
 	estate->es_direction = ForwardScanDirection;
@@ -253,12 +206,15 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_crosscheck_snapshot = InvalidSnapshot;	/* no crosscheck */
 	estate->es_range_table = NIL;
 
+	estate->es_output_cid = (CommandId) 0;
+
 	estate->es_result_relations = NULL;
 	estate->es_num_result_relations = 0;
 	estate->es_result_relation_info = NULL;
 
 	estate->es_junkFilter = NULL;
 
+	estate->es_trig_target_relations = NIL;
 	estate->es_trig_tuple_slot = NULL;
 
 	estate->es_into_relation_descriptor = NULL;
@@ -273,19 +229,19 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 
 	estate->es_query_cxt = qcontext;
 
-	estate->es_tupleTable = NULL;
+	estate->es_tupleTable = NIL;
 
 	estate->es_processed = 0;
 	estate->es_lastoid = InvalidOid;
 	estate->es_rowMarks = NIL;
-
-	estate->es_is_subquery = is_subquery;
 
 	estate->es_instrument = false;
 	estate->es_select_into = false;
 	estate->es_into_oids = false;
 
 	estate->es_exprcontexts = NIL;
+
+	estate->es_subplanstates = NIL;
 
 	estate->es_per_tuple_exprcontext = NULL;
 
@@ -307,7 +263,7 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 
 	estate->currentSliceIdInPlan = 0;
 	estate->currentExecutingSliceId = 0;
-	estate->subplanLevel = 0;
+	estate->currentSubplanLevel = 0;
 	estate->rootSliceId = 0;
 
 	/*
@@ -353,6 +309,10 @@ freeDynamicTableScanInfo(DynamicTableScanInfo *scanInfo)
  *
  * This can be called in any memory context ... so long as it's not one
  * of the ones to be freed.
+ *
+ * In Greenplum, this also clears the PartitionState, even though that's a
+ * non-memory resource, as that can be allocated for expression evaluation even
+ * when there is no Plan.
  * ----------------
  */
 void
@@ -381,11 +341,9 @@ FreeExecutorState(EState *estate)
 	}
 
 	/*
-	 * Free dynamicTableScanInfo. In a subquery, we don't do this, since
-	 * the subquery shares the value with its parent.
+	 * Free dynamicTableScanInfo.
 	 */
-	if (!estate->es_is_subquery &&
-		estate->dynamicTableScanInfo != NULL)
+	if (estate->dynamicTableScanInfo != NULL)
 	{
 		/*
 		 * In case of an abnormal termination such as elog(FATAL) we jump directly to
@@ -399,13 +357,18 @@ FreeExecutorState(EState *estate)
 	}
 
 	/*
-	 * Free the per-query memory context, thereby releasing all working
-	 * memory, including the EState node itself.  In a subquery, we don't
-	 * do this, leaving the memory cleanup to happen when the topmost query
-	 * is closed down.
+	 * Greenplum: release partition-related resources (esp. TupleDesc ref counts).
 	 */
-	if (!estate->es_is_subquery)
-		MemoryContextDelete(estate->es_query_cxt);
+	if (estate->es_partition_state)
+	{
+		ClearPartitionState(estate);
+	}
+
+	/*
+	 * Free the per-query memory context, thereby releasing all working
+	 * memory, including the EState node itself.
+	 */
+	MemoryContextDelete(estate->es_query_cxt);
 }
 
 /* ----------------
@@ -679,6 +642,9 @@ ExecGetResultType(PlanState *planstate)
 	return slot->tts_tupleDescriptor;
 }
 
+extern void
+ExecVariableList(ProjectionInfo *projInfo, Datum *values, bool *isnull);
+
 /* ----------------
  *		ExecBuildProjectionInfo
  *
@@ -688,7 +654,7 @@ ExecGetResultType(PlanState *planstate)
  * the given tlist should be a list of ExprState nodes, not Expr nodes.
  *
  * inputDesc can be NULL, but if it is not, we check to see whether simple
- * Vars in the tlist match the descriptor.  It is important to provide
+ * Vars in the tlist match the descriptor.	It is important to provide
  * inputDesc for relation-scan plan nodes, as a cross check that the relation
  * hasn't been changed since the plan was made.  At higher levels of a plan,
  * there is no need to recheck.
@@ -715,7 +681,7 @@ ExecBuildProjectionInfo(List *targetList,
 	 * Determine whether the target list consists entirely of simple Var
 	 * references (ie, references to non-system attributes) that match the
 	 * input.  If so, we can use the simpler ExecVariableList instead of
-	 * ExecTargetList.  (Note: if there is a type mismatch then ExecEvalVar
+	 * ExecTargetList.	(Note: if there is a type mismatch then ExecEvalScalarVar
 	 * will probably throw an error at runtime, but we leave that to it.)
 	 */
 	isVarList = true;
@@ -813,6 +779,10 @@ ExecBuildProjectionInfo(List *targetList,
 		projInfo->pi_varNumbers = NULL;
 	}
 
+#ifdef USE_CODEGEN
+	// Set the default location for ExecVariableList
+	projInfo->ExecVariableList_gen_info.ExecVariableList_fn = ExecVariableList;
+#endif
 	return projInfo;
 }
 
@@ -1068,25 +1038,16 @@ ExecOpenScanRelation(EState *estate, Index scanrelid)
 {
 	Oid			reloid;
 	LOCKMODE	lockmode;
-	ResultRelInfo *resultRelInfos;
-	int			i;
 
 	/*
-	 * First determine the lock type we need.  Scan to see if target relation
-	 * is either a result relation or a FOR UPDATE/FOR SHARE relation.
+	 * Determine the lock type we need.  First, scan to see if target relation
+	 * is a result relation.  If not, check if it's a FOR UPDATE/FOR SHARE
+	 * relation.  In either of those cases, we got the lock already.
 	 */
 	lockmode = AccessShareLock;
-	resultRelInfos = estate->es_result_relations;
-	for (i = 0; i < estate->es_num_result_relations; i++)
-	{
-		if (resultRelInfos[i].ri_RangeTableIndex == scanrelid)
-		{
-			lockmode = NoLock;
-			break;
-		}
-	}
-
-	if (lockmode == AccessShareLock)
+	if (ExecRelationIsTargetRelation(estate, scanrelid))
+		lockmode = NoLock;
+	else
 	{
 		ListCell   *l;
 
@@ -1202,6 +1163,9 @@ ExecOpenIndices(ResultRelInfo *resultRelInfo)
 	/*
 	 * For each index, open the index relation and save pg_index info. We
 	 * acquire RowExclusiveLock, signifying we will update the index.
+	 *
+	 * Note: we do this even if the index is not IndexIsReady; it's not worth
+	 * the trouble to optimize for the case where it isn't.
 	 */
 	i = 0;
 	foreach(l, indexoidlist)
@@ -1264,6 +1228,10 @@ ExecCloseIndices(ResultRelInfo *resultRelInfo)
  *		stuff as it only exists here because the genam stuff
  *		doesn't provide the functionality needed by the
  *		executor.. -cim 9/27/89
+ *
+ *		CAUTION: this must not be called for a HOT update.
+ *		We can't defend against that here for lack of info.
+ *		Should we change the API to make it safer?
  * ----------------------------------------------------------------
  */
 void
@@ -1311,6 +1279,10 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 			continue;
 
 		indexInfo = indexInfoArray[i];
+
+		/* If the index is marked as read-only, ignore it */
+		if (!indexInfo->ii_ReadyForInserts)
+			continue;
 
 		/* Check for partial index */
 		if (indexInfo->ii_Predicate != NIL)
@@ -1563,12 +1535,6 @@ ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
  * ----------------------------------------------------------------
  */
 
-static bool
-is1GangSlice(Slice *slice)
-{
-	return slice->gangSize == 1 && getgpsegmentCount() != 1;
-}
-
 /* Attach a slice table to the given Estate structure.	It should
  * consist of blank slices, one for the root plan, one for each
  * Motion node (which roots a slice with a send node), and one for
@@ -1607,7 +1573,6 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 		slice->directDispatch.isDirectDispatch = false;
 		slice->directDispatch.contentIds = NIL;
 		slice->primaryGang = NULL;
-		slice->primary_gang_id = 0;
 		slice->parentIndex = -1;
 		slice->children = NIL;
 		slice->primaryProcesses = NIL;
@@ -1661,7 +1626,7 @@ sliceRunsOnQE(Slice * slice)
  * Calculate the number of sending processes that should in be a slice.
  */
 int
-sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
+sliceCalculateNumSendingProcesses(Slice *slice)
 {
 	switch(slice->gangType)
 	{
@@ -1671,15 +1636,17 @@ sliceCalculateNumSendingProcesses(Slice *slice, int numSegmentsInCluster)
 		case GANGTYPE_ENTRYDB_READER:
 			return 1; /* on master */
 
+		case GANGTYPE_SINGLETON_READER:
+			return 1; /* on segment */
+
 		case GANGTYPE_PRIMARY_WRITER:
 			return 0; /* writers don't send */
 
 		case GANGTYPE_PRIMARY_READER:
-			if ( is1GangSlice(slice))
-				return 1;
-			else if ( slice->directDispatch.isDirectDispatch)
+			if (slice->directDispatch.isDirectDispatch)
 				return list_length(slice->directDispatch.contentIds);
-			else return getgpsegmentCount();
+			else
+				return getgpsegmentCount();
 
 		default:
 			Insist(false);
@@ -1727,7 +1694,7 @@ InitRootSlices(QueryDesc *queryDesc)
 					{
 						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();
-						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
+						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice);
 					}
 					break;
 
@@ -1741,11 +1708,11 @@ InitRootSlices(QueryDesc *queryDesc)
 					int idx = list_nth_int(resultRelations, 0);
 					Assert (idx > 0);
 					Oid reloid = getrelid(idx, queryDesc->plannedstmt->rtable);
-					if (!isMasterOnly(reloid))
+					if (GpPolicyFetch(CurrentMemoryContext, reloid)->ptype != POLICYTYPE_ENTRY)
 					{
 						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();
-						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice, getgpsegmentCount());
+						slice->numGangMembersToBeActive = sliceCalculateNumSendingProcesses(slice);
 			        }
 			        /* else: result relation is master-only, so top slice should run on the QD and not be dispatched */
 					break;
@@ -1817,7 +1784,7 @@ static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceR
  * slice in the slice table.
  */
 void
-AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
+AssignGangs(QueryDesc *queryDesc)
 {
 	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
@@ -1874,7 +1841,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_READER, getgpsegmentCount(), 0, queryDesc->portal_name);
+				inv.vecNgangs[i] = allocateReaderGang(GANGTYPE_PRIMARY_READER, queryDesc->portal_name);
 			}
 		}
 	}
@@ -1883,7 +1850,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs_primary_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_primary_reader);
 		for (i = 0; i < inv.num1gangs_primary_reader; i++)
 		{
-			inv.vec1gangs_primary_reader[i] = allocateGang(GANGTYPE_PRIMARY_READER, 1, utility_segment_index, queryDesc->portal_name);
+			inv.vec1gangs_primary_reader[i] = allocateReaderGang(GANGTYPE_SINGLETON_READER, queryDesc->portal_name);
 		}
 	}
 	if (inv.num1gangs_entrydb_reader > 0)
@@ -1891,7 +1858,7 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		inv.vec1gangs_entrydb_reader = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs_entrydb_reader);
 		for (i = 0; i < inv.num1gangs_entrydb_reader; i++)
 		{
-			inv.vec1gangs_entrydb_reader[i] = allocateGang(GANGTYPE_ENTRYDB_READER, 1, -1, queryDesc->portal_name);
+			inv.vec1gangs_entrydb_reader[i] = allocateReaderGang(GANGTYPE_ENTRYDB_READER, queryDesc->portal_name);
 		}
 	}
 
@@ -1975,19 +1942,17 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			req->num1gangs_entrydb_reader++;
 			break;
 
+		case GANGTYPE_SINGLETON_READER:
+			req->num1gangs_primary_reader++;
+			break;
+
 		case GANGTYPE_PRIMARY_WRITER:
 			req->writer = TRUE;
 			/* fall through */
+
 		case GANGTYPE_PRIMARY_READER:
-			if (is1GangSlice(slice))
-			{
-				req->num1gangs_primary_reader++;
-			}
-			else
-			{
-				Assert(slice->gangSize == getgpsegmentCount());
-				req->numNgangs++;
-			}
+			Assert(slice->gangSize == getgpsegmentCount());
+			req->numNgangs++;
 			break;
 	}
 
@@ -2035,15 +2000,13 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			break;
 
 		case GANGTYPE_ENTRYDB_READER:
-			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader];
+			Assert(slice->gangSize == 1);
+			slice->primaryGang = req->vec1gangs_entrydb_reader[req->nxt1gang_entrydb_reader++];
 			Assert(slice->primaryGang != NULL);
-			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex,
 														NULL);
-			req->nxt1gang_entrydb_reader++;
-
-			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
+			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 
 		case GANGTYPE_PRIMARY_WRITER:
@@ -2051,32 +2014,29 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			Assert(req->numNgangs > 0 && req->nxtNgang == 0 && req->writer);
 			Assert(req->vecNgangs[0] != NULL);
 
-			slice->primaryGang = req->vecNgangs[req->nxtNgang];
+			slice->primaryGang = req->vecNgangs[req->nxtNgang++];
 			Assert(slice->primaryGang != NULL);
-			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang, slice->sliceIndex, &slice->directDispatch);
-
-			req->nxtNgang++;
 			break;
 
-		case GANGTYPE_PRIMARY_READER:
-			if (is1GangSlice(slice))
-			{
-				slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader];
-				req->nxt1gang_primary_reader++;
-			}
-			else
-			{
-				Assert(slice->gangSize == getgpsegmentCount());
-				slice->primaryGang = req->vecNgangs[req->nxtNgang];
-				req->nxtNgang++;
-			}
+		case GANGTYPE_SINGLETON_READER:
+			Assert(slice->gangSize == 1);
+			slice->primaryGang = req->vec1gangs_primary_reader[req->nxt1gang_primary_reader++];
 			Assert(slice->primaryGang != NULL);
-			slice->primary_gang_id = slice->primaryGang->gang_id;
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
                                                         slice->sliceIndex,
                                                         &slice->directDispatch);
-			Assert(sliceCalculateNumSendingProcesses(slice, getgpsegmentCount()) == countNonNullValues(slice->primaryProcesses));
+			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
+			break;
+
+		case GANGTYPE_PRIMARY_READER:
+			Assert(slice->gangSize == getgpsegmentCount());
+			slice->primaryGang = req->vecNgangs[req->nxtNgang++];
+			Assert(slice->primaryGang != NULL);
+			slice->primaryProcesses = getCdbProcessList(slice->primaryGang,
+                                                        slice->sliceIndex,
+                                                        &slice->directDispatch);
+			Assert(sliceCalculateNumSendingProcesses(slice) == countNonNullValues(slice->primaryProcesses));
 			break;
 	}
 
@@ -2379,6 +2339,7 @@ initGpmonPktForDefunctOperators(Plan *planNode, gpmon_packet_t *gpmon_pkt, EStat
 	insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
 }
 
+#ifdef ORIG_GP_PORT
 /*
  * The funcion pointers to init gpmon package for each plan node. 
  * The order of the function pointers are the same as the one defined in
@@ -2447,10 +2408,10 @@ void
 sendInitGpmonPkts(Plan *node, EState *estate)
 {
 	gpmon_packet_t gpmon_pkt;
-   
+
 	if (node == NULL)
 		return;
-	
+
 	switch (nodeTag(node))
 	{
 		case T_Append:
@@ -2471,11 +2432,11 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 				first_plan = 0;
 				last_plan = list_length(appendnode->appendplans) - 1;
 			}
-			
+
 			for (; first_plan <= last_plan; first_plan++)
 			{
 				Plan *initNode = (Plan *)list_nth(appendnode->appendplans, first_plan);
-				
+
 				sendInitGpmonPkts(initNode, estate);
 			}
 
@@ -2490,7 +2451,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 			foreach (lc, sequence->subplans)
 			{
 				Plan *subplan = (Plan *)lfirst(lc);
-				
+
 				sendInitGpmonPkts(subplan, estate);
 			}
 			break;
@@ -2499,26 +2460,26 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		case T_BitmapAnd:
 		{
 			ListCell *lc;
-			
+
 			initGpmonPktForBitmapAnd(node, &gpmon_pkt, estate);
 			foreach (lc, ((BitmapAnd*)node)->bitmapplans)
 			{
 				sendInitGpmonPkts((Plan *)lfirst(lc), estate);
 			}
-			
+
 			break;
 		}
-		
+
 		case T_BitmapOr:
 		{
 			ListCell *lc;
-			
+
 			initGpmonPktForBitmapOr(node, &gpmon_pkt, estate);
 			foreach (lc, ((BitmapOr*)node)->bitmapplans)
 			{
 				sendInitGpmonPkts((Plan *)lfirst(lc), estate);
 			}
-			
+
 			break;
 		}
 
@@ -2556,7 +2517,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 		{
 			initGpmonPktFuncs[nodeTag(node) - T_Plan_Start](node, &gpmon_pkt, estate);
 			sendInitGpmonPkts(outerPlan(node), estate);
-			
+
 			break;
 		}
 
@@ -2576,7 +2537,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 			initGpmonPktFuncs[nodeTag(node) - T_Plan_Start](node, &gpmon_pkt, estate);
 			sendInitGpmonPkts(outerPlan(node), estate);
 			sendInitGpmonPkts(innerPlan(node), estate);
-			
+
 			break;
 		}
 
@@ -2593,7 +2554,7 @@ sendInitGpmonPkts(Plan *node, EState *estate)
 			break;
 	}
 }
-
+#endif
 void ResetExprContext(ExprContext *econtext)
 {
 	MemoryContext memctxt = econtext->ecxt_per_tuple_memory;
@@ -2703,3 +2664,81 @@ int RootSliceIndex(EState *estate)
 
 	return result;
 }
+
+#ifdef USE_ASSERT_CHECKING
+/**
+ * Assert that slicetable is valid. Must be called after ExecInitMotion, which sets up the slice table
+ */
+void AssertSliceTableIsValid(SliceTable *st, struct PlannedStmt *pstmt)
+{
+	if (!st)
+		return;
+
+	Assert(pstmt);
+
+	Assert(pstmt->nMotionNodes == st->nMotions);
+	Assert(pstmt->nInitPlans == st->nInitPlans);
+
+	ListCell *lc = NULL;
+	int i = 0;
+
+	int maxIndex = st->nMotions + st->nInitPlans + 1;
+
+	Assert(maxIndex == list_length(st->slices));
+
+	foreach (lc, st->slices)
+	{
+		Slice *s = (Slice *) lfirst(lc);
+
+		/* The n-th slice entry has sliceIndex of n */
+		Assert(s->sliceIndex == i++ && "slice index incorrect");
+
+		/* The root index of a slice is either 0 or is a slice corresponding to an init plan */
+		Assert((s->rootIndex == 0) || (s->rootIndex > st->nMotions && s->rootIndex < maxIndex));
+
+		/* Parent slice index */
+		if (s->sliceIndex == s->rootIndex)
+		{
+			/* Current slice is a root slice. It will have parent index -1.*/
+			Assert(s->parentIndex == -1 && "expecting parent index of -1");
+		}
+		else
+		{
+			/* All other slices must have a valid parent index */
+			Assert(s->parentIndex >= 0 && s->parentIndex < maxIndex && "slice's parent index out of range");
+		}
+
+		/* Current slice's children must consider it the parent */
+		ListCell *lc1 = NULL;
+		foreach (lc1, s->children)
+		{
+			int childIndex = lfirst_int(lc1);
+			Assert(childIndex >= 0 && childIndex < maxIndex && "invalid child slice");
+			Slice *sc = (Slice *) list_nth(st->slices, childIndex);
+			Assert(sc->parentIndex == s->sliceIndex && "slice's child does not consider it the parent");
+		}
+
+		/* Current slice must be in its parent's children list */
+		if (s->parentIndex >= 0)
+		{
+			Slice *sp = (Slice *) list_nth(st->slices, s->parentIndex);
+
+			bool found = false;
+			foreach (lc1, sp->children)
+			{
+				int childIndex = lfirst_int(lc1);
+				Assert(childIndex >= 0 && childIndex < maxIndex && "invalid child slice");
+				Slice *sc = (Slice *) list_nth(st->slices, childIndex);
+
+				if (sc->sliceIndex == s->sliceIndex)
+				{
+					found = true;
+					break;
+				}
+			}
+
+			Assert(found && "slice's parent does not consider it a child");
+		}
+	}
+}
+#endif

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/nodeHash.h,v 1.41 2006/06/27 21:31:20 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/nodeHash.h,v 1.45 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,7 +26,7 @@ extern Node *MultiExecHash(HashState *node);
 extern void ExecEndHash(HashState *node);
 extern void ExecReScanHash(HashState *node, ExprContext *exprCtxt);
 
-extern HashJoinTable ExecHashTableCreate(HashState *hashState, HashJoinState *hjstate, List *hashOperators, uint64 operatorMemKB, workfile_set * sfs);
+extern HashJoinTable ExecHashTableCreate(HashState *hashState, HashJoinState *hjstate, List *hashOperators, uint64 operatorMemKB);
 extern void ExecHashTableDestroy(HashState *hashState, HashJoinTable hashtable);
 extern void ExecHashTableInsert(HashState *hashState, HashJoinTable hashtable,
 					struct TupleTableSlot *slot,
@@ -34,6 +34,7 @@ extern void ExecHashTableInsert(HashState *hashState, HashJoinTable hashtable,
 extern bool ExecHashGetHashValue(HashState *hashState, HashJoinTable hashtable,
 					 ExprContext *econtext,
 					 List *hashkeys,
+					 bool outer_tuple,
 					 bool keep_nulls,
 					 uint32 *hashvalue,
 					 bool *hashkeys_null);

@@ -16,6 +16,7 @@
 
 #include "access/xlogdefs.h"
 #include "access/xlogmm.h"
+#include "storage/backendid.h"
 #include "storage/proc.h"
 #include "utils/timestamp.h"
 
@@ -63,7 +64,11 @@ extern int	max_prepared_xacts;
 extern Size TwoPhaseShmemSize(void);
 extern void TwoPhaseShmemInit(void);
 
+extern void AtAbort_Twophase(void);
+extern void PostPrepare_Twophase(void);
+
 extern PGPROC *TwoPhaseGetDummyProc(TransactionId xid);
+extern BackendId TwoPhaseGetDummyBackendId(TransactionId xid);
 
 extern GlobalTransaction MarkAsPreparing(TransactionId xid, 
 				LocalDistribXactRef *distribToLocalXactRef,

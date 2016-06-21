@@ -26,9 +26,9 @@
 #include "gpopt/translate/CQueryMutators.h"
 #include "gpopt/translate/CTranslatorDXLToPlStmt.h"
 
-#include "md/IMDScalarOp.h"
-#include "md/IMDAggregate.h"
-#include "md/IMDTypeBool.h"
+#include "naucrates/md/IMDScalarOp.h"
+#include "naucrates/md/IMDAggregate.h"
+#include "naucrates/md/IMDTypeBool.h"
 
 #include "gpopt/gpdbwrappers.h"
 
@@ -863,7 +863,7 @@ CQueryMutators::PteAggregateOrPercentileExpr
 	{
 		Aggref *paggref = (Aggref*) pnode;
 
-		CMDIdGPDB *pmdidAgg = New(pmp) CMDIdGPDB(paggref->aggfnoid);
+		CMDIdGPDB *pmdidAgg = GPOS_NEW(pmp) CMDIdGPDB(paggref->aggfnoid);
 		const IMDAggregate *pmdagg = pmda->Pmdagg(pmdidAgg);
 		pmdidAgg->Release();
 
@@ -1572,6 +1572,7 @@ CQueryMutators::PqueryEliminateDistinctClause
 		GroupClause *pgrpcl = MakeNode(GroupClause);
 		pgrpcl->tleSortGroupRef = psortcl->tleSortGroupRef;
 		pgrpcl->sortop = psortcl->sortop;
+		pgrpcl->nulls_first = psortcl->nulls_first;
 		pqueryNew->groupClause = gpdb::PlAppendElement(pqueryNew->groupClause, pgrpcl);
 	}
 	pqueryNew->distinctClause = NIL;
@@ -1801,7 +1802,7 @@ CQueryMutators::PnodeWindowPrLMutator
 		WindowRef *pwindowref = (WindowRef*) gpdb::PvCopyObject(pnode);
 
 		// get the function name and add it to the target list
-		CMDIdGPDB *pmdidFunc = New(pctxWindowPrLMutator->m_pmp) CMDIdGPDB(pwindowref->winfnoid);
+		CMDIdGPDB *pmdidFunc = GPOS_NEW(pctxWindowPrLMutator->m_pmp) CMDIdGPDB(pwindowref->winfnoid);
 		const CWStringConst *pstr = CMDAccessorUtils::PstrWindowFuncName(pctxWindowPrLMutator->m_pmda, pmdidFunc);
 		pmdidFunc->Release();
 

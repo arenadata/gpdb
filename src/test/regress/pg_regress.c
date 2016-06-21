@@ -11,7 +11,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/test/regress/pg_regress.c,v 1.36 2007/07/18 21:19:17 alvherre Exp $
+ * $PostgreSQL: pgsql/src/test/regress/pg_regress.c,v 1.41.2.4 2009/11/14 15:39:41 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -70,8 +70,8 @@ static char gpstringsubsprog[MAXPGPATH];
 
 /* currently we can use the same diff switches on all platforms */
 /* MPP:  Add stuff to ignore all the extra NOTICE messages we give */
-const char *basic_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE:";
-const char *pretty_diff_opts = "-w -I NOTICE: -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
+const char *basic_diff_opts = "-w -I HINT: -I CONTEXT: -I GP_IGNORE:";
+const char *pretty_diff_opts = "-w -I HINT: -I CONTEXT: -I GP_IGNORE: -C3";
 
 /* options settable from command line */
 _stringlist *dblist = NULL;
@@ -86,6 +86,7 @@ static char *encoding = NULL;
 static _stringlist *schedulelist = NULL;
 static _stringlist *extra_tests = NULL;
 static char *temp_install = NULL;
+static char *temp_config = NULL;
 static char *top_builddir = NULL;
 static int	temp_port = 65432;
 static bool nolocale = false;
@@ -414,16 +415,18 @@ replace_string(char *string, char *replace, char *replacement)
  * the given suffix.
  */
 static void
-convert_sourcefiles_in(char *source, char *dest, char *suffix)
+convert_sourcefiles_in(char *source, char * dest_dir, char *dest, char *suffix)
 {
 	char		abs_srcdir[MAXPGPATH];
 	char		abs_builddir[MAXPGPATH];
 	char		testtablespace[MAXPGPATH];
 	char		indir[MAXPGPATH];
-	char		outdir[MAXPGPATH];
+	struct stat st;
+	int			ret;
 	char	  **name;
 	char	  **names;
 	int			count = 0;
+
 #ifdef WIN32
 	char	   *c;
 #endif
@@ -445,15 +448,32 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		strlcpy(abs_srcdir, abs_builddir, MAXPGPATH);
 
 	snprintf(indir, MAXPGPATH, "%s/%s", abs_srcdir, source);
+
+	/* Check that indir actually exists and is a directory */
+	ret = stat(indir, &st);
+	if (ret != 0 || !S_ISDIR(st.st_mode))
+	{
+		/*
+		 * No warning, to avoid noise in tests that do not have
+		 * these directories; for example, ecpg, contrib and src/pl.
+		 */
+		return;
+	}
+
 	names = pgfnames(indir);
 	if (!names)
 		/* Error logged in pgfnames */
 		exit_nicely(2);
 
 	/* also create the output directory if not present */
-	snprintf(outdir, sizeof(outdir), "%s/%s", abs_srcdir, dest);
-	if (!directory_exists(outdir))
-		make_directory(outdir);
+	{
+		char		outdir[MAXPGPATH];
+
+		snprintf(outdir, MAXPGPATH, "%s/%s", dest_dir, dest);
+
+		if (!directory_exists(outdir))
+			make_directory(outdir);
+	}
 
 #ifdef WIN32
 	/* in Win32, replace backslashes with forward slashes */
@@ -465,7 +485,6 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 			*c = '/';
 #endif
 
-	/* try to create the test tablespace dir if it doesn't exist */
 	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", abs_builddir);
 
 #ifdef WIN32
@@ -506,7 +525,8 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		/* build the full actual paths to open */
 		snprintf(prefix, strlen(*name) - 6, "%s", *name);
 		snprintf(srcfile, MAXPGPATH, "%s/%s", indir, *name);
-		snprintf(destfile, MAXPGPATH, "%s/%s.%s", outdir, prefix, suffix);
+		snprintf(destfile, MAXPGPATH, "%s/%s/%s.%s", dest_dir, dest, 
+				 prefix, suffix);
 
 		infile = fopen(srcfile, "r");
 		if (!infile)
@@ -545,7 +565,7 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		{
 			char		cmd[MAXPGPATH * 3];
 			snprintf(cmd, sizeof(cmd),
-					 SYSTEMQUOTE "%s/gpstringsubs.pl %s" SYSTEMQUOTE, abs_srcdir, destfile);
+					 SYSTEMQUOTE "%s %s" SYSTEMQUOTE, gpstringsubsprog, destfile);
 			if (run_diff(cmd, destfile) != 0)
 			{
 				fprintf(stderr, _("%s: could not convert %s\n"),
@@ -569,24 +589,14 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 	pgfnames_cleanup(names);
 }
 
-/* Create the .sql and .out files from the .source files, if any */
+/* Create the .sql, .out and .yml files from the .source files, if any */
 static void
 convert_sourcefiles(void)
 {
-	struct stat	st;
-	int		ret;
+	convert_sourcefiles_in("input", inputdir, "sql", "sql");
+	convert_sourcefiles_in("output", outputdir, "expected", "out");
 
-	ret = stat("input", &st);
-	if (ret == 0 && S_ISDIR(st.st_mode))
-		convert_sourcefiles_in("input", "sql", "sql");
-
-	ret = stat("output", &st);
-	if (ret == 0 && S_ISDIR(st.st_mode))
-		convert_sourcefiles_in("output", "expected", "out");
-
-	ret = stat("mapred", &st);
-	if (ret == 0 && S_ISDIR(st.st_mode))
-		convert_sourcefiles_in("mapred", "yml", "yml");
+	convert_sourcefiles_in("mapred", inputdir, "yml", "yml");
 }
 
 /*
@@ -843,6 +853,19 @@ initialize_environment(void)
 		}
 
 		/*
+		 * GNU make stores some flags in the MAKEFLAGS environment variable to
+		 * pass arguments to its own children.	If we are invoked by make,
+		 * that causes the make invoked by us to think its part of the make
+		 * task invoking us, and so it tries to communicate with the toplevel
+		 * make.  Which fails.
+		 *
+		 * Unset the variable to protect against such problems.  We also reset
+		 * MAKELEVEL to be certain the child doesn't notice the make above us.
+		 */
+		unsetenv("MAKEFLAGS");
+		unsetenv("MAKELEVEL");
+
+		/*
 		 * Adjust path variables to point into the temp-install tree
 		 */
 		tmp = malloc(strlen(temp_install) + 32 + strlen(bindir));
@@ -872,8 +895,10 @@ initialize_environment(void)
 		add_to_path("LD_LIBRARY_PATH", ':', libdir);
 		add_to_path("DYLD_LIBRARY_PATH", ':', libdir);
 		add_to_path("LIBPATH", ':', libdir);
-#if defined(WIN32) || defined(__CYGWIN__)
+#if defined(WIN32)
 		add_to_path("PATH", ';', libdir);
+#elif defined(__CYGWIN__)
+		add_to_path("PATH", ':', libdir);
 #endif
 	}
 	else
@@ -1111,7 +1136,7 @@ spawn_process(const char *cmdline)
 
 	free(cmdline2);
 
-	ResumeThread(pi.hThread);
+    ResumeThread(pi.hThread);
 	CloseHandle(pi.hThread);
 	return pi.hProcess;
 #endif
@@ -1706,7 +1731,7 @@ run_schedule(const char *schedule, test_function tfunc)
 				bool		newdiff;
 
 				if (tl)
-					tl = tl->next;		/* tl has the same length as rl and el
+					tl = tl->next;		/* tl has the same lengt has rl and el
 										 * if it exists */
 
 				newdiff = results_differ(tests[i], rl->str, el->str);
@@ -1798,7 +1823,7 @@ run_single_test(const char *test, test_function tfunc)
 		bool		newdiff;
 
 		if (tl)
-			tl = tl->next;		/* tl has the same length as rl and el if it
+			tl = tl->next;		/* tl has the same lengt has rl and el if it
 								 * exists */
 
 		newdiff = results_differ(test, rl->str, el->str);
@@ -1828,8 +1853,7 @@ run_single_test(const char *test, test_function tfunc)
 
 /*
  * Find the other binaries that we need. Currently, gpdiff.pl and
- * gpstringsubs.pl. gpdiff.pl in turn will call atmsort.pl and explain.pl,
- * but it's up to gpdiff.pl to find them.
+ * gpstringsubs.pl.
  */
 static void
 find_helper_programs(const char *argv0)
@@ -2093,6 +2117,7 @@ help(void)
 	printf(_("  --no-locale               use C locale\n"));
 	printf(_("  --top-builddir=DIR        (relative) path to top level build directory\n"));
 	printf(_("  --temp-port=PORT          port number to start temp postmaster on\n"));
+	printf(_("  --temp-config=PATH        append contents of PATH to temporary config\n"));
 	printf(_("\n"));
 	printf(_("Options for using an existing installation:\n"));
 	printf(_("  --host=HOST               use postmaster running on HOST\n"));
@@ -2103,7 +2128,7 @@ help(void)
 	printf(_("The exit status is 0 if all tests passed, 1 if some tests failed, and 2\n"));
 	printf(_("if the tests could not be run for some reason.\n"));
 	printf(_("\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 int
@@ -2136,7 +2161,8 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		{"psqldir", required_argument, NULL, 16},
 		{"srcdir", required_argument, NULL, 17},
 		{"create-role", required_argument, NULL, 18},
-        {"init-file", required_argument, NULL, 19},
+		{"temp-config", required_argument, NULL, 19},
+        {"init-file", required_argument, NULL, 20},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -2232,10 +2258,13 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 			case 18:
 				split_to_stringlist(strdup(optarg), ", ", &extraroles);
 				break;
-            case 19:
+			case 19:
+				temp_config = strdup(optarg);
+				break;
+            case 20:
                 initfile = strdup(optarg);
                 break;
-            default:
+			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("\nTry \"%s -h\" for more information.\n"),
 						progname);
@@ -2322,6 +2351,32 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		{
 			fprintf(stderr, _("\n%s: initdb failed\nExamine %s/log/initdb.log for the reason.\nCommand was: %s\n"), progname, outputdir, buf);
 			exit_nicely(2);
+		}
+
+		/* add any extra config specified to the postgresql.conf */
+		if (temp_config != NULL)
+		{
+			FILE	   *extra_conf;
+			FILE	   *pg_conf;
+			char		line_buf[1024];
+
+			snprintf(buf, sizeof(buf), "%s/data/postgresql.conf", temp_install);
+			pg_conf = fopen(buf, "a");
+			if (pg_conf == NULL)
+			{
+				fprintf(stderr, _("\n%s: could not open %s for adding extra config:\nError was %s\n"), progname, buf, strerror(errno));
+				exit_nicely(2);
+			}
+			extra_conf = fopen(temp_config, "r");
+			if (extra_conf == NULL)
+			{
+				fprintf(stderr, _("\n%s: could not open %s to read extra config:\nError was %s\n"), progname, temp_config, strerror(errno));
+				exit_nicely(2);
+			}
+			while (fgets(line_buf, sizeof(line_buf), extra_conf) != NULL)
+				fputs(line_buf, pg_conf);
+			fclose(extra_conf);
+			fclose(pg_conf);
 		}
 
 		/*

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/nodeFuncs.c,v 1.27 2006/03/05 15:58:27 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/nodeFuncs.c,v 1.29 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -151,6 +151,24 @@ exprLocation(Node *expr)
 								  exprLocation((Node *) rexpr->arg));
 			}
 			break;
+		case T_CoerceViaIO:
+			{
+				CoerceViaIO *cexpr = (CoerceViaIO *) expr;
+
+				/* Much as above */
+				loc = leftmostLoc(cexpr->location,
+								  exprLocation((Node *) cexpr->arg));
+			}
+			break;
+		case T_ArrayCoerceExpr:
+			{
+				ArrayCoerceExpr *cexpr = (ArrayCoerceExpr *) expr;
+
+				/* Much as above */
+				loc = leftmostLoc(cexpr->location,
+								  exprLocation((Node *) cexpr->arg));
+			}
+			break;
 		case T_ConvertRowtypeExpr:
 			{
 				ConvertRowtypeExpr *cexpr = (ConvertRowtypeExpr *) expr;
@@ -176,6 +194,10 @@ exprLocation(Node *expr)
 			/* the location points at ROW or (, which must be leftmost */
 			loc = ((RowExpr *) expr)->location;
 			break;
+		case T_TableValueExpr:
+			/* the location points at TABLE, which must be leftmost */
+			loc = ((TableValueExpr *) expr)->location;
+			break;
 		case T_RowCompareExpr:
 			/* just use leftmost argument's location */
 			loc = exprLocation((Node *) ((RowCompareExpr *) expr)->largs);
@@ -187,6 +209,15 @@ exprLocation(Node *expr)
 		case T_MinMaxExpr:
 			/* GREATEST/LEAST keyword should always be the first thing */
 			loc = ((MinMaxExpr *) expr)->location;
+			break;
+		case T_XmlExpr:
+			{
+				XmlExpr    *xexpr = (XmlExpr *) expr;
+
+				/* consider both function name and leftmost arg */
+				loc = leftmostLoc(xexpr->location,
+								  exprLocation((Node *) xexpr->args));
+			}
 			break;
 		case T_NullTest:
 			/* just use argument's location */
@@ -261,6 +292,10 @@ exprLocation(Node *expr)
 								  exprLocation((Node *) fc->args));
 			}
 			break;
+		case T_A_ArrayExpr:
+			/* the location points at ARRAY or [, which must be leftmost */
+			loc = ((A_ArrayExpr *) expr)->location;
+			break;
 		case T_ResTarget:
 			/* we need not examine the contained expression (if any) */
 			loc = ((ResTarget *) expr)->location;
@@ -284,6 +319,10 @@ exprLocation(Node *expr)
 			break;
 		case T_TypeName:
 			loc = ((TypeName *) expr)->location;
+			break;
+		case T_XmlSerialize:
+			/* XMLSERIALIZE keyword should always be the first thing */
+			loc = ((XmlSerialize *) expr)->location;
 			break;
 		case T_WithClause:
 			loc = ((WithClause *) expr)->location;

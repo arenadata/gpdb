@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/nbtree.h,v 1.106 2006/11/01 19:43:17 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/access/nbtree.h,v 1.116.2.1 2008/04/16 23:59:51 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,8 +40,8 @@ typedef uint16 BTCycleId;
  *	stored into both halves of the split page.	(If VACUUM is not running,
  *	both pages receive zero cycleids.)	This allows VACUUM to detect whether
  *	a page was split since it started, with a small probability of false match
- *	if the page was last split some exact multiple of 65536 VACUUMs ago.
- *	Also, during a split, the BTP_SPLIT_END flag is cleared in the left
+ *	if the page was last split some exact multiple of MAX_BT_CYCLE_ID VACUUMs
+ *	ago.  Also, during a split, the BTP_SPLIT_END flag is cleared in the left
  *	(original) page, and set in the right page, but only if the next page
  *	to its right has a different cycleid.
  *
@@ -73,6 +73,15 @@ typedef BTPageOpaqueData *BTPageOpaque;
 #define BTP_SPLIT_END	(1 << 5)	/* rightmost page of split group */
 #define BTP_HAS_GARBAGE (1 << 6)	/* page has LP_DELETEd tuples */
 
+/*
+ * The max allowed value of a cycle ID is a bit less than 64K.	This is
+ * for convenience of pg_filedump and similar utilities: we want to use
+ * the last 2 bytes of special space as an index type indicator, and
+ * restricting cycle ID lets btree use that space for vacuum cycle IDs
+ * while still allowing index type to be identified.
+ */
+#define MAX_BT_CYCLE_ID		0xFF7F
+
 
 /*
  * The Meta page is always the first page in the btree index.
@@ -99,13 +108,18 @@ typedef struct BTMetaPageData
 #define BTREE_VERSION	2		/* current version number */
 
 /*
+ * Maximum size of a btree index entry, including its tuple header.
+ *
  * We actually need to be able to fit three items on every page,
  * so restrict any one item to 1/3 the per-page available space.
+ *
+ * Note: sizeof(PageHeaderData) includes the first ItemId, but we have
+ * to allow for 2 more, as well as the end-of-page special space.
  */
 #define BTMaxItemSize(page) \
-	((PageGetPageSize(page) - \
-	  sizeof(PageHeaderData) - \
-	  MAXALIGN(sizeof(BTPageOpaqueData))) / 3 - sizeof(ItemIdData))
+	MAXALIGN_DOWN((PageGetPageSize(page) - \
+				   MAXALIGN(sizeof(PageHeaderData) + 2*sizeof(ItemIdData)) - \
+				   MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
 
 /*
  * The leaf-page fillfactor defaults to 90% but is user-adjustable.
@@ -281,33 +295,53 @@ typedef struct xl_btree_insert
 #define SizeOfBtreeInsert	(offsetof(xl_btreetid, tid) + SizeOfIptrData)
 
 /*
- * On insert with split we save items of both left and right siblings
- * and restore content of both pages from log record.  This way takes less
- * xlog space than the normal approach, because if we did it standardly,
+ * On insert with split, we save all the items going into the right sibling
+ * so that we can restore it completely from the log record.  This way takes
+ * less xlog space than the normal approach, because if we did it standardly,
  * XLogInsert would almost always think the right page is new and store its
- * whole page image.
+ * whole page image.  The left page, however, is handled in the normal
+ * incremental-update fashion.
  *
  * Note: the four XLOG_BTREE_SPLIT xl_info codes all use this data record.
  * The _L and _R variants indicate whether the inserted tuple went into the
- * left or right split page (and thus, whether otherblk is the right or left
- * page of the split pair).  The _ROOT variants indicate that we are splitting
+ * left or right split page (and thus, whether newitemoff and the new item
+ * are stored or not).	The _ROOT variants indicate that we are splitting
  * the root page, and thus that a newroot record rather than an insert or
  * split record should follow.	Note that a split record never carries a
  * metapage update --- we'll do that in the parent-level update.
  */
 typedef struct xl_btree_split
 {
-	xl_btreetid target;			/* inserted tuple id */
-	BlockNumber otherblk;		/* second block participated in split: */
-	/* first one is stored in target' tid */
-	BlockNumber leftblk;		/* prev/left block */
-	BlockNumber rightblk;		/* next/right block */
+	RelFileNode node;
+	BlockNumber leftsib;		/* orig page / new left page */
+	BlockNumber rightsib;		/* new right page */
+	BlockNumber rnext;			/* next block (orig page's rightlink) */
 	uint32		level;			/* tree level of page being split */
-	uint16		leftlen;		/* len of left page items below */
-	/* LEFT AND RIGHT PAGES TUPLES FOLLOW AT THE END */
+	OffsetNumber firstright;	/* first item moved to right page */
+
+	ItemPointerData persistentTid;
+	int64		persistentSerialNum;
+
+	/*
+	 * If level > 0, BlockIdData downlink follows.	(We use BlockIdData rather
+	 * than BlockNumber for alignment reasons: SizeOfBtreeSplit is only 16-bit
+	 * aligned.)
+	 *
+	 * If level > 0, an IndexTuple representing the HIKEY of the left page 
+	 * follows.  We don't need this on leaf pages, because it's the same
+	 * as the leftmost key in the new right page.  Also, it's suppressed if
+	 * XLogInsert chooses to store the left page's whole page image.
+	 *
+	 * In the _L variants, next are OffsetNumber newitemoff and the new item.
+	 * (In the _R variants, the new item is one of the right page's tuples.)
+	 * The new item, but not newitemoff, is suppressed if XLogInsert chooses
+	 * to store the left page's whole page image.
+	 *
+	 * Last are the right page's tuples in the form used by _bt_restore_page.
+	 */
 } xl_btree_split;
 
-#define SizeOfBtreeSplit	(offsetof(xl_btree_split, leftlen) + sizeof(uint16))
+#define SizeOfBtreeSplit	(offsetof(xl_btree_split, persistentSerialNum) + sizeof(int64))
 
 /*
  * This is what we need to know about delete of individual leaf index tuples.
@@ -362,7 +396,11 @@ typedef struct xl_btree_newroot
 /*
  *	Operator strategy numbers for B-tree have been moved to access/skey.h,
  *	because many places need to use them in ScanKeyInit() calls.
+ *
+ *	The strategy numbers are chosen so that we can commute them by
+ *	subtraction, thus:
  */
+#define BTCommuteStrategyNumber(strat)	(BTMaxStrategyNumber + 1 - (strat))
 
 /*
  *	When a new operator class is declared, we require that the user
@@ -421,9 +459,6 @@ typedef BTStackData *BTStack;
  * items were killed, we re-lock the page to mark them killed, then unlock.
  * Finally we drop the pin and step to the next page in the appropriate
  * direction.
- *
- * NOTE: in this implementation, btree does not use or set the
- * currentItemData and currentMarkData fields of IndexScanDesc at all.
  */
 
 typedef struct BTScanPosItem	/* what we remember about each match */
@@ -493,11 +528,15 @@ typedef struct BTScanOpaqueData
 typedef BTScanOpaqueData *BTScanOpaque;
 
 /*
- * We use these private sk_flags bits in preprocessed scan keys
+ * We use some private sk_flags bits in preprocessed scan keys.  We're allowed
+ * to use bits 16-31 (see skey.h).	The uppermost bits are copied from the
+ * index's indoption[] array entry for the index attribute.
  */
 #define SK_BT_REQFWD	0x00010000		/* required to continue forward scan */
 #define SK_BT_REQBKWD	0x00020000		/* required to continue backward scan */
-
+#define SK_BT_INDOPTION_SHIFT  24		/* must clear the above bits */
+#define SK_BT_DESC			(INDOPTION_DESC << SK_BT_INDOPTION_SHIFT)
+#define SK_BT_NULLS_FIRST	(INDOPTION_NULLS_FIRST << SK_BT_INDOPTION_SHIFT)
 
 /*
  * prototypes for functions in nbtree.c (external entry points for btree)
@@ -528,9 +567,6 @@ extern void _bt_insert_parent(Relation rel, Buffer buf, Buffer rbuf,
  * prototypes for functions in nbtpage.c
  */
 extern void _bt_initmetapage(Page page, BlockNumber rootbknum, uint32 level);
-extern void _bt_lognewpage(Relation index,
-						   Page newPage,
-						   BlockNumber blockNo);
 extern Buffer _bt_getroot(Relation rel, int access);
 extern Buffer _bt_gettrueroot(Relation rel);
 extern void _bt_checkpage(Relation rel, Buffer buf);
@@ -542,8 +578,8 @@ extern void _bt_pageinit(Page page, Size size);
 extern bool _bt_page_recyclable(Page page);
 extern void _bt_delitems(Relation rel, Buffer buf,
 			 OffsetNumber *itemnos, int nitems, bool inVacuum);
-extern int	_bt_pagedel(Relation rel, Buffer buf,
-						BTStack stack, bool vacuum_full);
+extern int _bt_pagedel(Relation rel, Buffer buf,
+			BTStack stack, bool vacuum_full);
 
 /*
  * prototypes for functions in nbtsearch.c
@@ -577,6 +613,7 @@ extern BTCycleId _bt_vacuum_cycleid(Relation rel);
 extern BTCycleId _bt_start_vacuum(Relation rel);
 extern void _bt_end_vacuum(Relation rel);
 extern void _bt_end_vacuum_callback(int code, Datum arg);
+extern void _bt_validate_vacuum(Relation irel, Relation hrel, TransactionId oldest_xmin);
 extern Size BTreeShmemSize(void);
 extern void BTreeShmemInit(void);
 

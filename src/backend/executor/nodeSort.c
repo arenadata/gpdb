@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSort.c,v 1.58 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSort.c,v 1.62 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,7 +27,6 @@
 #include "utils/faultinjector.h"
 
 static void ExecSortExplainEnd(PlanState *planstate, struct StringInfoData *buf);
-static void ExecSortResetWorkfileState(SortState *node);
 
 /* ----------------------------------------------------------------
  *		ExecSort
@@ -54,7 +53,6 @@ ExecSort(SortState *node)
 	Sort 		*plannode = NULL;
 	PlanState  *outerNode = NULL;
 	TupleDesc	tupDesc = NULL;
-	workfile_set *work_set = NULL;
 
 	/*
 	 * get state info from node
@@ -99,17 +97,6 @@ ExecSort(SortState *node)
 		SO1_printf("ExecSort: %s\n",
 				   "sorting subplan");
 
-		if (gp_workfile_caching)
-		{
-			/* Look for cached workfile set. Mark here if found */
-			work_set = workfile_mgr_find_set(&node->ss.ps);
-			if (work_set != NULL)
-			{
-				elog(gp_workfile_caching_loglevel, "Sort found matching cached workfile set");
-				node->cached_workfiles_found = true;
-			}
-		}
-
 		/*
 		 * Want to scan subplan in the forward direction while creating the
 		 * sorted data.
@@ -143,8 +130,8 @@ ExecSort(SortState *node)
 					rwfile_prefix, true,
 					tupDesc,
 					plannode->numCols,
-					plannode->sortOperators,
 					plannode->sortColIdx,
+					plannode->sortOperators, plannode->nullsFirst,
 					PlanStateOperatorMemKB((PlanState *) node),
 					true
 					); 
@@ -153,8 +140,8 @@ ExecSort(SortState *node)
 					rwfile_prefix, true,
 					tupDesc,
 					plannode->numCols,
-					plannode->sortOperators,
 					plannode->sortColIdx,
+					plannode->sortOperators, plannode->nullsFirst,
 					PlanStateOperatorMemKB((PlanState *) node),
 					true
 					); 
@@ -165,25 +152,29 @@ ExecSort(SortState *node)
 				tuplesortstate_mk = tuplesort_begin_heap_mk(& node->ss,
 						tupDesc,
 						plannode->numCols,
-						plannode->sortOperators,
 						plannode->sortColIdx,
+						plannode->sortOperators, plannode->nullsFirst,
 						PlanStateOperatorMemKB((PlanState *) node),
 						node->randomAccess);
 			else
 				tuplesortstate = tuplesort_begin_heap(tupDesc,
 						plannode->numCols,
-						plannode->sortOperators,
 						plannode->sortColIdx,
+						plannode->sortOperators, plannode->nullsFirst,
 						PlanStateOperatorMemKB((PlanState *) node),
 						node->randomAccess);
 		}
 
 		if(gp_enable_mk_sort)
 		{
+			if (node->bounded)
+				tuplesort_set_bound_mk(tuplesortstate_mk, node->bound);
 			node->tuplesortstate->sortstore_mk = tuplesortstate_mk;
 		}
 		else
 		{
+			if (node->bounded)
+				tuplesort_set_bound(tuplesortstate, node->bound);
 			node->tuplesortstate->sortstore = tuplesortstate;
 		}
 
@@ -263,42 +254,7 @@ ExecSort(SortState *node)
 	}
 
 	/*
-	 * Before reading any tuples from below, check if we can re-use
-	 * existing spill files.
-	 * Only mk_sort supports spill file caching.
-	 */
-	if (!node->sort_Done && gp_enable_mk_sort && gp_workfile_caching)
-	{
-		Assert(tuplesortstate_mk != NULL);
-
-		if (node->cached_workfiles_found && !node->cached_workfiles_loaded)
-		{
-			Assert(work_set != NULL);
-			elog(gp_workfile_caching_loglevel, "nodeSort: loading cached workfile metadata");
-
-			tuplesort_set_spillfile_set_mk(tuplesortstate_mk, work_set);
-			tuplesort_read_spill_metadata_mk(tuplesortstate_mk);
-			node->cached_workfiles_loaded = true;
-
-			if (node->ss.ps.instrument)
-			{
-				node->ss.ps.instrument->workfileReused = true;
-			}
-
-			/* Loaded sorted data from cached workfile, therefore
-			 * no need to sort anymore!
-			 */
-			node->sort_Done = true;
-
-			elog(gp_workfile_caching_loglevel, "Sort reusing cached workfiles, initiating Squelch walker");
-			ExecSquelchNode(outerNode);
-		}
-	}
-
-
-
-	/*
-	 * If first time through and no cached workfiles can be used,
+	 * If first time through,
 	 * read all tuples from outer plan and pass them to
 	 * tuplesort.c. Subsequent calls just fetch tuples from tuplesort.
 	 */
@@ -358,6 +314,8 @@ ExecSort(SortState *node)
 		 * finally set the sorted flag to true
 		 */
 		node->sort_Done = true;
+		node->bounded_Done = node->bounded;
+		node->bound_Done = node->bound;
 		SO1_printf("ExecSort: %s\n", "sorting done");
 
 		/* for share input, do not need to return any tuple */
@@ -447,10 +405,10 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	if(node->share_type != SHARE_NOTSHARED) 
 		sortstate->randomAccess = true;
 
+	sortstate->bounded = false;
 	sortstate->sort_Done = false;
 	sortstate->tuplesortstate = palloc0(sizeof(GenericTupStore));
 	sortstate->share_lk_ctxt = NULL;
-	ExecSortResetWorkfileState(sortstate);
 
 	/* CDB */
 
@@ -661,11 +619,14 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 
 	/*
 	 * If subnode is to be rescanned then we forget previous sort results; we
-	 * have to re-read the subplan and re-sort.
+	 * have to re-read the subplan and re-sort.  Also must re-sort if the
+	 * bounded-sort parameters changed or we didn't select randomAccess.
 	 *
 	 * Otherwise we can just rewind and rescan the sorted output.
 	 */
 	if (((PlanState *) node)->lefttree->chgParam != NULL ||
+		node->bounded != node->bounded_Done ||
+		node->bound != node->bound_Done ||
 		!node->randomAccess ||
 		(NULL == node->tuplesortstate->sortstore_mk && NULL == node->tuplesortstate->sortstore))
 	{
@@ -794,16 +755,5 @@ ExecEagerFreeSort(SortState *node)
 
 		}
 
-		ExecSortResetWorkfileState(node);
 	}
-}
-
-/*
- * Reset workfile caching state
- */
-static void
-ExecSortResetWorkfileState(SortState *node)
-{
-	node->cached_workfiles_found = false;
-	node->cached_workfiles_loaded = false;
 }

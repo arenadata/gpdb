@@ -11,7 +11,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/primnodes.h,v 1.117 2006/10/04 00:30:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/primnodes.h,v 1.137 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -82,11 +82,12 @@ typedef struct RangeVar
 	int			location;		/* token location, or -1 if unknown */
 } RangeVar;
 
-
 typedef struct TableOidInfo
 {
+	NodeTag		type;
 	Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
 	Oid         comptypeOid;
+	Oid         comptypeArrayOid;
 	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
 	Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
 	Oid			toastComptypeOid;
@@ -113,9 +114,6 @@ typedef struct IntoClause
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction onCommit;	/* what do we do at COMMIT? */
 	char	   *tableSpaceName; /* table space to use, or NULL */
-	
-	/* MPP */
-	TableOidInfo oidInfo;
 } IntoClause;
 
 
@@ -396,8 +394,6 @@ typedef struct WindowRef
 typedef struct ArrayRef
 {
 	Expr		xpr;
-	Oid			refrestype;		/* type of the result of the ArrayRef
-								 * operation */
 	Oid			refarraytype;	/* type of the array proper */
 	Oid			refelemtype;	/* type of the array elements */
 	int32		reftypmod;		/* typmod of the array (and elements too) */
@@ -644,19 +640,19 @@ typedef struct SubPlan
 	/* The combining operators, transformed to an executable expression: */
 	Node	   *testexpr;		/* OpExpr or RowCompareExpr expression tree */
 	List	   *paramIds;		/* IDs of Params embedded in the above */
- 	
+
     int         qDispSliceId;   /* CDB: slice# of initplan's root slice, or 0 */
- 	
-	/* The subselect, transformed to a Plan: */
 
 	/* Identification of the Plan tree to use: */
 	int			plan_id;		/* Index (from 1) in PlannedStmt.subplans */
+
 	/* Identification of the SubPlan for EXPLAIN and debugging purposes: */
 	char	   *plan_name;		/* A name assigned during planning */
 
 	/* Extra data useful for determining subplan's output type: */
 	Oid			firstColType;	/* Type of first column of subplan result */
 	int32		firstColTypmod;	/* Typmod of first column of subplan result */
+
 	/* Information about execution strategy: */
 	bool		useHashTable;	/* TRUE to store subselect output in a hash
 								 * table (implies we are doing "IN") */
@@ -743,6 +739,49 @@ typedef struct RelabelType
 	CoercionForm relabelformat; /* how to display this node */
 	int			location;		/* token location, or -1 if unknown */
 } RelabelType;
+
+/* ----------------
+ * CoerceViaIO
+ *
+ * CoerceViaIO represents a type coercion between two types whose textual
+ * representations are compatible, implemented by invoking the source type's
+ * typoutput function then the destination type's typinput function.
+ * ----------------
+ */
+
+typedef struct CoerceViaIO
+{
+	Expr		xpr;
+	Expr	   *arg;			/* input expression */
+	Oid			resulttype;		/* output type of coercion */
+	/* output typmod is not stored, but is presumed -1 */
+	CoercionForm coerceformat;	/* how to display this node */
+	int			location;		/* token location, or -1 if unknown */
+} CoerceViaIO;
+
+/* ----------------
+ * ArrayCoerceExpr
+ *
+ * ArrayCoerceExpr represents a type coercion from one array type to another,
+ * which is implemented by applying the indicated element-type coercion
+ * function to each element of the source array.  If elemfuncid is InvalidOid
+ * then the element types are binary-compatible, but the coercion still
+ * requires some effort (we have to fix the element type ID stored in the
+ * array header).
+ * ----------------
+ */
+
+typedef struct ArrayCoerceExpr
+{
+	Expr		xpr;
+	Expr	   *arg;			/* input expression (yields an array) */
+	Oid			elemfuncid;		/* OID of element coercion function, or 0 */
+	Oid			resulttype;		/* output type of coercion (an array type) */
+	int32		resulttypmod;	/* output typmod (also element typmod) */
+	bool		isExplicit;		/* conversion semantics flag to pass to func */
+	CoercionForm coerceformat;	/* how to display this node */
+	int			location;		/* token location, or -1 if unknown */
+} ArrayCoerceExpr;
 
 /* ----------------
  * ConvertRowtypeExpr
@@ -883,7 +922,7 @@ typedef struct RowExpr
  *
  * We support row comparison for any operator that can be determined to
  * act like =, <>, <, <=, >, or >= (we determine this by looking for the
- * operator in btree opclasses).  Note that the same operator name might
+ * operator in btree opfamilies).  Note that the same operator name might
  * map to a different operator for each pair of row elements, since the
  * element datatypes can vary.
  *
@@ -908,7 +947,7 @@ typedef struct RowCompareExpr
 	Expr		xpr;
 	RowCompareType rctype;		/* LT LE GE or GT, never EQ or NE */
 	List	   *opnos;			/* OID list of pairwise comparison ops */
-	List	   *opclasses;		/* OID list of containing operator classes */
+	List	   *opfamilies;		/* OID list of containing operator families */
 	List	   *largs;			/* the left-hand input arguments */
 	List	   *rargs;			/* the right-hand input arguments */
 } RowCompareExpr;
@@ -997,6 +1036,50 @@ typedef struct BooleanTest
 } BooleanTest;
 
 /*
+ * XmlExpr - various SQL/XML functions requiring special grammar productions
+ *
+ * 'name' carries the "NAME foo" argument (already XML-escaped).
+ * 'named_args' and 'arg_names' represent an xml_attribute list.
+ * 'args' carries all other arguments.
+ *
+ * Note: result type/typmod/collation are not stored, but can be deduced
+ * from the XmlExprOp.  The type/typmod fields are just used for display
+ * purposes, and are NOT necessarily the true result type of the node.
+ * (We also use type == InvalidOid to mark a not-yet-parse-analyzed XmlExpr.)
+ */
+typedef enum XmlExprOp
+{
+	IS_XMLCONCAT,				/* XMLCONCAT(args) */
+	IS_XMLELEMENT,				/* XMLELEMENT(name, xml_attributes, args) */
+	IS_XMLFOREST,				/* XMLFOREST(xml_attributes) */
+	IS_XMLPARSE,				/* XMLPARSE(text, is_doc, preserve_ws) */
+	IS_XMLPI,					/* XMLPI(name [, args]) */
+	IS_XMLROOT,					/* XMLROOT(xml, version, standalone) */
+	IS_XMLSERIALIZE,			/* XMLSERIALIZE(is_document, xmlval) */
+	IS_DOCUMENT					/* xmlval IS DOCUMENT */
+} XmlExprOp;
+
+typedef enum
+{
+	XMLOPTION_DOCUMENT,
+	XMLOPTION_CONTENT
+} XmlOptionType;
+
+typedef struct XmlExpr
+{
+	Expr		xpr;
+	XmlExprOp	op;				/* xml function ID */
+	char	   *name;			/* name in xml(NAME foo ...) syntaxes */
+	List	   *named_args;		/* non-XML expressions for xml_attributes */
+	List	   *arg_names;		/* parallel list of Value strings */
+	List	   *args;			/* list of expressions */
+	XmlOptionType xmloption;	/* DOCUMENT or CONTENT */
+	Oid			type;			/* target type/typmod for XMLSERIALIZE */
+	int32		typmod;
+	int			location;		/* token location, or -1 if unknown */
+} XmlExpr;
+
+/*
  * CoerceToDomain
  *
  * CoerceToDomain represents the operation of coercing a value to a domain
@@ -1064,17 +1147,14 @@ typedef struct SetToDefault
  */
 typedef struct CurrentOfExpr
 {
-	Expr    		xpr;
-	char     		*cursor_name;  	/* name of referenced cursor */
+	Expr		xpr;
+	char	   *cursor_name;	/* name of referenced cursor, or NULL */
+	int			cursor_param;	/* refcursor parameter number, or 0 */
 	/* for planning */
-	Index    		cvarno;      	/* RT index of target relation */
+	Index		cvarno;			/* RT index of target relation */
 	/* for validation */
-	Oid				target_relid;	/* OID of original target relation, 
-									 * before any inheritance expansion */
-	/* for constant folding */
-	int		 		gp_segment_id;
-	ItemPointerData	ctid;
-	Oid				tableoid;
+	Oid			target_relid;	/* OID of original target relation, 
+								 * before any inheritance expansion */
 } CurrentOfExpr;
 
 /*--------------------
@@ -1290,6 +1370,9 @@ typedef struct Flow
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
+	bool		*nullsFirst;
+
+	int			numOrderbyCols;		/* number of explicit order-by columns */
 	
 	/* If req_move is MOVEMENT_REPARTITION, these express the desired 
      * partitioning for a hash motion.  Else if flotype is FLOW_PARTITIONED,
@@ -1376,6 +1459,7 @@ typedef struct WindowKey
 	int				numSortCols; /* may be zero, see note */
 	AttrNumber	   *sortColIdx;
 	Oid			   *sortOperators;
+	bool		   *nullsFirst;
 	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
 } WindowKey;
 

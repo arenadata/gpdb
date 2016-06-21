@@ -75,7 +75,7 @@ typedef struct
 
 /*
  * The maximum workable length of a socket path is what will fit into
- * struct sockaddr_un.	This is usually only 100 or so bytes :-(.
+ * struct sockaddr_un.  This is usually only 100 or so bytes :-(.
  *
  * For consistency, always pass a MAXPGPATH-sized buffer to UNIXSOCK_PATH(),
  * then complain if the resulting string is >= UNIXSOCK_PATH_BUFLEN bytes.
@@ -222,5 +222,9 @@ typedef struct PrimaryMirrorTransitionPacket
 	MsgType protocolCode;
 	uint32 dataLength;
 } PrimaryMirrorTransitionPacket;
+
+/* the number of times trying to acquire the send mutex for the front
+ * end connection after detecting process is exitting */
+#define PQ_BUSY_TEST_COUNT_IN_EXITING 5
 
 #endif   /* PQCOMM_H */

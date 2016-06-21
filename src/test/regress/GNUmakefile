@@ -3,10 +3,10 @@
 # GNUmakefile--
 #    Makefile for src/test/regress (the regression tests)
 #
-# Portions Copyright (c) 1996-2007, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.68 2007/06/12 11:07:32 mha Exp $
+# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.71 2008/01/01 19:46:00 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -18,6 +18,15 @@ contribdir = $(top_builddir)/contrib
 
 # port number for temp-installation test postmaster
 TEMP_PORT = 5$(DEF_PGPORT)
+
+# file with extra config for temp build
+TEMP_CONF =
+ifdef TEMP_CONFIG
+TEMP_CONF += --temp-config=$(TEMP_CONFIG)
+endif
+
+# Greenplum regression tests use $PGPORT
+PGPORT?=15432
 
 # where to find psql for testing an existing installation
 PSQLDIR = $(bindir)
@@ -45,7 +54,7 @@ EXTRADEFS = '-DHOST_TUPLE="$(host_tuple)"' \
 
 
 # The frontend doesn't need everything that's in LIBS, some are backend only
-LIBS := $(filter-out -llapack -lblas -lf2c -lresolv -lbz2, $(LIBS))
+LIBS := $(filter-out -lresolv -lbz2, $(LIBS))
 # This program isn't interactive, so doesn't need these
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lz, $(LIBS))
 
@@ -72,14 +81,18 @@ install: all installdirs
 	$(INSTALL_PROGRAM) gpdiff.pl '$(DESTDIR)$(pgxsdir)/$(subdir)/gpdiff.pl'
 	$(INSTALL_PROGRAM) gpstringsubs.pl '$(DESTDIR)$(pgxsdir)/$(subdir)/gpstringsubs.pl'
 	$(INSTALL_PROGRAM) atmsort.pl '$(DESTDIR)$(pgxsdir)/$(subdir)/atmsort.pl'
+	$(INSTALL_PROGRAM) atmsort.pm '$(DESTDIR)$(pgxsdir)/$(subdir)/atmsort.pm'
 	$(INSTALL_PROGRAM) explain.pl '$(DESTDIR)$(pgxsdir)/$(subdir)/explain.pl'
+	$(INSTALL_PROGRAM) explain.pm '$(DESTDIR)$(pgxsdir)/$(subdir)/explain.pm'
 
 uninstall:
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/pg_regress$(X)'
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/gpdiff.pl'
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/gpstringsubs.pl'
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/atmsort.pl'
+	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/atmsort.pm'
 	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/explain.pl'
+	rm -f '$(DESTDIR)$(pgxsdir)/$(subdir)/explain.pm'
 
 
 # Build dynamically-loaded object file for CREATE FUNCTION ... LANGUAGE C.
@@ -104,7 +117,7 @@ bb_output_files := $(foreach file, $(bb_ofile_list), bugbuster/expected/$(file).
 
 
 ifneq ($(PORTNAME),win32)
-abs_srcdir := $(shell cd $(srcdir) && pwd)
+abs_srcdir := $(shell cd "$(srcdir)" && pwd)
 abs_builddir := $(shell pwd)
 else
 abs_srcdir := $(shell cd $(srcdir) && pwd -W)
@@ -150,10 +163,9 @@ includecheck:
 ## Run tests
 ##
 
-## To load a procedural language use "--load-language=..."
-
 pg_regress_call = ./pg_regress --inputdir=$(srcdir) --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE) --init-file=$(srcdir)/init_file
 pg_regress_call_bb = ./pg_regress --inputdir=$(srcdir)/bugbuster --outputdir=$(srcdir)/bugbuster --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE) --init-file=$(srcdir)/init_file
+pg_regress_call_opt = ./pg_regress --inputdir=$(srcdir)/optfunctional --outputdir=$(srcdir)/optfunctional --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE) --init-file=$(srcdir)/optfunctional/init_file
 
 check: all upg2-setup ugpart-setup
 	$(pg_regress_call) --temp-install=./tmp_check --top-builddir=$(top_builddir) --srcdir=$(abs_srcdir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule 
@@ -168,6 +180,13 @@ installcheck-good: all
 	bash kerberos/setup_test.sh; \
 	PGUSER="gpadmin/kerberos-test" $(pg_regress_call)  --psqldir=$(PSQLDIR) --schedule=$(srcdir)/parallel_schedule --schedule=$(srcdir)/greenplum_schedule --srcdir=$(abs_srcdir) --host=`hostname`; \
 	fi
+
+installcheck-optfunctional: all
+	@echo "================================"
+	@echo "Installcheck-optfunctional starting ... "
+	@echo "================================"
+	export PGOPTIONS='-c optimizer=on' && \
+	$(pg_regress_call_opt) --psqldir=$(PSQLDIR) --schedule=$(srcdir)/optfunctional/optfunctional_schedule --srcdir=$(abs_srcdir)/optfunctional
 
 testbouncer: all
 	bash -c "bouncer/setup.sh"

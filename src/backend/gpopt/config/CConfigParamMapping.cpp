@@ -111,13 +111,6 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		},
 
 		{
-		EopttraceParallel,
-		&optimizer_parallel,
-		false, // m_fNegate
-		GPOS_WSZ_LIT("Enable using threads in optimization engine.")
-		},
-
-		{
 		EopttraceMinidump,
 		&optimizer_minidump,
 		false, // m_fNegate
@@ -207,6 +200,13 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_enable_outerjoin_rewrite,
 		true, // m_fNegate
 		GPOS_WSZ_LIT("Disable outer join to inner join rewrite in optimizer.")
+		},
+
+		{
+		EopttraceDonotDeriveStatsForAllGroups,
+		&optimizer_enable_derive_stats_all_groups,
+		true, // m_fNegate
+		GPOS_WSZ_LIT("Disable deriving stats for all groups after exploration.")
 		},
 
 		{
@@ -340,7 +340,15 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elem[] =
 		&optimizer_prune_computed_columns,
 		true,  // m_fNegate
 		GPOS_WSZ_LIT("Prune unused computed columns when pre-processing query")
+		},
+
+		{
+		EopttracePreferScalarDQAMultiStageAgg,
+		&optimizer_prefer_scalar_dqa_multistage_agg,
+		false, // m_fNegate
+		GPOS_WSZ_LIT("Prefer multistage aggregates for scalar distinct qualified aggregate in the optimizer.")
 		}
+
 };
 
 //---------------------------------------------------------------------------
@@ -358,7 +366,7 @@ CConfigParamMapping::PbsPack
 	ULONG ulXforms // number of available xforms
 	)
 {
-	CBitSet *pbs = New(pmp) CBitSet(pmp, EopttraceSentinel);
+	CBitSet *pbs = GPOS_NEW(pmp) CBitSet(pmp, EopttraceSentinel);
 
 	for (ULONG ul = 0; ul < GPOS_ARRAY_SIZE(m_elem); ul++)
 	{

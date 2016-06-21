@@ -24,12 +24,15 @@
 
 #include "gpopt/utils/CConstExprEvaluatorProxy.h"
 
-#include "dxl/operators/CDXLNode.h"
-#include "exception.h"
 #include "gpopt/gpdbwrappers.h"
 #include "gpopt/translate/CTranslatorScalarToDXL.h"
-#include "md/CMDIdGPDB.h"
-#include "md/IMDType.h"
+
+#include "naucrates/exception.h"
+#include "naucrates/dxl/operators/CDXLNode.h"
+
+#include "naucrates/md/CMDIdGPDB.h"
+#include "naucrates/md/IMDType.h"
+
 #include "utils/guc.h"
 
 using namespace gpdxl;
@@ -78,7 +81,9 @@ CConstExprEvaluatorProxy::PdxlnEvaluateExpr
 	GPOS_ASSERT(NULL != pexpr);
 
 	// Evaluate the expression
-	Expr *pexprResult = gpdb::PexprEvaluate(pexpr, gpdb::OidExprType((Node *)pexpr));
+	Expr *pexprResult = gpdb::PexprEvaluate(pexpr,
+						gpdb::OidExprType((Node *)pexpr),
+						gpdb::IExprTypeMod((Node *)pexpr));
 
 	if (!IsA(pexprResult, Const))
 	{
@@ -90,7 +95,7 @@ CConstExprEvaluatorProxy::PdxlnEvaluateExpr
 
 	Const *pconstResult = (Const *)pexprResult;
 	CDXLDatum *pdxldatum = CTranslatorScalarToDXL::Pdxldatum(m_pmp, m_pmda, pconstResult);
-	CDXLNode *pdxlnResult = New(m_pmp) CDXLNode(m_pmp, New(m_pmp) CDXLScalarConstValue(m_pmp, pdxldatum));
+	CDXLNode *pdxlnResult = GPOS_NEW(m_pmp) CDXLNode(m_pmp, GPOS_NEW(m_pmp) CDXLScalarConstValue(m_pmp, pdxldatum));
 	gpdb::GPDBFree(pexprResult);
 	gpdb::GPDBFree(pexpr);
 

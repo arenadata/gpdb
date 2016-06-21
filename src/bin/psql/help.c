@@ -158,7 +158,7 @@ usage(void)
 	printf(_("\nFor more information, type \"\\?\" (for internal commands) or \"\\help\" (for SQL\n"
 			 "commands) from within psql, or consult the psql section in the PostgreSQL\n"
 			 "documentation.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -171,6 +171,11 @@ void
 slashUsage(unsigned short int pager)
 {
 	FILE	   *output;
+	char	   *currdb;
+
+	currdb = PQdb(pset.db);
+	if (currdb == NULL)
+		currdb = "";
 
 	output = PageOutput(90, pager);
 

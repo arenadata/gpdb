@@ -28,6 +28,7 @@ extern "C" {
 #include "executor/execdesc.h"
 #include "executor/nodeMotion.h"
 #include "parser/parsetree.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/datum.h"
 #include "utils/array.h"
@@ -36,6 +37,7 @@ extern "C" {
 #include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_clause.h"
+#include "parser/parse_oper.h"
 
 #include "catalog/namespace.h"
 #include "catalog/pg_exttable.h"
@@ -95,12 +97,6 @@ TupleTableSlot *ExecutorRun(QueryDesc *pqueryDesc, ScanDirection direction, long
 
 extern
 void ExecutorEnd(QueryDesc *pqueryDesc);
-
-extern FaultInjectorType_e FaultInjector_InjectFaultIfSet(
-							   FaultInjectorIdentifier_e identifier,
-							   DDLStatement_e			 ddlStatement,
-							   char*					 databaseName,
-							   char*					 tableName);
 
 } // end extern C
 

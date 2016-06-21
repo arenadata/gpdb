@@ -14,6 +14,8 @@
 
 #define SEGMENT_VMEM_CHUNKS_TEST_VALUE 100
 
+#define PG_RE_THROW() siglongjmp(*PG_exception_stack, 1)
+
 /*
  * This method will emulate the real ExceptionalCondition
  * function by re-throwing the exception, essentially falling
@@ -354,7 +356,7 @@ test__VmemTracker_ReserveVmem__OOMLoggingBeforeReservation(void **state)
 	/* Verify that we are actually trying to log OOM */
 	expect_value(UpdateTimeAtomically, time_var, &alreadyReportedOOMTime);
 	will_be_called(UpdateTimeAtomically);
-	expect_any(write_stderr, fmt);
+	expect_any_count(write_stderr, fmt, -1);
 	will_be_called(write_stderr);
 	will_be_called(MemoryAccounting_SaveToLog);
 	expect_any(MemoryContextStats, context);

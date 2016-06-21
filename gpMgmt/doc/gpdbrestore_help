@@ -14,12 +14,14 @@ gpdbrestore { -t <timestamp_key> { [-L]
               | -s <database_name> } 
      [--noplan]  [--noanalyze]  [-u <backup_directory>] [--list-backup]
      [--prefix <prefix_string> ] [--report-status-dir <report_directory> ]
-     [-T <schema>.<table> [,...]] [--table-file <file_name>]
+     [-T <schema>.<table> [-T ...]] [--table-file <file_name>]
      [--truncate] [-e] [-G] 
      [-B <parallel_processes>] 
      [-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
-     [-v] [--ddboost ]
+     [-v] [--ddboost [--ddboost-storage-unit=<storage_unit_name>] ]
+     [-S <schema_name> [-S ...]]
      [--redirect <database_name> ]
+     [--change-schema=<schema_name> ]
      
 gpdbrestore -? 
 
@@ -138,6 +140,20 @@ OPTIONS
  validation. If not specified, the utility will start up to 60 parallel 
  processes depending on how many segment instances it needs to restore. 
 
+
+--change-schema=schema-name
+
+ Optional. Restores tables from a backup created with gpcrondump to a
+ different schema. The specified schema must exist in the database.
+ If the schema does not exist, the utility returns an error. System
+ catalog schemas are not supported.
+
+ You must specify tables to restore with the -T and --table-file options.
+ If a table that is being restored exists in schema-name, the utility
+ returns a warning and attempts to append the data to the table from the
+ backup. You can specify the --trunctate option to truncate table data
+ before restoring data to the table from the backup.
+
  
 -d <master_data_directory>
 
@@ -161,6 +177,11 @@ OPTIONS
  <backup_directory> is set when you specify the Data Domain credentials 
  with gpcrondump. 
 
+ --ddboost-storage-unit is optional, which provides a dynamic storage
+ unit to get dump files from, backup directory defaults to the cluster's
+ config file when the Data Domain Boost credentials were set. If this 
+ option is not specified, it also defaults to the cluster's config file.
+
  This option is not supported if --netbackup-service-host is specified. 
 
 
@@ -170,11 +191,15 @@ OPTIONS
  it. 
 
 
--G (restore global objects) 
+-G [include|only]
 
  Restores global objects such as roles and tablespaces if the global 
  object dump file db_dumps/<date>/gp_global_1_1_<timestamp> is found in 
- the master data directory. 
+ the master data directory.
+
+ Specify either "-G only" to only restore the global objects dump file
+ or "-G include" to restore global objects along with a normal restore.
+ Defaults to "include" if neither argument is provided.
 
 
 -l <logfile_directory>
@@ -196,6 +221,17 @@ OPTIONS
 
  When used with the -t option, lists the table names that exist in the 
  named backup set and exits. Does not perform a restore. 
+
+
+-m (restore metadata only)
+
+ Performs a restore of database metadata (schema and table definitions, SET
+ statements, and so forth) without restoring data.  If the --restore-stats or
+ -G options are provided as well, statistics or globals will also be restored.
+
+ The --noplan and --noanalyze options are not supported in conjunction with
+ this option, as they affect the restoration of data and no data is restored.
+
 
 --netbackup-block-size <size>
 
@@ -285,6 +321,22 @@ OPTIONS
  directories. 
 
 
+--restore-stats [include|only]
+
+ Restores optimizer statistics if the statistics dump file
+ db_dumps/<date>/gp_statistics_1_1_<timestamp> is found in the master data
+ directory. Setting this option automatically skips the final analyze step,
+ so it is not necessary to also set the --noanalyze flag in conjunction with
+ this one.
+
+ Specify "--restore-stats only" to only restore the statistics dump file or
+ "--restore-stats include" to restore statistics along with a normal restore.
+ Defaults to "include" if neither argument is provided.
+ 
+ If "--restore-stats only" is specified along with the -e option, an error
+ is returned.
+
+
 -s <database_name>
 
  Looks for latest set of dump files for the given database name in the 
@@ -302,11 +354,19 @@ OPTIONS
 
 -T <schema>.<table_name>
 
- A comma-separated list of specific table names to restore. The named 
- table(s) must exist in the backup set of the database being restored. 
+ Table names to restore, specify multiple times for multiple tables. The 
+ named table(s) must exist in the backup set of the database being restored. 
  Existing tables are not automatically truncated before data is restored 
  from backup. If your intention is to replace existing data in the table 
  from backup, truncate the table prior to running gpdbrestore -T. 
+
+
+-S <schema>
+
+ Schema names to restore, specify multiple times for multiple schemas. 
+ Existing tables are not automatically truncated before data is restored 
+ from backup. If your intention is to replace existing data in the table 
+ from backup, truncate the table prior to running gpdbrestore -S. 
 
 
 --table-file <file_name> 

@@ -1,6 +1,3 @@
-/*
- * $PostgreSQL: pgsql/contrib/pg_trgm/trgm.h,v 1.11 2009/06/11 14:48:51 momjian Exp $
- */
 #ifndef __TRGM_H__
 #define __TRGM_H__
 
@@ -39,6 +36,7 @@ uint32		trgm2int(trgm *ptr);
 #define ISPRINTABLECHAR(a)	( isascii( *(unsigned char*)(a) ) && isprint( *(unsigned char*)(a) ) )
 #endif
 #define ISPRINTABLETRGM(t)	( ISPRINTABLECHAR( ((char*)t) ) && ISPRINTABLECHAR( ((char*)t)+1 ) && ISPRINTABLECHAR( ((char*)t)+2 ) )
+#define TRGMINT(a) ( (*(((char*)(a))+2)<<16)+(*(((char*)(a))+1)<<8)+*(((char*)(a))+0) )
 
 typedef struct
 {

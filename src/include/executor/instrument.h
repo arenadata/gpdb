@@ -7,7 +7,7 @@
  * Portions Copyright (c) 2006-2009, Greenplum inc
  * Copyright (c) 2001-2009, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/executor/instrument.h,v 1.16 2006/06/09 19:30:56 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/instrument.h,v 1.18 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -36,7 +36,6 @@ typedef struct Instrumentation
     double		workmemused;    /* CDB: work_mem actually used (bytes) */
     double		workmemwanted;  /* CDB: work_mem to avoid scratch i/o (bytes) */
 	instr_time	firststart;		/* CDB: Start time of first iteration of node */
-	bool		workfileReused; /* TRUE if cached workfiles reused in this node */
 	bool		workfileCreated;/* TRUE if workfiles are created in this node */
 	int		numPartScanned; /* Number of part tables scanned */
     struct CdbExplain_NodeSummary  *cdbNodeSummary; /* stats from all qExecs */

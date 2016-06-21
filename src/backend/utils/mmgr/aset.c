@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/aset.c,v 1.69 2006/11/08 19:27:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/aset.c,v 1.76 2008/01/01 19:45:55 momjian Exp $
  *
  * NOTE:
  *	This is a new (Feb. 05, 1999) implementation of the allocation set
@@ -68,6 +68,7 @@
 
 #include "utils/memutils.h"
 #include "utils/memaccounting.h"
+#include "utils/gp_alloc.h"
 
 #include "miscadmin.h"
 
@@ -121,7 +122,6 @@ typedef struct AllocBlockData
 	AllocSet	aset;			/* aset that owns this block */
 	AllocBlock	next;			/* next block in aset's blocks list */
 	char	   *freeptr;		/* start of free space in this block */
-	char	   *endptr;			/* end of space in this block */
 } AllocBlockData;
 
 /*
@@ -231,7 +231,7 @@ static MemoryContextMethods AllocSetMethods = {
 static void dump_allocset_block(FILE *file, AllocBlock block)
 {
 	// block start/free/end pointer
-	fprintf(file, "\t%p|%p|%p\n", block, block->freeptr, block->endptr);
+	fprintf(file, "\t%p|%p|%p\n", block, block->freeptr, UserPtr_GetEndPtr(block));
 
 	AllocChunk chunk = (AllocChunk) (((char *)block) + ALLOC_BLOCKHDRSZ);
 	while ((char *) chunk < (char *) block->freeptr)
@@ -365,11 +365,11 @@ inline void
 AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader) __attribute__((always_inline));
 
 inline bool
-MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount, struct MemoryContextData *context,
+MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount,
 		Size allocatedSize) __attribute__((always_inline));
 
 inline bool
-MemoryAccounting_Free(struct MemoryAccount* memoryAccount, uint16 memoryAccountGeneration, struct MemoryContextData *context,
+MemoryAccounting_Free(struct MemoryAccount* memoryAccount, uint16 memoryAccountGeneration,
 		Size allocatedSize) __attribute__((always_inline));
 
 /*
@@ -378,14 +378,12 @@ MemoryAccounting_Free(struct MemoryAccount* memoryAccount, uint16 memoryAccountG
  *	 	underlying allocator to record allocation request.
  *
  * memoryAccount: where to record this allocation
- * context: the context where this memory belongs
  * allocatedSize: the final amount of memory returned by the allocator (with overhead)
  *
  * If the return value is false, the underlying memory allocator should fail.
  */
 bool
-MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount,
-		struct MemoryContextData *context, Size allocatedSize)
+MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount, Size allocatedSize)
 {
 	Assert(memoryAccount->allocated + allocatedSize >=
 			memoryAccount->allocated);
@@ -415,7 +413,6 @@ MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount,
  *		This function records the amount of memory freed.
  *
  * memoryAccount: where to record this allocation
- * context: the context where this memory belongs
  * allocatedSize: the final amount of memory returned by the allocator (with overhead)
  *
  * Note: the memoryAccount can be an invalid pointer if the generation of
@@ -424,7 +421,7 @@ MemoryAccounting_Allocate(struct MemoryAccount* memoryAccount,
  * of accessing an invalid pointer.
  */
 bool
-MemoryAccounting_Free(MemoryAccount* memoryAccount, uint16 memoryAccountGeneration, struct MemoryContextData *context, Size allocatedSize)
+MemoryAccounting_Free(MemoryAccount* memoryAccount, uint16 memoryAccountGeneration, Size allocatedSize)
 {
 	if (memoryAccountGeneration != MemoryAccountingCurrentGeneration)
 	{
@@ -487,7 +484,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		if (chunk->sharedHeader->memoryAccount != NULL)
 		{
 			MemoryAccounting_Free(chunk->sharedHeader->memoryAccount,
-				chunk->sharedHeader->memoryAccountGeneration, (MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+				chunk->sharedHeader->memoryAccountGeneration, chunk->size + ALLOC_CHUNKHDRSZ);
 
 			if (chunk->sharedHeader->balance == 0)
 			{
@@ -539,7 +536,7 @@ AllocFreeInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 * negative balance for SharedChunkMemoryAccount.
 		 */
 		MemoryAccounting_Free(SharedChunkHeadersMemoryAccount,
-			MemoryAccountingCurrentGeneration, (MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccountingCurrentGeneration, chunk->size + ALLOC_CHUNKHDRSZ);
 	}
 
 #ifdef CDB_PALLOC_TAGS
@@ -633,8 +630,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 			desiredHeader->balance += (chunk->size + ALLOC_CHUNKHDRSZ);
 			chunk->sharedHeader = desiredHeader;
 
-			MemoryAccounting_Allocate(ActiveMemoryAccount,
-				(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(ActiveMemoryAccount, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 		else
 		{
@@ -678,8 +674,7 @@ AllocAllocInfo(AllocSet set, AllocChunk chunk, bool isHeader)
 		 */
 		if (SharedChunkHeadersMemoryAccount != NULL)
 		{
-			MemoryAccounting_Allocate(SharedChunkHeadersMemoryAccount,
-					(MemoryContext)set, chunk->size + ALLOC_CHUNKHDRSZ);
+			MemoryAccounting_Allocate(SharedChunkHeadersMemoryAccount, chunk->size + ALLOC_CHUNKHDRSZ);
 		}
 
 		/*
@@ -823,6 +818,20 @@ AllocSetContextCreate(MemoryContext parent,
 #endif
 
 	/*
+	 * Compute the allocation chunk size limit for this context.  It can't be
+	 * more than ALLOC_CHUNK_LIMIT because of the fixed number of freelists.
+	 * If maxBlockSize is small then requests exceeding the maxBlockSize
+	 * should be treated as large chunks, too.	We have to have
+	 * allocChunkLimit a power of two, because the requested and
+	 * actually-allocated sizes of any chunk must be on the same side of the
+	 * limit, else we get confused about whether the chunk is "big".
+	 */
+	context->allocChunkLimit = ALLOC_CHUNK_LIMIT;
+	while (context->allocChunkLimit >
+		   (Size) (maxBlockSize - ALLOC_BLOCKHDRSZ - ALLOC_CHUNKHDRSZ))
+		context->allocChunkLimit >>= 1;
+
+	/*
 	 * Grab always-allocated space, if requested
 	 */
 	if (minContextSize > ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ)
@@ -838,7 +847,6 @@ AllocSetContextCreate(MemoryContext parent,
                                (unsigned long)blksize);
 		block->aset = context;
 		block->freeptr = ((char *) block) + ALLOC_BLOCKHDRSZ;
-		block->endptr = ((char *) block) + blksize;
 		block->next = context->blocks;
 		context->blocks = block;
 		/* Mark block as not to be released at reset time */
@@ -912,7 +920,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 	{
 		Assert(curHeader->balance > 0);
 		MemoryAccounting_Free(curHeader->memoryAccount,
-				curHeader->memoryAccountGeneration, context, curHeader->balance);
+				curHeader->memoryAccountGeneration, curHeader->balance);
 
 		AllocChunk chunk = AllocPointerGetChunk(curHeader);
 
@@ -924,7 +932,7 @@ static void AllocSetReleaseAccountingForAllAllocatedChunks(MemoryContext context
 	 * to release accounting for the shared headers
 	 */
 	MemoryAccounting_Free(SharedChunkHeadersMemoryAccount,
-		MemoryAccountingCurrentGeneration, context, sharedHeaderMemoryOverhead);
+		MemoryAccountingCurrentGeneration, sharedHeaderMemoryOverhead);
 
 	/*
 	 * Wipe off the sharedHeaderList. We don't free any memory here,
@@ -1017,7 +1025,7 @@ AllocSetReset(MemoryContext context)
 		}
 		else
 		{
-			size_t freesz = block->endptr - (char *) block;
+			size_t freesz = UserPtr_GetUserPtrSize(block);
 
 			/* Normal case, release the block */
             MemoryContextNoteFree(&set->header, freesz);
@@ -1026,7 +1034,7 @@ AllocSetReset(MemoryContext context)
 			/* Wipe freed memory for debugging purposes */
 			memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-			gp_free2(block, freesz);
+			gp_free(block);
 		}
 		block = next;
 	}
@@ -1070,14 +1078,14 @@ AllocSetDelete(MemoryContext context)
 	while (block != NULL)
 	{
 		AllocBlock	next = block->next;
-		size_t freesz = block->endptr - (char *) block;
+		size_t freesz = UserPtr_GetUserPtrSize(block);
         MemoryContextNoteFree(&set->header, freesz);
 
 #ifdef CLOBBER_FREED_MEMORY
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-		gp_free2(block, freesz);
+		gp_free(block);
 		block = next;
 	}
 
@@ -1123,7 +1131,7 @@ AllocSetAllocImpl(MemoryContext context, Size size, bool isHeader)
 	 * If requested size exceeds maximum for chunks, allocate an entire block
 	 * for this request.
 	 */
-	if (size > ALLOC_CHUNK_LIMIT)
+	if (size > set->allocChunkLimit)
 	{
 		chunk_size = MAXALIGN(size);
 		blksize = chunk_size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
@@ -1134,7 +1142,7 @@ AllocSetAllocImpl(MemoryContext context, Size size, bool isHeader)
                                "Out of memory.  Failed on request of size %lu bytes.",
                                (unsigned long)size);
 		block->aset = set;
-		block->freeptr = block->endptr = ((char *) block) + blksize;
+		block->freeptr = UserPtr_GetEndPtr(block);
 
 		chunk = (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ);
 		chunk->size = chunk_size;
@@ -1229,7 +1237,7 @@ AllocSetAllocImpl(MemoryContext context, Size size, bool isHeader)
 	 */
 	if ((block = set->blocks) != NULL)
 	{
-		Size		availspace = block->endptr - block->freeptr;
+		Size		availspace = (char*)UserPtr_GetEndPtr(block) - block->freeptr;
 
 		if (availspace < (chunk_size + ALLOC_CHUNKHDRSZ))
 		{
@@ -1327,7 +1335,6 @@ AllocSetAllocImpl(MemoryContext context, Size size, bool isHeader)
 
 		block->aset = set;
 		block->freeptr = ((char *) block) + ALLOC_BLOCKHDRSZ;
-		block->endptr = ((char *) block) + blksize;
 
 		/*
 		 * If this is the first block of the set, make it the "keeper" block.
@@ -1352,7 +1359,7 @@ AllocSetAllocImpl(MemoryContext context, Size size, bool isHeader)
 	chunk = (AllocChunk) (block->freeptr);
 
 	block->freeptr += (chunk_size + ALLOC_CHUNKHDRSZ);
-	Assert(block->freeptr <= block->endptr);
+	Assert(block->freeptr <= UserPtr_GetEndPtr(block));
 
 	chunk->sharedHeader = NULL;
 	chunk->size = chunk_size;
@@ -1444,7 +1451,7 @@ AllocSetFreeImpl(MemoryContext context, void *pointer, bool isHeader)
 	}
 #endif
 
-	if (chunk->size > ALLOC_CHUNK_LIMIT)
+	if (chunk->size > set->allocChunkLimit)
 	{
 		/*
 		 * Big chunks are certain to have been allocated as single-chunk
@@ -1476,9 +1483,9 @@ AllocSetFreeImpl(MemoryContext context, void *pointer, bool isHeader)
 		else
 			prevblock->next = block->next;
 
-		freesz = block->endptr - (char *) block;
+		freesz = UserPtr_GetUserPtrSize(block);
 		MemoryContextNoteFree(&set->header, freesz);
-		gp_free2(block, freesz);
+		gp_free(block);
 	}
 	else
 	{
@@ -1600,7 +1607,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		return pointer;
 	}
 
-	if (oldsize > ALLOC_CHUNK_LIMIT)
+	if (oldsize > set->allocChunkLimit)
 	{
 		/*
 		 * The chunk must have been allocated as a single-chunk block.	Find
@@ -1632,16 +1639,16 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			   (chunk->size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ));
 
 		/* Do the realloc */
-        oldblksize = block->endptr - (char *)block;
+        oldblksize = UserPtr_GetUserPtrSize(block);
 		chksize = MAXALIGN(size);
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
-		block = (AllocBlock) gp_realloc(block, oldblksize, blksize);
+		block = (AllocBlock) gp_realloc(block, blksize);
 		if (block == NULL)
             MemoryContextError(ERRCODE_OUT_OF_MEMORY,
                                &set->header, CDB_MCXT_WHERE(&set->header),
                                "Out of memory.  Failed on request of size %lu bytes.",
                                (unsigned long)size);
-		block->freeptr = block->endptr = ((char *) block) + blksize;
+		block->freeptr = UserPtr_GetEndPtr(block);
 
 		/* Update pointers since block has likely been moved */
 		chunk = (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ);
@@ -1777,14 +1784,14 @@ AllocSet_GetStats(MemoryContext context, uint64 *nBlocks, uint64 *nChunks,
     for (block = set->blocks; block != NULL; block = block->next)
     {
     	*nBlocks = *nBlocks + 1;
-    	currentAllocated += block->endptr - ((char *) block);
+    	currentAllocated += UserPtr_GetUserPtrSize(block);
 	}
 
     /* Space at end of first block is available for use. */
     if (set->blocks)
     {
     	*nChunks = *nChunks + 1;
-    	*currentAvailable += set->blocks->endptr - set->blocks->freeptr;
+    	*currentAvailable += (char*)UserPtr_GetEndPtr(set->blocks) - set->blocks->freeptr;
     }
 
     /* Freelists.  Count usable space only, not chunk headers. */
@@ -1868,11 +1875,12 @@ AllocSetCheck(MemoryContext context)
 			}
 
 			/* single-chunk block? */
-			if (chsize > ALLOC_CHUNK_LIMIT && chsize + ALLOC_CHUNKHDRSZ != blk_used)
+			if (chsize > set->allocChunkLimit &&
+				chsize + ALLOC_CHUNKHDRSZ != blk_used)
 			{
 				Assert(!"Memory context error");
-				elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p (%s:%d)",
-						name, chunk, block, CDB_MCXT_WHERE(&set->header));
+				elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p",
+					 name, chunk, block);
 			}
 
 			/*

@@ -23,17 +23,15 @@
 #include "gpopt/translate/CDXLTranslateContextBaseTable.h"
 #include "gpopt/translate/CMappingColIdVarPlStmt.h"
 
-#include "md/IMDRelationExternal.h"
-
 #include "access/attnum.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
 
 #include "gpos/base.h"
 
-#include "dxl/operators/dxlops.h"
-#include "dxl/CIdGenerator.h"
-
+#include "naucrates/dxl/operators/dxlops.h"
+#include "naucrates/dxl/CIdGenerator.h"
+#include "naucrates/md/IMDRelationExternal.h"
 
 // fwd declarations
 namespace gpopt
@@ -609,7 +607,6 @@ namespace gpdxl
 				(
 				const CDXLTableDescr *pdxltabdesc,
 				const CDXLIndexDescr *pdxlid,
-				ULONG ulRelColumns,
 				Index iRel,
 				CDXLTranslateContextBaseTable *pdxltrctxbtOut
 				);
@@ -722,7 +719,8 @@ namespace gpdxl
 				const CDXLNode *pdxlnSortColList,
 				const CDXLTranslateContext *pdxltrctxChild,
 				AttrNumber *pattnoSortColIds,
-				Oid *poidSortOpIds
+				Oid *poidSortOpIds,
+				bool *pboolNullsFirst
 				);
 
 			List *PlQualFromScalarCondNode

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteSupport.c,v 1.63 2006/03/05 15:58:36 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteSupport.c,v 1.65 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

@@ -2,71 +2,57 @@ subdir=src/backend/utils/mmgr
 top_builddir=../../../../..
 include $(top_builddir)/src/Makefile.global
 
-TARGETS=aset mcxt memaccounting vmem_tracker redzone_handler runaway_cleaner idle_tracker event_version
+TARGETS=aset mcxt memaccounting vmem_tracker redzone_handler runaway_cleaner idle_tracker event_version memprot
 
-# Objects from backend, which don't need to be mocked but need to be linked.
-common_REAL_OBJS=\
-    $(top_srcdir)/src/backend/access/hash/hashfunc.o \
-    $(top_srcdir)/src/backend/access/transam/filerepdefs.o \
-    $(top_srcdir)/src/backend/bootstrap/bootparse.o \
-    $(top_srcdir)/src/backend/lib/stringinfo.o \
-    $(top_srcdir)/src/backend/nodes/bitmapset.o \
-    $(top_srcdir)/src/backend/nodes/equalfuncs.o \
-    $(top_srcdir)/src/backend/nodes/list.o \
-    $(top_srcdir)/src/backend/parser/gram.o \
-    $(top_srcdir)/src/backend/regex/regcomp.o \
-    $(top_srcdir)/src/backend/regex/regerror.o \
-    $(top_srcdir)/src/backend/regex/regexec.o \
-    $(top_srcdir)/src/backend/regex/regfree.o \
-    $(top_srcdir)/src/backend/storage/page/itemptr.o \
-    $(top_srcdir)/src/backend/utils/adt/datum.o \
-    $(top_srcdir)/src/backend/utils/adt/like.o \
-    $(top_srcdir)/src/backend/utils/hash/hashfn.o \
-	$(top_srcdir)/src/backend/utils/misc/guc.o \
-    $(top_srcdir)/src/backend/utils/init/globals.o \
-    $(top_srcdir)/src/port/exec.o \
-    $(top_srcdir)/src/port/path.o \
-    $(top_srcdir)/src/port/pgsleep.o \
-    $(top_srcdir)/src/port/pgstrcasecmp.o \
-    $(top_srcdir)/src/port/qsort.o \
-    $(top_srcdir)/src/port/thread.o \
-    $(top_srcdir)/src/timezone/localtime.o \
-    $(top_srcdir)/src/timezone/pgtz.o \
-    $(top_srcdir)/src/backend/utils/misc/size.o \
+include $(top_builddir)/src/backend/mock.mk
 
-memaccounting_REAL_OBJS=$(common_REAL_OBJS) \
-    $(top_srcdir)/src/backend/utils/mmgr/memprot.o \
-	$(top_srcdir)/src/backend/utils/mmgr/vmem_tracker.o \
-	$(top_srcdir)/src/backend/utils/mmgr/mcxt.o \
-	$(top_srcdir)/src/backend/utils/mmgr/aset.o \
+aset.t: $(MOCK_DIR)/backend/utils/error/assert_mock.o
 
-mcxt_REAL_OBJS=$(common_REAL_OBJS) \
-    $(top_srcdir)/src/backend/utils/mmgr/memprot.o \
-	$(top_srcdir)/src/backend/utils/mmgr/vmem_tracker.o \
-	$(top_srcdir)/src/backend/utils/mmgr/aset.o \
+mcxt.t:	$(MOCK_DIR)/backend/utils/mmgr/memaccounting_mock.o
 
-aset_REAL_OBJS=$(common_REAL_OBJS) \
-    $(top_srcdir)/src/backend/utils/mmgr/memprot.o \
-	$(top_srcdir)/src/backend/utils/mmgr/vmem_tracker.o \
-	$(top_srcdir)/src/backend/utils/mmgr/memaccounting.o \
-	$(top_srcdir)/src/backend/utils/mmgr/mcxt.o \
+vmem_tracker.t: \
+	$(MOCK_DIR)/backend/storage/ipc/shmem_mock.o \
+	$(MOCK_DIR)/backend/utils/error/assert_mock.o \
+	$(MOCK_DIR)/backend/utils/error/elog_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/event_version_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/idle_tracker_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/memaccounting_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/mcxt_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/memprot_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/redzone_handler_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/runaway_cleaner_mock.o
 
-vmem_tracker_REAL_OBJS=$(common_REAL_OBJS) \
-	$(top_srcdir)/src/backend/storage/lmgr/s_lock.o \
-	$(top_srcdir)/src/backend/utils/misc/atomic.o \
+memprot.t: \
+	$(MOCK_DIR)/backend/utils/mmgr/vmem_tracker_mock.o \
+	$(MOCK_DIR)/backend/utils/error/assert_mock.o \
+	$(MOCK_DIR)/backend/utils/error/elog_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/event_version_mock.o 
 
-redzone_handler_REAL_OBJS=$(common_REAL_OBJS) \
-	$(top_srcdir)/src/backend/storage/lmgr/s_lock.o \
-	$(top_srcdir)/src/backend/utils/misc/atomic.o \
-	$(top_srcdir)/src/backend/utils/session_state.o \
+redzone_handler.t: \
+	$(MOCK_DIR)/backend/storage/ipc/shmem_mock.o \
+	$(MOCK_DIR)/backend/storage/lmgr/lwlock_mock.o \
+	$(MOCK_DIR)/backend/utils/error/elog_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/aset_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/mcxt_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/memaccounting_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/memprot_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/vmem_tracker_mock.o
 
-runaway_cleaner_REAL_OBJS=$(common_REAL_OBJS) \
-	$(top_srcdir)/src/backend/utils/misc/atomic.o \
+memaccounting.t: \
+	$(MOCK_DIR)/backend/access/transam/xact_mock.o \
+	$(MOCK_DIR)/backend/utils/error/assert_mock.o \
+	$(MOCK_DIR)/backend/utils/error/elog_mock.o
 
-idle_tracker_REAL_OBJS=$(common_REAL_OBJS) \
-	$(top_srcdir)/src/backend/utils/misc/atomic.o \
+runaway_cleaner.t: \
+	$(MOCK_DIR)/backend/utils/error/elog_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/mcxt_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/memaccounting_mock.o \
+	$(MOCK_DIR)/backend/utils/misc/faultinjector_mock.o \
+	$(MOCK_DIR)/backend/utils/misc/superuser_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/idle_tracker_mock.o
 
-event_version_REAL_OBJS=$(common_REAL_OBJS) \
-	$(top_srcdir)/src/backend/utils/misc/atomic.o \
+idle_tracker.t: \
+	$(MOCK_DIR)/backend/utils/error/assert_mock.o \
+	$(MOCK_DIR)/backend/utils/mmgr/runaway_cleaner_mock.o
 
-include $(top_builddir)/src/Makefile.mock
+event_version.t: $(MOCK_DIR)/backend/storage/ipc/shmem_mock.o

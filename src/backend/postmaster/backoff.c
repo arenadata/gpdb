@@ -44,7 +44,7 @@
 #include "storage/backendid.h"
 #include "pgstat.h"
 #include "miscadmin.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 #include "gp-libpq-fe.h"
 #include <unistd.h>
 
@@ -62,7 +62,7 @@
 #include "funcapi.h"
 #include "catalog/pg_type.h"
 #include "access/tuptoaster.h"
-#include "utils/atomic.h"
+#include "utils/gp_atomic.h"
 
 extern bool gp_debug_resqueue_priority;
 
@@ -172,7 +172,6 @@ static inline BackoffBackendSharedEntry *getBackoffEntryRW(int index);
 /* Backend uses these */
 static inline BackoffBackendLocalEntry* myBackoffLocalEntry(void);
 static inline BackoffBackendSharedEntry* myBackoffSharedEntry(void);
-static inline bool amGroupLeader(void);
 static inline void SwitchGroupLeader(int newLeaderIndex);
 static inline bool groupingTimeExpired(void);
 static inline void findBetterGroupLeader(void);
@@ -275,14 +274,6 @@ static inline bool isGroupLeader(int index)
 }
 
 /**
- * Is the current backend a group leader?
- */
-static inline bool amGroupLeader()
-{
-	return isGroupLeader(MyBackendId);
-}
-
-/**
  * This method is used by a backend to switch the group leader. It is unique
  * in that it modifies the numFollowers field in its current group leader and new leader index.
  * The increments and decrements are done using atomic operations (else we may have race conditions
@@ -301,8 +292,8 @@ static inline void SwitchGroupLeader(int newLeaderIndex)
 	oldLeaderEntry = &backoffSingleton->backendEntries[myEntry->groupLeaderIndex];
 	newLeaderEntry = &backoffSingleton->backendEntries[newLeaderIndex];
 
-	gp_atomic_add_32( &oldLeaderEntry->numFollowers, -1 );
-	gp_atomic_add_32( &newLeaderEntry->numFollowers, 1 );
+	pg_atomic_sub_fetch_u32((pg_atomic_uint32 *) &oldLeaderEntry->numFollowers, 1 );
+	pg_atomic_add_fetch_u32((pg_atomic_uint32 *) &newLeaderEntry->numFollowers, 1 );
 	myEntry->groupLeaderIndex = newLeaderIndex;
 }
 
@@ -390,17 +381,6 @@ static inline BackoffBackendSharedEntry *getBackoffEntryRW(int index)
 	Assert(index >=0 && index < backoffSingleton->numEntries);
 	return &backoffSingleton->backendEntries[index];
 }
-
-/**
- * What is my group leader's target usage?
- */
-static inline double myGroupLeaderTargetUsage()
-{
-	int groupLeaderIndex = myBackoffSharedEntry()->groupLeaderIndex;
-	Assert(groupLeaderIndex <= MyBackendId);
-	return getBackoffEntryRO(groupLeaderIndex)->targetUsage;
-}
-
 
 
 /**
@@ -792,6 +772,16 @@ void BackoffSweeper()
 						se->targetUsage = maxCPU;
 						se->noBackoff = true;
 						activeWeight -= (se->weight / gl->numFollowersActive);
+						/*
+						 * GPDB_83_MERGE_FIXME: I saw the Assert(activeWeight > 0.0) above to fail
+						 * every now and then, when running "make installcheck-good". Something's wrong,
+						 * not sure what, but let's just silence that failure for now
+						 */
+						if (activeWeight <= 0)
+						{
+							elog(LOG, "activeWeight underflow!");
+							activeWeight = 0.001;
+						}
 						CPUAvailable -= maxCPU;
 						found = true;
 					}

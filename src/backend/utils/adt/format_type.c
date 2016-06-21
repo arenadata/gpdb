@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/format_type.c,v 1.44 2006/07/14 14:52:24 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/format_type.c,v 1.49 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -33,6 +33,7 @@
 
 static char *format_type_internal(Oid type_oid, int32 typemod,
 					 bool typemod_given, bool allow_invalid);
+static char *printTypmod(const char *typname, int32 typmod, Oid typmodout);
 static char *
 psnprintf(size_t len, const char *fmt,...)
 /* This lets gcc check the format string for consistency. */
@@ -122,24 +123,15 @@ format_type_internal(Oid type_oid, int32 typemod,
 	Oid			array_base_type;
 	bool		is_array;
 	char	   *buf;
-	cqContext  *typcqCtx;
-	cqContext  *basecqCtx;
 
 	if (type_oid == InvalidOid && allow_invalid)
 		return pstrdup("-");
 
-	typcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(type_oid)));
-
-	tuple = caql_getnext(typcqCtx);
-
+	tuple = SearchSysCache(TYPEOID,
+						   ObjectIdGetDatum(type_oid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 	{
-		caql_endscan(typcqCtx);
-
 		if (allow_invalid)
 			return pstrdup("???");
 		else
@@ -154,98 +146,31 @@ format_type_internal(Oid type_oid, int32 typemod,
 	 * than checking typlen we check the toast property, and don't deconstruct
 	 * "plain storage" array types --- this is because we don't want to show
 	 * oidvector as oid[].
-	 *
-	 * *** MPP-5137 patch ***
-	 * The intent of this routine is to replace an array type reference with
-	 * an array of the underlying base type if, and only if, the array
-	 * reference is to the system-defined array type over a base type.
-	 *
-	 * Checking only typstorage = 'p' causes format_type failures when
-	 * processing user-defined array types having typstorage != 'p'.
-	 *
-	 * To avoid this, at least until 8.3, different checking is in order.
-	 * Until 8.3, all system-defined array types have names beginning with an
-	 * underscore ('_') with the remainder of the name the same as the base
-	 * element type name and have a typinput value of array_in.  Base type
-	 * array replacement will occur only if both conditions are met.  All
-	 * other references are left intact.
-	 *
-	 * User-defined and system-defined fixed-length types (like "name" and
-	 * "oidvector") can not use array_in; all of the system-defined
-	 * fixed-length types use specialized typinput routines, not array_in, so
-	 * checking for array_in clears the system types. (See comments in array.h
-	 * about fixed-length arrays.)
 	 */
 	array_base_type = typeform->typelem;
 
-	if (OidIsValid(array_base_type) &&
-		typeform->typtype != TYPTYPE_DOMAIN &&
-		/* TODO: Change test to use pg_type.typarray when introducing 8.3 updates */
-		NameStr(typeform->typname)[0] == '_' &&
-		typeform->typinput == F_ARRAY_IN)
+	if (array_base_type != InvalidOid &&
+		typeform->typstorage != 'p' &&
+		typeform->typtype != TYPTYPE_DOMAIN)
 	{
-		HeapTuple base_tuple;
-		Form_pg_type base_typeform;
-
 		/* Switch our attention to the array element type */
-		basecqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_type "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(array_base_type)));
-
-		base_tuple = caql_getnext(basecqCtx);
-
-		if (!HeapTupleIsValid(base_tuple))
+		ReleaseSysCache(tuple);
+		tuple = SearchSysCache(TYPEOID,
+							   ObjectIdGetDatum(array_base_type),
+							   0, 0, 0);
+		if (!HeapTupleIsValid(tuple))
 		{
 			if (allow_invalid)
-			{
-				caql_endscan(basecqCtx);
-				caql_endscan(typcqCtx);
 				return pstrdup("???[]");
-			}
 			else
-			{
 				elog(ERROR, "cache lookup failed for type %u", type_oid);
-			}
 		}
-		base_typeform = (Form_pg_type) GETSTRUCT(base_tuple);
-
-		/*
-		 * Now make final checks for system-defined array type before
-		 * substituting the array form of a base type for an array type
-		 * reference.
-		 *
-		 * TODO: Eliminate the name check when merging 8.3 updates and typarray checked
-		 */
-		if (strcmp(NameStr(base_typeform->typname), NameStr(typeform->typname)+1) == 0)
-		{
-			/* NOTE: a little grotesque, but since we are switching
-			 * the base tuple for the type tuple, free the typcqctx,
-			 * then switch the caql context for the base tuple as well
-			 * so it gets freed at the end
-			 */
-
-			caql_endscan(typcqCtx);
-
-			tuple = base_tuple;
-
-			typcqCtx = basecqCtx; /* NOTE: switch the caql ctx */
-
-			typeform = base_typeform;
-			type_oid = array_base_type;
-			is_array = true;
-		}
-		else
-		{
-			caql_endscan(basecqCtx);
-			is_array = false;
-		}
+		typeform = (Form_pg_type) GETSTRUCT(tuple);
+		type_oid = array_base_type;
+		is_array = true;
 	}
 	else
-	{
 		is_array = false;
-	}
 
 	/*
 	 * See if we want to special-case the output for certain built-in types.
@@ -264,8 +189,7 @@ format_type_internal(Oid type_oid, int32 typemod,
 	{
 		case BITOID:
 			if (with_typemod)
-				buf = psnprintf(5 + MAX_INT32_LEN + 1, "bit(%d)",
-								(int) typemod);
+				buf = printTypmod("bit", typemod, typeform->typmodout);
 			else if (typemod_given)
 			{
 				/*
@@ -284,8 +208,7 @@ format_type_internal(Oid type_oid, int32 typemod,
 
 		case BPCHAROID:
 			if (with_typemod)
-				buf = psnprintf(11 + MAX_INT32_LEN + 1, "character(%d)",
-								(int) (typemod - VARHDRSZ));
+				buf = printTypmod("character", typemod, typeform->typmodout);
 			else if (typemod_given)
 			{
 				/*
@@ -320,136 +243,56 @@ format_type_internal(Oid type_oid, int32 typemod,
 
 		case NUMERICOID:
 			if (with_typemod)
-				buf = psnprintf(10 + 2 * MAX_INT32_LEN + 1, "numeric(%d,%d)",
-								((typemod - VARHDRSZ) >> 16) & 0xffff,
-								(typemod - VARHDRSZ) & 0xffff);
+				buf = printTypmod("numeric", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("numeric");
 			break;
 
 		case INTERVALOID:
 			if (with_typemod)
-			{
-				int			fields = INTERVAL_RANGE(typemod);
-				int			precision = INTERVAL_PRECISION(typemod);
-				const char *fieldstr;
-
-				switch (fields)
-				{
-					case INTERVAL_MASK(YEAR):
-						fieldstr = " year";
-						break;
-					case INTERVAL_MASK(MONTH):
-						fieldstr = " month";
-						break;
-					case INTERVAL_MASK(DAY):
-						fieldstr = " day";
-						break;
-					case INTERVAL_MASK(HOUR):
-						fieldstr = " hour";
-						break;
-					case INTERVAL_MASK(MINUTE):
-						fieldstr = " minute";
-						break;
-					case INTERVAL_MASK(SECOND):
-						fieldstr = " second";
-						break;
-						case INTERVAL_MASK(YEAR)
-					| INTERVAL_MASK(MONTH):
-						fieldstr = " year to month";
-						break;
-						case INTERVAL_MASK(DAY)
-					| INTERVAL_MASK(HOUR):
-						fieldstr = " day to hour";
-						break;
-						case INTERVAL_MASK(DAY)
-							| INTERVAL_MASK(HOUR)
-					| INTERVAL_MASK(MINUTE):
-						fieldstr = " day to minute";
-						break;
-						case INTERVAL_MASK(DAY)
-							| INTERVAL_MASK(HOUR)
-							| INTERVAL_MASK(MINUTE)
-					| INTERVAL_MASK(SECOND):
-						fieldstr = " day to second";
-						break;
-						case INTERVAL_MASK(HOUR)
-					| INTERVAL_MASK(MINUTE):
-						fieldstr = " hour to minute";
-						break;
-						case INTERVAL_MASK(HOUR)
-							| INTERVAL_MASK(MINUTE)
-					| INTERVAL_MASK(SECOND):
-						fieldstr = " hour to second";
-						break;
-						case INTERVAL_MASK(MINUTE)
-					| INTERVAL_MASK(SECOND):
-						fieldstr = " minute to second";
-						break;
-					case INTERVAL_FULL_RANGE:
-						fieldstr = "";
-						break;
-					default:
-						elog(ERROR, "invalid INTERVAL typmod: 0x%x", typemod);
-						fieldstr = "";
-						break;
-				}
-				if (precision != INTERVAL_FULL_PRECISION)
-					buf = psnprintf(100, "interval(%d)%s",
-									precision, fieldstr);
-				else
-					buf = psnprintf(100, "interval%s",
-									fieldstr);
-			}
+				buf = printTypmod("interval", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("interval");
 			break;
 
 		case TIMEOID:
 			if (with_typemod)
-				buf = psnprintf(50, "time(%d) without time zone",
-								typemod);
+				buf = printTypmod("time", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("time without time zone");
 			break;
 
 		case TIMETZOID:
 			if (with_typemod)
-				buf = psnprintf(50, "time(%d) with time zone",
-								typemod);
+				buf = printTypmod("time", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("time with time zone");
 			break;
 
 		case TIMESTAMPOID:
 			if (with_typemod)
-				buf = psnprintf(50, "timestamp(%d) without time zone",
-								typemod);
+				buf = printTypmod("timestamp", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("timestamp without time zone");
 			break;
 
 		case TIMESTAMPTZOID:
 			if (with_typemod)
-				buf = psnprintf(50, "timestamp(%d) with time zone",
-								typemod);
+				buf = printTypmod("timestamp", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("timestamp with time zone");
 			break;
 
 		case VARBITOID:
 			if (with_typemod)
-				buf = psnprintf(13 + MAX_INT32_LEN + 1, "bit varying(%d)",
-								(int) typemod);
+				buf = printTypmod("bit varying", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("bit varying");
 			break;
 
 		case VARCHAROID:
 			if (with_typemod)
-				buf = psnprintf(19 + MAX_INT32_LEN + 1,
-								"character varying(%d)",
-								(int) (typemod - VARHDRSZ));
+				buf = printTypmod("character varying", typemod, typeform->typmodout);
 			else
 				buf = pstrdup("character varying");
 			break;
@@ -474,16 +317,49 @@ format_type_internal(Oid type_oid, int32 typemod,
 		typname = NameStr(typeform->typname);
 
 		buf = quote_qualified_identifier(nspname, typname);
+
+		if (with_typemod)
+			buf = printTypmod(buf, typemod, typeform->typmodout);
 	}
 
 	if (is_array)
 		buf = psnprintf(strlen(buf) + 3, "%s[]", buf);
 
-	caql_endscan(typcqCtx); /* NOTE: this could be the base tuple ctx
-							 * if it was an array 
-							 */
+	ReleaseSysCache(tuple);
 
 	return buf;
+}
+
+
+/*
+ * Add typmod decoration to the basic type name
+ */
+static char *
+printTypmod(const char *typname, int32 typmod, Oid typmodout)
+{
+	char	   *res;
+
+	/* Shouldn't be called if typmod is -1 */
+	Assert(typmod >= 0);
+
+	if (typmodout == InvalidOid)
+	{
+		/* Default behavior: just print the integer typmod with parens */
+		res = psnprintf(strlen(typname) + MAX_INT32_LEN + 3, "%s(%d)",
+						typname, (int) typmod);
+	}
+	else
+	{
+		/* Use the type-specific typmodout procedure */
+		char	   *tmstr;
+
+		tmstr = DatumGetCString(OidFunctionCall1(typmodout,
+												 Int32GetDatum(typmod)));
+		res = psnprintf(strlen(typname) + strlen(tmstr) + 1, "%s%s",
+						typname, tmstr);
+	}
+
+	return res;
 }
 
 
@@ -497,7 +373,9 @@ format_type_internal(Oid type_oid, int32 typemod,
  *
  * This may appear unrelated to format_type(), but in fact the two routines
  * share knowledge of the encoding of typmod for different types, so it's
- * convenient to keep them together.
+ * convenient to keep them together.  (XXX now that most of this knowledge
+ * has been pushed out of format_type into the typmodout functions, it's
+ * interesting to wonder if it's worth trying to factor this code too...)
  */
 int32
 type_maximum_size(Oid type_oid, int32 typemod)

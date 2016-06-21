@@ -8,12 +8,13 @@
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
- * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.76.2.1 2009/12/09 21:58:30 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.90.2.1 2010/03/25 14:45:06 alvherre Exp $
  *--------------------------------------------------------------------
  */
 #ifndef GUC_H
 #define GUC_H
 
+#include "nodes/parsenodes.h"
 #include "tcop/dest.h"
 #include "utils/array.h"
 
@@ -106,6 +107,14 @@ typedef bool (*GucRealAssignHook) (double newval, bool doit, GucSource source);
 
 typedef const char *(*GucShowHook) (void);
 
+typedef enum
+{
+	/* Types of set_config_option actions */
+	GUC_ACTION_SET,				/* regular SET command */
+	GUC_ACTION_LOCAL,			/* SET LOCAL command */
+	GUC_ACTION_SAVE				/* function SET option */
+} GucAction;
+
 #define GUC_QUALIFIER_SEPARATOR '.'
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
@@ -188,6 +197,7 @@ extern bool Disable_persistent_recovery_logging;
 extern bool	Debug_persistent_store_print;
 extern bool Debug_persistent_bootstrap_print;
 extern bool persistent_integrity_checks;
+extern bool validate_previous_free_tid;
 extern bool disable_persistent_diagnostic_dump;
 extern bool debug_persistent_ptcat_verification;
 extern bool debug_print_persistent_checks;
@@ -227,8 +237,8 @@ extern bool filerep_inject_listener_fault;
 extern bool filerep_inject_db_startup_fault;
 extern bool filerep_inject_change_tracking_recovery_fault;
 extern bool filerep_mirrorvalidation_during_resync;
+extern bool log_filerep_to_syslogger;
 extern bool gp_crash_recovery_suppress_ao_eof;
-extern bool Debug_check_for_invalid_persistent_tid;
 extern bool gp_create_table_random_default_distribution;
 extern bool gp_allow_non_uniform_partitioning_ddl;
 extern bool gp_enable_exchange_default_partition;
@@ -275,6 +285,7 @@ extern int	log_min_error_statement;
 extern int	log_min_messages;
 extern int	client_min_messages;
 extern int	log_min_duration_statement;
+extern int	log_temp_files;
 
 extern int	num_temp_buffers;
 
@@ -288,9 +299,7 @@ extern int gp_max_partition_level;
 
 extern bool gp_temporary_files_filespace_repair;
 extern bool gp_perfmon_print_packet_info;
-extern bool gp_plpgsql_clear_cache_always;
 extern bool fts_diskio_check;
-extern bool gp_disable_catalog_access_on_segment;
 
 /* Debug DTM Action */
 typedef enum
@@ -374,7 +383,8 @@ extern int  optimizer_cost_model;
 extern bool optimizer_print_query;
 extern bool optimizer_print_plan;
 extern bool optimizer_print_xform;
-extern bool optimizer_release_mdcache;
+extern bool optimizer_metadata_caching;
+extern int optimizer_mdcache_size;
 extern bool optimizer_disable_xform_result_printing;
 extern bool	optimizer_print_memo_after_exploration;
 extern bool	optimizer_print_memo_after_implementation;
@@ -384,7 +394,6 @@ extern bool	optimizer_print_expression_properties;
 extern bool	optimizer_print_group_properties;
 extern bool	optimizer_print_optimization_context;
 extern bool optimizer_print_optimization_stats;
-extern bool	optimizer_parallel;
 extern bool	optimizer_local;
 extern int  optimizer_retries;
 extern bool  optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
@@ -428,6 +437,8 @@ extern double optimizer_damping_factor_filter;
 extern double optimizer_damping_factor_join;
 extern double optimizer_damping_factor_groupby;
 extern int optimizer_segments;
+extern int optimizer_join_arity_for_associativity_commutativity;
+extern int optimizer_array_expansion_threshold;
 extern bool optimizer_analyze_root_partition;
 extern bool optimizer_analyze_midlevel_partition;
 extern bool optimizer_enable_constant_expression_evaluation;
@@ -445,7 +456,16 @@ extern bool optimizer_direct_dispatch;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 extern bool optimizer_enable_master_only_queries;
 extern bool optimizer_multilevel_partitioning;
+extern bool optimizer_enable_derive_stats_all_groups;
 extern bool optimizer_explain_show_status;
+extern bool optimizer_prefer_scalar_dqa_multistage_agg;
+
+/**
+ * GUCs related to code generation.
+ **/
+extern bool init_codegen;
+extern bool codegen;
+extern bool codegen_validate_functions;
 
 /**
  * Enable logging of DPE match in optimizer.
@@ -496,6 +516,18 @@ extern char  *gp_default_storage_options;
  * the mirror for a particular directory.
  */
 extern int log_count_recovered_files_batch;
+
+extern int writable_external_table_bufsize;
+
+typedef enum
+{
+	INDEX_CHECK_NONE,
+	INDEX_CHECK_SYSTEM,
+	INDEX_CHECK_ALL
+} IndexCheckType;
+
+extern IndexCheckType gp_indexcheck_insert;
+extern IndexCheckType gp_indexcheck_vacuum;
 
 /* Storage option names */
 #define SOPT_FILLFACTOR    "fillfactor"
@@ -567,22 +599,26 @@ extern void BeginReportingGUCOptions(void);
 extern void ParseLongOption(const char *string, char **name, char **value);
 extern bool set_config_option(const char *name, const char *value,
 				  GucContext context, GucSource source,
-				  bool isLocal, bool changeVal);
+				  GucAction action, bool changeVal);
 extern char *GetConfigOptionByName(const char *name, const char **varname);
 extern void GetConfigOptionByNum(int varnum, const char **values, bool *noshow);
 extern int	GetNumConfigOptions(void);
 
-extern void SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch);
+extern void SetPGVariable(const char *name, List *args, bool is_local);
+extern void SetPGVariableOptDispatch(const char *name, List *args, bool is_local, bool gp_dispatch);
 extern void GetPGVariable(const char *name, DestReceiver *dest);
 extern TupleDesc GetPGVariableResultDesc(const char *name);
-extern void ResetPGVariable(const char *name);
 
-extern char *flatten_set_variable_args(const char *name, List *args);
+extern void ExecSetVariableStmt(VariableSetStmt *stmt);
+extern char *ExtractSetVariableArgs(VariableSetStmt *stmt);
 
-extern void ProcessGUCArray(ArrayType *array, GucSource source);
+extern void ProcessGUCArray(ArrayType *array,
+				GucContext context, GucSource source, GucAction action);
 extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);
 extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 extern ArrayType *GUCArrayReset(ArrayType *array);
+
+extern int	GUC_complaint_elevel(GucSource source);
 
 extern void pg_timezone_abbrev_initialize(void);
 
@@ -608,6 +644,8 @@ extern void read_nondefault_variables(void);
 /* in commands/tablespace.c */
 extern const char *assign_default_tablespace(const char *newval,
 						  bool doit, GucSource source);
+extern const char *assign_temp_tablespaces(const char *newval,
+						bool doit, GucSource source);
 
 /* in utils/adt/regexp.c */
 extern const char *assign_regex_flavor(const char *value,

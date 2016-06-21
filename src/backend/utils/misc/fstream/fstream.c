@@ -334,6 +334,7 @@ static int glob_path(fstream_t *fs, const char *path)
 			glob_and_copy(path, GLOB_MARK | GLOB_NOCHECK, 0, &fs->glob))
 		{
 			gfile_printf_then_putc_newline("fstream glob failed");
+			gfile_free(path2);
 			return 1;
 		}
 		path = p;
@@ -995,39 +996,6 @@ int64_t fstream_get_compressed_position(fstream_t *fs)
 	if (fs->fidx != fs->glob.gl_pathc)
 		p += gfile_get_compressed_position(&fs->fd);
 	return p;
-}
-
-/*
- * fstream_rewind
- *
- * close the currently open file. open the first file in the file stream
- * chain, reset state and start from scratch.
- */
-int fstream_rewind(fstream_t *fs)
-{
-	int 		response_code;
-	const char*	response_string;
-	struct gpfxdist_t* transform = fs->options.transform;
-
-	fs->fidx = 0;
-	fs->foff = 0;
-	fs->line_number = 1;
-	fs->ferror = 0;
-	fs->skip_header_line = fs->options.header;
-	fs->buffer_cur_size = 0;
-	fs->compressed_position = 0;
-
-	gfile_close(&fs->fd);
-
-	if (gfile_open(&fs->fd, fs->glob.gl_pathv[0], GFILE_OPEN_FOR_READ,
-				   &response_code, &response_string, transform))
-	{
-		gfile_printf_then_putc_newline("fstream unable to open file %s",
-				fs->glob.gl_pathv[0]);
-		fs->ferror = "unable to open file";
-		return -1;
-	}
-	return 0;
 }
 
 bool_t fstream_is_win_pipe(fstream_t *fs)

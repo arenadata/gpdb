@@ -166,7 +166,6 @@ extern int qdPostmasterPort;
 
 extern char * gp_qd_callback_info;
 extern bool gp_use_snapshop_during_callback;
-extern unsigned long gp_qd_proc_offset;
 
 /*
  * Allow callback query?
@@ -471,11 +470,7 @@ extern int	Gp_max_packet_size;	/* GUC var */
 /*
  * Support for multiple "types" of interconnect
  */
-
-#define INTERCONNECT_TYPE_TCP    (0)
-#define INTERCONNECT_TYPE_UDP    (1)
-#define INTERCONNECT_TYPE_UDPIFC (2)
-#define INTERCONNECT_TYPE_NIL    (3)
+#define INTERCONNECT_TYPE_UDPIFC (0)
 
 extern int Gp_interconnect_type;
 
@@ -1066,7 +1061,6 @@ extern const char *gpvars_show_gp_gpperfmon_log_alert_level(void);
 extern int gp_hashagg_compress_spill_files;
 extern int gp_workfile_compress_algorithm;
 extern bool gp_workfile_checksumming;
-extern bool gp_workfile_caching;
 extern double gp_workfile_limit_per_segment;
 extern double gp_workfile_limit_per_query;
 extern int gp_workfile_limit_files_per_query;

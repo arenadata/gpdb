@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/lockcmds.c,v 1.15 2006/08/18 16:09:08 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/lockcmds.c,v 1.17 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +21,7 @@
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 
 /*

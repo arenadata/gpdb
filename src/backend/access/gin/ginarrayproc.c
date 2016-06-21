@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/gin/ginarrayproc.c,v 1.7 2006/10/06 17:13:58 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/gin/ginarrayproc.c,v 1.12 2008/01/01 19:45:46 momjian Exp $
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -38,7 +38,7 @@ Datum
 ginarrayextract(PG_FUNCTION_ARGS)
 {
 	ArrayType  *array;
-	uint32	   *nentries = (uint32 *) PG_GETARG_POINTER(1);
+	int32	   *nentries = (int32 *) PG_GETARG_POINTER(1);
 	Datum	   *entries = NULL;
 	int16		elmlen;
 	bool		elmbyval;
@@ -60,8 +60,33 @@ ginarrayextract(PG_FUNCTION_ARGS)
 					  elmlen, elmbyval, elmalign,
 					  &entries, NULL, (int *) nentries);
 
+	if (*nentries == 0 && PG_NARGS() == 3)
+	{
+		switch (PG_GETARG_UINT16(2))	/* StrategyNumber */
+		{
+			case GinOverlapStrategy:
+				*nentries = -1; /* nobody can be found */
+				break;
+			case GinContainsStrategy:
+			case GinContainedStrategy:
+			case GinEqualStrategy:
+			default:			/* require fullscan: GIN can't find void
+								 * arrays */
+				break;
+		}
+	}
+
 	/* we should not free array, entries[i] points into it */
 	PG_RETURN_POINTER(entries);
+}
+
+Datum
+ginqueryarrayextract(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_DATUM(DirectFunctionCall3(ginarrayextract,
+										PG_GETARG_DATUM(0),
+										PG_GETARG_DATUM(1),
+										PG_GETARG_DATUM(2)));
 }
 
 Datum

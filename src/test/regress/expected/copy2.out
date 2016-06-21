@@ -1,4 +1,4 @@
-CREATE TABLE x (
+CREATE TEMP TABLE x (
 	a serial,
 	b int,
 	c text not null default 'stuff',
@@ -6,6 +6,7 @@ CREATE TABLE x (
 	e text
 ) WITH OIDS;
 NOTICE:  CREATE TABLE will create implicit sequence "x_a_seq" for serial column "x.a"
+NOTICE:  OIDS=TRUE is not recommended for user-created tables. Use OIDS=FALSE to prevent wrap-around of the OID counter
 CREATE FUNCTION fn_x_before () RETURNS TRIGGER AS '
   BEGIN
 		NEW.e := ''before trigger fired''::text;
@@ -93,7 +94,7 @@ ERROR:  table "no_oids" does not have OIDs
 COPY x TO stdout;
 COPY x (c, e) TO stdout;
 COPY x (b, e) TO stdout WITH NULL 'I''m null';
-CREATE TABLE y (
+CREATE TEMP TABLE y (
 	col1 text,
 	col2 text
 );

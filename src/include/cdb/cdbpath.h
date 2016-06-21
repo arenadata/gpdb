@@ -10,7 +10,7 @@
 #ifndef CDBPATH_H
 #define CDBPATH_H
 
-#include "cdb/cdbvars.h"        /* getgpsegmentCount, gp_opt_segments, etc */
+#include "nodes/relation.h"
 
 void
 cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath);
@@ -54,8 +54,7 @@ cdbpath_rows(PlannerInfo *root, Path *path)
 		: IsA(p, BitmapAppendOnlyPath) ? ((BitmapAppendOnlyPath *)p)->rows
 		: IsA(p, IndexPath)        ? ((IndexPath *)p)->rows
 		: IsA(p, UniquePath)       ? ((UniquePath *)p)->rows
-		: (CdbPathLocus_IsBottleneck(path->locus) ||
-		   CdbPathLocus_IsReplicated(path->locus)) 
+		: CdbPathLocus_IsReplicated(path->locus)
 		? path->parent->rows * root->config->cdbpath_segments
 		: path->parent->rows;
 

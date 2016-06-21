@@ -155,7 +155,7 @@ filtered_base_yylex(void)
 					break;
 			}
 			break;
-			
+
 		case WITH:
 
 			/*

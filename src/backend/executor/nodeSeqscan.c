@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSeqscan.c,v 1.61.2.1 2006/12/26 19:26:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSeqscan.c,v 1.64 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

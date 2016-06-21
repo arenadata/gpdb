@@ -4,7 +4,7 @@
 #
 # 'make install' installs whole contents of src/include.
 #
-# $PostgreSQL: pgsql/src/include/Makefile,v 1.21 2005/12/09 21:19:35 petere Exp $
+# $PostgreSQL: pgsql/src/include/Makefile,v 1.23.2.1 2009/07/20 20:38:58 alvherre Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -17,9 +17,10 @@ all: pg_config.h pg_config_os.h check_oids
 
 
 # Subdirectories containing headers for server-side dev
-SUBDIRS = access bootstrap catalog commands executor gpmon lib libpq mb \
-	nodes optimizer parser postmaster regex replication rewrite storage \
-	tcop utils port port/win32 port/win32_msvc port/win32_msvc/sys \
+SUBDIRS = access bootstrap catalog codegen commands executor gpmon lib libpq mb \
+	nodes optimizer parser postmaster regex replication rewrite storage tcop \
+	snowball snowball/libstemmer tsearch tsearch/dicts utils \
+	port port/atomics port/win32 port/win32_msvc port/win32_msvc/sys \
 	port/win32/arpa port/win32/netinet port/win32/sys \
 	portability \
 	cdb
@@ -54,9 +55,17 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdistributedsnapshot.h   $(DESTDIR)$(includedir_internal_cdb)
-# These headers are needed for test/regress?
-	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-fe.h   '$(DESTDIR)$(includedir)'
-	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-int.h   '$(DESTDIR)$(includedir)'
+
+# CSH: These headers are needed for test/regress?
+#	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-fe.h   '$(DESTDIR)$(includedir)'
+#	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-int.h   '$(DESTDIR)$(includedir)'
+
+ifeq ($(vpath_build),yes)
+	for file in dynloader.h parser/parse.h; do \
+	  cp $$file '$(DESTDIR)$(includedir_server)'/$$file || exit; \
+	  chmod $(INSTALL_DATA_MODE) '$(DESTDIR)$(includedir_server)'/$$file || exit; \
+	done
+endif
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(includedir)/libpq' '$(DESTDIR)$(includedir_internal)/libpq' \

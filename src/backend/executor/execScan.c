@@ -9,11 +9,12 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execScan.c,v 1.38.2.2 2007/02/02 00:07:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execScan.c,v 1.43 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "codegen/codegen_wrapper.h"
 
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -112,7 +113,7 @@ ExecScan(ScanState *node,
 	 * storage allocated in the previous tuple cycle.  
 	 */
 	econtext = node->ps.ps_ExprContext;
-    ResetExprContext(econtext);
+	ResetExprContext(econtext);
 
 	/*
 	 * get a tuple from the access method loop until we obtain a tuple which
@@ -155,7 +156,7 @@ ExecScan(ScanState *node,
 		 * when the qual is nil ... saves only a few cycles, but they add up
 		 * ...
 		 */
-		if (!qual || ExecQual(qual, econtext, false))
+		if (!qual || call_ExecQual(node->ps, qual, econtext, false))
 		{
 			/*
 			 * Found a satisfactory scan tuple.
@@ -232,18 +233,20 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 		if (!var || !IsA(var, Var))
 			return false;		/* tlist item not a Var */
 
+		/* if these Asserts fail, planner messed up */
 		Assert(var->varlevelsup == 0);
 		if (var->varattno != attrno)
 			return false;		/* out of order */
 		if (att_tup->attisdropped)
 			return false;		/* table contains dropped columns */
+
 		/*
-		 * Note: usually the Var's type should match the tupdesc exactly,
-		 * but in situations involving unions of columns that have different
+		 * Note: usually the Var's type should match the tupdesc exactly, but
+		 * in situations involving unions of columns that have different
 		 * typmods, the Var may have come from above the union and hence have
 		 * typmod -1.  This is a legitimate situation since the Var still
-		 * describes the column, just not as exactly as the tupdesc does.
-		 * We could change the planner to prevent it, but it'd then insert
+		 * describes the column, just not as exactly as the tupdesc does. We
+		 * could change the planner to prevent it, but it'd then insert
 		 * projection steps just to convert from specific typmod to typmod -1,
 		 * which is pretty silly.
 		 */
@@ -251,7 +254,7 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 			(var->vartypmod != att_tup->atttypmod &&
 			 var->vartypmod != -1))
 			return false;		/* type mismatch */
-			
+
 		tlist_item = lnext(tlist_item);
 	}
 
@@ -298,6 +301,12 @@ InitScanStateRelationDetails(ScanState *scanState, Plan *plan, EState *estate)
 	scanState->ss_currentRelation = currentRelation;
 	ExecAssignScanType(scanState, RelationGetDescr(currentRelation));
 	ExecAssignScanProjectionInfo(scanState);
+
+	ProjectionInfo *projInfo = scanState->ps.ps_ProjInfo;
+	if (NULL != projInfo && projInfo->pi_isVarList){
+		enroll_ExecVariableList_codegen(ExecVariableList,
+				&projInfo->ExecVariableList_gen_info.ExecVariableList_fn, projInfo, scanState->ss_ScanTupleSlot);
+	}
 
 	scanState->tableType = getTableType(scanState->ss_currentRelation);
 }

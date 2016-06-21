@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.97.2.1 2007/04/26 23:24:57 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.106.2.5 2010/07/13 09:02:46 heikki Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,20 +21,12 @@
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
-#include "commands/variable.h"			/* show_session_authorization */
-#include "commands/dbcommands.h" 		/* get_database_name */
 #include "commands/portalcmds.h"
 #include "miscadmin.h"
-#include "nodes/execnodes.h"            /* EState */
 #include "utils/builtins.h"
 #include "utils/memutils.h"
-#include "utils/portal.h"
 #include "utils/resscheduler.h"
-#include "utils/tuplestore.h"           /* tuplestore_begin_heap, etc */
 
-#include "cdb/cdbdisp.h"                /* CdbShutdownPortals, CdbCheckDispatchResult */
-#include "cdb/cdbvars.h"
-#include "cdb/cdbgang.h"
 #include "cdb/ml_ipc.h"
 
 /*
@@ -155,15 +147,15 @@ GetPortalByName(const char *name)
  *		Get the "primary" stmt within a portal, ie, the one marked canSetTag.
  *
  * Returns NULL if no such stmt.  If multiple PlannedStmt structs within the
- * portal are marked canSetTag, returns the first one.	Neither of these
+ * portal are marked canSetTag, returns the first one.  Neither of these
  * cases should occur in present usages of this function.
  *
- * Copes if given a list of Querys --- can't happen in a portal, but may
- * occur elsewhere, e.g., PreparedStatement handling or, eventually,
- * plan caching.
+ * Copes if given a list of Querys --- can't happen in a portal, but this
+ * code also supports plancache.c, which needs both cases.
  *
- * For use with a portal, use PortalGetPrimaryStmt rather than calling this 
- * directly.
+ * Note: the reason this is just handed a List is so that plancache.c
+ * can share the code.  For use with a portal, use PortalGetPrimaryStmt
+ * rather than calling this directly.
  */
 Node *
 PortalListGetPrimaryStmt(List *stmts)
@@ -176,7 +168,7 @@ PortalListGetPrimaryStmt(List *stmts)
 
 		if (IsA(stmt, PlannedStmt))
 		{
-			if (((PlannedStmt *)stmt)->canSetTag)
+			if (((PlannedStmt *) stmt)->canSetTag)
 				return stmt;
 		}
 		else if (IsA(stmt, Query))
@@ -217,8 +209,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("cursor \"%s\" already exists", name)));
-		if (!dupSilent)
-			if (Gp_role != GP_ROLE_EXECUTE)
+		if (!dupSilent && Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errcode(ERRCODE_DUPLICATE_CURSOR),
 					 errmsg("closing existing cursor \"%s\"",
@@ -241,7 +232,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 										   "Portal");
 
 	/* initialize portal fields that don't start off zero */
-	PortalSetStatus(portal, PORTAL_NEW); 
+	portal->status = PORTAL_NEW;
 	portal->cleanup = PortalCleanup;
 	portal->createSubid = GetCurrentSubTransactionId();
 	portal->strategy = PORTAL_MULTI_QUERY;
@@ -257,7 +248,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 		portal->portalId = ResCreatePortalId(name);
 		portal->queueId = GetResQueueId();
 	}
-	portal->is_extended_query = false; /* default value */	
+	portal->is_extended_query = false; /* default value */
 
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
@@ -297,17 +288,29 @@ CreateNewPortal(void)
  * PortalDefineQuery
  *		A simple subroutine to establish a portal's query.
  *
- * Notes: Caller MUST supply a sourceText string; it is no longer okay
- * to pass NULL.  (If you really don't have source text, pass a constant 
- * string, e.g., "(query not available)".) 
+ * Notes: as of PG 8.4 (this part backported to GPDB already), caller MUST supply a sourceText string; it is not
+ * allowed anymore to pass NULL.  (If you really don't have source text,
+ * you can pass a constant string, perhaps "(query not available)".)
  *
  * commandTag shall be NULL if and only if the original query string
- * (before rewriting) was an empty string.	Also, commandTag must be a
- * pointer to a constant string, since it is not copied.  
+ * (before rewriting) was an empty string.  Also, the passed commandTag must
+ * be a pointer to a constant string, since it is not copied.
  *
- * The caller is responsible for ensuring that the passed prepStmtName
- * (if not NULL) and sourceText have adequate lifetime. Also, queryContext 
- * must accurately  describe the location of the stmt list contents.
+ * If cplan is provided, then it is a cached plan containing the stmts,
+ * and the caller must have done RevalidateCachedPlan(), causing a refcount
+ * increment.  The refcount will be released when the portal is destroyed.
+ *
+ * If cplan is NULL, then it is the caller's responsibility to ensure that
+ * the passed plan trees have adequate lifetime.  Typically this is done by
+ * copying them into the portal's heap context.
+ *
+ * The caller is also responsible for ensuring that the passed prepStmtName
+ * and sourceText (if not NULL) have adequate lifetime.
+ *
+ * NB: this function mustn't do much beyond storing the passed values; in
+ * particular don't do anything that risks elog(ERROR).  If that were to
+ * happen here before storing the cplan reference, we'd leak the plancache
+ * refcount that the caller is trying to hand off to us.
  */
 void
 PortalDefineQuery(Portal portal,
@@ -316,20 +319,42 @@ PortalDefineQuery(Portal portal,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *stmts,
-				  MemoryContext queryContext)
+				  CachedPlan *cplan)
 {
 	AssertArg(PortalIsValid(portal));
-	AssertState(portal->queryContext == NULL);	/* else defined already */
-	
+	AssertState(portal->status == PORTAL_NEW);
+
 	AssertArg(sourceText != NULL);
-	AssertArg(commandTag != NULL || stmts == NIL);
-	
+	Assert(commandTag != NULL || stmts == NIL);
+
 	portal->prepStmtName = prepStmtName;
 	portal->sourceText = sourceText;
 	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
 	portal->stmts = stmts;
-	portal->queryContext = queryContext;
+	portal->cplan = cplan;
+	portal->status = PORTAL_DEFINED;
+}
+
+/*
+ * PortalReleaseCachedPlan
+ *		Release a portal's reference to its cached plan, if any.
+ */
+static void
+PortalReleaseCachedPlan(Portal portal)
+{
+	if (portal->cplan)
+	{
+		ReleaseCachedPlan(portal->cplan, false);
+		portal->cplan = NULL;
+
+		/*
+		 * We must also clear portal->stmts which is now a dangling
+		 * reference to the cached plan's plan list.  This protects any
+		 * code that might try to examine the Portal later.
+		 */
+		portal->stmts = NIL;
+	}
 }
 
 /*
@@ -359,9 +384,34 @@ PortalCreateHoldStore(Portal portal)
 	oldcxt = MemoryContextSwitchTo(portal->holdContext);
 
 	/* XXX: Should maintenance_work_mem be used for the portal size? */
-	portal->holdStore = tuplestore_begin_heap(true, true, work_mem); 
+	portal->holdStore = tuplestore_begin_heap(true, true, work_mem);
 
 	MemoryContextSwitchTo(oldcxt);
+}
+
+/*
+ * PinPortal
+ *		Protect a portal from dropping.
+ *
+ * A pinned portal is still unpinned and dropped at transaction or
+ * subtransaction abort.
+ */
+void
+PinPortal(Portal portal)
+{
+	if (portal->portalPinned)
+		elog(ERROR, "portal already pinned");
+
+	portal->portalPinned = true;
+}
+
+void
+UnpinPortal(Portal portal)
+{
+	if (!portal->portalPinned)
+		elog(ERROR, "portal not pinned");
+
+	portal->portalPinned = false;
 }
 
 /*
@@ -373,9 +423,16 @@ PortalDrop(Portal portal, bool isTopCommit)
 {
 	AssertArg(PortalIsValid(portal));
 
-	/* Not sure if this case can validly happen or not... */
-	if (PortalGetStatus(portal) == PORTAL_ACTIVE) 
-		elog(ERROR, "cannot drop active or queued portal");
+	/*
+	 * Don't allow dropping a pinned portal, it's still needed by whoever
+	 * pinned it. Not sure if the PORTAL_ACTIVE case can validly happen or
+	 * not...
+	 */
+	if (portal->portalPinned ||
+		portal->status == PORTAL_ACTIVE)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_CURSOR_STATE),
+				 errmsg("cannot drop active portal \"%s\"", portal->name)));
 
 	TeardownSequenceServer();
 
@@ -387,15 +444,14 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 */
 	PortalHashTableDelete(portal);
 
-    if (portal->releaseResLock)
-    {
-        portal->releaseResLock = false;
         ResUnLockPortal(portal);
-    }
 
 	/* let portalcmds.c clean up the state it knows about */
 	if (portal->cleanup)
 		(*portal->cleanup) (portal);
+
+	/* drop cached plan reference, if any */
+	PortalReleaseCachedPlan(portal);
 
 	/*
 	 * Release any resources still attached to the portal.	There are several
@@ -421,9 +477,9 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 * eventually ends.
 	 */
 	if (portal->resowner &&
-		(!isTopCommit || PortalGetStatus(portal) == PORTAL_FAILED))
+		(!isTopCommit || portal->status == PORTAL_FAILED))
 	{
-		bool		isCommit = (PortalGetStatus(portal) != PORTAL_FAILED);
+		bool		isCommit = (portal->status != PORTAL_FAILED);
 
 		ResourceOwnerRelease(portal->resowner,
 							 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -448,11 +504,11 @@ PortalDrop(Portal portal, bool isTopCommit)
 		MemoryContext oldcontext;
 
 		oldcontext = MemoryContextSwitchTo(portal->holdContext);
-		tuplestore_end(portal->holdStore); 
+		tuplestore_end(portal->holdStore);
 		MemoryContextSwitchTo(oldcontext);
 		portal->holdStore = NULL;
 	}
-	
+
 	/* delete tuplestore storage, if any */
 	if (portal->holdContext)
 		MemoryContextDelete(portal->holdContext);
@@ -465,24 +521,25 @@ PortalDrop(Portal portal, bool isTopCommit)
 }
 
 /*
- * DropDependentPortals
- *		Drop any portals using the specified context as queryContext.
+ * Delete all declared cursors.
  *
- * This is normally used to make sure we can safely drop a prepared statement.
+ * Used by commands: CLOSE ALL, DISCARD ALL
  */
 void
-DropDependentPortals(MemoryContext queryContext)
+PortalHashTableDeleteAll(void)
 {
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
-	hash_seq_init(&status, PortalHashTable);
+	if (PortalHashTable == NULL)
+		return;
 
-	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	hash_seq_init(&status, PortalHashTable);
+	while ((hentry = hash_seq_search(&status)) != NULL)
 	{
 		Portal		portal = hentry->portal;
 
-		if (portal->queryContext == queryContext)
+		if (portal->status != PORTAL_ACTIVE)
 			PortalDrop(portal, false);
 	}
 }
@@ -513,7 +570,7 @@ CommitHoldablePortals(void)
 		/* Is it a holdable portal created in the current xact? */
 		if ((portal->cursorOptions & CURSOR_OPT_HOLD) &&
 			portal->createSubid != InvalidSubTransactionId &&
-			PortalGetStatus(portal) == PORTAL_READY)
+			portal->status == PORTAL_READY)
 		{
 			/*
 			 * We are exiting the transaction that created a holdable cursor.
@@ -525,6 +582,9 @@ CommitHoldablePortals(void)
 			 */
 			PortalCreateHoldStore(portal);
 			PersistHoldablePortal(portal);
+
+			/* drop cached plan reference, if any */
+			PortalReleaseCachedPlan(portal);
 
 			/*
 			 * Any resources belonging to the portal will be released in the
@@ -573,7 +633,7 @@ PrepareHoldablePortals(void)
 		/* Is it a holdable portal created in the current xact? */
 		if ((portal->cursorOptions & CURSOR_OPT_HOLD) &&
 			portal->createSubid != InvalidSubTransactionId &&
-			PortalGetStatus(portal) == PORTAL_READY)
+			portal->status == PORTAL_READY)
 		{
 			/*
 			 * We are exiting the transaction that created a holdable cursor.
@@ -613,11 +673,18 @@ AtCommit_Portals(void)
 		 * Note however that any resource owner attached to such a portal is
 		 * still going to go away, so don't leave a dangling pointer.
 		 */
-		if (PortalGetStatus(portal) == PORTAL_ACTIVE)
+		if (portal->status == PORTAL_ACTIVE)
 		{
 			portal->resowner = NULL;
 			continue;
 		}
+
+		/*
+		 * There should be no pinned portals anymore. Complain if someone
+		 * leaked one.
+		 */
+		if (portal->portalPinned)
+			elog(ERROR, "cannot commit while a portal is pinned");
 
 		/*
 		 * Do nothing to cursors held over from a previous transaction
@@ -657,8 +724,8 @@ AtAbort_Portals(void)
 	{
 		Portal		portal = hentry->portal;
 
-		if (PortalGetStatus(portal) == PORTAL_ACTIVE)
-			PortalSetStatus(portal, PORTAL_FAILED);
+		if (portal->status == PORTAL_ACTIVE)
+			portal->status = PORTAL_FAILED;
 
 		/*
 		 * Do nothing else to cursors held over from a previous transaction.
@@ -672,6 +739,9 @@ AtAbort_Portals(void)
 			(*portal->cleanup) (portal);
 			portal->cleanup = NULL;
 		}
+
+		/* drop cached plan reference, if any */
+		PortalReleaseCachedPlan(portal);
 
 		/*
 		 * Any resources belonging to the portal will be released in the
@@ -709,12 +779,20 @@ AtCleanup_Portals(void)
 		/* Do nothing to cursors held over from a previous transaction */
 		if (portal->createSubid == InvalidSubTransactionId)
 		{
-			Assert(PortalGetStatus(portal) != PORTAL_ACTIVE);
+			Assert(portal->status != PORTAL_ACTIVE);
 			Assert(portal->resowner == NULL);
 			continue;
 		}
 
-		/* Else zap it. */
+		/*
+		 * If a portal is still pinned, forcibly unpin it. PortalDrop will
+		 * not let us drop the portal otherwise. Whoever pinned the portal
+		 * was interrupted by the abort too and won't try to use it anymore.
+		 */
+		if (portal->portalPinned)
+			portal->portalPinned = false;
+
+		/* Zap it. */
 		PortalDrop(portal, false);
 	}
 }
@@ -765,9 +843,6 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
-    UnusedArg(parentSubid);
-    UnusedArg(parentXactOwner);
-
 	hash_seq_init(&status, PortalHashTable);
 
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
@@ -785,8 +860,8 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		 *
 		 * This is only needed to dodge the sanity check in PortalDrop.
 		 */
-		if (PortalGetStatus(portal) == PORTAL_ACTIVE)
-			PortalSetStatus(portal, PORTAL_FAILED);
+		if (portal->status == PORTAL_ACTIVE)
+			portal->status = PORTAL_FAILED;
 
 		/*
 		 * If the portal is READY then allow it to survive into the parent
@@ -807,7 +882,7 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		}
 		else
 #endif
-
+		{
 			/* let portalcmds.c clean up the state it knows about */
 			if (portal->cleanup)
 			{
@@ -815,20 +890,24 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 				portal->cleanup = NULL;
 			}
 
-		/*
-		 * Any resources belonging to the portal will be released in the
-		 * upcoming transaction-wide cleanup; they will be gone before we
-		 * run PortalDrop.
-		 */
-		portal->resowner = NULL;
+			/* drop cached plan reference, if any */
+			PortalReleaseCachedPlan(portal);
 
-		/*
-		 * Although we can't delete the portal data structure proper, we
-		 * can release any memory in subsidiary contexts, such as executor
-		 * state.  The cleanup hook was the last thing that might have
-		 * needed data there.
-		 */
-		MemoryContextDeleteChildren(PortalGetHeapMemory(portal));
+			/*
+			 * Any resources belonging to the portal will be released in the
+			 * upcoming transaction-wide cleanup; they will be gone before we
+			 * run PortalDrop.
+			 */
+			portal->resowner = NULL;
+
+			/*
+			 * Although we can't delete the portal data structure proper, we
+			 * can release any memory in subsidiary contexts, such as executor
+			 * state.  The cleanup hook was the last thing that might have
+			 * needed data there.
+			 */
+			MemoryContextDeleteChildren(PortalGetHeapMemory(portal));
+		}
 	}
 }
 
@@ -853,6 +932,14 @@ AtSubCleanup_Portals(SubTransactionId mySubid)
 		if (portal->createSubid != mySubid)
 			continue;
 
+		/*
+		 * If a portal is still pinned, forcibly unpin it. PortalDrop will not
+		 * let us drop the portal otherwise. Whoever pinned the portal was
+		 * interrupted by the abort too and won't try to use it anymore.
+		 */
+		if (portal->portalPinned)
+			portal->portalPinned = false;
+
 		/* Zap it. */
 		PortalDrop(portal, false);
 	}
@@ -876,9 +963,7 @@ AtExitCleanup_ResPortals(void)
 	{
 		Portal		portal = hentry->portal;
 
-		if (portal->releaseResLock)
-			ResUnLockPortal(portal);
-
+		ResUnLockPortal(portal);
 	}
 }
 
@@ -965,8 +1050,8 @@ pg_cursor(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(per_query_ctx);
 
 	/*
-	 * build tupdesc for result tuples. This must match the definition of
-	 * the pg_cursors view in system_views.sql
+	 * build tupdesc for result tuples. This must match the definition of the
+	 * pg_cursors view in system_views.sql
 	 */
 	tupdesc = CreateTemplateTupleDesc(6, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",
@@ -988,6 +1073,9 @@ pg_cursor(PG_FUNCTION_ARGS)
 	 */
 	tupstore = tuplestore_begin_heap(true, false, work_mem);
 
+	/* generate junk in short-term context */
+	MemoryContextSwitchTo(oldcontext);
+
 	hash_seq_init(&hash_seq, PortalHashTable);
 	while ((hentry = hash_seq_search(&hash_seq)) != NULL)
 	{
@@ -1000,10 +1088,7 @@ pg_cursor(PG_FUNCTION_ARGS)
 		if (!portal->visible)
 			continue;
 
-		/* generate junk in short-term context */
-		MemoryContextSwitchTo(oldcontext);
-
-		MemSet(nulls, 0, sizeof(nulls));
+		MemSet(nulls, false, sizeof(nulls));
 
 		values[0] = DirectFunctionCall1(textin, CStringGetDatum((char *) portal->name));
 		if (!portal->sourceText)
@@ -1018,53 +1103,15 @@ pg_cursor(PG_FUNCTION_ARGS)
 
 		tuple = heap_form_tuple(tupdesc, values, nulls);
 
-		/* switch to appropriate context while storing the tuple */
-		MemoryContextSwitchTo(per_query_ctx);
 		tuplestore_puttuple(tupstore, tuple);
 	}
 
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
 
-	MemoryContextSwitchTo(oldcontext);
-
 	rsinfo->returnMode = SFRM_Materialize;
 	rsinfo->setResult = tupstore;
 	rsinfo->setDesc = tupdesc;
 
 	return (Datum) 0;
-}
-
-void PortalSetStatus(Portal p, PortalStatus s)
-{
-	p->portal_status = s;
-}
-
-PortalStatus
-PortalGetStatus(Portal p)
-{
-	return p->portal_status;
-}
-
-const char *
-PortalGetStatusString(Portal p)
-{
-	switch (p->portal_status)
-	{
-		case PORTAL_NEW:
-			return "PORTAL_NEW";
-		case PORTAL_READY:
-			return "PORTAL_READY";
-		case PORTAL_QUEUE:
-			return "PORTAL_QUEUE";
-		case PORTAL_ACTIVE:
-			return "PORTAL_ACTIVE";
-		case PORTAL_DONE:
-			return "PORTAL_DONE";
-		case PORTAL_FAILED:
-			return "PORTAL_FAILED";
-		case PORTAL_STATUSMAX:
-		default:
-			return "Unknown portal status";
-	}
 }

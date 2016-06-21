@@ -26,6 +26,7 @@ lib*dll.defautom4te.cache
 **/test/*.t
 **/tags
 *.pyc
+**/vagrant-local.yml
 
 # Local excludes in root directory
 /GNUmakefile
@@ -44,9 +45,9 @@ Debug
 Release
 pgsql.sln
 cscope.*
+build.sh
 
 # Added
 *.swp
-*.out
 
 VERSION

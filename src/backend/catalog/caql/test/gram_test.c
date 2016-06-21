@@ -7,6 +7,7 @@
 #include "catalog/caqlparse.h"
 #include "nodes/value.h"
 
+#include "../gram.c"
 
 /*
  * Test for simple SELECT
@@ -190,5 +191,8 @@ main(int argc, char* argv[])
 			unit_test(test__caql_raw_parse_fail2),
 			unit_test(test__caql_raw_parse_fail3),
 	};
+
+	MemoryContextInit();
+
 	return run_tests(tests);
 }

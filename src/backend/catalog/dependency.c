@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/dependency.c,v 1.60 2006/10/04 00:29:50 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/dependency.c,v 1.69.2.1 2008/07/11 16:08:50 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,6 +24,8 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_amop.h"
+#include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_authid.h"
@@ -35,20 +37,22 @@
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extprotocol.h"
 #include "catalog/pg_filespace.h"
-#include "catalog/pg_foreign_data_wrapper.h"
-#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_partition_encoding.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
+#include "catalog/pg_ts_config.h"
+#include "catalog/pg_ts_dict.h"
+#include "catalog/pg_ts_parser.h"
+#include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_encoding.h"
-#include "catalog/pg_user_mapping.h"
 #include "cdb/cdbpartition.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
@@ -60,7 +64,6 @@
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
-#include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "parser/parsetree.h"
@@ -105,16 +108,20 @@ static const Oid object_classes[MAX_OCLASS] = {
 	LanguageRelationId,			/* OCLASS_LANGUAGE */
 	OperatorRelationId,			/* OCLASS_OPERATOR */
 	OperatorClassRelationId,	/* OCLASS_OPCLASS */
+	OperatorFamilyRelationId,	/* OCLASS_OPFAMILY */
+	AccessMethodOperatorRelationId,		/* OCLASS_AMOP */
+	AccessMethodProcedureRelationId,	/* OCLASS_AMPROC */
 	RewriteRelationId,			/* OCLASS_REWRITE */
 	TriggerRelationId,			/* OCLASS_TRIGGER */
 	NamespaceRelationId,		/* OCLASS_SCHEMA */
-	AuthIdRelationId,           /* OCLASS_ROLE */
-	DatabaseRelationId,         /* OCLASS_DATABASE */
-	TableSpaceRelationId,       /* OCLASS_TBLSPACE */
-	FileSpaceRelationId,        /* OCLASS_FILESPACE */
-	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
-	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
-	UserMappingRelationId,		/* OCLASS_USER_MAPPING */
+	TSParserRelationId,			/* OCLASS_TSPARSER */
+	TSDictionaryRelationId,		/* OCLASS_TSDICT */
+	TSTemplateRelationId,		/* OCLASS_TSTEMPLATE */
+	TSConfigRelationId,			/* OCLASS_TSCONFIG */
+	AuthIdRelationId,			/* OCLASS_ROLE */
+	DatabaseRelationId,			/* OCLASS_DATABASE */
+	TableSpaceRelationId,		/* OCLASS_TBLSPACE */
+	FileSpaceRelationId,		/* OCLASS_FILESPACE */
 	ExtprotocolRelationId,		/* OCLASS_EXTPROTOCOL */
 	CompressionRelationId		/* OCLASS_COMPRESSION */
 };
@@ -149,6 +156,7 @@ static int	object_address_comparator(const void *a, const void *b);
 static void add_object_address(ObjectClass oclass, Oid objectId, int32 subId,
 				   ObjectAddresses *addrs);
 static void getRelationDescription(StringInfo buffer, Oid relid);
+static void getOpFamilyDescription(StringInfo buffer, Oid opfid);
 
 
 /*
@@ -212,7 +220,7 @@ performDeletion(const ObjectAddress *object,
  * filled with some objects.  Also, the deleted objects are saved in the
  * alreadyDeleted list.
  *
- * XXX performDeletion could be refactored to be a thin wrapper to this
+ * XXX performDeletion could be refactored to be a thin wrapper around this
  * function.
  */
 static void
@@ -629,7 +637,7 @@ recursiveDeletion(const ObjectAddress *object,
 							(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
 							 errmsg("cannot drop %s because %s requires it",
 									objDescription, otherObjDesc),
-							 errhint("You may drop %s instead.",
+							 errhint("You can drop %s instead.",
 									 otherObjDesc)));
 				}
 
@@ -1018,6 +1026,18 @@ doDeletion(const ObjectAddress *object)
 			RemoveOpClassById(object->objectId);
 			break;
 
+		case OCLASS_OPFAMILY:
+			RemoveOpFamilyById(object->objectId);
+			break;
+
+		case OCLASS_AMOP:
+			RemoveAmOpEntryById(object->objectId);
+			break;
+
+		case OCLASS_AMPROC:
+			RemoveAmProcEntryById(object->objectId);
+			break;
+
 		case OCLASS_REWRITE:
 			RemoveRewriteRuleById(object->objectId);
 			break;
@@ -1030,26 +1050,26 @@ doDeletion(const ObjectAddress *object)
 			RemoveSchemaById(object->objectId);
 			break;
 
+		case OCLASS_TSPARSER:
+			RemoveTSParserById(object->objectId);
+			break;
+
+		case OCLASS_TSDICT:
+			RemoveTSDictionaryById(object->objectId);
+			break;
+
+		case OCLASS_TSTEMPLATE:
+			RemoveTSTemplateById(object->objectId);
+			break;
+
+		case OCLASS_TSCONFIG:
+			RemoveTSConfigurationById(object->objectId);
+			break;
+
 		case OCLASS_FILESPACE:
 			RemoveFileSpaceById(object->objectId);
 			break;
 
-			/*
-			 * OCLASS_ROLE, OCLASS_DATABASE, OCLASS_TBLSPACE intentionally
-			 * not handled here
-			 */
-
-		case OCLASS_FDW:
-			RemoveForeignDataWrapperById(object->objectId);
-			break;
-
-		case OCLASS_FOREIGN_SERVER:
-			RemoveForeignServerById(object->objectId);
-			break;
-
-		case OCLASS_USER_MAPPING:
-			RemoveUserMappingById(object->objectId);
-			break;
 
 		case OCLASS_EXTPROTOCOL:
 			RemoveExtProtocolById(object->objectId);
@@ -1058,7 +1078,12 @@ doDeletion(const ObjectAddress *object)
 		case OCLASS_COMPRESSION:
 			elog(NOTICE, "dependency: not yet implemented!");
 			break;
-			
+
+			/*
+			 * OCLASS_ROLE, OCLASS_DATABASE, OCLASS_TBLSPACE intentionally
+			 * not handled here
+			 */
+
 		default:
 			elog(ERROR, "unrecognized object class: %u",
 				 object->classId);
@@ -1113,6 +1138,12 @@ recordDependencyOnExpr(const ObjectAddress *depender,
  * range table.  An additional frammish is that dependencies on that
  * relation (or its component columns) will be marked with 'self_behavior',
  * whereas 'behavior' is used for everything else.
+ *
+ * NOTE: the caller should ensure that a whole-table dependency on the
+ * specified relation is created separately, if one is needed.  In particular,
+ * a whole-row Var "relation.*" will not cause this routine to emit any
+ * dependency item.  This is appropriate behavior for subexpressions of an
+ * ordinary query, so other cases need to cope as necessary.
  */
 void
 recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
@@ -1228,7 +1259,14 @@ find_expr_references_walker(Node *node,
 
 		/*
 		 * A whole-row Var references no specific columns, so adds no new
-		 * dependency.
+		 * dependency.  (We assume that there is a whole-table dependency
+		 * arising from each underlying rangetable entry.  While we could
+		 * record such a dependency when finding a whole-row Var that
+		 * references a relation directly, it's quite unclear how to extend
+		 * that to whole-row Vars for JOINs, so it seems better to leave the
+		 * responsibility with the range table.  Note that this poses some
+		 * risks for identifying dependencies of stand-alone expressions:
+		 * whole-table references may need to be created separately.)
 		 */
 		if (var->varattno == InvalidAttrNumber)
 			return false;
@@ -1270,8 +1308,8 @@ find_expr_references_walker(Node *node,
 		/*
 		 * If it's a regclass or similar literal referring to an existing
 		 * object, add a reference to that object.	(Currently, only the
-		 * regclass case has any likely use, but we may as well handle all the
-		 * OID-alias datatypes consistently.)
+		 * regclass and regconfig cases have any likely use, but we may as
+		 * well handle all the OID-alias datatypes consistently.)
 		 */
 		if (!con->constisnull)
 		{
@@ -1318,6 +1356,22 @@ find_expr_references_walker(Node *node,
 									" WHERE oid = :1 ",
 									ObjectIdGetDatum(objoid))))
 						add_object_address(OCLASS_TYPE, objoid, 0,
+										   context->addrs);
+					break;
+				case REGCONFIGOID:
+					objoid = DatumGetObjectId(con->constvalue);
+					if (SearchSysCacheExists(TSCONFIGOID,
+											 ObjectIdGetDatum(objoid),
+											 0, 0, 0))
+						add_object_address(OCLASS_TSCONFIG, objoid, 0,
+										   context->addrs);
+					break;
+				case REGDICTIONARYOID:
+					objoid = DatumGetObjectId(con->constvalue);
+					if (SearchSysCacheExists(TSDICTOID,
+											 ObjectIdGetDatum(objoid),
+											 0, 0, 0))
+						add_object_address(OCLASS_TSDICT, objoid, 0,
 										   context->addrs);
 					break;
 			}
@@ -1401,6 +1455,25 @@ find_expr_references_walker(Node *node,
 		add_object_address(OCLASS_TYPE, relab->resulttype, 0,
 						   context->addrs);
 	}
+	if (IsA(node, CoerceViaIO))
+	{
+		CoerceViaIO *iocoerce = (CoerceViaIO *) node;
+
+		/* since there is no exposed function, need to depend on type */
+		add_object_address(OCLASS_TYPE, iocoerce->resulttype, 0,
+						   context->addrs);
+	}
+	if (IsA(node, ArrayCoerceExpr))
+	{
+		ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *) node;
+
+		if (OidIsValid(acoerce->elemfuncid))
+			add_object_address(OCLASS_PROC, acoerce->elemfuncid, 0,
+							   context->addrs);
+		add_object_address(OCLASS_TYPE, acoerce->resulttype, 0,
+						   context->addrs);
+		/* fall through to examine arguments */
+	}
 	if (IsA(node, ConvertRowtypeExpr))
 	{
 		ConvertRowtypeExpr *cvt = (ConvertRowtypeExpr *) node;
@@ -1426,9 +1499,9 @@ find_expr_references_walker(Node *node,
 			add_object_address(OCLASS_OPERATOR, lfirst_oid(l), 0,
 							   context->addrs);
 		}
-		foreach(l, rcexpr->opclasses)
+		foreach(l, rcexpr->opfamilies)
 		{
-			add_object_address(OCLASS_OPCLASS, lfirst_oid(l), 0,
+			add_object_address(OCLASS_OPFAMILY, lfirst_oid(l), 0,
 							   context->addrs);
 		}
 		/* fall through to examine arguments */
@@ -1674,6 +1747,21 @@ object_address_present(const ObjectAddress *object,
 }
 
 /*
+ * Record multiple dependencies from an ObjectAddresses array, after first
+ * removing any duplicates.
+ */
+void
+record_object_address_dependencies(const ObjectAddress *depender,
+								   ObjectAddresses *referenced,
+								   DependencyType behavior)
+{
+	eliminate_duplicate_dependencies(referenced);
+	recordMultipleDependencies(depender,
+							   referenced->refs, referenced->numrefs,
+							   behavior);
+}
+
+/*
  * Clean up when done with an ObjectAddresses array.
  */
 void
@@ -1734,6 +1822,18 @@ getObjectClass(const ObjectAddress *object)
 			Assert(object->objectSubId == 0);
 			return OCLASS_OPCLASS;
 
+		case OperatorFamilyRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_OPFAMILY;
+
+		case AccessMethodOperatorRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_AMOP;
+
+		case AccessMethodProcedureRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_AMPROC;
+
 		case RewriteRelationId:
 			Assert(object->objectSubId == 0);
 			return OCLASS_REWRITE;
@@ -1745,6 +1845,22 @@ getObjectClass(const ObjectAddress *object)
 		case NamespaceRelationId:
 			Assert(object->objectSubId == 0);
 			return OCLASS_SCHEMA;
+
+		case TSParserRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_TSPARSER;
+
+		case TSDictionaryRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_TSDICT;
+
+		case TSTemplateRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_TSTEMPLATE;
+
+		case TSConfigRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_TSCONFIG;
 
 		case AuthIdRelationId:
 			Assert(object->objectSubId == 0);
@@ -1762,18 +1878,6 @@ getObjectClass(const ObjectAddress *object)
 			Assert(object->objectSubId == 0);
 			return OCLASS_FILESPACE;
 			
-		case ForeignDataWrapperRelationId:
-			Assert(object->objectSubId == 0);
-			return OCLASS_FDW;
-
-		case ForeignServerRelationId:
-			Assert(object->objectSubId == 0);
-			return OCLASS_FOREIGN_SERVER;
-
-		case UserMappingRelationId:
-			Assert(object->objectSubId == 0);
-			return OCLASS_USER_MAPPING;
-
 		case ExtprotocolRelationId:
 			Assert(object->objectSubId == 0);
 			return OCLASS_EXTPROTOCOL;
@@ -1847,22 +1951,16 @@ getObjectDescription(const ObjectAddress *object)
 
 		case OCLASS_CONSTRAINT:
 			{
-				HeapTuple	tup;
+				HeapTuple	conTup;
 				Form_pg_constraint con;
 
-				/* XXX XXX: SELECT conname, conrelid */
-					
-				tup = caql_getfirst(
-						NULL,
-						cql("SELECT * FROM pg_constraint "
-							" WHERE oid = :1 ",
-							ObjectIdGetDatum(object->objectId)));
-
-				if (!HeapTupleIsValid(tup))
-					elog(ERROR, "could not find tuple for constraint %u",
+				conTup = SearchSysCache(CONSTROID,
+										ObjectIdGetDatum(object->objectId),
+										0, 0, 0);
+				if (!HeapTupleIsValid(conTup))
+					elog(ERROR, "cache lookup failed for constraint %u",
 						 object->objectId);
-
-				con = (Form_pg_constraint) GETSTRUCT(tup);
+				con = (Form_pg_constraint) GETSTRUCT(conTup);
 
 				if (OidIsValid(con->conrelid))
 				{
@@ -1876,28 +1974,23 @@ getObjectDescription(const ObjectAddress *object)
 									 NameStr(con->conname));
 				}
 
+				ReleaseSysCache(conTup);
 				break;
 			}
 
 		case OCLASS_CONVERSION:
 			{
-				char	   *conname;
-				int			fetchCount;
+				HeapTuple	conTup;
 
-				conname = caql_getcstring_plus(
-						NULL,
-						&fetchCount,
-						NULL,
-						cql("SELECT conname FROM pg_conversion "
-							 " WHERE oid = :1 ",
-							 ObjectIdGetDatum(object->objectId)));
-
-				if (!fetchCount)
+				conTup = SearchSysCache(CONVOID,
+										ObjectIdGetDatum(object->objectId),
+										0, 0, 0);
+				if (!HeapTupleIsValid(conTup))
 					elog(ERROR, "cache lookup failed for conversion %u",
 						 object->objectId);
 				appendStringInfo(&buffer, _("conversion %s"),
-								 conname);
-				pfree(conname);
+				 NameStr(((Form_pg_conversion) GETSTRUCT(conTup))->conname));
+				ReleaseSysCache(conTup);
 				break;
 			}
 
@@ -1962,35 +2055,25 @@ getObjectDescription(const ObjectAddress *object)
 			{
 				HeapTuple	opcTup;
 				Form_pg_opclass opcForm;
+				HeapTuple	amTup;
+				Form_pg_am	amForm;
 				char	   *nspname;
-				char	   *amname;
-				int			fetchCount;
-				cqContext  *pcqCtx;
 
-				pcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_opclass "
-							" WHERE oid = :1 ",
-							ObjectIdGetDatum(object->objectId)));
-
-				opcTup = caql_getnext(pcqCtx);
-
+				opcTup = SearchSysCache(CLAOID,
+										ObjectIdGetDatum(object->objectId),
+										0, 0, 0);
 				if (!HeapTupleIsValid(opcTup))
 					elog(ERROR, "cache lookup failed for opclass %u",
 						 object->objectId);
 				opcForm = (Form_pg_opclass) GETSTRUCT(opcTup);
 
-				amname = caql_getcstring_plus(
-						NULL,
-						&fetchCount,
-						NULL,
-						cql("SELECT amname FROM pg_am "
-							" WHERE oid = :1 ",
-							ObjectIdGetDatum(opcForm->opcamid)));
-
-				if (!fetchCount)
+				amTup = SearchSysCache(AMOID,
+									   ObjectIdGetDatum(opcForm->opcmethod),
+									   0, 0, 0);
+				if (!HeapTupleIsValid(amTup))
 					elog(ERROR, "cache lookup failed for access method %u",
-						 opcForm->opcamid);
+						 opcForm->opcmethod);
+				amForm = (Form_pg_am) GETSTRUCT(amTup);
 
 				/* Qualify the name if not visible in search path */
 				if (OpclassIsVisible(object->objectId))
@@ -2001,10 +2084,88 @@ getObjectDescription(const ObjectAddress *object)
 				appendStringInfo(&buffer, _("operator class %s for access method %s"),
 								 quote_qualified_identifier(nspname,
 												  NameStr(opcForm->opcname)),
-								 amname);
+								 NameStr(amForm->amname));
 
-				pfree(amname);
-				caql_endscan(pcqCtx);
+				ReleaseSysCache(amTup);
+				ReleaseSysCache(opcTup);
+				break;
+			}
+
+		case OCLASS_OPFAMILY:
+			getOpFamilyDescription(&buffer, object->objectId);
+			break;
+
+		case OCLASS_AMOP:
+			{
+				Relation	amopDesc;
+				ScanKeyData skey[1];
+				SysScanDesc amscan;
+				HeapTuple	tup;
+				Form_pg_amop amopForm;
+
+				amopDesc = heap_open(AccessMethodOperatorRelationId,
+									 AccessShareLock);
+
+				ScanKeyInit(&skey[0],
+							ObjectIdAttributeNumber,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(object->objectId));
+
+				amscan = systable_beginscan(amopDesc, AccessMethodOperatorOidIndexId, true,
+											SnapshotNow, 1, skey);
+
+				tup = systable_getnext(amscan);
+
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "could not find tuple for amop entry %u",
+						 object->objectId);
+
+				amopForm = (Form_pg_amop) GETSTRUCT(tup);
+
+				appendStringInfo(&buffer, _("operator %d %s of "),
+								 amopForm->amopstrategy,
+								 format_operator(amopForm->amopopr));
+				getOpFamilyDescription(&buffer, amopForm->amopfamily);
+
+				systable_endscan(amscan);
+				heap_close(amopDesc, AccessShareLock);
+				break;
+			}
+
+		case OCLASS_AMPROC:
+			{
+				Relation	amprocDesc;
+				ScanKeyData skey[1];
+				SysScanDesc amscan;
+				HeapTuple	tup;
+				Form_pg_amproc amprocForm;
+
+				amprocDesc = heap_open(AccessMethodProcedureRelationId,
+									   AccessShareLock);
+
+				ScanKeyInit(&skey[0],
+							ObjectIdAttributeNumber,
+							BTEqualStrategyNumber, F_OIDEQ,
+							ObjectIdGetDatum(object->objectId));
+
+				amscan = systable_beginscan(amprocDesc, AccessMethodProcedureOidIndexId, true,
+											SnapshotNow, 1, skey);
+
+				tup = systable_getnext(amscan);
+
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "could not find tuple for amproc entry %u",
+						 object->objectId);
+
+				amprocForm = (Form_pg_amproc) GETSTRUCT(tup);
+
+				appendStringInfo(&buffer, _("function %d %s of "),
+								 amprocForm->amprocnum,
+								 format_procedure(amprocForm->amproc));
+				getOpFamilyDescription(&buffer, amprocForm->amprocfamily);
+
+				systable_endscan(amscan);
+				heap_close(amprocDesc, AccessShareLock);
 				break;
 			}
 
@@ -2071,6 +2232,70 @@ getObjectDescription(const ObjectAddress *object)
 				break;
 			}
 
+		case OCLASS_TSPARSER:
+			{
+				HeapTuple	tup;
+
+				tup = SearchSysCache(TSPARSEROID,
+									 ObjectIdGetDatum(object->objectId),
+									 0, 0, 0);
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "cache lookup failed for text search parser %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("text search parser %s"),
+					 NameStr(((Form_pg_ts_parser) GETSTRUCT(tup))->prsname));
+				ReleaseSysCache(tup);
+				break;
+			}
+
+		case OCLASS_TSDICT:
+			{
+				HeapTuple	tup;
+
+				tup = SearchSysCache(TSDICTOID,
+									 ObjectIdGetDatum(object->objectId),
+									 0, 0, 0);
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "cache lookup failed for text search dictionary %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("text search dictionary %s"),
+					  NameStr(((Form_pg_ts_dict) GETSTRUCT(tup))->dictname));
+				ReleaseSysCache(tup);
+				break;
+			}
+
+		case OCLASS_TSTEMPLATE:
+			{
+				HeapTuple	tup;
+
+				tup = SearchSysCache(TSTEMPLATEOID,
+									 ObjectIdGetDatum(object->objectId),
+									 0, 0, 0);
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "cache lookup failed for text search template %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("text search template %s"),
+				  NameStr(((Form_pg_ts_template) GETSTRUCT(tup))->tmplname));
+				ReleaseSysCache(tup);
+				break;
+			}
+
+		case OCLASS_TSCONFIG:
+			{
+				HeapTuple	tup;
+
+				tup = SearchSysCache(TSCONFIGOID,
+									 ObjectIdGetDatum(object->objectId),
+									 0, 0, 0);
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "cache lookup failed for text search configuration %u",
+						 object->objectId);
+				appendStringInfo(&buffer, _("text search configuration %s"),
+					 NameStr(((Form_pg_ts_config) GETSTRUCT(tup))->cfgname));
+				ReleaseSysCache(tup);
+				break;
+			}
+
 		case OCLASS_ROLE:
 			{
 				appendStringInfo(&buffer, _("role %s"),
@@ -2102,24 +2327,6 @@ getObjectDescription(const ObjectAddress *object)
 				break;
 			}
 			
-		case OCLASS_FDW:
-			{
-				ForeignDataWrapper *fdw;
-
-				fdw = GetForeignDataWrapper(object->objectId);
-				appendStringInfo(&buffer, _("foreign-data wrapper %s"), fdw->fdwname);
-				break;
-			}
-
-		case OCLASS_FOREIGN_SERVER:
-			{
-				ForeignServer *srv;
-
-				srv = GetForeignServer(object->objectId);
-				appendStringInfo(&buffer, _("server %s"), srv->servername);
-				break;
-			}
-
 		case OCLASS_FILESPACE:
 			{
 				char       *fsname;
@@ -2131,33 +2338,6 @@ getObjectDescription(const ObjectAddress *object)
 				appendStringInfo(&buffer, _("filespace %s"), fsname);
 				break;
 			}				
-
-		case OCLASS_USER_MAPPING:
-			{
-				Oid			useid;
-				char	   *usename;
-				int			fetchCount;
-
-				useid  = caql_getoid_plus(
-						NULL,
-						&fetchCount,
-						NULL,
-						cql("SELECT umuser FROM pg_user_mapping "
-							" WHERE oid = :1 ",
-							ObjectIdGetDatum(object->objectId)));
-
-				if (!fetchCount)
-					elog(ERROR, "cache lookup failed for user mapping %u",
-						 object->objectId);
-
-				if (OidIsValid(useid))
-					usename = GetUserNameFromId(useid);
-				else
-					usename = "public";
-
-				appendStringInfo(&buffer, _("user mapping for %s"), usename);
-				break;
-			}
 
 		case OCLASS_EXTPROTOCOL:
 			{
@@ -2269,4 +2449,46 @@ getRelationDescription(StringInfo buffer, Oid relid)
 	}
 
 	caql_endscan(pcqCtx);
+}
+
+/*
+ * subroutine for getObjectDescription: describe an operator family
+ */
+static void
+getOpFamilyDescription(StringInfo buffer, Oid opfid)
+{
+	HeapTuple	opfTup;
+	Form_pg_opfamily opfForm;
+	HeapTuple	amTup;
+	Form_pg_am	amForm;
+	char	   *nspname;
+
+	opfTup = SearchSysCache(OPFAMILYOID,
+							ObjectIdGetDatum(opfid),
+							0, 0, 0);
+	if (!HeapTupleIsValid(opfTup))
+		elog(ERROR, "cache lookup failed for opfamily %u", opfid);
+	opfForm = (Form_pg_opfamily) GETSTRUCT(opfTup);
+
+	amTup = SearchSysCache(AMOID,
+						   ObjectIdGetDatum(opfForm->opfmethod),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(amTup))
+		elog(ERROR, "cache lookup failed for access method %u",
+			 opfForm->opfmethod);
+	amForm = (Form_pg_am) GETSTRUCT(amTup);
+
+	/* Qualify the name if not visible in search path */
+	if (OpfamilyIsVisible(opfid))
+		nspname = NULL;
+	else
+		nspname = get_namespace_name(opfForm->opfnamespace);
+
+	appendStringInfo(buffer, _("operator family %s for access method %s"),
+					 quote_qualified_identifier(nspname,
+												NameStr(opfForm->opfname)),
+					 NameStr(amForm->amname));
+
+	ReleaseSysCache(amTup);
+	ReleaseSysCache(opfTup);
 }

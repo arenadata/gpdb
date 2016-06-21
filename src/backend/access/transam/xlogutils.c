@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/xlogutils.c,v 1.48 2006/10/04 00:29:49 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/xlogutils.c,v 1.51 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,6 +23,7 @@
 #include "postgres.h"
 
 #include "access/xlogutils.h"
+#include "catalog/pg_tablespace.h"
 #include "storage/bufpage.h"
 #include "storage/smgr.h"
 #include "utils/hsearch.h"
@@ -252,7 +253,9 @@ XLogCheckInvalidPages(void)
  * If "init" is true then the caller intends to rewrite the page fully
  * using the info in the XLOG record.  In this case we will extend the
  * relation if needed to make the page exist, and we will not complain about
- * the page being "new" (all zeroes).
+ * the page being "new" (all zeroes); in fact, we usually will supply a
+ * zeroed buffer without reading the page at all, so as to avoid unnecessary
+ * failure if the page is present on disk but has corrupt headers.
  *
  * If "init" is false then the caller needs the page to be valid already.
  * If the page doesn't exist or contains zeroes, we return InvalidBuffer.
@@ -274,7 +277,10 @@ XLogReadBuffer(Relation reln, BlockNumber blkno, bool init)
 	if (blkno < lastblock)
 	{
 		/* page exists in file */
-		buffer = ReadBuffer(reln, blkno);
+		if (init)
+			buffer = ReadOrZeroBuffer(reln, blkno);
+		else
+			buffer = ReadBuffer(reln, blkno);
 	}
 	else
 	{
@@ -582,6 +588,15 @@ XLogOpenRelation(RelFileNode rnode)
 		res->reldata.rd_smgr = NULL;
 		RelationOpenSmgr(&(res->reldata));
 
+		/*
+		 * Create the target file if it doesn't already exist.  This lets us
+		 * cope if the replay sequence contains writes to a relation that is
+		 * later deleted.  (The original coding of this routine would instead
+		 * return NULL, causing the writes to be suppressed. But that seems
+		 * like it risks losing valuable data if the filesystem loses an inode
+		 * during a crash.	Better to write the data until we are actually
+		 * told to delete the file.)
+		 */
 		// NOTE: We no longer re-create files automatically because
 		// new FileRep persistent objects will ensure files exist.
 
@@ -589,19 +604,8 @@ XLogOpenRelation(RelFileNode rnode)
 		{
 			MirrorDataLossTrackingState mirrorDataLossTrackingState;
 			int64 mirrorDataLossTrackingSessionNum;
-			
-			int primaryError;
 			bool mirrorDataLossOccurred;
 			
-			/*
-			 * Create the target file if it doesn't already exist.  This lets us
-			 * cope if the replay sequence contains writes to a relation that is
-			 * later deleted.  (The original coding of this routine would instead
-			 * return NULL, causing the writes to be suppressed. But that seems
-			 * like it risks losing valuable data if the filesystem loses an inode
-			 * during a crash.	Better to write the data until we are actually
-			 * told to delete the file.)
-			 */
 			// UNDONE: What about the persistent rel files table???
 			// UNDONE: This condition should not occur anymore.
 			// UNDONE: segmentFileNum and AO?
@@ -615,7 +619,6 @@ XLogOpenRelation(RelFileNode rnode)
 				mirrorDataLossTrackingState,
 				mirrorDataLossTrackingSessionNum,
 				/* ignoreAlreadyExists */ true,
-				&primaryError,
 				&mirrorDataLossOccurred);
 			
 		}

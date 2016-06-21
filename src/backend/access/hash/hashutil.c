@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashutil.c,v 1.49 2006/07/03 22:45:36 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashutil.c,v 1.53 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,6 +18,7 @@
 #include "access/hash.h"
 #include "access/reloptions.h"
 #include "executor/execdebug.h"
+#include "utils/lsyscache.h"
 
 
 /*
@@ -63,6 +64,9 @@ _hash_checkqual(IndexScanDesc scan, IndexTuple itup)
 
 /*
  * _hash_datum2hashkey -- given a Datum, call the index's hash procedure
+ *
+ * The Datum is assumed to be of the index's column type, so we can use the
+ * "primary" hash procedure that's tracked for us by the generic index code.
  */
 uint32
 _hash_datum2hashkey(Relation rel, Datum key)
@@ -73,6 +77,31 @@ _hash_datum2hashkey(Relation rel, Datum key)
 	procinfo = index_getprocinfo(rel, 1, HASHPROC);
 
 	return DatumGetUInt32(FunctionCall1(procinfo, key));
+}
+
+/*
+ * _hash_datum2hashkey_type -- given a Datum of a specified type,
+ *			hash it in a fashion compatible with this index
+ *
+ * This is much more expensive than _hash_datum2hashkey, so use it only in
+ * cross-type situations.
+ */
+uint32
+_hash_datum2hashkey_type(Relation rel, Datum key, Oid keytype)
+{
+	RegProcedure hash_proc;
+
+	/* XXX assumes index has only one attribute */
+	hash_proc = get_opfamily_proc(rel->rd_opfamily[0],
+								  keytype,
+								  keytype,
+								  HASHPROC);
+	if (!RegProcedureIsValid(hash_proc))
+		elog(ERROR, "missing support function %d(%u,%u) for index \"%s\"",
+			 HASHPROC, keytype, keytype,
+			 RelationGetRelationName(rel));
+
+	return DatumGetUInt32(OidFunctionCall1(hash_proc, key));
 }
 
 /*
@@ -108,6 +137,9 @@ _hash_log2(uint32 num)
 
 /*
  * _hash_checkpage -- sanity checks on the format of all hash pages
+ *
+ * If flags is not zero, it is a bitwise OR of the acceptable values of
+ * hasho_flag.
  */
 void
 _hash_checkpage(Relation rel, Buffer buf, int flags)

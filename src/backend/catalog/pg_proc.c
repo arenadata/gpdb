@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_proc.c,v 1.141 2006/10/19 18:32:46 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_proc.c,v 1.148.2.2 2010/05/11 04:57:51 itagaki Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,6 +31,8 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_type.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -56,9 +58,9 @@ static bool match_prosrc_to_literal(const char *prosrc, const char *literal,
 /* ----------------------------------------------------------------
  *		ProcedureCreate
  *
- * Note: allParameterTypes, parameterModes, parameterNames are either arrays
- * of the proper types or NULL.  We declare them Datum, not "ArrayType *",
- * to avoid importing array.h into pg_proc.h.
+ * Note: allParameterTypes, parameterModes, parameterNames, and proconfig
+ * are either arrays of the proper types or NULL.  We declare them Datum,
+ * not "ArrayType *", to avoid importing array.h into pg_proc.h.
  * ----------------------------------------------------------------
  */
 Oid
@@ -81,6 +83,10 @@ ProcedureCreate(const char *procedureName,
 				Datum allParameterTypes,
 				Datum parameterModes,
 				Datum parameterNames,
+				List *parameterDefaults,
+				Datum proconfig,
+				float4 procost,
+				float4 prorows,
 				char prodataaccess,
 				Oid funcOid)
 {
@@ -92,6 +98,8 @@ ProcedureCreate(const char *procedureName,
 	bool		genericOutParam = false;
 	bool		internalInParam = false;
 	bool		internalOutParam = false;
+	Oid			variadicType = InvalidOid;
+	Oid			proowner = GetUserId();
 	Relation	rel;
 	HeapTuple	tup;
 	HeapTuple	oldtup;
@@ -106,12 +114,14 @@ ProcedureCreate(const char *procedureName,
 	int			i;
 	cqContext	cqc;
 	cqContext  *pcqCtx;
+	bool		isnull;
+	Datum		ndefDatum;
+	int			ndefCount;
 
 	/*
 	 * sanity checks
 	 */
 	Assert(PointerIsValid(prosrc));
-	Assert(PointerIsValid(probin));
 
 	parameterCount = parameterTypes->dim1;
 	if (parameterCount < 0 || parameterCount > FUNC_MAX_ARGS)
@@ -147,9 +157,9 @@ ProcedureCreate(const char *procedureName,
 	}
 
 	/*
-	 * Do not allow return type ANYARRAY or ANYELEMENT unless at least one
-	 * input argument is ANYARRAY or ANYELEMENT.  Also, do not allow return
-	 * type INTERNAL unless at least one input argument is INTERNAL.
+	 * Do not allow polymorphic return type unless at least one input argument
+	 * is polymorphic.	Also, do not allow return type INTERNAL unless at
+	 * least one input argument is INTERNAL.
 	 */
 	for (i = 0; i < parameterCount; i++)
 	{
@@ -157,6 +167,8 @@ ProcedureCreate(const char *procedureName,
 		{
 			case ANYARRAYOID:
 			case ANYELEMENTOID:
+			case ANYNONARRAYOID:
+			case ANYENUMOID:
 				genericInParam = true;
 				break;
 			case INTERNALOID:
@@ -179,6 +191,8 @@ ProcedureCreate(const char *procedureName,
 			{
 				case ANYARRAYOID:
 				case ANYELEMENTOID:
+				case ANYNONARRAYOID:
+				case ANYENUMOID:
 					genericOutParam = true;
 					break;
 				case INTERNALOID:
@@ -188,16 +202,12 @@ ProcedureCreate(const char *procedureName,
 		}
 	}
 
-	/* Normally, we don't allow ANY* return type without an ANY* input type.
-	 * But during upgrade, we're creating "special" function used by aggregate
-	 * and we'll bypass this check for those functions.
-	 */
-	if ((returnType == ANYARRAYOID || returnType == ANYELEMENTOID ||
-		 genericOutParam) && !genericInParam && !gp_upgrade_mode)
+	if ((IsPolymorphicType(returnType) || genericOutParam)
+		&& !genericInParam)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("cannot determine result data type"),
-				 errdetail("A function returning \"anyarray\" or \"anyelement\" must have at least one argument of either type.")));
+				 errdetail("A function returning a polymorphic type must have at least one polymorphic argument.")));
 
 	if ((returnType == INTERNALOID || internalOutParam) && !internalInParam)
 		ereport(ERROR,
@@ -219,6 +229,66 @@ ProcedureCreate(const char *procedureName,
 						procedureName,
 						format_type_be(parameterTypes->values[0]))));
 
+	if (parameterModes != PointerGetDatum(NULL))
+	{
+		/*
+		 * We expect the array to be a 1-D CHAR array; verify that. We don't
+		 * need to use deconstruct_array() since the array data is just going
+		 * to look like a C array of char values.
+		 */
+		ArrayType 	*modesArray = (ArrayType *) DatumGetPointer(parameterModes);
+		char		*modes;
+
+		if (ARR_NDIM(modesArray) != 1 ||
+			ARR_DIMS(modesArray)[0] != allParamCount ||
+			ARR_HASNULL(modesArray) ||
+			ARR_ELEMTYPE(modesArray) != CHAROID)
+			elog(ERROR, "parameterModes is not a 1-D char array");
+		modes = (char *) ARR_DATA_PTR(modesArray);
+
+		/*
+		 * Only the last input parameter can be variadic; if it is, save
+		 * its element type. Errors here are just elog since caller should
+		 * have checked this already.
+		 */
+		for (i = 0; i < allParamCount; i++)
+		{
+			switch (modes[i])
+			{
+				case PROARGMODE_IN:
+				case PROARGMODE_INOUT:
+					if (OidIsValid(variadicType))
+						elog(ERROR, "variadic parameter must be last");
+					break;
+				case PROARGMODE_OUT:
+				case PROARGMODE_TABLE:
+					/* Okay */
+					break;
+				case PROARGMODE_VARIADIC:
+					if (OidIsValid(variadicType))
+						elog(ERROR, "variadic parameter must be last");
+					switch (allParams[i])
+					{
+						case ANYOID:
+							variadicType = ANYOID;
+							break;
+						case ANYARRAYOID:
+							variadicType = ANYELEMENTOID;
+							break;
+						default:
+							variadicType = get_element_type(allParams[i]);
+							if (!OidIsValid(variadicType))
+								elog(ERROR, "variadic parameter is not an array");
+							break;
+					}
+					break;
+				default:
+					elog(ERROR, "invalid parameter mode '%c'", modes[i]);
+					break;
+			}
+		}
+	}
+
 	/*
 	 * All seems OK; prepare the data to be inserted into pg_proc.
 	 */
@@ -233,8 +303,11 @@ ProcedureCreate(const char *procedureName,
 	namestrcpy(&procname, procedureName);
 	values[Anum_pg_proc_proname - 1] = NameGetDatum(&procname);
 	values[Anum_pg_proc_pronamespace - 1] = ObjectIdGetDatum(procNamespace);
-	values[Anum_pg_proc_proowner - 1] = ObjectIdGetDatum(GetUserId());
+	values[Anum_pg_proc_proowner - 1] = ObjectIdGetDatum(proowner);
 	values[Anum_pg_proc_prolang - 1] = ObjectIdGetDatum(languageObjectId);
+	values[Anum_pg_proc_procost - 1] = Float4GetDatum(procost);
+	values[Anum_pg_proc_prorows - 1] = Float4GetDatum(prorows);
+	values[Anum_pg_proc_provariadic - 1] = ObjectIdGetDatum(variadicType);
 	values[Anum_pg_proc_proisagg - 1] = BoolGetDatum(isAgg);
 	values[Anum_pg_proc_proiswin - 1] = BoolGetDatum(isWin);
 	values[Anum_pg_proc_prosecdef - 1] = BoolGetDatum(security_definer);
@@ -261,9 +334,19 @@ ProcedureCreate(const char *procedureName,
 		values[Anum_pg_proc_probin - 1] = CStringGetTextDatum(probin);
 	else
 		nulls[Anum_pg_proc_probin - 1] = true;
+	if (proconfig != PointerGetDatum(NULL))
+		values[Anum_pg_proc_proconfig - 1] = proconfig;
+	else
+		nulls[Anum_pg_proc_proconfig - 1] = 'n';
 	/* start out with empty permissions */
 	nulls[Anum_pg_proc_proacl - 1] = true;
 	values[Anum_pg_proc_prodataaccess - 1] = CharGetDatum(prodataaccess);
+	values[Anum_pg_proc_provariadic - 1] = ObjectIdGetDatum(variadicType);
+	values[Anum_pg_proc_pronargdefaults - 1] = UInt16GetDatum(list_length(parameterDefaults));
+	if (parameterDefaults != NIL)
+		values[Anum_pg_proc_proargdefaults - 1] = CStringGetTextDatum(nodeToString(parameterDefaults));
+	else
+		nulls[Anum_pg_proc_proargdefaults - 1] = true;
 
 	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
@@ -293,7 +376,7 @@ ProcedureCreate(const char *procedureName,
 					(errcode(ERRCODE_DUPLICATE_FUNCTION),
 			errmsg("function \"%s\" already exists with same argument types",
 				   procedureName)));
-		if (!pg_proc_ownercheck(oldOid, GetUserId()))
+		if (!pg_proc_ownercheck(oldOid, proowner))
 			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 						   procedureName);
 
@@ -330,6 +413,57 @@ ProcedureCreate(const char *procedureName,
 					errmsg("cannot change return type of existing function"),
 				errdetail("Row type defined by OUT parameters is different."),
 						 errhint("Use DROP FUNCTION first.")));
+		}
+
+		/*
+		 * If there are existing defaults, check compatibility: redefinition
+		 * must not remove any defaults nor change their types.  (Removing
+		 * a default might cause a function to fail to satisfy an existing
+		 * call.  Changing type would only be possible if the associated
+		 * parameter is polymorphic, and in such cases a change of default
+		 * type might alter the resolved output type of existing calls.)
+		 */
+		ndefDatum = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
+									Anum_pg_proc_pronargdefaults, &isnull);
+		ndefCount = DatumGetObjectId(ndefDatum);
+		if (ndefCount != 0)
+		{
+			Datum       proargdefaults;
+			List       *oldDefaults;
+			ListCell   *oldlc;
+			ListCell   *newlc;
+
+			if (list_length(parameterDefaults) < ndefCount)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("cannot remove parameter defaults from existing function"),
+						 errhint("Use DROP FUNCTION first.")));
+
+			proargdefaults = SysCacheGetAttr(PROCNAMEARGSNSP, oldtup,
+											 Anum_pg_proc_proargdefaults,
+											 &isnull);
+			Assert(!isnull);
+			oldDefaults = (List *) stringToNode(TextDatumGetCString(proargdefaults));
+			Assert(IsA(oldDefaults, List));
+			Assert(list_length(oldDefaults) == ndefCount);
+
+			/* new list can have more defaults than old, advance over 'em */
+			newlc = list_head(parameterDefaults);
+			for (i = list_length(parameterDefaults) - ndefCount; i > 0; i--)
+				newlc = lnext(newlc);
+
+			foreach(oldlc, oldDefaults)
+			{
+				Node   *oldDef = (Node *) lfirst(oldlc);
+				Node   *newDef = (Node *) lfirst(newlc);
+
+				if (exprType(oldDef) != exprType(newDef))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+							 errmsg("cannot change data type of existing parameter default value"),
+							 errhint("Use DROP FUNCTION first.")));
+				newlc = lnext(newlc);
+			}
 		}
 
 		/*
@@ -393,7 +527,10 @@ ProcedureCreate(const char *procedureName,
 								procedureName)));
 		}
 
-		/* do not change existing ownership or permissions, either */
+		/*
+		 * Do not change existing ownership or permissions, either.  Note
+		 * dependency-update code below has to agree with this decision.
+		 */
 		replaces[Anum_pg_proc_proowner - 1] = false;
 		replaces[Anum_pg_proc_proacl - 1] = false;
 
@@ -429,11 +566,12 @@ ProcedureCreate(const char *procedureName,
 	/*
 	 * Create dependencies for the new function.  If we are updating an
 	 * existing function, first delete any existing pg_depend entries.
+	 * (However, since we are not changing ownership or permissions, the
+	 * shared dependencies do *not* need to change, and we leave them alone.)
 	 */
 	if (is_update)
 	{
 		deleteDependencyRecordsFor(ProcedureRelationId, retval);
-		deleteSharedDependencyRecordsFor(ProcedureRelationId, retval);
 		deleteProcCallbacks(retval);
 	}
 
@@ -478,8 +616,14 @@ ProcedureCreate(const char *procedureName,
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
 
+	/* dependency on parameter default expressions */
+	if (parameterDefaults)
+		recordDependencyOnExpr(&myself, (Node *) parameterDefaults,
+							   NIL, DEPENDENCY_NORMAL);
+
 	/* dependency on owner */
-	recordDependencyOnOwner(ProcedureRelationId, retval, GetUserId());
+	if (!is_update)
+		recordDependencyOnOwner(ProcedureRelationId, retval, proowner);
 
 	heap_freetuple(tup);
 
@@ -488,9 +632,29 @@ ProcedureCreate(const char *procedureName,
 	/* Verify function body */
 	if (OidIsValid(languageValidator))
 	{
+		ArrayType  *set_items;
+		int			save_nestlevel;
+
 		/* Advance command counter so new tuple can be seen by validator */
 		CommandCounterIncrement();
+
+		/* Set per-function configuration parameters */
+		set_items = (ArrayType *) DatumGetPointer(proconfig);
+		if (set_items)		/* Need a new GUC nesting level */
+		{
+			save_nestlevel = NewGUCNestLevel();
+			ProcessGUCArray(set_items,
+							(superuser() ? PGC_SUSET : PGC_USERSET),
+							PGC_S_SESSION,
+							GUC_ACTION_SAVE);
+		}
+		else
+			save_nestlevel = 0;		/* keep compiler quiet */
+
 		OidFunctionCall1(languageValidator, ObjectIdGetDatum(retval));
+
+		if (set_items)
+			AtEOXact_GUC(true, save_nestlevel);
 	}
 
 	return retval;
@@ -586,12 +750,12 @@ fmgr_c_validator(PG_FUNCTION_ARGS)
 
 	tmp = caql_getattr(pcqCtx, Anum_pg_proc_prosrc, &isnull);
 	if (isnull)
-		elog(ERROR, "null prosrc");
+		elog(ERROR, "null prosrc for C function %u", funcoid);
 	prosrc = DatumGetCString(DirectFunctionCall1(textout, tmp));
 
 	tmp = caql_getattr(pcqCtx, Anum_pg_proc_probin, &isnull);
 	if (isnull)
-		elog(ERROR, "null probin");
+		elog(ERROR, "null probin for C function %u", funcoid);
 	probin = DatumGetCString(DirectFunctionCall1(textout, tmp));
 
 	(void) load_external_function(probin, prosrc, true, &libraryhandle);
@@ -639,26 +803,24 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 	proc = (Form_pg_proc) GETSTRUCT(tuple);
 
 	/* Disallow pseudotype result */
-	/* except for RECORD, VOID, ANYARRAY, or ANYELEMENT */
-	if (get_typtype(proc->prorettype) == 'p' &&
+	/* except for RECORD, VOID, or polymorphic */
+	if (get_typtype(proc->prorettype) == TYPTYPE_PSEUDO &&
 		proc->prorettype != RECORDOID &&
 		proc->prorettype != VOIDOID &&
-		proc->prorettype != ANYARRAYOID &&
-		proc->prorettype != ANYELEMENTOID)
+		!IsPolymorphicType(proc->prorettype))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("SQL functions cannot return type %s",
 						format_type_be(proc->prorettype))));
 
 	/* Disallow pseudotypes in arguments */
-	/* except for ANYARRAY or ANYELEMENT */
+	/* except for polymorphic */
 	haspolyarg = false;
 	for (i = 0; i < proc->pronargs; i++)
 	{
-		if (get_typtype(proc->proargtypes.values[i]) == 'p')
+		if (get_typtype(proc->proargtypes.values[i]) == TYPTYPE_PSEUDO)
 		{
-			if (proc->proargtypes.values[i] == ANYARRAYOID ||
-				proc->proargtypes.values[i] == ANYELEMENTOID)
+			if (IsPolymorphicType(proc->proargtypes.values[i]))
 				haspolyarg = true;
 			else
 				ereport(ERROR,
@@ -742,11 +904,12 @@ sql_function_parse_error_callback(void *arg)
 
 /*
  * Adjust a syntax error occurring inside the function body of a CREATE
- * FUNCTION command.  This can be used by any function validator, not only
- * for SQL-language functions.	It is assumed that the syntax error position
- * is initially relative to the function body string (as passed in).  If
- * possible, we adjust the position to reference the original CREATE command;
- * if we can't manage that, we set up an "internal query" syntax error instead.
+ * FUNCTION or DO command.  This can be used by any function validator or
+ * anonymous-block handler, not only for SQL-language functions.
+ * It is assumed that the syntax error position is initially relative to the
+ * function body string (as passed in).  If possible, we adjust the position
+ * to reference the original command text; if we can't manage that, we set
+ * up an "internal query" syntax error instead.
  *
  * Returns true if a syntax error was processed, false if not.
  */
@@ -803,8 +966,8 @@ function_parse_error_transpose(const char *prosrc)
 
 /*
  * Try to locate the string literal containing the function body in the
- * given text of the CREATE FUNCTION command.  If successful, return the
- * character (not byte) index within the command corresponding to the
+ * given text of the CREATE FUNCTION or DO command.  If successful, return
+ * the character (not byte) index within the command corresponding to the
  * given character index within the literal.  If not successful, return 0.
  */
 static int
@@ -812,7 +975,7 @@ match_prosrc_to_query(const char *prosrc, const char *queryText,
 					  int cursorpos)
 {
 	/*
-	 * Rather than fully parsing the CREATE FUNCTION command, we just scan the
+	 * Rather than fully parsing the original command, we just scan the
 	 * command looking for $prosrc$ or 'prosrc'.  This could be fooled (though
 	 * not in any very probable scenarios), so fail if we find more than one
 	 * match.

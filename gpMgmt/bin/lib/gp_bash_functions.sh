@@ -42,7 +42,9 @@ CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bi
 declare -a GPPATH
 GPPATH=( $GPHOME $MPPHOME $BIZHOME )
 if [ ${#GPPATH[@]} -eq 0 ];then
-	echo "[FATAL]:-GPHOME is not set, need to set this within environment"
+	echo "[FATAL]:-GPHOME environment variable is required to run GPDB but could not be found."
+	echo "Please set it by sourcing the  greenplum_path.sh  in your GPDB installation directory."
+	echo "Example: ''. /usr/local/gpdb/greenplum_path.sh''"
 	exit 2
 fi
 
@@ -60,7 +62,7 @@ findCmdInPath() {
 				return
 			else
 				echo $cmdtofind
-				return "Problem in gp_bash_functions, command '/usr/xpg4/bin/awk' not found. You will need to edit the script named gp_bash_functions.sh to properly locate the needed commands for your platform."			
+				return "Problem in gp_bash_functions, command '/usr/xpg4/bin/awk' not found. You will need to edit the script named gp_bash_functions.sh to properly locate the needed commands for your platform."
 			fi
 		fi
 		for pathel in ${CMDPATH[@]}
@@ -163,7 +165,8 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 PSQLBIN=`findMppPath`
 
 if [ x"$PSQLBIN" = x"" ];then
-		echo "Problem in gp_bash_functions, command '$GP_UNIQUE_COMMAND' not found in Greenplum path. Try setting GPHOME to the location of your Greenplum distribution"
+		echo "Problem in gp_bash_functions, command '$GP_UNIQUE_COMMAND' not found in Greenplum path."
+		echo "Try setting GPHOME to the location of your Greenplum distribution."
 		exit 99
 fi
 
@@ -463,19 +466,29 @@ SED_PG_CONF () {
 					LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME" 
 				fi
 			else
-                if [ $KEEP_PREV -eq 0 ];then
-                    $SED -i'.bak' -e "s/${SEARCH_TXT}/${SUB_TXT} #/g" $FILENAME
-                else
-                    $SED -i'.bak' -e "s/^${SEARCH_TXT}.*/${SUB_TXT}/g" $FILENAME
-                fi
+				if [ $KEEP_PREV -eq 0 ];then
+					$SED -i'.bak1' -e "s/${SEARCH_TXT}/${SUB_TXT} #${SEARCH_TXT}/g" $FILENAME
+				else
+					$SED -i'.bak1' -e "s/${SEARCH_TXT}.*/${SUB_TXT}/g" $FILENAME
+				fi
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 					LOG_MSG "[WARN]:-Failed to replace $SEARCH_TXT in $FILENAME"
 					ERROR_EXIT=1
 				else
 					LOG_MSG "[INFO]:-Replaced line in $FILENAME"
+					$RM -f ${FILENAME}.bak1
 				fi
-		    fi
+				$SED -i'.bak2' -e "s/^#${SEARCH_TXT}/${SEARCH_TXT}/g" $FILENAME
+				RETVAL=$?
+				if [ $RETVAL -ne 0 ]; then
+					LOG_MSG "[WARN]:-Failed to replace #$SEARCH_TXT in $FILENAME"
+					ERROR_EXIT=1
+				else
+					LOG_MSG "[INFO]:-Replaced line in $FILENAME"
+					$RM -f ${FILENAME}.bak2
+				fi
+			fi
 	else
 		if [ `$TRUSTED_SHELL $SED_HOST "$GREP -c \"${SEARCH_TXT}\" $FILENAME"` -gt 1 ]; then
 			LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME on $SED_HOST, will append" 1
@@ -492,21 +505,33 @@ SED_PG_CONF () {
 			fi
 		else
 			if [ $KEEP_PREV -eq 0 ];then
-            $ECHO "s/${SEARCH_TXT}/${SUB_TXT} #/g" > $SED_TMP_FILE
+				$ECHO "s/${SEARCH_TXT}/${SUB_TXT} #${SEARCH_TXT}/g" > $SED_TMP_FILE
 			else
-            $ECHO "s/^${SEARCH_TXT}.*/${SUB_TXT}/g" > $SED_TMP_FILE
+				$ECHO "s/${SEARCH_TXT}.*/${SUB_TXT}/g" > $SED_TMP_FILE
 			fi
-			#$SCP $SED_TMP_FILE ${SED_HOST}:/tmp > /dev/null 2>&1
 			$CAT $SED_TMP_FILE | $TRUSTED_SHELL ${SED_HOST} $DD of=$SED_TMP_FILE > /dev/null 2>&1
-			$TRUSTED_SHELL $SED_HOST "sed -i'.bak' -f $SED_TMP_FILE $FILENAME" > /dev/null 2>&1
+			$TRUSTED_SHELL $SED_HOST "sed -i'.bak1' -f $SED_TMP_FILE $FILENAME" > /dev/null 2>&1
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Failed to insert $SUB_TXT in $FILENAME on $SED_HOST"
 				ERROR_EXIT=1
 			else
 				LOG_MSG "[INFO]:-Replaced line in $FILENAME on $SED_HOST"
+				$TRUSTED_SHELL $SED_HOST "$RM -f ${FILENAME}.bak1" > /dev/null 2>&1
+			fi
+			$ECHO "s/^#${SEARCH_TXT}/${SEARCH_TXT}/g" > $SED_TMP_FILE
+			$CAT $SED_TMP_FILE | $TRUSTED_SHELL ${SED_HOST} $DD of=$SED_TMP_FILE > /dev/null 2>&1
+			$TRUSTED_SHELL $SED_HOST "sed -i'.bak2' -f $SED_TMP_FILE $FILENAME" > /dev/null 2>&1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ]; then
+				LOG_MSG "[WARN]:-Failed to substitute #${SEARCH_TXT} in $FILENAME on $SED_HOST"
+				ERROR_EXIT=1
+			else
+				LOG_MSG "[INFO]:-Replaced line in $FILENAME on $SED_HOST"
+				$TRUSTED_SHELL $SED_HOST "$RM -f ${FILENAME}.bak2" > /dev/null 2>&1
 			fi
 			$TRUSTED_SHELL $SED_HOST "$RM -f $SED_TMP_FILE"
+
 			$RM -f $SED_TMP_FILE
 		fi
 	fi
@@ -1005,9 +1030,12 @@ CHK_FILE () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 CHK_DIR () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		DIR_NAME=$1;shift
-		DIR_HOST=$1
+		# this function might be called very early, before logfiles are initialized
+		if [ x"" == x"$3" ];then
+			LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		fi
+		DIR_NAME=$1
+		DIR_HOST=$2
 		if [ x"" == x"$DIR_HOST" ];then
 			EXISTS=`if [ -d $DIR_NAME ];then $ECHO 0;else $ECHO 1;fi`
 		else
@@ -1019,7 +1047,9 @@ CHK_DIR () {
 			EXISTS=1
 			fi
 		fi
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		if [ x"" == x"$3" ];then
+			LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		fi
 }
 
 CHK_WRITE_DIR () {
@@ -1169,6 +1199,27 @@ BUILD_MASTER_PG_HBA_FILE () {
         $ECHO "local    replication $USER_NAME         $PG_METHOD" >> ${GP_DIR}/$PG_HBA
         $ECHO "host     replication $USER_NAME         samenet       trust" >> ${GP_DIR}/$PG_HBA
         LOG_MSG "[INFO]:-Complete Master $PG_HBA configuration"
+        LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+BUILD_GPSSH_CONF () {
+        LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+        if [ $# -eq 0 ];then ERROR_EXIT "[FATAL]:-Passed zero parameters, expected at least 1" 2;fi
+        GP_DIR=$1
+        $CAT <<_EOF_ >> $GP_DIR/gpssh.conf
+[gpssh]
+# delaybeforesend specifies the time in seconds to wait at the
+# beginning of an ssh interaction before doing anything.
+# Increasing this value can have a big runtime impact at the
+# beginning of gpssh.
+delaybeforesend = 0.05
+
+# prompt_validation_timeout specifies a timeout multiplier that
+# will be used in validating the ssh prompt. Increasing this
+# value will have a small runtime impact at the beginning of
+# gpssh.
+prompt_validation_timeout = 1.0
+_EOF_
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1608,25 +1659,30 @@ PING_HOST () {
 	if [ x"" == x"$PING_EXIT" ];then PING_EXIT=0;fi
 	case $OS_TYPE in
 		darwin )
-			$PING $PING_TIME $TARGET_HOST > /dev/null 2>&1 || $PING6 $PING_TIME $TARGET_HOST > /dev/null 2>&1 ;;
+			$PING $PING_TIME $TARGET_HOST > /dev/null 2>&1 || $PING6 $PING_TIME $TARGET_HOST > /dev/null 2>&1 
+                        ;;
 		linux )
-			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1 || $PING6 $TARGET_HOST $PING_TIME > /dev/null 2>&1 ;;
+			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1 || $PING6 $TARGET_HOST $PING_TIME > /dev/null 2>&1 
+                        ;;
 		* )
 			$PING $TARGET_HOST $PING_TIME > /dev/null 2>&1
 	esac
 	RETVAL=$?
 	case $RETVAL in
-		0) LOG_MSG "[INFO]:-$TARGET_HOST contact established" ;;
+		0) LOG_MSG "[INFO]:-$TARGET_HOST contact established" 
+                   ;;
 		1) if [ $PING_EXIT -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2
 		   else
 		        LOG_MSG "[WARN]:-Unable to contact $TARGET_HOST" 1
-		   fi ;;
+		   fi 
+                   ;;
 		2) if [ $PING_EXIT -eq 0 ];then
 		 	ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2
 		   else
 			LOG_MSG "[WARN]:-Unknown host $TARGET_HOST" 1
-		   fi ;;
+		   fi 
+                   ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 	return $RETVAL
@@ -1939,7 +1995,7 @@ fi
 #Set up OS type for scripts to change command lines
 OS_TYPE=`uname -s|tr '[A-Z]' '[a-z]'`
 case $OS_TYPE in
-	sunos ) IFCONFIG_TXT="-a inet"
+	sunos ) IPV4_ADDR_LIST_CMD="$IFCONFIG -a4"
 		IPV6_ADDR_LIST_CMD="$IFCONFIG -a6"
 		PS_TXT="-ef"
 		LIB_TYPE="LD_LIBRARY_PATH"
@@ -1951,12 +2007,11 @@ case $OS_TYPE in
 		DEFAULT_LOCALE_SETTING=en_US.UTF-8
 		MAIL=/bin/mailx
 		PING_TIME="1"
-		GTAR=`findCmdInPath gtar`
 		DF=`findCmdInPath df`
 		# Multi-byte tr needed on Solaris to handle [:upper:], [:lower:], etc.
 		MBTR=/usr/xpg4/bin/tr
 		DU_TXT="-s" ;;
-	linux ) IFCONFIG_TXT=""
+	linux ) IPV4_ADDR_LIST_CMD="`findCmdInPath ip` -4 address show"
 		IPV6_ADDR_LIST_CMD="`findCmdInPath ip` -6 address show"
 		PS_TXT="ax"
 		LIB_TYPE="LD_LIBRARY_PATH"
@@ -1966,11 +2021,10 @@ case $OS_TYPE in
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING6=`findCmdInPath ping6`
 		PING_TIME="-c 1"
-		GTAR=`findCmdInPath tar`
 		DF="`findCmdInPath df` -P"
 		ID=`whoami`
 		DU_TXT="-c" ;;
-	darwin ) IFCONFIG_TXT=""
+	darwin ) IPV4_ADDR_LIST_CMD="$IFCONFIG -a inet"
 		IPV6_ADDR_LIST_CMD="$IFCONFIG -a inet6"
 		PS_TXT="ax"
 		LIB_TYPE="DYLD_LIBRARY_PATH"
@@ -1980,20 +2034,18 @@ case $OS_TYPE in
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO=$ECHO
 		DEFAULT_LOCALE_SETTING=en_US.utf-8
-        PING6=`findCmdInPath ping6`
+        	PING6=`findCmdInPath ping6`
 		PING_TIME="-c 1"
-		GTAR=`findCmdInPath gnutar`
 		DF="`findCmdInPath df` -P"
 		DU_TXT="-c" ;;	
-	freebsd ) IFCONFIG_TXT=""
-		PS_TXT="ax"
+	freebsd ) IPV4_ADDR_LIST_CMD="$IFCONFIG -a inet"
+		IPV6_ADDR_LIST_CMD="$IFCONFIG -a inet6"
 		LIB_TYPE="LD_LIBRARY_PATH"
 		PG_METHOD="ident"
 		HOST_ARCH_TYPE="uname -m"
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING_TIME="-c 1"
-		GTAR=`findCmdInPath gtar`
 		DF="`findCmdInPath df` -P"
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;

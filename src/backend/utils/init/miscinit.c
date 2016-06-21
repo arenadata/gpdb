@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/miscinit.c,v 1.159.2.2 2009/12/09 21:58:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/miscinit.c,v 1.166.2.2 2010/08/16 17:33:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -406,7 +406,7 @@ GetAuthenticatedUserId(void)
  * ever throw any kind of error.  This is because they are used by
  * StartTransaction and AbortTransaction to save/restore the settings,
  * and during the first transaction within a backend, the value to be saved
- * and perhaps restored is indeed invalid.	We have to be able to get
+ * and perhaps restored is indeed invalid.  We have to be able to get
  * through AbortTransaction without asserting in case InitPostgres fails.
  */
 void
@@ -482,7 +482,7 @@ InitializeSessionUserId(const char *rolename)
 	HeapTuple	roleTup;
 	Form_pg_authid rform;
 	Oid			roleid;
-	cqContext  *pcqCtx;
+
 	/*
 	 * Don't do scans if we're bootstrapping, none of the system catalogs
 	 * exist yet, and they should be owned by postgres anyway.
@@ -492,14 +492,9 @@ InitializeSessionUserId(const char *rolename)
 	/* call only once */
 	AssertState(!OidIsValid(AuthenticatedUserId));
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_authid "
-				" WHERE rolname = :1 ",
-				CStringGetDatum((char *) rolename)));
-
-	roleTup = caql_getnext(pcqCtx);
-
+	roleTup = SearchSysCache(AUTHNAME,
+							 PointerGetDatum(rolename),
+							 0, 0, 0);
 	if (!HeapTupleIsValid(roleTup))
 		ereport(FATAL,
 				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
@@ -525,7 +520,7 @@ InitializeSessionUserId(const char *rolename)
 	 *
 	 * We do not enforce them for the autovacuum process either.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumProcess())
+	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
 	{
 		/*
 		 * Is role allowed to login at all?
@@ -576,7 +571,7 @@ InitializeSessionUserId(const char *rolename)
 					AuthenticatedUserIsSuperuser ? "on" : "off",
 					PGC_INTERNAL, PGC_S_OVERRIDE);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(roleTup);
 }
 
 
@@ -587,7 +582,7 @@ void
 InitializeSessionUserIdStandalone(void)
 {
 	/* This function should only be called in a single-user backend. */
-	AssertState(!IsUnderPostmaster || IsAutoVacuumProcess() || am_startup);
+	AssertState(!IsUnderPostmaster || IsAutoVacuumWorkerProcess() || am_startup);
 
 	/* call only once */
 	AssertState(!OidIsValid(AuthenticatedUserId));
@@ -959,6 +954,9 @@ CreateLockFile(const char *filename, bool amPostmaster,
 		 * admin) but has left orphan backends behind.	Check for this by
 		 * looking to see if there is an associated shmem segment that is
 		 * still in use.
+		 *
+		 * Note: because postmaster.pid is written in two steps, we might not
+		 * find the shmem ID values in it; we can't treat that as an error.
 		 */
 		if (isDDLock)
 		{
@@ -1023,7 +1021,18 @@ CreateLockFile(const char *filename, bool amPostmaster,
 				(errcode_for_file_access(),
 				 errmsg("could not write lock file \"%s\": %m", filename)));
 	}
-	if (close(fd))
+	if (pg_fsync(fd) != 0)
+	{
+		int			save_errno = errno;
+
+		close(fd);
+		unlink(filename);
+		errno = save_errno;
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not write lock file \"%s\": %m", filename)));
+	}
+	if (close(fd) != 0)
 	{
 		int			save_errno = errno;
 
@@ -1190,7 +1199,14 @@ RecordSharedMemoryInLockFile(unsigned long id1, unsigned long id2)
 		close(fd);
 		return;
 	}
-	if (close(fd))
+	if (pg_fsync(fd) != 0)
+	{
+		ereport(LOG,
+				(errcode_for_file_access(),
+				 errmsg("could not write to file \"%s\": %m",
+						DIRECTORY_LOCK_FILE)));
+	}
+	if (close(fd) != 0)
 	{
 		ereport(LOG,
 				(errcode_for_file_access(),
@@ -1253,7 +1269,7 @@ ValidatePgVersion(const char *path)
 						path),
 				 errdetail("File \"%s\" does not contain valid data.",
 						   full_path),
-				 errhint("You may need to run gprecoversegment.sh")));
+				 errhint("You might need to run gprecoversegment.sh")));
 
 	FreeFile(file);
 

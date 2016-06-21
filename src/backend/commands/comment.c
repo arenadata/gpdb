@@ -7,7 +7,7 @@
  * Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/comment.c,v 1.93 2006/11/12 06:55:54 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/comment.c,v 1.100 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -30,12 +30,17 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_shdescription.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_trigger.h"
+#include "catalog/pg_ts_config.h"
+#include "catalog/pg_ts_dict.h"
+#include "catalog/pg_ts_parser.h"
+#include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "commands/comment.h"
 #include "commands/dbcommands.h"
@@ -53,7 +58,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 
 /*
@@ -79,12 +84,18 @@ static void CommentConstraint(List *qualname, char *comment);
 static void CommentConversion(List *qualname, char *comment);
 static void CommentLanguage(List *qualname, char *comment);
 static void CommentOpClass(List *qualname, List *arguments, char *comment);
+static void CommentOpFamily(List *qualname, List *arguments, char *comment);
 static void CommentLargeObject(List *qualname, char *comment);
 static void CommentCast(List *qualname, List *arguments, char *comment);
 static void CommentTablespace(List *qualname, char *comment);
 static void CommentFilespace(List *qualname, char *comment);
 static void CommentRole(List *qualname, char *comment);
 static void CommentResourceQueue(List *qualname, char *comment);
+static void CommentTSParser(List *qualname, char *comment);
+static void CommentTSDictionary(List *qualname, char *comment);
+static void CommentTSTemplate(List *qualname, char *comment);
+static void CommentTSConfiguration(List *qualname, char *comment);
+
 
 /*
  * CommentObject --
@@ -142,6 +153,9 @@ CommentObject(CommentStmt *stmt)
 		case OBJECT_OPCLASS:
 			CommentOpClass(stmt->objname, stmt->objargs, stmt->comment);
 			break;
+		case OBJECT_OPFAMILY:
+			CommentOpFamily(stmt->objname, stmt->objargs, stmt->comment);
+			break;
 		case OBJECT_LARGEOBJECT:
 			CommentLargeObject(stmt->objname, stmt->comment);
 			break;
@@ -154,11 +168,23 @@ CommentObject(CommentStmt *stmt)
 		case OBJECT_FILESPACE:
 			CommentFilespace(stmt->objname, stmt->comment);
 			break;
+		case OBJECT_RESQUEUE:
+			CommentResourceQueue(stmt->objname, stmt->comment);
+			break;
 		case OBJECT_ROLE:
 			CommentRole(stmt->objname, stmt->comment);
 			break;
-		case OBJECT_RESQUEUE:
-			CommentResourceQueue(stmt->objname, stmt->comment);
+		case OBJECT_TSPARSER:
+			CommentTSParser(stmt->objname, stmt->comment);
+			break;
+		case OBJECT_TSDICTIONARY:
+			CommentTSDictionary(stmt->objname, stmt->comment);
+			break;
+		case OBJECT_TSTEMPLATE:
+			CommentTSTemplate(stmt->objname, stmt->comment);
+			break;
+		case OBJECT_TSCONFIGURATION:
+			CommentTSConfiguration(stmt->objname, stmt->comment);
 			break;
 		default:
 			elog(ERROR, "unrecognized object type: %d",
@@ -561,7 +587,7 @@ CommentDatabase(List *qualname, char *comment)
 	if (list_length(qualname) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("database name may not be qualified")));
+				 errmsg("database name cannot be qualified")));
 	database = strVal(linitial(qualname));
 
 	/*
@@ -609,7 +635,7 @@ CommentTablespace(List *qualname, char *comment)
 	if (list_length(qualname) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("tablespace name may not be qualified")));
+				 errmsg("tablespace name cannot be qualified")));
 	tablespace = strVal(linitial(qualname));
 
 	oid = get_tablespace_oid(tablespace);
@@ -687,7 +713,7 @@ CommentRole(List *qualname, char *comment)
 	if (list_length(qualname) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("role name may not be qualified")));
+				 errmsg("role name cannot be qualified")));
 	role = strVal(linitial(qualname));
 
 	oid = get_roleid_checked(role);
@@ -720,7 +746,7 @@ CommentNamespace(List *qualname, char *comment)
 	if (list_length(qualname) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("schema name may not be qualified")));
+				 errmsg("schema name cannot be qualified")));
 	namespace = strVal(linitial(qualname));
 
 	oid = caql_getoid(
@@ -878,7 +904,7 @@ CommentType(List *typename, char *comment)
 
 	/* Find the type's oid */
 
-	oid = typenameTypeId(NULL, tname);
+	oid = typenameTypeId(NULL, tname, NULL);
 
 	/* Check object security */
 
@@ -1177,7 +1203,7 @@ CommentLanguage(List *qualname, char *comment)
 	if (list_length(qualname) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("language name may not be qualified")));
+				 errmsg("language name cannot be qualified")));
 	language = strVal(linitial(qualname));
 
 	oid = caql_getoid(
@@ -1303,6 +1329,92 @@ CommentOpClass(List *qualname, List *arguments, char *comment)
 }
 
 /*
+ * CommentOpFamily --
+ *
+ * This routine is used to allow a user to provide comments on an
+ * operator family. The operator family for commenting is determined by both
+ * its name and its argument list which defines the index method
+ * the operator family is used for. The argument list is expected to contain
+ * a single name (represented as a string Value node).
+ */
+static void
+CommentOpFamily(List *qualname, List *arguments, char *comment)
+{
+	char	   *amname;
+	char	   *schemaname;
+	char	   *opfname;
+	Oid			amID;
+	Oid			opfID;
+	HeapTuple	tuple;
+
+	Assert(list_length(arguments) == 1);
+	amname = strVal(linitial(arguments));
+
+	/*
+	 * Get the access method's OID.
+	 */
+	amID = GetSysCacheOid(AMNAME,
+						  CStringGetDatum(amname),
+						  0, 0, 0);
+	if (!OidIsValid(amID))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("access method \"%s\" does not exist",
+						amname)));
+
+	/*
+	 * Look up the opfamily.
+	 */
+
+	/* deconstruct the name list */
+	DeconstructQualifiedName(qualname, &schemaname, &opfname);
+
+	if (schemaname)
+	{
+		/* Look in specific schema only */
+		Oid			namespaceId;
+
+		namespaceId = LookupExplicitNamespace(schemaname);
+		tuple = SearchSysCache(OPFAMILYAMNAMENSP,
+							   ObjectIdGetDatum(amID),
+							   PointerGetDatum(opfname),
+							   ObjectIdGetDatum(namespaceId),
+							   0);
+	}
+	else
+	{
+		/* Unqualified opfamily name, so search the search path */
+		opfID = OpfamilynameGetOpfid(amID, opfname);
+		if (!OidIsValid(opfID))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("operator family \"%s\" does not exist for access method \"%s\"",
+							opfname, amname)));
+		tuple = SearchSysCache(OPFAMILYOID,
+							   ObjectIdGetDatum(opfID),
+							   0, 0, 0);
+	}
+
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("operator family \"%s\" does not exist for access method \"%s\"",
+						NameListToString(qualname), amname)));
+
+	opfID = HeapTupleGetOid(tuple);
+
+	/* Permission check: must own opfamily */
+	if (!pg_opfamily_ownercheck(opfID, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPFAMILY,
+					   NameListToString(qualname));
+
+	ReleaseSysCache(tuple);
+
+	/* Call CreateComments() to create/drop the comments */
+	CreateComments(opfID, OperatorFamilyRelationId, 0, comment);
+}
+
+/*
  * CommentLargeObject --
  *
  * This routine is used to add/drop any user-comments a user might
@@ -1379,8 +1491,8 @@ CommentCast(List *qualname, List *arguments, char *comment)
 	targettype = (TypeName *) linitial(arguments);
 	Assert(IsA(targettype, TypeName));
 
-	sourcetypeid = typenameTypeId(NULL, sourcetype);
-	targettypeid = typenameTypeId(NULL, targettype);
+	sourcetypeid = typenameTypeId(NULL, sourcetype, NULL);
+	targettypeid = typenameTypeId(NULL, targettype, NULL);
 
 	castOid = caql_getoid_plus(
 			NULL,
@@ -1461,4 +1573,63 @@ CommentResourceQueue(List *qualname, char *comment)
 
 	/* Call CreateSharedComments() to create/drop the comments */
 	CreateSharedComments(oid, ResQueueRelationId, comment);
+}
+
+static void
+CommentTSParser(List *qualname, char *comment)
+{
+	Oid			prsId;
+
+	prsId = TSParserGetPrsid(qualname, false);
+
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			  errmsg("must be superuser to comment on text search parser")));
+
+	CreateComments(prsId, TSParserRelationId, 0, comment);
+}
+
+static void
+CommentTSDictionary(List *qualname, char *comment)
+{
+	Oid			dictId;
+
+	dictId = TSDictionaryGetDictid(qualname, false);
+
+	if (!pg_ts_dict_ownercheck(dictId, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TSDICTIONARY,
+					   NameListToString(qualname));
+
+	CreateComments(dictId, TSDictionaryRelationId, 0, comment);
+}
+
+static void
+CommentTSTemplate(List *qualname, char *comment)
+{
+	Oid			tmplId;
+
+	tmplId = TSTemplateGetTmplid(qualname, false);
+
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			errmsg("must be superuser to comment on text search template")));
+
+	CreateComments(tmplId, TSTemplateRelationId, 0, comment);
+}
+
+static void
+CommentTSConfiguration(List *qualname, char *comment)
+{
+	Oid			cfgId;
+
+	cfgId = TSConfigGetCfgid(qualname, false);
+
+	if (!pg_ts_config_ownercheck(cfgId, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TSCONFIGURATION,
+					   NameListToString(qualname));
+
+	CreateComments(cfgId, TSConfigRelationId, 0, comment);
+
 }

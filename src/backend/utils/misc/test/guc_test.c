@@ -93,7 +93,7 @@ test__GUCArrayReset__all_non_userset_guc(void **state)
 
 	/* construct text array */
 	elems = 3;
-	guc_list = list_make3("log_error_verbosity=terse", "gp_log_format=csv", "upgrade_mode=true");
+	guc_list = list_make3("log_error_verbosity=terse", "gp_log_format=csv", "maintenance_mode=true");
 	in = create_guc_array(guc_list, elems);
 
 	out = GUCArrayReset(in);
@@ -118,8 +118,8 @@ test__GUCArrayReset__all_non_userset_guc(void **state)
 	i = 3;
 	d = array_ref(out, 1, &i, -1, TEXT_TYPLEN, TEXT_TYPBYVAL, TEXT_TYPALIGN, &isnull);
 	assert_false(isnull);
-	assert_int_equal(strlen("upgrade_mode=true"), VARLEN(d));
-	assert_memory_equal(VARDATA(d), "upgrade_mode=true", VARLEN(d));
+	assert_int_equal(strlen("maintenance_mode=true"), VARLEN(d));
+	assert_memory_equal(VARDATA(d), "maintenance_mode=true", VARLEN(d));
 
 	list_free(guc_list);
 	pfree(in);
@@ -232,8 +232,6 @@ test__set_config_option(void **state)
 	bool ret;
 	ret = set_config_option("password_encryption", "off", PGC_POSTMASTER, PGC_S_SESSION, false, false);
 	assert_true(ret);
-	ret = set_config_option("gp_disable_catalog_access_on_segment", "on", PGC_POSTMASTER, PGC_S_SESSION, false, false);
-	assert_true(ret);
 }
 
 /*
@@ -245,16 +243,16 @@ test__find_option(void **state)
 	build_guc_variables();
 
 	struct config_generic *config;
-	config = find_option("unknown_name", LOG);
+	config = find_option("unknown_name", false, LOG);
 	assert_null(config);
 
-	config = find_option("password_encryption", LOG);
+	config = find_option("password_encryption", false, LOG);
 	assert_not_null(config);
-	config = find_option("gp_resqueue_priority_cpucores_per_segment", LOG);
+	config = find_option("gp_resqueue_priority_cpucores_per_segment", false, LOG);
 	assert_not_null(config);
 
 	/* supported obsolete guc name */
-	config = find_option("work_mem", LOG);
+	config = find_option("work_mem", false, LOG);
 	assert_not_null(config);
 }
 
@@ -326,6 +324,8 @@ main(int argc, char* argv[])
 		unit_test(test__set_config_option),
 		unit_test(test__find_option)
 	};
+
+	MemoryContextInit();
 
 	return run_tests(tests);
 }

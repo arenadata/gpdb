@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/read.c,v 1.49 2006/09/27 18:40:09 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/read.c,v 1.51 2008/01/01 19:45:50 momjian Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT

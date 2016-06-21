@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/create_type.sgml,v 1.64 2006/09/16 00:30:17 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/create_type.sgml,v 1.73.2.1 2008/05/27 18:05:20 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -23,11 +23,17 @@ PostgreSQL documentation
 CREATE TYPE <replaceable class="parameter">name</replaceable> AS
     ( <replaceable class="PARAMETER">attribute_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ... ] )
 
+CREATE TYPE <replaceable class="parameter">name</replaceable> AS ENUM
+    ( '<replaceable class="parameter">label</replaceable>' [, ... ] )
+
 CREATE TYPE <replaceable class="parameter">name</replaceable> (
     INPUT = <replaceable class="parameter">input_function</replaceable>,
     OUTPUT = <replaceable class="parameter">output_function</replaceable>
     [ , RECEIVE = <replaceable class="parameter">receive_function</replaceable> ]
     [ , SEND = <replaceable class="parameter">send_function</replaceable> ]
+    [ , TYPMOD_IN = <replaceable class="parameter">type_modifier_input_function</replaceable> ]
+    [ , TYPMOD_OUT = <replaceable class="parameter">type_modifier_output_function</replaceable> ]
+    [ , ANALYZE = <replaceable class="parameter">analyze_function</replaceable> ]
     [ , INTERNALLENGTH = { <replaceable class="parameter">internallength</replaceable> | VARIABLE } ]
     [ , PASSEDBYVALUE ]
     [ , ALIGNMENT = <replaceable class="parameter">alignment</replaceable> ]
@@ -78,19 +84,33 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
   </refsect2>
 
   <refsect2>
+   <title>Enumerated Types</title>
+
+   <para>
+    The second form of <command>CREATE TYPE</command> creates an enumerated
+    (enum) type, as described in <xref linkend="datatype-enum">.
+    Enum types take a list of one or more quoted labels, each of which
+    must be less than <symbol>NAMEDATALEN</symbol> bytes long (64 in a standard
+    <productname>PostgreSQL</productname> build).
+   </para>
+  </refsect2>
+
+  <refsect2>
    <title>Base Types</title>
 
   <para>
-   The second form of <command>CREATE TYPE</command> creates a new base type
-   (scalar type).  The parameters may appear in any order, not only that
+   The third form of <command>CREATE TYPE</command> creates a new base type
+   (scalar type).  The parameters can appear in any order, not only that
    illustrated above, and most are optional.  You must register
    two or more functions (using <command>CREATE FUNCTION</command>) before
-   defining the type.  The support functions 
+   defining the type.  The support functions
    <replaceable class="parameter">input_function</replaceable> and
    <replaceable class="parameter">output_function</replaceable>
    are required, while the functions
    <replaceable class="parameter">receive_function</replaceable>,
-   <replaceable class="parameter">send_function</replaceable> and
+   <replaceable class="parameter">send_function</replaceable>,
+   <replaceable class="parameter">type_modifier_input_function</replaceable>,
+   <replaceable class="parameter">type_modifier_output_function</replaceable> and
    <replaceable class="parameter">analyze_function</replaceable>
    are optional.  Generally these functions have to be coded in C
    or another low-level language.
@@ -101,7 +121,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    converts the type's external textual representation to the internal
    representation used by the operators and functions defined for the type.
    <replaceable class="parameter">output_function</replaceable>
-   performs the reverse transformation.  The input function may be
+   performs the reverse transformation.  The input function can be
    declared as taking one argument of type <type>cstring</type>,
    or as taking three arguments of types
    <type>cstring</type>, <type>oid</type>, <type>integer</type>.
@@ -116,7 +136,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    input value.  The function must still return NULL in this case, unless
    it raises an error.
    (This case is mainly meant to support domain input functions, which
-   may need to reject NULL inputs.)
+   might need to reject NULL inputs.)
    The output function must be
    declared as taking one argument of the new data type.
    The output function must return type <type>cstring</type>.
@@ -134,7 +154,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    representation is in the machine's native byte order.)  The receive
    function should perform adequate checking to ensure that the value is
    valid.
-   The receive function may be declared as taking one argument of type
+   The receive function can be declared as taking one argument of type
    <type>internal</type>, or as taking three arguments of types
    <type>internal</type>, <type>oid</type>, <type>integer</type>.
    The first argument is a pointer to a <type>StringInfo</type> buffer
@@ -146,7 +166,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    input value.  The function must still return NULL in this case, unless
    it raises an error.
    (This case is mainly meant to support domain receive functions, which
-   may need to reject NULL inputs.)
+   might need to reject NULL inputs.)
    Similarly, the optional
    <replaceable class="parameter">send_function</replaceable> converts
    from the internal representation to the external binary representation.
@@ -172,6 +192,47 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
   </para>
 
   <para>
+   The optional
+   <replaceable class="parameter">type_modifier_input_function</replaceable>
+   and <replaceable class="parameter">type_modifier_output_function</replaceable>
+   are needed if the type supports modifiers, that is optional constraints
+   attached to a type declaration, such as <literal>char(5)</> or
+   <literal>numeric(30,2)</>.  <productname>PostgreSQL</productname> allows
+   user-defined types to take one or more simple constants or identifiers as
+   modifiers; however, this information must be capable of being packed into a
+   single non-negative integer value for storage in the system catalogs.  The
+   <replaceable class="parameter">type_modifier_input_function</replaceable>
+   is passed the declared modifier(s) in the form of a <type>cstring</>
+   array.  It must check the values for validity (throwing an error if they
+   are wrong), and if they are correct, return a single non-negative
+   <type>integer</> value that will be stored as the column <quote>typmod</>.
+   Type modifiers will be rejected if the type does not have a
+   <replaceable class="parameter">type_modifier_input_function</replaceable>.
+   The <replaceable class="parameter">type_modifier_output_function</replaceable>
+   converts the internal integer typmod value back to the correct form for
+   user display.  It must return a <type>cstring</> value that is the exact
+   string to append to the type name; for example <type>numeric</>'s
+   function might return <literal>(30,2)</>.
+   It is allowed to omit the
+   <replaceable class="parameter">type_modifier_output_function</replaceable>,
+   in which case the default display format is just the stored typmod integer
+   value enclosed in parentheses.
+  </para>
+
+  <para>
+   The optional <replaceable class="parameter">analyze_function</replaceable>
+   performs type-specific statistics collection for columns of the data type.
+   By default, <command>ANALYZE</> will attempt to gather statistics using
+   the type's <quote>equals</> and <quote>less-than</> operators, if there
+   is a default b-tree operator class for the type.  For non-scalar types
+   this behavior is likely to be unsuitable, so it can be overridden by
+   specifying a custom analysis function.  The analysis function must be
+   declared to take a single argument of type <type>internal</>, and return
+   a <type>boolean</> result.  The detailed API for analysis functions appears
+   in <filename>src/include/commands/vacuum.h</>.
+  </para>
+
+  <para>
    While the details of the new type's internal representation are only
    known to the I/O functions and other functions you create to work with
    the type, there are several properties of the internal representation
@@ -191,7 +252,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
   <para>
    The optional flag <literal>PASSEDBYVALUE</literal> indicates that
    values of this data type are passed by value, rather than by
-   reference.  You may not pass by value types whose internal
+   reference.  You cannot pass by value types whose internal
    representation is larger than the size of the <type>Datum</> type
    (4 bytes on most machines, 8 bytes on a few).
   </para>
@@ -217,17 +278,17 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    main table, but the system will not try to compress it.
    <literal>main</literal> allows compression, but discourages moving
    the value out of the main table.  (Data items with this storage
-   strategy may still be moved out of the main table if there is no
+   strategy might still be moved out of the main table if there is no
    other way to make a row fit, but they will be kept in the main
    table preferentially over <literal>extended</literal> and
    <literal>external</literal> items.)
   </para>
 
   <para>
-   A default value may be specified, in case a user wants columns of the
+   A default value can be specified, in case a user wants columns of the
    data type to default to something other than the null value.
    Specify the default with the <literal>DEFAULT</literal> key word.
-   (Such a default may be overridden by an explicit <literal>DEFAULT</literal>
+   (Such a default can be overridden by an explicit <literal>DEFAULT</literal>
    clause attached to a particular column.)
   </para>
 
@@ -254,15 +315,17 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    <title>Array Types</title>
 
    <para>
-    Whenever a user-defined base data type is created, 
+    Whenever a user-defined type is created,
     <productname>PostgreSQL</productname> automatically creates an
     associated array type, whose name consists of the base type's
-    name prepended with an underscore.  The parser understands this
-    naming convention, and translates requests for columns of type
-    <literal>foo[]</> into requests for type <literal>_foo</>.
-    The implicitly-created array type is variable length and uses the
+    name prepended with an underscore, and truncated if necessary to keep
+    it less than <symbol>NAMEDATALEN</symbol> bytes long.  (If the name
+    so generated collides with an existing type name, the process is
+    repeated until a non-colliding name is found.)
+    This implicitly-created array type is variable length and uses the
     built-in input and output functions <literal>array_in</> and
-    <literal>array_out</>.
+    <literal>array_out</>.  The array type tracks any changes in its
+    element type's owner or schema, and is dropped if the element type is.
    </para>
 
    <para>
@@ -272,10 +335,9 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
     making a fixed-length type that happens to be internally an array of a number of
     identical things, and you want to allow these things to be accessed
     directly by subscripting, in addition to whatever operations you plan
-    to provide for the type as a whole.  For example, type <type>name</>
-    allows its constituent <type>char</> elements to be accessed this way.
-    A 2-D <type>point</> type could allow its two component numbers to be
-    accessed like <literal>point[0]</> and <literal>point[1]</>.
+    to provide for the type as a whole.  For example, type <type>point</>
+    is represented as just two floating-point numbers, which it allows to be
+    accessed as <literal>point[0]</> and <literal>point[1]</>.
     Note that
     this facility only works for fixed-length types whose internal form
     is exactly a sequence of identical fixed-length fields.  A subscriptable
@@ -287,7 +349,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    </para>
   </refsect2>
  </refsect1>
-  
+
  <refsect1>
   <title>Parameters</title>
 
@@ -316,6 +378,16 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
      <para>
       The name of an existing data type to become a column of the
       composite type.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">label</replaceable></term>
+    <listitem>
+     <para>
+      A string literal representing the textual label associated with
+      one value of an enum type.
      </para>
     </listitem>
    </varlistentry>
@@ -356,6 +428,36 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
      <para>
       The name of a function that converts data from the type's
       internal form to its external binary form.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">type_modifier_input_function</replaceable></term>
+    <listitem>
+     <para>
+      The name of a function that converts an array of modifier(s) for the type
+      into internal form.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">type_modifier_output_function</replaceable></term>
+    <listitem>
+     <para>
+      The name of a function that converts the internal form of the type's
+      modifier(s) to external textual form.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">analyze_function</replaceable></term>
+    <listitem>
+     <para>
+      The name of a function that performs statistical analysis for the
+      data type.
      </para>
     </listitem>
    </varlistentry>
@@ -468,12 +570,15 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
   <title>Notes</title>
 
   <para>
-   User-defined type names cannot begin with the underscore character
-   (<literal>_</literal>) and can only be 62 characters
-   long (or in general <symbol>NAMEDATALEN</symbol> - 2, rather than
-   the <symbol>NAMEDATALEN</symbol> - 1 characters allowed for other
-   names).  Type names beginning with underscore are reserved for
-   internally-created array type names.
+   It is best to avoid using type names that begin with the underscore
+   character (<literal>_</literal>).  <productname>PostgreSQL</productname>
+   forms the name of an array type by prepending one or more underscores
+   to the element type's name, and these names may collide with user-defined
+   type names that begin with underscore.  While the system will modify
+   generated array type names to avoid collisions, this does not help if the
+   conflicting array type already exists when you try to create your type.
+   Also, various old client software may assume that names beginning with
+   underscores always represent arrays.
   </para>
 
   <para>
@@ -488,6 +593,27 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
   </para>
 
   <para>
+   Before <productname>PostgreSQL</productname> version 8.3, the name of
+   a generated array type was always exactly the element type's name with one
+   underscore character (<literal>_</literal>) prepended.  (Type names were
+   therefore restricted in length to one less character than other names.)
+   While this is still usually the case, the array type name may vary from
+   this in case of maximum-length names or collisions with user type names
+   that begin with underscore.  Writing code that depends on this convention
+   is therefore deprecated.  Instead, use
+   <structname>pg_type</>.<structfield>typarray</> to locate the array type
+   associated with a given type.
+  </para>
+
+  <para>
+   It may be advisable to avoid using type and table names that begin with
+   underscore.  While the server will change generated array type names to
+   avoid collisions with user-given names, there is still risk of confusion,
+   particularly with old client software that may assume that type names
+   beginning with underscores always represent arrays.
+  </para>
+
+  <para>
    Before <productname>PostgreSQL</productname> version 8.2, the syntax
    <literal>CREATE TYPE <replaceable>name</></literal> did not exist.
    The way to create a new base type was to create its input function first.
@@ -495,7 +621,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
    the name of the new data type as the return type of the input function.
    The shell type is implicitly created in this situation, and then it
    can be referenced in the definitions of the remaining I/O functions.
-   This approach still works, but is deprecated and may be disallowed in
+   This approach still works, but is deprecated and might be disallowed in
    some future release.  Also, to avoid accidentally cluttering
    the catalogs with shell types as a result of simple typos in function
    definitions, a shell type will only be made this way when the input
@@ -515,7 +641,7 @@ CREATE TYPE <replaceable class="parameter">name</replaceable>
   </para>
 
  </refsect1>
- 
+
  <refsect1>
   <title>Examples</title>
 
@@ -528,6 +654,20 @@ CREATE TYPE compfoo AS (f1 int, f2 text);
 CREATE FUNCTION getfoo() RETURNS SETOF compfoo AS $$
     SELECT fooid, fooname FROM foo
 $$ LANGUAGE SQL;
+</programlisting>
+  </para>
+
+  <para>
+   This example creates an enumerated type and uses it in
+   a table definition:
+<programlisting>
+CREATE TYPE bug_status AS ENUM ('new', 'open', 'closed');
+
+CREATE TABLE bug (
+    id serial,
+    description text,
+    status bug_status
+);
 </programlisting>
   </para>
 
@@ -555,7 +695,7 @@ CREATE TABLE myboxes (
 
   <para>
    If the internal structure of <type>box</type> were an array of four
-   <type>float4</> elements, we might instead use
+   <type>float4</> elements, we might instead use:
 <programlisting>
 CREATE TYPE box (
     INTERNALLENGTH = 16,

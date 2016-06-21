@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/create_role.sgml,v 1.8 2006/09/16 00:30:17 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/create_role.sgml,v 1.10 2007/11/07 12:24:23 petere Exp $
 PostgreSQL documentation
 -->
 
@@ -167,7 +167,7 @@ where option can be:
         privileges, but are not users in the usual sense of the word.
         If not specified,
         <literal>NOLOGIN</literal> is the default, except when
-        <command>CREATE ROLE</> is invoked through its alternate spelling
+        <command>CREATE ROLE</> is invoked through its alternative spelling
         <command>CREATE USER</>.
        </para>
       </listitem>
@@ -217,7 +217,7 @@ where option can be:
        </para>
 
        <para>
-        Note that older clients may lack support for the MD5
+        Note that older clients might lack support for the MD5
         authentication mechanism that is needed to work with passwords
         that are stored encrypted.
        </para>

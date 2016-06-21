@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapAnd.c,v 1.8 2006/05/30 14:01:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapAnd.c,v 1.10 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

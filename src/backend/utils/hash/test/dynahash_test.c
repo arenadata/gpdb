@@ -3,10 +3,7 @@
 #include <setjmp.h>
 #include "cmockery.h"
 
-#include "c.h"
-#include "utils/elog.h"
-#include "utils/palloc.h"
-#include "utils/hsearch.h"
+#include "../dynahash.c"
 
 /* A dummy hash entry structure. */
 typedef struct
@@ -61,23 +58,6 @@ test__expand_table(void **state)
 	info.alloc = alloc_for_expand_table_failure;
 	info.ssize = TEST_SEGSIZE;
 	hash_flags = (HASH_ELEM | HASH_FUNCTION | HASH_ALLOC | HASH_SEGMENT);
-
-	/* prepare for hash_create */
-	expect_any(AllocSetContextCreate, parent);
-	expect_any(AllocSetContextCreate, name);
-	expect_any(AllocSetContextCreate, minContextSize);
-	expect_any(AllocSetContextCreate, initBlockSize);
-	expect_any(AllocSetContextCreate, maxBlockSize);
-	will_be_called(AllocSetContextCreate);
-
-	/* We don't care Assert macro */
-#ifdef USE_ASSERT_CHECKING
-	expect_any_count(ExceptionalCondition, conditionName, -1);
-	expect_any_count(ExceptionalCondition, errorType, -1);
-	expect_any_count(ExceptionalCondition, fileName, -1);
-	expect_any_count(ExceptionalCondition, lineNumber, -1);
-	will_be_called_count(ExceptionalCondition, -1);
-#endif
 
 	htab = hash_create("Test hash",
 					   128,
@@ -136,6 +116,8 @@ main(int argc, char* argv[])
 	const UnitTest tests[] = {
 		unit_test(test__expand_table)
 	};
+
+	MemoryContextInit();
 
 	return run_tests(tests);
 }

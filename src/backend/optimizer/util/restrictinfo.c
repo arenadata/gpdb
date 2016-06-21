@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/restrictinfo.c,v 1.49.2.1 2007/07/31 19:53:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/restrictinfo.c,v 1.55.2.1 2009/04/16 20:42:28 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,19 +27,19 @@ static RestrictInfo *make_restrictinfo_internal(Expr *clause,
 						   bool is_pushed_down,
 						   bool outerjoin_delayed,
 						   bool pseudoconstant,
-						   Relids required_relids);
+						   Relids required_relids,
+						   Relids nullable_relids,
+						   Relids ojscope_relids);
 static Expr *make_sub_restrictinfos(Expr *clause,
 					   bool is_pushed_down,
 					   bool outerjoin_delayed,
 					   bool pseudoconstant,
-					   Relids required_relids);
-static RestrictInfo *join_clause_is_redundant(PlannerInfo *root,
+					   Relids required_relids,
+					   Relids nullable_relids,
+					   Relids ojscope_relids);
+static bool join_clause_is_redundant(PlannerInfo *root,
 						 RestrictInfo *rinfo,
-						 List *reference_list,
-						 Relids outer_relids,
-						 Relids inner_relids,
-						 bool isouterjoin);
-
+						 List *reference_list);
 
 /*
  * make_restrictinfo
@@ -47,9 +47,9 @@ static RestrictInfo *join_clause_is_redundant(PlannerInfo *root,
  * Build a RestrictInfo node containing the given subexpression.
  *
  * The is_pushed_down, outerjoin_delayed, and pseudoconstant flags for the
- * RestrictInfo must be supplied by the caller.  required_relids can be NULL,
- * in which case it defaults to the actual clause contents (i.e.,
- * clause_relids).
+ * RestrictInfo must be supplied by the caller, as well as the correct value
+ * for nullable_relids.  required_relids can be NULL, in which case it
+ * defaults to the actual clause contents (i.e., clause_relids).
  *
  * We initialize fields that depend only on the given subexpression, leaving
  * others that depend on context (or may never be needed at all) to be filled
@@ -60,7 +60,9 @@ make_restrictinfo(Expr *clause,
 				  bool is_pushed_down,
 				  bool outerjoin_delayed,
 				  bool pseudoconstant,
-				  Relids required_relids)
+				  Relids required_relids,
+				  Relids nullable_relids,
+				  Relids ojscope_relids)
 {
 	/*
 	 * If it's an OR clause, build a modified copy with RestrictInfos inserted
@@ -71,7 +73,9 @@ make_restrictinfo(Expr *clause,
 													   is_pushed_down,
 													   outerjoin_delayed,
 													   pseudoconstant,
-													   required_relids);
+													   required_relids,
+													   nullable_relids,
+													   ojscope_relids);
 
 	/* Shouldn't be an AND clause, else AND/OR flattening messed up */
 	Assert(!and_clause((Node *) clause));
@@ -81,7 +85,9 @@ make_restrictinfo(Expr *clause,
 									  is_pushed_down,
 									  outerjoin_delayed,
 									  pseudoconstant,
-									  required_relids);
+									  required_relids,
+									  nullable_relids,
+									  ojscope_relids);
 }
 
 /*
@@ -95,8 +101,8 @@ make_restrictinfo(Expr *clause,
  * RestrictInfos.
  *
  * The caller must pass is_pushed_down, but we assume outerjoin_delayed
- * and pseudoconstant are false (no such qual should ever get into a
- * bitmapqual).
+ * and pseudoconstant are false and nullable_relids is NULL (no other
+ * kind of qual should ever get into a bitmapqual).
  *
  * If include_predicates is true, we add any partial index predicates to
  * the explicit index quals.  When this is not true, we return a condition
@@ -227,6 +233,8 @@ make_restrictinfo_from_bitmapqual(Path *bitmapqual,
 													  is_pushed_down,
 													  false,
 													  false,
+													  NULL,
+													  NULL,
 													  NULL));
 		}
 	}
@@ -253,6 +261,8 @@ make_restrictinfo_from_bitmapqual(Path *bitmapqual,
 													   is_pushed_down,
 													   false,
 													   false,
+													   NULL,
+													   NULL,
 													   NULL));
 			}
 		}
@@ -277,7 +287,9 @@ make_restrictinfo_internal(Expr *clause,
 						   bool is_pushed_down,
 						   bool outerjoin_delayed,
 						   bool pseudoconstant,
-						   Relids required_relids)
+						   Relids required_relids,
+						   Relids nullable_relids,
+						   Relids ojscope_relids)
 {
 	RestrictInfo *restrictinfo = makeNode(RestrictInfo);
 
@@ -287,6 +299,8 @@ make_restrictinfo_internal(Expr *clause,
 	restrictinfo->outerjoin_delayed = outerjoin_delayed;
 	restrictinfo->pseudoconstant = pseudoconstant;
 	restrictinfo->can_join = false;		/* may get set below */
+	restrictinfo->nullable_relids = nullable_relids;
+	restrictinfo->ojscope_relids = ojscope_relids;
 
 	/**
 	 * If this is a IS NOT FALSE boolean test, we can peek underneath.
@@ -351,18 +365,20 @@ make_restrictinfo_internal(Expr *clause,
 	 * that happens only if it appears in the right context (top level of a
 	 * joinclause list).
 	 */
+	restrictinfo->parent_ec = NULL;
+
 	restrictinfo->eval_cost.startup = -1;
 	restrictinfo->this_selec = -1;
 
-	restrictinfo->mergejoinoperator = InvalidOid;
-	restrictinfo->left_sortop = InvalidOid;
-	restrictinfo->right_sortop = InvalidOid;
+	restrictinfo->mergeopfamilies = NIL;
 
-	restrictinfo->left_pathkey = NIL;
-	restrictinfo->right_pathkey = NIL;
+	restrictinfo->left_ec = NULL;
+	restrictinfo->right_ec = NULL;
+	restrictinfo->left_em = NULL;
+	restrictinfo->right_em = NULL;
+	restrictinfo->scansel_cache = NIL;
 
-	restrictinfo->left_mergescansel = -1;
-	restrictinfo->right_mergescansel = -1;
+	restrictinfo->outer_is_left = false;
 
 	restrictinfo->hashjoinoperator = InvalidOid;
 
@@ -382,7 +398,8 @@ make_restrictinfo_internal(Expr *clause,
  * simple clauses are valid RestrictInfos.
  *
  * The same is_pushed_down, outerjoin_delayed, and pseudoconstant flag
- * values can be applied to all RestrictInfo nodes in the result.
+ * values can be applied to all RestrictInfo nodes in the result.  Likewise
+ * for nullable_relids.
  *
  * The given required_relids are attached to our top-level output,
  * but any OR-clause constituents are allowed to default to just the
@@ -393,7 +410,9 @@ make_sub_restrictinfos(Expr *clause,
 					   bool is_pushed_down,
 					   bool outerjoin_delayed,
 					   bool pseudoconstant,
-					   Relids required_relids)
+					   Relids required_relids,
+					   Relids nullable_relids,
+					   Relids ojscope_relids)
 {
 	if (or_clause((Node *) clause))
 	{
@@ -406,13 +425,17 @@ make_sub_restrictinfos(Expr *clause,
 													is_pushed_down,
 													outerjoin_delayed,
 													pseudoconstant,
-													NULL));
+													NULL,
+													nullable_relids,
+													ojscope_relids));
 		return (Expr *) make_restrictinfo_internal(clause,
 												   make_orclause(orlist),
 												   is_pushed_down,
 												   outerjoin_delayed,
 												   pseudoconstant,
-												   required_relids);
+												   required_relids,
+												   nullable_relids,
+												   ojscope_relids);
 	}
 	else if (and_clause((Node *) clause))
 	{
@@ -425,7 +448,9 @@ make_sub_restrictinfos(Expr *clause,
 													 is_pushed_down,
 													 outerjoin_delayed,
 													 pseudoconstant,
-													 required_relids));
+													 required_relids,
+													 nullable_relids,
+													 ojscope_relids));
 		return make_andclause(andlist);
 	}
 	else
@@ -434,7 +459,9 @@ make_sub_restrictinfos(Expr *clause,
 												   is_pushed_down,
 												   outerjoin_delayed,
 												   pseudoconstant,
-												   required_relids);
+												   required_relids,
+												   nullable_relids,
+												   ojscope_relids);
 }
 
 /*
@@ -544,81 +571,17 @@ extract_actual_join_clauses(List *restrictinfo_list,
 }
 
 /*
- * remove_redundant_join_clauses
- *
- * Given a list of RestrictInfo clauses that are to be applied in a join,
- * remove any duplicate or redundant clauses.
- *
- * We must eliminate duplicates when forming the restrictlist for a joinrel,
- * since we will see many of the same clauses arriving from both input
- * relations. Also, if a clause is a mergejoinable clause, it's possible that
- * it is redundant with previous clauses (see optimizer/README for
- * discussion). We detect that case and omit the redundant clause from the
- * result list.
- *
- * The result is a fresh List, but it points to the same member nodes
- * as were in the input.
- */
-List *
-remove_redundant_join_clauses(PlannerInfo *root, List *restrictinfo_list,
-							  Relids outer_relids,
-							  Relids inner_relids,
-							  bool isouterjoin)
-{
-	List	   *result = NIL;
-	ListCell   *item;
-	QualCost	cost;
-
-	/*
-	 * If there are any redundant clauses, we want to eliminate the ones that
-	 * are more expensive in favor of the ones that are less so. Run
-	 * cost_qual_eval() to ensure the eval_cost fields are set up.
-	 */
-	cost_qual_eval(&cost, restrictinfo_list, root);
-
-	/*
-	 * We don't have enough knowledge yet to be able to estimate the number of
-	 * times a clause might be evaluated, so it's hard to weight the startup
-	 * and per-tuple costs appropriately.  For now just weight 'em the same.
-	 */
-#define CLAUSECOST(r)  ((r)->eval_cost.startup + (r)->eval_cost.per_tuple)
-
-	foreach(item, restrictinfo_list)
-	{
-		RestrictInfo *rinfo = (RestrictInfo *) lfirst(item);
-		RestrictInfo *prevrinfo;
-
-		/* is it redundant with any prior clause? */
-		prevrinfo = join_clause_is_redundant(root, rinfo, result,
-											 outer_relids, inner_relids,
-											 isouterjoin);
-		if (prevrinfo == NULL)
-		{
-			/* no, so add it to result list */
-			result = lappend(result, rinfo);
-		}
-		else if (CLAUSECOST(rinfo) < CLAUSECOST(prevrinfo))
-		{
-			/* keep this one, drop the previous one */
-			result = list_delete_ptr(result, prevrinfo);
-			result = lappend(result, rinfo);
-		}
-		/* else, drop this one */
-	}
-
-	return result;
-}
-
-/*
  * select_nonredundant_join_clauses
  *
  * Given a list of RestrictInfo clauses that are to be applied in a join,
  * select the ones that are not redundant with any clause in the
- * reference_list.
+ * reference_list.	This is used only for nestloop-with-inner-indexscan
+ * joins: any clauses being checked by the index should be removed from
+ * the qpquals list.
  *
- * This is similar to remove_redundant_join_clauses, but we are looking for
- * redundancies with a separate list of clauses (i.e., clauses that have
- * already been applied below the join itself).
+ * "Redundant" means either equal() or derived from the same EquivalenceClass.
+ * We have to check the latter because indxqual.c may select different derived
+ * clauses than were selected by generate_join_implied_equalities().
  *
  * Note that we assume the given restrictinfo_list has already been checked
  * for local redundancies, so we don't check again.
@@ -626,10 +589,7 @@ remove_redundant_join_clauses(PlannerInfo *root, List *restrictinfo_list,
 List *
 select_nonredundant_join_clauses(PlannerInfo *root,
 								 List *restrictinfo_list,
-								 List *reference_list,
-								 Relids outer_relids,
-								 Relids inner_relids,
-								 bool isouterjoin)
+								 List *reference_list)
 {
 	List	   *result = NIL;
 	ListCell   *item;
@@ -639,9 +599,7 @@ select_nonredundant_join_clauses(PlannerInfo *root,
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(item);
 
 		/* drop it if redundant with any reference clause */
-		if (join_clause_is_redundant(root, rinfo, reference_list,
-									 outer_relids, inner_relids,
-									 isouterjoin) != NULL)
+		if (join_clause_is_redundant(root, rinfo, reference_list))
 			continue;
 
 		/* otherwise, add it to result list */
@@ -653,95 +611,28 @@ select_nonredundant_join_clauses(PlannerInfo *root,
 
 /*
  * join_clause_is_redundant
- *		If rinfo is redundant with any clause in reference_list,
- *		return one such clause; otherwise return NULL.
- *
- * This is the guts of both remove_redundant_join_clauses and
- * select_nonredundant_join_clauses.  See the docs above for motivation.
- *
- * We can detect redundant mergejoinable clauses very cheaply by using their
- * left and right pathkeys, which uniquely identify the sets of equijoined
- * variables in question.  All the members of a pathkey set that are in the
- * left relation have already been forced to be equal; likewise for those in
- * the right relation.	So, we need to have only one clause that checks
- * equality between any set member on the left and any member on the right;
- * by transitivity, all the rest are then equal.
- *
- * However, clauses that are of the form "var expr = const expr" cannot be
- * eliminated as redundant.  This is because when there are const expressions
- * in a pathkey set, generate_implied_equalities() suppresses "var = var"
- * clauses in favor of "var = const" clauses.  We cannot afford to drop any
- * of the latter, even though they might seem redundant by the pathkey
- * membership test.
- *
- * Also, we cannot eliminate clauses wherein one side mentions vars from
- * both relations, as in "WHERE t1.f1 = t2.f1 AND t1.f1 = t1.f2 - t2.f2".
- * In this example, "t1.f2 - t2.f2" could not have been computed at all
- * before forming the join of t1 and t2, so it certainly wasn't constrained
- * earlier.
- *
- * Weird special case: if we have two clauses that seem redundant
- * except one is pushed down into an outer join and the other isn't,
- * then they're not really redundant, because one constrains the
- * joined rows after addition of null fill rows, and the other doesn't.
+ *		Test whether rinfo is redundant with any clause in reference_list.
  */
-static RestrictInfo *
+static bool
 join_clause_is_redundant(PlannerInfo *root,
 						 RestrictInfo *rinfo,
-						 List *reference_list,
-						 Relids outer_relids,
-						 Relids inner_relids,
-						 bool isouterjoin)
+						 List *reference_list)
 {
 	ListCell   *refitem;
 
-	/* always consider exact duplicates redundant */
 	foreach(refitem, reference_list)
 	{
 		RestrictInfo *refrinfo = (RestrictInfo *) lfirst(refitem);
 
+		/* always consider exact duplicates redundant */
 		if (equal(rinfo, refrinfo))
-			return refrinfo;
+			return true;
+
+		/* check if derived from same EquivalenceClass */
+		if (rinfo->parent_ec != NULL &&
+			rinfo->parent_ec == refrinfo->parent_ec)
+			return true;
 	}
 
-	/* check for redundant merge clauses */
-	if (rinfo->mergejoinoperator != InvalidOid)
-	{
-		/* do the cheap test first: is it a "var = const" clause? */
-		if (bms_is_empty(rinfo->left_relids) ||
-			bms_is_empty(rinfo->right_relids))
-			return NULL;		/* var = const, so not redundant */
-
-		/* check for either side mentioning both rels */
-		if (bms_overlap(rinfo->left_relids, outer_relids) &&
-			bms_overlap(rinfo->left_relids, inner_relids))
-			return NULL;		/* clause LHS uses both, so not redundant */
-		if (bms_overlap(rinfo->right_relids, outer_relids) &&
-			bms_overlap(rinfo->right_relids, inner_relids))
-			return NULL;		/* clause RHS uses both, so not redundant */
-
-		cache_mergeclause_pathkeys(root, rinfo);
-
-		foreach(refitem, reference_list)
-		{
-			RestrictInfo *refrinfo = (RestrictInfo *) lfirst(refitem);
-
-			if (refrinfo->mergejoinoperator != InvalidOid)
-			{
-				cache_mergeclause_pathkeys(root, refrinfo);
-
-				if (rinfo->left_pathkey == refrinfo->left_pathkey &&
-					rinfo->right_pathkey == refrinfo->right_pathkey &&
-					(rinfo->is_pushed_down == refrinfo->is_pushed_down ||
-					 !isouterjoin))
-				{
-					/* Yup, it's redundant */
-					return refrinfo;
-				}
-			}
-		}
-	}
-
-	/* otherwise, not redundant */
-	return NULL;
+	return false;
 }

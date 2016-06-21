@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/fetch.sgml,v 1.39 2006/09/16 00:30:18 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/fetch.sgml,v 1.41 2007/10/24 22:55:52 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -327,11 +327,6 @@ FETCH <replaceable class="parameter">count</replaceable>
   </para>
 
   <para>
-   Updating data via a cursor is currently not supported by
-   <productname>PostgreSQL</productname>.
-  </para>
-
-  <para>
    <xref linkend="sql-declare" endterm="sql-declare-title">
    is used to define a cursor.  Use
    <xref linkend="sql-move" endterm="sql-move-title">
@@ -343,7 +338,7 @@ FETCH <replaceable class="parameter">count</replaceable>
   <title>Examples</title>
 
   <para>
-   The following example traverses a table using a cursor.
+   The following example traverses a table using a cursor:
 
 <programlisting>
 BEGIN WORK;

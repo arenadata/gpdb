@@ -600,11 +600,27 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 		 * The following changes must be logged in the change log.
 		 */
 		case RM_HEAP2_ID:
-			switch (info)
+			op = info & XLOG_HEAP_OPMASK;
+			switch (op)
 			{
 				case XLOG_HEAP2_FREEZE:
 				{
 					xl_heap_freeze *xlrec = (xl_heap_freeze *) data;
+
+					ChangeTracking_AddRelationChangeInfo(
+													   relationChangeInfoArray,
+													   relationChangeInfoArrayCount,
+													   relationChangeInfoMaxSize,
+													   &(xlrec->heapnode.node),
+													   xlrec->block,
+													   &xlrec->heapnode.persistentTid,
+													   xlrec->heapnode.persistentSerialNum);
+					break;
+				}
+				case XLOG_HEAP2_CLEAN:
+				case XLOG_HEAP2_CLEAN_MOVE:
+				{
+					xl_heap_clean *xlrec = (xl_heap_clean *) data;
 
 					ChangeTracking_AddRelationChangeInfo(
 													   relationChangeInfoArray,
@@ -652,6 +668,7 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 													   xlrec->target.persistentSerialNum);
 					break;
 				}
+				case XLOG_HEAP_HOT_UPDATE:
 				case XLOG_HEAP_UPDATE:
 				case XLOG_HEAP_MOVE:
 				{
@@ -680,20 +697,6 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 														   &xlrec->target.persistentTid,
 														   xlrec->target.persistentSerialNum);
 						
-					break;
-				}
-				case XLOG_HEAP_CLEAN:
-				{
-					xl_heap_clean *xlrec = (xl_heap_clean *) data;
-
-					ChangeTracking_AddRelationChangeInfo(
-													   relationChangeInfoArray,
-													   relationChangeInfoArrayCount,
-													   relationChangeInfoMaxSize,
-													   &(xlrec->heapnode.node),
-													   xlrec->block,
-													   &xlrec->heapnode.persistentTid,
-													   xlrec->heapnode.persistentSerialNum);
 					break;
 				}
 				case XLOG_HEAP_NEWPAGE:
@@ -778,43 +781,41 @@ void ChangeTracking_GetRelationChangeInfoFromXlog(
 					break;
 				}
 				case XLOG_BTREE_SPLIT_L:
-				case XLOG_BTREE_SPLIT_R:
 				case XLOG_BTREE_SPLIT_L_ROOT:
+				case XLOG_BTREE_SPLIT_R:
 				case XLOG_BTREE_SPLIT_R_ROOT:
 				{
 					xl_btree_split *xlrec = (xl_btree_split *) data;
-					BlockIdData blkid = xlrec->target.tid.ip_blkid;
-					
+
+					/* orig page / new left page */
 					ChangeTracking_AddRelationChangeInfo(
-													   relationChangeInfoArray,
-													   relationChangeInfoArrayCount,
-													   relationChangeInfoMaxSize,
-													   &(xlrec->target.node),
-													   BlockIdGetBlockNumber(&blkid),
-													   &xlrec->target.persistentTid,
-													   xlrec->target.persistentSerialNum);
-					
+						relationChangeInfoArray,
+						relationChangeInfoArrayCount,
+						relationChangeInfoMaxSize, &(xlrec->node),
+						xlrec->leftsib,
+						&xlrec->persistentTid,
+						xlrec->persistentSerialNum);
+
+					/* new right page */
 					ChangeTracking_AddRelationChangeInfo(
-													   relationChangeInfoArray,
-													   relationChangeInfoArrayCount,
-													   relationChangeInfoMaxSize,
-													   &(xlrec->target.node),
-													   xlrec->otherblk,
-													   &xlrec->target.persistentTid,
-													   xlrec->target.persistentSerialNum);
-					
-					if (xlrec->rightblk != P_NONE)
+						relationChangeInfoArray,
+						relationChangeInfoArrayCount,
+						relationChangeInfoMaxSize, &(xlrec->node),
+						xlrec->rightsib,
+						&xlrec->persistentTid,
+						xlrec->persistentSerialNum);
+
+					/* next block (orig page's rightlink) */
+					if (xlrec->rnext != P_NONE)
 					{
 						ChangeTracking_AddRelationChangeInfo(
-														   relationChangeInfoArray,
-														   relationChangeInfoArrayCount,
-														   relationChangeInfoMaxSize,
-														   &(xlrec->target.node),
-														   xlrec->rightblk,
-														   &xlrec->target.persistentTid,
-														   xlrec->target.persistentSerialNum);
+							relationChangeInfoArray,
+							relationChangeInfoArrayCount,
+							relationChangeInfoMaxSize, &(xlrec->node),
+							xlrec->rnext,
+							&xlrec->persistentTid,
+							xlrec->persistentSerialNum);
 					}
-					
 					break;
 				}
 				case XLOG_BTREE_DELETE:
@@ -1928,12 +1929,14 @@ static void ChangeTracking_RenameLogFile(CTFType source, CTFType dest)
 
 static void ChangeTracking_DropLogFile(CTFType ftype)
 {
-	File	file;
+	char	path[MAXPGPATH];
 
 	Assert(ftype != CTF_META);
-	
-	file = ChangeTracking_OpenFile(ftype);
-	FileUnlink(file);
+
+	ChangeTracking_SetPathByType(ftype, path);
+
+	if (unlink(path))
+		elog(LOG, "could not unlink file \"%s\": %m", path);
 }
 
 static void ChangeTracking_DropLogFiles(void)
@@ -1950,19 +1953,20 @@ static void ChangeTracking_DropLogFiles(void)
 
 static void ChangeTracking_DropMetaFile(void)
 {
-	File	file;
+	char	path[MAXPGPATH];
 
-	file = ChangeTracking_OpenFile(CTF_META);
-	
 	changeTrackingResyncMeta->resync_mode_full = false;
 	setFullResync(changeTrackingResyncMeta->resync_mode_full);
 	changeTrackingResyncMeta->resync_lsn_end.xlogid = 0;
 	changeTrackingResyncMeta->resync_lsn_end.xrecoff = 0;
 	changeTrackingResyncMeta->resync_transition_completed = false;
 	changeTrackingResyncMeta->insync_transition_completed = false;
-	
-	/* delete the change tracking meta file*/
-	FileUnlink(file);	
+
+	/* Delete the change tracking meta file */
+	ChangeTracking_SetPathByType(CTF_META, path);
+
+	if (unlink(path))
+		elog(WARNING, "could not unlink file \"%s\": %m", path);
 }
 
 /*

@@ -9,17 +9,69 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varbit.c,v 1.50.2.1 2007/08/21 02:40:12 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varbit.c,v 1.57.2.2 2010/01/07 19:53:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
+#include "access/htup.h"
 #include "libpq/pqformat.h"
+#include "utils/array.h"
 #include "utils/varbit.h"
 
 #define HEXDIG(z)	 ((z)<10 ? ((z)+'0') : ((z)-10+'A'))
+
+
+/* common code for bittypmodin and varbittypmodin */
+static int32
+anybit_typmodin(ArrayType *ta, const char *typename)
+{
+	int32		typmod;
+	int32	   *tl;
+	int			n;
+
+	tl = ArrayGetIntegerTypmods(ta, &n);
+
+	/*
+	 * we're not too tense about good error message here because grammar
+	 * shouldn't allow wrong number of modifiers for BIT
+	 */
+	if (n != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid type modifier")));
+
+	if (*tl < 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("length for type %s must be at least 1",
+						typename)));
+	if (*tl > (MaxAttrSize * BITS_PER_BYTE))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("length for type %s cannot exceed %d",
+						typename, MaxAttrSize * BITS_PER_BYTE)));
+
+	typmod = *tl;
+
+	return typmod;
+}
+
+/* common code for bittypmodout and varbittypmodout */
+static char *
+anybit_typmodout(int32 typmod)
+{
+	char	   *res = (char *) palloc(64);
+
+	if (typmod >= 0)
+		snprintf(res, 64, "(%d)", typmod);
+	else
+		*res = '\0';
+
+	return res;
+}
 
 
 /*----------
@@ -335,6 +387,23 @@ bit(PG_FUNCTION_ARGS)
 	PG_RETURN_VARBIT_P(result);
 }
 
+Datum
+bittypmodin(PG_FUNCTION_ARGS)
+{
+	ArrayType  *ta = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_INT32(anybit_typmodin(ta, "bit"));
+}
+
+Datum
+bittypmodout(PG_FUNCTION_ARGS)
+{
+	int32		typmod = PG_GETARG_INT32(0);
+
+	PG_RETURN_CSTRING(anybit_typmodout(typmod));
+}
+
+
 /*
  * varbit_in -
  *	  converts a string to the internal representation of a bitstring.
@@ -631,6 +700,22 @@ varbit(PG_FUNCTION_ARGS)
 	PG_RETURN_VARBIT_P(result);
 }
 
+Datum
+varbittypmodin(PG_FUNCTION_ARGS)
+{
+	ArrayType  *ta = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_INT32(anybit_typmodin(ta, "varbit"));
+}
+
+Datum
+varbittypmodout(PG_FUNCTION_ARGS)
+{
+	int32		typmod = PG_GETARG_INT32(0);
+
+	PG_RETURN_CSTRING(anybit_typmodout(typmod));
+}
+
 
 /*
  * Comparison operators
@@ -888,13 +973,23 @@ bitsubstr(PG_FUNCTION_ARGS)
 			   *ps;
 
 	bitlen = VARBITLEN(arg);
-	/* If we do not have an upper bound, set bitlen */
-	if (l == -1)
-		l = bitlen;
-	e = s + l;
 	s1 = Max(s, 1);
-	e1 = Min(e, bitlen + 1);
-	if (s1 > bitlen || e1 < 1)
+	/* If we do not have an upper bound, use end of string */
+	if (l < 0)
+	{
+		e1 = bitlen + 1;
+	}
+	else
+	{
+		e = s + l;
+		/* guard against overflow, even though we don't allow L<0 here */
+		if (e < s)
+			ereport(ERROR,
+					(errcode(ERRCODE_SUBSTRING_ERROR),
+					 errmsg("negative substring length not allowed")));
+		e1 = Min(e, bitlen + 1);
+	}
+	if (s1 > bitlen || e1 <= s1)
 	{
 		/* Need to return a zero-length bitstring */
 		len = VARBITTOTALLEN(0);
@@ -1289,7 +1384,12 @@ bitfromint4(PG_FUNCTION_ARGS)
 	/* store first fractional byte */
 	if (destbitsleft > srcbitsleft)
 	{
-		*r++ = (bits8) ((a >> (srcbitsleft - 8)) & BITMASK);
+		int		val = (int) (a >> (destbitsleft - 8));
+
+		/* Force sign-fill in case the compiler implements >> as zero-fill */
+		if (a < 0)
+			val |= (-1) << (srcbitsleft + 8 - destbitsleft);
+		*r++ = (bits8) (val & BITMASK);
 		destbitsleft -= 8;
 	}
 	/* Now srcbitsleft and destbitsleft are the same, need not track both */
@@ -1368,7 +1468,12 @@ bitfromint8(PG_FUNCTION_ARGS)
 	/* store first fractional byte */
 	if (destbitsleft > srcbitsleft)
 	{
-		*r++ = (bits8) ((a >> (srcbitsleft - 8)) & BITMASK);
+		int		val = (int) (a >> (destbitsleft - 8));
+
+		/* Force sign-fill in case the compiler implements >> as zero-fill */
+		if (a < 0)
+			val |= (-1) << (srcbitsleft + 8 - destbitsleft);
+		*r++ = (bits8) (val & BITMASK);
 		destbitsleft -= 8;
 	}
 	/* Now srcbitsleft and destbitsleft are the same, need not track both */

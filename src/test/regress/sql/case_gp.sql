@@ -39,9 +39,10 @@ select pg_get_viewdef('myview',true);
 
 DROP TABLE IF EXISTS products CASCADE;
 CREATE TABLE products (id serial, name text, price numeric);
-INSERT INTO products (name, price) values ('keyboard', 124.99);
-INSERT INTO products (name, price) values ('monitor', 299.99);
-INSERT INTO products (name, price) values ('mouse', 45.59);
+INSERT INTO products (name, price) values
+  ('keyboard', 124.99),
+  ('monitor', 299.99),
+  ('mouse', 45.59);
 
 SELECT id,name,price as old_price,
        CASE name WHEN IS NOT DISTINCT FROM 'keyboard' THEN products.price*1.5 
@@ -88,7 +89,7 @@ SELECT a,b,c,CASE c WHEN IS NOT DISTINCT FROM b THEN a
 -- DECODE(): Oracle compatibility
 --
 SELECT decode(null,null,true,false);
-SELECT decode(NULL, 1, 100, NULL, 200, 300);
+SELECT decode(NULL::integer, 1, 100, NULL, 200, 300);
 SELECT decode('1'::text, '1', 100, '2', 200);
 SELECT decode(2, 1, 'ABC', 2, 'DEF');
 SELECT decode('2009-02-05'::date, '2009-02-05', 'ok');
@@ -184,12 +185,13 @@ select CASE null
 
 create table case_genders (gid integer, gender char(1)) distributed by (gid);
 
-insert into case_genders(gid, gender) values (1, 'F');
-insert into case_genders(gid, gender) values (2, 'M');
-insert into case_genders(gid, gender) values (3, 'Z');
-insert into case_genders(gid, gender) values (4, '');
-insert into case_genders(gid, gender) values (5, null);
-insert into case_genders(gid, gender) values (6, 'G');
+insert into case_genders(gid, gender) values
+  (1, 'F'),
+  (2, 'M'),
+  (3, 'Z'),
+  (4, ''),
+  (5, null),
+  (6, 'G');
 
 select gender, CASE gender
     WHEN IS NOT DISTINCT FROM 'M' THEN 'Male'
@@ -199,8 +201,6 @@ select gender, CASE gender
     END
 from case_genders
 order by gid;
-
-drop table case_genders;
 
 select CASE 'M'
     WHEN IS NOT DISTINCT FROM 'M' THEN 'Male'
@@ -214,15 +214,6 @@ select CASE null
     WHEN IS NOT DISTINCT FROM 'F' THEN 'Female'
     WHEN IS NOT DISTINCT FROM '' THEN 'Not Specified'
     ELSE 'Other' END;
-
-create table case_genders (gid integer, gender char(1)) distributed by (gid);
-
-insert into case_genders(gid, gender) values (1, 'F');
-insert into case_genders(gid, gender) values (2, 'M');
-insert into case_genders(gid, gender) values (3, 'Z');
-insert into case_genders(gid, gender) values (4, '');
-insert into case_genders(gid, gender) values (5, null);
-insert into case_genders(gid, gender) values (6, 'G');
 
 select gender, CASE gender
     WHEN IS NOT DISTINCT FROM 'M' THEN 'Male'
@@ -273,17 +264,12 @@ create table nomatch_case
    start_dt date
 ) distributed by (sid);
 
-insert into nomatch_case(sid, gender, name, start_dt)
-values(1000, 'F', 'Jane Doe', '2011-01-15'::date);
-insert into nomatch_case(sid, gender, name, start_dt)
-values(2000, 'M', 'Ryan Goesling', '2011-02-01'::date);
-insert into nomatch_case(sid, gender, name, start_dt)
-values(3000, 'M', 'Tim Tebow', '2011-01-15'::date);
-insert into nomatch_case(sid, gender, name, start_dt)
-values(4000, 'F', 'Katy Perry', '2011-03-01'::date);
-insert into nomatch_case(sid, gender, name, start_dt)
-values(5000, 'F', 'Michael Scott', '2011-02-01'::date);
-
+insert into nomatch_case(sid, gender, name, start_dt) values
+  (1000, 'F', 'Jane Doe', '2011-01-15'::date),
+  (2000, 'M', 'Ryan Goesling', '2011-02-01'::date),
+  (3000, 'M', 'Tim Tebow', '2011-01-15'::date),
+  (4000, 'F', 'Katy Perry', '2011-03-01'::date),
+  (5000, 'F', 'Michael Scott', '2011-02-01'::date);
 
 select sid,
        name,
@@ -336,26 +322,17 @@ create table combined_when
    start_dt date
 ) distributed by (sid);
 
-insert into combined_when(sid, gender, name, start_dt)
-values(1000, 'F', 'Jane Doe', '2011-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(2000, 'M', 'Ryan Goesling', '2011-02-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(3000, 'm', 'Tim Tebow', '2007-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(4000, 'F', 'Katy Perry', '2011-03-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(5000, 'f', 'Michael Scott', '2011-02-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(6000, 'Female  ', 'Mila Kunis', '2011-02-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(7000, ' Male ', 'Tom Brady', '2011-03-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(8000,  ' ', 'Lady Gaga', '2008-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(9000,  null, 'George Michael', '2011-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(10000,  'Male   ', 'Michael Jordan', null);
+insert into combined_when(sid, gender, name, start_dt) values
+  (1000, 'F', 'Jane Doe', '2011-01-15'::date),
+  (2000, 'M', 'Ryan Goesling', '2011-02-01'::date),
+  (3000, 'm', 'Tim Tebow', '2007-01-15'::date),
+  (4000, 'F', 'Katy Perry', '2011-03-01'::date),
+  (5000, 'f', 'Michael Scott', '2011-02-01'::date),
+  (6000, 'Female  ', 'Mila Kunis', '2011-02-01'::date),
+  (7000, ' Male ', 'Tom Brady', '2011-03-01'::date),
+  (8000,  ' ', 'Lady Gaga', '2008-01-15'::date),
+  (9000,  null, 'George Michael', '2011-01-15'::date),
+  (10000,  'Male   ', 'Michael Jordan', null);
 
 select case_yr_start_dt, count(sid)
 from (select sid,
@@ -384,17 +361,12 @@ create table case_expr
    start_dt date
 ) distributed by (sid);
 
-insert into case_expr(sid, gender, name, start_dt)
-values(1000, 'F', 'Jane Doe', '2011-01-15'::date);
-insert into case_expr(sid, gender, name, start_dt)
-values(2000, 'M', 'Ryan Goesling', '2011-02-01'::date);
-insert into case_expr(sid, gender, name, start_dt)
-values(3000, 'M', 'Tim Tebow', '2011-01-15'::date);
-insert into case_expr(sid, gender, name, start_dt)
-values(4000, 'F', 'Katy Perry', '2011-03-01'::date);
-insert into case_expr(sid, gender, name, start_dt)
-values(5000, 'F', 'Michael Scott', '2011-02-01'::date);
-
+insert into case_expr(sid, gender, name, start_dt) values
+  (1000, 'F', 'Jane Doe', '2011-01-15'::date),
+  (2000, 'M', 'Ryan Goesling', '2011-02-01'::date),
+  (3000, 'M', 'Tim Tebow', '2011-01-15'::date),
+  (4000, 'F', 'Katy Perry', '2011-03-01'::date),
+  (5000, 'F', 'Michael Scott', '2011-02-01'::date);
 
 select sid,
        name,
@@ -457,27 +429,17 @@ create table combined_when
    start_dt date
 ) distributed by (sid);
 
-insert into combined_when(sid, gender, name, start_dt)
-values(1000, 'F', 'Jane Doe', '2011-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(2000, 'M', 'Ryan Goesling', '2011-02-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(3000, 'm', 'Tim Tebow', '2007-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(4000, 'F', 'Katy Perry', '2011-03-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(5000, 'f', 'Michael Scott', '2011-02-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(6000, 'Female  ', 'Mila Kunis', '2011-02-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(7000, ' Male ', 'Tom Brady', '2011-03-01'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(8000,  ' ', 'Lady Gaga', '2008-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(9000,  null, 'George Michael', '2011-01-15'::date);
-insert into combined_when(sid, gender, name, start_dt)
-values(10000,  'Male   ', 'Michael Jordan', null);
-
+insert into combined_when(sid, gender, name, start_dt) values
+  (1000, 'F', 'Jane Doe', '2011-01-15'::date),
+  (2000, 'M', 'Ryan Goesling', '2011-02-01'::date),
+  (3000, 'm', 'Tim Tebow', '2007-01-15'::date),
+  (4000, 'F', 'Katy Perry', '2011-03-01'::date),
+  (5000, 'f', 'Michael Scott', '2011-02-01'::date),
+  (6000, 'Female  ', 'Mila Kunis', '2011-02-01'::date),
+  (7000, ' Male ', 'Tom Brady', '2011-03-01'::date),
+  (8000,  ' ', 'Lady Gaga', '2008-01-15'::date),
+  (9000,  null, 'George Michael', '2011-01-15'::date),
+  (10000,  'Male   ', 'Michael Jordan', null);
 
 select sid,
        name,
@@ -554,3 +516,47 @@ select CASE 1
        WHEN IS DISTINCT FROM 2 THEN '1<>2'
        WHEN IS NOT DISTINCT FROM 1 THEN '1=1'
 END;
+
+--
+-- Case expression in group by
+--
+SELECT
+	CASE t.field1
+    	WHEN IS NOT DISTINCT FROM ''::text THEN 'Undefined'::character varying
+        ELSE t.field1
+	END AS field1
+	FROM ( SELECT 'test value'::text AS field1) t
+  	GROUP BY
+	CASE t.field1
+		WHEN IS NOT DISTINCT FROM ''::text THEN 'Undefined'::character varying
+		ELSE t.field1
+	END;
+	
+--
+-- Variant of case expression in group by
+--
+SELECT
+	CASE t.field1
+    	WHEN IS NOT DISTINCT FROM ''::text THEN 'Undefined'::character varying
+        ELSE t.field1
+	END AS field1
+	FROM ( SELECT 'test value'::text AS field1) t
+  	GROUP BY 1;
+	
+--
+-- decode in group by
+--	
+SELECT
+	decode(t.field1, ''::text, 'Undefined'::character varying, t.field1) as field1
+	FROM ( SELECT 'test value'::text AS field1) t
+  	GROUP BY
+	decode(t.field1, ''::text, 'Undefined'::character varying, t.field1);
+	
+--
+-- variant of decode in group by
+--
+	SELECT
+	decode(t.field1, ''::text, 'Undefined'::character varying, t.field1) as field1
+	FROM ( SELECT 'test value'::text AS field1) t
+  	GROUP BY 1;
+

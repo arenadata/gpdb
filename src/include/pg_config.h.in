@@ -45,9 +45,6 @@
 /* Define to build with GSSAPI support. (--with-gssapi) */
 #undef ENABLE_GSS
 
-/* Define to 1 if you want National Language Support. (--enable-nls) */
-#undef ENABLE_NLS
-
 /* Define to 1 to build client libraries as thread-safe code.
    (--enable-thread-safety) */
 #undef ENABLE_THREAD_SAFETY
@@ -74,6 +71,12 @@
 /* Define to 1 if you have the `atexit' function. */
 #undef HAVE_ATEXIT
 
+/* Define to 1 if you want to use atomics. */
+#undef HAVE_ATOMICS
+
+/* Define to 1 if you have the <atomic.h> header file. */
+#undef HAVE_ATOMIC_H
+
 /* Define to 1 if you have the `cbrt' function. */
 #undef HAVE_CBRT
 
@@ -85,6 +88,10 @@
 
 /* Define to 1 if you have the <crypt.h> header file. */
 #undef HAVE_CRYPT_H
+
+/* Define to 1 if you have the declaration of `CURLOPT_MAIL_FROM', and to 0 if
+   you don't. */
+#undef HAVE_DECL_CURLOPT_MAIL_FROM
 
 /* Define to 1 if you have the declaration of `fdatasync', and to 0 if you
    don't. */
@@ -142,9 +149,6 @@
 /* Define to 1 if you have the `fdatasync' function. */
 #undef HAVE_FDATASYNC
 
-/* Define to 1 if you have finite(). */
-#undef HAVE_FINITE
-
 /* Define to 1 if you have the `fpclass' function. */
 #undef HAVE_FPCLASS
 
@@ -165,6 +169,28 @@
 
 /* Define to 1 if your compiler understands __FUNCTION__. */
 #undef HAVE_FUNCNAME__FUNCTION
+
+/* Define to 1 if you have __sync_lock_test_and_set(int *) and friends. */
+#undef HAVE_GCC_INT_ATOMICS
+
+/* Define to 1 if you have __atomic_compare_exchange_n(int *, int *, int). */
+#undef HAVE_GCC__ATOMIC_INT32_CAS
+
+/* Define to 1 if you have __atomic_compare_exchange_n(int64 *, int *, int64).
+   */
+#undef HAVE_GCC__ATOMIC_INT64_CAS
+
+/* Define to 1 if you have __sync_lock_test_and_set(char *) and friends. */
+#undef HAVE_GCC__SYNC_CHAR_TAS
+
+/* Define to 1 if you have __sync_compare_and_swap(int *, int, int). */
+#undef HAVE_GCC__SYNC_INT32_CAS
+
+/* Define to 1 if you have __sync_lock_test_and_set(int *) and friends. */
+#undef HAVE_GCC__SYNC_INT32_TAS
+
+/* Define to 1 if you have __sync_compare_and_swap(int64 *, int64, int64). */
+#undef HAVE_GCC__SYNC_INT64_CAS
 
 /* Define to 1 if you have the `getaddrinfo' function. */
 #undef HAVE_GETADDRINFO
@@ -201,6 +227,12 @@
 
 /* Define to 1 if you have the `gettimeofday' function. */
 #undef HAVE_GETTIMEOFDAY
+
+/* Define to 1 if you have the <gpopt/init.h> header file. */
+#undef HAVE_GPOPT_INIT_H
+
+/* Define to 1 if you have the <gpos/assert.h> header file. */
+#undef HAVE_GPOS_ASSERT_H
 
 /* Define to 1 if you have the <gssapi/gssapi.h> header file. */
 #undef HAVE_GSSAPI_GSSAPI_H
@@ -253,19 +285,19 @@
 /* Define to 1 if you have the <kernel/OS.h> header file. */
 #undef HAVE_KERNEL_OS_H
 
-/* Define to 1 if `e_data' is a member of `krb5_error'. */
+/* Define to 1 if `e_data' is member of `krb5_error'. */
 #undef HAVE_KRB5_ERROR_E_DATA
 
-/* Define to 1 if `text.data' is a member of `krb5_error'. */
+/* Define to 1 if `text.data' is member of `krb5_error'. */
 #undef HAVE_KRB5_ERROR_TEXT_DATA
 
 /* Define to 1 if you have krb5_free_unparsed_name */
 #undef HAVE_KRB5_FREE_UNPARSED_NAME
 
-/* Define to 1 if `client' is a member of `krb5_ticket'. */
+/* Define to 1 if `client' is member of `krb5_ticket'. */
 #undef HAVE_KRB5_TICKET_CLIENT
 
-/* Define to 1 if `enc_part2' is a member of `krb5_ticket'. */
+/* Define to 1 if `enc_part2' is member of `krb5_ticket'. */
 #undef HAVE_KRB5_TICKET_ENC_PART2
 
 /* Define to 1 if you have the <langinfo.h> header file. */
@@ -277,8 +309,14 @@
 /* Define to 1 if you have the `crypto' library (-lcrypto). */
 #undef HAVE_LIBCRYPTO
 
+/* Define to 1 if you have the `DDBoost' library (-lDDBoost). */
+#undef HAVE_LIBDDBOOST
+
 /* Define to 1 if you have the `eay32' library (-leay32). */
 #undef HAVE_LIBEAY32
+
+/* Define to 1 if you have the `emcconnect' library (-lemcconnect). */
+#undef HAVE_LIBEMCCONNECT
 
 /* Define to 1 if you have the `ldap' library (-lldap). */
 #undef HAVE_LIBLDAP
@@ -316,6 +354,9 @@
 /* Define to 1 if you have the `xml2' library (-lxml2). */
 #undef HAVE_LIBXML2
 
+/* Define to 1 if you have the `xslt' library (-lxslt). */
+#undef HAVE_LIBXSLT
+
 /* Define to 1 if you have the `z' library (-lz). */
 #undef HAVE_LIBZ
 
@@ -331,6 +372,9 @@
 
 /* Define to 1 if `long long int' works and is 64 bits. */
 #undef HAVE_LONG_LONG_INT_64
+
+/* Define to 1 if you have the <mbarrier.h> header file. */
+#undef HAVE_MBARRIER_H
 
 /* Define to 1 if you have the `memmove' function. */
 #undef HAVE_MEMMOVE
@@ -501,22 +545,22 @@
 /* Define to 1 if the system has the type `struct option'. */
 #undef HAVE_STRUCT_OPTION
 
-/* Define to 1 if `sa_len' is a member of `struct sockaddr'. */
+/* Define to 1 if `sa_len' is member of `struct sockaddr'. */
 #undef HAVE_STRUCT_SOCKADDR_SA_LEN
 
 /* Define to 1 if the system has the type `struct sockaddr_storage'. */
 #undef HAVE_STRUCT_SOCKADDR_STORAGE
 
-/* Define to 1 if `ss_family' is a member of `struct sockaddr_storage'. */
+/* Define to 1 if `ss_family' is member of `struct sockaddr_storage'. */
 #undef HAVE_STRUCT_SOCKADDR_STORAGE_SS_FAMILY
 
-/* Define to 1 if `ss_len' is a member of `struct sockaddr_storage'. */
+/* Define to 1 if `ss_len' is member of `struct sockaddr_storage'. */
 #undef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
 
-/* Define to 1 if `__ss_family' is a member of `struct sockaddr_storage'. */
+/* Define to 1 if `__ss_family' is member of `struct sockaddr_storage'. */
 #undef HAVE_STRUCT_SOCKADDR_STORAGE___SS_FAMILY
 
-/* Define to 1 if `__ss_len' is a member of `struct sockaddr_storage'. */
+/* Define to 1 if `__ss_len' is member of `struct sockaddr_storage'. */
 #undef HAVE_STRUCT_SOCKADDR_STORAGE___SS_LEN
 
 /* Define to 1 if the system has the type `struct sockaddr_un'. */
@@ -525,7 +569,7 @@
 /* Define to 1 if the system has the type `struct sockcred'. */
 #undef HAVE_STRUCT_SOCKCRED
 
-/* Define to 1 if `tm_zone' is a member of `struct tm'. */
+/* Define to 1 if `tm_zone' is member of `struct tm'. */
 #undef HAVE_STRUCT_TM_TM_ZONE
 
 /* Define to 1 if you have the <SupportDefs.h> header file. */
@@ -625,9 +669,6 @@
 /* Define to 1 if you have the `unsetenv' function. */
 #undef HAVE_UNSETENV
 
-/* Define to 1 if the system has the type `unsigned long long int'. */
-#undef HAVE_UNSIGNED_LONG_LONG_INT
-
 /* Define to 1 if you have the `utime' function. */
 #undef HAVE_UTIME
 
@@ -655,6 +696,15 @@
 /* Define to 1 if you have the <winldap.h> header file. */
 #undef HAVE_WINLDAP_H
 
+/* Define to 1 if you have the <winsock2.h> header file. */
+#undef HAVE_WINSOCK2_H
+
+/* Define to 1 if you have __cpuid. */
+#undef HAVE__CPUID
+
+/* Define to 1 if you have __get_cpuid. */
+#undef HAVE__GET_CPUID
+
 /* Define to the appropriate snprintf format for 64-bit ints, if any. */
 #undef INT64_FORMAT
 
@@ -679,11 +729,11 @@
 /* Define to the one symbol short name of this package. */
 #undef PACKAGE_TARNAME
 
-/* Define to the home page for this package. */
-#undef PACKAGE_URL
-
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* Define to the name of a signed 64-bit integer type. */
+#undef PG_INT64_TYPE
 
 /* Define to the name of the default PostgreSQL service principal in Kerberos.
    (--with-krb-srvnam=NAME) */
@@ -691,6 +741,10 @@
 
 /* PostgreSQL major version as a string */
 #undef PG_MAJORVERSION
+
+/* Define to 1 if "static inline" works without unwanted warnings from
+   compilations where static inline functions are defined but not called. */
+#undef PG_USE_INLINE
 
 /* Postgres version Greenplum Database is based on */
 #undef PG_VERSION
@@ -767,6 +821,10 @@
 /* Define to 1 to build with XML support. (--with-libxml) */
 #undef USE_LIBXML
 
+/* Define to 1 to use XSLT support when building contrib/xml2.
+   (--with-libxslt) */
+#undef USE_LIBXSLT
+
 /* Define to select named POSIX semaphores. */
 #undef USE_NAMED_POSIX_SEMAPHORES
 
@@ -776,14 +834,26 @@
 /* Define to 1 to build with Greenplum ORCA optimizer. (--enable-orca) */
 #undef USE_ORCA
 
+/* Define to 1 to build with Codegen. (--enable-codegen) */
+#undef USE_CODEGEN 
+
 /* Define to 1 to build with PAM support. (--with-pam) */
 #undef USE_PAM
 
 /* Use replacement snprintf() functions. */
 #undef USE_REPL_SNPRINTF
 
+/* Define to 1 to use Intel SSE 4.2 CRC instructions with a runtime check. */
+#undef USE_SLICING_BY_8_CRC32C
+
 /* Define to 1 to build with snmp capabilities. (--enable-snmp) */
 #undef USE_SNMP
+
+/* Define to 1 use Intel SSE 4.2 CRC instructions. */
+#undef USE_SSE42_CRC32C
+
+/* Define to 1 to use Intel SSSE 4.2 CRC instructions with a runtime check. */
+#undef USE_SSE42_CRC32C_WITH_RUNTIME_CHECK
 
 /* Define to build with (Open)SSL support. (--with-openssl) */
 #undef USE_SSL
@@ -816,11 +886,6 @@
 # ifndef WORDS_BIGENDIAN
 #  undef WORDS_BIGENDIAN
 # endif
-#endif
-
-/* Enable large inode numbers on Mac OS X 10.5.  */
-#ifndef _DARWIN_USE_64_BIT_INODE
-# define _DARWIN_USE_64_BIT_INODE 1
 #endif
 
 /* Number of bits in a file offset, on hosts where this is settable. */

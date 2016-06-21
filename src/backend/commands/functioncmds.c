@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/functioncmds.c,v 1.80 2006/10/06 17:13:58 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/functioncmds.c,v 1.88.2.1 2009/02/24 01:38:49 tgl Exp $
  *
  *
  * DESCRIPTION
@@ -47,19 +47,23 @@
 #include "commands/defrem.h"
 #include "commands/proclang.h"
 #include "miscadmin.h"
+#include "optimizer/var.h"
+#include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 static void AlterFunctionOwner_internal(cqContext *pcqCtx,
-										Relation rel, HeapTuple tup, 
-										Oid newOwnerId);
+							Relation rel, HeapTuple tup, 
+							Oid newOwnerId);
 static void CheckForModifySystemFunc(Oid funcOid, List *funcName);
 
 /*
@@ -79,12 +83,13 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 					Oid *prorettype_p, bool *returnsSet_p, Oid shelltypeOid)
 {
 	Oid			rettype;
+	Type		typtup;
 
-	rettype = LookupTypeName(NULL, returnType);
+	typtup = LookupTypeName(NULL, returnType, NULL);
 
-	if (OidIsValid(rettype))
+	if (typtup)
 	{
-		if (!get_typisdefined(rettype))
+		if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
 		{
 			if (languageOid == SQLlanguageId)
 				ereport(ERROR,
@@ -97,6 +102,8 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 						 errmsg("return type %s is only a shell",
 								TypeNameToString(returnType))));
 		}
+		rettype = typeTypeId(typtup);
+		ReleaseSysCache(typtup);
 	}
 	else
 	{
@@ -116,6 +123,13 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type \"%s\" does not exist", typnam)));
+
+		/* Reject if there's typmod decoration, too */
+		if (returnType->typmods != NIL)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("type modifier cannot be specified for shell type \"%s\"",
+				   typnam)));
 
 		/* Otherwise, go ahead and make a shell type */
 		if (Gp_role == GP_ROLE_EXECUTE)
@@ -139,7 +153,7 @@ compute_return_type(TypeName *returnType, Oid languageOid,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 						   get_namespace_name(namespaceId));
-		rettype = TypeShellMakeWithOid(typname, namespaceId, GetUserId(), shelltypeOid);
+		rettype = TypeShellMake(typname, namespaceId, GetUserId(), shelltypeOid);
 		Assert(OidIsValid(rettype));
 	}
 
@@ -157,10 +171,12 @@ compute_return_type(TypeName *returnType, Oid languageOid,
  */
 static void
 examine_parameter_list(List *parameters, Oid languageOid,
+					   const char *queryString,
 					   oidvector **parameterTypes,
 					   ArrayType **allParameterTypes,
 					   ArrayType **parameterModes,
 					   ArrayType **parameterNames,
+					   List	**parameterDefaults,
 					   Oid *requiredResultType)
 {
 	int			parameterCount = list_length(parameters);
@@ -173,8 +189,10 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	int         varCount = 0;
 	int         multisetCount = 0;
 	bool		have_names = false;
+	bool		have_defaults = false;
 	ListCell   *x;
 	int			i;
+	ParseState *pstate;
 
 	/* default results */
 	*requiredResultType = InvalidOid;
@@ -187,6 +205,11 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	allTypes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramModes = (Datum *) palloc(parameterCount * sizeof(Datum));
 	paramNames = (Datum *) palloc0(parameterCount * sizeof(Datum));
+	*parameterDefaults = NIL;
+
+	/* may need a pstate for parse analysis of default exprs */
+	pstate = make_parsestate(NULL);
+	pstate->p_sourcetext = queryString;
 
 	/* Scan the list and extract data into work arrays */
 	i = 0;
@@ -194,12 +217,14 @@ examine_parameter_list(List *parameters, Oid languageOid,
 	{
 		FunctionParameter *fp = (FunctionParameter *) lfirst(x);
 		TypeName   *t = fp->argType;
+		bool		isinput = false;
 		Oid			toid;
+		Type		typtup;
 
-		toid = LookupTypeName(NULL, t);
-		if (OidIsValid(toid))
+		typtup = LookupTypeName(NULL, t, NULL);
+		if (typtup)
 		{
-			if (!get_typisdefined(toid))
+			if (!((Form_pg_type) GETSTRUCT(typtup))->typisdefined)
 			{
 				/* As above, hard error if language is SQL */
 				if (languageOid == SQLlanguageId)
@@ -213,6 +238,8 @@ examine_parameter_list(List *parameters, Oid languageOid,
 							 errmsg("argument type %s is only a shell",
 									TypeNameToString(t))));
 			}
+			toid = typeTypeId(typtup);
+			ReleaseSysCache(typtup);
 		}
 		else
 		{
@@ -220,6 +247,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("type %s does not exist",
 							TypeNameToString(t))));
+			toid = InvalidOid;	/* keep compiler quiet */
 		}
 
 		if (t->setof)
@@ -236,6 +264,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 			case FUNC_PARAM_VARIADIC:	/* GPDB: not yet supported */
 			case FUNC_PARAM_IN:
 				inTypes[inCount++] = toid;
+				isinput = true;
 
 				/* Keep track of the number of anytable arguments */
 				if (toid == ANYTABLEOID)
@@ -243,7 +272,21 @@ examine_parameter_list(List *parameters, Oid languageOid,
 
 				/* Other input parameters cannot follow VARIADIC parameter */
 				if (fp->mode == FUNC_PARAM_VARIADIC)
+				{
 					varCount++;
+					switch (toid)
+					{
+						case ANYARRAYOID:
+						case ANYOID:
+							break;
+						default:
+							if (!OidIsValid(get_element_type(toid)))
+								ereport(ERROR,
+										(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+										 errmsg("VARIADIC parameter must be an array")));
+							break;
+					}
+				}
 				else if (varCount > 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
@@ -271,6 +314,7 @@ examine_parameter_list(List *parameters, Oid languageOid,
 							 errmsg("functions cannot return \"anytable\" arguments")));
 
 				inTypes[inCount++] = toid;
+				isinput = true;
 
 				if (outCount == 0)	/* save first OUT param's type */
 					*requiredResultType = toid;
@@ -293,8 +337,64 @@ examine_parameter_list(List *parameters, Oid languageOid,
 			have_names = true;
 		}
 
+		if (fp->defexpr)
+		{
+			Node   *def;
+
+			if (!isinput)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("only input parameters can have default values")));
+
+			if (toid == ANYTABLEOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("anytable parameter cannot have default value")));
+
+			def = transformExpr(pstate, fp->defexpr);
+			def = coerce_to_specific_type(pstate, def, toid, "DEFAULT");
+
+			/*
+			 * Make sure no variables are referred to.
+			 */
+			if (list_length(pstate->p_rtable) != 0 ||
+				contain_var_clause(def))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
+							 errmsg("cannot use table references in parameter default value")));
+			/*
+			 * No subplans or aggregates, either...
+			 */
+			if (pstate->p_hasSubLinks)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot use subquery in parameter default value")));
+
+			if (pstate->p_hasAggs)
+				ereport(ERROR,
+						(errcode(ERRCODE_GROUPING_ERROR),
+						 errmsg("cannot use aggregate function in parameter default value")));
+
+			if (pstate->p_hasWindFuncs)
+				ereport(ERROR,
+						(errcode(ERRCODE_WINDOWING_ERROR),
+						 errmsg("cannot use window function in parameter default value")));
+
+			*parameterDefaults = lappend(*parameterDefaults, def);
+			have_defaults = true;
+		}
+		else
+		{
+			if (isinput && have_defaults)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+						 errmsg("input parameters after one with a default value must also have defaults")));
+		}
+
 		i++;
 	}
+
+	free_parsestate(pstate);
 
 	/* Currently only support single multiset input parameters */
 	if (multisetCount > 1)
@@ -337,13 +437,17 @@ examine_parameter_list(List *parameters, Oid languageOid,
  * FUNCTION and ALTER FUNCTION and return it via one of the out
  * parameters. Returns true if the passed option was recognized. If
  * the out parameter we were going to assign to points to non-NULL,
- * raise a duplicate error.
+ * raise a duplicate-clause error.	(We don't try to detect duplicate
+ * SET parameters though --- if you're redundant, the last one wins.)
  */
 static bool
 compute_common_attribute(DefElem *defel,
 						 DefElem **volatility_item,
 						 DefElem **strict_item,
 						 DefElem **security_item,
+						 List **set_items,
+						 DefElem **cost_item,
+						 DefElem **rows_item,
 						 DefElem **data_access_item)
 {
 	if (strcmp(defel->defname, "volatility") == 0)
@@ -366,6 +470,24 @@ compute_common_attribute(DefElem *defel,
 			goto duplicate_error;
 
 		*security_item = defel;
+	}
+	else if (strcmp(defel->defname, "set") == 0)
+	{
+		*set_items = lappend(*set_items, defel->arg);
+	}
+	else if (strcmp(defel->defname, "cost") == 0)
+	{
+		if (*cost_item)
+			goto duplicate_error;
+
+		*cost_item = defel;
+	}
+	else if (strcmp(defel->defname, "rows") == 0)
+	{
+		if (*rows_item)
+			goto duplicate_error;
+
+		*rows_item = defel;
 	}
 	else if (strcmp(defel->defname, "data_access") == 0)
 	{
@@ -462,6 +584,38 @@ validate_sql_data_access(char data_access, char volatility, Oid languageOid)
 }
 
 /*
+ * Update a proconfig value according to a list of VariableSetStmt items.
+ *
+ * The input and result may be NULL to signify a null entry.
+ */
+static ArrayType *
+update_proconfig_value(ArrayType *a, List *set_items)
+{
+	ListCell   *l;
+
+	foreach(l, set_items)
+	{
+		VariableSetStmt *sstmt = (VariableSetStmt *) lfirst(l);
+
+		Assert(IsA(sstmt, VariableSetStmt));
+		if (sstmt->kind == VAR_RESET_ALL)
+			a = NULL;
+		else
+		{
+			char	   *valuestr = ExtractSetVariableArgs(sstmt);
+
+			if (valuestr)
+				a = GUCArrayAdd(a, sstmt->name, valuestr);
+			else	/* RESET */
+				a = GUCArrayDelete(a, sstmt->name);
+		}
+	}
+
+	return a;
+}
+
+
+/*
  * Dissect the list of options assembled in gram.y into function
  * attributes.
  */
@@ -473,6 +627,9 @@ compute_attributes_sql_style(List *options,
 							 char *volatility_p,
 							 bool *strict_p,
 							 bool *security_definer,
+							 ArrayType **proconfig,
+							 float4 *procost,
+							 float4 *prorows,
 							 char *data_access)
 {
 	ListCell   *option;
@@ -481,6 +638,9 @@ compute_attributes_sql_style(List *options,
 	DefElem    *volatility_item = NULL;
 	DefElem    *strict_item = NULL;
 	DefElem    *security_item = NULL;
+	List	   *set_items = NIL;
+	DefElem    *cost_item = NULL;
+	DefElem    *rows_item = NULL;
 	DefElem    *data_access_item = NULL;
 
 	char	   *language;
@@ -509,6 +669,9 @@ compute_attributes_sql_style(List *options,
 										  &volatility_item,
 										  &strict_item,
 										  &security_item,
+										  &set_items,
+										  &cost_item,
+										  &rows_item,
 										  &data_access_item))
 		{
 			/* recognized common option */
@@ -563,7 +726,24 @@ compute_attributes_sql_style(List *options,
 		*strict_p = intVal(strict_item->arg);
 	if (security_item)
 		*security_definer = intVal(security_item->arg);
-
+	if (set_items)
+		*proconfig = update_proconfig_value(NULL, set_items);
+	if (cost_item)
+	{
+		*procost = defGetNumeric(cost_item);
+		if (*procost <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("COST must be positive")));
+	}
+	if (rows_item)
+	{
+		*prorows = defGetNumeric(rows_item);
+		if (*prorows <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("ROWS must be positive")));
+	}
 	/* If prodataaccess indicator not specified, fill in default. */
 	if (data_access_item == NULL)
 		*data_access = getDefaultDataAccess(*languageOid);
@@ -617,13 +797,6 @@ compute_attributes_with_style(List *parameters,
 		{
 			*describeQualName_p = defGetQualifiedName(param);
 		}
-		else if (gp_upgrade_mode && pg_strcasecmp(param->defname, "OID")==0)
-		{
-			/* Catalog obj's OID must be less than FirstBootstrapObjectId */
-			int64 oid = defGetInt64(param);
-			Assert(oid < FirstBootstrapObjectId);
-			*oid_p = (Oid) oid;
-		}
 		else
 		{
 			ereport(WARNING,
@@ -645,7 +818,8 @@ compute_attributes_with_style(List *parameters,
  *	   AS <object reference, or sql code>
  */
 static void
-interpret_AS_clause(Oid languageOid, const char *languageName, List *as,
+interpret_AS_clause(Oid languageOid, const char *languageName,
+					char *funcname, List *as,
 					char **prosrc_str_p, char **probin_str_p)
 {
 	Assert(as != NIL);
@@ -654,25 +828,47 @@ interpret_AS_clause(Oid languageOid, const char *languageName, List *as,
 	{
 		/*
 		 * For "C" language, store the file name in probin and, when given,
-		 * the link symbol name in prosrc.
+		 * the link symbol name in prosrc. If link symbol is omitted,
+		 * substitute procedure name.  We also allow link symbol to be
+		 * specified as "-", since that was the habit in GPDB versions before
+		 * Paris, and there might be dump files out there that don't translate
+		 * that back to "omitted". 
 		 */
 		*probin_str_p = strVal(linitial(as));
 		if (list_length(as) == 1)
-			*prosrc_str_p = "-";
+			*prosrc_str_p = funcname;
 		else
+		{
 			*prosrc_str_p = strVal(lsecond(as));
+			if (strcmp(*prosrc_str_p, "-") == 0)
+				*prosrc_str_p = funcname;
+		}
 	}
 	else
 	{
 		/* Everything else wants the given string in prosrc. */
 		*prosrc_str_p = strVal(linitial(as));
-		*probin_str_p = "-";
+		*probin_str_p = NULL;
 
 		if (list_length(as) != 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 					 errmsg("only one AS item needed for language \"%s\"",
 							languageName)));
+	}
+
+	if (languageOid == INTERNALlanguageId)
+	{
+		/*
+		 * In PostgreSQL versions before 6.5, the SQL name of the created
+		 * function could not be different from the internal name, and
+		 * "prosrc" wasn't used.  So there is code out there that does
+		 * CREATE FUNCTION xyz AS '' LANGUAGE internal. To preserve some
+		 * modicum of backwards compatibility, accept an empty "prosrc"
+		 * value as meaning the supplied SQL function name.
+		 */
+		if (strlen(*prosrc_str_p) == 0)
+			*prosrc_str_p = funcname;
 	}
 }
 
@@ -746,18 +942,22 @@ validate_describe_callback(List *describeQualName,
 			}
 		}
 	}
-
+	int nvargs;
 	/* Lookup the function in the catalog */
 	fdResult = func_get_detail(describeQualName,
 							   NIL,   /* argument expressions */
 							   nargs, 
 							   inputTypeOids,
+							   false,	/* expand_variadic */
+							   false,	/* expand_defaults */
 							   &describeFuncOid,
 							   &describeReturnTypeOid, 
 							   &describeReturnsSet,
 							   &describeIsStrict, 
 							   &describeIsOrdered, 
-							   &actualInputTypeOids);
+							   &nvargs,	
+							   &actualInputTypeOids,
+							   NULL);
 
 	if (fdResult != FUNCDETAIL_NORMAL || !OidIsValid(describeFuncOid))
 	{
@@ -797,7 +997,7 @@ validate_describe_callback(List *describeQualName,
  *	 Execute a CREATE FUNCTION utility statement.
  */
 void
-CreateFunction(CreateFunctionStmt *stmt)
+CreateFunction(CreateFunctionStmt *stmt, const char *queryString)
 {
 	char	   *probin_str;
 	char	   *prosrc_str;
@@ -813,10 +1013,14 @@ CreateFunction(CreateFunctionStmt *stmt)
 	ArrayType  *allParameterTypes;
 	ArrayType  *parameterModes;
 	ArrayType  *parameterNames;
+	List	   *parameterDefaults;
 	Oid			requiredResultType;
 	bool		isStrict,
 				security;
 	char		volatility;
+	ArrayType  *proconfig;
+	float4		procost;
+	float4		prorows;
 	HeapTuple	languageTuple;
 	Form_pg_language languageStruct;
 	List	   *as_clause;
@@ -838,12 +1042,17 @@ CreateFunction(CreateFunctionStmt *stmt)
 	isStrict = false;
 	security = false;
 	volatility = PROVOLATILE_VOLATILE;
+	proconfig = NULL;
+	procost = -1;				/* indicates not set */
+	prorows = -1;				/* indicates not set */
 	dataAccess = PRODATAACCESS_NONE;
 
 	/* override attributes from explicit list */
 	compute_attributes_sql_style(stmt->options,
-				   &as_clause, &languageOid, &languageName, &volatility,
-				   &isStrict, &security, &dataAccess);
+								 &as_clause, &languageOid, &languageName,
+								 &volatility, &isStrict, &security,
+								 &proconfig, &procost, &prorows,
+								 &dataAccess);
 
 	languageTuple = caql_getfirst(NULL,
 			cql("SELECT * FROM pg_language "
@@ -885,10 +1094,12 @@ CreateFunction(CreateFunctionStmt *stmt)
 	 * ProcedureCreate.
 	 */
 	examine_parameter_list(stmt->parameters, languageOid,
+						   queryString,
 						   &parameterTypes,
 						   &allParameterTypes,
 						   &parameterModes,
 						   &parameterNames,
+						   &parameterDefaults,
 						   &requiredResultType);
 
 	if (stmt->returnType)
@@ -922,29 +1133,8 @@ CreateFunction(CreateFunctionStmt *stmt)
 	compute_attributes_with_style(stmt->withClause, &isStrict, &volatility,
 								  &stmt->funcOid, &describeQualName);
 
-	interpret_AS_clause(languageOid, languageName, as_clause,
+	interpret_AS_clause(languageOid, languageName, funcname, as_clause,
 						&prosrc_str, &probin_str);
-
-	if (languageOid == INTERNALlanguageId)
-	{
-		/*
-		 * In PostgreSQL versions before 6.5, the SQL name of the created
-		 * function could not be different from the internal name, and
-		 * "prosrc" wasn't used.  So there is code out there that does CREATE
-		 * FUNCTION xyz AS '' LANGUAGE internal. To preserve some modicum of
-		 * backwards compatibility, accept an empty "prosrc" value as meaning
-		 * the supplied SQL function name.
-		 */
-		if (strlen(prosrc_str) == 0)
-			prosrc_str = funcname;
-	}
-
-	if (languageOid == ClanguageId)
-	{
-		/* If link symbol is specified as "-", substitute procedure name */
-		if (strcmp(prosrc_str, "-") == 0)
-			prosrc_str = funcname;
-	}
 	
 	/* double check that we really have a function body */
 	if (prosrc_str == NULL)
@@ -955,6 +1145,32 @@ CreateFunction(CreateFunctionStmt *stmt)
 		describeFuncOid = validate_describe_callback(describeQualName,
 													 prorettype,
 													 parameterModes);
+
+	/*
+	 * Set default values for COST and ROWS depending on other parameters;
+	 * reject ROWS if it's not returnsSet.  NB: pg_dump knows these default
+	 * values, keep it in sync if you change them.
+	 */
+	if (procost < 0)
+	{
+		/* SQL and PL-language functions are assumed more expensive */
+		if (languageOid == INTERNALlanguageId ||
+			languageOid == ClanguageId)
+			procost = 1;
+		else
+			procost = 100;
+	}
+	if (prorows < 0)
+	{
+		if (returnsSet)
+			prorows = 1000;
+		else
+			prorows = 0;		/* dummy value if not returnsSet */
+	}
+	else if (!returnsSet)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("ROWS is not applicable when function does not return a set")));
 
 	/*
 	 * And now that we have all the parameters, and know we're permitted to do
@@ -979,9 +1195,13 @@ CreateFunction(CreateFunctionStmt *stmt)
 					PointerGetDatum(allParameterTypes),
 					PointerGetDatum(parameterModes),
 					PointerGetDatum(parameterNames),
+					parameterDefaults,
+					PointerGetDatum(proconfig),
+					procost,
+					prorows,
 					dataAccess,
 					stmt->funcOid);
-					
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt, "CreateFunction");
@@ -1382,6 +1602,9 @@ AlterFunction(AlterFunctionStmt *stmt)
 	DefElem    *volatility_item = NULL;
 	DefElem    *strict_item = NULL;
 	DefElem    *security_def_item = NULL;
+	List	   *set_items = NIL;
+	DefElem    *cost_item = NULL;
+	DefElem    *rows_item = NULL;
 	DefElem    *data_access_item = NULL;
 	cqContext	cqc;
 	cqContext  *pcqCtx;
@@ -1431,6 +1654,9 @@ AlterFunction(AlterFunctionStmt *stmt)
 									 &volatility_item,
 									 &strict_item,
 									 &security_def_item,
+									 &set_items,
+									 &cost_item,
+									 &rows_item,
 									 &data_access_item) == false)
 			elog(ERROR, "option \"%s\" not recognized", defel->defname);
 	}
@@ -1441,6 +1667,60 @@ AlterFunction(AlterFunctionStmt *stmt)
 		procForm->proisstrict = intVal(strict_item->arg);
 	if (security_def_item)
 		procForm->prosecdef = intVal(security_def_item->arg);
+	if (cost_item)
+	{
+		procForm->procost = defGetNumeric(cost_item);
+		if (procForm->procost <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("COST must be positive")));
+	}
+	if (rows_item)
+	{
+		procForm->prorows = defGetNumeric(rows_item);
+		if (procForm->prorows <= 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("ROWS must be positive")));
+		if (!procForm->proretset)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("ROWS is not applicable when function does not return a set")));
+	}
+	if (set_items)
+	{
+		Datum		datum;
+		bool		isnull;
+		ArrayType  *a;
+		Datum		repl_val[Natts_pg_proc];
+		bool		repl_null[Natts_pg_proc];
+		bool		repl_repl[Natts_pg_proc];
+
+		/* extract existing proconfig setting */
+		datum = SysCacheGetAttr(PROCOID, tup, Anum_pg_proc_proconfig, &isnull);
+		a = isnull ? NULL : DatumGetArrayTypeP(datum);
+
+		/* update according to each SET or RESET item, left to right */
+		a = update_proconfig_value(a, set_items);
+
+		/* update the tuple */
+		memset(repl_repl, false, sizeof(repl_repl));
+		repl_repl[Anum_pg_proc_proconfig - 1] = true;
+
+		if (a == NULL)
+		{
+			repl_val[Anum_pg_proc_proconfig - 1] = (Datum) 0;
+			repl_null[Anum_pg_proc_proconfig - 1] = true;
+		}
+		else
+		{
+			repl_val[Anum_pg_proc_proconfig - 1] = PointerGetDatum(a);
+			repl_null[Anum_pg_proc_proconfig - 1] = false;
+		}
+
+		tup = heap_modify_tuple(tup, RelationGetDescr(rel),
+								repl_val, repl_null, repl_repl);
+	}
 	if (data_access_item)
 	{
 		Datum		repl_val[Natts_pg_proc];
@@ -1465,7 +1745,6 @@ AlterFunction(AlterFunctionStmt *stmt)
 	validate_sql_data_access(data_access,
 							 procForm->provolatile,
 							 procForm->prolang);
-
 
 	/* Do the update */
 
@@ -1589,17 +1868,17 @@ CreateCast(CreateCastStmt *stmt)
 	cqContext	cqc2;
 	cqContext  *pcqCtx;
 
-	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype);
-	targettypeid = typenameTypeId(NULL, stmt->targettype);
+	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype, NULL);
+	targettypeid = typenameTypeId(NULL, stmt->targettype, NULL);
 
 	/* No pseudo-types allowed */
-	if (get_typtype(sourcetypeid) == 'p')
+	if (get_typtype(sourcetypeid) == TYPTYPE_PSEUDO)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("source data type %s is a pseudo-type",
 						TypeNameToString(stmt->sourcetype))));
 
-	if (get_typtype(targettypeid) == 'p')
+	if (get_typtype(targettypeid) == TYPTYPE_PSEUDO)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("target data type %s is a pseudo-type",
@@ -1839,8 +2118,8 @@ DropCast(DropCastStmt *stmt)
 	Oid			castOid;
 
 	/* when dropping a cast, the types must exist even if you use IF EXISTS */
-	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype);
-	targettypeid = typenameTypeId(NULL, stmt->targettype);
+	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype, NULL);
+	targettypeid = typenameTypeId(NULL, stmt->targettype, NULL);
 
 	castOid = caql_getoid_plus(
 			NULL,
@@ -1862,9 +2141,9 @@ DropCast(DropCastStmt *stmt)
 							TypeNameToString(stmt->targettype))));
 		else
 			ereport(NOTICE,
-					(errmsg("cast from type %s to type %s does not exist, skipping",
-							TypeNameToString(stmt->sourcetype),
-							TypeNameToString(stmt->targettype))));
+			 (errmsg("cast from type %s to type %s does not exist, skipping",
+					 TypeNameToString(stmt->sourcetype),
+					 TypeNameToString(stmt->targettype))));
 
 		return;
 	}
@@ -1908,6 +2187,118 @@ DropCastById(Oid castOid)
 	if (!numDel)
 		elog(ERROR, "could not find tuple for cast %u", castOid);
 }
+
+/*
+ * ExecuteDoStmt
+ *		Execute inline procedural-language code
+ */
+void
+ExecuteDoStmt(DoStmt *stmt)
+{
+	InlineCodeBlock *codeblock = makeNode(InlineCodeBlock);
+	ListCell   *arg;
+	DefElem    *as_item = NULL;
+	DefElem    *language_item = NULL;
+	char	   *language;
+	Oid			laninline;
+	HeapTuple	languageTuple;
+	Form_pg_language languageStruct;
+	cqContext  *pcqCtx;
+	bool        isnull;
+
+	/* Process options we got from gram.y */
+	foreach(arg, stmt->args)
+	{
+		DefElem    *defel = (DefElem *) lfirst(arg);
+
+		if (strcmp(defel->defname, "as") == 0)
+		{
+			if (as_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			as_item = defel;
+		}
+		else if (strcmp(defel->defname, "language") == 0)
+		{
+			if (language_item)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			language_item = defel;
+		}
+		else
+			elog(ERROR, "option \"%s\" not recognized",
+				 defel->defname);
+	}
+
+	if (as_item)
+		codeblock->source_text = strVal(as_item->arg);
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("no inline code specified")));
+
+	/* if LANGUAGE option wasn't specified, use the default */
+	if (language_item)
+		language = strVal(language_item->arg);
+	else
+		language = "plpgsql";
+
+	/* Look up the language and validate permissions */
+	pcqCtx = caql_beginscan(
+				NULL,
+				cql("SELECT * FROM pg_language "
+					" WHERE lanname = :1 ",
+					CStringGetDatum(language)));
+
+	languageTuple = caql_getnext(pcqCtx);	
+	if (!HeapTupleIsValid(languageTuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("language \"%s\" does not exist", language),
+				 (PLTemplateExists(language) ?
+				  errhint("Use CREATE LANGUAGE to load the language into the database.") : 0)));
+
+	codeblock->langOid = HeapTupleGetOid(languageTuple);
+	languageStruct = (Form_pg_language) GETSTRUCT(languageTuple);
+	codeblock->langIsTrusted = languageStruct->lanpltrusted;
+
+	if (languageStruct->lanpltrusted)
+	{
+		/* if trusted language, need USAGE privilege */
+		AclResult	aclresult;
+
+		aclresult = pg_language_aclcheck(codeblock->langOid, GetUserId(),
+										 ACL_USAGE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, ACL_KIND_LANGUAGE,
+						   NameStr(languageStruct->lanname));
+	}
+	else
+	{
+		/* if untrusted language, must be superuser */
+		if (!superuser())
+			aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_LANGUAGE,
+						   NameStr(languageStruct->lanname));
+	}
+
+	/* get the handler function's OID */
+	laninline = caql_getattr(pcqCtx, 
+						 Anum_pg_language_laninline, 
+						 &isnull);
+	if (isnull || !OidIsValid(laninline))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("language \"%s\" does not support inline code execution",
+					NameStr(languageStruct->lanname))));
+
+	caql_endscan(pcqCtx);
+
+	/* execute the inline handler */
+	OidFunctionCall1(laninline, PointerGetDatum(codeblock));
+}
+
 
 /*
  * Execute ALTER FUNCTION/AGGREGATE SET SCHEMA
@@ -2054,14 +2445,6 @@ GetFuncSQLDataAccess(Oid funcOid)
 
 	heap_freetuple(procTuple);
 	heap_close(procRelation, AccessShareLock);
-
-	/*
-	 * In upgrade mode, allow prodataaccess to be NULL, to handle the case
-	 * where prodataaccess column has not been added to pg_proc yet. This is
-	 * specifically to handle catDML()
-	 */
-	if (gp_upgrade_mode && isnull)
-		return SDA_NO_SQL;
 
 	Assert(!isnull);
 

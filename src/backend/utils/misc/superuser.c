@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/superuser.c,v 1.35 2006/03/05 15:58:49 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/superuser.c,v 1.38 2008/09/09 18:58:08 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,6 +24,7 @@
 #include "catalog/pg_authid.h"
 #include "utils/inval.h"
 #include "utils/syscache.h"
+#include "storage/proc.h"
 #include "miscadmin.h"
 
 
@@ -37,7 +38,7 @@ static Oid	last_roleid = InvalidOid;	/* InvalidOid == cache not valid */
 static bool last_roleid_is_super = false;
 static bool roleid_callback_registered = false;
 
-static void RoleidCallback(Datum arg, Oid relid);
+static void RoleidCallback(Datum arg, int cacheid, ItemPointer tuplePtr);
 
 
 /*
@@ -49,6 +50,14 @@ superuser(void)
 	return superuser_arg(GetUserId());
 }
 
+/*
+ * Is my role id a super user.
+ */
+bool
+procRoleIsSuperuser(void)
+{
+	return superuser_arg(MyProc->roleId);
+}
 
 /*
  * The specified role has Postgres superuser privileges
@@ -105,7 +114,7 @@ superuser_arg(Oid roleid)
  *		Syscache inval callback function
  */
 static void
-RoleidCallback(Datum arg, Oid relid)
+RoleidCallback(Datum arg, int cacheid, ItemPointer tuplePtr)
 {
 	/* Invalidate our local cache in case role's superuserness changed */
 	last_roleid = InvalidOid;

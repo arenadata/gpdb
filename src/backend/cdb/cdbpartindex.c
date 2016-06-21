@@ -18,9 +18,12 @@
 #include "catalog/pg_partition_encoding.h"
 #include "catalog/pg_partition_rule.h"
 #include "cdb/cdbpartition.h"
+#include "cdb/partitionselection.h"
 #include "cdb/cdbvars.h"
 #include "commands/tablecmds.h"
-#include "optimizer/planmain.h" 
+#include "nodes/makefuncs.h"
+#include "optimizer/planmain.h"
+#include "parser/parse_expr.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -922,7 +925,7 @@ get_relation_part_constraints(Oid rootOid, List **defaultLevels)
 	{
 		List *partKey = (List *) list_nth(partkeys, level);
 
-		PartitionNode *pn = get_parts(rootOid, level, 0 /*parent*/, false /* inctemplate */, CurrentMemoryContext, false /*includesubparts*/);
+		PartitionNode *pn = get_parts(rootOid, level, 0 /*parent*/, false /* inctemplate */, false /*includesubparts*/);
 
 		Assert(NULL != pn);
 		List *partOids = all_partition_relids(pn);

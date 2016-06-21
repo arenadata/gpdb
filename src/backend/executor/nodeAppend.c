@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeAppend.c,v 1.71 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeAppend.c,v 1.73 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

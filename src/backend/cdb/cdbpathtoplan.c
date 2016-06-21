@@ -11,6 +11,7 @@
 #include "nodes/relation.h"     /* RelOptInfo */
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/planmain.h" /* make_sort_from_pathkeys() */
+#include "optimizer/tlist.h"
 
 #include "cdb/cdbllize.h"       /* makeFlow() */
 #include "cdb/cdbmutate.h"      /* make_*_motion() */
@@ -18,8 +19,6 @@
 #include "cdb/cdbvars.h"        /* gp_singleton_segindex */
 
 #include "cdb/cdbpathtoplan.h"  /* me */
-
-extern List *add_to_flat_tlist(List *tlist, List *exprs, bool resjunk);
 
 /*
  * cdbpathtoplan_create_flow
@@ -77,13 +76,15 @@ cdbpathtoplan_create_flow(PlannerInfo  *root,
      */
     if (pathkeys)
     {
-        Sort   *sort = make_sort_from_pathkeys(root, plan, pathkeys, relids, false);
+        Sort   *sort = make_sort_from_pathkeys(root, plan, pathkeys, -1.0, false);
 
         if (sort)
         {
             flow->numSortCols = sort->numCols;
             flow->sortColIdx = sort->sortColIdx;
             flow->sortOperators = sort->sortOperators;
+			flow->nullsFirst = sort->nullsFirst;
+			Assert(flow->nullsFirst);
         }
     }
 
@@ -122,7 +123,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
             Sort   *sort = make_sort_from_pathkeys(root,
                                                    subplan,
                                                    path->path.pathkeys,
-                                                   path->path.parent->relids,
+												   -1.0,
                                                    true);
 
             /* Merge Receive to preserve ordering */
@@ -135,6 +136,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                                   sort->numCols,
                                                   sort->sortColIdx,
                                                   sort->sortOperators,
+												  sort->nullsFirst,
                                                   false /* useExecutorVarFormat */
                                                   );
             }
@@ -173,12 +175,19 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
         /**
          * If there are subplans in the hashExpr, push it down to lower level.
          */
-        if (contain_subplans( (Node *) hashExpr)
-        	&&is_projection_capable_plan(subplan))
+        if (contain_subplans((Node *) hashExpr))
 		{
-			subplan->targetlist = add_to_flat_tlist(subplan->targetlist, hashExpr, true /* resjunk */);
-        }
+			/* make a Result node to do the projection if necessary */
+			if (!is_projection_capable_plan(subplan))
+			{
+				List *tlist = copyObject(subplan->targetlist);
 
+				subplan = (Plan *) make_result(root, tlist, NULL, subplan);
+			}
+			subplan->targetlist = add_to_flat_tlist(subplan->targetlist,
+													hashExpr,
+													true /* resjunk */);
+        }
         motion = make_hashed_motion(subplan,
                                     hashExpr,
                                     false /* useExecutorVarFormat */);

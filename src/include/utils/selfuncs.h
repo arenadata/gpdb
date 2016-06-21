@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/selfuncs.h,v 1.36.2.1 2007/08/31 23:35:30 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/selfuncs.h,v 1.43 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -119,7 +119,7 @@ extern double convert_timevalue_to_scalar(Datum value, Oid typid);
 extern Pattern_Prefix_Status pattern_fixed_prefix(Const *patt,
 					 Pattern_Type ptype,
 					 Const **prefix,
-					 Const **rest);
+					 Selectivity *rest_selec);
 extern Const *make_greater_string(const Const *str_const, FmgrInfo *ltproc);
 
 extern Datum eqsel(PG_FUNCTION_ARGS);
@@ -162,8 +162,9 @@ extern Selectivity rowcomparesel(PlannerInfo *root,
 			  int varRelid, JoinType jointype);
 
 extern void mergejoinscansel(PlannerInfo *root, Node *clause,
-				 Selectivity *leftscan,
-				 Selectivity *rightscan);
+				 Oid opfamily, int strategy, bool nulls_first,
+				 Selectivity *leftstart, Selectivity *leftend,
+				 Selectivity *rightstart, Selectivity *rightend);
 
 extern double estimate_num_groups(PlannerInfo *root, List *groupExprs,
 					double input_rows);

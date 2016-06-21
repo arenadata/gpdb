@@ -11,8 +11,9 @@
 #include <postgres.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include "utils/workfile_mgr.h"
 #include "cdb/cdbvars.h"
+#include "utils/faultinjector.h"
+#include "utils/workfile_mgr.h"
 
 static void retrieve_file_no(workfile_set *work_set, uint32 file_no, char *workfile_name, uint32 workfile_name_len);
 static void update_workset_size(workfile_set *work_set, bool delOnClose, bool created, int64 size);
@@ -47,12 +48,19 @@ workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no)
 
 	char file_name[MAXPGPATH];
 	retrieve_file_no(work_set, file_no, file_name, sizeof(file_name));
-	bool del_on_close = !work_set->can_be_reused;
 
 	ExecWorkFile *ewfile = ExecWorkFile_Create(file_name,
 			work_set->metadata.type,
-			del_on_close,
+			true /* del_on_close */,
 			work_set->metadata.bfz_compress_type);
+
+#ifdef FAULT_INJECTOR
+  FaultInjector_InjectFaultIfSet(
+      WorkfileCreationFail,
+      DDLNotSpecified,
+      "",  // databaseName
+      ""); // tableName
+#endif
 
 	ExecWorkfile_SetWorkset(ewfile, work_set);
 
@@ -72,11 +80,9 @@ workfile_mgr_open_fileno(workfile_set *work_set, uint32 file_no)
 
 	char file_name[MAXPGPATH];
 	retrieve_file_no(work_set, file_no, file_name, sizeof(file_name));
-	bool del_on_close = !work_set->can_be_reused;
-
 	ExecWorkFile *ewfile = ExecWorkFile_Open(file_name,
 			work_set->metadata.type,
-			del_on_close,
+			true /* del_on_close */,
 			work_set->metadata.bfz_compress_type);
 
 	ExecWorkfile_SetWorkset(ewfile, work_set);

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/gist/gistscan.c,v 1.65 2006/10/04 00:29:48 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/gist/gistscan.c,v 1.68.2.4 2008/12/04 11:10:06 teodor Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,12 +41,6 @@ gistrescan(PG_FUNCTION_ARGS)
 	ScanKey		key = (ScanKey) PG_GETARG_POINTER(1);
 	GISTScanOpaque so;
 	int			i;
-
-	/*
-	 * Clear all the pointers.
-	 */
-	ItemPointerSetInvalid(&scan->currentItemData);
-	ItemPointerSetInvalid(&scan->currentMarkData);
 
 	so = (GISTScanOpaque) scan->opaque;
 	if (so != NULL)
@@ -85,6 +79,15 @@ gistrescan(PG_FUNCTION_ARGS)
 
 	so->nPageData = so->curPageData = 0;
 
+	/*
+	 * Clear all the pointers.
+	 */
+	ItemPointerSetInvalid(&so->curpos);
+	ItemPointerSetInvalid(&so->markpos);
+	so->nPageData = so->curPageData = 0;
+
+	so->qual_ok = true;
+
 	/* Update scan key, if a new one is given */
 	if (key && scan->numberOfKeys > 0)
 	{
@@ -97,9 +100,18 @@ gistrescan(PG_FUNCTION_ARGS)
 		 * function in the form of its strategy number, which is available
 		 * from the sk_strategy field, and its subtype from the sk_subtype
 		 * field.
+		 *
+		 * Next, if any of keys is a NULL and that key is not marked with
+		 * SK_SEARCHNULL then nothing can be found.
 		 */
-		for (i = 0; i < scan->numberOfKeys; i++)
+		for (i = 0; i < scan->numberOfKeys; i++) {
 			scan->keyData[i].sk_func = so->giststate->consistentFn[scan->keyData[i].sk_attno - 1];
+
+			if ( scan->keyData[i].sk_flags & SK_ISNULL ) {
+				if ( (scan->keyData[i].sk_flags & SK_SEARCHNULL) == 0 )
+					so->qual_ok = false;
+			}
+		}
 	}
 
 	PG_RETURN_VOID();
@@ -114,8 +126,8 @@ gistmarkpos(PG_FUNCTION_ARGS)
 			   *n,
 			   *tmp;
 
-	scan->currentMarkData = scan->currentItemData;
 	so = (GISTScanOpaque) scan->opaque;
+	so->markpos = so->curpos;
 	if (so->flags & GS_CURBEFORE)
 		so->flags |= GS_MRKBEFORE;
 	else
@@ -168,8 +180,8 @@ gistrestrpos(PG_FUNCTION_ARGS)
 			   *n,
 			   *tmp;
 
-	scan->currentItemData = scan->currentMarkData;
 	so = (GISTScanOpaque) scan->opaque;
+	so->curpos = so->markpos;
 	if (so->flags & GS_MRKBEFORE)
 		so->flags |= GS_CURBEFORE;
 	else
@@ -226,14 +238,17 @@ gistendscan(PG_FUNCTION_ARGS)
 		gistfreestack(so->stack);
 		gistfreestack(so->markstk);
 		if (so->giststate != NULL)
+		{
 			freeGISTstate(so->giststate);
+			pfree(so->giststate);
+		}
 		/* drop pins on buffers -- we aren't holding any locks */
 		if (BufferIsValid(so->curbuf))
 			ReleaseBuffer(so->curbuf);
 		if (BufferIsValid(so->markbuf))
 			ReleaseBuffer(so->markbuf);
 		MemoryContextDelete(so->tempCxt);
-		pfree(scan->opaque);
+		pfree(so);
 	}
 
 	PG_RETURN_VOID();

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/pgstatfuncs.c,v 1.34.2.1 2007/05/17 23:31:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/pgstatfuncs.c,v 1.48 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -33,6 +33,9 @@ extern Datum pg_stat_get_tuples_fetched(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_tuples_inserted(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_tuples_updated(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_tuples_deleted(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_tuples_hot_updated(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_live_tuples(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_dead_tuples(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_blocks_fetched(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_blocks_hit(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_last_vacuum_time(PG_FUNCTION_ARGS);
@@ -50,6 +53,7 @@ extern Datum pg_stat_get_backend_userid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_activity(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_waiting(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_xact_start(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_start(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_client_port(PG_FUNCTION_ARGS);
@@ -60,6 +64,19 @@ extern Datum pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_xact_rollback(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_blocks_fetched(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_blocks_hit(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_tuples_returned(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_tuples_fetched(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_tuples_inserted(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_tuples_updated(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_tuples_deleted(PG_FUNCTION_ARGS);
+
+extern Datum pg_stat_get_bgwriter_timed_checkpoints(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_bgwriter_requested_checkpoints(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_bgwriter_buf_written_checkpoints(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_bgwriter_buf_written_clean(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_bgwriter_maxwritten_clean(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_buf_written_backend(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_buf_alloc(PG_FUNCTION_ARGS);
 
 extern Datum pg_stat_get_queue_num_exec(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_queue_num_wait(PG_FUNCTION_ARGS);
@@ -179,6 +196,54 @@ pg_stat_get_tuples_deleted(PG_FUNCTION_ARGS)
 		result = 0;
 	else
 		result = (int64) (tabentry->tuples_deleted);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_tuples_hot_updated(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatTabEntry *tabentry;
+
+	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (tabentry->tuples_hot_updated);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_live_tuples(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatTabEntry *tabentry;
+
+	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (tabentry->n_live_tuples);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_dead_tuples(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatTabEntry *tabentry;
+
+	if ((tabentry = pgstat_fetch_stat_tabentry(relid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (tabentry->n_dead_tuples);
 
 	PG_RETURN_INT64(result);
 }
@@ -342,39 +407,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-#if GP_VERSION_NUM >= 40300 && GP_VERSION_NUM < 40400
-		/*
-		 * During upgrade, we use normal gpstart/gpstop, which invokes this
-		 * via pg_stat_activity view.  If catalog has not upgraded yet, SQL
-		 * ends up with ERROR about discrepancy of output and definition.
-		 * so we need to check the catalog definition before deciding the
-		 * number of output column.
-		 */
-		if (gp_upgrade_mode)
-		{
-			HeapTuple	procTup;
-			Oid	   *argtypes;
-			char  **argnames;
-			char   *argmodes;
-			int		nargs;
-
-			procTup = SearchSysCache(PROCOID,
-									 ObjectIdGetDatum(F_PG_STAT_GET_ACTIVITY), 0, 0, 0);
-			if (!HeapTupleIsValid(procTup))
-				elog(ERROR, "cache lookup failed for %u", F_PG_STAT_GET_ACTIVITY);
-			nargs = get_func_arg_info(procTup, &argtypes, &argnames, &argmodes);
-			if (nargs == 13)
-				nattr = 12;
-			else
-				nattr = 13;
-
-			pfree(argtypes);
-			pfree(argnames);
-			pfree(argmodes);
-			ReleaseSysCache(procTup);
-		}
-#endif
-
 		tupdesc = CreateTemplateTupleDesc(nattr, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "datid", OIDOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "procpid", INT4OID, -1, 0);
@@ -446,7 +478,6 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		bool		nulls[13];
 		HeapTuple	tuple;
 		PgBackendStatus *beentry;
-		SockAddr	zero_clientaddr;
 
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, 0, sizeof(nulls));
@@ -487,6 +518,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 		/* Values only available to same user or superuser */
 		if (superuser() || beentry->st_userid == GetUserId())
 		{
+			SockAddr	zero_clientaddr;
 			bool		waiting;
 
 			if (*(beentry->st_activity) == '\0')
@@ -519,7 +551,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			/* A zeroed client addr means we don't know */
 			memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
 			if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-					   sizeof(zero_clientaddr) == 0))
+					   sizeof(zero_clientaddr)) == 0)
 			{
 				nulls[9] = true;
 				nulls[10] = true;
@@ -623,16 +655,6 @@ pg_backend_pid(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(MyProcPid);
 }
 
-/*
- * Built-in function for resetting the counters
- */
-Datum
-pg_stat_reset(PG_FUNCTION_ARGS)
-{
-	pgstat_reset_counters();
-
-	PG_RETURN_BOOL(true);
-}
 
 Datum
 pg_stat_get_backend_pid(PG_FUNCTION_ARGS)
@@ -749,6 +771,29 @@ pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(result);
 }
 
+
+Datum
+pg_stat_get_backend_xact_start(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	TimestampTz result;
+	PgBackendStatus *beentry;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	if (!superuser() && beentry->st_userid != GetUserId())
+		PG_RETURN_NULL();
+
+	result = beentry->st_xact_start_timestamp;
+
+	if (result == 0)			/* not in a transaction */
+		PG_RETURN_NULL();
+
+	PG_RETURN_TIMESTAMPTZ(result);
+}
+
+
 Datum
 pg_stat_get_backend_start(PG_FUNCTION_ARGS)
 {
@@ -789,7 +834,7 @@ pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
 	/* A zeroed client addr means we don't know */
 	memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
 	if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-			   sizeof(zero_clientaddr) == 0))
+			   sizeof(zero_clientaddr)) == 0)
 		PG_RETURN_NULL();
 
 	switch (beentry->st_clientaddr.addr.ss_family)
@@ -835,7 +880,7 @@ pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
 	/* A zeroed client addr means we don't know */
 	memset(&zero_clientaddr, 0, sizeof(zero_clientaddr));
 	if (memcmp(&(beentry->st_clientaddr), &zero_clientaddr,
-			   sizeof(zero_clientaddr) == 0))
+			   sizeof(zero_clientaddr)) == 0)
 		PG_RETURN_NULL();
 
 	switch (beentry->st_clientaddr.addr.ss_family)
@@ -970,6 +1015,129 @@ pg_stat_get_db_blocks_hit(PG_FUNCTION_ARGS)
 	PG_RETURN_INT64(result);
 }
 
+
+Datum
+pg_stat_get_db_tuples_returned(PG_FUNCTION_ARGS)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatDBEntry *dbentry;
+
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (dbentry->n_tuples_returned);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_db_tuples_fetched(PG_FUNCTION_ARGS)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatDBEntry *dbentry;
+
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (dbentry->n_tuples_fetched);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_db_tuples_inserted(PG_FUNCTION_ARGS)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatDBEntry *dbentry;
+
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (dbentry->n_tuples_inserted);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_db_tuples_updated(PG_FUNCTION_ARGS)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatDBEntry *dbentry;
+
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (dbentry->n_tuples_updated);
+
+	PG_RETURN_INT64(result);
+}
+
+
+Datum
+pg_stat_get_db_tuples_deleted(PG_FUNCTION_ARGS)
+{
+	Oid			dbid = PG_GETARG_OID(0);
+	int64		result;
+	PgStat_StatDBEntry *dbentry;
+
+	if ((dbentry = pgstat_fetch_stat_dbentry(dbid)) == NULL)
+		result = 0;
+	else
+		result = (int64) (dbentry->n_tuples_deleted);
+
+	PG_RETURN_INT64(result);
+}
+
+Datum
+pg_stat_get_bgwriter_timed_checkpoints(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->timed_checkpoints);
+}
+
+Datum
+pg_stat_get_bgwriter_requested_checkpoints(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->requested_checkpoints);
+}
+
+Datum
+pg_stat_get_bgwriter_buf_written_checkpoints(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->buf_written_checkpoints);
+}
+
+Datum
+pg_stat_get_bgwriter_buf_written_clean(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->buf_written_clean);
+}
+
+Datum
+pg_stat_get_bgwriter_maxwritten_clean(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->maxwritten_clean);
+}
+
+Datum
+pg_stat_get_buf_written_backend(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->buf_written_backend);
+}
+
+Datum
+pg_stat_get_buf_alloc(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_INT64(pgstat_fetch_global()->buf_alloc);
+}
+
+
 /* Discard the active statistics snapshot */
 Datum
 pg_stat_clear_snapshot(PG_FUNCTION_ARGS)
@@ -1055,7 +1223,7 @@ pg_stat_get_queue_elapsed_wait(PG_FUNCTION_ARGS)
 #endif
 #include "lib/stringinfo.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 /**
  * We no longer support pg_renice_session. For the time being issue an error.
@@ -1068,3 +1236,11 @@ pg_renice_session(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(prio_out);
 }
 
+/* Reset all counters for the current database */
+Datum
+pg_stat_reset(PG_FUNCTION_ARGS)
+{
+	pgstat_reset_counters();
+
+	PG_RETURN_VOID();
+}

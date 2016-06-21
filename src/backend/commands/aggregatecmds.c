@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/aggregatecmds.c,v 1.41 2006/10/04 00:29:50 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/aggregatecmds.c,v 1.45.2.1 2008/06/08 21:09:52 tgl Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -39,7 +39,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 /*
  *	DefineAggregate
@@ -67,7 +67,6 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 	Oid			transTypeId;
 	ListCell   *pl;
 	Oid			aggOid;
-	bool need_free_value = false;
 
 	/* Convert list of names to a name and namespace */
 	aggNamespace = QualifiedNameGetCreationNamespace(name, &aggName);
@@ -101,17 +100,11 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		else if (pg_strcasecmp(defel->defname, "stype1") == 0)
 			transType = defGetTypeName(defel);
 		else if (pg_strcasecmp(defel->defname, "initcond") == 0)
-			initval = defGetString(defel, &need_free_value);
+			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "initcond1") == 0)
-			initval = defGetString(defel, &need_free_value);
+			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "prefunc") == 0) /* MPP */
 			prelimfuncName = defGetQualifiedName(defel);
-		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "oid") == 0) /* OID */
-		{
-			int64 oid = defGetInt64(defel);
-			Assert(oid < FirstBootstrapObjectId);
-			newOid = (Oid)oid;
-		}
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -165,7 +158,7 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		{
 			numArgs = 1;
 			aggArgTypes = (Oid *) palloc(sizeof(Oid));
-			aggArgTypes[0] = typenameTypeId(NULL, baseType);
+			aggArgTypes[0] = typenameTypeId(NULL, baseType, NULL);
 		}
 	}
 	else
@@ -187,7 +180,7 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		{
 			TypeName   *curTypeName = (TypeName *) lfirst(lc);
 
-			aggArgTypes[i++] = typenameTypeId(NULL, curTypeName);
+			aggArgTypes[i++] = typenameTypeId(NULL, curTypeName, NULL);
 		}
 	}
 
@@ -197,17 +190,24 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 	 * transtype can't be a pseudo-type, (except during upgrade mode)
 	 * since we need to be able to store values of the transtype.
 	 * However, we can allow polymorphic transtype in some cases
-	 * (AggregateCreate will check).
+	 * (AggregateCreate will check). Also, we allow "internal"
+	 * for functions that want to pass pointers to private data structures;
+	 * but allow that only to superusers, since you could crash the system
+	 * (or worse) by connecting up incompatible internal-using functions
+	 * in an aggregate.
 	 */
-	transTypeId = typenameTypeId(NULL, transType);
-	if (!gp_upgrade_mode &&
-		(get_typtype(transTypeId) == 'p' &&
-		 transTypeId != ANYARRAYOID &&
-		 transTypeId != ANYELEMENTOID))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				 errmsg("aggregate transition data type cannot be %s",
-						format_type_be(transTypeId))));
+	transTypeId = typenameTypeId(NULL, transType, NULL);
+	if (get_typtype(transTypeId) == TYPTYPE_PSEUDO &&
+		!IsPolymorphicType(transTypeId))
+	{
+		if (transTypeId == INTERNALOID && superuser())
+			/* okay */ ;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+					 errmsg("aggregate transition data type cannot be %s",
+							format_type_be(transTypeId))));
+	}
 
 	/*
 	 * Most of the argument-checking is done inside of AggregateCreate
@@ -234,7 +234,7 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters,
 		stmt->args = args;
 		stmt->definition = parameters;
 		stmt->newOid = aggOid;
-		stmt->shadowOid = 0;
+		stmt->arrayOid = stmt->commutatorOid = stmt->negatorOid = InvalidOid;
 		stmt->ordered = ordered;
 		CdbDispatchUtilityStatement((Node *) stmt, "DefineAggregate");
 	}

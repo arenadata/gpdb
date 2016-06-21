@@ -518,7 +518,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, t1.val + t2.val
 SELECT t1.id1, t1.id2, t1.result, t2.expected
     FROM num_result t1, num_exp_add t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 DELETE FROM num_result;
 INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val + t2.val, 10)
@@ -526,7 +526,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val + t2.val, 10)
 SELECT t1.id1, t1.id2, t1.result, round(t2.expected, 10) as expected
     FROM num_result t1, num_exp_add t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != round(t2.expected, 10) ;
+    AND t1.result != round(t2.expected, 10);
 
 -- ******************************
 -- * Subtraction check
@@ -537,7 +537,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, t1.val - t2.val
 SELECT t1.id1, t1.id2, t1.result, t2.expected
     FROM num_result t1, num_exp_sub t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 DELETE FROM num_result;
 INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val - t2.val, 40)
@@ -545,7 +545,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val - t2.val, 40)
 SELECT t1.id1, t1.id2, t1.result, round(t2.expected, 40)
     FROM num_result t1, num_exp_sub t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != round(t2.expected, 40) ;
+    AND t1.result != round(t2.expected, 40);
 
 -- ******************************
 -- * Multiply check
@@ -556,7 +556,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, t1.val * t2.val
 SELECT t1.id1, t1.id2, t1.result, t2.expected
     FROM num_result t1, num_exp_mul t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 DELETE FROM num_result;
 INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val * t2.val, 30)
@@ -564,7 +564,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val * t2.val, 30)
 SELECT t1.id1, t1.id2, t1.result, round(t2.expected, 30) as expected
     FROM num_result t1, num_exp_mul t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != round(t2.expected, 30) ;
+    AND t1.result != round(t2.expected, 30);
 
 -- ******************************
 -- * Division check
@@ -576,7 +576,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, t1.val / t2.val
 SELECT t1.id1, t1.id2, t1.result, t2.expected
     FROM num_result t1, num_exp_div t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 DELETE FROM num_result;
 INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val / t2.val, 80)
@@ -585,7 +585,7 @@ INSERT INTO num_result SELECT t1.id, t2.id, round(t1.val / t2.val, 80)
 SELECT t1.id1, t1.id2, t1.result, round(t2.expected, 80) as expected
     FROM num_result t1, num_exp_div t2
     WHERE t1.id1 = t2.id1 AND t1.id2 = t2.id2
-    AND t1.result != round(t2.expected, 80) ;
+    AND t1.result != round(t2.expected, 80);
 
 -- ******************************
 -- * Square root check
@@ -596,7 +596,7 @@ INSERT INTO num_result SELECT id, 0, SQRT(ABS(val))
 SELECT t1.id1, t1.result, t2.expected
     FROM num_result t1, num_exp_sqrt t2
     WHERE t1.id1 = t2.id
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 -- ******************************
 -- * Natural logarithm check
@@ -608,7 +608,7 @@ INSERT INTO num_result SELECT id, 0, LN(ABS(val))
 SELECT t1.id1, t1.result, t2.expected
     FROM num_result t1, num_exp_ln t2
     WHERE t1.id1 = t2.id
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 -- ******************************
 -- * Logarithm base 10 check
@@ -620,7 +620,7 @@ INSERT INTO num_result SELECT id, 0, LOG(numeric '10', ABS(val))
 SELECT t1.id1, t1.result, t2.expected
     FROM num_result t1, num_exp_log10 t2
     WHERE t1.id1 = t2.id
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 -- ******************************
 -- * POWER(10, LN(value)) check
@@ -632,7 +632,7 @@ INSERT INTO num_result SELECT id, 0, POWER(numeric '10', LN(ABS(round(val,200)))
 SELECT t1.id1, t1.result, t2.expected
     FROM num_result t1, num_exp_power_10_ln t2
     WHERE t1.id1 = t2.id
-    AND t1.result != t2.expected ;
+    AND t1.result != t2.expected;
 
 -- ******************************
 -- * miscellaneous checks for things that have been broken in the past...
@@ -652,7 +652,7 @@ INSERT INTO fract_only VALUES (5, '0.99994');
 INSERT INTO fract_only VALUES (6, '0.99995');  -- should fail
 INSERT INTO fract_only VALUES (7, '0.00001');
 INSERT INTO fract_only VALUES (8, '0.00017');
-SELECT * FROM fract_only ;
+SELECT * FROM fract_only;
 DROP TABLE fract_only;
 
 -- Simple check that ceil(), floor(), and round() work correctly
@@ -664,25 +664,29 @@ INSERT INTO ceil_floor_round VALUES ('9.4999999');
 INSERT INTO ceil_floor_round VALUES ('0.0');
 INSERT INTO ceil_floor_round VALUES ('0.0000001');
 INSERT INTO ceil_floor_round VALUES ('-0.000001');
-SELECT a, ceil(a), ceiling(a), floor(a), round(a) FROM ceil_floor_round ;
+SELECT a, ceil(a), ceiling(a), floor(a), round(a) FROM ceil_floor_round;
 DROP TABLE ceil_floor_round;
 
--- Testing for width_bucket()
--- NULL result
-SELECT width_bucket(NULL, NULL, NULL, NULL);
+-- Testing for width_bucket(). For convenience, we test both the
+-- numeric and float8 versions of the function in this file.
 
 -- errors
 SELECT width_bucket(5.0, 3.0, 4.0, 0);
 SELECT width_bucket(5.0, 3.0, 4.0, -5);
-SELECT width_bucket(3.0, 3.0, 3.0, 888);
+SELECT width_bucket(3.5, 3.0, 3.0, 888);
+SELECT width_bucket(5.0::float8, 3.0::float8, 4.0::float8, 0);
+SELECT width_bucket(5.0::float8, 3.0::float8, 4.0::float8, -5);
+SELECT width_bucket(3.5::float8, 3.0::float8, 3.0::float8, 888);
+SELECT width_bucket('NaN', 3.0, 4.0, 888);
+SELECT width_bucket(0::float8, 'NaN', 4.0::float8, 888);
 
 -- normal operation
-CREATE TABLE width_bucket_test (operand numeric);
+CREATE TABLE width_bucket_test (operand_num numeric, operand_f8 float8);
 
-COPY width_bucket_test FROM stdin;
+COPY width_bucket_test (operand_num) FROM stdin;
 -5.2
--0.0000000000001
-0.0000000000001
+-0.0000000001
+0.000000000001
 1
 1.99999999999999
 2
@@ -699,52 +703,65 @@ COPY width_bucket_test FROM stdin;
 9.99999999999999
 10
 10.0000000000001
-NaN
 \.
 
+UPDATE width_bucket_test SET operand_f8 = operand_num::float8;
+
 SELECT
-    operand,
-    width_bucket(operand, 0, 10, 5) AS wb_1,
-    width_bucket(operand, 10, 0, 5) AS wb_2,
-    width_bucket(operand, 2, 8, 4) AS wb_3,
-    width_bucket(operand, 5.0, 5.5, 20) AS wb_4,
-    width_bucket(operand, -25, 25, 10) AS wb_5
-    FROM width_bucket_test ;
+    operand_num,
+    width_bucket(operand_num, 0, 10, 5) AS wb_1,
+    width_bucket(operand_f8, 0, 10, 5) AS wb_1f,
+    width_bucket(operand_num, 10, 0, 5) AS wb_2,
+    width_bucket(operand_f8, 10, 0, 5) AS wb_2f,
+    width_bucket(operand_num, 2, 8, 4) AS wb_3,
+    width_bucket(operand_f8, 2, 8, 4) AS wb_3f,
+    width_bucket(operand_num, 5.0, 5.5, 20) AS wb_4,
+    width_bucket(operand_f8, 5.0, 5.5, 20) AS wb_4f,
+    width_bucket(operand_num, -25, 25, 10) AS wb_5,
+    width_bucket(operand_f8, -25, 25, 10) AS wb_5f
+    FROM width_bucket_test;
+
+-- for float8 only, check positive and negative infinity: we require
+-- finite bucket bounds, but allow an infinite operand
+SELECT width_bucket(0.0::float8, 'Infinity'::float8, 5, 10); -- error
+SELECT width_bucket(0.0::float8, 5, '-Infinity'::float8, 20); -- error
+SELECT width_bucket('Infinity'::float8, 1, 10, 10),
+       width_bucket('-Infinity'::float8, 1, 10, 10);
 
 DROP TABLE width_bucket_test;
 
 -- TO_CHAR()
 --
 SELECT '' AS to_char_1, to_char(val, '9G999G999G999G999G999') 
-	FROM num_data ;
+	FROM num_data;
 
 SELECT '' AS to_char_2, to_char(val, '9G999G999G999G999G999D999G999G999G999G999')
-	FROM num_data ;
+	FROM num_data;
 
 SELECT '' AS to_char_3, to_char(val, '9999999999999999.999999999999999PR')
-	FROM num_data ;
+	FROM num_data;
 
 SELECT '' AS to_char_4, to_char(val, '9999999999999999.999999999999999S')
-	FROM num_data ;
+	FROM num_data;
 
-SELECT '' AS to_char_5,  to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data ;
-SELECT '' AS to_char_6,  to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data ;
-SELECT '' AS to_char_7,  to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data ;
-SELECT '' AS to_char_8,  to_char(val, 'SG9999999999999999.999999999999999th')   FROM num_data ;
-SELECT '' AS to_char_9,  to_char(val, '0999999999999999.999999999999999')       FROM num_data ;
-SELECT '' AS to_char_10, to_char(val, 'S0999999999999999.999999999999999')      FROM num_data ;
-SELECT '' AS to_char_11, to_char(val, 'FM0999999999999999.999999999999999')     FROM num_data ;
-SELECT '' AS to_char_12, to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data ;
-SELECT '' AS to_char_13, to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data ;
-SELECT '' AS to_char_14, to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data ;
-SELECT '' AS to_char_15, to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data ;
-SELECT '' AS to_char_16, to_char(val, 'L9999999999999999.099999999999999')	FROM num_data ;
-SELECT '' AS to_char_17, to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data ;
-SELECT '' AS to_char_18, to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data ;
-SELECT '' AS to_char_19, to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data ;
-SELECT '' AS to_char_20, to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM num_data ;
-SELECT '' AS to_char_21, to_char(val, '999999SG9999999999')			FROM num_data ;
-SELECT '' AS to_char_22, to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data ;
+SELECT '' AS to_char_5,  to_char(val, 'MI9999999999999999.999999999999999')     FROM num_data;
+SELECT '' AS to_char_6,  to_char(val, 'FMS9999999999999999.999999999999999')    FROM num_data;
+SELECT '' AS to_char_7,  to_char(val, 'FM9999999999999999.999999999999999THPR') FROM num_data;
+SELECT '' AS to_char_8,  to_char(val, 'SG9999999999999999.999999999999999th')   FROM num_data;
+SELECT '' AS to_char_9,  to_char(val, '0999999999999999.999999999999999')       FROM num_data;
+SELECT '' AS to_char_10, to_char(val, 'S0999999999999999.999999999999999')      FROM num_data;
+SELECT '' AS to_char_11, to_char(val, 'FM0999999999999999.999999999999999')     FROM num_data;
+SELECT '' AS to_char_12, to_char(val, 'FM9999999999999999.099999999999999') 	FROM num_data;
+SELECT '' AS to_char_13, to_char(val, 'FM9999999999990999.990999999999999') 	FROM num_data;
+SELECT '' AS to_char_14, to_char(val, 'FM0999999999999999.999909999999999') 	FROM num_data;
+SELECT '' AS to_char_15, to_char(val, 'FM9999999990999999.099999999999999') 	FROM num_data;
+SELECT '' AS to_char_16, to_char(val, 'L9999999999999999.099999999999999')	FROM num_data;
+SELECT '' AS to_char_17, to_char(val, 'FM9999999999999999.99999999999999')	FROM num_data;
+SELECT '' AS to_char_18, to_char(val, 'S 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
+SELECT '' AS to_char_19, to_char(val, 'FMS 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 . 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9') FROM num_data;
+SELECT '' AS to_char_20, to_char(val, E'99999 "text" 9999 "9999" 999 "\\"text between quote marks\\"" 9999') FROM num_data;
+SELECT '' AS to_char_21, to_char(val, '999999SG9999999999')			FROM num_data;
+SELECT '' AS to_char_22, to_char(val, 'FM9999999999999999.999999999999999')	FROM num_data;
 
 SELECT '' AS to_char_24, to_char('100'::numeric, 'FM999.9');
 SELECT '' AS to_char_25, to_char('100'::numeric, 'FM999.');
@@ -791,4 +808,4 @@ INSERT INTO num_input_test(n1) VALUES ('5. 0   ');
 INSERT INTO num_input_test(n1) VALUES ('');
 INSERT INTO num_input_test(n1) VALUES (' N aN ');
 
-SELECT * FROM num_input_test ;
+SELECT * FROM num_input_test;

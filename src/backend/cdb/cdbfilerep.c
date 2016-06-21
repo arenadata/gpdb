@@ -47,13 +47,11 @@
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/shmem.h"
+#include "tcop/tcopprot.h"
 #include "utils/guc.h"
 #include "utils/ps_status.h"
 #include "utils/memutils.h"
 #include "utils/faultinjector.h"
-
-
-extern void quickdie(SIGNAL_ARGS); /* is in tcopprot.h */
 
 /****************************************************************
  * FILEREP PROCESS definitions
@@ -152,7 +150,7 @@ static void FileRep_IpcSignalAllInternal(int ii);
 
 static pg_crc32 FileRep_CalculateAdler32(unsigned char *buf, int len);
 
-#define MaxFileRepSubProc 18
+#define MaxFileRepSubProc FileRepProcessType__EnumerationCount
 
 #define EXIT_STATUS_0(st)  ((st) == 0)
 #define EXIT_STATUS_1(st)  (WIFEXITED(st) && WEXITSTATUS(st) == 1)
@@ -200,8 +198,6 @@ static FileRepSubProc FileRepSubProcListInitial[MaxFileRepSubProc] =
 	{0, FileRepProcessTypeResyncWorker2},
 	{0, FileRepProcessTypeResyncWorker3},
 	{0, FileRepProcessTypeResyncWorker4},
-	{0, FileRepProcessTypePrimaryVerification},
-    {0, FileRepProcessTypeMirrorVerification},
 }, *FileRepSubProcList;
 
 
@@ -234,9 +230,6 @@ FileRepProcessTypeToString[] = {
 	_("primary resync worker #2 process"),
 	_("primary resync worker #3 process"),
 	_("primary resync worker #4 process"),
-
-	_("primary verification process"),
-	_("mirror verification process"),
 
 };
 
@@ -300,7 +293,6 @@ FileRepOperationToString[] = {
 	_("validation filespace dir or existence"),
 	_("drop files from dir"),
 	_("drop temporary files"),
-	_("online verification"),
 	_("not specified"),
 
 };
@@ -327,7 +319,6 @@ FileRepAckStateToString[] = {
 const char*
 FileRepConsumerProcIndexToString[] = {
 	_("xlog"),
-	_("verify"),
 	_("append only"),
 	_("writer"),
 	_("shutdown"),
@@ -1328,6 +1319,10 @@ FileRep_CheckFlushLogs(
 					   volatile	FileRepLogShmem_s	*logShmem,
 					   bool							isConfigLog)
 {
+
+	if (log_filerep_to_syslogger)
+		return;
+
 	uint32	dataLength = 0;
 	bool	flushConfigLog = FALSE;
 	char	*configBegin = NULL;
@@ -1387,8 +1382,54 @@ FileRep_InsertLogEntry(
 
 	struct timeval	logTime;
 
-	if (Debug_filerep_print || (*fileRepAckShmemArray) == NULL)
+	if (!Debug_filerep_print || (*fileRepAckShmemArray) == NULL)
 		return;
+
+	if (log_filerep_to_syslogger)
+	{
+		ereport(LOG,
+		(errmsg("'%s', "
+			"filerep operation '%s', "
+			"relation type '%s', "
+			"'%d', '%d', "
+			"header crc '%u', "
+			"body crc '%u', "
+			"ack state '%s', "
+			"'%p', '%p', '%p', '%p', '%p', '%d', '%d', "
+			"'%p', '%p', '%p', '%p', '%p', '%d', '%d', "
+			"mirroring role '%s', mirroring state '%s', segment state '%s', filerep state, '%s'"
+			"process name(pid) '%s(%d)' ",
+			routineName,
+			FileRepOperationToString[fileRepOperation],
+			FileRepRelationTypeToString[fileRepRelationType],
+			localCount,
+			fileRepMessageCount,
+			fileRepMessageHeaderCrc,
+			fileRepMessageBodyCrc,
+			FileRepAckStateToString[fileRepAckState],
+			fileRepShmemArray[fileRepProcIndex]->positionBegin,
+			fileRepShmemArray[fileRepProcIndex]->positionEnd,
+			fileRepShmemArray[fileRepProcIndex]->positionInsert,
+			fileRepShmemArray[fileRepProcIndex]->positionConsume,
+			fileRepShmemArray[fileRepProcIndex]->positionWraparound,
+			fileRepShmemArray[fileRepProcIndex]->insertCount,
+			fileRepShmemArray[fileRepProcIndex]->consumeCount,
+			(*fileRepAckShmemArray)->positionBegin,
+			(*fileRepAckShmemArray)->positionEnd,
+			(*fileRepAckShmemArray)->positionInsert,
+			(*fileRepAckShmemArray)->positionConsume,
+			(*fileRepAckShmemArray)->positionWraparound,
+			(*fileRepAckShmemArray)->insertCount,
+			(*fileRepAckShmemArray)->consumeCount,
+			FileRepRoleToString[fileRepRole],
+			DataStateToString[dataState],
+			SegmentStateToString[segmentState],
+			FileRepStateToString[FileRepSubProcess_GetState()],
+			FileRepProcessTypeToString[fileRepProcessType],
+			getpid())));
+
+			return;
+	}
 
 	halfLength = (fileRepLogShmem->logEnd - fileRepLogShmem->logBegin) / 2;
 
@@ -1615,11 +1656,14 @@ FileRepLog_ShmemReInit(void)
 static void
 FileRep_FlushLogActiveSlot(void)
 {
+	if (log_filerep_to_syslogger)
+		return;
+
 	uint32 dataLength = 0;
 
 	dataLength = (fileRepConfigLogShmem->logEnd - fileRepConfigLogShmem->logBegin) / 2;
 
-	if (! Debug_filerep_config_print)
+	if (Debug_filerep_config_print)
 	{
 		if (fileRepConfigLogShmem->activeSlot1 == TRUE)
 		{
@@ -1639,7 +1683,7 @@ FileRep_FlushLogActiveSlot(void)
 
 	dataLength = (fileRepLogShmem->logEnd - fileRepLogShmem->logBegin) / 2;
 
-	if (! Debug_filerep_print)
+	if (Debug_filerep_print)
 	{
 		if (fileRepLogShmem->activeSlot1 == TRUE)
 		{
@@ -1768,7 +1812,10 @@ FileRep_InsertConfigLogEntryInternal(char		*description,
 	struct timeval	logTime;
 	uint32		halfLength = (fileRepConfigLogShmem->logEnd - fileRepConfigLogShmem->logBegin) / 2;
 
-	if (Debug_filerep_config_print)
+	if (!Debug_filerep_config_print)
+		return;
+
+	if (log_filerep_to_syslogger)
 	{
 		ereport(LOG,
 				(errmsg("'%s', "
@@ -2215,8 +2262,6 @@ FileRep_ProcessSignals()
 			if ( errno == ECHILD)
 				break;
 
-			bool resetRequired = freeAuxiliaryProcEntryAndReturnReset(term_pid, NULL);
-
 			/* NOTE see do_reaper() */
 			for (i=0; i < MaxFileRepSubProc; i++)
 			{
@@ -2266,8 +2311,7 @@ FileRep_ProcessSignals()
 
 					if (! EXIT_STATUS_0(term_status) &&
 					    ! EXIT_STATUS_1(term_status) &&
-					    ! EXIT_STATUS_2(term_status) &&
-						resetRequired)
+					    ! EXIT_STATUS_2(term_status))
 					{
 					    FileRep_SetPostmasterReset();
 					}
@@ -2351,7 +2395,6 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
 	    case FileRepProcessTypePrimaryConsumerAck:
 	    case FileRepProcessTypeMirrorConsumerWriter:
         case FileRepProcessTypeMirrorConsumerAppendOnly1:
-		case FileRepProcessTypeMirrorVerification:
             return false;
 		case FileRepProcessTypePrimaryRecovery:
         case FileRepProcessTypeResyncManager:
@@ -2359,7 +2402,6 @@ FileRepIsBackendSubProcess(FileRepProcessType_e processType)
         case FileRepProcessTypeResyncWorker2:
         case FileRepProcessTypeResyncWorker3:
         case FileRepProcessTypeResyncWorker4:
-		case FileRepProcessTypePrimaryVerification:
             return true;
         default:
             Assert(!"unknown process type in 'FileRepIsBackendSubProcess' ");
@@ -2787,7 +2829,21 @@ FileRep_CalculateParity(unsigned char *buf, int len)
 
 	/* Get 64-bits at a time, xor into temp */
 	for (n = 0; n < words; n++)
-		temp ^= ((unsigned long long*)buf)[n];
+	{
+		unsigned long long w;
+
+		/*
+		 * Use memcpy because 'buf' might not be aligned. (Even on x86, which
+		 * does not usually require alignment for memory accesses, the
+		 * compiler might decide to optimize this with MMX instructions -
+		 * which do require 16-bit alignment. We've seen this happen with gcc
+		 * -O3 with some compiler versions. OTOH, as long as the target
+		 * architecture doesn't require alignment, this will be optimized
+		 * away and not cost anything.)
+		 */
+		memcpy(&w, &buf[n * 8], 8);
+		temp ^= w;
+	}
 
 	/* Combine each of the 8 bytes from temp into parity, so we get the same answer as byte-by-byte loop */
 	/*
@@ -2883,7 +2939,6 @@ FileRep_IsOperationSynchronous(FileRepOperation_e fileRepOperation)
 		case FileRepOperationHeartBeat:
 		case FileRepOperationCreateAndOpen:
 		case FileRepOperationValidation:
-		case FileRepOperationVerify:
 			return TRUE;
 
 		case FileRepOperationOpen:
@@ -3365,7 +3420,6 @@ void FileRep_Main(void)
     COMPILE_ASSERT(ARRAY_SIZE(FileRepAckStateToString) == FileRepAckState__EnumerationCount);
     COMPILE_ASSERT(ARRAY_SIZE(FileRepConsumerProcIndexToString) == FileRepMessageType__EnumerationCount);
 	COMPILE_ASSERT(ARRAY_SIZE(FileRepStatusToString) == FileRepStatus__EnumerationCount);
-	COMPILE_ASSERT(ARRAY_SIZE(FileRepOperationVerificationTypeToString) == 	FileRepOpVerifyType__EnumerationCount);
 	Insist(IsUnderPostmaster == TRUE);
 
 	fileRepProcessType = FileRepProcessTypeMain;
@@ -3524,11 +3578,6 @@ void FileRep_Main(void)
 				break;
 			}
 
-			if (FileRep_StartChildProcess(FileRepProcessTypePrimaryVerification) < 0) {
-				status = STATUS_ERROR;
-				break;
-			}
-
 			if (dataState == DataStateInResync)
 			{
 				if (FileRep_StartChildProcess(FileRepProcessTypeResyncManager) < 0) {
@@ -3586,11 +3635,6 @@ void FileRep_Main(void)
 			}
 
 			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorSenderAck) < 0) {
-				status = STATUS_ERROR;
-				break;
-			}
-
-			if (FileRep_StartChildProcess(FileRepProcessTypeMirrorVerification) < 0) {
 				status = STATUS_ERROR;
 				break;
 			}

@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/initdb.sgml,v 1.37.2.2 2007/03/26 17:23:44 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/initdb.sgml,v 1.43 2007/03/26 17:23:36 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -69,7 +69,7 @@ PostgreSQL documentation
    <command>initdb</command> must be run as the user that will own the
    server process, because the server needs to have access to the
    files and directories that <command>initdb</command> creates.
-   Since the server may not be run as root, you must not run
+   Since the server cannot be run as root, you must not run
    <command>initdb</command> as root either.  (It will in fact refuse
    to do so.)
   </para>
@@ -79,7 +79,7 @@ PostgreSQL documentation
    locale and character set encoding. The collation order
    (<literal>LC_COLLATE</>) and character set classes
    (<literal>LC_CTYPE</>, e.g. upper, lower, digit) are fixed for all
-   databases and can not be changed. Collation orders other than
+   databases and cannot be changed. Collation orders other than
    <literal>C</> or <literal>POSIX</> also have a performance penalty.
    For these reasons it is important to choose the right locale when
    running <command>initdb</command>. The remaining locale categories
@@ -177,6 +177,26 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
+      <term><option>--no-locale</option></term>
+      <listitem>
+       <para>
+		Equivalent to <option>--locale=C</option>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-X <replaceable class="parameter">directory</replaceable></option></term>
+      <term><option>--xlogdir=<replaceable class="parameter">directory</replaceable></option></term>
+      <listitem>
+       <para>
+        This option specifies the directory where the transaction log
+        should be stored.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
       <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
       <listitem>
@@ -214,6 +234,17 @@ PostgreSQL documentation
        </para>
       </listitem>
      </varlistentry>
+
+    <varlistentry>
+     <term><option>--text-search-config=<replaceable>CFG</></option></term>
+     <listitem>
+      <para>
+	   Sets the default text search configuration.
+	   See <xref linkend="guc-default-text-search-config"> for further information.
+      </para>
+     </listitem>
+    </varlistentry>
+
     </variablelist>
    </para>
 
@@ -226,11 +257,11 @@ PostgreSQL documentation
       <term><option>--debug</option></term>
       <listitem>
        <para>
-	Print debugging output from the bootstrap backend and a few other
+        Print debugging output from the bootstrap backend and a few other
         messages of lesser interest for the general public.
-	The bootstrap backend is the program <command>initdb</command>
-	uses to create the catalog tables.  This option generates a tremendous
-	amount of extremely boring output.
+        The bootstrap backend is the program <command>initdb</command>
+        uses to create the catalog tables.  This option generates a tremendous
+        amount of extremely boring output.
        </para>
       </listitem>
      </varlistentry>
@@ -252,11 +283,11 @@ PostgreSQL documentation
       <term><option>--noclean</option></term>
       <listitem>
        <para>
-	By default, when <command>initdb</command>
-	determines that an error prevented it from completely creating the database
-	cluster, it removes any files it may have created before discovering
-	that it can't finish the job. This option inhibits tidying-up and is
-	thus useful for debugging.
+        By default, when <command>initdb</command>
+        determines that an error prevented it from completely creating the database
+        cluster, it removes any files it might have created before discovering
+        that it cannot finish the job. This option inhibits tidying-up and is
+        thus useful for debugging.
        </para>
       </listitem>
      </varlistentry>
@@ -275,7 +306,7 @@ PostgreSQL documentation
     <listitem>
      <para>
       Specifies the directory where the database cluster is to be
-      stored; may be overridden using the <option>-D</option> option.
+      stored; can be overridden using the <option>-D</option> option.
      </para>
     </listitem>
    </varlistentry>

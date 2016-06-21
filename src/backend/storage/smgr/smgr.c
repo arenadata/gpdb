@@ -12,7 +12,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgr.c,v 1.101.2.2 2007/07/20 16:29:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgr.c,v 1.109 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -122,6 +122,9 @@ static PendingDelete *PendingDelete_AddEntry(
 	bool					dropForCommit)
 {
 	PendingDelete *pending;
+
+	if (!ItemPointerIsValid(persistentTid))
+		elog(ERROR, "tried to delete a relation with invalid persistent TID");
 
 	/* Add the filespace to the list of stuff to delete at abort */
 	pending = (PendingDelete *)
@@ -467,13 +470,7 @@ smgrclose(SMgrRelation reln)
 {
 	SMgrRelation *owner;
 
-	if (!mdclose(reln))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not close relation %u/%u/%u: %m",
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode)));
+	mdclose(reln);
 
 	owner = reln->smgr_owner;
 
@@ -815,9 +812,7 @@ smgrcreate(
 
 	bool						ignoreAlreadyExists,
 
-	int							*primaryError,
-
-	bool						*mirrorDataLossOccurred)
+	bool						*mirrorDataLossOccurred) /* FIXME: is this arg still needed? */
 {
 	mdcreate(
 			reln,
@@ -826,7 +821,6 @@ smgrcreate(
 			mirrorDataLossTrackingState,
 			mirrorDataLossTrackingSessionNum,
 			ignoreAlreadyExists,
-			primaryError,
 			mirrorDataLossOccurred);
 }
 
@@ -987,27 +981,11 @@ smgr_internal_unlink(
 	/*
 	 * And delete the physical files.
 	 *
-	 * Note: we treat deletion failure as a WARNING, not an error, because
-	 * we've already decided to commit or abort the current xact.
+	 * Note: smgr_unlink must treat deletion failure as a WARNING, not an
+	 * ERROR, because we've already decided to commit or abort the current
+	 * xact.
 	 */
-	if (!mdunlink(rnode, relationName, primaryOnly, isRedo, ignoreNonExistence, mirrorDataLossOccurred))
-	{
-		if (relationName == NULL)
-			ereport(WARNING,
-					(errcode_for_file_access(),
-					 errmsg("could not remove relation %u/%u/%u: %m",
-							rnode.spcNode,
-							rnode.dbNode,
-							rnode.relNode)));
-		else
-			ereport(WARNING,
-					(errcode_for_file_access(),
-					 errmsg("could not remove relation %u/%u/%u '%s': %m",
-							rnode.spcNode,
-							rnode.dbNode,
-							rnode.relNode,
-							relationName)));
-	}
+	mdunlink(rnode, relationName, primaryOnly, isRedo, ignoreNonExistence, mirrorDataLossOccurred);
 }
 
 /*
@@ -1317,22 +1295,17 @@ smgrgetappendonlyinfo(
 /*
  *	smgrextend() -- Add a new block to a file.
  *
- *		The semantics are basically the same as smgrwrite(): write at the
- *		specified position.  However, we are expecting to extend the
- *		relation (ie, blocknum is the current EOF), and so in case of
+ *		The semantics are nearly the same as smgrwrite(): write at the
+ *		specified position.  However, this is to be used for the case of
+ *		extending a relation (i.e., blocknum is at or beyond the current
+ *		EOF).  Note that we assume writing a block beyond current EOF
+ *		causes intervening file space to become filled with zeroes.
  *		failure we clean up by truncating.
  */
 void
 smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 {
-	if (!mdextend(reln, blocknum, buffer, isTemp))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not extend relation %u/%u/%u: %m",
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode),
-				 errhint("Check free disk space.")));
+	mdextend(reln, blocknum, buffer, isTemp);
 }
 
 /*
@@ -1346,18 +1319,15 @@ smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 void
 smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer)
 {
-	if (!mdread(reln, blocknum, buffer))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read block %u of relation %u/%u/%u: %m",
-						blocknum,
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode)));
+	mdread(reln, blocknum, buffer);
 }
 
 /*
  *	smgrwrite() -- Write the supplied buffer out.
+ *
+ *		This is to be used only for updating already-existing blocks of a
+ *		relation (ie, those before the current EOF).  To extend a relation,
+ *		use smgrextend().
  *
  *		This is not a synchronous write -- the block is not necessarily
  *		on disk at return, only dumped out to the kernel.  However,
@@ -1370,59 +1340,26 @@ smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer)
 void
 smgrwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 {
-	if (!mdwrite(reln, blocknum, buffer, isTemp))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write block %u of relation %u/%u/%u: %m",
-						blocknum,
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode)));
+	mdwrite(reln, blocknum, buffer, isTemp);
 }
 
 /*
  *	smgrnblocks() -- Calculate the number of blocks in the
  *					 supplied relation.
- *
- *		Returns the number of blocks on success, aborts the current
- *		transaction on failure.
  */
 BlockNumber
 smgrnblocks(SMgrRelation reln)
 {
-	BlockNumber nblocks;
-
-	nblocks = mdnblocks(reln, false);
-
-	/*
-	 * NOTE: if a relation ever did grow to 2^32-1 blocks, this code would
-	 * fail --- but that's a good thing, because it would stop us from
-	 * extending the rel another block and having a block whose number
-	 * actually is InvalidBlockNumber.
-	 */
-	if (nblocks == InvalidBlockNumber)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not count blocks of relation %u/%u/%u: %m",
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode)));
-
-	return nblocks;
+	return mdnblocks(reln);
 }
 
 /*
  *	smgrtruncate() -- Truncate supplied relation to the specified number
  *					  of blocks
- *
- *		Returns the number of blocks on success, aborts the current
- *		transaction on failure.
  */
-BlockNumber
+void
 smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBuf, ItemPointer persistentTid, int64 persistentSerialNum)
 {
-	BlockNumber newblks;
-
 	/*
 	 * Get rid of any buffers for the about-to-be-deleted blocks. bufmgr will
 	 * just drop them without bothering to write the contents.
@@ -1437,29 +1374,18 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 	FreeSpaceMapTruncateRel(&reln->smgr_rnode, nblocks);
 
 	/* Do the truncation */
-	newblks = mdtruncate(reln, nblocks, isTemp, false);
-	if (newblks == InvalidBlockNumber)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-			  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m",
-					 reln->smgr_rnode.spcNode,
-					 reln->smgr_rnode.dbNode,
-					 reln->smgr_rnode.relNode,
-					 nblocks)));
+	mdtruncate(reln, nblocks, isTemp, false);
 
 	if (!isTemp)
 	{
 		/*
-		 * Make a non-transactional XLOG entry showing the file truncation.
-		 * It's non-transactional because we should replay it whether the
-		 * transaction commits or not; the underlying file change is certainly
-		 * not reversible.
+		 * Make an XLOG entry showing the file truncation.
 		 */
 		XLogRecPtr	lsn;
 		XLogRecData rdata;
 		xl_smgr_truncate xlrec;
 
-		xlrec.blkno = newblks;
+		xlrec.blkno = nblocks;
 		xlrec.rnode = reln->smgr_rnode;
 		xlrec.persistentTid = *persistentTid;
 		xlrec.persistentSerialNum = persistentSerialNum;
@@ -1469,11 +1395,8 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 		rdata.buffer = InvalidBuffer;
 		rdata.next = NULL;
 
-		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_TRUNCATE | XLOG_NO_TRAN,
-						 &rdata);
+		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_TRUNCATE, &rdata);
 	}
-
-	return newblks;
 }
 
 bool smgrgetpersistentinfo(
@@ -1530,13 +1453,7 @@ bool smgrgetpersistentinfo(
 void
 smgrimmedsync(SMgrRelation reln)
 {
-	if (!mdimmedsync(reln))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not sync relation %u/%u/%u: %m",
-						reln->smgr_rnode.spcNode,
-						reln->smgr_rnode.dbNode,
-						reln->smgr_rnode.relNode)));
+	mdimmedsync(reln);
 }
 
 static void
@@ -1845,8 +1762,6 @@ smgrDoDeleteActions(
 {
 	MIRRORED_LOCK_DECLARE;
 
-	CHECKPOINT_START_LOCK_DECLARE;
-
 	PendingDelete *current;
 	int entryIndex;
 
@@ -1883,15 +1798,6 @@ smgrDoDeleteActions(
 	 * we could race with resynchronize's ReDrop.
 	 */
 	MIRRORED_LOCK;
-
-	/*
-	 * The logic will eventually obtain a CheckpointStartLock in PersistentRelation_Dropped(),
-	 * but functions called from this function my obtain Exclusive locks before the
-	 * CheckpointStartLock is obtained. This could cause a potential deadlock in the future.
-	 * We need to take a CheckpointStartLock here to maintain proper lock ordering
-	 * (i.e. MirrorLock -> CheckpointStartLock ).
-	 */
-	CHECKPOINT_START_LOCK;
 
 	/*
 	 * First pass does the initial State-Changes.
@@ -2152,8 +2058,6 @@ smgrDoDeleteActions(
 	Assert(*list == NULL);
 
 	PersistentFileSysObj_FlushXLog();
-
-	CHECKPOINT_START_UNLOCK;
 
 	MIRRORED_UNLOCK;
 
@@ -2429,16 +2333,11 @@ smgrSortDeletesList(
 	*list = ptrArray[0];
 	prev = ptrArray[0];
 	collapseCount = 0;
-	i = 0;
-	while (true)
-	{
-		i++;	// Start processing elements after the first one.
 
-		if (i == *listCount)
-		{
-			prev->next = NULL;
-			break;
-		}
+	// Start processing elements after the first one.
+	for (i = 1; i < *listCount; i++)
+	{
+		bool		collapse = false;
 
 		current = ptrArray[i];
 
@@ -2452,13 +2351,30 @@ smgrSortDeletesList(
 								&prev->fsObjName,
 								&current->fsObjName) == 0))
 		{
+			/*
+			 * If there are two sequential entries for the same object, it should
+			 * be a CREATE-DROP pair (XXX: why?). Sanity check that it really is.
+			 * NOTE: We cannot elog(ERROR) here, because that would leave the list in
+			 * an inconsistent state.
+			 */
 			if (prev->dropForCommit)
-				elog(ERROR, "Expected a CREATE for file-system object name '%s'",
+			{
+				collapse = false;
+				elog(WARNING, "Expected a CREATE for file-system object name '%s'",
 					PersistentFileSysObjName_ObjectName(&prev->fsObjName));
-			if (!current->dropForCommit)
-				elog(ERROR, "Expected a DROP for file-system object name '%s'",
+			}
+			else if (!current->dropForCommit)
+			{
+				collapse = false;
+				elog(WARNING, "Expected a DROP for file-system object name '%s'",
 					PersistentFileSysObjName_ObjectName(&current->fsObjName));
+			}
+			else
+				collapse = true;
+		}
 
+		if (collapse)
+		{
 			prev->dropForCommit = true;				// Make the CREATE a DROP.
 			prev->sameTransCreateDrop = true;	// Don't ignore DROP on abort.
 			collapseCount++;
@@ -2485,6 +2401,7 @@ smgrSortDeletesList(
 			prev = current;
 		}
 	}
+	prev->next = NULL;
 
 	pfree(ptrArray);
 
@@ -2634,14 +2551,16 @@ smgrSubTransAbort(void)
  * *ptr is set to point to a freshly-palloc'd array of RelFileNodes.
  * If there are no relations to be deleted, *ptr is set to NULL.
  *
+ * If haveNonTemp isn't NULL, the bool it points to gets set to true if
+ * there is any non-temp table pending to be deleted; false if not.
+ *
  * Note that the list does not include anything scheduled for termination
  * by upper-level transactions.
  */
 int
-smgrGetPendingFileSysWork(
-	EndXactRecKind						endXactRecKind,
-
-	PersistentEndXactFileSysActionInfo 	**ptr)
+smgrGetPendingFileSysWork(EndXactRecKind endXactRecKind,
+						  PersistentEndXactFileSysActionInfo **ptr,
+						  bool *haveNonTemp)
 {
 	int			nestLevel = GetCurrentTransactionNestLevel();
 	int			nrels;
@@ -2652,6 +2571,9 @@ smgrGetPendingFileSysWork(
 	int			entryIndex;
 
 	PersistentEndXactFileSysAction action;
+
+	if (haveNonTemp)
+		*haveNonTemp = false;
 
 	Assert(endXactRecKind == EndXactRecKind_Commit ||
 		   endXactRecKind == EndXactRecKind_Abort ||
@@ -2672,6 +2594,8 @@ smgrGetPendingFileSysWork(
 	}
 
 	nrels = 0;
+	if (haveNonTemp)
+		*haveNonTemp = false;
 	for (pending = pendingDeletes; pending != NULL; pending = pending->next)
 	{
 		action = PendingDelete_Action(pending);
@@ -2716,6 +2640,9 @@ smgrGetPendingFileSysWork(
 
 			rptr++;
 			returned = true;
+
+			if (haveNonTemp && !pending->isLocalBuf)
+				*haveNonTemp = true;
 		}
 
 		if (Debug_persistent_print)
@@ -3162,7 +3089,16 @@ smgrabort(void)
 }
 
 /*
- *	smgrsync() -- Sync files to disk at checkpoint time.
+ *     smgrpreckpt() -- Prepare for checkpoint.
+ */
+void
+smgrpreckpt(void)
+{
+	mdpreckpt();
+}
+
+/*
+ *     smgrsync() -- Sync files to disk during checkpoint.
  */
 void
 smgrsync(void)
@@ -3170,12 +3106,20 @@ smgrsync(void)
 	mdsync();
 }
 
+/*
+ *	smgrpostckpt() -- Post-checkpoint cleanup.
+ */
+void
+smgrpostckpt(void)
+{
+	mdpostckpt();
+}
+
 
 void
 smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
-	int primaryError = 0;
 	bool mirrorDataLossOccurred = false;
 
 	if (info == XLOG_SMGR_CREATE)
@@ -3198,16 +3142,35 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 				mirrorDataLossTrackingState,
 				mirrorDataLossTrackingSessionNum,
 				/* ignoreAlreadyExists */ true,
-				&primaryError,
 				&mirrorDataLossOccurred);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
+		MirrorDataLossTrackingState mirrorDataLossTrackingState;
+		int64 mirrorDataLossTrackingSessionNum;
+
 		xl_smgr_truncate *xlrec = (xl_smgr_truncate *) XLogRecGetData(record);
 		SMgrRelation reln;
-		BlockNumber newblks;
 
 		reln = smgropen(xlrec->rnode);
+
+		/*
+		 * Forcibly create relation if it doesn't exist (which suggests that
+		 * it was dropped somewhere later in the WAL sequence).  As in
+		 * XLogOpenRelation, we prefer to recreate the rel and replay the log
+		 * as best we can until the drop is seen.
+		 */
+		mirrorDataLossTrackingState =
+					FileRepPrimary_GetMirrorDataLossTrackingSessionNum(
+													&mirrorDataLossTrackingSessionNum);
+		smgrcreate(
+				reln,
+				/* isLocalBuf */ false,
+				/* relationName */ NULL,		// Ok to be NULL -- we don't know the name here.
+				mirrorDataLossTrackingState,
+				mirrorDataLossTrackingSessionNum,
+				/* ignoreAlreadyExists */ true,
+				&mirrorDataLossOccurred);
 
 		/* Can't use smgrtruncate because it would try to xlog */
 
@@ -3231,18 +3194,10 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		 * when replay of truncate redo log happen multiple times it acts as NOP, 
 		 * which makes redo truncate behavior is idempotent.
 		 */
-		newblks = mdtruncate(
-						reln,
-					   	xlrec->blkno,
-					   	false, true);
-		if (newblks == InvalidBlockNumber)
-			ereport(WARNING,
-					(errcode_for_file_access(),
-			  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m",
-					 reln->smgr_rnode.spcNode,
-					 reln->smgr_rnode.dbNode,
-					 reln->smgr_rnode.relNode,
-					 xlrec->blkno)));
+		mdtruncate(reln,
+				   xlrec->blkno,
+				   false,
+				   true);
 
 		/* Also tell xlogutils.c about it */
 		XLogTruncateRelation(xlrec->rnode, xlrec->blkno);

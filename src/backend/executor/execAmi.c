@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/executor/execAmi.c,v 1.89.2.1 2007/02/15 03:07:21 tgl Exp $
+ *	$PostgreSQL: pgsql/src/backend/executor/execAmi.c,v 1.94.2.2 2008/08/05 21:28:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -73,7 +73,19 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 	if (node->instrument)
 		InstrEndLoop(node->instrument);
 
-	/* If we have changed parameters, propagate that info */
+	/*
+	 * If we have changed parameters, propagate that info.
+	 *
+	 * Note: ExecReScanSetParamPlan() can add bits to node->chgParam,
+	 * corresponding to the output param(s) that the InitPlan will update.
+	 * Since we make only one pass over the list, that means that an InitPlan
+	 * can depend on the output param(s) of a sibling InitPlan only if that
+	 * sibling appears earlier in the list.  This is workable for now given
+	 * the limited ways in which one InitPlan could depend on another, but
+	 * eventually we might need to work harder (or else make the planner
+	 * enlarge the extParam/allParam sets to include the params of depended-on
+	 * InitPlans).
+	 */
 	if (node->chgParam != NULL)
 	{
 		ListCell   *l;
@@ -327,7 +339,6 @@ ExecMarkPos(PlanState *node)
 				));
 			break;
 
-
 		default:
 			/* don't make hard error unless caller asks to restore... */
 			elog(DEBUG2, "unrecognized node type: %d", (int) nodeTag(node));
@@ -440,12 +451,13 @@ ExecSupportsMarkRestore(NodeTag plantype)
 			return true;
 
 		case T_Result:
+
 			/*
-			 * T_Result only supports mark/restore if it has a child plan
-			 * that does, so we do not have enough information to give a
-			 * really correct answer.  However, for current uses it's
-			 * enough to always say "false", because this routine is not
-			 * asked about gating Result plans, only base-case Results.
+			 * T_Result only supports mark/restore if it has a child plan that
+			 * does, so we do not have enough information to give a really
+			 * correct answer.	However, for current uses it's enough to
+			 * always say "false", because this routine is not asked about
+			 * gating Result plans, only base-case Results.
 			 */
 			return false;
 
@@ -549,16 +561,18 @@ ExecMayReturnRawTuples(PlanState *node)
 		case T_IndexScanState:
 		case T_BitmapHeapScanState:
 		case T_TidScanState:
-		case T_SubqueryScanState:
-		case T_FunctionScanState:
-		case T_ValuesScanState:
 			if (node->ps_ProjInfo == NULL)
 				return true;
 			break;
 
-
 		case T_SeqScanState:
 			insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
+			break;
+
+		case T_SubqueryScanState:
+			/* If not projecting, look at input plan */
+			if (node->ps_ProjInfo == NULL)
+				return ExecMayReturnRawTuples(((SubqueryScanState *) node)->subplan);
 			break;
 
 			/* Non-projecting nodes */

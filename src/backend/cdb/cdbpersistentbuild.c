@@ -466,7 +466,8 @@ static void PersistentBuild_PopulateGpRelationNode(
 			gp_relation_node,
 			gp_relation_node_index,
 			indexInfo,
-			false);
+			false,
+			true);
 
 	DirectOpen_GpRelationNodeIndexClose(gp_relation_node_index);
 
@@ -591,6 +592,7 @@ PersistentBuild_BuildDb(
 	info = DatabaseInfo_Collect(
 							dbOid,
 							defaultTablespace,
+							/* snapshot */ NULL,
 							/* collectGpRelationNodeInfo */ false,
 							/* collectAppendOnlyCatalogSegmentInfo */ true,
 							/* scanFileSystem */ true);
@@ -639,7 +641,7 @@ PersistentBuild_BuildDb(
 	 * GUC, lets do a checkpoint to force out all buffer pool pages so we never
 	 * try to redo those XLOG records in Crash Recovery.
 	 */
-	CreateCheckPoint(false, true);
+	CreateCheckPoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 
 	return count;
 }
@@ -999,123 +1001,6 @@ gp_persistent_reset_all(PG_FUNCTION_ARGS)
 	 * Reset the persistent shared-memory free list heads and all shared-memory hash-tables.
 	 */
 	PersistentFileSysObj_Reset();
-
-	PG_RETURN_INT32(1);
-}
-
-static void
-PersistentBuild_SetRelationBufpoolKind(
-	Oid			defaultTablespace,
-
-	Oid 		database)
-{
-	DatabaseInfo *info;
-	
-	int	r;
-
-	info = DatabaseInfo_Collect(
-							database,
-							defaultTablespace,
-							/* collectGpRelationNodeInfo */ true,
-							/* collectAppendOnlyCatalogSegmentInfo */ false,
-							/* scanFileSystem */ false);
-
-	for (r = 0; r < info->dbInfoRelArrayCount; r++)
-	{
-		DbInfoRel *dbInfoRel = &info->dbInfoRelArray[r];
-		
-		RelFileNode relFileNode;
-
-		PersistentFileSysRelStorageMgr localRelStorageMgr;
-		PersistentFileSysRelBufpoolKind relBufpoolKind;
-
-		int g;
-
-		if (dbInfoRel->reltablespace == GLOBALTABLESPACE_OID &&
-			info->database != TemplateDbOid)
-			continue;
-
-		relFileNode.spcNode = dbInfoRel->reltablespace;
-		relFileNode.dbNode = 
-				(dbInfoRel->reltablespace == GLOBALTABLESPACE_OID ?
-														0 : info->database);
-		relFileNode.relNode = dbInfoRel->relfilenodeOid;
-
-		GpPersistentRelationNode_GetRelationInfo(
-											dbInfoRel->relkind,
-											dbInfoRel->relstorage,
-											dbInfoRel->relam,
-											&localRelStorageMgr,
-											&relBufpoolKind);
-
-		/*
-		 * Update the gp_persistent_relation_node entry for each gp_relation_node entry.
-		 */
-		for (g = 0; g < dbInfoRel->gpRelationNodesCount; g++)
-		{
-			DbInfoGpRelationNode *gpRelationNode = &dbInfoRel->gpRelationNodes[g];
-
-			PersistentFileSysObj_UpdateRelationBufpoolKind(
-												&relFileNode,
-												gpRelationNode->segmentFileNum,
-												&gpRelationNode->persistentTid,
-												gpRelationNode->persistentSerialNum,
-												relBufpoolKind);
-		}
-
-	}
-}
-
-Datum
-gp_persistent_set_relation_bufpool_kind_all(PG_FUNCTION_ARGS)
-{
-	Relation pg_database;
-	HeapScanDesc scan;
-	HeapTuple tuple;
-
-        if (!gp_upgrade_mode)
-                ereport(ERROR,
-                        (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-                         errmsg("function is not supported")));
-
-	// UNDONE: Verify we are in some sort of single-user mode.
-
-	/*
-	 * Special call here to scan the persistent meta-data structures so we are open for 
-	 * business and then we can add information.
-	 */
-	PersistentFileSysObj_BuildInitScan();
-
-	/* CaQL UNDONE: no test coverage */
-	pg_database = heap_open(
-						DatabaseRelationId,
-						AccessShareLock);
-
-	scan = heap_beginscan(pg_database, SnapshotNow, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		Form_pg_database form_pg_database =
-						(Form_pg_database)GETSTRUCT(tuple);
-
-		Oid dbOid;
-		Oid dattablespace;
-		
-		dbOid = HeapTupleGetOid(tuple);
-		dattablespace = form_pg_database->dattablespace;
-
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(), 
-				 "gp_persistent_set_relation_bufpool_kind_all: dbOid %u",
-				 dbOid);
-		
-		PersistentBuild_SetRelationBufpoolKind(
-											dattablespace,
-											dbOid);
-	}
-
-	heap_endscan(scan);
-
-	heap_close(pg_database, AccessShareLock);
 
 	PG_RETURN_INT32(1);
 }

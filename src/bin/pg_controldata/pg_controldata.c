@@ -6,7 +6,7 @@
  * copyright (c) Oliver Elphick <olly@lfix.co.uk>, 2001;
  * licence: BSD
  *
- * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.31.2.1 2008/09/24 08:59:44 mha Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.36.2.1 2008/09/24 08:59:46 mha Exp $
  */
 #include "postgres_fe.h"
 
@@ -36,7 +36,7 @@ usage(const char *progname)
 		);
 	printf(_("\nIf no data directory (DATADIR) is specified, "
 			 "the environment variable PGDATA\nis used.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -73,7 +73,7 @@ main(int argc, char *argv[])
 	int			fd;
 	char		ControlFilePath[MAXPGPATH];
 	char	   *DataDir;
-	pg_crc32	crc;
+	pg_crc32c	crc;
 	char		pgctime_str[128];
 	char		ckpttime_str[128];
 	char		sysident_str[32];
@@ -133,27 +133,14 @@ main(int argc, char *argv[])
 	close(fd);
 
 	/* Check the CRC. */
-	crc = crc32c(crc32cInit(), &ControlFile, offsetof(ControlFileData, crc));
-	crc32cFinish(crc);
+	INIT_CRC32C(crc);
+	COMP_CRC32C(crc, &ControlFile, offsetof(ControlFileData, crc));
+	FIN_CRC32C(crc);
 
-	if (!EQ_CRC32(crc, ControlFile.crc))
-	{
-		/*
-		 * Well, the crc doesn't match our computed crc32c value.
-		 * But it might be an old crc32, using the old polynomial.
-		 * If it is, it's OK.
-		 */
-		INIT_CRC32(crc);
-		COMP_CRC32(crc,
-				   (char *) &ControlFile,
-				   offsetof(ControlFileData, crc));
-		FIN_CRC32(crc);
-
-		if (!EQ_CRC32(crc, ControlFile.crc))
-			printf(_("WARNING: Calculated CRC checksum does not match value stored in file.\n"
-					 "Either the file is corrupt, or it has a different layout than this program\n"
-					 "is expecting.  The results below are untrustworthy.\n\n"));
-	}
+	if (!EQ_CRC32C(crc, ControlFile.crc))
+		printf(_("WARNING: Calculated CRC checksum does not match value stored in file.\n"
+				 "Either the file is corrupt, or it has a different layout than this program\n"
+				 "is expecting.  The results below are untrustworthy.\n\n"));
 
 	/*
 	 * Use variable for format to suppress overly-anal-retentive gcc warning
@@ -186,10 +173,6 @@ main(int argc, char *argv[])
 		   dbState(ControlFile.state));
 	printf(_("pg_control last modified:             %s\n"),
 		   pgctime_str);
-	printf(_("Current log file ID:                  %u\n"),
-		   ControlFile.logId);
-	printf(_("Next log file segment:                %u\n"),
-		   ControlFile.logSeg);
 	printf(_("Latest checkpoint location:           %X/%X\n"),
 		   ControlFile.checkPoint.xlogid,
 		   ControlFile.checkPoint.xrecoff);
@@ -199,9 +182,6 @@ main(int argc, char *argv[])
 	printf(_("Latest checkpoint's REDO location:    %X/%X\n"),
 		   ControlFile.checkPointCopy.redo.xlogid,
 		   ControlFile.checkPointCopy.redo.xrecoff);
-	printf(_("Latest checkpoint's UNDO location:    %X/%X\n"),
-		   ControlFile.checkPointCopy.undo.xlogid,
-		   ControlFile.checkPointCopy.undo.xrecoff);
 	printf(_("Latest checkpoint's TimeLineID:       %u\n"),
 		   ControlFile.checkPointCopy.ThisTimeLineID);
 	printf(_("Latest checkpoint's NextXID:          %u/%u\n"),
@@ -238,6 +218,8 @@ main(int argc, char *argv[])
 		   ControlFile.nameDataLen);
 	printf(_("Maximum columns in an index:          %u\n"),
 		   ControlFile.indexMaxKeys);
+	printf(_("Maximum size of a TOAST chunk:        %u\n"),
+		   ControlFile.toast_max_chunk_size);
 	printf(_("Date/time type storage:               %s\n"),
 		   (ControlFile.enableIntTimes ? _("64-bit integers") : _("floating-point numbers")));
 	printf(_("Maximum length of locale name:        %u\n"),

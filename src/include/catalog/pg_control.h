@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_control.h,v 1.33 2006/10/04 00:30:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_control.h,v 1.39 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,15 +18,16 @@
 #include <time.h>
 
 #include "access/xlogdefs.h"
-#include "utils/pg_crc.h"
+#include "port/pg_crc32c.h"
 
 
 /*
  * Version identifier for this pg_control format.
- * For historical reason, we use "8220" as a prefix. GPDB version comes
- * after these 4 digits.
+ *
+ * The first three digits is the PostgreSQL version number. The last
+ * four digits indicates the GPDB version.
  */
-#define PG_CONTROL_VERSION	8220430
+#define PG_CONTROL_VERSION	8330500
 
 /*
  * Body of CheckPoint XLOG records.  This is declared here because we keep
@@ -36,9 +37,6 @@ typedef struct CheckPoint
 {
 	XLogRecPtr	redo;			/* next RecPtr available when we began to
 								 * create CheckPoint (i.e. REDO start point) */
-	XLogRecPtr	undo;			/* first record of oldest in-progress
-								 * transaction when we started (i.e. UNDO end
-								 * point) */
 	TimeLineID	ThisTimeLineID; /* current TLI */
 	uint32		nextXidEpoch;	/* higher-order bits of nextXid */
 	TransactionId nextXid;		/* next free XID */
@@ -54,6 +52,7 @@ typedef struct CheckPoint
 /* XLOG info values for XLOG rmgr */
 #define XLOG_CHECKPOINT_SHUTDOWN		0x00
 #define XLOG_CHECKPOINT_ONLINE			0x10
+#define XLOG_NOOP						0x20
 #define XLOG_NEXTOID					0x30
 #define XLOG_SWITCH						0x40
 #define XLOG_BACKUP_END					0x50
@@ -112,8 +111,6 @@ typedef struct ControlFileData
 	 */
 	DBState		state;			/* see enum above */
 	time_t		time;			/* time stamp of last pg_control update */
-	uint32		logId;			/* current log file id */
-	uint32		logSeg;			/* current log file segment, + 1 */
 	XLogRecPtr	checkPoint;		/* last check point record ptr */
 	XLogRecPtr	prevCheckPoint; /* previous check point record ptr */
 
@@ -176,6 +173,8 @@ typedef struct ControlFileData
 	uint32		nameDataLen;	/* catalog name field width */
 	uint32		indexMaxKeys;	/* max number of columns in an index */
 
+	uint32		toast_max_chunk_size;	/* chunk size in TOAST tables */
+
 	/* flag indicating internal format of timestamp, interval, time */
 	uint32		enableIntTimes; /* int64 storage enabled? */
 
@@ -185,7 +184,7 @@ typedef struct ControlFileData
 	char		lc_ctype[LOCALE_NAME_BUFLEN];
 
 	/* CRC of all above ... MUST BE LAST! */
-	pg_crc32	crc;
+	pg_crc32c	crc;
 } ControlFileData;
 
 /*

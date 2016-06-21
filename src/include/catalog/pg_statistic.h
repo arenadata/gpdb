@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_statistic.h,v 1.31 2006/03/05 15:58:55 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_statistic.h,v 1.34 2008/01/01 19:45:57 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -219,7 +219,9 @@ typedef FormData_pg_statistic *Form_pg_statistic;
  *				(values in this range will be documented in this file)
  *	100-199:	reserved for assignment by the PostGIS project
  *				(values to be documented in PostGIS documentation)
- *	200-9999:	reserved for future public assignments
+ *	200-299:	reserved for assignment by the ESRI ST_Geometry project
+ *				(values to be documented in ESRI ST_Geometry documentation)
+ *	300-9999:	reserved for future public assignments
  *
  * For private use you may choose a "kind" code at random in the range
  * 10000-30000.  However, for code that is to be widely disseminated it is
@@ -272,7 +274,7 @@ typedef FormData_pg_statistic *Form_pg_statistic;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_stat_last_operation
-   with (camelcase=StatLastOp, oid=false, relid=6052, reltype_oid=6440, content=MASTER_ONLY)
+   with (camelcase=StatLastOp, oid=false, relid=6052, content=MASTER_ONLY)
    (
    classid        oid, 
    objid          oid, 
@@ -350,7 +352,7 @@ typedef FormData_pg_statlastop *Form_pg_statlastop;
 /* TIDYCAT_BEGINFAKEDEF
 
    CREATE TABLE pg_stat_last_shoperation
-   with (camelcase=StatLastShOp, shared=true, oid=false, relid=6056, reltype_oid=6441, content=MASTER_ONLY)
+   with (camelcase=StatLastShOp, shared=true, oid=false, relid=6056, content=MASTER_ONLY)
    (
    classid        oid, 
    objid          oid, 

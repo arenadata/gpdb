@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/alter_table.sgml,v 1.92 2006/10/23 18:10:32 petere Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/alter_table.sgml,v 1.98 2007/11/28 15:42:31 petere Exp $
 PostgreSQL documentation
 -->
 
@@ -178,7 +178,7 @@ Where column_reference_storage_directive is:
       These forms set or remove the default value for a column.
       The default values only apply to subsequent <command>INSERT</command>
       commands; they do not cause rows already in the table to change.
-      Defaults may also be created for views, in which case they are
+      Defaults can also be created for views, in which case they are
       inserted into <command>INSERT</> statements on the view before
       the view's <literal>ON INSERT</literal> rule is applied.
      </para>
@@ -261,20 +261,41 @@ Where column_reference_storage_directive is:
    </varlistentry>
 
    <varlistentry>
-    <term><literal>DISABLE</literal>/<literal>ENABLE TRIGGER</literal></term>
+    <term><literal>DISABLE</literal>/<literal>ENABLE [ REPLICA | ALWAYS ] TRIGGER</literal></term>
     <listitem>
      <para>
-      These forms disable or enable trigger(s) belonging to the table.
+      These forms configure the firing of trigger(s) belonging to the table.
       A disabled trigger is still known to the system, but is not executed
       when its triggering event occurs.  For a deferred trigger, the enable
       status is checked when the event occurs, not when the trigger function
-      is actually executed.  One may disable or enable a single
+      is actually executed.  One can disable or enable a single
       trigger specified by name, or all triggers on the table, or only
       user triggers (this option excludes triggers that are used to implement
       foreign key constraints).  Disabling or enabling constraint triggers
       requires superuser privileges; it should be done with caution since
       of course the integrity of the constraint cannot be guaranteed if the
       triggers are not executed.
+      The trigger firing mechanism is also affected by the configuration
+      variable <xref linkend="guc-session-replication-role">. Simply enabled
+      triggers will fire when the replication role is <quote>origin</>
+      (the default) or <quote>local</>. Triggers configured <literal>ENABLE REPLICA</literal>
+      will only fire if the session is in <quote>replica</> mode and triggers 
+      configured <literal>ENABLE ALWAYS</literal> will fire regardless of the current replication 
+      mode.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DISABLE</literal>/<literal>ENABLE [ REPLICA | ALWAYS ] RULE</literal></term>
+    <listitem>
+     <para>
+      These forms configure the firing of rewrite rules belonging to the table.
+      A disabled rule is still known to the system, but is not applied
+      during query rewriting. The semantics are as for disabled/enabled
+      triggers. This configuration is ignored for <literal>ON SELECT</literal> rules, which
+      are always applied in order to keep views working even if the current
+      session is in a non-default replication role.
      </para>
     </listitem>
    </varlistentry>
@@ -329,7 +350,7 @@ Where column_reference_storage_directive is:
       <xref linkend="SQL-CREATETABLE" endterm="sql-createtable-title">
       for details on the available parameters.  Note that the table contents
       will not be modified immediately by this command; depending on the
-      parameter you may need to rewrite the table to get the desired effects.
+      parameter you might need to rewrite the table to get the desired effects.
       That can be done with <xref linkend="SQL-CLUSTER"
       endterm="sql-cluster-title"> or one of the forms of <command>ALTER
       TABLE</> that forces a table rewrite.
@@ -352,7 +373,7 @@ Where column_reference_storage_directive is:
     <listitem>
      <para>
       This form resets one or more storage parameters to their
-      defaults.  As with <literal>SET</>, a table rewrite may be
+      defaults.  As with <literal>SET</>, a table rewrite might be
       needed to update the table entirely.
      </para>
     </listitem>
@@ -377,7 +398,7 @@ Where column_reference_storage_directive is:
       <literal>CHECK</literal> constraints of the parent. Currently
       <literal>UNIQUE</literal>, <literal>PRIMARY KEY</literal>, and
       <literal>FOREIGN KEY</literal> constraints are not considered, but
-      this may change in the future.
+      this might change in the future.
      </para>
     </listitem>
    </varlistentry>
@@ -482,15 +503,12 @@ Where column_reference_storage_directive is:
       <term><replaceable class="PARAMETER">name</replaceable></term>
       <listitem>
        <para>
-        The name (possibly schema-qualified) of an existing table to
-        alter. If <literal>ONLY</> is specified, only that table is
-        altered. If <literal>ONLY</> is not specified, the table and all
-        its descendant tables (if any) are updated. <literal>*</> can be
-        appended to the table name to indicate that descendant tables are
-        to be altered, but in the current version, this is the default
-        behavior.  (In releases before 7.1, <literal>ONLY</> was the
-        default behavior.  The default can be altered by changing the
-        configuration parameter <xref linkend="guc-sql-inheritance">.)
+        The name (optionally schema-qualified) of an existing table to
+        alter. If <literal>ONLY</> is specified before the table name, only
+        that table is altered. If <literal>ONLY</> is not specified, the table
+        and all its descendant tables (if any) are altered.  Optionally,
+        <literal>*</> can be specified after the table name to explicitly
+        indicate that descendant tables are included.
        </para>
       </listitem>
      </varlistentry>
@@ -683,7 +701,7 @@ Where column_reference_storage_directive is:
    <para>
     Adding a column with a non-null default or changing the type of an
     existing column will require the entire table to be rewritten.  This
-    may take a significant amount of time for a large table; and it will
+    might take a significant amount of time for a large table; and it will
     temporarily require double the disk space.
    </para>
 
@@ -712,7 +730,7 @@ Where column_reference_storage_directive is:
     The fact that <literal>ALTER TYPE</> requires rewriting the whole table
     is sometimes an advantage, because the rewriting process eliminates
     any dead space in the table.  For example, to reclaim the space occupied
-    by a dropped column immediately, the fastest way is
+    by a dropped column immediately, the fastest way is:
 <programlisting>
 ALTER TABLE table ALTER COLUMN anycol TYPE anytype;
 </programlisting>
@@ -732,7 +750,7 @@ ALTER TABLE table ALTER COLUMN anycol TYPE anytype;
     expression is not applied to the column's default value (if any); the
     result might not be a constant expression as required for a default.
     This means that when there is no implicit or assignment cast from old to
-    new type, <literal>ALTER TYPE</> may fail to convert the default even
+    new type, <literal>ALTER TYPE</> might fail to convert the default even
     though a <literal>USING</literal> clause is supplied.  In such cases,
     drop the default with <literal>DROP DEFAULT</>, perform the <literal>ALTER
     TYPE</>, and then use <literal>SET DEFAULT</> to add a suitable new
@@ -922,5 +940,3 @@ ALTER TABLE myschema.distributors SET SCHEMA yourschema;
   </para>
  </refsect1>
 </refentry>
-
-

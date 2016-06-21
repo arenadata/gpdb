@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planagg.c,v 1.22.2.1 2007/02/06 06:50:33 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planagg.c,v 1.36.2.2 2008/07/10 01:17:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,6 +23,7 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
+#include "optimizer/predtest.h"
 #include "optimizer/subselect.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_expr.h"
@@ -38,8 +39,10 @@ typedef struct
 	Oid			aggfnoid;		/* pg_proc Oid of the aggregate */
 	Oid			aggsortop;		/* Oid of its sort operator */
 	Expr	   *target;			/* expression we are aggregating on */
+	Expr	   *notnulltest;	/* expression for "target IS NOT NULL" */
 	IndexPath  *path;			/* access path for index scan */
 	Cost		pathcost;		/* estimated cost to fetch first row */
+	bool		nulls_first;	/* null ordering direction matching index */
 	Param	   *param;			/* param for subplan's output */
 } MinMaxAggInfo;
 
@@ -118,7 +121,7 @@ optimize_minmax_aggregates(PlannerInfo *root, List *tlist, Path *best_path)
 	if (!IsA(jtnode, RangeTblRef))
 		return NULL;
 	rtr = (RangeTblRef *) jtnode;
-	rte = rt_fetch(rtr->rtindex, parse->rtable);
+	rte = planner_rt_fetch(rtr->rtindex, root);
 	if (rte->rtekind != RTE_RELATION || rte->inh)
 		return NULL;
 	rel = find_base_rel(root, rtr->rtindex);
@@ -188,9 +191,21 @@ optimize_minmax_aggregates(PlannerInfo *root, List *tlist, Path *best_path)
 											 &aggs_list);
 
 	/*
+	 * We have to replace Aggrefs with Params in equivalence classes too,
+	 * else ORDER BY or DISTINCT on an optimized aggregate will fail.
+	 *
+	 * Note: at some point it might become necessary to mutate other
+	 * data structures too, such as the query's sortClause or distinctClause.
+	 * Right now, those won't be examined after this point.
+	 */
+	mutate_eclass_expressions(root,
+							  replace_aggs_with_params_mutator,
+							  &aggs_list);
+
+	/*
 	 * Generate the output plan --- basically just a Result
 	 */
-	plan = (Plan *) make_result(tlist, hqual, NULL);
+	plan = (Plan *) make_result(root, tlist, hqual, NULL);
 
 	/* Account for evaluation cost of the tlist (make_result did the rest) */
 	cost_qual_eval(&tlist_cost, tlist, root);
@@ -286,7 +301,23 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
 {
 	IndexPath  *best_path = NULL;
 	Cost		best_cost = 0;
+	bool		best_nulls_first = false;
+	NullTest   *ntest;
+	List	   *allquals;
 	ListCell   *l;
+
+	/* Build "target IS NOT NULL" expression for use below */
+	ntest = makeNode(NullTest);
+	ntest->nulltesttype = IS_NOT_NULL;
+	ntest->arg = copyObject(info->target);
+	info->notnulltest = (Expr *) ntest;
+
+	/*
+	 * Build list of existing restriction clauses plus the notnull test. We
+	 * cheat a bit by not bothering with a RestrictInfo node for the notnull
+	 * test --- predicate_implied_by() won't care.
+	 */
+	allquals = list_concat(list_make1(ntest), rel->baserestrictinfo);
 
 	foreach(l, rel->indexlist)
 	{
@@ -303,8 +334,13 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
 		if (index->relam != BTREE_AM_OID)
 			continue;
 
-		/* Ignore partial indexes that do not match the query */
-		if (index->indpred != NIL && !index->predOK)
+		/*
+		 * Ignore partial indexes that do not match the query --- unless their
+		 * predicates can be proven from the baserestrict list plus the IS NOT
+		 * NULL test.  In that case we can use them.
+		 */
+		if (index->indpred != NIL && !index->predOK &&
+			!predicate_implied_by(index->indpred, allquals))
 			continue;
 
 		/*
@@ -347,10 +383,12 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
 				RestrictInfo *rinfo = (RestrictInfo *) lfirst(ll);
 				int			strategy;
 
-				Assert(is_opclause(rinfo->clause));
+				/* Could be an IS_NULL test, if so ignore */
+				if (!is_opclause(rinfo->clause))
+					continue;
 				strategy =
-					get_op_opclass_strategy(((OpExpr *) rinfo->clause)->opno,
-											index->classlist[prevcol]);
+					get_op_opfamily_strategy(((OpExpr *) rinfo->clause)->opno,
+											 index->opfamily[prevcol]);
 				if (strategy == BTEqualStrategyNumber)
 					break;
 			}
@@ -386,11 +424,16 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
 		{
 			best_path = new_path;
 			best_cost = new_cost;
+			if (ScanDirectionIsForward(indexscandir))
+				best_nulls_first = index->nulls_first[indexcol];
+			else
+				best_nulls_first = !index->nulls_first[indexcol];
 		}
 	}
 
 	info->path = best_path;
 	info->pathcost = best_cost;
+	info->nulls_first = best_nulls_first;
 	return (best_path != NULL);
 }
 
@@ -399,29 +442,30 @@ build_minmax_path(PlannerInfo *root, RelOptInfo *rel, MinMaxAggInfo *info)
  *		Does an aggregate match an index column?
  *
  * It matches if its argument is equal to the index column's data and its
- * sortop is either the LessThan or GreaterThan member of the column's opclass.
+ * sortop is either the forward or reverse sort operator for the column.
  *
- * We return ForwardScanDirection if match the LessThan member,
- * BackwardScanDirection if match the GreaterThan member,
+ * We return ForwardScanDirection if match the forward sort operator,
+ * BackwardScanDirection if match the reverse sort operator,
  * and NoMovementScanDirection if there's no match.
  */
 static ScanDirection
 match_agg_to_index_col(MinMaxAggInfo *info, IndexOptInfo *index, int indexcol)
 {
-	int			strategy;
+	ScanDirection result;
+
+	/* Check for operator match first (cheaper) */
+	if (info->aggsortop == index->fwdsortop[indexcol])
+		result = ForwardScanDirection;
+	else if (info->aggsortop == index->revsortop[indexcol])
+		result = BackwardScanDirection;
+	else
+		return NoMovementScanDirection;
 
 	/* Check for data match */
 	if (!match_index_to_operand((Node *) info->target, indexcol, index))
 		return NoMovementScanDirection;
 
-	/* Look up the operator in the opclass */
-	strategy = get_op_opclass_strategy(info->aggsortop,
-									   index->classlist[indexcol]);
-	if (strategy == BTLessStrategyNumber)
-		return ForwardScanDirection;
-	if (strategy == BTGreaterStrategyNumber)
-		return BackwardScanDirection;
-	return NoMovementScanDirection;
+	return result;
 }
 
 /*
@@ -436,7 +480,6 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	Plan	   *iplan;
 	TargetEntry *tle;
 	SortClause *sortcl;
-	NullTest   *ntest;
 
 	/*
 	 * Generate a suitably modified query.	Much of the work here is probably
@@ -445,10 +488,11 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	 */
 	memcpy(&subroot, root, sizeof(PlannerInfo));
 	subroot.parse = subparse = (Query *) copyObject(root->parse);
+	subroot.init_plans = NIL;
 	subparse->commandType = CMD_SELECT;
 	subparse->resultRelation = 0;
-	subparse->resultRelations = NIL;
-	subparse->returningLists = NIL;
+	subparse->returningList = NIL;
+	subparse->utilityStmt = NULL;
 	subparse->intoClause = NULL;
 	subparse->hasAggs = false;
 	subparse->groupClause = NIL;
@@ -488,6 +532,7 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	sortcl = makeNode(SortClause);
 	sortcl->tleSortGroupRef = assignSortGroupRef(tle, subparse->targetList);
 	sortcl->sortop = info->aggsortop;
+	sortcl->nulls_first = info->nulls_first;
 	subparse->sortClause = list_make1(sortcl);
 
 	/* set up LIMIT 1 */
@@ -501,7 +546,7 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	 * basic indexscan, but we have to convert it to a Plan and attach a LIMIT
 	 * node above it.
 	 *
-	 * Also we must add a "WHERE foo IS NOT NULL" restriction to the
+	 * Also we must add a "WHERE target IS NOT NULL" restriction to the
 	 * indexscan, to be sure we don't return a NULL, which'd be contrary to
 	 * the standard behavior of MIN/MAX.  XXX ideally this should be done
 	 * earlier, so that the selectivity of the restriction could be included
@@ -511,11 +556,14 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	 * The NOT NULL qual has to go on the actual indexscan; create_plan might
 	 * have stuck a gating Result atop that, if there were any pseudoconstant
 	 * quals.
+	 *
+	 * We can skip adding the NOT NULL qual if it's redundant with either an
+	 * already-given WHERE condition, or a clause of the index predicate.
 	 */
 	plan = create_plan(&subroot, (Path *) info->path);
 
     /* Replace the plan's tlist with a copy of the one we built above. */
-    plan = plan_pushdown_tlist(plan, copyObject(subparse->targetList));
+    plan = plan_pushdown_tlist(root, plan, copyObject(subparse->targetList));
 
 	if (IsA(plan, Result))
 		iplan = plan->lefttree;
@@ -523,11 +571,9 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 		iplan = plan;
 	Assert(IsA(iplan, IndexScan));
 
-	ntest = makeNode(NullTest);
-	ntest->nulltesttype = IS_NOT_NULL;
-	ntest->arg = copyObject(info->target);
-
-	iplan->qual = lcons(ntest, iplan->qual);
+	if (!list_member(iplan->qual, info->notnulltest) &&
+		!list_member(info->path->indexinfo->indpred, info->notnulltest))
+		iplan->qual = lcons(info->notnulltest, iplan->qual);
 
 	plan = (Plan *) make_limit(plan,
 							   subparse->limitOffset,
@@ -543,6 +589,13 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	info->param = SS_make_initplan_from_plan(&subroot, plan,
 											 exprType((Node *) tle->expr),
 											 -1);
+
+	/*
+	 * Make sure the InitPlan gets into the outer list.  It has to appear
+	 * after any other InitPlans it might depend on, too (see comments in
+	 * ExecReScan).
+	 */
+	root->init_plans = list_concat(root->init_plans, subroot.init_plans);
 }
 
 /*

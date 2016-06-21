@@ -21,7 +21,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSetOp.c,v 1.22 2006/07/14 14:52:19 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSetOp.c,v 1.25 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -273,9 +273,8 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 	 * Precompute fmgr lookup data for inner loop
 	 */
 	setopstate->eqfunctions =
-		execTuplesMatchPrepare(ExecGetResultType(&setopstate->ps),
-							   node->numCols,
-							   node->dupColIdx);
+		execTuplesMatchPrepare(node->numCols,
+							   node->dupOperators);
 
 	initGpmonPktForSetOp((Plan *)node, &setopstate->ps.gpmon_pkt, estate);
 

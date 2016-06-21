@@ -37,7 +37,6 @@ add_attribute_encoding_entry(Oid relid, AttrNumber attnum, Datum attoptions)
 	HeapTuple tuple;
 	cqContext	   *pcqCtx;
 	
-	Insist(!gp_upgrade_mode);
 	Insist(attnum != InvalidAttrNumber);
 	
 	pcqCtx = caql_beginscan(
@@ -301,13 +300,6 @@ AddRelationAttributeEncodings(Relation rel, List *attr_encodings)
 	Oid relid = RelationGetRelid(rel);
 	ListCell *lc;
 
-	/* If we're in upgrade mode, shouldn't be anything to do here */
-	if (gp_upgrade_mode)
-	{
-		Assert(attr_encodings == NIL);
-		return;
-	}
-
 	foreach(lc, attr_encodings)
 	{
 		Datum attoptions;
@@ -317,13 +309,13 @@ AddRelationAttributeEncodings(Relation rel, List *attr_encodings)
 
 		Insist(IsA(c, ColumnReferenceStorageDirective));
 
-		attnum = get_attnum(relid, strVal(c->column));
+		attnum = get_attnum(relid, c->column);
 
 		if (attnum == InvalidAttrNumber)
-			elog(ERROR, "column \"%s\" does not exist", strVal(c->column));
+			elog(ERROR, "column \"%s\" does not exist", c->column);
 
 		if (attnum < 0)
-			elog(ERROR, "column \"%s\" is a system column", strVal(c->column));
+			elog(ERROR, "column \"%s\" is a system column", c->column);
 
 		encoding = c->encoding;
 
@@ -343,10 +335,6 @@ void
 RemoveAttributeEncodingsByRelid(Oid relid)
 {
 	bool 		found = false;
-
-	/* shouldn't be anything to do in upgrade mode */
-	if (gp_upgrade_mode)
-		return;
 
 	found = (0 != caql_getcount(
 					 NULL,

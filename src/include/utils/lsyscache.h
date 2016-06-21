@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2010, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/lsyscache.h,v 1.133 2010/04/24 16:20:32 sriggs Exp $
+ * $PostgreSQL: pgsql/src/include/utils/lsyscache.h,v 1.122 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,16 +40,31 @@ typedef enum CmpType
 	CmptOther	// other operator
 } CmpType;
 
-extern bool op_in_opclass(Oid opno, Oid opclass);
-extern int	get_op_opclass_strategy(Oid opno, Oid opclass);
-extern void get_op_opclass_properties(Oid opno, Oid opclass,
-						  int *strategy, Oid *subtype,
-						  bool *recheck);
-extern Oid	get_opclass_member(Oid opclass, Oid subtype, int16 strategy);
-extern Oid	get_op_hash_function(Oid opno);
+extern bool op_in_opfamily(Oid opno, Oid opfamily);
+extern int	get_op_opfamily_strategy(Oid opno, Oid opfamily);
+extern void get_op_opfamily_properties(Oid opno, Oid opfamily,
+						   int *strategy,
+						   Oid *lefttype,
+						   Oid *righttype,
+						   bool *recheck);
+extern Oid get_opfamily_member(Oid opfamily, Oid lefttype, Oid righttype,
+					int16 strategy);
+extern bool get_ordering_op_properties(Oid opno,
+						   Oid *opfamily, Oid *opcintype, int16 *strategy);
+extern bool get_compare_function_for_ordering_op(Oid opno,
+									 Oid *cmpfunc, bool *reverse);
+extern Oid	get_equality_op_for_ordering_op(Oid opno);
+extern Oid	get_ordering_op_for_equality_op(Oid opno, bool use_lhs_type);
+extern List *get_mergejoin_opfamilies(Oid opno);
+extern bool get_compatible_hash_operators(Oid opno,
+							  Oid *lhs_opno, Oid *rhs_opno);
+extern bool get_op_hash_functions(Oid opno,
+					  RegProcedure *lhs_procno, RegProcedure *rhs_procno);
 extern void get_op_btree_interpretation(Oid opno,
-							List **opclasses, List **opstrats);
-extern Oid	get_opclass_proc(Oid opclass, Oid subtype, int16 procnum);
+							List **opfamilies, List **opstrats);
+extern bool ops_in_same_btree_opfamily(Oid opno1, Oid opno2);
+extern Oid get_opfamily_proc(Oid opfamily, Oid lefttype, Oid righttype,
+				  int16 procnum);
 extern char *get_attname(Oid relid, AttrNumber attnum);
 extern char *get_relid_attribute_name(Oid relid, AttrNumber attnum);
 extern AttrNumber get_attnum(Oid relid, const char *attname);
@@ -57,16 +72,13 @@ extern Oid	get_atttype(Oid relid, AttrNumber attnum);
 extern int32 get_atttypmod(Oid relid, AttrNumber attnum);
 extern void get_atttypetypmod(Oid relid, AttrNumber attnum,
 				  Oid *typid, int32 *typmod);
-extern bool opclass_is_btree(Oid opclass);
-extern bool opclass_is_hash(Oid opclass);
-extern bool opclass_is_default(Oid opclass);
+extern char *get_constraint_name(Oid conoid);
+extern Oid	get_opclass_family(Oid opclass);
 extern Oid	get_opclass_input_type(Oid opclass);
 extern RegProcedure get_opcode(Oid opno);
 extern char *get_opname(Oid opno);
 extern void op_input_types(Oid opno, Oid *lefttype, Oid *righttype);
-extern bool op_mergejoinable(Oid opno, Oid *leftOp, Oid *rightOp);
-extern void op_mergejoin_crossops(Oid opno, Oid *ltop, Oid *gtop,
-					  RegProcedure *ltproc, RegProcedure *gtproc);
+extern bool op_mergejoinable(Oid opno);
 extern bool op_hashjoinable(Oid opno);
 extern bool op_strict(Oid opno);
 extern char op_volatile(Oid opno);
@@ -95,6 +107,8 @@ extern Oid get_agg_transtype(Oid aggid);
 extern bool is_agg_ordered(Oid aggid);
 extern bool has_agg_prelimfunc(Oid aggid);
 extern bool agg_has_prelim_or_invprelim_func(Oid aggid);
+extern float4 get_func_cost(Oid funcid);
+extern float4 get_func_rows(Oid funcid);
 extern Oid	get_relname_relid(const char *relname, Oid relnamespace);
 extern char *get_rel_name(Oid relid);
 extern char *get_rel_name_partition(Oid relid);
@@ -124,6 +138,7 @@ extern char get_typstorage(Oid typid);
 extern Node *get_typdefault(Oid typid);
 extern char get_typtype(Oid typid);
 extern bool type_is_rowtype(Oid typid);
+extern bool type_is_enum(Oid typid);
 extern Oid	get_typ_typrelid(Oid typid);
 extern Oid	get_element_type(Oid typid);
 extern Oid	get_array_type(Oid typid);
@@ -132,6 +147,7 @@ extern void getTypeInputInfo(Oid type, Oid *typInput, Oid *typIOParam);
 extern void getTypeOutputInfo(Oid type, Oid *typOutput, bool *typIsVarlena);
 extern void getTypeBinaryInputInfo(Oid type, Oid *typReceive, Oid *typIOParam);
 extern void getTypeBinaryOutputInfo(Oid type, Oid *typSend, bool *typIsVarlena);
+extern Oid	get_typmodin(Oid typid);
 extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
@@ -183,10 +199,10 @@ extern Oid get_comparison_operator(Oid oidLeft, Oid oidRight, CmpType cmpt);
 extern CmpType get_comparison_type(Oid oidOp, Oid oidLeft, Oid oidRight);
 extern List *find_all_inheritors(Oid parentrel);
 
-extern List *get_operator_opclasses(Oid opno);
-extern List *get_index_opclasses(Oid oidIndex);
+extern List *get_operator_opfamilies(Oid opno);
+extern List *get_index_opfamilies(Oid oidIndex);
 
-#define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
+#define type_is_array(typid)  (get_element_type(typid) != InvalidOid)
 
 #define TypeIsToastable(typid)	(get_typstorage(typid) != 'p')
 

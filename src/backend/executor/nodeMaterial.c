@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeMaterial.c,v 1.57 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeMaterial.c,v 1.61 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -77,7 +77,7 @@ ExecMaterial(MaterialState *node)
 	/*
 	 * If first time through, and we need a tuplestore, initialize it.
 	 */
-	if (ts == NULL && (ma->share_type != SHARE_NOTSHARED || node->randomAccess))
+	if (ts == NULL && (ma->share_type != SHARE_NOTSHARED || node->eflags != 0))
 	{
 		/*
 		 * For cross slice material, we only run ExecMaterial on DriverSlice
@@ -101,53 +101,10 @@ ExecMaterial(MaterialState *node)
 		else
 		{
 			/* Non-shared Materialize node */
-			bool isWriter = true;
-			workfile_set *work_set = NULL;
+			workfile_set *work_set =  workfile_mgr_create_set(BUFFILE, false /* can_reuse */, &node->ss.ps, NULL_SNAPSHOT);
 
-			if (gp_workfile_caching)
-			{
-				work_set = workfile_mgr_find_set( &node->ss.ps);
-
-				if (NULL != work_set)
-				{
-					/* Reusing cached workfiles. Tell subplan we won't be needing any tuples */
-					elog(gp_workfile_caching_loglevel, "Materialize reusing cached workfiles, initiating Squelch walker");
-
-					isWriter = false;
-					ExecSquelchNode(outerPlanState(node));
-					node->eof_underlying = true;
-					node->cached_workfiles_found = true;
-
-					if (node->ss.ps.instrument)
-					{
-						node->ss.ps.instrument->workfileReused = true;
-					}
-				}
-			}
-
-			if (NULL == work_set)
-			{
-				/*
-				 * No work_set found, this is because:
-				 *  a. workfile caching is enabled but we didn't find any reusable set
-				 *  b. workfile caching is disabled
-				 * Creating new empty workset
-				 */
-				Assert(!node->cached_workfiles_found);
-
-				/* Don't try to cache when running under a ShareInputScan node */
-				bool can_reuse = (ma->share_type == SHARE_NOTSHARED);
-
-				work_set = workfile_mgr_create_set(BUFFILE, can_reuse, &node->ss.ps, NULL_SNAPSHOT);
-				isWriter = true;
-			}
-
-			Assert(NULL != work_set);
-			AssertEquivalent(node->cached_workfiles_found, !isWriter);
-
-			ts = ntuplestore_create_workset(work_set, node->cached_workfiles_found,
-					PlanStateOperatorMemKB((PlanState *) node) * 1024);
-			tsa = ntuplestore_create_accessor(ts, isWriter);
+			ts = ntuplestore_create_workset(work_set, PlanStateOperatorMemKB((PlanState *) node) * 1024);
+			tsa = ntuplestore_create_accessor(ts, true /* isWriter */);
 		}
 
 		Assert(ts && tsa);
@@ -190,13 +147,6 @@ ExecMaterial(MaterialState *node)
 			if (TupIsNull(outerslot))
 			{
 				node->eof_underlying = true;
-
-				if (ntuplestore_created_reusable_workfiles(ts))
-				{
-					ntuplestore_flush(ts);
-					ntuplestore_mark_workset_complete(ts);
-				}
-
 				ntuplestore_acc_seek_bof(tsa);
 
 				break;
@@ -284,12 +234,6 @@ ExecMaterial(MaterialState *node)
 		if (TupIsNull(outerslot))
 		{
 			node->eof_underlying = true;
-			if (ntuplestore_created_reusable_workfiles(ts))
-			{
-				ntuplestore_flush(ts);
-				ntuplestore_mark_workset_complete(ts);
-			}
-
 			if (!node->ss.ps.delayEagerFree)
 			{
 				ExecEagerFreeMaterial(node);
@@ -341,16 +285,18 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	matstate->ss.ps.plan = (Plan *) node;
 	matstate->ss.ps.state = estate;
 
+	if (node->cdb_strict)
+		eflags |= EXEC_FLAG_REWIND;
+
 	/*
-	 * We must have random access to the subplan output to do backward scan or
-	 * mark/restore.  We also prefer to materialize the subplan output if we
-	 * might be called on to rewind and replay it many times. However, if none
-	 * of these cases apply, we can skip storing the data.
+	 * We must have a tuplestore buffering the subplan output to do backward
+	 * scan or mark/restore.  We also prefer to materialize the subplan output
+	 * if we might be called on to rewind and replay it many times. However,
+	 * if none of these cases apply, we can skip storing the data.
 	 */
-	matstate->randomAccess = node->cdb_strict ||
-							(eflags & (EXEC_FLAG_REWIND |
-										EXEC_FLAG_BACKWARD |
-										EXEC_FLAG_MARK)) != 0;
+	matstate->eflags = (eflags & (EXEC_FLAG_REWIND |
+								  EXEC_FLAG_BACKWARD |
+								  EXEC_FLAG_MARK));
 
 	matstate->eof_underlying = false;
 	matstate->ts_state = palloc0(sizeof(GenericTupStore));
@@ -514,7 +460,7 @@ ExecEndMaterial(MaterialState *node)
 void
 ExecMaterialMarkPos(MaterialState *node)
 {
-	Assert(node->randomAccess);
+	Assert(node->eflags & EXEC_FLAG_MARK);
 
 #ifdef DEBUG
 	{
@@ -551,7 +497,7 @@ ExecMaterialMarkPos(MaterialState *node)
 void
 ExecMaterialRestrPos(MaterialState *node)
 {
-	Assert(node->randomAccess);
+	Assert(node->eflags & EXEC_FLAG_MARK);
 
 #ifdef DEBUG
 	{
@@ -640,7 +586,7 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 {
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	if (node->randomAccess)
+	if (node->eflags != 0)
 	{
 		/*
 		 * If tuple store is empty, then either we have not materialized yet
@@ -661,14 +607,20 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 
 		/*
 		 * If subnode is to be rescanned then we forget previous stored
-		 * results; we have to re-read the subplan and re-store.
+		 * results; we have to re-read the subplan and re-store.  Also, if we
+		 * told tuplestore it needn't support rescan, we lose and must
+		 * re-read.  (This last should not happen in common cases; else our
+		 * caller lied by not passing EXEC_FLAG_REWIND to us.)
 		 *
 		 * Otherwise we can just rewind and rescan the stored output. The
 		 * state of the subnode does not change.
 		 */
-		if (((PlanState *) node)->lefttree->chgParam != NULL)
+		if (((PlanState *) node)->lefttree->chgParam != NULL ||
+			(node->eflags & EXEC_FLAG_REWIND) == 0)
 		{
 			DestroyTupleStore(node);
+			if (((PlanState *) node)->lefttree->chgParam == NULL)
+				ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
 		}
 		else
 		{

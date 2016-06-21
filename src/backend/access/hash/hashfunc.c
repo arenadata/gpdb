@@ -1,19 +1,26 @@
 /*-------------------------------------------------------------------------
  *
  * hashfunc.c
- *	  Comparison functions for hash access method.
+ *	  Support functions for hash access method.
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashfunc.c,v 1.48.2.1 2007/06/01 15:58:01 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashfunc.c,v 1.55 2008/01/01 19:45:46 momjian Exp $
  *
  * NOTES
  *	  These functions are stored in pg_amproc.	For each operator class
- *	  defined on hash tables, they compute the hash value of the argument.
+ *	  defined for hash indexes, they compute the hash value of the argument.
  *
+ *	  Additional hash functions appear in /utils/adt/ files for various
+ *	  specialized datatypes.
+ *
+ *	  It is expected that every bit of a hash function's 32-bit result is
+ *	  as random as every other; failure to ensure this is likely to lead
+ *	  to poor performance of hash joins, for example.  In most cases a hash
+ *	  function should use hash_any() or its variant hash_uint32().
  *-------------------------------------------------------------------------
  */
 
@@ -27,19 +34,19 @@
 Datum
 hashchar(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT32(~((uint32) PG_GETARG_CHAR(0)));
+	return hash_uint32((int32) PG_GETARG_CHAR(0));
 }
 
 Datum
 hashint2(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT32(~((uint32) PG_GETARG_INT16(0)));
+	return hash_uint32((int32) PG_GETARG_INT16(0));
 }
 
 Datum
 hashint4(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT32(~PG_GETARG_UINT32(0));
+	return hash_uint32(PG_GETARG_INT32(0));
 }
 
 Datum
@@ -47,11 +54,11 @@ hashint8(PG_FUNCTION_ARGS)
 {
 	/*
 	 * The idea here is to produce a hash value compatible with the values
-	 * produced by hashint4 and hashint2 for logically equivalent inputs; this
-	 * is necessary if we ever hope to support cross-type hash joins across
-	 * these input types.  Since all three types are signed, we can xor the
-	 * high half of the int8 value if the sign is positive, or the complement
-	 * of the high half when the sign is negative.
+	 * produced by hashint4 and hashint2 for logically equal inputs; this is
+	 * necessary to support cross-type hash joins across these input types.
+	 * Since all three types are signed, we can xor the high half of the int8
+	 * value if the sign is positive, or the complement of the high half when
+	 * the sign is negative.
 	 */
 #ifndef INT64_IS_BUSTED
 	int64		val = PG_GETARG_INT64(0);
@@ -60,33 +67,49 @@ hashint8(PG_FUNCTION_ARGS)
 
 	lohalf ^= (val >= 0) ? hihalf : ~hihalf;
 
-	PG_RETURN_UINT32(~lohalf);
+	return hash_uint32(lohalf);
 #else
 	/* here if we can't count on "x >> 32" to work sanely */
-	PG_RETURN_UINT32(~((uint32) PG_GETARG_INT64(0)));
+	return hash_uint32((int32) PG_GETARG_INT64(0));
 #endif
 }
 
 Datum
 hashoid(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_UINT32(~((uint32) PG_GETARG_OID(0)));
+	return hash_uint32((uint32) PG_GETARG_OID(0));
+}
+
+Datum
+hashenum(PG_FUNCTION_ARGS)
+{
+	return hash_uint32((uint32) PG_GETARG_OID(0));
 }
 
 Datum
 hashfloat4(PG_FUNCTION_ARGS)
 {
 	float4		key = PG_GETARG_FLOAT4(0);
+	float8		key8;
 
 	/*
 	 * On IEEE-float machines, minus zero and zero have different bit patterns
 	 * but should compare as equal.  We must ensure that they have the same
-	 * hash value, which is most easily done this way:
+	 * hash value, which is most reliably done this way:
 	 */
 	if (key == (float4) 0)
 		PG_RETURN_UINT32(0);
 
-	return hash_any((unsigned char *) &key, sizeof(key));
+	/*
+	 * To support cross-type hashing of float8 and float4, we want to return
+	 * the same hash value hashfloat8 would produce for an equal float8 value.
+	 * So, widen the value to float8 and hash that.  (We must do this rather
+	 * than have hashfloat8 try to narrow its value to float4; that could fail
+	 * on overflow.)
+	 */
+	key8 = key;
+
+	return hash_any((unsigned char *) &key8, sizeof(key8));
 }
 
 Datum
@@ -97,7 +120,7 @@ hashfloat8(PG_FUNCTION_ARGS)
 	/*
 	 * On IEEE-float machines, minus zero and zero have different bit patterns
 	 * but should compare as equal.  We must ensure that they have the same
-	 * hash value, which is most easily done this way:
+	 * hash value, which is most reliably done this way:
 	 */
 	if (key == (float8) 0)
 		PG_RETURN_UINT32(0);
@@ -137,22 +160,16 @@ extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void 
 Datum
 hashtext(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	char *p0; void *tofree0; int len0;
-	
+	text	   *key = PG_GETARG_TEXT_PP(0);
 	Datum		result;
-
-	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
 
 	/*
 	 * Note: this is currently identical in behavior to hashvarlena, but keep
 	 * it as a separate function in case we someday want to do something
 	 * different in non-C locales.	(See also hashbpchar, if so.)
 	 */
-	result = hash_any((unsigned char *) p0, len0);
-
-	if(tofree0)
-		pfree(tofree0);
+	result = hash_any((unsigned char *) VARDATA_ANY(key),
+					  VARSIZE_ANY_EXHDR(key));
 
 	return result;
 }
@@ -164,17 +181,11 @@ hashtext(PG_FUNCTION_ARGS)
 Datum
 hashvarlena(PG_FUNCTION_ARGS)
 {
-	Datum d0 = PG_GETARG_DATUM(0);
-	char *p0; void *tofree0; int len0;
-	
+	struct varlena *key = PG_GETARG_VARLENA_PP(0);
 	Datum		result;
 
-	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
-
-	result = hash_any((unsigned char *) p0, len0);
-
-	if(tofree0)
-		pfree(tofree0);
+	result = hash_any((unsigned char *) VARDATA_ANY(key),
+					  VARSIZE_ANY_EXHDR(key));
 
 	return result;
 }
@@ -1096,7 +1107,9 @@ hash_any(register const unsigned char *k, register int keylen)
 Datum
 hash_uint32(uint32 k)
 {
-	register uint32 a, b, c;
+	register uint32 a,
+				b,
+				c;
 
 	a = 0xdeadbeef + k;
 	b = 0xdeadbeef;

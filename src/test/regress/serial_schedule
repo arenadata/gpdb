@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/src/test/regress/serial_schedule,v 1.33 2006/08/30 23:34:22 tgl Exp $
+# $PostgreSQL: pgsql/src/test/regress/serial_schedule,v 1.43 2007/11/24 20:41:35 tgl Exp $
 # This should probably be in an order similar to parallel_schedule.
 test: boolean
 test: char
@@ -13,6 +13,10 @@ test: float4
 test: float8
 test: bit
 test: numeric
+test: txid
+test: uuid
+test: enum
+test: money
 test: strings
 test: numerology
 test: point
@@ -31,12 +35,13 @@ test: abstime
 test: reltime
 test: tinterval
 test: inet
+test: tstypes
 test: comments
+test: geometry
+test: horology
 test: oidjoins
 test: type_sanity
 test: opr_sanity
-test: geometry
-test: horology
 test: insert
 test: create_function_1
 test: create_type
@@ -79,6 +84,7 @@ test: delete
 test: namespace
 ignore: prepared_xacts
 test: privileges
+test: lock
 test: misc
 test: select_views
 test: portals_p2
@@ -88,6 +94,8 @@ test: cluster
 test: dependency
 test: guc
 test: combocid
+test: tsearch
+test: plancache
 test: limit
 ignore: plpgsql
 test: copy2
@@ -97,11 +105,15 @@ test: rangefuncs
 test: prepare
 test: without_oid
 test: conversion
+test: tsdicts
 test: truncate
 test: alter_table
 test: sequence
 test: polymorphism
 test: rowtypes
 test: returning
+# 83MERGE_FIXME: the largeobject test is temporarily disabled due to test errors
+ignore: largeobject
+test: xml
 test: stats
 ignore: tablespace

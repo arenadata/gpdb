@@ -13,12 +13,11 @@
 //
 //---------------------------------------------------------------------------
 
-#include "gpopt/Allocators.h"
 #include "gpopt/CGPOptimizer.h"
 #include "gpopt/utils/COptTasks.h"
 
 // the following headers are needed to reference optimizer library initializers
-#include "init.h"
+#include "naucrates/init.h"
 #include "gpopt/init.h"
 #include "gpos/_api.h"
 
@@ -33,7 +32,7 @@
 void
 CGPOptimizer::TouchLibraryInitializers()
 {
-	void (*gpos)() = gpos_init;
+	void (*gpos)(gpos_init_params*) = gpos_init;
 	void (*dxl)() = gpdxl_init;
 	void (*opt)() = gpopt_init;
 }
@@ -75,6 +74,39 @@ CGPOptimizer::SzDXLPlan
 	return COptTasks::SzOptimize(pquery);
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		InitGPOPT()
+//
+//	@doc:
+//		Initialize GPTOPT and dependent libraries
+//
+//---------------------------------------------------------------------------
+void
+CGPOptimizer::InitGPOPT ()
+{
+  // Use GPORCA's default allocators
+  struct gpos_init_params params = { NULL, NULL };
+  gpos_init(&params);
+  gpdxl_init();
+  gpopt_init();
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		TerminateGPOPT()
+//
+//	@doc:
+//		Terminate GPOPT and dependent libraries
+//
+//---------------------------------------------------------------------------
+void
+CGPOptimizer::TerminateGPOPT ()
+{
+  gpopt_terminate();
+  gpdxl_terminate();
+  gpos_terminate();
+}
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -112,6 +144,38 @@ char *SzDXLPlan
 	)
 {
 	return CGPOptimizer::SzDXLPlan(pquery);
+}
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		InitGPOPT()
+//
+//	@doc:
+//		Initialize GPTOPT and dependent libraries
+//
+//---------------------------------------------------------------------------
+extern "C"
+{
+void InitGPOPT ()
+{
+	return CGPOptimizer::InitGPOPT();
+}
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		TerminateGPOPT()
+//
+//	@doc:
+//		Terminate GPOPT and dependent libraries
+//
+//---------------------------------------------------------------------------
+extern "C"
+{
+void TerminateGPOPT ()
+{
+	return CGPOptimizer::TerminateGPOPT();
 }
 }
 

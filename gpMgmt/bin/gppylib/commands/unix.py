@@ -8,11 +8,11 @@ Set of Classes for executing unix commands.
 
 """
 import os
+import psutil
 import platform
 import socket
 import sys
 import signal
-import psi.process
 
 from gppylib.gplog import *
 from gppylib.commands.base import *
@@ -341,7 +341,6 @@ class FreeBsdPlatform(GenericPlatform):
     
         
 """ if self.SYSTEM == 'sunos':
-            self.IFCONFIG_TXT='-a inet'
             self.PS_TXT='ef'
             self.LIB_TYPE='LD_LIBRARY_PATH'
             self.ZCAT='gzcat'
@@ -352,7 +351,6 @@ class FreeBsdPlatform(GenericPlatform):
             self.DF=findCmdInPath('df')
             self.DU_TXT='-s'
         elif self.SYSTEM == 'linux':
-            self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
             self.LIB_TYPE='LD_LIBRARY_PATH'
             self.PG_METHOD='ident sameuser'
@@ -361,7 +359,6 @@ class FreeBsdPlatform(GenericPlatform):
             self.DF='%s -P' % findCmdInPath('df')
             self.DU_TXT='c'
         elif self.SYSTEM == 'darwin':
-            self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
             self.LIB_TYPE='DYLD_LIBRARY_PATH'
             self.PG_METHOD='ident sameuser'
@@ -370,7 +367,6 @@ class FreeBsdPlatform(GenericPlatform):
             self.DF='%s -P' % findCmdInPath('df')
             self.DU_TXT='-c'
         elif self.SYSTEM == 'freebsd':
-            self.IFCONFIG_TXT=''
             self.PS_TXT='ax'
             self.LIB_TYPE='LD_LIBRARY_PATH'
             self.PG_METHOD='ident sameuser'
@@ -965,21 +961,15 @@ class FileGetOwnerUid(Command):
 #--------------get list of desecendant processes -------------------
 
 def getDescendentProcesses(pid):
-    ''' return all process which are descendant from the given processid ''' 
+    ''' return all process pids which are descendant from the given processid ''' 
 
-    children = list()
-    grandchildren = list()
+    children_pids = []
 
-    for p in psi.process.ProcessTable().values():
+    for p in psutil.Process(pid).children(recursive=True):
+        if p.is_running():
+            children_pids.append(p.pid)
 
-        if int(p.ppid) == int(pid):
-            children.append(int(p.pid))
-
-    # recursion
-    for child in children:
-        grandchildren.extend( getDescendentProcesses(child) )
-
-    return children + grandchildren
+    return children_pids 
 
         
 #--------------global variable initialization ----------------------

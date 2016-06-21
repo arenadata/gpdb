@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/parser/parse_func.h,v 1.57 2006/10/04 00:30:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/parser/parse_func.h,v 1.59.2.1 2010/07/30 17:57:07 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -43,14 +43,18 @@ typedef enum
 
 extern Node *ParseFuncOrColumn(ParseState *pstate,
 				  List *funcname, List *fargs, List *agg_order,
-				  bool agg_star, bool agg_distinct, bool is_column,
-				  WindowSpec *over, int location, Node *agg_filter);
+				  bool agg_star, bool agg_distinct, bool func_variadic,
+				  bool is_column, WindowSpec *over, int location, Node *agg_filter);
 
 extern FuncDetailCode func_get_detail(List *funcname, List *fargs,
 									  int nargs, Oid *argtypes,
+                                      bool expand_variadic,
+									  bool expand_defaults,
 									  Oid *funcid, Oid *rettype,
 									  bool *retset, bool *retstrict, 
-									  bool *retordered, Oid **true_typeids);
+                                      bool *retordered, int *nvargs, 
+									  Oid **true_typeids,
+									  List **argdefaults);
 
 extern int func_match_argtypes(int nargs,
 					Oid *input_typeids,
@@ -79,6 +83,8 @@ extern Oid LookupFuncNameTypeNames(List *funcname, List *argtypes,
 						bool noError);
 extern Oid LookupAggNameTypeNames(List *aggname, List *argtypes,
 					   bool noError);
+
+extern void check_pg_get_expr_args(ParseState *pstate, Oid fnoid, List *args);
 
 extern void parseCheckTableFunctions(ParseState *pstate, Query *qry);
 

@@ -21,7 +21,7 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "libpq/libpq.h"
 #include "utils/debugbreak.h"
-#include "utils/atomic.h"
+#include "utils/gp_atomic.h"
 #include "optimizer/walkers.h"
 #include "utils/lsyscache.h"
 #include "catalog/pg_proc.h"
@@ -41,7 +41,6 @@ typedef struct workset_info
 	uint64 operator_work_mem;
 	char *dir_path;
 	bool can_be_reused;
-	bool on_disk;
 } workset_info;
 
 /* Forward declarations */
@@ -50,8 +49,6 @@ static bool workfile_mgr_is_reusable(PlanState *ps);
 static bool workfile_mgr_is_cacheable_plan(PlanState *ps);
 static workfile_set_hashkey_t workfile_mgr_hash_key(workfile_set_plan *plan);
 static workfile_set_plan *workfile_mgr_serialize_plan(PlanState *ps);
-static void workfile_mgr_free_plan(workfile_set_plan *splan);
-static void workfile_mgr_save_plan(workfile_set *work_set, workfile_set_plan *sf_plan);
 static bool workfile_set_equivalent(const void *virtual_resource, const void *physical_resource);
 static bool workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan *sf_plan);
 static void workfile_mgr_populate_set(const void *resource, const void *param);
@@ -63,7 +60,6 @@ static uint64 get_operator_work_mem(PlanState *ps);
 static CdbVisitOpt PlanNonCacheableWalker(PlanState *ps, void *context);
 static bool ExprNonCacheableWalker(Node *expr, void *ctx);
 static bool isFuncCacheable(Oid fn_oid);
-static CacheEntry *acquire_entry_retry(Cache *cache, workset_info *populate_param);
 static char *create_workset_directory(NodeTag node_type, int slice_id);
 
 
@@ -204,21 +200,17 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	set_info.dir_path = dir_path;
 	set_info.session_start_time = GetCurrentTimestamp();
 	set_info.operator_work_mem = get_operator_work_mem(ps);
-	set_info.on_disk = true;
 
-	CacheEntry *newEntry = NULL;
+	CacheEntry *newEntry = Cache_AcquireEntry(workfile_mgr_cache, &set_info);
 
-	PG_TRY();
+	if (NULL == newEntry)
 	{
-		newEntry = acquire_entry_retry(workfile_mgr_cache, &set_info);
-	}
-	PG_CATCH();
-	{
-		/* Failed to acquire new entry, cache full. Clean up the directory we created. */
+		/* Could not acquire another entry from the cache - we filled it up */
+		elog(ERROR, "could not create workfile manager entry: exceeded number of concurrent spilling queries");
+
+		/* Clean up the directory we created. */
 		workfile_mgr_delete_set_directory(dir_path);
-		PG_RE_THROW();
 	}
-	PG_END_TRY();
 
 	/* Path has now been copied to the workfile_set. We can free it */
 	pfree(dir_path);
@@ -227,19 +219,9 @@ workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused, PlanStat
 	Assert(NULL != newEntry);
 	workfile_set *work_set = CACHE_ENTRY_PAYLOAD(newEntry);
 	Assert(work_set != NULL);
-	if (work_set->can_be_reused)
-	{
-		Assert(plan != NULL);
-		Assert(nodeTag(plan) >= T_Plan && nodeTag(plan) < T_PlanInvalItem);
 
-		workfile_set_plan *s_plan = workfile_mgr_serialize_plan(ps);
-		work_set->key = workfile_mgr_hash_key(s_plan);
-		workfile_mgr_save_plan(work_set, s_plan);
-		workfile_mgr_free_plan(s_plan);
-	}
-
-	elog(gp_workfile_caching_loglevel, "new spill file set. key=0x%x can_be_reused=%d prefix=%s opMemKB=" INT64_FORMAT,
-			work_set->key, work_set->can_be_reused, work_set->path, work_set->metadata.operator_work_mem);
+	elog(gp_workfile_caching_loglevel, "new spill file set. key=0x%x prefix=%s opMemKB=" INT64_FORMAT,
+			work_set->key, work_set->path, work_set->metadata.operator_work_mem);
 
 	return work_set;
 }
@@ -344,36 +326,22 @@ workfile_mgr_populate_set(const void *resource, const void *param)
 	work_set->metadata.operator_work_mem = set_info->operator_work_mem;
 	work_set->set_plan = NULL;
 
-	if (!set_info->on_disk)
-	{
-		/* This is for a "virtual" work_set, used for look-ups. No need to populate further */
-		Assert(NULL == set_info->dir_path);
-		work_set->on_disk = false;
-	}
-	else
-	{
+	work_set->complete = false;
+	work_set->no_files = 0;
+	work_set->size = 0L;
+	work_set->in_progress_size = 0L;
+	work_set->node_type = set_info->nodeType;
+	work_set->metadata.type = set_info->file_type;
+	work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
+	work_set->metadata.snapshot = set_info->snapshot;
+	work_set->metadata.num_leaf_files = 0;
+	work_set->slice_id = currentSliceId;
+	work_set->session_id = gp_session_id;
+	work_set->command_count = gp_command_count;
+	work_set->session_start_time = set_info->session_start_time;
 
-		work_set->complete = false;
-		work_set->no_files = 0;
-		work_set->size = 0L;
-		work_set->in_progress_size = 0L;
-		work_set->node_type = set_info->nodeType;
-		work_set->metadata.type = set_info->file_type;
-		work_set->metadata.bfz_compress_type = gp_workfile_compress_algorithm;
-		work_set->metadata.snapshot = set_info->snapshot;
-		work_set->metadata.num_leaf_files = 0;
-		work_set->slice_id = currentSliceId;
-		work_set->session_id = gp_session_id;
-		work_set->command_count = gp_command_count;
-		work_set->session_start_time = set_info->session_start_time;
-
-		/* If workfile caching is disabled, nothing should be re-used, so override whatever the caller says */
-		work_set->can_be_reused = gp_workfile_caching && set_info->can_be_reused;
-
-		Assert(strlen(set_info->dir_path) < MAXPGPATH);
-		strncpy(work_set->path, set_info->dir_path, MAXPGPATH);
-		work_set->on_disk = true;
-	}
+	Assert(strlen(set_info->dir_path) < MAXPGPATH);
+	strncpy(work_set->path, set_info->dir_path, MAXPGPATH);
 }
 
 /*
@@ -595,10 +563,9 @@ workfile_mgr_lookup_set(PlanState *ps)
 	workset_info set_info;
 	set_info.dir_path = NULL;
 	set_info.operator_work_mem = get_operator_work_mem(ps);
-	set_info.on_disk = false;
 
-	CacheEntry *localEntry = acquire_entry_retry(workfile_mgr_cache, &set_info);
-	Assert(localEntry != NULL);
+	CacheEntry *localEntry = Cache_AcquireEntry(workfile_mgr_cache, &set_info);
+	Insist(NULL != localEntry);
 
 	workfile_set *local_work_set = (workfile_set *) CACHE_ENTRY_PAYLOAD(localEntry);
 
@@ -627,42 +594,6 @@ workfile_mgr_lookup_set(PlanState *ps)
 	}
 
 	return work_set;
-}
-
-/*
- * Acquire an entry from the cache. If the cache is full (reached gp_workfile_max_entries),
- * trigger evictions and try again.
- * If the cache remains full after max_retries, give up and error out.
- *
- * populate_param is the parameter to be passed to Cache_AcquireEntry. It
- * will be used to populate the entry before being returned.
- */
-static CacheEntry *
-acquire_entry_retry(Cache *cache, workset_info *populate_param)
-{
-	CacheEntry *localEntry = Cache_AcquireEntry(cache, populate_param);
-
-	int crt_retry = 0;
-	while (NULL == localEntry && crt_retry < MAX_EVICT_ATTEMPTS)
-	{
-		/*
-		 * We reached maximum number of entries in the cache. Evict something
-		 * then try again.
-		 */
-		int64 size_evicted = workfile_mgr_evict(MIN_EVICT_SIZE);
-		elog(gp_workfile_caching_loglevel, "Hit cache entries full, evicted " INT64_FORMAT " bytes", size_evicted);
-
-		localEntry = Cache_AcquireEntry(cache, populate_param);
-		crt_retry++;
-	}
-
-	if (NULL == localEntry)
-	{
-		/* Could not acquire another entry from the cache - we filled it up */
-		elog(ERROR, "could not create workfile manager entry: exceeded number of concurrent spilling queries");
-	}
-
-	return localEntry;
 }
 
 /*
@@ -757,54 +688,38 @@ workfile_mgr_cleanup_set(const void *resource)
 {
 	workfile_set *work_set = (workfile_set *) resource;
 
-	if (work_set->on_disk)
-	{
-		ereport(gp_workfile_caching_loglevel,
-				(errmsg("workfile mgr cleanup deleting set: key=0x%0xd, size=" INT64_FORMAT
-				" in_progress_size=" INT64_FORMAT " path=%s",
-				work_set->key,
-				work_set->size,
-				work_set->in_progress_size,
-				work_set->path),
-				errprintstack(true)));
+	ereport(gp_workfile_caching_loglevel,
+			(errmsg("workfile mgr cleanup deleting set: key=0x%0xd, size=" INT64_FORMAT
+					" in_progress_size=" INT64_FORMAT " path=%s",
+					work_set->key,
+					work_set->size,
+					work_set->in_progress_size,
+					work_set->path),
+					errprintstack(true)));
 
-		Assert(NULL == work_set->set_plan);
+	Assert(NULL == work_set->set_plan);
 
-		workfile_mgr_delete_set_directory(work_set->path);
+	workfile_mgr_delete_set_directory(work_set->path);
 
-		/*
-		 * The most accurate size of a workset is recorded in work_set->in_progress_size.
-		 * work_set->size is only updated when we close a file, so it lags behind
-		 */
+	/*
+	 * The most accurate size of a workset is recorded in work_set->in_progress_size.
+	 * work_set->size is only updated when we close a file, so it lags behind
+	 */
 
-		Assert(work_set->in_progress_size >= work_set->size);
-		int64 size_to_delete = work_set->in_progress_size;
+	Assert(work_set->in_progress_size >= work_set->size);
+	int64 size_to_delete = work_set->in_progress_size;
 
-		elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", size_to_delete);
+	elog(gp_workfile_caching_loglevel, "Subtracting " INT64_FORMAT " from workfile diskspace", size_to_delete);
 
-		/*
-		 * When subtracting the size of this workset from our accounting,
-		 * only update the per-query counter if we created the workset.
-		 * In that case, the state is ACQUIRED, otherwise is CACHED or DELETED
-		 */
-		CacheEntry *cacheEntry = CACHE_ENTRY_HEADER(resource);
-		bool update_query_space = (cacheEntry->state == CACHE_ENTRY_ACQUIRED);
+	/*
+	 * When subtracting the size of this workset from our accounting,
+	 * only update the per-query counter if we created the workset.
+	 * In that case, the state is ACQUIRED, otherwise is CACHED or DELETED
+	 */
+	CacheEntry *cacheEntry = CACHE_ENTRY_HEADER(resource);
+	bool update_query_space = (cacheEntry->state == CACHE_ENTRY_ACQUIRED);
 
-		WorkfileDiskspace_Commit(0, size_to_delete, update_query_space);
-	}
-	else
-	{
-		/* Non-physical workfile set, we need to free up the plan memory */
-		if (NULL != work_set->set_plan->serialized_plan)
-		{
-			pfree(work_set->set_plan->serialized_plan);
-		}
-
-		if (NULL != work_set->set_plan)
-		{
-			pfree(work_set->set_plan);
-		}
-	}
+	WorkfileDiskspace_Commit(0, size_to_delete, update_query_space);
 }
 
 /*
@@ -816,35 +731,12 @@ workfile_mgr_close_set(workfile_set *work_set)
 {
 	Assert(work_set!=NULL);
 
-	elog(gp_workfile_caching_loglevel, "closing workfile set: can_be_reused=%d complete=%d location: %s, size=" INT64_FORMAT
+	elog(gp_workfile_caching_loglevel, "closing workfile set: complete=%d location: %s, size=" INT64_FORMAT
 			" in_progress_size=" INT64_FORMAT,
-		 work_set->can_be_reused, work_set->complete, work_set->path,
+		 work_set->complete, work_set->path,
 		 work_set->size, work_set->in_progress_size);
 
 	CacheEntry *cache_entry = CACHE_ENTRY_HEADER(work_set);
-
-	if (Cache_IsCached(cache_entry))
-	{
-		/* Workset came from cache. Just release it, nothing to do */
-		Cache_Release(workfile_mgr_cache, cache_entry);
-		return;
-	}
-
-	if (work_set->complete && work_set->can_be_reused)
-	{
-		cache_entry->size = work_set->size;
-
-		/* We want to keep this one around. Insert into cache */
-		Cache_Insert(workfile_mgr_cache, cache_entry);
-		Cache_Release(workfile_mgr_cache, cache_entry);
-		return;
-	}
-
-
-	/*
-	 * Fall-through case: We need to delete this work_set, as it's not reusable.
-	 */
-	Assert(!work_set->complete || !work_set->can_be_reused);
 	Cache_Release(workfile_mgr_cache, cache_entry);
 }
 
@@ -927,43 +819,6 @@ workfile_mgr_serialize_plan(PlanState *ps)
 }
 
 /*
- * Free up a workfile manager plan structure.
- */
-static void
-workfile_mgr_free_plan(workfile_set_plan *sf_plan)
-{
-	Assert(sf_plan != NULL);
-	pfree(sf_plan->serialized_plan);
-	pfree(sf_plan);
-}
-
-/*
- * Save the serialized plan to a file in the workfile set.
- * It will be used to do full plan matching before reusing.
- */
-static void
-workfile_mgr_save_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
-{
-	Assert(work_set);
-	Assert(sf_plan);
-
-	ExecWorkFile *plan_file = workfile_mgr_create_fileno(work_set, WORKFILE_NUM_ALL_PLAN);
-	insist_log(plan_file != NULL, "Could not create temporary work file: %m");
-
-	elog(gp_workfile_caching_loglevel, "Saving query plan to file %s", ExecWorkFile_GetFileName(plan_file));
-
-
-	bool res = ExecWorkFile_Write(plan_file, sf_plan->serialized_plan,
-			sf_plan->serialized_plan_len);
-	if(!res)
-	{
-		workfile_mgr_report_error();
-	}
-
-	workfile_mgr_close_file(work_set, plan_file);
-}
-
-/*
  * Callback function to test if two cache resources are equivalent.
  */
 static bool
@@ -989,7 +844,6 @@ workfile_set_equivalent(const void *virtual_resource, const void *physical_resou
 		return false;
 	}
 
-	Assert(!virtual_workset->on_disk && physical_workset->on_disk && "comparing two physical or two virtual worksets not supported");
 	Assert(NULL != virtual_workset->set_plan);
 
 	return workfile_mgr_compare_plan(physical_workset, virtual_workset->set_plan);
@@ -1058,26 +912,6 @@ workfile_mgr_compare_plan(workfile_set *work_set, workfile_set_plan *sf_plan)
 
 	workfile_mgr_close_file(work_set, plan_file);
 	return match;
-}
-
-/*
- * Runs the eviction algorithm to identify victims and evicts them. It attempts
- * to evict victims with cumulative size >= desiredSize
- *
- * Returns the actual cumulative size of all the sets evicted
- */
-int64
-workfile_mgr_evict(int64 size_requested)
-{
-	Assert(size_requested > 0);
-	Assert(NULL != workfile_mgr_cache);
-
-	int64 size_evicted = Cache_Evict(workfile_mgr_cache, size_requested);
-
-	elog(gp_workfile_caching_loglevel, "Eviction: requested=" INT64_FORMAT " evicted=" INT64_FORMAT,
-			size_requested, size_evicted);
-
-	return size_evicted;
 }
 
 /*

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtsearch.c,v 1.107.2.1 2007/01/07 01:56:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtsearch.c,v 1.116 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -386,12 +386,17 @@ _bt_compare(Relation rel,
 		{
 			if (isNull)
 				result = 0;		/* NULL "=" NULL */
+			else if (scankey->sk_flags & SK_BT_NULLS_FIRST)
+				result = -1;	/* NULL "<" NOT_NULL */
 			else
 				result = 1;		/* NULL ">" NOT_NULL */
 		}
 		else if (isNull)		/* key is NOT_NULL and item is NULL */
 		{
-			result = -1;		/* NOT_NULL "<" NULL */
+			if (scankey->sk_flags & SK_BT_NULLS_FIRST)
+				result = 1;		/* NOT_NULL ">" NULL */
+			else
+				result = -1;	/* NOT_NULL "<" NULL */
 		}
 		else
 		{
@@ -400,16 +405,15 @@ _bt_compare(Relation rel,
 			 * the sk_argument as right arg (they might be of different
 			 * types).	Since it is convenient for callers to think of
 			 * _bt_compare as comparing the scankey to the index item, we have
-			 * to flip the sign of the comparison result.
-			 *
-			 * Note: curious-looking coding is to avoid overflow if comparison
-			 * function returns INT_MIN.  There is no risk of overflow for
-			 * positive results.
+			 * to flip the sign of the comparison result.  (Unless it's a DESC
+			 * column, in which case we *don't* flip the sign.)
 			 */
 			result = DatumGetInt32(FunctionCall2(&scankey->sk_func,
 												 datum,
 												 scankey->sk_argument));
-			result = (result < 0) ? 1 : -result;
+
+			if (!(scankey->sk_flags & SK_BT_DESC))
+				result = -result;
 		}
 
 		/* if the keys are unequal, return the difference */
@@ -488,16 +492,16 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	 * attributes to its right, because it would break our simplistic notion
 	 * of what initial positioning strategy to use.
 	 *
-	 * When the scan keys include non-default operators, _bt_preprocess_keys
+	 * When the scan keys include cross-type operators, _bt_preprocess_keys
 	 * may not be able to eliminate redundant keys; in such cases we will
 	 * arbitrarily pick a usable one for each attribute.  This is correct
 	 * but possibly not optimal behavior.  (For example, with keys like
 	 * "x >= 4 AND x >= 5" we would elect to scan starting at x=4 when
-	 * x=5 would be more efficient.)  Since the situation only arises in
-	 * hokily-worded queries, live with it.
+	 * x=5 would be more efficient.)  Since the situation only arises given
+	 * a poorly-worded query plus an incomplete opfamily, live with it.
 	 *
 	 * When both equality and inequality keys appear for a single attribute
-	 * (again, only possible when non-default operators appear), we *must*
+	 * (again, only possible when cross-type operators appear), we *must*
 	 * select one of the equality keys for the starting point, because
 	 * _bt_checkkeys() will stop the scan as soon as an equality qual fails.
 	 * For example, if we have keys like "x >= 4 AND x = 10" and we elect to
@@ -645,7 +649,7 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 			 * even if the row comparison is of ">" or "<" type, because the
 			 * condition applied to all but the last row member is effectively
 			 * ">=" or "<=", and so the extra keys don't break the positioning
-			 * scheme.  But, by the same token, if we aren't able to use all
+			 * scheme.	But, by the same token, if we aren't able to use all
 			 * the row members, then the part of the row comparison that we
 			 * did use has to be treated as just a ">=" or "<=" condition, and
 			 * so we'd better adjust strat_total accordingly.
@@ -655,7 +659,7 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 				bool		used_all_subkeys = false;
 
 				Assert(!(subkey->sk_flags & SK_ROW_END));
-				for(;;)
+				for (;;)
 				{
 					subkey++;
 					Assert(subkey->sk_flags & SK_ROW_MEMBER);
@@ -696,11 +700,18 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 			 * to an insertion scan key by replacing the sk_func with the
 			 * appropriate btree comparison function.
 			 *
-			 * If scankey operator is of default subtype, we can use the
-			 * cached comparison function; otherwise gotta look it up in the
-			 * catalogs.
+			 * If scankey operator is not a cross-type comparison, we can use
+			 * the cached comparison function; otherwise gotta look it up in
+			 * the catalogs.  (That can't lead to infinite recursion, since no
+			 * indexscan initiated by syscache lookup will use cross-data-type
+			 * operators.)
+			 *
+			 * We support the convention that sk_subtype == InvalidOid means
+			 * the opclass input type; this is a hack to simplify life for
+			 * ScanKeyInit().
 			 */
-			if (cur->sk_subtype == InvalidOid)
+			if (cur->sk_subtype == rel->rd_opcintype[i] ||
+				cur->sk_subtype == InvalidOid)
 			{
 				FmgrInfo   *procinfo;
 
@@ -709,7 +720,7 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 											   cur->sk_flags,
 											   cur->sk_attno,
 											   InvalidStrategy,
-											   InvalidOid,
+											   cur->sk_subtype,
 											   procinfo,
 											   cur->sk_argument);
 			}
@@ -717,9 +728,14 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 			{
 				RegProcedure cmp_proc;
 
-				cmp_proc = get_opclass_proc(rel->rd_indclass->values[i],
-											cur->sk_subtype,
-											BTORDER_PROC);
+				cmp_proc = get_opfamily_proc(rel->rd_opfamily[i],
+											 rel->rd_opcintype[i],
+											 cur->sk_subtype,
+											 BTORDER_PROC);
+				if (!RegProcedureIsValid(cmp_proc))
+					elog(ERROR, "missing support function %d(%u,%u) for attribute %d of index \"%s\"",
+						 BTORDER_PROC, rel->rd_opcintype[i], cur->sk_subtype,
+						 cur->sk_attno, RelationGetRelationName(rel));
 				ScanKeyEntryInitialize(scankeys + i,
 									   cur->sk_flags,
 									   cur->sk_attno,
@@ -742,8 +758,6 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	 *
 	 * If goback = true, we will then step back one item, while if
 	 * goback = false, we will start the scan on the located item.
-	 *
-	 * it's yet other place to add some code later for is(not)null ...
 	 *----------
 	 */
 	switch (strat_total)

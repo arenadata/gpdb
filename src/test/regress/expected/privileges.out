@@ -251,7 +251,7 @@ REVOKE ALL PRIVILEGES ON LANGUAGE sql FROM PUBLIC;
 GRANT USAGE ON LANGUAGE sql TO regressuser1; -- ok
 GRANT USAGE ON LANGUAGE c TO PUBLIC; -- fail
 ERROR:  language "c" is not trusted
-HINT:  Only superusers may use untrusted languages.
+HINT:  Only superusers can use untrusted languages.
 SET SESSION AUTHORIZATION regressuser1;
 GRANT USAGE ON LANGUAGE sql TO regressuser2; -- fail
 WARNING:  no privileges were granted for "sql"
@@ -689,8 +689,8 @@ revoke select on dep_priv_test from regressuser4 cascade;
 \dp dep_priv_test
                                                          Access privileges for database "regression"
  Schema |     Name      | Type  |                                                     Access privileges                                                      
---------+---------------+-------+----------------------------------------------------------------------------------------------------------------------------
- public | dep_priv_test | table | {regressuser1=arwdDxt/regressuser1,regressuser2=r*/regressuser1,regressuser3=r*/regressuser1,regressuser4=r*/regressuser3}
+--------+---------------+-------+--------------------------------------------------------------------------------------------------------------------------------------------------------
+ public | dep_priv_test | table | {regressuser1=arwdDxt/regressuser1,regressuser2=r*/regressuser1,regressuser3=r*/regressuser1,regressuser4=r*/regressuser3,regressuser5=r/regressuser4}
 (1 row)
 
 set session role regressuser3;

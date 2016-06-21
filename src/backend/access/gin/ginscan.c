@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gin/ginscan.c,v 1.7 2006/10/06 17:13:58 petere Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gin/ginscan.c,v 1.12 2008/01/01 19:45:46 momjian Exp $
  *-------------------------------------------------------------------------
  */
 
@@ -148,10 +148,12 @@ newScanKey(IndexScanDesc scan)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("GIN indexes do not support whole-index scans")));
 
+	so->isVoidRes = false;
+
 	for (i = 0; i < scan->numberOfKeys; i++)
 	{
 		Datum	   *entryValues;
-		uint32		nEntryValues;
+		int32		nEntryValues;
 
 		if (scankey[i].sk_flags & SK_ISNULL)
 			elog(ERROR, "Gin doesn't support NULL as scan key");
@@ -165,6 +167,15 @@ newScanKey(IndexScanDesc scan)
 									   UInt16GetDatum(scankey[i].sk_strategy)
 															  )
 			);
+		if (nEntryValues < 0)
+		{
+			/*
+			 * extractQueryFn signals that nothing will be found, so we can
+			 * just set isVoidRes flag...
+			 */
+			so->isVoidRes = true;
+			break;
+		}
 		if (entryValues == NULL || nEntryValues == 0)
 			/* full scan... */
 			continue;
@@ -176,10 +187,10 @@ newScanKey(IndexScanDesc scan)
 
 	so->nkeys = nkeys;
 
-	if (so->nkeys == 0)
+	if (so->nkeys == 0 && !so->isVoidRes)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("GIN index does not support search with void query")));
+			   errmsg("GIN index does not support search with void query")));
 
 	pgstat_count_index_scan(scan->indexRelation);
 }

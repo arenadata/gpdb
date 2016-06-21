@@ -269,7 +269,7 @@ rloop:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
 											(err == SSL_ERROR_WANT_READ) ?
-								   FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
+									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
 											INFINITE);
 #endif
 				goto rloop;
@@ -392,7 +392,7 @@ wloop:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
 											(err == SSL_ERROR_WANT_READ) ?
-								   FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
+									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
 											INFINITE);
 #endif
 				goto wloop;
@@ -423,21 +423,9 @@ wloop:
 	else
 #endif
 	{
-		bool saved_ImmediateInterruptOK = ImmediateInterruptOK;
-		CommandDest saved_CommandDest = whereToSendOutput;
-
-		whereToSendOutput = DestNone;
-		ImmediateInterruptOK = true;
-
-		if (ProcDiePending)
-		{
-			CHECK_FOR_INTERRUPTS();
-		}
-
+		prepare_for_client_write();
 		n = send(port->sock, ptr, len, 0);
-
-		ImmediateInterruptOK = saved_ImmediateInterruptOK;
-		whereToSendOutput = saved_CommandDest;
+		client_write_ended();
 	}
 
 	return n;
@@ -493,6 +481,8 @@ my_sock_write(BIO *h, const char *buf, int size)
 {
 	int			res = 0;
 
+	prepare_for_client_write();
+
 	res = send(h->num, buf, size, 0);
 	if (res <= 0)
 	{
@@ -501,6 +491,8 @@ my_sock_write(BIO *h, const char *buf, int size)
 			BIO_set_retry_write(h);
 		}
 	}
+
+	client_write_ended();
 
 	return res;
 }
@@ -783,6 +775,12 @@ initialize_SSL(void)
 							SSLerrmessage())));
 
 		/*
+		 * Disable OpenSSL's moving-write-buffer sanity check, because it
+		 * causes unnecessary failures in nonblocking send cases.
+		 */
+		SSL_CTX_set_mode(SSL_context, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+
+		/*
 		 * Load and verify server's certificate and private key
 		 */
 		if (SSL_CTX_use_certificate_chain_file(SSL_context,
@@ -886,9 +884,9 @@ initialize_SSL(void)
 						  X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
 #else
 				ereport(LOG,
-						(errmsg("SSL certificate revocation list file \"%s\" ignored",
-								ROOT_CRL_FILE),
-				  errdetail("SSL library does not support certificate revocation lists.")));
+				(errmsg("SSL certificate revocation list file \"%s\" ignored",
+						ROOT_CRL_FILE),
+				 errdetail("SSL library does not support certificate revocation lists.")));
 #endif
 			}
 			else
@@ -964,7 +962,7 @@ aloop:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
 											(err == SSL_ERROR_WANT_READ) ?
-					   FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE,
+						FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE,
 											INFINITE);
 #endif
 				goto aloop;

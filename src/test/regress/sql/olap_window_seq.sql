@@ -178,6 +178,39 @@ select row_number() over (order by count(*)), vn, count(*)
 from sale 
 group by vn; -- mvd 3->1
 
+-- Test NULLS FIRST/LAST in window clauses
+create table tbl_with_nulls_seq (t text, a int, b int);
+insert into tbl_with_nulls_seq values
+  ( 'a', 1, 10),
+  ( 'b', 1, 10),
+  ( 'c', 1, 10),
+  ( 'd', 2, 10),
+  ( 'e', 2, 20),
+  ( 'f', 2, 20),
+  ( 'g', NULL, 20),
+  ( 'h', NULL, 20),
+  ( 'i', NULL, 30);
+
+select t, a, b,
+  first_value(t) over (order by a nulls first, t),
+  first_value(t) over (order by a nulls last, t),
+  first_value(t) over (partition by b order by a nulls first, t),
+  first_value(t) over (partition by b order by a nulls last, t)
+from tbl_with_nulls_seq order by t;
+
+-- Same with explicitly named window
+select t, a, b,
+  first_value(t) over (w1),
+  first_value(t) over (w2),
+  first_value(t) over (w3),
+  first_value(t) over (w4)
+from tbl_with_nulls_seq
+window w1 as (order by a nulls first, t),
+       w2 as (order by a nulls last, t),
+       w3 as (partition by b order by a nulls first, t),
+       w4 as (partition by b order by a nulls last, t)
+order by t;
+
 
 ---- X -- Miscellaneous (e.g. old bugs, etc.) ----
 
@@ -895,19 +928,20 @@ CREATE TABLE FACT_TEST
  TIME_KEY    INTEGER  NOT NULL,
  EVENT_TYPE  text  NOT NULL
 );
-insert into fact_test values (20070101, 'W', 100, 'c');
-insert into fact_test values (20070101, 'W', 100, 'p');
-insert into fact_test values (20070101, 'B', 100, 'c');
-insert into fact_test values (20070101, 'A', 10100101, 'p');
-insert into fact_test values (20070101, 'A', 20100101, 'p');
-insert into fact_test values (20070101, 'B', 101, 'p');
-insert into fact_test values (20070101, 'C', 105, 'p');
-insert into fact_test values (20070101, 'D', 107, 'p');
-insert into fact_test values (20070101, 'E', 10, 'c');
-insert into fact_test values (20070101, 'E', 10, 'p');
-insert into fact_test values (20070101, 'A', 101, 'c');
-insert into fact_test values (20070101, 'A', 101, 'p');
-insert into fact_test values (20070101, 'A', 10100101, 'p');
+insert into fact_test values
+  (20070101, 'W', 100, 'c'),
+  (20070101, 'W', 100, 'p'),
+  (20070101, 'B', 100, 'c'),
+  (20070101, 'A', 10100101, 'p'),
+  (20070101, 'A', 20100101, 'p'),
+  (20070101, 'B', 101, 'p'),
+  (20070101, 'C', 105, 'p'),
+  (20070101, 'D', 107, 'p'),
+  (20070101, 'E', 10, 'c'),
+  (20070101, 'E', 10, 'p'),
+  (20070101, 'A', 101, 'c'),
+  (20070101, 'A', 101, 'p'),
+  (20070101, 'A', 10100101, 'p');
 
 select date_key, bcookie, time_key, event_type, 
 (
@@ -1513,3 +1547,108 @@ select stddev(n) over(order by d range between current row and interval '1 day' 
        sum(n) over(order by d range between current row and interval '1 day' following),
        avg(n) over(order by d range between current row and interval '1 day' following), n from olap_window_seq_test;
 
+-- This test examines the case that a statement invokes multiple lead functions, 
+-- which are not sorted regarding the rows that they use and projected attributes are varlen. 
+DROP TABLE IF EXISTS empsalary;
+CREATE TABLE empsalary(
+  depname varchar,
+  empno bigint,
+  salary char(8),
+  enroll_date date
+);
+
+INSERT INTO empsalary VALUES('develop', 8, '6000', '2006/10/01');
+INSERT INTO empsalary VALUES('develop', 11, '5200', '2007/08/15');
+INSERT INTO empsalary VALUES('develop', 9, '4500', '2008/01/01');
+
+-- First lead retrieves data from one tuple ahead, second lead function retrieves data from two tuples ahead, while third one 
+-- gets data from one tuple ahead again.  
+select * ,
+lead(salary,1) over (partition by depname order by salary desc) qianzhi1,
+lead(salary,2) over (partition by depname order by salary desc) qianzhi2,
+lead(empno,1) over (partition by depname order by salary desc) qianzhi11
+from empsalary;
+
+-- Lead functions are in order. 
+select * ,
+lead(salary,1) over (partition by depname order by salary desc) qianzhi1,
+lead(empno,1) over (partition by depname order by salary desc) qianzhi11,
+lead(salary,2) over (partition by depname order by salary desc) qianzhi2
+from empsalary;
+
+DROP TABLE IF EXISTS empsalary;
+CREATE TABLE empsalary(
+  depname varchar,
+  empno bigint,
+  salary numeric(22, 6),
+  enroll_date date
+);
+
+INSERT INTO empsalary VALUES('develop', 8, 6000, '2006/10/01');
+INSERT INTO empsalary VALUES('develop', 11, 5200, '2007/08/15');
+INSERT INTO empsalary VALUES('develop', 9, 4500, '2008/01/01');
+
+-- Similar to the first statement using numeric.
+select * ,
+lead(salary,1) over (partition by depname order by salary desc) qianzhi1,
+lead(salary,2) over (partition by depname order by salary desc) qianzhi2,
+lead(empno,1) over (partition by depname order by salary desc) qianzhi11
+from empsalary;
+
+DROP TABLE IF EXISTS empsalary;
+CREATE TABLE empsalary(
+  depname varchar,
+  empno bigint,
+  salary int,
+  enroll_date date
+);
+
+INSERT INTO empsalary VALUES('develop', 8, 6000, '2006/10/01');
+INSERT INTO empsalary VALUES('develop', 11, 5200, '2007/08/15');
+INSERT INTO empsalary VALUES('develop', 9, 4500, '2008/01/01');
+
+-- Similar to the first statement using int. 
+select * ,
+lead(salary,1) over (partition by depname order by salary desc) qianzhi1,
+lead(salary,2) over (partition by depname order by salary desc) qianzhi2,
+lead(empno,1) over (partition by depname order by salary desc) qianzhi11
+from empsalary;
+
+-- There was a bug at one point where the planner would not recognize that the
+-- distribution key of a subplan matched the distribution key needed for the
+-- PARTITION BY clause, and generated an unnecessary Motion node. The
+-- sub-optimal plan looked like this:
+--
+--                                                       QUERY PLAN                                
+--                       
+-- ----------------------------------------------------------------------------------------------------------------------
+--  Gather Motion 2:1  (slice3; segments: 2)  (cost=3.56..3.60 rows=5 width=12)
+--    ->  Window  (cost=3.56..3.60 rows=3 width=12)
+--          Partition By: bar.a
+--          Order By: bar.b
+--          ->  Sort  (cost=3.56..3.57 rows=3 width=12)
+--                Sort Key: bar.a, bar.b
+--                ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=1.21..3.50 rows=3 width=12)
+--                      Hash Key: bar.a
+--                      ->  Hash Join  (cost=1.21..3.40 rows=3 width=12)
+--                            Hash Cond: foo.a = bar.a
+--                            ->  Seq Scan on foo  (cost=0.00..2.10 rows=5 width=4)
+--                            ->  Hash  (cost=1.15..1.15 rows=3 width=8)
+--                                  ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..1.15 rows=3 width=8)
+--                                        Hash Key: bar.a
+--                                        ->  Seq Scan on bar  (cost=0.00..1.05 rows=3 width=8)
+-- (15 rows)
+--
+-- The Redistribute Motion node in the middle is not needed, because the
+-- subplan is already distributed by bar.a, but the planner failed to
+-- recognize that. The point of this test case is to test that that unneeded
+-- Motion node isn't there.
+create table foo (a int4) distributed by (a);
+create table bar (a int4, b int4) distributed by (a, b);
+insert into foo select g from generate_series(1, 10) g;
+insert into bar select g%2, g from generate_series(1, 5) g;
+
+select foo.a, sum(b) over (partition by bar.a order by bar.b) from foo, bar where foo.a = bar.a;
+explain select foo.a, sum(b) over (partition by bar.a order by bar.b) from foo, bar where foo.a = bar.a;
+
+drop table foo, bar;

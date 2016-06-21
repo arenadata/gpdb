@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/operatorcmds.c,v 1.33 2006/10/04 00:29:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/operatorcmds.c,v 1.39 2008/01/01 19:45:49 momjian Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -50,7 +50,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 static void AlterOperatorOwner_internal(Relation rel, Oid operOid, Oid newOwnerId);
 
@@ -63,13 +63,14 @@ static void AlterOperatorOwner_internal(Relation rel, Oid operOid, Oid newOwnerI
  * 'parameters' is a list of DefElem
  */
 void
-DefineOperator(List *names, List *parameters, Oid newOid)
+DefineOperator(List *names, List *parameters,
+			   Oid newOid, Oid newCommutatorOid, Oid newNegatorOid)
 {
 	char	   *oprName;
 	Oid			oprNamespace;
 	AclResult	aclresult;
-	bool		canHash = false;	/* operator hashes */
 	bool		canMerge = false;		/* operator merges */
+	bool		canHash = false;	/* operator hashes */
 	List	   *functionName = NIL;		/* function for operator */
 	TypeName   *typeName1 = NULL;		/* first type name */
 	TypeName   *typeName2 = NULL;		/* second type name */
@@ -79,10 +80,6 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 	List	   *negatorName = NIL;		/* optional negator operator name */
 	List	   *restrictionName = NIL;	/* optional restrict. sel. procedure */
 	List	   *joinName = NIL; /* optional join sel. procedure */
-	List	   *leftSortName = NIL;		/* optional left sort operator */
-	List	   *rightSortName = NIL;	/* optional right sort operator */
-	List	   *ltCompareName = NIL;	/* optional < compare operator */
-	List	   *gtCompareName = NIL;	/* optional > compare operator */
 	ListCell   *pl;
 	Oid    opOid;
 
@@ -108,7 +105,7 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 			if (typeName1->setof)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-					errmsg("setof type not allowed for operator argument")));
+					errmsg("SETOF type not allowed for operator argument")));
 		}
 		else if (pg_strcasecmp(defel->defname, "rightarg") == 0)
 		{
@@ -116,7 +113,7 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 			if (typeName2->setof)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-					errmsg("setof type not allowed for operator argument")));
+					errmsg("SETOF type not allowed for operator argument")));
 		}
 		else if (pg_strcasecmp(defel->defname, "procedure") == 0)
 			functionName = defGetQualifiedName(defel);
@@ -132,14 +129,15 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 			canHash = defGetBoolean(defel);
 		else if (pg_strcasecmp(defel->defname, "merges") == 0)
 			canMerge = defGetBoolean(defel);
+		/* These obsolete options are taken as meaning canMerge */
 		else if (pg_strcasecmp(defel->defname, "sort1") == 0)
-			leftSortName = defGetQualifiedName(defel);
+			canMerge = true;
 		else if (pg_strcasecmp(defel->defname, "sort2") == 0)
-			rightSortName = defGetQualifiedName(defel);
+			canMerge = true;
 		else if (pg_strcasecmp(defel->defname, "ltcmp") == 0)
-			ltCompareName = defGetQualifiedName(defel);
+			canMerge = true;
 		else if (pg_strcasecmp(defel->defname, "gtcmp") == 0)
-			gtCompareName = defGetQualifiedName(defel);
+			canMerge = true;
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -157,29 +155,9 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 
 	/* Transform type names to type OIDs */
 	if (typeName1)
-		typeId1 = typenameTypeId(NULL, typeName1);
+		typeId1 = typenameTypeId(NULL, typeName1, NULL);
 	if (typeName2)
-		typeId2 = typenameTypeId(NULL, typeName2);
-
-	/*
-	 * If any of the mergejoin support operators were given, then canMerge is
-	 * implicit.  If canMerge is specified or implicit, fill in default
-	 * operator names for any missing mergejoin support operators.
-	 */
-	if (leftSortName || rightSortName || ltCompareName || gtCompareName)
-		canMerge = true;
-
-	if (canMerge)
-	{
-		if (!leftSortName)
-			leftSortName = list_make1(makeString("<"));
-		if (!rightSortName)
-			rightSortName = list_make1(makeString("<"));
-		if (!ltCompareName)
-			ltCompareName = list_make1(makeString("<"));
-		if (!gtCompareName)
-			gtCompareName = list_make1(makeString(">"));
-	}
+		typeId2 = typenameTypeId(NULL, typeName2, NULL);
 
 	/*
 	 * now have OperatorCreate do all the work..
@@ -193,13 +171,12 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 				   negatorName, /* optional negator operator name */
 				   restrictionName,		/* optional restrict. sel. procedure */
 				   joinName,	/* optional join sel. procedure name */
-				   canHash,		/* operator hashes */
-				   leftSortName,	/* optional left sort operator */
-				   rightSortName,		/* optional right sort operator */
-				   ltCompareName,		/* optional < comparison op */
-				   gtCompareName,		/* optional < comparison op */
-				   newOid);
-				   
+				   canMerge,	/* operator merges */
+				   canHash,	/* operator hashes */
+				   newOid,
+				   &newCommutatorOid,
+				   &newNegatorOid);
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		DefineStmt * stmt = makeNode(DefineStmt);
@@ -209,7 +186,9 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 		stmt->args = NIL;
 		stmt->definition = parameters;
 		stmt->newOid = opOid;
-		stmt->shadowOid = 0;
+		stmt->commutatorOid = newCommutatorOid;
+		stmt->negatorOid = newNegatorOid;
+		stmt->arrayOid = InvalidOid;
 		CdbDispatchUtilityStatement((Node *) stmt, "DefineOperator");
 	}
 }

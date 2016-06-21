@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/parser/parse_coerce.h,v 1.66 2006/10/04 00:30:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/parser/parse_coerce.h,v 1.75 2008/01/11 18:39:41 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,7 @@
 #include "parser/parse_node.h"
 
 
+/* Type categories (kluge ... ought to be extensible) */
 typedef enum CATEGORY
 {
 	INVALID_TYPE,
@@ -33,11 +34,25 @@ typedef enum CATEGORY
 	USER_TYPE
 } CATEGORY;
 
+/* Result codes for find_coercion_pathway */
+typedef enum CoercionPathType
+{
+	COERCION_PATH_NONE,			/* failed to find any coercion pathway */
+	COERCION_PATH_FUNC,			/* apply the specified coercion function */
+	COERCION_PATH_RELABELTYPE,	/* binary-compatible cast, no function */
+	COERCION_PATH_ARRAYCOERCE,	/* need an ArrayCoerceExpr node */
+	COERCION_PATH_COERCEVIAIO	/* need a CoerceViaIO node */
+} CoercionPathType;
+
 
 extern bool IsBinaryCoercible(Oid srctype, Oid targettype);
 extern bool IsPreferredType(CATEGORY category, Oid type);
 extern CATEGORY TypeCategory(Oid type);
 
+extern Node* coerce_to_specific_type(ParseState *pstate,
+									 Node *node,
+									 Oid targetTypeId,
+									 const char *constructName);
 extern Node *coerce_to_target_type(ParseState *pstate,
 					  Node *expr, Oid exprtype,
 					  Oid targettype, int32 targettypmod,
@@ -57,10 +72,9 @@ extern Node *coerce_to_domain(Node *arg, Oid baseTypeId, int32 baseTypeMod,
 
 extern Node *coerce_to_boolean(ParseState *pstate, Node *node,
 				  const char *constructName);
-extern Node *coerce_to_integer(ParseState *pstate, Node *node,
-				  const char *constructName);
-extern Node *coerce_to_bigint(ParseState *pstate, Node *node,
-				 const char *constructName);
+extern Node *coerce_to_specific_type(ParseState *pstate, Node *node,
+						Oid targetTypeId,
+						const char *constructName);
 
 extern Oid	select_common_type(List *typeids, const char *context);
 extern Node *coerce_to_common_type(ParseState *pstate, Node *node,
@@ -78,14 +92,17 @@ extern bool check_generic_type_consistency(Oid *actual_arg_types,
 extern Oid enforce_generic_type_consistency(Oid *actual_arg_types,
 								 Oid *declared_arg_types,
 								 int nargs,
-								 Oid rettype);
+								 Oid rettype,
+								 bool allow_poly);
 extern Oid resolve_generic_type(Oid declared_type,
 					 Oid context_actual_type,
 					 Oid context_declared_type);
 
-extern bool find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
+extern CoercionPathType find_coercion_pathway(Oid targetTypeId,
+					  Oid sourceTypeId,
 					  CoercionContext ccontext,
 					  Oid *funcid);
-extern Oid	find_typmod_coercion_function(Oid typeId);
+extern CoercionPathType find_typmod_coercion_function(Oid typeId,
+							  Oid *funcid);
 
 #endif   /* PARSE_COERCE_H */

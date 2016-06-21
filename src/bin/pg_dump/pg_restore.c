@@ -34,7 +34,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_restore.c,v 1.84 2006/10/14 23:07:22 tgl Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_restore.c,v 1.85 2007/12/11 19:01:06 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -425,5 +425,5 @@ usage(const char *progname)
 	printf(_("  -e, --exit-on-error      exit on error, default is to continue\n"));
 
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }

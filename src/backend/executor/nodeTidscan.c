@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeTidscan.c,v 1.51.2.1 2006/12/26 19:26:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeTidscan.c,v 1.58.2.1 2008/04/30 23:28:37 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -56,20 +56,30 @@ TidListCreate(TidScanState *tidstate)
 {
 	List	   *evalList = tidstate->tss_tidquals;
 	ExprContext *econtext = tidstate->ss.ps.ps_ExprContext;
+	BlockNumber nblocks;
 	ItemPointerData *tidList;
 	int			numAllocTids;
 	int			numTids;
 	ListCell   *l;
 
 	/*
+	 * We silently discard any TIDs that are out of range at the time of
+	 * scan start.  (Since we hold at least AccessShareLock on the table,
+	 * it won't be possible for someone to truncate away the blocks we
+	 * intend to visit.)
+	 */
+	nblocks = RelationGetNumberOfBlocks(tidstate->ss.ss_currentRelation);
+
+	/*
 	 * We initialize the array with enough slots for the case that all quals
-	 * are simple OpExprs, or just one CurrentOfExpr. If there's any ScalarArrayOpExprs, 
-	 * we may have to enlarge the array.
+	 * are simple OpExprs or CurrentOfExprs.  If there are any
+	 * ScalarArrayOpExprs, we may have to enlarge the array.
 	 */
 	numAllocTids = list_length(evalList);
 	tidList = (ItemPointerData *)
 		palloc(numAllocTids * sizeof(ItemPointerData));
 	numTids = 0;
+	tidstate->tss_isCurrentOf = false;
 
 	foreach(l, evalList)
 	{
@@ -98,7 +108,9 @@ TidListCreate(TidScanState *tidstate)
 														  econtext,
 														  &isNull,
 														  NULL));
-			if (!isNull && ItemPointerIsValid(itemptr))
+			if (!isNull &&
+				ItemPointerIsValid(itemptr) &&
+				ItemPointerGetBlockNumber(itemptr) < nblocks)
 			{
 				if (numTids >= numAllocTids)
 				{
@@ -143,7 +155,8 @@ TidListCreate(TidScanState *tidstate)
 				if (!ipnulls[i])
 				{
 					itemptr = (ItemPointer) DatumGetPointer(ipdatums[i]);
-					if (ItemPointerIsValid(itemptr))
+					if (ItemPointerIsValid(itemptr) &&
+						ItemPointerGetBlockNumber(itemptr) < nblocks)
 						tidList[numTids++] = *itemptr;
 				}
 			}
@@ -152,14 +165,25 @@ TidListCreate(TidScanState *tidstate)
 		}
 		else if (expr && IsA(expr, CurrentOfExpr))
 		{
-			/* 
-			 * CURRENT OF must be the only expr. This allows us to avoid
-			 * a repalloc of the tidList. 
-			 */
-			Insist(list_length(evalList) == 1);	
 			CurrentOfExpr *cexpr = (CurrentOfExpr *) expr;
-			tidList[numTids++] = cexpr->ctid;
-		} 
+			ItemPointerData cursor_tid;
+
+			if (execCurrentOf(cexpr, econtext,
+						   RelationGetRelid(tidstate->ss.ss_currentRelation),
+							  &cursor_tid))
+			{
+				Assert(ItemPointerIsValid(&cursor_tid));
+				if (numTids >= numAllocTids)
+				{
+					numAllocTids *= 2;
+					tidList = (ItemPointerData *)
+						repalloc(tidList,
+								 numAllocTids * sizeof(ItemPointerData));
+				}
+				tidList[numTids++] = cursor_tid;
+				tidstate->tss_isCurrentOf = true;
+			}
+		}
 		else
 			elog(ERROR, "could not identify CTID expression");
 	}
@@ -174,6 +198,9 @@ TidListCreate(TidScanState *tidstate)
 	{
 		int			lastTid;
 		int			i;
+
+		/* CurrentOfExpr could never appear OR'd with something else */
+		Assert(!tidstate->tss_isCurrentOf);
 
 		qsort((void *) tidList, numTids, sizeof(ItemPointerData),
 			  itemptr_comparator);
@@ -262,7 +289,8 @@ TidNext(TidScanState *node)
 
 		/*
 		 * XXX shouldn't we check here to make sure tuple matches TID list? In
-		 * runtime-key case this is not certain, is it?
+		 * runtime-key case this is not certain, is it?  However, in the WHERE
+		 * CURRENT OF case it might not match anyway ...
 		 */
 
 		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1], slot, false);
@@ -316,6 +344,15 @@ TidNext(TidScanState *node)
 	while (node->tss_TidPtr >= 0 && node->tss_TidPtr < numTids)
 	{
 		tuple->t_self = tidList[node->tss_TidPtr];
+
+		/*
+		 * For WHERE CURRENT OF, the tuple retrieved from the cursor might
+		 * since have been updated; if so, we should fetch the version that is
+		 * current according to our snapshot.
+		 */
+		if (node->tss_isCurrentOf)
+			heap_get_latest_tid(heapRelation, snapshot, &tuple->t_self);
+
 		if (heap_fetch(heapRelation, snapshot, tuple, &buffer, false, NULL))
 		{
 			/*

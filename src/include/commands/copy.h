@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/copy.h,v 1.28 2006/08/30 23:34:22 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/copy.h,v 1.31 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -86,8 +86,8 @@ typedef enum ErrLocType
 typedef enum CopyErrMode
 {
 	ALL_OR_NOTHING,	/* Either all rows or no rows get loaded (the default) */
-	SREH_IGNORE,	/* Sreh - ignore errors (REJECT but no error table) */
-	SREH_LOG		/* Sreh - log errors in an error table */
+	SREH_IGNORE,	/* Sreh - ignore errors (REJECT, but don't log errors) */
+	SREH_LOG		/* Sreh - log errors */
 } CopyErrMode;
 
 

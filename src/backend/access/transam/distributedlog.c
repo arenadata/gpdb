@@ -56,12 +56,6 @@ static SlruCtlData DistributedLogCtlData;
  */
 #define DISTRIBUTEDLOG_DIR "pg_distributedlog"
 
-/*
- * Used while in the Startup process to see if we created the
- * pg_distributedlog directory and need to ignore missing pages...
- */
-static bool DistributedLogUpgrade = false;
-
 typedef struct DistributedLogShmem
 {
 	TransactionId	oldestXid;
@@ -102,7 +96,7 @@ DistributedLog_SetCommitted(
 	
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
 
-	if (isRedo || DistributedLogUpgrade)
+	if (isRedo)
 	{
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DistributedLog_SetCommitted check if page %d is present", 
@@ -116,7 +110,7 @@ DistributedLog_SetCommitted(
 		}
 	}
 	
-	slotno = SimpleLruReadPage(DistributedLogCtl, page, localXid);
+	slotno = SimpleLruReadPage(DistributedLogCtl, page, true, localXid);
 	ptr = (DistributedLogEntry *) DistributedLogCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
@@ -216,7 +210,7 @@ DistributedLog_CommittedCheck(
 		return false;
 	}
 		
-	slotno = SimpleLruReadPage(DistributedLogCtl, page, localXid);
+	slotno = SimpleLruReadPage(DistributedLogCtl, page, true, localXid);
 	ptr = (DistributedLogEntry *) DistributedLogCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 	*distribTimeStamp = ptr->distribTimeStamp;
@@ -306,7 +300,7 @@ DistributedLog_ScanForPrevCommitted(
 			return false;
 		}
 			
-		slotno = SimpleLruReadPage(DistributedLogCtl, pageno, highXid);
+		slotno = SimpleLruReadPage(DistributedLogCtl, pageno, true, highXid);
 
 		for (xid = highXid; xid >= lowXid; xid--)
 		{
@@ -363,7 +357,7 @@ DistributedLog_ShmemSize(void)
 {
 	Size size;
 	
-	size = SimpleLruShmemSize(NUM_DISTRIBUTEDLOG_BUFFERS);
+	size = SimpleLruShmemSize(NUM_DISTRIBUTEDLOG_BUFFERS, 0);
 
 	size += DistributedLog_SharedShmemSize();
 
@@ -377,7 +371,7 @@ DistributedLog_ShmemInit(void)
 
 	/* Set up SLRU for the distributed log. */
 	DistributedLogCtl->PagePrecedes = DistributedLog_PagePrecedes;
-	SimpleLruInit(DistributedLogCtl, "DistributedLogCtl", NUM_DISTRIBUTEDLOG_BUFFERS,
+	SimpleLruInit(DistributedLogCtl, "DistributedLogCtl", NUM_DISTRIBUTEDLOG_BUFFERS, 0,
 				  DistributedLogControlLock, DISTRIBUTEDLOG_DIR);
 
 	/* Create or attach to the shared structure */
@@ -459,51 +453,6 @@ DistributedLog_ZeroPage(int page, bool writeXlog)
 
 /*
  * This must be called ONCE during postmaster or standalone-backend startup,
- * before recovery is performed.  We look to see if this is the first
- * time we have started after being an earlier version.  We detect this
- * by looking for the pg_distributedlog directory.
- */
-bool
-DistributedLog_UpgradeCheck(bool inRecovery)
-{
-	char		path[MAXPGPATH];
-	DIR		   *dir;
-	char		*distributedLogDir = makeRelativeToTxnFilespace(DISTRIBUTEDLOG_DIR);
-	
-	if (snprintf(path, MAXPGPATH, "%s", distributedLogDir) > MAXPGPATH)
-	{
-		ereport(ERROR, (errmsg("cannot form path: %s", distributedLogDir)));		
-	}
-	pfree(distributedLogDir);
-	
-	dir = opendir(path);
-	if (dir == NULL)
-	{
-		if (errno != ENOENT)
-			elog(ERROR, "Could not open directory \"%s\": %m", path);
-
-		if (inRecovery)
-			elog(ERROR, 
-			     "The directory \"%s\" is missing indicating we are upgrading to 3.1.1.5, but the system was not cleanly shutdown",
-			     path);
-
-		if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) < 0)
-			elog(ERROR,"Could not create directory \"%s\": %m\n",
-				 path);
-
-		DistributedLogUpgrade = true;
-
-		elog(LOG,"Created the directory \"%s\" for upgrade", path);
-		
-		return true;
-	}
-
-	return false;
-}
-
-
-/*
- * This must be called ONCE during postmaster or standalone-backend startup,
  * after StartupXLOG has initialized ShmemVariableCache->nextXid.
  */
 void
@@ -527,24 +476,6 @@ DistributedLog_Startup(
 	MIRRORED_LOCK;
 
 	LWLockAcquire(DistributedLogControlLock, LW_EXCLUSIVE);
-
-	if (DistributedLogUpgrade)
-	{
-		int	existsPage;
-
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			 "DistributedLog_Startup oldest active xid = %u and next xid = %u (page range is %d through %d)",
-			 oldestActiveXid, nextXid, startPage, endPage);
-		
-		for (existsPage = startPage; existsPage <= endPage; existsPage++)
-		{
-			if (!SimpleLruPageExists(DistributedLogCtl, existsPage))
-			{
-				DistributedLog_ZeroPage(existsPage, /* writeXLog */ false);
-				elog(LOG,"DistributedLog_Startup zeroed page %d", existsPage);
-			}
-		}
-	}
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
 		 "DistributedLog_Startup startPage %d, endPage %d", 
@@ -576,7 +507,7 @@ DistributedLog_Startup(
 
 		int			remainingEntries;
 
-		slotno = SimpleLruReadPage(DistributedLogCtl, endPage, nextXid);
+		slotno = SimpleLruReadPage(DistributedLogCtl, endPage, true, nextXid);
 		ptr = (DistributedLogEntry *) DistributedLogCtl->shared->page_buffer[slotno];
 		ptr += entryno;
 
@@ -785,7 +716,7 @@ DistributedLog_WriteZeroPageXlogRec(int page)
 	rdata.len = sizeof(int);
 	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
-	(void) XLogInsert(RM_DISTRIBUTEDLOG_ID, DISTRIBUTEDLOG_ZEROPAGE | XLOG_NO_TRAN, &rdata);
+	(void) XLogInsert(RM_DISTRIBUTEDLOG_ID, DISTRIBUTEDLOG_ZEROPAGE, &rdata);
 }
 
 /*
@@ -807,7 +738,7 @@ DistributedLog_WriteTruncateXlogRec(int page)
 	rdata.len = sizeof(int);
 	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
-	recptr = XLogInsert(RM_DISTRIBUTEDLOG_ID, DISTRIBUTEDLOG_TRUNCATE | XLOG_NO_TRAN, &rdata);
+	recptr = XLogInsert(RM_DISTRIBUTEDLOG_ID, DISTRIBUTEDLOG_TRUNCATE, &rdata);
 	XLogFlush(recptr);
 }
 

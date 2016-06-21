@@ -19,13 +19,15 @@ CREATE TABLE foo(
   fooid int, foosubid int, fooname text, primary key(fooid,foosubid)
   ) DISTRIBUTED BY (fooid, foosubid);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "foo_pkey" for table "foo"
-INSERT INTO foo VALUES(1,1,'Joe');
-INSERT INTO foo VALUES(1,2,'Ed');
-INSERT INTO foo VALUES(2,1,'Mary');
+INSERT INTO foo VALUES
+  (1,1,'Joe'),
+  (1,2,'Ed'),
+  (2,1,'Mary');
 CREATE TABLE foo2(fooid int, f2 int) DISTRIBUTED BY (fooid);
-INSERT INTO foo2 VALUES(1, 11);
-INSERT INTO foo2 VALUES(2, 22);
-INSERT INTO foo2 VALUES(1, 111);
+INSERT INTO foo2 VALUES
+  (1, 11),
+  (2, 22),
+  (1, 111);
 -- In Greenplum we do not support functions which call SQL from the segments
 -- for this reason we have rewritten this test to use plperl functions rather
 -- than SQL language functions.
@@ -98,9 +100,9 @@ select * from foo2, foost(3) z where foo2.f2 = z.f2;
 
 -- supposed to fail with ERROR - requires LATERAL
 select * from foo2, foost(foo2.fooid) z where foo2.f2 = z.f2;
-ERROR:  function expression in FROM may not refer to other relations of same query level
+ERROR:  function expression in FROM cannot refer to other relations of same query level
 LINE 1: select * from foo2, foost(foo2.fooid) z where foo2.f2 = z.f2...
-                            ^
+                                  ^
 -- function in subselect, without correlation
 select * from foo2 
 where f2 in (select f2 from foost(1) z where z.fooid = foo2.fooid) 
@@ -167,8 +169,6 @@ CONTEXT:  PL/Perl function "foor"
 --    Fails: record type not registered
 select (foor(1)).*;
 ERROR:  record type has not been registered
-LINE 1: select (foor(1)).*;
-                ^
 -- function in from clause 
 --    Fails: column definition list needed for "record"
 select * from foor(1);
@@ -199,9 +199,9 @@ select * from foo2, foor(3) z(fooid int, f2 int) where foo2.f2 = z.f2;
 -- supposed to fail with ERROR - requires LATERAL
 select * from foo2, foor(foo2.fooid) z(fooid int, f2 int) 
 where foo2.f2 = z.f2;
-ERROR:  function expression in FROM may not refer to other relations of same query level
+ERROR:  function expression in FROM cannot refer to other relations of same query level
 LINE 1: select * from foo2, foor(foo2.fooid) z(fooid int, f2 int) 
-                            ^
+                                 ^
 -- function in subselect, without correlation
 select * from foo2 
 where f2 in (select f2 from foor(1) z(fooid int, f2 int) 
@@ -308,9 +308,9 @@ select * from foo2, fooro(3) z where foo2.f2 = z.f2;
 
 -- supposed to fail with ERROR - requires LATERAL
 select * from foo2, fooro(foo2.fooid) z where foo2.f2 = z.f2;
-ERROR:  function expression in FROM may not refer to other relations of same query level
+ERROR:  function expression in FROM cannot refer to other relations of same query level
 LINE 1: select * from foo2, fooro(foo2.fooid) z where foo2.f2 = z.f2...
-                            ^
+                                  ^
 -- function in subselect, without correlation
 select * from foo2 
 where f2 in (select f2 from fooro(1) z where z.fooid = foo2.fooid) 
@@ -413,9 +413,9 @@ select * from foo2, foot(3) z where foo2.f2 = z.f2;
 
 -- supposed to fail with ERROR - requires LATERAL
 select * from foo2, foot(foo2.fooid) z where foo2.f2 = z.f2;
-ERROR:  function expression in FROM may not refer to other relations of same query level
+ERROR:  function expression in FROM cannot refer to other relations of same query level
 LINE 1: select * from foo2, foot(foo2.fooid) z where foo2.f2 = z.f2;
-                            ^
+                                 ^
 -- function in subselect, without correlation
 select * from foo2 
 where f2 in (select f2 from foot(1) z where z.fooid = foo2.fooid) 
@@ -795,9 +795,7 @@ SELECT dup(22);
 (1 row)
 
 SELECT dup('xyz');	-- fails
-ERROR:  could not determine anyarray/anyelement type because input has type "unknown"
-LINE 1: SELECT dup('xyz');
-               ^
+ERROR:  could not determine polymorphic type because input has type "unknown"
 SELECT dup('xyz'::text);
         dup        
 -------------------
@@ -824,5 +822,5 @@ DROP FUNCTION dup(anyelement);
 CREATE FUNCTION bad (f1 int, out f2 anyelement, out f3 anyarray)
 AS 'select $1, array[$1,$1]' LANGUAGE sql;
 ERROR:  cannot determine result data type
-DETAIL:  A function returning "anyarray" or "anyelement" must have at least one argument of either type.
+DETAIL:  A function returning a polymorphic type must have at least one polymorphic argument.
 reset optimizer_segments;

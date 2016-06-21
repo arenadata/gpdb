@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hash.c,v 1.91 2006/07/14 14:52:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hash.c,v 1.98.2.1 2008/11/13 17:42:18 tgl Exp $
  *
  * NOTES
  *	  This file contains only the public interface routines.
@@ -67,7 +67,7 @@ hashbuild(PG_FUNCTION_ARGS)
 	buildstate.indtuples = 0;
 
 	/* do the heap scan */
-	reltuples = IndexBuildScan(heap, index, indexInfo,
+	reltuples = IndexBuildScan(heap, index, indexInfo, true,
 							   hashbuildCallback, (void *) &buildstate);
 
 	/*
@@ -192,7 +192,7 @@ hashgettuple(PG_FUNCTION_ARGS)
 	 * appropriate direction.  If we haven't done so yet, we call a routine to
 	 * get the first item in the scan.
 	 */
-	if (ItemPointerIsValid(&(scan->currentItemData)))
+	if (ItemPointerIsValid(&(so->hashso_curpos)))
 	{
 		/*
 		 * Check to see if we should kill the previously-fetched tuple.
@@ -200,11 +200,11 @@ hashgettuple(PG_FUNCTION_ARGS)
 		if (scan->kill_prior_tuple)
 		{
 			/*
-			 * Yes, so mark it by setting the LP_DELETE bit in the item flags.
+			 * Yes, so mark it by setting the LP_DEAD state in the item flags.
 			 */
-			offnum = ItemPointerGetOffsetNumber(&(scan->currentItemData));
+			offnum = ItemPointerGetOffsetNumber(&(so->hashso_curpos));
 			page = BufferGetPage(so->hashso_curbuf);
-			PageGetItemId(page, offnum)->lp_flags |= LP_DELETE;
+			ItemIdMarkDead(PageGetItemId(page, offnum));
 
 			/*
 			 * Since this can be redone later if needed, it's treated the same
@@ -229,9 +229,9 @@ hashgettuple(PG_FUNCTION_ARGS)
 	{
 		while (res)
 		{
-			offnum = ItemPointerGetOffsetNumber(&(scan->currentItemData));
+			offnum = ItemPointerGetOffsetNumber(&(so->hashso_curpos));
 			page = BufferGetPage(so->hashso_curbuf);
-			if (!ItemIdDeleted(PageGetItemId(page, offnum)))
+			if (!ItemIdIsDead(PageGetItemId(page, offnum)))
 				break;
 			res = _hash_next(scan, dir);
 		}
@@ -283,7 +283,7 @@ hashgetmulti(PG_FUNCTION_ARGS)
 		/*
 		 * Start scan, or advance to next tuple.
 		 */
-		if (ItemPointerIsValid(&(scan->currentItemData)))
+		if (ItemPointerIsValid(&(so->hashso_curpos)))
 			res = _hash_next(scan, ForwardScanDirection);
 		else
 			res = _hash_first(scan, ForwardScanDirection);
@@ -298,9 +298,9 @@ hashgetmulti(PG_FUNCTION_ARGS)
 				Page		page;
 				OffsetNumber offnum;
 
-				offnum = ItemPointerGetOffsetNumber(&(scan->currentItemData));
+				offnum = ItemPointerGetOffsetNumber(&(so->hashso_curpos));
 				page = BufferGetPage(so->hashso_curbuf);
-				if (!ItemIdDeleted(PageGetItemId(page, offnum)))
+				if (!ItemIdIsDead(PageGetItemId(page, offnum)))
 					break;
 				res = _hash_next(scan, ForwardScanDirection);
 			}
@@ -347,6 +347,10 @@ hashbeginscan(PG_FUNCTION_ARGS)
 	so->hashso_bucket_valid = false;
 	so->hashso_bucket_blkno = 0;
 	so->hashso_curbuf = so->hashso_mrkbuf = InvalidBuffer;
+	/* set positions invalid (this will cause _hash_first call) */
+	ItemPointerSetInvalid(&(so->hashso_curpos));
+	ItemPointerSetInvalid(&(so->hashso_mrkpos));
+
 	scan->opaque = so;
 
 	/* register scan in case we change pages it's using */
@@ -382,11 +386,11 @@ hashrescan(PG_FUNCTION_ARGS)
 		if (so->hashso_bucket_blkno)
 			_hash_droplock(rel, so->hashso_bucket_blkno, HASH_SHARE);
 		so->hashso_bucket_blkno = 0;
-	}
 
-	/* set positions invalid (this will cause _hash_first call) */
-	ItemPointerSetInvalid(&(scan->currentItemData));
-	ItemPointerSetInvalid(&(scan->currentMarkData));
+		/* set positions invalid (this will cause _hash_first call) */
+		ItemPointerSetInvalid(&(so->hashso_curpos));
+		ItemPointerSetInvalid(&(so->hashso_mrkpos));
+	}
 
 	/* Update scan key, if a new one is given */
 	if (scankey && scan->numberOfKeys > 0)
@@ -428,10 +432,6 @@ hashendscan(PG_FUNCTION_ARGS)
 		_hash_droplock(rel, so->hashso_bucket_blkno, HASH_SHARE);
 	so->hashso_bucket_blkno = 0;
 
-	/* be tidy */
-	ItemPointerSetInvalid(&(scan->currentItemData));
-	ItemPointerSetInvalid(&(scan->currentMarkData));
-
 	pfree(so);
 	scan->opaque = NULL;
 
@@ -452,14 +452,14 @@ hashmarkpos(PG_FUNCTION_ARGS)
 	if (BufferIsValid(so->hashso_mrkbuf))
 		_hash_dropbuf(rel, so->hashso_mrkbuf);
 	so->hashso_mrkbuf = InvalidBuffer;
-	ItemPointerSetInvalid(&(scan->currentMarkData));
+	ItemPointerSetInvalid(&(so->hashso_mrkpos));
 
-	/* bump pin count on currentItemData and copy to currentMarkData */
-	if (ItemPointerIsValid(&(scan->currentItemData)))
+	/* bump pin count on current buffer and copy to marked buffer */
+	if (ItemPointerIsValid(&(so->hashso_curpos)))
 	{
 		IncrBufferRefCount(so->hashso_curbuf);
 		so->hashso_mrkbuf = so->hashso_curbuf;
-		scan->currentMarkData = scan->currentItemData;
+		so->hashso_mrkpos = so->hashso_curpos;
 	}
 
 	PG_RETURN_VOID();
@@ -479,14 +479,14 @@ hashrestrpos(PG_FUNCTION_ARGS)
 	if (BufferIsValid(so->hashso_curbuf))
 		_hash_dropbuf(rel, so->hashso_curbuf);
 	so->hashso_curbuf = InvalidBuffer;
-	ItemPointerSetInvalid(&(scan->currentItemData));
+	ItemPointerSetInvalid(&(so->hashso_curpos));
 
-	/* bump pin count on currentMarkData and copy to currentItemData */
-	if (ItemPointerIsValid(&(scan->currentMarkData)))
+	/* bump pin count on marked buffer and copy to current buffer */
+	if (ItemPointerIsValid(&(so->hashso_mrkpos)))
 	{
 		IncrBufferRefCount(so->hashso_mrkbuf);
 		so->hashso_curbuf = so->hashso_mrkbuf;
-		scan->currentItemData = scan->currentMarkData;
+		so->hashso_curpos = so->hashso_mrkpos;
 	}
 
 	PG_RETURN_VOID();
@@ -534,7 +534,7 @@ hashbulkdelete(PG_FUNCTION_ARGS)
 	// -------- MirroredLock ----------
 	MIRROREDLOCK_BUFMGR_LOCK;
 	
-	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ);
+	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ, LH_META_PAGE);
 	_hash_checkpage(rel, metabuf, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
 	orig_maxbucket = metap->hashm_maxbucket;
@@ -576,8 +576,9 @@ loop_top:
 
 			vacuum_delay_point();
 
-			buf = _hash_getbuf(rel, blkno, HASH_WRITE);
-			_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
+			buf = _hash_getbuf_with_strategy(rel, blkno, HASH_WRITE,
+										   LH_BUCKET_PAGE | LH_OVERFLOW_PAGE,
+											 info->strategy);
 			page = BufferGetPage(buf);
 			opaque = (HashPageOpaque) PageGetSpecialPointer(page);
 			Assert(opaque->hasho_bucket == cur_bucket);
@@ -625,7 +626,8 @@ loop_top:
 
 		/* If we deleted anything, try to compact free space */
 		if (bucket_dirty)
-			_hash_squeezebucket(rel, cur_bucket, bucket_blkno);
+			_hash_squeezebucket(rel, cur_bucket, bucket_blkno,
+								info->strategy);
 
 		/* Release bucket lock */
 		_hash_droplock(rel, bucket_blkno, HASH_EXCLUSIVE);
@@ -635,8 +637,7 @@ loop_top:
 	}
 
 	/* Write-lock metapage and check for split since we started */
-	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_WRITE);
-	_hash_checkpage(rel, metabuf, LH_META_PAGE);
+	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_WRITE, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
 
 	if (cur_maxbucket != metap->hashm_maxbucket)

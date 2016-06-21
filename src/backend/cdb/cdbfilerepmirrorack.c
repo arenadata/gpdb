@@ -45,10 +45,6 @@ static int FileRepAckMirror_ConstructAndInsertMessage(
  *			e) insert message header, message header crc and message body into ack shared memory
  *			f) set filerep message state to 'ready' so that message can be consumed
  *			g) signal send ack process so message will be sent to primary immediately
- *
- *	NOTE
- *		Only FileRepOperationVerify messages has body message. That means message body length and message body crc are
- *		different than zero. 
  */
 static int 
 FileRepAckMirror_ConstructAndInsertMessage(
@@ -70,8 +66,7 @@ FileRepAckMirror_ConstructAndInsertMessage(
 	uint32						msgLength = 0;
 	uint32						spareField = 0;
 	
-	if (fileRepOperation != FileRepOperationVerify)
-		Assert(messageBodyLength == 0);
+	Assert(messageBodyLength == 0);
 	
 	msgLength = sizeof(FileRepMessageHeader_s) + sizeof(pg_crc32) + messageBodyLength;
 	/*
@@ -137,7 +132,6 @@ FileRepAckMirror_ConstructAndInsertMessage(
 		case FileRepOperationReconcileXLogEof:
 		case FileRepOperationValidation:
 		case FileRepOperationCreate:
-		case FileRepOperationVerify:	
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
 			
@@ -175,21 +169,6 @@ FileRepAckMirror_ConstructAndInsertMessage(
 						   FILEREP_UNDEFINED,
 						   fileRepMessageHeader->messageCount);	
 
-	if (Debug_filerep_print)
-		ereport(LOG,
-				(errmsg("M_ConstructAndInsertMessageAck construct and insert ack message "
-						"msg header crc '%u' message body length '%d' position insert '%p' ack state '%s' ",
-						fileRepMessageHeaderCrcLocal,
-						messageBodyLength,
-						msgPositionInsert,
-						FileRepAckStateToString[fileRepAckState]),
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   fileRepOperation,
-								   fileRepMessageHeader->messageCount),
-				 FileRep_errdetail_ShmemAck(),
-				 FileRep_errcontext()));			
-	
 	if (messageBodyLength)
 	{
 		fileRepMessageBody = (char *) (msgPositionInsert + 
@@ -452,14 +431,7 @@ FileRepAckMirror_RunSender(void)
 		fileRepMessageHeader = (FileRepMessageHeader_s*) (fileRepAckShmem->positionConsume + 
 														  sizeof(FileRepShmemMessageDescr_s));
 
-		if (fileRepMessageHeader->fileRepOperation == FileRepOperationVerify)
-		{
-			messageType = FileRepMessageTypeVerify;
-		} 
-		else 
-		{
-			messageType = FileRepMessageTypeXLog;
-		}
+		messageType = FileRepMessageTypeXLog;
 		
 		if (! FileRepConnClient_SendMessage(
 						messageType,

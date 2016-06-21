@@ -8,17 +8,19 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gin/gininsert.c,v 1.5.2.1 2007/06/05 12:48:21 teodor Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gin/gininsert.c,v 1.11.2.2 2009/03/24 22:06:24 tgl Exp $
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
+
 #include "access/genam.h"
 #include "access/gin.h"
 #include "catalog/index.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
 #include "cdb/cdbfilerepprimary.h"
+
 
 typedef struct
 {
@@ -137,8 +139,7 @@ addItemPointersToTuple(Relation index, GinState *ginstate, GinBtreeStack *stack 
 }
 
 /*
- * Inserts only one entry to the index, but it can adds more that 1
- * ItemPointer.
+ * Inserts only one entry to the index, but it can add more than 1 ItemPointer.
  */
 static void
 ginEntryInsert(Relation index, GinState *ginstate, Datum value, ItemPointerData *items, uint32 nitem, bool isBuild)
@@ -203,13 +204,13 @@ ginEntryInsert(Relation index, GinState *ginstate, Datum value, ItemPointerData 
 
 /*
  * Saves indexed value in memory accumulator during index creation
- * Function isnt use during normal insert
+ * Function isn't used during normal insert
  */
 static uint32
 ginHeapTupleBulkInsert(GinBuildState *buildstate, Datum value, ItemPointer heapptr)
 {
 	Datum	   *entries;
-	uint32		nentries;
+	int32		nentries;
 	MemoryContext oldCtx;
 
 	oldCtx = MemoryContextSwitchTo(buildstate->funcCtx);
@@ -231,7 +232,6 @@ static void
 ginBuildCallback(Relation index, ItemPointer tupleId, Datum *values,
 				 bool *isnull, bool tupleIsAlive __attribute__((unused)), void *state)
 {
-
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
 
@@ -242,11 +242,10 @@ ginBuildCallback(Relation index, ItemPointer tupleId, Datum *values,
 
 	buildstate->indtuples += ginHeapTupleBulkInsert(buildstate, *values, tupleId);
 
-	/*
-	 * we use only half maintenance_work_mem, because there is some leaks
-	 * during insertion and extract values
-	 */
-	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L / 2L)
+	/* If we've maxed out our available memory, dump everything to the index */
+	/* Also dump if the tree seems to be getting too unbalanced */
+	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L ||
+		buildstate->accum.maxdepth > GIN_MAX_TREE_DEPTH)
 	{
 		ItemPointerData *list;
 		Datum		entry;
@@ -334,8 +333,11 @@ ginbuild(PG_FUNCTION_ARGS)
 	buildstate.accum.ginstate = &buildstate.ginstate;
 	ginInitBA(&buildstate.accum);
 
-	/* do the heap scan */
-	reltuples = IndexBuildScan(heap, index, indexInfo,
+	/*
+	 * Do the heap scan.  We disallow sync scan here because dataPlaceToPage
+	 * prefers to receive tuples in TID order.
+	 */
+	reltuples = IndexBuildScan(heap, index, indexInfo, false,
 							   ginBuildCallback, (void *) &buildstate);
 
 	oldCtx = MemoryContextSwitchTo(buildstate.tmpCtx);
@@ -363,7 +365,7 @@ static uint32
 ginHeapTupleInsert(Relation index, GinState *ginstate, Datum value, ItemPointer item)
 {
 	Datum	   *entries;
-	uint32		i,
+	int32		i,
 				nentries;
 
 	entries = extractEntriesSU(ginstate, value, &nentries);

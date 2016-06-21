@@ -27,8 +27,9 @@
 #include "gpopt/translate/CCTEListEntry.h"
 
 #include "gpos/base.h"
-#include "dxl/operators/CDXLNode.h"
-#include "md/IMDType.h"
+
+#include "naucrates/dxl/operators/CDXLNode.h"
+#include "naucrates/md/IMDType.h"
 
 // fwd declarations
 namespace gpopt
@@ -331,7 +332,7 @@ namespace gpdxl
 				);
 
 			// translate a target list entry or a join alias entry into a project element
-			CDXLNode *PdxlnPrEFromGPDBExpr(Expr *pexpr, CHAR *szAliasName, BOOL fInsistNewColIds = false);
+			CDXLNode *PdxlnPrEFromGPDBExpr(Expr *pexpr, const CHAR *szAliasName, BOOL fInsistNewColIds = false);
 
 			// translate a CTE into a DXL logical CTE operator
 			CDXLNode *PdxlnFromCTE

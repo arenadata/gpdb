@@ -24,7 +24,7 @@ JAR_FILES = dist/gphd-1.0-gnet-1.0.0.1.jar \
 
 JAVADOC_TARS = gnet-1.1-javadoc.tar gnet-1.0-javadoc.tar
 
-all: $(JAR_FILES) $(JAVADOC_TARS)
+all: $(JAR_FILES) unittest $(JAVADOC_TARS)
 
 dist/gphd-1.0-gnet-1.0.0.1.jar:
 	$(ANT) clean
@@ -126,6 +126,7 @@ gnet-1.0-javadoc.tar:  $(JAR_FILES)
 install-jars: $(JAR_FILES)
 	$(INSTALL_PROGRAM) dist/*.jar '$(DESTDIR)$(libdir)/hadoop/'
 	$(INSTALL_PROGRAM) hadoop_env.sh$(X) '$(DESTDIR)$(libdir)/hadoop/hadoop_env.sh$(X)'
+	$(INSTALL_PROGRAM) jaas.conf$(X) '$(DESTDIR)$(libdir)/hadoop/jaas.conf$(X)'
 
 .PHONY: install-javadocs
 install-javadocs: $(JAVADOC_TARS)
@@ -148,6 +149,7 @@ installdirs:
 uninstall:
 	rm -f '$(DESTDIR)$(bindir)/*.jar'
 	rm -f '$(DESTDIR)$(bindir)/hadoop_env.sh$(X)'
+	rm -f '$(DESTDIR)$(bindir)/jaas.conf$(X)'
 	rm -f '$(DESTDIR)$(datadir)/cdb_init.d/gphdfs.sql'
 
 clean: clean-extras

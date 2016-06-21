@@ -917,7 +917,7 @@ ECPGDisconnect: SQL_DISCONNECT dis_name { $$ = $2; }
 		;
 
 dis_name: connection_object			{ $$ = $1; }
-		| CURRENT			{ $$ = make_str("\"CURRENT\""); }
+		| CURRENT_P			{ $$ = make_str("\"CURRENT\""); }
 		| ALL				{ $$ = make_str("\"ALL\""); }
 		| /* EMPTY */			{ $$ = make_str("\"CURRENT\""); }
 		;
@@ -1453,7 +1453,7 @@ ColLabel:  ECPGColLabel				{ $$ = $1; }
 
 ECPGColLabelCommon:  ecpg_ident			{ $$ = $1; }
 		| col_name_keyword		{ $$ = $1; }
-		| func_name_keyword	{ $$ = $1; }
+		| type_func_name_keyword	{ $$ = $1; }
 		| ECPGKeywords_vanames		{ $$ = $1; }
 		;
 
@@ -1600,12 +1600,12 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| INDEXES			{ $$ = make_str("indexes"); }
 		| INHERIT			{ $$ = make_str("inherit"); }
 		| INHERITS			{ $$ = make_str("inherits"); }
+		| INLINE_P			{ $$ = make_str("inline"); }
 		| INSENSITIVE		{ $$ = make_str("insensitive"); }
 		| INSERT			{ $$ = make_str("insert"); }
 		| INSTEAD			{ $$ = make_str("instead"); }
 		| ISOLATION			{ $$ = make_str("isolation"); }
 		| KEY				{ $$ = make_str("key"); }
-		| LANCOMPILER		{ $$ = make_str("lancompiler"); }
 		| LANGUAGE			{ $$ = make_str("language"); }
 		| LARGE_P			{ $$ = make_str("large"); }
 		| LAST_P			{ $$ = make_str("last"); }

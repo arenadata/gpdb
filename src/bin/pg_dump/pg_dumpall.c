@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dumpall.c,v 1.85.2.1 2007/05/15 20:20:24 alvherre Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dumpall.c,v 1.100 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -65,9 +65,10 @@ static bool output_clean = false;
 static bool skip_acls = false;
 static bool verbose = false;
 static bool ignoreVersion = false;
-static bool resource_queues = false;
 static bool filespaces = false;
 
+static int	resource_queues = 0;
+static int	roles_only = 0;
 static int	disable_dollar_quoting = 0;
 static int	disable_triggers = 0;
 static int	use_setsessauth = 0;
@@ -83,10 +84,10 @@ main(int argc, char *argv[])
 	char	   *pgport = NULL;
 	char	   *pguser = NULL;
 	char	   *pgdb = NULL;
-
 	enum trivalue prompt_password = TRI_DEFAULT;
 	bool		data_only = false;
 	bool		globals_only = false;
+	bool		tablespaces_only = false;
 	bool		schema_only = false;
 	static int	gp_migrator = 0;
 	bool		gp_syntax = false;
@@ -113,20 +114,22 @@ main(int argc, char *argv[])
 		{"port", required_argument, NULL, 'p'},
 		{"schema-only", no_argument, NULL, 's'},
 		{"superuser", required_argument, NULL, 'S'},
+		{"tablespaces-only", no_argument, NULL, 't'},
 		{"username", required_argument, NULL, 'U'},
 		{"verbose", no_argument, NULL, 'v'},
 		{"no-password", no_argument, NULL, 'w'},
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
-		{"resource-queues", no_argument, NULL, 'r'},
-		{"filespaces", no_argument, NULL, 'f'},
+		{"filespaces", no_argument, NULL, 'F'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
 		 */
 		{"disable-dollar-quoting", no_argument, &disable_dollar_quoting, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
+		{"resource-queues", no_argument, &resource_queues, 1},
+		{"roles-only", no_argument, &roles_only, 1},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 
 		/* START MPP ADDITION */
@@ -184,7 +187,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acdDf:Fgh:il:oOp:rsS:U:vwWxX:", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acdDf:Fgh:il:oOp:rsS:tU:vwWxX:", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -230,7 +233,6 @@ main(int argc, char *argv[])
 				/* ignored, deprecated option */
 				break;
 
-
 			case 'l':
 				pgdb = optarg;
 				break;
@@ -252,8 +254,14 @@ main(int argc, char *argv[])
 #endif
 				break;
 
+			/*
+			 * Both Greenplum and PostgreSQL have used -r but for different
+			 * options, disallow the short option entirely to avoid confusion
+			 * and require the use of long options for the conflicting pair.
+			 */
 			case 'r':
-				resource_queues = true;
+				fprintf(stderr, _("-r option is not supported. Did you mean --roles-only or --resource-queues?\n"));
+				exit(1);
 				break;
 
 			case 'F':
@@ -271,6 +279,10 @@ main(int argc, char *argv[])
 #else
 				appendPQExpBuffer(pgdumpopts, " -S \"%s\"", optarg);
 #endif
+				break;
+
+			case 't':
+				tablespaces_only = true;
 				break;
 
 			case 'U':
@@ -328,7 +340,7 @@ main(int argc, char *argv[])
 				/* gp-format */
 				appendPQExpBuffer(pgdumpopts, " --gp-syntax");
 				gp_syntax = true;
-				resource_queues = true; /* -r is implied by --gp-syntax */
+				resource_queues = 1; /* --resource-queues is implied by --gp-syntax */
 				break;
 			case 2:
 				/* no-gp-format */
@@ -351,12 +363,42 @@ main(int argc, char *argv[])
 		appendPQExpBuffer(pgdumpopts, " --disable-triggers");
 	if (use_setsessauth)
 		appendPQExpBuffer(pgdumpopts, " --use-set-session-authorization");
+	if (roles_only)
+		appendPQExpBuffer(pgdumpopts, " --roles-only");
 
 	/* Complain if any arguments remain */
 	if (optind < argc)
 	{
 		fprintf(stderr, _("%s: too many command-line arguments (first is \"%s\")\n"),
 				progname, argv[optind]);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit(1);
+	}
+
+	/* Make sure the user hasn't specified a mix of globals-only options */
+	if (globals_only && roles_only)
+	{
+		fprintf(stderr, _("%s: options -g/--globals-only and -r/--roles-only cannot be used together\n"),
+				progname);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit(1);
+	}
+
+	if (globals_only && tablespaces_only)
+	{
+		fprintf(stderr, _("%s: options -g/--globals-only and -t/--tablespaces-only cannot be used together\n"),
+				progname);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit(1);
+	}
+
+	if (roles_only && tablespaces_only)
+	{
+		fprintf(stderr, _("%s: options -r/--roles-only and -t/--tablespaces-only cannot be used together\n"),
+				progname);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 				progname);
 		exit(1);
@@ -441,38 +483,44 @@ main(int argc, char *argv[])
 	{
 		/* Replicate encoding and std_strings in output */
 		fprintf(OPF, "SET client_encoding = '%s';\n",
-			   pg_encoding_to_char(encoding));
+				pg_encoding_to_char(encoding));
 		fprintf(OPF, "SET standard_conforming_strings = %s;\n", std_strings);
 		if (strcmp(std_strings, "off") == 0)
 			fprintf(OPF, "SET escape_string_warning = 'off';\n");
 		fprintf(OPF, "\n");
 
-		/* Dump Resource Queues */
-		if (resource_queues)
-			dumpResQueues(conn);
+		if (!tablespaces_only)
+		{
+			/* Dump Resource Queues */
+			if (resource_queues)
+				dumpResQueues(conn);
 
-		/* Dump roles (users) */
-		dumpRoles(conn);
+			/* Dump roles (users) */
+			dumpRoles(conn);
 
-		/* Dump role memberships */
-		dumpRoleMembership(conn);
+			/* Dump role memberships */
+			dumpRoleMembership(conn);
 
-		/* Dump role constraints */
-		dumpRoleConstraints(conn);
+			/* Dump role constraints */
+			dumpRoleConstraints(conn);
 
-		/* Dump filespaces */
-		if (filespaces)
-			dumpFilespaces(conn);
+			/* Dump filespaces */
+			if (filespaces)
+				dumpFilespaces(conn);
+		}
 
-		/* Dump tablespaces */
-		dumpTablespaces(conn);
+		if (!roles_only)
+		{
+			/* Dump tablespaces */
+			dumpTablespaces(conn);
+		}
 
 		/* Dump CREATE DATABASE commands */
-		if (!globals_only)
+		if (!globals_only && !roles_only && !tablespaces_only)
 			dumpCreateDB(conn);
 	}
 
-	if (!globals_only)
+	if (!globals_only && !roles_only && !tablespaces_only)
 		dumpDatabases(conn);
 
 	PQfinish(conn);
@@ -507,17 +555,19 @@ help(void)
 	printf(_("  -c, --clean              clean (drop) databases before recreating\n"));
 	printf(_("  -d, --inserts            dump data as INSERT, rather than COPY, commands\n"));
 	printf(_("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
-	printf(_("  -f, --filespaces         dump filespace data\n"));
+	printf(_("  -F, --filespaces         dump filespace data\n"));
 	printf(_("  -g, --globals-only       dump only global objects, no databases\n"));
 	printf(_("  -o, --oids               include OIDs in dump\n"));
 	printf(_("  -O, --no-owner           skip restoration of object ownership\n"));
-	printf(_("  -r, --resource-queues    dump resource queue data\n"));
 	printf(_("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME     specify the superuser user name to use in the dump\n"));
+	printf(_("  -t, --tablespaces-only   dump only tablespaces, no databases or roles\n"));
 	printf(_("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));
 	printf(_("  --disable-dollar-quoting\n"
 			 "                           disable dollar quoting, use SQL standard quoting\n"));
 	printf(_("  --disable-triggers       disable triggers during data-only restore\n"));
+	printf(_("  --resource-queues        dump resource queue data\n"));
+	printf(_("  --roles-only             dump only roles, no databases or tablespaces\n"));
 	printf(_("  --use-set-session-authorization\n"
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
@@ -536,7 +586,7 @@ help(void)
 
 	printf(_("\nIf -f/--file is not used, then the SQL script will be written to the standard\n"
 			 "output.\n\n"));
-	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
 }
 
 
@@ -1503,13 +1553,29 @@ runPgDump(const char *dbname)
 	 * Win32 has to use double-quotes for args, rather than single quotes.
 	 * Strangely enough, this is the only place we pass a database name on the
 	 * command line, except "postgres" which doesn't need quoting.
+	 *
+	 * If we have a filename, use the undocumented plain-append pg_dump
+	 * format.
 	 */
+	if (filename)
+	{
 #ifndef WIN32
-	appendPQExpBuffer(cmd, "%s\"%s\" %s -Fp '", SYSTEMQUOTE, pg_dump_bin,
+		appendPQExpBuffer(cmd, "%s\"%s\" %s -Fa '", SYSTEMQUOTE, pg_dump_bin,
 #else
-	appendPQExpBuffer(cmd, "%s\"%s\" %s -Fp \"", SYSTEMQUOTE, pg_dump_bin,
+		appendPQExpBuffer(cmd, "%s\"%s\" %s -Fa \"", SYSTEMQUOTE, pg_dump_bin,
 #endif
-					  pgdumpopts->data);
+						  pgdumpopts->data);
+	}
+	else
+	{
+#ifndef WIN32
+		appendPQExpBuffer(cmd, "%s\"%s\" %s -Fp '", SYSTEMQUOTE, pg_dump_bin,
+#else
+		appendPQExpBuffer(cmd, "%s\"%s\" %s -Fp \"", SYSTEMQUOTE, pg_dump_bin,
+#endif
+						  pgdumpopts->data);
+	}
+
 
 	/* Shell quoting is not quite like SQL quoting, so can't use fmtId */
 	for (p = dbname; *p; p++)

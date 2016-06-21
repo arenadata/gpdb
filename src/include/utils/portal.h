@@ -39,7 +39,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/portal.h,v 1.71 2006/10/04 00:30:10 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/portal.h,v 1.78.2.1 2010/07/05 09:27:31 heikki Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -49,10 +49,7 @@
 #include "executor/execdesc.h"
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
-
-
-
-struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
+#include "utils/tuplestore.h"
 
 /*
  * We have several execution strategies for Portals, depending on what
@@ -98,13 +95,13 @@ typedef enum PortalStrategy
  */
 typedef enum PortalStatus
 {
-	PORTAL_NEW = 0,				/* in process of creation */
+	PORTAL_NEW = 0,				/* freshly created */
+	PORTAL_DEFINED,				/* PortalDefineQuery done */
 	PORTAL_READY,				/* PortalStart complete, can run it */
 	PORTAL_QUEUE, 				/* portal is queued (cannot delete it) */
 	PORTAL_ACTIVE,				/* portal is running (can't delete it) */
 	PORTAL_DONE,				/* portal is finished (don't re-run it) */
-	PORTAL_FAILED,				/* portal got error (can't re-run it) */
-	PORTAL_STATUSMAX
+	PORTAL_FAILED				/* portal got error (can't re-run it) */
 } PortalStatus;
 
 /*
@@ -139,16 +136,8 @@ typedef struct PortalData
 	/* The query or queries the portal will execute */
 	const char *sourceText;		/* text of query (as of PlannedStmt, never NULL) */
 	const char *commandTag;		/* command tag for original query */
-	List	   *stmts;			/* PlannedStmts and/or utility Querys */
-	MemoryContext queryContext; /* where the parse trees live */
-
-	/*
-	 * Note: queryContext effectively identifies which prepared statement the
-	 * portal depends on, if any.  The queryContext is *not* owned by the
-	 * portal and is not to be deleted by portal destruction.  (But for a
-	 * cursor it is the same as "heap", and that context is deleted by portal
-	 * destruction.)  The plan trees may be in either queryContext or heap.
-	 */
+	List	   *stmts;			/* PlannedStmts and/or utility statements */
+	CachedPlan *cplan;			/* CachedPlan, if stmts are from one */
 
 	ParamListInfo portalParams; /* params to pass to query */
 
@@ -157,11 +146,17 @@ typedef struct PortalData
 	int			cursorOptions;	/* DECLARE CURSOR option bits */
 
 	/* Status data */
-	PortalStatus portal_status;		/* see above */
-	bool	releaseResLock;	/* true => resscheduler lock must be released */
+	PortalStatus status;		/* see above */
+	bool	holdingResLock;	/* true => resscheduler lock must be released, however,
+				 * in an extreme case when a portal receives a SIGTERM just
+				 * after being granted the resource lock, the holding ResLock
+				 * is not set but it is indeed holding the ResLock */
+	bool		portalPinned;	/* a pinned portal can't be dropped */
 
 	/* If not NULL, Executor is active; call ExecutorEnd eventually: */
 	QueryDesc  *queryDesc;		/* info needed for executor invocation */
+
+	QueryDispatchDesc *ddesc;	/* extra info dispatched from QD to QEs */
 
 	/* If portal returns tuples, this is their tupdesc: */
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
@@ -173,7 +168,7 @@ typedef struct PortalData
 	 * PORTAL_UTIL_SELECT query.  (A cursor held past the end of its
 	 * transaction no longer has any active executor state.)
 	 */
-	struct Tuplestorestate *holdStore; /* store for holdable cursors */
+	Tuplestorestate *holdStore; /* store for holdable cursors */
 	MemoryContext holdContext;	/* memory containing holdStore */
 
 	/*
@@ -193,15 +188,11 @@ typedef struct PortalData
 	/* Presentation data, primarily used by the pg_cursors system view */
 	TimestampTz creation_time;	/* time at which this portal was defined */
 	bool		visible;		/* include this portal in pg_cursors? */
-	
-	/* MPP: is this portal a CURSOR, or protocol level portal? */	
+
+	/* MPP: is this portal a CURSOR, or protocol level portal? */
 	bool		is_extended_query; /* simple or extended query protocol? */
 	bool		is_simply_updatable;
 } PortalData;
-
-extern PortalStatus PortalGetStatus(PortalData *p);
-extern const char *PortalGetStatusString(PortalData *p);
-extern void PortalSetStatus(PortalData *p, PortalStatus s);
 
 /*
  * PortalIsValid
@@ -233,8 +224,9 @@ extern void AtSubAbort_Portals(SubTransactionId mySubid,
 extern void AtSubCleanup_Portals(SubTransactionId mySubid);
 extern Portal CreatePortal(const char *name, bool allowDup, bool dupSilent);
 extern Portal CreateNewPortal(void);
+extern void PinPortal(Portal portal);
+extern void UnpinPortal(Portal portal);
 extern void PortalDrop(Portal portal, bool isTopCommit);
-extern void DropDependentPortals(MemoryContext queryContext);
 extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 				  const char *prepStmtName,
@@ -242,11 +234,10 @@ extern void PortalDefineQuery(Portal portal,
 				  NodeTag	  sourceTag, /* GPDB */
 				  const char *commandTag,
 				  List *stmts,
-//				  List *parseTrees,
-//				  List *planTrees,
-				  MemoryContext queryContext);
+				  CachedPlan *cplan);
 extern Node *PortalListGetPrimaryStmt(List *stmts);
 extern void PortalCreateHoldStore(Portal portal);
+extern void PortalHashTableDeleteAll(void);
 extern void AtExitCleanup_ResPortals(void);
 extern void TotalResPortalIncrements(int pid, Oid queueid,
 									 Cost *totalIncrements, int *num);

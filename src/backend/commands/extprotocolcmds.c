@@ -32,7 +32,7 @@
 #include "utils/fmgroids.h"
 
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 
 /*
  *	DefineExtprotocol
@@ -59,12 +59,6 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 			writefuncName = defGetQualifiedName(defel);
 		else if (pg_strcasecmp(defel->defname, "validatorfunc") == 0)
 			validatorfuncName = defGetQualifiedName(defel);
-		else if (gp_upgrade_mode && pg_strcasecmp(defel->defname, "oid") == 0) /* OID */
-		{
-			int64 oid = defGetInt64(defel);
-			Assert(oid < FirstBootstrapObjectId);
-			newOid = (Oid)oid;
-		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -100,7 +94,7 @@ DefineExtProtocol(List *name, List *parameters, Oid newOid, bool trusted)
 		stmt->args = NIL;
 		stmt->definition = parameters;
 		stmt->newOid = protOid;
-		stmt->shadowOid = 0;
+		stmt->arrayOid = stmt->commutatorOid = stmt->negatorOid = InvalidOid;
 		stmt->ordered = false;
 		stmt->trusted = trusted;
 		CdbDispatchUtilityStatement((Node *) stmt, "DefineExtprotocol");
@@ -380,7 +374,8 @@ RenameExtProtocol(const char *oldname, const char *newname)
 		MemSet(replaces, false, sizeof(replaces));
 
 		replaces[Anum_pg_extprotocol_ptcname - 1] = true;
-		values[Anum_pg_extprotocol_ptcname - 1] = CStringGetDatum(newname);
+		values[Anum_pg_extprotocol_ptcname - 1] =
+			DirectFunctionCall1(namein, CStringGetDatum((char *) newname));
 		
 		newtuple = caql_modify_current(pcqCtx, values,
 									   nulls, replaces);

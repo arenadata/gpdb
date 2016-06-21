@@ -27,14 +27,13 @@
 
 #include "cdb/cdbvars.h"
 
-#include "access/xlog.h"
+#include "access/xlogdefs.h"
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbfilerepmirror.h"
 #include "cdb/cdbfilerepmirrorack.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbfilerepconnserver.h"
 #include "cdb/cdbmirroredflatfile.h"
-#include "cdb/cdbfilerepverify.h"
 #include "libpq/pqsignal.h"
 #include "storage/lwlock.h"
 #include "utils/faultinjector.h"
@@ -391,22 +390,6 @@ FileRepMirror_RunReceiver(void)
 											   "",	//databaseName
 											   ""); // tableName
 #endif				
-				
-				if (Debug_filerep_print)
-				{
-					fileRepProcIndex = msgType;
-					ereport(LOG,
-							(errmsg("M_RunReceiver "
-									"local count '%d' position insert '%p' msg length '%u' "
-									"consumer proc index '%d' ",
-									spareField,
-									msgPositionInsert,
-									msgLength,
-									msgType),
-							 FileRep_errdetail_Shmem(),
-							 FileRep_errcontext()));	
-				}
-				
 				fileRepShmemMessageDescr = (FileRepShmemMessageDescr_s*) msgPositionInsert;	
 		
 				/* it is not in use */
@@ -558,9 +541,6 @@ FileRepMirror_StartConsumer(void)
 			break;			
 		case FileRepProcessTypeMirrorConsumerAppendOnly1:
 			fileRepProcIndex = FileRepMessageTypeAO01;
-			break;
-		case FileRepProcessTypeMirrorVerification:
-		    fileRepProcIndex = FileRepMessageTypeVerify;
 			break;
 		default:
 			Assert(0);
@@ -765,8 +745,7 @@ FileRepMirror_RunConsumer(void)
 		
   		/* if message body present then calculate and compare Data Crc */
 		
-		if (fileRepMessageHeader->fileRepOperation == FileRepOperationWrite ||
-			fileRepMessageHeader->fileRepOperation == FileRepOperationVerify)
+		if (fileRepMessageHeader->fileRepOperation == FileRepOperationWrite)
 		{
 
 			if (fileRepMessageHeader->messageBodyLength > 0)
@@ -810,10 +789,6 @@ FileRepMirror_RunConsumer(void)
 				}
 				fileRepMessageHeader->messageBodyLength = 0;
 			}
-			else
-			{
-				Assert(fileRepMessageHeader->fileRepOperation == FileRepOperationVerify);
-			}
 		}
 	
 		FileRep_InsertLogEntry(
@@ -827,20 +802,6 @@ FileRepMirror_RunConsumer(void)
 							   spare,
 							   fileRepMessageHeader->messageCount);		
 		
-		if (Debug_filerep_print)
-			ereport(LOG,
-				(errmsg("M_RunConsumer msg header count '%d' local count '%d' "
-						"consumer proc index '%d'",
-						fileRepMessageHeader->messageCount,
-						spare,
-						fileRepProcIndex),
-				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-								   fileRepMessageHeader->fileRepRelationType,
-								   fileRepMessageHeader->fileRepOperation,
-								   fileRepMessageHeader->messageCount),
-				 FileRep_errdetail_Shmem(),
-				 FileRep_errcontext()));		
-	
 		spare = fileRepMessageHeader->messageCount;
 		
 		/* fileName is relative path to $PGDATA directory */
@@ -1998,7 +1959,8 @@ FileRepMirror_RunConsumer(void)
 											   fileRepMessageHeader->messageCount),
 							 FileRep_errcontext()));		
 					
-					FileUnlink(fd);
+					SetDeleteOnExit(fd);
+					FileClose(fd);
 					FileRepMirror_RemoveFileName(newFileName);
 				}
 				fd = 0;
@@ -2094,50 +2056,6 @@ FileRepMirror_RunConsumer(void)
 				/* NoOp. Just send ACK back. */
 				break;
 
-			case FileRepOperationVerify:
-			{
-				GpMonotonicTime	beginTime;
-				
-				if (Debug_filerep_verify_performance_print)
-				{
-					gp_set_monotonic_begin_time(&beginTime);
-				}				
-
-				status = FileRepMirror_ExecuteVerificationRequest(
-																  fileRepMessageHeader, 
-																  fileRepMessageBody, 
-																  &responseData, 
-																  &fileRepMessageHeader->messageBodyLength);
-				
-				if (Debug_filerep_verify_performance_print)
-				{
-					ereport(LOG,
-							(errmsg("verification mirror elapsed time ' " INT64_FORMAT " ' miliseconds  "
-									"operation verification type '%s' ",
-									gp_get_elapsed_ms(&beginTime),
-									FileRepOperationVerificationTypeToString[fileRepMessageHeader->fileRepOperationDescription.verify.type]),
-							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation,
-											   fileRepMessageHeader->messageCount)));
-				}		
-				
-				if (status == STATUS_ERROR)
-				{
-					ereport(LOG,
-							(errmsg("mirror verification failure, "
-									"verification continues"),
-							 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-											   fileRepMessageHeader->fileRepRelationType,
-											   fileRepMessageHeader->fileRepOperation,
-											   fileRepMessageHeader->messageCount),
-							 FileRep_errdetail_ShmemAck(),
-							 FileRep_errcontext()));	
-					
-					status = STATUS_OK;
-				}
-				break;
-			}
 		    default:
 				Assert(0);
 				break;
@@ -2182,16 +2100,6 @@ FileRepMirror_RunConsumer(void)
 						 FileRep_errcontext()));	
 				
 				FileRep_SetSegmentState(SegmentStateFault, FaultTypeMirror);
-			}
-			
-			if (fileRepMessageHeader->messageBodyLength)
-			{
-				Assert(fileRepMessageHeader->fileRepOperation == FileRepOperationVerify);
-				if (responseData)
-				{
-					pfree(responseData);
-					responseData = NULL;
-				}
 			}
 		}		
 				
@@ -2714,7 +2622,8 @@ FileRepMirror_Drop(FileName fileName)
 		FileRepMirror_RemoveFileName(fileName);
 	}
 
-	FileUnlink(fd);
+	SetDeleteOnExit(fd);
+	FileClose(fd);
 	
 	return status;
 }

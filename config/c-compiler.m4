@@ -19,8 +19,19 @@ fi])# PGAC_C_SIGNED
 
 # PGAC_C_INLINE
 # -------------
-# Check if the C compiler understands inline functions.
-# Defines: inline, USE_INLINE
+# Check if the C compiler understands inline functions without being
+# noisy about unused static inline functions. Some older compilers
+# understand inline functions (as tested by AC_C_INLINE) but warn about
+# them if they aren't used in a translation unit.
+#
+# This test used to just define an inline function, but some compilers
+# (notably clang) got too smart and now warn about unused static
+# inline functions when defined inside a .c file, but not when defined
+# in an included header. Since the latter is what we want to use, test
+# to see if the warning appears when the function is in a header file.
+# Not pretty, but it works.
+#
+# Defines: inline, PG_USE_INLINE
 AC_DEFUN([PGAC_C_INLINE],
 [AC_C_INLINE
 AC_CACHE_CHECK([for quiet inline (no complaint if unreferenced)], pgac_cv_c_inline_quietly,
@@ -28,12 +39,12 @@ AC_CACHE_CHECK([for quiet inline (no complaint if unreferenced)], pgac_cv_c_inli
   if test "$ac_cv_c_inline" != no; then
     pgac_c_inline_save_werror=$ac_c_werror_flag
     ac_c_werror_flag=yes
-    AC_LINK_IFELSE([AC_LANG_PROGRAM([static inline int fun () {return 0;}],[])],
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([#include "$srcdir/config/test_quiet_include.h"],[])],
                    [pgac_cv_c_inline_quietly=yes])
     ac_c_werror_flag=$pgac_c_inline_save_werror
   fi])
 if test "$pgac_cv_c_inline_quietly" != no; then
-  AC_DEFINE_UNQUOTED([USE_INLINE], 1,
+  AC_DEFINE_UNQUOTED([PG_USE_INLINE], 1,
     [Define to 1 if "static inline" works without unwanted warnings from ]
     [compilations where static inline functions are defined but not called.])
 fi
@@ -155,10 +166,13 @@ AC_DEFUN([PGAC_PROG_CC_CFLAGS_OPT],
 [AC_MSG_CHECKING([if $CC supports $1])
 pgac_save_CFLAGS=$CFLAGS
 CFLAGS="$pgac_save_CFLAGS $1"
+ac_save_c_werror_flag=$ac_c_werror_flag
+ac_c_werror_flag=yes
 _AC_COMPILE_IFELSE([AC_LANG_PROGRAM()],
                    AC_MSG_RESULT(yes),
                    [CFLAGS="$pgac_save_CFLAGS"
                     AC_MSG_RESULT(no)])
+ac_c_werror_flag=$ac_save_c_werror_flag
 ])# PGAC_PROG_CC_CFLAGS_OPT
 
 
@@ -181,3 +195,138 @@ AC_RUN_IFELSE([AC_LANG_PROGRAM([extern void $2 (); void (*fptr) () = $2;],[])],
               [LDFLAGS="$pgac_save_LDFLAGS"
                AC_MSG_RESULT(assuming no)])
 ])# PGAC_PROG_CC_LDFLAGS_OPT
+
+
+
+# PGAC_SSE42_CRC32_INTRINSICS
+# -----------------------
+# Check if the compiler supports the x86 CRC instructions added in SSE 4.2,
+# using the _mm_crc32_u8 and _mm_crc32_u32 intrinsic functions. (We don't
+# test the 8-byte variant, _mm_crc32_u64, but it is assumed to be present if
+# the other ones are, on x86-64 platforms)
+#
+# An optional compiler flag can be passed as argument (e.g. -msse4.2). If the
+# intrinsics are supported, sets pgac_sse42_crc32_intrinsics, and CFLAGS_SSE42.
+#
+# Copied from upstream.
+#
+AC_DEFUN([PGAC_SSE42_CRC32_INTRINSICS],
+[define([Ac_cachevar], [AS_TR_SH([pgac_cv_sse42_crc32_intrinsics_$1])])dnl
+AC_CACHE_CHECK([for _mm_crc32_u8 and _mm_crc32_u32 with CFLAGS=$1], [Ac_cachevar],
+[pgac_save_CFLAGS=$CFLAGS
+CFLAGS="$pgac_save_CFLAGS $1"
+AC_LINK_IFELSE([AC_LANG_PROGRAM([#include <nmmintrin.h>],
+  [unsigned int crc = 0;
+   crc = _mm_crc32_u8(crc, 0);
+   crc = _mm_crc32_u32(crc, 0);
+   /* return computed value, to prevent the above being optimized away */
+   return crc == 0;])],
+  [Ac_cachevar=yes],
+  [Ac_cachevar=no])
+CFLAGS="$pgac_save_CFLAGS"])
+if test x"$Ac_cachevar" = x"yes"; then
+  CFLAGS_SSE42="$1"
+  pgac_sse42_crc32_intrinsics=yes
+fi
+undefine([Ac_cachevar])dnl
+])# PGAC_SSE42_CRC32_INTRINSICS
+
+
+
+# PGAC_HAVE_GCC__SYNC_CHAR_TAS
+# -------------------------
+# Check if the C compiler understands __sync_lock_test_and_set(char),
+# and define HAVE_GCC__SYNC_CHAR_TAS
+#
+# NB: There are platforms where test_and_set is available but compare_and_swap
+# is not, so test this separately.
+# NB: Some platforms only do 32bit tas, others only do 8bit tas. Test both.
+AC_DEFUN([PGAC_HAVE_GCC__SYNC_CHAR_TAS],
+[AC_CACHE_CHECK(for builtin __sync char locking functions, pgac_cv_gcc_sync_char_tas,
+[AC_TRY_LINK([],
+  [char lock = 0;
+   __sync_lock_test_and_set(&lock, 1);
+   __sync_lock_release(&lock);],
+  [pgac_cv_gcc_sync_char_tas="yes"],
+  [pgac_cv_gcc_sync_char_tas="no"])])
+if test x"$pgac_cv_gcc_sync_char_tas" = x"yes"; then
+  AC_DEFINE(HAVE_GCC__SYNC_CHAR_TAS, 1, [Define to 1 if you have __sync_lock_test_and_set(char *) and friends.])
+fi])# PGAC_HAVE_GCC__SYNC_CHAR_TAS
+
+# PGAC_HAVE_GCC__SYNC_INT32_TAS
+# -------------------------
+# Check if the C compiler understands __sync_lock_test_and_set(),
+# and define HAVE_GCC__SYNC_INT32_TAS
+AC_DEFUN([PGAC_HAVE_GCC__SYNC_INT32_TAS],
+[AC_CACHE_CHECK(for builtin __sync int32 locking functions, pgac_cv_gcc_sync_int32_tas,
+[AC_TRY_LINK([],
+  [int lock = 0;
+   __sync_lock_test_and_set(&lock, 1);
+   __sync_lock_release(&lock);],
+  [pgac_cv_gcc_sync_int32_tas="yes"],
+  [pgac_cv_gcc_sync_int32_tas="no"])])
+if test x"$pgac_cv_gcc_sync_int32_tas" = x"yes"; then
+  AC_DEFINE(HAVE_GCC__SYNC_INT32_TAS, 1, [Define to 1 if you have __sync_lock_test_and_set(int *) and friends.])
+fi])# PGAC_HAVE_GCC__SYNC_INT32_TAS
+
+# PGAC_HAVE_GCC__SYNC_INT32_CAS
+# -------------------------
+# Check if the C compiler understands __sync_compare_and_swap() for 32bit
+# types, and define HAVE_GCC__SYNC_INT32_CAS if so.
+AC_DEFUN([PGAC_HAVE_GCC__SYNC_INT32_CAS],
+[AC_CACHE_CHECK(for builtin __sync int32 atomic operations, pgac_cv_gcc_sync_int32_cas,
+[AC_TRY_LINK([],
+  [int val = 0;
+   __sync_val_compare_and_swap(&val, 0, 37);],
+  [pgac_cv_gcc_sync_int32_cas="yes"],
+  [pgac_cv_gcc_sync_int32_cas="no"])])
+if test x"$pgac_cv_gcc_sync_int32_cas" = x"yes"; then
+  AC_DEFINE(HAVE_GCC__SYNC_INT32_CAS, 1, [Define to 1 if you have __sync_compare_and_swap(int *, int, int).])
+fi])# PGAC_HAVE_GCC__SYNC_INT32_CAS
+
+# PGAC_HAVE_GCC__SYNC_INT64_CAS
+# -------------------------
+# Check if the C compiler understands __sync_compare_and_swap() for 64bit
+# types, and define HAVE_GCC__SYNC_INT64_CAS if so.
+AC_DEFUN([PGAC_HAVE_GCC__SYNC_INT64_CAS],
+[AC_CACHE_CHECK(for builtin __sync int64 atomic operations, pgac_cv_gcc_sync_int64_cas,
+[AC_TRY_LINK([],
+  [PG_INT64_TYPE lock = 0;
+   __sync_val_compare_and_swap(&lock, 0, (PG_INT64_TYPE) 37);],
+  [pgac_cv_gcc_sync_int64_cas="yes"],
+  [pgac_cv_gcc_sync_int64_cas="no"])])
+if test x"$pgac_cv_gcc_sync_int64_cas" = x"yes"; then
+  AC_DEFINE(HAVE_GCC__SYNC_INT64_CAS, 1, [Define to 1 if you have __sync_compare_and_swap(int64 *, int64, int64).])
+fi])# PGAC_HAVE_GCC__SYNC_INT64_CAS
+
+# PGAC_HAVE_GCC__ATOMIC_INT32_CAS
+# -------------------------
+# Check if the C compiler understands __atomic_compare_exchange_n() for 32bit
+# types, and define HAVE_GCC__ATOMIC_INT32_CAS if so.
+AC_DEFUN([PGAC_HAVE_GCC__ATOMIC_INT32_CAS],
+[AC_CACHE_CHECK(for builtin __atomic int32 atomic operations, pgac_cv_gcc_atomic_int32_cas,
+[AC_TRY_LINK([],
+  [int val = 0;
+   int expect = 0;
+   __atomic_compare_exchange_n(&val, &expect, 37, 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);],
+  [pgac_cv_gcc_atomic_int32_cas="yes"],
+  [pgac_cv_gcc_atomic_int32_cas="no"])])
+if test x"$pgac_cv_gcc_atomic_int32_cas" = x"yes"; then
+  AC_DEFINE(HAVE_GCC__ATOMIC_INT32_CAS, 1, [Define to 1 if you have __atomic_compare_exchange_n(int *, int *, int).])
+fi])# PGAC_HAVE_GCC__ATOMIC_INT32_CAS
+
+# PGAC_HAVE_GCC__ATOMIC_INT64_CAS
+# -------------------------
+# Check if the C compiler understands __atomic_compare_exchange_n() for 64bit
+# types, and define HAVE_GCC__ATOMIC_INT64_CAS if so.
+AC_DEFUN([PGAC_HAVE_GCC__ATOMIC_INT64_CAS],
+[AC_CACHE_CHECK(for builtin __atomic int64 atomic operations, pgac_cv_gcc_atomic_int64_cas,
+[AC_TRY_LINK([],
+  [PG_INT64_TYPE val = 0;
+   PG_INT64_TYPE expect = 0;
+   __atomic_compare_exchange_n(&val, &expect, 37, 0, __ATOMIC_SEQ_CST, __ATOMIC_RELAXED);],
+  [pgac_cv_gcc_atomic_int64_cas="yes"],
+  [pgac_cv_gcc_atomic_int64_cas="no"])])
+if test x"$pgac_cv_gcc_atomic_int64_cas" = x"yes"; then
+  AC_DEFINE(HAVE_GCC__ATOMIC_INT64_CAS, 1, [Define to 1 if you have __atomic_compare_exchange_n(int64 *, int *, int64).])
+fi])# PGAC_HAVE_GCC__ATOMIC_INT64_CAS

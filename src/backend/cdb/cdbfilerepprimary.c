@@ -35,11 +35,6 @@
 #include "utils/faultinjector.h"
 #include "utils/memutils.h"
 
-static volatile sig_atomic_t stateChangeRequested = false;
-/* state change informed by SIGUSR1 signal from postmaster */
-
-/* NOTE configure signaling for stateChangeRequested */
-
 static bool FileRepPrimary_IsMirroringRequired(
 											   FileRepRelationType_e fileRepRelationType,
 											   FileRepOperation_e	 fileRepOperation);
@@ -207,11 +202,6 @@ FileRepPrimary_IsMirroringRequired(
 						break;
 					}
 				}
-				/* online verification is not allowed during resync and during change tracking */
-				if (fileRepOperation == FileRepOperationVerify)
-				{
-					break;	
-				}
 				/* no break */
 			case DataStateInSync:
 				/*
@@ -365,14 +355,11 @@ FileRepPrimary_ConstructAndInsertMessage(
 	 * Prevent cancel/die interrupt while doing this multi-step in order to  
 	 * insert message and update message state atomically with respect to 
 	 * cancel/die interrupts. See MPP-10040.
-	 *
-	 * FileRepOperationVerify does not get inserted into ack hash shared memory structure
-	 * since it is using dedicated ack shared memory slot.
 	 */
 	HOLD_INTERRUPTS();
 
-	if (FileRep_IsOperationSynchronous(fileRepOperation) == TRUE &&
-		fileRepOperation != FileRepOperationVerify) { 
+	if (FileRep_IsOperationSynchronous(fileRepOperation) == TRUE) 
+	{ 
 		
 		status = FileRepAckPrimary_NewHashEntry(
 												fileRepIdentifier,
@@ -480,8 +467,6 @@ FileRepPrimary_ConstructAndInsertMessage(
 		case FileRepOperationCreateAndOpen:
 		case FileRepOperationCreate:
 		case FileRepOperationValidation:
-		case FileRepOperationVerify:
-			
 			fileRepMessageHeader->fileRepOperationDescription = fileRepOperationDescription;
 			break;
 			
@@ -528,29 +513,6 @@ FileRepPrimary_ConstructAndInsertMessage(
 						   FILEREP_UNDEFINED,
 						   fileRepMessageHeader->messageCount);
 	
-	if (Debug_filerep_print)
-		ereport(LOG,
-			(errmsg("P_ConstructAndInsertMessage "
-					"msg header count '%d' msg header crc '%u' position insert '%p' "
-					"msg length '%u' data length '%u'"
-					"open file flags '%x' "
-					"truncate position '" INT64_FORMAT "' ",
-					fileRepMessageHeader->messageCount,
-					fileRepMessageHeaderCrcLocal,
-					msgPositionInsert,
-					msgLength,
-					dataLength,
-					(fileRepOperation == FileRepOperationOpen || fileRepOperation == FileRepOperationCreateAndOpen) ?
-					fileRepOperationDescription.open.fileFlags : 0,
-					(fileRepOperation == FileRepOperationTruncate) ?
-					fileRepOperationDescription.truncate.position : 0),
-			 FileRep_errdetail(fileRepIdentifier,
-							   fileRepRelationType,
-							   fileRepOperation,
-							   spareField),
-			 FileRep_errdetail_Shmem(),
-			 FileRep_errcontext()));		
-
 	if (dataLength > 0)
 	{
 		fileRepMessageBody = (char *) (msgPositionInsert + 
@@ -1008,22 +970,6 @@ FileRepPrimary_MirrorWrite(FileRepIdentifier_u		fileRepIdentifier,
 								   FILEREP_UNDEFINED,
 								   fileRepMessageHeader->messageCount);			
 						
-			if (Debug_filerep_print)
-				ereport(LOG,
-					(errmsg("P_ConstructAndInsertMessage "
-							"msg header count '%d' msg header crc '%u' position insert '%p' "
-							"msg body crc '%u' ",
-							fileRepMessageHeader->messageCount,
-							fileRepMessageHeaderCrcLocal,
-							msgPositionInsert,
-							fileRepMessageHeader->fileRepMessageBodyCrc),
-					 FileRep_errdetail(fileRepIdentifier,
-									   fileRepRelationType,
-									   FileRepOperationWrite,
-									   spareField),
-					 FileRep_errdetail_Shmem(),
-					 FileRep_errcontext()));					
-			
 			/* Copy Data */
 			fileRepMessageBody = (char *) (msgPositionInsert + 
 								sizeof(FileRepMessageHeader_s) + 
@@ -1448,79 +1394,6 @@ FileRepPrimary_MirrorHeartBeat(FileRepConsumerProcIndex_e index)
 	return;
 }
 
-/*
- * FileRepPrimary_MirrorVerify
- * verify data integrity between primary and mirror
- */
-int 
-FileRepPrimary_MirrorVerify(
-							FileRepIdentifier_u				fileRepIdentifier,
-							FileRepRelationType_e			fileRepRelationType,
-							FileRepOperationDescription_u	fileRepOperationDescription,
-							char							*data, 
-							uint32							dataLength,
-							void							**responseData, 
-							uint32							*responseDataLength, 
-							FileRepOperationDescription_u	*responseDesc)
-{
-	int				status = STATUS_ERROR;
-	GpMonotonicTime	beginTime;
-	
-	if (Debug_filerep_verify_performance_print)
-	{
-		gp_set_monotonic_begin_time(&beginTime);
-	}
-	
-	if (FileRepPrimary_IsMirroringRequired(fileRepRelationType, FileRepOperationVerify)) 
-	{
-		status = FileRepPrimary_ConstructAndInsertMessage(
-														  fileRepIdentifier,
-														  fileRepRelationType,
-														  FileRepOperationVerify,
-														  fileRepOperationDescription,
-														  data,
-														  dataLength);
-		if (status != STATUS_OK)
-			return status;
-	
-		status = FileRepAckPrimary_RunConsumerVerification(
-														   &*responseData, 
-														   &*responseDataLength, 
-														   &*responseDesc);
-														  
-		if (status != STATUS_OK && 
-			dataState != DataStateInChangeTracking &&
-			! primaryMirrorIsIOSuspended())
-		{
-			ereport(WARNING,
-					(errmsg("mirror failure, "
-							"could not complete operation on mirror, "
-							"failover requested"), 
-					 errhint("run gprecoverseg to re-establish mirror connectivity"),
-					 FileRep_errdetail(fileRepIdentifier,
-									   fileRepRelationType,
-									   FileRepOperationVerify,
-									   FILEREP_UNDEFINED), 
-					 FileRep_errdetail_Shmem(),
-					 FileRep_errdetail_ShmemAck(),
-					 FileRep_errcontext()));				
-		}
-	}
-	
-	if (Debug_filerep_verify_performance_print)
-	{
-		ereport(LOG,
-				(errmsg("verification round trip elapsed time ' " INT64_FORMAT " ' miliseconds  ",
-						gp_get_elapsed_ms(&beginTime)),
-				 FileRep_errdetail(fileRepIdentifier,
-								   fileRepRelationType,
-								   FileRepOperationVerify,
-								   FILEREP_UNDEFINED)));
-	}		
-	
-	return status;
-}
-
 bool
 FileRepPrimary_IsOperationCompleted(
 			   FileRepIdentifier_u	 fileRepIdentifier,
@@ -1841,18 +1714,6 @@ FileRepPrimary_RunSender(void)
 							   spare,
 							   fileRepMessageHeader->messageCount);					
 		
-		if (Debug_filerep_print)
-			ereport(LOG,
-				(errmsg("P_RunSender msg header count '%d' local count '%d' ",
-						fileRepMessageHeader->messageCount,
-						spare),
-				 FileRep_errdetail(fileRepMessageHeader->fileRepIdentifier,
-								   fileRepMessageHeader->fileRepRelationType,
-								   fileRepMessageHeader->fileRepOperation,
-								   fileRepMessageHeader->messageCount),
-				 FileRep_errdetail_Shmem(),
-				 FileRep_errcontext()));				
-		
 		spare = fileRepMessageHeader->messageCount;
 	
 		switch (fileRepMessageHeader->fileRepRelationType)
@@ -1906,11 +1767,6 @@ FileRepPrimary_RunSender(void)
 
 				status = STATUS_ERROR;		
 				break;
-		}
-		
-		if (fileRepMessageHeader->fileRepOperation == FileRepOperationVerify)
-		{
-			messageType = FileRepMessageTypeVerify;
 		}
 		
 		if (! FileRepConnClient_SendMessage(

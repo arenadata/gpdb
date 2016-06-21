@@ -25,7 +25,7 @@
 #include "utils/lsyscache.h"
 
 #include "cdb/cdbvars.h"			  /* Gp_role              */
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbutil.h"
 #include "utils/tqual.h"
@@ -1719,18 +1719,20 @@ void
 AtCommit_AppendOnly(void)
 {
 	HASH_SEQ_STATUS status;
-	AORelHashEntry	aoentry = NULL;
-	TransactionId 	CurrentXid = GetTopTransactionId();
+	AORelHashEntry	aoentry;
+	TransactionId 	CurrentXid;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	if (!appendOnlyInsertXact)
-	{
 		return;
-	}
 
 	hash_seq_init(&status, AppendOnlyHash);
+
+	CurrentXid = GetTopTransactionIdIfAny();
+	/* We should have an XID if we modified AO tables */
+	Assert(CurrentXid != InvalidTransactionId);
 
 	LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
 	/*

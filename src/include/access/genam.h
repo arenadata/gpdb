@@ -4,10 +4,10 @@
  *	  POSTGRES generalized index access method definitions.
  *
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/genam.h,v 1.65 2006/07/31 20:09:05 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/access/genam.h,v 1.81 2009/08/01 20:59:17 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,6 +41,7 @@ typedef struct IndexVacuumInfo
 	bool		vacuum_full;	/* VACUUM FULL (we have exclusive lock) */
 	int			message_level;	/* ereport level for progress messages */
 	double		num_heap_tuples;	/* tuples remaining in heap */
+	BufferAccessStrategy strategy;		/* access strategy for reads */
 	List        *extra_oids;    /* For bitmap indexes: store three relfilenode oids
 								 * for reindexing a bitmap index.
 								 */
@@ -81,8 +82,6 @@ typedef struct SysScanDescData
 	Relation	irel;			/* NULL if doing heap scan */
 	HeapScanDesc scan;			/* only valid in heap-scan case */
 	IndexScanDesc iscan;		/* only valid in index-scan case */
-
-	HiddenScanDesc hscan;		/* scan for "hidden" tuple if any */
 } SysScanDescData;
 
 typedef SysScanDescData *SysScanDesc;
@@ -136,6 +135,8 @@ extern FmgrInfo *index_getprocinfo(Relation irel, AttrNumber attnum,
 extern IndexScanDesc RelationGetIndexScan(Relation indexRelation,
 					 int nkeys, ScanKey key);
 extern void IndexScanEnd(IndexScanDesc scan);
+extern char *BuildIndexValueDescription(Relation indexRelation,
+						   Datum *values, bool *isnull);
 
 /*
  * heap-or-index access to system catalogs (in genam.c)

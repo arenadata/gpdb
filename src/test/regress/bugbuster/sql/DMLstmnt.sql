@@ -1,35 +1,3 @@
-\c regression
-drop database if exists gptest;
-create database gptest;
-
-drop table if exists testswapna;
-create table testswapna (a integer);
-insert into testswapna  select a from generate_series(1,10) a;
-
-select * from testswapna  where a>2;
-
-drop table testswapna;
-
-
-create table testswapna (a integer);
-insert into testswapna  select a from generate_series(1,10) a;
-alter table testswapna  add  COLUMN b integer;
-insert into testswapna select b from generate_series(11,20) b;
-
-select a,b from testswapna;
-
-drop table testswapna;
-
-
-create table testswapna (a integer);
-insert into testswapna  select a from generate_series(1,10) a;
-ALTER table testswapna ALTER COLUMN a SET NOT NULL;
-
-
-select * from testswapna;
-
-drop table testswapna;
-
 create table testswapna (id  integer,rank integer,gender character(1),count integer) DISTRIBUTED BY rank,gender) ;
 insert into testswapna  values(1,101,'F',10);
 
@@ -122,12 +90,6 @@ DROP GROUP market;
 DROP USER jona11;
 DROP USER jona12;
 
-CREATE LANGUAGE plpgsql; 
-ALTER LANGUAGE plpgsql  RENAME TO plsamples;
-ALTER LANGUAGE plsamples  RENAME TO plpgsql;
--- commentting the drop in the test case. Since jetpack is made implicit we cannot drop language plpgsql
--- DROP LANGUAGE plsamples;
-
 select unnest('{}'::text[]);
 
 drop table mpp_r6756 cascade; --ignore
@@ -183,14 +145,14 @@ drop table mpp_r6756 cascade; --ignore
 drop table mpp_s6756 cascade; --ignore
 
 --start_ignore
-drop table if exists t1;
+drop table if exists copytest;
 --end_ignore
 
 set gp_autostats_mode='none';
 
-create table t1 (i int, t text);
+create table copytest (i int, t text);
 
-COPY t1 (i, t) FROM stdin;
+COPY copytest (i, t) FROM stdin;
 0	- DW60\n- Version:\nPostgreSQL 8.2.4 (Greenplum Database Release-3_1_0_0-alpha1-branch build dev) on i386-pc-solaris2.10, compiled by GCC gcc.exe (GCC) 4.1.1 compiled on Oct  1 2007 01:01:01
 0	- DW80\n- prodgp=# SELECT version();\n                                                                      version                                                                       \n----------------------------------------------------------------------------------------------------------------------------------------------------\n PostgreSQL 8.2.6 (Greenplum Database 3.1.1.5 build 2) on i386-pc-solaris2.10, compiled by GCC gcc.exe (GCC) 4.1.1 compiled on Jul 30 2008 16:58:44\n(1 row)
 0	- DW80\n- Version\n\nprodgp=# SELECT version();\n                                                                      version                                                                       \n----------------------------------------------------------------------------------------------------------------------------------------------------\n PostgreSQL 8.2.6 (Greenplum Database 3.1.1.5 build 2) on i386-pc-solaris2.10, compiled by GCC gcc.exe (GCC) 4.1.1 compiled on Jul 30 2008 16:58:44\n
@@ -209,5 +171,5 @@ COPY t1 (i, t) FROM stdin;
 \.
 
 
-select * from t1 order by t;
+select * from copytest order by t;
 

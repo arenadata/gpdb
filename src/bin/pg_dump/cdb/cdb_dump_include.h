@@ -54,12 +54,26 @@ extern bool g_gp_supportsPartitioning;
  */
 extern bool g_gp_supportsPartitionTemplates;
 
+/*
+ * Indicates whether or not the GPDB cluster supports opfamilies.
+ */
+extern bool g_gp_supportsOpfamilies;
 
 /*
  * Indicates whether or not the GPDB cluster supports column attributes.
  */
 extern bool g_gp_supportsAttributeEncoding;
 
+/*
+ * Indicates whether or not the GPDB cluster supports full text search
+ */
+extern bool g_gp_supportsFullText;
+
+/*
+ * Indicates whether or not the GPDB cluster supports languages owned by
+ * other than OID 10.
+ */
+extern bool g_gp_supportsLanOwner;
 
 /*
  * Indicates whether or not the GPDB cluster supports SQL/MED.

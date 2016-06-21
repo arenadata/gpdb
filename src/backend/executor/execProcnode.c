@@ -13,7 +13,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.59 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.62 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -131,6 +131,8 @@
 #include "utils/debugbreak.h"
 #include "pg_trace.h"
 
+#include "codegen/codegen_wrapper.h"
+
 #ifdef CDB_TRACE_EXECUTOR
 #include "nodes/print.h"
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
@@ -221,6 +223,13 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	int origExecutingSliceId = estate->currentExecutingSliceId;
 
 	MemoryAccount* curMemoryAccount = NULL;
+
+	StringInfo codegenManagerName = makeStringInfo();
+	appendStringInfo(codegenManagerName, "%s-%d-%d", "execProcnode", node->plan_node_id, node->type);
+	void* CodegenManager = CodeGeneratorManagerCreate(codegenManagerName->data);
+	START_CODE_GENERATOR_MANAGER(CodegenManager);
+	{
+
 
 	/*
 	 * Is current plan node supposed to execute in current slice?
@@ -714,11 +723,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
 
+		Assert(IsA(subplan, SubPlan));
+
 		setSubplanSliceId(subplan, estate);
 
-		sstate = ExecInitExprInitPlan(subplan, result);
-		ExecInitSubPlan(sstate, estate, eflags);
-
+		sstate = ExecInitSubPlan(subplan, result);
 		subps = lappend(subps, sstate);
 	}
 	if (result != NULL)
@@ -727,38 +736,23 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;
 
-	/*
-	 * Initialize any subPlans present in this node.  These were found by
-	 * ExecInitExpr during initialization of the PlanState.  Note we must do
-	 * this after initializing initPlans, in case their arguments contain
-	 * subPlans (is that actually possible? perhaps not).
-	 */
-	if (result != NULL)
-	{
-		foreach(l, result->subPlan)
-		{
-			SubPlanState *sstate = (SubPlanState *) lfirst(l);
-			
-			Assert(IsA(sstate, SubPlanState));
-
-			/**
-			 * Check if this subplan is an initplan. If so, we shouldn't initialize it again.
-			 */
-			if (sstate->planstate == NULL)
-			{
-				ExecInitSubPlan(sstate, estate, eflags);
-			}
-		}
-	}
-
 	/* Set up instrumentation for this node if requested */
 	if (estate->es_instrument && result != NULL)
 		result->instrument = InstrAlloc(1);
 
 	if (result != NULL)
 	{
+		enroll_ExecQual_codegen(ExecQual,
+	          &result->ExecQual_gen_info.ExecQual_fn, result);
+
 		SAVE_EXECUTOR_MEMORY_ACCOUNT(result, curMemoryAccount);
+		result->CodegenManager = CodegenManager;
+		CodeGeneratorManagerGenerateCode(CodegenManager);
+		CodeGeneratorManagerPrepareGeneratedFunctions(CodegenManager);
 	}
+	}
+	END_CODE_GENERATOR_MANAGER();
+
 	return result;
 }
 
@@ -815,7 +809,9 @@ ExecProcNode(PlanState *node)
 {
 	TupleTableSlot *result = NULL;
 
-	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
+	START_CODE_GENERATOR_MANAGER(node->CodegenManager);
+	{
+	START_MEMORY_ACCOUNT(node->memoryAccount);
 	{
 
 #ifndef WIN32
@@ -1230,19 +1226,21 @@ Exec_Jmp_Done:
 			Assert(subplanState != NULL &&
 				   subplanState->planstate != NULL);
 
-			bool subplanAtTopNestLevel = (node->state->subplanLevel == 0);
+			bool subplanAtTopNestLevel = (node->state->currentSubplanLevel == 0);
 
 			if (subplanAtTopNestLevel)
 			{
 				ExecSquelchNode(subplanState->planstate);
+				ExecEagerFreeChildNodes(subplanState->planstate, subplanAtTopNestLevel);
+				ExecEagerFree(subplanState->planstate);
 			}
-			ExecEagerFreeChildNodes(subplanState->planstate, subplanAtTopNestLevel);
-			ExecEagerFree(subplanState->planstate);
 		}
 	}
 
 	}
 	END_MEMORY_ACCOUNT();
+	}
+	END_CODE_GENERATOR_MANAGER();
 	return result;
 }
 
@@ -1269,7 +1267,7 @@ MultiExecProcNode(PlanState *node)
 
 	Assert(NULL != node->plan);
 
-	START_MEMORY_ACCOUNT(node->plan->memoryAccount);
+	START_MEMORY_ACCOUNT(node->memoryAccount);
 	{
 		PG_TRACE5(execprocnode__enter, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
 
@@ -1548,8 +1546,6 @@ ExecUpdateTransportState(PlanState *node, ChunkTransportState *state)
 void
 ExecEndNode(PlanState *node)
 {
-	ListCell   *subp;
-
 	/*
 	 * do nothing when we get to the end of a leaf on tree.
 	 */
@@ -1561,15 +1557,8 @@ ExecEndNode(PlanState *node)
 	int origSliceIdInPlan = estate->currentSliceIdInPlan;
 	int origExecutingSliceId = estate->currentExecutingSliceId;
 
-	/* Clean up initPlans and subPlans */
-	foreach(subp, node->initPlan)
-		ExecEndSubPlan((SubPlanState *) lfirst(subp));
-
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;
-
-	foreach(subp, node->subPlan)
-		ExecEndSubPlan((SubPlanState *) lfirst(subp));
 
 	if (node->chgParam != NULL)
 	{
@@ -1767,6 +1756,13 @@ ExecEndNode(PlanState *node)
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}
+
+	/*
+	 * if codegen guc is true, then assert if CodegenManager is NULL
+	 */
+	AssertImply(codegen, NULL != node->CodegenManager);
+	CodeGeneratorManagerDestroy(node->CodegenManager);
+	node->CodegenManager = NULL;
 
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;

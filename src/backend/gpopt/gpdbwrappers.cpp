@@ -9,7 +9,11 @@
 //		Implementation of GPDB function wrappers. Note that we should never
 // 		return directly from inside the PG_TRY() block, in order to restore
 //		the long jump stack. That is why we save the return value of the GPDB
-//		function to a local variable and return it after the PG_END_TRY()
+//		function to a local variable and return it after the PG_END_TRY().
+//		./README file contains the sources (caches and catalog tables) of metadata
+//		requested by the optimizer and retrieved using GPDB function wrappers. Any
+//		change to optimizer's requested metadata should also be recorded in ./README file.
+//
 //
 //	@test:
 //
@@ -164,6 +168,7 @@
 #define ALLOW_get_relation_part_constraints
 #define ALLOW_get_operator_type
 #define ALLOW_get_comparison_operator
+#define ALLOW_equality_oper_opid
 #define ALLOW_find_nodes
 #define ALLOW_char_to_parttype
 #define ALLOW_makeNullConst
@@ -196,7 +201,7 @@
 #include "gpos/error/CException.h"
 #include "gpos/error/CAutoExceptionStack.h"
 
-#include "exception.h"
+#include "naucrates/exception.h"
 
 #include "gpopt/gpdbwrappers.h"
 
@@ -765,6 +770,7 @@ gpdb::FFuncStrict
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return func_strict(funcid);
 	}
 	GP_WRAP_END;
@@ -779,6 +785,7 @@ gpdb::CFuncStability
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return func_volatile(funcid);
 	}
 	GP_WRAP_END;
@@ -793,6 +800,7 @@ gpdb::CFuncDataAccess
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return func_data_access(funcid);
 	}
 	GP_WRAP_END;
@@ -808,7 +816,8 @@ gpdb::FclFuncCandidates
 {
 	GP_WRAP_START;
 	{
-		return FuncnameGetCandidates(plistNames, iArgs);
+		/* catalog tables: pg_proc */
+		return FuncnameGetCandidates(plistNames, iArgs, false, false);
 	}
 	GP_WRAP_END;
 	return NULL;
@@ -822,6 +831,7 @@ gpdb::FFunctionExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return function_exists(oid);
 	}
 	GP_WRAP_END;
@@ -833,6 +843,7 @@ gpdb::PlFunctionOids(void)
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return function_oids();
 	}
 	GP_WRAP_END;
@@ -847,6 +858,7 @@ gpdb::OidAggIntermediateResultType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_aggregate */
 		return get_agg_transtype(aggid);
 	}
 	GP_WRAP_END;
@@ -857,7 +869,7 @@ Query *
 gpdb::PqueryFlattenJoinAliasVar
 	(
 	Query *pquery,
-	ULONG ulQueryLevel
+	gpos::ULONG ulQueryLevel
 	)
 {
 	GP_WRAP_START;
@@ -877,6 +889,7 @@ gpdb::FOrderedAgg
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_aggregate */
 		return is_agg_ordered(aggid);
 	}
 	GP_WRAP_END;
@@ -891,6 +904,7 @@ gpdb::FAggHasPrelimFunc
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_aggregate */
 		return has_agg_prelimfunc(aggid);
 	}
 	GP_WRAP_END;
@@ -905,6 +919,7 @@ gpdb::FAggHasPrelimOrInvPrelimFunc
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_aggregate */
 		return agg_has_prelim_or_invprelim_func(aggid);
 	}
 	GP_WRAP_END;
@@ -920,6 +935,7 @@ gpdb::OidAggregate
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_aggregate */
 		return get_aggregate(szAgg, oidType);
 	}
 	GP_WRAP_END;
@@ -934,6 +950,7 @@ gpdb::OidArrayType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return get_array_type(typid);
 	}
 	GP_WRAP_END;
@@ -971,6 +988,7 @@ gpdb::HtAttrStats
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_statistic */
 		return get_att_stats(relid, attnum);
 	}
 	GP_WRAP_END;
@@ -985,6 +1003,7 @@ gpdb::OidCommutatorOp
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		return get_commutator(opno);
 	}
 	GP_WRAP_END;
@@ -999,6 +1018,7 @@ gpdb::SzTriggerName
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		return get_trigger_name(triggerid);
 	}
 	GP_WRAP_END;
@@ -1013,6 +1033,7 @@ gpdb::OidTriggerRelid
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		return get_trigger_relid(triggerid);
 	}
 	GP_WRAP_END;
@@ -1027,6 +1048,7 @@ gpdb::OidTriggerFuncid
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		return get_trigger_funcid(triggerid);
 	}
 	GP_WRAP_END;
@@ -1041,6 +1063,7 @@ gpdb::ITriggerType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		return get_trigger_type(triggerid);
 	}
 	GP_WRAP_END;
@@ -1055,6 +1078,7 @@ gpdb::FTriggerEnabled
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		return trigger_enabled(triggerid);
 	}
 	GP_WRAP_END;
@@ -1069,6 +1093,7 @@ gpdb::FTriggerExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		return trigger_exists(oid);
 	}
 	GP_WRAP_END;
@@ -1083,6 +1108,7 @@ gpdb::FCheckConstraintExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_constraint */
 		return check_constraint_exists(oidCheckConstraint);
 	}
 	GP_WRAP_END;
@@ -1097,6 +1123,7 @@ gpdb::SzCheckConstraintName
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_constraint */
 		return get_check_constraint_name(oidCheckConstraint);
 	}
 	GP_WRAP_END;
@@ -1111,6 +1138,7 @@ gpdb::OidCheckConstraintRelid
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_constraint */
 		return get_check_constraint_relid(oidCheckConstraint);
 	}
 	GP_WRAP_END;
@@ -1125,6 +1153,7 @@ gpdb::PnodeCheckConstraint
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_constraint */
 		return get_check_constraint_expr_tree(oidCheckConstraint);
 	}
 	GP_WRAP_END;
@@ -1139,6 +1168,7 @@ gpdb::PlCheckConstraint
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_constraint */
 		return get_check_constraint_oids(oidRel);
 	}
 	GP_WRAP_END;
@@ -1154,6 +1184,7 @@ gpdb::PnodePartConstraintRel
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_partition, pg_partition_rule, pg_constraint */
 		return get_relation_part_constraints(oidRel, pplDefaultLevels);
 	}
 	GP_WRAP_END;
@@ -1168,6 +1199,7 @@ gpdb::FLeafPartition
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_partition, pg_partition_rule */
 		return rel_is_leaf_partition(oid);
 	}
 	GP_WRAP_END;
@@ -1182,6 +1214,7 @@ gpdb::OidRootPartition
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_partition, pg_partition_rule */
 		return rel_partition_get_master(oid);
 	}
 	GP_WRAP_END;
@@ -1199,13 +1232,14 @@ gpdb::FCastFunc
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_cast */
 		return get_cast_func(oidSrc, oidDest, is_binary_coercible, oidCastFunc);
 	}
 	GP_WRAP_END;
 	return false;
 }
 
-uint
+unsigned int
 gpdb::UlCmpt
 	(
 	Oid oidOp,
@@ -1215,6 +1249,7 @@ gpdb::UlCmpt
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_amop */
 		return get_comparison_type(oidOp, oidLeft, oidRight);
 	}
 	GP_WRAP_END;
@@ -1226,12 +1261,28 @@ gpdb::OidScCmp
 	(
 	Oid oidLeft, 
 	Oid oidRight,
-	uint ulCmpt
+	unsigned int ulCmpt
 	)
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_amop */
 		return get_comparison_operator(oidLeft, oidRight, (CmpType) ulCmpt);
+	}
+	GP_WRAP_END;
+	return InvalidOid;
+}
+
+Oid
+gpdb::OidEqualityOp
+	(
+	Oid oidType
+	)
+{
+	GP_WRAP_START;
+	{
+		/* catalog tables: pg_type */
+		return equality_oper_opid(oidType);
 	}
 	GP_WRAP_END;
 	return InvalidOid;
@@ -1245,6 +1296,7 @@ gpdb::SzFuncName
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return get_func_name(funcid);
 	}
 	GP_WRAP_END;
@@ -1259,6 +1311,7 @@ gpdb::PlFuncOutputArgTypes
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return get_func_output_arg_types(funcid);
 	}
 	GP_WRAP_END;
@@ -1273,6 +1326,7 @@ gpdb::PlFuncArgTypes
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return get_func_arg_types(funcid);
 	}
 	GP_WRAP_END;
@@ -1287,6 +1341,7 @@ gpdb::FFuncRetset
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return get_func_retset(funcid);
 	}
 	GP_WRAP_END;
@@ -1301,6 +1356,7 @@ gpdb::OidFuncRetType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_proc */
 		return get_func_rettype(funcid);
 	}
 	GP_WRAP_END;
@@ -1315,6 +1371,7 @@ gpdb::OidInverseOp
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		return get_negator(opno);
 	}
 	GP_WRAP_END;
@@ -1329,6 +1386,7 @@ gpdb::OidOpFunc
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		return get_opcode(opno);
 	}
 	GP_WRAP_END;
@@ -1343,6 +1401,7 @@ gpdb::SzOpName
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		return get_opname(opno);
 	}
 	GP_WRAP_END;
@@ -1358,6 +1417,7 @@ gpdb::PlPartitionAttrs
 	GP_WRAP_START;
 	{
 		// return unique partition level attributes
+		/* catalog tables: pg_partition */
 		return rel_partition_keys_ordered(oid);
 	}
 	GP_WRAP_END;
@@ -1371,13 +1431,13 @@ gpdb::PpnParts
 	int2 level,
 	Oid parent,
 	bool inctemplate,
-	MemoryContext mcxt,
 	bool includesubparts
 	)
 {
 	GP_WRAP_START;
 	{
-		return get_parts(relid, level, parent, inctemplate, mcxt, includesubparts);
+		/* catalog tables: pg_partition, pg_partition_rule */
+		return get_parts(relid, level, parent, inctemplate, includesubparts);
 	}
 	GP_WRAP_END;
 	return NULL;
@@ -1391,6 +1451,7 @@ gpdb::PlRelationKeys
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_constraint */
 		return get_relation_keys(relid);
 	}
 	GP_WRAP_END;
@@ -1405,6 +1466,7 @@ gpdb::OidTypeRelid
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return get_typ_typrelid(typid);
 	}
 	GP_WRAP_END;
@@ -1419,6 +1481,7 @@ gpdb::SzTypeName
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return get_type_name(typid);
 	}
 	GP_WRAP_END;
@@ -1473,6 +1536,7 @@ gpdb::FIndexExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_index */
 		return index_exists(oid);
 	}
 	GP_WRAP_END;
@@ -1487,6 +1551,7 @@ gpdb::FGreenplumDbHashable
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return isGreenplumDbHashable(typid);
 	}
 	GP_WRAP_END;
@@ -1778,6 +1843,7 @@ gpdb::FMultilevelPartitionUniform
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_partition, pg_partition_rule, pg_constraint */
 		return rel_partitioning_is_uniform(rootOid);
 	}
 	GP_WRAP_END;
@@ -1793,6 +1859,7 @@ gpdb::PtceLookup
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type, pg_operator, pg_opclass, pg_opfamily, pg_amop */
 		return lookup_type_cache(type_id, flags);
 	}
 	GP_WRAP_END;
@@ -1824,6 +1891,7 @@ gpdb::PvalMakeInteger
 		return makeInteger(i);
 	}
 	GP_WRAP_END;
+	return NULL;
 }
 
 Node *
@@ -2014,6 +2082,7 @@ gpdb::PnodeTypeDefault
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return get_typdefault(typid);
 	}
 	GP_WRAP_END;
@@ -2073,23 +2142,8 @@ gpdb::FOpHashJoinable
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		return op_hashjoinable(opno);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
-bool
-gpdb::FOpMergeJoinable
-	(
-	Oid opno,
-	Oid *leftOp,
-	Oid *rightOp
-	)
-{
-	GP_WRAP_START;
-	{
-		return op_mergejoinable(opno, leftOp, rightOp);
 	}
 	GP_WRAP_END;
 	return false;
@@ -2103,6 +2157,7 @@ gpdb::FOpStrict
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator, pg_proc */
 		return op_strict(opno);
 	}
 	GP_WRAP_END;
@@ -2119,6 +2174,7 @@ gpdb::GetOpInputTypes
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		op_input_types(opno, lefttype, righttype);
 		return;
 	}
@@ -2133,6 +2189,7 @@ gpdb::FOperatorExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_operator */
 		return operator_exists(oid);
 	}
 	GP_WRAP_END;
@@ -2313,6 +2370,7 @@ gpdb::FHasSubclass
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_inherits */
 		return has_subclass(oidRel);
 	}
 	GP_WRAP_END;
@@ -2322,16 +2380,17 @@ gpdb::FHasSubclass
 
 bool
 gpdb::FHasParquetChildren
-        (
-        Oid oidRel
-        )
+	(
+	Oid oidRel
+	)
 {
-        GP_WRAP_START;
-        {
-                return has_parquet_children(oidRel);
-        }
-        GP_WRAP_END;
-        return false;
+	GP_WRAP_START;
+	{
+		/* catalog tables: pg_inherits, pg_class */
+		return has_parquet_children(oidRel);
+	}
+	GP_WRAP_END;
+	return false;
 }
 
 GpPolicy *
@@ -2342,13 +2401,14 @@ gpdb::Pdistrpolicy
 {
     GP_WRAP_START;
     {
+        /* catalog tables: pg_class */
     	return relation_policy(rel);
     }
     GP_WRAP_END;
     return NULL;
 }
 
-BOOL
+gpos::BOOL
 gpdb::FChildPartDistributionMismatch
 	(
 	Relation rel
@@ -2356,13 +2416,14 @@ gpdb::FChildPartDistributionMismatch
 {
     GP_WRAP_START;
     {
+    	/* catalog tables: pg_class, pg_inherits */
     	return child_distribution_mismatch(rel);
     }
     GP_WRAP_END;
     return false;
 }
 
-BOOL
+gpos::BOOL
 gpdb::FChildTriggers
 	(
 	Oid oid,
@@ -2371,6 +2432,7 @@ gpdb::FChildTriggers
 {
     GP_WRAP_START;
     {
+		/* catalog tables: pg_inherits, pg_trigger */
     	return child_triggers(oid, triggerType);
     }
     GP_WRAP_END;
@@ -2385,6 +2447,7 @@ gpdb::FRelationExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_class */
 		return relation_exists(oid);
 	}
 	GP_WRAP_END;
@@ -2396,6 +2459,7 @@ gpdb::PlRelationOids(void)
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_class */
 		return relation_oids();
 	}
 	GP_WRAP_END;
@@ -2441,6 +2505,7 @@ gpdb::PlRelationIndexes
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: from relcache */
 		return RelationGetIndexList(relation);
 	}
 	GP_WRAP_END;
@@ -2455,6 +2520,7 @@ gpdb::Plgidx
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_partition, pg_partition_rule, pg_index */
 		return BuildLogicalIndexInfo(oid);
 	}
 	GP_WRAP_END;
@@ -2470,6 +2536,7 @@ gpdb::Plgidxinfo
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_index */
 		return logicalIndexInfoForIndexOid(rootOid, indexOid);
 	}
 	GP_WRAP_END;
@@ -2484,6 +2551,7 @@ gpdb::BuildRelationTriggers
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_trigger */
 		RelationBuildTriggers(rel);
 		return;
 	}
@@ -2498,6 +2566,7 @@ gpdb::RelGetRelation
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: relcache */
 		return RelationIdGetRelation(relationId);
 	}
 	GP_WRAP_END;
@@ -2512,6 +2581,7 @@ gpdb::Pexttable
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_exttable */
 		return GetExtTableEntry(relationId);
 	}
 	GP_WRAP_END;
@@ -2572,6 +2642,7 @@ gpdb::FTypeExists
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return type_exists(oid);
 	}
 	GP_WRAP_END;
@@ -2586,6 +2657,7 @@ gpdb::FCompositeType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return type_is_rowtype(typid);
 	}
 	GP_WRAP_END;
@@ -2625,6 +2697,7 @@ gpdb::PcdbComponentDatabases(void)
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: gp_segment_config */
 		return getCdbComponentDatabases();
 	}
 	GP_WRAP_END;
@@ -2714,6 +2787,7 @@ gpdb::PnodeCoerceToCommonType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type, pg_cast */
 		return coerce_to_common_type
 					(
 					pstate,
@@ -2736,6 +2810,7 @@ gpdb::OidResolveGenericType
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_type */
 		return resolve_generic_type(declared_type, context_actual_type, context_declared_type);
 	}
 	GP_WRAP_END;
@@ -2775,6 +2850,9 @@ gpdb::ICdbHashList
 }
 
 // check permissions on range table
+// GPDB_83_MERGE_FIXME: This is a no-op, because we do these permission
+// checks in the executor. I think we can remove this, but I wish someone
+// would confirm.
 void
 gpdb::CheckRTPermissions
 	(
@@ -2783,7 +2861,7 @@ gpdb::CheckRTPermissions
 {
 	GP_WRAP_START;
 	{
-		ExecCheckRTPerms(plRangeTable);	
+		//ExecCheckRTPerms(plRangeTable);	
 		return;
 	}
 	GP_WRAP_END;
@@ -2802,7 +2880,14 @@ gpdb::IndexOpProperties
 {
 	GP_WRAP_START;
 	{
-		get_op_opclass_properties(opno, opclass, strategy, subtype, recheck);	
+		/* catalog tables: pg_amop */
+
+		// FIXME: We assume the 'opclass' arg is actually an opfamily
+		// Also, only the right type is returned to the caller, the left
+		// type is simply ignored.
+		Oid	lefttype;
+
+		get_op_opfamily_properties(opno, opclass, strategy, &lefttype, subtype, recheck);
 		return;
 	}
 	GP_WRAP_END;
@@ -2817,7 +2902,12 @@ gpdb::PlIndexOpClasses
 {
 	GP_WRAP_START;
 	{
-		return get_index_opclasses(oidIndex);	
+		/* catalog tables: pg_index */
+
+		// FIXME: We actually return the operator *families* of the index keys.
+		// As long as we do the same for operators below, i.e. fetch the
+		// operator families that an operator belons to, this works.
+		return get_index_opfamilies(oidIndex);
 	}
 	GP_WRAP_END;
 	
@@ -2833,7 +2923,12 @@ gpdb::PlScOpOpClasses
 {
 	GP_WRAP_START;
 	{
-		return get_operator_opclasses(opno);	
+		/* catalog tables: pg_amop */
+
+		// FIXME: We actually return the operator *families* this operator
+		// belongs to. As long as we do the same for index columns above,
+		// this works.
+		return get_operator_opfamilies(opno);
 	}
 	GP_WRAP_END;
 	
@@ -2848,12 +2943,13 @@ Expr *
 gpdb::PexprEvaluate
 	(
 	Expr *pexpr,
-	Oid oidResultType
+	Oid oidResultType,
+	int32 iTypeMod
 	)
 {
 	GP_WRAP_START;
 	{
-		return evaluate_expr(pexpr, oidResultType);
+		return evaluate_expr(pexpr, oidResultType, iTypeMod);
 	}
 	GP_WRAP_END;
 	return NULL;
@@ -2877,13 +2973,12 @@ gpdb::FInterpretOidsOption
 char *
 gpdb::SzDefGetString
 	(
-	DefElem *pdefelem,
-	bool *fNeedFree
+	DefElem *pdefelem
 	)
 {
 	GP_WRAP_START;
 	{
-		return defGetString(pdefelem, fNeedFree);
+		return defGetString(pdefelem);
 	}
 	GP_WRAP_END;
 	return NULL;
@@ -2934,7 +3029,7 @@ gpdb::OptTasksFaultInjector
 	return FaultInjectorTypeNotSpecified;
 }
 
-ULONG
+gpos::ULONG
 gpdb::UlLeafPartitions
        (
        Oid oidRelation
@@ -2942,11 +3037,142 @@ gpdb::UlLeafPartitions
 {
 	GP_WRAP_START;
 	{
+		/* catalog tables: pg_partition, pg_partition_rules */
 		return countLeafPartTables(oidRelation);
 	}
 	GP_WRAP_END;
 
 	return 0;
+}
+
+/*
+ * To detect changes to catalog tables that require resetting the Metadata
+ * Cache, we use the normal PostgreSQL catalog cache invalidation mechanism.
+ * We register a callback to a cache on all the catalog tables that contain
+ * information that's contained in the ORCA metadata cache.
+
+ * There is no fine-grained mechanism in the metadata cache for invalidating
+ * individual entries ATM, so we just blow the whole cache whenever anything
+ * changes. The callback simply increments a counter. Whenever we start
+ * planning a query, we check the counter to see if it has changed since the
+ * last planned query, and reset the whole cache if it has.
+ *
+ * To make sure we've covered all catalog tables that contain information
+ * that's stored in the metadata cache, there are "catalog tables: xxx"
+ * comments in all the calls to backend functions in this file. They indicate
+ * which catalog tables each function uses. We conservatively assume that
+ * anything fetched via the wrapper functions in this file can end up in the
+ * metadata cache and hence need to have an invalidation callback registered.
+ */
+static bool mdcache_invalidation_counter_registered = false;
+static int64 mdcache_invalidation_counter = 0;
+static int64 last_mdcache_invalidation_counter = 0;
+
+static void
+mdsyscache_invalidation_counter_callback(Datum arg, int cacheid,  ItemPointer tuplePtr)
+{
+	mdcache_invalidation_counter++;
+}
+
+static void
+mdrelcache_invalidation_counter_callback(Datum arg, Oid relid)
+{
+	mdcache_invalidation_counter++;
+}
+
+static void
+register_mdcache_invalidation_callbacks(void)
+{
+	/* These are all the catalog tables that we care about. */
+	int			metadata_caches[] = {
+		AGGFNOID,			/* pg_aggregate */
+		AMOPOPID,			/* pg_amop */
+		CASTSOURCETARGET,	/* pg_cast */
+		CONSTROID,			/* pg_constraint */
+		OPEROID,			/* pg_operator */
+		OPFAMILYOID,		/* pg_opfamily */
+		PARTOID,			/* pg_partition */
+		PARTRULEOID,		/* pg_partition_rule */
+		STATRELATT,			/* pg_statistics */
+		TYPEOID,			/* pg_type */
+		PROCOID,			/* pg_proc */
+
+		/*
+		 * lookup_type_cache() will also access pg_opclass, via GetDefaultOpClass(),
+		 * but there is no syscache for it. Postgres doesn't seem to worry about
+		 * invalidating the type cache on updates to pg_opclass, so we don't
+		 * worry about that either.
+		 */
+		/* pg_opclass */
+
+		/*
+		 * Information from the following catalogs are included in the
+		 * relcache, and any updates will generate relcache invalidation
+		 * event. We'll catch the relcache invalidation event and don't need
+		 * to register a catcache callback for them.
+		 */
+		/* pg_class */
+		/* pg_index */
+		/* pg_trigger */
+
+		/*
+		 * pg_exttable is only updated when a new external table is dropped/created,
+		 * which will trigger a relcache invalidation event.
+		 */
+		/* pg_exttable */
+
+		/*
+		 * XXX: no syscache on pg_inherits. Is that OK? For any partitioning
+		 * changes, I think there will also be updates on pg_partition and/or
+		 * pg_partition_rules.
+		 */
+		/* pg_inherits */
+
+		/*
+		 * We assume that gp_segment_config will not change on the fly in a way that
+		 * would affect ORCA
+		 */
+		/* gp_segment_config */
+	};
+	int			i;
+
+	for (i = 0; i < lengthof(metadata_caches); i++)
+	{
+		CacheRegisterSyscacheCallback(metadata_caches[i],
+									  &mdsyscache_invalidation_counter_callback,
+									  (Datum) 0);
+	}
+
+	/* also register the relcache callback */
+	CacheRegisterRelcacheCallback(&mdrelcache_invalidation_counter_callback,
+								  (Datum) 0);
+}
+
+// Has there been any catalog changes since last call?
+bool
+gpdb::FMDCacheNeedsReset
+		(
+			void
+		)
+{
+	GP_WRAP_START;
+	{
+		if (!mdcache_invalidation_counter_registered)
+		{
+			register_mdcache_invalidation_callbacks();
+			mdcache_invalidation_counter_registered = true;
+		}
+		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
+			return false;
+		else
+		{
+			last_mdcache_invalidation_counter = mdcache_invalidation_counter;
+			return true;
+		}
+	}
+	GP_WRAP_END;
+
+	return true;
 }
 
 // EOF

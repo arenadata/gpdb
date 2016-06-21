@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.83.2.1 2007/07/31 19:53:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.89 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,6 +19,7 @@
 #include "catalog/gp_policy.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/var.h"                  /* contain_vars_of_level_or_above */
@@ -26,7 +27,6 @@
 #include "parser/parse_expr.h"              /* exprType(), exprTypmod() */
 #include "utils/hsearch.h"
 #include "utils/lsyscache.h"
-
 
 
 typedef struct JoinHashEntry
@@ -38,15 +38,17 @@ typedef struct JoinHashEntry
 static List *build_joinrel_restrictlist(PlannerInfo *root,
 						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
-						   RelOptInfo *inner_rel,
-						   JoinType jointype);
+						   RelOptInfo *inner_rel);
 static void build_joinrel_joinlist(RelOptInfo *joinrel,
 					   RelOptInfo *outer_rel,
 					   RelOptInfo *inner_rel);
 static List *subbuild_joinrel_restrictlist(RelOptInfo *joinrel,
-							  List *joininfo_list);
-static void subbuild_joinrel_joinlist(RelOptInfo *joinrel,
-						  List *joininfo_list);
+							  List *joininfo_list,
+							  List *new_restrictlist);
+static List *subbuild_joinrel_joinlist(RelOptInfo *joinrel,
+						  List *joininfo_list,
+						  List *new_joininfo);
+
 
 /*
  * build_simple_rel
@@ -58,14 +60,14 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	RelOptInfo *rel;
 	RangeTblEntry *rte;
 
-	/* Fetch RTE for relation */
-	Assert(relid > 0 && relid <= list_length(root->parse->rtable));
-	rte = rt_fetch(relid, root->parse->rtable);
-
 	/* Rel should not exist already */
-	Assert(relid < root->simple_rel_array_size);
+	Assert(relid > 0 && relid < root->simple_rel_array_size);
 	if (root->simple_rel_array[relid] != NULL)
 		elog(ERROR, "rel %d already exists", relid);
+
+	/* Fetch RTE for relation */
+	rte = root->simple_rte_array[relid];
+	Assert(rte != NULL);
 
     /* CDB: Rel isn't expected to have any pseudo columns yet. */
     Assert(!rte->pseudocols);
@@ -97,12 +99,12 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 	rel->rejectlimittype = '\0';
 	rel->fmterrtbl = InvalidOid;
 	rel->ext_encoding = -1;
-	rel->isrescannable = true;
 	rel->writable = false;
 	rel->baserestrictinfo = NIL;
 	rel->baserestrictcost.startup = 0;
 	rel->baserestrictcost.per_tuple = 0;
 	rel->joininfo = NIL;
+	rel->has_eclass_joins = false;
 	rel->index_outer_relids = NULL;
 	rel->index_inner_paths = NIL;
 
@@ -125,6 +127,9 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 				rel->cdbpolicy->ptype = POLICYTYPE_PARTITIONED;
 				rel->cdbpolicy->nattrs = 0;
 				rel->cdbpolicy->attrs[0] = 1;
+
+				/* Scribble the tuple number of rel to reflect the real size */
+				rel->tuples = rel->tuples * planner_segment_count();
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -339,13 +344,12 @@ build_join_rel(PlannerInfo *root,
 			*restrictlist_ptr = build_joinrel_restrictlist(root,
 														   joinrel,
 														   outer_rel,
-														   inner_rel,
-														   jointype);
+														   inner_rel);
 
         /* CDB: Join between single-row inputs produces a single-row joinrel. */
         Assert(joinrel->onerow == (outer_rel->onerow && inner_rel->onerow));
 
-        return joinrel;
+		return joinrel;
 	}
 
 	/*
@@ -377,6 +381,7 @@ build_join_rel(PlannerInfo *root,
 	joinrel->baserestrictcost.startup = 0;
 	joinrel->baserestrictcost.per_tuple = 0;
 	joinrel->joininfo = NIL;
+	joinrel->has_eclass_joins = false;
 	joinrel->index_outer_relids = NULL;
 	joinrel->index_inner_paths = NIL;
 
@@ -403,11 +408,8 @@ build_join_rel(PlannerInfo *root,
 	 * caller might or might not need the restrictlist, but I need it anyway
 	 * for set_joinrel_size_estimates().)
 	 */
-	restrictlist = build_joinrel_restrictlist(root,
-											  joinrel,
-											  outer_rel,
-											  inner_rel,
-											  jointype);
+	restrictlist = build_joinrel_restrictlist(root, joinrel,
+											  outer_rel, inner_rel);
 	if (restrictlist_ptr)
 		*restrictlist_ptr = restrictlist;
 	build_joinrel_joinlist(joinrel, outer_rel, inner_rel);
@@ -417,6 +419,12 @@ build_join_rel(PlannerInfo *root,
      */
     if (root->in_info_list)
         joinrel->dedup_info = cdb_make_rel_dedup_info(root, joinrel);
+
+	/*
+	 * This is also the right place to check whether the joinrel has any
+	 * pending EquivalenceClass joins.
+	 */
+	joinrel->has_eclass_joins = has_relevant_eclass_joinclause(root, joinrel);
 
 	/*
 	 * Set estimates of the joinrel's size.
@@ -459,7 +467,8 @@ build_join_rel(PlannerInfo *root,
  * of data that was cached at the baserel level by set_rel_width().
  */
 void
-build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel, List *input_tlist)
+build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
+					List *input_tlist)
 {
 	Relids		relids = joinrel->relids;
 	ListCell   *vars;
@@ -539,15 +548,15 @@ build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel, List *input_tlist)
  *	  join paths made from this pair of sub-relations.	(It will not need to
  *	  be considered further up the join tree.)
  *
- *	  When building a restriction list, we eliminate redundant clauses.
- *	  We don't try to do that for join clause lists, since the join clauses
- *	  aren't really doing anything, just waiting to become part of higher
- *	  levels' restriction lists.
+ *	  In many case we will find the same RestrictInfos in both input
+ *	  relations' joinlists, so be careful to eliminate duplicates.
+ *	  Pointer equality should be a sufficient test for dups, since all
+ *	  the various joinlist entries ultimately refer to RestrictInfos
+ *	  pushed into them by distribute_restrictinfo_to_rels().
  *
  * 'joinrel' is a join relation node
  * 'outer_rel' and 'inner_rel' are a pair of relations that can be joined
  *		to form joinrel.
- * 'jointype' is the type of join used.
  *
  * build_joinrel_restrictlist() returns a list of relevant restrictinfos,
  * whereas build_joinrel_joinlist() stores its results in the joinrel's
@@ -562,35 +571,28 @@ static List *
 build_joinrel_restrictlist(PlannerInfo *root,
 						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
-						   RelOptInfo *inner_rel,
-						   JoinType jointype)
+						   RelOptInfo *inner_rel)
 {
 	List	   *result;
-	List	   *rlist;
 
 	/*
-	 * Collect all the clauses that syntactically belong at this level.
+	 * Collect all the clauses that syntactically belong at this level,
+	 * eliminating any duplicates (important since we will see many of the
+	 * same clauses arriving from both input relations).
 	 */
-	rlist = list_concat(subbuild_joinrel_restrictlist(joinrel,
-													  outer_rel->joininfo),
-						subbuild_joinrel_restrictlist(joinrel,
-													  inner_rel->joininfo));
+	result = subbuild_joinrel_restrictlist(joinrel, outer_rel->joininfo, NIL);
+	result = subbuild_joinrel_restrictlist(joinrel, inner_rel->joininfo, result);
 
 	/*
-	 * Eliminate duplicate and redundant clauses.
-	 *
-	 * We must eliminate duplicates, since we will see many of the same
-	 * clauses arriving from both input relations.	Also, if a clause is a
-	 * mergejoinable clause, it's possible that it is redundant with previous
-	 * clauses (see optimizer/README for discussion).  We detect that case and
-	 * omit the redundant clause from the result list.
+	 * Add on any clauses derived from EquivalenceClasses.	These cannot be
+	 * redundant with the clauses in the joininfo lists, so don't bother
+	 * checking.
 	 */
-	result = remove_redundant_join_clauses(root, rlist,
-										   outer_rel->relids,
-										   inner_rel->relids,
-										   IS_OUTER_JOIN(jointype));
-
-	list_free(rlist);
+	result = list_concat(result,
+						 generate_join_implied_equalities(root,
+														  joinrel,
+														  outer_rel,
+														  inner_rel));
 
 	return result;
 }
@@ -600,15 +602,24 @@ build_joinrel_joinlist(RelOptInfo *joinrel,
 					   RelOptInfo *outer_rel,
 					   RelOptInfo *inner_rel)
 {
-	subbuild_joinrel_joinlist(joinrel, outer_rel->joininfo);
-	subbuild_joinrel_joinlist(joinrel, inner_rel->joininfo);
+	List	   *result;
+
+	/*
+	 * Collect all the clauses that syntactically belong above this level,
+	 * eliminating any duplicates (important since we will see many of the
+	 * same clauses arriving from both input relations).
+	 */
+	result = subbuild_joinrel_joinlist(joinrel, outer_rel->joininfo, NIL);
+	result = subbuild_joinrel_joinlist(joinrel, inner_rel->joininfo, result);
+
+	joinrel->joininfo = result;
 }
 
 static List *
 subbuild_joinrel_restrictlist(RelOptInfo *joinrel,
-							  List *joininfo_list)
+							  List *joininfo_list,
+							  List *new_restrictlist)
 {
-	List	   *restrictlist = NIL;
 	ListCell   *l;
 
 	foreach(l, joininfo_list)
@@ -619,10 +630,12 @@ subbuild_joinrel_restrictlist(RelOptInfo *joinrel,
 		{
 			/*
 			 * This clause becomes a restriction clause for the joinrel, since
-			 * it refers to no outside rels.  We don't bother to check for
-			 * duplicates here --- build_joinrel_restrictlist will do that.
+			 * it refers to no outside rels.  Add it to the list, being
+			 * careful to eliminate duplicates. (Since RestrictInfo nodes in
+			 * different joinlists will have been multiply-linked rather than
+			 * copied, pointer equality should be a sufficient test.)
 			 */
-			restrictlist = lappend(restrictlist, rinfo);
+			new_restrictlist = list_append_unique_ptr(new_restrictlist, rinfo);
 		}
 		else
 		{
@@ -633,12 +646,13 @@ subbuild_joinrel_restrictlist(RelOptInfo *joinrel,
 		}
 	}
 
-	return restrictlist;
+	return new_restrictlist;
 }
 
-static void
+static List *
 subbuild_joinrel_joinlist(RelOptInfo *joinrel,
-						  List *joininfo_list)
+						  List *joininfo_list,
+						  List *new_joininfo)
 {
 	ListCell   *l;
 
@@ -658,74 +672,17 @@ subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 		{
 			/*
 			 * This clause is still a join clause at this level, so add it to
-			 * the joininfo list for the joinrel, being careful to eliminate
-			 * duplicates.	(Since RestrictInfo nodes are normally
+			 * the new joininfo list, being careful to eliminate duplicates.
+			 * (Since RestrictInfo nodes in different joinlists will have been
 			 * multiply-linked rather than copied, pointer equality should be
-			 * a sufficient test.  If two equal() nodes should happen to sneak
-			 * in, no great harm is done --- they'll be detected by
-			 * redundant-clause testing when they reach a restriction list.)
+			 * a sufficient test.)
 			 */
-			joinrel->joininfo = list_append_unique_ptr(joinrel->joininfo,
-													   rinfo);
+			new_joininfo = list_append_unique_ptr(new_joininfo, rinfo);
 		}
 	}
+
+	return new_joininfo;
 }
-
-
-/*
- * add_vars_to_targetlist
- *	  For each variable appearing in the list, add it to the owning
- *	  relation's targetlist if not already present, and mark the variable
- *	  as being needed for the indicated join (or for final output if
- *	  where_needed includes "relation 0").
- *
- * CDB: This function was formerly defined in initsplan.c
- */
-void
-add_vars_to_targetlist(PlannerInfo *root, List *vars, Relids where_needed)
-{
-	ListCell   *temp;
-
-	Assert(!bms_is_empty(where_needed));
-
-	foreach(temp, vars)
-	{
-		Var		   *var = (Var *) lfirst(temp);
-		RelOptInfo *rel = find_base_rel(root, var->varno);
-		int			attrno = var->varattno;
-
-        /* Pseudo column? */
-        if (attrno <= FirstLowInvalidHeapAttributeNumber)
-        {
-            CdbRelColumnInfo   *rci = cdb_find_pseudo_column(root, var);
-
-            /* Add to targetlist. */
-    		if (bms_is_empty(rci->where_needed))
-            {
-                Assert(rci->targetresno == 0);
-                rci->targetresno = list_length(rel->reltargetlist);
-    			rel->reltargetlist = lappend(rel->reltargetlist, copyObject(var));
-            }
-
-            /* Note relids which are consumers of the data from this column. */
-            rci->where_needed = bms_add_members(rci->where_needed, where_needed);
-            continue;
-        }
-
-        /* System-defined attribute, whole row, or user-defined attribute */
-		Assert(attrno >= rel->min_attr && attrno <= rel->max_attr);
-		attrno -= rel->min_attr;
-		if (bms_is_empty(rel->attr_needed[attrno]))
-		{
-			/* Variable not yet requested, so add to reltargetlist */
-			/* XXX is copyObject necessary here? */
-			rel->reltargetlist = lappend(rel->reltargetlist, copyObject(var));
-		}
-		rel->attr_needed[attrno] = bms_add_members(rel->attr_needed[attrno],
-												   where_needed);
-	}
-}                               /* add_vars_to_targetlist */
-
 
 /*
  * cdb_define_pseudo_column

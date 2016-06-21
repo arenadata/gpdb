@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/float.c,v 1.162 2009/06/11 14:49:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/float.c,v 1.153.2.1 2009/03/04 22:08:28 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,6 +23,7 @@
 #include "libpq/pqformat.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/float_utils.h"
 
 
 #ifndef M_PI
@@ -42,22 +43,6 @@ static const uint32 nan[2] = {0xffffffff, 0x7fffffff};
 /* not sure what the following should be, but better to make it over-sufficient */
 #define MAXFLOATWIDTH	64
 #define MAXDOUBLEWIDTH	128
-
-/*
- * check to see if a float4/8 val has underflowed or overflowed
- */
-#define CHECKFLOATVAL(val, inf_is_valid, zero_is_valid)			\
-do {															\
-	if (isinf(val) && !(inf_is_valid))							\
-		ereport(ERROR,											\
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
-		  errmsg("value out of range: overflow")));				\
-																\
-	if ((val) == 0.0 && !(zero_is_valid))						\
-		ereport(ERROR,											\
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),	\
-		 errmsg("value out of range: underflow")));				\
-} while(0)
 
 /* ========== USER I/O ROUTINES ========== */
 
@@ -610,7 +595,9 @@ float4um(PG_FUNCTION_ARGS)
 	float4		arg1 = PG_GETARG_FLOAT4(0);
 	float4		result;
 
-	result = -arg1;
+	result = ((arg1 != 0) ? -(arg1) : arg1);
+
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT4(result);
 }
 
@@ -677,7 +664,9 @@ float8um(PG_FUNCTION_ARGS)
 	float8		arg1 = PG_GETARG_FLOAT8(0);
 	float8		result;
 
-	result = -arg1;
+	result = ((arg1 != 0) ? -(arg1) : arg1);
+
+	CHECKFLOATVAL(result, isinf(arg1), true);
 	PG_RETURN_FLOAT8(result);
 }
 
@@ -733,16 +722,16 @@ float8smaller(PG_FUNCTION_ARGS)
 Datum
 float4pl(PG_FUNCTION_ARGS)
 {
-	float4		arg1 = PG_GETARG_FLOAT4(0);
-	float4		arg2 = PG_GETARG_FLOAT4(1);
+	float8		arg1 = PG_GETARG_FLOAT4(0);
+	float8		arg2 = PG_GETARG_FLOAT4(1);
 	float4		result;
 
 	result = arg1 + arg2;
 
 	/*
 	 * There isn't any way to check for underflow of addition/subtraction
-	 * because numbers near the underflow value have already been rounded to
-	 * the point where we can't detect that the two values were originally
+	 * because numbers near the underflow value have been already been to the
+	 * point where we can't detect the that the two values were originally
 	 * different, e.g. on x86, '1e-45'::float4 == '2e-45'::float4 ==
 	 * 1.4013e-45.
 	 */
@@ -1225,108 +1214,6 @@ i2tof(PG_FUNCTION_ARGS)
 	int16		num = PG_GETARG_INT16(0);
 
 	PG_RETURN_FLOAT4((float4) num);
-}
-
-
-/*
- *		float8_text		- converts a float8 number to a text string
- */
-Datum
-float8_text(PG_FUNCTION_ARGS)
-{
-	float8		num = PG_GETARG_FLOAT8(0);
-	text	   *result;
-	int			len;
-	char	   *str;
-
-	str = DatumGetCString(DirectFunctionCall1(float8out,
-											  Float8GetDatum(num)));
-
-	len = strlen(str) + VARHDRSZ;
-
-	result = (text *) palloc(len);
-
-	SET_VARSIZE(result, len);
-	memcpy(VARDATA(result), str, (len - VARHDRSZ));
-
-	pfree(str);
-
-	PG_RETURN_TEXT_P(result);
-}
-
-
-/*
- *		text_float8		- converts a text string to a float8 number
- */
-Datum
-text_float8(PG_FUNCTION_ARGS)
-{
-	text	   *string = PG_GETARG_TEXT_P(0);
-	Datum		result;
-	int			len;
-	char	   *str;
-
-	len = (VARSIZE(string) - VARHDRSZ);
-	str = palloc(len + 1);
-	memcpy(str, VARDATA(string), len);
-	*(str + len) = '\0';
-
-	result = DirectFunctionCall1(float8in, CStringGetDatum(str));
-
-	pfree(str);
-
-	PG_RETURN_DATUM(result);
-}
-
-
-/*
- *		float4_text		- converts a float4 number to a text string
- */
-Datum
-float4_text(PG_FUNCTION_ARGS)
-{
-	float4		num = PG_GETARG_FLOAT4(0);
-	text	   *result;
-	int			len;
-	char	   *str;
-
-	str = DatumGetCString(DirectFunctionCall1(float4out,
-											  Float4GetDatum(num)));
-
-	len = strlen(str) + VARHDRSZ;
-
-	result = (text *) palloc(len);
-
-	SET_VARSIZE(result, len);
-	memcpy(VARDATA(result), str, (len - VARHDRSZ));
-
-	pfree(str);
-
-	PG_RETURN_TEXT_P(result);
-}
-
-
-/*
- *		text_float4		- converts a text string to a float4 number
- */
-Datum
-text_float4(PG_FUNCTION_ARGS)
-{
-	text	   *string = PG_GETARG_TEXT_P(0);
-	Datum		result;
-	int			len;
-	char	   *str;
-
-	len = (VARSIZE(string) - VARHDRSZ);
-	str = palloc(len + 1);
-	memcpy(str, VARDATA(string), len);
-	*(str + len) = '\0';
-
-	result = DirectFunctionCall1(float4in, CStringGetDatum(str));
-
-	pfree(str);
-
-	PG_RETURN_DATUM(result);
 }
 
 /*
@@ -3154,4 +3041,3 @@ float8_regr_amalg(PG_FUNCTION_ARGS)
 		PG_RETURN_ARRAYTYPE_P(result);
 	}
 }
-

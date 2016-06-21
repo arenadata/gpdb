@@ -159,7 +159,7 @@ namespace gpdb {
 
 	// replace Vars that reference JOIN outputs with references to the original
 	// relation variables instead
-	Query *PqueryFlattenJoinAliasVar(Query *pquery, ULONG ulQueryLevel);
+	Query *PqueryFlattenJoinAliasVar(Query *pquery, gpos::ULONG ulQueryLevel);
 
 	// is aggregate ordered
 	bool FOrderedAgg(Oid aggid);
@@ -248,11 +248,14 @@ namespace gpdb {
 	bool FCastFunc(Oid oidSrc, Oid oidDest, bool *is_binary_coercible, Oid *oidCastFunc);
 	
 	// get type of operator
-	uint UlCmpt(Oid oidOp, Oid oidLeft, Oid oidRight);
+	unsigned int UlCmpt(Oid oidOp, Oid oidLeft, Oid oidRight);
 	
 	// get scalar comparison between given types
-	Oid OidScCmp(Oid oidLeft, Oid oidRight, uint ulCmpt);
-	
+	Oid OidScCmp(Oid oidLeft, Oid oidRight, unsigned int ulCmpt);
+
+	// get equality operator for given type
+	Oid OidEqualityOp(Oid oidType);
+
 	// function name
 	char *SzFuncName(Oid funcid);
 
@@ -290,7 +293,7 @@ namespace gpdb {
 	List *PlPartitionAttrs(Oid oid);
 
 	// parts of a partitioned table
-	PartitionNode *PpnParts(Oid relid, int2 level, Oid parent, bool inctemplate, MemoryContext mcxt, bool includesubparts);
+	PartitionNode *PpnParts(Oid relid, int2 level, Oid parent, bool inctemplate, bool includesubparts);
 
 	// keys of the relation with the given oid
 	List *PlRelationKeys(Oid relid);
@@ -430,9 +433,6 @@ namespace gpdb {
 	// is the given operator hash-joinable
 	bool FOpHashJoinable(Oid opno);
 
-	// is the given operator merge-joinable
-	bool FOpMergeJoinable(Oid opno, Oid *leftOp, Oid *rightOp);
-
 	// is the given operator strict
 	bool FOpStrict(Oid opno);
 
@@ -487,11 +487,11 @@ namespace gpdb {
     
     // return true if the table is partitioned and hash-distributed, and one of  
     // the child partitions is randomly distributed
-    BOOL FChildPartDistributionMismatch(Relation rel);
+    gpos::BOOL FChildPartDistributionMismatch(Relation rel);
 
     // return true if the table is partitioned and any of the child partitions
     // have a trigger of the given type
-    BOOL FChildTriggers(Oid oid, int triggerType);
+    gpos::BOOL FChildTriggers(Oid oid, int triggerType);
 
 	// does a relation exist with the given oid
 	bool FRelationExists(Oid oid);
@@ -590,13 +590,13 @@ namespace gpdb {
 
 	// returns the result of evaluating 'pexpr' as an Expr. Caller keeps ownership of 'pexpr'
 	// and takes ownership of the result 
-	Expr *PexprEvaluate(Expr *pexpr, Oid oidResultType);
+	Expr *PexprEvaluate(Expr *pexpr, Oid oidResultType, int32 iTypeMod);
 	
 	// interpret the value of "With oids" option from a list of defelems
 	bool FInterpretOidsOption(List *plOptions);
 	
 	// extract string value from defelem's value
-	char *SzDefGetString(DefElem *pdefelem, bool *fNeedFree);
+	char *SzDefGetString(DefElem *pdefelem);
 
 	// fold array expression constant values
 	Node *PnodeFoldArrayexprConstants(ArrayExpr *parrayexpr);
@@ -608,7 +608,11 @@ namespace gpdb {
 	FaultInjectorType_e OptTasksFaultInjector(FaultInjectorIdentifier_e identifier);
 
 	// return the number of leaf partition for a given table oid
-	ULONG UlLeafPartitions(Oid oidRelation);
+	gpos::ULONG UlLeafPartitions(Oid oidRelation);
+
+	// Does the metadata cache need to be reset (because of a catalog
+	// table has been changed?)
+	bool FMDCacheNeedsReset(void);
 
 } //namespace gpdb
 

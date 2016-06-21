@@ -1,3 +1,4 @@
+set xmloption='document';
 set optimizer_disable_missing_stats_collection = on;
 \! gpfdist -p 45555 -d bugbuster/data &> bugbuster/data/xpath_gpfdist.out &
 -- apparently this is needed on darwin
@@ -20,9 +21,9 @@ select xml_out((select * from readxml));
 
 select xml_out((select xml_in('<a>hello<a>')));
 
-select xmlcomment('<a>hello<\a>');
+select xmlcomment(E'<a>hello<\a>');
 select xmlcomment('adsfasdfasdfsadf');
-select xmlcomment('\n');
+select xmlcomment(E'\n');
 select xml('<hello></hello>');
 select xml('<a><say>speak</say><hello>say hello</hello></a>');
 select xml('hello');
@@ -34,14 +35,14 @@ SELECT xmlconcat2('1', '2');
 SELECT xmlconcat2(1, 2);
 SELECT xmlconcat2('bad', '<syntax');
 \echo --start_ignore
-drop table if exists test;
+drop table if exists test_xpath;
 \echo --end_ignore
 
-CREATE TABLE test (y int, x xml);
-INSERT INTO test VALUES (1, '<foo>abc</foo>');
-INSERT INTO test VALUES (2, '<bar/>');
-SELECT xmlagg(x order by y) FROM test;
-SELECT xmlagg(x ORDER BY y DESC) FROM test;
+CREATE TABLE test_xpath (y int, x xml);
+INSERT INTO test_xpath VALUES (1, '<foo>abc</foo>');
+INSERT INTO test_xpath VALUES (2, '<bar/>');
+SELECT xmlagg(x order by y) FROM test_xpath;
+SELECT xmlagg(x ORDER BY y DESC) FROM test_xpath;
 \echo --start_ignore
 drop table if exists xmlToText;
 \echo --end_ignore

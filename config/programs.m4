@@ -1,4 +1,4 @@
-# config/programs.m4
+# $PostgreSQL: pgsql/config/programs.m4,v 1.24 2008/08/29 13:02:32 petere Exp $
 
 
 # PGAC_PATH_BISON
@@ -10,7 +10,7 @@
 AC_DEFUN([PGAC_PATH_BISON],
 [# Let the user override the search
 if test -z "$BISON"; then
-  AC_PATH_PROGS(BISON, bison)
+  AC_CHECK_PROGS(BISON, bison)
 fi
 
 if test "$BISON"; then
@@ -19,15 +19,15 @@ if test "$BISON"; then
   if echo "$pgac_bison_version" | $AWK '{ if ([$]4 < 1.875) exit 0; else exit 1;}'
   then
     AC_MSG_WARN([
-*** The installed version of Bison, $BISON, is too old to use with PostgreSQL.
-*** Bison version 1.875 or later is required, but this is $pgac_bison_version.])
+*** The installed version of Bison is too old to use with PostgreSQL.
+*** Bison version 1.875 or later is required.])
     BISON=""
   fi
 fi
 
 if test -z "$BISON"; then
   AC_MSG_WARN([
-*** Without Bison you will not be able to build PostgreSQL from Git nor
+*** Without Bison you will not be able to build PostgreSQL from CVS nor
 *** change any of the parser definition files.  You can obtain Bison from
 *** a GNU mirror site.  (If you are using the official distribution of
 *** PostgreSQL then you do not need to worry about this, because the Bison
@@ -42,11 +42,8 @@ AC_SUBST(BISONFLAGS)
 # PGAC_PATH_FLEX
 # --------------
 # Look for Flex, set the output variable FLEX to its path if found.
-# Reject versions before 2.5.31, as we need a reasonably non-buggy reentrant
-# scanner.  (Note: the well-publicized security problem in 2.5.31 does not
-# affect Postgres, and there are still distros shipping patched 2.5.31,
-# so allow it.)  Also find Flex if its installed under `lex', but do not
-# accept other Lex programs.
+# Avoid the buggy version 2.5.3. Also find Flex if its installed
+# under `lex', but do not accept other Lex programs.
 
 AC_DEFUN([PGAC_PATH_FLEX],
 [AC_CACHE_CHECK([for flex], pgac_cv_path_flex,
@@ -69,7 +66,7 @@ else
         echo '%%'  > conftest.l
         if $pgac_candidate -t conftest.l 2>/dev/null | grep FLEX_SCANNER >/dev/null 2>&1; then
           pgac_flex_version=`$pgac_candidate --version 2>/dev/null`
-          if echo "$pgac_flex_version" | sed ['s/[^0-9]/ /g'] | $AWK '{ if ([$]1 = 2 && [$]2 = 5 && [$]3 >= 4) exit 0; else exit 1;}'
+          if echo "$pgac_flex_version" | sed ['s/[^0-9]/ /g'] | $AWK '{ if ([$]1 == 2 && ([$]2 > 5 || ([$]2 == 5 && [$]3 >= 4))) exit 0; else exit 1;}'
           then
             pgac_cv_path_flex=$pgac_candidate
             break 2
@@ -78,6 +75,9 @@ else
 *** The installed version of Flex, $pgac_candidate, is too old to use with Greenplum DB.
 *** Flex version 2.5.4 or later is required, but this is $pgac_flex_version.])
           fi
+
+          pgac_cv_path_flex=$pgac_candidate
+          break 2
         fi
       fi
     done
@@ -88,8 +88,14 @@ fi
 ])[]dnl AC_CACHE_CHECK
 
 if test x"$pgac_cv_path_flex" = x"no"; then
+  if test -n "$pgac_broken_flex"; then
+    AC_MSG_WARN([
+*** The Flex version 2.5.3 you have at $pgac_broken_flex contains a bug. You
+*** should get version 2.5.4 or later.])
+  fi
+
   AC_MSG_WARN([
-*** Without Flex you will not be able to build PostgreSQL from Git nor
+*** Without Flex you will not be able to build PostgreSQL from CVS or
 *** change any of the scanner definition files.  You can obtain Flex from
 *** a GNU mirror site.  (If you are using the official distribution of
 *** PostgreSQL then you do not need to worry about this because the Flex
@@ -98,7 +104,7 @@ if test x"$pgac_cv_path_flex" = x"no"; then
   FLEX=
 else
   FLEX=$pgac_cv_path_flex
-  pgac_flex_version=`$FLEX --version 2>/dev/null`
+  pgac_flex_version=`$FLEX -V 2>/dev/null`
   AC_MSG_NOTICE([using $pgac_flex_version])
 fi
 
@@ -117,7 +123,7 @@ AC_SUBST(FLEXFLAGS)
 AC_DEFUN([PGAC_CHECK_READLINE],
 [AC_REQUIRE([AC_CANONICAL_HOST])
 
-AC_CACHE_CHECK([for library containing readline], [pgac_cv_check_readline],
+AC_CACHE_VAL([pgac_cv_check_readline],
 [pgac_cv_check_readline=no
 pgac_save_LIBS=$LIBS
 if test x"$with_libedit_preferred" != x"yes"
@@ -125,6 +131,7 @@ then	READLINE_ORDER="-lreadline -ledit"
 else	READLINE_ORDER="-ledit -lreadline"
 fi
 for pgac_rllib in $READLINE_ORDER ; do
+  AC_MSG_CHECKING([for ${pgac_rllib}])
   for pgac_lib in "" " -ltermcap" " -lncurses" " -lcurses" ; do
     LIBS="${pgac_rllib}${pgac_lib} $pgac_save_LIBS"
     AC_TRY_LINK_FUNC([readline], [[
@@ -143,11 +150,14 @@ for pgac_rllib in $READLINE_ORDER ; do
     ]])
   done
   if test "$pgac_cv_check_readline" != no ; then
+    AC_MSG_RESULT([yes ($pgac_cv_check_readline)])
     break
+  else
+    AC_MSG_RESULT(no)
   fi
 done
 LIBS=$pgac_save_LIBS
-])[]dnl AC_CACHE_CHECK
+])[]dnl AC_CACHE_VAL
 
 if test "$pgac_cv_check_readline" != no ; then
   LIBS="$pgac_cv_check_readline $LIBS"
@@ -163,8 +173,8 @@ fi
 # Readline versions < 2.1 don't have rl_completion_append_character
 
 AC_DEFUN([PGAC_VAR_RL_COMPLETION_APPEND_CHARACTER],
-[AC_CACHE_CHECK([for rl_completion_append_character], pgac_cv_var_rl_completion_append_character,
-[AC_TRY_LINK([#include <stdio.h>
+[AC_MSG_CHECKING([for rl_completion_append_character])
+AC_TRY_LINK([#include <stdio.h>
 #ifdef HAVE_READLINE_READLINE_H
 # include <readline/readline.h>
 #elif defined(HAVE_READLINE_H)
@@ -172,12 +182,10 @@ AC_DEFUN([PGAC_VAR_RL_COMPLETION_APPEND_CHARACTER],
 #endif
 ],
 [rl_completion_append_character = 'x';],
-[pgac_cv_var_rl_completion_append_character=yes],
-[pgac_cv_var_rl_completion_append_character=no])])
-if test x"$pgac_cv_var_rl_completion_append_character" = x"yes"; then
+[AC_MSG_RESULT(yes)
 AC_DEFINE(HAVE_RL_COMPLETION_APPEND_CHARACTER, 1,
-          [Define to 1 if you have the global variable 'rl_completion_append_character'.])
-fi])# PGAC_VAR_RL_COMPLETION_APPEND_CHARACTER
+          [Define to 1 if you have the global variable 'rl_completion_append_character'.])],
+[AC_MSG_RESULT(no)])])# PGAC_VAR_RL_COMPLETION_APPEND_CHARACTER
 
 
 
@@ -225,3 +233,57 @@ AC_DEFUN([PGAC_CHECK_STRIP],
   AC_SUBST(STRIP_STATIC_LIB)
   AC_SUBST(STRIP_SHARED_LIB)
 ])# PGAC_CHECK_STRIP
+
+
+# GPAC_PATH_CMAKE
+# ---------------
+# Check for the 'cmake' program which is required for compiling
+# Greenplum with Code Generation
+AC_DEFUN([GPAC_PATH_CMAKE],
+[
+if test -z "$CMAKE"; then
+  AC_PATH_PROGS(CMAKE, cmake)
+fi
+
+if test -n "$CMAKE"; then
+  gpac_cmake_version=`$CMAKE --version 2>/dev/null | sed q`
+  if test -z "$gpac_cmake_version"; then
+    AC_MSG_ERROR([cmake is required for codegen, unable to identify version])
+  fi
+  AC_MSG_NOTICE([using $gpac_cmake_version])
+else
+  AC_MSG_ERROR([cmake is required for codegen, unable to find binary])
+fi
+]) # GPAC_PATH_CMAKE
+
+
+# GPAC_PATH_APR_1_CONFIG
+# ----------------------
+# Check for apr-1-config, used by gpfdist
+AC_DEFUN([GPAC_PATH_APR_1_CONFIG],
+[
+if test x"$with_apr_config" != x; then
+  APR_1_CONFIG=$with_apr_config
+fi
+if test -z "$APR_1_CONFIG"; then
+  AC_PATH_PROGS(APR_1_CONFIG, apr-1-config)
+fi
+
+if test -n "$APR_1_CONFIG"; then
+  gpac_apr_1_config_version=`$APR_1_CONFIG --version 2>/dev/null | sed q`
+  if test -z "$gpac_apr_1_config_version"; then
+    AC_MSG_ERROR([apr-1-config is required for gpfdist, unable to identify version])
+  fi
+  AC_MSG_NOTICE([using apr-1-config $gpac_apr_1_config_version])
+  apr_includes=`"$APR_1_CONFIG" --includes`
+  apr_link_ld_libs=`"$APR_1_CONFIG" --link-ld --libs`
+  apr_cflags=`"$APR_1_CONFIG" --cflags`
+  apr_cppflags=`"$APR_1_CONFIG" --cppflags`
+  AC_SUBST(apr_includes)
+  AC_SUBST(apr_link_ld_libs)
+  AC_SUBST(apr_cflags)
+  AC_SUBST(apr_cppflags)
+else
+  AC_MSG_ERROR([apr-1-config is required for gpfdist, unable to find binary])
+fi
+]) # GPAC_PATH_APR_1_CONFIG

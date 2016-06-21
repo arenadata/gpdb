@@ -249,8 +249,8 @@ select a,1 from orca.r group by rollup(a);
 select array[array[a,b]], array[b] from orca.r;
 
 -- setops
-select a, b from m union select b,a from orca.m;
-SELECT a from m UNION ALL select b from orca.m UNION ALL select a+b from orca.m group by 1;
+select a, b from orca.m union select b,a from orca.m;
+SELECT a from orca.m UNION ALL select b from orca.m UNION ALL select a+b from orca.m group by 1;
 
 ----------------------------------------------------------------------
 set optimizer=off;
@@ -474,6 +474,9 @@ insert into orca.t values('201208',2,'tag1','tag2');
 
 -- test projections
 select * from orca.t order by 1,2;
+
+-- test EXPLAIN support of partition selection nodes, while we're at it.
+explain select * from orca.t order by 1,2;
 
 select tag2, tag1 from orca.t order by 1, 2;;
 
@@ -786,27 +789,6 @@ INSERT INTO array_table values(6,array[222],'c');
 INSERT INTO array_table values(7,array[3],'a');
 INSERT INTO array_table values(8,array[3],'b');
 SELECT f3, myagg3(f1) from (select * from array_table order by f1 limit 10) as foo GROUP BY f3 ORDER BY f3;
-
--- Functions that are wrongly annotated in the catalog as NOSQL
-CREATE TABLE orca.test_part (i int) PARTITION BY RANGE(i) (start(1) exclusive end(2) inclusive);
-CREATE TABLE orca.test_distributed(i int);
-INSERT INTO orca.test_distributed SELECT i from generate_series(1,2) i;
-
--- Function pg_get_partition_rule_def(oid, bool)
-SELECT pg_get_partition_rule_def(pr1.oid, true) AS partitionboundary ,n.nspname AS schemaname, cl.relname AS tablename 
-FROM orca.test_distributed, pg_namespace n, pg_namespace n2, pg_class cl
-LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
-LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
-WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
-AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
-
--- Function pg_get_partition_rule_def(oid)
-SELECT pg_get_partition_rule_def(pr1.oid) AS partitionboundary ,n.nspname AS schemaname, cl.relname AS tablename 
-FROM orca.test_distributed, pg_namespace n, pg_namespace n2, pg_class cl
-LEFT JOIN pg_tablespace sp ON cl.reltablespace = sp.oid, pg_class cl2
-LEFT JOIN pg_tablespace sp3 ON cl2.reltablespace = sp3.oid, pg_partition pp, pg_partition_rule pr1
-WHERE pp.paristemplate = false AND pp.parrelid = cl.oid AND pr1.paroid = pp.oid AND cl2.oid = pr1.parchildrelid
-AND cl.relnamespace = n.oid AND cl2.relnamespace = n2.oid and cl.relname ='test_part';
 
 -- MPP-22453: wrong result in indexscan when the indexqual compares different data types
 create table mpp22453(a int, d date);
@@ -1237,13 +1219,24 @@ productid int,
 comment character varying(40)
 );
 
+-- Have more rows in one table, so that the planner will
+-- choose to make that the outer side of the join.
 insert into idxscan_outer values (1, 'a', 'aaa');
 insert into idxscan_outer values (2, 'b', 'bbb');
 insert into idxscan_outer values (3, 'c', 'ccc');
+insert into idxscan_outer values (4, 'd', 'ddd');
+insert into idxscan_outer values (5, 'e', 'eee');
+insert into idxscan_outer values (6, 'f', 'fff');
+insert into idxscan_outer values (7, 'g', 'ggg');
+insert into idxscan_outer values (8, 'h', 'hhh');
+insert into idxscan_outer values (9, 'i', 'iii');
 
 insert into idxscan_inner values (11, 1, 'xxxx');
 insert into idxscan_inner values (24, 2, 'yyyy');
 insert into idxscan_inner values (13, 3, 'zzzz');
+
+analyze idxscan_outer;
+analyze idxscan_inner;
 
 select disable_xform('CXformInnerJoin2HashJoin');
 select disable_xform('CXformLeftSemiJoin2HashJoin');
@@ -1261,7 +1254,7 @@ drop table idxscan_outer;
 drop table idxscan_inner;
 
 drop table if exists ggg;
-set optimizer_release_mdcache=off;
+set optimizer_metadata_caching=on;
 
 create table ggg (a char(1), b char(2), d char(3));
 insert into ggg values ('x', 'a', 'c');
@@ -1286,6 +1279,9 @@ explain select * from orca.index_test where c = 5;
 
 -- force_explain
 explain select * from orca.index_test where a = 5 and c = 5;
+
+-- renaming columns
+select * from (values (2),(null)) v(k);
 
 -- clean up
 drop schema orca cascade;

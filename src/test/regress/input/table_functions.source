@@ -164,6 +164,10 @@ CREATE FUNCTION error(INOUT setof example)
 CREATE FUNCTION error() RETURNS TABLE(a setof example) 
     AS $$ SELECT * FROM example $$ LANGUAGE SQL READS SQL DATA;
 
+/* ERROR: anytable cannot have default value */
+CREATE FUNCTION error(a anytable DEFAULT TABLE(select 1,'test')) RETURNS TABLE(a int, b text)
+    AS '@abs_builddir@/regress@DLSUFFIX@', 'multiset_example' LANGUAGE C;
+
 /* Negative test cases around the "anytable" type */
 CREATE TABLE fail(x anytable);
 CREATE TYPE  fail AS (x anytable);
@@ -916,7 +920,7 @@ SELECT "time" FROM project( TABLE( SELECT * FROM history ), 1);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), NULL);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), -1);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 0);
-SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 25);
+SELECT * FROM project( TABLE( SELECT * FROM pg_am ), 100);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ARRAY[2,3])[1]);
 SELECT * FROM project( TABLE( SELECT * FROM pg_am ), (ROW(1, '')::example_r).a);
 
@@ -987,7 +991,9 @@ DEALLOCATE p1;
 
 -- FAIL: can't pass anytable as prepare argument
 PREPARE p2 AS SELECT * FROM multiset_2( $1 ) order by a, b;
-PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 ) order by a, b;
+-- This actually passes currently. You can't do anything useful with the prepared
+-- statement though, as anytable's input function just throws an error.
+PREPARE p3(anytable) AS SELECT * FROM multiset_5( $1 );
 
 -- FAIL: $1 is not a constant
 PREPARE p4 AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
@@ -999,8 +1005,8 @@ PREPARE p5(integer) AS SELECT * FROM project( TABLE( SELECT * FROM pg_am ), $1);
 PREPARE p6 AS SELECT * FROM project( TABLE( SELECT * FROM example_r ), 2) ORDER BY 1;
 EXECUTE p6;
 
--- FAIL: MPP-16640: when underlying table has changed prepared statements 
--- will fail.  If this issue is ever fixed then this should pass as well.
+-- PASS: Check that the prepared statement is re-planned when the underlying
+-- table changes.
 ALTER TABLE example_r ALTER COLUMN a TYPE numeric;
 EXECUTE p6;
 DEALLOCATE p6;

@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/xlog.h,v 1.75 2006/11/05 22:42:10 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/access/xlog.h,v 1.87 2008/01/01 19:45:56 momjian Exp $
  */
 #ifndef XLOG_H
 #define XLOG_H
@@ -20,6 +20,7 @@
 #include "utils/pg_crc.h"
 #include "utils/relcache.h"
 #include "utils/segadmin.h"
+#include "utils/timestamp.h"
 #include "cdb/cdbpublic.h"
 
 /*
@@ -89,8 +90,7 @@ typedef struct XLogRecord
 /*
  * If we backed up any disk blocks with the XLOG record, we use flag bits in
  * xl_info to signal it.  We support backup of up to 3 disk blocks per XLOG
- * record.	(Could support 4 if we cared to dedicate all the xl_info bits for
- * this purpose; currently bit 0 of xl_info is unused and available.)
+ * record.
  */
 #define XLR_BKP_BLOCK_MASK		0x0E	/* all info bits used for bkp blocks */
 #define XLR_MAX_BKP_BLOCKS		3
@@ -100,10 +100,13 @@ typedef struct XLogRecord
 #define XLR_BKP_BLOCK_3			XLR_SET_BKP_BLOCK(2)	/* 0x02 */
 
 /*
- * Sometimes we log records which are out of transaction control.
- * Rmgr may "or" XLOG_NO_TRAN into info passed to XLogInsert to indicate this.
+ * Bit 0 of xl_info is set if the backed-up blocks could safely be removed
+ * from a compressed version of XLOG (that is, they are backed up only to
+ * prevent partial-page-write problems, and not to ensure consistency of PITR
+ * recovery).  The compression algorithm would need to extract data from the
+ * blocks to create an equivalent non-full-page XLOG record.
  */
-#define XLOG_NO_TRAN			XLR_INFO_MASK
+#define XLR_BKP_REMOVABLE		0x01
 
 /* Sync methods */
 #define SYNC_METHOD_FSYNC		0
@@ -111,12 +114,6 @@ typedef struct XLogRecord
 #define SYNC_METHOD_OPEN		2		/* for O_SYNC and O_DSYNC */
 #define SYNC_METHOD_FSYNC_WRITETHROUGH	3
 extern int	sync_method;
-
-#ifdef O_DIRECT
-#define PG_O_DIRECT                             O_DIRECT
-#else
-#define PG_O_DIRECT                             0
-#endif
 
 /*
  * The rmgr data to be written by XLogInsert() is defined by a chain of
@@ -159,23 +156,22 @@ typedef struct XLogRecData
 
 extern TimeLineID ThisTimeLineID;		/* current TLI */
 extern bool InRecovery;
-
-extern XLogRecPtr MyLastRecPtr;
-extern bool MyXactMadeXLogEntry;
-extern bool MyXactMadeTempRelUpdate;
-extern XLogRecPtr ProcLastRecEnd;
+extern XLogRecPtr XactLastRecEnd;
 
 /* these variables are GUC parameters related to XLOG */
 extern int	CheckPointSegments;
 extern int	XLOGbuffers;
+extern bool XLogArchiveMode;
 extern char *XLogArchiveCommand;
 extern int	XLogArchiveTimeout;
 extern char *XLOG_sync_method;
 extern const char XLOG_sync_method_default[];
 extern bool gp_keep_all_xlog;
 extern int keep_wal_segments;
+extern bool log_checkpoints;
 
-#define XLogArchivingActive()	(XLogArchiveCommand[0] != '\0')
+#define XLogArchivingActive()	(XLogArchiveMode)
+#define XLogArchiveCommandSet() (XLogArchiveCommand[0] != '\0')
 
 /* 
  * Whether we need to always generate transaction log (XLOG), or if we can
@@ -198,6 +194,41 @@ extern bool am_startup;
 extern bool XLOG_DEBUG;
 #endif
 
+/*
+ * OR-able request flag bits for checkpoints.  The "cause" bits are used only
+ * for logging purposes.  Note: the flags must be defined so that it's
+ * sensible to OR together request flags arising from different requestors.
+ */
+
+/* These directly affect the behavior of CreateCheckPoint and subsidiaries */
+#define CHECKPOINT_IS_SHUTDOWN	0x0001	/* Checkpoint is for shutdown */
+#define CHECKPOINT_IMMEDIATE	0x0002	/* Do it without delays */
+#define CHECKPOINT_FORCE		0x0004	/* Force even if no activity */
+/* These are important to RequestCheckpoint */
+#define CHECKPOINT_WAIT			0x0008	/* Wait for completion */
+/* These indicate the cause of a checkpoint request */
+#define CHECKPOINT_CAUSE_XLOG	0x0010	/* XLOG consumption */
+#define CHECKPOINT_CAUSE_TIME	0x0020	/* Elapsed time */
+
+/* Checkpoint statistics */
+typedef struct CheckpointStatsData
+{
+	TimestampTz ckpt_start_t;	/* start of checkpoint */
+	TimestampTz ckpt_write_t;	/* start of flushing buffers */
+	TimestampTz ckpt_sync_t;	/* start of fsyncs */
+	TimestampTz ckpt_sync_end_t;	/* end of fsyncs */
+	TimestampTz ckpt_end_t;		/* end of checkpoint */
+
+	int			ckpt_bufs_written;		/* # of buffers written */
+
+	int			ckpt_segs_added;	/* # of new xlog segments created */
+	int			ckpt_segs_removed;		/* # of xlog segments deleted */
+	int			ckpt_segs_recycled;		/* # of xlog segments recycled */
+} CheckpointStatsData;
+
+extern CheckpointStatsData CheckpointStats;
+
+
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId overrideXid);
 extern XLogRecPtr XLogLastInsertBeginLoc(void);
@@ -215,6 +246,11 @@ extern void xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr ls
 extern void xlog_desc(StringInfo buf, XLogRecPtr beginLoc, XLogRecord *record);
 
 extern void issue_xlog_fsync(int fd, uint32 log, uint32 seg);
+extern void XLogBackgroundFlush(void);
+extern void XLogAsyncCommitFlush(void);
+extern bool XLogNeedsFlush(XLogRecPtr RecPtr);
+
+extern void XLogSetAsyncCommitLSN(XLogRecPtr record);
 
 extern bool RecoveryInProgress(void);
 extern XLogRecPtr GetInsertRecPtr(void);
@@ -235,9 +271,10 @@ extern void StartupXLOG_Pass3(void);
 extern void StartupXLOG_Pass4(void);
 extern void ShutdownXLOG(int code, Datum arg);
 extern void InitXLOGAccess(void);
-extern void CreateCheckPoint(bool shutdown, bool force);
+extern void CreateCheckPoint(int flags);
 extern void XLogPutNextOid(Oid nextOid);
 extern XLogRecPtr GetRedoRecPtr(void);
+extern XLogRecPtr GetInsertRecPtr(void);
 extern void GetNextXidAndEpoch(TransactionId *xid, uint32 *epoch);
 
 extern void XLogGetRecoveryStart(char *callerStr, char *reasonStr, XLogRecPtr *redoCheckPointLoc, CheckPoint *redoCheckPoint);

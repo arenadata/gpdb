@@ -16,7 +16,7 @@
 #include "miscadmin.h"
 #include "cdb/cdbconn.h"
 #include "cdb/cdbcopy.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbdisp_query.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"
@@ -114,8 +114,6 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 */
 	oldcontext = MemoryContextSwitchTo(MessageContext);
 
-	QueryContext = CurrentMemoryContext;
-	
 	/* dispatch copy command to both primary and mirror writer gangs */
 	
 	/*
@@ -592,7 +590,7 @@ processCopyEndResults(CdbCopy *c,
 				segment_rows_rejected = res->numRejected;
 
 			/* Get AO tuple counts */
-			c->aotupcounts = process_aotupcounts(c->partitions, c->aotupcounts, res->aotupcounts, res->naotupcounts);
+			c->aotupcounts = PQprocessAoTupCounts(c->partitions, c->aotupcounts, res->aotupcounts, res->naotupcounts);
 			/* free the PGresult object */
 			PQclear(res);
 		}

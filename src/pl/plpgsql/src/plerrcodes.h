@@ -9,7 +9,7 @@
  *
  * Copyright (c) 2003-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/pl/plpgsql/src/plerrcodes.h,v 1.9 2006/06/16 23:29:27 tgl Exp $
+ * $PostgreSQL: pgsql/src/pl/plpgsql/src/plerrcodes.h,v 1.13 2008/01/15 01:36:53 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -241,6 +241,26 @@
 
 {
 	"untranslatable_character", ERRCODE_UNTRANSLATABLE_CHARACTER
+},
+
+{
+	"not_an_xml_document", ERRCODE_NOT_AN_XML_DOCUMENT
+},
+
+{
+	"invalid_xml_document", ERRCODE_INVALID_XML_DOCUMENT
+},
+
+{
+	"invalid_xml_content", ERRCODE_INVALID_XML_CONTENT
+},
+
+{
+	"invalid_xml_comment", ERRCODE_INVALID_XML_COMMENT
+},
+
+{
+	"invalid_xml_processing_instruction", ERRCODE_INVALID_XML_PROCESSING_INSTRUCTION
 },
 
 {

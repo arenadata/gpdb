@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/hashjoin.h,v 1.41 2006/07/13 18:01:02 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/executor/hashjoin.h,v 1.48 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -147,6 +147,8 @@ typedef struct HashJoinBatchData
 typedef struct HashJoinTableData
 {
 	int			nbuckets;		/* # buckets in the in-memory hash table */
+	int			log2_nbuckets;	/* its log2 (nbuckets must be a power of 2) */
+
 	/* buckets[i] is head of list of tuples in i'th in-memory bucket */
 	struct HashJoinTupleData **buckets;
 	uint64     				  *bloom; /* bloom[i] is bloomfilter for buckets[i] */
@@ -171,12 +173,11 @@ typedef struct HashJoinTableData
 
 	/*
 	 * Info about the datatype-specific hash functions for the datatypes being
-	 * hashed.	We assume that the inner and outer sides of each hashclause
-	 * are the same type, or at least share the same hash function. This is an
-	 * array of the same length as the number of hash keys.
+	 * hashed. These are arrays of the same length as the number of hash join
+	 * clauses (hash keys).
 	 */
-	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
-
+	FmgrInfo   *outer_hashfunctions;	/* lookup data for hash functions */
+	FmgrInfo   *inner_hashfunctions;	/* lookup data for hash functions */
 	bool	   *hashStrict;		/* is each hash join operator strict? */
 
 	Size		spaceAllowed;	/* upper limit for space used */

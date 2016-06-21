@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_handler.c,v 1.33.2.2 2007/01/30 22:05:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_handler.c,v 1.38 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -114,6 +114,67 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 }
 
 /* ----------
+ * plpgsql_inline_handler
+ *
+ * Called by PostgreSQL to execute an anonymous code block
+ * ----------
+ */
+PG_FUNCTION_INFO_V1(plpgsql_inline_handler);
+
+Datum
+plpgsql_inline_handler(PG_FUNCTION_ARGS)
+{
+	InlineCodeBlock *codeblock = (InlineCodeBlock *) DatumGetPointer(PG_GETARG_DATUM(0));
+	PLpgSQL_function *func;
+	FunctionCallInfoData fake_fcinfo;
+	FmgrInfo	flinfo;
+	Datum		retval;
+	int			rc;
+
+	Assert(IsA(codeblock, InlineCodeBlock));
+
+	/*
+	 * Connect to SPI manager
+	 */
+	if ((rc = SPI_connect()) != SPI_OK_CONNECT)
+		elog(ERROR, "SPI_connect failed: %s", SPI_result_code_string(rc));
+
+	/* Compile the anonymous code block */
+	func = plpgsql_compile_inline(fcinfo, codeblock->source_text);
+
+	/* Mark the function as busy, just pro forma */
+	func->use_count++;
+
+	/*
+	 * Set up a fake fcinfo with just enough info to satisfy
+	 * plpgsql_exec_function().  In particular note that this sets things up
+	 * with no arguments passed.
+	 */
+	MemSet(&fake_fcinfo, 0, sizeof(fake_fcinfo));
+	MemSet(&flinfo, 0, sizeof(flinfo));
+	fake_fcinfo.flinfo = &flinfo;
+	flinfo.fn_oid = InvalidOid;
+	flinfo.fn_mcxt = CurrentMemoryContext;
+
+	retval = plpgsql_exec_function(func, &fake_fcinfo);
+
+	/* Function should now have no remaining use-counts ... */
+	func->use_count--;
+	Assert(func->use_count == 0);
+
+	/* ... so we can free subsidiary storage */
+	plpgsql_free_function_memory(func);
+
+	/*
+	 * Disconnect from SPI manager
+	 */
+	if ((rc = SPI_finish()) != SPI_OK_FINISH)
+		elog(ERROR, "SPI_finish failed: %s", SPI_result_code_string(rc));
+
+	return retval;
+}
+
+/* ----------
  * plpgsql_validator
  *
  * This function attempts to validate a PL/pgSQL function at
@@ -159,8 +220,7 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 			istrigger = true;
 		else if (proc->prorettype != RECORDOID &&
 				 proc->prorettype != VOIDOID &&
-				 proc->prorettype != ANYARRAYOID &&
-				 proc->prorettype != ANYELEMENTOID)
+				 !IsPolymorphicType(proc->prorettype))
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("PL/pgSQL functions cannot return type %s",
@@ -175,8 +235,7 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	{
 		if (get_typtype(argtypes[i]) == TYPTYPE_PSEUDO)
 		{
-			if (argtypes[i] != ANYARRAYOID &&
-				argtypes[i] != ANYELEMENTOID)
+			if (!IsPolymorphicType(argtypes[i]))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("PL/pgSQL functions cannot accept type %s",

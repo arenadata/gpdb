@@ -23,9 +23,10 @@
 #include "gpopt/translate/CMappingElementColIdParamId.h"
 
 #include "gpos/base.h"
-#include "dxl/operators/CDXLNode.h"
-#include "dxl/operators/CDXLDatum.h"
-#include "dxl/operators/CDXLScalarArrayRefIndexList.h"
+
+#include "naucrates/dxl/operators/CDXLNode.h"
+#include "naucrates/dxl/operators/CDXLDatum.h"
+#include "naucrates/dxl/operators/CDXLScalarArrayRefIndexList.h"
 
 // fwd declarations
 namespace gpopt
@@ -147,11 +148,17 @@ namespace gpdxl
 				CMappingColIdVar *pmapcidvar
 				);
 
-                        Expr *PcoerceFromDXLNodeScCoerce
-                                (
-                                const CDXLNode *pdxlnScCoerce,
-                                CMappingColIdVar *pmapcidvar
-                                );
+			Expr *PcoerceFromDXLNodeScCoerceToDomain
+				(
+				const CDXLNode *pdxlnScCoerceToDomain,
+				CMappingColIdVar *pmapcidvar
+				);
+
+			Expr *PcoerceFromDXLNodeScCoerceViaIO
+				(
+				const CDXLNode *pdxlnScCoerceViaIO,
+				CMappingColIdVar *pmapcidvar
+				);
 
 			Expr *PnulltestFromDXLNodeScNullTest
 				(
@@ -244,31 +251,6 @@ namespace gpdxl
 			Param *PparamFromMapping
 				(
 				const CMappingElementColIdParamId *pmecolidparamid
-				);
-
-			Expr *PsublinkFromDXLNodeScalarSubquery
-				(
-				const CDXLNode *pdxlnSubquery,
-				CMappingColIdVar *pmapcidvar
-				);
-
-			SubLink *PsublinkFromDXLNodeQuantifiedSubquery
-				(
-				const CDXLNode *pdxlnQuantifiedSubquery,
-				CMappingColIdVar *pmapcidvar
-				);
-
-			Expr *PsublinkFromDXLNodeSubqueryExists
-				(
-				const CDXLNode *pdxlnSubqueryExists,
-				CMappingColIdVar *pmapcidvar
-				);
-
-			// translate a DXL scalar ANY/ALL subquery
-			Expr *PexprFromDXLNodeSubqueryAnyAll
-				(
-				const CDXLNode *pdxlnSubqueryAnyAll,
-				CMappingColIdVar *pmapcidvar
 				);
 
 			// translate a scalar coalesce

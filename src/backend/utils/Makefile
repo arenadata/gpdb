@@ -1,7 +1,7 @@
 #
 # Makefile for utils
 #
-# $PostgreSQL: pgsql/src/backend/utils/Makefile,v 1.24 2006/07/15 03:33:14 tgl Exp $
+# $PostgreSQL: pgsql/src/backend/utils/Makefile,v 1.25 2007/02/09 15:55:58 petere Exp $
 #
 
 subdir = src/backend/utils
@@ -20,8 +20,11 @@ all: fmgroids.h probes.h
 $(SUBDIRS:%=%-recursive): fmgroids.h
 
 
-fmgroids.h fmgrtab.c: Gen_fmgrtab.sh $(top_srcdir)/src/include/catalog/pg_proc.h
-	AWK='$(AWK)' $(SHELL) $< $(top_srcdir)/src/include/catalog/pg_proc.h
+# Like when creating postgres.bki, we need to inject missing columns before
+# feeding pg_proc.h to Gen_fmgrtab.sh. See also src/backend/catalog/Makefile.
+fmgroids.h fmgrtab.c: Gen_fmgrtab.sh $(top_srcdir)/src/include/catalog/pg_proc.h $(top_srcdir)/src/include/catalog/pg_proc_gp.h $(top_builddir)/src/include/catalog/pg_proc_gp.h $(top_srcdir)/src/backend/catalog/process_col_defaults.pl
+	cat $(top_srcdir)/src/include/catalog/pg_proc.h $(top_srcdir)/src/include/catalog/pg_proc_gp.h | $(top_srcdir)/src/backend/catalog/process_col_defaults.pl > pg_proc_combined.h.tmp
+	AWK='$(AWK)' $(SHELL) $< pg_proc_combined.h.tmp
 
 ifneq ($(enable_dtrace), yes)
 probes.h: Gen_dummy_probes.sed

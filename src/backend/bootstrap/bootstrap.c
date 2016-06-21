@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootstrap.c,v 1.227 2006/11/21 20:59:52 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootstrap.c,v 1.238 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,8 +20,6 @@
 #ifdef HAVE_GETOPT_H
 #include <getopt.h>
 #endif
-
-#define BOOTSTRAP_INCLUDE		/* mask out stuff in tcop/tcopprot.h */
 
 #include "access/genam.h"
 #include "access/heapam.h"
@@ -36,8 +34,8 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "postmaster/bgwriter.h"
-#include "postmaster/checkpoint.h"
 #include "postmaster/primary_mirror_mode.h"
+#include "postmaster/walwriter.h"
 #include "replication/walreceiver.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
@@ -121,42 +119,21 @@ struct typinfo
 	Oid			outproc;
 };
 
-/* MUST STAY SORTED */
 static const struct typinfo TypInfo[] = {
-	{"_aclitem", 1034, ACLITEMOID, -1, false, 'i', 'x',
-	F_ARRAY_IN, F_ARRAY_OUT},
-	{"_char", 1002, CHAROID, -1, false, 'i', 'x',
-	F_ARRAY_IN, F_ARRAY_OUT},
-	{"_int4", INT4ARRAYOID, INT4OID, -1, false, 'i', 'x',
-	F_ARRAY_IN, F_ARRAY_OUT},
-	{"_oid", 1028, OIDOID, -1, false, 'i', 'x',
-	F_ARRAY_IN, F_ARRAY_OUT},
-	{"_text", 1009, TEXTOID, -1, false, 'i', 'x',
-	F_ARRAY_IN, F_ARRAY_OUT},
 	{"bool", BOOLOID, 0, 1, true, 'c', 'p',
 	F_BOOLIN, F_BOOLOUT},
-	{"bigint", INT8OID, 0, 8, true, 'd', 'p',
-	F_INT8IN, F_INT8OUT},
 	{"bytea", BYTEAOID, 0, -1, false, 'i', 'x',
 	F_BYTEAIN, F_BYTEAOUT},
 	{"char", CHAROID, 0, 1, true, 'c', 'p',
 	F_CHARIN, F_CHAROUT},
-	{"cid", CIDOID, 0, 4, true, 'i', 'p',
-	F_CIDIN, F_CIDOUT},
-	{"float4", FLOAT4OID, 0, 4, FLOAT4PASSBYVAL, 'i', 'p',
-	F_FLOAT4IN, F_FLOAT4OUT},
 	{"int2", INT2OID, 0, 2, true, 's', 'p',
 	F_INT2IN, F_INT2OUT},
-	{"int2vector", INT2VECTOROID, INT2OID, -1, false, 'i', 'p',
-	F_INT2VECTORIN, F_INT2VECTOROUT},
 	{"int4", INT4OID, 0, 4, true, 'i', 'p',
 	F_INT4IN, F_INT4OUT},
+	{"float4", FLOAT4OID, 0, 4, FLOAT4PASSBYVAL, 'i', 'p',
+	F_FLOAT4IN, F_FLOAT4OUT},
 	{"name", NAMEOID, CHAROID, NAMEDATALEN, false, 'i', 'p',
 	F_NAMEIN, F_NAMEOUT},
-	{"oid", OIDOID, 0, 4, true, 'i', 'p',
-	F_OIDIN, F_OIDOUT},
-	{"oidvector", OIDVECTOROID, OIDOID, -1, false, 'i', 'p',
-	F_OIDVECTORIN, F_OIDVECTOROUT},
 	{"regclass", REGCLASSOID, 0, 4, true, 'i', 'p',
 	F_REGCLASSIN, F_REGCLASSOUT},
 	{"regproc", REGPROCOID, 0, 4, true, 'i', 'p',
@@ -165,10 +142,28 @@ static const struct typinfo TypInfo[] = {
 	F_REGTYPEIN, F_REGTYPEOUT},
 	{"text", TEXTOID, 0, -1, false, 'i', 'x',
 	F_TEXTIN, F_TEXTOUT},
+	{"oid", OIDOID, 0, 4, true, 'i', 'p',
+	F_OIDIN, F_OIDOUT},
 	{"tid", TIDOID, 0, 6, false, 's', 'p',
 	F_TIDIN, F_TIDOUT},
 	{"xid", XIDOID, 0, 4, true, 'i', 'p',
-	F_XIDIN, F_XIDOUT}
+	F_XIDIN, F_XIDOUT},
+	{"cid", CIDOID, 0, 4, true, 'i', 'p',
+	F_CIDIN, F_CIDOUT},
+	{"int2vector", INT2VECTOROID, INT2OID, -1, false, 'i', 'p',
+	F_INT2VECTORIN, F_INT2VECTOROUT},
+	{"oidvector", OIDVECTOROID, OIDOID, -1, false, 'i', 'p',
+	F_OIDVECTORIN, F_OIDVECTOROUT},
+	{"_int4", INT4ARRAYOID, INT4OID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT},
+	{"_text", 1009, TEXTOID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT},
+	{"_oid", 1028, OIDOID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT},
+	{"_char", 1002, CHAROID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT},
+	{"_aclitem", 1034, ACLITEMOID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT}
 };
 
 static const int n_types = sizeof(TypInfo) / sizeof(struct typinfo);
@@ -182,7 +177,6 @@ struct typmap
 static struct typmap **Typ = NULL;
 static struct typmap *Ap = NULL;
 
-static int	Warnings = 0;
 static bool Nulls[MAXATTR];
 
 Form_pg_attribute attrtypes[MAXATTR];	/* points to attribute info */
@@ -363,6 +357,9 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case BgWriterProcess:
 				statmsg = "writer process";
 				break;
+			case WalWriterProcess:
+				statmsg = "wal writer process";
+				break;
 			case CheckpointProcess:
 				statmsg = "checkpoint process";
 				break;
@@ -494,6 +491,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			WalReceiverMain();
 			proc_exit(1);		/* should never return */
 
+		case WalWriterProcess:
+			/* don't set signals, walwriter has its own agenda */
+			InitXLOGAccess();
+			WalWriterMain();
+			proc_exit(1);		/* should never return */
+
 		case FilerepProcess:
 			FileRep_Main();
 			proc_exit(1); /* should never return */
@@ -571,11 +574,9 @@ BootstrapModeMain(void)
 
 	/* Perform a checkpoint to ensure everything's down to disk */
 	SetProcessingMode(NormalProcessing);
-	CreateCheckPoint(true, true);
-	SetProcessingMode(BootstrapProcessing);
+	CreateCheckPoint(CHECKPOINT_IS_SHUTDOWN | CHECKPOINT_IMMEDIATE);
 
 	/* Clean up and exit */
-	StartTransactionCommand();
 	cleanup();
 	proc_exit(0);
 }
@@ -651,18 +652,6 @@ ShutdownAuxiliaryProcess(int code, Datum arg)
 {
 	LWLockReleaseAll();
 }
-
-/* ----------------
- *		error handling / abort routines
- * ----------------
- */
-void
-err_out(void)
-{
-	Warnings++;
-	cleanup();
-}
-
 
 /* ----------------------------------------------------------------
  *				MANUAL BACKEND INTERACTIVE INTERFACE COMMANDS
@@ -917,15 +906,7 @@ InsertOneValue(char *value, int i)
 
 	elog(DEBUG4, "inserting column %d value \"%s\"", i, value);
 
-	if (Typ != NULL)
-	{
-		typoid = boot_reldesc->rd_att->attrs[i]->atttypid;
-	}
-	else
-	{
-		/* XXX why is typoid determined differently in this case? */
-		typoid = attrtypes[i]->atttypid;
-	}
+	typoid = boot_reldesc->rd_att->attrs[i]->atttypid;
 
 	boot_get_type_io_data(typoid,
 						  &typlen, &typbyval, &typalign,
@@ -958,19 +939,8 @@ InsertOneNull(int i)
 static void
 cleanup(void)
 {
-	static int	beenhere = 0;
-
-	if (!beenhere)
-		beenhere = 1;
-	else
-	{
-		elog(FATAL, "cleanup called twice");
-		proc_exit(1);
-	}
 	if (boot_reldesc != NULL)
 		closerel(NULL);
-	CommitTransactionCommand();
-	proc_exit(Warnings ? 1 : 0);
 }
 
 /* ----------------
@@ -1006,27 +976,11 @@ gettype(char *type)
 	}
 	else
 	{
-		/* binary search */
-		int low, high;
-
-		low = 0;
-		high = n_types - 1;
-
-		while (low <= high)
+		for (i = 0; i < n_types; i++)
 		{
-			int middle = low + (high - low)/2;
-			int res;
-
-			res = strncmp(TypInfo[middle].name, type, NAMEDATALEN);
-			elog(DEBUG1, "testing %s against %s", type, TypInfo[middle].name);
-			if (res == 0)
-				return middle;
-			else if (res < 0)
-				low = middle + 1;
-			else
-				high = middle - 1;
+			if (strncmp(type, TypInfo[i].name, NAMEDATALEN) == 0)
+				return i;
 		}
-
 		elog(DEBUG4, "external type: %s", type);
 		rel = heap_open(TypeRelationId, NoLock);
 		scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
@@ -1052,7 +1006,6 @@ gettype(char *type)
 		return gettype(type);
 	}
 	elog(ERROR, "unrecognized type \"%s\"", type);
-	err_out();
 	/* not reached, here to make compiler happy */
 	return 0;
 }
@@ -1421,8 +1374,7 @@ build_indices(void)
 		heap = heap_open(ILHead->il_heap, NoLock);
 		ind = index_open(ILHead->il_ind, NoLock);
 
-		elog(DEBUG4, "building index %s on %s", NameStr(ind->rd_rel->relname), NameStr(heap->rd_rel->relname));
-		index_build(heap, ind, ILHead->il_info, false);
+		index_build(heap, ind, ILHead->il_info, false, false);
 
 		index_close(ind, NoLock);
 		heap_close(heap, NoLock);

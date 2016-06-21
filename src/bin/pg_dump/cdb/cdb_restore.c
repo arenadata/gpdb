@@ -44,10 +44,9 @@ static void *threadProc(void *arg);
 static void myHandler(SIGNAL_ARGS);
 static void installSignalHandlers(void);
 static bool restoreMaster(InputOptions * pInputOpts, PGconn *pConn, SegmentDatabase *sSegDB, SegmentDatabase *tSegDB, ThreadParm * pParm);
-static void spinOffThreads(PGconn *pConn, InputOptions * pInputOpts, const const RestorePairArray * restorePair, ThreadParmArray * pParmAr);
+static void spinOffThreads(PGconn *pConn, InputOptions * pInputOpts, const RestorePairArray * restorePair, ThreadParmArray * pParmAr);
 static int	reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterParm, const ThreadParmArray * pParmAr);
 static int	reportMasterError(InputOptions inputopts, const ThreadParm * pMasterParm, const char *localMsg);
-static void updateAppendOnlyStats(PGconn *pConn);
 static bool g_b_SendCancelMessage = false;
 typedef struct option optType;
 
@@ -69,12 +68,15 @@ static const char *logError = "ERROR";
 static const char *logFatal = "FATAL";
 const char *progname;
 static char * addPassThroughLongParm(const char *Parm, const char *pszValue, char *pszPassThroughParmString);
-static char *dump_prefix = NULL;
-static char *status_file = NULL;
+PQExpBuffer dir_buf = NULL;
+PQExpBuffer dump_prefix_buf = NULL;
 
 /* NetBackup related variable */
 static char *netbackup_service_host = NULL;
 static char *netbackup_block_size = NULL;
+
+static char *change_schema_file = NULL;
+static char *schema_level_file = NULL;
 
 #ifdef USE_DDBOOST
 static int dd_boost_enabled = 0;
@@ -89,6 +91,11 @@ main(int argc, char **argv)
 	bool		found_master;
 	SegmentDatabase *sourceSegDB = NULL;
 	SegmentDatabase *targetSegDB = NULL;
+
+	dir_buf = createPQExpBuffer();
+	dump_prefix_buf = createPQExpBuffer();
+
+	progname = get_progname(argv[0]);
 
 	/* This struct holds the values of the command line parameters */
 	InputOptions inputOpts;
@@ -107,8 +114,6 @@ main(int argc, char **argv)
 	memset(&restorePairAr, 0, sizeof(restorePairAr));
 	memset(&parmAr, 0, sizeof(parmAr));
 	memset(&masterParm, 0, sizeof(masterParm));
-
-	progname = get_progname(argv[0]);
 
 #ifdef USE_DDBOOST
 	dd_boost_enabled = 0;
@@ -201,11 +206,6 @@ main(int argc, char **argv)
 			mpp_err_msg(logInfo, progname, "All remote %s programs are finished.\n", pszAgent);
 		}
 
-		/*
-		 * If any AO table data was restored, update the master AO statistics
-		 */
-		if (bAoStats)
-			updateAppendOnlyStats(pConn);
 	}
 
 	/*
@@ -237,10 +237,12 @@ main(int argc, char **argv)
 	failCount = reportRestoreResults(inputOpts.pszReportDirectory, &masterParm, &parmAr);
 
 cleanup:
+	FreeRestorePairArray(&restorePairAr);
 	FreeInputOptions(&inputOpts);
+
 	if (opts != NULL)
 		free(opts);
-	FreeRestorePairArray(&restorePairAr);
+
 	freeThreadParmArray(&parmAr);
 
 	if (masterParm.pszErrorMsg)
@@ -252,7 +254,10 @@ cleanup:
 	if (pConn != NULL)
 		PQfinish(pConn);
 
-	return (failCount == 0 ? 0 : 1);
+	destroyPQExpBuffer(dir_buf);
+	destroyPQExpBuffer(dump_prefix_buf);
+
+	return failCount;
 }
 
 static void
@@ -293,6 +298,9 @@ usage(void)
 	printf(("                          where backups are located. For example: --gp-l=i[10,12,15]\n"));
 	printf(("  --gp-f=FILE             FILE, present on all machines, with tables to include in restore\n"));
 	printf(("  --prefix=PREFIX         PREFIX of the dump files to be restored\n"));
+	printf(("  --change-schema-file=SCHEMA_FILE  Schema file containing the name of the schema to which tables are to be restored\n"));
+	printf(("  --schema-level-file=SCHEMA_FILE  Schema file containing the name of the schemas under which all tables are to be restored\n"));
+	printf(("  --ddboost-storage-unit             pass the storage unit name"));
 }
 
 bool
@@ -361,6 +369,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 
 #ifdef USE_DDBOOST
                 {"ddboost", no_argument, NULL, 10},
+                {"ddboost-storage-unit", required_argument, NULL, 19},
 #endif
 
 		{"gp-f", required_argument, NULL, 11},
@@ -369,6 +378,8 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		{"status", required_argument, NULL, 14},
 		{"netbackup-service-host", required_argument, NULL, 15},
 		{"netbackup-block-size", required_argument, NULL, 16},
+		{"change-schema-file", required_argument, NULL, 17},
+		{"schema-level-file", required_argument, NULL, 18},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -558,7 +569,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				opts->triggerNames = strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms );
 				break;
-*/ 
+*/
 			case 's':		/* dump schema only */
 				opts->schemaOnly = 1;
 				schemaOnly = true;
@@ -721,6 +732,9 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 			case 10:
 				dd_boost_enabled = 1;
 				break;
+			case 19:
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("ddboost-storage-unit", optarg, pInputOpts->pszPassThroughParms);
+				break;
 #endif
 			case 11:
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("gp-f", optarg, pInputOpts->pszPassThroughParms);
@@ -730,20 +744,36 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 				bAoStats = false;
 				break;
 			case 13:
-				dump_prefix = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("prefix", DUMP_PREFIX, pInputOpts->pszPassThroughParms);
+				appendPQExpBuffer(dump_prefix_buf, "%s", optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("prefix", dump_prefix_buf->data, pInputOpts->pszPassThroughParms);
 				break;
 			case 14:
-				status_file = Safe_strdup(optarg);
-				pInputOpts->pszPassThroughParms = addPassThroughLongParm("status", status_file, pInputOpts->pszPassThroughParms);
+				appendPQExpBuffer(dir_buf, "%s", optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("status", dir_buf->data, pInputOpts->pszPassThroughParms);
 				break;
 			case 15:
 				netbackup_service_host = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-service-host", netbackup_service_host, pInputOpts->pszPassThroughParms);
+				if (netbackup_service_host != NULL)
+					free(netbackup_service_host);
 				break;
 			case 16:
 				netbackup_block_size = Safe_strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughLongParm("netbackup-block-size", netbackup_block_size, pInputOpts->pszPassThroughParms);
+				if (netbackup_block_size != NULL)
+					free(netbackup_block_size);
+				break;
+			case 17:
+				change_schema_file = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("change-schema-file", change_schema_file, pInputOpts->pszPassThroughParms);
+				if (change_schema_file != NULL)
+					free(change_schema_file);
+				break;
+			case 18:
+				schema_level_file = Safe_strdup(optarg);
+				pInputOpts->pszPassThroughParms = addPassThroughLongParm("schema-level-file", schema_level_file, pInputOpts->pszPassThroughParms);
+				if (schema_level_file != NULL)
+					free(schema_level_file);
 				break;
 
 			default:
@@ -768,7 +798,7 @@ fillInputOptions(int argc, char **argv, InputOptions * pInputOpts)
 		dataRestore = false;
 	}
 
-	
+
 #ifdef USE_DDBOOST
         if (dd_boost_enabled)
 	{
@@ -974,6 +1004,7 @@ threadProc(void *arg)
 	char	   *pszPassThroughCredentials;
 	char	   *pszPassThroughTargetInfo;
 	PQExpBuffer Qry;
+	PQExpBuffer pqBuffer;
 	PGresult   *pRes;
 	int			sock;
 	bool		bSentCancelMessage;
@@ -1010,7 +1041,7 @@ threadProc(void *arg)
 		sSegDB->pszDBName = Safe_strdup(pInputOpts->pszDBName);
 	}
 
-	/* connect to the source segDB to start gp_dump_agent there */
+	/* connect to the source segDB to start gp_restore_agent there */
 	pConn = MakeDBConnection(sSegDB, false);
 	if (PQstatus(pConn) == CONNECTION_BAD)
 	{
@@ -1091,7 +1122,7 @@ threadProc(void *arg)
 	pszNotifyRelNameFail = MakeString("%s_%s", pszNotifyRelName, SUFFIX_FAIL);
 
 	pollInput = (struct pollfd *)malloc(sizeof(struct pollfd));
-	
+
 	while (!bIsFinished)
 	{
 		/*
@@ -1110,24 +1141,29 @@ threadProc(void *arg)
 			DoCancelNotifyListen(pConn, false, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, NULL);
 			bSentCancelMessage = true;
 		}
-		
-		/* Replacing select() by poll() here to overcome the limitations of 
+
+		/* Replacing select() by poll() here to overcome the limitations of
 		select() to handle large socket file descriptor values.
 		*/
 
 		pollInput->fd = sock;
 		pollInput->events = POLLIN;
-		pollInput->revents = 0; 		
+		pollInput->revents = 0;
 		pollTimeout = 2000;
 		pollResult = poll(pollInput, 1, pollTimeout);
 
-		if(pollResult < 0) 
+		if(pollResult < 0)
 		{
 			g_b_SendCancelMessage = true;
 			pParm->pszErrorMsg = MakeString("poll failed for backup key %s, source dbid %d, target dbid %d failed\n",
 										 pszKey, sSegDB->dbid, tSegDB->dbid);
 			mpp_err_msg(logError, progname, pParm->pszErrorMsg);
 			PQfinish(pConn);
+			free(pszNotifyRelName);
+			free(pszNotifyRelNameStart);
+			free(pszNotifyRelNameSucceed);
+			free(pszNotifyRelNameFail);
+			free(pollInput);
 			return NULL;
 		}
 
@@ -1138,6 +1174,11 @@ threadProc(void *arg)
 			pParm->pszErrorMsg = MakeString("connection went down for backup key %s, source dbid %d, target dbid %d\n",
 										 pszKey, sSegDB->dbid, tSegDB->dbid);
 			mpp_err_msg(logFatal, progname, pParm->pszErrorMsg);
+			free(pszNotifyRelName);
+			free(pszNotifyRelNameStart);
+			free(pszNotifyRelNameSucceed);
+			free(pszNotifyRelNameFail);
+			free(pollInput);
 			PQfinish(pConn);
 			return NULL;
 		}
@@ -1168,8 +1209,11 @@ threadProc(void *arg)
 					g_b_SendCancelMessage = true;
 					bIsFinished = true;
 					pParm->bSuccess = false;
+					pqBuffer = createPQExpBuffer();
 					/* Make call to get error message from file on server */
-					pParm->pszErrorMsg = ReadBackendBackupFile(pConn, pInputOpts->pszBackupDirectory, pszKey, BFT_RESTORE_STATUS, progname);
+					ReadBackendBackupFileError(pConn, dir_buf->data, pszKey, BFT_RESTORE_STATUS, progname, pqBuffer);
+					pParm->pszErrorMsg = MakeString("%s", pqBuffer->data);
+					destroyPQExpBuffer(pqBuffer);
 
 					mpp_err_msg(logError, progname, "restore failed for source dbid %d, target dbid %d on host %s\n",
 								sSegDB->dbid, tSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost"));
@@ -1196,6 +1240,21 @@ threadProc(void *arg)
 				}
 			}
 		}
+	}
+
+	/*
+	 * If segment reports success or no errors so far, scan of the restore status file
+	 * for ERRORS and report them if found
+	 */
+	if(pParm->bSuccess || pParm->pszErrorMsg == NULL)
+	{
+		pqBuffer = createPQExpBuffer();
+		int status = ReadBackendBackupFileError(pConn, dir_buf == NULL ? "" : dir_buf->data, pszKey, BFT_RESTORE_STATUS, progname, pqBuffer);
+		if (status != 0)
+		{
+			pParm->pszErrorMsg = MakeString("%s", pqBuffer->data);
+		}
+		destroyPQExpBuffer(pqBuffer);
 	}
 
 	if (pszNotifyRelName != NULL)
@@ -1289,7 +1348,7 @@ restoreMaster(InputOptions * pInputOpts,
 	pParm->pTargetSegDBData = tSegDB;
 	pParm->pSourceSegDBData = sSegDB;
 	pParm->pOptionsData = pInputOpts;
-	pParm->bSuccess = false;
+	pParm->bSuccess = true;
 	pParm->pszErrorMsg = NULL;
 	pParm->pszRemoteBackupPath = NULL;
 
@@ -1333,112 +1392,6 @@ restoreMaster(InputOptions * pInputOpts,
 	return rtn;
 }
 
-/*
- * updateAppendOnlyStats
- *
- * for every append only that exists in the database (whether we just restored
- * it or not) update its statistics on the master - note that this must not be
- * made with utility mode connection, but rather a regular connection.
- */
-void
-updateAppendOnlyStats(PGconn *pConn)
-{
-	/* query that gets all ao tables in the database */
-	PQExpBuffer get_query = createPQExpBuffer();
-	PGresult   *get_res;
-	int			get_ntups = 0;
-
-	/* query that updates all ao tables in the database */
-	PQExpBuffer update_query = createPQExpBuffer();
-	PGresult   *update_res = NULL;
-	int			update_ntups = 0;
-
-	/* misc */
-	int			i_tablename = 0;
-	int			i_schemaname = 0;
-	int			i = 0;
-
-	mpp_err_msg(logInfo, progname, "updating Append Only table statistics\n");
-
-	/* Fetch all Append Only tables */
-	appendPQExpBuffer(get_query,
-					  "SELECT c.relname,n.nspname "
-					  "FROM pg_class c, pg_namespace n "
-					  "WHERE c.relnamespace=n.oid "
-					  "AND (c.relstorage='a' OR c.relstorage='c')");
-
-	get_res = PQexec(pConn, get_query->data);
-
-	if (!get_res || PQresultStatus(get_res) != PGRES_TUPLES_OK)
-	{
-		const char *err;
-
-		if (get_res)
-			err = PQresultErrorMessage(get_res);
-		else
-			err = PQerrorMessage(pConn);
-
-		mpp_err_msg(logWarn, progname,
-					"Failed to get Append Only tables for updating stats. "
-					"error was: %s\n", err);
-
-	}
-	else
-	{
-		/* A-OK */
-		get_ntups = PQntuples(get_res);
-		i_tablename = PQfnumber(get_res, "relname");
-		i_schemaname = PQfnumber(get_res, "nspname");
-
-		for (i = 0; i < get_ntups; i++)
-		{
-			char	   *tablename = PQgetvalue(get_res, i, i_tablename);
-			char	   *schemaname = PQgetvalue(get_res, i, i_schemaname);
-
-			resetPQExpBuffer(update_query);
-			appendPQExpBuffer(update_query,
-							  "SELECT * "
-							  "FROM gp_update_ao_master_stats('%s.%s')",
-							  schemaname, tablename);
-
-			update_res = PQexec(pConn, update_query->data);
-
-			if (!update_res || PQresultStatus(update_res) != PGRES_TUPLES_OK)
-			{
-				const char *err;
-
-				if (update_res)
-					err = PQresultErrorMessage(update_res);
-				else
-					err = PQerrorMessage(pConn);
-
-				mpp_err_msg(logWarn, progname,
-							"Failed to update Append Only table stats. error "
-						"was: %s, query was: %s\n", err, update_query->data);
-			}
-			else
-			{
-				/* A-OK */
-				update_ntups = PQntuples(update_res);
-				if (update_ntups != 1)
-					mpp_err_msg(logWarn, progname,
-								"Expected 1 tuple, got %d. query was: %s\n",
-								update_ntups, update_query->data);
-			}
-		}
-	}
-
-	/* clean up */
-	if (update_res)
-		PQclear(update_res);
-
-	if (get_res)
-		PQclear(get_res);
-
-	destroyPQExpBuffer(get_query);
-	destroyPQExpBuffer(update_query);
-
-}
 
 /*
  * spinOffThreads: This function deals with all the threads that drive the backend restores.
@@ -1467,7 +1420,7 @@ spinOffThreads(PGconn *pConn, InputOptions * pInputOpts, const RestorePairArray 
 		pParm->pSourceSegDBData = &restorePairAr->pData[i].segdb_source;
 		pParm->pTargetSegDBData = &restorePairAr->pData[i].segdb_target;
 		pParm->pOptionsData = pInputOpts;
-		pParm->bSuccess = false;
+		pParm->bSuccess = true;
 
 		/* exclude master node */
 		if (pParm->pTargetSegDBData->role == ROLE_MASTER)
@@ -1572,6 +1525,7 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 	char	   *pszFormat;
 	int			i;
 	int			failCount;
+	int			errorCount;
 	const ThreadParm *pParm;
 	char	   *pszStatus;
 	char	   *pszMsg;
@@ -1600,7 +1554,7 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 			 * report directory not set by user - default to
 			 * $MASTER_DATA_DIRECTORY
 			 */
-			pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));
+			pszReportDirectory = getenv("MASTER_DATA_DIRECTORY");
 		}
 		else
 		{
@@ -1615,7 +1569,13 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 	else
 		pszFormat = "%s%sgp_restore_%s.rpt";
 
-	pszReportPathName = MakeString(pszFormat, pszReportDirectory, DUMP_PREFIX, pOptions->pszKey);
+	pszReportPathName = MakeString(pszFormat, pszReportDirectory, dump_prefix_buf == NULL ? "" : dump_prefix_buf->data, pOptions->pszKey);
+
+	if (pszReportPathName == NULL)
+	{
+		mpp_err_msg(logError, progname, "Cannot allocate memory for report file path\n");
+		exit(-1);
+	}
 
 	fRptFile = fopen(pszReportPathName, "w");
 	if (fRptFile == NULL)
@@ -1646,6 +1606,7 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 	appendPQExpBuffer(reportBuf, "Individual Results\n");
 
 	failCount = 0;
+	errorCount = 0;
 	for (i = 0; i < pParmAr->count + 1; i++)
 	{
 		if (i == 0)
@@ -1662,10 +1623,19 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 				continue;
 		}
 
-		if (!pParm->bSuccess)
-			failCount++;
-		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{\n";
 		pszMsg = pParm->pszErrorMsg;
+		if (!pParm->bSuccess)
+		{
+			pszStatus = "Failed with error: \n{\n";
+			failCount++;
+		}
+		else if (pParm->bSuccess && pszMsg != NULL)
+		{
+			pszStatus = "Completed but errors were found: \n{\n";
+			errorCount++;
+		}
+		else
+			pszStatus = "Succeeded";
 		if (pszMsg == NULL)
 			pszMsg = "";
 
@@ -1681,10 +1651,12 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 			);
 	}
 
-	if (failCount == 0)
+	if (failCount == 0 && errorCount == 0)
 		appendPQExpBuffer(reportBuf, "\n%s  utility finished successfully.\n", progname);
-	else
+	else if (failCount > 0)
 		appendPQExpBuffer(reportBuf, "\n%s  utility finished unsuccessfully with  %d  failures.\n", progname, failCount);
+	else
+		appendPQExpBuffer(reportBuf, "\n%s  utility finished but errors were found.\n", progname);
 
 	/* write report to report file */
 	if (fRptFile != NULL)
@@ -1702,7 +1674,11 @@ reportRestoreResults(const char *pszReportDirectory, const ThreadParm * pMasterP
 
 	destroyPQExpBuffer(reportBuf);
 
-	return failCount;
+	if (failCount > 0)
+		return 1;
+	else if (errorCount > 0)
+		return 2;
+	return 0;
 }
 
 /*
@@ -1752,7 +1728,7 @@ reportMasterError(InputOptions inputopts, const ThreadParm * pMasterParm, const 
 			 * report directory not set by user - default to
 			 * $MASTER_DATA_DIRECTORY
 			 */
-			pszReportDirectory = Safe_strdup(getenv("MASTER_DATA_DIRECTORY"));
+			pszReportDirectory = getenv("MASTER_DATA_DIRECTORY");
 		}
 		else
 		{
@@ -1768,6 +1744,12 @@ reportMasterError(InputOptions inputopts, const ThreadParm * pMasterParm, const 
 		pszFormat = "%sgp_restore_%s.rpt";
 
 	pszReportPathName = MakeString(pszFormat, pszReportDirectory, pOptions->pszKey);
+
+	if (pszReportPathName == NULL)
+	{
+		mpp_err_msg(logError, progname, "Cannot allocate memory for report file path\n");
+		exit(-1);
+	}
 
 	fRptFile = fopen(pszReportPathName, "w");
 	if (fRptFile == NULL)

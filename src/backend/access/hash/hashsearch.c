@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashsearch.c,v 1.45 2006/07/14 14:52:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashsearch.c,v 1.51 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,7 +26,7 @@
 /*
  *	_hash_next() -- Get the next item in a scan.
  *
- *		On entry, we have a valid currentItemData in the scan, and a
+ *		On entry, we have a valid hashso_curpos in the scan, and a
  *		pin and read lock on the page that contains that item.
  *		We find the next item in the scan, if any.
  *		On success exit, we have the page containing the next item
@@ -54,7 +54,7 @@ _hash_next(IndexScanDesc scan, ScanDirection dir)
 		return false;
 
 	/* if we're here, _hash_step found a valid tuple */
-	current = &(scan->currentItemData);
+	current = &(so->hashso_curpos);
 	offnum = ItemPointerGetOffsetNumber(current);
 	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	page = BufferGetPage(buf);
@@ -82,8 +82,7 @@ _hash_readnext(Relation rel,
 	CHECK_FOR_INTERRUPTS();
 	if (BlockNumberIsValid(blkno))
 	{
-		*bufp = _hash_getbuf(rel, blkno, HASH_READ);
-		_hash_checkpage(rel, *bufp, LH_OVERFLOW_PAGE);
+		*bufp = _hash_getbuf(rel, blkno, HASH_READ, LH_OVERFLOW_PAGE);
 		*pagep = BufferGetPage(*bufp);
 		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
 	}
@@ -107,8 +106,8 @@ _hash_readprev(Relation rel,
 	CHECK_FOR_INTERRUPTS();
 	if (BlockNumberIsValid(blkno))
 	{
-		*bufp = _hash_getbuf(rel, blkno, HASH_READ);
-		_hash_checkpage(rel, *bufp, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
+		*bufp = _hash_getbuf(rel, blkno, HASH_READ,
+							 LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 		*pagep = BufferGetPage(*bufp);
 		*opaquep = (HashPageOpaque) PageGetSpecialPointer(*pagep);
 	}
@@ -128,6 +127,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 {
 	Relation	rel = scan->indexRelation;
 	HashScanOpaque so = (HashScanOpaque) scan->opaque;
+	ScanKey		cur;
 	uint32		hashkey;
 	Bucket		bucket;
 	BlockNumber blkno;
@@ -144,7 +144,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 
 	pgstat_count_index_scan(rel);
 
-	current = &(scan->currentItemData);
+	current = &(so->hashso_curpos);
 	ItemPointerSetInvalid(current);
 
 	/*
@@ -158,18 +158,37 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("hash indexes do not support whole-index scans")));
 
+	/* There may be more than one index qual, but we hash only the first */
+	cur = &scan->keyData[0];
+
+	/* We support only single-column hash indexes */
+	Assert(cur->sk_attno == 1);
+	/* And there's only one operator strategy, too */
+	Assert(cur->sk_strategy == HTEqualStrategyNumber);
+
 	/*
 	 * If the constant in the index qual is NULL, assume it cannot match any
 	 * items in the index.
 	 */
-	if (scan->keyData[0].sk_flags & SK_ISNULL)
+	if (cur->sk_flags & SK_ISNULL)
 		return false;
 
 	/*
 	 * Okay to compute the hash key.  We want to do this before acquiring any
 	 * locks, in case a user-defined hash function happens to be slow.
+	 *
+	 * If scankey operator is not a cross-type comparison, we can use the
+	 * cached hash function; otherwise gotta look it up in the catalogs.
+	 *
+	 * We support the convention that sk_subtype == InvalidOid means the
+	 * opclass input type; this is a hack to simplify life for ScanKeyInit().
 	 */
-	hashkey = _hash_datum2hashkey(rel, scan->keyData[0].sk_argument);
+	if (cur->sk_subtype == rel->rd_opcintype[0] ||
+		cur->sk_subtype == InvalidOid)
+		hashkey = _hash_datum2hashkey(rel, cur->sk_argument);
+	else
+		hashkey = _hash_datum2hashkey_type(rel, cur->sk_argument,
+										   cur->sk_subtype);
 
 	/*
 	 * Acquire shared split lock so we can compute the target bucket safely
@@ -178,8 +197,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	_hash_getlock(rel, 0, HASH_SHARE);
 
 	/* Read the metapage */
-	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ);
-	_hash_checkpage(rel, metabuf, LH_META_PAGE);
+	metabuf = _hash_getbuf(rel, HASH_METAPAGE, HASH_READ, LH_META_PAGE);
 	metap = (HashMetaPage) BufferGetPage(metabuf);
 
 	/*
@@ -208,8 +226,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	so->hashso_bucket_blkno = blkno;
 
 	/* Fetch the primary bucket page for the bucket */
-	buf = _hash_getbuf(rel, blkno, HASH_READ);
-	_hash_checkpage(rel, buf, LH_BUCKET_PAGE);
+	buf = _hash_getbuf(rel, blkno, HASH_READ, LH_BUCKET_PAGE);
 	page = BufferGetPage(buf);
 	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
 	Assert(opaque->hasho_bucket == bucket);
@@ -239,7 +256,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
  *	_hash_step() -- step to the next valid item in a scan in the bucket.
  *
  *		If no valid record exists in the requested direction, return
- *		false.	Else, return true and set the CurrentItemData for the
+ *		false.	Else, return true and set the hashso_curpos for the
  *		scan to the right thing.
  *
  *		'bufP' points to the current buffer, which is pinned and read-locked.
@@ -260,7 +277,7 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 	BlockNumber blkno;
 	IndexTuple	itup;
 
-	current = &(scan->currentItemData);
+	current = &(so->hashso_curpos);
 
 	buf = *bufP;
 	_hash_checkpage(rel, buf, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);

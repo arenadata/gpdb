@@ -18,20 +18,12 @@ LIBS := $(filter-out -lresolv -lbz2, $(LIBS))
 # This program isn't interactive, so doesn't need these
 LIBS := $(filter-out -lreadline -ledit -ltermcap -lncurses -lcurses -lcurl -lssl -lcrypto -lz, $(LIBS))
 
-override CPPFLAGS += -DFRONTEND
-
-OBJS= pg_controldata.o pg_crc.o crc32c.o $(WIN32RES)
+OBJS= pg_controldata.o $(WIN32RES)
 
 all: submake-libpgport pg_controldata
 
 pg_controldata: $(OBJS)
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LIBS) -o $@$(X)
-
-pg_crc.c: $(top_srcdir)/src/backend/utils/hash/pg_crc.c
-	rm -f $@ && $(LN_S) $< .
-	
-crc32c.c: $(top_srcdir)/src/backend/utils/hash/crc32c.c
-	rm -f $@ && $(LN_S) $< .
 
 install: all installdirs
 	$(INSTALL_PROGRAM) pg_controldata$(X) '$(DESTDIR)$(bindir)/pg_controldata$(X)'
@@ -43,4 +35,4 @@ uninstall:
 	rm -f '$(DESTDIR)$(bindir)/pg_controldata$(X)'
 
 clean distclean maintainer-clean:
-	rm -f pg_controldata$(X) $(OBJS) pg_crc.c crc32c.c
+	rm -f pg_controldata$(X) $(OBJS)

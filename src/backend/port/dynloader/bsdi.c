@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/dynloader/bsdi.c,v 1.28 2006/03/05 15:58:35 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/dynloader/bsdi.c,v 1.30 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

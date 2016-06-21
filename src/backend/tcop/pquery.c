@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111.2.1 2007/02/18 19:49:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.120 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,7 +34,7 @@
 #include "nodes/makefuncs.h"
 #include "utils/acl.h"
 #include "catalog/catalog.h"
-#include "postmaster/autovacuum.h"
+#include "postmaster/autostats.h"
 #include "postmaster/backoff.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/memquota.h"
@@ -101,10 +101,12 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->tupDesc = NULL;
 	qd->estate = NULL;
 	qd->planstate = NULL;
-	
+	qd->memoryAccount = NULL;
+
 	qd->extended_query = false; /* default value */
 	qd->portal_name = NULL;
 
+	qd->ddesc = NULL;
 	qd->gpmon_pkt = NULL;
 	
     if (Gp_role != GP_ROLE_EXECUTE)
@@ -207,8 +209,7 @@ ProcessQuery(Portal portal,
 	Oid	relationOid = InvalidOid; 	/* relation that is modified */
 	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
 	
-	ereport(DEBUG3,
-			(errmsg_internal("ProcessQuery")));
+	elog(DEBUG3, "ProcessQuery");
 
 	/*
 	 * Must always set snapshot for plannable queries.	Note we assume that
@@ -229,6 +230,7 @@ ProcessQuery(Portal portal,
 		queryDesc = CreateQueryDesc(stmt, portal->sourceText,
 									ActiveSnapshot, InvalidSnapshot,
 									dest, params, false);
+	queryDesc->ddesc = portal->ddesc;
 
 	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 	{			
@@ -253,15 +255,15 @@ ProcessQuery(Portal portal,
 		stmt->canSetTag
 		&& !superuser())
 	{
-		PortalSetStatus(portal, PORTAL_QUEUE);
+		portal->status = PORTAL_QUEUE;
 		
 		if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
 		
-		portal->releaseResLock = ResLockPortal(portal, queryDesc);
+		portal->holdingResLock = ResLockPortal(portal, queryDesc);
 	}
 
-	PortalSetStatus(portal, PORTAL_ACTIVE);
+	portal->status = PORTAL_ACTIVE;
 	
 	if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 			&& Gp_role == GP_ROLE_DISPATCH
@@ -351,6 +353,8 @@ ProcessQuery(Portal portal,
 		}
 	}
 
+	autostats_get_cmdtype(queryDesc, &cmdType, &relationOid);
+
 	/*
 	 * Now, we close down all the scans and free allocated resources.
 	 */
@@ -420,22 +424,6 @@ ProcessQuery(Portal portal,
 				ExecuteTruncate(truncStmt);
 			}
 		}
-	
-		autostats_get_cmdtype(stmt, &cmdType, &relationOid);
-
-		/* MPP-4407. Logging number of tuples modified. */
-		if (relationOid != InvalidOid)
-		{
-			if (cmdType < AUTOSTATS_CMDTYPE_SENTINEL &&			
-				GetPlannedStmtLogLevel(stmt) <= log_statement)
-			{
-				elog(DEBUG1, "type_of_statement = %s dboid = %d tableoid = %d num_tuples_modified = %u", 
-					 autostats_cmdtype_to_string(cmdType), 
-					 MyDatabaseId, 
-					 relationOid, 
-					 (unsigned int) queryDesc->es_processed);
-			}
-		}
 		
 		/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
 		bool inFunction = false;
@@ -458,7 +446,10 @@ ProcessQuery(Portal portal,
 
 /*
  * ChoosePortalStrategy
- *		Select portal execution strategy given the intended query list.
+ *		Select portal execution strategy given the intended statement list.
+ *
+ * The list elements can be Querys, PlannedStmts, or utility statements.
+ * That's more general than portals need, but plancache.c uses this too.
  *
  * The list elements can be Querys, PlannedStmts, or utility statements.
  *
@@ -472,7 +463,7 @@ ChoosePortalStrategy(List *stmts)
 
 	/*
 	 * PORTAL_ONE_SELECT and PORTAL_UTIL_SELECT need only consider the
-	 * single-Query-struct case, since there are no rewrite rules that can add
+	 * single-statement case, since there are no rewrite rules that can add
 	 * auxiliary queries to a SELECT or a utility command.
 	 */
 	if (list_length(stmts) == 1)
@@ -481,7 +472,7 @@ ChoosePortalStrategy(List *stmts)
 
 		if (IsA(stmt, Query))
 		{
-			Query	   *query = (Query*)stmt;
+			Query	   *query = (Query*) stmt;
 			
 			if (query->canSetTag)
 			{
@@ -529,12 +520,12 @@ ChoosePortalStrategy(List *stmts)
 	nSetTag = 0;
 	foreach(lc, stmts)
 	{
-		Node	   *stmt = (Node*) lfirst(lc);
-		
+		Node	   *stmt = (Node *) lfirst(lc);
+
 		if (IsA(stmt, Query))
 		{
 			Query	   *query = (Query *) stmt;
-			
+
 			if (query->canSetTag)
 			{
 				if (++nSetTag > 1)
@@ -546,7 +537,7 @@ ChoosePortalStrategy(List *stmts)
 		else if (IsA(stmt, PlannedStmt))
 		{
 			PlannedStmt *pstmt = (PlannedStmt *) stmt;
-			
+
 			if (pstmt->canSetTag)
 			{
 				if (++nSetTag > 1)
@@ -570,9 +561,6 @@ ChoosePortalStrategy(List *stmts)
  *		Returns NIL if the portal doesn't have a determinable targetlist.
  *
  * Note: do not modify the result.
- *
- * XXX be careful to keep this in sync with FetchPreparedStatementTargetList,
- * and with UtilityReturnsTuples.
  */
 List *
 FetchPortalTargetList(Portal portal)
@@ -590,7 +578,7 @@ FetchPortalTargetList(Portal portal)
  *		Returns NIL if the statement doesn't have a determinable targetlist.
  *
  * This can be applied to a Query, a PlannedStmt, or a utility statement.
- * That's more general than portals need, but useful.
+ * That's more general than portals need, but plancache.c uses this too.
  *
  * Note: do not modify the result.
  *
@@ -604,7 +592,7 @@ FetchStatementTargetList(Node *stmt)
 	if (IsA(stmt, Query))
 	{
 		Query	   *query = (Query *) stmt;
-		
+
 		if (query->commandType == CMD_UTILITY &&
 			query->utilityStmt != NULL)
 		{
@@ -675,7 +663,7 @@ FetchStatementTargetList(Node *stmt)
  */
 void
 PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
-			const char *seqServerHost, int seqServerPort)
+			const char *seqServerHost, int seqServerPort, QueryDispatchDesc *ddesc)
 {
 	Portal		saveActivePortal;
 	Snapshot	saveActiveSnapshot;
@@ -686,14 +674,15 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	int			eflags;
 
 	AssertArg(PortalIsValid(portal));
-	AssertState(portal->queryContext != NULL);	/* query defined? */
-	AssertState(PortalGetStatus(portal)  == PORTAL_NEW);	/* else extra PortalStart */
+	AssertState(portal->status == PORTAL_DEFINED);
 
 	/* Set up the sequence server */
 	SetupSequenceServer(seqServerHost, seqServerPort);
 
-	portal->releaseResLock = false;
+	portal->holdingResLock = false;
     
+	portal->ddesc = ddesc;
+
     /*
 	 * Set up global portal context pointers.  (Should we set QueryContext?)
 	 */
@@ -749,6 +738,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 											None_Receiver,
 											params,
 											false);
+				queryDesc->ddesc = ddesc;
 				
 				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 				{			
@@ -794,23 +784,23 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 					 */ 
 					if (SPI_context() && 
 						saveActivePortal && 
-						saveActivePortal->releaseResLock)
+						saveActivePortal->holdingResLock)
 					{
-						PortalSetStatus(portal, PORTAL_QUEUE);
+						portal->status = PORTAL_QUEUE;
 						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
 					}
 					else
 					{
-						PortalSetStatus(portal, PORTAL_QUEUE);
+						portal->status = PORTAL_QUEUE;
 						
 						if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE)
 							queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, portal->queueId);
-						portal->releaseResLock = ResLockPortal(portal, queryDesc);
+						portal->holdingResLock = ResLockPortal(portal, queryDesc);
 					}
 				}
 
-				PortalSetStatus(portal, PORTAL_ACTIVE);
+				portal->status = PORTAL_ACTIVE;
 
 				if (gp_resqueue_memory_policy != RESQUEUE_MEMORY_POLICY_NONE
 						&& Gp_role == GP_ROLE_DISPATCH
@@ -866,25 +856,25 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				 * We don't start the executor until we are told to run the
 				 * portal.	We do need to set up the result tupdesc.
 				 */
-			{
-				PlannedStmt *pstmt;
-				
-				pstmt = (PlannedStmt *) PortalGetPrimaryStmt(portal);
-				Assert(IsA(pstmt, PlannedStmt));
-				Assert(pstmt->returningLists);
-				portal->tupDesc =
-					ExecCleanTypeFromTL((List *) linitial(pstmt->returningLists),
-										false);
-			}
-				
-			/*
-			 * Reset cursor position data to "start of query"
-			 */
-			portal->atStart = true;
-			portal->atEnd = false;	/* allow fetches */
-			portal->portalPos = 0;
-			portal->posOverflow = false;
-			break;
+				{
+					PlannedStmt *pstmt;
+
+					pstmt = (PlannedStmt *) PortalGetPrimaryStmt(portal);
+					Assert(IsA(pstmt, PlannedStmt));
+					Assert(pstmt->returningLists);
+					portal->tupDesc =
+						ExecCleanTypeFromTL((List *) linitial(pstmt->returningLists),
+											false);
+				}
+
+				/*
+				 * Reset cursor position data to "start of query"
+				 */
+				portal->atStart = true;
+				portal->atEnd = false;	/* allow fetches */
+				portal->portalPos = 0;
+				portal->posOverflow = false;
+				break;
 
 			case PORTAL_UTIL_SELECT:
 
@@ -892,8 +882,12 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 				 * We don't set snapshot here, because PortalRunUtility will
 				 * take care of it if needed.
 				 */
-				portal->tupDesc =
-					UtilityTupleDescriptor(linitial(portal->stmts));
+				{
+					Node	   *ustmt = PortalGetPrimaryStmt(portal);
+
+					Assert(!IsA(ustmt, PlannedStmt));
+					portal->tupDesc = UtilityTupleDescriptor(ustmt);
+				}
 
 				/*
 				 * Reset cursor position data to "start of query"
@@ -913,7 +907,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	PG_CATCH();
 	{
 		/* Uncaught error while executing portal: mark it dead */
-		PortalSetStatus(portal, PORTAL_FAILED);
+		portal->status = PORTAL_FAILED;
 
 		/* Restore global vars and propagate error */
 		ActivePortal = saveActivePortal;
@@ -932,7 +926,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot,
 	CurrentResourceOwner = saveResourceOwner;
 	PortalContext = savePortalContext;
 
-	PortalSetStatus(portal, PORTAL_READY);
+	portal->status = PORTAL_READY;
 }
 
 /*
@@ -993,6 +987,9 @@ PortalSetResultFormat(Portal portal, int nFormats, int16 *formats)
  * interpreted as "all rows".  Note that count is ignored in multi-query
  * situations, where we always run the portal to completion.
  *
+ * isTopLevel: true if query is being executed at backend "top level"
+ * (that is, directly from a client command message)
+ *
  * dest: where to send output of primary (canSetTag) query
  *
  * altdest: where to send output of non-primary queries
@@ -1016,7 +1013,6 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	Snapshot	saveActiveSnapshot;
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
-	MemoryContext saveQueryContext;
 	MemoryContext saveMemoryContext;
 
 	AssertArg(PortalIsValid(portal));
@@ -1027,8 +1023,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
 	{
-		ereport(DEBUG3,
-				(errmsg_internal("PortalRun")));
+		elog(DEBUG3, "PortalRun");
 		/* PORTAL_MULTI_QUERY logs its own stats per query */
 		ResetUsage();
 	}
@@ -1036,12 +1031,12 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	/*
 	 * Check for improper portal use, and mark portal active.
 	 */
-	if (PortalGetStatus(portal) != PORTAL_READY && PortalGetStatus(portal) != PORTAL_QUEUE)
+	if (portal->status != PORTAL_READY && portal->status != PORTAL_QUEUE)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("portal \"%s\" cannot be run", portal->name)));
 
-	PortalSetStatus(portal, PORTAL_ACTIVE);
+	portal->status = PORTAL_ACTIVE;
 
 	/*
 	 * Set up global portal context pointers.
@@ -1063,7 +1058,6 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	saveActiveSnapshot = ActiveSnapshot;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
-	saveQueryContext = QueryContext;
 	saveMemoryContext = CurrentMemoryContext;
 	PG_TRY();
 	{
@@ -1072,7 +1066,6 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
-		QueryContext = portal->queryContext;
 
 		MemoryContextSwitchTo(PortalContext);
 
@@ -1086,7 +1079,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 					strcpy(completionTag, portal->commandTag);
 
 				/* Mark portal not active */
-				PortalSetStatus(portal, PORTAL_READY);
+				portal->status = PORTAL_READY;
 
 				/*
 				 * Since it's a forward fetch, say DONE iff atEnd is now true.
@@ -1096,24 +1089,25 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 
 			case PORTAL_ONE_RETURNING:
 			case PORTAL_UTIL_SELECT:
-			    /*
-			     * If we have not yet run the command, do so, storing its
-			     * results in the portal's tuplestore.
-			     */
-			    if (!portal->holdStore)
-				    FillPortalStore(portal, isTopLevel);
 
-			    /*
-			     * Now fetch desired portion of results.
-			     */
-			    (void) PortalRunSelect(portal, true, count, dest);
+				/*
+				 * If we have not yet run the command, do so, storing its
+				 * results in the portal's tuplestore.
+				 */
+				if (!portal->holdStore)
+					FillPortalStore(portal, isTopLevel);
 
-			    /* we know the query is supposed to set the tag */
-			    if (completionTag && portal->commandTag)
-				    strcpy(completionTag, portal->commandTag);
+				/*
+				 * Now fetch desired portion of results.
+				 */
+				(void) PortalRunSelect(portal, true, count, dest);
+
+				/* we know the query is supposed to set the tag */
+				if (completionTag && portal->commandTag)
+					strcpy(completionTag, portal->commandTag);
 
 				/* Mark portal not active */
-				PortalSetStatus(portal, PORTAL_READY);
+				portal->status = PORTAL_READY;
 
 				/*
 				 * Since it's a forward fetch, say DONE iff atEnd is now true.
@@ -1122,11 +1116,11 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 				break;
 
 			case PORTAL_MULTI_QUERY:
-				PortalRunMulti(portal, isTopLevel, 
+				PortalRunMulti(portal, isTopLevel,
 							   dest, altdest, completionTag);
 
 				/* Prevent portal's commands from being re-executed */
-				PortalSetStatus(portal, PORTAL_DONE);
+				portal->status = PORTAL_DONE;
 
 				/* Always complete at end of RunMulti */
 				result = true;
@@ -1141,7 +1135,7 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	PG_CATCH();
 	{
 		/* Uncaught error while executing portal: mark it dead */
-		PortalSetStatus(portal, PORTAL_FAILED);
+		portal->status = PORTAL_FAILED;
 
 		/* Restore global vars and propagate error */
 		if (saveMemoryContext == saveTopTransactionContext)
@@ -1155,7 +1149,6 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 		else
 			CurrentResourceOwner = saveResourceOwner;
 		PortalContext = savePortalContext;
-		QueryContext = saveQueryContext;
 
 		TeardownSequenceServer();
 
@@ -1174,7 +1167,6 @@ PortalRun(Portal portal, int64 count, bool isTopLevel,
 	else
 		CurrentResourceOwner = saveResourceOwner;
 	PortalContext = savePortalContext;
-	QueryContext = saveQueryContext;
 
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
 		ShowUsage("EXECUTOR STATISTICS");
@@ -1359,12 +1351,12 @@ FillPortalStore(Portal portal, bool isTopLevel)
 			 * MULTI_QUERY case, but send the primary query's output to the
 			 * tuplestore. Auxiliary query outputs are discarded.
 			 */
-			PortalRunMulti(portal, isTopLevel, 
+			PortalRunMulti(portal, isTopLevel,
 						   treceiver, None_Receiver, completionTag);
 			break;
 
 		case PORTAL_UTIL_SELECT:
-			PortalRunUtility(portal, linitial(portal->stmts),
+			PortalRunUtility(portal, (Node *) linitial(portal->stmts),
 							 isTopLevel, treceiver, completionTag);
 			break;
 
@@ -1456,8 +1448,7 @@ static void
 PortalRunUtility(Portal portal, Node *utilityStmt, bool isTopLevel,
 				 DestReceiver *dest, char *completionTag)
 {
-	ereport(DEBUG3,
-			(errmsg_internal("ProcessUtility")));
+	elog(DEBUG3, "ProcessUtility");
 
 	/*
 	 * Set snapshot if utility stmt needs one.	Most reliable way to do this
@@ -1477,7 +1468,6 @@ PortalRunUtility(Portal portal, Node *utilityStmt, bool isTopLevel,
 		  IsA(utilityStmt, LockStmt) ||
 		  IsA(utilityStmt, VariableSetStmt) ||
 		  IsA(utilityStmt, VariableShowStmt) ||
-		  IsA(utilityStmt, VariableResetStmt) ||
 		  IsA(utilityStmt, ConstraintsSetStmt) ||
 	/* efficiency hacks from here down */
 		  IsA(utilityStmt, FetchStmt) ||
@@ -1509,28 +1499,12 @@ PortalRunUtility(Portal portal, Node *utilityStmt, bool isTopLevel,
 	 * mgmt */
 	ResHandleUtilityStmt(portal, utilityStmt);
 
-	if ( isTopLevel )
-	{
-		/* utility statement can override default tag string */
-		ProcessUtility(utilityStmt, 
-					   portal->sourceText ? portal->sourceText : "(Source text for portal is not available)",
-					   portal->portalParams,
-					   isTopLevel,
-					   dest, 
-					   completionTag);
-		if (completionTag && completionTag[0] == '\0' && portal->commandTag)
-			strcpy(completionTag, portal->commandTag);	/* use the default */
-	}
-	else
-	{
-		/* utility added by rewrite cannot set tag */
-		ProcessUtility(utilityStmt, 
-					   portal->sourceText ? portal->sourceText : "(Source text for portal is not available)",
-					   portal->portalParams, 
-					   isTopLevel,
-					   dest, 
-					   NULL);
-	}
+	ProcessUtility(utilityStmt,
+				   portal->sourceText ? portal->sourceText : "(Source text for portal is not available)",
+				   portal->portalParams,
+				   isTopLevel,
+				   dest,
+				   completionTag);
 
 	/* Some utility statements may change context on us */
 	MemoryContextSwitchTo(PortalGetHeapMemory(portal));
@@ -1579,7 +1553,7 @@ PortalRunMulti(Portal portal, bool isTopLevel,
 	 */
 	foreach(stmtlist_item, portal->stmts)
 	{
-		Node *stmt = lfirst(stmtlist_item);
+		Node	   *stmt = (Node *) lfirst(stmtlist_item);
 
 		/*
 		 * If we got a cancel signal in prior command, quit
@@ -1593,7 +1567,7 @@ PortalRunMulti(Portal portal, bool isTopLevel,
 			 * process a plannable query.
 			 */
 			PlannedStmt *pstmt = (PlannedStmt *) stmt;
-			
+
 			if (log_executor_stats)
 				ResetUsage();
 
@@ -1621,18 +1595,13 @@ PortalRunMulti(Portal portal, bool isTopLevel,
 			 * process utility functions (create, destroy, etc..)
 			 *
 			 * These are assumed canSetTag if they're the only stmt in the
-			 * portal, with the following exception:
-			 *
-			 *  A COPY FROM that specifies a non-existent error table, will
-			 *  be transformed (parse_analyze) into a (CreateStmt, CopyStmt).
-			 *  XXX Maybe this should be treated like DECLARE CURSOR?
+			 * portal.
 			 */
-			if (list_length(portal->stmts) == 1 || portal->sourceTag == T_CopyStmt)
+			if (list_length(portal->stmts) == 1)
 				PortalRunUtility(portal, stmt, isTopLevel, dest, completionTag);
 			else
 				PortalRunUtility(portal, stmt, isTopLevel, altdest, NULL);
 		}
-		
 
 		/*
 		 * Increment command counter between queries, but not after the last
@@ -1674,6 +1643,8 @@ PortalRunMulti(Portal portal, bool isTopLevel,
  * PortalRunFetch
  *		Variant form of PortalRun that supports SQL FETCH directions.
  *
+ * Note: we presently assume that no callers of this want isTopLevel = true.
+ *
  * Returns number of rows processed (suitable for use in result tag)
  */
 int64
@@ -1687,7 +1658,6 @@ PortalRunFetch(Portal portal,
 	Snapshot	saveActiveSnapshot;
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
-	MemoryContext saveQueryContext;
 	MemoryContext oldContext = CurrentMemoryContext;
 
 	AssertArg(PortalIsValid(portal));
@@ -1695,12 +1665,12 @@ PortalRunFetch(Portal portal,
 	/*
 	 * Check for improper portal use, and mark portal active.
 	 */
-	if (PortalGetStatus(portal) != PORTAL_READY)
+	if (portal->status != PORTAL_READY)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("portal \"%s\" cannot be run", portal->name)));
 
-	PortalSetStatus(portal, PORTAL_ACTIVE);
+	portal->status = PORTAL_ACTIVE;
 
 	/*
 	 * Set up global portal context pointers.
@@ -1709,7 +1679,6 @@ PortalRunFetch(Portal portal,
 	saveActiveSnapshot = ActiveSnapshot;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
-	saveQueryContext = QueryContext;
 	PG_TRY();
 	{
 		ActivePortal = portal;
@@ -1717,7 +1686,6 @@ PortalRunFetch(Portal portal,
 		if (portal->resowner)
 			CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
-		QueryContext = portal->queryContext;
 
 		MemoryContextSwitchTo(PortalContext);
 
@@ -1735,9 +1703,7 @@ PortalRunFetch(Portal portal,
 				 * results in the portal's tuplestore.
 				 */
 				if (!portal->holdStore)
-				{
 					FillPortalStore(portal, false /* isTopLevel */ );
-				}
 
 				/*
 				 * Now fetch desired portion of results.
@@ -1753,14 +1719,13 @@ PortalRunFetch(Portal portal,
 	PG_CATCH();
 	{
 		/* Uncaught error while executing portal: mark it dead */
-		PortalSetStatus(portal, PORTAL_FAILED);
+		portal->status = PORTAL_FAILED;
 
 		/* Restore global vars and propagate error */
 		ActivePortal = saveActivePortal;
 		ActiveSnapshot = saveActiveSnapshot;
 		CurrentResourceOwner = saveResourceOwner;
 		PortalContext = savePortalContext;
-		QueryContext = saveQueryContext;
 
 		PG_RE_THROW();
 	}
@@ -1769,13 +1734,12 @@ PortalRunFetch(Portal portal,
 	MemoryContextSwitchTo(oldContext);
 
 	/* Mark portal not active */
-	PortalSetStatus(portal, PORTAL_READY);
+	portal->status = PORTAL_READY;
 
 	ActivePortal = saveActivePortal;
 	ActiveSnapshot = saveActiveSnapshot;
 	CurrentResourceOwner = saveResourceOwner;
 	PortalContext = savePortalContext;
-	QueryContext = saveQueryContext;
 
 	return result;
 }

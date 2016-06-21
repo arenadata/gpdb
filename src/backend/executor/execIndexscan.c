@@ -100,7 +100,7 @@ OpenIndexRelation(EState *estate, Oid indexOid, Index tableRtIndex)
  * The index quals are passed to the index AM in the form of a ScanKey array.
  * This routine sets up the ScanKeys, fills in all constant fields of the
  * ScanKeys, and prepares information about the keys that have non-constant
- * comparison values.  We divide index qual expressions into four types:
+ * comparison values.  We divide index qual expressions into five types:
  *
  * 1. Simple operator with constant comparison value ("indexkey op constant").
  * For these, we just fill in a ScanKey containing the constant value.
@@ -120,6 +120,8 @@ OpenIndexRelation(EState *estate, Oid indexOid, Index tableRtIndex)
  * and set up an IndexArrayKeyInfo struct to drive processing of the qual.
  * (Note that we treat all array-expressions as requiring runtime evaluation,
  * even if they happen to be constants.)
+ *
+ * 5. NullTest ("indexkey IS NULL").  We just fill in the ScanKey properly.
  *
  * Input params are:
  *
@@ -303,9 +305,10 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				int			flags = SK_ROW_MEMBER;
 				Datum		scanvalue;
 				Oid			opno;
-				Oid			opclass;
+				Oid			opfamily;
 				int			op_strategy;
-				Oid			op_subtype;
+				Oid			op_lefttype;
+				Oid			op_righttype;
 				bool		op_recheck;
 
 				/*
@@ -363,14 +366,14 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				if (index->rd_rel->relam != BTREE_AM_OID ||
 					varattno < 1 || varattno > index->rd_index->indnatts)
 					insist_log(false, "bogus RowCompare index qualification");
-				opclass = index->rd_indclass->values[varattno - 1];
+				opfamily = index->rd_opfamily[varattno - 1];
 
-				get_op_opclass_properties(opno, opclass,
-									 &op_strategy, &op_subtype, &op_recheck);
+				get_op_opfamily_properties(opno, opfamily,
+										   &op_strategy, &op_lefttype, &op_righttype, &op_recheck);
 
 				insist_log(op_strategy == rc->rctype, "RowCompare index qualification contains wrong operator");
 
-				opfuncid = get_opclass_proc(opclass, op_subtype, BTORDER_PROC);
+				opfuncid = get_opfamily_proc(opfamily, op_lefttype, op_righttype, BTORDER_PROC);
 
 				/*
 				 * initialize the subsidiary scan key's fields appropriately
@@ -379,7 +382,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 									   flags,
 									   varattno,		/* attribute number */
 									   op_strategy,		/* op's strategy */
-									   op_subtype,		/* strategy subtype */
+									   op_lefttype,		/* strategy subtype */
 									   opfuncid,		/* reg proc to use */
 									   scanvalue);		/* constant */
 				extra_scan_keys++;
@@ -448,6 +451,38 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   strategy,	/* op's strategy */
 								   subtype,		/* strategy subtype */
 								   opfuncid,	/* reg proc to use */
+								   (Datum) 0);	/* constant */
+		}
+		else if (IsA(clause, NullTest))
+		{
+			/* indexkey IS NULL */
+			Assert(((NullTest *) clause)->nulltesttype == IS_NULL);
+
+			/*
+			 * argument should be the index key Var, possibly relabeled
+			 */
+			leftop = ((NullTest *) clause)->arg;
+
+			if (leftop && IsA(leftop, RelabelType))
+				leftop = ((RelabelType *) leftop)->arg;
+
+			Assert(leftop != NULL);
+
+			if (!(IsA(leftop, Var) &&
+				  var_is_rel((Var *) leftop)))
+				elog(ERROR, "NullTest indexqual has wrong key");
+
+			varattno = ((Var *) leftop)->varattno;
+
+			/*
+			 * initialize the scan key's fields appropriately
+			 */
+			ScanKeyEntryInitialize(this_scan_key,
+								   SK_ISNULL | SK_SEARCHNULL,
+								   varattno,	/* attribute number to scan */
+								   strategy,	/* op's strategy */
+								   subtype,		/* strategy subtype */
+								   InvalidOid,	/* no reg proc for this */
 								   (Datum) 0);	/* constant */
 		}
 		else

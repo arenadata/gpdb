@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/clauses.h,v 1.84 2006/07/01 18:38:33 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/clauses.h,v 1.88.2.1 2008/04/01 00:48:44 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -72,6 +72,7 @@ extern bool contain_agg_clause(Node *clause);
 extern void count_agg_clauses(Node *clause, AggClauseCounts *counts);
 
 extern bool expression_returns_set(Node *clause);
+extern double expression_returns_set_rows(Node *clause);
 
 extern bool contain_subplans(Node *clause);
 
@@ -98,13 +99,13 @@ extern void set_coercionform_dontcare(Node *node);
 
 extern Node *eval_const_expressions(PlannerInfo *root, Node *node);
 
-extern Query *fold_constants(Query *q, ParamListInfo boundParams, Size max_size);
+extern Query *fold_constants(PlannerGlobal *glob, Query *q, ParamListInfo boundParams, Size max_size);
 
 extern Node *fold_arrayexpr_constants(ArrayExpr *arrayexpr);
 
 extern Node *estimate_expression_value(PlannerInfo *root, Node *node);
 
-extern Expr *evaluate_expr(Expr *expr, Oid result_type);
+extern Expr *evaluate_expr(Expr *expr, Oid result_type, int32 result_typmod);
 
 extern Node *expression_tree_mutator(Node *node, Node *(*mutator) (),
 												 void *context);

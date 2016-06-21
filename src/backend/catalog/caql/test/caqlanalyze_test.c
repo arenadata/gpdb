@@ -4,14 +4,6 @@
 #include "cmockery.h"
 
 /*
- * Mocker hack;  We only need do-nothing version of AllocSetContextCreate.
- * We could set up expect_any(), but since it's not intuitive in this file,
- * we define our own AllocSetContextCreate() and discard the mocker version.
- */
-#define AllocSetContextCreate __AllocSetContextCreate
-#define MemoryContextDeleteImpl __MemoryContextDeleteImpl
-
-/*
  * In some cases, we hit segumentation fault around elog(ERROR, ...).  To
  * avoid any possibilities, let it do the minimum work.
  */
@@ -31,30 +23,6 @@
 }while(0)
 
 #define CaQL(q, nkeys, keys) CaQL1(q, nkeys, keys, __FILE__, __LINE__)
-
-
-/*
- * We need some pointer rather than NULL, to run the broader cache code path.
- */
-MemoryContext
-__AllocSetContextCreate(MemoryContext parent,
-						const char *name,
-						Size minContextSize,
-						Size initBlockSize,
-						Size maxBlockSize)
-{
-	static MemoryContextData dummy;
-	return &dummy;
-}
-
-void
-MemoryContextDeleteImpl(MemoryContext context,
-						const char *sfile,
-						const char *func,
-						int sline)
-{
-	/* no-op */
-}
 
 /*
  * Currently the only needs for elog is for ERROR to call siglongjump().
@@ -432,11 +400,13 @@ test__caql_switch7(void **state)
 	cq_list			   *pcql = CaQL(query, 1, keys);
 	RelationData		dummyrel;
 	SysScanDescData		dummydesc;
+	SnapshotData		SnapshotDirty;
 
+	InitDirtySnapshot(SnapshotDirty);
 	dummyrel.rd_id = RelationRelationId;
 	hash_cookie = cq_lookup(query, strlen(query), pcql);
 
-	pCtx = caql_snapshot(cqclr(&context), SnapshotDirty);
+	pCtx = caql_snapshot(cqclr(&context), &SnapshotDirty);
 	/* setup heap_open */
 	expect__heap_open(RelationRelationId, true,
 					  AccessShareLock, true,
@@ -468,7 +438,7 @@ test__caql_switch7(void **state)
 	expect__systable_beginscan(&dummyrel, true,
 							   InvalidOid, false,
 							   false, true,
-							   SnapshotDirty, true,
+							   &SnapshotDirty, true,
 							   4, true,
 							   NULL, false,
 							   &dummydesc);
@@ -597,5 +567,8 @@ int main(int argc, char* argv[]) {
 			unit_test(test__cq_lookup_fail6),
 			unit_test(test__cq_lookup_fail7),
 	};
+
+	MemoryContextInit();
+
 	return run_tests(tests);
 }

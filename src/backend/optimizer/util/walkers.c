@@ -6,11 +6,10 @@
  */
 
 #include "postgres.h"
+
+#include "miscadmin.h"
 #include "optimizer/walkers.h"
 #include "optimizer/var.h"
-
-/* in tcop/postgres.c */
-extern void check_stack_depth(void);
 
 /*
  * Standard expression-tree walking support
@@ -287,6 +286,10 @@ expression_tree_walker(Node *node,
 			break;
 		case T_RelabelType:
 			return walker(((RelabelType *) node)->arg, context);
+		case T_CoerceViaIO:
+			return walker(((CoerceViaIO *) node)->arg, context);
+		case T_ArrayCoerceExpr:
+			return walker(((ArrayCoerceExpr *) node)->arg, context);
 		case T_ConvertRowtypeExpr:
 			return walker(((ConvertRowtypeExpr *) node)->arg, context);
 		case T_CaseExpr:
@@ -328,6 +331,17 @@ expression_tree_walker(Node *node,
 			return walker(((CoalesceExpr *) node)->args, context);
 		case T_MinMaxExpr:
 			return walker(((MinMaxExpr *) node)->args, context);
+		case T_XmlExpr:
+			{
+				XmlExpr    *xexpr = (XmlExpr *) node;
+
+				if (walker(xexpr->named_args, context))
+					return true;
+				/* we assume walker doesn't care about arg_names */
+				if (walker(xexpr->args, context))
+					return true;
+			}
+			break;
 		case T_NullIfExpr:
 			return walker(((NullIfExpr *) node)->args, context);
 		case T_NullTest:
@@ -476,6 +490,14 @@ expression_tree_walker(Node *node,
 					return true;
 				if (expression_tree_walker((Node *) frame->lead,
 										   walker, context))
+					return true;
+			}
+			break;
+		case T_WindowKey:
+			{
+				WindowKey *wk = (WindowKey *) node;
+
+				if (walker((Node *) wk->frame, context))
 					return true;
 			}
 			break;
@@ -912,9 +934,15 @@ plan_tree_walker(Node *node,
 		case T_BitmapHeapScan:
 		case T_BitmapAppendOnlyScan:
 		case T_BitmapTableScan:
-		case T_FunctionScan:
 		case T_TableFunctionScan:
 		case T_ValuesScan:
+			if (walk_scan_node_fields((Scan *) node, walker, context))
+				return true;
+			break;
+
+		case T_FunctionScan:
+			if (walker((Node *) ((FunctionScan *) node)->funcexpr, context))
+				return true;
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
 			break;
@@ -1006,7 +1034,8 @@ plan_tree_walker(Node *node,
 		case T_Window:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
-			/* Other fields are simple items and lists of simple items. */
+			if (walker(((Window *) node)->windowKeys, context))
+				return true;
 			break;
 
 		case T_Unique:
@@ -1144,6 +1173,7 @@ plan_tree_walker(Node *node,
 		case T_CoerceToDomainValue:
 		case T_CaseTestExpr:
 		case T_SetToDefault:
+		case T_CurrentOfExpr:
 		case T_RangeTblRef:
 		case T_Aggref:
 		case T_AggOrder:
@@ -1177,6 +1207,9 @@ plan_tree_walker(Node *node,
 		case T_PartBoundExpr:
 		case T_PartBoundInclusionExpr:
 		case T_PartBoundOpenExpr:
+		case T_WindowFrame:
+		case T_WindowFrameEdge:
+		case T_WindowKey:
 
 		default:
 			return expression_tree_walker(node, walker, context);

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_inherits.h,v 1.22 2006/03/05 15:58:54 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_inherits.h,v 1.24 2008/01/01 19:45:56 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -31,7 +31,7 @@
    inhseqno   integer 
    );
 
-   create unique index on pg_inherits(inhrelid, inhseqno) with (indexid=2680, CamelCase=InheritsRelidSeqno, syscacheid=INHRELID, syscache_nbuckets=256);
+   create unique index on pg_inherits(inhrelid, inhseqno) with (indexid=2680, CamelCase=InheritsRelidSeqno, syscache_nbuckets=256);
 
    alter table pg_inherits add fk inhrelid on pg_class(oid);
    alter table pg_inherits add fk inhparent on pg_class(oid);

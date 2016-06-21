@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2009, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/parser/parse_oper.h,v 1.40 2006/10/04 00:30:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/parser/parse_oper.h,v 1.42 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,6 +16,7 @@
 
 #include "access/htup.h"
 #include "parser/parse_node.h"
+#include "utils/syscache.h"
 
 typedef HeapTuple Operator;
 
@@ -54,6 +55,7 @@ extern Operator reverse_ordering_oper(Oid argtype, bool noError);
 /* Convenience routines for common calls on the above */
 extern Oid	compatible_oper_opid(List *op, Oid arg1, Oid arg2, bool noError);
 extern Oid	equality_oper_funcid(Oid argtype);
+extern Oid	equality_oper_opid(Oid argtype);
 extern Oid	ordering_oper_funcid(Oid argtype);
 extern Oid	ordering_oper_opid(Oid argtype);
 extern Oid	reverse_ordering_oper_opid(Oid argtype);

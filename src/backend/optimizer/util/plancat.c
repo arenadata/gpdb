@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/plancat.c,v 1.127 2006/10/04 00:29:55 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/plancat.c,v 1.140.2.1 2008/04/01 00:48:44 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,12 +21,9 @@
 #include "access/genam.h"
 #include "catalog/catquery.h"
 #include "access/heapam.h"
-#include "access/aocssegfiles.h"
-#include "catalog/gp_policy.h"
+#include "access/transam.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_exttable.h"
-#include "catalog/indexing.h"
-#include "catalog/pg_type.h"
 #include "commands/tablecmds.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
@@ -41,24 +38,22 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "utils/array.h"
-#include "utils/fmgroids.h"
-#include "utils/builtins.h"
-#include "utils/uri.h"
 #include "catalog/catalog.h"
-#include "cdb/cdbvars.h"
 #include "miscadmin.h"
-#include "cdb/cdbdisp.h"
+#include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbrelsize.h"
-#include "mb/pg_wchar.h"
-#include "commands/vacuum.h"
 
 
 /* GUC parameter */
+bool		constraint_exclusion = false;
+
+/* Hook for plugins to get control in get_relation_info() */
+get_relation_info_hook_type get_relation_info_hook = NULL;
+
 
 static List *get_relation_constraints(PlannerInfo *root,
-									  Oid relationObjectId, RelOptInfo *rel,
-									  bool include_notnull);
+						 Oid relationObjectId, RelOptInfo *rel,
+						 bool include_notnull);
 
 static void
 estimate_tuple_width(Relation   rel,
@@ -77,8 +72,6 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 
 static void
 cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid);
-
-extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
 
 /*
  * get_relation_info -
@@ -134,25 +127,24 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
      */
     rel->cdbpolicy = RelationGetPartitioningKey(relation);
 
-    /*
-     * Estimate relation size --- unless it's an inheritance parent, in which
-     * case the size will be computed later in set_append_rel_pathlist, and we
-     * must leave it zero for now to avoid bollixing the total_table_pages
-     * calculation.
-     */
-     if (!inhparent)
-     {
-    	cdb_estimate_rel_size
-    		(
-    		rel,
-    		relation,
-    		relation,
-    		rel->attr_widths - rel->min_attr,
-    		&rel->pages,
-    		&rel->tuples,
-    		&rel->cdb_default_stats_used
-    		);
-     }
+	/*
+	 * Estimate relation size --- unless it's an inheritance parent, in which
+	 * case the size will be computed later in set_append_rel_pathlist, and we
+	 * must leave it zero for now to avoid bollixing the total_table_pages
+	 * calculation.
+	 */
+	if (!inhparent)
+	{
+		cdb_estimate_rel_size(
+			rel,
+			relation,
+			relation,
+			rel->attr_widths - rel->min_attr,
+			&rel->pages,
+			&rel->tuples,
+			&rel->cdb_default_stats_used
+			);
+	}
 
 	/*
 	 * Make list of indexes.  Ignore indexes on system catalogs if told to.
@@ -197,7 +189,6 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			IndexOptInfo *info;
 			int			ncolumns;
 			int			i;
-			int16		amorderstrategy;
 
 			/*
 			 * Extract info from the relation descriptor for the index.
@@ -209,10 +200,25 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			 * Ignore invalid indexes, since they can't safely be used for
 			 * queries.  Note that this is OK because the data structure we
 			 * are constructing is only used by the planner --- the executor
-			 * still needs to insert into "invalid" indexes!
+			 * still needs to insert into "invalid" indexes, if they're marked
+			 * IndexIsReady.
 			 */
-			if (!index->indisvalid)
+			if (!IndexIsValid(index))
 			{
+				index_close(indexRelation, NoLock);
+				continue;
+			}
+
+			/*
+			 * If the index is valid, but cannot yet be used, ignore it; but
+			 * mark the plan we are generating as transient. See
+			 * src/backend/access/heap/README.HOT for discussion.
+			 */
+			if (index->indcheckxmin &&
+				!TransactionIdPrecedes(HeapTupleHeaderGetXmin(indexRelation->rd_indextuple->t_data),
+									   TransactionXmin))
+			{
+				root->glob->transientPlan = true;
 				index_close(indexRelation, NoLock);
 				continue;
 			}
@@ -224,35 +230,72 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->ncolumns = ncolumns = index->indnatts;
 
 			/*
-			 * Need to make classlist and ordering arrays large enough to put
-			 * a terminating 0 at the end of each one.
+			 * Allocate per-column info arrays.  To save a few palloc cycles
+			 * we allocate all the Oid-type arrays in one request.	Note that
+			 * the opfamily array needs an extra, terminating zero at the end.
+			 * We pre-zero the ordering info in case the index is unordered.
 			 */
 			info->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
-			info->classlist = (Oid *) palloc0(sizeof(Oid) * (ncolumns + 1));
-			info->ordering = (Oid *) palloc0(sizeof(Oid) * (ncolumns + 1));
+			info->opfamily = (Oid *) palloc0(sizeof(Oid) * (4 * ncolumns + 1));
+			info->opcintype = info->opfamily + (ncolumns + 1);
+			info->fwdsortop = info->opcintype + ncolumns;
+			info->revsortop = info->fwdsortop + ncolumns;
+			info->nulls_first = (bool *) palloc0(sizeof(bool) * ncolumns);
 
 			for (i = 0; i < ncolumns; i++)
 			{
-				info->classlist[i] = indexRelation->rd_indclass->values[i];
 				info->indexkeys[i] = index->indkey.values[i];
+				info->opfamily[i] = indexRelation->rd_opfamily[i];
+				info->opcintype[i] = indexRelation->rd_opcintype[i];
 			}
 
 			info->relam = indexRelation->rd_rel->relam;
 			info->amcostestimate = indexRelation->rd_am->amcostestimate;
 			info->amoptionalkey = indexRelation->rd_am->amoptionalkey;
+			info->amsearchnulls = indexRelation->rd_am->amsearchnulls;
 
 			/*
 			 * Fetch the ordering operators associated with the index, if any.
+			 * We expect that all ordering-capable indexes use btree's
+			 * strategy numbers for the ordering operators.
 			 */
-			amorderstrategy = indexRelation->rd_am->amorderstrategy;
-			if (amorderstrategy != 0)
+			if (indexRelation->rd_am->amcanorder)
 			{
-				int			oprindex = amorderstrategy - 1;
+				int			nstrat = indexRelation->rd_am->amstrategies;
 
 				for (i = 0; i < ncolumns; i++)
 				{
-					info->ordering[i] = indexRelation->rd_operator[oprindex];
-					oprindex += indexRelation->rd_am->amstrategies;
+					int16		opt = indexRelation->rd_indoption[i];
+					int			fwdstrat;
+					int			revstrat;
+
+					if (opt & INDOPTION_DESC)
+					{
+						fwdstrat = BTGreaterStrategyNumber;
+						revstrat = BTLessStrategyNumber;
+					}
+					else
+					{
+						fwdstrat = BTLessStrategyNumber;
+						revstrat = BTGreaterStrategyNumber;
+					}
+
+					/*
+					 * Index AM must have a fixed set of strategies for it to
+					 * make sense to specify amcanorder, so we need not allow
+					 * the case amstrategies == 0.
+					 */
+					if (fwdstrat > 0)
+					{
+						Assert(fwdstrat <= nstrat);
+						info->fwdsortop[i] = indexRelation->rd_operator[i * nstrat + fwdstrat - 1];
+					}
+					if (revstrat > 0)
+					{
+						Assert(revstrat <= nstrat);
+						info->revsortop[i] = indexRelation->rd_operator[i * nstrat + revstrat - 1];
+					}
+					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
 			}
 
@@ -305,6 +348,14 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	rel->indexlist = indexinfos;
 
 	heap_close(relation, NoLock);
+
+	/*
+	 * Allow a plugin to editorialize on the info we obtained from the
+	 * catalogs.  Actions might include altering the assumed relation size,
+	 * removing an index, or adding a hypothetical index to the indexlist.
+	 */
+	if (get_relation_info_hook)
+		(*get_relation_info_hook) (root, relationObjectId, inhparent, rel);
 }
 
 /*
@@ -340,9 +391,6 @@ get_external_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	rel->ext_encoding = extentry->encoding;
 	rel->writable = extentry->iswritable;
 
-	/* any external tables are non-rescannable. */
-	rel->isrescannable = false;
-
 }
 
 /*
@@ -366,7 +414,6 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	double		density;
     int32       tuple_width;
     BlockNumber curpages = 0;
-	int64	size = 0;
 
     *default_stats_used = false;
 
@@ -402,53 +449,14 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	}
 	else
 	{
-
 		/*
-		 * Let's ask the QEs for the size of the relation.
-		 * In the future, it would be better to send the command to only one QE.
-		 *
-		 * NOTE: External tables should always have >0 values in pg_class
-		 * (created this way). Therefore we should never get here. However, as
-		 * a security measure (if values in pg_class were somehow changed) we
-		 * plug in our 1K pages 1M tuples estimate here as well, and skip
-		 * cdbRelSize as we can't calculate ext table size.
+		 * Put default estimates in case no statistics are available. This saves cost of asking QEs
 		 */
-		if(!RelationIsExternal(rel))
-		{
-		    size = cdbRelSize(rel);
-		}
-		else
-		{
-			/*
-			 * Estimate a default of 1000 pages - see comment above.
-			 * NOTE: if you change this look at AddNewRelationTuple in heap.c).
-			 */
-			size = 1000 * BLCKSZ;
-		}
-
-
-		if (size < 0)
-		{
-			curpages = 100;
-			*default_stats_used = true;
-		}
-		else
-		{
-			curpages = size / BLCKSZ;  /* average blocks per primary segment DB */
-		}
-
-		if (curpages == 0 && size > 0)
-			curpages = 1;
+		curpages = RelationIsExternal(rel) ? DEFAULT_EXTERNAL_TABLE_PAGES : DEFAULT_INTERNAL_TABLE_PAGES;
 	}
 
 	/* report estimated # pages */
 	*pages = curpages;
-	/* quick exit if rel is clearly empty */
-	if (curpages == 0)
-	{
-		*tuples = 0;
-		return;
-	}
 
 	/*
 	 * If it's an index, discount the metapage.  This is a kluge
@@ -798,9 +806,13 @@ get_relation_constraints(PlannerInfo *root,
  * Detect whether the relation need not be scanned because it has either
  * self-inconsistent restrictions, or restrictions inconsistent with the
  * relation's CHECK constraints.
+ *
+ * Note: this examines only rel->relid and rel->baserestrictinfo; therefore
+ * it can be called before filling in other fields of the RelOptInfo.
  */
 bool
-relation_excluded_by_constraints(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+relation_excluded_by_constraints(PlannerInfo *root,
+								 RelOptInfo *rel, RangeTblEntry *rte)
 {
 	List	   *safe_restrictions;
 	List	   *constraint_pred;
@@ -826,6 +838,29 @@ relation_excluded_by_constraints(PlannerInfo *root, RelOptInfo *rel, RangeTblEnt
 
 		if (!contain_mutable_functions((Node *) rinfo->clause))
 			safe_restrictions = lappend(safe_restrictions, rinfo->clause);
+	}
+
+	/*
+	 * GPDB: Check if there's a constant False condition. That's unlikely
+	 * to help much in most cases, as we'll create a Result node with
+	 * a False one-time filter anyway, so the underlying plan will not
+	 * be executed in any case. But we can avoid some planning overhead.
+	 * Also, the Result node might be put under a Motion node, so we avoid
+	 * a little bit of network traffic at execution time, if we can eliminate
+	 * the relation altogether here.
+	 */
+	foreach(lc, rel->baserestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		if (IsA(rinfo->clause, Const))
+		{
+			Const *c = (Const *) rinfo->clause;
+
+			if (c->consttype == BOOLOID &&
+				(c->constisnull || DatumGetBool(c->constvalue) == false))
+				return true;
+		}
 	}
 
 	if (predicate_refuted_by(safe_restrictions, safe_restrictions))
@@ -899,7 +934,7 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 {
 	List	   *tlist = NIL;
 	Index		varno = rel->relid;
-	RangeTblEntry *rte = rt_fetch(varno, root->parse->rtable);
+	RangeTblEntry *rte = planner_rt_fetch(varno, root);
 	Relation	relation;
 	Query	   *subquery;
 	Var		   *var;

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.172 2006/11/05 22:42:09 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.180.2.1 2008/09/11 14:01:35 alvherre Exp $
  *
  *
  *-------------------------------------------------------------------------
@@ -50,14 +50,16 @@
 #include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/plancache.h"
 #include "utils/portal.h"
 #include "utils/ps_status.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
+#include "utils/sharedsnapshot.h"
 #include "utils/syscache.h"
-#include "utils/tqual.h"  		/* SharedSnapshot */
 #include "pgstat.h"
 #include "utils/session_state.h"
+#include "codegen/codegen_wrapper.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -68,6 +70,11 @@ static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
 static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
+
+#ifdef USE_ORCA
+extern void InitGPOPT();
+extern void TerminateGPOPT();
+#endif
 
 
 /*** InitPostgres support ***/
@@ -308,7 +315,12 @@ ProcessRoleGUC(void)
 	{
 		ArrayType  *a = DatumGetArrayTypeP(datum);
 
-		ProcessGUCArray(a, PGC_S_USER);
+		/*
+		 * We process all the options at SUSET level.  We assume that the
+		 * right to insert an option into pg_authid was checked when it was
+		 * inserted.
+		 */
+		ProcessGUCArray(a, PGC_SUSET, PGC_S_USER, GUC_ACTION_SET);
 	}
 
 	caql_endscan(pcqCtx);
@@ -347,17 +359,14 @@ CheckMyDatabase(const char *name, bool am_superuser)
 	 * a way to recover from disabling all access to all databases, for
 	 * example "UPDATE pg_database SET datallowconn = false;".
 	 *
-	 * We do not enforce them for autovacuum worker processes either.
+	 * We do not enforce them for the autovacuum worker processes either.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumProcess())
+	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
 	{
 		/*
 		 * Check that the database is currently allowing connections.
 		 */
-		if (gp_upgrade_mode && !dbform->datallowconn)
-			elog(INFO, "Connecting to no-connection db in upgrade mode.");
-
-		if (!dbform->datallowconn && !gp_upgrade_mode)
+		if (!dbform->datallowconn)
 			ereport(FATAL,
 					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			 errmsg("database \"%s\" is not currently accepting connections",
@@ -426,7 +435,12 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		{
 			ArrayType  *a = DatumGetArrayTypeP(datum);
 
-			ProcessGUCArray(a, PGC_S_DATABASE);
+			/*
+			 * We process all the options at SUSET level.  We assume that the
+			 * right to insert an option into pg_database was checked when it
+			 * was inserted.
+			 */
+			ProcessGUCArray(a, PGC_SUSET, PGC_S_DATABASE, GUC_ACTION_SET);
 		}
 	}
 
@@ -539,6 +553,9 @@ BaseInit(void)
 	InitFileAccess();
 	smgrinit();
 	InitBufferPoolAccess();
+
+	/* Initialize llvm library if USE_CODEGEN is defined */
+	init_codegen();
 }
 
 
@@ -569,7 +586,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 			 char *out_dbname)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
-	bool		autovacuum = IsAutoVacuumProcess();
+	bool		autovacuum = IsAutoVacuumWorkerProcess();
 	bool		am_superuser;
 	char	   *fullpath;
 	char		dbname[NAMEDATALEN];
@@ -585,6 +602,11 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	SessionState_Init();
 	/* Initialize memory protection */
 	GPMemoryProtect_Init();
+
+#ifdef USE_ORCA
+	/* Initialize GPOPT */
+	InitGPOPT();
+#endif
 
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
@@ -622,6 +644,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	RelationCacheInitialize();
 	InitCatalogCache();
+	InitPlanCache();
 
 	/* Initialize portal manager */
 	EnablePortalManager();
@@ -896,20 +919,6 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		process_startup_options(MyProcPort, am_superuser);
 
 	/*
-	 * In Upgrade Mode, normal connection (i.e. dispatch mode)
-	 * is disallowed unless it's the bootstrap user and
-	 * gp_maintenance_conn GUC is set.  We cannot check it until
-	 * process_startup_options parses the GUC.
-	 */
-	if (gp_upgrade_mode && Gp_role == GP_ROLE_DISPATCH &&
-		!(GetAuthenticatedUserId() == BOOTSTRAP_SUPERUSERID &&
-			gp_maintenance_conn))
-		ereport(FATAL,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("upgrade in progress, connection refused"),
-				 errSendAlert(false)));
-
-	/*
 	 * Maintenance Mode: allow superuser to connect when
 	 * gp_maintenance_conn GUC is set.  We cannot check it until
 	 * process_startup_options parses the GUC.
@@ -1089,6 +1098,10 @@ ShutdownPostgres(int code, Datum arg)
 	 * our usage, report now.
 	 */
 	ReportOOMConsumption();
+
+#ifdef USE_ORCA
+  TerminateGPOPT();
+#endif
 
 	/* Disable memory protection */
 	GPMemoryProtect_Shutdown();
