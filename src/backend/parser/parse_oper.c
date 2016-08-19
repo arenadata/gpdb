@@ -15,7 +15,6 @@
 
 #include "postgres.h"
 
-#include "catalog/catquery.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
@@ -95,9 +94,6 @@ static HeapTuple fetch_op_tup(Oid oproid, bool bValid);
 static HeapTuple fetch_op_tup(Oid oproid, bool bValid)
 {
 	HeapTuple	optup = NULL;
-
-	cql0("SELECT * FROM pg_operator "
-		 " WHERE oid = :1 ");
 
 	if (OidIsValid(oproid))
 	{
@@ -383,21 +379,6 @@ equality_oper_funcid(Oid argtype)
 	Oid			result;
 
 	optup = equality_oper(argtype, false);
-	result = oprfuncid(optup);
-	ReleaseOperator(optup);
-	return result;
-}
-
-/*
- * ordering_oper_opid - convenience routine for oprfuncid(ordering_oper())
- */
-Oid
-ordering_oper_funcid(Oid argtype)
-{
-	Operator	optup;
-	Oid			result;
-
-	optup = ordering_oper(argtype, false);
 	result = oprfuncid(optup);
 	ReleaseOperator(optup);
 	return result;

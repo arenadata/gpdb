@@ -151,14 +151,6 @@ formatTuple(StringInfo buf, HeapTuple tup, TupleDesc tupdesc, Oid *outputFunArra
 #endif
 
 /**
- * Is it a hash distribution motion ?
- */
-bool isMotionRedistribute(const Motion *m)
-{
-	return (m->motionType == MOTIONTYPE_HASH);
-}
-
-/**
  * Is it a gather motion?
  */
 bool isMotionGather(const Motion *m)
@@ -170,29 +162,12 @@ bool isMotionGather(const Motion *m)
 /**
  * Is it a gather motion to master?
  */
-bool isMotionGatherToMaster(const Motion *m)
+static bool
+isMotionGatherToMaster(const Motion *m)
 {
 	return (m->motionType == MOTIONTYPE_FIXED 
 			&& m->numOutputSegs == 1
 			&& m->outputSegIdx[0] == -1);
-}
-
-/**
- * Is it a gather motion to segment?
- */
-bool isMotionGatherToSegment(const Motion *m)
-{
-	return (m->motionType == MOTIONTYPE_FIXED 
-			&& m->numOutputSegs == 1
-			&& m->outputSegIdx[0] > 0);
-}
-
-/**
- * Is it a redistribute from master?
- */
-bool isMotionRedistributeFromMaster(const Motion *m)
-{
-	return true;
 }
 
 /*
@@ -1053,7 +1028,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 		/*
 		 * Create hash API reference
 		 */
-		motionstate->cdbhash = makeCdbHash(node->numOutputSegs, HASH_FNV_1);
+		motionstate->cdbhash = makeCdbHash(node->numOutputSegs);
     }
 
 	/* Merge Receive: Set up the key comparator and priority queue. */

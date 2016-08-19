@@ -17,7 +17,6 @@
 #include "access/heapam.h"
 #include "access/tuptoaster.h"
 #include "access/xact.h"
-#include "catalog/catquery.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
@@ -47,25 +46,6 @@ static bool create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
  * already done any necessary permission checks.  Callers expect this function
  * to end with CommandCounterIncrement if it makes any changes.
  */
-void
-AlterTableCreateToastTable(Oid relOid)
-{
-	Relation	rel;
-	bool is_part_child = !rel_needs_long_lock(relOid);
-
-	/*
-	 * Grab an exclusive lock on the target table, which we will NOT release
-	 * until end of transaction.  (This is probably redundant in all present
-	 * uses...)
-	 */
-	rel = heap_open(relOid, AccessExclusiveLock);
-
-	/* create_toast_table does all the work */
-	(void) create_toast_table(rel, InvalidOid, InvalidOid, NULL, is_part_child);
-
-	heap_close(rel, NoLock);
-}
-
 void
 AlterTableCreateToastTableWithOid(Oid relOid, Oid newOid, Oid newIndexOid,
 								  Oid * comptypeOid, bool is_part_child)
@@ -145,8 +125,6 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	int16		coloptions[2];
 	ObjectAddress baseobject,
 				toastobject;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	/*
 	 * Is it already toasted?
@@ -297,15 +275,9 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	 */
 	class_rel = heap_open(RelationRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), class_rel);
-
-	reltup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relOid)));
-
+	reltup = SearchSysCacheCopy(RELOID,
+								ObjectIdGetDatum(relOid),
+								0, 0, 0);
 	if (!HeapTupleIsValid(reltup))
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
@@ -314,8 +286,10 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	if (!IsBootstrapProcessingMode())
 	{
 		/* normal case, use a transactional update */
-		caql_update_current(pcqCtx, reltup);
-		/* and Update indexes (implicit) */
+		simple_heap_update(class_rel, &reltup->t_self, reltup);
+
+		/* Keep catalog indexes current */
+		CatalogUpdateIndexes(class_rel, reltup);
 	}
 	else
 	{

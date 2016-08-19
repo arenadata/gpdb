@@ -41,30 +41,6 @@
 
 #include "catalog/genbki.h"
 
-/* TIDYCAT_BEGINFAKEDEF
-
-   CREATE TABLE pg_opclass
-   with (camelcase=OperatorClass, shared=false, relid=2616)
-   (
-   opcmethod     oid     ,
-   opcname       name    ,
-   opcnamespace  oid     ,
-   opcowner      oid     ,
-   opcfamily     oid     ,
-   opcintype     oid     ,
-   opcdefault    boolean ,
-   opckeytype    oid     
-   );
-
-   create unique index on pg_opclass(opcmethod, opcname, opcnamespace) with (indexid=2686, CamelCase=OpclassAmNameNsp, syscacheid=CLAAMNAMENSP, syscache_nbuckets=64);
-   create unique index on pg_opclass(oid) with (indexid=2687, CamelCase=OpclassOid, syscacheid=CLAOID, syscache_nbuckets=64);
-
-   alter table pg_opclass add fk opcnamespace on pg_namespace(oid);
-   alter table pg_opclass add fk opcowner on pg_authid(oid);
-
-   TIDYCAT_ENDFAKEDEF
-*/
-
 /* ----------------
  *		pg_opclass definition.	cpp turns this into
  *		typedef struct FormData_pg_opclass
@@ -83,6 +59,10 @@ CATALOG(pg_opclass,2616)
 	bool		opcdefault;		/* T if opclass is default for opcintype */
 	Oid			opckeytype;		/* type of data in index, or InvalidOid */
 } FormData_pg_opclass;
+
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(opcnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(opcowner REFERENCES pg_authid(oid));
 
 /* ----------------
  *		Form_pg_opclass corresponds to a pointer to a tuple with
@@ -146,8 +126,15 @@ DATA(insert (	403		interval_ops		PGNSP PGUID 1982 1186 t 0 ));
 DATA(insert (	405		interval_ops		PGNSP PGUID 1983 1186 t 0 ));
 DATA(insert (	403		macaddr_ops			PGNSP PGUID 1984  829 t 0 ));
 DATA(insert (	405		macaddr_ops			PGNSP PGUID 1985  829 t 0 ));
-DATA(insert (	403		name_ops			PGNSP PGUID 1986   19 t 0 ));
-DATA(insert (	405		name_ops			PGNSP PGUID 1987   19 t 0 ));
+/*
+ * Here's an ugly little hack to save space in the system catalog indexes.
+ * btree and hash don't ordinarily allow a storage type different from input
+ * type; but cstring and name are the same thing except for trailing padding,
+ * and we can safely omit that within an index entry.  So we declare the
+ * opclasses for name as using cstring storage type.
+ */
+DATA(insert (	403		name_ops			PGNSP PGUID 1986   19 t 2275 ));
+DATA(insert (	405		name_ops			PGNSP PGUID 1987   19 t 2275 ));
 DATA(insert (	403		numeric_ops			PGNSP PGUID 1988 1700 t 0 ));
 DATA(insert (	405		numeric_ops			PGNSP PGUID 1998 1700 t 0 ));
 DATA(insert (	403		complex_ops			PGNSP PGUID 3221 195 t 0 ));

@@ -35,6 +35,7 @@
 #include "utils/guc.h"
 
 #include "gpos/base.h"
+#include "gpos/error/CException.h"
 #undef setstate
 
 #include "gpos/_api.h"
@@ -162,6 +163,37 @@ COptTasks::SOptContext::SOptContext()
 	m_fUnexpectedFailure(false),
 	m_szErrorMsg(NULL)
 {}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		COptTasks::SOptContext::HandleError
+//
+//	@doc:
+//		If there is an error print as warning and throw GPOS_EXCEPTION to abort
+//		plan generation. Calling elog::ERROR will result in longjump and hence
+//		a memory leak.
+//---------------------------------------------------------------------------
+void
+COptTasks::SOptContext::HandleError
+	(
+	BOOL *pfUnexpectedFailure
+	)
+{
+	BOOL bhasError = false;
+	if (NULL != m_szErrorMsg)
+	{
+		bhasError = true;
+		elog(WARNING, "%s", m_szErrorMsg);
+	}
+	*pfUnexpectedFailure = m_fUnexpectedFailure;
+
+	// clean up context
+	Free(epinQuery, epinPlStmt);
+	if (bhasError)
+	{
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiWarningAsError);
+	}
+}
 
 
 //---------------------------------------------------------------------------
@@ -637,7 +669,8 @@ COptTasks::Pplstmt
 	(
 	IMemoryPool *pmp,
 	CMDAccessor *pmda,
-	const CDXLNode *pdxln
+	const CDXLNode *pdxln,
+	bool canSetTag
 	)
 {
 
@@ -663,7 +696,7 @@ COptTasks::Pplstmt
 	
 	// translate DXL -> PlannedStmt
 	CTranslatorDXLToPlStmt trdxltoplstmt(pmp, pmda, &ctxdxltoplstmt, gpdb::UlSegmentCountGP());
-	return trdxltoplstmt.PplstmtFromDXL(pdxln);
+	return trdxltoplstmt.PplstmtFromDXL(pdxln, canSetTag);
 }
 
 
@@ -701,9 +734,11 @@ COptTasks::PdrgPssLoad
 	}
 	GPOS_CATCH_EX(ex)
 	{
-		GPOS_RESET_EX;
-
+		if (GPOS_MATCH_EX(ex, gpdxl::ExmaGPDB, gpdxl::ExmiGPDBError)) {
+			GPOS_RETHROW(ex);
+		}
 		elog(DEBUG2, "\n[OPT]: Using default search strategy");
+		GPOS_RESET_EX;
 	}
 	GPOS_CATCH_END;
 
@@ -1036,7 +1071,9 @@ COptTasks::PvOptimizeTask
 			// translate DXL->PlStmt only when needed
 			if (poctx->m_fGeneratePlStmt)
 			{
-				poctx->m_pplstmt = (PlannedStmt *) gpdb::PvCopyObject(Pplstmt(pmp, &mda, pdxlnPlan));
+				// always use poctx->m_pquery->canSetTag as the ptrquerytodxl->Pquery() is a mutated Query object
+				// that may not have the correct canSetTag
+				poctx->m_pplstmt = (PlannedStmt *) gpdb::PvCopyObject(Pplstmt(pmp, &mda, pdxlnPlan, poctx->m_pquery->canSetTag));
 			}
 
 			CStatisticsConfig *pstatsconf = pocconf->Pstatsconf();
@@ -1285,7 +1322,7 @@ COptTasks::PvPlstmtFromDXLTask
 
 		// translate DXL -> PlannedStmt
 		CTranslatorDXLToPlStmt trdxltoplstmt(pmp, amda.Pmda(), &ctxdxlplstmt, gpdb::UlSegmentCountGP());
-		PlannedStmt *pplstmt = trdxltoplstmt.PplstmtFromDXL(pdxlnOriginal);
+		PlannedStmt *pplstmt = trdxltoplstmt.PplstmtFromDXL(pdxlnOriginal, poctx->m_pquery->canSetTag);
 		if (optimizer_print_plan)
 		{
 			elog(NOTICE, "Plstmt: %s", gpdb::SzNodeToString(pplstmt));
@@ -1536,13 +1573,6 @@ COptTasks::PvEvalExprFromDXLTask
 		{
 			CMDCache::Shutdown();
 		}
-		// Catch GPDB exceptions
-		if (GPOS_MATCH_EX(ex, gpdxl::ExmaGPDB, gpdxl::ExmiGPDBError))
-		{
-			elog(NOTICE, "Found non const expression. Please check log for more information.");
-			GPOS_RESET_EX;
-			return NULL;
-		}
 		if (FErrorOut(ex))
 		{
 			IErrorContext *perrctxt = CTask::PtskSelf()->Perrctxt();
@@ -1624,17 +1654,17 @@ COptTasks::PplstmtOptimize
 	SOptContext octx;
 	octx.m_pquery = pquery;
 	octx.m_fGeneratePlStmt= true;
-	Execute(&PvOptimizeTask, &octx);
-
-	if (NULL != octx.m_szErrorMsg)
+	GPOS_TRY
 	{
-		elog(ERROR, "%s", octx.m_szErrorMsg);
+		Execute(&PvOptimizeTask, &octx);
 	}
-	*pfUnexpectedFailure = octx.m_fUnexpectedFailure;
-
-	// clean up context
-	octx.Free(octx.epinQuery, octx.epinPlStmt);
-
+	GPOS_CATCH_EX(ex)
+	{
+		octx.HandleError(pfUnexpectedFailure);
+		GPOS_RETHROW(ex);
+	}
+	GPOS_CATCH_END;
+	octx.HandleError(pfUnexpectedFailure);
 	return octx.m_pplstmt;
 }
 

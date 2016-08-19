@@ -68,7 +68,6 @@ typedef struct cqContextData
 	bool		cq_externrel;	/* heap rel external to caql */
 	bool		cq_setsnapshot;	/* use cq_snapshot (else default) */
 	Snapshot	cq_snapshot;	/* snapshot to see */
-	bool		cq_setlockmode;	/* use cq_lockmode (else default) */
 	LOCKMODE	cq_lockmode;	/* locking mode */
 	bool		cq_EOF;			/* true if hit end of fetch */
 
@@ -97,7 +96,6 @@ typedef struct cqContextData
 	 */
 	bool		cq_setsyscache;	/* use syscache (else heap/index scan) */
 	bool		cq_usesyscache;	/* use syscache (internal) */
-	bool		cq_bCacheList;	/* cache list search (internal) */
 	int			cq_cacheId; 	/* cache identifier */
 	Datum	   *cq_cacheKeys;	/* array of keys */
 	HeapTuple   cq_lasttup;		/* last tuple fetched (for ReleaseSysCache) */
@@ -130,11 +128,6 @@ HeapTuple	 caql_getnext(cqContext *pCtx);
 HeapTuple	 caql_getprev(cqContext *pCtx);
 /* XXX XXX: endscan must specify if hold or release locks */
 void		 caql_endscan(cqContext *pCtx);
-
-/* list-search interface.  Users of this must import catcache.h too */
-extern struct catclist *caql_begin_CacheList(cqContext *pCtx,
-											 cq_list *pcql);
-#define caql_end_CacheList(x)	ReleaseSysCacheList(x)
 
 /* during beginscan/endscan iteration, 
  * or subsequent to a getfirst (where a context was supplied), 
@@ -213,7 +206,6 @@ cq_list *cql1(const char* caqlStr, const char* filename, int lineno, ...);
  */
 cqContext	*caql_addrel(cqContext *pCtx, Relation rel);		/*  */
 cqContext	*caql_indexOK(cqContext *pCtx, bool bindexOK);		/*  */
-cqContext	*caql_lockmode(cqContext *pCtx, LOCKMODE lm);		/*  */
 cqContext	*caql_snapshot(cqContext *pCtx, Snapshot ss);		/*  */
 cqContext	*caql_syscache(cqContext *pCtx, bool bUseCache);	/*  */
 
@@ -222,9 +214,6 @@ cqContext	*cqclr(cqContext	 *pCtx);						/*  */
 
 void caql_logquery(const char *funcname, const char *filename, int lineno,
 			  int uniqquery_code, Oid arg1);
-
-/* CAQL prototype: expand to nothing */
-#define cql0(x, ...) if (0) {} else 
 
 /* ifdef gnuc ! */
 #define cql(x, ...) cql1(x, __FILE__, __LINE__, __VA_ARGS__)

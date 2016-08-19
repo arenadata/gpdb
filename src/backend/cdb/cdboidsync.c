@@ -34,6 +34,7 @@
 #include "lib/stringinfo.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdispatchresult.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdboidsync.h"
@@ -42,81 +43,53 @@ static Oid
 get_max_oid_from_segDBs(void)
 {
 
-	Oid	oid = 0;
-	int		i;
-	int 	resultCount = 0;
-	struct pg_result **results = NULL;
-	StringInfoData buffer;
-	StringInfoData errbuf;
-		
-	initStringInfo(&buffer);
-	
-	appendStringInfo(&buffer, "select pg_highest_oid()");
-	
-	initStringInfo(&errbuf);
+	Oid oid = 0;
+	Oid tempoid = 0;
+	int i;
+	CdbPgResults cdb_pgresults = {NULL, 0};
 
-	results = cdbdisp_dispatchRMCommand(buffer.data, true, &errbuf, &resultCount);
+	const char* cmd = "select pg_highest_oid()";
 
-	if (errbuf.len > 0)
-		ereport(ERROR, (errmsg("pg_highest_oid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-						errdetail("%s", errbuf.data)));
-										
-	for (i = 0; i < resultCount; i++)
+	CdbDispatchCommand(cmd, DF_WITH_SNAPSHOT, &cdb_pgresults);
+
+	for (i = 0; i < cdb_pgresults.numResults; i++)
 	{
-		if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
+		if (PQresultStatus(cdb_pgresults.pg_results[i]) != PGRES_TUPLES_OK)
 		{
+			cdbdisp_clearCdbPgResults(&cdb_pgresults);
 			elog(ERROR,"dboid: resultStatus not tuples_Ok");
 		}
 		else
 		{
-			/*
-			 * Due to funkyness in the current dispatch agent code, instead of 1 result 
-			 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-			 * one row per QE controlled by that agent.
-			 */
-			int j;
-			for (j = 0; j < PQntuples(results[i]); j++)
-			{
-				Oid tempoid = 0;
-				tempoid =  atol(PQgetvalue(results[i], j, 0));
-	
-				if (tempoid > oid)
-					oid = tempoid;
-			}
+			Assert(PQntuples(cdb_pgresults.pg_results[i]) == 1);
+			tempoid = atol(PQgetvalue(cdb_pgresults.pg_results[i], 0, 0));
+
+			if (tempoid > oid)
+				oid = tempoid;
 		}
 	}
 
-	pfree(errbuf.data);
-
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-
-	free(results);
-	
+	cdbdisp_clearCdbPgResults(&cdb_pgresults);
 	return oid;
 }
 
 Datum
-pg_highest_oid(PG_FUNCTION_ARGS __attribute__((unused)) )
+pg_highest_oid(PG_FUNCTION_ARGS __attribute__((unused)))
 {
-	Oid			result;
-	Oid			max_from_segdbs;
+	Oid result;
+	Oid max_from_segdbs;
 
 	result = ShmemVariableCache->nextOid;
-	
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		
 		max_from_segdbs = get_max_oid_from_segDBs();
-		
+
 		if (max_from_segdbs > result)
 			result = max_from_segdbs;
-		
 	}
 
-
 	PG_RETURN_OID(result);
-
 }
 
 void
@@ -124,16 +97,13 @@ cdb_sync_oid_to_segments(void)
 {
 	if (Gp_role == GP_ROLE_DISPATCH && IsNormalProcessingMode())
 	{
-		int 	i;
-		Oid		max_oid = get_max_oid_from_segDBs();
-		
+		Oid max_oid = get_max_oid_from_segDBs();
+
 		/* Move our oid counter ahead of QEs */
 		while(GetNewObjectId() <= max_oid);
-		
+
 		/* Burn a few extra just for safety */
-		for (i=0;i<10;i++)
+		for (int i = 0; i < 10; i++)
 			GetNewObjectId();
 	}
-	
 }
-

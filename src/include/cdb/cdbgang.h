@@ -53,6 +53,7 @@ typedef struct Gang
 
 extern int qe_gang_id;
 
+extern MemoryContext GangContext;
 
 extern Gang *allocateReaderGang(GangType type, char *portal_name);
 
@@ -66,6 +67,7 @@ extern List *getCdbProcessesForQD(int isPrimary);
 
 extern void freeGangsForPortal(char *portal_name);
 
+extern void disconnectAndDestroyGang(Gang *gp);
 extern void disconnectAndDestroyAllGangs(bool resetSession);
 
 extern void CheckForResetSession(void);
@@ -77,11 +79,15 @@ extern List *getAllAllocatedReaderGangs(void);
 extern CdbComponentDatabases *getComponentDatabases(void);
 
 extern bool gangsExist(void);
+extern bool readerGangsExist(void);
 
 extern struct SegmentDatabaseDescriptor *getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
-extern Gang *findGangById(int gang_id);
-
+bool isPrimaryWriterGangAlive(void);
+Gang *buildGangDefinition(GangType type, int gang_id, int size, int content);
+void build_gpqeid_param(char *buf, int bufsz, int segIndex, bool is_writer, int gangId);
+char *makeOptions(void);
+bool segment_failure_due_to_recovery(struct SegmentDatabaseDescriptor *segdbDesc);
 
 /*
  * disconnectAndDestroyIdleReaderGangs()
@@ -107,6 +113,7 @@ extern void disconnectAndDestroyIdleReaderGangs(void);
 extern void cleanupPortalGangs(Portal portal);
 
 extern int largestGangsize(void);
+extern void setLargestGangsize(int size);
 
 extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), void *arg, const char *caller);
 
@@ -122,10 +129,6 @@ extern int gp_pthread_create(pthread_t *thread, void *(*start_routine)(void *), 
  */
 extern void cdbgang_parse_gpqeid_params(struct Port *port, const char *gpqeid_value);
 
-extern void cdbgang_parse_gpqdid_params(struct Port *port, const char *gpqdid_value);
-
-extern void cdbgang_parse_gpdaid_params(struct Port *port, const char *gpdaid_value);
-
 /*
  * MPP Worker Process information
  *
@@ -137,7 +140,6 @@ extern void cdbgang_parse_gpdaid_params(struct Port *port, const char *gpdaid_va
  */
 typedef struct CdbProcess
 {
-
 	NodeTag type;
 
 	/*
@@ -153,6 +155,8 @@ typedef struct CdbProcess
 	int contentid;
 } CdbProcess;
 
+typedef Gang *(*CreateGangFunc)(GangType type, int gang_id, int size, int content);
 
+extern void cdbgang_setAsync(bool async);
 
 #endif   /* _CDBGANG_H_ */

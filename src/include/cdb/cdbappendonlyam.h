@@ -67,7 +67,6 @@ typedef struct AppendOnlyInsertDescData
 	int64           numSequences; /* total number of available sequences */
 	int64           lastSequence; /* last used sequence */
 	BlockNumber		cur_segno;
-	AppendOnlyEntry *aoEntry;
 	FileSegInfo     *fsInfo;
 	VarBlockMaker	varBlockMaker;
 	int64			bufferCount;
@@ -197,8 +196,6 @@ typedef struct AppendOnlyScanDescData
 				 *
 				 * We manage the storage for this.
 				 */
-
-	AppendOnlyEntry		*aoEntry;
 	
 	/*
 	 * The block directory info.
@@ -283,8 +280,6 @@ typedef struct AppendOnlyFetchDescData
 	int				totalSegfiles;
 	FileSegInfo 	**segmentFileInfo;
 
-	AppendOnlyEntry *aoEntry;
-
 	char			*segmentFileName;
 	int				segmentFileNameMaxLen;
 
@@ -344,11 +339,8 @@ extern bool appendonly_fetch(
 	AppendOnlyFetchDesc aoFetchDesc,
 	AOTupleId *aoTid,
 	TupleTableSlot *slot);
-extern void appendonly_fetch_detail(
-	AppendOnlyFetchDesc aoFetchDesc, 
-	AppendOnlyFetchDetail *aoFetchDetail);
 extern void appendonly_fetch_finish(AppendOnlyFetchDesc aoFetchDesc);
-extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel, Snapshot appendOnlyMetaDataSnapshot, int segno, bool update_mode);
+extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel, int segno, bool update_mode);
 extern void appendonly_insert(
 		AppendOnlyInsertDesc aoInsertDesc, 
 		MemTuple instup, 

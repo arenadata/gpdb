@@ -63,15 +63,18 @@ typedef struct QualCost
  */
 typedef struct ApplyShareInputContext
 {
-	List *sharedNodes;
 	List	   *curr_rtable;
 	int		   *share_refcounts;
 	int			share_refcounts_sz;		/* allocated sized of 'share_refcounts' */
-	List *sliceMarks;
 	List *motStack;
 	List *qdShares;
 	List *qdSlices;
 	int nextPlanId;
+
+	ShareInputScan **producers;
+	int		   *sliceMarks;			/* one for each producer */
+	int			producer_count;
+
 } ApplyShareInputContext;
 
 
@@ -444,6 +447,7 @@ typedef struct RelOptInfo
 	BlockNumber pages;
 	double		tuples;
     struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
+	char		relstorage;		/* from pg_class.relstorage */
     bool        cdb_default_stats_used; /* true if ANALYZE needed */
 	struct Plan *subplan;		/* if subquery */
 	List	   *subrtable;		/* if subquery */

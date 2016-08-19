@@ -16,23 +16,14 @@
  */
 #define GpGlobalSequenceRelationName	"gp_global_sequence"
 
-/* TIDYCAT_BEGINFAKEDEF
-
-   CREATE TABLE gp_global_sequence
-   with (camelcase=GpGlobalSequence, oid=false, relid=5096, content=PERSISTENT)
-   (
-   sequence_num bigint
-   );
-
-   TIDYCAT_ENDFAKEDEF
-*/
-
 #define GpGlobalSequenceRelationId 5096
 
 CATALOG(gp_global_sequence,5096) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 {
 	int8		sequence_num;
 } FormData_gp_global_sequence;
+
+/* no foreign keys */
 
 #define Natts_gp_global_sequence				    1
 #define Anum_gp_global_sequence_sequence_num     	1
@@ -55,7 +46,7 @@ typedef FormData_gp_global_sequence *Form_gp_global_sequence;
 #define Class_gp_global_sequence \
   {"gp_global_sequence"}, PG_CATALOG_NAMESPACE, GP_GLOBAL_SEQUENCE_RELTYPE_OID, BOOTSTRAP_SUPERUSERID, 0, \
                GpGlobalSequenceRelationId, GLOBALTABLESPACE_OID, \
-               25, 10000, 0, 0, 0, 0, false, true, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_gp_global_sequence, \
+               25, 10000, 0, 0, false, true, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_gp_global_sequence, \
                0, 0, 0, 0, 0, false, false, false, false, FirstNormalTransactionId, {0}, {{{'\0','\0','\0','\0'},{'\0'}}}
 
 

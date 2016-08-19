@@ -94,26 +94,20 @@ static bool
 have_createrole_privilege(void)
 {
 	bool		result = false;
-	cqContext  *pcqCtx, cqc;
 	HeapTuple	utup;
 
 	/* Superusers can always do everything */
 	if (superuser())
 		return true;
 
-	pcqCtx = 
-			caql_beginscan(
-					cqclr(&cqc),
-					cql("SELECT * FROM pg_authid "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(GetUserId())));
-
-	if (HeapTupleIsValid(utup = caql_getnext(pcqCtx)))
+	utup = SearchSysCache(AUTHOID,
+						  ObjectIdGetDatum(GetUserId()),
+						  0, 0, 0);
+	if (HeapTupleIsValid(utup))
 	{
 		result = ((Form_pg_authid) GETSTRUCT(utup))->rolcreaterole;
+		ReleaseSysCache(utup);
 	}
-	caql_endscan(pcqCtx);
-
 	return result;
 }
 
@@ -125,6 +119,7 @@ void
 CreateRole(CreateRoleStmt *stmt)
 {
 	Relation	pg_authid_rel;
+	TupleDesc	pg_authid_dsc;
 	HeapTuple	tuple;
 	Datum		new_record[Natts_pg_authid];
 	bool		new_record_nulls[Natts_pg_authid];
@@ -165,9 +160,6 @@ CreateRole(CreateRoleStmt *stmt)
 	DefElem    *drolemembers = NULL;
 	DefElem    *dadminmembers = NULL;
 	DefElem    *dvalidUntil = NULL;
-	cqContext	cqc;
-	cqContext	cqc2;
-	cqContext  *pcqCtx;
 
 	/* The defaults can vary depending on the original statement type */
 	switch (stmt->stmt_type)
@@ -397,18 +389,12 @@ CreateRole(CreateRoleStmt *stmt)
 	 * exist.
 	 */
 	pg_authid_rel = heap_open(AuthIdRelationId, RowExclusiveLock);
+	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
 
-	pcqCtx = 
-			caql_beginscan(
-					caql_addrel(cqclr(&cqc), pg_authid_rel),
-					cql("INSERT INTO pg_authid ",
-						NULL));
-
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqc2), pg_authid_rel),
-				cql("SELECT COUNT(*) FROM pg_authid "
-					" WHERE rolname = :1 ",
-					CStringGetDatum(stmt->role))))
+	tuple = SearchSysCache(AUTHNAME,
+						   PointerGetDatum(stmt->role),
+						   0, 0, 0);
+	if (HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("role \"%s\" already exists",
@@ -510,8 +496,7 @@ CreateRole(CreateRoleStmt *stmt)
 
 	new_record_nulls[Anum_pg_authid_rolconfig - 1] = true;
 
-	tuple = caql_form_tuple(pcqCtx, new_record, new_record_nulls);
-
+	tuple = heap_form_tuple(pg_authid_dsc, new_record, new_record_nulls);
 
 	if (stmt->roleOid != InvalidOid)
 		/* force tuple to have the desired OID */
@@ -520,7 +505,8 @@ CreateRole(CreateRoleStmt *stmt)
 	/*
 	 * Insert new record in the pg_authid table
 	 */
-	roleid = caql_insert(pcqCtx, tuple); /* implicit update of index as well */
+	roleid = simple_heap_insert(pg_authid_rel, tuple);
+	CatalogUpdateIndexes(pg_authid_rel, tuple);
 	stmt->roleOid = roleid;
 
 	/*
@@ -571,7 +557,6 @@ CreateRole(CreateRoleStmt *stmt)
 	 * Close pg_authid, but keep lock till commit (this is important to
 	 * prevent any risk of deadlock failure while updating flat file)
 	 */
-	caql_endscan(pcqCtx);
 	heap_close(pg_authid_rel, NoLock);
 
 	/*
@@ -583,7 +568,11 @@ CreateRole(CreateRoleStmt *stmt)
 	{
 		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
-		CdbDispatchUtilityStatement((Node *) stmt, "CreateRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackAddObject(AuthIdRelationId,
@@ -649,9 +638,6 @@ AlterRole(AlterRoleStmt *stmt)
 	bool		createwexthdfs;
 	List	   *addintervals = NIL;    /* list of time intervals for which login should be denied */
 	List		*dropintervals = NIL;    /* list of time intervals for which matching rules should be dropped */
-
-	cqContext	 cqc;
-	cqContext	*pcqCtx;
 
 	numopts = list_length(stmt->options);
 
@@ -841,15 +827,9 @@ AlterRole(AlterRoleStmt *stmt)
 	pg_authid_rel = heap_open(AuthIdRelationId, RowExclusiveLock);
 	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), pg_authid_rel),
-			cql("SELECT * FROM pg_authid "
-				" WHERE rolname = :1 "
-				" FOR UPDATE ",
-				CStringGetDatum(stmt->role)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(AUTHNAME,
+						   PointerGetDatum(stmt->role),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1026,8 +1006,6 @@ AlterRole(AlterRoleStmt *stmt)
 	/* resource queue */
 	if (resqueue)
 	{
-		Oid			queueid;
-
 		/* MPP-6926: NONE not supported -- use default queue  */
 		if (
 /*			( 0 == pg_strcasecmp(resqueue,"none"))) */
@@ -1055,6 +1033,8 @@ AlterRole(AlterRoleStmt *stmt)
 		}
 		else
 		{
+			Oid			queueid;
+
 			queueid = GetResQueueIdForName(resqueue);
 			if (queueid == InvalidOid)
 				ereport(ERROR,
@@ -1062,7 +1042,7 @@ AlterRole(AlterRoleStmt *stmt)
 					 errmsg("resource queue \"%s\" does not exist",
 							resqueue)));
 			new_record[Anum_pg_authid_rolresqueue - 1] = 
-			ObjectIdGetDatum(GetResQueueIdForName(resqueue));
+				ObjectIdGetDatum(queueid);
 		}
 		new_record_repl[Anum_pg_authid_rolresqueue - 1] = true;
 
@@ -1078,13 +1058,14 @@ AlterRole(AlterRoleStmt *stmt)
 		}
 	}
 
+	new_tuple = heap_modify_tuple(tuple, pg_authid_dsc, new_record,
+								 new_record_nulls, new_record_repl);
+	simple_heap_update(pg_authid_rel, &tuple->t_self, new_tuple);
 
-	new_tuple = caql_modify_current(pcqCtx, new_record,
-									new_record_nulls, new_record_repl);
-	caql_update_current(pcqCtx, new_tuple);
-	/* and Update indexes (implicit) */
+	/* Update indexes */
+	CatalogUpdateIndexes(pg_authid_rel, new_tuple);
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 	heap_freetuple(new_tuple);
 
 	/*
@@ -1172,7 +1153,11 @@ AlterRole(AlterRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 	}
 }
 
@@ -1302,7 +1287,11 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	heap_close(rel, RowExclusiveLock);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterRoleSetStmt");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 }
 
 
@@ -1331,21 +1320,16 @@ DropRole(DropRoleStmt *stmt)
 	foreach(item, stmt->roles)
 	{
 		const char *role = strVal(lfirst(item));
-		HeapTuple	tuple;
+		HeapTuple	tuple,
+					tmp_tuple;
+		ScanKeyData scankey;
 		char	   *detail;
+		SysScanDesc sscan;
 		Oid			roleid;
-		cqContext	cqc;
-		cqContext  *pcqCtx;
 
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), pg_authid_rel),
-				cql("SELECT * FROM pg_authid "
-					" WHERE rolname = :1 "
-					" FOR UPDATE ",
-					CStringGetDatum((char *) role)));
-
-		tuple = caql_getnext(pcqCtx);
-
+		tuple = SearchSysCache(AUTHNAME,
+							   PointerGetDatum(role),
+							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
 		{
 			if (!stmt->missing_ok)
@@ -1407,9 +1391,9 @@ DropRole(DropRoleStmt *stmt)
 		/*
 		 * Remove the role from the pg_authid table
 		 */
-		caql_delete_current(pcqCtx);
+		simple_heap_delete(pg_authid_rel, &tuple->t_self);
 
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(tuple);
 
 		/*
 		 * Remove role from the pg_auth_members table.	We have to remove all
@@ -1417,25 +1401,35 @@ DropRole(DropRoleStmt *stmt)
 		 *
 		 * XXX what about grantor entries?	Maybe we should do one heap scan.
 		 */
+		ScanKeyInit(&scankey,
+					Anum_pg_auth_members_roleid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(roleid));
+
+		sscan = systable_beginscan(pg_auth_members_rel, AuthMemRoleMemIndexId,
+								   true, SnapshotNow, 1, &scankey);
+
+		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
 		{
-			int numDel;
-			cqContext cqc2;
-
-			numDel = 
-					caql_getcount(
-							caql_addrel(cqclr(&cqc2), pg_auth_members_rel),
-							cql("DELETE FROM pg_auth_members "
-								" WHERE roleid = :1 ",
-								ObjectIdGetDatum(roleid)));
-
-			numDel = 
-					caql_getcount(
-							caql_addrel(cqclr(&cqc2), pg_auth_members_rel),
-							cql("DELETE FROM pg_auth_members "
-								" WHERE member = :1 ",
-								ObjectIdGetDatum(roleid)));
-
+			simple_heap_delete(pg_auth_members_rel, &tmp_tuple->t_self);
 		}
+
+		systable_endscan(sscan);
+
+		ScanKeyInit(&scankey,
+					Anum_pg_auth_members_member,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(roleid));
+
+		sscan = systable_beginscan(pg_auth_members_rel, AuthMemMemRoleIndexId,
+								   true, SnapshotNow, 1, &scankey);
+
+		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
+		{
+			simple_heap_delete(pg_auth_members_rel, &tmp_tuple->t_self);
+		}
+
+		systable_endscan(sscan);
 
 		/*
 		 * Remove any time constraints on this role.
@@ -1477,7 +1471,11 @@ DropRole(DropRoleStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "DropRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 
 	}
 }
@@ -1499,22 +1497,13 @@ RenameRole(const char *oldname, const char *newname)
 	bool		repl_repl[Natts_pg_authid];
 	int			i;
 	Oid			roleid;
-	cqContext	cqc;
-	cqContext	cqc2;
-	cqContext  *pcqCtx;
 
 	rel = heap_open(AuthIdRelationId, RowExclusiveLock);
 	dsc = RelationGetDescr(rel);
 
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel),
-			cql("SELECT * FROM pg_authid "
-				" WHERE rolname = :1 "
-				" FOR UPDATE ",
-				CStringGetDatum((char *) oldname)));
-
-	oldtuple = caql_getnext(pcqCtx);
-
+	oldtuple = SearchSysCache(AUTHNAME,
+							  CStringGetDatum(oldname),
+							  0, 0, 0);
 	if (!HeapTupleIsValid(oldtuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -1540,11 +1529,9 @@ RenameRole(const char *oldname, const char *newname)
 				 errmsg("current user cannot be renamed")));
 
 	/* make sure the new name doesn't exist */
-	if (caql_getcount(
-				caql_addrel(cqclr(&cqc2), rel),
-				cql("SELECT COUNT(*) FROM pg_authid "
-					" WHERE rolname = :1 ",
-					CStringGetDatum((char *) newname))))
+	if (SearchSysCacheExists(AUTHNAME,
+							 CStringGetDatum(newname),
+							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
 				 errmsg("role \"%s\" already exists", newname)));
@@ -1596,11 +1583,12 @@ RenameRole(const char *oldname, const char *newname)
 				(errmsg("MD5 password cleared because of role rename")));
 	}
 
-	newtuple = caql_modify_current(pcqCtx, repl_val, repl_null, repl_repl);
-	caql_update_current(pcqCtx, newtuple); 
-	/* and Update indexes (implicit) */
+	newtuple = heap_modify_tuple(oldtuple, dsc, repl_val, repl_null, repl_repl);
+	simple_heap_update(rel, &oldtuple->t_self, newtuple);
 
-	caql_endscan(pcqCtx);
+	CatalogUpdateIndexes(rel, newtuple);
+
+	ReleaseSysCache(oldtuple);
 
 	/*
 	 * Close pg_authid, but keep lock till commit (this is important to
@@ -1690,7 +1678,11 @@ GrantRole(GrantRoleStmt *stmt)
 	auth_file_update_needed();
 
     if (Gp_role == GP_ROLE_DISPATCH)
-        CdbDispatchUtilityStatement((Node *) stmt, "GrantRole");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 
 }
 
@@ -1718,7 +1710,11 @@ DropOwnedObjects(DropOwnedStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt, "DropOwnedObjects");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
     }
     
 	/* Ok, do it */
@@ -1758,7 +1754,11 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 				 
 	if (Gp_role == GP_ROLE_DISPATCH)
     {
-        CdbDispatchUtilityStatement((Node *) stmt, "ReassignOwnedObjects");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
     }
 
 	/* Ok, do it */
@@ -1863,8 +1863,6 @@ AddRoleMems(const char *rolename, Oid roleid,
 		Datum		new_record[Natts_pg_auth_members];
 		bool		new_record_nulls[Natts_pg_auth_members];
 		bool		new_record_repl[Natts_pg_auth_members];
-		cqContext	cqc;
-		cqContext  *pcqCtx;
 
 		/*
 		 * Refuse creation of membership loops, including the trivial case
@@ -1883,17 +1881,10 @@ AddRoleMems(const char *rolename, Oid roleid,
 		 * Check if entry for this role/member already exists; if so, give
 		 * warning unless we are adding admin option.
 		 */
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), pg_authmem_rel),
-				cql("SELECT * FROM pg_auth_members "
-					" WHERE roleid = :1 "
-					" AND member = :2 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(roleid),
-					ObjectIdGetDatum(memberid)));
-
-		authmem_tuple = caql_getnext(pcqCtx);
-
+		authmem_tuple = SearchSysCache(AUTHMEMROLEMEM,
+									   ObjectIdGetDatum(roleid),
+									   ObjectIdGetDatum(memberid),
+									   0, 0);
 		if (HeapTupleIsValid(authmem_tuple) &&
 			(!admin_opt ||
 			 ((Form_pg_auth_members) GETSTRUCT(authmem_tuple))->admin_option))
@@ -1902,7 +1893,7 @@ AddRoleMems(const char *rolename, Oid roleid,
 			ereport(NOTICE,
 					(errmsg("role \"%s\" is already a member of role \"%s\"",
 							membername, rolename)));
-			caql_endscan(pcqCtx);
+			ReleaseSysCache(authmem_tuple);
 			continue;
 		}
 
@@ -1920,27 +1911,19 @@ AddRoleMems(const char *rolename, Oid roleid,
 		{
 			new_record_repl[Anum_pg_auth_members_grantor - 1] = true;
 			new_record_repl[Anum_pg_auth_members_admin_option - 1] = true;
-			tuple = caql_modify_current(pcqCtx,
-										new_record,
-										new_record_nulls, new_record_repl);
-			caql_update_current(pcqCtx, tuple);
-			/* and Update indexes (implicit) */
-
-			caql_endscan(pcqCtx);
+			tuple = heap_modify_tuple(authmem_tuple, pg_authmem_dsc,
+									 new_record,
+									 new_record_nulls, new_record_repl);
+			simple_heap_update(pg_authmem_rel, &tuple->t_self, tuple);
+			CatalogUpdateIndexes(pg_authmem_rel, tuple);
+			ReleaseSysCache(authmem_tuple);
 		}
 		else
 		{
-			pcqCtx = caql_beginscan(
-					caql_addrel(cqclr(&cqc), pg_authmem_rel),
-					cql("INSERT INTO pg_auth_members ",
-						NULL));
-
-			tuple = caql_form_tuple(pcqCtx, new_record, new_record_nulls);
-
-			/* Insert tuple into the relation */
-			caql_insert(pcqCtx, tuple);  /* implicit update of index as well */
-
-			caql_endscan(pcqCtx);
+			tuple = heap_form_tuple(pg_authmem_dsc,
+								   new_record, new_record_nulls);
+			simple_heap_insert(pg_authmem_rel, tuple);
+			CatalogUpdateIndexes(pg_authmem_rel, tuple);
 		}
 
 		/* CCI after each change, in case there are duplicates in list */
@@ -2297,6 +2280,7 @@ DelRoleMems(const char *rolename, Oid roleid,
 			bool admin_opt)
 {
 	Relation	pg_authmem_rel;
+	TupleDesc	pg_authmem_dsc;
 	ListCell   *nameitem;
 	ListCell   *iditem;
 
@@ -2328,29 +2312,21 @@ DelRoleMems(const char *rolename, Oid roleid,
 	}
 
 	pg_authmem_rel = heap_open(AuthMemRelationId, RowExclusiveLock);
+	pg_authmem_dsc = RelationGetDescr(pg_authmem_rel);
 
 	forboth(nameitem, memberNames, iditem, memberIds)
 	{
 		const char *membername = strVal(lfirst(nameitem));
 		Oid			memberid = lfirst_oid(iditem);
 		HeapTuple	authmem_tuple;
-		cqContext	cqc;
-		cqContext  *pcqCtx;
 
 		/*
 		 * Find entry for this role/member
 		 */
-		pcqCtx = caql_beginscan(
-				caql_addrel(cqclr(&cqc), pg_authmem_rel),
-				cql("SELECT * FROM pg_auth_members "
-					" WHERE roleid = :1 "
-					" AND member = :2 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(roleid),
-					ObjectIdGetDatum(memberid)));
-
-		authmem_tuple = caql_getnext(pcqCtx);
-
+		authmem_tuple = SearchSysCache(AUTHMEMROLEMEM,
+									   ObjectIdGetDatum(roleid),
+									   ObjectIdGetDatum(memberid),
+									   0, 0);
 		if (!HeapTupleIsValid(authmem_tuple))
 		{
 			ereport(WARNING,
@@ -2362,7 +2338,7 @@ DelRoleMems(const char *rolename, Oid roleid,
 		if (!admin_opt)
 		{
 			/* Remove the entry altogether */
-			caql_delete_current(pcqCtx);
+			simple_heap_delete(pg_authmem_rel, &authmem_tuple->t_self);
 		}
 		else
 		{
@@ -2380,14 +2356,14 @@ DelRoleMems(const char *rolename, Oid roleid,
 			new_record[Anum_pg_auth_members_admin_option - 1] = BoolGetDatum(false);
 			new_record_repl[Anum_pg_auth_members_admin_option - 1] = true;
 
-			tuple = caql_modify_current(pcqCtx,
-										new_record,
-										new_record_nulls, new_record_repl);
-			caql_update_current(pcqCtx, tuple);
-			/* and Update indexes (implicit) */
+			tuple = heap_modify_tuple(authmem_tuple, pg_authmem_dsc,
+									 new_record,
+									 new_record_nulls, new_record_repl);
+			simple_heap_update(pg_authmem_rel, &tuple->t_self, tuple);
+			CatalogUpdateIndexes(pg_authmem_rel, tuple);
 		}
 
-		caql_endscan(pcqCtx);
+		ReleaseSysCache(authmem_tuple);
 
 		/* CCI after each change, in case there are duplicates in list */
 		CommandCounterIncrement();

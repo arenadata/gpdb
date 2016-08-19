@@ -9,11 +9,11 @@ TEST(Config, NonExistFile) {
 }
 
 TEST(Config, Basic) {
-    InitConfig("test/data/s3test.conf", "default");
+    InitConfig("data/s3test.conf", "default");
 
-    EXPECT_STREQ("secret_test", s3ext_secret.c_str());
-    EXPECT_STREQ("accessid_test", s3ext_accessid.c_str());
-    EXPECT_STREQ("ABCDEFGabcdefg", s3ext_token.c_str());
+    EXPECT_EQ("secret_test", s3ext_secret);
+    EXPECT_EQ("accessid_test", s3ext_accessid);
+    EXPECT_EQ("ABCDEFGabcdefg", s3ext_token);
 
 #ifdef S3_STANDALONE
     EXPECT_EQ(0, s3ext_segid);
@@ -23,35 +23,48 @@ TEST(Config, Basic) {
     EXPECT_EQ(6, s3ext_threadnum);
     EXPECT_EQ(64 * 1024 * 1024 + 1, s3ext_chunksize);
 
-    EXPECT_EQ(EXT_DEBUG, s3ext_loglevel);
+    EXPECT_EQ(EXT_INFO, s3ext_loglevel);
     EXPECT_EQ(STDERR_LOG, s3ext_logtype);
 
     EXPECT_EQ(1111, s3ext_logserverport);
-    EXPECT_STREQ("127.0.0.1", s3ext_logserverhost.c_str());
+    EXPECT_EQ("127.0.0.1", s3ext_logserverhost);
 
     EXPECT_EQ(1024, s3ext_low_speed_limit);
     EXPECT_EQ(600, s3ext_low_speed_time);
+
+    EXPECT_TRUE(s3ext_encryption);
+    EXPECT_FALSE(s3ext_debug_curl);
 }
 
 TEST(Config, SpecialSectionValues) {
-    InitConfig("test/data/s3test.conf", "special_over");
+    InitConfig("data/s3test.conf", "special_over");
 
     EXPECT_EQ(8, s3ext_threadnum);
     EXPECT_EQ(128 * 1024 * 1024, s3ext_chunksize);
     EXPECT_EQ(10240, s3ext_low_speed_limit);
     EXPECT_EQ(60, s3ext_low_speed_time);
+
+    EXPECT_TRUE(s3ext_encryption);
+    EXPECT_FALSE(s3ext_debug_curl);
 }
 
 TEST(Config, SpecialSectionLowValues) {
-    InitConfig("test/data/s3test.conf", "special_low");
+    InitConfig("data/s3test.conf", "special_low");
 
     EXPECT_EQ(1, s3ext_threadnum);
-    EXPECT_EQ(2 * 1024 * 1024, s3ext_chunksize);
+    EXPECT_EQ(8 * 1024 * 1024, s3ext_chunksize);
 }
 
 TEST(Config, SpecialSectionWrongKeyName) {
-    InitConfig("test/data/s3test.conf", "special_wrongkeyname");
+    InitConfig("data/s3test.conf", "special_wrongkeyname");
 
     EXPECT_EQ(4, s3ext_threadnum);
     EXPECT_EQ(64 * 1024 * 1024, s3ext_chunksize);
+}
+
+TEST(Config, SpecialSwitches) {
+    InitConfig("data/s3test.conf", "special_switches");
+
+    EXPECT_FALSE(s3ext_encryption);
+    EXPECT_TRUE(s3ext_debug_curl);
 }

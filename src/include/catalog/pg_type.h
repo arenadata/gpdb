@@ -33,67 +33,6 @@
  * ----------------
  */
 
-/* XXX XXX XXX XXX XXX XXX XXX XXX
- *   
- *   Use a fake tidycat definition here.  Note that it does not
- *   interfere with the type entry code generation because fake
- *   definitions are only parsed if tidycat.pl is called with the
- *   "sqldef" option, which extracts sql definitions and does not
- *   generate real code.
- *   
- * XXX XXX XXX XXX XXX XXX XXX XXX
-*/
-
-/* TIDYCAT_BEGINFAKEDEF
-
-   CREATE TABLE pg_type
-   with (bootstrap=true, relid=1247)
-   (
-   typname        name     ,
-   typnamespace   oid      ,
-   typowner       oid      ,
-   typlen         smallint ,
-   typbyval       boolean  ,
-   typtype        "char"   ,
-   typisdefined   boolean  ,
-   typdelim       "char"   ,
-   typrelid       oid      ,
-   typelem        oid      ,
-   typarray       oid      ,
-   typinput       regproc  ,
-   typoutput      regproc  ,
-   typreceive     regproc  ,
-   typsend        regproc  ,
-   typmodin       regproc  ,
-   typmodout      regproc  ,
-   typanalyze     regproc  ,
-   typalign       "char"   ,
-   typstorage     "char"   ,
-   typnotnull     boolean  ,
-   typbasetype    oid      ,
-   typtypmod      integer  ,
-   typndims       integer  ,
-   typdefaultbin  text     ,
-   typdefault     text     
-   );
-
-   create unique index on pg_type(oid) with (indexid=2703, CamelCase=TypeOid, syscacheid=TYPEOID, syscache_nbuckets=1024);
-   create unique index on pg_type(typname, typnamespace) with (indexid=2704, CamelCase=TypeNameNsp, syscacheid=TYPENAMENSP, syscache_nbuckets=1024);
-
-   alter table pg_type add fk typnamespace on pg_namespace(oid);
-   alter table pg_type add fk typowner on pg_authid(oid);
-   alter table pg_type add fk typrelid on pg_class(oid);
-   alter table pg_type add fk typinput on pg_proc(oid);
-   alter table pg_type add fk typoutput on pg_proc(oid);
-   alter table pg_type add fk typreceive on pg_proc(oid);
-   alter table pg_type add fk typsend on pg_proc(oid);
-   alter table pg_type add fk typanalyze on pg_proc(oid);
-   alter table pg_type add fk typmodin on pg_proc(oid);
-   alter table pg_type add fk typmodout on pg_proc(oid);
-
-   TIDYCAT_ENDFAKEDEF
-*/
-
 #define TypeRelationId	1247
 
 CATALOG(pg_type,1247) BKI_BOOTSTRAP
@@ -265,6 +204,18 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP
 
 } FormData_pg_type;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(typnamespace REFERENCES pg_namespace(oid));
+FOREIGN_KEY(typowner REFERENCES pg_authid(oid));
+FOREIGN_KEY(typrelid REFERENCES pg_class(oid));
+FOREIGN_KEY(typinput REFERENCES pg_proc(oid));
+FOREIGN_KEY(typoutput REFERENCES pg_proc(oid));
+FOREIGN_KEY(typreceive REFERENCES pg_proc(oid));
+FOREIGN_KEY(typsend REFERENCES pg_proc(oid));
+FOREIGN_KEY(typanalyze REFERENCES pg_proc(oid));
+FOREIGN_KEY(typmodin REFERENCES pg_proc(oid));
+FOREIGN_KEY(typmodout REFERENCES pg_proc(oid));
+
 /* ----------------
  *		Form_pg_type corresponds to a pointer to a row with
  *		the format of pg_type relation.
@@ -333,7 +284,7 @@ DATA(insert OID = 18 (	char	   PGNSP PGUID	1 t b t \054 0	 0 1002 charin charout
 DESCR("single character");
 #define CHAROID			18
 
-DATA(insert OID = 19 (	name	   PGNSP PGUID NAMEDATALEN f b t \054 0 18 1003 namein nameout namerecv namesend - - - i p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 19 (	name	   PGNSP PGUID NAMEDATALEN f b t \054 0 18 1003 namein nameout namerecv namesend - - - c p f 0 -1 0 _null_ _null_ ));
 DESCR("63-character type for storing system identifiers");
 #define NAMEOID			19
 
@@ -409,6 +360,12 @@ DATA(insert OID = 142 ( xml		   PGNSP PGUID -1 f b t \054 0 0 143 xml_in xml_out
 DESCR("XML content");
 #define XMLOID 142
 DATA(insert OID = 143 ( _xml	   PGNSP PGUID -1 f b t \054 0 142 0 array_in array_out array_recv array_send - - - i x f 0 -1 0 _null_ _null_ ));
+
+/* PostgreSQL's original JSON OIDs were 114 and 199 (see https://github.com/postgres/postgres/commit/5384a73f98d9829725186a7b65bf4f8adb3cfaf1#diff-8cd627dd576152b8b60cd08967931fff) */
+DATA(insert OID = 3114 (	json	   PGNSP PGUID -1 f b t \054 0 0 3199 json_in json_out json_recv json_send - - - i x f 0 -1 0 _null_ _null_ ));
+DESCR("JSON content");
+#define JSONOID 3114
+DATA(insert OID = 3199 (	_json	   PGNSP PGUID -1 f b t \054 0 3114 0 array_in array_out array_recv array_send - - - i x f 0 -1 0 _null_ _null_ ));
 
 DATA(insert OID = 195 (	complex	   PGNSP PGUID 16 f b t \054 0 0	196 complex_in complex_out complex_recv complex_send - - - d p f 0 -1 0 _null_ _null_ ));
 DESCR("double-precision floating point complex number, 16-byte storage");
@@ -683,6 +640,12 @@ DATA(insert OID = 3311 (	_gpxlogloc	   PGNSP PGUID -1 f b t \054 0	3310 0 array_
  */
 DATA(insert OID = 2249 ( record			PGNSP PGUID -1 f p t \054 0 0 0 record_in record_out record_recv record_send - - - d x f 0 -1 0 _null_ _null_ ));
 #define RECORDOID		2249
+/* FIXME: RECORDARRAYOID's original oid was 2287, replaced by 3287
+ * due to conflict with pg_proc.h's pg_total_relation_size
+ * while importing json code
+ */
+DATA(insert OID = 3287 ( _record		PGNSP PGUID -1 f p t \054 0 2249 0 array_in array_out array_recv array_send - - - d x f 0 -1 0 _null_ _null_ ));
+#define RECORDARRAYOID	3287
 DATA(insert OID = 2275 ( cstring		PGNSP PGUID -2 f p t \054 0 0 1263 cstring_in cstring_out cstring_recv cstring_send - - - c p f 0 -1 0 _null_ _null_ ));
 #define CSTRINGOID		2275
 DATA(insert OID = 2276 ( any			PGNSP PGUID  4 t p t \054 0 0 0 any_in any_out - - - - - i p f 0 -1 0 _null_ _null_ ));
@@ -739,10 +702,9 @@ DATA(insert OID = 6994 (gp_relation_node PGNSP PGUID -1 f c t \054 5094 0 0 reco
 #define  TYPTYPE_PSEUDO		'p' /* pseudo-type */
 
 /* 
- * typcategory is from Postgres 9.0 catalog changes and is not actually reflected
- * anywhere in gpdb code.
+ * typcategory is from Postgres 9.0 catalog changes.
+ * Used only (so far) for JSON functions
  */
-#if 0
 # define  TYPCATEGORY_INVALID			'\0'	/* not an allowed category */
 # define  TYPCATEGORY_ARRAY				'A'
 # define  TYPCATEGORY_BOOLEAN			'B'
@@ -758,7 +720,6 @@ DATA(insert OID = 6994 (gp_relation_node PGNSP PGUID -1 f c t \054 5094 0 0 reco
 # define  TYPCATEGORY_USER				'U'
 # define  TYPCATEGORY_BITSTRING			'V'		/* er ... "varbit"? */
 # define  TYPCATEGORY_UNKNOWN			'X'
-#endif
 
 /* Is a type OID a polymorphic pseudotype?	(Beware of multiple evaluation) */
 #define IsPolymorphicType(typid)  \

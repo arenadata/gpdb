@@ -38,12 +38,14 @@
 
 #include "access/transam.h"
 #include "access/xact.h"
-#include "catalog/namespace.h"
+#include "catalog/namespace.h" /* TempNamespaceOidIsValid */
+#include "commands/async.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
 #include "replication/syncrep.h"
 #include "storage/ipc.h"
 #include "storage/spin.h"
+#include "storage/sinval.h"
 #include "storage/lmgr.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
@@ -93,6 +95,8 @@ static LOCALLOCK *lockAwaited = NULL;
 static volatile bool statement_timeout_active = false;
 static volatile bool deadlock_timeout_active = false;
 static volatile DeadLockState deadlock_state = DS_NOT_YET_CHECKED;
+static volatile sig_atomic_t clientWaitTimeoutInterruptEnabled = 0;
+static volatile sig_atomic_t clientWaitTimeoutInterruptOccurred = 0;
 volatile bool cancel_from_timeout = false;
 
 /* timeout_start_time is set when log_lock_waits is true */
@@ -101,11 +105,12 @@ static TimestampTz timeout_start_time;
 /* statement_fin_time is valid only if statement_timeout_active is true */
 static TimestampTz statement_fin_time;
 
-
 static void RemoveProcFromArray(int code, Datum arg);
 static void ProcKill(int code, Datum arg);
 static void AuxiliaryProcKill(int code, Datum arg);
 static bool CheckStatementTimeout(void);
+static void ClientWaitTimeoutInterruptHandler(void);
+static void ProcessClientWaitTimeout(void);
 
 
 /*
@@ -349,7 +354,7 @@ InitProcess(void)
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->lxid = InvalidLocalTransactionId;
 	MyProc->xid = InvalidTransactionId;
-	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
+	MyProc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->serializableIsoLevel = false;
 	MyProc->inDropTransaction = false;
@@ -382,21 +387,22 @@ InitProcess(void)
 
     /* 
      * A nonzero gp_session_id uniquely identifies an MPP client session 
-     * over the lifetime of the entry postmaster process.  A qDisp passes
-     * its gp_session_id down to all of its qExecs.  If this is a qExec,
+     * over the lifetime of the entry postmaster process. A qDisp passes
+     * its gp_session_id down to all of its qExecs. If this is a qExec,
      * we have already received the gp_session_id from the qDisp.
      */
-    elog(DEBUG1,"InitProcess(): gp_session_id %d, gp_is_callback %d",gp_session_id,gp_is_callback);
-    Assert(gp_session_id > 0 || !gp_is_callback);
     if (Gp_role == GP_ROLE_DISPATCH && gp_session_id == -1)
         gp_session_id = mppLocalProcessSerial;
     MyProc->mppSessionId = gp_session_id;
+    elog(DEBUG1,"InitProcess(): gp_session_id %d, Gp_role %d",gp_session_id, Gp_role);
     
     MyProc->mppIsWriter = Gp_is_writer;
-    
-    if (Gp_role == GP_ROLE_DISPATCH)
-    	MyProc->mppIsWriter = !gp_is_callback;
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		MyProc->mppIsWriter = true;
+	}
+    
 	/* Initialize fields for sync rep */
 	MyProc->waitLSN.xlogid = 0;
 	MyProc->waitLSN.xrecoff = 0;
@@ -537,7 +543,7 @@ InitAuxiliaryProcess(void)
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->lxid = InvalidLocalTransactionId;
 	MyProc->xid = InvalidTransactionId;
-	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
+	MyProc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->serializableIsoLevel = false;
 	MyProc->inDropTransaction = false;
@@ -626,7 +632,7 @@ LockWaitCancel(void)
 	if (MyProc->links.next != INVALID_OFFSET)
 	{
 		/* We could not have been granted the lock yet */
-		RemoveFromWaitQueue(MyProc, lockAwaited->hashcode, true);
+		RemoveFromWaitQueue(MyProc, lockAwaited->hashcode);
 	}
 	else
 	{
@@ -691,8 +697,7 @@ static void
 RemoveProcFromArray(int code, Datum arg)
 {
 	Assert(MyProc != NULL);
-	ProcArrayRemove(MyProc, InvalidTransactionId,
-					/* forPrepare */ false, /* (not used) isCommit */ false);
+	ProcArrayRemove(MyProc, InvalidTransactionId);
 }
 
 /*
@@ -767,7 +772,7 @@ ProcKill(int code, Datum arg)
 	 */
 	LWLockReleaseAll();
 
-	LocalDistribXactRef_Release(&MyProc->localDistribXactRef);
+	MyProc->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
     MyProc->mppLocalProcessSerial = 0;
     MyProc->mppSessionId = 0;
     MyProc->mppIsWriter = false;
@@ -1035,7 +1040,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 	 */
 	if (early_deadlock)
 	{
-		RemoveFromWaitQueue(MyProc, hashcode, false);
+		RemoveFromWaitQueue(MyProc, hashcode);
 		return STATUS_ERROR;
 	}
 
@@ -1440,7 +1445,7 @@ CheckDeadLock(void)
 		}
 		else
 		{
-			RemoveFromWaitQueue(MyProc, LockTagHashCode(&(MyProc->waitLock->tag)), true);
+			RemoveFromWaitQueue(MyProc, LockTagHashCode(&(MyProc->waitLock->tag)));
 		}
 
 		/*
@@ -1821,12 +1826,115 @@ handle_sig_alarm(SIGNAL_ARGS)
 		 */
 		if (DoingCommandRead)
 		{
-			(void) HandleClientWaitTimeout();
+			(void) ClientWaitTimeoutInterruptHandler();
 			deadlock_timeout_active = false;
 		}
 	}
 
 	errno = save_errno;
+}
+
+static void
+ClientWaitTimeoutInterruptHandler(void)
+{
+	int save_errno = errno;
+
+	/* Don't joggle the elbow of proc_exit */
+	if (proc_exit_inprogress)
+		return;
+
+	if (clientWaitTimeoutInterruptEnabled)
+	{
+		bool save_ImmediateInterruptOK = ImmediateInterruptOK;
+
+		/*
+		 * We may be called while ImmediateInterruptOK is true; turn it off
+		 * while messing with the client wait timeout state.
+		 */
+		ImmediateInterruptOK = false;
+
+		/*
+		 * I'm not sure whether some flavors of Unix might allow another
+		 * SIGALRM occurrence to recursively interrupt this routine. To cope
+		 * with the possibility, we do the same sort of dance that
+		 * EnableNotifyInterrupt must do -- see that routine for comments.
+		 */
+		clientWaitTimeoutInterruptEnabled = 0; /* disable any recursive signal */
+		clientWaitTimeoutInterruptOccurred = 1; /* do at least one iteration */
+		for (;;)
+		{
+			clientWaitTimeoutInterruptEnabled = 1;
+			if (!clientWaitTimeoutInterruptOccurred)
+				break;
+			clientWaitTimeoutInterruptEnabled = 0;
+			if (clientWaitTimeoutInterruptOccurred)
+			{
+				ProcessClientWaitTimeout();
+			}
+		}
+
+		/*
+		 * Restore ImmediateInterruptOK, and check for interrupts if needed.
+		 */
+		ImmediateInterruptOK = save_ImmediateInterruptOK;
+		if (save_ImmediateInterruptOK)
+			CHECK_FOR_INTERRUPTS();
+	}
+	else
+	{
+		/*
+		 * In this path it is NOT SAFE to do much of anything, except this:
+		 */
+		clientWaitTimeoutInterruptOccurred = 1;
+	}
+
+	errno = save_errno;
+}
+
+void
+EnableClientWaitTimeoutInterrupt(void)
+{
+	for (;;)
+	{
+		clientWaitTimeoutInterruptEnabled = 1;
+		if (!clientWaitTimeoutInterruptOccurred)
+			break;
+		clientWaitTimeoutInterruptEnabled = 0;
+		if (clientWaitTimeoutInterruptOccurred)
+		{
+			ProcessClientWaitTimeout();
+		}
+	}
+}
+
+bool
+DisableClientWaitTimeoutInterrupt(void)
+{
+	bool result = (clientWaitTimeoutInterruptEnabled != 0);
+
+	clientWaitTimeoutInterruptEnabled = 0;
+
+	return result;
+}
+
+static void
+ProcessClientWaitTimeout(void)
+{
+	bool notify_enabled;
+	bool catchup_enabled;
+
+	/* Must prevent SIGUSR1 and SIGUSR2 interrupt while I am running */
+	notify_enabled = DisableNotifyInterrupt();
+	catchup_enabled = DisableCatchupInterrupt();
+
+	clientWaitTimeoutInterruptOccurred = 0;
+
+	HandleClientWaitTimeout();
+
+	if (notify_enabled)
+		EnableNotifyInterrupt();
+	if (catchup_enabled)
+		EnableCatchupInterrupt();
 }
 
 /*
@@ -1852,6 +1960,8 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 	uint32		hashcode = locallock->hashcode;
 	LWLockId	partitionLock = LockHashPartitionLock(hashcode);
 
+	bool		selflock = true;		/* initialize result for error. */
+
 	/*
 	 * Don't check my held locks, as we just add at the end of the queue.
 	 */
@@ -1870,6 +1980,16 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 
 	MyProc->waitStatus = STATUS_ERROR;	/* initialize result for error */
 
+	/* Now check the status of the self lock footgun. */
+	selflock = ResCheckSelfDeadLock(lock, proclock, incrementSet);
+	if (selflock)
+	{
+		LWLockRelease(partitionLock);
+		ereport(ERROR,
+				(errcode(ERRCODE_T_R_DEADLOCK_DETECTED),
+				 errmsg("deadlock detected, locking against self")));
+	}
+
 	/* Mark that we are waiting for a lock */
 	lockAwaited = locallock;
 
@@ -1880,12 +2000,9 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
    		elog(FATAL, "could not set timer for (resource lock) process wakeup");
 
 	/*
-	 * Sleep on the semaphore. see ProcSleep's comments for why we check the wait status here.
+	 * Sleep on the semaphore.
 	 */
-	do
-	{
-		PGSemaphoreLock(&MyProc->sem, true);
-	} while (MyProc->waitStatus == STATUS_WAITING);
+	PGSemaphoreLock(&MyProc->sem, true);
 
 	if (!disable_sig_alarm(false))
 		elog(FATAL, "could not disable timer for (resource lock) process wakeup");
@@ -1915,11 +2032,8 @@ ResLockWaitCancel(void)
 
 	if (lockAwaited != NULL)
 	{
-		/* Turn off the deadlock timer, if it's still running */
-		disable_sig_alarm(false);
-
 		/* Unlink myself from the wait queue, if on it  */
-		partitionLock = LockHashPartition(lockAwaited->hashcode);
+		partitionLock = LockHashPartitionLock(lockAwaited->hashcode);
 		LWLockAcquire(partitionLock, LW_EXCLUSIVE);
 
 		if (MyProc->links.next != INVALID_OFFSET)
@@ -1939,19 +2053,12 @@ ResLockWaitCancel(void)
 	}
 
 	/*
-	 * We used to do PGSemaphoreReset() here to ensure that our proc's wait
-	 * semaphore is reset to zero.	This prevented a leftover wakeup signal
-	 * from remaining in the semaphore if someone else had granted us the lock
-	 * we wanted before we were able to remove ourselves from the wait-list.
-	 * However, now that ResProcSleep loops until waitStatus changes, a leftover
-	 * wakeup signal isn't harmful, and it seems not worth expending cycles to
-	 * get rid of a signal that most likely isn't there.
+	 * Reset the proc wait semaphore to zero. This is necessary in the
+	 * scenario where someone else granted us the lock we wanted before we
+	 * were able to remove ourselves from the wait-list.
 	 */
+	PGSemaphoreReset(&MyProc->sem);
 
-	/*
-	 * Return true even if we were kicked off the lock before we were able to
-	 * remove ourselves.
-	 */
 	return;
 }
 

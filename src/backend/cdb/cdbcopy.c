@@ -94,12 +94,9 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
 	int			seg;
 	MemoryContext oldcontext;
-	CdbDispatcherState ds = {NULL, NULL};
 	List	   *parsetree_list;
 	Node	   *parsetree = NULL;
 	List	   *querytree_list;
-	char	   *serializedQuerytree;
-	int			serializedQuerytree_len;
 	Query	   *q = makeNode(Query);
 	
 	/* clean err message */
@@ -162,10 +159,6 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	Assert(q->commandType == CMD_UTILITY);
 	Assert(q->utilityStmt != NULL);
 	Assert(IsA(q->utilityStmt,CopyStmt));
-	
-	q->querySource = QSRC_ORIGINAL;
-
-	q->canSetTag = true;
 
 	/* add in partitions for dispatch */
 	((CopyStmt *)q->utilityStmt)->partitions = c->partitions;
@@ -177,31 +170,11 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	
 	MemoryContextSwitchTo(oldcontext);
 
-	/*
-	 * serialized the stmt tree, and dispatch it ....
-	 */
-	serializedQuerytree = serializeNode((Node *) q, &serializedQuerytree_len, NULL /*uncompressed_size*/);
-
-	Assert(serializedQuerytree != NULL);
-	
-	dtmPreCommand("CdbCopy", copyCmd, NULL,
-			c->copy_in, /* needs 2-phase */
-			true, /* want snapshot */
-			false /* in cursor */);
-	
-	cdbdisp_dispatchCommand(copyCmd, serializedQuerytree, serializedQuerytree_len, 
-								false 		/* cancelonError */, 
-								c->copy_in 	/* need2phase */, 
-								true 		/* withSnapshot */,
-								&ds);
+	CdbDispatchUtilityStatement((Node *)q->utilityStmt,
+								(c->copy_in ? DF_NEED_TWO_PHASE | DF_WITH_SNAPSHOT : DF_WITH_SNAPSHOT),
+								NULL);
 
 	SIMPLE_FAULT_INJECTOR(CdbCopyStartAfterDispatch);
-
-	/*
-	 * Wait for all QEs to finish. If not all of our QEs were successful,
-	 * report the error and throw up.
-	 */
-	cdbdisp_finishCommand(&ds, NULL, NULL);
 
 	/* fill in CdbCopy structure */
 	for (seg = 0; seg < c->total_segs; seg++)
@@ -254,50 +227,6 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 
 		c->io_errors = true;
 	}
-}
-
-/*
- * sends data to a copy command on a specific segment (usually
- * the hash result of the data value).
- */
-void
-cdbCopySendDataSingle(CdbCopy *c, int target_seg, const char *buffer,
-				int nbytes)
-{
-	SegmentDatabaseDescriptor *q;
-	Gang	   *gp;
-	int			result;
-
-	/* clean err message */
-	c->err_msg.len = 0;
-	c->err_msg.data[0] = '\0';
-	c->err_msg.cursor = 0;
- 
-	gp = c->primary_writer;
-	
-	Assert(gp);
-
-	q = getSegmentDescriptorFromGang(gp, target_seg);
-
-	/* transmit the COPY data */
-	elog(DEBUG4,"PQputCopyData to segment %d\n", target_seg);
-	result = PQputCopyData(q->conn, buffer, nbytes);
-
-	if (result != 1)
-	{
-		if (result == 0)
-			appendStringInfo(&(c->err_msg),
-							 "Failed to send data to segment %d, attempt blocked\n",
-							 target_seg);
-
-		if (result == -1)
-			appendStringInfo(&(c->err_msg),
-							 "Failed to send data to segment %d: %s\n",
-							 target_seg, PQerrorMessage(q->conn));
-
-		c->io_errors = true;
-	}
- 
 }
 
 /*
@@ -696,20 +625,4 @@ cdbCopyEnd(CdbCopy *c)
 	pfree(failedSegDBs);
 
 	return total_rows_rejected;
-}
-
-
-/*
- * start a global transaction for COPY.
- */
-void
-cdbCopyStartTransaction(void)
-{
-	/* since we don't use cdbdisp's dispatch services, we need to explicitly
-	 * kick off a BEGIN if its the real start of a transaction
-	 */
-	sendDtxExplicitBegin();
-	
-	/* this txn is gonna be dirty */
-	dtmPreCommand("cdbCopyStartTransaction", "(none)", NULL, /* needs two-phase */ true, /* withSnapshot */ true, /* inCursor */ false );
 }

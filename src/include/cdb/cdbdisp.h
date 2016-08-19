@@ -43,9 +43,21 @@ extern CdbDispatchDirectDesc default_dispatch_direct_desc;
 typedef struct CdbDispatcherState
 {
 	struct CdbDispatchResults *primaryResults;
-	struct CdbDispatchCmdThreads *dispatchThreads;
+	void *dispatchParams;
 	MemoryContext dispatchStateContext;
 } CdbDispatcherState;
+
+typedef struct DispatcherInternalFuncs
+{
+	void (*procExitCallBack)(void);
+	bool (*checkForCancel)(struct CdbDispatcherState *ds);
+	void* (*makeDispatchParams)(int maxSlices, char *queryText, int queryTextLen);
+	void (*checkResults)(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
+	void (*dispatchToGang)(struct CdbDispatcherState *ds, struct Gang *gp,
+			int sliceIndex, CdbDispatchDirectDesc *direct);
+}DispatcherInternalFuncs;
+
+#define DISPATCH_WAIT_TIMEOUT_SEC 2
 
 /*--------------------------------------------------------------------*/
 /*
@@ -95,6 +107,18 @@ void
 CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode);
 
 /*
+ * cdbdisp_getDispatchResults:
+ *
+ * Block until all QEs return results or report errors.
+ *
+ * Return Values:
+ *   Return NULL If one or more QEs got Error in which case qeErrorMsg contain
+ *   QE error messages.
+ */
+struct CdbDispatchResults *
+cdbdisp_getDispatchResults(struct CdbDispatcherState *ds, StringInfoData *qeErrorMsg);
+
+/*
  * Wait for all QEs to finish, then report any errors from the given
  * CdbDispatchResults objects and free them.  If not all QEs in the
  * associated gang(s) executed the command successfully, throws an
@@ -103,9 +127,7 @@ CdbCheckDispatchResult(struct CdbDispatcherState *ds, DispatchWaitMode waitMode)
  * instead call CdbCheckDispatchResult(), etc., directly.
  */
 void
-cdbdisp_finishCommand(struct CdbDispatcherState *ds,
-					  void (*handle_results_callback)(struct CdbDispatchResults *primaryResults, void *ctx),
-					  void *ctx);
+cdbdisp_finishCommand(struct CdbDispatcherState *ds);
 
 /*
  * cdbdisp_handleError
@@ -124,19 +146,22 @@ cdbdisp_finishCommand(struct CdbDispatcherState *ds,
 void
 cdbdisp_handleError(struct CdbDispatcherState *ds);
 
+void
+cdbdisp_cancelDispatch(CdbDispatcherState *ds);
+
 /*
  * Allocate memory and initialize CdbDispatcherState.
  *
  * Call cdbdisp_destroyDispatcherState to free it.
  *
- *   maxResults: max number of results, normally equals to max number of QEs.
  *   maxSlices: max number of slices of the query/command.
  */
 void
 cdbdisp_makeDispatcherState(CdbDispatcherState *ds,
-							int maxResults,
 							int maxSlices,
-							bool cancelOnError);
+							bool cancelOnError,
+							char *queryText,
+							int queryTextLen);
 
 /*
  * Free memory in CdbDispatcherState
@@ -145,5 +170,11 @@ cdbdisp_makeDispatcherState(CdbDispatcherState *ds,
  * Free dispatcher memory context.
  */
 void cdbdisp_destroyDispatcherState(CdbDispatcherState *ds);
+
+bool cdbdisp_checkForCancel(CdbDispatcherState * ds);
+
+void cdbdisp_onProcExit(void);
+
+void cdbdisp_setAsync(bool async);
 
 #endif   /* CDBDISP_H */

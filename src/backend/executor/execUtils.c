@@ -824,100 +824,6 @@ ExecAssignProjectionInfo(PlanState *planstate,
 								inputDesc);
 }
 
-/*
- * Constructs a new targetlist list that maps to a tuple descriptor.
- */
-List *
-GetPartitionTargetlist(TupleDesc partDescr, List *targetlist)
-{
-	Assert(NIL != targetlist);
-	Assert(partDescr);
-
-	List *partitionTargetlist = NIL;
-
-	AttrMap *attrmap = NULL;
-
-	TupleDesc targetDescr = ExecTypeFromTL(targetlist, false);
-
-	map_part_attrs_from_targetdesc(targetDescr, partDescr, &attrmap);
-
-	ListCell *entry = NULL;
-	int pos = 1;
-	foreach(entry, targetlist)
-	{
-		TargetEntry *te = (TargetEntry *) lfirst(entry);
-
-		/* Obtain corresponding attribute number in the part (this will be the resno). */
-		int partAtt = (int)attrMap(attrmap, pos);
-
-		/* A system attribute should be added to the target list with its original
-		 * attribute number.
-		 */
-		if (te->resorigcol < 0)
-		{
-			/* te->resorigcol should be equivalent to ((Var *)te->expr)->varattno.
-			 * te->resorigcol is used for simplicity.
-			 */
-			Assert(((Var *)te->expr)->varattno == te->resorigcol);
-
-			/* Validate interval for system-defined attributes. */
-			Assert(te->resorigcol > FirstLowInvalidHeapAttributeNumber &&
-				te->resorigcol <= SelfItemPointerAttributeNumber);
-
-			partAtt = te->resorigcol;
-		}
-
-		TargetEntry *newTe = flatCopyTargetEntry(te);
-
-		/* Parts are not explicitly specified in the range table. Therefore, the original RTE index is kept. */
-		Index rteIdx = ((Var *)te->expr)->varno;
-		/* Variable expression required by the Target Entry. */
-		Var *var = makeVar(rteIdx,
-				partAtt,
-				targetDescr->attrs[pos-1]->atttypid,
-				targetDescr->attrs[pos-1]->atttypmod,
-				0 /* resjunk */);
-
-
-		/* Modify resno in the new TargetEntry */
-		newTe->resno = partAtt;
-		newTe->expr = (Expr *) var;
-
-		partitionTargetlist = lappend(partitionTargetlist, newTe);
-
-		pos++;
-	}
-
-	Assert(attrmap);
-	pfree(attrmap);
-	Assert(partitionTargetlist);
-
-	return partitionTargetlist;
-}
-
-/*
- * Replace all attribute numbers to the corresponding mapped value (resno)
- *  in GenericExprState list with the attribute numbers in the  target list.
- */
-void
-UpdateGenericExprState(List *teTargetlist, List *geTargetlist)
-{
-	Assert(list_length(teTargetlist) ==
-		list_length(geTargetlist));
-
-	ListCell   *ge = NULL;
-	ListCell   *te = NULL;
-
-	forboth(te, teTargetlist, ge, geTargetlist)
-	{
-		GenericExprState *gstate = (GenericExprState *)ge->data.ptr_value;
-		TargetEntry *tle = (TargetEntry *)te->data.ptr_value;
-
-		Var *variable = (Var *) gstate->arg->expr;
-		variable->varattno = tle->resno;
-	}
-}
-
 /* ----------------
  *		ExecFreeExprContext
  *
@@ -1759,7 +1665,8 @@ static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req
 static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 
 
-/* Function AssignGangs runs on the QD and finishes construction of the
+/*
+ * Function AssignGangs runs on the QD and finishes construction of the
  * global slice table for a plan by assigning gangs allocated by the
  * executor factory to the slices of the slice table.
  *
@@ -1771,13 +1678,6 @@ static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceR
  * each slice tree in the slice table, asking the executor factory to
  * allocate a minimal set of gangs that can satisfy any of the slice trees,
  * and associating the allocated gangs with slices in the slice table.
- *
- * The argument utility_segment_index is the segment index to use for
- * 1-gangs that run on QEs.
- *
- * TODO Currently (July 2005) this argument is always supplied as 0, but
- *		there are no cases of the planner specifying a fixed Motion to a
- *		QE, so we don't know the case works.
  *
  * On successful exit, the CDBProcess lists (primaryProcesses, mirrorProcesses)
  * and the Gang pointers (primaryGang, mirrorGang) are set correctly in each
@@ -1796,7 +1696,7 @@ AssignGangs(QueryDesc *queryDesc)
 	SliceReq	req,
 				inv;
 
-	/* Make a map so we can access slices quickly by index.  */
+	/* Make a map so we can access slices quickly by index. */
 	nslices = list_length(sliceTable->slices);
 	sliceMap = (Slice **) palloc(nslices * sizeof(Slice *));
 	i = 0;
@@ -1863,7 +1763,6 @@ AssignGangs(QueryDesc *queryDesc)
 	}
 
 	/* Use the gangs to construct the CdbProcess lists in slices. */
-
 	inv.nxtNgang = 0;
     inv.nxt1gang_primary_reader = 0;
     inv.nxt1gang_entrydb_reader = 0;
@@ -2219,7 +2118,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		 * error, report it and exit to our error handler via PG_THROW.
 		 * NB: This call doesn't wait, because we already waited above.
 		 */
-		cdbdisp_finishCommand(estate->dispatcherState, NULL, NULL);
+		cdbdisp_finishCommand(estate->dispatcherState);
 	}
 
 	/* Teardown the Interconnect */
@@ -2330,231 +2229,6 @@ void mppExecutorCleanup(QueryDesc *queryDesc)
 	}
 }
 
-void
-initGpmonPktForDefunctOperators(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate)
-{
-	Assert(IsA(planNode, SeqScan) ||
-		   IsA(planNode, AppendOnlyScan) ||
-		   IsA(planNode, AOCSScan));
-	insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
-}
-
-#ifdef ORIG_GP_PORT
-/*
- * The funcion pointers to init gpmon package for each plan node. 
- * The order of the function pointers are the same as the one defined in
- * NodeTag (nodes.h).
- */
-void (*initGpmonPktFuncs[])(Plan *planNode, gpmon_packet_t *gpmon_pkt, EState *estate) = 
-{
-	&initGpmonPktForResult, /* T_Result */
-	&initGpmonPktForAppend, /* T_Append */
-	&initGpmonPktForSequence, /* T_Sequence */
-	&initGpmonPktForBitmapAnd, /* T_BitmapAnd */
-	&initGpmonPktForBitmapOr, /* T_BitmapOr */
-	&initGpmonPktForDefunctOperators, /* T_SeqScan */
-	&initGpmonPktForExternalScan, /* T_ExternalScan */
-	&initGpmonPktForDefunctOperators, /* T_AppendOnlyScan */
-	&initGpmonPktForDefunctOperators, /* T_AOCSScan */
-	&initGpmonPktForTableScan, /* T_TableScan */
-	&initGpmonPktForDynamicTableScan, /* reserved for T_DynamicTableScan */
-	&initGpmonPktForIndexScan, /* T_IndexScan */
-	&initGpmonPktForDynamicIndexScan, /* T_DynamicIndexScan */
-	&initGpmonPktForBitmapIndexScan, /* T_BitmapIndexScan */
-	&initGpmonPktForBitmapHeapScan, /* T_BitmapHeapScan */
-	&initGpmonPktForBitmapAppendOnlyScan, /* T_BitmapAppendOnlyScan */
-	&initGpmonPktForBitmapTableScan, /* T_BitmapTableScan */
-	&initGpmonPktForTidScan, /* T_TidScan */
-	&initGpmonPktForSubqueryScan, /* T_SubqueryScan */
-	&initGpmonPktForFunctionScan, /*  T_FunctionScan */
-	&initGpmonPktForValuesScan, /* T_ValuesScan */
-	&initGpmonPktForNestLoop, /* T_NestLoop */
-	&initGpmonPktForMergeJoin, /* T_MergeJoin */
-	&initGpmonPktForHashJoin, /* T_HashJoin */
-	&initGpmonPktForMaterial, /* T_Material */
-	&initGpmonPktForSort, /* T_Sort */
-	&initGpmonPktForAgg, /* T_Agg */
-	&initGpmonPktForUnique, /* T_Unique */
-	&initGpmonPktForHash, /* T_Hash */
-	&initGpmonPktForSetOp, /* T_SetOp */
-	&initGpmonPktForLimit, /* T_Limit */
-	&initGpmonPktForMotion, /* T_Motion */
-	&initGpmonPktForShareInputScan, /* T_ShareInputScan */
-	&initGpmonPktForWindow, /* T_Window */
-	&initGpmonPktForRepeat /* T_Repeat */
-	/* T_Plan_End */
-};
-
-/*
- * Define a compile assert so that when a new executor node is added,
- * this assert will fire up, and the proper change will be made to
- * the above initGpmonPktFuncs array.
- */
-typedef char assertion_failed_initGpmonPktFuncs \
-	[((T_Plan_End - T_Plan_Start) == \
-	  (sizeof(initGpmonPktFuncs) / sizeof(&initGpmonPktForResult))) - 1];
-
-
-/*
- * sendInitGpmonPkts -- Send init Gpmon package for the node and its child
- * nodes that are running on the same slice of the given node.
- *
- * This function is only used by the Append executor node, since Append does
- * not call ExecInitNode() for each of its child nodes during initialization
- * time. However, Gpmon requires each node to be initialized to show the
- * whole plan tree.
- */
-void
-sendInitGpmonPkts(Plan *node, EState *estate)
-{
-	gpmon_packet_t gpmon_pkt;
-
-	if (node == NULL)
-		return;
-
-	switch (nodeTag(node))
-	{
-		case T_Append:
-		{
-			int first_plan, last_plan;
-			Append *appendnode = (Append *)node;
-
-			initGpmonPktForAppend(node, &gpmon_pkt, estate);
-
-			if (appendnode->isTarget && estate->es_evTuple != NULL)
-			{
-				first_plan = estate->es_result_relation_info - estate->es_result_relations;
-				Assert(first_plan >= 0 && first_plan < list_length(appendnode->appendplans));
-				last_plan = first_plan;
-			}
-			else
-			{
-				first_plan = 0;
-				last_plan = list_length(appendnode->appendplans) - 1;
-			}
-
-			for (; first_plan <= last_plan; first_plan++)
-			{
-				Plan *initNode = (Plan *)list_nth(appendnode->appendplans, first_plan);
-
-				sendInitGpmonPkts(initNode, estate);
-			}
-
-			break;
-		}
-
-		case T_Sequence:
-		{
-			Sequence *sequence = (Sequence *)node;
-
-			ListCell *lc;
-			foreach (lc, sequence->subplans)
-			{
-				Plan *subplan = (Plan *)lfirst(lc);
-
-				sendInitGpmonPkts(subplan, estate);
-			}
-			break;
-		}
-
-		case T_BitmapAnd:
-		{
-			ListCell *lc;
-
-			initGpmonPktForBitmapAnd(node, &gpmon_pkt, estate);
-			foreach (lc, ((BitmapAnd*)node)->bitmapplans)
-			{
-				sendInitGpmonPkts((Plan *)lfirst(lc), estate);
-			}
-
-			break;
-		}
-
-		case T_BitmapOr:
-		{
-			ListCell *lc;
-
-			initGpmonPktForBitmapOr(node, &gpmon_pkt, estate);
-			foreach (lc, ((BitmapOr*)node)->bitmapplans)
-			{
-				sendInitGpmonPkts((Plan *)lfirst(lc), estate);
-			}
-
-			break;
-		}
-
-		case T_SeqScan:
-		case T_AppendOnlyScan:
-		case T_AOCSScan:
-		case T_DynamicTableScan:
-		case T_ExternalScan:
-		case T_IndexScan:
-		case T_BitmapIndexScan:
-		case T_TidScan:
-		case T_FunctionScan:
-		case T_CustomScan:
-		case T_ValuesScan:
-		{
-			initGpmonPktFuncs[nodeTag(node) - T_Plan_Start](node, &gpmon_pkt, estate);
-
-			break;
-		}
-
-		case T_Result:
-		case T_BitmapHeapScan:
-		case T_BitmapAppendOnlyScan:
-		case T_BitmapTableScan:
-		case T_ShareInputScan:
-		case T_Material:
-		case T_Sort:
-		case T_Agg:
-		case T_Window:
-		case T_Unique:
-		case T_Hash:
-		case T_SetOp:
-		case T_Limit:
-		case T_Repeat:
-		{
-			initGpmonPktFuncs[nodeTag(node) - T_Plan_Start](node, &gpmon_pkt, estate);
-			sendInitGpmonPkts(outerPlan(node), estate);
-
-			break;
-		}
-
-		case T_SubqueryScan:
-		{
-			/**
-			 * Recurse into subqueryscan node's subplan.
-			 */
-			sendInitGpmonPkts(((SubqueryScan *)node)->subplan, estate);
-			break;
-		}
-
-		case T_NestLoop:
-		case T_MergeJoin:
-		case T_HashJoin:
-		{
-			initGpmonPktFuncs[nodeTag(node) - T_Plan_Start](node, &gpmon_pkt, estate);
-			sendInitGpmonPkts(outerPlan(node), estate);
-			sendInitGpmonPkts(innerPlan(node), estate);
-
-			break;
-		}
-
-		case T_Motion:
-			/*
-			 * Do not need to send init package since Motion node is always initialized
-			 * Since all nodes under Motion are running on a different slice, we stop
-			 * here.
-			 */
-			break;
-
-		default:
-			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
-			break;
-	}
-}
-#endif
 void ResetExprContext(ExprContext *econtext)
 {
 	MemoryContext memctxt = econtext->ecxt_per_tuple_memory;

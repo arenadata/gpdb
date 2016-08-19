@@ -19,7 +19,9 @@
 #include "catalog/gp_segment_config.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbfts.h"
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbutil.h"
+#include "cdb/cdbdisp.h"
 #include "lib/stringinfo.h"
 #include "libpq/libpq-be.h"
 #include "utils/memutils.h"
@@ -51,11 +53,6 @@ int 		gp_session_id;    /* global unique id for session. */
 
 char		*qdHostname;		/*QD hostname */
 int			qdPostmasterPort;	/*Master Segment Postmaster port. */
-char       *gp_qd_callback_info;	/* info for QE to call back to QD */
-
-bool 		gp_is_callback;		/* are we executing a callback query? */
-
-bool		gp_use_dispatch_agent;	/* Use experimental code for Query Dispatch Agent */
 
 int         gp_command_count;          /* num of commands from client */
 
@@ -64,8 +61,6 @@ bool		Debug_print_prelim_plan;	/* Shall we log argument of
 										 * cdbparallelize? */
 
 bool		Debug_print_slice_table;	/* Shall we log the slice table? */
-
-bool		Debug_print_dispatch_plan;	/* Shall we log the plan we'll dispatch? */
 
 bool            gp_backup_directIO = false;     /* disable\enable direct I/O dump */
 
@@ -91,8 +86,6 @@ bool		Gp_write_shared_snapshot;	/* tell the writer QE to write the
 										 * shared snapshot */
 
 bool		gp_reraise_signal=false;	/* try to dump core when we get SIGABRT & SIGSEGV */
-
-bool		gp_version_mismatch_error=true;	/* Enforce same-version on QD&QE. */
 
 bool		gp_set_proc_affinity=false; /* set processor affinity (if platform supports it) */
 
@@ -169,23 +162,10 @@ bool	gp_enable_slow_writer_testmode = false;
  */
 bool	gp_enable_slow_cursor_testmode = false;
 
-/*
- * gp_enable_delete_as_truncate
- *
- * piggy-back a truncate on simple delete statements (statements
- * without qualifiers "delete from foo").
- */
-bool	gp_enable_delete_as_truncate = false;
-
 /**
  * Hash-join node releases hash table when it returns last tuple.
  */
 bool gp_eager_hashtable_release = true;
-
-/*
- * Debug_print_combocid_detail: request details when we hit combocid limits.
- */
-bool	Debug_print_combocid_detail = false;
 
 /*
  * TCP port the Interconnect listens on for incoming connections from other
@@ -214,11 +194,7 @@ int			interconnect_setup_timeout=7200;
 
 int			Gp_interconnect_type = INTERCONNECT_TYPE_UDPIFC;
 
-bool		gp_interconnect_aggressive_retry=true; /* fast-track app-level retry */
-
 bool gp_interconnect_full_crc=false; /* sanity check UDP data. */
-
-bool gp_interconnect_elide_setup=true; /* under some conditions we can eliminate the setup */
 
 bool gp_interconnect_log_stats=false; /* emit stats at log-level */
 
@@ -250,20 +226,12 @@ uint32 gp_interconnect_id=0;
  * Resource management
  */
 
-/*
- * gp_process_memory_cutoff (real)
- * Deprecated.  Will remove in next release.
- */
-double  gp_process_memory_cutoff;           /* SET/SHOW in units of kB */
-
-
 double gp_hashagg_respill_bias = 1;
 
 /* --------------------------------------------------------------------------------------------------
  * Greenplum Optimizer GUCs
  */
 
-bool        enable_adaptive_nestloop = true;
 double      gp_motion_cost_per_row = 0;
 int         gp_segments_for_planner = 0;
 
@@ -475,10 +443,6 @@ string_to_role(const char *string)
 	{
 		role = GP_ROLE_EXECUTE;
 	}
-	else if (pg_strcasecmp(string, "dispatchagent") == 0 || pg_strcasecmp(string, "qda") == 0)
-	{
-		role = GP_ROLE_DISPATCHAGENT;
-	}
 	else if (pg_strcasecmp(string, "utility") == 0)
 	{
 		role = GP_ROLE_UTILITY;
@@ -501,8 +465,6 @@ role_to_string(GpRoleValue role)
 			return "dispatch";
 		case GP_ROLE_EXECUTE:
 			return "execute";
-		case GP_ROLE_DISPATCHAGENT:
-			return "dispatchagent";
 		case GP_ROLE_UTILITY:
 			return "utility";
 		case GP_ROLE_UNDEFINED:
@@ -550,7 +512,7 @@ assign_gp_session_role(const char *newval, bool doit, GucSource source __attribu
 
 
 /*
- * Assign hook routine for "gp_role" option.  This variablle has context
+ * Assign hook routine for "gp_role" option.  This variable has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set using an option on postmaster start, but this isn't
  * interesting beccause the derived global CdbRole is always set (along with
@@ -632,7 +594,7 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 
 
 /*
- * Assign hook routine for "gp_connections_per_thread" option.  This variablle has context
+ * Assign hook routine for "gp_connections_per_thread" option.  This variable has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set in config file, but not inside of PGOPTIONS.)
  *
@@ -649,49 +611,16 @@ assign_gp_connections_per_thread(int newval, bool doit, GucSource source __attri
 
 	if (doit)
 	{
-		if (newval <= 0)
+		if (newval < 0)
 			return false;
 
+		cdbdisp_setAsync(newval == 0);
+		cdbgang_setAsync(newval == 0);
 		gp_connections_per_thread = newval;
 	}
 
 	return true;
 }
-
-/*
- * Assign hook routine for "assign_gp_use_dispatch_agent" option.  This variable has context
- * PGC_USERSET
- *
- * See src/backend/util/misc/guc.c for option definition.
- */
-void disconnectAndDestroyAllGangs(bool resetSession);
-
-bool
-assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source __attribute__((unused)) )
-{
-
-
-	if (newval != gp_use_dispatch_agent && doit)
-		elog(LOG, "assign_gp_use_dispatch_agent: gp_use_dispatch_agent old=%s, newval=%s, doit=%s",
-			(gp_use_dispatch_agent ? "true" : "false"), (newval ? "true" : "false"), (doit ? "true" : "false"));
-
-
-	if (doit)
-	{
-		/*
-		 * If we are switching, we must get rid of all existing gangs.
-		 * TODO: check for being in a transaction, or owning temp tables, as disconnecting all gangs
-		 * will wipe them out.
-		 */
-		if (newval != gp_use_dispatch_agent && Gp_role != GP_ROLE_UTILITY)
-			disconnectAndDestroyAllGangs(true);
-		gp_use_dispatch_agent = newval;
-	}
-
-	return true;
-}
-
-
 
 /*
  * Show hook routine for "gp_session_role" option.

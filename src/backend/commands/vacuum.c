@@ -36,8 +36,8 @@
 #include "access/appendonly_visimap.h"
 #include "access/aocs_compaction.h"
 #include "catalog/catalog.h"
-#include "catalog/catquery.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_appendonly_fn.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_index.h"
 #include "catalog/indexing.h"
@@ -49,7 +49,6 @@
 #include "cdb/cdbpartition.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
-#include "cdb/cdbrelsize.h"
 #include "cdb/cdbdispatchresult.h"      /* CdbDispatchResults */
 #include "cdb/cdbfilerepprimary.h"
 #include "cdb/cdbpersistentfilesysobj.h"
@@ -325,8 +324,8 @@ static void vacuumStatement_Relation(VacuumStmt *vacstmt, Oid relid,
 						 bool for_wraparound, bool isTopLevel);
 
 static void
-vacuum_combine_stats(CdbDispatchResults *primaryResults,
-						 void *ctx);
+vacuum_combine_stats(VacuumStatsContext *stats_context,
+					CdbPgResults* cdb_pgresults);
 
 static void vacuum_appendonly_index(Relation indexRelation,
 		AppendOnlyIndexVacuumState *vacuumIndexState,
@@ -381,9 +380,6 @@ vacuum(VacuumStmt *vacstmt, List *relids,
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum messages aren't interesting from the QD */
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-		clear_relsize_cache();
 
 	/*
 	 * We cannot run VACUUM inside a user transaction block; if we were inside
@@ -670,13 +666,13 @@ static bool vacuum_assign_compaction_segno(
 		return false;
 	}
 
-	new_compaction_list = SetSegnoForCompaction(onerel->rd_id,
+	new_compaction_list = SetSegnoForCompaction(onerel,
 			compactedSegmentFileList, insertedSegmentFileList, &is_drop);
 	if (new_compaction_list)
 	{
 		if (!is_drop)
 		{
-			insert_segno = lappend_int(NIL, SetSegnoForCompactionInsert(onerel->rd_id,
+			insert_segno = lappend_int(NIL, SetSegnoForCompactionInsert(onerel,
 				new_compaction_list, compactedSegmentFileList, insertedSegmentFileList));
 		}
 		else
@@ -1422,20 +1418,21 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 	else
 	{
 		/* Process all plain relations listed in pg_class */
+		Relation	pgclass;
+		HeapScanDesc scan;
 		HeapTuple	tuple;
-		cqContext	cqc;
-		cqContext  *pcqCtx;
+		ScanKeyData key;
 
-		/* NOTE: force heapscan in caql */
-		pcqCtx = caql_beginscan(
-				caql_syscache(
-						caql_indexOK(cqclr(&cqc), false),
-						false),
-				cql("SELECT * FROM pg_class "
-					" WHERE relkind = :1 ",
-					CharGetDatum(RELKIND_RELATION)));
+		ScanKeyInit(&key,
+					Anum_pg_class_relkind,
+					BTEqualStrategyNumber, F_CHAREQ,
+					CharGetDatum(RELKIND_RELATION));
 
-		while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+		pgclass = heap_open(RelationRelationId, AccessShareLock);
+
+		scan = heap_beginscan(pgclass, SnapshotNow, 1, &key);
+
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
 			Form_pg_class classForm = (Form_pg_class) GETSTRUCT(tuple);
 
@@ -1457,7 +1454,8 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype,
 			MemoryContextSwitchTo(oldcontext);
 		}
 
-		caql_endscan(pcqCtx);
+		heap_endscan(scan);
+		heap_close(pgclass, AccessShareLock);
 	}
 
 	return oid_list;
@@ -1594,8 +1592,6 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	HeapTuple	ctup;
 	Form_pg_class pgcform;
 	bool		dirty;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	Assert(relid != InvalidOid);
 
@@ -1637,16 +1633,10 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	 */
 	rd = heap_open(RelationRelationId, RowExclusiveLock);
 
-	pcqCtx = caql_addrel(cqclr(&cqc), rd);
-
 	/* Fetch a copy of the tuple to scribble on */
-	ctup = caql_getfirst(
-			pcqCtx,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(relid)));
-
+	ctup = SearchSysCacheCopy(RELOID,
+							  ObjectIdGetDatum(relid),
+							  0, 0, 0);
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			 relid);
@@ -1738,10 +1728,8 @@ vac_update_datfrozenxid(void)
 	HeapTuple	tuple;
 	Form_pg_database dbform;
 	Relation	relation;
+	SysScanDesc scan;
 	HeapTuple	classTup;
-	cqContext  *pcqCtx;
-	cqContext	cqc;
-
 	TransactionId newFrozenXid;
 	bool		dirty = false;
 
@@ -1757,11 +1745,12 @@ vac_update_datfrozenxid(void)
 	 * We must seqscan pg_class to find the minimum Xid, because there is no
 	 * index that can help us here.
 	 */
-	pcqCtx = caql_beginscan(
-			caql_indexOK(cqclr(&cqc), false),
-			cql("SELECT * FROM pg_class ", NULL));
+	relation = heap_open(RelationRelationId, AccessShareLock);
 
-	while (HeapTupleIsValid(classTup = caql_getnext(pcqCtx)))
+	scan = systable_beginscan(relation, InvalidOid, false,
+							  SnapshotNow, 0, NULL);
+
+	while ((classTup = systable_getnext(scan)) != NULL)
 	{
 		Form_pg_class classForm = (Form_pg_class) GETSTRUCT(classTup);
 
@@ -1790,27 +1779,18 @@ vac_update_datfrozenxid(void)
 	}
 
 	/* we're done with pg_class */
-	caql_endscan(pcqCtx);
+	systable_endscan(scan);
+	heap_close(relation, AccessShareLock);
 
 	Assert(TransactionIdIsNormal(newFrozenXid));
 
 	/* Now fetch the pg_database tuple we need to update. */
 	relation = heap_open(DatabaseRelationId, RowExclusiveLock);
 
-	cqContext  *dbcqCtx;
-	cqContext	dbcqc;
-
-	dbcqCtx = caql_addrel(cqclr(&dbcqc), relation);
-
 	/* Fetch a copy of the tuple to scribble on */
-
-	tuple = caql_getfirst(
-			dbcqCtx,
-			cql("SELECT * FROM pg_database "
-				" WHERE oid = :1 "
-				" FOR UPDATE ",
-				ObjectIdGetDatum(MyDatabaseId)));
-
+	tuple = SearchSysCacheCopy(DATABASEOID,
+							   ObjectIdGetDatum(MyDatabaseId),
+							   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
 	dbform = (Form_pg_database) GETSTRUCT(tuple);
@@ -1861,9 +1841,9 @@ static void
 vac_truncate_clog(TransactionId frozenXID)
 {
 	TransactionId myXID = GetCurrentTransactionId();
+	Relation	relation;
+	HeapScanDesc scan;
 	HeapTuple	tuple;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 	NameData	oldest_datname;
 	bool		frozenAlreadyWrapped = false;
 
@@ -1882,11 +1862,11 @@ vac_truncate_clog(TransactionId frozenXID)
 	 * worst possible outcome is that pg_clog is not truncated as aggressively
 	 * as it could be.
 	 */
-	pcqCtx = caql_beginscan(
-			caql_indexOK(cqclr(&cqc), false),
-			cql("SELECT * FROM pg_database ", NULL));
+	relation = heap_open(DatabaseRelationId, AccessShareLock);
 
-	while (HeapTupleIsValid(tuple = caql_getnext(pcqCtx)))
+	scan = heap_beginscan(relation, SnapshotNow, 0, NULL);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_database dbform = (Form_pg_database) GETSTRUCT(tuple);
 
@@ -1908,7 +1888,9 @@ vac_truncate_clog(TransactionId frozenXID)
 		}
 	}
 
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+
+	heap_close(relation, AccessShareLock);
 
 	/*
 	 * Do not truncate CLOG if we seem to have suffered wraparound already;
@@ -2191,7 +2173,6 @@ vacuum_appendonly_indexes(Relation aoRelation,
 	Relation   *Irel;
 	int			nindexes;
 	AppendOnlyIndexVacuumState vacuumIndexState;
-	AppendOnlyEntry *aoEntry;
 	List *extra_oids;
 	FileSegInfo **segmentFileInfo = NULL; /* Might be a casted AOCSFileSegInfo */
 	int totalSegfiles;
@@ -2211,30 +2192,24 @@ vacuum_appendonly_indexes(Relation aoRelation,
 	else
 		vac_open_indexes(aoRelation, RowExclusiveLock, &nindexes, &Irel);
 
-	aoEntry = GetAppendOnlyEntry(
-			aoRelation->rd_id,
-			SnapshotNow);
-	Assert(aoEntry);
-
 	if (RelationIsAoRows(aoRelation))
 	{
-		segmentFileInfo = GetAllFileSegInfo(aoRelation, aoEntry, SnapshotNow, &totalSegfiles);
+		segmentFileInfo = GetAllFileSegInfo(aoRelation, SnapshotNow, &totalSegfiles);
 	}
 	else
 	{
 		Assert(RelationIsAoCols(aoRelation));
-		segmentFileInfo = (FileSegInfo **)GetAllAOCSFileSegInfo(aoRelation, aoEntry, SnapshotNow, &totalSegfiles);
+		segmentFileInfo = (FileSegInfo **)GetAllAOCSFileSegInfo(aoRelation, SnapshotNow, &totalSegfiles);
 	}
 
 	AppendOnlyVisimap_Init(
 			&vacuumIndexState.visiMap,
-			aoEntry->visimaprelid,
-			aoEntry->visimapidxid,
+			aoRelation->rd_appendonly->visimaprelid,
+			aoRelation->rd_appendonly->visimapidxid,
 			AccessShareLock,
 			SnapshotNow);
 
 	AppendOnlyBlockDirectory_Init_forSearch(&vacuumIndexState.blockDirectory,
-			aoEntry,
 			SnapshotNow,
 			segmentFileInfo,
 			totalSegfiles,
@@ -2286,8 +2261,6 @@ vacuum_appendonly_indexes(Relation aoRelation,
 		}
 		pfree(segmentFileInfo);
 	}
-	pfree(aoEntry);
-	aoEntry = NULL;
 
 	vac_close_indexes(nindexes, Irel, NoLock);
 	return nindexes;
@@ -5288,79 +5261,24 @@ vacuum_delay_point(void)
 static void
 dispatchVacuum(VacuumStmt *vacstmt, VacuumStatsContext *ctx)
 {
-	char	   *pszVacuum=NULL;
-	int			pszVacuum_len;
-	Query	   *q = NULL;
+	CdbPgResults cdb_pgresults;
 
 	/* should these be marked volatile ? */
-	volatile struct CdbDispatcherState ds = {NULL, NULL};
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(vacstmt);
 	Assert(vacstmt->vacuum);
 	Assert(!vacstmt->analyze);
 
-	/*
-	 * Serialize the stmt tree, and create the sql statement....
-	 */
-	q = makeNode(Query);
+	CdbDispatchUtilityStatement((Node *) vacstmt,
+											DF_CANCEL_ON_ERROR|
+											DF_WITH_SNAPSHOT|
+											DF_NEED_TWO_PHASE,
+											&cdb_pgresults);
 
-	Assert(q);
+	vacuum_combine_stats(ctx, &cdb_pgresults);
 
-	q->commandType = CMD_UTILITY;
-	q->utilityStmt = (Node *) vacstmt;
-	q->querySource = QSRC_ORIGINAL;
-	q->canSetTag = true;	/* ? */
-
-	pszVacuum = serializeNode((Node *) q, &pszVacuum_len, NULL /*uncompressed_size*/);
-	Assert(pszVacuum);
-
-	/*
-	 * MPP-6796/MPP-6801:
-	 *
-	 * I'm not exactly sure about the way this code uses
-	 * dtmPreCommand(). We call it twice, which may make sense
-	 * if we're going to be using separate transactions. Calling it
-	 * multiple times does no harm, but I find it confusing (are these
-	 * vacuum calls auto-committed ?).
-	 *
-	 * We need to handle the dispatcher-cleanup *here* otherwise the
-	 * rest of the cleanup will be trying to do further dispatcher
-	 * work on our gangs -- and those operations *expect* the gangs to
-	 * be clean.
-	 */
-	PG_TRY();
-	{
-		/* mark the dtx as dirty */
-		dtmPreCommand("cdbdisp_dispatchCommand", "(none)", NULL,
-				true /* needs two-phase */, true /* withSnapshot */, false /* inCursor */);
-
-		cdbdisp_dispatchCommand( "vacuum" , pszVacuum, pszVacuum_len,
-								 true /* cancelOnError */, true /* needTwoPhase */,
-								 true /* withSnapshot */,
-								 (struct CdbDispatcherState *)&ds);
-
-		/*
-		 * Wait for all QEs to finish. If not all of our QEs were successful,
-		 * report the error and throw up.
-		 *
-		 * NOTE: this has the side-effect of calling pfree() on
-		 * pszVacuum! (we re-serialize for our mirrors below).
-		 */
-		cdbdisp_finishCommand((struct CdbDispatcherState *)&ds, vacuum_combine_stats, ctx);
-	}
-	PG_CATCH();
-	{
-		/*
-		 * Handle errors/cancels
-		 */
-		cdbdisp_handleError((struct CdbDispatcherState *)&ds);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
-
-	pfree(q);
+	cdbdisp_clearCdbPgResults(&cdb_pgresults);
 }
 
 /*
@@ -5619,15 +5537,13 @@ get_oids_for_bitmap(List *all_extra_oids, Relation Irel,
  * Note that the mirrorResults is ignored by this function.
  */
 static void
-vacuum_combine_stats(CdbDispatchResults *primaryResults,
-						 void *ctx)
+vacuum_combine_stats(VacuumStatsContext *stats_context, CdbPgResults* cdb_pgresults)
 {
 	int result_no;
-	VacuumStatsContext *stats_context = (VacuumStatsContext *)ctx;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 
-	if (primaryResults == NULL)
+	if (cdb_pgresults == NULL || cdb_pgresults->numResults <= 0)
 		return;
 
 	/*
@@ -5641,52 +5557,44 @@ vacuum_combine_stats(CdbDispatchResults *primaryResults,
 	 * maximum number of pages after processing the stats from each QE.
 	 *
 	 */
-	for(result_no = 0; result_no < primaryResults->resultCount; result_no++)
+	for(result_no = 0; result_no < cdb_pgresults->numResults; result_no++)
 	{
-		CdbDispatchResult *result = &(primaryResults->resultArray[result_no]);
-		int num_pgresults = cdbdisp_numPGresult(result);
-		int pgresult_no;
+
 		VPgClassStats *pgclass_stats = NULL;
+		ListCell *lc = NULL;
+		struct pg_result *pgresult = cdb_pgresults->pg_results[result_no];
 
-		for (pgresult_no = 0; pgresult_no < num_pgresults; pgresult_no++)
+		if (pgresult->extras == NULL)
+			continue;
+
+		Assert(pgresult->extraslen > sizeof(int));
+
+		/*
+		 * Process the stats for pg_class. We simple compute the maximum
+		 * number of rel_tuples and rel_pages.
+		 */
+		pgclass_stats = (VPgClassStats *) pgresult->extras;
+		foreach (lc, stats_context->updated_stats)
 		{
-			ListCell *lc = NULL;
+			VPgClassStats *tmp_stats = (VPgClassStats *) lfirst(lc);
 
-			struct pg_result *pgresult = cdbdisp_getPGresult(result, pgresult_no);
-
-			if (pgresult->extras == NULL)
-				continue;
-
-			Assert(pgresult->extraslen > sizeof(int));
-
-			/*
-			 * Process the stats for pg_class. We simple compute the maximum
-			 * number of rel_tuples and rel_pages.
-			 */
-			pgclass_stats = (VPgClassStats *) pgresult->extras;
-			foreach (lc, stats_context->updated_stats)
+			if (tmp_stats->relid == pgclass_stats->relid)
 			{
-				VPgClassStats *tmp_stats = (VPgClassStats *) lfirst(lc);
-
-				if (tmp_stats->relid == pgclass_stats->relid)
-				{
-					tmp_stats->rel_pages += pgclass_stats->rel_pages;
-					tmp_stats->rel_tuples += pgclass_stats->rel_tuples;
-					break;
-				}
-			}
-
-			if (lc == NULL)
-			{
-				Assert(pgresult->extraslen == sizeof(VPgClassStats));
-
-				pgclass_stats = palloc(sizeof(VPgClassStats));
-				memcpy(pgclass_stats, pgresult->extras, pgresult->extraslen);
-
-				stats_context->updated_stats =
-						lappend(stats_context->updated_stats, pgclass_stats);
+				tmp_stats->rel_pages += pgclass_stats->rel_pages;
+				tmp_stats->rel_tuples += pgclass_stats->rel_tuples;
+				break;
 			}
 		}
-	}
 
+		if (lc == NULL)
+		{
+			Assert(pgresult->extraslen == sizeof(VPgClassStats));
+
+			pgclass_stats = palloc(sizeof(VPgClassStats));
+			memcpy(pgclass_stats, pgresult->extras, pgresult->extraslen);
+
+			stats_context->updated_stats =
+					lappend(stats_context->updated_stats, pgclass_stats);
+		}
+	}
 }

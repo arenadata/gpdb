@@ -188,7 +188,6 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 	Oid			relOid;
 	HeapTuple	tuple;
 	Form_pg_class classform;
-	cqContext	*pcqCtx;
 
 	relOid = RangeVarGetRelid(rel, true);
 	if (!OidIsValid(relOid))
@@ -197,14 +196,9 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 		return false;
 	}
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relOid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
@@ -226,7 +220,7 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 				 errmsg("permission denied: \"%s\" is a system catalog",
 						rel->relname)));
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	return true;
 }
@@ -315,18 +309,11 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 {
 	Oid			relOid;
 	HeapTuple	tuple;
-	cqContext  *pcqCtx;
 
 	relOid = RangeVarGetRelid(rel, false);
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(relOid)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))		/* should not happen */
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
@@ -344,7 +331,7 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 							rel->relname)));
 	}
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 }
 
 
@@ -544,10 +531,12 @@ ProcessDropStatement(DropStmt *stmt)
 						CheckDropRelStorage(rel, stmt->removeType))
 				{
 					/*
-					 * RemoveRelation fails to find the relation on QD, will return false.
-					 * Should not dispatch the drop to segments as not holding Exclusive Lock.
+					 * If RemoveRelation fails to find the relation on QD, it
+					 * will return false and we should not dispatch the drop
+					 * to segments as not holding Exclusive Lock.
 					 */
-					dispatchDrop = RemoveRelation(rel, stmt->behavior, stmt, RELKIND_RELATION);
+					dispatchDrop = RemoveRelation(rel, stmt->behavior, stmt,
+												  RELKIND_RELATION);
 				}
 				else
 					dispatchDrop = false;
@@ -557,15 +546,15 @@ ProcessDropStatement(DropStmt *stmt)
 				rel = makeRangeVarFromNameList(names);
 				if (CheckDropPermissions(rel, RELKIND_SEQUENCE,
 										 stmt->missing_ok))
-					dispatchDrop = RemoveRelation(rel, stmt->behavior, stmt, RELKIND_SEQUENCE);
+					dispatchDrop = RemoveRelation(rel, stmt->behavior, stmt,
+												  RELKIND_SEQUENCE);
 				else
 					dispatchDrop = false;
 				break;
 
 			case OBJECT_VIEW:
 				rel = makeRangeVarFromNameList(names);
-				if (CheckDropPermissions(rel, RELKIND_VIEW,
-										 stmt->missing_ok))
+				if (CheckDropPermissions(rel, RELKIND_VIEW, stmt->missing_ok))
 					RemoveView(rel, stmt->behavior);
 				else
 					dispatchDrop = false;
@@ -573,40 +562,35 @@ ProcessDropStatement(DropStmt *stmt)
 
 			case OBJECT_INDEX:
 				rel = makeRangeVarFromNameList(names);
-				if (CheckDropPermissions(rel, RELKIND_INDEX,
-										 stmt->missing_ok))
+				if (CheckDropPermissions(rel, RELKIND_INDEX, stmt->missing_ok))
 					RemoveIndex(rel, stmt->behavior);
 				else
 					dispatchDrop = false;
 				break;
 
 			case OBJECT_TYPE:
-				/* RemoveType does its own permissions checks */
-				RemoveType(names, stmt->behavior,
-						   stmt->missing_ok);
+				/*
+				 * RemoveType does its own permissions checks
+				 */
+				RemoveType(names, stmt->behavior, stmt->missing_ok);
 				break;
 
 			case OBJECT_DOMAIN:
-
 				/*
 				 * RemoveDomain does its own permissions checks
 				 */
-				RemoveDomain(names, stmt->behavior,
-							 stmt->missing_ok);
+				RemoveDomain(names, stmt->behavior, stmt->missing_ok);
 				break;
 
 			case OBJECT_CONVERSION:
-				DropConversionCommand(names, stmt->behavior,
-									  stmt->missing_ok);
+				DropConversionCommand(names, stmt->behavior, stmt->missing_ok);
 				break;
 
 			case OBJECT_SCHEMA:
-
 				/*
 				 * RemoveSchema does its own permissions checks
 				 */
-				RemoveSchema(names, stmt->behavior,
-							 stmt->missing_ok);
+				RemoveSchema(names, stmt->behavior, stmt->missing_ok);
 				break;
 
 			case OBJECT_FILESPACE:
@@ -624,11 +608,39 @@ ProcessDropStatement(DropStmt *stmt)
 				break;
 
 			case OBJECT_EXTPROTOCOL:
-				
 				/*
 				 * RemoveExtProtocol does its own permissions checks
 				 */
 				RemoveExtProtocol(names, stmt->behavior, stmt->missing_ok);
+				break;
+
+
+			case OBJECT_TSPARSER:
+				/*
+				 * RemoveTSParser does its own permission checks
+				 */
+				RemoveTSParser(names, stmt->behavior, stmt->missing_ok);
+				break;
+
+			case OBJECT_TSDICTIONARY:
+				/*
+				 * RemoveTSDictionary does its own permission checks
+				 */
+				RemoveTSDictionary(names, stmt->behavior, stmt->missing_ok);
+				break;
+
+			case OBJECT_TSTEMPLATE:
+				/*
+				 * RemoveTSTemplate does its own permission checks
+				 */
+				RemoveTSTemplate(names, stmt->behavior, stmt->missing_ok);
+				break;
+
+			case OBJECT_TSCONFIGURATION:
+				/*
+				 * RemoveTSConfiguration does its own permission checks
+				 */
+				RemoveTSConfiguration(names, stmt->behavior, stmt->missing_ok);
 				break;
 
 			default:
@@ -1069,7 +1081,11 @@ ProcessUtility(Node *parsetree,
 						 */
 						if (Gp_role == GP_ROLE_DISPATCH)
 						{
-							CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+							CdbDispatchUtilityStatement((Node *) stmt,
+														DF_CANCEL_ON_ERROR|
+														DF_WITH_SNAPSHOT|
+														DF_NEED_TWO_PHASE,
+														NULL);
 						}
 					}
 				}
@@ -1214,7 +1230,11 @@ ProcessUtility(Node *parsetree,
 
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) stmt, "ProcessUtility");
+					CdbDispatchUtilityStatement((Node *) stmt,
+												DF_CANCEL_ON_ERROR|
+												DF_WITH_SNAPSHOT|
+												DF_NEED_TWO_PHASE,
+												NULL);
 				}
 			}
 			break;
@@ -1256,19 +1276,19 @@ ProcessUtility(Node *parsetree,
 						break;						
 					case OBJECT_TSPARSER:
 						Assert(stmt->args == NIL);
-						DefineTSParser(stmt->defnames, stmt->definition);
+						DefineTSParser(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_TSDICTIONARY:
 						Assert(stmt->args == NIL);
-						DefineTSDictionary(stmt->defnames, stmt->definition);
+						DefineTSDictionary(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_TSTEMPLATE:
 						Assert(stmt->args == NIL);
-						DefineTSTemplate(stmt->defnames, stmt->definition);
+						DefineTSTemplate(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					case OBJECT_TSCONFIGURATION:
 						Assert(stmt->args == NIL);
-						DefineTSConfiguration(stmt->defnames, stmt->definition);
+						DefineTSConfiguration(stmt->defnames, stmt->definition, stmt->newOid);
 						break;
 					default:
 						elog(ERROR, "unrecognized define stmt type: %d",
@@ -1347,7 +1367,11 @@ ProcessUtility(Node *parsetree,
 			DefineRule((RuleStmt *) parsetree, queryString);
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+				CdbDispatchUtilityStatement((Node *) parsetree,
+											DF_CANCEL_ON_ERROR|
+											DF_WITH_SNAPSHOT|
+											DF_NEED_TWO_PHASE,
+											NULL);
 			}
 			break;
 
@@ -1479,7 +1503,10 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "LOAD '%s'", stmt->filename);
 
-					CdbDoCommand(buffer.data, false, /*no txn*/ false);
+					CdbDispatchCommand(buffer.data,
+										DF_WITH_SNAPSHOT,
+										NULL);
+					pfree(buffer.data);
 				}
 			}
 			break;
@@ -1526,7 +1553,7 @@ ProcessUtility(Node *parsetree,
 						else
 							appendStringInfo(&buffer, "RESET %s", n->name);
 
-						CdbDoCommand(buffer.data, false, /*no txn*/ false);
+						CdbDispatchCommand(buffer.data, DF_WITH_SNAPSHOT, NULL);
 					}
 				}
 				else
@@ -1589,7 +1616,11 @@ ProcessUtility(Node *parsetree,
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
 					((CreateTrigStmt *) parsetree)->trigOid = trigOid;
-					CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+					CdbDispatchUtilityStatement((Node *) parsetree,
+												DF_CANCEL_ON_ERROR|
+												DF_WITH_SNAPSHOT|
+												DF_NEED_TWO_PHASE,
+												NULL);
 				}
 			}
 			break;
@@ -1620,7 +1651,11 @@ ProcessUtility(Node *parsetree,
 				}
 				if (Gp_role == GP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) parsetree, "ProcessUtility");
+					CdbDispatchUtilityStatement((Node *) parsetree,
+												DF_CANCEL_ON_ERROR|
+												DF_WITH_SNAPSHOT|
+												DF_NEED_TWO_PHASE,
+												NULL);
 				}
 			}
 			break;
@@ -1708,7 +1743,7 @@ ProcessUtility(Node *parsetree,
 
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				CdbDoCommand("CHECKPOINT", false, false);
+				CdbDispatchCommand("CHECKPOINT", DF_WITH_SNAPSHOT, NULL);
 			}
 			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 			break;

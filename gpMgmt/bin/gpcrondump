@@ -55,6 +55,9 @@ class GpCronDump(Operation):
         self.context = Context(options)
         self.options_list = " ".join(sys.argv[1:])
 
+        if "-h" in self.options_list and "-H" in self.options_list:
+            raise Exception("-H option cannot be selected with -h option. ")
+
         self.interactive = options.interactive
         self.cur_host = socket.gethostname()
         self.pre_vacuum = options.pre_vacuum
@@ -100,7 +103,7 @@ class GpCronDump(Operation):
         if self.list_backup_files and not self.context.timestamp_key:
             raise Exception('Must supply -K option when listing backup files')
 
-        if not (self.context.clear_dumps_only or bool(self.context.ddboost_hosts) or bool(self.context.ddboost_user) or 
+        if not (self.context.clear_dumps_only or bool(self.context.ddboost_hosts) or bool(self.context.ddboost_user) or
                 self.context.ddboost_config_remove or self.context.ddboost_show_config):
             if len(self.context.dump_databases) == 0:
                 if 'PGDATABASE' in os.environ:
@@ -297,7 +300,9 @@ class GpCronDump(Operation):
         if self.context.include_schema_file or self.context.dump_schema or self.context.exclude_schema_file or self.context.exclude_dump_schema:
             self.validate_dump_schema()
 
+
         if self.context.incremental:
+            self.context.generate_dump_timestamp()
             if not self.context.netbackup_service_host:
                 self.context.full_dump_timestamp = get_latest_full_dump_timestamp(self.context)
             else:
@@ -334,10 +339,10 @@ class GpCronDump(Operation):
     # check if one of gpcrondump option was specified, except of ddboost options
     def only_ddboost_options(self):
         return (len(self.context.dump_databases) == 0 and (not self.context.dump_schema)
-                and (not self.context.backup_dir)
+                and (not self.context.backup_dir) and self.context.history
                 and not (self.context.include_dump_tables or self.context.output_options or self.context.clear_dumps_only or self.pre_vacuum
                          or self.context.clear_dumps_only or self.context.dump_global or self.rollback or self.context.exclude_dump_tables
-                         or self.context.dump_config or self.context.clear_dumps_only or self.context.clear_dumps or self.post_vacuum or self.context.history))
+                         or self.context.dump_config or self.context.clear_dumps_only or self.context.clear_dumps or self.post_vacuum))
 
     def validateUserName(self, userName):
         if not re.search(r'^[a-zA-Z0-9-_]{1,30}$', userName):
@@ -486,7 +491,7 @@ class GpCronDump(Operation):
         if self.context.ddboost_remote:
             ddcmdTemplate += " --remote"
         else:
-            ddcmdTemplate += " --defaultBackupDirectory=" + backupDir
+            ddcmdTemplate += " --defaultBackupDirectory=" + self.context.ddboost_backupdir
 
             if self.context.ddboost_storage_unit:
                 ddcmdTemplate += " --ddboost-storage-unit=" + self.context.ddboost_storage_unit
@@ -543,7 +548,7 @@ class GpCronDump(Operation):
     # Verify the DDBoost credentials using the credentials that stored on the Master
     # TODO: verify also all the hosts in self.context.ddboost_hosts (ping to the hosts, I think there is some Python function for that)
     def _ddboostVerify(self):
-        verifyCmdLine = os.environ['GPHOME'] + '/bin/gpddboost --verify' 
+        verifyCmdLine = os.environ['GPHOME'] + '/bin/gpddboost --verify'
         if self.context.ddboost_storage_unit:
             verifyCmdLine += ' --ddboost-storage-unit %s' % self.context.ddboost_storage_unit
         logger.debug("Executing gpddboost to verify DDBoost credentials: %s" % verifyCmdLine)
@@ -597,17 +602,26 @@ class GpCronDump(Operation):
         if self.context.incremental:
             return (dirty_file, exclude_file)
 
+        # Make sure that this happens right before the include_dump_tables
+        # check. We are relying on the filtering that happens on the
+        # include_dump_tables check
+        if self.context.include_dump_tables_file:
+            self.context.include_dump_tables = get_lines_from_file(self.context.include_dump_tables_file)
+
         if self.context.include_dump_tables:
-            include_file = expand_partitions_and_populate_filter_file(dbname, self.context.include_dump_tables, 'include_dump_tables_file')
+            dump_tables_without_pg_temp = []
+            for table in self.context.include_dump_tables:
+                if table.startswith('pg_temp_'):
+                    continue
+                dump_tables_without_pg_temp.append(table)
+            include_file = expand_partitions_and_populate_filter_file(dbname,
+                                                                      dump_tables_without_pg_temp,
+                                                                      'include_dump_tables_file')
             self.context.include_dump_tables = []
 
         if self.context.exclude_dump_tables:
             exclude_file = expand_partitions_and_populate_filter_file(dbname, self.context.exclude_dump_tables, 'exclude_dump_tables_file')
             self.context.exclude_dump_tables = []
-
-        if self.context.include_dump_tables_file:
-            include_tables = get_lines_from_file(self.context.include_dump_tables_file)
-            include_file = expand_partitions_and_populate_filter_file(dbname, include_tables, 'include_dump_tables_file')
 
         if self.context.exclude_dump_tables_file:
             exclude_tables = get_lines_from_file(self.context.exclude_dump_tables_file)
@@ -689,7 +703,7 @@ class GpCronDump(Operation):
             # --list-filter-tables(currently not supported with ddboost in the document, but no reason/comment found,
             # maybe add support later?), and --incremental, incremental dump of database should not be on different
             # storage unit from other backup set
-            if not self.list_filter_tables and not self.incremental:
+            if not self.list_filter_tables and not self.context.incremental:
                 self._ddboostVerify()
 
             # Check if we need to exit now
@@ -713,7 +727,10 @@ class GpCronDump(Operation):
 
         for dumpdb in self.context.dump_databases:
             self.context.dump_database = dumpdb
-            self.context.generate_dump_timestamp()
+
+            if not self.context.incremental:
+                self.context.generate_dump_timestamp()
+
             if self.list_backup_files:
                 self._list_backup_files()
                 logger.info('Successfully listed the names of backup files and pipes')
@@ -832,11 +849,11 @@ class GpCronDump(Operation):
                         # if this fails, it raises an exception and bombs out RC and to the screen
                         CreateIncrementsFile(self.context).run()
                         if self.context.ddboost:
-                            backup_file_with_ddboost(self.context, "increments", self.context.full_dump_timestamp)
+                            backup_file_with_ddboost(self.context, "increments", timestamp=self.context.full_dump_timestamp)
 
                         write_partition_list_file(self.context, post_dump_outcome['timestamp'])
                         if self.context.netbackup_service_host:
-                            backup_file_with_nbu(self.context, "increments")
+                            backup_file_with_nbu(self.context, "increments", timestamp=self.context.full_dump_timestamp)
                             backup_file_with_nbu(self.context, "partition_list")
 
             finally:
@@ -854,9 +871,9 @@ class GpCronDump(Operation):
             if self.context.history:
                 # This certainly does not belong under DumpDatabase, due to CLI assumptions. Note the use of options_list.
                 UpdateHistoryTable(self.context,
-                                   self.options_list,
                                    time_start = dump_outcome['time_start'],
                                    time_end = dump_outcome['time_end'],
+                                   options_list = self.options_list,
                                    dump_exit_status = dump_outcome['exit_status'],
                                    timestamp = post_dump_outcome['timestamp'],
                                    pseudo_exit_status = current_exit_status).run()
@@ -881,7 +898,7 @@ class GpCronDump(Operation):
                     raise ExceptionNoStackTraceNeeded("Dump incomplete, rollback not processed")
                 elif self.rollback:
                     logger.warn("Dump request was incomplete, rolling back dump")
-                    DeleteCurrentDump(self.context, timestamp = post_dump_outcome['timestamp']).run()
+                    DeleteCurrentDump(self.context).run()
                     MailDumpEvent("Report from gpcrondump on host %s [FAILED]" % self.cur_host,
                                   "Failed for database %s with return code %d dump files rolled back. [Start=%s End=%s] Options passed [%s]"
                                   % (self.context.dump_database, current_exit_status, dump_outcome['time_start'], dump_outcome['time_end'], self.options_list)).run()
@@ -898,8 +915,7 @@ class GpCronDump(Operation):
 
             if self.post_vacuum:
                 logger.info('Commencing post-dump vacuum...')
-                VacuumDatabase(database = self.context.dump_database,
-                               master_port = self.context.master_port).run()
+                VacuumDatabase(self.context).run()
 
             dump_type = 'Incremental' if self.context.incremental else 'Full database'
             self._status_report(post_dump_outcome['timestamp'],
@@ -942,9 +958,9 @@ class GpCronDump(Operation):
                     arglist.append("-a")
                 if not self.context.ddboost_ping:
                     arglist.append("--skip-ping")
-                if self.ddboost_storage_unit:
+                if self.context.ddboost_storage_unit:
                     arglist.append('--ddboost-storage-unit')
-                    arglist.append(self.ddboost_storage_unit)
+                    arglist.append(self.context.ddboost_storage_unit)
                 logger.info("Replicating %s to remote Data Domain. (gpmfr.py %s)" % (name, " ".join(arglist)))
                 mfropt, mfrargs = p.parse_args(arglist, None)
                 mfr = gpmfr.GpMfr(mfropt, mfrargs)
@@ -1357,8 +1373,14 @@ def create_parser():
     parser.remove_option('-h')
     help._short_opts.remove('-h')
     parser.add_option(help)
-    addTo.add_option('-h', action='store_true', dest='history', default=False,
-                     help="Record details of database dump in database table %s in database supplied via -x option. Utility will create table if it does not currently exist." % UpdateHistoryTable.HISTORY_TABLE)
+    addTo.add_option('-h', action='store_true', dest='history', default=True,
+                         help="Record details of database dump in database table %s in database supplied via -x option."
+                              "Utility will create table if it does not currently exist."
+                              "This option will be deprecated in a future release." % UpdateHistoryTable.HISTORY_TABLE)
+
+    addTo.add_option('-H', action='store_false', dest='history', default=True,
+                     help="Disable recording details of database dump in database table %s in database supplied via -x option."
+                          "If not specified, the utility  will create/update the history table." % UpdateHistoryTable.HISTORY_TABLE)
 
     addTo.add_option('-u', dest='backup_dir', metavar="<BACKUPFILEDIR>",
                      help="Directory where backup files are placed [default: data directories]")

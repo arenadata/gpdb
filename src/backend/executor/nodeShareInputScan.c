@@ -225,13 +225,7 @@ ShareInputNext(ShareInputScanState *node)
 		Gpmon_M_Incr_Rows_Out(GpmonPktFromShareInputState(node)); 
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet(
-			ExecShareInputNext,
-			DDLNotSpecified,
-			"",  // databaseName
-			""); // tableName
-#endif
+		SIMPLE_FAULT_INJECTOR(ExecShareInputNext);
 
 		return slot;
 	}
@@ -494,7 +488,7 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 
 /*************************************************************************
  * XXX 
- * we need some IPC mechanism for shareinptu_read_wait/writer_notify.  Semaphore is
+ * we need some IPC mechanism for shareinput_read_wait/writer_notify.  Semaphore is
  * the first thing come to mind but it turns out postgres is very picky about
  * how to use semaphore and we do not want to mess up with it.
  *
@@ -549,40 +543,43 @@ static void sisc_lockname(char* p, int size, int share_id, const char* name)
 
 static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 {
-	int err;
-
 	elog(DEBUG1, "shareinput_clean_lk_ctxt cleanup lk ctxt %p", lk_ctxt);
 
-	if(lk_ctxt->readyfd >= 0)
-	{
-		err = gp_retry_close(lk_ctxt->readyfd);
-		insist_log(!err, "shareinput_clean_lk_ctxt cannot close readyfd: %m");
+	if (!lk_ctxt)
+		return;
 
-		lk_ctxt->readyfd = -1;
+	if (lk_ctxt->readyfd >= 0)
+	{
+		if (gp_retry_close(lk_ctxt->readyfd))
+			ereport(WARNING,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("shareinput_clean_lk_ctxt cannot close readyfd: %m")));
 	}
 
-	if(lk_ctxt->donefd >= 0)
+	if (lk_ctxt->donefd >= 0)
 	{
-		err = gp_retry_close(lk_ctxt->donefd);
-		insist_log(!err, "shareinput_clean_lk_ctxt cannot close donefd: %m");
-
-		lk_ctxt->donefd = -1;
+		if (gp_retry_close(lk_ctxt->donefd))
+			ereport(WARNING,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("shareinput_clean_lk_ctxt cannot close donefd: %m")));
 	}
 
-	if(lk_ctxt->del_ready && lk_ctxt->lkname_ready[0])
+	if (lk_ctxt->del_ready && lk_ctxt->lkname_ready[0])
 	{
-		err = unlink(lk_ctxt->lkname_ready);
-		insist_log(!err, "shareinput_clean_lk_ctxt cannot unlink \"%s\": %m", lk_ctxt->lkname_ready);
-
-		lk_ctxt->del_ready = false;
+		if (unlink(lk_ctxt->lkname_ready))
+			ereport(WARNING,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("shareinput_clean_lk_ctxt cannot unlink \"%s\": %m",
+					lk_ctxt->lkname_ready)));
 	}
 
-	if(lk_ctxt->del_done && lk_ctxt->lkname_done[0])
+	if (lk_ctxt->del_done && lk_ctxt->lkname_done[0])
 	{
-		err = unlink(lk_ctxt->lkname_done);
-		insist_log(!err, "shareinput_clean_lk_ctxt cannot unline \"%s\": %m", lk_ctxt->lkname_done);
-
-		lk_ctxt->del_done = false;
+		if (unlink(lk_ctxt->lkname_done))
+			ereport(WARNING,
+				(errcode(ERRCODE_IO_ERROR),
+				errmsg("shareinput_clean_lk_ctxt cannot unlink \"%s\": %m",
+					lk_ctxt->lkname_done)));
 	}
 
 	gp_free(lk_ctxt);
@@ -822,8 +819,8 @@ shareinput_writer_notifyready(int share_id, int xslice, PlanGenerator planGen)
 	pctxt->del_ready = true;
 	pctxt->readyfd = open(pctxt->lkname_ready, O_RDWR, 0600); 
 	if(pctxt->readyfd < 0)
-	
 		elog(ERROR, "could not open fifo \"%s\": %m", pctxt->lkname_ready);
+
 	sisc_lockname(pctxt->lkname_done, MAXPGPATH, share_id, "done");
 	create_tmp_fifo(pctxt->lkname_done);
 	pctxt->del_done = true;

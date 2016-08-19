@@ -1198,7 +1198,7 @@ spill_hash_table(AggState *aggstate)
 	/* Spill set does not have a workfile_set. Use existing or create new one as needed */
 	if (hashtable->work_set == NULL)
 	{
-		hashtable->work_set = workfile_mgr_create_set(BFZ, true /* can_be_reused */, &aggstate->ss.ps, NULL_SNAPSHOT);
+		hashtable->work_set = workfile_mgr_create_set(BFZ, true /* can_be_reused */, &aggstate->ss.ps);
 		hashtable->work_set->metadata.buckets = hashtable->nbuckets;
 		//aggstate->workfiles_created = true;
 	}
@@ -1992,21 +1992,6 @@ void destroy_agg_hash_table(AggState *aggstate)
 		pfree(aggstate->hhashtable);
 		aggstate->hhashtable = NULL;
 	}
-}
-
-/*
- * Marks workfile set as complete
- */
-void
-agg_hash_mark_spillset_complete(AggState *aggstate)
-{
-
-	Assert(aggstate != NULL);
-	Assert(aggstate->hhashtable != NULL);
-	Assert(aggstate->hhashtable->work_set != NULL);
-
-	workfile_set *work_set = aggstate->hhashtable->work_set;
-	workfile_mgr_mark_complete(work_set);
 }
 
 /* EOF */

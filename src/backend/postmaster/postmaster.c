@@ -722,7 +722,7 @@ HANDLE		PostmasterHandle;
 
 /*
  * Is this a part of a segment database.  Note that this is
- *   not always the same as ! GPPostmaster because
+ *   not always the same as ! Gp_entry_postmaster because
  *   when the cluster master is started in utility mode then
  *   Gp_entry_postmaster will not be set
  */
@@ -734,11 +734,6 @@ bool GPIsSegmentDatabase()
 bool GPAreFileReplicationStructuresRequired(void)
 {
     return AreFileReplicationStructuresRequired;
-}
-
-bool GPPostmaster()
-{
-	return (Gp_entry_postmaster);
 }
 
 /**
@@ -769,12 +764,6 @@ int
 PostmasterGetMppLocalProcessCounter(void)
 {
 	return Save_MppLocalProcessCounter;
-}
-
-DistributedTransactionTimeStamp
-PostmasterGetDtxStartTime(void)
-{
-	return Save_DtxStartTime;
 }
 
 static void
@@ -814,7 +803,7 @@ PostmasterMain(int argc, char *argv[])
 {
 	int			opt;
 	int			status;
-	char       *userDoption = NULL;
+	char	   *userDoption = NULL;
 	int			i;
 	char		stack_base;
 
@@ -2365,13 +2354,8 @@ ServerLoop(void)
                     return STATUS_ERROR;
                 }
             }
-#ifdef FAULT_INJECTOR
-			FaultInjector_InjectFaultIfSet(
-										   Postmaster,
-										   DDLNotSpecified,
-										   "",	//databaseName
-										   ""); // tableName
-#endif											
+
+			SIMPLE_FAULT_INJECTOR(Postmaster);
         }
         else
         {
@@ -2505,8 +2489,9 @@ ServerLoop(void)
 						 (long)BgWriterPID);
 			}
 
-			if (CheckpointPID == 0 && pmState > PM_STARTUP_PASS4 &&
-				Shutdown == NoShutdown)
+			if (CheckpointPID == 0 &&
+			    pmState > PM_STARTUP_PASS4 &&
+			    pmState < PM_CHILD_STOP_BEGIN)
 			{
 				CheckpointPID = StartCheckpointServer();
 				if (Debug_print_server_processes)
@@ -2535,9 +2520,11 @@ ServerLoop(void)
 				if (AutoVacPID != 0)
 					start_autovac_launcher = false; /* signal processed */
 			}
-			
+
 			/* If we have lost the stats collector, try to start a new one */
-			if (PgStatPID == 0 && pmState > PM_STARTUP_PASS4)
+			if (PgStatPID == 0 &&
+			    pmState > PM_STARTUP_PASS4 &&
+			    pmState < PM_CHILD_STOP_BEGIN)
 			{
 				PgStatPID = pgstat_start();
 				if (Debug_print_server_processes)
@@ -2637,8 +2624,6 @@ ProcessStartupPacket(Port *port, bool SSLdone)
 	ProtocolVersion proto;
 	MemoryContext oldcontext;
     char       *gpqeid = NULL;
-    char       *gpqdid = NULL;
-    char       *gpdaid = NULL;
 
 	if (pq_getbytes((char *) &len, 4) == EOF)
 	{
@@ -2822,10 +2807,6 @@ retry1:
 				/* ignore for compatibility with libpq >= 8.5 */ ;
 			else if (strcmp(nameptr, "gpqeid") == 0)
 				gpqeid = valptr;
-			else if (strcmp(nameptr, "gpqdid") == 0)
-				gpqdid = valptr;
-			else if (strcmp(nameptr, "gpdaid") == 0)
-				gpdaid = valptr;
 			else if (strcmp(nameptr, "replication") == 0)
 			{
 				if (!parse_bool(valptr, &am_walsender))
@@ -2926,15 +2907,6 @@ retry1:
      */
     if (gpqeid)
         cdbgang_parse_gpqeid_params(port, gpqeid);
-    else if (gpqdid)
-    	cdbgang_parse_gpqdid_params(port, gpqdid);
-    else if (gpdaid)
-	{
-		ereport(FATAL,
-				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
-				 errSendAlert(true),
-				 errmsg("GPAgent deprecated.")));
-	}
 
 	/*
 	 * Done putting stuff in TopMemoryContext.
@@ -3584,16 +3556,7 @@ processPrimaryMirrorTransitionRequest(Port *port, void *pkt)
 		strcpy(args->peerAddress, peer);
 	}
 
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet
-		(
-		SegmentTransitionRequest,
-		DDLNotSpecified,
-		"",	//databaseName
-		""  // tableName
-		)
-		;
-#endif
+	SIMPLE_FAULT_INJECTOR(SegmentTransitionRequest);
 
     char extraResultInfo[MAX_TRANSITION_RESULT_EXTRA_INFO];
 	result = requestTransitionToPrimaryMirrorMode(args, extraResultInfo);
@@ -3664,16 +3627,7 @@ processPrimaryMirrorTransitionQuery(Port *port, void *pkt)
 		return;
 	}
 
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet
-		(
-		SegmentProbeResponse,
-		DDLNotSpecified,
-		"",	//databaseName
-		""  // tableName
-		)
-		;
-#endif
+	SIMPLE_FAULT_INJECTOR(SegmentProbeResponse);
 
 	getPrimaryMirrorStatusCodes(&pm_mode, &s_state, &d_state, &f_type);
 
@@ -8446,6 +8400,6 @@ setProcAffinity(int id)
 static void
 setProcAffinity(int id)
 {
-	elog(LOG, "gp_proc_affinity setting ignored; feature not configured");
+	elog(LOG, "gp_set_proc_affinity setting ignored; feature not configured");
 }
 #endif

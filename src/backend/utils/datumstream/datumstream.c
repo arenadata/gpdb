@@ -824,32 +824,31 @@ datumstreamwrite_open_file(DatumStreamWrite * ds, char *fn, int64 eof, int64 eof
 				 segmentFileNum,
 				 eof);
 		}
+	}
 
-		if (gp_appendonly_verify_eof)
+	if (gp_appendonly_verify_eof)
+	{
+		appendOnlyNewEof = PersistentFileSysObj_ReadEof(
+					PersistentFsObjType_RelationFile,
+					&persistentTid);
+		/*
+		 * Verify if EOF from gp_persistent_relation_node < EOF from pg_aocsseg
+		 *
+		 * Note:- EOF from gp_persistent_relation_node has to be less than the
+		 * EOF from pg_aocsseg because inside a transaction the actual EOF where
+		 * the data is inserted has to be greater than or equal to Persistent
+		 * Table (PT) stored EOF as persistent table EOF value is updated at the
+		 * end of the transaction.
+		 */
+		if (eof < appendOnlyNewEof)
 		{
-			appendOnlyNewEof = PersistentFileSysObj_ReadEof(
-												PersistentFsObjType_RelationFile,
-												&persistentTid);
-
-			/*
-			 * Verify if EOF from gp_persistent_relation_node < EOF from pg_aocsseg
-			 *
-			 * Note:- EOF from gp_persistent_relation_node has to be less than the
-			 * EOF from pg_aocsseg because inside a transaction the actual EOF where
-			 * the data is inserted has to be greater than or equal to Persistent
-			 * Table (PT) stored EOF as persistent table EOF value is updated at the
-			 * end of the transaction.
-			 */
-			if (eof < appendOnlyNewEof)
-			{
-				elog(ERROR, "Unexpected EOF for relfilenode %u,"
-							" segment file %d: EOF from gp_persistent_relation_node "
-							INT64_FORMAT " greater than current EOF " INT64_FORMAT,
-							relFileNode.relNode,
-							segmentFileNum,
-							appendOnlyNewEof,
-							eof);
-			}
+			elog(ERROR, "Unexpected EOF for relfilenode %u,"
+						" segment file %d: EOF from gp_persistent_relation_node "
+						INT64_FORMAT " greater than current EOF " INT64_FORMAT,
+						relFileNode.relNode,
+						segmentFileNum,
+						appendOnlyNewEof,
+						eof);
 		}
 	}
 
@@ -1199,13 +1198,8 @@ datumstreamread_block_content(DatumStreamRead * acc)
 				{
 					pfree(acc->large_object_buffer);
 					acc->large_object_buffer = NULL;
-#ifdef FAULT_INJECTOR
-					FaultInjector_InjectFaultIfSet(MallocFailure,
-												   DDLNotSpecified,
-												   "", //databaseName
-												   "");
-					/* tableName */
-#endif
+
+					SIMPLE_FAULT_INJECTOR(MallocFailure);
 				}
 
 				acc->large_object_buffer_size = acc->getBlockInfo.contentLen;

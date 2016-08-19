@@ -190,13 +190,11 @@ caql_switch(struct caql_hash_cookie *pchn,
 	if (!pCtx->cq_setsnapshot)
 		pCtx->cq_snapshot = SnapshotNow;
 
-	if (!pCtx->cq_setlockmode)
-	{
-		if (pchn->bDelete || pchn->bUpdate || pchn->bInsert)
-			pCtx->cq_lockmode = RowExclusiveLock;
-		else
-			pCtx->cq_lockmode = AccessShareLock;
-	}
+	if (pchn->bDelete || pchn->bUpdate || pchn->bInsert)
+		pCtx->cq_lockmode = RowExclusiveLock;
+	else
+		pCtx->cq_lockmode = AccessShareLock;
+
 	/* get everything we need from cql */
 	for (i = 0; i < pcql->maxkeys; i++)
 	{
@@ -258,10 +256,9 @@ caql_basic_fn_all(caql_hash_cookie *pchn, cqContext *pCtx,
 		pCtx->cq_usesyscache = true;
 
 		/*
-		 * Normally, must match all columns of the index to use syscache,
-		 * except for case of SearchSysCacheList
+		 * Must match all columns of the index to use syscache.
 		 */
-		if (!pCtx->cq_bCacheList && (pCtx->cq_NumKeys != nkeys))
+		if (pCtx->cq_NumKeys != nkeys)
 			pCtx->cq_usesyscache = false;
 
 		/*
@@ -284,8 +281,8 @@ caql_basic_fn_all(caql_hash_cookie *pchn, cqContext *pCtx,
 		{
 			pCtx->cq_cacheId = pchn->syscacheid;
 
-			/* number of keys must match (unless a SearchSysCacheList ) */
-			Assert(pCtx->cq_bCacheList || (pCtx->cq_NumKeys == nkeys));
+			/* number of keys must match */
+			Assert(pCtx->cq_NumKeys == nkeys);
 		}
 	}
 
@@ -316,8 +313,7 @@ caql_basic_fn_all(caql_hash_cookie *pchn, cqContext *pCtx,
 	 */
 	if (!pCtx->cq_externrel)
 	{
-		if (!pCtx->cq_setlockmode &&
-			pCtx->cq_usesyscache &&
+		if (pCtx->cq_usesyscache &&
 			(AccessShareLock == pCtx->cq_lockmode))
 		{
 			pCtx->cq_externrel = true; /* pretend we have external relation */

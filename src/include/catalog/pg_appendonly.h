@@ -10,42 +10,10 @@
 #define PG_APPENDONLY_H
 
 #include "catalog/genbki.h"
-#include "utils/relcache.h"
-#include "utils/tqual.h"
 
 /*
  * pg_appendonly definition.
  */
-
-/* TIDYCAT_BEGINFAKEDEF
-
-   CREATE TABLE pg_appendonly
-   with (camelcase=AppendOnly, oid=false, relid=6105)
-   (
-   relid            oid, 
-   blocksize        integer, 
-   safefswritesize  integer, 
-   compresslevel    smallint, 
-   majorversion     smallint, 
-   minorversion     smallint, 
-   checksum         boolean, 
-   compresstype     text, 
-   columnstore      boolean, 
-   segrelid         oid, 
-   segidxid         oid, 
-   blkdirrelid      oid, 
-   blkdiridxid      oid, 
-   version          integer,
-   visimaprelid     oid,
-   visimapidxid     oid
-   );
-
-   create unique index on pg_appendonly(relid) with (indexid=5007, CamelCase=AppendOnlyRelid);
-
-   alter table pg_appendonly add fk relid on pg_class(oid);
-
-   TIDYCAT_ENDFAKEDEF
-*/
 
 #define AppendOnlyRelationId  6105
 
@@ -58,7 +26,7 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
 	int2			majorversion;		/* major version indicating what's stored in this table  */
 	int2			minorversion;		/* minor version indicating what's stored in this table  */
 	bool			checksum;			/* true if checksum is stored with data and checked */
-	text			compresstype;		/* the compressor used (zlib, or quicklz) */
+	NameData		compresstype;		/* the compressor used (zlib, or quicklz) */
     bool            columnstore;        /* true if orientation is column */ 
     Oid             segrelid;           /* OID of aoseg table; 0 if none */
     Oid             segidxid;           /* if aoseg table, OID of segno index */
@@ -69,6 +37,15 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
 	Oid             visimapidxid;		/* OID of aovisimap index */
 } FormData_pg_appendonly;
 
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(relid REFERENCES pg_class(oid));
+
+/*
+ * Size of fixed part of pg_appendonly tuples, not counting var-length fields
+ * (there are no var-length fields currentl.)
+*/
+#define APPENDONLY_TUPLE_SIZE \
+	 (offsetof(FormData_pg_appendonly,visimapidxid) + sizeof(Oid))
 
 /* ----------------
 *		Form_pg_appendonly corresponds to a pointer to a tuple with
@@ -109,7 +86,7 @@ typedef FormData_pg_appendonly *Form_pg_appendonly;
 { AppendOnlyRelationId, {"majorversion"},			21, -1, 2, 5, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { AppendOnlyRelationId, {"minorversion"},			21, -1, 2, 6, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { AppendOnlyRelationId, {"checksum"},				16, -1, 1, 7, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
-{ AppendOnlyRelationId, {"compresstype"},			25, -1, -1, 8, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ AppendOnlyRelationId, {"compresstype"},			19, -1, NAMEDATALEN, 8, 0, -1, -1, false, 'p', 'c', true, false, false, true, 0 }, \
 { AppendOnlyRelationId, {"columnstore"},			16, -1, 1, 9, 0, -1, -1, true, 'p', 'c', false, false, false, true, 0 }, \
 { AppendOnlyRelationId, {"segrelid"},				26, -1, 4, 10, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
 { AppendOnlyRelationId, {"segidxid"},				26, -1, 4, 11, 0, -1, -1, true, 'p', 'i', false, false, false, true, 0 }, \
@@ -125,32 +102,9 @@ typedef FormData_pg_appendonly *Form_pg_appendonly;
 #define Class_pg_appendonly \
   {"pg_appendonly"}, PG_CATALOG_NAMESPACE, 10293, BOOTSTRAP_SUPERUSERID, 0, \
                AppendOnlyRelationId, DEFAULTTABLESPACE_OID, \
-               25, 10000, 0, 0, 0, 0, false, false, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_pg_appendonly, \
+               25, 10000, 0, 0, false, false, RELKIND_RELATION, RELSTORAGE_HEAP, Natts_pg_appendonly, \
                0, 0, 0, 0, 0, false, false, false, false, FirstNormalTransactionId, {0}, {{{'\0','\0','\0','\0'},{'\0'}}}
 
-
-/*
- * Descriptor of a single AO relation.
- * For now very similar to the catalog row itself but may change in time.
- */
-typedef struct AppendOnlyEntry
-{
-	int		blocksize;
-	int		safefswritesize;
-	int		compresslevel;
-	int		majorversion;
-	int		minorversion;
-	bool	checksum;
-	char*	compresstype;
-    bool    columnstore;
-	Oid     segrelid;
-	Oid     segidxid;
-	Oid     blkdirrelid;
-	Oid     blkdiridxid;
-	Oid     visimaprelid;
-	Oid     visimapidxid;
-	int4    version;
-} AppendOnlyEntry;
 
 /* No initial contents. */
 
@@ -193,69 +147,5 @@ static inline void AORelationVersion_CheckValid(int version)
 )
 
 extern int test_appendonly_version_default;
-
-extern void
-InsertAppendOnlyEntry(Oid relid, 
-					  int blocksize, 
-					  int safefswritesize, 
-					  int compresslevel,
-					  bool checksum,
-                      bool columnstore,
-					  char* compresstype,
-					  Oid segrelid,
-					  Oid segidxid,
-					  Oid blkdirrelid,
-					  Oid blkdiridxid,
-					  Oid visimaprelid,
-					  Oid visimapidxid);
-
-extern AppendOnlyEntry *
-GetAppendOnlyEntry(Oid relid, Snapshot appendOnlyMetaDataSnapshot);
-
-extern AppendOnlyEntry *
-GetAppendOnlyEntryFromTuple(
-	Relation	pg_appendonly_rel,
-	TupleDesc	pg_appendonly_dsc,
-	HeapTuple	tuple,
-	Oid			*relationId);
-
-/*
- * Get the OIDs of the auxiliary relations and their indexes for an appendonly
- * relation.
- *
- * The OIDs will be retrieved only when the corresponding output variable is
- * not NULL.
- */
-void
-GetAppendOnlyEntryAuxOids(Oid relid,
-						  Snapshot appendOnlyMetaDataSnapshot,
-						  Oid *segrelid,
-						  Oid *segidxid,
-						  Oid *blkdirrelid,
-						  Oid *blkdiridxid,
-						  Oid *visimaprelid,
-						  Oid *visimapidxid);
-
-/*
- * Update the segrelid and/or blkdirrelid if the input new values
- * are valid OIDs.
- */
-extern void
-UpdateAppendOnlyEntryAuxOids(Oid relid,
-							 Oid newSegrelid,
-							 Oid newSegidxid,
-							 Oid newBlkdirrelid,
-							 Oid newBlkdiridxid,
-							 Oid newVisimaprelid,
-							 Oid newVisimapidxid);
-
-extern void
-RemoveAppendonlyEntry(Oid relid);
-
-extern void
-TransferAppendonlyEntry(Oid sourceRelId, Oid targetRelId);
-
-extern void
-SwapAppendonlyEntries(Oid entryRelId1, Oid entryRelId2);
 
 #endif   /* PG_APPENDONLY_H */

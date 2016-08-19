@@ -215,8 +215,13 @@
 
 #define GP_WRAP_END	\
 		}	\
+		else \
+		{ \
+			EmitErrorReport(); \
+			FlushErrorState(); \
+			GPOS_RAISE(gpdxl::ExmaGPDB, gpdxl::ExmiGPDBError); \
+		} \
 	}	\
-	GPOS_RAISE(gpdxl::ExmaGPDB, gpdxl::ExmiGPDBError)
 
 using namespace gpos;
 
@@ -2850,9 +2855,6 @@ gpdb::ICdbHashList
 }
 
 // check permissions on range table
-// GPDB_83_MERGE_FIXME: This is a no-op, because we do these permission
-// checks in the executor. I think we can remove this, but I wish someone
-// would confirm.
 void
 gpdb::CheckRTPermissions
 	(
@@ -2861,7 +2863,7 @@ gpdb::CheckRTPermissions
 {
 	GP_WRAP_START;
 	{
-		//ExecCheckRTPerms(plRangeTable);	
+		ExecCheckRTPerms(plRangeTable);
 		return;
 	}
 	GP_WRAP_END;

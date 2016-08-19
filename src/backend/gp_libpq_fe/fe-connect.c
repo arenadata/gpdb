@@ -267,14 +267,6 @@ static const PQconninfoOption PQconninfoOptions[] = {
 		"gp-debug-qeid", "D", 40,
 	offsetof(struct pg_conn, gpqeid)},
 	
-	{"gpqdid", NULL, "", NULL,
-		"gp-debug-qdid", "D", 40,
-	offsetof(struct pg_conn, gpqdid)},
-	
-	{"gpdaid", NULL, "", NULL,
-		"gp-debug-daid", "D", 40,
-	offsetof(struct pg_conn, gpdaid)},
-
 	{"replication", NULL, NULL, NULL,
 		"Replication", "D", 5,
 	offsetof(struct pg_conn, replication)},
@@ -2416,10 +2408,6 @@ makeEmptyPGconn(void)
 	conn->status = CONNECTION_BAD;
 	conn->asyncStatus = PGASYNC_IDLE;
 	conn->xactStatus = PQTRANS_IDLE;
-	conn->QEWriter_HaveInfo = false;
-	conn->QEWriter_DistributedTransactionId = 0;
-	conn->QEWriter_CommandId = 0;
-	conn->QEWriter_Dirty = false;
 	conn->options_valid = false;
 	conn->nonblocking = false;
 	conn->setenv_state = SETENV_STATE_IDLE;
@@ -2526,10 +2514,6 @@ freePGconn(PGconn *conn)
 
     if (conn->gpqeid)			/* CDB */
         free(conn->gpqeid);
-    if (conn->gpqdid)			/* CDB */
-        free(conn->gpqdid);
-    if (conn->gpdaid)			/* CDB */
-        free(conn->gpdaid);
     if (conn->qe_version)		/* CDB */
         free(conn->qe_version);
 

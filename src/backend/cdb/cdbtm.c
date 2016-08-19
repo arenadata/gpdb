@@ -24,6 +24,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbdisp_dtx.h"
+#include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbdtxcontextinfo.h"
 
 #include "cdb/cdbvars.h"
@@ -64,7 +65,7 @@ extern struct Port *MyProcPort;
 static LWLockId shmControlLock;
 static volatile bool *shmTmRecoverred;
 static volatile DistributedTransactionTimeStamp *shmDistribTimeStamp;
-static volatile DistributedTransactionId *shmGIDSeq;
+static volatile DistributedTransactionId *shmGIDSeq = NULL;
 static volatile int *shmNumGxacts;
 static int *shmCurrentPhase1Count;
 
@@ -87,7 +88,6 @@ static TMGXACT **shmGxactArray;
  */
 static TMGXACT *currentGxact;
 
-static bool duringRecovery = false;
 static int	max_tm_gxacts = 100;
 
 static int	redoFileFD = -1;
@@ -157,7 +157,6 @@ static void ReplayRedoFromUtilityMode(void);
 static void RemoveRedoUtilityModeFile(void);
 static void performDtxProtocolCommitPrepared(const char *gid, bool raiseErrorIfNotFound);
 static void performDtxProtocolAbortPrepared(const char *gid, bool raiseErrorIfNotFound);
-static DistributedTransactionId determineSegmentMaxDistributedXid(void);
 
 extern void resetSessionForPrimaryGangLoss(bool resetSession);
 extern void CheckForResetSession(void);
@@ -628,15 +627,6 @@ isCurrentDtxTwoPhase(void)
 	}
 }
 
-/*
- * When cleaning up FTS needs to know if there is a transaction active.
- */
-bool
-isCurrentDtxActive(void)
-{
-	return (currentGxact != NULL);
-}
-
 DtxState
 getCurrentDtxState(void)
 {
@@ -701,13 +691,7 @@ doPrepareTransaction(void)
 	setCurrentGxactState( DTX_STATE_PREPARED );
 	releaseTmLock();
 
-#ifdef FAULT_INJECTOR
-		FaultInjector_InjectFaultIfSet(
-									   DtmBroadcastPrepare,
-									   DDLNotSpecified,
-									   "",	// databaseName
-									   ""); // tableName
-#endif
+	SIMPLE_FAULT_INJECTOR(DtmBroadcastPrepare);
 
 	elog(DTM_DEBUG5, "doPrepareTransaction leaving in state = %s", DtxStateToString(currentGxact->state));
 }
@@ -769,13 +753,8 @@ doNotifyingCommitPrepared(void)
 		elog(PANIC, "Distribute transaction identifier too long (%d)",
 			 (int)strlen(currentGxact->gid));
 
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet(
-								   DtmBroadcastCommitPrepared,
-								   DDLNotSpecified,
-								   "",	// databaseName
-								   ""); // tableName
-#endif
+	SIMPLE_FAULT_INJECTOR(DtmBroadcastCommitPrepared);
+
 	succeeded = doDispatchDtxProtocolCommand(DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, /* flags */ 0,
 											 currentGxact->gid, currentGxact->gxid,
 											 &badGangs, /* raiseError */ false,
@@ -953,13 +932,7 @@ doNotifyingAbort(void)
 			 abortString, currentGxact->gid);
 	}
 
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet(
-								   DtmBroadcastAbortPrepared,
-								   DDLNotSpecified,
-								   "",	// databaseName
-								   ""); // tableName
-#endif
+	SIMPLE_FAULT_INJECTOR(DtmBroadcastAbortPrepared);
 
 	/*
 	 * Global locking order: ProcArrayLock then DTM lock.
@@ -1558,13 +1531,8 @@ initTM(void)
 		 * and then restores it back.
 		 */
 		olduser = ChangeToSuperuser();
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet(
-		DtmInit,
-		DDLNotSpecified,
-		"", //databaseName,
-		""); //tableName;
-#endif
+
+		SIMPLE_FAULT_INJECTOR(DtmInit);
 
 		oldcontext = CurrentMemoryContext;
 		succeeded = false;
@@ -1900,12 +1868,6 @@ releaseTmLock(void)
 	if (--ControlLockCount == 0)
 		LWLockRelease(shmControlLock);
 
-}
-
-bool
-isTMInRecovery(void)
-{
-	return duringRecovery;
 }
 
 /*
@@ -2259,16 +2221,16 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	if (errbuf.len > 0)
 	{
 		ereport((raiseError ? ERROR : LOG),
-				(errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, dtxProtocolCommandStr),
+				(errmsg("DTM error (gathered results from cmd '%s')", dtxProtocolCommandStr),
 				 errdetail("%s", errbuf.data)));
 		return false;
 	}
 
-	Assert(results != NULL);
 	if (results == NULL)
 	{
 		numOfFailed++; /* If we got no results, we need to treat it as an error! */
 	}
+
 	for (i = 0; i < resultCount; i++)
 	{
 		char			*cmdStatus;
@@ -2304,7 +2266,6 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 	/* discard the errbuf text */
 	pfree(errbuf.data);
 
-	/* Now we clean up the results array. */
 	for (i = 0; i < resultCount; i++)
 		PQclear(results[i]);
 	free(results);
@@ -2314,40 +2275,28 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand, int flags,
 
 
 bool
-dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError)
+dispatchDtxCommand(const char *cmd)
 {
-	int		i, resultCount, numOfFailed = 0;
+	int		i, numOfFailed = 0;
 
-	struct pg_result **results = NULL;
-	StringInfoData errbuf;
+	CdbPgResults cdb_pgresults = {NULL, 0};
 
 	elog(DTM_DEBUG5, "dispatchDtxCommand: '%s'", cmd);
 
-	initStringInfo(&errbuf);
-	results = cdbdisp_dispatchRMCommand(cmd, withSnapshot,
-										&errbuf, &resultCount);
+	CdbDispatchCommand(cmd, DF_NONE, &cdb_pgresults);
 
-	if (errbuf.len > 0)
+	if (cdb_pgresults.numResults == 0)
 	{
-		ereport((raiseError ? ERROR : WARNING),
-				(errmsg("DTM error (gathered %d results from cmd '%s')", resultCount, cmd),
-				 errdetail("%s", errbuf.data)));
-		return false;
+		return false; /* If we got no results, we need to treat it as an error! */
 	}
 
-	Assert(results != NULL);
-	if (results == NULL)
-	{
-		numOfFailed++; /* If we got no results, we need to treat it as an error! */
-	}
-
-	for (i = 0; i < resultCount; i++)
+	for (i = 0; i < cdb_pgresults.numResults; i++)
 	{
 		char			*cmdStatus;
 		ExecStatusType	resultStatus;
 
 		/* note: PQresultStatus() is smart enough to deal with results[i] == NULL */
-		resultStatus = PQresultStatus(results[i]);
+		resultStatus = PQresultStatus(cdb_pgresults.pg_results[i]);
 		if (resultStatus != PGRES_COMMAND_OK &&
 			resultStatus != PGRES_TUPLES_OK)
 		{
@@ -2362,7 +2311,7 @@ dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError)
 			 * status, otherwise we could issue a COMMIT when we don't want
 			 * to!
 			 */
-			cmdStatus = PQcmdStatus(results[i]);
+			cmdStatus = PQcmdStatus(cdb_pgresults.pg_results[i]);
 
 			elog(DEBUG3, "DTM: status message cmd '%s' [%d] result '%s'", cmd, i, cmdStatus);
 			if (strncmp(cmdStatus, cmd, strlen(cmdStatus)) != 0)
@@ -2373,13 +2322,7 @@ dispatchDtxCommand(const char *cmd, bool withSnapshot, bool raiseError)
 		}
 	}
 
-	/* discard the errbuf text */
-	pfree(errbuf.data);
-
-	/* Now we clean up the results array. */
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-	free(results);
+	cdbdisp_clearCdbPgResults(&cdb_pgresults);
 
 	return (numOfFailed == 0);
 }
@@ -2402,7 +2345,7 @@ initGxact(TMGXACT * gxact)
 
 	gxact->explicitBeginRemembered = false;
 
-	LocalDistribXactRef_Init(&gxact->localDistribXactRef);
+	gxact->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
 
     gxact->xminDistributedSnapshot = 0;
 
@@ -2523,7 +2466,7 @@ createDtxSnapshot(
 	 * ReadNewTransactionId(), the distributed-xmax of a transaction
 	 * is the last distributed-xmax available
 	 */
-	xmax = LocalDistribXact_GetMaxDistributedXid();
+	xmax = getMaxDistributedXid();
 	count = 0;
 	inProgressEntryArray = distribSnapshotWithLocalMapping->inProgressEntryArray;
 
@@ -2733,7 +2676,7 @@ createDtx(DistributedTransactionId		*distribXid,
 			*shmDistribTimeStamp,
 			gxact->gxid,
 			&gxact->localXid,
-			&gxact->localDistribXactRef);
+			&gxact->localDistribXactData);
 
 		*distribXid = gxact->gxid;
 		*localXid = gxact->localXid;
@@ -2783,8 +2726,7 @@ releaseGxact_UnderLocks(void)
 	/*
 	 * Protected by ProcArrayLock.
 	 */
-	LocalDistribXactRef_ReleaseUnderLock(
-		&currentGxact->localDistribXactRef);
+	currentGxact->localDistribXactData.state = LOCALDISTRIBXACT_STATE_NONE;
 
 	/* find slot of current transaction */
 
@@ -3062,11 +3004,23 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 			(errmsg("reached limit of %u global transactions per start", LastDistributedTransactionId)));
 	}
 
-	*gxid = (*shmGIDSeq)++;
+	*gxid = ++(*shmGIDSeq);
 	sprintf(gid, "%u-%.10u", *shmDistribTimeStamp, (*gxid));
 	if (strlen(gid) >= TMGIDSIZE)
 		elog(PANIC, "Distribute transaction identifier too long (%d)",
 			 (int)strlen(gid));
+}
+
+/*
+ * Return the highest global transaction id that has been generated.
+ */
+DistributedTransactionId
+getMaxDistributedXid(void)
+{
+	if (!shmGIDSeq)
+		return 0;
+
+	return *shmGIDSeq;
 }
 
 /*
@@ -3088,8 +3042,6 @@ generateGID(char *gid, DistributedTransactionId *gxid)
 static void
 recoverTM(void)
 {
-	DistributedTransactionId segmentMaxDistributedTransactionId = 0;
-
 	/* intialize fts sync count */
 	verifyFtsSyncCount();
 
@@ -3138,56 +3090,10 @@ recoverTM(void)
 
 	/* finished recovery successfully. */
 
-	segmentMaxDistributedTransactionId = determineSegmentMaxDistributedXid();
-	if (segmentMaxDistributedTransactionId >= *shmGIDSeq)
-	{
-		*shmGIDSeq = segmentMaxDistributedTransactionId + 1;
-	}
-
-	elog(LOG, "Next distributed transaction id is %u", *shmGIDSeq);
+	*shmGIDSeq = 1;
 
 	*shmDtmStarted = true;
 	elog(LOG, "DTM Started");
-}
-
-static bool deferredRecoveryActive=false;
-
-/*
- * When running in readonly-mode, we may wind up in a state where we've deferred
- * recovery waiting for a segment to come online.
- */
-void
-cdbtm_performDeferredRecovery(void)
-{
-	if (deferredRecoveryActive)
-		return;
-
-	if (*shmDtmRecoveryDeferred)
-	{
-		getTmLock();
-		if (*shmDtmRecoveryDeferred)
-		{
-			deferredRecoveryActive=true;
-			PG_TRY();
-			{
-				recoverInDoubtTransactions();
-
-				deferredRecoveryActive=false;
-			}
-			PG_CATCH();
-			{
-				deferredRecoveryActive=false;
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
-
-			*shmDtmRecoveryDeferred = false;
-			elog(NOTICE, "Releasing segworker groups for deferred recovery.");
-			disconnectAndDestroyAllGangs(true);
-		}
-		releaseTmLock();
-		CheckForResetSession();
-	}
 }
 
 /* recoverInDoubtTransactions:
@@ -3351,93 +3257,6 @@ recoverInDoubtTransactions(void)
 }
 
 /*
- * determineSegmentMaxDistributedXid:
- *
- * Since we don't know whether the Segment Databases were left over from
- * an earlier start or left over from a postmaster system reset due to
- * a server process failure, we must go out and determine the maximum
- * distributed transaction id currently in-use.
- */
-static DistributedTransactionId
-determineSegmentMaxDistributedXid(void)
-{
-	DistributedTransactionId max = 0;
-	int		i;
-	int 	resultCount = 0;
-	struct pg_result **results = NULL;
-	StringInfoData buffer;
-	StringInfoData errbuf;
-
-#define FUNCTION_DOES_NOT_EXIST "function gp_max_distributed_xid() does not exist"
-
-	initStringInfo(&buffer);
-
-	appendStringInfo(&buffer, "select gp_max_distributed_xid()");
-
-	initStringInfo(&errbuf);
-
-	results = cdbdisp_dispatchRMCommand(buffer.data, /* Snapshot */ false,
-		                                &errbuf, &resultCount);
-
-	if (errbuf.len > 0)
-	{
-		int cmplen = strlen(FUNCTION_DOES_NOT_EXIST);
-
-		if (strlen(errbuf.data) >= cmplen &&
-			strncmp(errbuf.data, FUNCTION_DOES_NOT_EXIST, cmplen ) == 0)
-		{
-			elog(LOG, "The function gp_max_distributed_xid is missing on one or more segments.  The beta 3.0 upgrade steps are necessary");
-
-		}
-		else
-		{
-			ereport(ERROR,
-					(errmsg("gp_max_distributed_xid error (gathered %d results from cmd '%s')", resultCount, buffer.data),
-					 errdetail("%s", errbuf.data)));
-		}
-	}
-	else
-	{
-		elog(DTM_DEBUG5, "determineSegmentMaxDistributedXid resultCount = %d",resultCount);
-
-		for (i = 0; i < resultCount; i++)
-		{
-			if (PQresultStatus(results[i]) != PGRES_TUPLES_OK)
-			{
-				elog(ERROR, "gp_max_distributed_xid: resultStatus not tuples_Ok");
-			}
-			else
-			{
-				/*
-				 * Due to funkyness in the current dispatch agent code, instead of 1 result
-				 * per QE with 1 row each, we can get back 1 result per dispatch agent, with
-				 * one row per QE controlled by that agent.
-				 */
-				int j;
-				for (j = 0; j < PQntuples(results[i]); j++)
-				{
-					DistributedTransactionId temp = 0;
-					temp  =  atol(PQgetvalue(results[i], j, 0));
-					elog(DTM_DEBUG5, "determineSegmentMaxDistributedXid value = %d",temp);
-					if (temp  > max)
-						max = temp;
-				}
-			}
-		}
-	}
-
-	pfree(errbuf.data);
-
-	for (i = 0; i < resultCount; i++)
-		PQclear(results[i]);
-	free(results);
-
-	return max;
-}
-
-
-
-/*
  * gatherRMInDoubtTransactions:
  * Builds a hashtable of all of the in-doubt transactions that exist on the
  * segment databases.  The hashtable basically just serves as a single list
@@ -3448,9 +3267,7 @@ determineSegmentMaxDistributedXid(void)
 static HTAB *
 gatherRMInDoubtTransactions(void)
 {
-	PGresult  **pgresultSets;
-	int			nresultSets;
-	StringInfoData errmsgbuf;
+	CdbPgResults cdb_pgresults = {NULL, 0};
 	const char *cmdbuf = "select gid from pg_prepared_xacts";
 	PGresult   *rs;
 
@@ -3463,32 +3280,13 @@ gatherRMInDoubtTransactions(void)
 				rows;
 	bool		found;
 
-	initStringInfo(&errmsgbuf);
-
 	/* call to all QE to get in-doubt transactions */
-	pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, /* withSnapshot */false,
-											 &errmsgbuf, &nresultSets);
-
-	/* display error messages */
-	if (errmsgbuf.len > 0)
-	{
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-					errmsg("Unable to collect list of prepared transactions "
-						   "from all segment databases."),
-						errdetail("%s", errmsgbuf.data)));
-
-		pfree(errmsgbuf.data);
-
-		/* need recovery */
-		return NULL;
-	}
-
-	pfree(errmsgbuf.data);
+	CdbDispatchCommand(cmdbuf, DF_NONE, &cdb_pgresults);
 
 	/* If any result set is nonempty, there are in-doubt transactions. */
-	for (i = 0; i < nresultSets; i++)
+	for (i = 0; i < cdb_pgresults.numResults; i++)
 	{
-		rs  = pgresultSets[i];
+		rs  = cdb_pgresults.pg_results[i];
 		rows = PQntuples(rs);
 
 		for (j = 0; j < rows; j++)
@@ -3534,9 +3332,7 @@ gatherRMInDoubtTransactions(void)
 		}
 	}
 
-	for (i = 0; i < nresultSets; i++)
-		PQclear(pgresultSets[i]);
-	free(pgresultSets);
+	cdbdisp_clearCdbPgResults(&cdb_pgresults);
 
 	return htab;
 }
@@ -3662,7 +3458,11 @@ void verify_shared_snapshot_ready(void)
 {
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDoCommand("set gp_write_shared_snapshot=true", true, true);
+		CdbDispatchCommand("set gp_write_shared_snapshot=true",
+					DF_CANCEL_ON_ERROR |
+					DF_WITH_SNAPSHOT |
+					DF_NEED_TWO_PHASE,
+					NULL);
 
 		dumpSharedLocalSnapshot_forCursor();
 
@@ -4163,23 +3963,10 @@ sendDtxExplicitBegin(void)
 	 * dispatch a DTX command, in the event of an error, this call
 	 * will either exit via elog()/ereport() or return false
 	 */
-	if (!dispatchDtxCommand(cmdbuf, false, /* raiseError */ false))
+	if (!dispatchDtxCommand(cmdbuf))
 	{
 		ereport(ERROR, (errmsg("Global transaction BEGIN failed for gid = \"%s\" due to error",
 							   currentGxact->gid)));
-	}
-}
-
-int dtxCurrentPhase1Count(void)
-{
-	if (shmDtmStarted == NULL || !*shmDtmStarted)
-	{
-		return 0;
-	}
-	else
-	{
-		Assert(shmCurrentPhase1Count != NULL);
-		return *shmCurrentPhase1Count;
 	}
 }
 

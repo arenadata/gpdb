@@ -14,6 +14,7 @@
 #define GPCODEGEN_EXECVARIABLELIST_CODEGEN_H_
 
 #include "codegen/codegen_wrapper.h"
+#include "codegen/slot_getattr_codegen.h"
 #include "codegen/base_codegen.h"
 
 namespace gpcodegen {
@@ -35,12 +36,15 @@ class ExecVariableListCodegen: public BaseCodegen<ExecVariableListFn> {
    * 			corresponding regular version.
    *
    **/
-  explicit ExecVariableListCodegen(ExecVariableListFn regular_func_ptr,
+  explicit ExecVariableListCodegen(CodegenManager* manager,
+                                   ExecVariableListFn regular_func_ptr,
                                    ExecVariableListFn* ptr_to_regular_func_ptr,
                                    ProjectionInfo* proj_info,
                                    TupleTableSlot* slot);
 
   virtual ~ExecVariableListCodegen() = default;
+
+  bool InitDependencies() override;
 
  protected:
   /**
@@ -73,14 +77,17 @@ class ExecVariableListCodegen: public BaseCodegen<ExecVariableListFn> {
    *  (2) Variable length attributes
    *  (3) Attributes passed by reference
    *
-   * If at execution time, we see any of the above types of attributes, we fall backs to
-   * the regular function.
+   * If at execution time, we see any of the above types of attributes,
+   * we fall backs to the regular function.
    */
-  bool GenerateCodeInternal(gpcodegen::CodegenUtils* codegen_utils) final;
+  bool GenerateCodeInternal(gpcodegen::GpCodegenUtils* codegen_utils) final;
 
  private:
   ProjectionInfo* proj_info_;
   TupleTableSlot* slot_;
+
+  int max_attr_;
+  SlotGetAttrCodegen* slot_getattr_codegen_;
 
 
   static constexpr char kExecVariableListPrefix[] = "ExecVariableList";
@@ -91,7 +98,7 @@ class ExecVariableListCodegen: public BaseCodegen<ExecVariableListFn> {
    * @param codegen_utils Utility to ease the code generation process.
    * @return true on successful generation.
    **/
-  bool GenerateExecVariableList(gpcodegen::CodegenUtils* codegen_utils);
+  bool GenerateExecVariableList(gpcodegen::GpCodegenUtils* codegen_utils);
 };
 
 /** @} */

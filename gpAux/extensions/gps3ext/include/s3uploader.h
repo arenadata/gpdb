@@ -35,17 +35,20 @@ struct Uploader {
     // pthread_t* threads;
 };
 
-const char *GetUploadId(const char *host, const char *bucket,
-                        const char *obj_name, const S3Credential &cred);
+const char *GetUploadId(const char *host, const char *bucket, const char *obj_name,
+                        const S3Credential &cred);
 
-const char *PartPutS3Object(const char *host, const char *bucket,
-                            const char *obj_name, const S3Credential &cred,
-                            const char *data, uint64_t data_size,
+const char *PartPutS3Object(const char *host, const char *bucket, const char *obj_name,
+                            const S3Credential &cred, const char *data, uint64_t data_size,
                             uint64_t part_number, const char *upload_id);
 
-bool CompleteMultiPutS3(const char *host, const char *bucket,
-                        const char *obj_name, const char *upload_id,
-                        const char **etag_array, uint64_t count,
+bool CompleteMultiPutS3(const char *host, const char *bucket, const char *obj_name,
+                        const char *upload_id, const char **etag_array, uint64_t count,
                         const S3Credential &cred);
+struct XMLInfo {
+    xmlParserCtxtPtr ctxt;
+};
+
+uint64_t XMLParserCallback(void *contents, uint64_t size, uint64_t nmemb, void *userp);
 
 #endif

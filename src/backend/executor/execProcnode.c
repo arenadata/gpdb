@@ -163,6 +163,12 @@ static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result
   			        void           *context,
   			        int flags);
 
+ static void
+ EnrollQualList(PlanState* result);
+
+ static void
+ EnrollProjInfoTargetList(PlanState* result, ProjectionInfo* ProjInfo);
+
 /*
  * setSubplanSliceId
  *   Set the slice id info for the given subplan.
@@ -337,6 +343,15 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			{
 			result = (PlanState *) ExecInitTableScan((TableScan *) node,
 													 estate, eflags);
+			/*
+			 * Enroll targetlist & quals' expression evaluation functions
+			 * in codegen_manager
+			 */
+			EnrollQualList(result);
+			if (NULL !=result)
+			{
+			  EnrollProjInfoTargetList(result, result->ps_ProjInfo);
+			}
 			}
 			END_MEMORY_ACCOUNT();
 			break;
@@ -574,6 +589,20 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 			{
 			result = (PlanState *) ExecInitAgg((Agg *) node,
 											   estate, eflags);
+			/*
+			 * Enroll targetlist & quals' expression evaluation functions
+			 * in codegen_manager
+			 */
+			EnrollQualList(result);
+			if (NULL != result)
+			{
+			  AggState* aggstate = (AggState*)result;
+			  for (int aggno = 0; aggno < aggstate->numaggs; aggno++)
+			  {
+			    AggStatePerAgg peraggstate = &aggstate->peragg[aggno];
+			    EnrollProjInfoTargetList(result, peraggstate->evalproj);
+			  }
+			}
 			}
 			END_MEMORY_ACCOUNT();
 			break;
@@ -742,19 +771,114 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 	if (result != NULL)
 	{
-		enroll_ExecQual_codegen(ExecQual,
-	          &result->ExecQual_gen_info.ExecQual_fn, result);
-
 		SAVE_EXECUTOR_MEMORY_ACCOUNT(result, curMemoryAccount);
 		result->CodegenManager = CodegenManager;
-		CodeGeneratorManagerGenerateCode(CodegenManager);
-		CodeGeneratorManagerPrepareGeneratedFunctions(CodegenManager);
+		/*
+		 * Generate code only if current node is not alien or
+		 * if it is from 'explain codegen` / `explain analyze codegen` query
+		 */
+		bool isExplainCodegenOnMaster = (Gp_segment == -1) &&
+				(eflags & EXEC_FLAG_EXPLAIN_CODEGEN) &&
+				(eflags & EXEC_FLAG_EXPLAIN_ONLY);
+
+		bool isExplainAnalyzeCodegenOnMaster = (Gp_segment == -1) &&
+				(eflags & EXEC_FLAG_EXPLAIN_CODEGEN) &&
+				!(eflags & EXEC_FLAG_EXPLAIN_ONLY);
+
+		if (!isAlienPlanNode ||
+				isExplainAnalyzeCodegenOnMaster ||
+				isExplainCodegenOnMaster)
+		{
+			CodeGeneratorManagerGenerateCode(CodegenManager);
+			if (isExplainAnalyzeCodegenOnMaster ||
+					isExplainCodegenOnMaster)
+			{
+				CodeGeneratorManagerAccumulateExplainString(CodegenManager);
+			}
+			if (!isExplainCodegenOnMaster)
+			{
+				CodeGeneratorManagerPrepareGeneratedFunctions(CodegenManager);
+			}
+		}
 	}
 	}
 	END_CODE_GENERATOR_MANAGER();
 
 	return result;
 }
+
+/* ----------------------------------------------------------------
+ *    EnrollQualList
+ *
+ *    Enroll Qual List's expr state from PlanState for codegen.
+ * ----------------------------------------------------------------
+ */
+void
+EnrollQualList(PlanState* result)
+{
+#ifdef USE_CODEGEN
+	if (NULL == result ||
+	    NULL == result->qual)
+	{
+		return;
+	}
+
+	ListCell *l;
+	foreach(l, result->qual)
+	{
+	  ExprState *exprstate = (ExprState*) lfirst(l);
+	  enroll_ExecEvalExpr_codegen(exprstate->evalfunc,
+	                              &exprstate->evalfunc,
+	                              exprstate,
+	                              result->ps_ExprContext,
+	                              result
+	                              );
+	}
+
+#endif
+}
+
+/* ----------------------------------------------------------------
+ *    EnrollProjInfoTargetList
+ *
+ *    Enroll Targetlist from ProjectionInfo to Codegen
+ * ----------------------------------------------------------------
+ */
+void
+EnrollProjInfoTargetList(PlanState* result, ProjectionInfo* ProjInfo)
+{
+#ifdef USE_CODEGEN
+  if (NULL == ProjInfo ||
+      NULL == ProjInfo->pi_targetlist)
+  {
+    return;
+  }
+  if (ProjInfo->pi_isVarList) {
+    /*
+     * Skip generating expression evaluation for VAR elements in the target
+     * list since ExecVariableList will take of that
+     * TODO(shardikar) Re-evaluate this condition once we codegen ExecTargetList
+     */
+    return;
+  }
+
+  ListCell *l;
+  foreach(l, ProjInfo->pi_targetlist)
+  {
+    GenericExprState *gstate = (GenericExprState *) lfirst(l);
+    if (NULL == gstate->arg ||
+        NULL == gstate->arg->evalfunc) {
+      continue;
+    }
+    enroll_ExecEvalExpr_codegen(gstate->arg->evalfunc,
+                                &gstate->arg->evalfunc,
+                                gstate->arg,
+                                ProjInfo->pi_exprContext,
+                                result);
+  }
+#endif
+}
+
 
 /* ----------------------------------------------------------------
  *		ExecSliceDependencyNode
@@ -814,55 +938,6 @@ ExecProcNode(PlanState *node)
 	START_MEMORY_ACCOUNT(node->memoryAccount);
 	{
 
-#ifndef WIN32
-	static void *ExecJmpTbl[] = {
-		&&Exec_Jmp_Result,
-		&&Exec_Jmp_Append,
-		&&Exec_Jmp_Sequence,
-		&&Exec_Jmp_BitmapAnd,
-		&&Exec_Jmp_BitmapOr,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_TableScan,
-		&&Exec_Jmp_DynamicTableScan,
-		&&Exec_Jmp_ExternalScan,
-		&&Exec_Jmp_IndexScan,
-		&&Exec_Jmp_DynamicIndexScan,
-		&&Exec_Jmp_BitmapIndexScan,
-		&&Exec_Jmp_BitmapHeapScan,
-		&&Exec_Jmp_BitmapAppendOnlyScan,
-		&&Exec_Jmp_BitmapTableScan,
-		&&Exec_Jmp_TidScan,
-		&&Exec_Jmp_SubqueryScan,
-		&&Exec_Jmp_FunctionScan,
-		&&Exec_Jmp_TableFunctionScan,
-		&&Exec_Jmp_ValuesScan,
-		&&Exec_Jmp_NestLoop,
-		&&Exec_Jmp_MergeJoin,
-		&&Exec_Jmp_HashJoin,
-		&&Exec_Jmp_Material,
-		&&Exec_Jmp_Sort,
-		&&Exec_Jmp_Agg,
-		&&Exec_Jmp_Unique,
-		&&Exec_Jmp_Hash,
-		&&Exec_Jmp_SetOp,
-		&&Exec_Jmp_Limit,
-		&&Exec_Jmp_Motion,
-		&&Exec_Jmp_ShareInputScan,
-		&&Exec_Jmp_Window,
-		&&Exec_Jmp_Repeat,
-		&&Exec_Jmp_DML,
-		&&Exec_Jmp_SplitUpdate,
-		&&Exec_Jmp_RowTrigger,
-		&&Exec_Jmp_AssertOp,
-		&&Exec_Jmp_PartitionSelector,
-		&&Exec_Jmp_CustomScan
-	};
-
-	COMPILE_ASSERT((T_Plan_End - T_Plan_Start) == (T_PlanState_End - T_PlanState_Start));
-	COMPILE_ASSERT(ARRAY_SIZE(ExecJmpTbl) == (T_PlanState_End - T_PlanState_Start));
-
 	CHECK_FOR_INTERRUPTS();
 
 	/*
@@ -889,184 +964,7 @@ ExecProcNode(PlanState *node)
 
 	if(!node->fHadSentGpmon)
 		CheckSendPlanStateGpmonPkt(node);
-
-	Assert(nodeTag(node) >= T_PlanState_Start && nodeTag(node) < T_PlanState_End);
-	goto *ExecJmpTbl[nodeTag(node) - T_PlanState_Start];
-
-Exec_Jmp_Result:
-	result = ExecResult((ResultState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Append:
-	result = ExecAppend((AppendState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Sequence:
-	result = ExecSequence((SequenceState *) node);
-	goto Exec_Jmp_Done;
-
-	/* These two does not yield tuple */
-Exec_Jmp_BitmapAnd:
-Exec_Jmp_BitmapOr:
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_TableScan:
-	result = ExecTableScan((TableScanState *)node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_DynamicTableScan:
-	result = ExecDynamicTableScan((DynamicTableScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_ExternalScan:
-	result = ExecExternalScan((ExternalScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_IndexScan:
-	result = ExecIndexScan((IndexScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_DynamicIndexScan:
-	result = ExecDynamicIndexScan((DynamicIndexScanState *) node);
-	goto Exec_Jmp_Done;
-	/* BitmapIndexScanState does not yield tuples */
-Exec_Jmp_BitmapIndexScan:
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_BitmapHeapScan:
-	result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_BitmapAppendOnlyScan:
-	result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_BitmapTableScan:
-	result = ExecBitmapTableScan((BitmapTableScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_TidScan:
-	result = ExecTidScan((TidScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_SubqueryScan:
-	result = ExecSubqueryScan((SubqueryScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_FunctionScan:
-	result = ExecFunctionScan((FunctionScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_CustomScan:
-	result = ExecCustomScan((CustomScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_TableFunctionScan:
-	result = ExecTableFunction((TableFunctionState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_ValuesScan:
-	result = ExecValuesScan((ValuesScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_NestLoop:
-	result = ExecNestLoop((NestLoopState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_MergeJoin:
-	result = ExecMergeJoin((MergeJoinState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_HashJoin:
-	result = ExecHashJoin((HashJoinState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Material:
-	result = ExecMaterial((MaterialState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Sort:
-	result = ExecSort((SortState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Agg:
-	result = ExecAgg((AggState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Unique:
-	result = ExecUnique((UniqueState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Hash:
-	result = ExecHash((HashState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_SetOp:
-	result = ExecSetOp((SetOpState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Limit:
-	result = ExecLimit((LimitState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Motion:
-	result = ExecMotion((MotionState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_ShareInputScan:
-	result = ExecShareInputScan((ShareInputScanState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Window:
-	result = ExecWindow((WindowState *) node);
-	goto Exec_Jmp_Done;
-Exec_Jmp_Repeat:
-	result = ExecRepeat((RepeatState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_DML:
-	result = ExecDML((DMLState *) node);
-	goto Exec_Jmp_Done;
 	
-Exec_Jmp_SplitUpdate:
-	result = ExecSplitUpdate((SplitUpdateState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_RowTrigger:
-	result = ExecRowTrigger((RowTriggerState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_AssertOp:
-	result = ExecAssertOp((AssertOpState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_PartitionSelector:
-	result = ExecPartitionSelector((PartitionSelectorState *) node);
-	goto Exec_Jmp_Done;
-
-Exec_Jmp_Done:
-	if (node->instrument)
-		InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
-
-	if(node->plan)
-		PG_TRACE5(execprocnode__exit, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
-#else
-
-	CHECK_FOR_INTERRUPTS();
-
-	if (QueryFinishPending && !IsA(node, MotionState))
-		return NULL;
-
-#ifdef CDB_TRACE_EXECUTOR
-	ExecCdbTraceNode(node, true, NULL);
-#endif   /* CDB_TRACE_EXECUTOR */
-
-	if (node->chgParam != NULL) /* something changed */
-		ExecReScan(node, NULL); /* let ReScan handle this */
-
-	if (node->instrument)
-		InstrStartNode(node->instrument);
-
 	switch (nodeTag(node))
 	{
 			/*
@@ -1080,6 +978,10 @@ Exec_Jmp_Done:
 			result = ExecAppend((AppendState *) node);
 			break;
 
+		case T_SequenceState:
+			result = ExecSequence((SequenceState *) node);
+			break;
+
 			/* BitmapAndState does not yield tuples */
 
 			/* BitmapOrState does not yield tuples */
@@ -1087,24 +989,38 @@ Exec_Jmp_Done:
 			/*
 			 * scan nodes
 			 */
-		case T_SeqScanState:
-		case T_AppendOnlyScanState:
-		case T_AOCSScanState:
-			insist_log(false, "SeqScan/AppendOnlyScan/AOCSScan are defunct");
+		case T_TableScanState:
+			result = ExecTableScan((TableScanState *)node);
+			break;
+
+		case T_DynamicTableScanState:
+			result = ExecDynamicTableScan((DynamicTableScanState *) node);
+			break;
+
+		case T_ExternalScanState:
+			result = ExecExternalScan((ExternalScanState *) node);
 			break;
 
 		case T_IndexScanState:
 			result = ExecIndexScan((IndexScanState *) node);
 			break;
 
-		case T_ExternalScanState:
-			result = ExecExternalScan((ExternalScanState *) node);
+		case T_DynamicIndexScanState:
+			result = ExecDynamicIndexScan((DynamicIndexScanState *) node);
 			break;
-			
+
 			/* BitmapIndexScanState does not yield tuples */
 
 		case T_BitmapHeapScanState:
 			result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
+			break;
+
+		case T_BitmapAppendOnlyScanState:
+			result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
+			break;
+
+		case T_BitmapTableScanState:
+			result = ExecBitmapTableScan((BitmapTableScanState *) node);
 			break;
 
 		case T_TidScanState:
@@ -1131,10 +1047,6 @@ Exec_Jmp_Done:
 			result = ExecValuesScan((ValuesScanState *) node);
 			break;
 
-		case T_BitmapAppendOnlyScanState:
-			result = ExecBitmapAppendOnlyScan((BitmapAppendOnlyScanState *) node);
-			break;
-			
 			/*
 			 * join nodes
 			 */
@@ -1151,13 +1063,6 @@ Exec_Jmp_Done:
 			break;
 
 			/*
-			 * shareinput nodes
-			 */
-		case T_ShareInputScanState:
-			result = ExecShareInputScan((ShareInputScanState *) node);
-			break;
-
-			/*
 			 * materialization nodes
 			 */
 		case T_MaterialState:
@@ -1168,16 +1073,8 @@ Exec_Jmp_Done:
 			result = ExecSort((SortState *) node);
 			break;
 
-		case T_GroupState:
-			result = ExecGroup((GroupState *) node);
-			break;
-
 		case T_AggState:
 			result = ExecAgg((AggState *) node);
-			break;
-
-		case T_WindowState:
-			result = ExecWindow((WindowState *) node);
 			break;
 
 		case T_UniqueState:
@@ -1200,6 +1097,38 @@ Exec_Jmp_Done:
 			result = ExecMotion((MotionState *) node);
 			break;
 
+		case T_ShareInputScanState:
+			result = ExecShareInputScan((ShareInputScanState *) node);
+			break;
+
+		case T_WindowState:
+			result = ExecWindow((WindowState *) node);
+			break;
+
+		case T_RepeatState:
+			result = ExecRepeat((RepeatState *) node);
+			break;
+
+		case T_DMLState:
+			result = ExecDML((DMLState *) node);
+			break;
+
+		case T_SplitUpdateState:
+			result = ExecSplitUpdate((SplitUpdateState *) node);
+			break;
+
+		case T_RowTriggerState:
+			result = ExecRowTrigger((RowTriggerState *) node);
+			break;
+
+		case T_AssertOpState:
+			result = ExecAssertOp((AssertOpState *) node);
+			break;
+
+		case T_PartitionSelectorState:
+			result = ExecPartitionSelector((PartitionSelectorState *) node);
+			break;
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;
@@ -1208,7 +1137,10 @@ Exec_Jmp_Done:
 
 	if (node->instrument)
 		InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
-#endif 
+
+	if (node->plan)
+		PG_TRACE5(execprocnode__exit, Gp_segment, currentSliceId, nodeTag(node), node->plan->plan_node_id, node->plan->plan_parent_node_id);
+
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, false, result);
 #endif   /* CDB_TRACE_EXECUTOR */
@@ -1757,12 +1689,14 @@ ExecEndNode(PlanState *node)
 			break;
 	}
 
-	/*
-	 * if codegen guc is true, then assert if CodegenManager is NULL
-	 */
-	AssertImply(codegen, NULL != node->CodegenManager);
-	CodeGeneratorManagerDestroy(node->CodegenManager);
-	node->CodegenManager = NULL;
+	if (codegen) {
+		/*
+		 * if codegen guc is true, then assert if CodegenManager is NULL
+		 */
+		Assert(NULL != node->CodegenManager);
+		CodeGeneratorManagerDestroy(node->CodegenManager);
+		node->CodegenManager = NULL;
+	}
 
 	estate->currentSliceIdInPlan = origSliceIdInPlan;
 	estate->currentExecutingSliceId = origExecutingSliceId;

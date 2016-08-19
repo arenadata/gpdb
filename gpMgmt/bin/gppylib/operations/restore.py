@@ -84,8 +84,8 @@ def get_restore_tables_from_table_file(table_file):
 
     return get_lines_from_file(table_file)
 
-def get_incremental_restore_timestamps(context, full_timestamp):
-    inc_file = context.generate_filename("increments", timestamp=full_timestamp)
+def get_incremental_restore_timestamps(context):
+    inc_file = context.generate_filename("increments", timestamp=context.full_dump_timestamp)
     timestamps = get_lines_from_file(inc_file)
     sorted_timestamps = sorted(timestamps, key=lambda x: int(x), reverse=True)
     incremental_restore_timestamps = []
@@ -144,11 +144,11 @@ def create_restore_plan(context):
 
     table_set_from_metadata_file = [schema + '.' + table for schema, table in dump_tables]
 
-    full_timestamp = get_full_timestamp_for_incremental(context)
+    incremental_restore_timestamps = get_incremental_restore_timestamps(context)
 
-    incremental_restore_timestamps = get_incremental_restore_timestamps(context, full_timestamp)
-
-    plan_file_contents = create_plan_file_contents(context, table_set_from_metadata_file, incremental_restore_timestamps, full_timestamp)
+    plan_file_contents = create_plan_file_contents(context, table_set_from_metadata_file,
+                                                   incremental_restore_timestamps,
+                                                   full_timestamp=context.full_dump_timestamp)
 
     plan_file = context.generate_filename("plan")
 
@@ -259,8 +259,11 @@ def restore_config_files_with_nbu(context):
     gparray = GpArray.initFromCatalog(dbconn.DbURL(port=context.master_port), utility=True)
     segments = gparray.getSegmentList()
     for segment in segments:
-        seg_config_filename = context.generate_filename("segment_config", dbid=segment.get_primary_dbid(), directory=segment.getSegmentDataDirectory())
-        seg_host = segment.get_active_primary().getSegmentHostName()
+        seg = segment.get_active_primary()
+        seg_dump_dir = context.get_backup_dir(directory=seg.getSegmentDataDirectory())
+        seg_config_filename = context.generate_filename("segment_config", dbid=segment.get_primary_dbid(),
+                                                        directory=seg_dump_dir)
+        seg_host = seg.getSegmentHostName()
         restore_file_with_nbu(context, path=seg_config_filename, hostname=seg_host)
 
 def _build_gpdbrestore_cmd_line(context, ts, table_file):
@@ -286,48 +289,6 @@ def _build_gpdbrestore_cmd_line(context, ts, table_file):
 
     return cmd
 
-def truncate_restore_tables(context):
-    """
-    Truncate either specific table or all tables under a schema
-    """
-
-    try:
-        dburl = dbconn.DbURL(port=context.master_port, dbname=context.restore_db)
-        conn = dbconn.connect(dburl)
-        truncate_list = []
-
-        if context.restore_schemas:
-            for schemaname in context.restore_schemas:
-                truncate_list.extend(self.get_full_tables_in_schema(conn, schemaname))
-        else:
-            for restore_table in context.restore_tables:
-                schemaname, tablename = split_fqn(restore_table)
-                check_table_exists_qry = """SELECT EXISTS (
-                                                   SELECT 1
-                                                   FROM pg_catalog.pg_class c
-                                                   JOIN pg_catalog.pg_namespace n on n.oid = c.relnamespace
-                                                   WHERE n.nspname = '%s' and c.relname = '%s')""" % (pg.escape_string(schemaname),
-                                                                                                      pg.escape_string(tablename))
-                exists_result = execSQLForSingleton(conn, check_table_exists_qry)
-                if exists_result:
-                    schema = escapeDoubleQuoteInSQLString(schemaname)
-                    table = escapeDoubleQuoteInSQLString(tablename)
-                    truncate_table = '%s.%s' % (schema, table)
-                    truncate_list.append(truncate_table)
-                else:
-                    logger.warning("Skipping truncate of %s.%s because the relation does not exist." % (context.restore_db, restore_table))
-
-        for t in truncate_list:
-            try:
-                qry = 'Truncate %s' % t
-                execSQL(conn, qry)
-            except Exception as e:
-                raise Exception("Could not truncate table %s.%s: %s" % (dbname, t, str(e).replace('\n', '')))
-
-        conn.commit()
-    except Exception as e:
-        raise Exception("Failure from truncating tables, %s" % (str(e).replace('\n', '')))
-
 class RestoreDatabase(Operation):
     def __init__(self, context):
         self.context = context
@@ -336,8 +297,8 @@ class RestoreDatabase(Operation):
         if self.context.redirected_restore_db:
             self.context.restore_db = self.context.redirected_restore_db
 
-        if len(self.context.restore_tables) > 0 and self.context.truncate:
-            truncate_restore_tables(self.context)
+        if (len(self.context.restore_tables) > 0 or len(self.context.restore_schemas) > 0) and self.context.truncate:
+            self.truncate_restore_tables()
 
         if not self.context.ddboost:
             ValidateSegments(self.context).run()
@@ -485,7 +446,7 @@ class RestoreDatabase(Operation):
                     try:
                         execSQL(conn, analyze_table)
                     except Exception as e:
-                        raise Exception('Issue with \'ANALYZE\' of restored table \'%s\' in \'%s\' database' % (restore_table, self.context.restore_db))
+                        raise Exception('Issue with \'ANALYZE\' of restored table \'%s\' in \'%s\' database' % (tbl, self.context.restore_db))
                     else:
                         num_sqls += 1
                         if num_sqls == 1000: # The choice of batch size was choosen arbitrarily
@@ -503,7 +464,7 @@ class RestoreDatabase(Operation):
 
     def get_full_tables_in_schema(self, conn, schemaname):
         res = []
-        get_all_tables_qry = 'select \'"\' || schemaname || \'"\', \'"\' || tablename || \'"\'from pg_tables where schemaname = \'%s\';' % pg.escape_string(schemaname)
+        get_all_tables_qry = "select schemaname, tablename from pg_tables where schemaname = '%s';" % pg.escape_string(schemaname)
         relations = execSQL(conn, get_all_tables_qry)
         for relation in relations:
             schema, table = relation[0], relation[1]
@@ -731,7 +692,7 @@ class RestoreDatabase(Operation):
     def backup_dir_is_writable(self):
         if self.context.backup_dir and not self.context.report_status_dir:
             try:
-                directory = context.get_backup_dir()
+                directory = self.context.get_backup_dir()
                 check_dir_writable(directory)
             except Exception as e:
                 logger.warning('Backup directory %s is not writable. Error %s' % (directory, str(e)))
@@ -890,6 +851,48 @@ class RestoreDatabase(Operation):
 
         return (gpr_path, status_path, gpd_path)
 
+    def truncate_restore_tables(self):
+        """
+        Truncate either specific table or all tables under a schema
+        """
+
+        try:
+            dburl = dbconn.DbURL(port=self.context.master_port, dbname=self.context.restore_db)
+            conn = dbconn.connect(dburl)
+            truncate_list = []
+
+            if self.context.restore_schemas:
+                for schemaname in self.context.restore_schemas:
+                    truncate_list.extend(self.get_full_tables_in_schema(conn, schemaname))
+            else:
+                for restore_table in self.context.restore_tables:
+                    schemaname, tablename = split_fqn(restore_table)
+                    check_table_exists_qry = """SELECT EXISTS (
+                                                       SELECT 1
+                                                       FROM pg_catalog.pg_class c
+                                                       JOIN pg_catalog.pg_namespace n on n.oid = c.relnamespace
+                                                       WHERE n.nspname = '%s' and c.relname = '%s')""" % (pg.escape_string(schemaname),
+                                                                                                          pg.escape_string(tablename))
+                    exists_result = execSQLForSingleton(conn, check_table_exists_qry)
+                    if exists_result:
+                        schema = escapeDoubleQuoteInSQLString(schemaname)
+                        table = escapeDoubleQuoteInSQLString(tablename)
+                        truncate_table = '%s.%s' % (schema, table)
+                        truncate_list.append(truncate_table)
+                    else:
+                        logger.warning("Skipping truncate of %s.%s because the relation does not exist." % (self.context.restore_db, restore_table))
+
+            for table in truncate_list:
+                try:
+                    qry = 'Truncate %s' % table
+                    execSQL(conn, qry)
+                except Exception as e:
+                    raise Exception("Could not truncate table %s.%s: %s" % (self.context.restore_db, table, str(e).replace('\n', '')))
+
+            conn.commit()
+        except Exception as e:
+            raise Exception("Failure from truncating tables, %s" % (str(e).replace('\n', '')))
+
 class ValidateTimestamp(Operation):
     def __init__(self, context):
         self.context = context
@@ -991,39 +994,6 @@ def validate_tablenames_exist_in_dump_file(restore_tables, dumped_tables):
 
     if len(unmatched_table_names) > 0:
         raise Exception("Tables %s not found in backup" % unmatched_table_names)
-
-class ValidateRestoreTables(Operation):
-    def __init__(self, context):
-        self.context = context
-
-    def execute(self):
-        existing_tables = []
-        table_counts = []
-        conn = None
-        try:
-            dburl = dbconn.DbURL(port=self.context.master_port, dbname=self.context.restore_db)
-            conn = dbconn.connect(dburl)
-            for restore_table in self.self.context.restore_tables:
-                schema, table = split_fqn(restore_table)
-                count = execSQLForSingleton(conn, "select count(*) from pg_class, pg_namespace where pg_class.relname = '%s' and pg_class.relnamespace = pg_namespace.oid and pg_namespace.nspname = '%s'" % (table, schema))
-                if count == 0:
-                    logger.warn("Table %s does not exist in database %s, removing from list of tables to restore" % (table, self.context.restore_db))
-                    continue
-
-                count = execSQLForSingleton(conn, "select count(*) from %s.%s" % (schema, table))
-                if count > 0:
-                    logger.warn('Table %s has %d records %s' % (restore_table, count, WARN_MARK))
-                existing_tables.append(restore_table)
-                table_counts.append((restore_table, count))
-        finally:
-            if conn:
-                conn.close()
-
-        if len(existing_tables) == 0:
-            raise ExceptionNoStackTraceNeeded("Have no tables to restore")
-        logger.info("Have %d tables to restore, will continue" % len(existing_tables))
-
-        return (existing_tables, table_counts)
 
 class CopyPostData(Operation):
     ''' Copy _post_data when using fake timestamp.
@@ -1165,10 +1135,13 @@ class GetDDboostDumpTablesOperation(GetDumpTablesOperation):
         super(GetDDboostDumpTablesOperation, self).__init__(context)
 
     def execute(self):
-        ddboost_cmdStr = 'gpddboost --readFile --from-file=%s' % self.context.generate_filename("dump")
+        # We want to make sure that directory is empty so that we can grab the ddboost directory value
+        # with the timestamp
+        ddboost_parent_dir = self.context.get_backup_dir(directory='')
+        ddboost_cmdStr = 'gpddboost --readFile --from-file=%s' % self.context.generate_filename("dump", directory=ddboost_parent_dir)
 
-        if self.ddboost_storage_unit:
-            ddboost_cmdStr += ' --ddboost-storage-unit=%s' % self.ddboost_storage_unit
+        if self.context.ddboost_storage_unit:
+            ddboost_cmdStr += ' --ddboost-storage-unit=%s' % self.context.ddboost_storage_unit
 
         cmdStr = ddboost_cmdStr + self.gunzip_maybe + self.grep_cmdStr
         cmd = Command('DDBoost copy of master dump file', cmdStr)

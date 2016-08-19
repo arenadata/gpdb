@@ -118,7 +118,6 @@ typedef enum NodeTag
 	 * It will take the form of IndexScan, SeqScan, etc. 
 	 */
 	T_ResultState,
-	T_PlanState_Start = T_ResultState,
 	T_AppendState,
 	T_SequenceState,
 	T_BitmapAndState,
@@ -160,7 +159,6 @@ typedef enum NodeTag
 	T_AssertOpState,
 	T_PartitionSelectorState,
 	T_CustomScanState,
-	T_PlanState_End,
 	T_TupleDescNode,
 
 	/*

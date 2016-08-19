@@ -16,7 +16,6 @@
 #include "access/printtup.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
-#include "catalog/catquery.h"
 #include "catalog/heap.h"
 #include "commands/trigger.h"
 #include "executor/spi_priv.h"
@@ -105,9 +104,6 @@ static int	_SPI_end_call(bool procmem);
 static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
-
-bool		gp_use_snapshop_during_callback = true;
-
 
 /* =================== interface functions =================== */
 
@@ -881,7 +877,7 @@ char *
 SPI_gettype(TupleDesc tupdesc, int fnumber)
 {
 	Oid			typoid;
-	int			fetchCount;
+	HeapTuple	typeTuple;
 	char	   *result;
 
 	SPI_result = 0;
@@ -898,20 +894,18 @@ SPI_gettype(TupleDesc tupdesc, int fnumber)
 	else
 		typoid = (SystemAttributeDefinition(fnumber, true))->atttypid;
 
-	result = caql_getcstring_plus(
-			NULL,
-			&fetchCount,
-			NULL,
-			cql("SELECT typname FROM pg_type "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(typoid)));
+	typeTuple = SearchSysCache(TYPEOID,
+							   ObjectIdGetDatum(typoid),
+							   0, 0, 0);
 
-	if (!fetchCount)
+	if (!HeapTupleIsValid(typeTuple))
 	{
 		SPI_result = SPI_ERROR_TYPUNKNOWN;
 		return NULL;
 	}
 
+	result = pstrdup(NameStr(((Form_pg_type) GETSTRUCT(typeTuple))->typname));
+	ReleaseSysCache(typeTuple);
 	return result;
 }
 
@@ -1909,6 +1903,7 @@ _SPI_execute_plan(_SPI_plan * plan, ParamListInfo paramLI,
                     {
                     	/* For log level of DEBUG4, gpmon is sent information about SPI internal queries as well */
 						Assert(plansource->query_string);
+						gpmon_qlog_query_submit(qdesc->gpmon_pkt);
 						gpmon_qlog_query_text(qdesc->gpmon_pkt,
 											  plansource->query_string,
 											  application_name,
@@ -2111,7 +2106,7 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, long tcount)
 
 			/* 
 			 * Checking if we need to put this through resource queue.
-			 * Same as in pquery.c, except we check ActivePortal->holdingResLock.
+			 * Same as in pquery.c, except we check ActivePortal->releaseResLock.
 			 * If the Active portal already hold a lock on the queue, we cannot
 			 * acquire it again.
 			 */
@@ -2136,14 +2131,14 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, long tcount)
 				 */
 				if (ActivePortal)
 				{
-					if (!ActivePortal->holdingResLock)
+					if (!ActivePortal->releaseResLock)
 					{
 						/** TODO: siva - can we ever reach this point? */
 						ActivePortal->status = PORTAL_QUEUE;
 					
 						_SPI_assign_query_mem(queryDesc);
 
-						ActivePortal->holdingResLock =
+						ActivePortal->releaseResLock =
 							ResLockPortal(ActivePortal, queryDesc);
 						ActivePortal->status = PORTAL_ACTIVE;
 					} 
@@ -2162,7 +2157,7 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, long tcount)
 						 * allocated to the function scan operator.
 						 */
 						Assert(ActivePortal);
-						Assert(ActivePortal->holdingResLock);
+						Assert(ActivePortal->releaseResLock);
 
 						_SPI_assign_query_mem(queryDesc);
 					}

@@ -168,10 +168,6 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->curOffset = 0;
 	result->spaceLeft = 0;
     result->cdbstats = NULL;            /*CDB*/
-    result->QEWriter_HaveInfo = false;
-    result->QEWriter_DistributedTransactionId = 0;
-    result->QEWriter_CommandId = 0;
-    result->QEWriter_Dirty = false;
     result->Standby_HaveInfo = false;
     result->Standby_xlogid = 0;
     result->Standby_xrecoff = 0;
@@ -188,14 +184,6 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		/* copy connection data we might need for operations on PGresult */
 		result->noticeHooks = conn->noticeHooks;
 		result->client_encoding = conn->client_encoding;
-
-		if (conn->QEWriter_HaveInfo)
-		{
-			result->QEWriter_HaveInfo = true;
-			result->QEWriter_DistributedTransactionId = conn->QEWriter_DistributedTransactionId;
-			result->QEWriter_CommandId= conn->QEWriter_CommandId;
-			result->QEWriter_Dirty = conn->QEWriter_Dirty;
-		}
 
 		if (conn->Standby_HaveInfo)
 		{
@@ -624,13 +612,7 @@ PQclear(PGresult *res)
 	res->paramDescs = NULL;
 	res->errFields = NULL;
 	/* res->curBlock was zeroed out earlier */
-	
-	
-	res->QEWriter_HaveInfo = false;
-	res->QEWriter_DistributedTransactionId = 0;
-	res->QEWriter_CommandId = 0;
-	res->QEWriter_Dirty = false;
-	
+
 	res->Standby_HaveInfo = false;
 	res->Standby_xlogid = 0;
 	res->Standby_xrecoff = 0;
@@ -3598,98 +3580,4 @@ PQunescapeBytea(const unsigned char *strtext, size_t *retbuflen)
 
 	*retbuflen = buflen;
 	return tmpbuf;
-}
-
-int PQsendCreateGang(PGconn * conn, int size, void * binaryGangInfo)
-{
-	char * query = "create gang";
-	
-	if (!PQexecStart(conn))
-		return 0;
-
-
-	PQsendQueryStart(conn);
-	
-	/* construct the outgoing Query message */
-	if (pqPutMsgStart('G', false, conn) < 0 ||
-		pqPuts(query, conn) < 0 ||
-		pqPutInt(size, 4, conn) < 0 ||
-		pqPutnchar(binaryGangInfo, size, conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-	
-	/* remember we are using simple query protocol */
-	conn->queryclass = PGQUERY_SIMPLE;
-
-	/* and remember the query text too, if possible */
-	/* if insufficient memory, last_query just winds up NULL */
-	if (conn->last_query)
-		free(conn->last_query);
-	conn->last_query = strdup(query);
-
-	/*
-	 * Give the data a push.  In nonblock mode, don't complain if we're unable
-	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 */
-	if (pqFlush(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-
-	/* OK, it's launched! */
-	conn->asyncStatus = PGASYNC_BUSY;
-	
-	return 1;
-
-
-}
-
-int PQsendControlGang(PGconn * conn, int gang_id, const char * query)
-{
-	
-	if (!PQexecStart(conn))
-		return 0;
-
-
-	PQsendQueryStart(conn);
-	
-	/* construct the outgoing Query message */
-	if (pqPutMsgStart('G', false, conn) < 0 ||
-		pqPuts(query, conn) < 0 ||
-		pqPutInt(gang_id, 4, conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-	
-	/* remember we are using simple query protocol */
-	conn->queryclass = PGQUERY_SIMPLE;
-
-	/* and remember the query text too, if possible */
-	/* if insufficient memory, last_query just winds up NULL */
-	if (conn->last_query)
-		free(conn->last_query);
-	conn->last_query = strdup(query);
-
-	/*
-	 * Give the data a push.  In nonblock mode, don't complain if we're unable
-	 * to send it all; PQgetResult() will do any additional flushing needed.
-	 */
-	if (pqFlush(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		return 0;
-	}
-
-	/* OK, it's launched! */
-	conn->asyncStatus = PGASYNC_BUSY;
-	
-	return 1;
-
-
 }

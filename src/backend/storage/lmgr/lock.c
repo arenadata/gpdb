@@ -584,9 +584,9 @@ LockAcquire(const LOCKTAG *locktag,
 	
 	if (lockmethodid == DEFAULT_LOCKMETHOD && locktag->locktag_type != LOCKTAG_TRANSACTION)
 	{
-		if (Gp_role == GP_ROLE_EXECUTE && (gp_is_callback || !Gp_is_writer))
+		if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
 		{	
-			if (lockHolderProcPtr == MyProc)
+			if (lockHolderProcPtr == NULL || lockHolderProcPtr == MyProc)
 			{
 				/* Find the guy who should manage our locks */
 				PGPROC * proc = FindProcByGpSessionId(gp_session_id);
@@ -604,14 +604,19 @@ LockAcquire(const LOCKTAG *locktag,
 					lockHolderProcPtr = proc;
 				}
 				else
-					elog(ERROR,"Could not find writer proc entry!");
+					elog(DEBUG1,"Could not find writer proc entry!");
 		
-				elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
+					elog(DEBUG1,"Reader gang member trying to acquire a lock [%u,%u] %s %d",
 						 locktag->locktag_field1, locktag->locktag_field2,
 						 lock_mode_names[lockmode], (int)locktag->locktag_type);
 			}
+				
 		}
 	}
+	
+	
+	
+	
 
 	/*
 	 * Otherwise we've got to mess with the shared lock table.
@@ -770,19 +775,6 @@ LockAcquire(const LOCKTAG *locktag,
 	}
 
 	/*
-	 * We shouldn't already hold the desired lock; else locallock table is
-	 * broken.
-	 */
-	if (proclock->holdMask & LOCKBIT_ON(lockmode))
-	{
-		LWLockRelease(partitionLock);
-		elog(ERROR, "lock %s on object %u/%u/%u is already held",
-			 lock_mode_names[lockmode],
-			 lock->tag.locktag_field1, lock->tag.locktag_field2,
-			 lock->tag.locktag_field3);
-	}
-
-	/*
 	 * lock->nRequested and lock->requested[] count the total number of
 	 * requests, whether granted or waiting, so increment those immediately.
 	 * The other counts don't increment till we get the lock.
@@ -790,7 +782,54 @@ LockAcquire(const LOCKTAG *locktag,
 	lock->nRequested++;
 	lock->requested[lockmode]++;
 	Assert((lock->nRequested > 0) && (lock->requested[lockmode] > 0));
-	
+
+	/*
+	 * We shouldn't already hold the desired lock; else locallock table is
+	 * broken.
+	 */
+	if (Gp_role != GP_ROLE_UTILITY)
+	{
+		if (proclock->holdMask & LOCKBIT_ON(lockmode))
+		{
+			elog(LOG, "lock %s on object %u/%u/%u is already held",
+				 lock_mode_names[lockmode],
+				 lock->tag.locktag_field1, lock->tag.locktag_field2,
+				 lock->tag.locktag_field3);
+			if (MyProc == lockHolderProcPtr)
+			{
+				elog(LOG, "writer found lock %s on object %u/%u/%u that it didn't know it held",
+						 lock_mode_names[lockmode],
+						 lock->tag.locktag_field1, lock->tag.locktag_field2,
+						 lock->tag.locktag_field3);
+				GrantLock(lock, proclock, lockmode);
+				GrantLockLocal(locallock, owner);
+			}
+			else
+			{
+				if (MyProc != lockHolderProcPtr)
+				{
+					elog(LOG, "reader found lock %s on object %u/%u/%u which is already held by writer",
+						 lock_mode_names[lockmode],
+						 lock->tag.locktag_field1, lock->tag.locktag_field2,
+						 lock->tag.locktag_field3);
+				}
+				lock->nRequested--;
+				lock->requested[lockmode]--;
+			}
+			LWLockRelease(partitionLock);
+			return LOCKACQUIRE_ALREADY_HELD;
+		}
+		
+	}
+	else
+	if (proclock->holdMask & LOCKBIT_ON(lockmode))
+	{
+		elog(LOG, "lock %s on object %u/%u/%u is already held",
+			 lockMethodTable->lockModeNames[lockmode],
+			 lock->tag.locktag_field1, lock->tag.locktag_field2,
+			 lock->tag.locktag_field3);
+		Insist(false);
+	}
 	/*
 	 * If lock requested conflicts with locks requested by waiters, must join
 	 * wait queue.	Otherwise, check for conflict with already-held locks.
@@ -1334,7 +1373,7 @@ WaitOnLock(LOCALLOCK *locallock, ResourceOwner owner)
  * NB: this does not clean up any locallock object that may exist for the lock.
  */
 void
-RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode, bool wakeupNeeded)
+RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode)
 {
 	LOCK	   *waitLock = proc->waitLock;
 	PROCLOCK   *proclock = proc->waitProcLock;
@@ -1378,7 +1417,7 @@ RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode, bool wakeupNeeded)
 	 */
 	CleanUpLock(waitLock, proclock,
 				LockMethods[lockmethodid], hashcode,
-				wakeupNeeded);
+				true);
 }
 
 /*
@@ -2389,181 +2428,6 @@ GetLockStatusData(void)
 
 	return data;
 }
-
-
-/* This must match enum LockTagType! */
-static const char *const LockTagTypeNames[] = {
-	"relation",
-	"extend",
-	"page",
-	"tuple",
-	"transactionid",
-	"resynchronize",
-	"append-only segment file",
-	"object",
-	"resource queue",
-	"userlock",
-	"advisory"
-};
-
-int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData)
-{
-
-/*	lockData = GetLockStatusData(); */
-
-	while (ii < lockData->nelements)
-	{
-		PROCLOCK   *proclock;
-		LOCK	   *lock;
-		PGPROC	   *proc;
-		bool		granted;
-		LOCKMODE	mode = 0;
-		const char *locktypename;
-		char		tnbuf[32];
-	
-		proclock = &(lockData->proclocks[ii]);
-		lock = &(lockData->locks[ii]);
-		proc = &(lockData->procs[ii]);
-
-		/*
-		 * Look to see if there are any held lock modes in this PROCLOCK. If
-		 * so, report, and destructively modify lockData so we don't report
-		 * again.
-		 */
-		granted = false;
-		if (proclock->holdMask)
-		{
-			for (mode = 0; mode < MAX_LOCKMODES; mode++)
-			{
-				if (proclock->holdMask & LOCKBIT_ON(mode))
-				{
-					granted = true;
-					proclock->holdMask &= LOCKBIT_OFF(mode);
-					break;
-				}
-			}
-		}
-
-		/*
-		 * If no (more) held modes to report, see if PROC is waiting for a
-		 * lock on this lock.
-		 */
-		if (!granted)
-		{
-			if (proc->waitLock == proclock->tag.myLock)
-			{
-				/* Yes, so report it with proper mode */
-				mode = proc->waitLockMode;
-
-				/*
-				 * We are now done with this PROCLOCK, so advance pointer to
-				 * continue with next one on next call.
-				 */
-				ii++;
-			}
-			else
-			{
-				/*
-				 * Okay, we've displayed all the locks associated with this
-				 * PROCLOCK, proceed to the next one.
-				 */
-				ii++;
-				continue;
-			}
-		}
-
-		/*
-		 * Form tuple with appropriate data.
-		 */
-/*		MemSet(values, 0, sizeof(values));
-		MemSet(nulls, false, sizeof(nulls));
-*/
-		if (lock->tag.locktag_type <= LOCKTAG_ADVISORY)
-			locktypename = LockTagTypeNames[lock->tag.locktag_type];
-		else
-		{
-			snprintf(tnbuf, sizeof(tnbuf), "unknown %d",
-					 (int) lock->tag.locktag_type);
-			locktypename = tnbuf;
-		}
-/*		values[0] = DirectFunctionCall1(textin,
-										CStringGetDatum(locktypename));
-*/
-		strncpy(lf->lf_locktype, locktypename, 100);
-
-		switch (lock->tag.locktag_type)
-		{
-			case LOCKTAG_RELATION:
-			case LOCKTAG_RELATION_EXTEND:
-			case LOCKTAG_RELATION_RESYNCHRONIZE:
-				lf->lf_database = (lock->tag.locktag_field1);
-				lf->lf_relation = (lock->tag.locktag_field2);
-				break;
-			case LOCKTAG_PAGE:
-				lf->lf_database = (lock->tag.locktag_field1);
-				lf->lf_relation = (lock->tag.locktag_field2);
-				lf->lf_page = (lock->tag.locktag_field3);
-				break;
-			case LOCKTAG_TUPLE:
-				lf->lf_database = (lock->tag.locktag_field1);
-				lf->lf_relation = (lock->tag.locktag_field2);
-				lf->lf_page = (lock->tag.locktag_field3);
-				lf->lf_tuple = (lock->tag.locktag_field4);
-				break;
-			case LOCKTAG_TRANSACTION:
-				lf->lf_transactionid = (lock->tag.locktag_field1);
-				break;
-			case LOCKTAG_RELATION_APPENDONLY_SEGMENT_FILE:
-				lf->lf_database = (lock->tag.locktag_field1);
-				lf->lf_relation = (lock->tag.locktag_field2);
-				lf->lf_objid = (lock->tag.locktag_field3);
-				break;
-			case LOCKTAG_RESOURCE_QUEUE:
-				lf->lf_database = (proc->databaseId);
-				lf->lf_objid = (lock->tag.locktag_field1);
-				break;
-			case LOCKTAG_OBJECT:
-			case LOCKTAG_USERLOCK:
-			case LOCKTAG_ADVISORY:
-			default:			/* treat unknown locktags like OBJECT */
-				lf->lf_database = (lock->tag.locktag_field1);
-				lf->lf_classid = (lock->tag.locktag_field2);
-				lf->lf_objid = (lock->tag.locktag_field3);
-				lf->lf_objsubid = (lock->tag.locktag_field4);
-				break;
-		}
-
-		lf->lf_transaction = (proc->xid);
-		if (proc->pid != 0)
-			lf->lf_pid = (proc->pid);
-		else
-		{
-/*
-		values[11] = DirectFunctionCall1(textin,
-					  CStringGetDatum(GetLockmodeName(LOCK_LOCKMETHOD(*lock),
-													  mode)));
-*/
-			strncpy(lf->lf_mode, 
-					GetLockmodeName(LOCK_LOCKMETHOD(*lock), mode),
-					100);
-		}
-		lf->lf_granted = (granted);
-		
-		lf->lf_mppSessionId = (proc->mppSessionId);
-		
-		lf->lf_mppIsWriter = (proc->mppIsWriter);
-/*
-		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
-		result = HeapTupleGetDatum(tuple);
-		SRF_RETURN_NEXT(funcctx, result);
-*/
-		return ii;
-	}
-
-	return -1;
-} /* end LockStatStuff */
-
-
 
 /* Provide the textual name of any lock mode */
 const char *

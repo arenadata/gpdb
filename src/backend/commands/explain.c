@@ -20,6 +20,7 @@
 #include "commands/explain.h"
 #include "commands/prepare.h"
 #include "commands/trigger.h"
+#include "commands/queue.h"
 #include "executor/execUtils.h"
 #include "executor/instrument.h"
 #include "nodes/pg_list.h"
@@ -32,6 +33,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/json.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"             /* AllocSetContextCreate() */
 #include "utils/resscheduler.h"
@@ -76,8 +78,8 @@ typedef struct ExplainState
 extern bool Test_print_direct_dispatch_info;
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
-							const char *queryString,
-							ParamListInfo params, TupOutputState *tstate);
+				const char *queryString,
+				ParamListInfo params, TupOutputState *tstate);
 static void report_triggers(ResultRelInfo *rInfo, bool show_relname,
 				StringInfo buf);
 
@@ -86,11 +88,14 @@ static void ExplainDXL(Query *query, ExplainStmt *stmt,
 							const char *queryString,
 							ParamListInfo params, TupOutputState *tstate);
 #endif
+#ifdef USE_CODEGEN
+static void ExplainCodegen(PlanState *planstate, TupOutputState *tstate);
+#endif
 static double elapsed_time(instr_time *starttime);
 static ErrorData *explain_defer_error(ExplainState *es);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
-				Plan *outer_plan,
+				Plan *outer_plan, Plan *parentPlan,
 				int indent, ExplainState *es);
 static void show_scan_qual(List *qual, const char *qlabel,
 			   int scanrelid, Plan *outer_plan, Plan *inner_plan,
@@ -114,9 +119,10 @@ static void
 show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 			     const char *qlabel,
                  StringInfo str, int indent, ExplainState *es);
-static void
-show_static_part_selection(PartitionSelector *ps, Sequence *parent, StringInfo str, int indent, ExplainState *es);
 
+static void
+explain_partition_selector(PartitionSelector *ps, Plan *parent,
+						   StringInfo str, int indent, ExplainState *es);
 
 /*
  * ExplainQuery -
@@ -316,6 +322,32 @@ ExplainOneUtility(Node *utilityStmt, ExplainStmt *stmt,
 							   "Utility statements have no plan structure");
 }
 
+#ifdef USE_CODEGEN
+/*
+ * ExplainCodegen -
+ * 		given a PlanState tree, traverse its nodes, collect any accumulated
+ * 		explain strings from the state's CodegenManager, and print to EXPLAIN
+ * 		output
+ * 		NB: This method does not recurse into sub plans at this point.
+ */
+static void
+ExplainCodegen(PlanState *planstate, TupOutputState *tstate) {
+	if (NULL == planstate) {
+		return;
+	}
+
+	Assert(NULL != tstate);
+
+	ExplainCodegen(planstate->lefttree, tstate);
+
+	char* str = CodeGeneratorManagerGetExplainString(planstate->CodegenManager);
+	Assert(NULL != str);
+	do_text_output_oneline(tstate, str);
+
+	ExplainCodegen(planstate->righttree, tstate);
+}
+#endif
+
 /*
  * ExplainOnePlan -
  *		given a planned query, execute it if needed, and then print
@@ -338,10 +370,10 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 	instr_time	starttime;
 	double		totaltime = 0;
 	ExplainState *es;
-    StringInfoData buf;
-    EState     *estate = NULL;
+	StringInfoData buf;
+	EState     *estate = NULL;
 	int			eflags;
-    int         nb;
+	int         nb;
 	MemoryContext explaincxt = CurrentMemoryContext;
 
 	/*
@@ -360,6 +392,17 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 								None_Receiver, params,
 								stmt->analyze);
 
+	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+	{
+		Assert(queryString);
+		gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
+		gpmon_qlog_query_text(queryDesc->gpmon_pkt,
+				queryString,
+				application_name,
+				GetResqueueName(GetResQueueId()),
+				GetResqueuePriority(GetResQueueId()));
+	}
+
 	/* Initialize ExplainState structure. */
 	es = (ExplainState *) palloc0(sizeof(ExplainState));
 	es->pstmt = queryDesc->plannedstmt;
@@ -371,7 +414,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
-        AfterTriggerBeginQuery();
+		AfterTriggerBeginQuery();
 
     /* Allocate workarea for summary stats. */
     if (stmt->analyze)
@@ -385,7 +428,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 
 	/* Select execution options */
 	if (stmt->analyze)
-        eflags = 0;				/* default run-to-completion flags */
+		eflags = 0;				/* default run-to-completion flags */
 	else
 		eflags = EXEC_FLAG_EXPLAIN_ONLY;
 
@@ -399,10 +442,22 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 		{
 			queryDesc->plannedstmt->query_mem = ResourceQueueGetQueryMemoryLimit(queryDesc->plannedstmt, GetResQueueId());			
 		}
-    }
+	}
+
+#ifdef USE_CODEGEN
+	if (stmt->codegen && codegen && Gp_segment == -1) {
+		eflags |= EXEC_FLAG_EXPLAIN_CODEGEN;
+	}
+#endif
 
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
+
+#ifdef USE_CODEGEN
+	if (stmt->codegen && codegen && Gp_segment == -1) {
+		ExplainCodegen(queryDesc->planstate, tstate);
+	}
+#endif
 
     estate = queryDesc->estate;
 
@@ -489,7 +544,6 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 			else
 				f = format_node_dump(s);
 			pfree(s);
-
 			do_text_output_multiline(tstate, f);
 			pfree(f);
 			do_text_output_oneline(tstate, ""); /* separator line */
@@ -553,7 +607,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, ParamListInfo params,
 			indent = 3;
 		}
 	    explain_outNode(&buf, childPlan, queryDesc->planstate,
-					    NULL, indent, es);
+					    NULL, NULL, indent, es);
     }
     PG_CATCH();
     {
@@ -821,7 +875,6 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
 	}
 }
 
-
 /*
  * explain_outNode -
  *	  converts a Plan node into ascii string and appends it to 'str'
@@ -833,11 +886,14 @@ appendGangAndDirectDispatchInfo(StringInfo str, PlanState *planstate, int sliceI
  * outer_plan, if not null, references another plan node that is the outer
  * side of a join with the current node.  This is only interesting for
  * deciphering runtime keys of an inner indexscan.
+ *
+ * parentPlan points to the parent plan node and can be used by PartitionSelector
+ * to deparse its printablePredicate.
  */
 static void
 explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
-				Plan *outer_plan,
+				Plan *outer_plan, Plan *parentPlan,
 				int indent, ExplainState *es)
 {
 	const char	   *pname = NULL;
@@ -1641,33 +1697,8 @@ explain_outNode(StringInfo str,
 			break;
 		case T_PartitionSelector:
 			{
-				List *list_qual = NULL;
-				Node *printablePredicate = ((PartitionSelector *) plan)->printablePredicate;
-				if (NULL != printablePredicate)
-				{
-					list_qual = list_make1(printablePredicate);
-				}
-				show_upper_qual(list_qual,
-								"Filter", plan,
-								str, indent, es);
-				if (((PartitionSelector *) plan)->staticSelection)
-				{
-					/*
-					 * We should not encounter static selectors as part of the
-					 * normal plan traversal: they are handled specially, as
-					 * part of a Sequence node.
-					 */
-					elog(WARNING, "unexpected static PartitionSelector");
-				}
-			}
-			break;
-		case T_Sequence:
-			{
-				Sequence *s = (Sequence *) plan;
-
-				if (s->static_selector)
-					show_static_part_selection(s->static_selector, s,
-											   str, indent, es);
+				explain_partition_selector((PartitionSelector *) plan, parentPlan,
+						str, indent, es);
 			}
 			break;
 		default:
@@ -1721,7 +1752,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
-							NULL,
+							NULL, plan,
 							indent + 4, es);
 		}
         es->currentSlice = saved_slice;
@@ -1744,6 +1775,7 @@ explain_outNode(StringInfo str,
 						(IsA(plan, BitmapHeapScan) |
 						 IsA(plan, BitmapAppendOnlyScan) |
 						 IsA(plan, BitmapTableScan)) ? outer_plan : NULL,
+						plan,
 						indent + 3, es);
 	}
     else if (skip_outer)
@@ -1764,6 +1796,7 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, innerPlan(plan),
 						innerPlanState(planstate),
 						outerPlan(plan),
+						plan,
 						indent + 3, es);
 	}
 
@@ -1781,7 +1814,6 @@ explain_outNode(StringInfo str,
 
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
-
 			appendStringInfo(str, "  ->  ");
 
 			/*
@@ -1793,6 +1825,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
 							outer_plan,
+							(Plan *) appendplan,
 							indent + 3, es);
 			j++;
 		}
@@ -1816,6 +1849,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							sequenceState->subplans[j],
 							outer_plan,
+							plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1840,6 +1874,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmapandstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
+							plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1864,6 +1899,7 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							bitmaporstate->bitmapplans[j],
 							outer_plan, /* pass down same outer plan */
+							plan,
 							indent + 3, es);
 			j++;
 		}
@@ -1882,6 +1918,7 @@ explain_outNode(StringInfo str,
 		explain_outNode(str, subnode,
 						subquerystate->subplan,
 						NULL,
+						plan,
 						indent + 3, es);
 	}
 
@@ -1906,6 +1943,7 @@ explain_outNode(StringInfo str,
 							exec_subplan_get_plan(es->pstmt, sp),
 							sps->planstate,
 							NULL,
+							plan,
 							indent + 4, es);
 		}
 	}
@@ -2012,10 +2050,36 @@ show_grouping_keys(Plan        *plan,
         appendStringInfoString(str, "  ");
     appendStringInfo(str, "  %s: ", qlabel);
 
+    Node *outerPlan = (Node *) outerPlan(subplan);
+    Node *innerPlan = (Node *) innerPlan(subplan);
+
+    /*
+     * For Append we cannot obtain outerPlan as the lefttree
+     * is set to NULL. So, we extract the first child from the
+     * list of appendplans
+     */
+    if (IsA(subplan, Append))
+    {
+    	Assert(NULL == outerPlan);
+    	Assert(NULL == innerPlan);
+
+    	Append *append = (Append *) subplan;
+
+    	/*
+    	 * Append node with no children is legal, at least when mark_dummy_join()
+    	 * produces such a node.
+    	 */
+    	if (NULL != append->appendplans)
+    	{
+    		outerPlan = list_nth(append->appendplans, 0);
+    		Assert(NULL != outerPlan);
+    	}
+    }
+
 	/* Set up deparse context */
-	context = deparse_context_for_plan((Node *) outerPlan(subplan),
-									   (Node *) innerPlan(subplan),
-									   es->rtable);
+	context = deparse_context_for_plan(outerPlan,
+									   innerPlan,
+										   es->rtable);
 
 	if (IsA(plan, Agg))
 	{
@@ -2185,19 +2249,13 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 }                               /* show_motion_keys */
 
 /*
- * Show the number of statically selected partitions if available.
- *
- * This is similar to show_upper_qual(), but the "printablePredicate" produced
- * by ORCA is a bit special: INNER Vars refer to the child of the Sequence node
- * we are part of.
+ * Explain a partition selector node, including partition elimination expression
+ * and number of statically selected partitions, if available.
  */
 static void
-show_static_part_selection(PartitionSelector *ps, Sequence *parent,
+explain_partition_selector(PartitionSelector *ps, Plan *parent,
 						   StringInfo str, int indent, ExplainState *es)
 {
-	if (!ps->staticSelection)
-		return;
-
 	if (ps->printablePredicate)
 	{
 		List	   *context;
@@ -2206,7 +2264,7 @@ show_static_part_selection(PartitionSelector *ps, Sequence *parent,
 		int			i;
 
 		/* Set up deparsing context */
-		context = deparse_context_for_plan(NULL,
+		context = deparse_context_for_plan((Node *) parent,
 										   (Node *) parent,
 										   es->rtable);
 		useprefix = list_length(es->rtable) > 1;
@@ -2217,17 +2275,20 @@ show_static_part_selection(PartitionSelector *ps, Sequence *parent,
 		/* And add to str */
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
-		appendStringInfo(str, "  %s: %s\n", "Partition Selector", exprstr);
+		appendStringInfo(str, "  %s: %s\n", "Filter", exprstr);
 	}
 
-	int nPartsSelected = list_length(ps->staticPartOids);
-	int nPartsTotal = countLeafPartTables(ps->relid);
-	for (int i = 0; i < indent; i++)
+	if (ps->staticSelection)
 	{
-		appendStringInfoString(str, "  ");
-	}
+		int nPartsSelected = list_length(ps->staticPartOids);
+		int nPartsTotal = countLeafPartTables(ps->relid);
+		for (int i = 0; i < indent; i++)
+		{
+			appendStringInfoString(str, "  ");
+		}
 
-	appendStringInfo(str, "  Partitions selected: %d (out of %d)\n", nPartsSelected, nPartsTotal);
+		appendStringInfo(str, "  Partitions selected: %d (out of %d)\n", nPartsSelected, nPartsTotal);
+	}
 }
 
 /*

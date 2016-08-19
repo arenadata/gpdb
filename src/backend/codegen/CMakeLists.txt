@@ -55,6 +55,12 @@ if (COMPILER_HAS_WNO_C99_EXTENSIONS)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-conversion-null")
 endif()
 
+# Suppress warnings about deprecated keyword register
+CHECK_CXX_COMPILER_FLAG("-Wno-deprecated-register" COMPILER_HAS_WNO_C99_EXTENSIONS)
+if (COMPILER_HAS_WNO_C99_EXTENSIONS)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-register")
+endif()
+
 # Turn on the CODEGEN_DEBUG flag if this is a debug build.
 if (CMAKE_MAJOR_VERSION GREATER 2)
   cmake_policy(SET CMP0043 NEW)
@@ -128,6 +134,7 @@ include_directories(${CLANG_INCLUDE_DIRS})
 add_library(gpcodegen SHARED
             utils/clang_compiler.cc
             utils/codegen_utils.cc
+            utils/gp_codegen_utils.cc
             ${codegen_tmpfile_sources})
 if(APPLE)
   set(WL_START_GROUP "")
@@ -164,8 +171,14 @@ set(GPCODEGEN_SRC
     codegen_interface.cc
     codegen_manager.cc
     codegen_wrapper.cc
+    const_expr_tree_generator.cc
     exec_variable_list_codegen.cc
-    exec_qual_codegen.cc
+    slot_getattr_codegen.cc
+    exec_eval_expr_codegen.cc
+    expr_tree_generator.cc
+    op_expr_tree_generator.cc
+    pg_date_func_generator.cc
+    var_expr_tree_generator.cc
 )
 
 # Integrate with GPDB build system. 
@@ -299,7 +312,7 @@ endif()
 if(EXISTS ${TXT_OBJFILE})
     add_cmockery_gtest(codegen_framework_unittest.t 
         tests/codegen_framework_unittest.cc
-        ${MOCK_DIR}/backend/utils/error/elog_mock.o
+        ${MOCK_DIR}/backend/postmaster/postmaster_mock.o
     )
 endif()
 

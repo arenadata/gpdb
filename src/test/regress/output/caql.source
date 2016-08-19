@@ -218,7 +218,6 @@ WARNING:  skipping "gp_version_at_initdb" --- only table or database owner can v
 WARNING:  skipping "gp_segment_configuration" --- only table or database owner can vacuum it
 WARNING:  skipping "gp_fault_strategy" --- only table or database owner can vacuum it
 WARNING:  skipping "gp_san_configuration" --- only table or database owner can vacuum it
-WARNING:  skipping "gp_verification_history" --- only table or database owner can vacuum it
 -- end_ignore
 vacuum main_table;
 vacuum full main_table;
@@ -355,17 +354,6 @@ SELECT * FROM check_contentid_get_dbid(-1::int2, 'p', false);
 (1 row)
 
 DROP FUNCTION check_contentid_get_dbid(int2, "char", bool);
-CREATE FUNCTION check_FtsFindSuperuser(bool) RETURNS text
-  AS '@abs_builddir@/regress@DLSUFFIX@', 'check_FtsFindSuperuser'
-  LANGUAGE C READS SQL DATA;
--- start_ignore
-SELECT * FROM check_FtsFindSuperuser(false);
- check_ftsfindsuperuser 
-------------------------
- reddyr3
-(1 row)
--- end_ignore
-DROP FUNCTION check_FtsFindSuperuser(bool);
 -- ---------------------------------------------------------------------
 -- coverage for segadmin.c/filespace.c
 -- ---------------------------------------------------------------------
@@ -462,16 +450,6 @@ select check_GetResqueueName(6055);
 (1 row)
 
 DROP FUNCTION check_GetResqueueName(oid);
-CREATE FUNCTION check_GetFuncSQLDataAccess(oid) RETURNS text
-  AS '@abs_builddir@/regress@DLSUFFIX@', 'check_GetFuncSQLDataAccess'
-  LANGUAGE C READS SQL DATA;
-select check_GetFuncSQLDataAccess('check_GetFuncSQLDataAccess'::regproc);
- check_getfuncsqldataaccess 
-----------------------------
- READS SQL DATA
-(1 row)
-
-DROP FUNCTION check_GetFuncSQLDataAccess(oid);
 -- cleanup (as caql_super_luser)
 drop type funkytype;
 NOTICE:  cast from funkytype to integer depends on type funkytype

@@ -19,9 +19,9 @@
 #include <math.h>
 
 #include "access/genam.h"
-#include "catalog/catquery.h"
 #include "access/heapam.h"
 #include "access/transam.h"
+#include "catalog/pg_appendonly_fn.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_exttable.h"
 #include "commands/tablecmds.h"
@@ -72,6 +72,9 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 
 static void
 cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid);
+
+static void get_external_relation_info(Relation relation, RelOptInfo *rel);
+
 
 /*
  * get_relation_info -
@@ -126,6 +129,12 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
      * CDB: Get partitioning key info for distributed relation.
      */
     rel->cdbpolicy = RelationGetPartitioningKey(relation);
+
+	rel->relstorage = relation->rd_rel->relstorage;
+
+	/* If it's an external table, get locations and format from catalog */
+	if (rel->relstorage == RELSTORAGE_EXTERNAL)
+		get_external_relation_info(relation, rel);
 
 	/*
 	 * Estimate relation size --- unless it's an inheritance parent, in which
@@ -362,25 +371,21 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
  * Update RelOptInfo to include the external specifications (file URI list
  * and data format) from the pg_exttable catalog.
  */
-void
-get_external_relation_info(Oid relationObjectId, RelOptInfo *rel)
+static void
+get_external_relation_info(Relation relation, RelOptInfo *rel)
 {
-
-	Relation	pg_class_rel;
-	ExtTableEntry* extentry;
+	ExtTableEntry *extentry;
 
 	/*
      * Get partitioning key info for distributed relation.
      */
-	pg_class_rel = heap_open(relationObjectId, NoLock);
-	rel->cdbpolicy = RelationGetPartitioningKey(pg_class_rel);
-	heap_close(pg_class_rel, NoLock);
+	rel->cdbpolicy = RelationGetPartitioningKey(relation);
 
 	/*
 	 * Get the pg_exttable fields for this table
 	 */
-	extentry = GetExtTableEntry(relationObjectId);
-	
+	extentry = GetExtTableEntry(RelationGetRelid(relation));
+
 	rel->locationlist = extentry->locations;	
 	rel->execcommand = extentry->command;
 	rel->fmttype = extentry->fmtcode;
@@ -390,7 +395,6 @@ get_external_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	rel->fmterrtbl = extentry->fmterrtbl;
 	rel->ext_encoding = extentry->encoding;
 	rel->writable = extentry->iswritable;
-
 }
 
 /*
@@ -536,8 +540,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				
 				int					nsegs, i , j;
 				double				totalBytes = 0;
-				AppendOnlyEntry*	aoEntry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
-				AOCSFileSegInfo**	aocsInfo = GetAllAOCSFileSegInfo(rel, aoEntry, SnapshotNow, &nsegs);
+				AOCSFileSegInfo**	aocsInfo = GetAllAOCSFileSegInfo(rel, SnapshotNow, &nsegs);
 				
 			    if (aocsInfo)
 			    {
@@ -552,7 +555,6 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			    	}
 			    }
 			    curpages = RelationGuessNumberOfBlocks(totalBytes);
-			    pfree(aoEntry);
 			}
 			else
 			{
@@ -1156,9 +1158,11 @@ List *
 find_inheritance_children(Oid inhparent)
 {
 	List	   *list = NIL;
+	Relation	relation;
+	HeapScanDesc scan;
 	HeapTuple	inheritsTuple;
 	Oid			inhrelid;
-	cqContext  *pcqCtx;
+	ScanKeyData key[1];
 	ListCell   *item;
 	int         i;
 	Oid        *ordered_list;
@@ -1170,18 +1174,19 @@ find_inheritance_children(Oid inhparent)
 	if (!has_subclass_fast(inhparent))
 		return NIL;
 
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_inherits "
-				" WHERE inhparent = :1 ",
-				ObjectIdGetDatum(inhparent)));
-
-	while (HeapTupleIsValid(inheritsTuple = caql_getnext(pcqCtx)))
+	ScanKeyInit(&key[0],
+				Anum_pg_inherits_inhparent,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(inhparent));
+	relation = heap_open(InheritsRelationId, AccessShareLock);
+	scan = heap_beginscan(relation, SnapshotNow, 1, key);
+	while ((inheritsTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
 		list = lappend_oid(list, inhrelid);
 	}
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+	heap_close(relation, AccessShareLock);
 
 	/*
 	 * The order in which child OIDs are scanned on master may not be

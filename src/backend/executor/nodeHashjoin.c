@@ -812,14 +812,7 @@ ExecHashJoinNewBatch(HashJoinState *hjstate)
 	TupleTableSlot *slot;
 	uint32		hashvalue;
 
-#ifdef FAULT_INJECTOR
-	FaultInjector_InjectFaultIfSet(
-			FaultExecHashJoinNewBatch,
-			DDLNotSpecified,
-			"",  // databaseName
-			""); // tableName
-#endif
-
+	SIMPLE_FAULT_INJECTOR(FaultExecHashJoinNewBatch);
 
 	HashState *hashState = (HashState *) innerPlanState(hjstate);
 
@@ -1007,8 +1000,7 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 
 		hashtable->work_set = workfile_mgr_create_set(gp_workfile_type_hashjoin,
 				true, /* can_be_reused */
-				&hashtable->hjstate->js.ps,
-				NULL_SNAPSHOT);
+				&hashtable->hjstate->js.ps);
 
 		/* First time spilling. Before creating any spill files, create a metadata file */
 		hashtable->state_file = workfile_mgr_create_fileno(hashtable->work_set, WORKFILE_NUM_HASHJOIN_METADATA);
@@ -1285,51 +1277,6 @@ ExecEagerFreeHashJoin(HashJoinState *node)
 	if (node->hj_HashTable != NULL && !node->hj_HashTable->eagerlyReleased)
 	{
 		ReleaseHashTable(node);
-	}
-}
-
-void
-ExecHashJoinSaveFirstInnerBatch(HashJoinTable hashtable)
-{
-
-	Assert(hashtable != NULL);
-
-	if (hashtable->nbatch == 1)
-	{
-		/* Nothing to do, we're not spilling */
-		return;
-	}
-
-	HashJoinBatchSide *batchside = &hashtable->batches[0]->innerside;
-
-	int i;
-	for (i = 0; i < hashtable->nbuckets; i++)
-	{
-		HashJoinTuple tuple;
-		tuple = hashtable->buckets[i];
-
-		while (tuple != NULL)
-		{
-
-#ifdef USE_ASSERT_CHECKING
-			int			bucketno;
-			int			batchno;
-
-			ExecHashGetBucketAndBatch(hashtable, tuple->hashvalue,
-					&bucketno, &batchno);
-			Assert(bucketno == i);
-			Assert(batchno == 0);
-#endif
-
-			ExecHashJoinSaveTuple(&hashtable->hjstate->js.ps, HJTUPLE_MINTUPLE(tuple),
-								  tuple->hashvalue,
-								  hashtable,
-                                  batchside,
-								  hashtable->bfCxt);
-
-
-			tuple = tuple->next;
-		}
 	}
 }
 

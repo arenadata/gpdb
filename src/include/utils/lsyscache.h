@@ -92,7 +92,6 @@ extern Oid get_trigger_funcid(Oid triggerid);
 extern int32 get_trigger_type(Oid triggerid);
 extern bool trigger_enabled(Oid triggerid);
 extern char *get_func_name(Oid funcid);
-extern Oid	get_func_namespace(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
 extern void pfree_ptr_array(char **ptrarray, int nelements);
 extern List *get_func_output_arg_types(Oid funcid);
@@ -115,7 +114,6 @@ extern char *get_rel_name_partition(Oid relid);
 extern Oid	get_rel_namespace(Oid relid);
 extern Oid	get_rel_type_id(Oid relid);
 extern char get_rel_relkind(Oid relid);
-extern float4 get_rel_reltuples(Oid relid);
 extern char get_rel_relstorage(Oid relid);
 extern Oid	get_rel_tablespace(Oid relid);
 extern char *get_type_name(Oid typid);
@@ -152,7 +150,6 @@ extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
-extern float4 get_attdistinct(Oid relid, AttrNumber attnum);
 extern HeapTuple get_att_stats(Oid relid, AttrNumber attnum);
 extern bool get_attstatsslot(HeapTuple statstuple,
 				 Oid atttype, int32 atttypmod,

@@ -142,8 +142,6 @@ static void ExecSelect(TupleTableSlot *slot,
 
 static TupleTableSlot *EvalPlanQualNext(EState *estate);
 static void EndEvalPlanQual(EState *estate);
-static void ExecCheckRTPerms(List *rangeTable);
-static void ExecCheckRTEPerms(RangeTblEntry *rte);
 static void ExecCheckXactReadOnly(PlannedStmt *plannedstmt);
 static void EvalPlanQualStart(evalPlanQual *epq, EState *estate,
 				  evalPlanQual *priorepq);
@@ -156,6 +154,9 @@ static void intorel_shutdown(DestReceiver *self);
 static void intorel_destroy(DestReceiver *self);
 
 static void FillSliceTable(EState *estate, PlannedStmt *stmt);
+
+void ExecCheckRTPerms(List *rangeTable);
+void ExecCheckRTEPerms(RangeTblEntry *rte);
 
 /*
  * For a partitioned insert target only:  
@@ -1246,7 +1247,7 @@ ExecutorRewind(QueryDesc *queryDesc)
  * ExecCheckRTPerms
  *		Check access permissions for all relations listed in a range table.
  */
-static void
+void
 ExecCheckRTPerms(List *rangeTable)
 {
 	ListCell   *l;
@@ -1261,7 +1262,7 @@ ExecCheckRTPerms(List *rangeTable)
  * ExecCheckRTEPerms
  *		Check access permissions for a single RTE.
  */
-static void
+void
 ExecCheckRTEPerms(RangeTblEntry *rte)
 {
 	AclMode		requiredPerms;
@@ -1309,7 +1310,6 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 		aclcheck_error(ACLCHECK_NO_PRIV, ACL_KIND_CLASS, rel_name);
 	}
 }
-
 
 /*
  * This function is used to check if the current statement will perform any writes.
@@ -1969,7 +1969,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 					(operation == CMD_INSERT || estate->es_select_into) &&
 					ExecMayReturnRawTuples(planstate))
 					junk_filter_needed = true;
-
 				break;
 			case CMD_UPDATE:
 			case CMD_DELETE:
@@ -3268,7 +3267,6 @@ ExecInsert(TupleTableSlot *slot,
 
 			resultRelInfo->ri_aoInsertDesc =
 				appendonly_insert_init(resultRelationDesc,
-									   ActiveSnapshot,
 									   resultRelInfo->ri_aosegno,
 									   false);
 
@@ -3335,12 +3333,11 @@ ExecInsert(TupleTableSlot *slot,
 		if (resultRelInfo->ri_NumIndices > 0)
 			ExecInsertIndexTuples(xslot, &(((HeapTuple) xtuple)->t_self), estate, false);
 
-	}
-
-	if (planGen == PLANGEN_PLANNER)
-	{
-		/* AFTER ROW INSERT Triggers */
-		ExecARInsertTriggers(estate, resultRelInfo, tuple);
+		if (planGen == PLANGEN_PLANNER)
+		{
+			/* AFTER ROW INSERT Triggers */
+			ExecARInsertTriggers(estate, resultRelInfo, tuple);
+		}
 	}
 }
 
@@ -3576,7 +3573,7 @@ ldelete:;
 	 */
 
 
-	if (planGen == PLANGEN_PLANNER)
+	if (!(isAORowsTable || isAOColsTable) && planGen == PLANGEN_PLANNER)
 	{
 		/* AFTER ROW DELETE Triggers */
 		ExecARDeleteTriggers(estate, resultRelInfo, tupleid);
@@ -3818,7 +3815,7 @@ ExecUpdate(TupleTableSlot *slot,
 	{
 		/*
 		 * It is necessary to reconstruct a logically compatible tuple to
-		 * a phyiscally compatible tuple.  The slot's tuple descriptor comes
+		 * a physically compatible tuple.  The slot's tuple descriptor comes
 		 * from the projection target list, which doesn't indicate dropped
 		 * columns, and MemTuple cannot deal with cases without converting
 		 * the target list back into the original relation's tuple desc.
@@ -4029,11 +4026,10 @@ lreplace:;
 	{
 		if (resultRelInfo->ri_NumIndices > 0 && !HeapTupleIsHeapOnly((HeapTuple) tuple))
 			ExecInsertIndexTuples(partslot, &(((HeapTuple) tuple)->t_self), estate, false);
+
+		/* AFTER ROW UPDATE Triggers */
+		ExecARUpdateTriggers(estate, resultRelInfo, tupleid, tuple);
 	}
-
-	/* AFTER ROW UPDATE Triggers */
-	ExecARUpdateTriggers(estate, resultRelInfo, tupleid, tuple);
-
 }
 
 /*
@@ -4670,149 +4666,6 @@ EvalPlanQualStop(evalPlanQual *epq)
 }
 
 /*
- * GetUpdatedTuple_Int
- *
- * This function is an extraction of interesting parts of EvalPlanQual (and
- * therefore it presents some code duplication, probably should clean up at
- * some point if possible). We use it instead of EvalPlanQual when we are
- * scanning a local relation and using heap_lock_tuple to lock entries for
- * update, but we don't have access to the executor state and any RTE's.
- *
- * The inputs to this function is the old tuple tid the relation it's in, and
- * the output is the actual updated relation.
- */
-HeapTuple
-GetUpdatedTuple_Int(Relation relation,
-					ItemPointer tid,
-					TransactionId priorXmax,
-					CommandId curCid)
-{
-	HeapTupleData tuple;
-	HeapTuple	copyTuple = NULL;
-	SnapshotData SnapshotDirty;
-
-	/*
-	 * fetch tid tuple
-	 *
-	 * Loop here to deal with updated or busy tuples
-	 */
-	InitDirtySnapshot(SnapshotDirty);
-	tuple.t_self = *tid;
-	for (;;)
-	{
-		Buffer		buffer;
-
-		if (heap_fetch(relation, &SnapshotDirty, &tuple, &buffer, true, NULL))
-		{
-			/*
-			 * If xmin isn't what we're expecting, the slot must have been
-			 * recycled and reused for an unrelated tuple.	This implies that
-			 * the latest version of the row was deleted, so we need do
-			 * nothing.  (Should be safe to examine xmin without getting
-			 * buffer's content lock, since xmin never changes in an existing
-			 * tuple.)
-			 */
-			if (!TransactionIdEquals(HeapTupleHeaderGetXmin(tuple.t_data),
-									 priorXmax))
-			{
-				ReleaseBuffer(buffer);
-				return NULL;
-			}
-
-			/* otherwise xmin should not be dirty... */
-			if (TransactionIdIsValid(SnapshotDirty.xmin))
-				elog(ERROR, "t_xmin is uncommitted in tuple to be updated");
-
-			/*
-			 * If tuple is being updated by other transaction then we have to
-			 * wait for its commit/abort.
-			 */
-			if (TransactionIdIsValid(SnapshotDirty.xmax))
-			{
-				ReleaseBuffer(buffer);
-				XactLockTableWait(SnapshotDirty.xmax);
-				continue;		/* loop back to repeat heap_fetch */
-			}
-
-			/*
-			 * If tuple was inserted by our own transaction, we have to check
-			 * cmin against curCid: cmin >= curCid means our command cannot
-			 * see the tuple, so we should ignore it.  Without this we are
-			 * open to the "Halloween problem" of indefinitely re-updating the
-			 * same tuple.	(We need not check cmax because
-			 * HeapTupleSatisfiesDirty will consider a tuple deleted by our
-			 * transaction dead, regardless of cmax.)  We just checked that
-			 * priorXmax == xmin, so we can test that variable instead of
-			 * doing HeapTupleHeaderGetXmin again.
-			 */
-			if (TransactionIdIsCurrentTransactionId(priorXmax) &&
-				HeapTupleHeaderGetCmin(tuple.t_data) >= curCid)
-			{
-				ReleaseBuffer(buffer);
-				return NULL;
-			}
-
-			/*
-			 * We got tuple - now copy it for use by recheck query.
-			 */
-			copyTuple = heap_copytuple(&tuple);
-			ReleaseBuffer(buffer);
-			break;
-		}
-
-		/*
-		 * If the referenced slot was actually empty, the latest version of
-		 * the row must have been deleted, so we need do nothing.
-		 */
-		if (tuple.t_data == NULL)
-		{
-			ReleaseBuffer(buffer);
-			return NULL;
-		}
-
-		/*
-		 * As above, if xmin isn't what we're expecting, do nothing.
-		 */
-		if (!TransactionIdEquals(HeapTupleHeaderGetXmin(tuple.t_data),
-								 priorXmax))
-		{
-			ReleaseBuffer(buffer);
-			return NULL;
-		}
-
-		/*
-		 * If we get here, the tuple was found but failed SnapshotDirty.
-		 * Assuming the xmin is either a committed xact or our own xact (as it
-		 * certainly should be if we're trying to modify the tuple), this must
-		 * mean that the row was updated or deleted by either a committed xact
-		 * or our own xact.  If it was deleted, we can ignore it; if it was
-		 * updated then chain up to the next version and repeat the whole
-		 * test.
-		 *
-		 * As above, it should be safe to examine xmax and t_ctid without the
-		 * buffer content lock, because they can't be changing.
-		 */
-		if (ItemPointerEquals(&tuple.t_self, &tuple.t_data->t_ctid))
-		{
-			/* deleted, so forget about it */
-			ReleaseBuffer(buffer);
-			return NULL;
-		}
-
-		/* updated, so look at the updated row */
-		tuple.t_self = tuple.t_data->t_ctid;
-		/* updated row should have xmin matching this xmax */
-		priorXmax = HeapTupleHeaderGetXmax(tuple.t_data);
-		ReleaseBuffer(buffer);
-		/* loop back to fetch next in chain */
-	}
-
-	//*tid = tuple.t_self;
-
-	return copyTuple;
-}
-
-/*
  * ExecGetActivePlanTree --- get the active PlanState tree from a QueryDesc
  *
  * Ordinarily this is just the one mentioned in the QueryDesc, but if we
@@ -5274,8 +5127,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		AOTupleId	aoTupleId;
 
 		if (myState->ao_insertDesc == NULL)
-			myState->ao_insertDesc = appendonly_insert_init(into_rel, SnapshotNow,
-															RESERVED_SEGNO, false);
+			myState->ao_insertDesc = appendonly_insert_init(into_rel, RESERVED_SEGNO, false);
 
 		appendonly_insert(myState->ao_insertDesc, tuple, &tupleOid, &aoTupleId);
 		pfree(tuple);
@@ -5523,82 +5375,6 @@ AttrMap *makeAttrMap(int base_count, AttrNumber *base_map)
 	return map;
 }
 
-/* Invert a base-to-part attribute map to produce a part-to-base attribute map.
- * The result attribute map will have a attribute count at least as large as
- * the largest part attribute in the base map, however, the argument inv_count
- * may be used to force a larger count.
- *
- * The identity map, null, is handled specially.
- */
-AttrMap *invertedAttrMap(AttrMap *base_map, int inv_count)
-{
-	AttrMap *inv_map;
-	int i;
-	
-	if ( base_map == NULL )
-		return NULL;
-	
-	if ( inv_count < base_map->attr_max )
-	{
-		inv_count = base_map->attr_max;
-	}	
-	
-	inv_map = palloc0(sizeof(AttrMap) + inv_count * sizeof(AttrNumber));
-	
-	inv_map->live_count = base_map->live_count;
-	inv_map->attr_max = base_map->attr_count;
-	inv_map->attr_count = inv_count;
-	
-	for ( i = 1; i <= base_map->attr_count; i++ )
-	{
-		AttrNumber inv = base_map->attr_map[i];
-		
-		if ( inv == 0 ) continue;
-		inv_map->attr_map[inv] = i;
-	}
-	
-	return inv_map;
-}
-
-static AttrMap *copyAttrMap(AttrMap *original)
-{
-	AttrMap *copy;
-	size_t sz;
-	
-	if ( original == NULL ) return NULL;
-	
-	sz = sizeof(AttrMap) + original->attr_count *sizeof(AttrNumber);
-	copy = palloc0(sz);
-	memcpy(copy, original, sz);
-	
-	return copy;
-}
-
-/* Compose two attribute maps giving a map with the same effect as applying
- * the first (input) map, then the second (output) map.
- */
-AttrMap *compositeAttrMap(AttrMap *input_map, AttrMap *output_map)
-{
-	AttrMap *composite_map;
-	int i;
-	
-	if ( input_map == NULL )
-		return copyAttrMap(output_map);
-	if ( output_map == NULL )
-	    return copyAttrMap(input_map);
-	
-	composite_map = copyAttrMap(input_map);
-	composite_map->attr_max = output_map->attr_max;
-	
-	for ( i = 1; i <=input_map->attr_count; i++ )
-	{
-		AttrNumber k = attrMap(output_map, attrMap(input_map, i));
-		composite_map->attr_map[i] = k;
-	}
-	
-	return composite_map;
-}
-
 /* Use the given attribute map to convert an attribute number in the
  * base relation to an attribute number in the other relation.  Forgive
  * out-of-range attributes by mapping them to zero.  Treat null as
@@ -5611,21 +5387,6 @@ AttrNumber attrMap(AttrMap *map, AttrNumber anum)
 	if ( 0 < anum && anum <= map->attr_count )
 		return map->attr_map[anum];
 	return 0;
-}
-
-/* Apply attrMap over an integer list of attribute numbers.
- */
-List *attrMapIntList(AttrMap *map, List *attrs)
-{
-	ListCell *lc;
-	List *remapped_list = NIL;
-	
-	foreach (lc, attrs)
-	{
-		int anum = (int)attrMap(map, (AttrNumber)lfirst_int(lc));
-		remapped_list = lappend_int(remapped_list, anum);
-	}
-	return remapped_list;
 }
 
 /* For attrMapExpr below.
@@ -5643,7 +5404,7 @@ static Node *apply_attrmap_mutator(Node *node, AttrMap *map)
 	{
 		AttrNumber anum = 0;
 		Var *var = (Var*)node;
-		Assert(var->varno == 1); /* in CHECK contraints */
+		Assert(var->varno == 1); /* in CHECK constraints */
 		anum = attrMap(map, var->varattno);
 		
 		if ( anum == 0 )
@@ -5886,65 +5647,6 @@ map_part_attrs(Relation base, Relation part, AttrMap **map_ptr, bool throw)
 		pfree(v);
 	}
 	return TRUE;
-}
-
-/*
- * Maps the tuple descriptor of a part to a target tuple descriptor.
- * The mapping assume that the attributes in the target descriptor
- * could be in any position in the part descriptor.
- */
-void
-map_part_attrs_from_targetdesc(TupleDesc target, TupleDesc part, AttrMap **map_ptr)
-{
-	Assert(target);
-	Assert(part);
-	Assert(NULL == *map_ptr);
-
-	int ntarget = target->natts;
-	int npart = part->natts;
-
-	FormData_pg_attribute *tattr = NULL; 
-	FormData_pg_attribute *pattr = NULL;
-
-	AttrNumber *mapper = palloc0(sizeof(AttrNumber)*(ntarget+1));
-	
-	/* Map every attribute in the target to an attribute 
-	* in the part tuple descriptor 
-	*/
-	for(AttrNumber i = 0; i < ntarget; i++)
-	{
-		tattr = target->attrs[i];
-		mapper[i+1] = 0;
-
-		if ( tattr->attisdropped ) 
-		{
-			continue;
-		}
-
-		/* Scan all attributes in the part tuple descriptor */
-		for (AttrNumber j = 0; j < npart; j++)
-		{
-			pattr = part->attrs[j];
-			if ( pattr->attisdropped )
-			{
-				continue;
-			}
-
-			if (strncmp(NameStr(tattr->attname), NameStr(pattr->attname), NAMEDATALEN) == 0 &&
-	 			tattr->atttypid == pattr->atttypid && 
-				tattr->attalign == pattr->attalign )
-			{
-				mapper[i+1] = j+1;
-				/* Continue with next attribute in the target list */
-				break;
-			}
-		}
-	}
-
-	Assert ( map_ptr != NULL && mapper != NULL );
-
-	*map_ptr = makeAttrMap(ntarget, mapper);
-	pfree(mapper);
 }
 
 /*

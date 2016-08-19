@@ -25,13 +25,13 @@ all: mkdbgen mkgphdfs mks3ext
 
 .PHONY:
 mapreduce:
-	if [ "$(enable_mapreduce)" = "yes" ]; then \
+	@if [ "$(enable_mapreduce)" = "yes" ]; then \
 		echo "gpmapreduce enabled"; \
 		$(MAKE) -C gpmapreduce; \
 	fi
 
 install: mapreduce
-	if [ "$(enable_mapreduce)" = "yes" ]; then \
+	@if [ "$(enable_mapreduce)" = "yes" ]; then \
 		$(MAKE) -C gpmapreduce install; \
 	fi
 
@@ -53,7 +53,7 @@ mkgphdfs:
 .PHONY:
 mks3ext:
 	PATH=$(INSTLOC)/bin:$(PATH) $(MAKE) -B -C gps3ext USE_PGXS=1 install
-	PATH=$(INSTLOC)/bin:$(PATH) $(MAKE) -B -C gps3ext -f Makefile.check USE_PGXS=1 install
+	PATH=$(INSTLOC)/bin:$(PATH) $(MAKE) -B -C gps3ext/bin/gpcheckcloud USE_PGXS=1 install
 
 # Only include include these files when running enterprise build
 ENTERPRISE_TARGETS="mkdbgen mkgphdfs mkorafce mkplr mkpljava"

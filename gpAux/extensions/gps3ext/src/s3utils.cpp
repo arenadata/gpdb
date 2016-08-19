@@ -34,55 +34,12 @@ void write_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 }
 #endif
 
-bool gethttpnow(char datebuf[65]) {  //('D, d M Y H:i:s T')
-    struct tm tm_info;
-    time_t t;
-    if (!datebuf) {
-        return false;
-    }
-    time(&t);
-    localtime_r(&t, &tm_info);
-    strftime(datebuf, 65, "%a, %d %b %Y %H:%M:%S %z", &tm_info);
-    return true;
-}
-
-bool trim(char *out, const char *in, const char *trimed) {
-    int targetlen;
-
-    if (!out || !in) {  // invalid string params
-        return false;
-    }
-
-    targetlen = strlen(in);
-
-    while (targetlen > 0) {
-        if (strchr(trimed, in[targetlen - 1]) ==
-            NULL)  // can't find stripped char
-            break;
-        else
-            targetlen--;
-    }
-
-    while (targetlen > 0) {
-        if (strchr(trimed, *in) == NULL)  // normal string
-            break;
-        else {
-            in++;
-            targetlen--;
-        }
-    }
-
-    memcpy(out, in, targetlen);
-    out[targetlen] = 0;
-    return true;
-}
-
 // not returning the normal hex result, might have '\0'
-bool sha1hmac(const char *str, unsigned char out_hash[20], const char *secret,
+bool sha1hmac(const char *str, unsigned char out_hash[SHA_DIGEST_LENGTH], const char *secret,
               int secret_len) {
     if (!str) return false;
 
-    unsigned int len = 32;
+    unsigned int len = SHA_DIGEST_LENGTH;  // 20
 
     HMAC_CTX hmac;
     HMAC_CTX_init(&hmac);
@@ -95,24 +52,23 @@ bool sha1hmac(const char *str, unsigned char out_hash[20], const char *secret,
     return true;
 }
 
-bool sha1hmac_hex(const char *str, char out_hash_hex[41], const char *secret,
+bool sha1hmac_hex(const char *str, char out_hash_hex[SHA_DIGEST_STRING_LENGTH], const char *secret,
                   int secret_len) {
     if (!str) return false;
 
-    unsigned char hash[20];
+    unsigned char hash[SHA_DIGEST_LENGTH];
 
     sha1hmac(str, hash, secret, secret_len);
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
         sprintf(out_hash_hex + (i * 2), "%02x", hash[i]);
     }
-    out_hash_hex[40] = 0;
+    out_hash_hex[SHA_DIGEST_STRING_LENGTH - 1] = 0;
 
     return true;
 }
 
-// SHA256_DIGEST_LENGTH == 32
-bool sha256(const char *string, unsigned char out_hash[32]) {
+bool sha256(const char *string, unsigned char out_hash[SHA256_DIGEST_LENGTH]) {
     if (!string) return false;
 
     SHA256_CTX sha256;
@@ -123,8 +79,7 @@ bool sha256(const char *string, unsigned char out_hash[32]) {
     return true;
 }
 
-// SHA256_DIGEST_LENGTH * 2 + 1 == 65
-bool sha256_hex(const char *string, char out_hash_hex[65]) {
+bool sha256_hex(const char *string, char out_hash_hex[SHA256_DIGEST_STRING_LENGTH]) {
     if (!string) return false;
 
     unsigned char hash[SHA256_DIGEST_LENGTH];  // 32
@@ -134,16 +89,15 @@ bool sha256_hex(const char *string, char out_hash_hex[65]) {
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         sprintf(out_hash_hex + (i * 2), "%02x", hash[i]);
     }
-    out_hash_hex[64] = 0;
+    out_hash_hex[SHA256_DIGEST_STRING_LENGTH - 1] = 0;
 
     return true;
 }
 
-bool sha256hmac(const char *str, unsigned char out_hash[32], const char *secret,
-                int secret_len) {
+bool sha256hmac(const char *str, unsigned char out_hash[32], const char *secret, int secret_len) {
     if (!str) return false;
 
-    unsigned int len = 32;
+    unsigned int len = SHA256_DIGEST_LENGTH;  // 32
 
     HMAC_CTX hmac;
     HMAC_CTX_init(&hmac);
@@ -156,8 +110,7 @@ bool sha256hmac(const char *str, unsigned char out_hash[32], const char *secret,
     return true;
 }
 
-bool sha256hmac_hex(const char *str, char out_hash_hex[65], const char *secret,
-                    int secret_len) {
+bool sha256hmac_hex(const char *str, char out_hash_hex[65], const char *secret, int secret_len) {
     if (!str) return false;
 
     unsigned char hash[SHA256_DIGEST_LENGTH];  // 32
@@ -167,7 +120,7 @@ bool sha256hmac_hex(const char *str, char out_hash_hex[65], const char *secret,
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
         sprintf(out_hash_hex + (i * 2), "%02x", hash[i]);
     }
-    out_hash_hex[64] = 0;
+    out_hash_hex[SHA256_DIGEST_STRING_LENGTH - 1] = 0;
 
     return true;
 }
@@ -194,7 +147,7 @@ CURL *CreateCurlHandler(const char *path) {
  * - http://stackoverflow.com/questions/20406744/
  */
 size_t find_Nth(const string &str,  // where to work
-                unsigned N,         // N'th ocurrence
+                unsigned N,         // N'th occurrence
                 const string &find  // what to 'find'
                 ) {
     if (0 == N) {
@@ -214,7 +167,7 @@ size_t find_Nth(const string &str,  // where to work
 }
 
 MD5Calc::MD5Calc() {
-    memset(this->md5, 0, 17);
+    memset(this->md5, 0, MD5_DIGEST_STRING_LENGTH);
     MD5_Init(&this->c);
 }
 
@@ -226,43 +179,30 @@ bool MD5Calc::Update(const char *data, int len) {
 const char *MD5Calc::Get() {
     MD5_Final(this->md5, &c);
     std::stringstream ss;
-    for (int i = 0; i < 16; i++)
-        ss << std::hex << std::setw(2) << std::setfill('0')
-           << (int)this->md5[i];
+    for (int i = 0; i < MD5_DIGEST_LENGTH; i++)
+        ss << std::hex << std::setw(2) << std::setfill('0') << (int)this->md5[i];
     this->result = ss.str();
 
     // Reset MD5 context
-    memset(this->md5, 0, 17);
+    memset(this->md5, 0, MD5_DIGEST_STRING_LENGTH);
     MD5_Init(&this->c);
     return this->result.c_str();
 }
 
-DataBuffer::DataBuffer(uint64_t size) : maxsize(size), length(0) {
-    this->data = (char *)malloc(this->maxsize);
-}
-
-DataBuffer::~DataBuffer() {
-    if (this->data) {
-        free(this->data);
-    }
-}
-
-uint64_t DataBuffer::append(const char *buf, uint64_t len) {
-    uint64_t copylen = std::min(len, maxsize - length);
-    if (this->data) {
-        memcpy(this->data + length, buf, copylen);
-        this->length += copylen;
-        return copylen;
-    } else {
-        return 0;
-    }
-}
-
 Config::Config(const string &filename) : _conf(NULL) {
-    if (filename != "") this->_conf = ini_load(filename.c_str());
+    if (!filename.empty()) this->_conf = ini_load(filename.c_str());
     if (this->_conf == NULL) {
 #ifndef S3_STANDALONE
         write_log("Failed to load config file\n");
+#endif
+    }
+}
+
+Config::Config(const char *filename) : _conf(NULL) {
+    if (filename != NULL) this->_conf = ini_load(filename);
+    if (this->_conf == NULL) {
+#ifndef S3_STANDALONE
+        write_log("Failed to load configuration file\n");
 #endif
     }
 }
@@ -271,32 +211,24 @@ Config::~Config() {
     if (this->_conf) ini_free(this->_conf);
 }
 
-string Config::Get(const string &sec, const string &key,
-                   const string &defaultvalue) {
+string Config::Get(const string &sec, const string &key, const string &defaultvalue) {
     string ret = defaultvalue;
-    if ((key == "") || (sec == "")) return ret;
+    if ((key == "") || (sec == "") || (this->_conf == NULL)) return ret;
 
-    if (this->_conf) {
-        const char *tmp = ini_get(this->_conf, sec.c_str(), key.c_str());
-        if (tmp) ret = tmp;
-    }
+    const char *tmp = ini_get(this->_conf, sec.c_str(), key.c_str());
+    if (tmp) ret = tmp;
     return ret;
 }
 
-bool Config::Scan(const string &sec, const string &key, const char *scanfmt,
-                  void *dst) {
-    if ((key == "") || (sec == "")) return false;
+bool Config::Scan(const string &sec, const string &key, const char *scanfmt, void *dst) {
+    if ((key == "") || (sec == "") || (this->_conf == NULL)) return false;
 
-    if (this->_conf) {
-        return ini_sget(this->_conf, sec.c_str(), key.c_str(), scanfmt, dst);
-    }
-    return false;
+    return ini_sget(this->_conf, sec.c_str(), key.c_str(), scanfmt, dst);
 }
 
-bool to_bool(std::string str) {
+bool to_bool(string str) {
     std::transform(str.begin(), str.end(), str.begin(), ::tolower);
-    if ((str == "yes") || (str == "true") || (str == "y") || (str == "t") ||
-        (str == "1")) {
+    if ((str == "yes") || (str == "true") || (str == "y") || (str == "t") || (str == "1")) {
         return true;
     } else {
         return false;
@@ -342,7 +274,7 @@ const char uri_mapping[256] = {
     /* F */ -1, -1, -1, -1, -1, -1, -1, -1,
     /*   */ -1, -1, -1, -1, -1, -1, -1, -1};
 
-// alpha, num and - _ . ~ are reserved(RFC 3986).
+// alpha, numbers and - _ . ~ are reserved(RFC 3986).
 const char uri_reserved[256] = {
     /*      0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F */
     /* 0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -365,7 +297,7 @@ const char uri_reserved[256] = {
     /* E */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     /* F */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-std::string uri_encode(const std::string &src) {
+string uri_encode(const string &src) {
     const unsigned char *src_str = (const unsigned char *)src.c_str();
     const int src_len = src.length();
 
@@ -387,12 +319,12 @@ std::string uri_encode(const std::string &src) {
         src_str++;
     }
 
-    std::string ret_str((char *)sub_start, (char *)sub_end);
+    string ret_str((char *)sub_start, (char *)sub_end);
     delete[] sub_start;
     return ret_str;
 }
 
-std::string uri_decode(const std::string &src) {
+string uri_decode(const string &src) {
     const unsigned char *src_str = (const unsigned char *)src.c_str();
     const int src_len = src.length();
 
@@ -421,7 +353,7 @@ std::string uri_decode(const std::string &src) {
 
     while (src_str < src_end) *sub_end++ = *src_str++;
 
-    std::string ret_str(sub_start, sub_end);
+    string ret_str(sub_start, sub_end);
     delete[] sub_start;
     return ret_str;
 }

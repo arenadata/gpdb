@@ -192,20 +192,6 @@ void AppendOnlyStorageWrite_Init(
 
 }
 
-
-/*
- * Return (read-only) pointer to relation name.
- */
-char *AppendOnlyStorageWrite_RelationName(
-	AppendOnlyStorageWrite			*storageWrite)
-{
-	Assert(storageWrite != NULL);
-	Assert(storageWrite->isActive);
-
-	return storageWrite->relationName;
-}
-
-
 /*
  * Finish using the AppendOnlyStorageWrite session created with ~Init.
  */
@@ -311,7 +297,6 @@ void AppendOnlyStorageWrite_TransactionCreateFile(
 				persistentTid,
 				persistentSerialNum))
 	{
-		// UNDONE: Verify the gp_persistent_relation_node Append-Only EOFs are zero.
 		return;
 	}
 
@@ -709,18 +694,6 @@ void AppendOnlyStorageWrite_TransactionFlushAndCloseFile(
 // -----------------------------------------------------------------------------
 // Usable Block Length
 // -----------------------------------------------------------------------------
-
-/*
- * Returns the Append-Only Storage Block fixed header length in bytes.
- */
-int32 AppendOnlyStorageWrite_FixedHeaderLen(
-	AppendOnlyStorageWrite		*storageWrite)
-{
-	Assert(storageWrite != NULL);
-	Assert(storageWrite->isActive);
-
-	return storageWrite->regularHeaderLen;
-}
 
 /*
  * Returns the Append-Only Storage Block complete header length in bytes.

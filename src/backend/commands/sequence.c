@@ -18,7 +18,6 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "access/xact.h"
-#include "catalog/catquery.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
@@ -635,7 +634,11 @@ DefineSequence(CreateSeqStmt *seq)
 	if (shouldDispatch)
 	{
 		seq->comptypeOid = stmt->oidInfo.comptypeOid;
-		CdbDispatchUtilityStatement((Node *)seq, "DefineSequence");
+		CdbDispatchUtilityStatement((Node *) seq,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 	}
 }
 
@@ -788,7 +791,11 @@ AlterSequence(AlterSeqStmt *stmt)
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *)stmt, "AlterSequence");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 
 		if (!bSeqIsTemp)
 		{
@@ -1175,16 +1182,12 @@ lastval(PG_FUNCTION_ARGS)
 				 errmsg("lastval is not yet defined in this session")));
 
 	/* Someone may have dropped the sequence since the last nextval() */
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(last_used_seq->relid))))
-	{
+	if (!SearchSysCacheExists(RELOID,
+							  ObjectIdGetDatum(last_used_seq->relid),
+							  0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("lastval is not yet defined in this session")));
-	}
 
 	seqrel = open_share_lock(last_used_seq);
 

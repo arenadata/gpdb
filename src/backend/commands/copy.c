@@ -37,6 +37,7 @@
 #include "commands/copy.h"
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"
+#include "commands/queue.h"
 #include "executor/executor.h"
 #include "executor/execDML.h"
 #include "libpq/libpq.h"
@@ -54,6 +55,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/resscheduler.h"
 #include "utils/builtins.h"
 
 #include "cdb/cdbvars.h"
@@ -61,7 +63,6 @@
 #include "cdb/cdbhash.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbsreh.h"
-#include "cdb/cdbrelsize.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
@@ -1280,6 +1281,17 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 											ActiveSnapshot, InvalidSnapshot,
 											dest, NULL, false);
 
+		if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+		{
+			Assert(queryString);
+			gpmon_qlog_query_submit(cstate->queryDesc->gpmon_pkt);
+			gpmon_qlog_query_text(cstate->queryDesc->gpmon_pkt,
+					queryString,
+					application_name,
+					GetResqueueName(GetResQueueId()),
+					GetResqueuePriority(GetResQueueId()));
+		}
+
 		/*
 		 * Call ExecutorStart to prepare the plan for execution.
 		 *
@@ -1490,7 +1502,7 @@ DoCopyInternal(const CopyStmt *stmt, const char *queryString, CopyState cstate)
 				{
 					SegfileMapNode *n = makeNode(SegfileMapNode);
 					n->relid = RelationGetRelid(cstate->rel);
-					n->segno = SetSegnoForWrite(InvalidFileSegNumber, n->relid);
+					n->segno = SetSegnoForWrite(cstate->rel, InvalidFileSegNumber);
 					cstate->ao_segnos = lappend(cstate->ao_segnos, n);
 				}
 			}
@@ -2788,7 +2800,7 @@ CopyFromDispatch(CopyState cstate)
 		else
 			p_nattrs = 0;
 		/* Create hash API reference */
-		cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);
+		cdbHash = makeCdbHash(cdbCopy->total_segs);
 	}
 
 
@@ -3343,7 +3355,7 @@ CopyFromDispatch(CopyState cstate)
 								save_cxt = MemoryContextSwitchTo(oldcontext);
 								d->relid = relid;
 								part_hash = d->cdbHash =
-									makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);
+									makeCdbHash(cdbCopy->total_segs);
 								part_policy = d->policy =
 									GpPolicyCopy(oldcontext,
 												 rel->rd_cdbpolicy);
@@ -4082,7 +4094,6 @@ CopyFrom(CopyState cstate)
 					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
 					resultRelInfo->ri_aoInsertDesc =
 						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
-											   SnapshotNow,
 											   resultRelInfo->ri_aosegno, false);
 				}
 				else if (relstorage == RELSTORAGE_AOCOLS &&

@@ -49,7 +49,6 @@
 #include "access/valid.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
-#include "catalog/catquery.h"
 #include "catalog/gp_policy.h"
 #include "catalog/gp_fastsequence.h"
 #include "catalog/namespace.h"
@@ -1012,11 +1011,9 @@ try_relation_open(Oid relationId, LOCKMODE lockmode, bool noWait)
 	 * Now that we have the lock, probe to see if the relation really exists
 	 * or not.
 	 */
-	if (0 == caql_getcount(
-				NULL,
-				cql("SELECT COUNT(*) FROM pg_class "
-					" WHERE oid = :1 ",
-					ObjectIdGetDatum(relationId))))
+	if (!SearchSysCacheExists(RELOID,
+							  ObjectIdGetDatum(relationId),
+							  0, 0, 0))
 	{
 		/* Release useless lock */
 		if (lockmode != NoLock)
@@ -1335,7 +1332,6 @@ try_relation_openrv(const RangeVar *relation, LOCKMODE lockmode, bool noWait)
 	return try_relation_open(relOid, lockmode, noWait);
 }
 
-
 /* ----------------
  *		relation_close - close any relation
  *
@@ -1446,37 +1442,6 @@ heap_openrv(const RangeVar *relation, LOCKMODE lockmode)
 
 	return r;
 }
-
-/* ----------------
- *      try_heap_openrv - open a heap relation specified
- *      by a RangeVar node
- *
- *      As above, but return NULL instead of failing for relation-not-found.
- * ----------------
- */
-Relation
-try_heap_openrv(const RangeVar *relation, LOCKMODE lockmode, bool noWait)
-{
-    Relation    r;
-
-    r = try_relation_openrv(relation, lockmode, noWait);
-
-    if (r)
-    {
-        if (r->rd_rel->relkind == RELKIND_INDEX)
-            ereport(ERROR,
-                    (errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                     errmsg("\"%s\" is an index",
-                            RelationGetRelationName(r))));
-        else if (r->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
-            ereport(ERROR,
-                    (errcode(ERRCODE_WRONG_OBJECT_TYPE),
-                     errmsg("\"%s\" is a composite type",
-                            RelationGetRelationName(r))));
-    }
-    return r;
-}
-           
 
 
 /* ----------------

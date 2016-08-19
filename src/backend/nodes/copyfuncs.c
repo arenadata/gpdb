@@ -299,7 +299,6 @@ _copySequence(Sequence *from)
 	Sequence *newnode = makeNode(Sequence);
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
 	COPY_NODE_FIELD(subplans);
-	COPY_NODE_FIELD(static_selector);
 
 	return newnode;
 }
@@ -846,9 +845,6 @@ _copyShareInputScan(ShareInputScan *from)
 	COPY_SCALAR_FIELD(share_type);
 	COPY_SCALAR_FIELD(share_id);
 	COPY_SCALAR_FIELD(driver_slice);
-	COPY_NODE_FIELD(colnames);
-	COPY_NODE_FIELD(coltypes);
-	COPY_NODE_FIELD(coltypmods);
 
 	return newnode;
 }

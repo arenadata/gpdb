@@ -150,6 +150,7 @@ extern bool Debug_appendonly_print_blockdirectory;
 extern bool Debug_appendonly_print_read_block;
 extern bool Debug_appendonly_print_append_block;
 extern bool Debug_appendonly_print_segfile_choice;
+extern bool test_AppendOnlyHash_eviction_vs_just_marking_not_inuse;
 extern int  Debug_appendonly_bad_header_print_level;
 extern bool Debug_appendonly_print_datumstream;
 extern bool Debug_appendonly_print_visimap;
@@ -459,6 +460,8 @@ extern bool optimizer_multilevel_partitioning;
 extern bool optimizer_enable_derive_stats_all_groups;
 extern bool optimizer_explain_show_status;
 extern bool optimizer_prefer_scalar_dqa_multistage_agg;
+extern bool optimizer_parallel_union;
+extern bool optimizer_array_constraints;
 
 /**
  * GUCs related to code generation.
@@ -466,6 +469,7 @@ extern bool optimizer_prefer_scalar_dqa_multistage_agg;
 extern bool init_codegen;
 extern bool codegen;
 extern bool codegen_validate_functions;
+extern int codegen_varlen_tolerance;
 
 /**
  * Enable logging of DPE match in optimizer.

@@ -1283,6 +1283,88 @@ explain select * from orca.index_test where a = 5 and c = 5;
 -- renaming columns
 select * from (values (2),(null)) v(k);
 
+-- Checking if ORCA correctly populates canSetTag in PlannedStmt for multiple statements because of rules
+drop table if exists can_set_tag_target;
+create table can_set_tag_target
+(
+	x int,
+	y int,
+	z char
+);
+
+drop table if exists can_set_tag_audit;
+create table can_set_tag_audit
+(
+	t timestamp without time zone,
+	x int,
+	y int,
+	z char
+);
+
+create rule can_set_tag_audit_update AS
+    ON UPDATE TO can_set_tag_target DO  INSERT INTO can_set_tag_audit (t, x, y, z)
+  VALUES (now(), old.x, old.y, old.z);
+
+insert into can_set_tag_target select i, i + 1, i + 2 from generate_series(1,2) as i;
+
+create role unpriv;
+grant all on can_set_tag_target to unpriv;
+grant all on can_set_tag_audit to unpriv;
+set role unpriv;
+show optimizer;
+update can_set_tag_target set y = y + 1;
+select count(1) from can_set_tag_audit;
+reset role;
+
+revoke all on can_set_tag_target from unpriv;
+revoke all on can_set_tag_audit from unpriv;
+drop role unpriv;
+drop table can_set_tag_target;
+drop table can_set_tag_audit;
+
+-- start_ignore
+create language plpythonu;
+-- end_ignore
+
+-- Checking if ORCA uses parser's canSetTag for CREATE TABLE AS SELECT
+create or replace function canSetTag_Func(x int) returns int as $$
+    if (x is None):
+        return 0
+    else:
+        return x * 3
+$$ language plpythonu;
+
+create table canSetTag_input_data (domain integer, class integer, attr text, value integer)
+   distributed by (domain);
+insert into canSetTag_input_data values(1, 1, 'A', 1);
+insert into canSetTag_input_data values(2, 1, 'A', 0);
+insert into canSetTag_input_data values(3, 0, 'B', 1);
+
+create table canSetTag_bug_table as 
+SELECT attr, class, (select canSetTag_Func(count(distinct class)::int) from canSetTag_input_data)
+   as dclass FROM canSetTag_input_data GROUP BY attr, class distributed by (attr);
+
+drop function canSetTag_Func(x int);
+drop table canSetTag_bug_table;
+drop table canSetTag_input_data;
+
+-- Test B-Tree index scan with in list
+CREATE TABLE btree_test as SELECT * FROM generate_series(1,100) as a distributed randomly;
+CREATE INDEX btree_test_index ON btree_test(a);
+EXPLAIN SELECT * FROM btree_test WHERE a in (1, 47);
+EXPLAIN SELECT * FROM btree_test WHERE a in ('2', 47);
+EXPLAIN SELECT * FROM btree_test WHERE a in ('1', '2');
+EXPLAIN SELECT * FROM btree_test WHERE a in ('1', '2', 47);
+
+-- Test Bitmap index scan with in list
+CREATE TABLE bitmap_test as SELECT * FROM generate_series(1,100) as a distributed randomly;
+CREATE INDEX bitmap_index ON bitmap_test USING BITMAP(a);
+EXPLAIN SELECT * FROM bitmap_test WHERE a in (select 1);
+EXPLAIN SELECT * FROM bitmap_test WHERE a in (1, 47);
+EXPLAIN SELECT * FROM bitmap_test WHERE a in ('2', 47);
+EXPLAIN SELECT * FROM bitmap_test WHERE a in ('1', '2');
+EXPLAIN SELECT * FROM bitmap_test WHERE a in ('1', '2', 47);
+
 -- clean up
 drop schema orca cascade;
 reset optimizer_segments;

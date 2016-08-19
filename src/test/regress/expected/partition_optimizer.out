@@ -6757,21 +6757,21 @@ set optimizer_nestloop_factor = 1.0;
 explain select foo_p.b, foo_p.t from foo_p left outer join bar on foo_p.a = bar.k  where foo_p.t is not null and foo_p.a = (array[1])[1];
                                                    QUERY PLAN                                                    
 -----------------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice3; segments: 3)  (cost=0.00..866.75 rows=20500 width=30)
-   ->  Hash Left Join  (cost=0.00..864.46 rows=6834 width=30)
+ Gather Motion 2:1  (slice3; segments: 2)  (cost=0.00..866.85 rows=20500 width=30)
+   ->  Hash Left Join  (cost=0.00..864.56 rows=10250 width=30)
          Hash Cond: foo_p.a = bar.k
-         ->  Redistribute Motion 3:3  (slice1; segments: 3)  (cost=0.00..431.08 rows=134 width=34)
+         ->  Redistribute Motion 2:2  (slice1; segments: 2)  (cost=0.00..431.09 rows=200 width=34)
                Hash Key: foo_p.a
-               ->  Sequence  (cost=0.00..431.07 rows=134 width=34)
-                     Partitions selected: 6 (out of 6)
-                     ->  Dynamic Table Scan on foo_p (dynamic scan id: 1)  (cost=0.00..431.07 rows=134 width=34)
+               ->  Sequence  (cost=0.00..431.07 rows=200 width=34)
+                     ->  Partition Selector for foo_p (dynamic scan id: 1)  (cost=10.00..100.00 rows=50 width=4)
+                           Partitions selected:  6 (out of 6)
+                     ->  Dynamic Table Scan on foo_p (dynamic scan id: 1)  (cost=0.00..431.07 rows=200 width=34)
                            Filter: NOT t IS NULL AND a = ('{1}'::integer[])[1]
-         ->  Hash  (cost=431.36..431.36 rows=6700 width=4)
-               ->  Redistribute Motion 3:3  (slice2; segments: 3)  (cost=0.00..431.36 rows=6700 width=4)
+         ->  Hash  (cost=431.45..431.45 rows=10050 width=4)
+               ->  Redistribute Motion 2:2  (slice2; segments: 2)  (cost=0.00..431.45 rows=10050 width=4)
                      Hash Key: bar.k
-                     ->  Table Scan on bar  (cost=0.00..431.22 rows=6700 width=4)
+                     ->  Table Scan on bar  (cost=0.00..431.32 rows=10050 width=4)
  Settings:  optimizer=on; optimizer_segments=3
- Optimizer status: PQO version 1.633
 (15 rows)
 
 reset optimizer_segments;
@@ -7800,3 +7800,42 @@ select * from pt_td_leak where col1 = 5;
 
 drop table pt_td_leak;
 drop table pt_td_leak_exchange;
+-- Test split default partition while per tuple memory context is reset
+drop table if exists test_split_part cascade;
+NOTICE:  table "test_split_part" does not exist, skipping
+CREATE TABLE test_split_part ( log_id int NOT NULL, f_array int[] NOT NULL)
+DISTRIBUTED BY (log_id)
+PARTITION BY RANGE(log_id)
+(
+        START (1::int) END (100::int) EVERY (5) WITH (appendonly=false),
+        PARTITION "Old" START (101::int) END (201::int) WITH (appendonly=false),
+        DEFAULT PARTITION other_log_ids  WITH (appendonly=false)
+);
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_other_log_ids" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_2" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_3" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_4" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_5" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_6" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_7" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_8" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_9" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_10" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_11" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_12" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_13" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_14" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_15" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_16" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_17" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_18" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_19" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_20" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_21" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_Old" for table "test_split_part"
+insert into test_split_part (log_id , f_array) select id, '{10}' from generate_series(1,1000) id;
+ALTER TABLE test_split_part SPLIT DEFAULT PARTITION START (201) INCLUSIVE END (301) EXCLUSIVE INTO (PARTITION "New", DEFAULT PARTITION);
+NOTICE:  exchanged partition "other_log_ids" of relation "test_split_part" with relation "pg_temp_325194"
+NOTICE:  dropped partition "other_log_ids" for relation "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_New" for table "test_split_part"
+NOTICE:  CREATE TABLE will create partition "test_split_part_1_prt_other_log_ids" for table "test_split_part"

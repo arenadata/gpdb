@@ -40,7 +40,7 @@
 #include "cdb/tupchunklist.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbicudpfaultinjection.h"
 
@@ -764,7 +764,7 @@ static void checkQDConnectionAlive(void);
 static void *rxThreadFunc(void *arg);
 
 static bool handleMismatch(icpkthdr *pkt, struct sockaddr_storage *peer, int peer_len);
-static void inline handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now);
+static void handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now);
 static bool handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry);
 static void handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, int16 motionId);
 static void handleDisorderPacket(MotionConn *conn, int pos, uint32 tailSeq, icpkthdr *pkt);
@@ -3209,9 +3209,8 @@ checkForCancelFromQD(ChunkTransportState *pTransportStates)
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(pTransportStates);
 	Assert(pTransportStates->estate);
-	Assert(pTransportStates->estate->dispatcherState);
 
-	if (cdbdisp_checkResultsErrcode(pTransportStates->estate->dispatcherState->primaryResults))
+	if (cdbdisp_checkForCancel(pTransportStates->estate->dispatcherState))
 	{
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 						errmsg(CDB_MOTION_LOST_CONTACT_STRING)));
@@ -4367,7 +4366,7 @@ logPkt(char *prefix, icpkthdr *pkt)
  *	Here y is a constant (In implementation, we use 4) and retry is the times the
  *	packet is retransmitted.
  */
-static void inline
+static void
 handleAckedPacket(MotionConn *ackConn, ICBuffer *buf, uint64 now)
 {
 	uint64 ackTime = 0;

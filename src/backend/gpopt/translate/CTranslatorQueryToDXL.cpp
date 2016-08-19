@@ -417,22 +417,6 @@ CTranslatorQueryToDXL::CheckSupportedCmdType
 		return;
 	}
 
-	if (CMD_INSERT == pquery->commandType || CMD_DELETE == pquery->commandType || CMD_UPDATE == pquery->commandType)
-	{
-	  // GPDB_83_MERGE_FIXME: resultRelations was moved from Query to PlannedStmt. But
-	  // we're supposed to do the planning, so I assume we don't have easy access to
-	  // PlannedStmt here. I'm actually confused how this ever worked; I would've expected
-	  // resultRelations to not be filled in before planning. Or maybe it's filled in
-	  // at rewrite phase; not sure.
-#if 0
-		if (NULL != pquery->resultRelations)
-		{
-			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, GPOS_WSZ_LIT("DML on partitioned tables"));
-		}
-#endif
-		return;
-	}
-
 	SCmdNameElem rgStrMap[] =
 		{
 		{CMD_UTILITY, GPOS_WSZ_LIT("UTILITY command")}
@@ -447,8 +431,6 @@ CTranslatorQueryToDXL::CheckSupportedCmdType
 			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature, mapelem.m_wsz);
 		}
 	}
-
-	GPOS_ASSERT(!"Unrecognized command type");
 }
 
 //---------------------------------------------------------------------------
@@ -491,8 +473,11 @@ CTranslatorQueryToDXL::PdrgpdxlnCTE() const
 CDXLNode *
 CTranslatorQueryToDXL::PdxlnFromQueryInternal()
 {
-	// GPDB_83_MERGE_FIXME: Why do we check permissions here? The executor
-	// will do it anyway...
+	// The parsed query contains an RTE for the view, which is maintained all the way through planned statement.
+	// This entries is annotated as requiring SELECT permissions for the current user.
+	// In Orca, we only keep range table entries for the base tables in the planned statement, but not for the view itself.
+	// Since permissions are only checked during ExecutorStart, we lose track of the permissions required for the view and the select goes through successfully.
+	// We therefore need to check permissions before we go into optimization for all RTEs, including the ones not explicitly referred in the query, e.g. views.
 	CTranslatorUtils::CheckRTEPermissions(m_pquery->rtable);
 	
 	CDXLNode *pdxlnChild = NULL;

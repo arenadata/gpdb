@@ -14,8 +14,6 @@
 #include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_compression.h"
 #include "catalog/dependency.h"
-#include "cdb/cdbappendonlyam.h"
-#include "cdb/cdbappendonlystoragelayer.h"
 #include "parser/analyze.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
@@ -70,10 +68,13 @@ get_funcs_for_compression(char *compresstype)
 {
 	PGFunction *func = NULL;
 
-	if (!compresstype)
+	if (compresstype == NULL ||
+		compresstype[0] == '\0' ||
+		pg_strcasecmp("none", compresstype) == 0)
+	{
 		return func;
-
-	if (pg_strcasecmp("none", compresstype) != 0)
+	}
+	else
 	{
 		func = GetCompressionImplementation(compresstype);
 
@@ -200,61 +201,6 @@ RelationGetAttributeOptions(Relation rel)
 	pfree(dats);
 
 	return opts;
-}
-
-/*
- * Return an array of compression function arrays for
- * each attribute in a table.
- *
- * Set NULL for columns without storage options.
- */
-PGFunction **
-RelationGetColumnCompressionFuncs(Relation rel)
-{
-	StdRdOptions  **opts = RelationGetAttributeOptions(rel);
-	PGFunction	  **funcs = palloc0(RelationGetNumberOfAttributes(rel)
-									* sizeof(PGFunction *));
-	int 			i;
-
-	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
-	{
-		if (opts[i])
-		{
-			funcs[i] = get_funcs_for_compression(opts[i]->compresstype);
-		}
-	}
-	return funcs;
-}
-
-/* Returns an array of block sizes -- one entry for each user column in rel. */
-uint32 *
-RelationGetColumnBlocksize(Relation rel)
-{
-	uint32 		   *bz = palloc(RelationGetNumberOfAttributes(rel) * sizeof(uint32));
-	StdRdOptions  **opts = RelationGetAttributeOptions(rel);
-	int 			i;
-
-	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
-	{
-		if (opts[i] == NULL)
-			bz[i] = DEFAULT_APPENDONLY_BLOCK_SIZE;
-		else
-			bz[i] = opts[i]->blocksize;
-	}
-
-	return bz;
-}
-
-uint32
-RelationGetRelationBlocksize(Relation rel)
-{
-
-  AppendOnlyEntry *aoentry;
-
-  aoentry = GetAppendOnlyEntry(RelationGetRelid(rel), SnapshotNow);
-
-  return aoentry->blocksize;
-
 }
 
 /*

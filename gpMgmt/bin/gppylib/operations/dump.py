@@ -37,6 +37,10 @@ CATALOG_SCHEMA = [
     'pg_toast'
 ]
 
+IGNORE_SCHEMA = [
+    'pg_temp'
+]
+
 GET_ALL_DATATABLES_SQL = """
 SELECT ALLTABLES.oid, ALLTABLES.schemaname, ALLTABLES.tablename FROM
 
@@ -64,11 +68,12 @@ SELECT n.nspname AS schemaname, c.relname AS tablename
     WHERE c.relkind = 'r'::"char" AND c.oid > 16384 AND n.nspname = '%s'
 """
 
+# Generally used to validate that the table(s) we want to backup
 GET_ALL_USER_TABLES_SQL = """
 SELECT n.nspname AS schemaname, c.relname AS tablename
     FROM pg_class c LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
     LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
-    WHERE c.relkind = 'r'::"char" AND c.oid > 16384 AND (c.relnamespace > 16384 or n.nspname = 'public')
+    WHERE c.relkind = 'r'::"char" AND c.oid > 16384 AND (c.relnamespace > 16384 or n.nspname = 'public') AND nspname NOT LIKE 'pg_temp_%'
 """
 
 GET_APPENDONLY_DATA_TABLE_INFO_SQL = """
@@ -103,7 +108,7 @@ GET_LAST_OPERATION_SQL = """
     ORDER BY objid, staactionname
 """ % GET_ALL_AO_CO_DATATABLES_SQL
 
-GET_ALL_SCHEMAS_SQL = "SELECT nspname from pg_namespace;"
+GET_ALL_SCHEMAS_SQL = "SELECT nspname from pg_namespace WHERE nspname NOT LIKE 'pg_temp_%';"
 
 def get_include_schema_list_from_exclude_schema(context, exclude_schema_list):
     """
@@ -114,7 +119,9 @@ def get_include_schema_list_from_exclude_schema(context, exclude_schema_list):
     include_schema_list = []
     schema_list = execute_sql(GET_ALL_SCHEMAS_SQL, context.master_port, context.dump_database)
     for schema in schema_list:
-        if schema[0] not in exclude_schema_list and schema[0] not in CATALOG_SCHEMA:
+        if schema[0] not in exclude_schema_list \
+           and schema[0] not in CATALOG_SCHEMA \
+           and schema[0] not in IGNORE_SCHEMA:
             include_schema_list.append(schema[0])
 
     return include_schema_list
@@ -513,8 +520,9 @@ def backup_config_files_with_nbu(context):
     gparray = GpArray.initFromCatalog(dbconn.DbURL(port=context.master_port), utility=True)
     segments = gparray.getSegmentList()
     for segment in segments:
-        context.master_datadir = segment.getSegmentDataDirectory()
-        host = segment.get_active_primary().getSegmentHostName()
+        seg = segment.get_active_primary()
+        context.master_datadir = seg.getSegmentDataDirectory()
+        host = seg.getSegmentHostName()
         backup_file_with_nbu(context, "segment_config", dbid=segment.get_primary_dbid(), hostname=host)
 
 class DumpDatabase(Operation):
@@ -936,10 +944,10 @@ class NotEnoughDiskSpace(Exception):
 
 class ValidateGpToolkit(Operation):
     def __init__(self, context):
-        pass
+        self.context = context
 
     def execute(self):
-        dburl = dbconn.DbURL(dbname=context.database, port=context.master_port)
+        dburl = dbconn.DbURL(dbname=self.context.database, port=self.context.master_port)
         conn = None
         try:
             conn = dbconn.connect(dburl)
@@ -948,13 +956,13 @@ class ValidateGpToolkit(Operation):
             if conn:
                 conn.close()
         if count > 0:
-            logger.debug("gp_toolkit exists within database %s." % context.database)
+            logger.debug("gp_toolkit exists within database %s." % self.context.database)
             return
         logger.info("gp_toolkit not found. Installing...")
         Psql('Installing gp_toolkit',
              filename='$GPHOME/share/postgresql/gp_toolkit.sql',
-             database=context.dump_database,
-             port=context.master_port).run(validateAfter=True)
+             database=self.context.dump_database,
+             port=self.context.master_port).run(validateAfter=True)
 
 class ValidateAllDumpDirs(Operation):
     def __init__(self, context):
@@ -1064,6 +1072,8 @@ class ValidateIncludeTargets(Operation):
         for dump_table in dump_tables:
             if '.' not in dump_table:
                 raise ExceptionNoStackTraceNeeded("No schema name supplied for table %s" % dump_table)
+            if dump_table.startswith('pg_temp_'):
+                continue
             schema, table = split_fqn(dump_table)
             exists = CheckTableExists(self.context, schema, table).run()
             if not exists:
@@ -1233,12 +1243,13 @@ class DumpGlobal(Operation):
                 self.create_pgdump_command_line()).run(validateAfter=True)
 
         if self.context.ddboost:
-            abspath = self.context.generate_filename("global", self.timestamp)
-            relpath = abspath.split(self.context.backup_dir+"/")[1]
+            global_backup_file = self.context.generate_filename("global", timestamp=self.timestamp)
+            abspath = global_backup_file
+            relpath = global_backup_file[global_backup_file.index(self.context.dump_dir):]
             logger.debug('Copying %s to DDBoost' % abspath)
             cmdStr = 'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath)
-            if self.ddboost_storage_unit:
-                cmdStr += ' --ddboost-storage-unit=%s' % self.ddboost_storage_unit
+            if self.context.ddboost_storage_unit:
+                cmdStr += ' --ddboost-storage-unit=%s' % self.context.ddboost_storage_unit
             cmd = Command('DDBoost copy of %s' % abspath, cmdStr)
             cmd.run(validateAfter=True)
 
@@ -1258,11 +1269,11 @@ class DumpConfig(Operation):
                 "tar cf %s %s/*.conf" % (config_backup_file, self.context.master_datadir)).run(validateAfter=True)
         if self.context.ddboost:
             abspath = config_backup_file
-            relpath = os.path.join(self.context.dump_dir, self.context.db_date_dir, config_backup_file)
+            relpath = config_backup_file[config_backup_file.index(self.context.dump_dir):]
             logger.debug('Copying %s to DDBoost' % abspath)
             cmdStr = 'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath)
-            if self.ddboost_storage_unit:
-                cmdStr += ' --ddboost-storage-unit=%s' % self.ddboost_storage_unit
+            if self.context.ddboost_storage_unit:
+                cmdStr += ' --ddboost-storage-unit=%s' % self.context.ddboost_storage_unit
             cmd = Command('DDBoost copy of %s' % abspath, cmdStr)
             cmd.run(validateAfter=True)
             res = cmd.get_results()
@@ -1288,8 +1299,8 @@ class DumpConfig(Operation):
                 relpath = config_backup_file[config_backup_file.index(self.context.dump_dir):]
                 logger.debug('Copying %s to DDBoost' % abspath)
                 cmdStr = 'gpddboost --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath)
-                if self.ddboost_storage_unit:
-                    cmdStr += ' --ddboost-storage-unit=%s' % self.ddboost_storage_unit
+                if self.context.ddboost_storage_unit:
+                    cmdStr += ' --ddboost-storage-unit=%s' % self.context.ddboost_storage_unit
                 cmd = Command('DDBoost copy of %s' % abspath,
                               cmdStr,
                               ctxt=REMOTE,
@@ -1301,7 +1312,7 @@ class DumpConfig(Operation):
                 rc = rc + res.rc
         self.context.master_datadir = mdd
         if self.context.ddboost:
-            return {"exit_status": rc, "timestamp": timestamp}
+            return {"exit_status": rc, "timestamp": self.context.timestamp}
 
 class DeleteCurrentDump(Operation):
     def __init__(self, context):
@@ -1309,14 +1320,14 @@ class DeleteCurrentDump(Operation):
 
     def execute(self):
         try:
-            DeleteCurrentSegDump(self.context.timestamp, self.context.master_datadir, self.context.dump_dir).run()
+            DeleteCurrentSegDump(self.context, self.context.master_datadir).run()
         except OSError, e:
             logger.warn("Error encountered during deletion of %s on master" % self.context.timestamp)
         gparray = GpArray.initFromCatalog(dbconn.DbURL(port=self.context.master_port), utility=True)
         segs = [seg for seg in gparray.getDbList() if seg.isSegmentPrimary(current_role=True)]
         for seg in segs:
             try:
-                RemoteOperation(DeleteCurrentSegDump(self.context.timestamp, seg.getSegmentDataDirectory(), self.context.dump_dir),
+                RemoteOperation(DeleteCurrentSegDump(self.context.timestamp, seg.getSegmentDataDirectory()),
                                 seg.getSegmentHostName()).run()
             except OSError, e:
                 logger.warn("Error encountered during deletion of %s on %s" % (self.context.timestamp, seg.getSegmentHostName()))
@@ -1335,8 +1346,8 @@ class DeleteCurrentDump(Operation):
                     abspath = os.path.join(relpath, line)
                     logger.debug('Deleting %s from DDBoost' % abspath)
                     cmdStr = 'gpddboost --del-file=%s' % abspath
-                    if self.ddboost_storage_unit:
-                        cmdStr += ' --ddboost-storage-unit=%s' % self.ddboost_storage_unit
+                    if self.context.ddboost_storage_unit:
+                        cmdStr += ' --ddboost-storage-unit=%s' % self.context.ddboost_storage_unit
                     cmd = Command('DDBoost delete of %s' % abspath, cmdStr)
                     cmd.run(validateAfter=True)
 
@@ -1406,7 +1417,7 @@ class DeleteOldestDumps(Operation):
             if self.context.ddboost:
                 logger.info("Preparing to remove dump %s from DDBoost" % old_date)
                 cmdStr = 'gpddboost --del-dir=%s' % os.path.join(self.context.dump_dir, old_date)
-                if self.ddboost_storage_unit:
+                if self.context.ddboost_storage_unit:
                     cmdStr += ' --ddboost-storage-unit %s' % self.context.ddboost_storage_unit
                 cmd = Command('DDBoost cleanup', cmdStr)
                 cmd.run(validateAfter=False)
@@ -1548,12 +1559,13 @@ set allow_system_table_mods="DML";
             self.dump_table(table)
 
         if self.context.ddboost:
-            abspath = self.context.generate_filename("stats")
-            relpath = abspath.split(self.context.backup_dir + "/")[1]
+            stats_backup_file = self.context.generate_filename("stats")
+            abspath = stats_backup_file
+            relpath = stats_backup_file[stats_backup_file.index(self.context.dump_dir):]
             logger.debug('Copying %s to DDBoost' % abspath)
             cmdStr = 'gpddboost'
-            if self.ddboost_storage_unit:
-                cmdStr +=  ' --ddboost-storage-unit=%s' % self.ddboost_storage_unit
+            if self.context.ddboost_storage_unit:
+                cmdStr +=  ' --ddboost-storage-unit=%s' % self.context.ddboost_storage_unit
             cmdStr += ' --copyToDDBoost --from-file=%s --to-file=%s' % (abspath, relpath)
             cmd = Command('DDBoost copy of %s' % abspath, cmdStr)
             cmd.run(validateAfter=True)

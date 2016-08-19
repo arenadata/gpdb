@@ -202,7 +202,7 @@ static const char *read_str_ptr;
 
 /*
  * For most structs, we reuse the definitions from readfuncs.c. See comment
- * in reafuncs.c.
+ * in readfuncs.c.
  */
 #define COMPILING_BINARY_FUNCS
 #include "readfuncs.c"
@@ -374,6 +374,7 @@ _readConst(void)
 	READ_LOCALS(Const);
 
 	READ_OID_FIELD(consttype);
+	READ_INT_FIELD(consttypmod);
 	READ_INT_FIELD(constlen);
 	READ_BOOL_FIELD(constbyval);
 	READ_BOOL_FIELD(constisnull);
@@ -1600,7 +1601,6 @@ _readSequence(void)
 	READ_LOCALS(Sequence);
 	readPlanInfo((Plan *)local_node);
 	READ_NODE_FIELD(subplans);
-	READ_NODE_FIELD(static_selector);
 	READ_DONE();
 }
 
@@ -2104,9 +2104,6 @@ _readShareInputScan(void)
 	READ_ENUM_FIELD(share_type, ShareType);
 	READ_INT_FIELD(share_id);
 	READ_INT_FIELD(driver_slice);
-	READ_NODE_FIELD(colnames);
-	READ_NODE_FIELD(coltypes);
-	READ_NODE_FIELD(coltypmods);
 
 	readPlanInfo((Plan *)local_node);
 
@@ -2608,6 +2605,32 @@ _readTupleDescNode(void)
 	local_node->tuple->constr = NULL;
 
 	Assert(local_node->tuple->tdtypeid == RECORDOID);
+
+	READ_DONE();
+}
+
+static AlterTSConfigurationStmt *
+_readAlterTSConfigurationStmt(void)
+{
+	READ_LOCALS(AlterTSConfigurationStmt);
+
+	READ_NODE_FIELD(cfgname);
+	READ_NODE_FIELD(tokentype);
+	READ_NODE_FIELD(dicts);
+	READ_BOOL_FIELD(override);
+	READ_BOOL_FIELD(replace);
+	READ_BOOL_FIELD(missing_ok);
+
+	READ_DONE();
+}
+
+static AlterTSDictionaryStmt *
+_readAlterTSDictionaryStmt(void)
+{
+	READ_LOCALS(AlterTSDictionaryStmt);
+
+	READ_NODE_FIELD(dictname);
+	READ_NODE_FIELD(options);
 
 	READ_DONE();
 }
@@ -3439,6 +3462,13 @@ readNodeBinary(void)
 				break;
 			case T_TupleDescNode:
 				return_value = _readTupleDescNode();
+				break;
+
+			case T_AlterTSConfigurationStmt:
+				return_value = _readAlterTSConfigurationStmt();
+				break;
+			case T_AlterTSDictionaryStmt:
+				return_value = _readAlterTSDictionaryStmt();
 				break;
 
 			default:

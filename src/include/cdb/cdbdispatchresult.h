@@ -19,6 +19,12 @@ struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 struct StringInfoData;              /* #include "lib/stringinfo.h" */
 struct PQExpBufferData;             /* #include "libpq-int.h" */
 
+typedef struct CdbPgResults
+{
+	struct pg_result **pg_results;
+	int numResults;
+}CdbPgResults;
+
 /*
  * CdbDispatchResults_SliceInfo:
  * An entry in a CdbDispatchResults object's slice map.
@@ -99,12 +105,6 @@ typedef struct CdbDispatchResult
 	 * ERRCODE_QUERY_CANCELED
 	 */
 	bool wasCanceled;
-
-	bool QEIsPrimary;
-	bool QEWriter_HaveInfo;
-	DistributedTransactionId QEWriter_DistributedTransactionId;
-	CommandId QEWriter_CommandId;
-	bool QEWriter_Dirty;
 
 	/* num rows rejected in SREH mode */
 	int	numrowsrejected;
@@ -204,12 +204,28 @@ cdbdisp_seterrcode(int errcode, /* ERRCODE_xxx or 0 */
  */
 void
 cdbdisp_appendMessage(CdbDispatchResult *dispatchResult,
-                      int elevel,
                       int errcode,
                       const char *fmt,
                       ...)
 /* This extension allows gcc to check the format string */
-__attribute__((format(printf, 4, 5)));
+__attribute__((format(printf, 3, 4)));
+
+/*
+ * Format a message, printf-style, and append to the error_message buffer.
+ * Also write it to stderr if logging is enabled for messages of the
+ * given severity level 'elevel' (for example, DEBUG1; or 0 to suppress).
+ * 'errcode' is the ERRCODE_xxx value for setting the client's SQLSTATE.
+ * NB: This can be called from a dispatcher thread, so it must not use
+ * palloc/pfree or elog/ereport because they are not thread safe.
+ */
+void
+cdbdisp_appendMessageNonThread(CdbDispatchResult *dispatchResult,
+							   int errcode,
+							   const char *fmt,
+							   ...)
+/* This extension allows gcc to check the format string */
+__attribute__((format(printf, 3, 4)));
+
 
 /*
  * Store a PGresult object ptr in the result buffer.
@@ -238,9 +254,7 @@ cdbdisp_numPGresult(CdbDispatchResult *dispatchResult);
  * Call only from main thread, during or after cdbdisp_checkDispatchResults.
  */
 void
-cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
-                            int elevel_error,
-                            int elevel_success);
+cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult);
 
 /*
  * Format a CdbDispatchResult into a StringInfo buffer provided by caller.
@@ -298,10 +312,8 @@ cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex);
 CdbDispatchResult *
 cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex);
 
-struct pg_result **
-cdbdisp_returnResults(CdbDispatchResults *primaryResults,
-                      StringInfo errmsgbuf,
-                      int *numresults);
+void
+cdbdisp_returnResults(CdbDispatchResults *primaryResults, CdbPgResults *cdb_pgresults);
 
 /*
  * used in the interconnect on the dispatcher to avoid error-cleanup deadlocks.
@@ -316,8 +328,10 @@ cdbdisp_checkResultsErrcode(struct CdbDispatchResults *meeleResults);
  * memory context.
  */
 CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCapacity,
-							int sliceCapacity,
+cdbdisp_makeDispatchResults(int sliceCapacity,
 							bool cancelOnError);
+
+void
+cdbdisp_clearCdbPgResults(CdbPgResults* cdb_pgresults);
 
 #endif   /* CDBDISPATCHRESULT_H */

@@ -8,9 +8,8 @@
  *-------------------------------------------------------------------------
  */
 
-#include <postgres.h>
-#include <unistd.h>
-#include <sys/stat.h>
+#include "postgres.h"
+
 #include "cdb/cdbvars.h"
 #include "utils/faultinjector.h"
 #include "utils/workfile_mgr.h"
@@ -54,52 +53,11 @@ workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no)
 			true /* del_on_close */,
 			work_set->metadata.bfz_compress_type);
 
-#ifdef FAULT_INJECTOR
-  FaultInjector_InjectFaultIfSet(
-      WorkfileCreationFail,
-      DDLNotSpecified,
-      "",  // databaseName
-      ""); // tableName
-#endif
+	SIMPLE_FAULT_INJECTOR(WorkfileCreationFail);
 
 	ExecWorkfile_SetWorkset(ewfile, work_set);
 
 	return ewfile;
-}
-
-/*
- * Opens a numbered workfile of a given set
- *
- *  The given file_no is used to generate the file name
- */
-ExecWorkFile *
-workfile_mgr_open_fileno(workfile_set *work_set, uint32 file_no)
-{
-
-	Assert(NULL != work_set);
-
-	char file_name[MAXPGPATH];
-	retrieve_file_no(work_set, file_no, file_name, sizeof(file_name));
-	ExecWorkFile *ewfile = ExecWorkFile_Open(file_name,
-			work_set->metadata.type,
-			true /* del_on_close */,
-			work_set->metadata.bfz_compress_type);
-
-	ExecWorkfile_SetWorkset(ewfile, work_set);
-
-	return ewfile;
-}
-
-/*
- * Opens a given workfile of a given set
- *
- *  The exact file_name given is used to open the file
- */
-ExecWorkFile *
-workfile_mgr_open_filename(workfile_set *work_set, const char *file_name)
-{
-	Assert(false);
-	return NULL;
 }
 
 /*

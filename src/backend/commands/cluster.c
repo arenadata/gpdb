@@ -30,6 +30,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_appendonly_fn.h"
 #include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
@@ -138,28 +139,20 @@ cluster(ClusterStmt *stmt, bool isTopLevel)
 			{
 				HeapTuple	idxtuple;
 				Form_pg_index indexForm;
-				cqContext	*idxcqCtx;
 
 				indexOid = lfirst_oid(index);
-
-				idxcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_index "
-							" WHERE indexrelid = :1 ",
-							ObjectIdGetDatum(indexOid)));
-
-				idxtuple = caql_getnext(idxcqCtx);
-
+				idxtuple = SearchSysCache(INDEXRELID,
+										  ObjectIdGetDatum(indexOid),
+										  0, 0, 0);
 				if (!HeapTupleIsValid(idxtuple))
 					elog(ERROR, "cache lookup failed for index %u", indexOid);
 				indexForm = (Form_pg_index) GETSTRUCT(idxtuple);
 				if (indexForm->indisclustered)
 				{
-					caql_endscan(idxcqCtx);
+					ReleaseSysCache(idxtuple);
 					break;
 				}
-				caql_endscan(idxcqCtx);
-
+				ReleaseSysCache(idxtuple);
 				indexOid = InvalidOid;
 			}
 
@@ -196,7 +189,11 @@ cluster(ClusterStmt *stmt, bool isTopLevel)
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			CdbDispatchUtilityStatement((Node *) stmt, "cluster");
+			CdbDispatchUtilityStatement((Node *) stmt,
+										DF_CANCEL_ON_ERROR|
+										DF_WITH_SNAPSHOT|
+										DF_NEED_TWO_PHASE,
+										NULL);
 		}
 	}
 	else
@@ -257,7 +254,10 @@ cluster(ClusterStmt *stmt, bool isTopLevel)
 				stmt->relation = makeNode(RangeVar);
 				stmt->relation->schemaname = get_namespace_name(get_rel_namespace(rvtc->tableOid));
 				stmt->relation->relname = get_rel_name(rvtc->tableOid);
-				CdbDispatchUtilityStatement_NoTwoPhase((Node *) stmt, "cluster");
+				CdbDispatchUtilityStatement((Node *) stmt,
+											DF_CANCEL_ON_ERROR|
+											DF_WITH_SNAPSHOT,
+											NULL);
 			}
 			CommitTransactionCommand();
 		}
@@ -345,7 +345,6 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 	{
 		HeapTuple	tuple;
 		Form_pg_index indexForm;
-		cqContext	*idxcqCtx;
 
 		/* Check that the user still owns the relation */
 		if (!pg_class_ownercheck(rvtc->tableOid, GetUserId()))
@@ -372,11 +371,9 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		/*
 		 * Check that the index still exists
 		 */
-		if (0 == caql_getcount(
-					NULL,
-					cql("SELECT COUNT(*) FROM pg_class "
-						" WHERE oid = :1 ",
-						ObjectIdGetDatum(rvtc->indexOid))))
+		if (!SearchSysCacheExists(RELOID,
+								  ObjectIdGetDatum(rvtc->indexOid),
+								  0, 0, 0))
 		{
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;
@@ -385,29 +382,22 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt, bool printError
 		/*
 		 * Check that the index is still the one with indisclustered set.
 		 */
-		idxcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_index "
-					" WHERE indexrelid = :1 ",
-					ObjectIdGetDatum(rvtc->indexOid)));
-
-		tuple = caql_getnext(idxcqCtx);
-
+		tuple = SearchSysCache(INDEXRELID,
+							   ObjectIdGetDatum(rvtc->indexOid),
+							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))	/* probably can't happen */
 		{
-			caql_endscan(idxcqCtx);
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;
 		}
 		indexForm = (Form_pg_index) GETSTRUCT(tuple);
 		if (!indexForm->indisclustered)
 		{
-			caql_endscan(idxcqCtx);
+			ReleaseSysCache(tuple);
 			relation_close(OldHeap, AccessExclusiveLock);
 			return false;
 		}
-		caql_endscan(idxcqCtx);
-
+		ReleaseSysCache(tuple);
 	}
 
 	/* Check index is valid to cluster on */
@@ -564,32 +554,26 @@ mark_index_clustered(Relation rel, Oid indexOid)
 	Form_pg_index indexForm;
 	Relation	pg_index;
 	ListCell   *index;
-	cqContext  *idxcqCtx;
 
 	/*
 	 * If the index is already marked clustered, no need to do anything.
 	 */
 	if (OidIsValid(indexOid))
 	{
-		idxcqCtx = caql_beginscan(
-				NULL,
-				cql("SELECT * FROM pg_index "
-					" WHERE indexrelid = :1 ",
-					ObjectIdGetDatum(indexOid)));
-
-		indexTuple = caql_getnext(idxcqCtx);
-
+		indexTuple = SearchSysCache(INDEXRELID,
+									ObjectIdGetDatum(indexOid),
+									0, 0, 0);
 		if (!HeapTupleIsValid(indexTuple))
 			elog(ERROR, "cache lookup failed for index %u", indexOid);
 		indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
 
 		if (indexForm->indisclustered)
 		{
-			caql_endscan(idxcqCtx);
+			ReleaseSysCache(indexTuple);
 			return;
 		}
 
-		caql_endscan(idxcqCtx);
+		ReleaseSysCache(indexTuple);
 	}
 
 	/*
@@ -599,19 +583,11 @@ mark_index_clustered(Relation rel, Oid indexOid)
 
 	foreach(index, RelationGetIndexList(rel))
 	{
-		cqContext	cqc;
-		cqContext  *pcqCtx;
 		Oid			thisIndexOid = lfirst_oid(index);
 
-		pcqCtx = caql_addrel(cqclr(&cqc), pg_index);
-
-		indexTuple = caql_getfirst(
-				pcqCtx,
-				cql("SELECT * FROM pg_index "
-					" WHERE indexrelid = :1 "
-					" FOR UPDATE ",
-					ObjectIdGetDatum(thisIndexOid)));
-
+		indexTuple = SearchSysCacheCopy(INDEXRELID,
+										ObjectIdGetDatum(thisIndexOid),
+										0, 0, 0);
 		if (!HeapTupleIsValid(indexTuple))
 			elog(ERROR, "cache lookup failed for index %u", thisIndexOid);
 		indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
@@ -623,10 +599,8 @@ mark_index_clustered(Relation rel, Oid indexOid)
 		if (indexForm->indisclustered)
 		{
 			indexForm->indisclustered = false;
-
-			caql_update_current(pcqCtx, indexTuple);
-			/* and Update indexes (implicit) */
-
+			simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
+			CatalogUpdateIndexes(pg_index, indexTuple);
 			/* Ensure we see the update in the index's relcache entry */
 			CacheInvalidateRelcacheByRelid(thisIndexOid);
 		}
@@ -636,10 +610,8 @@ mark_index_clustered(Relation rel, Oid indexOid)
 			if (!IndexIsValid(indexForm))
 				elog(ERROR, "cannot cluster on invalid index %u", indexOid);
 			indexForm->indisclustered = true;
-
-			caql_update_current(pcqCtx, indexTuple);
-			/* and Update indexes (implicit) */
-
+			simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
+			CatalogUpdateIndexes(pg_index, indexTuple);
 			/* Ensure we see the update in the index's relcache entry */
 			CacheInvalidateRelcacheByRelid(thisIndexOid);
 		}
@@ -760,7 +732,6 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Datum		reloptions;
 	bool		isNull;
 	bool		is_part;
-	cqContext  *pcqCtx;
 
 	OldHeap = heap_open(OIDOldHeap, AccessExclusiveLock);
 	OldHeapDesc = RelationGetDescr(OldHeap);
@@ -806,19 +777,13 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	/*
 	 * Use options of the old heap for new heap.
 	 */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_class "
-				" WHERE oid = :1 ",
-				ObjectIdGetDatum(OIDOldHeap)));
-
-	tuple = caql_getnext(pcqCtx);
-
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(OIDOldHeap),
+						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for relation %u", OIDOldHeap);
-
-	reloptions = caql_getattr(pcqCtx, Anum_pg_class_reloptions, &isNull);
-
+	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+								 &isNull);
 	if (isNull)
 		reloptions = (Datum) 0;
 
@@ -848,7 +813,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	if(oidInfo)
 		oidInfo->relOid = OIDNewHeap;
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tuple);
 
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
@@ -874,6 +839,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	    AlterTableCreateAoBlkdirTableWithOid(OIDNewHeap, blkdirOid, blkdirIdxOid,
 										 aoblkdirComptypeOid, is_part);
     }
+
+	CacheInvalidateRelcacheByRelid(OIDNewHeap);
 
 	cloneAttributeEncoding(OIDOldHeap,
 						   OIDNewHeap,
@@ -1400,7 +1367,9 @@ swap_relation_files(Oid r1, Oid r2, TransactionId frozenXid, bool swap_stats)
 static List *
 get_tables_to_cluster(MemoryContext cluster_context)
 {
-	cqContext	*pcqCtx;		
+	Relation	indRelation;
+	HeapScanDesc scan;
+	ScanKeyData entry;
 	HeapTuple	indexTuple;
 	Form_pg_index index;
 	MemoryContext old_context;
@@ -1413,15 +1382,13 @@ get_tables_to_cluster(MemoryContext cluster_context)
 	 * have indisclustered set, because CLUSTER will refuse to set it when
 	 * called with one of them as argument.
 	 */
-
-	/* XXX XXX: could bind "AND indrelid = :2 ", GetUserId */
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_index "
-				" WHERE indisclustered = :1 ",
-				BoolGetDatum(true)));
-
-	while (HeapTupleIsValid(indexTuple = caql_getnext(pcqCtx)))
+	indRelation = heap_open(IndexRelationId, AccessShareLock);
+	ScanKeyInit(&entry,
+				Anum_pg_index_indisclustered,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
+	scan = heap_beginscan(indRelation, SnapshotNow, 1, &entry);
+	while ((indexTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		index = (Form_pg_index) GETSTRUCT(indexTuple);
 
@@ -1441,7 +1408,9 @@ get_tables_to_cluster(MemoryContext cluster_context)
 
 		MemoryContextSwitchTo(old_context);
 	}
-	caql_endscan(pcqCtx);
+	heap_endscan(scan);
+
+	relation_close(indRelation, AccessShareLock);
 
 	return rvs;
 }

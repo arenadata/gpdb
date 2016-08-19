@@ -28,7 +28,6 @@
 #include "postmaster/primary_mirror_mode.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-#include "utils/segadmin.h"
 
 #define MASTER_ONLY 0x1
 #define UTILITY_MODE 0x2
@@ -522,7 +521,7 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 	 * array_out caches data in flinfo, as we cannot just
 	 * do a DirectFunctionCall1().
 	 */
-	fmgr_info(ARRAY_OUT_OID, &flinfo);
+	fmgr_info(F_ARRAY_OUT, &flinfo);
 	a = OutputFunctionCall(&flinfo, PointerGetDatum(fsmap));
 
 	appendStringInfo(q,
@@ -532,7 +531,12 @@ dispatch_add_to_segment(int16 pridbid, int16 segdbid, ArrayType *fsmap)
 					 segdbid,
 					 a);
 
-	CdbDoCommand(q->data, true, false);
+	CdbDispatchCommand(q->data,
+						DF_CANCEL_ON_ERROR|
+						DF_WITH_SNAPSHOT,
+						NULL);
+	pfree(q->data);
+	pfree(q);
 }
 
 /*
@@ -613,7 +617,12 @@ remove_segment_persistent_entries(int16 pridbid, seginfo *i)
 						 pridbid,
 						 i->db.dbid);
 
-		CdbDoCommand(q->data, true, false);
+		CdbDispatchCommand(q->data,
+							DF_CANCEL_ON_ERROR|
+							DF_WITH_SNAPSHOT,
+							NULL);
+		pfree(q->data);
+		pfree(q);
 	}
 }
 
@@ -1389,10 +1398,4 @@ gp_remove_segment_persistent_entries(PG_FUNCTION_ARGS)
 	remove_segment_persistent_entries(dbid, &seg);
 
 	PG_RETURN_BOOL(true);
-}
-
-int16
-MyDbid(void)
-{
-	return (int16)(GpIdentity.dbid);
 }

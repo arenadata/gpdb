@@ -36,23 +36,6 @@
 #define WORKFILE_NUM_TUPLESTORE_DATA 1
 #define WORKFILE_NUM_TUPLESTORE_LOB 2
 
-
-/* Placeholder snapshot type */
-typedef uint32 workfile_set_snapshot;
-
-/* placeholder snapshot information */
-#define NULL_SNAPSHOT 0
-
-typedef struct workfile_set_plan
-{
-	/* serialized representation of the subplan */
-	void *serialized_plan;
-
-	/* length of serialized subplan */
-	int serialized_plan_len;
-
-} workfile_set_plan;
-
 typedef struct
 {
 
@@ -67,9 +50,6 @@ typedef struct
 
 	/* compression level used by bfz if applicable */
 	int bfz_compress_type;
-
-	/* Snapshot information associated with this spill file set */
-	workfile_set_snapshot snapshot;
 
 	/* work_mem for this operator at the time of the spill */
 	uint64 operator_work_mem;
@@ -114,12 +94,6 @@ typedef struct workfile_set
 	/* Operator-specific metadata */
 	workfile_set_op_metadata metadata;
 
-	/* For non-physical workfile sets, pointer to the serialized plan */
-	workfile_set_plan *set_plan;
-
-	/* Set to true during operator execution once set is complete */
-	bool complete;
-
 } workfile_set;
 
 /* The key for an entry stored in the Queryspace Hashtable */
@@ -151,8 +125,7 @@ typedef struct QueryspaceDesc
 
 /* Workfile Set operations */
 workfile_set *workfile_mgr_create_set(enum ExecWorkFileType type, bool can_be_reused,
-		PlanState *ps, workfile_set_snapshot snapshot);
-workfile_set *workfile_mgr_find_set(PlanState *ps);
+		PlanState *ps);
 void workfile_mgr_close_set(workfile_set *work_set);
 void workfile_mgr_cleanup(void);
 bool workfile_mgr_can_reuse(workfile_set *work_set, PlanState *ps);
@@ -166,8 +139,6 @@ void workfile_update_in_progress_size(ExecWorkFile *workfile, int64 size);
 /* Workfile File operations */
 ExecWorkFile *workfile_mgr_create_file(workfile_set *work_set);
 ExecWorkFile *workfile_mgr_create_fileno(workfile_set *work_set, uint32 file_no);
-ExecWorkFile *workfile_mgr_open_fileno(workfile_set *work_set, uint32 file_no);
-ExecWorkFile *workfile_mgr_open_filename(workfile_set *work_set, const char *file_name);
 int64 workfile_mgr_close_file(workfile_set *work_set, ExecWorkFile *file);
 
 /* Workfile diskspace operations */
@@ -196,10 +167,6 @@ QueryspaceDesc *WorkfileQueryspace_InitEntry(int session_id, int command_count);
 void WorkfileQueryspace_ReleaseEntry(void);
 bool WorkfileQueryspace_AddWorkfile(void);
 void WorkfileQueryspace_SubtractWorkfile(int32 nFiles);
-
-/* Serialization functions */
-void outfast_workfile_mgr_init(List *rtable);
-void outfast_workfile_mgr_end(void);
 
 /* Workfile error reporting */
 typedef enum WorkfileError

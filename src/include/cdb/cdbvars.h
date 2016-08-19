@@ -111,7 +111,6 @@ typedef enum
 	GP_ROLE_UTILITY = 0,		/* Operating as a simple database engine */
 	GP_ROLE_DISPATCH,			/* Operating as the parallel query dispatcher */
 	GP_ROLE_EXECUTE,			/* Operating as a parallel query executor */
-	GP_ROLE_DISPATCHAGENT,		/* A dispatch relay agent */
 	GP_ROLE_UNDEFINED			/* Should never see this role in use */
 } GpRoleValue;
 
@@ -128,8 +127,6 @@ extern const char *assign_gp_role(const char *newval, bool doit, GucSource sourc
 extern const char *show_gp_role(void);
 
 extern bool gp_reraise_signal; /* try to force a core dump ?*/
-
-extern bool gp_version_mismatch_error;	/* Enforce same-version on QD&QE. */
 
 extern bool gp_set_proc_affinity; /* try to bind postmaster to a processor */
 
@@ -157,29 +154,6 @@ extern char * qdHostname;
 
 /* The Postmaster listener port for the QD.  This variable is 0 for the QD itself.*/
 extern int qdPostmasterPort;
-
-
-/* Parameter gp_qd_callback_info
- *
- * This is the port of the QD, sent down to the QEs
- */
-
-extern char * gp_qd_callback_info;
-extern bool gp_use_snapshop_during_callback;
-
-/*
- * Allow callback query?
- */
-extern bool gp_enable_functions;
-/*
- * Are we executing a callback query?
- */
-extern bool gp_is_callback;
-
-/*
- * Use query dispatch agents?
- */
-extern bool gp_use_dispatch_agent;
 
 /*How many gangs to keep around from stmt to stmt.*/
 extern int			gp_cached_gang_threshold;
@@ -236,11 +210,6 @@ extern bool           gp_enable_slow_writer_testmode;
 extern bool           gp_enable_slow_cursor_testmode;
 
 /*
- * MPP-4145: convert certain delete statements into truncate statements.
- */
-extern bool           gp_enable_delete_as_truncate;
-
-/*
  * MPP-6926: Resource Queues on by default
  */
 #define GP_DEFAULT_RESOURCE_QUEUE_NAME "pg_default"
@@ -249,13 +218,6 @@ extern bool           gp_enable_delete_as_truncate;
  * Hash-join node releases hash table when it returns last tuple.
  */
 extern bool gp_eager_hashtable_release;
-
-/* Parameter debug_print_combocid_detail
- *
- * This run-time parameter requests extra details when we hit the combocid
- * limit in combocid.c
- */
-extern bool Debug_print_combocid_detail;
 
 /* Parameter gp_debug_pgproc
  *
@@ -282,23 +244,6 @@ extern bool Debug_print_prelim_plan;
  * the plan slice.
  */
 extern bool Debug_print_slice_table;
-
-/* Parameter debug_print_dispatch_plan
- *
- * This run-time parameter is closely related to the PostgreSQL parameter
- * debug_print_plan which, if true, causes the final plan to display on the
- * server log prior to execution. In GPDB, some plan changes occur after
- * planning just prior to dispatch. This parameter, if true, causes the
- * dispatchable plan to display on the log.
- */
-extern bool Debug_print_dispatch_plan;
-
-/* Parameter debug_print_plannedstmt
- *
- * This run-time parameter causes the PlannedStmt structure containing 
- * the final plan to display on the server log prior to execution. 
- */
-extern bool Debug_print_plannedstmt;
 
 /*
  * gp_backup_directIO
@@ -432,7 +377,6 @@ extern char *gp_fault_action_string;	/* Use by guc.c as user defined fault
 										 * action */
 extern bool gp_set_read_only;
 
-extern bool assign_gp_use_dispatch_agent(bool newval, bool doit, GucSource source);
 extern const char *role_to_string(GpRoleValue role);
 
 extern int	gp_segment_connect_timeout; /* GUC var - timeout specifier for gang creation */
@@ -529,27 +473,11 @@ extern int 	Gp_udp_bufsize_k;
 extern int	Gp_interconnect_hash_multiplier;
 
 /*
- * Parameter gp_interconnect_aggressive_retry
- *
- * The run-time parameter gp_interconnect_aggressive_retry controls the
- * activation of the application-level retry (which acts much faster than the OS-level
- * TCP retries); In most cases this should stay enabled.
- */
-extern bool gp_interconnect_aggressive_retry; /* fast-track app-level retry */
-
-/*
  * Parameter gp_interconnect_full_crc
  *
  * Perform a full CRC on UDP-packets as they depart and arrive.
  */
 extern bool gp_interconnect_full_crc;
-
-/*
- * Parameter gp_interconnect_elide_setup
- *
- * Perform a full initial handshake for every statement ?
- */
-extern bool gp_interconnect_elide_setup;
 
 /*
  * Parameter gp_interconnect_log_stats
@@ -684,27 +612,9 @@ extern GpVars_Verbosity    gp_log_interconnect;
 const char *gpvars_assign_gp_log_interconnect(const char *newval, bool doit, GucSource source __attribute__((unused)) );
 const char *gpvars_show_gp_log_interconnect(void);
 
-
-/* --------------------------------------------------------------------------------------------------
- * Resource management
- */
-
-/*
- * gp_process_memory_cutoff (real)
- *
- * Deprecated.  Will remove in next release.
- */
-extern double   gp_process_memory_cutoff;           /* SET/SHOW in units of kB */
-
 /* --------------------------------------------------------------------------------------------------
  * Greenplum Optimizer GUCs
  */
-
-
-/*
- * enable_adaptive_nestloop
- */
-extern bool enable_adaptive_nestloop;
 
 /*
  * "gp_motion_cost_per_row"
@@ -729,8 +639,6 @@ extern int      gp_segments_for_planner;
  * When set to false, the planner will not use multi-phase aggregation.
  */
 extern bool gp_enable_multiphase_agg;
-
-extern bool fast_path_expressions;
 
 /*
  * Perform a post-planning scan of the final plan looking for motion deadlocks:
@@ -939,7 +847,6 @@ extern bool trace_sort;
  *
  */
 extern int gp_sort_flags;
-extern int gp_dbg_flags;
 
 /* If Greenplum is discarding duplicate rows in sort, switch back to
  * standard sort if the number of distinct values exceeds max_distinct.
@@ -962,17 +869,9 @@ extern bool gp_dynamic_partition_pruning;
  */
 extern bool gp_cte_sharing;
 
-/* turn SQL/MED functionality on */
-
-extern bool	gp_foreign_data_access;
-
 /* MPP-7770: disallow altering storage using SET WITH */
 
 extern bool	gp_setwith_alter_storage;
-
-/* let tablespace make missing LOCATION directory if necessary */
-
-extern bool	gp_enable_tablespace_auto_mkdir;
 
 /* MPP-9772, MPP-9773: remove support for CREATE INDEX CONCURRENTLY */
 extern bool	gp_create_index_concurrently;
@@ -991,11 +890,6 @@ extern int gp_max_plan_size;
  */
 extern double gp_hashagg_rewrite_limit;
 
-/* Before the hybrid hash aggregator starts to spill it can
- * re-evaluate the density of groups in its input to come up with a
- * (possibly better) batching scheme */
-extern bool gp_hashagg_recalc_density;
-
 /* If we use two stage hashagg, we can stream the bottom half */
 extern bool gp_hashagg_streambottom;
 
@@ -1003,11 +897,6 @@ extern bool gp_hashagg_streambottom;
  * algorithm (re-)spills in-memory groups to disk.
  */
 extern int gp_hashagg_default_nbatches;
-
-/* Hashagg spill: minimum number of spill batches */
-extern int gp_hashagg_spillbatch_min;
-/* Hashagg spill: max number of spill batches */
-extern int gp_hashagg_spillbatch_max;
 
 /* Hashjoin use bloom filter */
 extern int gp_hashjoin_bloomfilter;
@@ -1185,9 +1074,6 @@ extern void verifyGpIdentityIsSet(void);
 
 /* control current usability of enabling hash index */
 extern bool gpvars_assign_gp_hash_index(bool newval, bool doit, GucSource source);
-
-/* wire off SET WITH() for alter table distributed by */
-extern bool gp_disable_atsdb_set_with;
 
 extern const char *gpvars_assign_gp_resqueue_memory_policy(const char *newval, bool doit, GucSource source __attribute__((unused)) );
 

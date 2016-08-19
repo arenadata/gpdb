@@ -27,6 +27,10 @@
 #include "gpos/io/CFileWriter.h"
 #include "gpopt/gpdbwrappers.h"
 
+#include "gpos/version.h"
+#include "gpopt/version.h"
+#include "xercesc/util/XercesVersion.hpp"
+
 extern "C" {
 
 PG_MODULE_MAGIC_CPP;
@@ -796,6 +800,9 @@ static int extractFrozenQueryPlanAndExecute(char *pcQuery)
 			NULL /*paramLI*/,
 			false);
 
+	// Do not record gpperfmon information about internal queries
+	pqueryDesc->gpmon_pkt = NULL;
+
 	elog(NOTICE, "Executing thawed plan...");
 
 	ExecutorStart(pqueryDesc, 0);
@@ -842,6 +849,9 @@ static int extractFrozenPlanAndExecute(char *pcSerializedPS)
 			NULL /*paramLI*/,
 			false);
 
+	// Do not record gpperfmon information about internal queries
+	pqueryDesc->gpmon_pkt = NULL;
+
 	elog(NOTICE, "Executing thawed plan...");
 
 	ExecutorStart(pqueryDesc, 0);
@@ -870,6 +880,9 @@ static int executeXMLPlan(char *szXml)
 			pdest,
 			NULL /*paramLI*/,
 			false);
+
+	// Do not record gpperfmon information about internal queries
+	pqueryDesc->gpmon_pkt = NULL;
 
 	elog(NOTICE, "Executing thawed plan...");
 
@@ -1044,9 +1057,9 @@ LibraryVersion()
 {
 	StringInfoData str;
 	initStringInfo(&str);
-	appendStringInfo(&str, "GPOPT version: %s", GPOPT_VERSION);
-	appendStringInfo(&str, ", GPOS version: %s", GPOS_VERSION);
-	appendStringInfo(&str, ", Xerces version: %s", XERCES_VERSION);
+	appendStringInfo(&str, "GPOPT version: %d.%d", GPORCA_VERSION_MAJOR, GPORCA_VERSION_MINOR);
+	appendStringInfo(&str, ", GPOS version: %d.%d", GPOS_VERSION_MAJOR, GPOS_VERSION_MINOR);
+	appendStringInfo(&str, ", Xerces version: %s", XERCES_FULLVERSIONDOT);
 	text *result = stringToText(str.data);
 
 	PG_RETURN_TEXT_P(result);
@@ -1058,7 +1071,7 @@ StringInfo
 OptVersion()
 {
 	StringInfo str = gpdb::SiMakeStringInfo();
-	appendStringInfo(str, "%s", GPOPT_VERSION);
+	appendStringInfo(str, "%d.%d", GPORCA_VERSION_MAJOR, GPORCA_VERSION_MINOR);
 
 	return str;
 }

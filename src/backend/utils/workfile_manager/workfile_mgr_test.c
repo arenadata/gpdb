@@ -66,9 +66,6 @@ static bool cache_test_acquire(void);
 static bool cache_test_insert(void);
 static bool cache_test_remove(void);
 static bool cache_test_concurrency(void);
-static bool cache_test_evict(void);
-static bool cache_test_evict_stress(void);
-static bool cache_test_clear(void);
 
 static bool bfz_test_reopen(void);
 static bool execworkfile_buffile_test(void);
@@ -116,9 +113,6 @@ static test_def test_defns[] = {
 		{"cache_test_insert", cache_test_insert},
 		{"cache_test_remove", cache_test_remove},
 		{"cache_test_concurrency", cache_test_concurrency},
-		{"cache_test_evict", cache_test_evict},
-		{"cache_test_evict_stress", cache_test_evict_stress},
-		{"cache_test_clear", cache_test_clear},
 		{"bfz_test_reopen", bfz_test_reopen},
 		{"execworkfile_buffile_test", execworkfile_buffile_test},
 		{"execworkfile_bfz_zlib_test", execworkfile_bfz_zlib_test},
@@ -166,19 +160,6 @@ gp_workfile_mgr_test_harness(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_BOOL(ran_any_tests && result);
-}
-
-/*
- * Callback function to test if two cache resources are equivalent.
- */
-static bool
-cacheEltEquivalent(const void *resource1, const void *resource2)
-{
-	TestCacheElt *elt1 = (TestCacheElt *) resource1;
-	TestCacheElt *elt2 = (TestCacheElt *) resource2;
-
-	return elt1->data == elt2->data &&
-			strncmp(elt1->key, elt2->key, TEST_NAME_LENGTH) == 0;
 }
 
 /*
@@ -251,7 +232,6 @@ cache_test_create()
 	cacheCtl.keyCopy = (HashCopyFunc) strncpy;
 	cacheCtl.match = (HashCompareFunc) strncmp;
 
-	cacheCtl.equivalentEntries = cacheEltEquivalent;
 	cacheCtl.cleanupEntry = cacheEltCleanup;
 	cacheCtl.populateEntry = cacheEltPopulate;
 
@@ -332,25 +312,6 @@ cache_test_insert()
 	param.data = 1111;
 	CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 
-	CacheEntry *lookedUpEntry = Cache_Lookup(cache, localEntry);
-	unit_test_result(lookedUpEntry != NULL);
-
-	Cache_Release(cache, lookedUpEntry);
-
-	elog(LOG, "Running sub-test: CacheLookup equal key, no match on value");
-	TestCacheElt *elt = CACHE_ENTRY_PAYLOAD(localEntry);
-	strncpy(elt->key, "Test Key 2", TEST_NAME_LENGTH);
-	elt->data = 1234;
-	lookedUpEntry = Cache_Lookup(cache, localEntry);
-	unit_test_result(lookedUpEntry == NULL);
-
-	elog(LOG, "Running sub-test: CacheLookup different key, no match");
-	elt = CACHE_ENTRY_PAYLOAD(localEntry);
-	strncpy(elt->key, "Test Key bogus", TEST_NAME_LENGTH);
-	elt->data = 1111;
-	lookedUpEntry = Cache_Lookup(cache, localEntry);
-	unit_test_result(lookedUpEntry == NULL);
-
 	Cache_Release(cache, localEntry);
 	return unit_test_summary();
 
@@ -389,31 +350,7 @@ cache_test_remove(void)
 	param.data = 2222;
 	CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
 
-	elog(LOG, "Running sub-test: Look-up inserted element");
-	CacheEntry *lookedUpEntry = Cache_Lookup(cache, localEntry);
-	unit_test_result(lookedUpEntry != NULL);
-
-	elog(LOG, "Running sub-test: Remove looked-up element");
-	Cache_Remove(cache, lookedUpEntry);
-	Cache_Release(cache, lookedUpEntry);
-	unit_test_result(true);
-
-	elog(LOG, "Running sub-test: Look up removed element");
-	TestCacheElt *elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
-	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
-	elt3->data = 2222;
-	lookedUpEntry = Cache_Lookup(cache, localEntry);
-	unit_test_result(lookedUpEntry == NULL);
-
-	elog(LOG, "Running sub-test: Look up existing element");
-	elt3 = CACHE_ENTRY_PAYLOAD(localEntry);
-	strncpy(elt3->key, testKey, TEST_NAME_LENGTH);
-	elt3->data = 1111;
-	lookedUpEntry = Cache_Lookup(cache, localEntry);
-	unit_test_result(lookedUpEntry != NULL);
-
 	Cache_Release(cache, localEntry);
-	Cache_Release(cache, lookedUpEntry);
 
 	return unit_test_summary();
 }
@@ -493,14 +430,6 @@ cache_test_concurrency(void)
 				break;
 			}
 
-			entries[i] = Cache_Lookup(cache, localEntry);
-			if (entries[i] == NULL)
-			{
-				elog(LOG, "Could not find inserted entry");
-				testFailed = true;
-				break;
-			}
-
 			Cache_Release(cache, localEntry);
 		}
 
@@ -534,14 +463,6 @@ cache_test_concurrency(void)
 				break;
 			}
 
-			entries[i] = Cache_Lookup(cache, localEntry);
-			if (entries[i] != NULL)
-			{
-				elog(LOG, "Unexpected entry found in cache");
-				testFailed = true;
-				break;
-			}
-
 			Cache_Release(cache, localEntry);
 		}
 
@@ -551,281 +472,6 @@ cache_test_concurrency(void)
 	unit_test_result(!testFailed);
 	return unit_test_summary();
 }
-
-static bool
-cache_test_evict(void)
-{
-	unit_test_reset();
-
-	elog(LOG, "Running test: cache_test_evict");
-
-	elog(LOG, "Running sub-test: CacheCreate");
-	Cache *cache = cache_test_create();
-	unit_test_result(cache != NULL);
-
-	/* Number of elements in the array to hold test entries */
-	const int noTestEntries = 20;
-	const int entryWeight = 3;
-	CacheEntry *entries[noTestEntries];
-	TestPopParam param;
-	char key[TEST_NAME_LENGTH];
-
-
-	/* Inserting noTestEntries entries */
-	elog(LOG, "Running sub-test: Inserting elements");
-	int i;
-	for (i=0; i < noTestEntries; i++)
-	{
-		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		strncpy(param.key, key, TEST_NAME_LENGTH);
-		param.data = MyProcPid;
-
-		entries[i] = Cache_AcquireEntry(cache, &param);
-		Assert(NULL != entries[i]);
-
-		entries[i]->size = entryWeight;
-		entries[i]->utility = random() % 100;
-
-		Cache_Insert(cache, entries[i]);
-		Cache_Release(cache, entries[i]);
-	}
-	unit_test_result(true);
-
-	/* Evicting elements */
-	elog(LOG, "Running sub-test: Succesful eviction");
-
-	int64 evictRequest = (noTestEntries * entryWeight) / 2 + 1; 	/* Half of the entries + 1 */
-	int64 evictActual = Cache_Evict(cache, evictRequest);
-
-	/* Expected result: Evicted half plus one entries */
-	unit_test_result(evictActual == evictRequest - 1 + entryWeight);
-
-	elog(LOG, "Running sub-test: Unsuccesful eviction");
-	evictRequest = (noTestEntries * entryWeight) / 2; /* Half of the entries */
-	evictActual = Cache_Evict(cache, evictRequest);
-
-	/* Expected result: Evicted one less entry than requested */
-	unit_test_result(evictActual == evictRequest - entryWeight);
-	return unit_test_summary();
-}
-
-static bool
-cache_test_evict_stress(void)
-{
-	unit_test_reset();
-
-	elog(LOG, "Running test: cache_test_evict_stress");
-
-	elog(LOG, "Running sub-test: CacheCreate");
-	Cache *cache = cache_test_create();
-	unit_test_result(cache != NULL);
-
-	/* Number of elements in the array to hold test entries */
-	const int noTestEntries = 1000;
-	const int entryWeight = 3;
-	CacheEntry *entries[noTestEntries];
-	char key[TEST_NAME_LENGTH];
-	bool testFailed = false;
-	const uint32 noTestIterations = 1000;
-	uint32 iterNo;
-	TestPopParam param;
-
-	elog(LOG, "Running sub-test: Cache insert/lookup/evict many elements");
-	for (iterNo = 0; iterNo < noTestIterations ; iterNo ++)
-	{
-		if (testFailed)
-		{
-			break;
-		}
-
-		/* Inserting noTestEntries entries */
-		int i;
-		for (i=0; i < noTestEntries; i++)
-		{
-			/* If we include Pid in the key, we get short chains */
-			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
-			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
-			strncpy(param.key, key, TEST_NAME_LENGTH);
-			param.data = MyProcPid;
-
-			entries[i] = Cache_AcquireEntry(cache, &param);
-			Assert(NULL != entries[i]);
-
-
-			entries[i]->size = entryWeight;
-			entries[i]->utility = random() % 100;
-
-			Cache_Insert(cache, entries[i]);
-			Cache_Release(cache, entries[i]);
-		}
-
-		if (testFailed)
-		{
-			break;
-		}
-
-		/* Look up noTestEntries */
-		for (i=0; i < noTestEntries; i++)
-		{
-			/* snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i); */
-			snprintf(key, TEST_NAME_LENGTH, "cache key no. %d", i);
-			strncpy(param.key, key, TEST_NAME_LENGTH);
-			param.data = MyProcPid;
-
-			CacheEntry *localEntry = Cache_AcquireEntry(cache, &param);
-			if (localEntry == NULL)
-			{
-				elog(LOG, "Could not acquire entry");
-				testFailed = true;
-				break;
-			}
-
-			entries[i] = Cache_Lookup(cache, localEntry);
-			/*
-			 * Since we're possibly running evictions from other clients in the meantime,
-			 * some of these elements will not be found. But that's ok, we can still
-			 * look them up to exercise that mechanism
-			 */
-
-			if (NULL != entries[i])
-			{
-				Cache_Release(cache, entries[i]);
-			}
-
-			Cache_Release(cache, localEntry);
-		}
-
-		if (testFailed)
-		{
-			break;
-		}
-
-		/* Evict noTestEntries x weight from cache */
-		int64 evictRequest = noTestEntries * entryWeight;
-		int64 evictSize = Cache_Evict(cache, evictRequest);
-
-		/* XXX Under high concurrency, this test can actually legally fail.
-		 * If someone else just evicted everything we added, and we have to
-		 * wait for someone else to insert something we can evict, but it's
-		 * happening too slowly
-		 */
-
-		if (evictSize != evictRequest)
-		{
-			elog(LOG, "Could not satisfy evict. Requested= " INT64_FORMAT " evicted=" INT64_FORMAT, evictRequest, evictSize);
-			testFailed = true;
-			break;
-		}
-
-		CHECK_FOR_INTERRUPTS();
-	}
-
-	unit_test_result(!testFailed);
-	return unit_test_summary();
-}
-
-static bool
-cache_test_clear(void)
-{
-	int32 noDeleted = 0;
-
-	unit_test_reset();
-
-	elog(LOG, "Running test: cache_test_evict_clear");
-
-	elog(LOG, "Running sub-test: CacheCreate");
-	Cache *cache = cache_test_create();
-	unit_test_result(cache != NULL);
-
-	elog(LOG, "Running sub-test: Cache_Clear on empty");
-	noDeleted = Cache_Clear(cache);
-	unit_test_result(noDeleted == 0);
-
-	/* Number of elements in the array to hold test entries */
-	const int noTestEntries = 20;
-	const int entryWeight = 3;
-	CacheEntry *entries[noTestEntries];
-	char key[TEST_NAME_LENGTH];
-	TestPopParam param;
-
-
-	/* Inserting noTestEntries entries */
-	elog(LOG, "Running sub-test: Cache_Clear with %d inserted elements", noTestEntries);
-	int i;
-	for (i=0; i < noTestEntries; i++)
-	{
-		strncpy(param.key, key, TEST_NAME_LENGTH);
-		param.data = MyProcPid;
-
-		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		entries[i] = Cache_AcquireEntry(cache, &param);
-		Assert(NULL != entries[i]);
-
-		entries[i]->size = entryWeight;
-		entries[i]->utility = random() % 100;
-
-		Cache_Insert(cache, entries[i]);
-		Cache_Release(cache, entries[i]);
-	}
-
-	/* Clear should clear all of them */
-	noDeleted = Cache_Clear(cache);
-	unit_test_result(noDeleted == noTestEntries);
-
-
-	elog(LOG, "Running sub-test: Looking up %d elements after they got cleared", noTestEntries);
-
-	bool testFailed = false;
-	CacheEntry *localEntry = Cache_AcquireEntry(cache, NULL);
-	TestCacheElt *localElt = CACHE_ENTRY_PAYLOAD(localEntry);
-	localElt->data = MyProcPid;
-	for (i=0; i < noTestEntries; i++)
-	{
-		snprintf(localElt->key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		CacheEntry *foundEntry = Cache_Lookup(cache, localEntry);
-		if (foundEntry != NULL)
-		{
-			/* Found an entry that was supposed to be cleared out, error out! */
-			testFailed = true;
-			Cache_Release(cache, foundEntry);
-			break;
-		}
-	}
-
-	Cache_Release(cache, localEntry);
-	unit_test_result(!testFailed);
-
-	/* Acquiring but not inserting noTestEntries entries */
-	elog(LOG, "Running sub-test: Cache_Clear with %d acquired elements", noTestEntries);
-	for (i=0; i < noTestEntries; i++)
-	{
-		/* Put some payload in the entry */
-		snprintf(key, TEST_NAME_LENGTH, "PID=%d cache key no. %d", MyProcPid, i);
-		strncpy(param.key, key, TEST_NAME_LENGTH);
-		param.data = MyProcPid;
-
-		entries[i] = Cache_AcquireEntry(cache, &param);
-		Assert(NULL != entries[i]);
-	}
-
-	/* Clear should clear none of them */
-	noDeleted = Cache_Clear(cache);
-	unit_test_result(noDeleted == 0);
-
-	elog(LOG, "Running sub-test: Cache_Clear after releasing all acquired elements");
-	for (i=0; i < noTestEntries; i++)
-	{
-		Cache_Release(cache, entries[i]);
-	}
-
-	/* Clear should clear none of them */
-	noDeleted = Cache_Clear(cache);
-	unit_test_result(noDeleted == 0);
-
-
-	return unit_test_summary();
-}
-
 
 /*
  * Callback function to test if an entry in the hashtable is "empty"
@@ -2176,7 +1822,7 @@ workfile_fill_sharedcache(void)
 	for (crt_entry = 0; crt_entry < n_entries; crt_entry++)
 	{
 		workfile_set *work_set = workfile_mgr_create_set(BUFFILE,
-				false /* can_be_reused */, NULL /* PlanState */, NULL_SNAPSHOT);
+				false /* can_be_reused */, NULL /* PlanState */);
 		if (NULL == work_set)
 		{
 			success = false;
@@ -2211,7 +1857,7 @@ workfile_create_and_set_cleanup(void)
 	elog(LOG, "Running sub-test: Create Workset");
 
 	workfile_set *work_set = workfile_mgr_create_set(BUFFILE,
-			false /* can_be_reused */, NULL /* PlanState */, NULL_SNAPSHOT);
+			false /* can_be_reused */, NULL /* PlanState */);
 
 	unit_test_result(NULL != work_set);
 
@@ -2259,7 +1905,7 @@ workfile_create_and_individual_cleanup(void)
 	elog(LOG, "Running sub-test: Create Workset");
 
 	workfile_set *work_set = workfile_mgr_create_set(BUFFILE,
-			false /* can_be_reused */, NULL /* PlanState */, NULL_SNAPSHOT);
+			false /* can_be_reused */, NULL /* PlanState */);
 
 	unit_test_result(NULL != work_set);
 

@@ -403,6 +403,8 @@ typedef struct PROCLOCK
 	SHM_QUEUE	procLink;		/* list link in PGPROC's list of proclocks */
 	int			nLocks;			/* total number of times lock is held by 
 								   this process, used by resource scheduler */
+	SHM_QUEUE	portalLinks;	/* list of ResPortalIncrements for this 
+								   proclock, used by resource scheduler */
 } PROCLOCK;
 
 #define PROCLOCK_LOCKMETHOD(proclock) \
@@ -550,7 +552,7 @@ extern int LockCheckConflicts(LockMethod lockMethodTable,
 				   LOCK *lock, PROCLOCK *proclock, PGPROC *proc);
 extern void GrantLock(LOCK *lock, PROCLOCK *proclock, LOCKMODE lockmode);
 extern void GrantAwaitedLock(void);
-extern void RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode, bool wakeupNeeded);
+extern void RemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
 extern void RemoveLocalLock(LOCALLOCK *locallock);
 extern Size LockShmemSize(void);
 extern LockData *GetLockStatusData(void);
@@ -571,30 +573,6 @@ extern void RememberSimpleDeadLock(PGPROC *proc1,
 					   LOCK *lock,
 					   PGPROC *proc2);
 extern void InitDeadLockChecking(void);
-
-
-
-typedef struct LockStatStd {
-char            lf_locktype[100];            /* 1 */ 
-Oid             lf_database;                 /* 2 */ 
-Oid             lf_relation;                 /* 3 */ 
-uint32          lf_page;                     /* 4 */ 
-uint16          lf_tuple;                    /* 5 */ 
-TransactionId   lf_transactionid;            /* 6 */ 
-Oid             lf_classid;                  /* 7 */ 
-Oid             lf_objid;                    /* 8 */ 
-uint16          lf_objsubid;                 /* 9 */ 
-TransactionId   lf_transaction;              /* 10 */ 
-uint32          lf_pid;                      /* 11 */ 
-char            lf_mode[100];                /* 12 */ 
-bool            lf_granted;                  /* 13 */ 
-uint32          lf_mppSessionId;             /* 14 */ 
-bool            lf_mppIsWriter;              /* 15 */ 
-
-} LockStatStd;
-
-extern int  LockStatStuff(LockStatStd *lf, int ii, 	LockData   *lockData);
-
 
 #ifdef LOCK_DEBUG
 extern void DumpLocks(PGPROC *proc);

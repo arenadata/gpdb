@@ -24,60 +24,6 @@
 
 #include "catalog/genbki.h"
 
-/* TIDYCAT_BEGINFAKEDEF
-
-   CREATE TABLE pg_am
-   with (camelcase=AccessMethod,  relid=2601)
-   (
-   amname           name, 
-   amstrategies     smallint, 
-   amsupport        smallint, 
-   amcanorder       boolean, 
-   amcanunique      boolean, 
-   amcanmulticol    boolean, 
-   amoptionalkey    boolean, 
-   amindexnulls     boolean, 
-   amsearchnulls    boolean, 
-   amstorage        boolean, 
-   amclusterable    boolean, 
-   amcanshrink      boolean, 
-   aminsert         regproc, 
-   ambeginscan      regproc, 
-   amgettuple       regproc, 
-   amgetmulti       regproc, 
-   amrescan         regproc, 
-   amendscan        regproc, 
-   ammarkpos        regproc, 
-   amrestrpos       regproc, 
-   ambuild          regproc, 
-   ambulkdelete     regproc, 
-   amvacuumcleanup  regproc, 
-   amcostestimate   regproc, 
-   amoptions        regproc
-    );
-
-	create unique index on pg_am(amname) with (indexid=2651, CamelCase=AmName, syscacheid=AMNAME, syscache_nbuckets=4);
-	create unique index on pg_am(oid) with (indexid=2652, CamelCase=AmOid, syscacheid=AMOID, syscache_nbuckets=4);
-
-   alter table pg_am add fk aminsert on pg_proc(oid);
-   alter table pg_am add fk ambeginscan on pg_proc(oid);
-   alter table pg_am add fk amgettuple on pg_proc(oid);
-   alter table pg_am add fk amgetmulti on pg_proc(oid);
-   alter table pg_am add fk amrescan on pg_proc(oid);
-   alter table pg_am add fk amendscan on pg_proc(oid);
-   alter table pg_am add fk ammarkpos on pg_proc(oid);
-   alter table pg_am add fk amrestrpos on pg_proc(oid);
-   alter table pg_am add fk ambuild on pg_proc(oid);
-   alter table pg_am add fk ambulkdelete on pg_proc(oid);
-   alter table pg_am add fk amvacuumcleanup on pg_proc(oid);
-   alter table pg_am add fk amcostestimate on pg_proc(oid);  
-   alter table pg_am add fk amoptions on pg_proc(oid);
-
-   TIDYCAT_ENDFAKEDEF
-*/
-
-
-
 /* ----------------
  *		pg_am definition.  cpp turns this into
  *		typedef struct FormData_pg_am
@@ -118,6 +64,21 @@ CATALOG(pg_am,2601)
 	regproc		amcostestimate; /* estimate cost of an indexscan */
 	regproc		amoptions;		/* parse AM-specific parameters */
 } FormData_pg_am;
+
+/* GPDB added foreign key definitions for gpcheckcat. */
+FOREIGN_KEY(aminsert REFERENCES pg_proc(oid));
+FOREIGN_KEY(ambeginscan REFERENCES pg_proc(oid));
+FOREIGN_KEY(amgettuple REFERENCES pg_proc(oid));
+FOREIGN_KEY(amgetmulti REFERENCES pg_proc(oid));
+FOREIGN_KEY(amrescan REFERENCES pg_proc(oid));
+FOREIGN_KEY(amendscan REFERENCES pg_proc(oid));
+FOREIGN_KEY(ammarkpos REFERENCES pg_proc(oid));
+FOREIGN_KEY(amrestrpos REFERENCES pg_proc(oid));
+FOREIGN_KEY(ambuild REFERENCES pg_proc(oid));
+FOREIGN_KEY(ambulkdelete REFERENCES pg_proc(oid));
+FOREIGN_KEY(amvacuumcleanup REFERENCES pg_proc(oid));
+FOREIGN_KEY(amcostestimate REFERENCES pg_proc(oid));
+FOREIGN_KEY(amoptions REFERENCES pg_proc(oid));
 
 /* ----------------
  *		Form_pg_am corresponds to a pointer to a tuple with
@@ -180,9 +141,15 @@ DESCR("bitmap index access method");
 
 /*
  * Am_btree AM values for FormData_pg_am.
+ *
+ * The function oid definitions, F_*, are in fmgroids.h. We don't #include
+ * that here, because most users of pg_am.h don't need this. Also,
+ * fmgroids.h is generated as part of the build, so I'm not 100% sure if
+ * that might cause dependency problems. If you need Am_btree, do #include
+ * "utils/fmgroids.h" before including pg_am.h.
  */
 #define Am_btree \
-	{"btree"}, 5, 1, true, true, true, true, true, true, false, true, true, BTINSERT_OID, BTBEGINSCAN_OID, BTGETTUPLE_OID, BTGETMULTI_OID, BTRESCAN_OID, BTENDSCAN_OID, BTMARKPOS_OID, BTRESTRPOS_OID, BTBUILD_OID, BTBULKDELETE_OID, BTVACUUMCLEANUP_OID, BTCOSTESTIMATE_OID, BTOPTIONS_OID
+	{"btree"}, 5, 1, true, true, true, true, true, true, false, true, true, F_BTINSERT, F_BTBEGINSCAN, F_BTGETTUPLE, F_BTGETMULTI, F_BTRESCAN, F_BTENDSCAN, F_BTMARKPOS, F_BTRESTRPOS, F_BTBUILD, F_BTBULKDELETE, F_BTVACUUMCLEANUP, F_BTCOSTESTIMATE, F_BTOPTIONS
 
 
 #endif   /* PG_AM_H */

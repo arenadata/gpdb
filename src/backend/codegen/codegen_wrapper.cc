@@ -3,7 +3,7 @@
 //  Copyright (C) 2016 Pivotal Software, Inc.
 //
 //  @filename:
-//    init_codegen.cpp
+//    codegen_wrapper.cc
 //
 //  @doc:
 //    C wrappers for initialization of code generator.
@@ -11,20 +11,29 @@
 //---------------------------------------------------------------------------
 
 #include "codegen/codegen_wrapper.h"
-#include "codegen/codegen_manager.h"
-#include "codegen/exec_variable_list_codegen.h"
-#include "codegen/exec_qual_codegen.h"
 
-#include "codegen/utils/codegen_utils.h"
+#include <assert.h>
+#include <string>
+#include <type_traits>
+
+#include "codegen/base_codegen.h"
+#include "codegen/codegen_manager.h"
+#include "codegen/exec_eval_expr_codegen.h"
+#include "codegen/exec_variable_list_codegen.h"
+#include "codegen/expr_tree_generator.h"
+#include "codegen/utils/gp_codegen_utils.h"
+
+extern "C" {
+#include "lib/stringinfo.h"
+}
 
 using gpcodegen::CodegenManager;
 using gpcodegen::BaseCodegen;
 using gpcodegen::ExecVariableListCodegen;
-using gpcodegen::ExecQualCodegen;
+using gpcodegen::ExecEvalExprCodegen;
 
 // Current code generator manager that oversees all code generators
 static void* ActiveCodeGeneratorManager = nullptr;
-static bool is_codegen_initalized = false;
 
 extern bool codegen;  // defined from guc
 extern bool init_codegen;  // defined from guc
@@ -32,7 +41,7 @@ extern bool init_codegen;  // defined from guc
 // Perform global set-up tasks for code generation. Returns 0 on
 // success, nonzero on error.
 unsigned int InitCodegen() {
-  return gpcodegen::CodegenUtils::InitializeGlobal();
+  return gpcodegen::GpCodegenUtils::InitializeGlobal();
 }
 
 void* CodeGeneratorManagerCreate(const char* module_name) {
@@ -60,6 +69,25 @@ unsigned int CodeGeneratorManagerNotifyParameterChange(void* manager) {
   // parameter change notification is not supported yet
   assert(false);
   return 0;
+}
+
+void CodeGeneratorManagerAccumulateExplainString(void* manager) {
+  if (!codegen) {
+    return;
+  }
+  assert(nullptr != manager);
+  static_cast<CodegenManager*>(manager)->AccumulateExplainString();
+}
+
+char* CodeGeneratorManagerGetExplainString(void* manager) {
+  if (!codegen) {
+    return nullptr;
+  }
+  StringInfo return_string = makeStringInfo();
+  appendStringInfoString(
+      return_string,
+      static_cast<CodegenManager*>(manager)->GetExplainString().c_str());
+  return return_string->data;
 }
 
 void CodeGeneratorManagerDestroy(void* manager) {
@@ -102,7 +130,10 @@ ClassType* CodegenEnroll(FuncType regular_func_ptr,
     }
 
   ClassType* generator = new ClassType(
-      regular_func_ptr, ptr_to_chosen_func_ptr, std::forward<Args>(args)...);
+      manager,
+      regular_func_ptr,
+      ptr_to_chosen_func_ptr,
+      std::forward<Args>(args)...);
     bool is_enrolled = manager->EnrollCodeGenerator(
         CodegenFuncLifespan_Parameter_Invariant, generator);
     assert(is_enrolled);
@@ -119,12 +150,20 @@ void* ExecVariableListCodegenEnroll(
   return generator;
 }
 
-void* ExecQualCodegenEnroll(
-    ExecQualFn regular_func_ptr,
-    ExecQualFn* ptr_to_chosen_func_ptr,
-    PlanState *planstate) {
-  ExecQualCodegen* generator = CodegenEnroll<ExecQualCodegen>(
-      regular_func_ptr, ptr_to_chosen_func_ptr, planstate);
+void* ExecEvalExprCodegenEnroll(
+    ExecEvalExprFn regular_func_ptr,
+    ExecEvalExprFn* ptr_to_chosen_func_ptr,
+    ExprState *exprstate,
+    ExprContext *econtext,
+    PlanState* plan_state) {
+  ExecEvalExprCodegen* generator = CodegenEnroll<ExecEvalExprCodegen>(
+      regular_func_ptr,
+      ptr_to_chosen_func_ptr,
+      exprstate,
+      econtext,
+      plan_state);
   return generator;
 }
+
+
 

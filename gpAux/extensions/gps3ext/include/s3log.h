@@ -1,5 +1,5 @@
-#ifndef __S3LOG__
-#define __S3LOG__
+#ifndef __S3_LOG_H__
+#define __S3_LOG_H__
 
 #include <cstdarg>
 #include <cstdio>
@@ -13,10 +13,10 @@ enum LOGLEVEL { EXT_FATAL, EXT_ERROR, EXT_WARNING, EXT_INFO, EXT_DEBUG };
 
 // log type
 enum LOGTYPE {
-    REMOTE_LOG,    // log to remote udp server
-    LOCAL_LOG,     // log to local unix dgram domain socket
-    INTERNAL_LOG,  // use pg elog
-    STDERR_LOG     // use stderr
+    REMOTE_LOG,    // log to remote UDP server
+    LOCAL_LOG,     // log to local Unix domain socket
+    INTERNAL_LOG,  // use PostgreSQL's elog()
+    STDERR_LOG     // use STDERR
 };
 
 void LogMessage(LOGLEVEL level, const char* fmt, ...);
@@ -27,8 +27,7 @@ LOGLEVEL getLogLevel(const char* v);
 #define PRINTFUNCTION(i, format, ...) LogMessage(i, format, __VA_ARGS__)
 
 #define LOG_FMT "[%s]#%d#(%0X)%s:%d  "
-#define LOG_ARGS(LOGLEVELSTR) \
-    LOGLEVELSTR, s3ext_segid, pthread_self(), __FILE__, __LINE__
+#define LOG_ARGS(LOGLEVELSTR) LOGLEVELSTR, s3ext_segid, pthread_self(), __FILE__, __LINE__
 #define NEWLINE "\n"
 
 #define S3DEBUG(message, args...)    \
@@ -43,16 +42,10 @@ LOGLEVEL getLogLevel(const char* v);
     if (EXT_WARNING <= s3ext_loglevel) \
     PRINTFUNCTION(EXT_WARNING, LOG_FMT message NEWLINE, LOG_ARGS("W"), ##args)
 
-#ifdef S3_CHK_CFG
-#define S3ERROR(message, args...)    \
-    if (EXT_ERROR <= s3ext_loglevel) \
-    PRINTFUNCTION(EXT_ERROR, "%s " message NEWLINE, "Failed:", ##args)
-#else
 #define S3ERROR(message, args...)    \
     if (EXT_ERROR <= s3ext_loglevel) \
     PRINTFUNCTION(EXT_ERROR, LOG_FMT message NEWLINE, LOG_ARGS("E"), ##args)
-#endif
 
 void InitRemoteLog();
 
-#endif  // __S3LOG__
+#endif  // __S3_LOG_H__

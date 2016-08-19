@@ -6,7 +6,7 @@
 //    codegen_manager.h
 //
 //  @doc:
-//    Object that manage all CodegenInterface and CodegenUtils
+//    Object that manage all CodegenInterface and GpCodegenUtils
 //
 //---------------------------------------------------------------------------
 
@@ -25,8 +25,8 @@ namespace gpcodegen {
  *  @{
  */
 
-// Forward declaration of CodegenUtils to manage llvm module
-class CodegenUtils;
+// Forward declaration of GpCodegenUtils to manage llvm module
+class GpCodegenUtils;
 
 // Forward declaration of a CodegenInterface that will be managed by manager
 class CodegenInterface;
@@ -52,7 +52,7 @@ class CodegenManager {
    * @note Manager manages the memory of enrolled generator.
    *
    * @param funcLifespan Life span of the enrolling generator. Based on life span,
-   *                     corresponding CodegenUtils will be used for code generation
+   *                     corresponding GpCodegenUtils will be used for code generation
    * @param generator    Generator that needs to be enrolled with manager.
    * @return true on successful enrollment.
    **/
@@ -99,14 +99,28 @@ class CodegenManager {
     return enrolled_code_generators_.size();
   }
 
+  /*
+   * @brief Accumulate the explain string with a dump of all the underlying LLVM
+   *        modules
+   */
+  void AccumulateExplainString();
+
+  /*
+   * @brief Return the previous accumulated explain string
+   */
+  const std::string& GetExplainString();
+
  private:
-  // CodegenUtils provides a facade to LLVM subsystem.
-  std::unique_ptr<gpcodegen::CodegenUtils> codegen_utils_;
+  // GpCodegenUtils provides a facade to LLVM subsystem.
+  std::unique_ptr<gpcodegen::GpCodegenUtils> codegen_utils_;
 
   std::string module_name_;
 
   // List of all enrolled code generators.
   std::vector<std::unique_ptr<CodegenInterface>> enrolled_code_generators_;
+
+  // Holds the dumped IR of all underlying modules for EXPLAIN CODEGEN queries
+  std::string explain_string_;
 
   DISALLOW_COPY_AND_ASSIGN(CodegenManager);
 };

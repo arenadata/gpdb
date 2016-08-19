@@ -1,20 +1,8 @@
 #include "s3utils.cpp"
 #include "gtest/gtest.h"
 
-// Tests factorial of positive numbers.
-TEST(Utils, trim) {
-    char data[] = " \t\n\r  abc \r\r\n\r \t";
-    char out[8] = {0};
-    bool ret;
-    ret = trim(out, data);
-    EXPECT_EQ(ret, true);
-    EXPECT_STREQ("abc", out);
-}
-
-TEST(Utils, time) {
-    char data[65];
-    gethttpnow(data);
-}
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
 
 TEST(Utils, simplecurl) {
     CURL *c = CreateCurlHandler(NULL);
@@ -26,6 +14,7 @@ TEST(Utils, simplecurl) {
 
 TEST(Utils, nth) {
     const char *teststr = "aaabbbcccaaatttaaa";
+    EXPECT_EQ(find_Nth(teststr, 0, "aaa"), -1);
     EXPECT_EQ(find_Nth(teststr, 1, "aaa"), 0);
     EXPECT_EQ(find_Nth(teststr, 2, "aaa"), 9);
     EXPECT_EQ(find_Nth(teststr, 3, "aaa"), 15);
@@ -33,28 +22,26 @@ TEST(Utils, nth) {
     EXPECT_EQ(find_Nth(teststr, 1, ""), 0);
 }
 
-#define MD5TESTBUF "abcdefghijklmnopqrstuvwxyz\n"
+#define MD5TESTSTRING "abcdefghijklmnopqrstuvwxyz\n"
 TEST(Utils, md5) {
     MD5Calc m;
-    m.Update(MD5TESTBUF, strlen(MD5TESTBUF));
+    m.Update(MD5TESTSTRING, strlen(MD5TESTSTRING));
     EXPECT_STREQ("e302f9ecd2d189fa80aac1c3392e9b9c", m.Get());
-    m.Update(MD5TESTBUF, strlen(MD5TESTBUF));
-    m.Update(MD5TESTBUF, strlen(MD5TESTBUF));
-    m.Update(MD5TESTBUF, strlen(MD5TESTBUF));
+    m.Update(MD5TESTSTRING, strlen(MD5TESTSTRING));
+    m.Update(MD5TESTSTRING, strlen(MD5TESTSTRING));
+    m.Update(MD5TESTSTRING, strlen(MD5TESTSTRING));
     EXPECT_STREQ("3f8c2c6e2579e864071c33919fac61ee", m.Get());
 }
 
 #define TEST_STRING "The quick brown fox jumps over the lazy dog"
 TEST(Utils, sha256) {
-    char hash_str[65] = {0};
+    char hash_str[SHA256_DIGEST_STRING_LENGTH] = {0};
     EXPECT_TRUE(sha256_hex(TEST_STRING, hash_str));
-    EXPECT_STREQ(
-        "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592",
-        hash_str);
+    EXPECT_STREQ("d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592", hash_str);
 }
 
 TEST(Utils, sha1hmac) {
-    char hash_hex[41] = {0};
+    char hash_hex[SHA_DIGEST_STRING_LENGTH] = {0};
 
     EXPECT_TRUE(sha1hmac_hex(TEST_STRING, (char *)hash_hex, "key", 3));
 
@@ -62,40 +49,51 @@ TEST(Utils, sha1hmac) {
 }
 
 TEST(Utils, sha256hmac) {
-    char hash_str[65] = {0};
+    char hash_str[SHA256_DIGEST_STRING_LENGTH] = {0};
     EXPECT_TRUE(sha256hmac_hex(TEST_STRING, hash_str, "key", 3));
-    EXPECT_STREQ(
-        "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8",
-        hash_str);
+    EXPECT_STREQ("f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8", hash_str);
+}
+
+TEST(Utils, ConfigNull) {
+    Config c1(NULL);
+    uint64_t value = 0;
+    EXPECT_FALSE(c1.Scan("configtest", "config7", "%" PRIu64, &value));
+
+    Config c2("");
+    EXPECT_FALSE(c2.Scan("configtest", "config7", "%" PRIu64, &value));
+
+    string str;
+    Config c3(str);
+    EXPECT_FALSE(c3.Scan("configtest", "config7", "%" PRIu64, &value));
 }
 
 TEST(Utils, Config) {
-    Config c("test/data/s3test.conf");
-    EXPECT_STREQ(c.Get("configtest", "config1", "aaaaaa").c_str(), "abcdefg");
-    EXPECT_STREQ(c.Get("configtest", "config2", "tttt").c_str(), "12345");
-    EXPECT_STREQ(c.Get("configtest", "config3", "tttt").c_str(), "aaaaa");
-    EXPECT_STREQ(c.Get("configtest", "config4", "tttt").c_str(), "123");
-    EXPECT_STREQ(c.Get("configtest", "config5", "tttt").c_str(), "tttt");
-    EXPECT_STREQ(c.Get("configtest", "config6", "tttt").c_str(), "tttt");
-    EXPECT_STREQ(c.Get("configtest", "config7", "xx").c_str(), "xx");
+    Config c("data/s3test.conf");
+    EXPECT_EQ(c.Get("configtest", "config1", "aaaaaa"), "abcdefg");
+    EXPECT_EQ(c.Get("configtest", "config2", "tttt"), "12345");
+    EXPECT_EQ(c.Get("configtest", "config3", "tttt"), "aaaaa");
+    EXPECT_EQ(c.Get("configtest", "config4", "tttt"), "123");
+    EXPECT_EQ(c.Get("configtest", "config5", "tttt"), "tttt");
+    EXPECT_EQ(c.Get("configtest", "config6", "tttt"), "tttt");
+    EXPECT_EQ(c.Get("configtest", "config7", "xx"), "xx");
 
-    EXPECT_STREQ(c.Get("configtest", "", "xx").c_str(), "xx");
-    EXPECT_STREQ(c.Get("configtest", "config7", "").c_str(), "");
+    EXPECT_EQ(c.Get("configtest", "", "xx"), "xx");
+    EXPECT_EQ(c.Get("configtest", "config7", ""), "");
 
-    EXPECT_STREQ(c.Get("configtest", "", "xx").c_str(), "xx");
+    EXPECT_EQ(c.Get("configtest", "", "xx"), "xx");
 
-    uint32_t value = 0;
-    EXPECT_TRUE(c.Scan("configtest", "config2", "%ud", &value));
+    uint64_t value = 0;
+    EXPECT_TRUE(c.Scan("configtest", "config2", "%" PRIu64, &value));
     EXPECT_EQ(value, 12345);
 
-    EXPECT_TRUE(c.Scan("configtest", "config4", "%ud", &value));
+    EXPECT_TRUE(c.Scan("configtest", "config4", "%" PRIu64, &value));
     EXPECT_EQ(value, 123);
 
-    EXPECT_FALSE(c.Scan("configtest", "config7", "%ud", &value));
-    EXPECT_FALSE(c.Scan("", "config7", "%ud", &value));
-    EXPECT_FALSE(c.Scan("configtest", "", "%ud", &value));
+    EXPECT_FALSE(c.Scan("configtest", "config7", "%" PRIu64, &value));
+    EXPECT_FALSE(c.Scan("", "config7", "%" PRIu64, &value));
+    EXPECT_FALSE(c.Scan("configtest", "", "%" PRIu64, &value));
 
-    EXPECT_FALSE(c.Scan("configtest", "config5", "%ud", &value));
+    EXPECT_FALSE(c.Scan("configtest", "config5", "%" PRIu64, &value));
 
     char str[128];
     EXPECT_TRUE(c.Scan("configtest", "config3", "%s", str));
@@ -123,38 +121,38 @@ TEST(Utils, UriCoding) {
         "20j%20k%20l%20m%20n%20o%20p%20q%20r%20s%20t%20u%20v%20w%20x%20y%20z%"
         "200%201%202%203%204%205%206%207%208%209%20-%20_%20.%20~";
 
-    EXPECT_STREQ(dst1.c_str(), uri_encode(src1).c_str());
-    EXPECT_STREQ(dst2.c_str(), uri_encode(src2).c_str());
-    EXPECT_STREQ(dst3.c_str(), uri_encode(src3).c_str());
-    EXPECT_STREQ(dst4.c_str(), uri_encode(src4).c_str());
+    EXPECT_EQ(dst1, uri_encode(src1));
+    EXPECT_EQ(dst2, uri_encode(src2));
+    EXPECT_EQ(dst3, uri_encode(src3));
+    EXPECT_EQ(dst4, uri_encode(src4));
 
-    EXPECT_STREQ(src1.c_str(), uri_decode(dst1).c_str());
-    EXPECT_STREQ(src2.c_str(), uri_decode(dst2).c_str());
-    EXPECT_STREQ(src3.c_str(), uri_decode(dst3).c_str());
-    EXPECT_STREQ(src4.c_str(), uri_decode(dst4).c_str());
+    EXPECT_EQ(src1, uri_decode(dst1));
+    EXPECT_EQ(src2, uri_decode(dst2));
+    EXPECT_EQ(src3, uri_decode(dst3));
+    EXPECT_EQ(src4, uri_decode(dst4));
 }
 
 TEST(Utils, find_replace) {
     string str1 = "This is a simple & short test.";
 
     find_replace(str1, "simple", "");
-    EXPECT_STREQ("This is a  & short test.", str1.c_str());
+    EXPECT_EQ("This is a  & short test.", str1);
 
     find_replace(str1, "short ", "");
-    EXPECT_STREQ("This is a  & test.", str1.c_str());
+    EXPECT_EQ("This is a  & test.", str1);
 
     find_replace(str1, "test.", "");
-    EXPECT_STREQ("This is a  & ", str1.c_str());
+    EXPECT_EQ("This is a  & ", str1);
 
     find_replace(str1, "This", "");
-    EXPECT_STREQ(" is a  & ", str1.c_str());
+    EXPECT_EQ(" is a  & ", str1);
 
     find_replace(str1, "is a", "abcdefghijklmn");
-    EXPECT_STREQ(" abcdefghijklmn  & ", str1.c_str());
+    EXPECT_EQ(" abcdefghijklmn  & ", str1);
 
     find_replace(str1, " a", "a");
-    EXPECT_STREQ("abcdefghijklmn  & ", str1.c_str());
+    EXPECT_EQ("abcdefghijklmn  & ", str1);
 
     find_replace(str1, "abc", "abcabc");
-    EXPECT_STREQ("abcabcdefghijklmn  & ", str1.c_str());
+    EXPECT_EQ("abcabcdefghijklmn  & ", str1);
 }

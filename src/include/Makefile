@@ -55,6 +55,7 @@ install: all installdirs
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbpathlocus.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdef.h   $(DESTDIR)$(includedir_internal_cdb)
 	$(INSTALL_DATA) $(srcdir)/cdb/cdbdistributedsnapshot.h   $(DESTDIR)$(includedir_internal_cdb)
+	$(INSTALL_DATA) $(srcdir)/cdb/cdblocaldistribxact.h   $(DESTDIR)$(includedir_internal_cdb)
 
 # CSH: These headers are needed for test/regress?
 #	$(INSTALL_DATA) $(top_srcdir)/src/backend/gp_libpq_fe/gp-libpq-fe.h   '$(DESTDIR)$(includedir)'

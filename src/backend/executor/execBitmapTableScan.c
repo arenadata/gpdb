@@ -27,12 +27,13 @@
 #include "nodes/tidbitmap.h"
 
 /*
- * Returns BitmapTableScanMethod for a given table type. Returns NULL
- * if the given type is TableTypeInvalid or not defined in TableType.
+ * Returns BitmapTableScanMethod for a given table type.
  */
 static const ScanMethod *
 getBitmapTableScanMethod(TableType tableType)
 {
+	Assert(tableType >= TableTypeHeap && tableType < TableTypeInvalid);
+
 	/*
 	 * scanMethods
 	 *    Array that specifies different scan methods for various table types.
@@ -58,11 +59,6 @@ getBitmapTableScanMethod(TableType tableType)
 	};
 
 	COMPILE_ASSERT(ARRAY_SIZE(scanMethods) == TableTypeInvalid);
-
-	if (tableType < 0 && tableType >= TableTypeInvalid)
-	{
-		return NULL;
-	}
 
 	return &scanMethods[tableType];
 }

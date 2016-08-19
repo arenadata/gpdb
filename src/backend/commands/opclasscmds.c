@@ -7,6 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
+ *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.58.2.1 2010/07/03 13:53:38 rhaas Exp $
  *
@@ -18,7 +19,6 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catquery.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_amop.h"
@@ -274,8 +274,6 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	NameData	opcName;
 	ObjectAddress myself,
 				referenced;
-	cqContext	*pcqCtx;
-	cqContext	 cqc;
 	int			i;
 
 	/* Convert list of names to a name and namespace */
@@ -289,15 +287,9 @@ DefineOpClass(CreateOpClassStmt *stmt)
 					   get_namespace_name(namespaceoid));
 
 	/* Get necessary info about access method */
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_am "
-				" WHERE amname = :1 ",
-				CStringGetDatum(stmt->amname)));
-
-	tup = caql_getnext(pcqCtx);
-
+	tup = SearchSysCache(AMNAME,
+						 CStringGetDatum(stmt->amname),
+						 0, 0, 0);
 	if (!HeapTupleIsValid(tup))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -315,7 +307,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 
 	/* XXX Should we make any privilege check against the AM? */
 
-	caql_endscan(pcqCtx);
+	ReleaseSysCache(tup);
 
 	/*
 	 * The question of appropriate permissions for CREATE OPERATOR CLASS is
@@ -536,10 +528,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	}
 
 	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
-	pcqCtx = caql_beginscan(
-			caql_addrel(cqclr(&cqc), rel), 
-			cql("INSERT INTO pg_opclass",
-				NULL));
+
 	/*
 	 * Make sure there is no existing opclass of this name (this is just to
 	 * give a more friendly error message than "duplicate key").
@@ -667,14 +656,17 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	/* dependency on owner */
 	recordDependencyOnOwner(OperatorClassRelationId, opclassoid, GetUserId());
 
-	caql_endscan(pcqCtx);
 	heap_close(rel, RowExclusiveLock);
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		stmt->opclassOid = opclassoid;
 		stmt->opfamilyOid = opfamilyoid;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineOpClass");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 	}
 }
 
@@ -800,7 +792,11 @@ DefineOpFamily(CreateOpFamilyStmt *stmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		stmt->newOid = opfamilyoid;
-		CdbDispatchUtilityStatement((Node *) stmt, "DefineOpFamily");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 	}
 }
 
@@ -878,7 +874,11 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 						 stmt->items);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "AlterOpFamilyStmt");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 }
 
 /*
@@ -1617,7 +1617,11 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt, "RemoveOpClass");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 	}
 }
 
@@ -1684,7 +1688,11 @@ RemoveOpFamily(RemoveOpFamilyStmt *stmt)
 	performDeletion(&object, stmt->behavior);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *) stmt, "RemoveOpFamily");
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									NULL);
 }
 
 
@@ -1859,7 +1867,6 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 	}
 
 	/* make sure the new name doesn't exist */
-	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(CLAAMNAMENSP,
 							 ObjectIdGetDatum(amOid),
 							 CStringGetDatum(newname),
@@ -2004,8 +2011,6 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 	HeapTuple	tup;
 	char	   *opcname;
 	char	   *schemaname;
-	cqContext	cqc;
-	cqContext  *pcqCtx;
 
 	amOid = GetSysCacheOid(AMNAME,
 						   CStringGetDatum(access_method),
@@ -2022,8 +2027,6 @@ AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 	 * Look up the opclass
 	 */
 	DeconstructQualifiedName(name, &schemaname, &opcname);
-
-	pcqCtx = caql_addrel(cqclr(&cqc), rel);
 
 	if (schemaname)
 	{
@@ -2088,7 +2091,6 @@ AlterOpClassOwner_oid(Oid opclassOid, Oid newOwnerId)
 }
 
 /*
- * The zeroeth parameter is the caql context, with a single valid tuple.
  * The first parameter is pg_opclass, opened and suitably locked.  The second
  * parameter is a copy of the tuple from pg_opclass we want to modify.
  */

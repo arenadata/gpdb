@@ -248,19 +248,35 @@ bool CodegenUtils::PrepareForExecution(const OptimizationLevel cpu_opt_level,
   }
 
   // Map registered external functions to their actual locations in memory.
-  for (const std::pair<const std::string,
-                       const std::uint64_t>& external_function
+  for (const std::pair<const std::uint64_t,
+                       const std::string>& external_function
        : external_functions_) {
     engine_->addGlobalMapping(
 #ifdef __APPLE__
-        std::string(1, '_') + external_function.first,
+        std::string(1, '_') + external_function.second,
 #else  // !__APPLE__
-        external_function.first,
+        external_function.second,
 #endif
-        external_function.second);
+        external_function.first);
   }
 
   return true;
+}
+
+void CodegenUtils::PrintUnderlyingModules(llvm::raw_ostream& out) {
+  // Print the main module
+  out << "==== MAIN MODULE ====" << "\n";
+  out.flush();
+  module()->print(out, nullptr);
+
+  // Print auxiliary modules
+  out << "==== AUXILIARY MODULES ====" << "\n";
+  out.flush();
+  for (std::unique_ptr<llvm::Module>& auxiliary_module : auxiliary_modules_) {
+      auxiliary_module->print(out, nullptr);
+  }
+  out << "==== END MODULES ====" << "\n\n";
+  out.flush();
 }
 
 llvm::GlobalVariable* CodegenUtils::AddExternalGlobalVariable(
@@ -356,6 +372,17 @@ llvm::Value* CodegenUtils::GetPointerToMemberImpl(
     // Cast the pointer to the appropriate type.
     return ir_builder_.CreateBitCast(offset_pointer, cast_type);
   }
+}
+
+llvm::Value* CodegenUtils::CreateIntrinsicInstrCall(
+    llvm::Intrinsic::ID Id,
+    llvm::ArrayRef<llvm::Type*> Tys,
+    llvm::Value* arg0,
+    llvm::Value* arg1) {
+  llvm::Function* llvm_intr_func = llvm::Intrinsic::getDeclaration(module(),
+                                                                   Id,
+                                                                   Tys);
+  return ir_builder()->CreateCall(llvm_intr_func, {arg0, arg1});
 }
 
 }  // namespace gpcodegen

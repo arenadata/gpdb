@@ -193,7 +193,6 @@ extern char *XactInfoKind_Name(
 	const XactInfoKind		kind);
 extern void SetSharedTransactionId(void);
 extern void SetSharedTransactionId_reader(TransactionId xid, CommandId cid);
-extern void SetXactSeqXlog(void);
 extern bool IsTransactionState(void);
 extern bool IsAbortInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
@@ -230,7 +229,6 @@ extern void RollbackToSavepoint(List *options);
 extern void BeginInternalSubTransaction(char *name);
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
-extern void TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactionId, CommandId *QECommandId, bool *QEDirty);
 extern bool IsSubTransaction(void);
 extern bool IsTransactionBlock(void);
 extern bool IsTransactionOrTransactionBlock(void);

@@ -169,8 +169,7 @@ struct NTupleStore
 };
 
 bool ntuplestore_is_readerwriter_reader(NTupleStore *nts) { return nts->rwflag == NTS_IS_READER; }
-bool ntuplestore_is_readerwriter_writer(NTupleStore *nts) { return nts->rwflag == NTS_IS_WRITER; }
-bool ntuplestore_is_readerwriter(NTupleStore *nts) { return nts->rwflag != NTS_NOT_READERWRITER; }
+
 /* Accessor to the tuplestore.
  * 
  * About the pos of an Accessor. 
@@ -1159,21 +1158,6 @@ void ntuplestore_trim(NTupleStore *ts, NTupleStorePos *pos)
 	nts_pin_page(ts, ts->first_page);
 }
 
-int ntuplestore_compare_pos(NTupleStore *ts, NTupleStorePos *pos1, NTupleStorePos *pos2)
-{
-	if(pos1->blockn < pos2->blockn)
-		return -1;
-	if(pos1->blockn > pos2->blockn)
-		return 1;
-
-	if(pos1->slotn < pos2->slotn)
-		return -1;
-	if(pos1->slotn > pos2->slotn)
-		return 1;
-
-	return 0;
-}
-
 static void ntuplestore_acc_advance_in_page(NTupleStoreAccessor *tsa, int* pn)
 {
 	if(*pn == 0)
@@ -1448,79 +1432,6 @@ void ntuplestore_acc_seek_eof(NTupleStoreAccessor *tsa)
 	tsa->pos.slotn = nts_page_slot_cnt(tsa->page);
 }
 
-int ntuplestore_count_slot(NTupleStore *nts, NTupleStorePos *pos1, NTupleStorePos *pos2)
-{
-	NTupleStoreAccessor *tsa1 = ntuplestore_create_accessor(nts, false); 
-	NTupleStoreAccessor *tsa2 = ntuplestore_create_accessor(nts, false);
-
-	bool fOK;
-	int ret;
-	
-	fOK = ntuplestore_acc_seek(tsa1, pos1);
-	if(!fOK)
-		return -1;
-	fOK = ntuplestore_acc_seek(tsa2, pos2);
-	if(!fOK)
-		return -1;
-	
-	ret = ntuplestore_count_slot_acc(nts, tsa1, tsa2);
-	
-	ntuplestore_destroy_accessor(tsa1);
-	ntuplestore_destroy_accessor(tsa2);
-
-	return ret;
-}
-
-
-int ntuplestore_count_slot_acc(NTupleStore *nts, NTupleStoreAccessor *tsa1, NTupleStoreAccessor *tsa2)
-{
-	int ret = 0;
-	bool fOK; 
-	NTupleStorePos oldpos1 =
-		{
-		0, /* blockn */
-		0, /* slotn */
-		};
-	
-	fOK = ntuplestore_acc_tell(tsa1, &oldpos1);
-	if(!fOK)
-		return -1;
-
-	fOK = ntuplestore_acc_tell(tsa2, NULL);
-	if(!fOK)
-		return -1;
-
-	if(ntuplestore_compare_pos(nts, &tsa1->pos, &tsa2->pos) > 0)
-		return -1;
-
-	while(tsa1->pos.blockn < tsa2->pos.blockn)
-	{
-		int tmp = 1000000; /* Larger than possible slots can be hold in one page */
-
-		NTupleStorePage *oldpage = tsa1->page;
-
-		ntuplestore_acc_advance_in_page(tsa1, &tmp);
-		ret += 1000000 - tmp;
-
-		tsa1->page = nts_load_next_page(nts, tsa1->page);
-		Assert(tsa1->page);
-
-		nts_unpin_page(nts, oldpage);
-		nts_pin_page(nts, tsa1->page);
-
-		tsa1->pos.blockn = nts_page_blockn(tsa1->page);
-		tsa1->pos.slotn = -1;
-	}
-
-	Assert(tsa1->pos.blockn == tsa2->pos.blockn);
-	ret += tsa2->pos.slotn - tsa1->pos.slotn;
-
-	fOK = ntuplestore_acc_seek(tsa1, &oldpos1);
-	Assert(fOK);
-	
-	return ret;
-}
-
 /*
  * Check if the tuple pointed by tsa1 is before the tuple pointed by tsa2.
  *
@@ -1557,24 +1468,6 @@ ntuplestore_create_spill_files(NTupleStore *nts)
 	nts->plobfile = workfile_mgr_create_fileno(nts->work_set, WORKFILE_NUM_TUPLESTORE_LOB);
 
 	MemoryContextSwitchTo(oldcxt);
-}
-
-/*
- * Mark the associated workfile set as complete
- */
-void
-ntuplestore_mark_workset_complete(NTupleStore *nts)
-{
-	Assert(nts != NULL);
-	if (nts->work_set == NULL)
-	{
-		return;
-	}
-	if (nts->workfiles_created)
-	{
-		elog(gp_workfile_caching_loglevel, "Tuplestore: Marking workset as complete");
-		workfile_mgr_mark_complete(nts->work_set);
-	}
 }
 
 /* EOF */

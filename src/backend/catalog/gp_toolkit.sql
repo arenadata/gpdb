@@ -2011,7 +2011,6 @@ $$ LANGUAGE plpgsql;
 --        text - path to workfile set,
 --        int - hash value of the spilling operator,
 --        bigint - size in bytes,
---        int - utility,
 --        int - state,
 --        int - workmem in kilobytes,
 --        int - type of the spilling operator,
@@ -2050,7 +2049,6 @@ WITH all_entries AS (
             path text,
             hash int,
             size bigint,
-            utility int,
             state int,
             workmem int,
             optype text,
@@ -2067,7 +2065,6 @@ WITH all_entries AS (
             path text,
             hash int,
             size bigint,
-            utility int,
             state int,
             workmem int,
             optype text,
@@ -2090,8 +2087,7 @@ SELECT S.datname,
        C.size,
        C.numfiles,
        C.path as directory,
-       (CASE WHEN (C.state = 1) THEN 'RUNNING' WHEN (C.state = 2) THEN 'CACHED' WHEN (C.state = 3) THEN 'DELETING' ELSE 'UNKNOWN' END) as state,
-       C.utility
+       (CASE WHEN (C.state = 1) THEN 'RUNNING' WHEN (C.state = 2) THEN 'CACHED' WHEN (C.state = 3) THEN 'DELETING' ELSE 'UNKNOWN' END) as state
 FROM all_entries C LEFT OUTER JOIN
 pg_stat_activity as S
 ON C.sessionid = S.sess_id;
@@ -2136,76 +2132,6 @@ FROM gp_toolkit.gp_workfile_entries
 GROUP BY (datname, procpid, sess_id, command_cnt, usename, current_query, segid, state);
 
 GRANT SELECT ON gp_toolkit.gp_workfile_usage_per_query TO public;
-
---------------------------------------------------------------------------------
--- @function:
---        gp_toolkit.__gp_workfile_cache_clear_f(content int)
---
--- @in:
---        int - segment id
--- @out:
---        int - number of workfile sets deleted
---
--- @doc:
---        UDF to clear the workfile cache on one segment
---
---------------------------------------------------------------------------------
-
-CREATE FUNCTION gp_toolkit.__gp_workfile_cache_clear_f(content int)
-    RETURNS SETOF int
-AS '$libdir/gp_workfile_mgr', 'gp_workfile_mgr_clear_cache' LANGUAGE C IMMUTABLE;
-
-REVOKE ALL ON FUNCTION gp_toolkit.__gp_workfile_cache_clear_f(int) FROM public;
-
---------------------------------------------------------------------------------
--- @function:
---        gp_toolkit.gp_workfile_cache_clear_segment(content int)
---
--- @in:
---        int - segment id
--- @out:
---        int - number of workfile sets deleted
---
--- @doc:
---        Clear the workfile cache on one segment
---
---------------------------------------------------------------------------------
-
-CREATE FUNCTION gp_toolkit.gp_workfile_cache_clear_segment(content int)
-RETURNS SETOF int
-AS
-$$
- SELECT C.* FROM gp_toolkit.__gp_localid, gp_toolkit.__gp_workfile_cache_clear_f($1) as C
- UNION ALL
- SELECT C.* FROM gp_toolkit.__gp_masterid, gp_toolkit.__gp_workfile_cache_clear_f($1) as C;
-$$
-LANGUAGE SQL;
-
-REVOKE ALL ON FUNCTION gp_toolkit.gp_workfile_cache_clear_segment(int) FROM public;
-
---------------------------------------------------------------------------------
--- @function:
---        gp_toolkit.gp_workfile_cache_clear()
---
--- @in:
---
--- @out:
---        int - number of workfile sets deleted
---
--- @doc:
---        Clear the workfile caches on all segments
---
---------------------------------------------------------------------------------
-
-CREATE FUNCTION gp_toolkit.gp_workfile_cache_clear()
-RETURNS SETOF int
-AS
-$$
-  SELECT * from gp_toolkit.gp_workfile_cache_clear_segment(-2)
-$$
-LANGUAGE SQL;
-
-REVOKE ALL ON FUNCTION gp_toolkit.gp_workfile_cache_clear() FROM public;
 
 --------------------------------------------------------------------------------
 -- @function:

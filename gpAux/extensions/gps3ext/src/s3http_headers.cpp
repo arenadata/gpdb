@@ -15,17 +15,25 @@
 using std::string;
 using std::stringstream;
 
-HTTPHeaders::HTTPHeaders() { this->header_list = NULL; }
+HTTPHeaders::HTTPHeaders() {
+    this->header_list = NULL;
+}
 
-HTTPHeaders::~HTTPHeaders() { this->FreeList(); }
+HTTPHeaders::~HTTPHeaders() {
+    this->FreeList();
+}
 
-bool HTTPHeaders::Add(HeaderField f, const std::string &v) {
+bool HTTPHeaders::Add(HeaderField f, const string &v) {
     if (v.empty()) {
         return false;
     } else {
         this->fields[f] = v;
         return true;
     }
+}
+
+void HTTPHeaders::Disable(HeaderField f) {
+    this->disabledFields.insert(f);
 }
 
 const char *HTTPHeaders::Get(HeaderField f) {
@@ -40,6 +48,13 @@ void HTTPHeaders::CreateList() {
     for (it = this->fields.begin(); it != this->fields.end(); it++) {
         std::stringstream sstr;
         sstr << GetFieldString(it->first) << ": " << it->second;
+        headers = curl_slist_append(headers, sstr.str().c_str());
+    }
+
+    std::set<HeaderField>::iterator it2;
+    for (it2 = this->disabledFields.begin(); it2 != this->disabledFields.end(); it2++) {
+        std::stringstream sstr;
+        sstr << GetFieldString(*it2) << ":";
         headers = curl_slist_append(headers, sstr.str().c_str());
     }
 

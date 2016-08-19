@@ -10,8 +10,6 @@ restore_restoredb.sql
 sreh.sql
 upg2.sql
 gptokencheck.sql
-loadcat33.sql
-loadcat34.sql
 bkuprestore_advance.sql
 bkuprestore_cleanup.sql
 caql.sql
@@ -19,14 +17,11 @@ aocs.sql
 appendonly.sql
 bkup_bkupdb.sql
 mapred.sql
-tidycat.sql
 filespace.sql
 upgrade.sql
 auth_constraint.sql
-catversion.sql
 resource_queue_function.sql
 table_functions.sql
-tidycat2.sql
 tpch500GB.sql
 partindex_test.sql
 external_table.sql

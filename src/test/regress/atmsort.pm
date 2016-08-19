@@ -283,30 +283,17 @@ sub init_match_subs
 m/\s+(\W)?(\W)?\(seg.*pid.*\)/
 s/\s+(\W)?(\W)?\(seg.*pid.*\)//
 
-m/WARNING:\s+foreign key constraint \".*\" will require costly sequential scans/
-s/\".*\"/\"dummy key\"/
-
-m/CONTEXT:.*\s+of this segment db input data/
-s/\s+of this segment db input data//
-
 # distributed transactions
-m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/
+m/^(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/
 s/gid.*/gid DUMMY/
 
-m/(ERROR|WARNING|CONTEXT|NOTICE):.*DTM error.*gathered (\d+) results from cmd.*/
+m/^(ERROR|WARNING|CONTEXT|NOTICE):.*DTM error.*gathered (\d+) results from cmd.*/
 s/gathered.*results/gathered SOME_NUMBER_OF results/
 
-# fix code locations eg "(xact.c:1458)" to "(xact.c:SOME_LINE)"
-m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Raise an error as directed by/
+m/^(ERROR|WARNING|CONTEXT|NOTICE):\s+Could not .* savepoint/
 s/\.c\:\d+\)/\.c\:SOME_LINE\)/
 
-m/(DETAIL|ERROR|WARNING|CONTEXT|NOTICE):\s+Raise .* for debug_dtm_action\s*\=\s* \d+/
-s/\.c\:\d+\)/\.c\:SOME_LINE\)/
-
-m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Could not .* savepoint/
-s/\.c\:\d+\)/\.c\:SOME_LINE\)/
-
-m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*(http|gpfdist)/
+m/^(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*(http|gpfdist)/
 s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUMMY_LOCATION/
 
 # the EOF ends the HERE document
@@ -440,17 +427,16 @@ sub init_matchignores
 
         # XXX XXX: note the discrepancy in the NOTICE messages
         # 'distributed by' vs 'DISTRIBUTED BY'
-m/NOTICE:\s+Table doesn\'t have \'distributed by\' clause\, and no column type is suitable/i
+m/^NOTICE:  Table doesn\'t have \'distributed by\' clause/
+m/^NOTICE:  Table doesn\'t have \'DISTRIBUTED BY\' clause/
 
-m/NOTICE:\s+Table doesn\'t have \'DISTRIBUTED BY\' clause/i
+m/^NOTICE:  Dropping a column that is part of the distribution policy/
 
-m/NOTICE:\s+Dropping a column that is part of the distribution policy/
+m/^NOTICE:  Table has parent\, setting distribution columns to match parent table/
 
-m/NOTICE:\s+Table has parent\, setting distribution columns to match parent table/
+m/^HINT:  The \'DISTRIBUTED BY\' clause determines the distribution of data/
 
-m/HINT:\s+The \'DISTRIBUTED BY\' clause determines the distribution of data/
-
-m/WARNING:\s+Referential integrity \(.*\) constraints are not supported in Greenplum Database/
+m/^WARNING:  Referential integrity \(.*\) constraints are not supported in Greenplum Database/
 
 
 m/^\s*Distributed by:\s+\(.*\)\s*$/
@@ -460,7 +446,7 @@ m/^\s*Distributed by:\s+\(.*\)\s*$/
         #
         # the NOTICE is different from the ERROR case, which does not
         # end with "skipping"
-m/^NOTICE:\s+\w+\s+\".*\"\s+does not exist\,\s+skipping\s*$/
+m/^NOTICE:  \w+ \".*\" does not exist\, skipping\s*$/
 
 
 # the EOF ends the HERE document
@@ -1299,19 +1285,19 @@ EOF_formatfix
 
         if ($getrows) # getting rows from SELECT output
         {
-        # The end of "result set" for a COPY TO STDOUT is a bit tricky
-        # to find. There is no explicit marker for it. We look for a
-        # line that looks like a SQL comment or a new query, or an ERROR.
-        # This is not bullet-proof, but works for the current tests.
+            # The end of "result set" for a COPY TO STDOUT is a bit tricky
+            # to find. There is no explicit marker for it. We look for a
+            # line that looks like a SQL comment or a new query, or an ERROR.
+            # This is not bullet-proof, but works for the current tests.
             if ($copy_to_stdout_result &&
                 ($ini =~ m/\-\-/ ||
                  $ini =~ m/ERROR/ ||
-         $ini =~ m/(copy)|(create)|(drop)|(select)|(insert)|(update)/i))
+                 $ini =~ m/(copy)|(create)|(drop)|(select)|(insert)|(update)/i))
             {
-                my @ggg= sort @outarr;
+                my @ggg = sort @outarr;
                 for my $line (@ggg)
                 {
-            print $atmsort_outfh $bpref, $line;
+                    print $atmsort_outfh $bpref, $line;
                 }
 
                 @outarr = ();
@@ -1319,9 +1305,9 @@ EOF_formatfix
                 $has_order = 0;
                 $copy_to_stdout_result = 0;
 
-        # Process the row again, in case it begins another
-        # COPY TO STDOUT statement, or another query.
-        goto reprocess_row;
+                # Process the row again, in case it begins another
+                # COPY TO STDOUT statement, or another query.
+                goto reprocess_row;
             }
 
             # regex example: (5 rows)
@@ -1330,9 +1316,9 @@ EOF_formatfix
                 format_query_output($glob_fqo,
                                     $has_order, \@outarr, $directive);
 
-
-                # Always ignore the rowcount for explain plan out as the skeleton plans might be the
-                # same even if the row counts differ because of session level GUCs.
+                # Always ignore the rowcount for explain plan out as the
+                # skeleton plans might be the same even if the row counts
+                # differ because of session level GUCs.
                 if (exists($directive->{explain}))
                 {
                     $ini = "GP_IGNORE:" . $ini;
@@ -1386,9 +1372,8 @@ EOF_formatfix
 
                 if ($ini =~ m/explain.*(insert|update|delete|select)/i)
                 {
-                   $directive->{explain} = "normal";
+                    $directive->{explain} = "normal";
                 }
-
             }
 
             if ($ini =~ m/\-\-\s*force\_explain\s+operator.*$/i)
@@ -1432,7 +1417,6 @@ EOF_formatfix
             }
 
             # prune notices with segment info if they are duplicates
-#            if ($ini =~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:.*\s+\(seg.*pid.*\)/)
             if ($ini =~ m/^\s*(NOTICE|ERROR|HINT|DETAIL|WARNING)\:/)
             {
                 $ini =~ s/\s+(\W)?(\W)?\(seg.*pid.*\)//;
@@ -1471,8 +1455,6 @@ EOF_formatfix
                     $lastguy--;
                 } # end for
 
-
-
             } # end if pruning notices
 
             # MPP-1492 allow:
@@ -1481,11 +1463,11 @@ EOF_formatfix
             # and special case these guys:
             #  copy test1 to stdout
             #  \copy test1 to stdout
-        my $matches_copy_to_stdout = 0;
+            my $matches_copy_to_stdout = 0;
             if ($ini =~ m/^copy\s+((\(select.*\))|\w+)\s+to stdout.*;$/i ||
                 $ini =~ m/^\\copy\s+((\(select.*\))|\w+)\s+to stdout.*$/i)
             {
-            $matches_copy_to_stdout = 1;
+                $matches_copy_to_stdout = 1;
             }
             # regex example: ---- or ---+---
             # need at least 3 dashes to avoid confusion with "--" comments
@@ -1511,16 +1493,16 @@ EOF_formatfix
                 # special case for explain
                if (exists($directive->{explain}) &&
                    ($ini =~ m/^\s*((\-\-)(\-)+(\+(\-)+)*)+\s*$/) &&
-                   ($outarr[-1] =~ m/QUERY PLAN/))
+                   (scalar(@outarr) && $outarr[-1] =~ m/QUERY PLAN/))
                 {
-                   # ENGINF-88: fixup explain headers
-                   $outarr[-1] = "QUERY PLAN\n";
-                   $ini = ("_" x length($outarr[-1])) . "\n";
+                    # ENGINF-88: fixup explain headers
+                    $outarr[-1] = "QUERY PLAN\n";
+                    $ini = ("_" x length($outarr[-1])) . "\n";
 
-                   if ($glob_ignore_headers)
-                   {
-                      $ini = "GP_IGNORE:" . $ini;
-                   }
+                    if ($glob_ignore_headers)
+                    {
+                        $ini = "GP_IGNORE:" . $ini;
+                    }
                 }
 
                 $getstatement = 0;
@@ -1554,17 +1536,11 @@ EOF_formatfix
                     && ($sql_statement =~ m/select.*order.*by/is))
                 {
                     $has_order = 1; # so do *not* sort output
-
-#                   $sql_statement =~ s/\n/ /gm;
-#                   print "has order: ", $sql_statement, "\n";
                     $directive->{sql_statement} = $sql_statement;
                 }
                 else
                 {
                     $has_order = 0; # need to sort query output
-
-#                    $sql_statement =~ s/\n/ /gm;
-#                    print "no order: ", $sql_statement, "\n";
                     $directive->{sql_statement} = $sql_statement;
                 }
                 $sql_statement = "";
@@ -1574,7 +1550,6 @@ EOF_formatfix
             } # end sort this region
         } # end finding SQL
 
-
         # if MATCH then SUBSTITUTE
         # see HERE document for definitions
         $ini = match_then_subs($ini);
@@ -1582,37 +1557,37 @@ EOF_formatfix
         if ($ini =~ m/External table .*line (\d)+/)
         {
             $ini =~ s/External table .*line (\d)+.*/External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION/;
-              $ini =~ s/\s+/ /;
-             # MPP-1557,AUTO-3: horrific ERROR DETAIL External Table trifecta
+            $ini =~ s/\s+/ /;
+            # MPP-1557,AUTO-3: horrific ERROR DETAIL External Table trifecta
             if ($glob_verbose)
             {
                 print $atmsort_outfh "GP_IGNORE: External Table ERROR DETAIL fixup\n";
             }
-             if ($ini !~ m/^DETAIL/)
-             {
+            if ($ini !~ m/^DETAIL/)
+            {
                 # find a "blank" DETAIL tag preceding current line
                 if (scalar(@outarr) && ($outarr[-1] =~ m/^DETAIL:\s+$/))
                 {
-                   pop @outarr;
-                   $ini = "DETAIL: " . $ini;
-                   $ini =~ s/\s+/ /;
-                   # need to skip the next record
-                   $error_detail_exttab_trifecta_skip = 1;
+                    pop @outarr;
+                    $ini = "DETAIL: " . $ini;
+                    $ini =~ s/\s+/ /;
+                    # need to skip the next record
+                    $error_detail_exttab_trifecta_skip = 1;
                 }
-             }
-             if (scalar(@outarr) &&
-                 ($outarr[-1] =~ m/^ERROR:\s+missing\s+data\s+for\s+column/))
-             {
-                $outarr[-1] = "ERROR:  missing data for column DUMMY_COL\n";
-             }
+            }
 
+            if (scalar(@outarr) &&
+                ($outarr[-1] =~ m/^ERROR:\s+missing\s+data\s+for\s+column/))
+            {
+                $outarr[-1] = "ERROR:  missing data for column DUMMY_COL\n";
+            }
         }
 
         # if MATCH then IGNORE
         # see HERE document for definitions
         if ( match_then_ignore($ini))
         {
-           next; # ignore matching lines
+            next; # ignore matching lines
         }
 
 L_push_outarr:

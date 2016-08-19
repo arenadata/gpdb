@@ -216,7 +216,7 @@ CHK_PARAMS () {
 		    unset PORT_BASE SEG_PREFIX DATA_DIRECTORY REPLICATION_PORT_BASE
 
 		    # Make sure it is not a dos file with CTRL M at end of each line
-		    $CAT $CLUSTER_CONFIG|$SED -e 's/^M$//g' > $TMP_FILE
+		    $CAT $CLUSTER_CONFIG|$SED -e 's/$//g' > $TMP_FILE
 		    $MV $TMP_FILE $CLUSTER_CONFIG
 		    LOG_MSG "[INFO]:-Dumping $CLUSTER_CONFIG to logfile for reference"
 		    $CAT $CLUSTER_CONFIG|$GREP -v "^#" >> $LOG_FILE
@@ -1267,7 +1267,8 @@ CREATE_QD_DB () {
 		BUILD_PERFMON $GP_DIR
 		ERROR_CHK $? "create perfmon directories and configuration file" 1
 		LOG_MSG "[INFO]:-Starting the Master in admin mode" 1
-		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility -M master -b 1 -C -1 -z 0 -m" start >> /dev/null 2>&1
+		export PGPORT=$GP_PORT;$PG_CTL -w -l $GP_DIR/pg_log/startup.log -D $GP_DIR -o "-i -p $GP_PORT -c gp_role=utility -M master --gp_dbid=1 --gp_contentid=-1 \
+		--gp_num_contents_in_cluster=0 -m" start >> /dev/null 2>&1
 		RET_TEXT="`$PG_CTL status -D $GP_DIR`"
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
@@ -1702,7 +1703,7 @@ READ_INPUT_CONFIG () {
     fi
 
     # Make sure it is not a dos file with CTRL M at end of each line
-    $CAT $INPUT_CONFIG|$SED -e 's/^M$//g' > $TMP_FILE
+    $CAT $INPUT_CONFIG|$SED -e 's/$//g' > $TMP_FILE
     $MV $TMP_FILE $INPUT_CONFIG
     LOG_MSG "[INFO]:-Dumping $INPUT_CONFIG to logfile for reference"
     $CAT $INPUT_CONFIG|$GREP -v "^#" >> $LOG_FILE

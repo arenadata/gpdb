@@ -766,7 +766,7 @@ class Segment:
         if self.primaryDB.isSegmentPrimary(current_role=True):
             return self.primaryDB
         else:
-            for mirror in mirrorDBs:
+            for mirror in self.mirrorDBs:
                 if mirror.isSegmentPrimary(current_role=True):
                     return mirror
 
@@ -1486,7 +1486,7 @@ class GpArray:
         if strategy_rows.rowcount == 0:
             raise Exception("Database does not contain gp_fault_strategy entry")
         if strategy_rows.rowcount > 1:
-            raise Exception("Database does too many gp_fault_strategy entries")
+            raise Exception("Database has too many gp_fault_strategy entries")
         strategy = strategy_rows.fetchone()[0]
 
         array = GpArray(segments, origSegments, strategy)
@@ -2265,6 +2265,7 @@ class GpArray:
         datadirs = {}
         used_ports = {}
         used_replication_ports = {}
+        hostname = ""
         for db in self.getDbList(True):
             datadir = db.getSegmentDataDirectory()
             hostname = db.getSegmentHostName()

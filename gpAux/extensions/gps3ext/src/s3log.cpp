@@ -15,7 +15,10 @@
 
 #include "s3conf.h"
 #include "s3log.h"
+#include "s3macros.h"
 #include "s3utils.h"
+
+#define MAX_MESSAGE_LINE_LENGTH 1024
 
 #ifndef S3_STANDALONE
 extern "C" {
@@ -24,7 +27,7 @@ void write_log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 #endif
 
 void _LogMessage(const char* fmt, va_list args) {
-    char buf[1024];
+    char buf[MAX_MESSAGE_LINE_LENGTH];
     vsnprintf(buf, sizeof(buf), fmt, args);
 #ifdef S3_STANDALONE
     fprintf(stderr, "%s", buf);
@@ -34,10 +37,10 @@ void _LogMessage(const char* fmt, va_list args) {
 }
 
 void _send_to_remote(const char* fmt, va_list args) {
-    char buf[1024];
-    int len = vsnprintf(buf, sizeof(buf), fmt, args);
-    sendto(s3ext_logsock_udp, buf, len, 0,
-           (struct sockaddr*)&s3ext_logserveraddr, sizeof(struct sockaddr_in));
+    char buf[MAX_MESSAGE_LINE_LENGTH];
+    size_t len = vsnprintf(buf, sizeof(buf), fmt, args);
+    sendto(s3ext_logsock_udp, buf, len, 0, (struct sockaddr*)&s3ext_logserveraddr,
+           sizeof(struct sockaddr_in));
 }
 
 void LogMessage(LOGLEVEL loglevel, const char* fmt, ...) {
@@ -62,27 +65,20 @@ void LogMessage(LOGLEVEL loglevel, const char* fmt, ...) {
 
 static bool loginited = false;
 
-// invoked by s3_import(), need to be exception safe
 void InitRemoteLog() {
-    try {
-        if (loginited) {
-            return;
-        }
-
-        s3ext_logsock_udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (s3ext_logsock_udp < 0) {
-            perror("Failed to create socket while InitRemoteLog()");
-        }
-
-        memset(&s3ext_logserveraddr, 0, sizeof(struct sockaddr_in));
-        s3ext_logserveraddr.sin_family = AF_INET;
-        s3ext_logserveraddr.sin_port = htons(s3ext_logserverport);
-        inet_aton(s3ext_logserverhost.c_str(), &s3ext_logserveraddr.sin_addr);
-
-        loginited = true;
-    } catch (...) {
+    if (loginited) {
         return;
     }
+
+    s3ext_logsock_udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    CHECK_OR_DIE_MSG(s3ext_logsock_udp != -1, "Failed to create socket: %s", strerror(errno));
+
+    memset(&s3ext_logserveraddr, 0, sizeof(struct sockaddr_in));
+    s3ext_logserveraddr.sin_family = AF_INET;
+    s3ext_logserveraddr.sin_port = htons(s3ext_logserverport);
+    inet_aton(s3ext_logserverhost.c_str(), &s3ext_logserveraddr.sin_addr);
+
+    loginited = true;
 }
 
 LOGTYPE getLogType(const char* v) {

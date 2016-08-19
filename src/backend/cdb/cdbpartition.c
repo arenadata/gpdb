@@ -98,6 +98,11 @@ constrNodeHash(const void *keyPtr, Size keysize);
 
 static int
 constrNodeMatch(const void *keyPtr1, const void *keyPtr2, Size keysize);
+
+static void
+parruleord_open_gap(Oid partid, int2 level, Oid parent,
+					int2 ruleord, int stopkey, bool closegap);
+
 /*
  * Hash keys are null-terminated C strings assumed to be stably
  * allocated. We accomplish this by allocating them in a context
@@ -1850,65 +1855,6 @@ add_part_to_catalog(Oid relid, PartitionBy *pby,
 	CommandCounterIncrement();
 } /* end add_part_to_catalog */
 
-
-/*
- * parruleord_reset_rank
- *
- * iterate over the specified set of range partitions (in ascending
- * order) in pg_partition_rule and reset the parruleord to start at 1
- * and continue in an ascending sequence.
- */
-void
-parruleord_reset_rank(Oid partid, int2 level, Oid parent, int2 ruleord)
-{
-	ScanKeyData key[3];
-	HeapTuple tuple;
-	Relation rel;
-	SysScanDesc scan;
-	int ii = 1;
-
-	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
-
-	/* CaQL UNDONE: no test coverage; this function is not called at all */
-	ScanKeyInit(&key[0],
-				Anum_pg_partition_rule_paroid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(partid));
-	ScanKeyInit(&key[1],
-				Anum_pg_partition_rule_parparentrule,
-				BTEqualStrategyNumber, F_INT2EQ,
-				ObjectIdGetDatum(parent));
-	ScanKeyInit(&key[2],
-				Anum_pg_partition_rule_parruleord,
-				BTGreaterEqualStrategyNumber, F_INT2GE,
-				Int16GetDatum(ruleord));
-
-	scan = systable_beginscan(rel,
-							  PartitionRuleParoidParparentruleParruleordIndexId,
-							  true, SnapshotNow, 3, key);
-
-	while ((tuple = systable_getnext(scan)))
-	{
-		Form_pg_partition_rule rule_desc;
-
-		Insist(HeapTupleIsValid(tuple));
-
-		tuple = heap_copytuple(tuple);
-
-		rule_desc =
-		(Form_pg_partition_rule)GETSTRUCT(tuple);
-
-		rule_desc->parruleord = ii;
-		ii++;
-
-		simple_heap_update(rel, &tuple->t_self, tuple);
-		CatalogUpdateIndexes(rel, tuple);
-
-	}
-	systable_endscan(scan);
-	heap_close(rel, AccessShareLock);
-} /* end parruleord_reset_rank */
-
 /*
  * parruleord_open_gap
  *
@@ -1922,7 +1868,7 @@ parruleord_reset_rank(Oid partid, int2 level, Oid parent, int2 ruleord)
  * If closegap is set, parruleord values are decremented, to close a
  * gap in parruleord sequence.
  */
-void
+static void
 parruleord_open_gap(Oid partid, int2 level, Oid parent, int2 ruleord,
 					int stopkey, bool closegap)
 {
@@ -8523,94 +8469,6 @@ relation_has_supers(Oid relid)
 					cql("SELECT count(*) FROM pg_inherits "
 						" WHERE inhrelid = :1 ",
 						ObjectIdGetDatum(relid))) > 0));
-}
-
-/*
- * Choose a default name for a constraint on an existing partitioned table.
- * For sanity (and visually matching constraints created by the same ALTER
- * command) we want to avoid letting a lower-level routine pick the default
- * name for a constraint on a partitioned table, because this would result
- * in different names for the "same" constraint on each part.  So we use
- * this routine to forge a non-default name earlier than is done for ordinary
- * tables.
- *
- * This code is modelled on code in AddRelationRawConstraints from heap.c,
- * however, there is no actual requirement that they stay in sync.  It's
- * just nice, if they do.  Here, the expression hasn't been cooked yet, so
- * we can't use an expression tree walker to get the column names.
- *
- * For CHECK constraints, expr is an uncooked constraint expression.
- * For index-backed constraints (PRIMARY KEY, UNIQUE), expr is a list of IndexElem.
- *
- * A small possibility of name collision still exists, however, it seems
- * remote and will be detected and rejected later anyway.
- */
-char *
-ChooseConstraintNameForPartitionEarly(Relation rel, ConstrType contype, Node *expr)
-{
-	char *colname = NULL;
-	char *ccname = NULL;
-	char *label = NULL;
-
-	switch (contype)
-	{
-		case CONSTR_CHECK:
-		{
-			ParseState *dummy;
-			Node *txpr;
-			List *vars = NIL;
-
-			dummy = make_parsestate(NULL);
-			addRTEtoQuery(dummy,
-						  addRangeTableEntryForRelation(dummy, rel, NULL, false, true),
-						  true, true, true);
-			txpr = transformExpr(dummy, expr);
-			vars = pull_var_clause(txpr, false);
-
-			/* eliminate duplicates */
-			vars = list_union(NIL, vars);
-
-			if (list_length(vars) == 1)
-				colname = get_attname(RelationGetRelid(rel),
-									  ((Var *) linitial(vars))->varattno);
-
-			label = "check";
-		}
-			break;
-		case CONSTR_PRIMARY:
-			/* Conventionally, we ignore column name for the PK. */
-			label = "pkey";
-			break;
-		case CONSTR_UNIQUE:
-		{
-			ListCell *lc;
-			IndexElem *elem;
-
-			foreach(lc, (List*)expr)
-			{
-				elem = (IndexElem*)lfirst(lc);
-				if ( elem->name )
-				{
-					colname = elem->name;
-					break;
-				}
-			}
-
-			label = "key";
-		}
-			break;
-		default:
-			elog(ERROR, "name request for constraint of inappropriate type");
-			break;
-	}
-
-	ccname = ChooseConstraintName(RelationGetRelationName(rel),
-								  colname,
-								  label,
-								  RelationGetNamespace(rel),
-								  NIL);
-
-	return ccname;
 }
 
 /*

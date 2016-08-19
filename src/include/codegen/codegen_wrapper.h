@@ -12,6 +12,8 @@
 #ifndef CODEGEN_WRAPPER_H_
 #define CODEGEN_WRAPPER_H_
 
+#include <stddef.h>
+
 #include "pg_config.h"
 #include "c.h"
 
@@ -26,12 +28,20 @@ typedef int64 Datum;
  */
 struct TupleTableSlot;
 struct ProjectionInfo;
-struct List;
 struct ExprContext;
+struct ExprState;
 struct PlanState;
 
+/*
+ * Enum used to mimic ExprDoneCond in ExecEvalExpr function pointer.
+ */
+typedef enum tmp_enum{
+	TmpResult
+}tmp_enum;
+
 typedef void (*ExecVariableListFn) (struct ProjectionInfo *projInfo, Datum *values, bool *isnull);
-typedef bool (*ExecQualFn) (struct List *qual, struct ExprContext *econtext, bool resultForNull);
+typedef Datum (*ExecEvalExprFn) (struct ExprState *expression, struct ExprContext *econtext, bool *isNull, /*ExprDoneCond*/ tmp_enum *isDone);
+typedef Datum (*SlotGetAttrFn) (struct TupleTableSlot *slot, int attnum, bool *isnull);
 
 #ifndef USE_CODEGEN
 
@@ -40,6 +50,8 @@ typedef bool (*ExecQualFn) (struct List *qual, struct ExprContext *econtext, boo
 #define CodeGeneratorManagerGenerateCode(manager);
 #define CodeGeneratorManagerPrepareGeneratedFunctions(manager) 1
 #define CodeGeneratorManagerNotifyParameterChange(manager) 1
+#define CodeGeneratorManagerAccumulateExplainString(manager) 1
+#define CodeGeneratorManagerGetExplainString(manager) 1
 #define CodeGeneratorManagerDestroy(manager);
 #define GetActiveCodeGeneratorManager() NULL
 #define SetActiveCodeGeneratorManager(manager);
@@ -48,12 +60,9 @@ typedef bool (*ExecQualFn) (struct List *qual, struct ExprContext *econtext, boo
 #define END_CODE_GENERATOR_MANAGER()
 
 #define init_codegen()
-
 #define call_ExecVariableList(projInfo, values, isnull) ExecVariableList(projInfo, values, isnull)
 #define enroll_ExecVariableList_codegen(regular_func, ptr_to_chosen_func, proj_info, slot)
 
-#define call_ExecQual(planstate, qual, econtext, resultForNull) ExecQual(qual, econtext, resultForNull)
-#define enroll_ExecQual_codegen(regular_func, ptr_to_chosen_func, planstate)
 #else
 
 /*
@@ -83,7 +92,7 @@ extern "C" {
  * Forward extern declaration of code generated functions if code gen is enabled
  */
 extern void ExecVariableList(struct ProjectionInfo *projInfo, Datum *values, bool *isnull);
-extern bool ExecQual(struct List *qual, struct ExprContext *econtext, bool resultForNull);
+
 
 /*
  * Do one-time global initialization of LLVM library. Returns 1
@@ -124,6 +133,19 @@ void
 CodeGeneratorManagerDestroy(void* manager);
 
 /*
+ * Accumulate the explain string with a dump of all the underlying LLVM modules
+ */
+void
+CodeGeneratorManagerAccumulateExplainString(void* manager);
+
+/*
+ * Return a copy in CurrentMemoryContext of the previously accumulated explain
+ * string
+ */
+char*
+CodeGeneratorManagerGetExplainString(void* manager);
+
+/*
  * Get the active code generator manager
  */
 void*
@@ -145,12 +167,14 @@ ExecVariableListCodegenEnroll(ExecVariableListFn regular_func_ptr,
                               struct TupleTableSlot* slot);
 
 /*
- * returns the pointer to the ExecQual generator
+ * Enroll and returns the pointer to ExecEvalExprGenerator
  */
 void*
-ExecQualCodegenEnroll(ExecQualFn regular_func_ptr,
-					  ExecQualFn* ptr_to_regular_func_ptr,
-					  struct PlanState *planstate);
+ExecEvalExprCodegenEnroll(ExecEvalExprFn regular_func_ptr,
+                          ExecEvalExprFn* ptr_to_regular_func_ptr,
+                          struct ExprState *exprstate,
+                          struct ExprContext *econtext,
+                          struct PlanState* plan_state);
 
 #ifdef __cplusplus
 }  // extern "C"
@@ -201,14 +225,6 @@ ExecQualCodegenEnroll(ExecQualFn regular_func_ptr,
  */
 #define call_ExecVariableList(projInfo, values, isnull) \
 		projInfo->ExecVariableList_gen_info.ExecVariableList_fn(projInfo, values, isnull)
-
-/*
- * Call ExecQual using function pointer ExecQual_fn.
- * Function pointer may point to regular version or generated function
- */
-#define call_ExecQual(ps, qual, econtext, resultForNull) \
-     ps.ExecQual_gen_info.ExecQual_fn(qual, econtext, resultForNull)
-
 /*
  * Enrollment macros
  * The enrollment process also ensures that the generated function pointer
@@ -219,10 +235,10 @@ ExecQualCodegenEnroll(ExecQualFn regular_func_ptr,
 				regular_func, ptr_to_regular_func_ptr, proj_info, slot); \
 		Assert(proj_info->ExecVariableList_gen_info.ExecVariableList_fn == regular_func); \
 
-#define enroll_ExecQual_codegen(regular_func, ptr_to_regular_func_ptr, planstate) \
-		planstate->ExecQual_gen_info.code_generator = ExecQualCodegenEnroll( \
-        regular_func, ptr_to_regular_func_ptr, planstate); \
-    Assert(planstate->ExecQual_gen_info.ExecQual_fn == regular_func); \
+#define enroll_ExecEvalExpr_codegen(regular_func, ptr_to_regular_func_ptr, exprstate, econtext, plan_state) \
+		exprstate->ExecEvalExpr_code_generator = ExecEvalExprCodegenEnroll( \
+        (ExecEvalExprFn)regular_func, (ExecEvalExprFn*)ptr_to_regular_func_ptr, exprstate, econtext, plan_state); \
+        Assert(exprstate->evalfunc == regular_func); \
 
 #endif //USE_CODEGEN
 

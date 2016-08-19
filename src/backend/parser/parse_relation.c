@@ -19,7 +19,6 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catquery.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_exttable.h"
@@ -64,7 +63,6 @@ static void expandTupleDesc(TupleDesc tupdesc, Alias *eref,
 static int	specialAttNum(const char *attname);
 static void warnAutoRange(ParseState *pstate, RangeVar *relation);
 
-static bool get_attisdropped(Oid relid, int attnum);
 
 /*
  * refnameRangeTblEntry
@@ -2115,36 +2113,6 @@ bogus:
 	return "*BOGUS*";
 }
 
-static bool get_attisdropped(Oid relid, int attnum)
-{
-	HeapTuple			 tp;
-	Form_pg_attribute	 att_tup;
-	bool				 result = false;
-	cqContext			*pcqCtx;
-
-	/* SELECT attisdropped FROM pg_attribute */
-
-	pcqCtx = caql_beginscan(
-			NULL,
-			cql("SELECT * FROM pg_attribute "
-				" WHERE attrelid = :1 "
-				" AND attnum = :2 ",
-				ObjectIdGetDatum(relid),
-				Int16GetDatum(attnum)));
-
-	tp = caql_getnext(pcqCtx);
-
-	if (!HeapTupleIsValid(tp))		/* shouldn't happen */
-		elog(ERROR, "cache lookup failed for attribute %d of relation %u",
-			 attnum, relid);
-	att_tup = (Form_pg_attribute) GETSTRUCT(tp);
-	result	= att_tup->attisdropped;
-
-	caql_endscan(pcqCtx);
-
-	return (result);
-}
-
 /*
  * get_rte_attribute_type
  *		Get attribute type information from a RangeTblEntry
@@ -2160,18 +2128,11 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 				/* Plain relation RTE --- get the attribute's type info */
 				HeapTuple	tp;
 				Form_pg_attribute att_tup;
-				cqContext  *pcqCtx;
 
-				pcqCtx = caql_beginscan(
-						NULL,
-						cql("SELECT * FROM pg_attribute "
-							" WHERE attrelid = :1 "
-							" AND attnum = :2 ",
-							ObjectIdGetDatum(rte->relid),
-							Int16GetDatum(attnum)));
-
-				tp = caql_getnext(pcqCtx);
-
+				tp = SearchSysCache(ATTNUM,
+									ObjectIdGetDatum(rte->relid),
+									Int16GetDatum(attnum),
+									0, 0);
 				if (!HeapTupleIsValid(tp))		/* shouldn't happen */
 					elog(ERROR, "cache lookup failed for attribute %d of relation %u",
 						 attnum, rte->relid);
@@ -2189,8 +2150,7 @@ get_rte_attribute_type(RangeTblEntry *rte, AttrNumber attnum,
 						   get_rel_name(rte->relid))));
 				*vartype = att_tup->atttypid;
 				*vartypmod = att_tup->atttypmod;
-
-				caql_endscan(pcqCtx);
+				ReleaseSysCache(tp);
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -2318,7 +2278,22 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 	{
 		case RTE_RELATION:
 			{
-				result = get_attisdropped(rte->relid, attnum);
+				/*
+				 * Plain relation RTE --- get the attribute's catalog entry
+				 */
+				HeapTuple	tp;
+				Form_pg_attribute att_tup;
+
+				tp = SearchSysCache(ATTNUM,
+									ObjectIdGetDatum(rte->relid),
+									Int16GetDatum(attnum),
+									0, 0);
+				if (!HeapTupleIsValid(tp))		/* shouldn't happen */
+					elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+						 attnum, rte->relid);
+				att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+				result = att_tup->attisdropped;
+				ReleaseSysCache(tp);
 			}
 			break;
 		case RTE_SUBQUERY:
@@ -2360,7 +2335,19 @@ get_rte_attribute_is_dropped(RangeTblEntry *rte, AttrNumber attnum)
 					 *
 					 * Same as ordinary relation RTE
 					 */
-					result = get_attisdropped(funcrelid, attnum);
+					HeapTuple	tp;
+					Form_pg_attribute att_tup;
+
+					tp = SearchSysCache(ATTNUM,
+										ObjectIdGetDatum(funcrelid),
+										Int16GetDatum(attnum),
+										0, 0);
+					if (!HeapTupleIsValid(tp))	/* shouldn't happen */
+						elog(ERROR, "cache lookup failed for attribute %d of relation %u",
+							 attnum, funcrelid);
+					att_tup = (Form_pg_attribute) GETSTRUCT(tp);
+					result = att_tup->attisdropped;
+					ReleaseSysCache(tp);
 				}
 				else
 				{
