@@ -654,20 +654,6 @@ _outSubqueryScan(StringInfo str, SubqueryScan *node)
 	WRITE_NODE_FIELD(subplan);
 	WRITE_NODE_FIELD(subrtable); /* debugging convenience */
 }
-#endif /* COMPILING_BINARY_FUNCS */
-
-static void
-_outFunctionScan(StringInfo str, FunctionScan *node)
-{
-	WRITE_NODE_TYPE("FUNCTIONSCAN");
-
-	_outScanInfo(str, (Scan *) node);
-
-	WRITE_NODE_FIELD(funcexpr);
-	WRITE_NODE_FIELD(funccolnames);
-	WRITE_NODE_FIELD(funccoltypes);
-	WRITE_NODE_FIELD(funccoltypmods);
-}
 
 static void
 _outCustomScan(StringInfo str, CustomScan *node)
@@ -687,6 +673,20 @@ _outCustomScan(StringInfo str, CustomScan *node)
 	WRITE_STRING_FIELD(methods->CustomName);
 	WRITE_STRING_FIELD(methods->LibraryName);
 	WRITE_STRING_FIELD(methods->SymbolName);
+}
+#endif /* COMPILING_BINARY_FUNCS */
+
+static void
+_outFunctionScan(StringInfo str, FunctionScan *node)
+{
+	WRITE_NODE_TYPE("FUNCTIONSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+
+	WRITE_NODE_FIELD(funcexpr);
+	WRITE_NODE_FIELD(funccolnames);
+	WRITE_NODE_FIELD(funccoltypes);
+	WRITE_NODE_FIELD(funccoltypmods);
 }
 
 static void

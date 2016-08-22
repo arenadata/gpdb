@@ -1883,11 +1883,11 @@ _readFunctionScan(void)
  * _readCustomScan
  */
 static CustomScan *
-_readCustomScan(const char ** str)
+_readCustomScan(void)
 {
 	READ_LOCALS(CustomScan);
 
-	readScanInfo(str, (Scan *)local_node);
+	readScanInfo((Scan *)local_node);
 
 	READ_UINT_FIELD(flags);
 	READ_NODE_FIELD(custom_plans);
@@ -2831,7 +2831,7 @@ readNodeBinary(void)
 				return_value = _readFunctionScan();
 				break;
 			case T_CustomScan:
-				return_value = _readCustomScan(str);
+				return_value = _readCustomScan();
 				break;
 			case T_ValuesScan:
 				return_value = _readValuesScan();
