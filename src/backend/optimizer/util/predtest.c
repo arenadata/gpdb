@@ -83,8 +83,14 @@ typedef struct PredIterInfoData
 	} while (0)
 
 
-static bool predicate_implied_by_recurse(Node *clause, Node *predicate);
-static bool predicate_refuted_by_recurse(Node *clause, Node *predicate);
+static bool predicate_implied_by_internal(List *predicate_list, List *clause_list,
+							 bool clause_is_check);
+static bool predicate_implied_by_recurse(Node *clause, Node *predicate,
+							 bool clause_is_check);
+static bool predicate_refuted_by_internal(List *predicate_list, List *clause_list,
+							 bool clause_is_check);
+static bool predicate_refuted_by_recurse(Node *clause, Node *predicate,
+							 bool clause_is_check);
 static PredClass predicate_classify(Node *clause, PredIterInfo info);
 static void list_startup_fn(Node *clause, PredIterInfo info);
 static Node *list_next_fn(PredIterInfo info);
@@ -96,8 +102,10 @@ static void arrayconst_cleanup_fn(PredIterInfo info);
 static void arrayexpr_startup_fn(Node *clause, PredIterInfo info);
 static Node *arrayexpr_next_fn(PredIterInfo info);
 static void arrayexpr_cleanup_fn(PredIterInfo info);
-static bool predicate_implied_by_simple_clause(Expr *predicate, Node *clause);
-static bool predicate_refuted_by_simple_clause(Expr *predicate, Node *clause);
+static bool predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
+								   bool clause_is_check);
+static bool predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
+								   bool clause_is_check);
 static Node *extract_not_arg(Node *clause);
 static Node *extract_strong_not_arg(Node *clause);
 static bool list_member_strip(List *list, Expr *datum);
@@ -110,9 +118,12 @@ static void InvalidateOprProofCacheCallBack(Datum arg, int cacheid, uint32 hashv
 static bool simple_equality_predicate_refuted(Node *clause, Node *predicate);
 
 /*
- * predicate_implied_by
- *	  Recursively checks whether the clauses in restrictinfo_list imply
- *	  that the given predicate is true.
+ * predicate_implied_by_internal
+ *	  Recursively checks whether the clauses in clause_list imply that the
+ *	  given predicate is true.  If clause_is_check is true, assume that the
+ *	  clauses in clause_list are CHECK constraints (where null is
+ *	  effectively true) rather than WHERE clauses (where null is effectively
+ *	  false).
  *
  * The top-level List structure of each list corresponds to an AND list.
  * We assume that eval_const_expressions() has been applied and so there
@@ -128,15 +139,16 @@ static bool simple_equality_predicate_refuted(Node *clause, Node *predicate);
  * functions, because they might change answers between the time we make
  * the plan and the time we execute the plan.
  */
-bool
-predicate_implied_by(List *predicate_list, List *restrictinfo_list)
+static bool
+predicate_implied_by_internal(List *predicate_list, List *clause_list,
+					 bool clause_is_check)
 {
 	Node	   *p,
 			   *r;
 
 	if (predicate_list == NIL)
 		return true;			/* no predicate: implication is vacuous */
-	if (restrictinfo_list == NIL)
+	if (clause_list == NIL)
 		return false;			/* no restriction: implication must fail */
 
 	/*
@@ -149,19 +161,34 @@ predicate_implied_by(List *predicate_list, List *restrictinfo_list)
 		p = (Node *) linitial(predicate_list);
 	else
 		p = (Node *) predicate_list;
-	if (list_length(restrictinfo_list) == 1)
-		r = (Node *) linitial(restrictinfo_list);
+	if (list_length(clause_list) == 1)
+		r = (Node *) linitial(clause_list);
 	else
-		r = (Node *) restrictinfo_list;
+		r = (Node *) clause_list;
 
 	/* And away we go ... */
-	return predicate_implied_by_recurse(r, p);
+	return predicate_implied_by_recurse(r, p, clause_is_check);
+}
+
+bool
+predicate_implied_by(List *predicate_list, List *clause_list)
+{
+	return predicate_implied_by_internal(predicate_list, clause_list, false);
+}
+
+bool
+predicate_implied_by_weak(List *predicate_list, List *clause_list)
+{
+	return predicate_implied_by_internal(predicate_list, clause_list, true);
 }
 
 /*
- * predicate_refuted_by
- *	  Recursively checks whether the clauses in restrictinfo_list refute
- *	  the given predicate (that is, prove it false).
+ * predicate_refuted_by_internal
+ *	  Recursively checks whether the clauses in clause_list refute the given
+ *	  predicate (that is, prove it false).  If clause_is_check is true, assume
+ *	  that the clauses in clause_list are CHECK constraints (where null is
+ *	  effectively true) rather than WHERE clauses (where null is effectively
+ *	  false).
  *
  * This is NOT the same as !(predicate_implied_by), though it is similar
  * in the technique and structure of the code.
@@ -186,15 +213,16 @@ predicate_implied_by(List *predicate_list, List *restrictinfo_list)
  * non-immutable functions, because they might change answers between the
  * time we make the plan and the time we execute the plan.
  */
-bool
-predicate_refuted_by(List *predicate_list, List *restrictinfo_list)
+static bool
+predicate_refuted_by_internal(List *predicate_list, List *clause_list,
+					 bool clause_is_check)
 {
 	Node	   *p,
 			   *r;
 
 	if (predicate_list == NIL)
 		return false;			/* no predicate: no refutation is possible */
-	if (restrictinfo_list == NIL)
+	if (clause_list == NIL)
 		return false;			/* no restriction: refutation must fail */
 
 	/*
@@ -207,18 +235,30 @@ predicate_refuted_by(List *predicate_list, List *restrictinfo_list)
 		p = (Node *) linitial(predicate_list);
 	else
 		p = (Node *) predicate_list;
-	if (list_length(restrictinfo_list) == 1)
-		r = (Node *) linitial(restrictinfo_list);
+	if (list_length(clause_list) == 1)
+		r = (Node *) linitial(clause_list);
 	else
-		r = (Node *) restrictinfo_list;
+		r = (Node *) clause_list;
 
 	/* And away we go ... */
-	if ( predicate_refuted_by_recurse(r, p))
+	if ( predicate_refuted_by_recurse(r, p, clause_is_check))
         return true;
 
     if ( ! kUseFnEvaluationForPredicates )
         return false;
-    return simple_equality_predicate_refuted((Node*)restrictinfo_list, (Node*)predicate_list);
+    return simple_equality_predicate_refuted((Node*)clause_list, (Node*)predicate_list);
+}
+
+bool
+predicate_refuted_by(List *predicate_list, List *clause_list)
+{
+	return predicate_refuted_by_internal(predicate_list, clause_list, false);
+}
+
+bool
+predicate_refuted_by_weak(List *predicate_list, List *clause_list)
+{
+	return predicate_refuted_by_internal(predicate_list, clause_list, true);
 }
 
 /*----------
@@ -257,7 +297,8 @@ predicate_refuted_by(List *predicate_list, List *restrictinfo_list)
  *----------
  */
 static bool
-predicate_implied_by_recurse(Node *clause, Node *predicate)
+predicate_implied_by_recurse(Node *clause, Node *predicate,
+							 bool clause_is_check)
 {
 	PredIterInfoData clause_info;
 	PredIterInfoData pred_info;
@@ -284,7 +325,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (!predicate_implied_by_recurse(clause, pitem))
+						if (!predicate_implied_by_recurse(clause, pitem,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -303,7 +345,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					result = false;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (predicate_implied_by_recurse(clause, pitem))
+						if (predicate_implied_by_recurse(clause, pitem,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -320,7 +363,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					 */
 					iterate_begin(citem, clause, clause_info)
 					{
-						if (predicate_implied_by_recurse(citem, predicate))
+						if (predicate_implied_by_recurse(citem, predicate,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -337,7 +381,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					result = false;
 					iterate_begin(citem, clause, clause_info)
 					{
-						if (predicate_implied_by_recurse(citem, predicate))
+						if (predicate_implied_by_recurse(citem, predicate,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -364,7 +409,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 
 						iterate_begin(pitem, predicate, pred_info)
 						{
-							if (predicate_implied_by_recurse(citem, pitem))
+							if (predicate_implied_by_recurse(citem, pitem,
+															 clause_is_check))
 							{
 								presult = true;
 								break;
@@ -391,7 +437,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(citem, clause, clause_info)
 					{
-						if (!predicate_implied_by_recurse(citem, predicate))
+						if (!predicate_implied_by_recurse(citem, predicate,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -413,7 +460,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (!predicate_implied_by_recurse(clause, pitem))
+						if (!predicate_implied_by_recurse(clause, pitem,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -430,7 +478,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					result = false;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (predicate_implied_by_recurse(clause, pitem))
+						if (predicate_implied_by_recurse(clause, pitem,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -446,7 +495,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
 					 */
 					return
 						predicate_implied_by_simple_clause((Expr *) predicate,
-														   clause);
+														   clause,
+														   clause_is_check);
 			}
 			break;
 	}
@@ -487,7 +537,8 @@ predicate_implied_by_recurse(Node *clause, Node *predicate)
  *----------
  */
 static bool
-predicate_refuted_by_recurse(Node *clause, Node *predicate)
+predicate_refuted_by_recurse(Node *clause, Node *predicate,
+							 bool clause_is_check)
 {
 	PredIterInfoData clause_info;
 	PredIterInfoData pred_info;
@@ -519,7 +570,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = false;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (predicate_refuted_by_recurse(clause, pitem))
+						if (predicate_refuted_by_recurse(clause, pitem,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -536,7 +588,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					 */
 					iterate_begin(citem, clause, clause_info)
 					{
-						if (predicate_refuted_by_recurse(citem, predicate))
+						if (predicate_refuted_by_recurse(citem, predicate,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -553,7 +606,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (!predicate_refuted_by_recurse(clause, pitem))
+						if (!predicate_refuted_by_recurse(clause, pitem,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -569,7 +623,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					 */
 					not_arg = extract_not_arg(predicate);
 					if (not_arg &&
-						predicate_implied_by_recurse(clause, not_arg))
+						predicate_implied_by_recurse(clause, not_arg,
+													 clause_is_check))
 						return true;
 
 					/*
@@ -578,7 +633,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = false;
 					iterate_begin(citem, clause, clause_info)
 					{
-						if (predicate_refuted_by_recurse(citem, predicate))
+						if (predicate_refuted_by_recurse(citem, predicate,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -600,7 +656,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (!predicate_refuted_by_recurse(clause, pitem))
+						if (!predicate_refuted_by_recurse(clause, pitem,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -622,7 +679,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 
 						iterate_begin(pitem, predicate, pred_info)
 						{
-							if (predicate_refuted_by_recurse(citem, pitem))
+							if (predicate_refuted_by_recurse(citem, pitem,
+															 clause_is_check))
 							{
 								presult = true;
 								break;
@@ -645,7 +703,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					 */
 					not_arg = extract_not_arg(predicate);
 					if (not_arg &&
-						predicate_implied_by_recurse(clause, not_arg))
+						predicate_implied_by_recurse(clause, not_arg,
+													 clause_is_check))
 						return true;
 
 					/*
@@ -654,7 +713,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(citem, clause, clause_info)
 					{
-						if (!predicate_refuted_by_recurse(citem, predicate))
+						if (!predicate_refuted_by_recurse(citem, predicate,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -690,7 +750,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = false;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (predicate_refuted_by_recurse(clause, pitem))
+						if (predicate_refuted_by_recurse(clause, pitem,
+														 clause_is_check))
 						{
 							result = true;
 							break;
@@ -707,7 +768,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					result = true;
 					iterate_begin(pitem, predicate, pred_info)
 					{
-						if (!predicate_refuted_by_recurse(clause, pitem))
+						if (!predicate_refuted_by_recurse(clause, pitem,
+														  clause_is_check))
 						{
 							result = false;
 							break;
@@ -723,7 +785,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					 */
 					not_arg = extract_not_arg(predicate);
 					if (not_arg &&
-						predicate_implied_by_recurse(clause, not_arg))
+						predicate_implied_by_recurse(clause, not_arg,
+													 clause_is_check))
 						return true;
 
 					/*
@@ -731,7 +794,8 @@ predicate_refuted_by_recurse(Node *clause, Node *predicate)
 					 */
 					return
 						predicate_refuted_by_simple_clause((Expr *) predicate,
-														   clause);
+														   clause,
+														   clause_is_check);
 			}
 			break;
 	}
@@ -1033,19 +1097,23 @@ arrayexpr_cleanup_fn(PredIterInfo info)
  * functions in the expression are immutable, ie dependent only on their input
  * arguments --- but this was checked for the predicate by the caller.)
  *
- * When the predicate is of the form "foo IS NOT NULL", we can conclude that
- * the predicate is implied if the clause is a strict operator or function
- * that has "foo" as an input.  In this case the clause must yield NULL when
- * "foo" is NULL, which we can take as equivalent to FALSE because we know
- * we are within an AND/OR subtree of a WHERE clause.  (Again, "foo" is
- * already known immutable, so the clause will certainly always fail.)
+ * When clause_is_check is false, we know we are within an AND/OR
+ * subtree of a WHERE clause.  So, if the predicate is of the form "foo IS
+ * NOT NULL", we can conclude that the predicate is implied if the clause is
+ * a strict operator or function that has "foo" as an input.  In this case
+ * the clause must yield NULL when "foo" is NULL, which we can take as
+ * equivalent to FALSE given the context. (Again, "foo" is already known
+ * immutable, so the clause will certainly always fail.) Also, if the clause
+ * is just "foo" (meaning it's a boolean variable), the predicate is implied
+ * since the clause can't be true if "foo" is NULL.
  *
  * Finally, we may be able to deduce something using knowledge about btree
  * operator families; this is encapsulated in btree_predicate_proof().
  *----------
  */
 static bool
-predicate_implied_by_simple_clause(Expr *predicate, Node *clause)
+predicate_implied_by_simple_clause(Expr *predicate, Node *clause,
+								   bool clause_is_check)
 {
 	/* Allow interrupting long proof attempts */
 	CHECK_FOR_INTERRUPTS();
@@ -1061,7 +1129,7 @@ predicate_implied_by_simple_clause(Expr *predicate, Node *clause)
 		Expr	   *nonnullarg = ((NullTest *) predicate)->arg;
 
 		/* row IS NOT NULL does not act in the simple way we have in mind */
-		if (!((NullTest *) predicate)->argisrow)
+		if (!((NullTest *) predicate)->argisrow && !clause_is_check)
 		{
 			if (is_opclause(clause) &&
 				list_member_strip(((OpExpr *) clause)->args, nonnullarg) &&
@@ -1103,7 +1171,8 @@ predicate_implied_by_simple_clause(Expr *predicate, Node *clause)
  *----------
  */
 static bool
-predicate_refuted_by_simple_clause(Expr *predicate, Node *clause)
+predicate_refuted_by_simple_clause(Expr *predicate, Node *clause,
+								   bool clause_is_check)
 {
 	/* Allow interrupting long proof attempts */
 	CHECK_FOR_INTERRUPTS();
@@ -1118,6 +1187,9 @@ predicate_refuted_by_simple_clause(Expr *predicate, Node *clause)
 		((NullTest *) predicate)->nulltesttype == IS_NULL)
 	{
 		Expr	   *isnullarg = ((NullTest *) predicate)->arg;
+
+		if (clause_is_check)
+			return false;
 
 		/* row IS NULL does not act in the simple way we have in mind */
 		if (((NullTest *) predicate)->argisrow)
