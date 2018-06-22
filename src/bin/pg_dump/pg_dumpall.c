@@ -630,7 +630,8 @@ dumpResGroups(PGconn *conn)
 			i_memory_limit,
 			i_memory_shared_quota,
 			i_memory_spill_ratio,
-			i_memory_auditor;
+			i_memory_auditor,
+			i_cpuset;
 
 	printfPQExpBuffer(buf, "SELECT g.rsgname AS groupname, "
 					  "t1.value AS concurrency, "
@@ -638,7 +639,8 @@ dumpResGroups(PGconn *conn)
 					  "t3.value AS memory_limit, "
 					  "t4.value AS memory_shared_quota, "
 					  "t5.value AS memory_spill_ratio, "
-					  "t6.value AS memory_auditor "
+					  "t6.value AS memory_auditor, "
+					  "t7.value AS cpuset "
 					  "FROM pg_resgroup g "
 					  "     JOIN pg_resgroupcapability t1 ON g.oid = t1.resgroupid AND t1.reslimittype = 1 "
 					  "     JOIN pg_resgroupcapability t2 ON g.oid = t2.resgroupid AND t2.reslimittype = 2 "
@@ -646,6 +648,7 @@ dumpResGroups(PGconn *conn)
 					  "     JOIN pg_resgroupcapability t4 ON g.oid = t4.resgroupid AND t4.reslimittype = 4 "
 					  "     JOIN pg_resgroupcapability t5 ON g.oid = t5.resgroupid AND t5.reslimittype = 5 "
 					  "LEFT JOIN pg_resgroupcapability t6 ON g.oid = t6.resgroupid AND t6.reslimittype = 6 "
+					  "LEFT JOIN pg_resgroupcapability t7 ON g.oid = t7.resgroupid AND t7.reslimittype = 7 "
 					  ";");
 
 	res = executeQuery(conn, buf->data);
@@ -657,6 +660,7 @@ dumpResGroups(PGconn *conn)
 	i_memory_shared_quota = PQfnumber(res, "memory_shared_quota");
 	i_memory_spill_ratio = PQfnumber(res, "memory_spill_ratio");
 	i_memory_auditor = PQfnumber(res, "memory_auditor");
+	i_cpuset = PQfnumber(res, "cpuset");
 
 	if (PQntuples(res) > 0)
 		fprintf(OPF, "--\n-- Resource Group\n--\n\n");
@@ -679,6 +683,7 @@ dumpResGroups(PGconn *conn)
 		const char *memory_shared_quota;
 		const char *memory_spill_ratio;
 		const char *memory_auditor;
+		const char *cpuset;
 
 		groupname = fmtId(PQgetvalue(res, i, i_groupname));
 		cpu_rate_limit = PQgetvalue(res, i, i_cpu_rate_limit);
@@ -687,6 +692,7 @@ dumpResGroups(PGconn *conn)
 		memory_shared_quota = PQgetvalue(res, i, i_memory_shared_quota);
 		memory_spill_ratio = PQgetvalue(res, i, i_memory_spill_ratio);
 		memory_auditor = PQgetvalue(res, i, i_memory_auditor);
+		cpuset = PQgetvalue(res, i, i_cpuset);
 
 		resetPQExpBuffer(buf);
 
@@ -700,18 +706,24 @@ dumpResGroups(PGconn *conn)
 			 */
 			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET concurrency %s;\n",
 							  groupname, concurrency);
-			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET cpu_rate_limit %s;\n",
-							  groupname, cpu_rate_limit);
 			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET memory_limit %s;\n",
 							  groupname, memory_limit);
 			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET memory_shared_quota %s;\n",
 							  groupname, memory_shared_quota);
 			appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET memory_spill_ratio %s;\n",
 							  groupname, memory_spill_ratio);
+			if (atoi(cpu_rate_limit) >= 0)
+				appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET cpu_rate_limit %s;\n",
+								  groupname, cpu_rate_limit);
+			else
+				appendPQExpBuffer(buf, "ALTER RESOURCE GROUP %s SET cpuset '%s';\n",
+								  groupname, cpuset);
 		}
 		else
 		{
 			const char *memory_auditor_name;
+			const char *cpu_prop;
+			const char cpu_setting[1024];
 
 			/*
 			 * Possible values of memory_auditor:
@@ -725,11 +737,22 @@ dumpResGroups(PGconn *conn)
 			else
 				memory_auditor_name = "vmtracker";
 
+			if (atoi(cpu_rate_limit) >= 0)
+			{
+				cpu_prop = "cpu_rate_limit";
+				snprintf(cpu_setting, sizeof(cpu_setting), "%s", cpu_rate_limit);
+			}
+			else
+			{
+				cpu_prop = "cpuset";
+				snprintf(cpu_setting, sizeof(cpu_setting), "'%s'", cpuset);
+			}
+
 			printfPQExpBuffer(buf, "CREATE RESOURCE GROUP %s WITH ("
-							  "concurrency=%s, cpu_rate_limit=%s, "
+							  "concurrency=%s, %s=%s, "
 							  "memory_limit=%s, memory_shared_quota=%s, "
 							  "memory_spill_ratio=%s, memory_auditor=%s);\n",
-							  groupname, concurrency, cpu_rate_limit,
+							  groupname, concurrency, cpu_prop, cpu_setting,
 							  memory_limit, memory_shared_quota,
 							  memory_spill_ratio, memory_auditor_name);
 		}

@@ -4,12 +4,16 @@
   <title>Memory and Resource Management with Resource Queues</title>
   <shortdesc>Avoid memory errors and manage Greenplum Database resources.</shortdesc>
   <body>
+    <note>Resource groups are a newer resource management scheme that enforces memory, CPU, and concurrent transaction limits in Greenplum Database. The <xref href="../admin_guide/wlmgmt.xml" format="dita" type="topic" scope="peer" >Managing Resources</xref> topic provides a comparison of the resource queue and the resource group management schemes. Refer to <xref href="../admin_guide/workload_mgmt_resgroups.xml" format="dita" type="topic" scope="peer">Using Resource Groups</xref> for configuration and usage information for this resource management scheme.</note>
     <p>Memory management has a significant impact on performance in a Greenplum Database cluster.
       The default settings are suitable for most environments. Do not change the default settings
       until you understand the memory characteristics and usage on your system. </p>
     <ul id="ul_agm_sbl_zt">
       <li>
         <xref href="#topic_hhc_z5w_r4/section_jqw_qbl_zt" format="dita"/>
+      </li>
+      <li>
+        <xref href="#topic_hhc_z5w_r4/section113x" format="dita"/>
       </li>
       <li>
         <xref href="#topic_hhc_z5w_r4/section_r52_rbl_zt" format="dita"/>
@@ -55,6 +59,15 @@ VM Protect failed to allocate 4096 bytes, 0 MB available</codeblock></p>
         and it is set when the query is invoked. However, if adding more hosts allows decreasing the
         number of segments per host, then the amount of memory allocated in
           <codeph>gp_vmem_protect_limit</codeph> can be raised.</p>
+    </section>
+    <section id="section113x" xml:lang="en">
+      <title>Low Memory Queries</title>
+        <p>A low <codeph>statement_mem</codeph> setting (for example, in the
+          1-3MB range) has been shown
+          to increase the performance of queries with low memory requirements. Use
+          the <codeph>statement_mem</codeph> server configuration parameter to
+          override the setting on a per-query basis. For example:
+          <codeblock>SET statement_mem='2MB';</codeblock></p>
     </section>
     <section id="section_r52_rbl_zt">
       <title>Configuring Memory for Greenplum Database</title>

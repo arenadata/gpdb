@@ -310,7 +310,7 @@ score_timezone(const char *tzname, struct tztry * tt)
 	 */
 	if (tzload(tzname, NULL, &tz.state, TRUE) != 0)
 	{
-		if (tzname[0] == ':' || tzparse(tzname, &tz.state, FALSE) != 0)
+		if (tzname[0] == ':' || !tzparse(tzname, &tz.state, FALSE))
 		{
 			return -1;			/* can't handle the TZ name at all */
 		}

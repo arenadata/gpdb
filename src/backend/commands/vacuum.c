@@ -1961,7 +1961,10 @@ vac_update_datfrozenxid(void)
 	}
 
 	if (dirty)
+	{
 		heap_inplace_update(relation, tuple);
+		SIMPLE_FAULT_INJECTOR(VacuumUpdateDatFrozenXid);
+	}
 
 	heap_freetuple(tuple);
 	heap_close(relation, RowExclusiveLock);

@@ -41,7 +41,7 @@ make_cgroups_dir() {
     if [ "$TEST_OS" = "centos7" ]; then basedir=/sys/fs/cgroup; fi
 
     ssh -t $gpdb_host_alias sudo bash -ex <<EOF
-        for comp in cpu cpuacct memory; do
+        for comp in cpuset cpu cpuacct memory; do
             chmod -R 777 $basedir/\$comp
             mkdir -p $basedir/\$comp/gpdb
             chown -R gpadmin:gpadmin $basedir/\$comp/gpdb

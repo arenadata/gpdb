@@ -15,6 +15,7 @@
             <topicref href="admin_utilities/gpconfig.xml"/>
             <topicref href="admin_utilities/gpcrondump.xml"/>
             <topicref href="admin_utilities/gpdbrestore.xml"/>
+            <topicref href="admin_utilities/gpcopy.xml" otherprops="pivotal"/>
             <topicref href="admin_utilities/gpdeletesystem.xml"/>
             <topicref href="admin_utilities/gpexpand.xml"/>
             <topicref href="admin_utilities/gpfdist.xml"/>
@@ -40,7 +41,9 @@
             <topicref href="admin_utilities/gpstop.xml"/>
             <topicref href="admin_utilities/gpsys.xml"/>
             <topicref href="admin_utilities/gptransfer.xml"/>
-            <topicref href="admin_utilities/pgbouncer-ref.xml"/>
+            <topicref href="admin_utilities/pgbouncer.xml"/>
+            <topicref href="admin_utilities/pgbouncer-ini.xml"/>
+            <topicref href="admin_utilities/pgbouncer-admin.xml"/>
         </topicref>
         <topicref href="cli_ref.xml">
             <topicref href="client_utilities/ClientUtilitySummary.xml" linking="targetonly">

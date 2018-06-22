@@ -1312,6 +1312,8 @@ InitParseState(CopyState pstate, Relation relation,
 	}
 	else
 	{
+		bool		log_to_file = false;
+
 		/* select the SREH mode */
 		if (fmterrtbl == InvalidOid)
 		{
@@ -1322,6 +1324,7 @@ InitParseState(CopyState pstate, Relation relation,
 		{
 			/* errors into file */
 			pstate->errMode = SREH_LOG;
+			log_to_file = true;
 		}
 
 		/* Single row error handling */
@@ -1329,7 +1332,7 @@ InitParseState(CopyState pstate, Relation relation,
 									  islimitinrows,
 									  pstate->filename,
 									  (char *) pstate->cur_relname,
-									  true);
+									  log_to_file);
 
 		pstate->cdbsreh->relid = RelationGetRelid(relation);
 

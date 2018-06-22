@@ -74,6 +74,7 @@ typedef enum ResGroupLimitType
 	RESGROUP_LIMIT_TYPE_MEMORY_SHARED_QUOTA,
 	RESGROUP_LIMIT_TYPE_MEMORY_SPILL_RATIO,
 	RESGROUP_LIMIT_TYPE_MEMORY_AUDITOR,
+	RESGROUP_LIMIT_TYPE_CPUSET,
 
 	RESGROUP_LIMIT_TYPE_COUNT,
 } ResGroupLimitType;
@@ -124,6 +125,8 @@ DATA(insert ( 6437, 5, 20, 20 ));
 
 DATA(insert ( 6437, 6, 0, 0 ));
 
+DATA(insert ( 6437, 7, "-1", "-1" ));
+
 DATA(insert ( 6438, 1, 10, 10 ));
 
 DATA(insert ( 6438, 2, 10, 10 ));
@@ -135,5 +138,7 @@ DATA(insert ( 6438, 4, 50, 50 ));
 DATA(insert ( 6438, 5, 20, 20 ));
 
 DATA(insert ( 6438, 6, 0, 0 ));
+
+DATA(insert ( 6438, 7, "-1", "-1" ));
 
 #endif   /* PG_RESGROUP_H */

@@ -423,7 +423,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * In the case of error log file, set fmtErrorTblOid to the external table
 	 * itself.
 	 */
-	if (issreh)
+	if (issreh && singlerowerrorDesc->into_file)
 		fmtErrTblOid = reloid;
 
 	/*

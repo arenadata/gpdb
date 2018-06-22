@@ -84,6 +84,7 @@ test: resource_queue
 test: resource_queue_function
 test: resource_queue_stat
 test: resource_group
+test: resource_group_cpuset
 test: wrkloadadmin
 
 # gp_toolkit performs a vacuum and checks that it truncated the relation. That
@@ -115,7 +116,7 @@ test: gporca_faults
 
 test: aggregate_with_groupingsets
 
-test: nested_case_null sort bb_mpph
+test: nested_case_null sort bb_mpph createdb_large_table
 test: bb_memory_quota memconsumption
 
 test: tuple_serialization

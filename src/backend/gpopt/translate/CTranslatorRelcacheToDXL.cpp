@@ -748,7 +748,7 @@ CTranslatorRelcacheToDXL::Pdrgpmdcol
 			pdxlnDefault = PdxlnDefaultColumnValue(pmp, pmda, rel->rd_att, att->attnum);
 		}
 
-		ULONG ulColLen = ULONG_MAX;
+		ULONG ulColLen = gpos::ulong_max;
 		CMDIdGPDB *pmdidCol = GPOS_NEW(pmp) CMDIdGPDB(att->atttypid);
 		HeapTuple heaptupleStats = gpdb::HtAttrStats(rel->rd_id, ul+1);
 
@@ -1488,7 +1488,7 @@ CTranslatorRelcacheToDXL::UlPosition
 {
 	ULONG ulIndex = (ULONG) (GPDXL_SYSTEM_COLUMNS + iAttno);
 	ULONG ulPos = pul[ulIndex];
-	GPOS_ASSERT(ULONG_MAX != ulPos);
+	GPOS_ASSERT(gpos::ulong_max != ulPos);
 
 	return ulPos;
 }
@@ -1517,7 +1517,7 @@ CTranslatorRelcacheToDXL::PulAttnoPositionMap
 
 	for (ULONG ul = 0; ul < ulSize; ul++)
 	{
-		pul[ul] = ULONG_MAX;
+		pul[ul] = gpos::ulong_max;
 	}
 
 	for (ULONG ul = 0;  ul < ulIncludedCols; ul++)
@@ -2308,14 +2308,11 @@ CTranslatorRelcacheToDXL::PimdobjRelStats
 	return pdxlrelstats;
 }
 
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorRelcacheToDXL::PimdobjColStats
-//
-//	@doc:
-//		Retrieve column statistics from relcache
-//
-//---------------------------------------------------------------------------
+// Retrieve column statistics from relcache
+// If all statistics are missing, create dummy statistics
+// Also, if the statistics are broken, create dummy statistics
+// However, if any statistics are present and not broken,
+// create column statistics using these statistics
 IMDCacheObject *
 CTranslatorRelcacheToDXL::PimdobjColStats
 	(
@@ -2388,42 +2385,6 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 		return CDXLColStats::PdxlcolstatsDummy(pmp, pmdidColStats, pmdnameCol, dWidth);
 	}
 
-	// histogram values extracted from the pg_statistic tuple for a given column
-	AttStatsSlot histSlot;
-
-	// most common values and their frequencies extracted from the pg_statistic
-	// tuple for a given column
-	AttStatsSlot mcvSlot;
-
-	(void)	gpdb::FGetAttrStatsSlot
-			(
-					&mcvSlot,
-					heaptupleStats,
-					STATISTIC_KIND_MCV,
-					InvalidOid,
-					ATTSTATSSLOT_VALUES | ATTSTATSSLOT_NUMBERS
-			);
-
-	if (mcvSlot.nvalues != mcvSlot.nnumbers)
-	{
-		// if the number of MCVs(nvalues) and number of MCFs(nnumbers) do not match, we discard the MCVs and MCFs
-		gpdb::FreeAttrStatsSlot(&mcvSlot);
-		mcvSlot.numbers = NULL;
-		mcvSlot.values = NULL;
-		mcvSlot.values_arr = NULL;
-		mcvSlot.numbers_arr = NULL;
-		mcvSlot.nnumbers = 0;
-		mcvSlot.nvalues = 0;
-
-		char msgbuf[NAMEDATALEN * 2 + 100];
-		snprintf(msgbuf, sizeof(msgbuf), "The number of most common values and frequencies do not match on column %ls of table %ls.",
-				pmdcol->Mdname().Pstr()->Wsz(), pmdrel->Mdname().Pstr()->Wsz());
-		GpdbEreport(ERRCODE_SUCCESSFUL_COMPLETION,
-					   LOG,
-					   msgbuf,
-					   NULL);
-	}
-
 	Form_pg_statistic fpsStats = (Form_pg_statistic) GETSTRUCT(heaptupleStats);
 
 	// null frequency and NDV
@@ -2434,9 +2395,6 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 		dNullFrequency = fpsStats->stanullfrac;
 		iNullNDV = 1;
 	}
-
-	// fix mcv and null frequencies (sometimes they can add up to more than 1.0)
-	NormalizeFrequencies(mcvSlot.numbers, (ULONG) mcvSlot.nvalues, &dNullFrequency);
 
 	// column width
 	CDouble dWidth = CDouble(fpsStats->stawidth);
@@ -2454,12 +2412,62 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 	}
 	dDistinct = dDistinct.FpCeil();
 
-	// total MCV frequency
-	CDouble dMCFSum = 0.0;
-	for (int i = 0; i < mcvSlot.nvalues; i++)
+	BOOL fDummyStats = false;
+	// most common values and their frequencies extracted from the pg_statistic
+	// tuple for a given column
+	AttStatsSlot mcvSlot;
+
+	(void)	gpdb::FGetAttrStatsSlot
+			(
+					&mcvSlot,
+					heaptupleStats,
+					STATISTIC_KIND_MCV,
+					InvalidOid,
+					ATTSTATSSLOT_VALUES | ATTSTATSSLOT_NUMBERS
+			);
+	if (InvalidOid != mcvSlot.valuetype && mcvSlot.valuetype != oidAttType)
 	{
-		dMCFSum = dMCFSum + CDouble(mcvSlot.numbers[i]);
+		char msgbuf[NAMEDATALEN * 2 + 100];
+		snprintf(msgbuf, sizeof(msgbuf), "Type mismatch between attribute %ls of table %ls having type %d and statistic having type %d, please ANALYZE the table again",
+				 pmdcol->Mdname().Pstr()->Wsz(), pmdrel->Mdname().Pstr()->Wsz(), oidAttType, mcvSlot.valuetype);
+		GpdbEreport(ERRCODE_SUCCESSFUL_COMPLETION,
+					NOTICE,
+					msgbuf,
+					NULL);
+
+		gpdb::FreeAttrStatsSlot(&mcvSlot);
+		fDummyStats = true;
 	}
+
+	else if (mcvSlot.nvalues != mcvSlot.nnumbers)
+	{
+		char msgbuf[NAMEDATALEN * 2 + 100];
+		snprintf(msgbuf, sizeof(msgbuf), "The number of most common values and frequencies do not match on column %ls of table %ls.",
+				 pmdcol->Mdname().Pstr()->Wsz(), pmdrel->Mdname().Pstr()->Wsz());
+		GpdbEreport(ERRCODE_SUCCESSFUL_COMPLETION,
+					NOTICE,
+					msgbuf,
+					NULL);
+
+		// if the number of MCVs(nvalues) and number of MCFs(nnumbers) do not match, we discard the MCVs and MCFs
+		gpdb::FreeAttrStatsSlot(&mcvSlot);
+		fDummyStats = true;
+	}
+	else
+	{
+		// fix mcv and null frequencies (sometimes they can add up to more than 1.0)
+		NormalizeFrequencies(mcvSlot.numbers, (ULONG) mcvSlot.nvalues, &dNullFrequency);
+
+		// total MCV frequency
+		CDouble dMCFSum = 0.0;
+		for (int i = 0; i < mcvSlot.nvalues; i++)
+		{
+			dMCFSum = dMCFSum + CDouble(mcvSlot.numbers[i]);
+		}
+	}
+
+	// histogram values extracted from the pg_statistic tuple for a given column
+	AttStatsSlot histSlot;
 
 	// get histogram datums from pg_statistic entry
 	(void) gpdb::FGetAttrStatsSlot
@@ -2470,6 +2478,30 @@ CTranslatorRelcacheToDXL::PimdobjColStats
 					InvalidOid,
 					ATTSTATSSLOT_VALUES
 			);
+
+	if (InvalidOid != histSlot.valuetype && histSlot.valuetype != oidAttType)
+	{
+		char msgbuf[NAMEDATALEN * 2 + 100];
+		snprintf(msgbuf, sizeof(msgbuf), "Type mismatch between attribute %ls of table %ls having type %d and statistic having type %d, please ANALYZE the table again",
+				 pmdcol->Mdname().Pstr()->Wsz(), pmdrel->Mdname().Pstr()->Wsz(), oidAttType, histSlot.valuetype);
+		GpdbEreport(ERRCODE_SUCCESSFUL_COMPLETION,
+					NOTICE,
+					msgbuf,
+					NULL);
+
+		gpdb::FreeAttrStatsSlot(&histSlot);
+		fDummyStats = true;
+	}
+
+	if (fDummyStats)
+	{
+		pdrgpdxlbucket->Release();
+		pmdidColStats->AddRef();
+
+		CDouble dWidth = CStatistics::DDefaultColumnWidth;
+		gpdb::FreeHeapTuple(heaptupleStats);
+		return CDXLColStats::PdxlcolstatsDummy(pmp, pmdidColStats, pmdnameCol, dWidth);
+	}
 
 	CDouble dNDVBuckets(0.0);
 	CDouble dFreqBuckets(0.0);
@@ -2655,7 +2687,7 @@ CTranslatorRelcacheToDXL::UlTableCount
 {
        GPOS_ASSERT(InvalidOid != oidRelation);
 
-       ULONG ulTableCount = ULONG_MAX;
+       ULONG ulTableCount = gpos::ulong_max;
        if (gpdb::FRelPartIsNone(oidRelation))
        {
     	   // not a partitioned table
@@ -2670,7 +2702,7 @@ CTranslatorRelcacheToDXL::UlTableCount
        {
            ulTableCount = gpdb::UlLeafPartitions(oidRelation);
        }
-       GPOS_ASSERT(ULONG_MAX != ulTableCount);
+       GPOS_ASSERT(gpos::ulong_max != ulTableCount);
 
        return ulTableCount;
 }
@@ -3226,10 +3258,10 @@ CTranslatorRelcacheToDXL::PulAttnoMapping
 	const ULONG ulCols = pdrgpmdcol->UlLength();
 	ULONG *pul = GPOS_NEW_ARRAY(pmp, ULONG, ulMaxCols);
 
-	// initialize all positions to ULONG_MAX
+	// initialize all positions to gpos::ulong_max
 	for (ULONG ul = 0;  ul < ulMaxCols; ul++)
 	{
-		pul[ul] = ULONG_MAX;
+		pul[ul] = gpos::ulong_max;
 	}
 	
 	for (ULONG ul = 0;  ul < ulCols; ul++)

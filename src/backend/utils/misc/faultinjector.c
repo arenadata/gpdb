@@ -33,6 +33,7 @@
 #include "cdb/cdbfilerepservice.h"
 #include "cdb/cdbresynchronizechangetracking.h"
 #include "cdb/cdbutil.h"
+#include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/fts.h"
 #include "storage/spin.h"
@@ -346,6 +347,12 @@ FaultInjectorIdentifierEnumToString[] = {
 		/* inject fault to report ERROR just after resource group is assigned on master */
 	_("before_read_command"),
 		/* inject fault before reading command */
+	_("copy_from_high_processed"),
+		/* inject fault to pretend copying from very high number of processed rows */
+	_("vacuum_update_dat_frozen_xid"),
+		/* inject fault after updating pg_database.datfrozenxid (but before committing) */
+	_("create_resource_group_fail"),
+		/* inject fault before create resource group committing */
 	_("not recognized"),
 };
 
@@ -545,6 +552,17 @@ FaultInjector_InjectFaultNameIfSet(
 	int						ii = 0;
 	int cnt = 3600;
 	FaultInjectorType_e retvalue = FaultInjectorTypeNotSpecified;
+
+	/*
+	 * Auto-vacuum worker and launcher process, may run at unpredictable times
+	 * while running tests. So, skip setting any faults for auto-vacuum
+	 * launcher or worker. If anytime in future need to test these processes
+	 * using fault injector framework, this restriction needs to be lifted and
+	 * some other mechanism needs to be placed to avoid flaky failures.
+	 */
+	if (IsAutoVacuumLauncherProcess() ||
+		(IsAutoVacuumWorkerProcess() && 0 != strcmp("vacuum_update_dat_frozen_xid", faultName)))
+		return FaultInjectorTypeNotSpecified;
 
 	/*
 	 * Return immediately if no fault has been injected ever.  It is
@@ -1067,6 +1085,9 @@ FaultInjector_NewHashEntry(
 			case InterconnectStopAckIsLost:
 			case SendQEDetailsInitBackend:
 			case AppendOnlySkipCompression:
+			case CopyFromHighProcessed:
+			case VacuumUpdateDatFrozenXid:
+			case CreateResourceGroupFail:
 
 				break;
 			default:
