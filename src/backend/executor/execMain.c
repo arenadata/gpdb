@@ -4828,7 +4828,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  allowSystemTableModsDDL,
 											  /* valid_opts */ !validate_reloptions,
 						 					  &persistentTid,
-						 					  &persistentSerialNum);
+											  &persistentSerialNum,
+											  /* is_part_child */ false);
 
 	FreeTupleDesc(tupdesc);
 

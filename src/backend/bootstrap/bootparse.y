@@ -238,7 +238,8 @@ Boot_CreateStmt:
 													  true,
 													  /* valid_opts */ false,
 						 					  		  /* persistentTid */ NULL,
-						 					  		  /* persistentSerialNum */ NULL);
+													  /* persistentSerialNum */ NULL,
+													  /* is_part_child */ false);
 						elog(DEBUG4, "relation created with oid %u", id);
 					}
 					do_end();

@@ -234,6 +234,7 @@ typedef enum FaultInjectorIdentifier_e {
 	CopyFromHighProcessed,
 
 	VacuumUpdateDatFrozenXid,
+	AutoVacWorkerBeforeDoAutovacuum,
 
 	CreateResourceGroupFail,
 

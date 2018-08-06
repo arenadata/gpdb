@@ -629,7 +629,8 @@ gp_dump_20130514093000_regular_files</codeblock>
             are deleted.</pd>
           <pd>You can specify the option <codeph>--cleanup-date</codeph> or
               <codeph>--cleanup-total</codeph> to specify backup sets to delete.</pd>
-          <pd>If <codeph>--incremental</codeph> is specified, this option is not supported.</pd>
+          <pd>If <codeph>--incremental</codeph> is specified, this option is not supported. If this
+            option is specified, <codeph>-u</codeph> will be ignored.</pd>
         </plentry>
         <plentry>
           <pt>--oids</pt>
@@ -759,9 +760,8 @@ gp_dump_20130514093000_regular_files</codeblock>
             data directory of each instance to be backed up. Using this option may be desirable if
             each segment host has multiple segment instances as it will create the dump files in a
             centralized location rather than the segment data directories.</pd>
-          <pd>
-            <note>This option is not supported if <codeph>--ddboost</codeph> is specified.</note>
-          </pd>
+          <pd>This option is not supported if <codeph>--ddboost</codeph> is specified. This option
+            is ignored if <codeph>-o</codeph> is specified.</pd>
         </plentry>
         <plentry>
           <pt>--use-set-session-authorization</pt>

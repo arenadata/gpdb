@@ -555,7 +555,7 @@ extern int log_count_recovered_files_batch;
 extern int writable_external_table_bufsize;
 
 /* Enable passing of query constraints to external table providers */
-extern bool enable_filter_pushdown;
+extern bool gp_external_enable_filter_pushdown;
 
 typedef enum
 {

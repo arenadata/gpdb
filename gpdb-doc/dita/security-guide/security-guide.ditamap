@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map><title>Security Configuration Guide</title>
-    <topicref href="../../580/homenav.html" scope="external" navtitle="Greenplum Database 5.8 Documentation"
+    <topicref href="../../5100/homenav.html" scope="external" navtitle="Greenplum Database 5.10 Documentation"
         format="html"/>
     <topicref href="topics/preface.xml">
         <topicref href="topics/SecuringGPDB.xml"/>

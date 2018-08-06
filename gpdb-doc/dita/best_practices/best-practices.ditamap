@@ -2,7 +2,7 @@
 <!DOCTYPE map PUBLIC "-//OASIS//DTD DITA Map//EN" "map.dtd">
 <map xmlns:ditaarch="http://dita.oasis-open.org/architecture/2005/" id="map">
     <title>Greenplum Database Best Practices</title>
-    <topicref href="../../580/homenav.html" scope="external" navtitle="Greenplum Database 5.8 Documentation"
+    <topicref href="../../5100/homenav.html" scope="external" navtitle="Greenplum Database 5.10 Documentation"
         format="html"/>
     <topicref href="intro.xml">
         <topicref href="summary.xml"/>
@@ -18,7 +18,6 @@
         <topicref href="gptransfer.xml"/>
         <topicref href="security.xml"/>
         <topicref href="encryption.xml"/>
-        <topicref href="kerberos-hdfs.xml"/>
         <topicref href="tuning_queries.xml"/>
         <topicref href="ha.xml"/>
     </topicref>

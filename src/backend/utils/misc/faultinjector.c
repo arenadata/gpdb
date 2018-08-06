@@ -350,6 +350,8 @@ FaultInjectorIdentifierEnumToString[] = {
 	_("copy_from_high_processed"),
 		/* inject fault to pretend copying from very high number of processed rows */
 	_("vacuum_update_dat_frozen_xid"),
+		/* inject fault before auto vacuum worker calls do_autovacuum */
+	_("auto_vac_worker_before_do_autovacuum"),
 		/* inject fault after updating pg_database.datfrozenxid (but before committing) */
 	_("create_resource_group_fail"),
 		/* inject fault before create resource group committing */
@@ -561,7 +563,9 @@ FaultInjector_InjectFaultNameIfSet(
 	 * some other mechanism needs to be placed to avoid flaky failures.
 	 */
 	if (IsAutoVacuumLauncherProcess() ||
-		(IsAutoVacuumWorkerProcess() && 0 != strcmp("vacuum_update_dat_frozen_xid", faultName)))
+		(IsAutoVacuumWorkerProcess() &&
+		 !(0 == strcmp("vacuum_update_dat_frozen_xid", faultName) ||
+			 0 == strcmp("auto_vac_worker_before_do_autovacuum", faultName))))
 		return FaultInjectorTypeNotSpecified;
 
 	/*
@@ -1087,6 +1091,7 @@ FaultInjector_NewHashEntry(
 			case AppendOnlySkipCompression:
 			case CopyFromHighProcessed:
 			case VacuumUpdateDatFrozenXid:
+			case AutoVacWorkerBeforeDoAutovacuum:
 			case CreateResourceGroupFail:
 
 				break;

@@ -47,10 +47,10 @@ static void add_extra_and_expression_items(List *expressionItems, int extraAndOp
 static List *get_attrs_from_expr(Expr *expr, bool *expressionIsSupported);
 
 /*
- * All supported HAWQ operators, and their respective HDFS operator code.
+ * All supported operators and their PXF operator codes.
  * Note that it is OK to use hardcoded OIDs, since these are all pinned
  * down system catalog operators.
- * see pg_operator.h
+ * See pg_operator.h
  */
 dbop_pxfop_map pxf_supported_opr_op_expr[] =
 {
@@ -167,6 +167,14 @@ dbop_pxfop_map pxf_supported_opr_op_expr[] =
 	{1125 /* float48ge */ , PXFOP_GE},
 	{1121 /* float48ne */ , PXFOP_NE},
 
+	/* boolean */
+	{BooleanEqualOperator /* booleq */ , PXFOP_EQ},
+	{58 /* boollt */ , PXFOP_LT},
+	{59 /* boolgt */ , PXFOP_GT},
+	{1694 /* boolle */ , PXFOP_LE},
+	{1695 /* boolge */ , PXFOP_GE},
+	{85 /* boolne */ , PXFOP_NE},
+
 	/* bpchar */
 	{BPCharEqualOperator /* bpchareq */ , PXFOP_EQ},
 	{1058 /* bpcharlt */ , PXFOP_LT},
@@ -233,11 +241,11 @@ Oid			pxf_supported_types[] =
 	FLOAT4OID,
 	FLOAT8OID,
 	NUMERICOID,
+	BOOLOID,
 	TEXTOID,
 	VARCHAROID,
 	BPCHAROID,
 	CHAROID,
-	BOOLOID,
 	DATEOID,
 	TIMESTAMPOID,
 	/* complex datatypes */
@@ -255,6 +263,7 @@ pxf_free_expression_items_list(List *expressionItems)
 	while (list_length(expressionItems) > 0)
 	{
 		expressionItem = (ExpressionItem *) linitial(expressionItems);
+		pfree(expressionItem);
 
 		/*
 		 * to avoid freeing already freed items - delete all occurrences of
@@ -306,7 +315,7 @@ pxf_make_expression_items_list(List *quals, Node *parent, int *logicalOpsNum)
 		switch (tag)
 		{
 			case T_Var:
-				//IN(single_value)
+				/* IN(single_value) */
 			case T_OpExpr:
 			case T_ScalarArrayOpExpr:
 			case T_NullTest:
@@ -356,10 +365,9 @@ pxf_make_expression_items_list(List *quals, Node *parent, int *logicalOpsNum)
 					}
 					else
 					{
-						ereport(ERROR,
-								(errcode(ERRCODE_INTERNAL_ERROR),
-								 errmsg("internal error in pxffilters.c:pxf_make_expression_items_list. "
-										"Found unknown boolean expression type")));
+						elog(ERROR,
+							 "internal error in pxffilters.c:pxf_make_expression_items_list. "
+							 "Found unknown boolean expression type");
 					}
 					break;
 				}
@@ -488,10 +496,9 @@ pxf_serialize_filter_list(List *expressionItems)
 							 * var_to_pxffilter() should have never let this
 							 * happen
 							 */
-							ereport(ERROR,
-									(errcode(ERRCODE_INTERNAL_ERROR),
-									 errmsg("internal error in pxffilters.c:pxf_serialize_"
-											"filter_list. Found a non const+attr filter")));
+							elog(ERROR,
+								 "internal error in pxffilters.c:pxf_serialize_"
+								 "filter_list. Found a non const+attr filter");
 						}
 						appendStringInfo(resbuf, "%c%d", PXF_OPERATOR_CODE, o);
 						pxf_free_filter(filter);
@@ -546,10 +553,8 @@ pxf_serialize_filter_list(List *expressionItems)
 							 * opexpr_to_pxffilter() should have never let
 							 * this happen
 							 */
-							ereport(ERROR,
-									(errcode(ERRCODE_INTERNAL_ERROR),
-									 errmsg("internal error in pxffilters.c:pxf_serialize_"
-											"filter_list. Found a non const+attr filter")));
+							elog(ERROR, "internal error in pxffilters.c:pxf_serialize_"
+								 "filter_list. Found a non const+attr filter");
 						}
 						appendStringInfo(resbuf, "%c%d", PXF_OPERATOR_CODE, o);
 						pxf_free_filter(filter);
@@ -601,10 +606,8 @@ pxf_serialize_filter_list(List *expressionItems)
 							 * scalararrayopexpr_to_pxffilter() should have
 							 * never let this happen
 							 */
-							ereport(ERROR,
-									(errcode(ERRCODE_INTERNAL_ERROR),
-									 errmsg("internal error in pxffilters.c:pxf_serialize_"
-											"filter_list. Found a non const+attr filter")));
+							elog(ERROR, "internal error in pxffilters.c:pxf_serialize_"
+								 "filter_list. Found a non const+attr filter");
 						}
 						appendStringInfo(resbuf, "%c%d", PXF_OPERATOR_CODE, o);
 						pxf_free_filter(filter);
@@ -658,10 +661,9 @@ pxf_serialize_filter_list(List *expressionItems)
 					}
 					else
 					{
-						ereport(ERROR,
-								(errcode(ERRCODE_INTERNAL_ERROR),
-								 errmsg("internal error in pxffilters.c:pxf_serialize_"
-										"filter_list. Found a NullTest filter with incorrect NullTestType")));
+						elog(ERROR,
+							 "internal error in pxffilters.c:pxf_serialize_"
+							 "filter_list. Found a NullTest filter with incorrect NullTestType");
 					}
 					break;
 				}
@@ -680,7 +682,6 @@ pxf_serialize_filter_list(List *expressionItems)
 
 	return resbuf->data;
 }
-
 
 /*
  * opexpr_to_pxffilter
@@ -712,7 +713,7 @@ opexpr_to_pxffilter(OpExpr *expr, PxfFilterDesc * filter)
 		return false;
 	}
 
-	elog(DEBUG1, "opexpr_to_gphdfilter: leftop (expr type: %d, arg type: %d), "
+	elog(DEBUG1, "opexpr_to_pxffilter: leftop (expr type: %d, arg type: %d), "
 		 "rightop_type (expr type: %d, arg type %d), op: %d",
 		 leftop_type, nodeTag(leftop),
 		 rightop_type, nodeTag(rightop),
@@ -1038,7 +1039,6 @@ supported_filter_type(Oid type)
 	return false;
 }
 
-
 static bool
 supported_operator_type_op_expr(Oid type, PxfFilterDesc * filter)
 {
@@ -1087,8 +1087,6 @@ supported_operator_type_scalar_array_op_expr(Oid type, PxfFilterDesc * filter, b
 	return false;
 }
 
-
-
 /*
  * const_to_str
  *
@@ -1131,31 +1129,21 @@ scalar_const_to_str(Const *constval, StringInfo buf)
 		case TIMESTAMPOID:
 			appendStringInfo(buf, "%s", extval);
 			break;
-		case BOOLOID:
-			if (strcmp(extval, "t") == 0)
-				appendStringInfo(buf, TrueConstValue);
-			else
-				appendStringInfo(buf, FalseConstValue);
-			break;
 		default:
 			/* should never happen. we filter on types earlier */
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("internal error in pxffilters.c:scalar_const_to_str. "
-							"Using unsupported data type (%d) (value %s)",
-							constval->consttype, extval)));
+			elog(ERROR,
+				 "internal error in pxffilters.c:scalar_const_to_str. "
+				 "Using unsupported data type (%d) (value %s)",
+				 constval->consttype, extval);
 
 	}
-
-	pfree(extval);
 }
-
 
 /*
  * list_const_to_str
  *
  * Extracts the value stored in a list constant to a string.
- * Currently supported data types: int2[], int4[], int8[], text[], boolean[]
+ * Currently supported data types: int2[], int4[], int8[], text[]
  * Example:
  * Input: ['abc', 'xyz']
  * Output: s3dabcs3dxyz
@@ -1265,17 +1253,15 @@ list_const_to_str(Const *constval, StringInfo buf)
 			}
 		default:
 			/* should never happen. we filter on types earlier */
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("internal error in pxffilters.c:list_const_to_str. "
-							"Using unsupported data type (%d)",
-							constval->consttype)));
+			elog(ERROR,
+				 "internal error in pxffilters.c:list_const_to_str. "
+				 "Using unsupported data type (%d)",
+				 constval->consttype);
 
 	}
 
 	pfree(interm_buf->data);
 }
-
 
 /*
  * serializePxfFilterQuals

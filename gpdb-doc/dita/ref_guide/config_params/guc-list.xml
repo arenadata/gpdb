@@ -288,7 +288,7 @@
               <xref href="#gp_external_max_segs"/>
             </li>
             <li>
-              <xref href="#enable_filter_pushdown"/>
+              <xref href="#gp_external_enable_filter_pushdown"/>
             </li>
             <li>
               <xref href="#gp_filerep_tcp_keepalives_count"/>
@@ -406,6 +406,8 @@
             </li>
             <li>
               <xref href="#gp_resgroup_memory_policy"/>
+            </li>
+            <li><xref href="#gp_resource_group_bypass"/>
             </li>
             <li>
               <xref href="#gp_resource_group_cpu_limit"/>
@@ -3778,12 +3780,13 @@
       </table>
     </body>
   </topic>
-  <topic id="enable_filter_pushdown">
-    <title>enable_filter_pushdown</title>
+  <topic id="gp_external_enable_filter_pushdown">
+    <title>gp_external_enable_filter_pushdown</title>
     <body>
-      <p>Enable filter pushdown when reading data from external tables. If
-      pushdown fails, a query will be executed without it, and GPDB will apply
-      the same constraints to the result.</p>
+      <p>Enable filter pushdown when reading data from external tables. If pushdown fails, a query
+        is executed without pushing filters to the external data source (instead, Greenplum Database
+        applies the same constraints to the result). See <xref
+          href="../../admin_guide/external/g-external-tables.xml#topic3"/> for more information.</p>
       <table id="enable_filter_pushdown_table">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -5028,6 +5031,53 @@
               <entry colname="col1">auto, eager_free</entry>
               <entry colname="col2">eager_free</entry>
               <entry colname="col3">local<p>system</p><p>superuser</p><p>restart/reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="gp_resource_group_bypass">
+    <title>gp_resource_group_bypass</title>
+    <body>
+      <note>The <codeph>gp_resource_group_bypass</codeph> server configuration parameter is enforced
+        only when resource group-based resource management is active.</note>
+      <p>Enables or disables the enforcement of resource group concurrent transaction limits on
+        Greenplum Database resources. The default value is <codeph>false</codeph>, which enforces
+        resource group transaction limits. Resource groups manage resources such as CPU, memory, and
+        the number of concurrent transactions that are used by queries and external components such
+        as PL/Container. </p>
+      <p>You can set this parameter to <codeph>true</codeph> to bypass resource group concurrent
+        transaction limitations so that a query can run immediately. For example, you can set the
+        parameter to <codeph>true</codeph> for a session to run a system catalog query or a similar
+        query that requires a minimal amount of resources. </p>
+      <p>When you set this parameter to <codeph>true</codeph> and a run a query, the query runs in
+        this environment:<ul id="ul_vgc_rw4_j2b">
+          <li>The query runs inside a resource group. The resource group assignment for the query
+            does not change.</li>
+          <li>The query memory quota is approximately 10 MB per query. The memory is allocated from
+            resource group shared memory or global shared memory. The query fails if there is not
+            enough shared memory available to fulfill the memory allocation request.</li>
+        </ul></p>
+      <p>This parameter can be set for a session. The parameter cannot be set within a transaction
+        or a function.</p>
+      <table id="table_szz_1yt_32b">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">false</entry>
+              <entry colname="col3">session</entry>
             </row>
           </tbody>
         </tgroup>
@@ -8109,12 +8159,12 @@
   <topic id="optimizer_nestloop_factor">
     <title>optimizer_nestloop_factor</title>
     <body>
-      <p>When GPORCA is enabled (the default), this parameter controls the nested loop join cost
-        factor to apply to during query optimization. The default value, <codeph>1</codeph>,
-        specifies the default sort cost factor. The value is a ratio of increase or decrease from
-        the default factor. For example, a value of <codeph>2.0</codeph> sets the cost factor at
-        twice the default, and a value of <codeph>0.5</codeph> sets the factor at half the
-        default.</p>
+      <p>This parameter adds a costing factor to GPORCA to prioritize hash joins instead of nested
+        loop joins during query optimization. The default value of 1024 was chosen after evaluating
+        numerous workloads with uniformly distributed data. 1024 should be treated as the practical
+        upper bound setting for this parameter. If you find the GPORCA selects hash joins more often
+        than it should, reduce the value to shift the costing factor in favor of nested loop
+        joins.</p>
       <p>The parameter can be set for a database system, an individual database, or a session or
         query.</p>
       <table id="table_zy2_xlj_tz">
@@ -8131,8 +8181,8 @@
           </thead>
           <tbody>
             <row>
-              <entry colname="col1">Decimal > 0</entry>
-              <entry colname="col2">1</entry>
+              <entry colname="col1">INT_MAX > 1</entry>
+              <entry colname="col2">1024</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>

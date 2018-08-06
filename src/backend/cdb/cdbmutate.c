@@ -351,9 +351,27 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 					
 									if (equal(var1,new_var))
 									{
+										int i;
+
 										/* If it is, use it to partition the result table, to avoid
 										 * unnecessary redistibution of data */
 										Assert(targetPolicy->nattrs < MaxPolicyAttributeNumber);
+
+										/* check duplicate distribute key */
+										for (i = 0; i < targetPolicy->nattrs; i++)
+										{
+											if (targetPolicy->attrs[i] != n)
+												continue;
+
+											TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
+
+											ereport(ERROR,
+													(errcode(ERRCODE_DUPLICATE_COLUMN),
+													 errmsg("duplicate DISTRIBUTED BY column '%s'",
+															target->resname ? target->resname : "???")));
+
+										}
+
 										targetPolicy->attrs[targetPolicy->nattrs++] = n;
 										found_expr = true;
 										break;

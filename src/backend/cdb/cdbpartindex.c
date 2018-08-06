@@ -299,9 +299,10 @@ getPartitionIndexNode(Oid rootOid,
 	SysScanDesc sscan;
 	Relation	partRel;
 	Relation	partRuleRel;
-	Form_pg_partition partDesc;
 	Oid		parOid;
 	bool 		inctemplate = false;
+	Oid			parrelid;
+	int			parlevel;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -331,10 +332,13 @@ getPartitionIndexNode(Oid rootOid,
 	sscan = systable_beginscan(partRel, PartitionParrelidParlevelParistemplateIndexId, true,
 							   SnapshotNow, 3, scankey);
 	tuple = systable_getnext(sscan);
+
 	if (HeapTupleIsValid(tuple))
 	{
 		parOid = HeapTupleGetOid(tuple);
-		partDesc = (Form_pg_partition) GETSTRUCT(tuple);
+		Form_pg_partition partDesc = (Form_pg_partition) GETSTRUCT(tuple);
+		parrelid = partDesc->parrelid;
+		parlevel = partDesc->parlevel;
 
 		if (level == 0)
 		{
@@ -344,7 +348,7 @@ getPartitionIndexNode(Oid rootOid,
 			/* handle root part specially */
 			*n = palloc0(sizeof(PartitionIndexNode));
 			(*n)->paroid = parOid;
-			(*n)->parrelid = (*n)->parchildrelid = partDesc->parrelid;
+			(*n)->parrelid = (*n)->parchildrelid = parrelid;
 			(*n)->isDefault = false;
 		}
 		systable_endscan(sscan);
@@ -379,7 +383,7 @@ getPartitionIndexNode(Oid rootOid,
 		child = palloc(sizeof(PartitionIndexNode));
 		memset(child, 0, sizeof(PartitionIndexNode));
 		child->paroid = HeapTupleGetOid(tuple);
-		child->parrelid = partDesc->parrelid;
+		child->parrelid = parrelid;
 		child->parchildrelid = rule_desc->parchildrelid;
 
 		/* For every node, we keep track of every level at which this node has default partitioning */
@@ -390,7 +394,7 @@ getPartitionIndexNode(Oid rootOid,
 		if (rule_desc->parisdefault)
 		{
 			child->isDefault = true;
-			child->defaultLevels = lappend_int(child->defaultLevels, partDesc->parlevel);
+			child->defaultLevels = lappend_int(child->defaultLevels, parlevel);
 		}
 
 		/* insert child into children */

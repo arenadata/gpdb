@@ -2590,6 +2590,12 @@ select test();
 select test();
 select test();
 select test();
+
+-- Test duplicate distribute keys
+CREATE TABLE qp_misc_jiras.ctas_dup_dk_src (col1 int, col2 int);
+CREATE TABLE qp_misc_jiras.ctas_dup_dk as SELECT distinct col2 as c1, col2 as c2 from qp_misc_jiras.ctas_dup_dk_src;
+SELECT distinct col2 c1, col2 c2 into qp_misc_jiras.ctas_dup_dk_1 from qp_misc_jiras.ctas_dup_dk_src;
+
 -- start_ignore
 drop schema qp_misc_jiras cascade;
 -- end_ignore

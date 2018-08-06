@@ -18,17 +18,17 @@ function expand_glob_ensure_exists() {
 function prep_env_for_centos() {
   case "${TARGET_OS_VERSION}" in
     5)
-      BLDARCH=rhel5_x86_64
+      BLD_ARCH=rhel5_x86_64
       export JAVA_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.39.x86_64
       ;;
 
     6)
-      BLDARCH=rhel6_x86_64
+      BLD_ARCH=rhel6_x86_64
       export JAVA_HOME=/usr/lib/jvm/java-1.7.0-openjdk.x86_64
       ;;
 
     7)
-      BLDARCH=rhel7_x86_64
+      BLD_ARCH=rhel7_x86_64
       echo "Detecting java7 path ..."
       java7_packages=$(rpm -qa | grep -F java-1.7)
       java7_bin="$(rpm -ql ${java7_packages} | grep /jre/bin/java$)"
@@ -44,7 +44,7 @@ function prep_env_for_centos() {
   esac
 
   source /opt/gcc_env.sh
-  ln -sf $(pwd)/${GPDB_SRC_PATH}/gpAux/ext/${BLDARCH}/python-2.7.12 /opt/python-2.7.12
+  ln -sf $(pwd)/${GPDB_SRC_PATH}/gpAux/ext/${BLD_ARCH}/python-2.7.12 /opt/python-2.7.12
   export PATH=${JAVA_HOME}/bin:${PATH}
 }
 
@@ -61,14 +61,6 @@ function generate_build_number() {
     if [ -d .git ] ; then
       echo "commit:`git rev-parse HEAD`" > BUILD_NUMBER
     fi
-  popd
-}
-
-function make_sync_tools() {
-  pushd ${GPDB_SRC_PATH}/gpAux
-    # Requires these variables in the env:
-    # IVYREPO_HOST IVYREPO_REALM IVYREPO_USER IVYREPO_PASSWD
-    make sync_tools
   popd
 }
 
@@ -93,6 +85,25 @@ function build_gpdb() {
 function build_gppkg() {
   pushd ${GPDB_SRC_PATH}/gpAux
     make gppkg BLD_TARGETS="gppkg" INSTLOC="${GREENPLUM_INSTALL_DIR}" GPPKGINSTLOC="${GPDB_ARTIFACTS_DIR}" RELENGTOOLS=/opt/releng/tools
+  popd
+}
+
+function git_info() {
+  pushd ${GPDB_SRC_PATH}
+
+  "${CWDIR}/git_info.bash" | tee ${GREENPLUM_INSTALL_DIR}/etc/git-info.json
+
+  PREV_TAG=$(git describe --tags --abbrev=0 @^)
+
+  cat > ${GREENPLUM_INSTALL_DIR}/etc/git-current-changelog.txt <<-EOF
+	======================================================================
+	Git log since previous release tag (${PREV_TAG})
+	----------------------------------------------------------------------
+
+	EOF
+
+  git log --abbrev-commit --date=relative "${PREV_TAG}..@" | tee -a ${GREENPLUM_INSTALL_DIR}/etc/git-current-changelog.txt
+
   popd
 }
 
@@ -152,7 +163,10 @@ function _main() {
   esac
 
   generate_build_number
-  make_sync_tools
+  
+  # Copy input ext dir; assuming ext doesnt exist
+  mv gpAux_ext/ext ${GPDB_SRC_PATH}/gpAux
+
   case "${TARGET_OS}" in
     sles) link_tools_for_sles ;;
   esac
@@ -177,6 +191,7 @@ function _main() {
   # the source tree and hence needs to be copied over.
   rsync -au gpaddon_src/ ${GPDB_SRC_PATH}/gpAux/${ADDON_DIR}
   build_gpdb "${BLD_TARGET_OPTION[@]}"
+  git_info
   build_gppkg
   if [ "${TARGET_OS}" != "win32" ] ; then
       # Don't unit test when cross compiling. Tests don't build because they

@@ -625,7 +625,8 @@ DefineRelation(CreateStmt *stmt, char relkind, char relstorage, bool dispatch)
 										  allowSystemTableModsDDL,
 										  valid_opts,
 										  &persistentTid,
-										  &persistentSerialNum);
+										  &persistentSerialNum,
+										  stmt->is_part_child);
 
 	StoreCatalogInheritance(relationId, stmt->inhOids);
 
@@ -1234,7 +1235,6 @@ ExecuteTruncate(TruncateStmt *stmt)
 		 * Reconstruct the indexes to match, and we're done.
 		 */
 		reindex_relation(RelationGetRelid(rel), true);
-		heap_close(rel, NoLock);
 	}
 
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1263,7 +1263,30 @@ ExecuteTruncate(TruncateStmt *stmt)
 							   GetUserId(),
 							   "TRUNCATE", "");
 		}
+	}
 
+	/* And close the rels */
+	foreach(cell, rels)
+	{
+		Relation	rel = (Relation) lfirst(cell);
+
+		if ((RelationIsAoRows(rel) || RelationIsAoCols(rel)) &&
+			GpIdentity.segindex == MASTER_CONTENT_ID)
+		{
+			/*
+			 * Drop the shared memory hash table entry for this table if it
+			 * exists. We must do so since before the rewrite we probably have few
+			 * non-zero segfile entries for this table while after the rewrite
+			 * only segno zero will be full and the others will be empty. By
+			 * dropping the hash entry we force refreshing the entry from the
+			 * catalog the next time a write into this AO table comes along.
+			 */
+			LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+			AORelRemoveHashEntry(RelationGetRelid(rel));
+			LWLockRelease(AOSegFileLock);
+		}
+
+		heap_close(rel, NoLock);
 	}
 }
 
@@ -11620,6 +11643,7 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 	RangeVar   *tmprv;
 	Oid			tmprelid;
 	Oid			tarrelid = RelationGetRelid(rel);
+	char		tarrelstorage = rel->rd_rel->relstorage;
 	List	   *oid_map = NIL;
 	bool        rand_pol = false;
 	bool        force_reorg = false;
@@ -12222,6 +12246,25 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		object.objectSubId = 0;
 
 		performDeletion(&object, DROP_RESTRICT);
+	}
+
+	if (relstorage_is_ao(tarrelstorage) && GpIdentity.segindex == MASTER_CONTENT_ID)
+	{
+		/*
+		 * Drop the shared memory hash table entry for this table if it
+		 * exists. We must do so since before the rewrite we probably have few
+		 * non-zero segfile entries for this table while after the rewrite
+		 * only segno zero will be full and the others will be empty. By
+		 * dropping the hash entry we force refreshing the entry from the
+		 * catalog the next time a write into this AO table comes along.
+		 *
+		 * Note that ALTER already took an exclusive lock on the old relation
+		 * so we are guaranteed to not drop the hash entry from under any
+		 * concurrent operation.
+		 */
+		LWLockAcquire(AOSegFileLock, LW_EXCLUSIVE);
+		AORelRemoveHashEntry(tarrelid);
+		LWLockRelease(AOSegFileLock);
 	}
 
 l_distro_fini:

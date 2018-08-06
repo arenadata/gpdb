@@ -754,7 +754,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 										  allowSystemTableModsDDL,
 										  /* valid_opts */ true,
 						 				  /* persistentTid */ NULL,
-						 				  /* persistentSerialNum */ NULL);
+										  /* persistentSerialNum */ NULL,
+										  /* is_part_child */ false);
 
 	ReleaseSysCache(tuple);
 

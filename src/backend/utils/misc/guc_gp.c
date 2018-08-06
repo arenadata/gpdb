@@ -21,6 +21,7 @@
 #include "access/url.h"
 #include "access/xlog_internal.h"
 #include "cdb/cdbappendonlyam.h"
+#include "cdb/cdbcsv.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbfilerep.h"
 #include "cdb/cdbsreh.h"
@@ -121,6 +122,7 @@ static const char *assign_gp_default_storage_options(
 							const char *newval, bool doit, GucSource source);
 
 static bool assign_pljava_classpath_insecure(bool newval, bool doit, GucSource source);
+static bool assign_gp_resource_group_bypass(bool newval, bool doit, GucSource source);
 
 extern struct config_generic *find_option(const char *name, bool create_placeholders, int elevel);
 
@@ -369,6 +371,7 @@ bool		gp_debug_resqueue_priority = false;
 int			gp_resource_group_cpu_priority;
 double		gp_resource_group_cpu_limit;
 double		gp_resource_group_memory_limit;
+bool		gp_resource_group_bypass;
 
 /* Perfmon segment GUCs */
 int			gp_perfmon_segment_interval;
@@ -603,7 +606,7 @@ char	   *gp_default_storage_options = NULL;
 
 int			writable_external_table_bufsize = 64;
 
-bool		enable_filter_pushdown = false;
+bool		gp_external_enable_filter_pushdown = false;
 
 IndexCheckType gp_indexcheck_insert = INDEX_CHECK_NONE;
 IndexCheckType gp_indexcheck_vacuum = INDEX_CHECK_NONE;
@@ -3301,13 +3304,23 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"enable_filter_pushdown", PGC_USERSET, EXTERNAL_TABLES,
+		{"gp_external_enable_filter_pushdown", PGC_USERSET, EXTERNAL_TABLES,
 			gettext_noop("Enable passing of query constraints to external table providers"),
 			NULL,
 			GUC_GPDB_ADDOPT
 		},
-		&enable_filter_pushdown,
-		true, NULL, NULL
+		&gp_external_enable_filter_pushdown,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_resource_group_bypass", PGC_USERSET, RESOURCES,
+			gettext_noop("If the value is true, the query in this session will not be limited by resource group."),
+			NULL
+		},
+		&gp_resource_group_bypass,
+		false,
+		assign_gp_resource_group_bypass, NULL
 	},
 
 	/* End-of-list marker */
@@ -3627,9 +3640,10 @@ struct config_int ConfigureNamesInt_gp[] =
 		{"gp_max_csv_line_length", PGC_USERSET, EXTERNAL_TABLES,
 			gettext_noop("Maximum allowed length of a csv input data row in bytes"),
 			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&gp_max_csv_line_length,
-		1 * 1024 * 1024, 32 * 1024, 4 * 1024 * 1024, NULL, NULL
+		1 * 1024 * 1024, 32 * 1024, MAX_GP_MAX_CSV_LINE_LENGTH, NULL, NULL
 	},
 
 	/*
@@ -5868,6 +5882,16 @@ assign_gp_idf_deduplicate(const char *newval, bool doit, GucSource source)
 		return newval;
 	}
 	return NULL;
+}
+
+static bool
+assign_gp_resource_group_bypass(bool newval, bool doit, GucSource source)
+{
+	if (!ResGroupIsAssigned())
+		return true;
+
+	elog(ERROR, "SET gp_resource_group_bypass cannot run inside a transaction block");
+	return false;
 }
 
 static const char *

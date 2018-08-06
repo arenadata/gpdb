@@ -3770,3 +3770,7 @@ insert into test_split_part (log_id , f_array) select id, '{10}' from generate_s
 
 ALTER TABLE test_split_part SPLIT DEFAULT PARTITION START (201) INCLUSIVE END (301) EXCLUSIVE INTO (PARTITION "New", DEFAULT PARTITION);
 
+-- Only the root partition should have automatically created an array type
+select typname, typtype from pg_type where typname like '%test_split_part%' and typtype = 'b';
+select array_agg(test_split_part) from test_split_part where log_id = 500;
+select array_agg(test_split_part_1_prt_other_log_ids) from test_split_part_1_prt_other_log_ids where log_id = 500;

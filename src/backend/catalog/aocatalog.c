@@ -129,7 +129,8 @@ CreateAOAuxiliaryTable(
 											     true,
 												 /* valid_opts */ false,
 											     /* persistentTid */ NULL,
-											     /* persistentSerialNum */ NULL);
+											     /* persistentSerialNum */ NULL,
+												 /* is_part_child */ false);
 
 	/* Make this table visible, else index creation will fail */
 	CommandCounterIncrement();

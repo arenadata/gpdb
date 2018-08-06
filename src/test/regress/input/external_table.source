@@ -1574,3 +1574,32 @@ SET gp_log_gang TO DEFAULT;
 
 DROP FUNCTION exttab_error_context_callback_func();
 DROP EXTERNAL TABLE exttab_error_context_callback;
+
+-- --------------------------------------
+-- gp_max_csv_line_length
+-- --------------------------------------
+CREATE EXTERNAL TABLE gp_max_csv_line_length_issue (word text)
+LOCATION ('file://@hostname@/tmp/long_text.csv')
+FORMAT 'CSV';
+
+CREATE TABLE gp_max_csv_line_length_target (word text);
+
+-- generate a csv with single line > 3MB with line breaks
+COPY (
+  SELECT array_to_string(ARRAY(
+    SELECT array_to_string(ARRAY(
+      SELECT chr((65 + round(random() * 25)) :: integer)
+      FROM generate_series(1, 1023)
+    ), '') || chr(10)
+  FROM generate_series(1, 3*1024+512)), '')
+) TO '/tmp/long_text.csv' WITH CSV;
+
+-- This will fail as data too long
+INSERT INTO gp_max_csv_line_length_target SELECT * FROM gp_max_csv_line_length_issue;
+
+SET gp_max_csv_line_length TO 4194304;
+-- This should pass the gp_max_csv_line_length
+INSERT INTO gp_max_csv_line_length_target SELECT * FROM gp_max_csv_line_length_issue;
+
+DROP TABLE gp_max_csv_line_length_target;
+DROP EXTERNAL TABLE gp_max_csv_line_length_issue;
