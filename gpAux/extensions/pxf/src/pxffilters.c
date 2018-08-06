@@ -233,7 +233,6 @@ dbop_pxfop_array_map pxf_supported_opr_scalar_array_op_expr[] =
 	{BPCharEqualOperator /* bpchareq */ , PXFOP_IN, true},
 };
 
-
 Oid			pxf_supported_types[] =
 {
 	INT2OID,

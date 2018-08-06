@@ -223,8 +223,8 @@ ValidateProtocolFunction(List *fnName, ExtPtcFuncType fntype)
 {
 	Oid			fnOid;
 	bool		retset;
-	bool        retstrict;
-	bool        retordered;
+	bool		retstrict;
+	bool		retordered;
 	Oid		   *true_oid_array;
 	Oid			actual_rettype;
 	Oid			desired_rettype;

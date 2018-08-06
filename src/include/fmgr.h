@@ -402,7 +402,7 @@ typedef enum {
 #define PG_MODULE_MAGIC_DATA \
 { \
 	sizeof(Pg_magic_struct), \
-	GP_VERSION_NUM / 100, \
+	GP_VERSION_NUM / 10000 * 100, \
 	FUNC_MAX_ARGS, \
 	INDEX_MAX_KEYS, \
 	NAMEDATALEN, \
