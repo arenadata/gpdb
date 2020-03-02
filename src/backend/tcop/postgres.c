@@ -1305,8 +1305,8 @@ exec_mpp_query(const char *query_string,
 	 * All unpacked and checked.  Process the command.
 	 */
 	{
-		const char *commandTag;
-		char		completionTag[COMPLETION_TAG_BUFSIZE];
+		CommandTag commandTag;
+		QueryCompletion qc;
 
 		Portal		portal;
 		DestReceiver *receiver;
@@ -1319,20 +1319,20 @@ exec_mpp_query(const char *query_string,
 		 * destination.
 		 */
 		if (commandType == CMD_UTILITY)
-			commandTag = "MPPEXEC UTILITY";
+			commandTag = CMDTAG_MPPEXEC_UTILITY;
 		else if (commandType == CMD_SELECT)
-			commandTag = "MPPEXEC SELECT";
+			commandTag = CMDTAG_MPPEXEC_SELECT;
 		else if (commandType == CMD_INSERT)
-			commandTag = "MPPEXEC INSERT";
+			commandTag = CMDTAG_MPPEXEC_INSERT;
 		else if (commandType == CMD_UPDATE)
-			commandTag = "MPPEXEC UPDATE";
+			commandTag = CMDTAG_MPPEXEC_UPDATE;
 		else if (commandType == CMD_DELETE)
-			commandTag = "MPPEXEC DELETE";
+			commandTag = CMDTAG_MPPEXEC_DELETE;
 		else
-			commandTag = "MPPEXEC";
+			commandTag = CMDTAG_MPPEXEC;
 
 
-		set_ps_display(commandTag, false);
+		set_ps_display(GetCommandTagName(commandTag), false);
 
 		BeginCommand(commandTag, dest);
 
@@ -1343,12 +1343,12 @@ exec_mpp_query(const char *query_string,
 		}
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1436,7 +1436,7 @@ exec_mpp_query(const char *query_string,
 						 portal->run_once,
 						 receiver,
 						 receiver,
-						 completionTag);
+						 &qc);
 
 		/*
 		 * If writer QE, sent current pgstat for tables to QD.
@@ -1458,12 +1458,12 @@ exec_mpp_query(const char *query_string,
 		finish_xact_command();
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1472,7 +1472,7 @@ exec_mpp_query(const char *query_string,
 		 * command the client sent, regardless of rewriting. (But a command
 		 * aborted by error will not send an EndCommand report at all.)
 		 */
-		EndCommand(completionTag, dest);
+		EndCommand(&qc, dest, false);
 	}							/* end loop over parsetrees */
 
 	/*
@@ -1536,7 +1536,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 							  DtxContextInfo *contextInfo)
 {
 	CommandDest dest = whereToSendOutput;
-	const char *commandTag = loggingStr;
+	QueryCompletion qc;
 
 	if (log_statement == LOGSTMT_ALL)
 		elog(LOG,"DTM protocol command '%s' for gid = %s", loggingStr, gid);
@@ -1544,7 +1544,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	set_ps_display(commandTag, false);
+	set_ps_display(loggingStr, false);
 
 	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
 		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
@@ -1566,7 +1566,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
 	}
 
-	BeginCommand(commandTag, dest);
+	BeginCommand(CMDTAG_UNKNOWN, dest);
 
 	performDtxProtocolCommand(dtxProtocolCommand, gid, contextInfo);
 
@@ -1592,7 +1592,8 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 				errmsg("Terminating the connection (DTM protocol command '%s' "
 					   "for gid=%s", loggingStr, gid)));
 
-	EndCommand(commandTag, dest);
+	SetQueryCompletion(&qc, CMDTAG_MPPDTX, 0);
+	EndCommand(&qc, dest, false);
 }
 
 static bool
@@ -1748,8 +1749,8 @@ exec_simple_query(const char *query_string)
 	{
 		RawStmt    *parsetree = lfirst_node(RawStmt, parsetree_item);
 		bool		snapshot_set = false;
-		const char *commandTag;
-		char		completionTag[COMPLETION_TAG_BUFSIZE];
+		CommandTag	commandTag;
+		QueryCompletion qc;
 		MemoryContext per_parsetree_context = NULL;
 		List	   *querytree_list,
 				   *plantree_list;
@@ -1765,17 +1766,17 @@ exec_simple_query(const char *query_string)
 		 */
 		commandTag = CreateCommandTag(parsetree->stmt);
 
-		set_ps_display(commandTag, false);
+		set_ps_display(GetCommandTagName(commandTag), false);
 
 		BeginCommand(commandTag, dest);
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1936,7 +1937,7 @@ exec_simple_query(const char *query_string)
 						 true,
 						 receiver,
 						 receiver,
-						 completionTag);
+						 &qc);
 
 		receiver->rDestroy(receiver);
 
@@ -1982,12 +1983,12 @@ exec_simple_query(const char *query_string)
 		}
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1996,7 +1997,7 @@ exec_simple_query(const char *query_string)
 		 * command the client sent, regardless of rewriting. (But a command
 		 * aborted by error will not send an EndCommand report at all.)
 		 */
-		EndCommand(completionTag, dest);
+		EndCommand(&qc, dest, false);
 
 		/* Now we may drop the per-parsetree context, if one was created. */
 		if (per_parsetree_context)
@@ -2058,7 +2059,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	MemoryContext oldcontext;
 	List	   *parsetree_list;
 	RawStmt    *raw_parse_tree;
-	const char *commandTag;
 	List	   *querytree_list;
 	CachedPlanSource *psrc;
 	bool		is_named;
@@ -2161,11 +2161,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		}
 
 		/*
-		 * Get the command name for possible use in status display.
-		 */
-		commandTag = CreateCommandTag(raw_parse_tree->stmt);
-
-		/*
 		 * If we are in an aborted transaction, reject all commands except
 		 * COMMIT/ROLLBACK.  It is important that this test occur before we
 		 * try to do parse analysis, rewrite, or planning, since all those
@@ -2185,7 +2180,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		 * Create the CachedPlanSource before we do parse analysis, since it
 		 * needs to see the unmodified raw parse tree.
 		 */
-		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
+		psrc = CreateCachedPlan(raw_parse_tree, query_string,
+								CreateCommandTag(raw_parse_tree->stmt));
 
 		/*
 		 * Set up a snapshot if parse analysis will need one.
@@ -2242,8 +2238,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	{
 		/* Empty input string.  This is legal. */
 		raw_parse_tree = NULL;
-		commandTag = NULL;
-		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
+		psrc = CreateCachedPlan(raw_parse_tree, query_string,
+								CMDTAG_UNKNOWN);
 		querytree_list = NIL;
 	}
 
@@ -2765,7 +2761,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	DestReceiver *receiver;
 	Portal		portal;
 	bool		completed;
-	char		completionTag[COMPLETION_TAG_BUFSIZE];
+	QueryCompletion qc;
 	const char *sourceText;
 	const char *prepStmtName;
 	ParamListInfo portalParams;
@@ -2792,7 +2788,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	 * If the original query was a null string, just return
 	 * EmptyQueryResponse.
 	 */
-	if (portal->commandTag == NULL)
+	if (portal->commandTag == CMDTAG_UNKNOWN)
 	{
 		Assert(portal->stmts == NIL);
 		NullCommand(dest);
@@ -2861,7 +2857,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 
 	pgstat_report_activity(STATE_RUNNING, sourceText);
 
-	set_ps_display(portal->commandTag, false);
+	set_ps_display(GetCommandTagName(portal->commandTag), false);
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -2942,7 +2938,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 						  !execute_is_fetch && max_rows == FETCH_ALL,
 						  receiver,
 						  receiver,
-						  completionTag);
+						  &qc);
 
 	receiver->rDestroy(receiver);
 
@@ -2975,7 +2971,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 		}
 
 		/* Send appropriate CommandComplete to client */
-		EndCommand(completionTag, dest);
+		EndCommand(&qc, dest, false);
 	}
 	else
 	{
@@ -5538,6 +5534,7 @@ PostgresMain(int argc, char *argv[],
 						if (strncmp(query_string, "BEGIN", 5) == 0)
 						{
 							CommandDest dest = whereToSendOutput;
+							QueryCompletion qc;
 
 							/*
 							 * Special explicit BEGIN for COPY, etc.
@@ -5550,9 +5547,10 @@ PostgresMain(int argc, char *argv[],
 
 							set_ps_display("BEGIN", false);
 
-							BeginCommand("BEGIN", dest);
+							BeginCommand(CMDTAG_BEGIN, dest);
 
-							EndCommand("BEGIN", dest);
+							SetQueryCompletion(&qc, CMDTAG_BEGIN, 0);
+							EndCommand(&qc, dest, false);
 
 						}
 						else

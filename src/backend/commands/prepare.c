@@ -196,7 +196,7 @@ void
 ExecuteQuery(ParseState *pstate,
 			 ExecuteStmt *stmt, IntoClause *intoClause,
 			 ParamListInfo params,
-			 DestReceiver *dest, char *completionTag)
+			 DestReceiver *dest, QueryCompletion *qc)
 {
 	PreparedStatement *entry;
 	CachedPlan *cplan;
@@ -308,7 +308,7 @@ ExecuteQuery(ParseState *pstate,
 	 */
 	PortalStart(portal, paramLI, eflags, GetActiveSnapshot(), NULL);
 
-	(void) PortalRun(portal, count, false, true, dest, dest, completionTag);
+	(void) PortalRun(portal, count, false, true, dest, dest, qc);
 
 	PortalDrop(portal, false);
 
