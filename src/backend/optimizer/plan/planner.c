@@ -304,7 +304,8 @@ static void compute_jit_flags(PlannedStmt* pstmt, bool use_gporca);
  *
  *****************************************************************************/
 PlannedStmt *
-planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+planner(Query *parse, const char *query_string, int cursorOptions,
+		ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 	instr_time	starttime, endtime;
@@ -314,7 +315,7 @@ planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		if (gp_log_optimization_time)
 			INSTR_TIME_SET_CURRENT(starttime);
 
-		result = (*planner_hook) (parse, cursorOptions, boundParams);
+		result = (*planner_hook) (parse, query_string, cursorOptions, boundParams);
 
 		if (gp_log_optimization_time)
 		{
@@ -324,13 +325,14 @@ planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		}
 	}
 	else
-		result = standard_planner(parse, cursorOptions, boundParams);
+		result = standard_planner(parse, query_string, cursorOptions, boundParams);
 
 	return result;
 }
 
 PlannedStmt *
-standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+standard_planner(Query *parse, const char *query_string, int cursorOptions,
+				 ParamListInfo boundParams)
 {
 	PlannedStmt *result;
 	PlannerGlobal *glob;

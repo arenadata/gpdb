@@ -16606,7 +16606,7 @@ build_ctas_with_dist(Relation rel, DistributedBy *dist_clause,
 		rawstmt->stmt_len = 0;
 
 		q_list = pg_analyze_and_rewrite(rawstmt, synthetic_sql, NULL, 0, NULL);
-		p_list = pg_plan_queries(q_list, 0, NULL);
+		p_list = pg_plan_queries(q_list, synthetic_sql, 0, NULL);
 		pstmt = linitial_node(PlannedStmt, p_list);
 		ctas = castNode(CreateTableAsStmt, pstmt->utilityStmt);
 
@@ -16638,7 +16638,7 @@ build_ctas_with_dist(Relation rel, DistributedBy *dist_clause,
 	Assert(q->commandType == CMD_SELECT || q->commandType == CMD_INSERT);
 
 	/* plan the query */
-	stmt = planner(q, 0, NULL);
+	stmt = planner(q, synthetic_sql, 0, NULL);
 	stmt->intoClause = into;
 
 	/*

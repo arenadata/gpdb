@@ -992,7 +992,8 @@ pg_rewrite_query(Query *query)
  * This is a thin wrapper around planner() and takes the same parameters.
  */
 PlannedStmt *
-pg_plan_query(Query *querytree, int cursorOptions, ParamListInfo boundParams)
+pg_plan_query(Query *querytree, const char *query_string, int cursorOptions,
+			  ParamListInfo boundParams)
 {
 	PlannedStmt *plan;
 
@@ -1009,7 +1010,7 @@ pg_plan_query(Query *querytree, int cursorOptions, ParamListInfo boundParams)
 		ResetUsage();
 
 	/* call the optimizer */
-	plan = planner(querytree, cursorOptions, boundParams);
+	plan = planner(querytree, query_string, cursorOptions, boundParams);
 
 	if (log_planner_stats)
 		ShowUsage("PLANNER STATISTICS");
@@ -1077,7 +1078,8 @@ pg_plan_query(Query *querytree, int cursorOptions, ParamListInfo boundParams)
  * The result is a list of PlannedStmt nodes.
  */
 List *
-pg_plan_queries(List *querytrees, int cursorOptions, ParamListInfo boundParams)
+pg_plan_queries(List *querytrees, const char *query_string, int cursorOptions,
+				ParamListInfo boundParams)
 {
 	List	   *stmt_list = NIL;
 	ListCell   *query_list;
@@ -1099,7 +1101,8 @@ pg_plan_queries(List *querytrees, int cursorOptions, ParamListInfo boundParams)
 		}
 		else
 		{
-			stmt = pg_plan_query(query, cursorOptions, boundParams);
+			stmt = pg_plan_query(query, query_string, cursorOptions,
+								 boundParams);
 		}
 
 		stmt_list = lappend(stmt_list, stmt);
@@ -1858,7 +1861,7 @@ exec_simple_query(const char *query_string)
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0, NULL);
 
-		plantree_list = pg_plan_queries(querytree_list,
+		plantree_list = pg_plan_queries(querytree_list, query_string,
 										CURSOR_OPT_PARALLEL_OK, NULL);
 
 		/* Done with the snapshot used for parsing/planning */

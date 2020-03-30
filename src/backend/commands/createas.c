@@ -394,7 +394,8 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		Assert(query->commandType == CMD_SELECT);
 
 		/* plan the query */
-		plan = pg_plan_query(query, CURSOR_OPT_PARALLEL_OK, params);
+		plan = pg_plan_query(query, pstate->p_sourcetext,
+							 CURSOR_OPT_PARALLEL_OK, params);
 
 		/*GPDB: Save the target information in PlannedStmt */
 		/*
