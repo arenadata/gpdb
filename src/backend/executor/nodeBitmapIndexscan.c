@@ -122,6 +122,9 @@ MultiExecBitmapIndexScan(BitmapIndexScanState *node)
 	if (node->ss.ps.instrument)
 		InstrStopNode(node->ss.ps.instrument, 1 /* nTuples */);
 
+	/* Increment gpmon packet too */
+	Gpmon_Incr_Rows_Out(&node->ss.ps.gpmon_pkt);
+
 	return (Node *) bitmap;
 }
 
