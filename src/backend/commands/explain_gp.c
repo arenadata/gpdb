@@ -700,7 +700,7 @@ cdbexplain_recvExecStats(struct PlanState *planstate,
 			ctx.nStatInst = hdr->nInst;
 		else
 		{
-			/* MPP-2140: what causes this ? */
+			/* Check for a stats corruption */
 			if (ctx.nStatInst != hdr->nInst)
 				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								errmsg("Invalid execution statistics "
