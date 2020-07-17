@@ -518,7 +518,7 @@ static TupleTableSlot *
 retrieve_next_tuple()
 {
 	TupleTableSlot *result = NULL;
-	HeapTuple	tup = NULL;
+	MinimalTuple	tup = NULL;
 	bool		readerdone = false;
 	RetrieveExecEntry *entry = RetrieveCtl.current_entry;
 
@@ -577,11 +577,11 @@ retrieve_next_tuple()
 		return NULL;
 	}
 
-	if (HeapTupleIsValid(tup))
+	if (tup)
 	{
 		ExecClearTuple(entry->retrieveTs);
 		result = entry->retrieveTs;
-		ExecStoreHeapTuple(tup, /* tuple to store */
+		ExecStoreMinimalTuple(tup, /* tuple to store */
 						   result,	/* slot in which to store the tuple */
 						   false);	/* slot should not pfree tuple */
 	}
