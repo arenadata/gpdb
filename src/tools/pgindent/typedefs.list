@@ -1475,6 +1475,7 @@ PGEventResultCopy
 PGEventResultCreate
 PGEventResultDestroy
 PGFInfoFunction
+PGFileType
 PGFunction
 PGLZ_HistEntry
 PGLZ_Strategy
