@@ -276,6 +276,12 @@
  */
 /* #define WAL_DEBUG */
 
+/* 
+ * Enable debugging print statements for B-tree related operations; see
+ * also log_btree_build_stats GUC var.
+ */
+/* #define BTREE_BUILD_STATS */
+
 /*
  * Enable injecting faults.
  */
