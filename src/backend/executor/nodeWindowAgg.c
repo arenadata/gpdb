@@ -2259,10 +2259,6 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 		AclResult	aclresult;
 		int			i;
 
-		if (wfunc->winref != node->winref)		/* planner screwed up? */
-			elog(ERROR, "WindowFunc with winref %u assigned to WindowAgg with winref %u",
-				 wfunc->winref, node->winref);
-
 		/* Look for a previous duplicate window function */
 		for (i = 0; i <= wfuncno; i++)
 		{
