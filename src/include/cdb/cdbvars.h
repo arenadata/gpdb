@@ -722,6 +722,8 @@ extern bool gp_mk_sort_check;
 
 extern bool trace_sort;
 
+extern bool optimize_bounded_sort;
+
 /* Generic Greenplum sort flag for testing.
  *
  *
