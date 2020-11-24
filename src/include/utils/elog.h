@@ -192,6 +192,8 @@ extern pthread_t main_tid;
 		if(p) ereport_domain(elevel, TEXTDOMAIN, __VA_ARGS__); \
 	} while (0)
 
+extern bool message_level_is_interesting(int elevel);
+
 extern bool errstart(int elevel, const char *domain);
 extern pg_attribute_cold bool errstart_cold(int elevel, const char *domain);
 extern void errfinish(const char *filename, int lineno, const char *funcname);

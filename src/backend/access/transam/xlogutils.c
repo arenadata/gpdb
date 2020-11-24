@@ -103,7 +103,7 @@ log_invalid_page(RelFileNode node, ForkNumber forkno, BlockNumber blkno,
 	 * tracing of the cause (note the elog context mechanism will tell us
 	 * something about the XLOG record that generated the reference).
 	 */
-	if (log_min_messages <= DEBUG1 || client_min_messages <= DEBUG1)
+	if (message_level_is_interesting(DEBUG1))
 		report_invalid_page(DEBUG1, node, forkno, blkno, present);
 
 	if (invalid_page_tab == NULL)
@@ -157,7 +157,7 @@ forget_invalid_pages(RelFileNode node, ForkNumber forkno, BlockNumber minblkno)
 			hentry->key.forkno == forkno &&
 			hentry->key.blkno >= minblkno)
 		{
-			if (log_min_messages <= DEBUG2 || client_min_messages <= DEBUG2)
+			if (message_level_is_interesting(DEBUG2))
 			{
 				char	   *path = relpathperm(hentry->key.node, forkno);
 
@@ -190,7 +190,7 @@ forget_invalid_pages_db(Oid dbid)
 	{
 		if (hentry->key.node.dbNode == dbid)
 		{
-			if (log_min_messages <= DEBUG2 || client_min_messages <= DEBUG2)
+			if (message_level_is_interesting(DEBUG2))
 			{
 				char	   *path = relpathperm(hentry->key.node, hentry->key.forkno);
 
