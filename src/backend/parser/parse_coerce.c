@@ -29,7 +29,8 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
-#include "utils/datum.h"
+#include "utils/datum.h"		/* needed for datumIsEqual() */
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -2440,8 +2441,8 @@ find_typmod_coercion_function(Oid typeId,
 	targetType = typeidType(typeId);
 	typeForm = (Form_pg_type) GETSTRUCT(targetType);
 
-	/* Check for a varlena array type */
-	if (typeForm->typelem != InvalidOid && typeForm->typlen == -1)
+	/* Check for a "true" array type */
+	if (IsTrueArrayType(typeForm))
 	{
 		/* Yes, switch our attention to the element type */
 		typeId = typeForm->typelem;

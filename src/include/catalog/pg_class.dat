@@ -24,7 +24,7 @@
   relname => 'pg_type', reltype => 'pg_type', relam => 'heap',
   relfilenode => '0', relpages => '0', reltuples => '0', relallvisible => '0',
   reltoastrelid => '0', relhasindex => 'f', relisshared => 'f',
-  relpersistence => 'p', relkind => 'r', relnatts => '31', relchecks => '0',
+  relpersistence => 'p', relkind => 'r', relnatts => '32', relchecks => '0',
   relhasrules => 'f', relhastriggers => 'f', relhassubclass => 'f',
   relrowsecurity => 'f', relforcerowsecurity => 'f', relispopulated => 't',
   relreplident => 'n', relispartition => 'f', relfrozenxid => '3',

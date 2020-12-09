@@ -48,6 +48,7 @@
 PGFunction	TypePGFunction;
 size_t		TypeSizeT;
 bool		TypeStorageBool;
+ExecEvalBoolSubroutine TypeExecEvalBoolSubroutine;
 
 NullableDatum StructNullableDatum;
 AggState	StructAggState;
@@ -103,7 +104,6 @@ void	   *referenced_functions[] =
 	slot_getsomeattrs_int,
 	slot_getmissingattrs,
 	MakeExpandedObjectReadOnlyInternal,
-	ExecEvalSubscriptingRef,
 	ExecEvalSysVar,
 	ExecAggTransReparent,
 	ExecAggInitGroup

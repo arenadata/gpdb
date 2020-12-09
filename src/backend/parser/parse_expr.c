@@ -489,10 +489,9 @@ transformIndirection(ParseState *pstate, A_Indirection *ind)
 				result = (Node *) transformContainerSubscripts(pstate,
 															   result,
 															   exprType(result),
-															   InvalidOid,
 															   exprTypmod(result),
 															   subscripts,
-															   NULL);
+															   false);
 			subscripts = NIL;
 
 			newresult = ParseFuncOrColumn(pstate,
@@ -512,10 +511,9 @@ transformIndirection(ParseState *pstate, A_Indirection *ind)
 		result = (Node *) transformContainerSubscripts(pstate,
 													   result,
 													   exprType(result),
-													   InvalidOid,
 													   exprTypmod(result),
 													   subscripts,
-													   NULL);
+													   false);
 
 	return result;
 }
