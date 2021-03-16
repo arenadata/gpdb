@@ -4,6 +4,7 @@ RUN rm -rf /opt/cmake* \
     && yum remove -y cmake \
     && yum install -y epel-release \
     && yum install -y cmake3 \
+                    ninja-build \
                     libzstd-devel \
                     apr-util-devel \
                     libuv-devel \
@@ -12,7 +13,8 @@ RUN rm -rf /opt/cmake* \
                     wget \
     && yum clean all \
     && ln -s /usr/bin/cmake3 /usr/bin/cmake \
-    && ln -s /usr/bin/ctest3 /usr/bin/ctest
+    && ln -s /usr/bin/ctest3 /usr/bin/ctest && \
+    && pip install conan
 
 WORKDIR /home/gpadmin
 
@@ -23,12 +25,18 @@ ARG sigar_headers=https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/cento
 
 COPY . gpdb_src
 
-RUN rpm -i $sigar && rpm -i $sigar_headers && mkdir /home/gpadmin/bin_gpdb
+RUN rpm -i $sigar && rpm -i $sigar_headers && mkdir -p /home/gpadmin/bin_gpdb
 
 ENV TARGET_OS_VERSION=7
 ENV TARGET_OS=centos
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
-ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
+ENV CONFIGURE_FLAGS="--with-gssapi --enable-debug --enable-depend \
+    --with-libraries=/home/gpadmin/gpdb_src/depends/build/lib \
+    --with-includes=/home/gpadmin/gpdb_src/depends/build/include"
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/gpadmin/gpdb_src/depends/build/lib:/usr/lib64/:/usr/local/lib
+
+# Build ORCA
+RUN mkdir bin_orca && /home/gpadmin/gpdb_src/concourse/scripts/build_orca.py
 
 # Compile with running mocking tests
 RUN source /opt/gcc_env.sh && \
@@ -41,7 +49,12 @@ RUN rm -rf gpdb_src/.git/
 FROM base as test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
+COPY --from=build /home/gpadmin/bin_orca /home/gpadmin/bin_orca
+
+RUN tar -xzf *.tar.gz -С /home/gpadmin/bin_orca \
+    && echo -e '/usr/local/lib\n\
+       /opt/gcc-6.2.0/lib64\n\
+       /home/gpadmin/bin_orca/lib\n' >> /etc/ld.so.conf && ldconfig
 
 # Volume for tests output
 VOLUME /home/gpadmin/gpdb_src/src/test
-
