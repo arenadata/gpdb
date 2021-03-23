@@ -1,0 +1,111 @@
+--
+-- Test correlated subquery in subplan with motion chooses correct scan type
+--
+-- Given distributed table
+create table subplan_motion_t
+(user_id bigint NOT NULL) DISTRIBUTED BY (user_id);
+-- with constraint
+alter table only subplan_motion_t add constraint users_choose_tidscan_pkey primary key (user_id);
+NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "subplan_motion_t_pkey" for table "subplan_motion_t"
+-- and some data
+insert into subplan_motion_t
+select gen from generate_series(1, 20000) gen;
+-- Check that Index Scan is not used
+select cte."userId" from (select 7 as "userId" ) cte
+where(select u.user_id from (select * from subplan_motion_t) u
+      where u.user_id = cte."userId") is not null;
+ userId
+--------
+      7
+(1 row)
+
+-- Plan
+explain select cte."userId" from (select 7 as "userId" ) cte
+where(select u.user_id from (select * from subplan_motion_t) u
+      where u.user_id = cte."userId") is not null;
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Subquery Scan cte  (cost=0.00..274.02 rows=1 width=4)
+   Filter: ((subplan)) IS NOT NULL
+   ->  Result  (cost=0.00..0.01 rows=1 width=0)
+   SubPlan 1
+     ->  Result  (cost=274.00..274.01 rows=1 width=8)
+           Filter: subplan_motion_t.user_id = $0
+           ->  Materialize  (cost=274.00..274.01 rows=1 width=8)
+                 ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..274.00 rows=1 width=8)
+                       ->  Seq Scan on subplan_motion_t  (cost=0.00..274.00 rows=1 width=8)
+ Settings:  optimizer=off
+ Optimizer status: legacy query optimizer
+(11 rows)
+
+-- Check that TID Scan is not used
+select cte."userId" from (select 7 as "userId" ) cte
+where(select u.user_id from (select * from subplan_motion_t
+                             where ctid = (select ctid from subplan_motion_t where user_id = 7)) u
+      where u.user_id = cte."userId") is not null;
+NOTICE:  SELECT uses system-defined column "subplan_motion_t.ctid" without the necessary companion column "subplan_motion_t.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+ userId
+--------
+      7
+(1 row)
+
+-- Plan
+explain select cte."userId" from (select 7 as "userId" ) cte
+where(select u.user_id from (select * from subplan_motion_t
+                             where ctid = (select ctid from subplan_motion_t where user_id = 7)) u
+      where u.user_id = cte."userId") is not null;
+NOTICE:  SELECT uses system-defined column "subplan_motion_t.ctid" without the necessary companion column "subplan_motion_t.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+                                                   QUERY PLAN
+----------------------------------------------------------------------------------------------------------------
+ Subquery Scan cte  (cost=0.00..598.02 rows=1 width=4)
+   Filter: ((subplan)) IS NOT NULL
+   ->  Result  (cost=0.00..0.01 rows=1 width=0)
+   SubPlan 2
+     ->  Result  (cost=598.00..598.01 rows=1 width=8)
+           Filter: public.subplan_motion_t.ctid = $0 AND public.subplan_motion_t.user_id = $1
+           ->  Materialize  (cost=598.00..598.01 rows=1 width=8)
+                 ->  Gather Motion 3:1  (slice2; segments: 3)  (cost=274.00..598.00 rows=1 width=8)
+                       ->  Seq Scan on subplan_motion_t  (cost=274.00..598.00 rows=1 width=8)
+                             InitPlan  (slice3)
+                               ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..274.00 rows=1 width=6)
+                                     ->  Seq Scan on subplan_motion_t  (cost=0.00..274.00 rows=1 width=6)
+                                           Filter: user_id = 7
+ Settings:  optimizer=off
+ Optimizer status: legacy query optimizer
+(15 rows)
+
+set enable_indexscan = off;
+set enable_bitmapscan = on;
+-- Check that Bitmap Scan is not used
+select cte."userId" from (select 7 as "userId" ) cte
+where(select u.user_id from (select * from subplan_motion_t) u
+      where u.user_id = cte."userId") is not null;
+ userId
+--------
+      7
+(1 row)
+
+-- Plan
+explain select cte."userId" from (select 7 as "userId" ) cte
+        where(select u.user_id from (select * from subplan_motion_t) u
+              where u.user_id = cte."userId") is not null;
+                                            QUERY PLAN
+--------------------------------------------------------------------------------------------------
+ Subquery Scan cte  (cost=0.00..274.02 rows=1 width=4)
+   Filter: ((subplan)) IS NOT NULL
+   ->  Result  (cost=0.00..0.01 rows=1 width=0)
+   SubPlan 1
+     ->  Result  (cost=274.00..274.01 rows=1 width=8)
+           Filter: subplan_motion_t.user_id = $0
+           ->  Materialize  (cost=274.00..274.01 rows=1 width=8)
+                 ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..274.00 rows=1 width=8)
+                       ->  Seq Scan on subplan_motion_t  (cost=0.00..274.00 rows=1 width=8)
+ Settings:  enable_bitmapscan=on; enable_indexscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(11 rows)
+
+-- start_ignore
+drop table if exists subplan_motion_t;
+-- end_ignore

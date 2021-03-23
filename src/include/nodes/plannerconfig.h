@@ -52,6 +52,8 @@ typedef struct PlannerConfig
 
 	bool		gp_cte_sharing; /* Indicate whether sharing is to be disabled on any CTEs */
 
+	bool		is_under_subplan; /* True for plan rooted at a subquery which is planned as a subplan */
+
 	/* These ones are tricky */
 	//GpRoleValue	Gp_role; // TODO: this one is tricky
 	//int			gp_singleton_segindex; // TODO: change this.

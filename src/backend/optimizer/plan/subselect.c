@@ -420,24 +420,8 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 				 errmsg("correlated subquery with skip-level correlations is not supported")));
 	}
 
-	if ((Gp_role == GP_ROLE_DISPATCH)
-			&& IsSubqueryCorrelated(subquery)
-			&& QueryHasDistributedRelation(subquery))
-	{
-		/*
-		 * Generate the plan for the subquery with certain options disabled.
-		 */
-		config->gp_enable_direct_dispatch = false;
-		config->gp_enable_multiphase_agg = false;
-
-		/*
-		 * Only create subplans with sequential scans
-		 */
-		config->enable_indexscan = false;
-		config->enable_bitmapscan = false;
-		config->enable_tidscan = false;
-		config->enable_seqscan = true;
-	}
+	if (Gp_role == GP_ROLE_DISPATCH)
+		config->is_under_subplan = true;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{

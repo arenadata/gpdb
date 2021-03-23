@@ -536,6 +536,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	else
 		root->wt_param_id = -1;
 	root->non_recursive_plan = NULL;
+	root->is_correlated_subplan = false;
 
 	/*
 	 * If there is a WITH list, process each WITH query and build an
@@ -575,6 +576,27 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 */
 	parse->jointree = (FromExpr *)
 		pull_up_subqueries(root, (Node *) parse->jointree, false, false);
+
+	if ((parent_root && parent_root->is_correlated_subplan) ||
+		((Gp_role == GP_ROLE_DISPATCH) &&
+		root->config->is_under_subplan &&
+		IsSubqueryCorrelated(parse)))
+	{
+		root->is_correlated_subplan = true;
+		/*
+		 * Generate the plan for the subquery with certain options disabled.
+		 */
+		config->gp_enable_direct_dispatch = false;
+		config->gp_enable_multiphase_agg = false;
+
+		/*
+		 * The MIN/MAX optimization works by inserting a subplan with LIMIT 1.
+		 * That effectively turns a correlated subquery into a multi-level
+		 * correlated subquery, which we don't currently support. (See check
+		 * above.)
+		 */
+		// config->gp_enable_minmax_optimization = false;
+	}
 
 	/*
 	 * Detect whether any rangetable entries are RTE_JOIN kind; if not, we can

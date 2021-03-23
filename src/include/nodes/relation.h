@@ -263,6 +263,8 @@ typedef struct PlannerInfo
 	PlannerConfig *config;		/* Planner configuration */
 
 	List	   *dynamicScans;	/* DynamicScanInfos */
+
+	bool		is_correlated_subplan; /* true for correlated subqueries nested within subplans */
 } PlannerInfo;
 
 /*----------

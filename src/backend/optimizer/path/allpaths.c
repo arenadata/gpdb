@@ -356,9 +356,16 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	if (root->config->enable_seqscan)
 		pathlist = lappend(pathlist, seqpath);
 
-	/* Consider index and bitmap scans */
-	create_index_paths(root, rel,
-					   &indexpathlist, &bitmappathlist);
+	/* TODO: this might have been too ambitious of a re-ordering */
+	/* If an indexscan is not allowed, don't bother making paths */
+	if(!(root->is_correlated_subplan && rel->cdbpolicy && rel->cdbpolicy->ptype == POLICYTYPE_PARTITIONED)) {
+		/* Consider index and bitmap scans */
+		create_index_paths(root, rel,
+						   &indexpathlist, &bitmappathlist);
+
+		/* Consider TID scans */
+		create_tidscan_paths(root, rel, &tidpathlist);
+	}
 
 	/*
 	 * Random access to Append-Only is slow because AO doesn't use the buffer
@@ -375,9 +382,6 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		pathlist = list_concat(pathlist, indexpathlist);
 	if (bitmappathlist && root->config->enable_bitmapscan)
 		pathlist = list_concat(pathlist, bitmappathlist);
-
-	/* Consider TID scans */
-	create_tidscan_paths(root, rel, &tidpathlist);
 
 	/*
 	 * AO and CO tables do not currently support TidScans. Disable TidScan

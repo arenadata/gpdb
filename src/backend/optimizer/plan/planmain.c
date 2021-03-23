@@ -536,6 +536,8 @@ PlannerConfig *DefaultPlannerConfig(void)
 
 	c1->gp_cte_sharing = gp_cte_sharing;
 
+	c1->is_under_subplan = false;
+
 	return c1;
 }
 
