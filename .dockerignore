@@ -9,3 +9,9 @@
 /gpAux/gpdemo/datadirs
 **/*.so
 **/*.o
+
+# Arenadata test image
+arenadata/
+.dockerignore
+.github
+.vscode
