@@ -7877,7 +7877,7 @@ GetConfigOption(const char *name, bool missing_ok, bool restrict_privileged)
 	}
 	if (restrict_privileged &&
 		(record->flags & GUC_SUPERUSER_ONLY) &&
-		!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS))
+		!is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser or a member of pg_read_all_settings to examine \"%s\"",
@@ -7927,7 +7927,7 @@ GetConfigOptionResetString(const char *name)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("unrecognized configuration parameter \"%s\"", name)));
 	if ((record->flags & GUC_SUPERUSER_ONLY) &&
-		!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS))
+		!is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser or a member of pg_read_all_settings to examine \"%s\"",
@@ -9348,7 +9348,7 @@ ShowAllGUCConfig(DestReceiver *dest)
 
 		if ((conf->flags & GUC_NO_SHOW_ALL) ||
 			((conf->flags & GUC_SUPERUSER_ONLY) &&
-			 !is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS)))
+			 !is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS)))
 			continue;
 
 		/* assign to the values array */
@@ -9465,7 +9465,7 @@ get_explain_guc_options(int *num)
 		/* return only options visible to the user */
 		if ((conf->flags & GUC_NO_SHOW_ALL) ||
 			((conf->flags & GUC_SUPERUSER_ONLY) &&
-			 !is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS)))
+			 !is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS)))
 			continue;
 
 		/* only parameters explicitly marked for inclusion in explain */
@@ -9512,7 +9512,7 @@ GetConfigOptionByName(const char *name, const char **varname, bool missing_ok)
 	}
 
 	if ((record->flags & GUC_SUPERUSER_ONLY) &&
-		!is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS))
+		!is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser or a member of pg_read_all_settings to examine \"%s\"",
@@ -9543,7 +9543,7 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 	{
 		if ((conf->flags & GUC_NO_SHOW_ALL) ||
 			((conf->flags & GUC_SUPERUSER_ONLY) &&
-			 !is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS)))
+			 !is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS)))
 			*noshow = true;
 		else
 			*noshow = false;
@@ -9738,7 +9738,7 @@ GetConfigOptionByNum(int varnum, const char **values, bool *noshow)
 	 * insufficiently-privileged users.
 	 */
 	if (conf->source == PGC_S_FILE &&
-		is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS))
+		is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_SETTINGS))
 	{
 		values[14] = conf->sourcefile;
 		snprintf(buffer, sizeof(buffer), "%d", conf->sourceline);

@@ -658,7 +658,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 		/* Values only available to role member or pg_read_all_stats */
 		if (has_privs_of_role(GetUserId(), beentry->st_userid) ||
-			is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_STATS))
+			is_member_of_role(GetUserId(), ROLE_PG_READ_ALL_STATS))
 		{
 			SockAddr	zero_clientaddr;
 			char	   *clipped_activity;
