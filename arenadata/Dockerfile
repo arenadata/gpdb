@@ -13,7 +13,7 @@ RUN rm -rf /opt/cmake* \
                     wget \
     && yum clean all \
     && ln -s /usr/bin/cmake3 /usr/bin/cmake \
-    && ln -s /usr/bin/ctest3 /usr/bin/ctest && \
+    && ln -s /usr/bin/ctest3 /usr/bin/ctest \
     && pip install conan
 
 WORKDIR /home/gpadmin
