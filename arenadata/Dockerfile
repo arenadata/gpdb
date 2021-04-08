@@ -31,12 +31,13 @@ ENV TARGET_OS_VERSION=7
 ENV TARGET_OS=centos
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--with-gssapi --enable-debug --enable-depend \
-    --with-libraries=/home/gpadmin/gpdb_src/depends/build/lib \
-    --with-includes=/home/gpadmin/gpdb_src/depends/build/include"
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/gpadmin/gpdb_src/depends/build/lib:/usr/lib64/:/usr/local/lib
+    --with-libraries=/home/gpadmin/bin_orca/lib \
+    --with-includes=/home/gpadmin/bin_orca/include"
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/gpadmin/bin_orca/lib:/usr/lib64:/usr/local/lib
 
 # Build ORCA
-RUN mkdir bin_orca && /home/gpadmin/gpdb_src/concourse/scripts/build_orca.py
+RUN ln -s gpdb_src/add_libs/gporca orca_src \
+    && gpdb_src/add_libs/gporca/concourse/build_and_test.py --output_dir=bin_orca --skiptests
 
 # Compile with running mocking tests
 RUN source /opt/gcc_env.sh && \
@@ -49,12 +50,10 @@ RUN rm -rf gpdb_src/.git/
 FROM base as test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
-COPY --from=build /home/gpadmin/bin_orca /home/gpadmin/bin_orca
+COPY --from=build /home/gpadmin/bin_orca/ /usr/local/greenplum-db-devel
 
-RUN tar -xzf *.tar.gz -С /home/gpadmin/bin_orca \
-    && echo -e '/usr/local/lib\n\
-       /opt/gcc-6.2.0/lib64\n\
-       /home/gpadmin/bin_orca/lib\n' >> /etc/ld.so.conf && ldconfig
+RUN echo -e '/usr/local/lib\n\
+    /opt/gcc-6.2.0/lib64\n\' >> /etc/ld.so.conf && ldconfig
 
 # Volume for tests output
 VOLUME /home/gpadmin/gpdb_src/src/test
