@@ -153,15 +153,15 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
-					Oid *foundOid, PartitionRule **prule, Oid exprTypid);
+					Oid *foundOid, PartitionRule **prule);
 static Oid get_less_than_oper(Oid lhstypid, Oid rhstypid, bool strictlyless);
 static FmgrInfo *get_less_than_comparator(int keyno, PartitionRangeState *rs, Oid ruleTypeOid, Oid exprTypeOid, bool strictlyless, bool is_direct);
-static int range_test(Datum tupval, Oid ruleTypeOid, Oid exprTypeOid, PartitionRangeState *rs, int keyno,
+static int range_test(Datum tupval, Oid exprTypeOid, PartitionRangeState *rs, int keyno,
 		   PartitionRule *rule);
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
-					 Oid *foundOid, int *pSearch, PartitionRule **prule, Oid exprTypid);
+					 Oid *foundOid, int *pSearch, PartitionRule **prule);
 static PartitionNode *
 selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
@@ -3760,12 +3760,10 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
  *	accessMethods: PartitionAccessMethods
  *	foundOid: output parameter for matched part Oid
  *	prule: output parameter for matched part PartitionRule
- *	exprTypeOid: type of the expression used to select partition
  */
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *foundOid, PartitionRule **prule,
-					Oid exprTypeOid)
+					TupleDesc tupdesc, PartitionAccessMethods *accessMethods, Oid *foundOid, PartitionRule **prule)
 {
 	ListCell *lc;
 	Partition *part = partnode->part;
@@ -3856,20 +3854,15 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 						 * So lhstypid = type(expr) and rhstypeid = type(rule)
 						 */
 
-						/* The tupdesc tuple descriptor matches the table schema, so it has the rule type */
-						Oid rhstypid = tupdesc->attrs[attno - 1]->atttypid;
-
 						/*
-						 * exprTypeOid is passed to us from our caller which evaluated the expression.
-						 * In some cases (e.g legacy optimizer doing explicit casting), we don't compute
-						 * specify exprTypeOid.
-						 * Assume lhstypid = rhstypid in those cases
+						 * Type of rule is in fact the type of const inside the
+                         * rule object.
+                         * Type of expr is defined by attribute in tuple
+                         * descriptor whose number corresponds to current
+                         * partitioning key in partitioned table
 						 */
-						Oid lhstypid = exprTypeOid;
-						if (!OidIsValid(lhstypid))
-						{
-							lhstypid = rhstypid;
-						}
+						Oid rhstypid = c->consttype;
+						Oid lhstypid = tupdesc->attrs[attno - 1]->atttypid;
 
 						List *opname = list_make2(makeString("pg_catalog"),
 												  makeString("="));
@@ -4010,16 +4003,15 @@ get_less_than_comparator(int keyno, PartitionRangeState *rs, Oid ruleTypeOid, Oi
  *
  *  Input parameters:
  *    tupval: The value of the expression
- *    ruleTypeOid: The type of the partition rule boundaries
- *    exprTypeOid: The type of the expression (can be different from ruleTypeOid
- *      if types can be directly compared with each other)
+ *    exprTypeOid: The type of the expression (can be different from the type of
+ *      rule if types can be directly compared with each other)
  *    rs: The partition range state
  *    keyno: The index of the partitioning key considered (for composite partitioning keys)
  *    rule: The rule whose boundaries we're testing
  *
  */
 static int
-range_test(Datum tupval, Oid ruleTypeOid, Oid exprTypeOid, PartitionRangeState *rs, int keyno,
+range_test(Datum tupval, Oid exprTypeOid, PartitionRangeState *rs, int keyno,
 		   PartitionRule *rule)
 {
 	Const *c = NULL;
@@ -4044,7 +4036,7 @@ range_test(Datum tupval, Oid ruleTypeOid, Oid exprTypeOid, PartitionRangeState *
 		 *   If rule->parrangestartincl, we request for comparator ruleVal <= exprVal ( ==> strictly_less = false)
 		 *   Otherwise, we request comparator ruleVal < exprVal ( ==> strictly_less = true)
 		 */
-		finfo = get_less_than_comparator(keyno, rs, ruleTypeOid, exprTypeOid, !rule->parrangestartincl /* strictly_less */, false /* is_direct */);
+		finfo = get_less_than_comparator(keyno, rs, c->consttype, exprTypeOid, !rule->parrangestartincl /* strictly_less */, false /* is_direct */);
 		res = FunctionCall2(finfo, c->constvalue, tupval);
 
 		if (!DatumGetBool(res))
@@ -4065,7 +4057,7 @@ range_test(Datum tupval, Oid ruleTypeOid, Oid exprTypeOid, PartitionRangeState *
 		 *   If rule->parrangeendincl, we request for comparator exprVal <= ruleVal ( ==> strictly_less = false)
 		 *   Otherwise, we request comparator exprVal < ruleVal ( ==> strictly_less = true)
 		 */
-		finfo = get_less_than_comparator(keyno, rs, ruleTypeOid, exprTypeOid, !rule->parrangeendincl /* strictly_less */, true /* is_direct */);
+		finfo = get_less_than_comparator(keyno, rs, c->consttype, exprTypeOid, !rule->parrangeendincl /* strictly_less */, true /* is_direct */);
 		res = FunctionCall2(finfo, tupval, c->constvalue);
 
 		if (!DatumGetBool(res))
@@ -4077,13 +4069,14 @@ range_test(Datum tupval, Oid ruleTypeOid, Oid exprTypeOid, PartitionRangeState *
 }
 
 /*
- * Given a partition specific part, a tuple as represented by values and isnull and
- * a list of rules, return an Oid in *foundOid or the next set of rules.
+ * Given a partition specific part, a tuple as represented by values, isnull and
+ * tupdesc tuple descriptor and a list of rules.
+ * Return an Oid in *foundOid or the next set of rules.
  */
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					 TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
-					 Oid *foundOid, int *pSearch, PartitionRule **prule, Oid exprTypeOid)
+					 Oid *foundOid, int *pSearch, PartitionRule **prule)
 {
 	List *rules = partnode->rules;
 	int high = list_length(rules) - 1;
@@ -4097,8 +4090,6 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	MemoryContext oldcxt = NULL;
 
 	Assert(partnode->part->parkind == 'r');
-	/* For composite partitioning keys, exprTypeOid should always be InvalidOid */
-	AssertImply(partnode->part->parnatts > 1, !OidIsValid(exprTypeOid));
 
 	if (accessMethods && accessMethods->amstate[partnode->part->parlevel])
 		rs = (PartitionRangeState *)accessMethods->amstate[partnode->part->parlevel];
@@ -4177,6 +4168,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		AttrNumber attno = partnode->part->paratts[0];
 		Datum exprValue = values[attno - 1];
 		int ret;
+		Oid exprTypeOid = tupdesc->attrs[attno - 1]->atttypid;
 
 		mid = low + (high - low)/2;
 
@@ -4191,19 +4183,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			goto l_fin_range;
 		}
 
-		Oid ruleTypeOid = tupdesc->attrs[attno - 1]->atttypid;
-		if (OidIsValid(exprTypeOid))
-		{
-			ret = range_test(exprValue, ruleTypeOid, exprTypeOid, rs, 0, rule);
-		}
-		else
-		{
-			/*
-			 * In some cases, we don't have an expression type oid. In those cases, the expression and
-			 * partition rules have the same type.
-			 */
-			ret = range_test(exprValue, ruleTypeOid, ruleTypeOid, rs, 0, rule);
-		}
+		ret = range_test(exprValue, exprTypeOid, rs, 0, rule);
 
 		if (ret > 0)
 		{
@@ -4250,6 +4230,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				AttrNumber attno = partnode->part->paratts[i];
 				Datum d = values[attno - 1];
 				int ret;
+				Oid dTypeOid = tupdesc->attrs[attno - 1]->atttypid;
 
 				if (j != mid)
 					rule = (PartitionRule *)list_nth(rules, j);
@@ -4260,11 +4241,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					goto l_fin_range;
 				}
 
-				Oid ruleTypeOid = tupdesc->attrs[attno - 1]->atttypid;
-				/* For composite partition keys, we don't support casting comparators, so both sides must be of identical types */
-				Assert(!OidIsValid(exprTypeOid));
-				ret = range_test(d, ruleTypeOid, ruleTypeOid,
-								 rs, i, rule);
+				ret = range_test(d, dTypeOid, rs, i, rule);
 				if (ret != 0)
 				{
 					matched = false;
@@ -4307,6 +4284,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				AttrNumber attno = partnode->part->paratts[i];
 				Datum d = values[attno - 1];
 				int ret;
+				Oid dTypeOid = tupdesc->attrs[attno - 1]->atttypid;
 
 				rule = (PartitionRule *)list_nth(rules, j);
 
@@ -4316,10 +4294,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					goto l_fin_range;
 				}
 
-				Oid ruleTypeOid = tupdesc->attrs[attno - 1]->atttypid;
-				/* For composite partition keys, we don't support casting comparators, so both sides must be of identical types */
-				Assert(!OidIsValid(exprTypeOid));
-				ret = range_test(d, ruleTypeOid, ruleTypeOid, rs, i, rule);
+				ret = range_test(d, dTypeOid, rs, i, rule);
 				if (ret != 0)
 				{
 					matched = false;
@@ -4425,9 +4400,11 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * selectPartition1()
  *
  * Given pdata and prules, try and find a suitable partition for the input key.
- * values is an array of datums representing the partitioning key, isnull
- * tells us which of those is NULL. pSearch allows the caller to get the
- * position in the partition range where the key falls (might be hypothetical).
+ * values is an array of datums containing input search values, isnull tells us
+ * which of those is NULL, tupdesc specifies types of values in values and
+ * isnull.
+ * pSearch allows the caller to get the position in the partition range where
+ * the key falls (might be hypothetical).
  */
 static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
@@ -4448,7 +4425,7 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	{
 		case 'r': /* range */
 			pn = selectRangePartition(partnode, values, isnull, tupdesc,
-									  accessMethods, &relid, pSearch, &prule, InvalidOid);
+									  accessMethods, &relid, pSearch, &prule);
 			break;
 		case 'h': /* hash */
 			pn = selectHashPartition(partnode, values, isnull, tupdesc,
@@ -4456,7 +4433,7 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 			break;
 		case 'l': /* list */
 			pn = selectListPartition(partnode, values, isnull, tupdesc,
-									 accessMethods, &relid, &prule, InvalidOid);
+									 accessMethods, &relid, &prule);
 			break;
 		default:
 			elog(ERROR, "unrecognized partitioning kind '%c'",
@@ -4522,14 +4499,12 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * values, isnull: datum values to search for parts
  * tupdesc: TupleDesc for retrieving values
  * accessMethods: PartitionAccessMethods
- * exprTypid: the type of the datum
  *
  * return: PartitionRule of which constraints match the input key
  */
 PartitionRule*
 get_next_level_matched_partition(PartitionNode *partnode, Datum *values, bool *isnull,
-								TupleDesc tupdesc, PartitionAccessMethods *accessMethods,
-								Oid exprTypid)
+								TupleDesc tupdesc, PartitionAccessMethods *accessMethods)
 {
 	Oid relid = InvalidOid;
 	Partition *part = partnode->part;
@@ -4540,11 +4515,11 @@ get_next_level_matched_partition(PartitionNode *partnode, Datum *values, bool *i
 	{
 		case 'r': /* range */
 			selectRangePartition(partnode, values, isnull, tupdesc,
-								accessMethods, &relid, NULL, &prule, exprTypid);
+								accessMethods, &relid, NULL, &prule);
 			break;
 		case 'l': /* list */
 			selectListPartition(partnode, values, isnull, tupdesc,
-								accessMethods, &relid, &prule, exprTypid);
+								accessMethods, &relid, &prule);
 			break;
 		default:
 			elog(ERROR, "unrecognized partitioning kind '%c'",
