@@ -3,26 +3,26 @@
 --
 -- Given distributed table
 create table subplan_motion_t
-(user_id bigint NOT NULL) DISTRIBUTED BY (user_id);
+(a bigint NOT NULL) DISTRIBUTED BY (a);
 -- with constraint
-alter table only subplan_motion_t add constraint users_choose_tidscan_pkey primary key (user_id);
+alter table only subplan_motion_t add constraint users_choose_tidscan_pkey primary key (a);
 NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "subplan_motion_t_pkey" for table "subplan_motion_t"
 -- and some data
 insert into subplan_motion_t
 select gen from generate_series(1, 20000) gen;
 -- Check that Index Scan is not used
-select cte."userId" from (select 7 as "userId" ) cte
-where(select u.user_id from (select * from subplan_motion_t) u
-      where u.user_id = cte."userId") is not null;
- userId
---------
-      7
+select cte."b" from (select 7 as "b" ) cte
+where(select u.a from (select * from subplan_motion_t) u
+      where u.a = cte."b") is not null;
+ b
+---
+ 7
 (1 row)
 
 -- Plan
-explain select cte."userId" from (select 7 as "userId" ) cte
-where(select u.user_id from (select * from subplan_motion_t) u
-      where u.user_id = cte."userId") is not null;
+explain select cte."b" from (select 7 as "b" ) cte
+where(select u.a from (select * from subplan_motion_t) u
+      where u.a = cte."b") is not null;
                                                        QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------
  Result  (cost=0.00..447546.78 rows=1 width=4)
@@ -31,30 +31,30 @@ where(select u.user_id from (select * from subplan_motion_t) u
          ->  Result  (cost=0.00..0.00 rows=1 width=1)
    SubPlan 1
      ->  Result  (cost=0.00..6.00 rows=1 width=8)
-           Filter: user_id = $0
+           Filter: a = $0
            ->  Materialize  (cost=0.00..6.00 rows=1 width=8)
                  ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..6.00 rows=1 width=8)
                        ->  Index Scan using subplan_motion_t_pkey on subplan_motion_t  (cost=0.00..6.00 rows=1 width=8)
-                             Index Cond: user_id = 7
+                             Index Cond: a = 7
  Settings:  optimizer=on
  Optimizer status: PQO version 3.114.2
 (13 rows)
 
 -- Check that TID Scan is not used
-select cte."userId" from (select 7 as "userId" ) cte
-where(select u.user_id from (select * from subplan_motion_t
-                             where ctid = (select ctid from subplan_motion_t where user_id = 7)) u
-      where u.user_id = cte."userId") is not null;
- userId
---------
-      7
+select cte."b" from (select 7 as "b" ) cte
+where(select u.a from (select * from subplan_motion_t
+                             where ctid = (select ctid from subplan_motion_t where a = 7)) u
+      where u.a = cte."b") is not null;
+ b
+---
+ 7
 (1 row)
 
 -- Plan
-explain select cte."userId" from (select 7 as "userId" ) cte
-where(select u.user_id from (select * from subplan_motion_t
-                             where ctid = (select ctid from subplan_motion_t where user_id = 7)) u
-      where u.user_id = cte."userId") is not null;
+explain select cte."b" from (select 7 as "b" ) cte
+where(select u.a from (select * from subplan_motion_t
+                             where ctid = (select ctid from subplan_motion_t where a = 7)) u
+      where u.a = cte."b") is not null;
                                                                     QUERY PLAN
 --------------------------------------------------------------------------------------------------------------------------------------------------
  Result  (cost=0.00..464961450.41 rows=1 width=4)
@@ -63,19 +63,19 @@ where(select u.user_id from (select * from subplan_motion_t
          ->  Result  (cost=0.00..0.00 rows=1 width=1)
    SubPlan 2
      ->  Result  (cost=0.00..453632.86 rows=1 width=8)
-           Filter: public.subplan_motion_t.user_id = $0
+           Filter: public.subplan_motion_t.a = $0
            ->  Materialize  (cost=0.00..453632.86 rows=1 width=8)
                  ->  Gather Motion 3:1  (slice2; segments: 3)  (cost=0.00..453632.86 rows=1 width=8)
                        ->  Result  (cost=0.00..453632.86 rows=1 width=8)
                              ->  Result  (cost=0.00..453632.86 rows=1 width=8)
                                    Filter: public.subplan_motion_t.ctid = ((subplan))
                                    ->  Index Scan using subplan_motion_t_pkey on subplan_motion_t  (cost=0.00..6.00 rows=1 width=14)
-                                         Index Cond: user_id = 7
+                                         Index Cond: a = 7
                                    SubPlan 1
                                      ->  Materialize  (cost=0.00..6.00 rows=1 width=6)
                                            ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..6.00 rows=1 width=6)
                                                  ->  Index Scan using subplan_motion_t_pkey on subplan_motion_t  (cost=0.00..6.00 rows=1 width=6)
-                                                       Index Cond: user_id = 7
+                                                       Index Cond: a = 7
  Settings:  optimizer=on
  Optimizer status: PQO version 3.114.2
 (21 rows)
@@ -83,18 +83,18 @@ where(select u.user_id from (select * from subplan_motion_t
 set enable_indexscan = off;
 set enable_bitmapscan = on;
 -- Check that Bitmap Scan is not used
-select cte."userId" from (select 7 as "userId" ) cte
-where(select u.user_id from (select * from subplan_motion_t) u
-      where u.user_id = cte."userId") is not null;
- userId
---------
-      7
+select cte."b" from (select 7 as "b" ) cte
+where(select u.a from (select * from subplan_motion_t) u
+      where u.a = cte."b") is not null;
+ b
+---
+ 7
 (1 row)
 
 -- Plan
-explain select cte."userId" from (select 7 as "userId" ) cte
-        where(select u.user_id from (select * from subplan_motion_t) u
-              where u.user_id = cte."userId") is not null;
+explain select cte."b" from (select 7 as "b" ) cte
+        where(select u.a from (select * from subplan_motion_t) u
+              where u.a = cte."b") is not null;
                                                        QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------
  Result  (cost=0.00..447546.78 rows=1 width=4)
@@ -103,11 +103,11 @@ explain select cte."userId" from (select 7 as "userId" ) cte
          ->  Result  (cost=0.00..0.00 rows=1 width=1)
    SubPlan 1
      ->  Result  (cost=0.00..6.00 rows=1 width=8)
-           Filter: user_id = $0
+           Filter: a = $0
            ->  Materialize  (cost=0.00..6.00 rows=1 width=8)
                  ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..6.00 rows=1 width=8)
                        ->  Index Scan using subplan_motion_t_pkey on subplan_motion_t  (cost=0.00..6.00 rows=1 width=8)
-                             Index Cond: user_id = 7
+                             Index Cond: a = 7
  Settings:  enable_bitmapscan=on; enable_indexscan=off; optimizer=on
  Optimizer status: PQO version 3.114.2
  (13 rows)
