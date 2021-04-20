@@ -353,7 +353,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	}
 
 	/* Consider sequential scan */
-	if (root->config->enable_seqscan)
+	if (enable_seqscan)
 		pathlist = lappend(pathlist, seqpath);
 
 	/* TODO: this might have been too ambitious of a re-ordering */
@@ -378,9 +378,9 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		rel->relstorage == RELSTORAGE_AOCOLS)
 		indexpathlist = NIL;
 
-	if (indexpathlist && root->config->enable_indexscan)
+	if (indexpathlist && enable_indexscan)
 		pathlist = list_concat(pathlist, indexpathlist);
-	if (bitmappathlist && root->config->enable_bitmapscan)
+	if (bitmappathlist && enable_bitmapscan)
 		pathlist = list_concat(pathlist, bitmappathlist);
 
 	/*
@@ -391,7 +391,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		rel->relstorage == RELSTORAGE_AOCOLS)
 		tidpathlist = NIL;
 
-	if (tidpathlist && root->config->enable_tidscan)
+	if (tidpathlist && enable_tidscan)
 		pathlist = list_concat(pathlist, tidpathlist);
 
 	/* If no enabled path was found, consider disabled paths. */

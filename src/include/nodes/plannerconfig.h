@@ -13,10 +13,6 @@
  */
 typedef struct PlannerConfig
 {
-	bool		enable_seqscan;
-	bool		enable_indexscan;
-	bool		enable_bitmapscan;
-	bool		enable_tidscan;
 	bool		enable_sort;
 	bool		enable_hashagg;
 	bool		enable_groupagg;
@@ -42,7 +38,6 @@ typedef struct PlannerConfig
 	bool		gp_eager_two_phase_agg;
 	bool        gp_enable_groupext_distinct_pruning;
 	bool        gp_enable_groupext_distinct_gather;
-	bool		gp_enable_sort_limit;
 	bool		gp_enable_sort_distinct;
 	bool		gp_enable_mk_sort;
 	bool		gp_enable_motion_mk_sort;

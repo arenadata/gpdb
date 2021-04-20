@@ -498,10 +498,6 @@ PlannerConfig *DefaultPlannerConfig(void)
 {
 	PlannerConfig *c1 = (PlannerConfig *) palloc(sizeof(PlannerConfig));
 	c1->cdbpath_segments = planner_segment_count();
-	c1->enable_seqscan = enable_seqscan;
-	c1->enable_indexscan = enable_indexscan;
-	c1->enable_bitmapscan = enable_bitmapscan;
-	c1->enable_tidscan = enable_tidscan;
 	c1->enable_sort = enable_sort;
 	c1->enable_hashagg = enable_hashagg;
 	c1->enable_groupagg = enable_groupagg;
@@ -526,7 +522,6 @@ PlannerConfig *DefaultPlannerConfig(void)
 	c1->gp_eager_two_phase_agg = gp_eager_two_phase_agg;
 	c1->gp_enable_groupext_distinct_pruning = gp_enable_groupext_distinct_pruning;
 	c1->gp_enable_groupext_distinct_gather = gp_enable_groupext_distinct_gather;
-	c1->gp_enable_sort_limit = gp_enable_sort_limit;
 	c1->gp_enable_sort_distinct = gp_enable_sort_distinct;
 	c1->gp_enable_mk_sort = gp_enable_mk_sort;
 	c1->gp_enable_motion_mk_sort = gp_enable_motion_mk_sort;
