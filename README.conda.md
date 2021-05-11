@@ -1,5 +1,7 @@
 # Steps to build plpython with Anaconda
 
+
+
 Anaconda (https://www.continuum.io/) is an excellent Python distribution for
 machine learning and analytics which also provide its own package
 tracking/management tools. GPDB support plpython which can make use of all
