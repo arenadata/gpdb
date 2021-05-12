@@ -816,11 +816,6 @@ EXPLAIN SELECT * FROM part_tbl WHERE profile_key = 99999999;
 SELECT * FROM part_tbl WHERE profile_key = 99999999;
 DROP TABLE part_tbl;
 
--- CLEANUP
--- start_ignore
-drop schema if exists bfv_partition;
--- end_ignore
-
 
 ---
 --- Test dynamic partition selector based on projection of input tuple (postgres
@@ -828,7 +823,7 @@ drop schema if exists bfv_partition;
 --- types with partitioning keys (e.g., date and timestamp)
 ---
 
--- SETUP
+-- Setup
 -- We have to register zero planning statistics for tables below to achieve
 -- desired query plan further
 SET optimizer TO off;
@@ -877,7 +872,7 @@ CREATE TABLE t_inner_to_multijoin (b1 date, b2 date);
 ANALYZE t_inner_to_multijoin;
 INSERT INTO t_inner_to_multijoin VALUES ('2020-07-01', '2020-07-01');
 
--- RUN
+-- Run
 -- Plan has to contain Dynamic Scan in terms of Result node with appropriate
 -- Partition Selector under join:
 --    ->  Nested Loop
@@ -914,10 +909,16 @@ SELECT COUNT(*) FROM (
 ) tf, t_multilist
 WHERE t_multilist.b1 = tf.b1 AND t_multilist.b2 = tf.b2;
 
--- CLEANUP
+-- Cleanup
 DROP TABLE t_list;
 DROP TABLE t_range;
 DROP TABLE t_multilist;
 DROP TABLE t_inner_to_join;
 DROP TABLE t_inner_to_multijoin;
 RESET optimizer;
+
+
+-- CLEANUP
+-- start_ignore
+drop schema if exists bfv_partition;
+-- end_ignore
