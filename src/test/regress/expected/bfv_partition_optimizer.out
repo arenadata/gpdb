@@ -1941,6 +1941,8 @@ DROP TABLE part_tbl;
 --- types with partitioning keys (e.g., date and timestamp)
 ---
 -- Setup
+-- We have to register zero planning statistics for tables below to achieve
+-- desired query plan further
 SET optimizer TO off;
 CREATE TABLE t_list (a int, b timestamp)
 PARTITION BY LIST (b) (
@@ -1951,6 +1953,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "t_list_1_prt_t_list_1" for table "t_list"
 NOTICE:  CREATE TABLE will create partition "t_list_1_prt_t_list_2" for table "t_list"
+ANALYZE t_list;
 INSERT INTO t_list
 SELECT floor(random() * 1000), ts
 FROM generate_series(1, 1000),
@@ -1963,6 +1966,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "t_range_1_prt_1" for table "t_range"
 NOTICE:  CREATE TABLE will create partition "t_range_1_prt_2" for table "t_range"
+ANALYZE t_range;
 INSERT INTO t_range
 SELECT gen, period
 FROM generate_series(1, 1000) gen,
@@ -1980,6 +1984,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "t_multilist_1_prt_t_multilist_1" for table "t_multilist"
 NOTICE:  CREATE TABLE will create partition "t_multilist_1_prt_t_multilist_2" for table "t_multilist"
+ANALYZE t_multilist;
 INSERT INTO t_multilist
 SELECT floor(random() * 1000), ts, ts
 FROM generate_series(1, 1000),
@@ -1987,10 +1992,12 @@ FROM generate_series(1, 1000),
 CREATE TABLE t_inner_to_join (b date);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'b' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ANALYZE t_inner_to_join;
 INSERT INTO t_inner_to_join VALUES ('2020-07-01');
 CREATE TABLE t_inner_to_multijoin (b1 date, b2 date);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'b1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ANALYZE t_inner_to_multijoin;
 INSERT INTO t_inner_to_multijoin VALUES ('2020-07-01', '2020-07-01');
 -- Run
 -- Plan has to contain Dynamic Scan in terms of Result node with appropriate
