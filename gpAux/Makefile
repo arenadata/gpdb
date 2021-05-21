@@ -149,23 +149,14 @@ DEBUGFLAGS="$(strip $(BLD_CFLAGS) $(CFLAGS_OPT) $(DEBUG_CFLAGS_OPT))"
 DEFPORT=5432
 
 ORCA_CONFIG=--enable-orca
-#ifneq "$(findstring $(BLD_ARCH),win32 win64)" ""
-#APR_CONFIG=--with-apr-config=$(GPPGDIR)/src/bin/gpfdist/ext/bin/apr-1-config
-#OPENSSL=openssl-1.0.2l
-#BLD_THIRDPARTY_OPENSSL_INCLUDES=-I$(GPPGDIR)/src/bin/gpfdist/ext/$(OPENSSL)/include
-#else
-#APR_CONFIG=--with-apr-config=$(BLD_THIRDPARTY_BIN_DIR)/apr-1-config
-#endif
-
-#APU_CONFIG=--with-apu-config=$(BLD_THIRDPARTY_BIN_DIR)/apu-1-config
 
 aix7_ppc_64_CONFIGFLAGS=--disable-gpcloud --without-readline --without-libcurl --disable-orca $(APR_CONFIG)
 win32_CONFIGFLAGS=--with-gssapi --without-libcurl --disable-orca --disable-gpcloud $(APR_CONFIG)
 sol10_x86_64_CONFIGFLAGS=--enable-snmp --with-libxml $(APR_CONFIG)
 rhel5_x86_32_CONFIGFLAGS=--host=i686-pc-linux-gnu --enable-snmp --enable-ddboost --with-gssapi --enable-netbackup --with-libxml $(APR_CONFIG)
-rhel5_x86_64_CONFIGFLAGS=--enable-snmp --enable-gpperfmon --with-gssapi --with-libxml $(APR_CONFIG) $(APU_CONFIG)
-rhel6_x86_64_CONFIGFLAGS=--enable-snmp --enable-tap-tests --enable-gpperfmon --with-gssapi --enable-mapreduce --with-libxml $(APR_CONFIG) $(APU_CONFIG)
-rhel7_x86_64_CONFIGFLAGS=--enable-snmp --enable-tap-tests --enable-gpperfmon --with-gssapi --enable-mapreduce --with-libxml $(APR_CONFIG) $(APU_CONFIG)
+rhel5_x86_64_CONFIGFLAGS=--enable-snmp --enable-gpperfmon --with-gssapi ${ORCA_CONFIG} --with-libxml $(APR_CONFIG) $(APU_CONFIG)
+rhel6_x86_64_CONFIGFLAGS=--enable-snmp --enable-tap-tests --enable-gpperfmon --with-gssapi --enable-mapreduce ${ORCA_CONFIG} --with-libxml $(APR_CONFIG) $(APU_CONFIG)
+rhel7_x86_64_CONFIGFLAGS=--enable-snmp --enable-tap-tests --enable-gpperfmon --with-gssapi --enable-mapreduce ${ORCA_CONFIG} --with-libxml $(APR_CONFIG) $(APU_CONFIG)
 #suse10_x86_64_CONFIGFLAGS=--enable-snmp --enable-ddboost --enable-gpperfmon --with-gssapi ${ORCA_CONFIG} --with-libxml $(APR_CONFIG) $(APU_CONFIG)
 #suse11_x86_64_CONFIGFLAGS=--enable-snmp --enable-ddboost --enable-gpperfmon --with-gssapi ${ORCA_CONFIG} --with-libxml $(APR_CONFIG) $(APU_CONFIG)
 #sles11_x86_64_CONFIGFLAGS=--enable-snmp --enable-ddboost --enable-gpperfmon --with-gssapi ${ORCA_CONFIG} --with-libxml $(APR_CONFIG) $(APU_CONFIG)
@@ -206,27 +197,15 @@ aix5_ppc_32_PTHREADS_LIB_DIR=/usr/lib/threads
 aix7_ppc_64_PTHREADS_LIB_DIR=/usr/lib/threads
 BLD_PTHREADS_LIB_DIR=$($(BLD_ARCH)_PTHREADS_LIB_DIR)
 
-ifdef ADDON_DIR
-ADDON_CONFIG_INCLUDES=$(BLD_TOP)/$(ADDON_DIR)/src/include
-endif
-# Configure in thirdparty libraries from the ext/ directory
-CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR) $(BLD_THIRDPARTY_INCLUDE_DIR)/libxml2 $(ADDON_CONFIG_INCLUDES)
-CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR) $(BLD_PTHREADS_LIB_DIR))
-#CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
-
 # Configure in "authlibs"...
-# ...without an ext/ dir copy of curl-config on Tiger or AIX
-ifeq "$(findstring $(BLD_ARCH),aix7_ppc_64 aix5_ppc_64 aix5_ppc_32)" ""
-#BLD_CURL_CONFIG=CURL_CONFIG=$(BLD_THIRDPARTY_BIN_DIR)/curl-config
-endif
 # ...and do not include the authlibs on Windows or AIX
 ifeq "$(findstring $(BLD_ARCH),aix7_ppc_64 aix5_ppc_64 win32 win64)" ""
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(BLD_CURL_CONFIG) $(APR_CONFIG)
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap $(APR_CONFIG)
 endif
 
 # ...but do include some of the authlibs on AIX
 ifneq "$(findstring $(BLD_ARCH),aix7_ppc_64 aix5_ppc_32 aix5_ppc_64)" ""
-CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --with-ldap $(BLD_CURL_CONFIG)
+CONFIGFLAGS+= --with-openssl --with-pam --without-krb5 --with-ldap
 endif
 
 # Platform-specific config flags
@@ -257,8 +236,6 @@ endif
 # compile with relative rpath
 ifeq "$(findstring rhel,$(BLD_ARCH))" "rhel"
 CONFIGFLAGS+= --disable-rpath
-#CONFIGFLAGS+= LDFLAGS='-Wl,--enable-new-dtags -Wl,-rpath,\$$$$ORIGIN/../lib'
-#CONFIGFLAGS+= LDFLAGS_SL='-Wl,--enable-new-dtags -Wl,-rpath,\$$$$ORIGIN/../lib'
 endif
 
 RECONFIG :
@@ -976,83 +953,6 @@ endif
 
 libcopy=(cd $(1) && $(TAR) cf - $(2)) | (cd $(3) && $(TAR) xvf -)$(check_pipe_for_errors)
 
-#.PHONY: copy-nbu-libs
-
-#copy-nbu-libs:
-	#Copy NetBackup libs
-#ifeq ($(BLD_ARCH),$(filter $(BLD_ARCH),rhel7_x86_64 rhel6_x86_64 rhel5_x86_64))
-#	rm -f $(INSTLOC)/lib/libxbsa64.so;
-#	cp -fpr $(BLD_THIRDPARTY_LIB_DIR)/../Netbackup/nbu77 $(INSTLOC)/lib/;
-#endif
-
-#copylibs : thirdparty-dist copy-nbu-libs
-#	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
-#	if [ `uname -s` = 'Darwin' ] ; then \
-#	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
-#	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
-#	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-#	        if [ -f $(BLD_THIRDPARTY_LIB_DIR)/`basename $$lib` ]; then \
-#	            echo "cp -p $(BLD_THIRDPARTY_LIB_DIR)/`basename $$lib` $(INSTLOC)/lib/" ; \
-#	            cp -p $(BLD_THIRDPARTY_LIB_DIR)/`basename $$lib` $(INSTLOC)/lib/ ; \
-#	        else \
-#	            echo "cp -p $$lib $(INSTLOC)/lib/" ; \
-#	            cp -p $$lib $(INSTLOC)/lib/ ; \
-#	        fi ; \
-#	    done ; \
-#	fi
-#	if [ `uname -s` != 'Darwin' -a `uname -s` != 'AIX' ] ; then \
-#	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|curl|readline|numa' | awk '{print $$3}' | sort -u`; do \
-#	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
-#	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-#	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
-#	        cp -p $$lib $(INSTLOC)/lib ; \
-#	    done ; \
-#	fi
-#	if [ `uname -s` = 'AIX' ] ; then \
-#	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|curl|readline|numa' | awk -F\( '{print $$1}' | sort -u`; do \
-#	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
-#	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-#	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
-#	        cp -p $$lib $(INSTLOC)/lib ; \
-#	    done ; \
-#	    for lib in `ldd $(INSTLOC)/bin/gpfdist | egrep 'libbz2|libz' | awk -F\( '{print $$1}' | sort -u`; do \
-#	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
-#	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
-#	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
-#	        cp -p $$lib $(INSTLOC)/lib ; \
-#	    done ; \
-#	fi
-#	# Create the python directory to flag to build scripts that python has been handled
-#	mkdir -p $(INSTLOC)/ext/python
-#	@if [ ! -z "$(PYTHONHOME)" ]; then \
-#	    echo "Copying python, $(BLD_PYTHON_FILESET), from $(PYTHONHOME) into $(INSTLOC)/ext/python..."; \
-#	    (cd $(PYTHONHOME) && $(TAR) cf - $(BLD_PYTHON_FILESET)) | (cd $(INSTLOC)/ext/python/ && $(TAR) xpf -); \
-#		echo "...DONE"; \
-#	else \
-#	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
-#	fi
-#	mkdir -p $(INSTLOC)/etc
-#	mkdir -p $(INSTLOC)/include
-#ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 aix5_ppc_64 aix7_ppc_64 win32 win64)" ""
-	# Copy curl header file
-#	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/curl $(INSTLOC)/include/
-#endif
-#ifeq "$(findstring $(BLD_ARCH),aix5_ppc_32 win32 win64)" ""
-#ifneq "$(BLD_ARCH)" "osx104_x86"
-#	cp -rp $(BLD_THIRDPARTY_BIN_DIR)/openssl $(INSTLOC)/bin/
-#	cp -rp $(BLD_THIRDPARTY_INCLUDE_DIR)/openssl $(INSTLOC)/include/
-#	cp -rp $(BLD_THIRDPARTY_DIR)/ssl/openssl.cnf $(INSTLOC)/etc/
-#else
-#	cp -rp /usr/bin/openssl $(INSTLOC)/bin/
-#	cp -rp /usr/include/openssl $(INSTLOC)/include/
-#	cp -rp /System/Library/OpenSSL/openssl.cnf $(INSTLOC)/etc/
-#endif
-#endif
-
-#ifeq "$(BLD_ARCH)" "win32"
-	# Copy kfw dlls
-#	cp -rp $(BLD_TOP)/ext/win32/kfw-3-2-2/lib/*dll $(INSTLOC)/lib/
-#endif
 
 greenplum_path:
 	mkdir -p $(INSTLOC)
@@ -1212,47 +1112,3 @@ GPPKG_ROOT_DIR = \
 	../contrib/pgcrypto \
 	$(NULL)
 endif
-
-#installcheck-gppkg:
-#	touch installcheck-gppkg.log
-#ifeq "$(findstring gppkg,$(BLD_TARGETS))" ""
-    # ---- build and packaging of gppkgs are currently disabled
-    # ---- set BLD_TARGETS="gppkg" to enable them.
-#else
-#ifeq "$(findstring $(BLD_ARCH),$(GPPKG_PLATFORMS))" ""
-#	@echo ""
-#	@echo "The gppkg build and packaging processes are not supported"
-#	@echo "on this platform: $(BLD_ARCH)"
-#	@echo ""
-#else
-#	@for root_gppkg in $(GPPKG_ROOT_DIR); do \
-#		echo "----------------------------------------------------------------------"; \
-#		echo "installing gppkg for $${root_gppkg}"; \
-#		echo "----------------------------------------------------------------------"; \
-#		source $$GPHOME/greenplum_path.sh && $(MAKE) -C $${root_gppkg}/package install BLD_ARCH=`$(BLD_TOP)/releng/set_bld_arch.sh` INSTLOC=$$GPHOME; \
-#		RET_VAL=$$? ; \
-#		if [ $$RET_VAL -ne 0 ] ; then \
-#			echo "Error running install: $${root_gppkg}" ; \
-#			exit $$RET_VAL; \
-#		fi; \
-#	done
-
-#	source $$GPHOME/greenplum_path.sh && gpstop -ar
-
-#	@for root_gppkg in $(GPPKG_ROOT_DIR); do \
-#		echo "----------------------------------------------------------------------"; \
-#		echo "running installcheck for $${root_gppkg}"; \
-#		echo "----------------------------------------------------------------------"; \
-#		installcheck_dir=""; \
-#		if [ -d "$${root_gppkg}/source" ]; then \
-#			installcheck_dir="source"; \
-#		fi; \
-#		source $$GPHOME/greenplum_path.sh && $(MAKE) -C $${root_gppkg}/$${installcheck_dir} installcheck >> installcheck-gppkg.log; \
-#		RET_VAL=$$? ; \
-#		if [ $$RET_VAL -ne 0 ] ; then \
-#			echo "Error running installcheck-gppkg : $${root_gppkg}/$${installcheck_dir}" ; \
-#			exit $$RET_VAL; \
-#		fi; \
-#	done
-#endif
-#endif

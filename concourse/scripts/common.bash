@@ -46,7 +46,5 @@ function make_cluster() {
 }
 
 function run_test() {
-  # is this particular python version giving us trouble?
-  #ln -s "$(pwd)/gpdb_src/gpAux/ext/rhel6_x86_64/python-2.7.12" /opt
   su - gpadmin -c "bash /opt/run_test.sh $(pwd)"
 }
