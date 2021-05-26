@@ -3217,7 +3217,6 @@ start_xact_command(void)
 
 		/* Start timeout for checking if the client has gone away if necessary. */
 		if (client_connection_check_interval > 0 &&
-			Gp_role != GP_ROLE_EXECUTE &&
 			IsUnderPostmaster &&
 			MyProcPort &&
 			!get_timeout_active(CLIENT_CONNECTION_CHECK_TIMEOUT))
