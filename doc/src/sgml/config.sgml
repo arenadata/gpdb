@@ -930,7 +930,9 @@ include_dir 'conf.d'
        <para>
         This option is currently available only on systems that support the
         non-standard <symbol>POLLRDHUP</symbol> extension to the
-        <symbol>poll</symbol> system call, including Linux.
+        <symbol>poll</symbol> system call, including Linux, or are able to
+        detect client disconnection using POLLHUP option defined by POSIX,
+        including OSX.
        </para>
        <para>
         If the value is specified without units, it is taken as milliseconds.
