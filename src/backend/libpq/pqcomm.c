@@ -2090,11 +2090,10 @@ pq_setkeepalivescount(int count, Port *port)
 bool
 pq_check_connection(void)
 {
-#if defined(POLLRDHUP) || defined(__darwin__)
+#if defined(POLLRDHUP)
 	/*
 	 * POLLRDHUP is a Linux extension to poll(2) to detect sockets closed by the
-	 * other end. OSX is able to make the same detection via POSIX-compliant
-	 * POLLHUP option.
+	 * other end.
 	 * We don't have a portable way to do that without actually trying to read
 	 * or write data on other systems. We don't want to read because that would
 	 * be confused by pipelined queries and COPY data. Perhaps in future we'll
@@ -2104,11 +2103,8 @@ pq_check_connection(void)
 	int         rc;
 
 	pollfd.fd = MyProcPort->sock;
-#ifdef POLLRDHUP
 	pollfd.events = POLLOUT | POLLIN | POLLRDHUP;
-#else
-	pollfd.events = POLLOUT | POLLIN;
-#endif
+
 	pollfd.revents = 0;
 
 	rc = poll(&pollfd, 1, 0);
@@ -2120,11 +2116,30 @@ pq_check_connection(void)
 				 errmsg("could not poll socket: %m")));
 		return false;
 	}
-#ifdef POLLRDHUP
 	else if (rc == 1 && (pollfd.revents & (POLLHUP | POLLRDHUP)))
-#else
+		return false;
+#elif defined(__darwin__)
+	/*
+	 * OSX is able to detect closed sockets via POSIX-compliant POLLHUP option
+	 */
+	struct pollfd pollfd;
+	int         rc;
+
+	pollfd.fd = MyProcPort->sock;
+	pollfd.events = POLLOUT | POLLIN;
+
+	pollfd.revents = 0;
+
+	rc = poll(&pollfd, 1, 0);
+
+	if (rc < 0)
+	{
+		ereport(COMMERROR,
+				(errcode_for_socket_access(),
+				 errmsg("could not poll socket: %m")));
+		return false;
+	}
 	else if (rc == 1 && (pollfd.revents & POLLHUP))
-#endif
 		return false;
 #endif
 
