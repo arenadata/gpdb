@@ -425,7 +425,7 @@ bool QueryHasDistributedRelation(Query *q, bool recursive)
 	{
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(rt);
 
-		if (rte->rtekind == RTE_SUBQUERY 
+		if (rte->rtekind == RTE_SUBQUERY
 				&& recursive
 				&& QueryHasDistributedRelation(rte->subquery, true))
 			return true;
