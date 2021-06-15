@@ -1734,7 +1734,7 @@ begin
 			raise notice 'caught data_exception';
 			x := -1;
 		when NUMERIC_VALUE_OUT_OF_RANGE OR CARDINALITY_VIOLATION OR TOO_MANY_ROWS then
-			raise notice 'caught numeric_value_out_of_range or cardinality_violation';
+			raise notice 'caught numeric_value_out_of_range or cardinality_violation or too_many_rows';
 			x := -2;
 	end;
 	return x;
