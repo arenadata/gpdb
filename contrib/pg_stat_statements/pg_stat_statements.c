@@ -305,6 +305,7 @@ static void pgss_ExecutorRun(QueryDesc *queryDesc,
 static void pgss_ExecutorFinish(QueryDesc *queryDesc);
 static void pgss_ExecutorEnd(QueryDesc *queryDesc);
 static void pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+								bool readOnlyTree,
 								ProcessUtilityContext context, ParamListInfo params,
 								QueryEnvironment *queryEnv,
 								DestReceiver *dest, QueryCompletion *qc);
@@ -958,6 +959,7 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
  */
 static void
 pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
+					bool readOnlyTree,
 					ProcessUtilityContext context,
 					ParamListInfo params, QueryEnvironment *queryEnv,
 					DestReceiver *dest, QueryCompletion *qc)
@@ -996,11 +998,11 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 		PG_TRY();
 		{
 			if (prev_ProcessUtility)
-				prev_ProcessUtility(pstmt, queryString,
+				prev_ProcessUtility(pstmt, queryString, readOnlyTree,
 									context, params, queryEnv,
 									dest, qc);
 			else
-				standard_ProcessUtility(pstmt, queryString,
+				standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 										context, params, queryEnv,
 										dest, qc);
 		}
@@ -1054,11 +1056,11 @@ pgss_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 	else
 	{
 		if (prev_ProcessUtility)
-			prev_ProcessUtility(pstmt, queryString,
+			prev_ProcessUtility(pstmt, queryString, readOnlyTree,
 								context, params, queryEnv,
 								dest, qc);
 		else
-			standard_ProcessUtility(pstmt, queryString,
+			standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 									context, params, queryEnv,
 									dest, qc);
 	}

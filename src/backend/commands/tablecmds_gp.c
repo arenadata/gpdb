@@ -1015,6 +1015,7 @@ AtExecGPSplitPartition(Relation rel, AlterTableCmd *cmd)
 		pstmt->stmt_len = 0;
 		ProcessUtility(pstmt,
 					   synthetic_sql,
+					   false,
 					   PROCESS_UTILITY_SUBCOMMAND,
 					   NULL,
 					   NULL,
@@ -1474,6 +1475,7 @@ ATExecGPPartCmds(Relation origrel, AlterTableCmd *cmd)
 		pstmt->stmt_len = 0;
 		ProcessUtility(pstmt,
 					   synthetic_sql,
+					   false,
 					   PROCESS_UTILITY_SUBCOMMAND,
 					   NULL,
 					   NULL,

@@ -329,6 +329,7 @@ CheckRestrictedOperation(const char *cmdname)
  *
  *	pstmt: PlannedStmt wrapper for the utility statement
  *	queryString: original source text of command
+ *	readOnlyTree: if true, pstmt's node tree must not be modified
  *	context: identifies source of statement (toplevel client command,
  *		non-toplevel client command, subcommand of a larger utility command)
  *	params: parameters to use during execution
@@ -354,6 +355,7 @@ CheckRestrictedOperation(const char *cmdname)
 void
 ProcessUtility(PlannedStmt *pstmt,
 			   const char *queryString,
+			   bool readOnlyTree,
 			   ProcessUtilityContext context,
 			   ParamListInfo params,
 			   QueryEnvironment *queryEnv,
@@ -371,11 +373,11 @@ ProcessUtility(PlannedStmt *pstmt,
 	 * call standard_ProcessUtility().
 	 */
 	if (ProcessUtility_hook)
-		(*ProcessUtility_hook) (pstmt, queryString,
+		(*ProcessUtility_hook) (pstmt, queryString, readOnlyTree,
 								context, params, queryEnv,
 								dest, qc);
 	else
-		standard_ProcessUtility(pstmt, queryString,
+		standard_ProcessUtility(pstmt, queryString, readOnlyTree,
 								context, params, queryEnv,
 								dest, qc);
 }
@@ -394,19 +396,32 @@ ProcessUtility(PlannedStmt *pstmt,
 void
 standard_ProcessUtility(PlannedStmt *pstmt,
 						const char *queryString,
+						bool readOnlyTree,
 						ProcessUtilityContext context,
 						ParamListInfo params,
 						QueryEnvironment *queryEnv,
 						DestReceiver *dest,
 						QueryCompletion *qc)
 {
-	Node	   *parsetree = pstmt->utilityStmt;
+	Node	   *parsetree;
 	bool		isTopLevel = (context == PROCESS_UTILITY_TOPLEVEL);
 	bool		isAtomicContext = (!(context == PROCESS_UTILITY_TOPLEVEL || context == PROCESS_UTILITY_QUERY_NONATOMIC) || IsTransactionBlock());
 	ParseState *pstate;
 
 	/* This can recurse, so check for excessive recursion */
 	check_stack_depth();
+
+	/*
+	 * If the given node tree is read-only, make a copy to ensure that parse
+	 * transformations don't damage the original tree.  This could be
+	 * refactored to avoid making unnecessary copies in more cases, but it's
+	 * not clear that it's worth a great deal of trouble over.  Statements
+	 * that are complex enough to be expensive to copy are exactly the ones
+	 * we'd need to copy, so that only marginal savings seem possible.
+	 */
+	if (readOnlyTree)
+		pstmt = copyObject(pstmt);
+	parsetree = pstmt->utilityStmt;
 
 	check_xact_readonly(parsetree);
 
@@ -1324,6 +1339,7 @@ ProcessUtilitySlow(ParseState *pstate,
 
 							ProcessUtility(wrapper,
 										   queryString,
+										   false,
 										   PROCESS_UTILITY_SUBCOMMAND,
 										   params,
 										   NULL,
@@ -1573,6 +1589,7 @@ ProcessUtilitySlow(ParseState *pstate,
 							/* Recurse for anything else */
 							ProcessUtility(wrapper,
 										   queryString,
+										   false,
 										   PROCESS_UTILITY_SUBCOMMAND,
 										   params,
 										   NULL,
@@ -2070,6 +2087,7 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 	{
 		ProcessUtility(wrapper,
 					   context->queryString,
+					   false,
 					   PROCESS_UTILITY_SUBCOMMAND,
 					   context->params,
 					   context->queryEnv,

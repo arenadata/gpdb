@@ -1541,6 +1541,7 @@ ConvertTriggerToFK(CreateTrigStmt *stmt, Oid funcoid)
 		/* ... and execute it */
 		ProcessUtility(wrapper,
 					   "(generated ALTER TABLE ADD FOREIGN KEY command)",
+					   false,
 					   PROCESS_UTILITY_SUBCOMMAND, NULL, NULL,
 					   None_Receiver, NULL);
 

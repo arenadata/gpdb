@@ -4691,8 +4691,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 	 * Copy the original subcommand for each table.  This avoids conflicts
 	 * when different child tables need to make different parse
 	 * transformations (for example, the same column may have different column
-	 * numbers in different children).  It also ensures that we don't corrupt
-	 * the original parse tree, in case it is saved in plancache.
+	 * numbers in different children).
 	 */
 	if (recursing)
 		cmd = copyObject(cmd);
@@ -16920,6 +16919,7 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro,
 
 		ProcessUtility(pstmt,
 					   synthetic_sql,
+					   false,
 					   PROCESS_UTILITY_SUBCOMMAND,
 					   NULL,
 					   NULL,
