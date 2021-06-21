@@ -1,7 +1,7 @@
 import os
 
 from behave.formatter.base import Formatter
-from behave.model import Feature, ScenarioOutline
+from behave.model import ScenarioOutline
 from behave.model_core import Status
 
 
@@ -16,6 +16,8 @@ def after_scenario(scenario):
         except ImportError:
             pass
         else:
+            if scenario.captured.output:
+                allure.attach(scenario.captured.output, name="stdout/stderr")
             logs_path = os.path.join(os.path.expanduser("~"), "gpAdminLogs")
             files = os.listdir(logs_path)
             for file in files:
