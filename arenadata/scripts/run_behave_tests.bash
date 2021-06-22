@@ -2,6 +2,7 @@
 set -x -o pipefail
 
 behave_tests_dir="gpMgmt/test/behave/mgmt_utils"
+clusters="concourse_cluster ~concourse_cluster,demo_cluster"
 
 if [ $# -eq 0 ]
 then
@@ -30,24 +31,33 @@ fi
 
 run_feature() {
   local feature=$1
-  echo "Started $feature behave tests"
-  docker-compose -p $feature -f arenadata/docker-compose.yaml --env-file arenadata/.env up -d
-  docker-compose -p $feature -f arenadata/docker-compose.yaml exec -T \
-    -e BEHAVE_FLAGS="--tags $feature \
+  local cluster=$2
+  if [ $cluster = "concourse_cluster" ]; then
+    local project="${feature}_concourse"
+  else
+    local project="${feature}_demo"
+  fi
+  echo "Started $feature behave tests on cluster $cluster and project $project"
+  docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env up -d
+  docker-compose -p $project -f arenadata/docker-compose.yaml exec -T \
+    -e BEHAVE_FLAGS="--tags $feature --tags=$cluster \
       -f behave_utils.arenadata.formatter:CustomFormatter \
       -o non-existed-output \
       -f allure_behave.formatter:AllureFormatter \
       -o /tmp/allure-results"  \
     mdw gpdb_src/arenadata/scripts/behave_gpdb.bash
-  docker-compose -p $feature -f arenadata/docker-compose.yaml --env-file arenadata/.env down -v
+  docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env down -v
 }
 
 for feature in $features
 do
-   run_feature $feature &
+  for cluster in $clusters
+  do
+     run_feature $feature $cluster &
 
-   if [[ $(jobs -r -p | wc -l) -ge $processes ]]; then
-      wait -n
-   fi
+     if [[ $(jobs -r -p | wc -l) -ge $processes ]]; then
+        wait -n
+     fi
+  done
 done
 wait
