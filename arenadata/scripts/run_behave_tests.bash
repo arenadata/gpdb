@@ -2,7 +2,11 @@
 set -x -o pipefail
 
 behave_tests_dir="gpMgmt/test/behave/mgmt_utils"
-clusters="concourse_cluster ~concourse_cluster,demo_cluster"
+
+# TODO concourse_cluster tests are not stable
+# clusters="concourse_cluster ~concourse_cluster,demo_cluster"
+
+clusters="~concourse_cluster"
 
 if [ $# -eq 0 ]
 then
