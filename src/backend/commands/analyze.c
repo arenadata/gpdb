@@ -2580,6 +2580,91 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 * Execute it.
 	 */
 	elog(elevel, "Executing SQL: %s", str.data);
+
+{
+	List	   *raw_parsetree_list;
+	DestReceiver *dest;
+	ListCell   *lc1;
+
+	char *sql = str.data;
+
+	/*
+	 * Parse the SQL string into a list of raw parse trees.
+	 */
+	raw_parsetree_list = pg_parse_query(sql);
+
+	/* All output from SELECTs goes to the bit bucket */
+	dest = CreateDestReceiver(DestNone);
+
+	/*
+	 * Do parse analysis, rule rewrite, planning, and execution for each raw
+	 * parsetree.  We must fully execute each query before beginning parse
+	 * analysis on the next one, since there may be interdependencies.
+	 */
+	foreach(lc1, raw_parsetree_list)
+	{
+		Node	   *parsetree = (Node *) lfirst(lc1);
+		List	   *stmt_list;
+		ListCell   *lc2;
+
+		/* Be sure parser can see any DDL done so far */
+		CommandCounterIncrement();
+
+		stmt_list = pg_analyze_and_rewrite(parsetree,
+										   sql,
+										   NULL,
+										   0);
+		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
+		foreach(lc2, stmt_list)
+		{
+			Node	   *stmt = (Node *) lfirst(lc2);
+
+			if (IsA(stmt, TransactionStmt))
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("transaction control statements are not allowed within an extension script")));
+
+			CommandCounterIncrement();
+
+			PushActiveSnapshot(GetTransactionSnapshot());
+
+			if (IsA(stmt, PlannedStmt) &&
+				((PlannedStmt *) stmt)->utilityStmt == NULL)
+			{
+				QueryDesc  *qdesc;
+
+				qdesc = CreateQueryDesc((PlannedStmt *) stmt,
+										sql,
+										GetActiveSnapshot(), NULL,
+										dest, NULL, GP_INSTRUMENT_OPTS);
+
+				ExecutorStart(qdesc, 0);
+				ExecutorRun(qdesc, ForwardScanDirection, 0);
+				ExecutorFinish(qdesc);
+				ExecutorEnd(qdesc);
+
+				FreeQueryDesc(qdesc);
+			}
+			else
+			{
+				ProcessUtility(stmt,
+							   sql,
+							   PROCESS_UTILITY_QUERY,
+							   NULL,
+							   dest,
+							   NULL);
+			}
+
+			PopActiveSnapshot();
+		}
+	}
+
+	/* Be sure to advance the command counter after the last script command */
+	CommandCounterIncrement();
+}
+
+	return;
+
 	CdbDispatchCommand(str.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
 
 	/*
