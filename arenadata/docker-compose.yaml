@@ -16,11 +16,7 @@ services:
     entrypoint: >
       bash -c "mkdir -p /data/gpdata && chmod -R 777 /data &&
       sysctl 'kernel.sem=500 1024000 200 4096' &&
-      pip --retries 10 install --ignore-installed pip allure-behave==2.4.0 &&
-      getent hosts sdw{1..3} >> /etc/hosts &&
-      ssh-keyscan -H sdw{1..3} >> /home/gpadmin/.ssh/known_hosts &&
-      rpm -i https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/centos/7/community/x86_64/sigar-1.6.5-163.el7.x86_64.rpm &&
-      rpm -i https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/centos/7/community/x86_64/sigar-headers-1.6.5-163.el7.x86_64.rpm &&
+      echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw1:
     image: "hub.adsw.io/library/gpdb_regress:${BRANCH_NAME}"
@@ -34,8 +30,7 @@ services:
       source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
       ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
       sysctl 'kernel.sem=500 1024000 200 4096' &&
-      getent hosts mdw sdw{2..3} >> /etc/hosts &&
-      ssh-keyscan -H mdw sdw{2..3} >> /home/gpadmin/.ssh/known_hosts &&
+      echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw2:
     image: "hub.adsw.io/library/gpdb_regress:${BRANCH_NAME}"
@@ -49,8 +44,7 @@ services:
       source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
       ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
       sysctl 'kernel.sem=500 1024000 200 4096' &&
-      getent hosts sdw1 mdw sdw3 >> /etc/hosts &&
-      ssh-keyscan -H sdw1 mdw sdw3 >> /home/gpadmin/.ssh/known_hosts &&
+      echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw3:
     image: "hub.adsw.io/library/gpdb_regress:${BRANCH_NAME}"
@@ -64,20 +58,5 @@ services:
       source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
       ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
       sysctl 'kernel.sem=500 1024000 200 4096' &&
-      getent hosts sdw{1..2} mdw >> /etc/hosts &&
-      ssh-keyscan -H sdw{1..2} mdw >> /home/gpadmin/.ssh/known_hosts &&
+      echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
-#  sdw4:
-#    image: "hub.adsw.io/library/gpdb_regress:${BRANCH_NAME}"
-#    privileged: true
-#    hostname: sdw4
-#    volumes:
-#      - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
-#      - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
-#    entrypoint: >
-#      bash -c "mkdir -p /data/gpdata && chmod -R 777 /data &&
-#      source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
-#      ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
-#      sysctl 'kernel.sem=500 1024000 200 4096' &&
-#      getent hosts sdw1 sdw2 sdw3 mdw >> /etc/hosts &&
-#      tail -f /home/gpadmin/gpdb_src/README.md"
