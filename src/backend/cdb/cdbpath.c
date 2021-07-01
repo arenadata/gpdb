@@ -380,12 +380,6 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	 * materialize nodes on top of motion nodes
 	 */
 
-	/*
-	 * If the subpath requires parameters, we cannot generate Motion atop of it.
-	 */
-	if (!bms_is_empty(PATH_REQ_OUTER(subpath)))
-		return NULL;
-
 	/* Create CdbMotionPath node. */
 	pathnode = makeNode(CdbMotionPath);
 	pathnode->path.pathtype = T_Motion;
