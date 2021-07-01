@@ -2526,6 +2526,15 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	int			i;
 	int			index = 0;
 
+	List	   *raw_parsetree_list;
+	DestReceiver *dest;
+	ListCell   *lc1;
+	char *sql;
+	QueryDesc  *queryDesc;
+	CdbDispatchResults *primaryResults;
+	ErrorData *qeError = NULL;
+
+
 	Assert(targrows > 0.0);
 
 	/*
@@ -2581,12 +2590,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 */
 	elog(elevel, "Executing SQL: %s", str.data);
 
-{
-	List	   *raw_parsetree_list;
-	DestReceiver *dest;
-	ListCell   *lc1;
-
-	char *sql = str.data;
+	sql = str.data;
 
 	/*
 	 * Parse the SQL string into a list of raw parse trees.
@@ -2594,7 +2598,13 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	raw_parsetree_list = pg_parse_query(sql);
 
 	/* All output from SELECTs goes to the bit bucket */
-	dest = CreateDestReceiver(DestNone);
+	//dest = CreateDestReceiver(DestNone);
+	//dest = CreateDestReceiver(DestRemote);
+	//dest = CreateDestReceiver(DestTuplestore);
+	
+	//dest = CreateDestReceiver(DestDebug);
+
+	dest = None_Receiver;
 
 	/*
 	 * Do parse analysis, rule rewrite, planning, and execution for each raw
@@ -2615,57 +2625,70 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 										   NULL,
 										   0);
 		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
-		foreach(lc2, stmt_list)
+		//foreach(lc2, stmt_list)
 		{
-			Node	   *stmt = (Node *) lfirst(lc2);
+			Node	   *stmt = (Node *) lfirst(list_head(stmt_list));
 
 			if (IsA(stmt, TransactionStmt))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("transaction control statements are not allowed within an extension script")));
 
-			CommandCounterIncrement();
+		//	CommandCounterIncrement();
 
-			PushActiveSnapshot(GetTransactionSnapshot());
+		//	PushActiveSnapshot(GetTransactionSnapshot());
 
-			if (IsA(stmt, PlannedStmt) &&
-				((PlannedStmt *) stmt)->utilityStmt == NULL)
+
+			queryDesc = CreateQueryDesc((PlannedStmt *) stmt,
+									sql,
+									GetActiveSnapshot(), InvalidSnapshot,
+									dest, NULL, INSTRUMENT_NONE);
+
+
+		//	CdbDispatchPlan(queryDesc, true, true);
+			/* Call ExecutorStart to prepare the plan for execution */
+			ExecutorStart(queryDesc, 0);
+
+			/* Run the plan  */
+			 ExecutorRun(queryDesc, ForwardScanDirection, 0L);
+
+			/* Wait for completion of all qExec processes. */
+			if (queryDesc->estate->dispatcherState
+				&& queryDesc->estate->dispatcherState->primaryResults)
 			{
-				QueryDesc  *qdesc;
-
-				qdesc = CreateQueryDesc((PlannedStmt *) stmt,
-										sql,
-										GetActiveSnapshot(), NULL,
-										dest, NULL, GP_INSTRUMENT_OPTS);
-
-				ExecutorStart(qdesc, 0);
-				ExecutorRun(qdesc, ForwardScanDirection, 0);
-				ExecutorFinish(qdesc);
-				ExecutorEnd(qdesc);
-
-				FreeQueryDesc(qdesc);
-			}
-			else
-			{
-				ProcessUtility(stmt,
-							   sql,
-							   PROCESS_UTILITY_QUERY,
-							   NULL,
-							   dest,
-							   NULL);
+				cdbdisp_checkDispatchResult(queryDesc->estate->dispatcherState, DISPATCH_WAIT_NONE);
 			}
 
-			PopActiveSnapshot();
+			ExecutorFinish(queryDesc);
+
+			//PopActiveSnapshot();
 		}
 	}
 
 	/* Be sure to advance the command counter after the last script command */
-	CommandCounterIncrement();
-}
+//	CommandCounterIncrement();
+	cdbdisp_waitDispatchFinish(queryDesc->estate->dispatcherState);
 
-	return;
+	primaryResults = cdbdisp_getDispatchResults(queryDesc->estate->dispatcherState, &qeError);
 
+	if (qeError)
+	{
+		FlushErrorState();
+		ReThrowError(qeError);
+	}
+
+	cdbdisp_returnResults(primaryResults, &cdb_pgresults);
+
+	ExecutorEnd(queryDesc);
+
+	FreeQueryDesc(queryDesc);
+
+//
+
+//	return;
+#if 0
 	CdbDispatchCommand(str.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
+#endif
 
 	/*
 	 * Build a modified tuple descriptor for the table.
@@ -2716,6 +2739,15 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	sampleTuples = 0;
 	*totalrows = 0;
 	*totaldeadrows = 0;
+
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("cdb_pgresults.numResults: %d\n",
+				cdb_pgresults.numResults)));	
+#endif 
+	
+	//return;
+
 	for (int resultno = 0; resultno < cdb_pgresults.numResults; resultno++)
 	{
 		struct pg_result *pgresult = cdb_pgresults.pg_results[resultno];
@@ -2744,6 +2776,12 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 				continue;
 		}
 
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("PQntuples(pgresult): %d\n",
+				PQntuples(pgresult))));	
+#endif 
+
 		for (int rowno = 0; rowno < PQntuples(pgresult); rowno++)
 		{
 			/*
@@ -2757,6 +2795,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			if (rowStr == NULL)
 				elog(ERROR, "got NULL pointer from return value of gp_acquire_sample_rows");
 
+			continue;
+			
 			parse_record_to_string(rowStr, funcTupleDesc, funcRetValues, funcRetNulls);
 
 			if (!funcRetNulls[0])
