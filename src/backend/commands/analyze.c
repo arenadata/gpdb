@@ -93,6 +93,7 @@
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
+#include "executor/tstoreReceiver.h"
 #include "foreign/fdwapi.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
@@ -2533,7 +2534,9 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	QueryDesc  *queryDesc;
 	CdbDispatchResults *primaryResults;
 	ErrorData *qeError = NULL;
+	uint64		nprocessed;
 
+	Portal		portal;
 
 	Assert(targrows > 0.0);
 
@@ -2597,14 +2600,28 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 */
 	raw_parsetree_list = pg_parse_query(sql);
 
+//	portal = GetPortalByName("");
+	/* Create a new portal to run the query in */
+	portal = CreateNewPortal();
+	/* Don't display the portal in pg_cursors, it is for internal use only */
+	portal->visible = false;
+	PortalCreateHoldStore(portal);
+//	treceiver = CreateDestReceiver(DestTuplestore);
+	dest = CreateDestReceiver(DestTuplestore);
+	SetTuplestoreDestReceiverParams(dest,
+									portal->holdStore,
+									portal->holdContext,
+									false);
+
 	/* All output from SELECTs goes to the bit bucket */
 	//dest = CreateDestReceiver(DestNone);
-	//dest = CreateDestReceiver(DestRemote);
-	//dest = CreateDestReceiver(DestTuplestore);
+//	dest = CreateDestReceiver(DestRemote);
+//	dest = CreateDestReceiver(DestTuplestore);
 	
 	//dest = CreateDestReceiver(DestDebug);
+	//dest = CreateDestReceiver(DestIntoRel);
 
-	dest = None_Receiver;
+	//dest = None_Receiver;
 
 	/*
 	 * Do parse analysis, rule rewrite, planning, and execution for each raw
@@ -2625,6 +2642,16 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 										   NULL,
 										   0);
 		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
+
+
+/*
+        PortalDefineQuery(portal,
+                          NULL,
+                          query_string,
+                          commandTag,
+                          plantree_list,
+                          NULL);
+*/
 		//foreach(lc2, stmt_list)
 		{
 			Node	   *stmt = (Node *) lfirst(list_head(stmt_list));
@@ -2641,11 +2668,14 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 			queryDesc = CreateQueryDesc((PlannedStmt *) stmt,
 									sql,
-									GetActiveSnapshot(), InvalidSnapshot,
-									dest, NULL, INSTRUMENT_NONE);
+									GetActiveSnapshot(),
+									InvalidSnapshot,
+									dest,
+									NULL,
+									INSTRUMENT_NONE);
 
 
-		//	CdbDispatchPlan(queryDesc, true, true);
+			//CdbDispatchPlan(queryDesc, true, true);
 			/* Call ExecutorStart to prepare the plan for execution */
 			ExecutorStart(queryDesc, 0);
 
@@ -2660,7 +2690,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			}
 
 			ExecutorFinish(queryDesc);
-
 			//PopActiveSnapshot();
 		}
 	}
@@ -2679,6 +2708,20 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 	cdbdisp_returnResults(primaryResults, &cdb_pgresults);
 
+#if 0
+	{
+		TupleTableSlot *slot = MakeSingleTupleTableSlot(portal->tupDesc);
+		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
+		{
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("Got tuple\n")));	
+#endif 
+		}
+	}
+#endif
+
+// unkomment
 	ExecutorEnd(queryDesc);
 
 	FreeQueryDesc(queryDesc);
