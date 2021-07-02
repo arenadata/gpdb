@@ -2528,7 +2528,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	int			index = 0;
 
 	List	   *raw_parsetree_list;
-	DestReceiver *dest;
+	DestReceiver *treceiver;
 	ListCell   *lc1;
 	char *sql;
 	QueryDesc  *queryDesc;
@@ -2606,22 +2606,11 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	/* Don't display the portal in pg_cursors, it is for internal use only */
 	portal->visible = false;
 	PortalCreateHoldStore(portal);
-//	treceiver = CreateDestReceiver(DestTuplestore);
-	dest = CreateDestReceiver(DestTuplestore);
-	SetTuplestoreDestReceiverParams(dest,
+	treceiver = CreateDestReceiver(DestTuplestore);
+	SetTuplestoreDestReceiverParams(treceiver,
 									portal->holdStore,
 									portal->holdContext,
 									false);
-
-	/* All output from SELECTs goes to the bit bucket */
-	//dest = CreateDestReceiver(DestNone);
-//	dest = CreateDestReceiver(DestRemote);
-//	dest = CreateDestReceiver(DestTuplestore);
-	
-	//dest = CreateDestReceiver(DestDebug);
-	//dest = CreateDestReceiver(DestIntoRel);
-
-	//dest = None_Receiver;
 
 	/*
 	 * Do parse analysis, rule rewrite, planning, and execution for each raw
@@ -2670,7 +2659,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 									sql,
 									GetActiveSnapshot(),
 									InvalidSnapshot,
-									dest,
+									treceiver,
 									NULL,
 									INSTRUMENT_NONE);
 
@@ -2708,9 +2697,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 	cdbdisp_returnResults(primaryResults, &cdb_pgresults);
 
-#if 0
 	{
-		TupleTableSlot *slot = MakeSingleTupleTableSlot(portal->tupDesc);
+		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
 		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
 		{
 #ifdef MY_DEBUG
@@ -2719,9 +2707,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 #endif 
 		}
 	}
-#endif
 
-// unkomment
 	ExecutorEnd(queryDesc);
 
 	FreeQueryDesc(queryDesc);
