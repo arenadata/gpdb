@@ -2703,7 +2703,9 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 		{
 #ifdef MY_DEBUG
 	ereport(NOTICE,
-		(errmsg("Got tuple\n")));	
+		(errmsg("Got tuple: TupHasHeapTuple - %s; TupHasMemTuple - %s\n", 
+		TupHasHeapTuple(slot) ? "yes" : "no",
+		TupHasMemTuple(slot) ? "yes" : "no")));	
 #endif 
 		}
 	}
