@@ -2697,25 +2697,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 	cdbdisp_returnResults(primaryResults, &cdb_pgresults);
 
-	{
-		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
-		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
-		{
-#ifdef MY_DEBUG
-	ereport(NOTICE,
-		(errmsg("Got tuple: TupHasHeapTuple - %s; TupHasMemTuple - %s\n", 
-		TupHasHeapTuple(slot) ? "yes" : "no",
-		TupHasMemTuple(slot) ? "yes" : "no")));	
-#endif 
-		}
-	}
-
-	ExecutorEnd(queryDesc);
-
-	FreeQueryDesc(queryDesc);
-
-//
-
 //	return;
 #if 0
 	CdbDispatchCommand(str.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
@@ -2776,7 +2757,88 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 		(errmsg("cdb_pgresults.numResults: %d\n",
 				cdb_pgresults.numResults)));	
 #endif 
-	
+
+
+	{
+		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
+		MemTupleBinding *mt_bind = create_memtuple_binding(funcTupleDesc);
+		Oid			tupleOid = InvalidOid;
+
+		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
+		{
+				TupleDesc	typeinfo = slot->tts_tupleDescriptor;
+				int			natts = typeinfo->natts;
+				Datum		value;
+				bool		isnull;
+				MemTuple	memTuple;
+				uint32 memtupleSize;
+				Oid			tupleOid = InvalidOid;
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("Got tuple: with natts %d; TupHasHeapTuple - %s; TupHasMemTuple - %s\n",
+		natts,
+		TupHasHeapTuple(slot) ? "yes" : "no",
+		TupHasMemTuple(slot) ? "yes" : "no")));
+#endif
+
+				memTuple = TupGetMemTuple(slot);
+				memtupleSize = memtuple_get_size(memTuple);
+
+#ifdef MY_DEBUG
+					ereport(NOTICE,
+							(errmsg("mtbind_has_oid(mt_bind) is %s\n",
+									mtbind_has_oid(mt_bind) ? "true" : "false")));
+#endif
+
+				if (mtbind_has_oid(mt_bind))
+				{
+					tupleOid = MemTupleGetOid(memTuple, mt_bind);
+#ifdef MY_DEBUG
+					ereport(NOTICE,
+							(errmsg("memTuple OID is %d\n",  tupleOid)));
+#endif
+				}
+
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("memTuple size is %d\n",  memtupleSize)));
+#endif
+				{
+					char *buf = palloc(memtupleSize*3 + 1);
+					char *bufPtr = buf;
+					char *cptrValue = memTuple;
+					for (int j = 0; j <  memtupleSize; j++)
+					{
+						bufPtr += sprintf(bufPtr, "%02hhx ", *cptrValue++);
+					}
+
+					ereport(NOTICE, (errmsg("%s\n", buf)));
+
+					bufPtr = buf;
+					cptrValue = memTuple;
+					for (int j = memtupleSize; j >0; j--)
+					{
+						bufPtr += sprintf(bufPtr, "%02hhx ", *(cptrValue + j - 1));
+					}
+
+					ereport(NOTICE, (errmsg("%s\n", buf)));
+
+					pfree(buf);
+				}
+
+				value = slot_getattr(slot, natts, &isnull);
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("Datum is %s",  isnull ? "NULL\n" : "not NULL\n")));
+#endif
+		}
+	}
+
+	ExecutorEnd(queryDesc);
+
+	FreeQueryDesc(queryDesc);
+
+
 	//return;
 
 	for (int resultno = 0; resultno < cdb_pgresults.numResults; resultno++)
