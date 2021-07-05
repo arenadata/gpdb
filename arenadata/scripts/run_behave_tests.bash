@@ -10,7 +10,8 @@ clusters="~concourse_cluster"
 
 if [ $# -eq 0 ]
 then
-  features=`ls $behave_tests_dir -1 | grep feature | sed 's/\.feature$//'`
+  # TODO cross_subnet and gpssh tests are excluded
+  features=`ls $behave_tests_dir -1 | grep feature | grep -v -E "cross_subnet|gpssh" | sed 's/\.feature$//'`
 else
   for feature in $@
   do
