@@ -170,9 +170,3 @@ def after_scenario(context, scenario):
     elif hasattr(context, 'permissions_to_restore_path_to'):
         raise Exception('Missing path_for_which_to_restore_the_permissions despite the specified permission %o' %
                         context.permissions_to_restore_path_to)
-
-
-# def before_tag(context, tag):
-#     if tag == "concourse_cluster":
-#         from test.behave_utils.arenadata.fixtures import init_cluster
-#         return use_fixture(init_cluster, context)
