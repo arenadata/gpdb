@@ -78,6 +78,7 @@
 #include <math.h>
 
 #include "access/multixact.h"
+#include "access/printtup.h"
 #include "access/transam.h"
 #include "access/tupconvert.h"
 #include "access/tuptoaster.h"
@@ -2495,6 +2496,26 @@ parse_record_to_string(char *string, TupleDesc tupdesc, char** values, bool *nul
 	}
 }
 
+
+/*
+ * parse_memtuple_to_values
+ *
+ */
+static void
+parse_memtuple_to_values(MemTuple	memTuple, TupleDesc tupdesc, char** values, bool *nulls)
+{
+	uint32		memtupleSize;
+
+	memtupleSize = memtuple_get_size(memTuple);
+
+#ifdef MY_DEBUG
+	ereport(NOTICE,
+		(errmsg("memTuple size is %d\n",  memtupleSize)));
+#endif
+
+	return;
+}
+
 /*
  * Collect a sample from segments.
  *
@@ -2611,7 +2632,10 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 									portal->holdStore,
 									portal->holdContext,
 									false);
-
+#if 0
+	destReceiver = CreateDestReceiver(DestRemote);
+	SetRemoteDestReceiverParams(destReceiver, portal);
+#endif
 
 	/*
 	 * Do parse analysis, rule rewrite, planning, and execution for each raw
@@ -2670,7 +2694,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			ExecutorStart(queryDesc, 0);
 
 			/* Run the plan  */
-			 ExecutorRun(queryDesc, ForwardScanDirection, 0L);
+			ExecutorRun(queryDesc, ForwardScanDirection, 0L);
 
 			/* Wait for completion of all qExec processes. */
 			if (queryDesc->estate->dispatcherState
@@ -2772,8 +2796,9 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 				Datum		value;
 				bool		isnull;
 				MemTuple	memTuple;
-				uint32 memtupleSize;
+				uint32		memtupleSize;
 				Oid			tupleOid = InvalidOid;
+
 #ifdef MY_DEBUG
 	ereport(NOTICE,
 		(errmsg("Got tuple: with natts %d; TupHasHeapTuple - %s; TupHasMemTuple - %s\n",
@@ -2804,6 +2829,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	ereport(NOTICE,
 		(errmsg("memTuple size is %d\n",  memtupleSize)));
 #endif
+
 				{
 					char *buf = palloc(memtupleSize*3 + 1);
 					char *bufPtr = buf;
@@ -2827,11 +2853,16 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 					pfree(buf);
 				}
 
+				parse_memtuple_to_values(memTuple, funcTupleDesc, funcRetValues, funcRetNulls);
+
+				/* Value of no use? */
 				value = slot_getattr(slot, natts, &isnull);
+
 #ifdef MY_DEBUG
 	ereport(NOTICE,
 		(errmsg("Datum is %s",  isnull ? "NULL\n" : "not NULL\n")));
 #endif
+
 		}
 	}
 
