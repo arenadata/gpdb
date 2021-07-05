@@ -2528,7 +2528,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	int			index = 0;
 
 	List	   *raw_parsetree_list;
-	DestReceiver *treceiver;
+	DestReceiver *destReceiver;
 	ListCell   *lc1;
 	char *sql;
 	QueryDesc  *queryDesc;
@@ -2606,11 +2606,12 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	/* Don't display the portal in pg_cursors, it is for internal use only */
 	portal->visible = false;
 	PortalCreateHoldStore(portal);
-	treceiver = CreateDestReceiver(DestTuplestore);
-	SetTuplestoreDestReceiverParams(treceiver,
+	destReceiver = CreateDestReceiver(DestTuplestore);
+	SetTuplestoreDestReceiverParams(destReceiver,
 									portal->holdStore,
 									portal->holdContext,
 									false);
+
 
 	/*
 	 * Do parse analysis, rule rewrite, planning, and execution for each raw
@@ -2659,7 +2660,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 									sql,
 									GetActiveSnapshot(),
 									InvalidSnapshot,
-									treceiver,
+									destReceiver,
 									NULL,
 									INSTRUMENT_NONE);
 
