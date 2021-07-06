@@ -2783,6 +2783,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 				cdb_pgresults.numResults)));
 #endif
 
+	if (portal->holdStore)
 	{
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
 		MemTupleBinding *mt_bind = create_memtuple_binding(funcTupleDesc);
@@ -2905,8 +2906,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 				(errmsg("Datum is %s",  isAttrNull ? "NULL\n" : "not NULL\n")));
 #endif
 
-		}
-	}
+		} /* while (tuplestore_gettupleslot(portal->holdStore, true, false, slot)) */
+	} /* if (portal->holdStore) */
 
 	ExecutorEnd(queryDesc);
 
