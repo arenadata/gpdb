@@ -211,7 +211,7 @@ function _main() {
 	include_zstd
 	#include_quicklz
 	include_libuv
-	include_libstdcxx
+	#include_libstdcxx
 
 	export_gpdb
 	export_gpdb_extensions
