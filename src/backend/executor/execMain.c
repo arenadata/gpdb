@@ -3044,7 +3044,15 @@ ExecutePlan(EState *estate,
 		 * practice, this is probably always the case at this point.)
 		 */
 		if (sendTuples)
+		{
+#ifdef MY_DEBUG
+		ereport(NOTICE,
+			(errmsg("ExecutePlan: got tuple: TupHasHeapTuple - %s; TupHasMemTuple - %s\n",
+			TupHasHeapTuple(slot) ? "yes" : "no",
+			TupHasMemTuple(slot) ? "yes" : "no")));
+#endif
 			(*dest->receiveSlot) (slot, dest);
+		}
 
 		/*
 		 * Count tuples processed, if this is a SELECT.  (For other operation
