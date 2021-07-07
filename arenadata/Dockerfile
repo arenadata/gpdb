@@ -63,7 +63,7 @@ RUN mkdir /home/gpadmin/bin_gpdb
 ENV TARGET_OS_VERSION=7
 ENV TARGET_OS=centos
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
-ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
+ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend"
 
 # Compile with running mocking tests
 RUN source /opt/gcc_env.sh && \
