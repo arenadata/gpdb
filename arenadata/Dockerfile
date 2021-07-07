@@ -4,8 +4,9 @@ FROM centos:centos7 as base
 RUN yum makecache && \
     rpm --import http://mirror.centos.org/centos/RPM-GPG-KEY-CentOS-7 && \
     yum -y install epel-release java-1.8.0-openjdk-devel && \
-    yum -y install git iproute net-tools openssh-server rsync sudo time vim wget unzip && \
-    yum -y install ant-junit autoconf bison cmake3 flex gperf indent jq libtool && \
+    yum -y install git iproute net-tools openssh-server rsync sudo time vim wget unzip \
+                   ant-junit autoconf bison cmake3 flex gperf indent jq libtool gcc-c++ \
+                   krb5-server && \
     yum clean all
 
 # install all software we need
