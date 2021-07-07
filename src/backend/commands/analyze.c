@@ -2852,6 +2852,12 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 						(errmsg("i=%d: typeinfo->attrs[i]->atttypid: %d\n",
 								i, typeinfo->attrs[i]->atttypid)));
 #endif
+				/* Based on record_out */
+				{
+					HeapTupleHeader rec = (HeapTupleHeader)PG_DETOAST_DATUM(attr);
+					Oid			tupType;
+
+				}
 
 			}
 
