@@ -2828,6 +2828,33 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			TupHasMemTuple(slot) ? "yes" : "no")));
 #endif
 
+			/* Make sure the tuple is fully deconstructed */
+			slot_getallattrs(slot);
+
+			for (i = 0; i < natts; ++i)
+			{
+				//PrinttupAttrInfo *thisState = myState->myinfo + i;
+				bool 		isnull;
+				Datum		attr = slot_getattr(slot, i+1, &isnull);
+
+				if (isnull)
+				{
+#ifdef MY_DEBUG
+				ereport(NOTICE,
+						(errmsg("i=%d: attr # %d is null\n",
+								i, i + 1)));
+#endif
+					continue;
+				}
+
+#ifdef MY_DEBUG
+				ereport(NOTICE,
+						(errmsg("i=%d: typeinfo->attrs[i]->atttypid: %d\n",
+								i, typeinfo->attrs[i]->atttypid)));
+#endif
+
+			}
+
 			memTuple = TupGetMemTuple(slot);
 			memtupleSize = memtuple_get_size(memTuple);
 
