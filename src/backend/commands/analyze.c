@@ -2856,7 +2856,74 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 				{
 					HeapTupleHeader rec = (HeapTupleHeader)PG_DETOAST_DATUM(attr);
 					Oid			tupType;
+					int32		tupTypmod;
+					TupleDesc	tupdesc;
+					HeapTupleData tuple;
+					int			ncolumns;
+					Datum	   *values;
+					bool	   *nulls;
 
+					/* Extract type info from the tuple itself */
+					tupType = HeapTupleHeaderGetTypeId(rec);
+					tupTypmod = HeapTupleHeaderGetTypMod(rec);
+					tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+					ncolumns = tupdesc->natts;
+
+					/* Build a temporary HeapTuple control structure */
+					tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
+					ItemPointerSetInvalid(&(tuple.t_self));
+					tuple.t_data = rec;
+
+					values = (Datum *) palloc(ncolumns * sizeof(Datum));
+					nulls = (bool *) palloc(ncolumns * sizeof(bool));
+
+#ifdef MY_DEBUG
+					ereport(NOTICE,
+						(errmsg("Break down the tuple into fields...\n")));
+#endif
+					/* Break down the tuple into fields */
+					heap_deform_tuple(&tuple, tupdesc, values, nulls);
+
+					for (i = 0; i < ncolumns; i++)
+					{
+						Oid			column_type = tupdesc->attrs[i]->atttypid;
+
+						/* Ignore dropped columns in datatype */
+						if (tupdesc->attrs[i]->attisdropped)
+							continue;
+
+						if (nulls[i])
+						{
+#ifdef MY_DEBUG
+							ereport(NOTICE,
+								(errmsg("Column %d with OID %u is null\n",
+										i, column_type)));
+#endif
+							/* emit nothing... */
+							continue;
+						}
+
+						/*
+						 * Print the column value just for debug
+						 */
+						switch(tupdesc->attrs[i]->atttypid)
+						{
+							case FLOAT8OID:
+#ifdef MY_DEBUG
+								ereport(NOTICE,
+									(errmsg("Column %d with OID %u has value %.*g\n",
+											i, column_type, 15, DatumGetFloat8(values[i]))));
+#endif
+								break;
+							default:
+#ifdef MY_DEBUG
+								ereport(NOTICE,
+									(errmsg("Column %d with OID %u has unuspported type\n",
+											i, column_type)));
+#endif
+								break;
+						}
+					}
 				}
 
 			}
