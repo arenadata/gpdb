@@ -3045,7 +3045,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			if (!got_summary)
 				elog(ERROR, "did not get summary row from gp_acquire_sample_rows");
 #endif
-
+#if 0
 			if (resultno >= onerel->rd_cdbpolicy->numsegments)
 			{
 				/*
@@ -3056,7 +3056,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 					elog(WARNING, "table \"%s\" contains rows in segment %d, which is outside the # of segments for the table's policy (%d segments)",
 						RelationGetRelationName(onerel), resultno, onerel->rd_cdbpolicy->numsegments);
 			}
-
+#endif
 			(*totalrows) += this_totalrows;
 			(*totaldeadrows) += this_totaldeadrows;
 		} /* while (tuplestore_gettupleslot(portal->holdStore, true, false, slot)) */
