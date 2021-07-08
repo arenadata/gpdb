@@ -2559,6 +2559,9 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 	Portal		portal;
 
+	Datum	   *dvalues;
+	bool	   *dnulls;
+
 	Assert(targrows > 0.0);
 
 	/*
@@ -2783,9 +2786,12 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 * Read the result set from each segment. Gather the sample rows *rows,
 	 * and sum up the summary rows for grand 'totalrows' and 'totaldeadrows'.
 	 */
-	funcRetValues = (char **) palloc0(funcTupleDesc->natts * sizeof(char *));
+	funcRetValues = (Datum *) palloc0(funcTupleDesc->natts * sizeof(Datum));
 	funcRetNulls = (bool *) palloc(funcTupleDesc->natts * sizeof(bool));
 	values = (char **) palloc0(relDesc->natts * sizeof(char *));
+	dvalues = (Datum *) palloc0(relDesc->natts * sizeof(Datum));
+	dnulls = (bool *) palloc(relDesc->natts * sizeof(bool));
+
 	sampleTuples = 0;
 	*totalrows = 0;
 	*totaldeadrows = 0;
@@ -2800,6 +2806,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	{
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
 
+		int resultno = 0;
 		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
 		{
 			TupleDesc	typeinfo = slot->tts_tupleDescriptor;
@@ -2810,6 +2817,26 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			Oid			tupleOid = InvalidOid;
 			Datum *values = NULL;
 			bool *isnull = NULL;
+
+			bool		got_summary = false;
+			double		this_totalrows = 0;
+			double		this_totaldeadrows = 0;
+
+
+			if (GpPolicyIsReplicated(onerel->rd_cdbpolicy))
+			{
+				/*
+				* A replicated table has the same data in all segments. Arbitrarily,
+				* use the sample from the first segment, and discard the rest.
+				* (This is rather inefficient, of course. It would be better to
+				* dispatch to only one segment, but there is no easy API for that
+				* in the dispatcher.)
+				*/
+				if (resultno > 0)
+					continue;
+			}
+
+			resultno++;
 
 #ifdef MY_DEBUG
 		ereport(NOTICE,
@@ -2865,16 +2892,80 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 					ItemPointerSetInvalid(&(tuple.t_self));
 					tuple.t_data = rec;
 
-					values = (Datum *) palloc(ncolumns * sizeof(Datum));
-					nulls = (bool *) palloc(ncolumns * sizeof(bool));
-
 #ifdef MY_DEBUG
 					ereport(NOTICE,
 						(errmsg("Break down the tuple into fields...\n")));
 #endif
 					/* Break down the tuple into fields */
-					heap_deform_tuple(&tuple, tupdesc, values, nulls);
+					heap_deform_tuple(&tuple, tupdesc, funcRetValues, funcRetNulls);
 
+					if (!funcRetNulls[0])
+					{
+						/* This is a summary row. */
+						if (got_summary)
+							elog(ERROR, "got duplicate summary row from gp_acquire_sample_rows");
+
+						this_totalrows = DatumGetFloat8(funcRetValues[0]);
+						this_totaldeadrows = DatumGetFloat8(funcRetValues[1]);
+						got_summary = true;
+					}
+					else
+					{
+						/* This is a sample row. */
+						if (sampleTuples >= targrows)
+							elog(ERROR, "too many sample rows received from gp_acquire_sample_rows");
+
+						/* Read the 'toolarge' bitmap, if any */
+						if (colLargeRowIndexes && !funcRetNulls[2])
+						{
+							char	   *toolarge;
+							toolarge = DatumGetCString(funcRetValues[2]);
+							if (strlen(toolarge) != numLiveColumns)
+								elog(ERROR, "'toolarge' bitmap has incorrect length");
+
+							index = 0;
+							for (i = 0; i < relDesc->natts; i++)
+							{
+								Form_pg_attribute attr = relDesc->attrs[i];
+
+								if (attr->attisdropped)
+									continue;
+
+								if (toolarge[index] == '1')
+									colLargeRowIndexes[i] = bms_add_member(colLargeRowIndexes[i], sampleTuples);
+								index++;
+							}
+						}
+
+						/* Process the columns */
+						index = 0;
+						for (i = 0; i < relDesc->natts; i++)
+						{
+							Form_pg_attribute attr = relDesc->attrs[i];
+
+							if (attr->attisdropped)
+								continue;
+
+							dnulls[i] = funcRetNulls[3 + index];
+							dvalues[i] =  funcRetValues[3 + index];
+							index++; /* Move index to the next result set attribute */
+						}
+
+						/*
+						* Form a tuple
+						 */
+						rows[sampleTuples] = heap_form_tuple(attinmeta->tupdesc, dvalues, dnulls);
+
+					//	rows[sampleTuples] = BuildTupleFromCStrings(attinmeta, values);
+						sampleTuples++;
+
+						/*
+						* note: we don't set the OIDs in the sample. ANALYZE doesn't
+						* collect stats for them
+						*/
+					}
+
+// Just for debug
 					for (i = 0; i < ncolumns; i++)
 					{
 						Oid			column_type = tupdesc->attrs[i]->atttypid;
@@ -2883,7 +2974,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 						if (tupdesc->attrs[i]->attisdropped)
 							continue;
 
-						if (nulls[i])
+						if (funcRetNulls[i])
 						{
 #ifdef MY_DEBUG
 							ereport(NOTICE,
@@ -2903,7 +2994,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 #ifdef MY_DEBUG
 								ereport(NOTICE,
 									(errmsg("Column %d with OID %u has value %.*g\n",
-											i, column_type, 15, DatumGetFloat8(values[i]))));
+											i, column_type, 15, DatumGetFloat8(funcRetValues[i]))));
 #endif
 								break;
 							default:
@@ -2925,7 +3016,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 #ifdef MY_DEBUG
 			ereport(NOTICE,
 				(errmsg("memTuple size is %d\n",  memtupleSize)));
-#endif
 			{
 				char *buf = palloc(memtupleSize*3 + 1);
 				char *bufPtr = buf;
@@ -2948,7 +3038,26 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 				pfree(buf);
 			}
+#endif
 //				parse_memtuple_to_values(memTuple, funcTupleDesc, funcRetValues, funcRetNulls);
+#if 0
+			if (!got_summary)
+				elog(ERROR, "did not get summary row from gp_acquire_sample_rows");
+#endif
+
+			if (resultno >= onerel->rd_cdbpolicy->numsegments)
+			{
+				/*
+				* This result is for a segment that's not holding any data for this
+				* table. Should get 0 rows.
+				*/
+				if (this_totalrows != 0)
+					elog(WARNING, "table \"%s\" contains rows in segment %d, which is outside the # of segments for the table's policy (%d segments)",
+						RelationGetRelationName(onerel), resultno, onerel->rd_cdbpolicy->numsegments);
+			}
+
+			(*totalrows) += this_totalrows;
+			(*totaldeadrows) += this_totaldeadrows;
 		} /* while (tuplestore_gettupleslot(portal->holdStore, true, false, slot)) */
 	} /* if (portal->holdStore) */
 
@@ -2958,7 +3067,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 
 	//return;
-
+#if 0
 	for (int resultno = 0; resultno < cdb_pgresults.numResults; resultno++)
 	{
 		struct pg_result *pgresult = cdb_pgresults.pg_results[resultno];
@@ -3093,6 +3202,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 		(*totalrows) += this_totalrows;
 		(*totaldeadrows) += this_totaldeadrows;
 	}
+#endif
+
 	for (i = 0; i < funcTupleDesc->natts; i++)
 	{
 		if (funcRetValues[i])
@@ -3101,6 +3212,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	pfree(funcRetValues);
 	pfree(funcRetNulls);
 	pfree(values);
+	pfree(dvalues);
+	pfree(dnulls);
 
 	cdbdisp_clearCdbPgResults(&cdb_pgresults);
 
