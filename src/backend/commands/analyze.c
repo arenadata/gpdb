@@ -3006,14 +3006,15 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 								break;
 						}
 					}
+					ReleaseTupleDesc(tupdesc);
 				}
 
 			}
 
+#ifdef MY_DEBUG
 			memTuple = TupGetMemTuple(slot);
 			memtupleSize = memtuple_get_size(memTuple);
 
-#ifdef MY_DEBUG
 			ereport(NOTICE,
 				(errmsg("memTuple size is %d\n",  memtupleSize)));
 			{
