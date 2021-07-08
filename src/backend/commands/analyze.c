@@ -2799,21 +2799,12 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	if (portal->holdStore)
 	{
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
-		MemTupleBinding *mt_bind = create_memtuple_binding(funcTupleDesc);
-		Oid			tupleOid = InvalidOid;
-
-#ifdef MY_DEBUG
-	ereport(NOTICE,
-		(errmsg("mt_bind->tupdesc->natts: %d\n",
-				mt_bind->tupdesc->natts)));
-#endif
 
 		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
 		{
 			TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 			int			natts = typeinfo->natts;
 			Datum		value;
-			bool		isAttrNull;
 			MemTuple	memTuple;
 			uint32		memtupleSize;
 			Oid			tupleOid = InvalidOid;
@@ -2933,33 +2924,8 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 #ifdef MY_DEBUG
 			ereport(NOTICE,
-					(errmsg("mtbind_has_oid(mt_bind) is %s\n",
-							mtbind_has_oid(mt_bind) ? "true" : "false")));
-#endif
-
-#ifdef MY_DEBUG
-			ereport(NOTICE,
-					(errmsg("memtuple_has_misaligned_attribute is %s\n",
-							memtuple_has_misaligned_attribute(memTuple, mt_bind) ? "true" : "false")));
-#endif
-			if (mtbind_has_oid(mt_bind))
-			{
-				tupleOid = MemTupleGetOid(memTuple, mt_bind);
-#ifdef MY_DEBUG
-				ereport(NOTICE,
-						(errmsg("memTuple OID is %d\n",  tupleOid)));
-#endif
-			}
-
-#ifdef MY_DEBUG
-			ereport(NOTICE,
 				(errmsg("memTuple size is %d\n",  memtupleSize)));
 #endif
-#ifdef MY_DEBUG
-			ereport(NOTICE,
-				(errmsg("memTuple address is 0x%x\n",  memTuple)));
-#endif
-
 			{
 				char *buf = palloc(memtupleSize*3 + 1);
 				char *bufPtr = buf;
@@ -2982,43 +2948,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 				pfree(buf);
 			}
-
-			/*
-			* Get pointers to the datums within the tuple
-			*/
-			values = (Datum *) palloc0(mt_bind->tupdesc->natts * sizeof(Datum));
-			isnull = (bool *) palloc0(mt_bind->tupdesc->natts * sizeof(bool));
-
-			memtuple_deform(memTuple, mt_bind, values, isnull);
-			for (i = 0; i < mt_bind->tupdesc->natts; i++)
-			{
-				ereport(NOTICE, (errmsg("%d: values: 0x%x; nulls: %s\n",
-						i,
-						values[i],
-						isnull[i] ? "Y" : "N")));
-			}
-
-#if 0
-			memtuple_deform_misaligned(memTuple, mt_bind, funcRetValues, funcRetNulls);
-			for (i = 0; i < mt_bind->tupdesc->natts; i++)
-			{
-				ereport(NOTICE, (errmsg("%d: values: %s; nulls: %s\n",
-						i,
-						funcRetValues[i] ? "Y" : "N",
-						funcRetNulls[i] ? "Y" : "N")));
-			}
-#endif
-
 //				parse_memtuple_to_values(memTuple, funcTupleDesc, funcRetValues, funcRetNulls);
-
-			/* Value of no use? */
-			value = slot_getattr(slot, natts, &isAttrNull);
-
-#ifdef MY_DEBUG
-			ereport(NOTICE,
-				(errmsg("Datum is %s",  isAttrNull ? "NULL\n" : "not NULL\n")));
-#endif
-
 		} /* while (tuplestore_gettupleslot(portal->holdStore, true, false, slot)) */
 	} /* if (portal->holdStore) */
 
