@@ -3046,10 +3046,38 @@ ExecutePlan(EState *estate,
 		if (sendTuples)
 		{
 #ifdef MY_DEBUG
-		ereport(NOTICE,
-			(errmsg("ExecutePlan: got tuple: TupHasHeapTuple - %s; TupHasMemTuple - %s\n",
-			TupHasHeapTuple(slot) ? "yes" : "no",
-			TupHasMemTuple(slot) ? "yes" : "no")));
+			ereport(NOTICE,
+					(errmsg("ExecutePlan: got tuple: TupHasHeapTuple - %s; TupHasMemTuple - %s\n",
+					TupHasHeapTuple(slot) ? "yes" : "no",
+					TupHasMemTuple(slot) ? "yes" : "no")));
+			if (TupHasMemTuple(slot))
+			{
+				MemTuple	memTuple;
+				uint32		memtupleSize;
+				memTuple = TupGetMemTuple(slot);
+				memtupleSize = memtuple_get_size(memTuple);
+
+				char *buf = palloc(memtupleSize*3 + 1);
+				char *bufPtr = buf;
+				char *cptrValue = memTuple;
+				for (int j = 0; j <  memtupleSize; j++)
+				{
+					bufPtr += sprintf(bufPtr, "%02hhx ", *cptrValue++);
+				}
+
+				ereport(NOTICE, (errmsg("%s\n", buf)));
+
+				bufPtr = buf;
+				cptrValue = memTuple;
+				for (int j = memtupleSize; j >0; j--)
+				{
+					bufPtr += sprintf(bufPtr, "%02hhx ", *(cptrValue + j - 1));
+				}
+
+				ereport(NOTICE, (errmsg("%s\n", buf)));
+
+				pfree(buf);
+			}
 #endif
 			(*dest->receiveSlot) (slot, dest);
 		}
