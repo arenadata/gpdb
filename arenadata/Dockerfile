@@ -6,7 +6,7 @@ RUN yum makecache && \
     yum -y install epel-release java-1.8.0-openjdk-devel && \
     yum -y install git iproute net-tools openssh-server rsync sudo time vim wget unzip \
                    ant-junit autoconf bison cmake3 flex gperf indent jq libtool gcc-c++ \
-                   krb5-server krb5-workstation && \
+                   krb5-server krb5-workstation xerces-c-devel && \
     yum clean all
 
 # install all software we need
