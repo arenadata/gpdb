@@ -2812,8 +2812,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 			int			natts = typeinfo->natts;
 			Datum		value;
-			MemTuple	memTuple;
-			uint32		memtupleSize;
 			Oid			tupleOid = InvalidOid;
 			Datum *values = NULL;
 			bool *isnull = NULL;
@@ -2878,8 +2876,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 					TupleDesc	tupdesc;
 					HeapTupleData tuple;
 					int			ncolumns;
-					Datum	   *values;
-					bool	   *nulls;
 
 					/* Extract type info from the tuple itself */
 					tupType = HeapTupleHeaderGetTypeId(rec);
@@ -2956,7 +2952,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 						 */
 						rows[sampleTuples] = heap_form_tuple(attinmeta->tupdesc, dvalues, dnulls);
 
-					//	rows[sampleTuples] = BuildTupleFromCStrings(attinmeta, values);
 						sampleTuples++;
 
 						/*
@@ -2966,6 +2961,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 					}
 
 // Just for debug
+#if MY_DEBUG
 					for (i = 0; i < ncolumns; i++)
 					{
 						Oid			column_type = tupdesc->attrs[i]->atttypid;
@@ -2976,11 +2972,9 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 						if (funcRetNulls[i])
 						{
-#ifdef MY_DEBUG
 							ereport(NOTICE,
 								(errmsg("Column %d with OID %u is null\n",
 										i, column_type)));
-#endif
 							/* emit nothing... */
 							continue;
 						}
@@ -2991,56 +2985,57 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 						switch(tupdesc->attrs[i]->atttypid)
 						{
 							case FLOAT8OID:
-#ifdef MY_DEBUG
 								ereport(NOTICE,
 									(errmsg("Column %d with OID %u has value %.*g\n",
 											i, column_type, 15, DatumGetFloat8(funcRetValues[i]))));
-#endif
 								break;
 							default:
-#ifdef MY_DEBUG
 								ereport(NOTICE,
 									(errmsg("Column %d with OID %u has unuspported type\n",
 											i, column_type)));
-#endif
 								break;
 						}
 					}
+#endif
 					ReleaseTupleDesc(tupdesc);
 				}
 
 			}
 
 #ifdef MY_DEBUG
-			memTuple = TupGetMemTuple(slot);
-			memtupleSize = memtuple_get_size(memTuple);
-
-			ereport(NOTICE,
-				(errmsg("memTuple size is %d\n",  memtupleSize)));
 			{
-				char *buf = palloc(memtupleSize*3 + 1);
-				char *bufPtr = buf;
-				char *cptrValue = memTuple;
-				for (int j = 0; j <  memtupleSize; j++)
+				MemTuple	memTuple;
+				uint32		memtupleSize;
+
+				memTuple = TupGetMemTuple(slot);
+				memtupleSize = memtuple_get_size(memTuple);
+
+				ereport(NOTICE,
+					(errmsg("memTuple size is %d\n",  memtupleSize)));
 				{
-					bufPtr += sprintf(bufPtr, "%02hhx ", *cptrValue++);
+					char *buf = palloc(memtupleSize*3 + 1);
+					char *bufPtr = buf;
+					char *cptrValue = memTuple;
+					for (int j = 0; j <  memtupleSize; j++)
+					{
+						bufPtr += sprintf(bufPtr, "%02hhx ", *cptrValue++);
+					}
+
+					ereport(NOTICE, (errmsg("%s\n", buf)));
+
+					bufPtr = buf;
+					cptrValue = memTuple;
+					for (int j = memtupleSize; j >0; j--)
+					{
+						bufPtr += sprintf(bufPtr, "%02hhx ", *(cptrValue + j - 1));
+					}
+
+					ereport(NOTICE, (errmsg("%s\n", buf)));
+
+					pfree(buf);
 				}
-
-				ereport(NOTICE, (errmsg("%s\n", buf)));
-
-				bufPtr = buf;
-				cptrValue = memTuple;
-				for (int j = memtupleSize; j >0; j--)
-				{
-					bufPtr += sprintf(bufPtr, "%02hhx ", *(cptrValue + j - 1));
-				}
-
-				ereport(NOTICE, (errmsg("%s\n", buf)));
-
-				pfree(buf);
 			}
 #endif
-//				parse_memtuple_to_values(memTuple, funcTupleDesc, funcRetValues, funcRetNulls);
 #if 0
 			if (!got_summary)
 				elog(ERROR, "did not get summary row from gp_acquire_sample_rows");
