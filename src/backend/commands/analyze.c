@@ -2812,9 +2812,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 			int			natts = typeinfo->natts;
 			Datum		value;
-			Oid			tupleOid = InvalidOid;
-			Datum *values = NULL;
-			bool *isnull = NULL;
 
 			bool		got_summary = false;
 			double		this_totalrows = 0;
