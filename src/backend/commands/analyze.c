@@ -2540,7 +2540,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	int			sampleTuples;	/* 32 bit - assume that number of tuples will not > 2B */
 	char 	  **funcRetValues;
 	bool 	   *funcRetNulls;
-	char 	  **values;
 	int			numLiveColumns;
 	int			perseg_targrows;
 	int			ncolumns;
@@ -2550,7 +2549,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 	List	   *raw_parsetree_list;
 	DestReceiver *destReceiver;
-	ListCell   *lc1;
 	char *sql;
 	QueryDesc  *queryDesc = NULL;
 	CdbDispatchResults *primaryResults;
@@ -2645,11 +2643,10 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 * parsetree.  We must fully execute each query before beginning parse
 	 * analysis on the next one, since there may be interdependencies.
 	 */
-	foreach (lc1, raw_parsetree_list)
+//	foreach (lc1, raw_parsetree_list)
 	{
-		Node	   *parsetree = (Node *) lfirst(lc1);
+		Node	   *parsetree = (Node *) lfirst(list_head(raw_parsetree_list));
 		List	   *stmt_list;
-		ListCell   *lc2;
 
 		/* Be sure parser can see any DDL done so far */
 		CommandCounterIncrement();
@@ -2660,7 +2657,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 										   0);
 		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
 
-		//foreach(lc2, stmt_list)
+//		foreach(lc2, stmt_list)
 		{
 			Node	   *stmt = (Node *) lfirst(list_head(stmt_list));
 
@@ -2760,7 +2757,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 */
 	funcRetValues = (Datum *) palloc0(funcTupleDesc->natts * sizeof(Datum));
 	funcRetNulls = (bool *) palloc(funcTupleDesc->natts * sizeof(bool));
-	values = (char **) palloc0(relDesc->natts * sizeof(char *));
 	dvalues = (Datum *) palloc0(relDesc->natts * sizeof(Datum));
 	dnulls = (bool *) palloc(relDesc->natts * sizeof(bool));
 
@@ -3028,7 +3024,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 	pfree(funcRetValues);
 	pfree(funcRetNulls);
-	pfree(values);
 	pfree(dvalues);
 	pfree(dnulls);
 
