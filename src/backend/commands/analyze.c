@@ -3205,11 +3205,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	}
 #endif
 
-	for (i = 0; i < funcTupleDesc->natts; i++)
-	{
-		if (funcRetValues[i])
-			pfree(funcRetValues[i]);
-	}
 	pfree(funcRetValues);
 	pfree(funcRetNulls);
 	pfree(values);
