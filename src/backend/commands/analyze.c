@@ -2552,7 +2552,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	DestReceiver *destReceiver;
 	ListCell   *lc1;
 	char *sql;
-	QueryDesc  *queryDesc;
+	QueryDesc  *queryDesc = NULL;
 	CdbDispatchResults *primaryResults;
 	ErrorData *qeError = NULL;
 	uint64		nprocessed;
@@ -2608,14 +2608,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 */
 	initStringInfo(&str);
 	appendStringInfo(&str, "select pg_catalog.gp_acquire_sample_rows(%u, %d, '%s');",
-/*
-	appendStringInfo(&str, "select * from pg_catalog.gp_acquire_sample_rows(%u, %d, '%s') "
-							"as ("
-							"totalrows double precision, "
-							"totaldeadrows double precision, "
-							"oversized_cols_bitmap text, "
-							"a double precision);",
-*/
 					 RelationGetRelid(onerel),
 					 perseg_targrows,
 					 inh ? "t" : "f");
@@ -2637,7 +2629,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	 */
 	raw_parsetree_list = pg_parse_query(sql);
 
-//	portal = GetPortalByName("");
 	/* Create a new portal to run the query in */
 	portal = CreateNewPortal();
 	/* Don't display the portal in pg_cursors, it is for internal use only */
@@ -2648,17 +2639,13 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 									portal->holdStore,
 									portal->holdContext,
 									false);
-#if 0
-	destReceiver = CreateDestReceiver(DestRemote);
-	SetRemoteDestReceiverParams(destReceiver, portal);
-#endif
 
 	/*
 	 * Do parse analysis, rule rewrite, planning, and execution for each raw
 	 * parsetree.  We must fully execute each query before beginning parse
 	 * analysis on the next one, since there may be interdependencies.
 	 */
-	foreach(lc1, raw_parsetree_list)
+	foreach (lc1, raw_parsetree_list)
 	{
 		Node	   *parsetree = (Node *) lfirst(lc1);
 		List	   *stmt_list;
@@ -2673,15 +2660,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 										   0);
 		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
 
-
-/*
-        PortalDefineQuery(portal,
-                          NULL,
-                          query_string,
-                          commandTag,
-                          plantree_list,
-                          NULL);
-*/
 		//foreach(lc2, stmt_list)
 		{
 			Node	   *stmt = (Node *) lfirst(list_head(stmt_list));
@@ -2703,7 +2681,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 									destReceiver,
 									NULL,
 									INSTRUMENT_NONE);
-
 
 			//CdbDispatchPlan(queryDesc, true, true);
 			/* Call ExecutorStart to prepare the plan for execution */
@@ -2737,11 +2714,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	}
 
 	cdbdisp_returnResults(primaryResults, &cdb_pgresults);
-
-//	return;
-#if 0
-	CdbDispatchCommand(str.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
-#endif
 
 	/*
 	 * Build a modified tuple descriptor for the table.
@@ -2885,10 +2857,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 					ItemPointerSetInvalid(&(tuple.t_self));
 					tuple.t_data = rec;
 
-#ifdef MY_DEBUG
-					ereport(NOTICE,
-						(errmsg("Break down the tuple into fields...\n")));
-#endif
 					/* Break down the tuple into fields */
 					heap_deform_tuple(&tuple, tupdesc, funcRetValues, funcRetNulls);
 
@@ -3057,145 +3025,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 	ExecutorEnd(queryDesc);
 
 	FreeQueryDesc(queryDesc);
-
-
-	//return;
-#if 0
-	for (int resultno = 0; resultno < cdb_pgresults.numResults; resultno++)
-	{
-		struct pg_result *pgresult = cdb_pgresults.pg_results[resultno];
-		bool		got_summary = false;
-		double		this_totalrows = 0;
-		double		this_totaldeadrows = 0;
-
-		if (PQresultStatus(pgresult) != PGRES_TUPLES_OK)
-		{
-			cdbdisp_clearCdbPgResults(&cdb_pgresults);
-			ereport(ERROR,
-					(errmsg("unexpected result from segment: %d",
-							PQresultStatus(pgresult))));
-		}
-
-		if (GpPolicyIsReplicated(onerel->rd_cdbpolicy))
-		{
-			/*
-			 * A replicated table has the same data in all segments. Arbitrarily,
-			 * use the sample from the first segment, and discard the rest.
-			 * (This is rather inefficient, of course. It would be better to
-			 * dispatch to only one segment, but there is no easy API for that
-			 * in the dispatcher.)
-			 */
-			if (resultno > 0)
-				continue;
-		}
-
-#ifdef MY_DEBUG
-	ereport(NOTICE,
-		(errmsg("PQntuples(pgresult): %d\n",
-				PQntuples(pgresult))));	
-#endif 
-
-		for (int rowno = 0; rowno < PQntuples(pgresult); rowno++)
-		{
-			/*
-			 * We cannot use record_in function to get row record here.
-			 * Since the result row may contain just the totalrows info where the data columns
-			 * are NULLs. Consider domain: 'create domain dnotnull varchar(15) NOT NULL;'
-			 * NULLs are not allowed in data columns.
-			 */
-			char * rowStr = PQgetvalue(pgresult, rowno, 0);
-
-			if (rowStr == NULL)
-				elog(ERROR, "got NULL pointer from return value of gp_acquire_sample_rows");
-
-			continue;
-			
-			parse_record_to_string(rowStr, funcTupleDesc, funcRetValues, funcRetNulls);
-
-			if (!funcRetNulls[0])
-			{
-				/* This is a summary row. */
-				if (got_summary)
-					elog(ERROR, "got duplicate summary row from gp_acquire_sample_rows");
-
-				this_totalrows = DatumGetFloat8(DirectFunctionCall1(float8in,
-																	CStringGetDatum(funcRetValues[0])));
-				this_totaldeadrows = DatumGetFloat8(DirectFunctionCall1(float8in,
-																		CStringGetDatum(funcRetValues[1])));
-				got_summary = true;
-			}
-			else
-			{
-				/* This is a sample row. */
-				if (sampleTuples >= targrows)
-					elog(ERROR, "too many sample rows received from gp_acquire_sample_rows");
-
-				/* Read the 'toolarge' bitmap, if any */
-				if (colLargeRowIndexes && !funcRetNulls[2])
-				{
-					char	   *toolarge;
-					toolarge = funcRetValues[2];
-					if (strlen(toolarge) != numLiveColumns)
-						elog(ERROR, "'toolarge' bitmap has incorrect length");
-
-					index = 0;
-					for (i = 0; i < relDesc->natts; i++)
-					{
-						Form_pg_attribute attr = relDesc->attrs[i];
-
-						if (attr->attisdropped)
-							continue;
-
-						if (toolarge[index] == '1')
-							colLargeRowIndexes[i] = bms_add_member(colLargeRowIndexes[i], sampleTuples);
-						index++;
-					}
-				}
-
-				/* Process the columns */
-				index = 0;
-				for (i = 0; i < relDesc->natts; i++)
-				{
-					Form_pg_attribute attr = relDesc->attrs[i];
-
-					if (attr->attisdropped)
-						continue;
-
-					if (funcRetNulls[3 + index])
-						values[i] = NULL;
-					else
-						values[i] = funcRetValues[3 + index];
-					index++; /* Move index to the next result set attribute */
-				}
-
-				rows[sampleTuples] = BuildTupleFromCStrings(attinmeta, values);
-				sampleTuples++;
-
-				/*
-				 * note: we don't set the OIDs in the sample. ANALYZE doesn't
-				 * collect stats for them
-				 */
-			}
-		}
-
-		if (!got_summary)
-			elog(ERROR, "did not get summary row from gp_acquire_sample_rows");
-
-		if (resultno >= onerel->rd_cdbpolicy->numsegments)
-		{
-			/*
-			 * This result is for a segment that's not holding any data for this
-			 * table. Should get 0 rows.
-			 */
-			if (this_totalrows != 0)
-				elog(WARNING, "table \"%s\" contains rows in segment %d, which is outside the # of segments for the table's policy (%d segments)",
-					 RelationGetRelationName(onerel), resultno, onerel->rd_cdbpolicy->numsegments);
-		}
-
-		(*totalrows) += this_totalrows;
-		(*totaldeadrows) += this_totaldeadrows;
-	}
-#endif
 
 	pfree(funcRetValues);
 	pfree(funcRetNulls);
