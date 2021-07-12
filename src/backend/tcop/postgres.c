@@ -121,6 +121,9 @@ int			max_stack_depth = 100;
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
 
+/* Time between checks that the client is still connected. */
+int         client_connection_check_interval = 0;
+
 
 /*
  * Hook for extensions, to get notified when query cancel or DIE signal is
@@ -621,6 +624,15 @@ ReadCommand(StringInfo inBuf)
 {
 	int			result;
 
+	/*
+	 * XXX Use of this fault is discouraged!  This fault location is reached
+	 * in query executing backends as well as many non-query executing
+	 * processes such as FTS probe handler, walsender, etc.  It is also found
+	 * to be triggered by the same SQL statement used to inject the fault,
+	 * causing difficult to analyse failures in CI.  If a test intends to
+	 * target a query executing backend process, consider using
+	 * "exec_simple_query_start" fault.
+	 */
 	SIMPLE_FAULT_INJECTOR("before_read_command");
 
 	if (whereToSendOutput == DestRemote)
@@ -1582,6 +1594,8 @@ exec_simple_query(const char *query_string)
 	bool		was_logged = false;
 	bool		isTopLevel;
 	char		msec_str[32];
+
+	SIMPLE_FAULT_INJECTOR("exec_simple_query_start");
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 		increment_command_count();
@@ -3212,6 +3226,15 @@ start_xact_command(void)
 		else
 			disable_timeout(STATEMENT_TIMEOUT, false);
 
+		/* Start timeout for checking if the client has gone away if necessary. */
+		if (client_connection_check_interval > 0 &&
+			Gp_role != GP_ROLE_EXECUTE &&
+			IsUnderPostmaster &&
+			MyProcPort &&
+			!get_timeout_active(CLIENT_CONNECTION_CHECK_TIMEOUT))
+			enable_timeout_after(CLIENT_CONNECTION_CHECK_TIMEOUT,
+								 client_connection_check_interval);
+
 		xact_started = true;
 	}
 }
@@ -3775,6 +3798,27 @@ ProcessInterrupts(const char* filename, int lineno)
 						 errmsg("terminating connection due to administrator command")));
 		}
 	}
+
+	if (CheckClientConnectionPending)
+	{
+		CheckClientConnectionPending = false;
+
+		/*
+		 * Check for lost connection and re-arm, if still configured, but not
+		 * if we've arrived back at DoingCommandRead state.  We don't want to
+		 * wake up idle sessions, and they already know how to detect lost
+		 * connections.
+		 */
+		if (!DoingCommandRead && client_connection_check_interval > 0)
+		{
+			if (!pq_check_connection())
+				ClientConnectionLost = true;
+			else
+				enable_timeout_after(CLIENT_CONNECTION_CHECK_TIMEOUT,
+									 client_connection_check_interval);
+		}
+	}
+
 	if (ClientConnectionLost)
 	{
 		QueryCancelPending = false;		/* lost connection trumps QueryCancel */
@@ -4973,7 +5017,7 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (debug_query_string != NULL)
 		{
-			write_stderr("An exception was encountered during the execution of statement: %s", debug_query_string);
+			elog(LOG, "An exception was encountered during the execution of statement: %s", debug_query_string);
 			debug_query_string = NULL;
 		}
 
