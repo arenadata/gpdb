@@ -2876,7 +2876,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 						if (colLargeRowIndexes && !funcRetNulls[2])
 						{
 							char	   *toolarge;
-							toolarge = DatumGetCString(funcRetValues[2]);
+							toolarge = TextDatumGetCString(funcRetValues[2]);
 							if (strlen(toolarge) != numLiveColumns)
 								elog(ERROR, "'toolarge' bitmap has incorrect length");
 
