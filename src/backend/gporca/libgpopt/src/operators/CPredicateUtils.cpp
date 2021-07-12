@@ -2461,16 +2461,9 @@ CPredicateUtils::FNullRejecting(CMemoryPool *mp, CExpression *pexprScalar,
 	GPOS_ASSERT(NULL != pexprScalar);
 	GPOS_ASSERT(pexprScalar->Pop()->FScalar());
 
-	BOOL fHasVolatileFunctions =
-		(IMDFunction::EfsVolatile ==
-		 pexprScalar->DeriveScalarFunctionProperties()->Efs());
-	BOOL fHasSQL = (IMDFunction::EfdaNoSQL !=
-					pexprScalar->DeriveScalarFunctionProperties()->Efda());
-
-	if (fHasVolatileFunctions || fHasSQL ||
-		pexprScalar->DeriveHasNonScalarFunction())
+	if (pexprScalar->DeriveHasNonScalarFunction())
 	{
-		// scalar expression must not have volatile functions, functions with SQL, subquery or non-scalar functions
+		// scalar expression must not have subquery or non-scalar functions
 		return false;
 	}
 
