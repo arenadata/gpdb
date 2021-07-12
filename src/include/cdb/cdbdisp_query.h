@@ -33,6 +33,10 @@
  * indicate whether the command should be dispatched to qExecs along with a snapshot.
  */
 #define DF_WITH_SNAPSHOT  0x4
+/*
+ * indicate whether the command dispatched to qExecs is ANALYZE.
+ */
+#define DF_IS_ANALYZE  0x8
 
 struct QueryDesc;
 struct CdbDispatcherState;

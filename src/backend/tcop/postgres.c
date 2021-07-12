@@ -486,7 +486,8 @@ SocketBackend(StringInfo inBuf)
 				}
 			}
 			break;
-
+		case 'A':				/* Greenplum Database dispatched statement from QD - binary mode */
+			/* Fall through */
 		case 'M':				/* Greenplum Database dispatched statement from QD */
 
 			doing_extended_query_message = false;
@@ -1575,7 +1576,7 @@ restore_guc_to_QE(void )
  * Execute a "simple Query" protocol message.
  */
 static void
-exec_simple_query(const char *query_string)
+exec_simple_query(const char *query_string, bool isAnalyze)
 {
 	CommandDest dest = whereToSendOutput;
 	MemoryContext oldcontext;
@@ -1802,6 +1803,15 @@ exec_simple_query(const char *query_string)
 					(fportal->cursorOptions & CURSOR_OPT_BINARY))
 					format = 1; /* BINARY */
 			}
+		}
+		if (isAnalyze)
+		{
+			format = 1;
+#ifdef MY_DEBUG
+			ereport(NOTICE,
+					(errmsg("Setting format to %d (binary)\n",
+							format)));
+#endif
 		}
 		PortalSetResultFormat(portal, 1, &format);
 
@@ -5272,11 +5282,13 @@ PostgresMain(int argc, char *argv[],
 					else if (IsFaultHandler)
 						HandleFaultMessage(query_string);
 					else
-						exec_simple_query(query_string);
+						exec_simple_query(query_string, false);
 
 					send_ready_for_query = true;
 				}
 				break;
+			case 'A':
+				/* Fall through */
             case 'M': /* MPP dispatched stmt from QD */
 				{
 					/*
@@ -5414,7 +5426,7 @@ PostgresMain(int argc, char *argv[],
 						}
 						else
 						{
-							exec_simple_query(query_string);
+							exec_simple_query(query_string, ('A' == firstchar));
 						}
 					}
 					else
