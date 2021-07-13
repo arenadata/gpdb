@@ -1137,6 +1137,10 @@ exec_mpp_query(const char *query_string,
 		ddesc = (QueryDispatchDesc *) deserializeNode(serializedQueryDispatchDesc,serializedQueryDispatchDesclen);
 		if (!ddesc || !IsA(ddesc, QueryDispatchDesc))
 			elog(ERROR, "MPPEXEC: received invalid QueryDispatchDesc with planned statement");
+		/*
+		 * Deserialize and apply security context from QD.
+		 */
+		SetUserIdAndSecContext(GetUserId(), ddesc->secContext);
 
         sliceTable = ddesc->sliceTable;
 
@@ -5424,7 +5428,7 @@ PostgresMain(int argc, char *argv[],
 									   serializedParams, serializedParamslen,
 									   serializedQueryDispatchDesc, serializedQueryDispatchDesclen);
 
-					SetUserIdAndContext(GetOuterUserId(), false);
+					SetUserIdAndSecContext(GetOuterUserId(), 0);
 
 					send_ready_for_query = true;
 				}
