@@ -872,6 +872,7 @@ savepoint sp1;
 insert into distxact1_4 values (2),(1);
 INFO:  (slice 0) Dispatch command to ALL contents: 0 1 2
 INFO:  (slice 1) Dispatch command to SINGLE content
+INFO:  (slice 1) Dispatch command to ALL contents: 0 1 2
 release sp1;
 end;
 INFO:  Distributed transaction command 'Distributed Prepare' to ALL contents: 0 1 2
