@@ -2775,7 +2775,10 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 		TupleTableSlot *slot = MakeSingleTupleTableSlot(queryDesc->tupDesc);
 
 		int resultno = 0;
-		while (tuplestore_gettupleslot(portal->holdStore, true, false, slot))
+		bool gotSampleRow = false;
+		bool exitLoop = false; /* will change to return when rewrite as function */
+
+		while (!exitLoop && tuplestore_gettupleslot(portal->holdStore, true, false, slot))
 		{
 			TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 			int			natts = typeinfo->natts;
@@ -2785,7 +2788,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			double		this_totalrows = 0;
 			double		this_totaldeadrows = 0;
 
-
+#if 0
 			if (GpPolicyIsReplicated(onerel->rd_cdbpolicy))
 			{
 				/*
@@ -2800,6 +2803,7 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 			}
 
 			resultno++;
+#endif
 
 #ifdef MY_DEBUG
 		ereport(NOTICE,
@@ -2814,7 +2818,6 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 
 			for (i = 0; i < natts; ++i)
 			{
-				//PrinttupAttrInfo *thisState = myState->myinfo + i;
 				bool 		isnull;
 				Datum		attr = slot_getattr(slot, i+1, &isnull);
 
@@ -2865,10 +2868,27 @@ acquire_sample_rows_dispatcher(Relation onerel, bool inh, int elevel,
 						this_totalrows = DatumGetFloat8(funcRetValues[0]);
 						this_totaldeadrows = DatumGetFloat8(funcRetValues[1]);
 						got_summary = true;
+						if (gotSampleRow && GpPolicyIsReplicated(onerel->rd_cdbpolicy))
+						{
+							/*
+							* A replicated table has the same data in all segments. Arbitrarily,
+							* use the sample from the first segment, and discard the rest.
+							* (This is rather inefficient, of course. It would be better to
+							* dispatch to only one segment, but there is no easy API for that
+							* in the dispatcher.)
+							*/
+							ReleaseTupleDesc(tupdesc);
+
+							/* Stop processing tuples - enough */
+							exitLoop = true; 
+							break;
+						}
 					}
 					else
 					{
 						/* This is a sample row. */
+						gotSampleRow = true;
+
 						if (sampleTuples >= targrows)
 							elog(ERROR, "too many sample rows received from gp_acquire_sample_rows");
 
