@@ -2561,6 +2561,10 @@ insert into tcorr2 values (1,1);
 
 set optimizer_trace_fallback to on;
 
+-- Until plan became fixed and can be executed below, test should cause
+-- ERROR:  Unexpected internal error (pathnode.c:XXXX)
+-- But keeping such test is tricky, because any insert or removal of line above
+-- pathnode.c:XXXX, will cause test failure
 explain
 select *
 from tcorr1 out

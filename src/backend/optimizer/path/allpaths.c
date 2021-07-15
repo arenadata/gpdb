@@ -438,6 +438,9 @@ bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 											  false,
 											  target_locus);
 
+			/* path can be NULL if origpath->locus type is SegmentGeneral */
+			Insist(path);
+
 			path = (Path *) create_material_path(root, rel, path);
 
 			if (outer_quals)

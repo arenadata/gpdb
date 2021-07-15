@@ -378,11 +378,10 @@ cdbpath_create_motion_path(PlannerInfo *root,
 	 */
 
 	/*
-	 * TODO: Check if subpath require parameters(like in PR #12238) when the
-	 * following FIXME from regression tests will be resolved. FIXME: A
-	 * process terminates during execution, see
-	 * https://github.com/greenplum-db/gpdb/issues/10791
+	 * If the subpath requires parameters, we cannot generate Motion atop of it.
 	 */
+	if (!bms_is_empty(PATH_REQ_OUTER(subpath)))
+		return NULL;
 
 	/* Create CdbMotionPath node. */
 	pathnode = makeNode(CdbMotionPath);
@@ -2102,6 +2101,10 @@ turn_volatile_seggen_to_singleqe(PlannerInfo *root, Path *path, Node *node)
 		CdbPathLocus_MakeSingleQE(&singleQE,
 								  CdbPathLocus_NumSegments(path->locus));
 		mpath = cdbpath_create_motion_path(root, path, NIL, false, singleQE);
+
+		/* mpath can be NULL if path->locus type is SegmentGeneral */
+		Insist(mpath);
+
 		ppath =  create_projection_path_with_quals(root, mpath->parent, mpath, NIL);
 		ppath->force = true;
 		return (Path *) ppath;
