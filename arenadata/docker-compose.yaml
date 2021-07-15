@@ -13,9 +13,10 @@ services:
       - "$PWD/gpMgmt:/home/gpadmin/gpdb_src/gpMgmt"
       - "$PWD/allure-results:/tmp/allure-results"
     privileged: true
+    sysctls:
+      kernel.sem: 500 1024000 200 4096
     entrypoint: >
       bash -c "mkdir -p /data/gpdata && chmod -R 777 /data &&
-      sysctl 'kernel.sem=500 1024000 200 4096' &&
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw1:
@@ -25,11 +26,12 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+    sysctls:
+      kernel.sem: 500 1024000 200 4096
     entrypoint: >
       bash -c "mkdir -p /data/gpdata && chmod -R 777 /data &&
       source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
       ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
-      sysctl 'kernel.sem=500 1024000 200 4096' &&
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw2:
@@ -39,11 +41,12 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+    sysctls:
+      kernel.sem: 500 1024000 200 4096
     entrypoint: >
       bash -c "mkdir -p /data/gpdata && chmod -R 777 /data &&
       source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
       ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
-      sysctl 'kernel.sem=500 1024000 200 4096' &&
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw3:
@@ -53,10 +56,11 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+    sysctls:
+      kernel.sem: 500 1024000 200 4096
     entrypoint: >
       bash -c "mkdir -p /data/gpdata && chmod -R 777 /data &&
       source gpdb_src/concourse/scripts/common.bash && install_gpdb &&
       ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash &&
-      sysctl 'kernel.sem=500 1024000 200 4096' &&
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
