@@ -1565,8 +1565,6 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 		else
 		{
 			subpath = cdbpath_create_motion_path(root, subpath, subpath->pathkeys, false, targetlocus);
-
-			/* subpath can be NULL in various cases */
 			Insist(subpath);
 		}
 

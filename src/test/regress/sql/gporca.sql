@@ -2561,10 +2561,6 @@ insert into tcorr2 values (1,1);
 
 set optimizer_trace_fallback to on;
 
--- Until plan became fixed and can be executed below, test should cause
--- ERROR:  Unexpected internal error (pathnode.c:XXXX) on Postgres optimizer
--- But keeping such test is tricky, because any insert or removal of line above
--- pathnode.c:XXXX, will cause test failure
 explain
 select *
 from tcorr1 out
@@ -2616,10 +2612,7 @@ where out.b in (select coalesce(tcorr2_d.c, 99)
 --                 from tcorr1 full outer join tcorr2 on tcorr1.a=tcorr2.a+out.a);
 
 set optimizer_join_order to exhaustive2;
--- Until plan became fixed and can be executed below, test should cause
--- ERROR:  Unexpected internal error (pathnode.c:XXXX) on Postgres optimizer
--- But keeping such test is tricky, because any insert or removal of line above
--- pathnode.c:XXXX, will cause test failure
+
 explain
 select *
 from tcorr1 out
