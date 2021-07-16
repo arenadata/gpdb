@@ -2788,8 +2788,9 @@ create_subqueryscan_plan(PlannerInfo *root, Path *best_path,
 								  scan_clauses,
 								  scan_relid,
 								  best_path->parent->subplan);
-
-	copy_path_costsize(root, &scan_plan->scan.plan, best_path);
+	scan_plan->scan.plan.plan_width = best_path->parent->width;
+	scan_plan->scan.plan.plan_rows = best_path->rows;
+	scan_plan->scan.plan.total_cost += cpu_tuple_cost * best_path->rows;
 
 	return scan_plan;
 }
@@ -2952,8 +2953,9 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 								  scan_clauses,
 								  scan_relid,
 								  best_path->parent->subplan);
-
-	copy_path_costsize(root, &scan_plan->scan.plan, best_path);
+	scan_plan->scan.plan.plan_width = best_path->parent->width;
+	scan_plan->scan.plan.plan_rows = best_path->rows;
+	scan_plan->scan.plan.total_cost += cpu_tuple_cost * best_path->rows;
 
 	return scan_plan;
 }
