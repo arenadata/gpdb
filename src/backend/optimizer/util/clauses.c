@@ -1000,6 +1000,11 @@ contain_volatile_functions_walker(Node *node, void *context)
 			if (op_volatile(lfirst_oid(opid)) == PROVOLATILE_VOLATILE)
 				return true;
 		}
+	}
+	else if (IsA(node, RestrictInfo))
+	{
+		RestrictInfo * info = (RestrictInfo *) node;
+		return contain_volatile_functions_walker((Node*)info->clause, context);
 		/* else fall through to check args */
 	}
 	return expression_tree_walker(node, contain_volatile_functions_walker,

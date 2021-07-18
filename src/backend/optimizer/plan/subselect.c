@@ -446,6 +446,15 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 			&subroot,
 			config);
 
+	if (plan->flow->locustype == CdbLocusType_General &&
+		(contain_volatile_functions((Node *) plan->targetlist) ||
+		 contain_volatile_functions(subquery->havingQual)))
+	{
+		plan->flow->segindex = 0;
+		plan->flow->locustype = CdbLocusType_SingleQE;
+		plan->flow->flotype = FLOW_SINGLETON;
+	}
+
 	/* And convert to SubPlan or InitPlan format. */
 	Node	   *result = build_subplan(root,
 										plan,

@@ -2621,6 +2621,12 @@ create_nestloop_path(PlannerInfo *root,
 		}
     }
 
+	if (CdbPathLocus_IsGeneral(join_locus) &&
+			contain_volatile_functions((Node *) restrict_clauses))
+	{
+			CdbPathLocus_MakeSingleQE(&(join_locus));
+	}
+
     pathnode = makeNode(NestPath);
 	pathnode->path.pathtype = T_NestLoop;
 	pathnode->path.parent = joinrel;
@@ -2793,6 +2799,12 @@ create_mergejoin_path(PlannerInfo *root,
 		}
 	}
 
+	if (CdbPathLocus_IsGeneral(join_locus) &&
+			contain_volatile_functions((Node *) restrict_clauses))
+	{
+			CdbPathLocus_MakeSingleQE(&(join_locus));
+	}
+
 	pathnode->jpath.path.pathtype = T_MergeJoin;
 	pathnode->jpath.path.parent = joinrel;
 	pathnode->jpath.jointype = jointype;
@@ -2856,6 +2868,12 @@ create_hashjoin_path(PlannerInfo *root,
 										 false);
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
+
+	if (CdbPathLocus_IsGeneral(join_locus) &&
+			contain_volatile_functions((Node *) restrict_clauses))
+	{
+			CdbPathLocus_MakeSingleQE(&(join_locus));
+	}
 
 	pathnode = makeNode(HashPath);
 

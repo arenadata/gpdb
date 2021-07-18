@@ -38,6 +38,7 @@
 
 #include "cdb/cdbmutate.h"		/* cdbmutate_warn_ctid_without_segid */
 #include "cdb/cdbpath.h"		/* cdbpath_rows() */
+#include "cdb/cdbsetop.h"
 
 // TODO: these planner/executor gucs need to be refactored into PlannerConfig.
 bool		gp_enable_sort_limit = FALSE;
@@ -94,7 +95,7 @@ static void recurse_push_qual(Node *setOp, Query *topquery,
 __declspec(noreturn)
 #endif
 static void cdb_no_path_for_query(void) __attribute__((__noreturn__));
-
+static void handle_gen_volatile_path(PlannerInfo *root, RelOptInfo *rel);
 
 /*
  * make_one_rel
@@ -206,6 +207,30 @@ set_base_rel_pathlists(PlannerInfo *root)
 	}
 }
 
+
+/*
+ * handle_gen_volatile_path
+ *
+ * Change the path in its pathlist if match the pattern
+ * (segmentgeneral or general path contains volatile restrictions).
+ */
+static void
+handle_gen_volatile_path(PlannerInfo *root, RelOptInfo *rel)
+{
+	ListCell   *lc;
+
+	foreach(lc, rel->pathlist)
+	{
+		Path	     *path = (Path *) lfirst(lc);
+
+		if (CdbPathLocus_IsGeneral(path->locus) &&
+			contain_volatile_functions((Node *) rel->baserestrictinfo))
+		{
+			CdbPathLocus_MakeSingleQE(&(path->locus));
+		}
+	}
+}
+
 /*
  * set_rel_pathlist
  *	  Build access paths for a base relation
@@ -253,6 +278,13 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		Assert(rel->rtekind == RTE_RELATION);
 		set_plain_rel_pathlist(root, rel, rte);
 	}
+	/*
+	 * Greenplum specific behavior:
+	 * Change the path in pathlist if it is a general
+	 * path that contains volatile restrictions.
+	 */
+	if (rel->reloptkind == RELOPT_BASEREL)
+		handle_gen_volatile_path(root, rel);
 
 #ifdef OPTIMIZER_DEBUG
 	debug_print_rel(root, rel);
@@ -733,6 +765,15 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		rel->subrtable = rte->subquery_rtable;
 		subroot = root;
 		/* XXX rel->onerow = ??? */
+	}
+
+	if (rel->subplan->flow->locustype == CdbLocusType_General &&
+		(contain_volatile_functions((Node *) rel->subplan->targetlist) ||
+		 contain_volatile_functions(subquery->havingQual)))
+	{
+		rel->subplan->flow->segindex = 0;
+		rel->subplan->flow->locustype = CdbLocusType_SingleQE;
+		rel->subplan->flow->flotype = FLOW_SINGLETON;
 	}
 
 	/* Copy number of output rows from subplan */

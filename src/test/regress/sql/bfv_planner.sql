@@ -242,6 +242,51 @@ INSERT INTO oneoffplantest VALUES (0), (0), (0);
 -- regardless of the number of tuples in the table.
 select volatilefunc(a) from oneoffplantest;
 
+-- volatile general
+-- General locus imply that if the corresponding slice
+-- is executed in many different segments should provide the
+-- same result data set. Thus, in some cases, General
+-- can be treated like broadcast. But if the general
+-- locus path contain volatile functions, they lose the property and
+-- can only be treated as singleQE. The following cases are to check that
+-- we correctly handle all these cases.
+
+-- FIXME: for ORCA the following SQL does not consider this. We should
+-- fix them when ORCA changes.
+set optimizer = off;
+create table t_hashdist(a int, b int, c int) distributed by (a);
+
+---- pushed down filter
+explain select * from
+        (select a from generate_series(1, 10)a) x, t_hashdist
+        where x.a > random();
+
+---- join qual
+explain select * from
+                    t_hashdist,
+                    (select a from generate_series(1, 10) a) x,
+                    (select a from generate_series(1, 10) a) y
+                    where x.a + y.a > random();
+
+---- sublink & subquery
+explain select * from t_hashdist where a > All (select random() from generate_series(1, 10));
+explain select * from t_hashdist where a in (select random()::int from generate_series(1, 10));
+
+-- subplan
+explain select * from
+    t_hashdist left join (select a from generate_series(1, 10) a) x on t_hashdist.a > any (select random() from generate_series(1, 10));
+
+-- targetlist
+explain select * from t_hashdist cross join (select random () from generate_series(1, 10))x;
+explain select * from t_hashdist cross join (select a, sum(random()) from generate_series(1, 10) a group by a) x;
+explain select * from t_hashdist cross join (select random() as k, sum(a) from generate_series(1, 10) a group by k) x;
+explain select * from t_hashdist cross join (select a, count(1) as s from generate_series(1, 10) a group by a having count(1) > random() order by a) x ;
+
+-- limit
+explain select * from t_hashdist cross join (select * from generate_series(1, 10) limit 1) x;
+
+reset optimizer;
+
 -- start_ignore
 drop table if exists bfv_planner_x;
 drop table if exists testbadsql;
