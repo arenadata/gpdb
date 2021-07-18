@@ -44,6 +44,9 @@ cdbpath_dedup_fixup(PlannerInfo *root, Path *path);
 bool
 cdbpath_contains_wts(Path *path);
 
+Path *
+turn_volatile_seggen_to_singleqe(PlannerInfo *root, Path *path, Node *node);
+
 /*
  * cdbpath_rows
  *
