@@ -2338,8 +2338,8 @@ begin
 		when data_exception then  -- category match
 			raise notice 'caught data_exception';
 			x := -1;
-		when NUMERIC_VALUE_OUT_OF_RANGE OR CARDINALITY_VIOLATION then
-			raise notice 'caught numeric_value_out_of_range or cardinality_violation';
+		when NUMERIC_VALUE_OUT_OF_RANGE OR CARDINALITY_VIOLATION OR TOO_MANY_ROWS then
+			raise notice 'caught numeric_value_out_of_range or cardinality_violation or too_many_rows';
 			x := -2;
 	end;
 	return x;
@@ -2365,7 +2365,7 @@ NOTICE:  caught data_exception
 (1 row)
 
 select trap_matching_test(1);
-NOTICE:  caught numeric_value_out_of_range or cardinality_violation
+NOTICE:  caught numeric_value_out_of_range or cardinality_violation or too_many_rows
  trap_matching_test 
 --------------------
                  -2
