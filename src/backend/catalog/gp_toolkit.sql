@@ -498,14 +498,9 @@ BEGIN
     SELECT gp_toolkit.__gp_param_local_setting($1) INTO paramdummy;
 
     FOR paramsettings IN
-        SELECT gs.*
-        FROM gp_toolkit.__gp_localid, gp_toolkit.__gp_param_local_setting($1) AS gs
-
+        select (gp_toolkit.__gp_param_local_setting($1)).* from gp_toolkit.__gp_localid
         UNION ALL
-
-        SELECT gs.*
-        FROM gp_toolkit.__gp_masterid, gp_toolkit.__gp_param_local_setting($1) AS gs
-
+        select (gp_toolkit.__gp_param_local_setting($1)).* from gp_toolkit.__gp_masterid
     LOOP
         RETURN NEXT paramsettings;
     END LOOP;
@@ -535,8 +530,7 @@ DECLARE
 BEGIN
     FOR param in (SELECT name FROM pg_settings order by name) LOOP
         FOR paramsettings IN
-            SELECT pls.*
-            FROM gp_toolkit.__gp_localid, gp_toolkit.__gp_param_local_setting(param) AS pls
+            select (gp_toolkit.__gp_param_local_setting(param)).* from gp_toolkit.__gp_localid
         LOOP
             RETURN NEXT paramsettings;
         END LOOP;
