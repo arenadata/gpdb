@@ -14,8 +14,10 @@ function gen_env(){
 		source gpdb_src/gpAux/gpdemo/gpdemo-env.sh
 
     gpstop -u
+
     mkdir -p /home/gpadmin/sqldump
     time /home/gpadmin/gpdb_src/concourse/scripts/dumpdb.bash
+
     xz -d /home/gpadmin/sqldump/dump.sql.xz
 
 		cd "\${1}/gpdb_src/gpMgmt/"
@@ -42,8 +44,6 @@ function _main() {
     time ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash
 
     pip --retries 10 install --ignore-installed pip allure-behave==2.4.0
-    rpm -i https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/centos/7/community/x86_64/sigar-1.6.5-163.el7.x86_64.rpm &&
-    rpm -i https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/centos/7/community/x86_64/sigar-headers-1.6.5-163.el7.x86_64.rpm &&
 
     local hosts="sdw1 sdw2 sdw3 mdw"
     for host in $hosts
