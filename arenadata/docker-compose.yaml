@@ -9,8 +9,6 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
-      - "$PWD/arenadata:/home/gpadmin/gpdb_src/arenadata"
-      - "$PWD/gpMgmt:/home/gpadmin/gpdb_src/gpMgmt"
       - "$PWD/allure-results:/tmp/allure-results"
     privileged: true
     sysctls:
