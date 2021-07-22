@@ -6,31 +6,31 @@ CWDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../../concourse/scripts" && pwd )
 source "${CWDIR}/common.bash"
 
 function gen_env(){
-    cat > /opt/run_test.sh <<-EOF
+		cat > /opt/run_test.sh <<-EOF
 		set -ex
 
 		source /usr/local/greenplum-db-devel/greenplum_path.sh
 
 		source gpdb_src/gpAux/gpdemo/gpdemo-env.sh
 
-    gpstop -u
+		gpstop -u
 
-    mkdir -p /home/gpadmin/sqldump
-    time /home/gpadmin/gpdb_src/concourse/scripts/dumpdb.bash
+		mkdir -p /home/gpadmin/sqldump
+		time /home/gpadmin/gpdb_src/concourse/scripts/dumpdb.bash
 
-    xz -d /home/gpadmin/sqldump/dump.sql.xz
+		xz -d /home/gpadmin/sqldump/dump.sql.xz
 
 		cd "\${1}/gpdb_src/gpMgmt/"
 		BEHAVE_TAGS="${BEHAVE_TAGS}"
 		BEHAVE_FLAGS="${BEHAVE_FLAGS}"
 		if [ ! -z "\${BEHAVE_TAGS}" ]; then
-		    make -f Makefile.behave behave tags=\${BEHAVE_TAGS}
+				make -f Makefile.behave behave tags=\${BEHAVE_TAGS}
 		else
-		    flags="\${BEHAVE_FLAGS}" make -f Makefile.behave behave
+				flags="\${BEHAVE_FLAGS}" make -f Makefile.behave behave
 		fi
 	EOF
 
-    chmod a+x /opt/run_test.sh
+		chmod a+x /opt/run_test.sh
 }
 
 function _main() {

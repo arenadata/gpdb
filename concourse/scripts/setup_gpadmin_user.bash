@@ -41,8 +41,7 @@ transfer_ownership() {
     [ -f gpdb_src/gpMgmt/bin/gpload_test/gpload2/data_file.csv ] && chown gpadmin:gpadmin gpdb_src/gpMgmt/bin/gpload_test/gpload2/data_file.csv
     [ -d /usr/local/gpdb ] && chown -R gpadmin:gpadmin /usr/local/gpdb
     [ -d /usr/local/greenplum-db-devel ] && chown -R gpadmin:gpadmin /usr/local/greenplum-db-devel
-    # workaround of too slow recursive chown https://github.com/docker/for-linux/issues/388
-    find /home/gpadmin -not -group gpadmin -not -user gpadmin -print0 | xargs -P 0 -0 --no-run-if-empty chown --no-dereference gpadmin:gpadmin
+    chown -R gpadmin:gpadmin /home/gpadmin
 }
 
 set_limits() {
