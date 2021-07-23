@@ -3,7 +3,7 @@ Behave tests now can run locally with docker-compose.
 Feature files are located in `gpMgmt/test/behave/mgmt_utils`
 Before run tests you need to build a docker-image
 ```bash
-docker build -t "hub.adsw.io/library/gpdb_regress:${BRANCH_NAME}" -f arenadata/Dockerfile .
+docker build -t "hub.adsw.io/library/gpdb6_regress:${BRANCH_NAME}" -f arenadata/Dockerfile .
 ```
 
 Command to run features:
