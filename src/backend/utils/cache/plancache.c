@@ -1022,7 +1022,6 @@ static bool
 choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, IntoClause *intoClause)
 {
 	double		avg_custom_cost;
-	ListCell   *lc;
 
 	/* Force to replan for CTAS */
 	if (intoClause != NULL)
