@@ -110,6 +110,8 @@ typedef struct CachedPlanSource
 	double		generic_cost;	/* cost of generic plan, or -1 if not known */
 	double		total_custom_cost;		/* total cost of custom plans so far */
 	int			num_custom_plans;		/* number of plans included in total */
+	bool		is_custom_cost_safe;	/* is it safe to compare costs of
+										 * generic and custom plan */
 } CachedPlanSource;
 
 /*

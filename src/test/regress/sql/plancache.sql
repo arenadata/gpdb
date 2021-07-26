@@ -163,6 +163,47 @@ end$$ language plpgsql;
 select cachebug();
 select cachebug();
 
+--
+-- Test switching to Generic plan when ORCA falling back to Postgres optimizer
+--
+create table test_switch_generic(i integer)
+partition by range(i) (start (1) end (101) every (100));
+insert into test_switch_generic select generate_series(1,100);
+analyze test_switch_generic;
+-- Using select row() to force optimizer fallback. Subquery that returns a row
+-- rather than a single scalar isn't supported in ORCA currently.
+prepare test_switch_generic_pp (integer) as
+select row(i)
+from test_switch_generic where i < $1;
+-- For the first 5 executions custom plan should be used. Filter node contains
+-- '(i < 2)' condition, which indicates Custom plan usage.
+explain (costs off) execute test_switch_generic_pp(2);
+execute test_switch_generic_pp(2); -- 1x
+execute test_switch_generic_pp(2); -- 2x
+execute test_switch_generic_pp(2); -- 3x
+execute test_switch_generic_pp(2); -- 4x
+execute test_switch_generic_pp(2); -- 5x
+-- For the 6th and all next Genric plan should be used. Filter node contains
+-- '(i < $1)' condition, which indicates Custom plan usage.
+explain (costs off) execute test_switch_generic_pp(2);
+
+--
+-- Test no switching to Generic plan appeared when ORCA can plan a query
+--
+prepare test_no_switch_generic_pp (integer) as 
+select i
+from test_switch_generic where i < $1;
+-- Custom plan should be generated for all executions. Filter node contains
+-- '(i < 2)' condition, which indicates Custom plan usage.
+explain (costs off) execute test_no_switch_generic_pp(2);
+execute test_no_switch_generic_pp(2); -- 1x
+execute test_no_switch_generic_pp(2); -- 2x
+execute test_no_switch_generic_pp(2); -- 3x
+execute test_no_switch_generic_pp(2); -- 4x
+execute test_no_switch_generic_pp(2); -- 5x
+-- For ORCA '(i < 2)' is still here, which indicates Custom plan usage.
+explain (costs off) execute test_no_switch_generic_pp(2);
+
 -- Test plan_cache_mode
 
 create table test_mode (a int);

@@ -97,7 +97,7 @@ static CachedPlan *BuildCachedPlan(CachedPlanSource *plansource, List *qlist,
 static bool choose_custom_plan(CachedPlanSource *plansource,
 				   ParamListInfo boundParams,
 				   IntoClause *intoClause);
-static double cached_plan_cost(CachedPlan *plan, bool include_planner);
+static double cached_plan_cost(CachedPlan *plan, bool *is_custom_cost_safe);
 static void AcquireExecutorLocks(List *stmt_list, bool acquire);
 static void AcquirePlannerLocks(List *stmt_list, bool acquire);
 static void ScanQueryForLocks(Query *parsetree, bool acquire);
@@ -213,6 +213,7 @@ CreateCachedPlan(Node *raw_parse_tree,
 	plansource->generic_cost = -1;
 	plansource->total_custom_cost = 0;
 	plansource->num_custom_plans = 0;
+	plansource->is_custom_cost_safe = true;
 
 	MemoryContextSwitchTo(oldcxt);
 
@@ -278,6 +279,7 @@ CreateOneShotCachedPlan(Node *raw_parse_tree,
 	plansource->generic_cost = -1;
 	plansource->total_custom_cost = 0;
 	plansource->num_custom_plans = 0;
+	plansource->is_custom_cost_safe = true;
 
 	return plansource;
 }
@@ -1020,6 +1022,7 @@ static bool
 choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, IntoClause *intoClause)
 {
 	double		avg_custom_cost;
+	ListCell   *lc;
 
 	/* Force to replan for CTAS */
 	if (intoClause != NULL)
@@ -1052,6 +1055,16 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, Into
 	if (plansource->num_custom_plans < 5)
 		return true;
 
+	/*
+	 * GPORCA doesn't support Params at all, so there's no hope of generating
+	 * a generic plan. We could generate a generic plan with the Postgres
+	 * planner, but the cost model between GPORCA and the Postgres planner is
+	 * different, so comparing the costs between plans generated with GPORCA
+	 * and the Postgres planner would not be sensible.
+	 */
+	if (!plansource->is_custom_cost_safe)
+		return true;
+
 	avg_custom_cost = plansource->total_custom_cost / plansource->num_custom_plans;
 
 	/*
@@ -1073,12 +1086,16 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, Into
 /*
  * cached_plan_cost: calculate estimated cost of a plan
  *
- * If include_planner is true, also include the estimated cost of constructing
+ * When generating custom plan, we need to know, will it be safe to compare
+ * its cost with generic plan cost on the second choose_custom_plan() call.
+ * If is_custom_cost_safe ptr is not NULL, returning false will indicate query
+ * planned using any optimizer except Postgres optimizer. If function called
+ * with is_custom_cost_safe, we also include the estimated cost of constructing
  * the plan.  (We must factor that into the cost of using a custom plan, but
  * we don't count it for a generic plan.)
  */
 static double
-cached_plan_cost(CachedPlan *plan, bool include_planner)
+cached_plan_cost(CachedPlan *plan, bool *is_custom_cost_safe)
 {
 	double		result = 0;
 	ListCell   *lc;
@@ -1092,7 +1109,7 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
 
 		result += plannedstmt->planTree->total_cost;
 
-		if (include_planner)
+		if (is_custom_cost_safe)
 		{
 			/*
 			 * Currently we use a very crude estimate of planning effort based
@@ -1118,6 +1135,9 @@ cached_plan_cost(CachedPlan *plan, bool include_planner)
 			int			nrelations = list_length(plannedstmt->rtable);
 
 			result += 1000.0 * cpu_operator_cost * (nrelations + 1);
+
+			if (plannedstmt->planGen != PLANGEN_PLANNER)
+				*is_custom_cost_safe = false;
 		}
 
 		/*
@@ -1235,7 +1255,7 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 								MemoryContextGetParent(plansource->context));
 			}
 			/* Update generic_cost whenever we make a new generic plan */
-			plansource->generic_cost = cached_plan_cost(plan, false);
+			plansource->generic_cost = cached_plan_cost(plan, NULL);
 
 			/*
 			 * If, based on the now-known value of generic_cost, we'd not have
@@ -1264,7 +1284,8 @@ GetCachedPlan(CachedPlanSource *plansource, ParamListInfo boundParams,
 		/* Accumulate total costs of custom plans, but 'ware overflow */
 		if (plansource->num_custom_plans < INT_MAX)
 		{
-			plansource->total_custom_cost += cached_plan_cost(plan, true);
+			plansource->total_custom_cost +=
+				cached_plan_cost(plan, &plansource->is_custom_cost_safe);
 			plansource->num_custom_plans++;
 		}
 	}
@@ -1448,6 +1469,7 @@ CopyCachedPlan(CachedPlanSource *plansource)
 	newsource->generic_cost = plansource->generic_cost;
 	newsource->total_custom_cost = plansource->total_custom_cost;
 	newsource->num_custom_plans = plansource->num_custom_plans;
+	newsource->is_custom_cost_safe = plansource->is_custom_cost_safe;
 
 	MemoryContextSwitchTo(oldcxt);
 
