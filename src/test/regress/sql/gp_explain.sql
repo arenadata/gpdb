@@ -193,12 +193,12 @@ distributed by (dist_col)
 partition by range(idx_col) 
 (start (0) inclusive end (999) inclusive every (500));
 
-create index bitmap_btree_test_idx on bitmap_btree_test
-using btree(idx_col);
-
 insert into bitmap_btree_test
 select i, i % 1000
 from generate_series(0,10000) i;
+
+create index bitmap_btree_test_idx on bitmap_btree_test
+using btree(idx_col);
 
 --both optimizers should show more than 1 row actually processed
 select xpath('//*[contains(text(), "Bitmap Index Scan")]/..
@@ -216,12 +216,12 @@ distributed by (dist_col)
 partition by range(idx_col)
 (start (0) inclusive end (999) inclusive every (500));
 
-create index bitmap_bitmap_test_idx on bitmap_bitmap_test
-using bitmap(idx_col);
-
 insert into bitmap_bitmap_test
 select i, i % 1000
 from generate_series(0,10000) i;
+
+create index bitmap_bitmap_test_idx on bitmap_bitmap_test
+using bitmap(idx_col);
 
 --both optimizers should show 1 row actually processed, because bitmap index
 --doesn't have a precise idea of the number of heap tuples involved
@@ -240,12 +240,12 @@ distributed by (dist_col)
 partition by range(part_col)
 (start (0) inclusive end (999) inclusive every (500));
 
-create index bitmap_gist_test_idx on bitmap_gist_test
-using gist(idx_col);
-
 insert into bitmap_gist_test
 select i, i % 1000, int4range(i % 1000, i % 1000, '[]')
 from generate_series(0,10000) i;
+
+create index bitmap_gist_test_idx on bitmap_gist_test
+using gist(idx_col);
 
 --both optimizers should show more than 1 row actually processed
 select xpath('//*[contains(text(), "Bitmap Index Scan")]/..
@@ -263,12 +263,12 @@ distributed by (dist_col)
 partition by range(part_col)
 (start (0) inclusive end (999) inclusive every (500));
 
-create index bitmap_spgist_test_idx on bitmap_spgist_test
-using spgist(idx_col);
-
 insert into bitmap_spgist_test
 select i, i % 1000, int4range(i % 1000, i % 1000, '[]')
 from generate_series(0,10000) i;
+
+create index bitmap_spgist_test_idx on bitmap_spgist_test
+using spgist(idx_col);
 
 --both optimizers should show more than 1 row actually processed
 --spgist index is not supported by ORCA, falling back to Postgres optimizer
@@ -288,12 +288,12 @@ distributed by (dist_col)
 partition by range(part_col)
 (start (0) inclusive end (999) inclusive every (500));
 
-create index bitmap_gin_test_idx on bitmap_gin_test
-using gin(idx_col);
-
 insert into bitmap_gin_test
 select i, i % 1000, array[(i % 1000)]
 from generate_series(0,10000) i;
+
+create index bitmap_gin_test_idx on bitmap_gin_test
+using gin(idx_col);
 
 --both optimizers should show more than 1 row actually processed
 select xpath('//*[contains(text(), "Bitmap Index Scan")]/..
