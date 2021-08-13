@@ -215,7 +215,7 @@ extern bool aocs_getnext(AOCSScanDesc scan, ScanDirection direction, TupleTableS
 extern AOCSInsertDesc aocs_insert_init(Relation rel, int segno, bool update_mode);
 extern Oid aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool *null, AOTupleId *aoTupleId);
 static inline Oid aocs_insert(AOCSInsertDesc idesc, TupleTableSlot *slot)
-{	
+{
 	Oid oid;
 	AOTupleId aotid;
 
