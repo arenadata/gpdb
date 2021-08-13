@@ -2849,6 +2849,12 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc,
 
 	Assert(RelationIsAoRows(relation));
 
+	/*
+	 * generate new transaction id if necessary, so dependent entities, such as
+	 * spgist indexes, can use it outside appendonly_insert
+	 */
+	GetCurrentTransactionId();
+
 	if (aoInsertDesc->useNoToast)
 		need_toast = false;
 	else

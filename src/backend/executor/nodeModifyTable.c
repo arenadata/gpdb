@@ -477,8 +477,6 @@ ExecInsert(TupleTableSlot *parentslot,
 		if (resultRelationDesc->rd_att->constr)
 			ExecConstraints(resultRelInfo, slot, estate);
 
-		TransactionId xid = GetCurrentTransactionId();
-
 		/*
 		 * insert the tuple
 		 *
@@ -555,7 +553,7 @@ ExecInsert(TupleTableSlot *parentslot,
 			newId = heap_insert(resultRelationDesc,
 								tuple,
 								estate->es_output_cid, 0, NULL,
-								xid);
+								GetCurrentTransactionId());
 			lastTid = tuple->t_self;
 		}
 
