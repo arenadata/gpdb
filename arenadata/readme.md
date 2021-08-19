@@ -26,7 +26,8 @@ CI pushes docker images to the internal registry for each branch. We can pull it
 We need to execute [../concourse/scripts/ic_gpdb.bash](../concourse/scripts/ic_gpdb.bash) in container to create demo cluster and run different test suites against it:
 
 ```bash
-docker run --name gpdb6_opt_on --rm -it -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c optimizer=on' installcheck-world" \
+docker run --name gpdb6_opt_on --rm -it -e TEST_OS=centos \
+  -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c optimizer=on' installcheck-world" \
   --sysctl 'kernel.sem=500 1024000 200 4096' gpdb6_regress:latest \
   bash -c "ssh-keygen -A && /usr/sbin/sshd && bash /home/gpadmin/gpdb_src/concourse/scripts/ic_gpdb.bash"
 ```
@@ -39,7 +40,7 @@ docker run --name gpdb6_opt_on --rm -it -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c o
 ## ORCA unit test run
 
 ```bash
-sudo docker run --rm -it gpdb6_regress:latest bash -c "gpdb_src/concourse/scripts/unit_tests_gporca.bash"
+docker run --rm -it gpdb6_regress:latest bash -c "gpdb_src/concourse/scripts/unit_tests_gporca.bash"
 ```
 
 ## How to run demo cluster inside docker container manually
@@ -60,8 +61,7 @@ sudo docker run --rm -it gpdb6_regress:latest bash -c "gpdb_src/concourse/script
    su - gpadmin -c '
    source /usr/local/greenplum-db-devel/greenplum_path.sh;
    source gpdb_src/gpAux/gpdemo/gpdemo-env.sh; 
-   bash'
-   psql postgres
+   psql postgres'
    ```
 
 ## Behave test run
