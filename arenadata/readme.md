@@ -2,7 +2,9 @@
 
 ## Build docker gpdb image with developer options
 
-```bash
+Change directory to gpdb sources destination. Make sure that directry isn't contain binary objects from previous builds. Then run:
+
+```bash 
 docker build -t gpdb6_regress:latest -f arenadata/Dockerfile .
 ```
 
