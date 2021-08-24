@@ -34,7 +34,7 @@ docker run --name gpdb6_opt_on --rm -it -e TEST_OS=centos \
   bash -c "ssh-keygen -A && /usr/sbin/sshd && bash /home/gpadmin/gpdb_src/concourse/scripts/ic_gpdb.bash"
 ```
 
-* we need to modife `MAKE_TEST_COMMAND` environment variable to run different suite. e.g. we may run test againt Postgres optimizer or ORCA with altering `PGOPTIONS` environment variable;
+* we need to modify `MAKE_TEST_COMMAND` environment variable to run different suite. e.g. we may run test againt Postgres optimizer or ORCA with altering `PGOPTIONS` environment variable;
 * we need to run container as `--privileged` to run debugger inside it
 * we need to increase semaphore amount to be able to run demo cluster
 * we need running ssh server to be able to run demo cluster
