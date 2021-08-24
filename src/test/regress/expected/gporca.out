@@ -13437,9 +13437,9 @@ where first_id in (select first_id from mat_w)
 and first_id in (select first_id from mat_w);
                                                 QUERY PLAN                                                
 ----------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice3; segments: 3)  (cost=0.36..5.01 rows=39 width=4)
+ Gather Motion 3:1  (slice3; segments: 3)  (cost=10.00..14.65 rows=39 width=4)
    Output: material_test2.first_id
-   ->  Seq Scan on orca.material_test2  (cost=0.36..5.01 rows=13 width=4)
+   ->  Seq Scan on orca.material_test2  (cost=10.00..14.65 rows=13 width=4)
          Output: material_test2.first_id
          Filter: ((hashed SubPlan 1) AND (hashed SubPlan 2))
          SubPlan 1  (slice3; segments: 3)
