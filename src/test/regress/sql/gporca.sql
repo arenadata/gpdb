@@ -3018,8 +3018,17 @@ reset enable_nestloop;
 reset enable_hashjoin;
 
 --
--- Test ORCA not switching to Generic plan
--- Test Subquery Scan cost is correct for Postgres optimizer
+-- Test both optimizers not switching to Generic plan.
+-- 1) Test Subquery Scan cost is correct for Postgres optimizer, which leads
+-- Custom plan to be preferred after current fix (Subquery Scan node cost
+-- calculation).
+-- 2) Test ORCA not switching to Generic plan, because it's incorrect to
+-- compare Postgres and ORCA plans cost.
+--
+-- Unlike near the same test in plancache.sql, we show Subquery Scan cost
+-- really changed and plan switching behavior just points to it.
+-- The ORCA part of test somehow duplicates plancache.sql test, showing more
+-- complex example.
 --
 create table test_subquery_scan(i integer, d date)
 partition by range(d) (start ('2019-01-01'::date) end ('2022-01-01'::date)
@@ -3032,11 +3041,12 @@ from ss_cte
 where d in (select d from ss_cte);
 -- Disabling hashjoin for ORCA will force using of unoptimal plan. Before
 -- fixing ORCA and Postgres plans costs comparison, we used Genric plan after
--- 5th execution, which was wrong.
+-- 5th execution even for ORCA, which was wrong.
 set optimizer_enable_hashjoin=off;
 -- Explain for Postgres optimizer should contain Subquery Scan node, which cost
--- includes the cost of underlying node. ORCA should build correct plan, like
--- before.
+-- includes the cost of underlying node.
+-- ORCA should build correct plan, like before (we just showing ORCA not
+-- switching to Generic plan below).
 explain execute test_subquery_scan_pp('2021-01-01'::date);
 execute test_subquery_scan_pp('2021-01-01'::date); -- 1x
 execute test_subquery_scan_pp('2021-01-01'::date); -- 2x
@@ -3044,9 +3054,13 @@ execute test_subquery_scan_pp('2021-01-01'::date); -- 3x
 execute test_subquery_scan_pp('2021-01-01'::date); -- 4x
 execute test_subquery_scan_pp('2021-01-01'::date); -- 5x
 -- The plan for both, Postgres and ORCA, optimizers should be equal to first
--- explain call. Postgres optimizer should not switch to Generic plan, because
--- Subquery Scan node cost is fixed. ORCA should not switch to Generic plan,
--- because it's incorrect to compare Postgres and ORCA plans cost.
+-- explain call.
+-- 1) Postgres optimizer should not switch to Generic plan, because Subquery
+-- Scan node cost was fixed and Custom plan cost is lower after fix.
+-- 2) ORCA should not switch to Generic plan, because it's incorrect to compare
+-- Postgres and ORCA plans cost.
+-- Filter node contains '(d = '2021-01-01'::date)' condition, which indicates
+-- Custom plan usage.
 explain execute test_subquery_scan_pp('2021-01-01'::date);
 
 reset optimizer_enable_hashjoin;
