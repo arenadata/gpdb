@@ -912,10 +912,10 @@ aocs_insert_values(AOCSInsertDesc idesc, Datum *d, bool *null, AOTupleId *aoTupl
 #endif
 
 	/*
-	 * generate new transaction id if necessary, so dependent entities, such as
-	 * spgist indexes, can use it outside aocs_insert_values
+	 * Generate new transaction id if necessary, so dependent entities, such as
+	 * spgist indexes, can use it outside aocs_insert_values.
 	 */
-	GetCurrentTransactionId();
+	(void) GetCurrentTransactionId();
 
 	/* As usual, at this moment, we assume one col per vp */
 	for (i = 0; i < RelationGetNumberOfAttributes(rel); ++i)
