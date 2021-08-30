@@ -256,7 +256,7 @@ from get_explain_analyze_xml_output($$
     select * from bitmap_gist_test where idx_col @> 900;
     $$) as x;
 
--- gist spgist test case
+-- spgist index test case
 create table bitmap_spgist_test(dist_col int, part_col int, idx_col int4range)
 with (appendonly=true, compresslevel=5, compresstype=zlib)
 distributed by (dist_col)
@@ -280,7 +280,7 @@ from get_explain_analyze_xml_output($$
     select * from bitmap_spgist_test where idx_col @> 900;
     $$) as x;
 
--- gist gin test case
+-- gin index test case
 
 create table bitmap_gin_test(dist_col int, part_col int, idx_col int[])
 with (appendonly=true, compresslevel=5, compresstype=zlib)
