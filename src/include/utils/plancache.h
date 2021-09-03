@@ -114,9 +114,9 @@ typedef struct CachedPlanSource
 	bool		plangen_switched;		/* was plangen switched for statements
 										 * in one plan or between plans from
 										 * BuildCachedPlan() calls */
-	PlanGenerator init_plangen_used;	/* generator used for very first custom
-										 * plan statement or for all statements
-										 * if plangen_switched is false */
+	PlanGenerator init_plangen_used;	/* generator used for very first plan's
+										 * statement or for all statements if
+										 * plangen_switched is false */
 } CachedPlanSource;
 
 /*
