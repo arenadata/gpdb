@@ -79,6 +79,7 @@ typedef struct sequence_magic
 typedef struct SeqTableData
 {
 	Oid			relid;			/* pg_class OID of this sequence (hash key) */
+	bool called_from_dispatcher;
 	Oid			filenode;		/* last seen relfilenode of this sequence */
 	LocalTransactionId lxid;	/* xact in which we last did a seq op */
 	bool		last_valid;		/* do we have a valid "last" value? */
@@ -98,9 +99,6 @@ typedef struct SeqTableKey
 	Oid relid;
 	bool called_from_dispatcher;
 }
-#if defined(pg_attribute_packed)
-			pg_attribute_packed()
-#endif
 SeqTableKey;
 
 /*
