@@ -26,6 +26,10 @@
 
 #include "postgres.h"
 
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
+
 #include <signal.h>
 
 #include "access/xact.h"
