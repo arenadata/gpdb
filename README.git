@@ -1,5 +1,6 @@
 (This file does not appear in release tarballs.)
 
+
 In a release or snapshot tarball of PostgreSQL, a documentation file named
 INSTALL will appear in this directory.  However, this file is not stored in
 git and so will not be present if you are using a git checkout.
