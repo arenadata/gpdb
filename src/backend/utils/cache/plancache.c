@@ -870,24 +870,24 @@ CheckCachedPlan(CachedPlanSource *plansource)
 static void
 detect_plangen_switch(CachedPlan *plan, CachedPlanSource *plansource)
 {
-	if (plansource->plangen_switched)
+	if (plansource->plangen_switched || list_length(plan->stmt_list) == 0)
 		return;
 
-	ListCell   *lc;
-	bool		first_stmt = true;
+	ListCell	*lc = list_head(plan->stmt_list);
+	PlannedStmt	*plannedstmt;
 
-	foreach(lc, plan->stmt_list)
+	/* Save very first statement's plangen value ... */
+	if (plansource->generation == 1)
 	{
-		PlannedStmt *plannedstmt = (PlannedStmt *) lfirst(lc);
-
-		/* Save very first statement's plangen value ... */
-		if (first_stmt && plansource->generation == 1)
-		{
-			plansource->init_plangen_used = plannedstmt->planGen;
-			first_stmt = false;
-		}
-		/* ... and compare all others with it at next iteration or call. */
-		else if (plansource->init_plangen_used != plannedstmt->planGen)
+		plannedstmt = (PlannedStmt *) lfirst(lc);
+		plansource->init_plangen_used = plannedstmt->planGen;
+		lc = lnext(lc);
+	}
+	/* ... and compare all others with it at next iteration or call. */
+	for_each_cell(lc, lc)
+	{
+		plannedstmt = (PlannedStmt *) lfirst(lc);
+		if (plansource->init_plangen_used != plannedstmt->planGen)
 		{
 			plansource->plangen_switched = true;
 			break;
