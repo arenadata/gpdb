@@ -166,8 +166,8 @@ RECONFIG :
 	rm -f $(GPPGDIR)/GNUmakefile
 
 $(GPPGDIR)/GNUmakefile : $(GPPGDIR)/configure  env.sh
-#	rm -rf $(INSTLOC)
-#	mkdir -p $(GPPGDIR)
+	rm -rf $(INSTLOC)
+	mkdir -p $(GPPGDIR)
 	echo "Running ./configure with CONFIGFLAGS=$(CONFIGFLAGS)\n"
 	cd $(GPPGDIR) && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))"    \
                      CFLAGS=$(INSTCFLAGS) 					  \
