@@ -176,8 +176,8 @@ $(GPPGDIR)/GNUmakefile : $(GPPGDIR)/configure  env.sh
                          --mandir=$(INSTLOC)/man
 
 Debug/GNUmakefile : $(GPPGDIR)/configure  env.sh
-#	rm -rf $(INSTLOC)
-#	mkdir -p Debug
+	rm -rf $(INSTLOC)
+	mkdir -p Debug
 	echo "Running ./configure with CONFIGFLAGS=$(CONFIGFLAGS)\n"
 	cd Debug && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))"        \
                 CFLAGS=$(INSTCFLAGS)					     \
@@ -186,8 +186,8 @@ Debug/GNUmakefile : $(GPPGDIR)/configure  env.sh
                     --mandir=$(INSTLOC)/man
 
 Release/GNUmakefile : $(GPPGDIR)/configure  env.sh
-#	rm -rf $(INSTLOC)
-#	mkdir -p Release
+	rm -rf $(INSTLOC)
+	mkdir -p Release
 	echo "Running ./configure with CONFIGFLAGS=$(CONFIGFLAGS)\n"
 	cd Release && CC="$(strip $(BLD_CC) $(BLD_CFLAGS))"     \
                   CFLAGS=$(INSTCFLAGS) 	                    \
