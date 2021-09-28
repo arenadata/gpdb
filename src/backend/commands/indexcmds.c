@@ -838,11 +838,11 @@ DefineIndex(Oid relationId,
 					 stmt->concurrent, !check_rights,
 					 &createdConstraintId);
 
-	PopActiveSnapshot();
-	PushActiveSnapshot(GetTransactionSnapshot());
-
 	if (shouldDispatch)
 	{
+		PopActiveSnapshot();
+		PushActiveSnapshot(GetTransactionSnapshot());
+		
 		/* make sure the QE uses the same index name that we chose */
 		stmt->idxname = indexRelationName;
 		stmt->oldNode = InvalidOid;
