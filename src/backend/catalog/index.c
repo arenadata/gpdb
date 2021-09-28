@@ -2431,7 +2431,6 @@ IndexBuildScan(Relation parentRelation,
 	EState	   *estate;
 	ExprContext *econtext;
 	Snapshot	snapshot;
-	bool		registered_snapshot = false;
 	TransactionId OldestXmin;
 
 	/*
@@ -2463,8 +2462,7 @@ IndexBuildScan(Relation parentRelation,
 	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent ||
 			 RelationIsAppendOptimized(parentRelation))
 	{
-		snapshot = RegisterSnapshot(GetTransactionSnapshot());
-		registered_snapshot = true;
+		snapshot = SnapshotSelf;
 		OldestXmin = InvalidTransactionId;		/* not used */
 	}
 	else
@@ -2506,10 +2504,6 @@ IndexBuildScan(Relation parentRelation,
 		elog(ERROR, "unrecognized relation storage type: %c",
 			 parentRelation->rd_rel->relstorage);
 	}
-
-	/* we can now forget our snapshot, if set */
-	if (registered_snapshot)
-		UnregisterSnapshot(snapshot);
 
 	ExecDropSingleTupleTableSlot(slot);
 

@@ -840,8 +840,8 @@ DefineIndex(Oid relationId,
 
 	if (shouldDispatch)
 	{
-		PopActiveSnapshot();
-		PushActiveSnapshot(GetTransactionSnapshot());
+		//PopActiveSnapshot();
+		//PushActiveSnapshot(GetTransactionSnapshot());
 		
 		/* make sure the QE uses the same index name that we chose */
 		stmt->idxname = indexRelationName;
