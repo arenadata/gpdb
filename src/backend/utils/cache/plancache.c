@@ -870,11 +870,13 @@ CheckCachedPlan(CachedPlanSource *plansource)
 static void
 detect_plangen_switch(CachedPlan *plan, CachedPlanSource *plansource)
 {
+	ListCell	*lc;
+	PlannedStmt	*plannedstmt;
+
 	if (plansource->plangen_switched || list_length(plan->stmt_list) == 0)
 		return;
 
-	ListCell	*lc = list_head(plan->stmt_list);
-	PlannedStmt	*plannedstmt;
+	lc = list_head(plan->stmt_list);
 
 	/* Save very first statement's plangen value ... */
 	if (plansource->generation == 1)
