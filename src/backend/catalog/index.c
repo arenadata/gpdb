@@ -2457,15 +2457,17 @@ IndexBuildScan(Relation parentRelation,
 	 * concurrent build, or during bootstrap, we take a regular MVCC snapshot
 	 * and index whatever's live according to that.
 	 *
-	 * If the relation is an append-only table, we also use a regular MVCC
-	 * snapshot.
+	 * If the relation is an append-only table, we use SnapshotSelf.
 	 */
-	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent ||
-			 RelationIsAppendOptimized(parentRelation))
+	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
 	{
 		snapshot = RegisterSnapshot(GetTransactionSnapshot());
 		registered_snapshot = true;
 		OldestXmin = InvalidTransactionId;		/* not used */
+	}
+	else if (RelationIsAppendOptimized(parentRelation))
+	{
+		snapshot = SnapshotSelf;
 	}
 	else
 	{
