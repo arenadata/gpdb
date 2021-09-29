@@ -4,8 +4,8 @@
 
 case "`uname -s`" in
     Linux)
-    . /etc/os-release;
-    if [ ${ID} == "altlinux" ]; then
+    if [ -f /etc/altlinux-release ]; then
+        . /etc/os-release;
         BLD_ARCH_HOST="$(. /etc/os-release; echo ${ID}${VERSION_ID}_$(uname -m))"
     fi
     if [ -z "${BLD_ARCH_HOST}" -a -f /etc/redhat-release ]; then
