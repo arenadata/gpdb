@@ -2457,7 +2457,11 @@ IndexBuildScan(Relation parentRelation,
 	 * concurrent build, or during bootstrap, we take a regular MVCC snapshot
 	 * and index whatever's live according to that.
 	 *
-	 * If the relation is an append-only table, we use SnapshotSelf.
+	 * If the relation is an append-only table, we use SnapshotSelf. We can't
+	 * use lightweight SnapshotAny, because it will lead to error on inserting
+	 * to block directory. We can't use regular MVCC snapshot, because it was
+	 * taken before relation lock, and doesn't respect transaction, which was
+	 * committed after snapshot, but before lock aquaring.
 	 */
 	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
 	{
