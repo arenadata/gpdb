@@ -1,0 +1,30 @@
+-- @Description Test index corruption when invalid snapshot used.
+--
+-- Create AO table, insert few rows on it, begin single-insert transaction.
+drop table if exists test_ao;
+DROP
+create table test_ao(i bigint) with (appendonly=true, orientation=@orientation@) distributed by (i);
+CREATE
+insert into test_ao select generate_series(1,100);
+INSERT 100
+1: begin;
+BEGIN
+1: insert into test_ao values(101);
+INSERT 1
+-- Try to create index, it should hold on lock before commit below.
+2&: create index idx1 on test_ao(i);  <waiting ...>
+-- Commit single-insert transaction, so index continues creation.
+1: commit;
+COMMIT
+-- Force index usage and check row is here (no row appeared before fix).
+2<:  <... completed>
+CREATE
+2: set optimizer=off;
+SET
+2: set enable_seqscan=off;
+SET
+2: select i from test_ao where i = 101;
+ i   
+-----
+ 101 
+(1 row)
