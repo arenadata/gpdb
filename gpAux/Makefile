@@ -592,8 +592,8 @@ mgmtcopy :
 libcopy=(cd $(1) && tar cf - $(2)) | (cd $(3) && tar xvf -)$(check_pipe_for_errors)
 
 copylibs :
+	# Create the python directory to flag to build scripts that python has been handled
 	@if [ ! -z "$(PYTHONHOME)" ]; then \
-	    # Create the python directory to flag to build scripts that python has been handled
 	    mkdir -p $(INSTLOC)/ext/python \
 	    echo "Copying python, ., from $(PYTHONHOME) into $(INSTLOC)/ext/python..."; \
 	    (cd $(PYTHONHOME) && tar cf - .) | (cd $(INSTLOC)/ext/python/ && tar xpf -); \
