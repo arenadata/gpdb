@@ -13,7 +13,7 @@ RUN yum makecache && yum -y update &&\
     yum clean all
 
 # install all software we need
-RUN yum makecache \
+RUN yum makecache && \
     yum -y install python2-pip && \
     yum -y install python-devel python-psutil python-setuptools && \
     yum -y install apr-devel apr-util-devel bzip2-devel expat-devel libcurl-devel && \
