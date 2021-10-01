@@ -227,6 +227,7 @@ define BUILD_STEPS
 	#@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) mkpgbouncer INSTLOC=$(INSTLOC) BUILDDIR=$(BUILDDIR)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 	@$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTSINSTLOC=$(CLIENTSINSTLOC)
 	@$(MAKE) set_scripts_version INSTLOC=$(CLIENTSINSTLOC)
@@ -257,6 +258,7 @@ define BUILD_STEPS
 	cd $(BUILDDIR)/src/bin/gpfdist && $(MAKE) install
 	cp -p $(GPMGMT)/bin/gpload $(INSTLOC)/bin/gpload
 	cp -p $(GPMGMT)/bin/gpload.py $(INSTLOC)/bin/gpload.py
+	$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	cd $(GPMGMT)/bin && $(MAKE) pygresql INSTLOC=$(INSTLOC)
 	$(MAKE) clients INSTLOC=$(INSTLOC) CLIENTSINSTLOC=$(CLIENTSINSTLOC)
 endef
@@ -591,8 +593,8 @@ libcopy=(cd $(1) && tar cf - $(2)) | (cd $(3) && tar xvf -)$(check_pipe_for_erro
 
 copylibs :
 	# Create the python directory to flag to build scripts that python has been handled
-	mkdir -p $(INSTLOC)/ext/python
 	@if [ ! -z "$(PYTHONHOME)" ]; then \
+	    mkdir -p $(INSTLOC)/ext/python \
 	    echo "Copying python, ., from $(PYTHONHOME) into $(INSTLOC)/ext/python..."; \
 	    (cd $(PYTHONHOME) && tar cf - .) | (cd $(INSTLOC)/ext/python/ && tar xpf -); \
 		echo "...DONE"; \
