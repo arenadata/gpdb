@@ -151,8 +151,7 @@ endif
 # Configure in thirdparty libraries from the ext/ directory
 CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
 CONFIG_LIBRARIES=$(strip $(BLD_THIRDPARTY_LIB_DIR) $(BLD_CXX_LIB_DIR))
-#CONFIGFLAGS+= --with-openssl --with-pam --with-ldap --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
-CONFIGFLAGS+=  --with-libxslt --with-openssl --with-ldap --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
+CONFIGFLAGS+=  --with-libxslt --with-openssl --with-pam --with-ldap --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
 CONFIG_ADDITIONS=$($(BLD_ARCH)_CONFIG_ADDITIONS)
 
