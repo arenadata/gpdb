@@ -104,20 +104,7 @@ function include_quicklz() {
     popd
 }
 
-function include_libuv() {
-    local includedir=/usr/include
-    local libdir
-    case "${OS}" in
-    centos | sles) libdir=/usr/lib64 ;;
-    ubuntu) libdir=/usr/lib/x86_64-linux-gnu ;;
-    *) return ;;
-    esac
-    pushd ${GREENPLUM_INSTALL_DIR}
-    # need to include both uv.h and uv/*.h
-    cp -a ${includedir}/uv* include
-    cp -a ${libdir}/libuv.so* lib
-    popd
-}
+	vendored_libs=(libquicklz.so{,.1,.1.5.0} libzstd.so{,.1,.1.3.7} libuv.so{,.1,.1.0.0} libxerces-c{,-3.1}.so)
 
 function export_gpdb() {
     TARBALL="${GPDB_ARTIFACTS_DIR}/${GPDB_BIN_FILENAME}"
@@ -161,14 +148,6 @@ function export_gpdb_clients() {
     popd
 }
 
-function build_xerces() {
-    OUTPUT_DIR="${GPDB_EXT_PATH}"
-    mkdir -p xerces_patch/concourse
-    cp -r gpdb_src/src/backend/gporca/concourse/xerces-c xerces_patch/concourse
-    /usr/bin/python xerces_patch/concourse/xerces-c/build_xerces.py --output_dir="${OUTPUT_DIR}"
-    rm -rf build
-}
-
 function _main() {
 
     prep_env
@@ -176,10 +155,9 @@ function _main() {
     ## Add CCache Support (?)
     add_ccache_support "${OS}"
 
-    build_xerces
-    generate_build_number
-    build_gpdb "${BLD_TARGET_OPTION[@]}"
-    git_info
+	generate_build_number
+	build_gpdb "${BLD_TARGET_OPTION[@]}"
+	git_info
 
     if [[ -z "${SKIP_UNITTESTS}" ]]; then
         unittest_check_gpdb
