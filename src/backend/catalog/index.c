@@ -2457,7 +2457,7 @@ IndexBuildScan(Relation parentRelation,
 	 * concurrent build, or during bootstrap, we take a regular MVCC snapshot
 	 * and index whatever's live according to that.
 	 *
-	 * If the relation is an append-only table, we use SnapshotSelf.
+	 * If the relation is an append-only table, we use SnapshotAny.
 	 */
 	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
 	{
@@ -2465,15 +2465,12 @@ IndexBuildScan(Relation parentRelation,
 		registered_snapshot = true;
 		OldestXmin = InvalidTransactionId;		/* not used */
 	}
-	else if (RelationIsAppendOptimized(parentRelation))
-	{
-		snapshot = SnapshotSelf;
-	}
 	else
 	{
 		snapshot = SnapshotAny;
 		/* okay to ignore lazy VACUUMs here */
-		OldestXmin = GetOldestXmin(parentRelation, true);
+		if (!RelationIsAppendOptimized(parentRelation))
+			OldestXmin = GetOldestXmin(parentRelation, true);
 	}
 
 	if (RelationIsHeap(parentRelation))
@@ -2930,8 +2927,8 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 		ExecPrepareExpr((Expr *)indexInfo->ii_Predicate, estate);
 	
 	aoscan = appendonly_beginscan(parentRelation,
-								  SnapshotAny,
 								  snapshot,
+								  SnapshotSelf,
 								  0,
 								  NULL);
 
@@ -3072,8 +3069,8 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 	}
 	
 	aocsscan = aocs_beginscan(parentRelation,
-							  SnapshotAny,
 							  snapshot,
+							  SnapshotSelf,
 							  NULL /* relationTupleDesc */,
 							  proj);
 
