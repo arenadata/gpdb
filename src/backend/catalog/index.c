@@ -2457,7 +2457,11 @@ IndexBuildScan(Relation parentRelation,
 	 * concurrent build, or during bootstrap, we take a regular MVCC snapshot
 	 * and index whatever's live according to that.
 	 *
-	 * If the relation is an append-only table, we use SnapshotAny.
+	 * Like for heap tables, if the relation is an append-only table, we use
+	 * SnapshotAny to access data. RECENTLY_DEAD tuples, used, for example, by
+	 * "repeatable read" transaction, should be indexed to avoid inconsistent
+	 * results caused by index acceess. We use another snapshot to access
+	 * metadata - see AO-specific scan functions implementation below.
 	 */
 	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
 	{
@@ -2926,6 +2930,13 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 	predicate = (List *)
 		ExecPrepareExpr((Expr *)indexInfo->ii_Predicate, estate);
 	
+	/*
+	 * Regular MVCC snapshot, which may be taken in IndexBuildScan function,
+	 * can hide newly globally inserted tuples from global index build process,
+	 * because it's outdated in such case (see dispatching part of DefineIndex
+	 * for more). Since this, we need to use SnapshotSelf to get the actual
+	 * visibility map.
+	 */
 	aoscan = appendonly_beginscan(parentRelation,
 								  snapshot,
 								  SnapshotSelf,
@@ -3068,6 +3079,13 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 			proj[attno] = true;
 	}
 	
+	/*
+	 * Regular MVCC snapshot, which may be taken in IndexBuildScan function,
+	 * can hide newly globally inserted tuples from global index build process,
+	 * because it's outdated in such case (see dispatching part of DefineIndex
+	 * for more). Since this, we need to use SnapshotSelf to get the actual
+	 * visibility map.
+	 */
 	aocsscan = aocs_beginscan(parentRelation,
 							  snapshot,
 							  SnapshotSelf,
