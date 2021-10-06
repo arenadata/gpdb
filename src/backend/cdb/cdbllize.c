@@ -67,6 +67,8 @@ typedef struct PlanProfile
 	bool	dispatchParallel;
 
 	Flow	*currentPlanFlow;	/* what is the flow of the current plan node */
+
+	bool	visited;            /* indicate if currentPlanFlow is initialized (across slices) */
 }	PlanProfile;
 
 
@@ -246,6 +248,7 @@ cdbparallelize(PlannerInfo *root,
 	 * dispatched in parallel. */
 	context->dispatchParallel = context->resultSegments;
 	context->currentPlanFlow = NULL;
+	context->visited = false;
 
 	/*
 	 * Prescan the plan and attach Flow nodes to its Plan nodes. These nodes
@@ -804,26 +807,86 @@ prescan_walker(Node *node, PlanProfile * context)
 
 	Flow *savedPlanFlow = context->currentPlanFlow;
 
-    if (is_plan_node(node))
-    {
-        Plan   *plan = (Plan *)node;
+	if (is_plan_node(node))
+	{
+		Plan   *plan = (Plan *)node;
 
-        if (plan->dispatch == DISPATCH_PARALLEL)
-            context->dispatchParallel = true;
+		if (plan->dispatch == DISPATCH_PARALLEL)
+			context->dispatchParallel = true;
 
-        if (plan->flow &&
-        		(plan->flow->flotype == FLOW_PARTITIONED
-        				|| plan->flow->flotype == FLOW_REPLICATED))
-        	context->dispatchParallel = true;
+		if (plan->flow &&
+		    (plan->flow->flotype == FLOW_PARTITIONED
+			 || plan->flow->flotype == FLOW_REPLICATED))
+			context->dispatchParallel = true;
 
-        context->currentPlanFlow = plan->flow;
-        if (context->currentPlanFlow
-        		&& context->currentPlanFlow->flow_before_req_move)
-        {
-        	context->currentPlanFlow = context->currentPlanFlow->flow_before_req_move;
-        }
+		/*
+		 * When ParallelizeSubplan(), if the subplan is uncorrelated, multi-row subquery,
+		 * then it either focuses or broadcasts the subplan based on the flow which describe
+		 * the containing plan node's slice execution position. Actually the flow should be
+		 * the top-level flow for the corresponding slice instead of the containing plan node's flow.
+		 * This related to issue: https://github.com/greenplum-db/gpdb/issues/12371
+		 * For example:
+		 *  with run_dt as (
+		 *       select
+		 *       (
+		 *         select c from t where b = x
+		 *       ) dt
+		 *       from (select ( max(1) ) x) a
+		 *   )
+		 *   select * from run_dt, t1;
+		 *
+		 *                                 QUERY PLAN
+		 * ----------------------------------------------------------------------------
+		 * Gather Motion 3:1
+		 *   ->Nested Loop (flowtype 3, req_move 0)  -- currentPlanFlow should use this node
+		 *       ->Subquery Scan run_dt(flowtype 1, req_move 0)
+		 *            ->Subquery Scan a (flowtype 1, req_move 0) -- we used to use this flow to set currentPlanFlow
+		 *                  ...
+		 *                  SubPlan 1
+		 *                   ->  Result
+		 *                     ->  Materialize
+		 *                        ->  Broadcast Motion
+		 *                             -- NOTE: Before, we were using subquery scan a's flow, which will add a Gather Motion, and
+		 *                             -- it will cause assertion failure
+		 *                          -> ...
+		 *   -> ...
+		 */
+		if (!context->visited)
+		{
+			/*
+			 * The visited is a flag which is used to initialize the currentPlanFlow.
+			 * And it's the top-level slice node of the entire plan.
+			 */
+			context->currentPlanFlow = plan->flow;
+		}
+		if (plan->flow && plan->flow->req_move != MOVEMENT_NONE)
+		{
+			/*
+			 * To select the correct flow during the plan tree iteration, only
+			 * set currentPlanFlow when jump into a new slice. As req_move is
+			 * a flag to indicate what motion should be applied to this Plan's
+			 * output. So we are using req_move and the motion node to decide
+			 * entering into a new slice.
+			 */
+			context->currentPlanFlow = plan->flow;
+		}
+		if (IsA(node, Motion))
+		{
+			/*
+			 * Motion is used to split slices, use the sub-node's flow of the
+			 * motion for ParallelizeSubplan.
+			 */
+			context->currentPlanFlow = plan->lefttree->flow;
+		}
 
-    }
+
+		if (context->currentPlanFlow &&
+			context->currentPlanFlow->flow_before_req_move)
+		{
+			context->currentPlanFlow = context->currentPlanFlow->flow_before_req_move;
+		}
+
+	}
 
 	switch (nodeTag(node))
 	{
@@ -861,6 +924,7 @@ prescan_walker(Node *node, PlanProfile * context)
 
 	}
 
+	context->visited = true;
 	bool result = plan_tree_walker(node, prescan_walker, context);
 
 	/**

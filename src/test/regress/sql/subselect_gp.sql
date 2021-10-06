@@ -821,7 +821,184 @@ EXPLAIN
 SELECT * FROM dedup_test1 WHERE NOT EXISTS (SELECT 1 FROM dedup_test2 WHERE dedup_test2.e = dedup_test1.a LIMIT ALL);
 SELECT * FROM dedup_test1 WHERE NOT EXISTS (SELECT 1 FROM dedup_test2 WHERE dedup_test2.e = dedup_test1.a LIMIT ALL);
 
+-- Regression of duplicated initplans of a partitioned table
+DROP TABLE IF EXISTS foo, lookup_table;
+
+CREATE TABLE foo(a int, b text, c timestamp)
+  DISTRIBUTED BY (a)
+    PARTITION BY LIST(b) (VALUES('a'), VALUES('b'));
+    INSERT INTO foo VALUES (1, 'a', '2012-12-12 13:00');
+    INSERT INTO foo VALUES (2, 'b', '2012-12-13 12:00');
+
+CREATE TABLE lookup_table(a text, c timestamp)
+  DISTRIBUTED BY (a);
+  INSERT INTO lookup_table VALUES ('a', '2012-12-12 12:00');
+  INSERT INTO lookup_table VALUES ('b', '2021-12-21 21:00');
+
+CREATE OR REPLACE FUNCTION my_lookup(a_in text) RETURNS timestamp AS
+$$
+DECLARE
+   c_var timestamp;
+   BEGIN
+      BEGIN
+            SELECT c INTO c_var FROM lookup_table WHERE a = a_in;
+	       END;
+	          RETURN c_var;
+		  END;
+		  $$
+		  LANGUAGE plpgsql NO SQL;
+
+SELECT a, b FROM foo f WHERE EXISTS (SELECT 1 FROM foo f1 WHERE f.b=f1.b AND f1.c > (SELECT my_lookup('a')));
+
+-- The following case is from Github Issue:
+-- https://github.com/greenplum-db/gpdb/issues/12353
+drop table if exists rank;
+create table
+  rank_12353 (id int, rank int, year int, gender char(1))
+  distributed by (id)
+  partition by range (year)
+  ( start (2006) end (2016) every (1),
+    default partition extra );
+
+create or replace function f_12353(i integer) returns integer as
+$$
+DECLARE
+a integer;
+begin
+  select 1 into a;
+    return a;
+    end;
+    $$
+language plpgsql no sql;
+
+select
+  count(1)
+from rank_12353
+where
+  (
+    (
+      select
+        case
+          when gender = 'm' and
+               (
+                 (select
+                   f_12353(5) as x)
+               ) = 1
+               then 1
+          else 0
+        end as y
+    )
+  ) = 0;
+
 -- start_ignore
 DROP TABLE IF EXISTS dedup_test1;
 DROP TABLE IF EXISTS dedup_test2;
 -- end_ignore
+
+-- When creating a plan with subplan in ParallelizeSubplan, use the top-level flow
+-- for the corresponding slice instead of the containing the plan node's flow.
+-- This related to issue: https://github.com/greenplum-db/gpdb/issues/12371
+create table extra_flow_dist(a int, b int, c date);
+create table extra_flow_dist1(a int, b int);
+
+insert into extra_flow_dist select i, i, '1949-10-01'::date from generate_series(1, 10)i;
+insert into extra_flow_dist1 select i, i from generate_series(20, 22)i;
+
+-- case 1 subplan with general locus (CTE and subquery)
+explain with run_dt as (
+	select
+	(
+	  select c from extra_flow_dist where b = x
+	) dt
+	from (select ( max(1) ) x) a
+)
+select * from run_dt, extra_flow_dist1
+where dt < '2010-01-01'::date;
+
+with run_dt as (
+	select
+	(
+	  select c from extra_flow_dist where b = x
+	) dt
+	from (select ( max(1) ) x) a
+)
+select * from run_dt, extra_flow_dist1
+where dt < '2010-01-01'::date;
+
+-- case 2 for subplan with entry locus (CTE and subquery)
+explain with run_dt as (
+	select
+	(
+		select c from extra_flow_dist where b = x
+	) dt
+	from (select 1 x from pg_trigger limit 1) a
+)
+select * from run_dt, extra_flow_dist1
+where dt < '2010-01-01'::date;
+
+with run_dt as (
+	select
+	(
+		select c from extra_flow_dist where b = x
+	) dt
+	from (select 1 x from pg_trigger limit 1) a
+)
+select * from run_dt, extra_flow_dist1
+where dt < '2010-01-01'::date;
+
+-- case 3 for subplan with entry locus without param in subplan (CTE and subquery)
+explain with run_dt as (
+	select x, y dt
+	from (select tgtype x from pg_trigger ) a
+	left join (select max(1) y) aaa
+	on a.x > any (select random() from extra_flow_dist)
+)
+select * from run_dt, extra_flow_dist1
+where dt < extra_flow_dist1.a;
+
+-- case 4 without CTE, nested subquery
+explain select * from (
+	select dt from (
+		select
+		(
+			select c from extra_flow_dist where b = x
+		) dt
+		from (select ( max(1) ) x) a
+		union
+		select
+		(
+			select c from extra_flow_dist where b = x
+		) dt
+		from (select ( max(1) ) x) aa
+	) tbl
+) run_dt,
+extra_flow_dist1
+where dt < '2010-01-01'::date;
+
+-- case 5 function scan with general locus
+CREATE OR REPLACE FUNCTION im() RETURNS
+SETOF integer AS $$
+        BEGIN
+                RETURN QUERY
+                select 1 from generate_series(1, 10);
+        END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+explain with run_dt as (
+   select
+   (
+     select c from extra_flow_dist where b = x
+   ) dt
+   from im() x
+)
+select * from run_dt, extra_flow_dist1
+where dt < '2010-01-01'::date;
+
+-- case 6 function scan without CTE
+explain
+select * from (select
+   (
+     select c from extra_flow_dist where b = x
+   ) dt
+   from im() x) run_dt, extra_flow_dist1
+where dt < '2010-01-01'::date;
