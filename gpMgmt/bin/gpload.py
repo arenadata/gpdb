@@ -18,6 +18,7 @@ Options:
     -l logfile: log output to logfile
     --no_auto_trans: do not wrap gpload in transaction
     --gpfdist_timeout timeout: gpfdist timeout value
+    --max_retries retry_times: max retry times on gpdb connection timed out. 0 means disabled, -1 means forever
     --version: print version number and exit
     -?: help
 '''
@@ -1158,6 +1159,7 @@ class gpload:
         self.startTimestamp = time.time()
         self.error_table = False
         self.gpdb_version = ""
+        self.options.max_retries = 0
         self.support_cusfmt = 0
         seenv = False
         seenq = False
@@ -1180,7 +1182,7 @@ class gpload:
                     if argv[0]=='-h':
                         self.options.h = argv[1]
                         argv = argv[2:]
-                    if argv[0]=='--gpfdist_timeout':
+                    elif argv[0]=='--gpfdist_timeout':
                         self.options.gpfdist_timeout = argv[1]
                         argv = argv[2:]
                     elif argv[0]=='-p':
@@ -1218,6 +1220,9 @@ class gpload:
                         argv = argv[2:]
                     elif argv[0]=='-f':
                         configFilename = argv[1]
+                        argv = argv[2:]
+                    elif argv[0]=='--max_retries':
+                        self.options.max_retries = int(argv[1])
                         argv = argv[2:]
                     elif argv[0]=='--no_auto_trans':
                         self.options.no_auto_trans = True
@@ -1843,24 +1848,20 @@ class gpload:
                 if recurse > 10:
                     self.log(self.ERROR, "too many login attempt failures")
                 self.setup_connection(recurse)
+            elif errorMessage.find("Connection timed out") != -1 and self.options.max_retries != 0:
+                recurse += 1
+                if self.options.max_retries > 0 and recurse > self.options.max_retries: # retry failed
+                    self.log(self.ERROR, "could not connect to database after retry %d times, " \
+                         "error message:\n %s" % (recurse-1, errorMessage))
+                else: # max_retries < 0, retry forever
+                    self.log(self.INFO, "retry to connect to database, %d of %d times" % (recurse,
+                        self.options.max_retries))
+                self.setup_connection(recurse)
             else:
                 self.log(self.ERROR, "could not connect to database: %s. Is " \
                     "the Greenplum Database running on port %i?" % (errorMessage,
                     self.options.p))
 
-    def add_quote_if_not(self, col):
-        '''
-        Judge if the column name string has quotations.
-        If not, return a string with double quotations.
-        pyyaml cannot preserve quotes of string in yaml file.
-        So we need to quote the string for furter comparison if it is not quoted.
-        '''
-        if col[0] == '"' and col[-1] == '"':
-            return col
-        elif col[0] == "'" and col[-1] == "'":
-            return col
-        else:
-            return quote_ident(col)
 
     def read_columns(self):
         columns = self.getconfig('gpload:input:columns',list,None, returnOriginal=True)
@@ -1875,12 +1876,11 @@ class gpload:
                 """ remove leading or trailing spaces """
                 d = { tempkey.strip() : value }
                 key = d.keys()[0]
-                col_name = self.add_quote_if_not(key)
                 if d[key] is None:
                     self.log(self.DEBUG,
                              'getting source column data type from target')
                     for name, typ, mapto, hasseq in self.into_columns:
-                        if sqlIdentifierCompare(name, key):
+                        if sqlIdentifierCompare(name,key):
                             d[key] = typ
                             break
 
@@ -1892,7 +1892,7 @@ class gpload:
 
                 # Mark this column as having no mapping, which is important
                 # for do_insert()
-                self.from_columns.append([col_name,d[key].lower(),None, False])
+                self.from_columns.append([key,d[key].lower(),None, False])
         else:
             self.from_columns = self.into_columns
             self.from_cols_from_user = False
@@ -2532,7 +2532,19 @@ class gpload:
         try:
             self.db.query(sql.encode('utf-8'))
         except Exception, e:
-            self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
+            get_standard_conforming_strings = 'show standard_conforming_strings;'
+            try:
+                scs = self.db.query(get_standard_conforming_strings.encode('utf-8')).getresult()
+                if scs[0][0] == 'off':
+                    self.log(self.ERROR, 'could not run SQL "%s": %s ' % (sql, unicode(e)) +
+                    "standard_conforming_strings is set to 'off', please set it to 'on' and try again \n")
+                else:
+                    self.log(self.ERROR, 'could not run SQL "%s": %s' % (sql, unicode(e)))
+            except Exception, ee:
+                self.log(self.ERROR, 'could not run SQL "%s": %s ' % (sql, unicode(e)) +
+                "could not get standard_conforming_strings, %s " % unicode(ee) +
+                "if standard_conforming_strings is set to 'off', please set it to 'on' and try again \n"
+                )
 
         # set up to drop the external table at the end of operation, unless user
         # specified the 'reuse_tables' option, in which case we don't drop
@@ -2562,7 +2574,7 @@ class gpload:
         target_columns = []
         for column in self.into_columns:
             if column[2]:
-                target_columns.append([column[0], column[1]])
+                target_columns.append([quote_unident(column[0]), column[1]])
 
         if self.reuse_tables == True:
             is_temp_table = ''
@@ -2570,7 +2582,7 @@ class gpload:
 
             # create a string from all reuse conditions for staging tables and ancode it
             conditions_str = self.get_staging_conditions_string(target_table_name, target_columns, distcols)
-            encoding_conditions = hashlib.md5(conditions_str).hexdigest()
+            encoding_conditions = hashlib.md5(conditions_str.encode('utf-8')).hexdigest()
 					
             sql = self.get_reuse_staging_table_query(encoding_conditions)
             resultList = self.db.query(sql.encode('utf-8')).getresult()
@@ -2597,7 +2609,7 @@ class gpload:
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
         # and that is, whether it's a temp table or not. In other words, is_temp_table = '' iff self.reuse_tables == True.
         sql = 'CREATE %sTABLE %s ' % (is_temp_table, self.staging_table_name)
-        cols = map(lambda a:'%s %s' % (a[0], a[1]), target_columns)
+        cols = map(lambda a:'"%s" %s' % (a[0], a[1]), target_columns)
         sql += "(%s)" % ','.join(cols)
         sql += " DISTRIBUTED BY (%s)" % ', '.join(distcols)
         self.log(self.LOG, sql)
@@ -2835,7 +2847,7 @@ class gpload:
         match = self.map_stuff('gpload:output:match_columns',lambda x,y:'into_table.%s=from_table.%s'%(x,y),0)
         matchColumns = self.getconfig('gpload:output:match_columns',list)
 		
-        cols = filter(lambda a:a[2] != None, self.into_columns)				
+        cols = filter(lambda a:a[2] != None, self.into_columns)
         sql = 'INSERT INTO %s ' % self.get_qualified_tablename()
         sql += '(%s) ' % ','.join(map(lambda a:a[0], cols))
         sql += '(SELECT %s ' % ','.join(map(lambda a:'from_table.%s' % a[0], cols))
