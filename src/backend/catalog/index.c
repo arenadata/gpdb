@@ -2460,7 +2460,7 @@ IndexBuildScan(Relation parentRelation,
 	 * Like for heap tables, if the relation is an append-only table, we use
 	 * SnapshotAny to access data. RECENTLY_DEAD tuples, used, for example, by
 	 * "repeatable read" transaction, should be indexed to avoid inconsistent
-	 * results caused by index acceess. We use another snapshot to access
+	 * results caused by index access. We use another snapshot to access
 	 * metadata - see AO-specific scan functions implementation below.
 	 */
 	if (IsBootstrapProcessingMode() || indexInfo->ii_Concurrent)
