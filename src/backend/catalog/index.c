@@ -2935,7 +2935,7 @@ IndexBuildAppendOnlyRowScan(Relation parentRelation,
 	 * can hide newly globally inserted tuples from global index build process,
 	 * because it's outdated in such case (see dispatching part of DefineIndex
 	 * for more). Since this, we need to use SnapshotSelf to get the actual
-	 * visibility map.
+	 * metadata (pg_aoseg, in particular)".
 	 */
 	aoscan = appendonly_beginscan(parentRelation,
 								  snapshot,
@@ -3084,7 +3084,7 @@ IndexBuildAppendOnlyColScan(Relation parentRelation,
 	 * can hide newly globally inserted tuples from global index build process,
 	 * because it's outdated in such case (see dispatching part of DefineIndex
 	 * for more). Since this, we need to use SnapshotSelf to get the actual
-	 * visibility map.
+	 * metadata (pg_aoseg, in particular).
 	 */
 	aocsscan = aocs_beginscan(parentRelation,
 							  snapshot,
