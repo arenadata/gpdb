@@ -2472,8 +2472,12 @@ IndexBuildScan(Relation parentRelation,
 	else
 	{
 		snapshot = SnapshotAny;
-		/* okay to ignore lazy VACUUMs here */
+		/*
+		 * TODO: add support to cut off definitely dead rows using OldestXmin
+		 * for AO tables
+		 */
 		if (!RelationIsAppendOptimized(parentRelation))
+			/* okay to ignore lazy VACUUMs here */
 			OldestXmin = GetOldestXmin(parentRelation, true);
 	}
 
