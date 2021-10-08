@@ -31,18 +31,9 @@ function os_version() {
 	fi
 }
 
-function os_platform() {
-	if [[ -f "/etc/altlinux-release" ]]; then
-		uname -m
-	else
-		uname -p
-	fi
-}
-
 function build_arch() {
 	local id=$(os_id)
 	local version=$(os_version)
-	local platform=$(os_platform)
 	# BLD_ARCH expects rhel{6,7,8}_x86_64 || photon3_x86_64 || sles12_x86_64 || ubuntu18.04_x86_64
 	case ${id} in
 	photon | sles) version=$(os_version | cut -d. -f1) ;;
@@ -50,7 +41,7 @@ function build_arch() {
 	*) ;;
 	esac
 
-	echo "${id}${version}_${platform}"
+	echo "${id}${version}_$(uname -m)"
 }
 
 ## ----------------------------------------------------------------------
