@@ -437,6 +437,7 @@ bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 											  NIL, // DESTROY pathkeys
 											  false,
 											  target_locus);
+			Insist(path);
 
 			path = (Path *) create_material_path(root, rel, path);
 
@@ -1691,7 +1692,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		(contain_volatile_functions((Node *) rel->subplan->targetlist) ||
 		 contain_volatile_functions(subquery->havingQual)))
 	{
-		rel->subplan = (Plan *) make_motion_gather(subroot, rel->subplan, NIL);
+		rel->subplan = (Plan *) make_motion_gather(subroot, rel->subplan, NIL, CdbLocusType_SingleQE);
 	}
 
 	rel->subroot = subroot;

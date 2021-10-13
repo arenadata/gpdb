@@ -515,6 +515,13 @@ extern PGDLLIMPORT emit_log_hook_type emit_log_hook;
 extern ErrorData *errfinish_and_return(int dummy,...);
 
 /*
+ * GPDB: elog_exception_statement
+ * Write statement in log file if an exception was encountered during
+ * its execution.
+ */
+extern void	elog_exception_statement(const char* statement);
+
+/*
  * CDB: elog_demote
  *
  * A PG_CATCH() handler can call this to downgrade the error that it is
@@ -634,6 +641,7 @@ extern char *stack_base_ptr;
 extern bool gp_log_stack_trace_lines;   /* session GUC, controls line info in stack traces */
 
 extern const char *SegvBusIllName(int signal);
+extern void InitStandardHandlerForSigillSigsegvSigbus_OnMainThread(void);
 extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
 
 #endif   /* ELOG_H */

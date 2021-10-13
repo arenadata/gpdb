@@ -624,6 +624,15 @@ ReadCommand(StringInfo inBuf)
 {
 	int			result;
 
+	/*
+	 * XXX Use of this fault is discouraged!  This fault location is reached
+	 * in query executing backends as well as many non-query executing
+	 * processes such as FTS probe handler, walsender, etc.  It is also found
+	 * to be triggered by the same SQL statement used to inject the fault,
+	 * causing difficult to analyse failures in CI.  If a test intends to
+	 * target a query executing backend process, consider using
+	 * "exec_simple_query_start" fault.
+	 */
 	SIMPLE_FAULT_INJECTOR("before_read_command");
 
 	if (whereToSendOutput == DestRemote)
@@ -1137,6 +1146,10 @@ exec_mpp_query(const char *query_string,
 		ddesc = (QueryDispatchDesc *) deserializeNode(serializedQueryDispatchDesc,serializedQueryDispatchDesclen);
 		if (!ddesc || !IsA(ddesc, QueryDispatchDesc))
 			elog(ERROR, "MPPEXEC: received invalid QueryDispatchDesc with planned statement");
+		/*
+		 * Deserialize and apply security context from QD.
+		 */
+		SetUserIdAndSecContext(GetUserId(), ddesc->secContext);
 
         sliceTable = ddesc->sliceTable;
 
@@ -1585,6 +1598,8 @@ exec_simple_query(const char *query_string)
 	bool		was_logged = false;
 	bool		isTopLevel;
 	char		msec_str[32];
+
+	SIMPLE_FAULT_INJECTOR("exec_simple_query_start");
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 		increment_command_count();
@@ -4767,6 +4782,8 @@ PostgresMain(int argc, char *argv[],
 		 */
 		pqsignal(SIGCHLD, SIG_DFL);		/* system() requires this on some
 										 * platforms */
+
+		InitStandardHandlerForSigillSigsegvSigbus_OnMainThread();
 #ifndef _WIN32
 #ifdef SIGILL
 		pqsignal(SIGILL, CdbProgramErrorHandler);
@@ -5006,7 +5023,7 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (debug_query_string != NULL)
 		{
-			write_stderr("An exception was encountered during the execution of statement: %s", debug_query_string);
+			elog_exception_statement(debug_query_string);
 			debug_query_string = NULL;
 		}
 
@@ -5424,7 +5441,7 @@ PostgresMain(int argc, char *argv[],
 									   serializedParams, serializedParamslen,
 									   serializedQueryDispatchDesc, serializedQueryDispatchDesclen);
 
-					SetUserIdAndContext(GetOuterUserId(), false);
+					SetUserIdAndSecContext(GetOuterUserId(), 0);
 
 					send_ready_for_query = true;
 				}
