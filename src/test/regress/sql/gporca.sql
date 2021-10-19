@@ -3017,6 +3017,106 @@ reset optimizer_enable_hashjoin;
 reset enable_nestloop;
 reset enable_hashjoin;
 
+--
+-- Test both optimizers not switching to Generic plan.
+-- 1) Test Subquery Scan cost is correct for Postgres optimizer, which leads
+-- Custom plan to be preferred after current fix (Subquery Scan node cost
+-- calculation).
+-- 2) Test ORCA not switching to Generic plan, because it's incorrect to
+-- compare Postgres and ORCA plans cost.
+--
+-- Unlike near the same test in plancache.sql, we show Subquery Scan cost
+-- really changed and plan switching behavior just points to it.
+-- The ORCA part of test somehow duplicates plancache.sql test, showing more
+-- complex example.
+--
+create table test_subquery_scan(i integer, d date)
+partition by range(d) (start ('2019-01-01'::date) end ('2022-01-01'::date)
+every ('1 day'::interval));
+
+prepare test_subquery_scan_pp (date) as
+with ss_cte as (select d from test_subquery_scan where d=$1)
+select d
+from ss_cte
+where d in (select d from ss_cte);
+-- Disabling hashjoin for ORCA will force using of unoptimal plan. Before
+-- fixing ORCA and Postgres plans costs comparison, we used Genric plan after
+-- 5th execution even for ORCA, which was wrong.
+set optimizer_enable_hashjoin=off;
+-- Explain for Postgres optimizer should contain Subquery Scan node, which cost
+-- includes the cost of underlying node.
+-- ORCA should build correct plan, like before (we just showing ORCA not
+-- switching to Generic plan below).
+explain execute test_subquery_scan_pp('2021-01-01'::date);
+execute test_subquery_scan_pp('2021-01-01'::date); -- 1x
+execute test_subquery_scan_pp('2021-01-01'::date); -- 2x
+execute test_subquery_scan_pp('2021-01-01'::date); -- 3x
+execute test_subquery_scan_pp('2021-01-01'::date); -- 4x
+execute test_subquery_scan_pp('2021-01-01'::date); -- 5x
+-- The plan for both, Postgres and ORCA, optimizers should be equal to first
+-- explain call.
+-- 1) Postgres optimizer should not switch to Generic plan, because Subquery
+-- Scan node cost was fixed and Custom plan cost is lower after fix.
+-- 2) ORCA should not switch to Generic plan, because it's incorrect to compare
+-- Postgres and ORCA plans cost.
+-- Filter node contains '(d = '2021-01-01'::date)' condition, which indicates
+-- Custom plan usage.
+explain execute test_subquery_scan_pp('2021-01-01'::date);
+
+reset optimizer_enable_hashjoin;
+--- IS DISTINCT FROM FALSE previously simplified to IS TRUE, returning incorrect results for some hash anti joins
+--- the following tests were added to verify the behavior is correct
+CREATE TABLE tt1 (a int, b int);
+CREATE TABLE tt2 (c int, d int);
+
+INSERT INTO tt1 VALUES (1, NULL), (2, 2), (3, 4), (NULL, 5);
+INSERT INTO tt2 VALUES (1, 1), (2, NULL), (4, 4), (NULL, 2);
+
+ANALYZE tt1;
+ANALYZE tt2;
+
+EXPLAIN SELECT b FROM tt1 WHERE NOT EXISTS (SELECT * FROM tt2 WHERE (tt2.d = tt1.b) IS DISTINCT FROM false);
+SELECT b FROM tt1 WHERE NOT EXISTS (SELECT * FROM tt2 WHERE (tt2.d = tt1.b) IS DISTINCT FROM false);
+
+EXPLAIN SELECT b FROM tt1 WHERE NOT EXISTS (SELECT * FROM tt2 WHERE (tt2.d = tt1.b) IS DISTINCT FROM true);
+SELECT b FROM tt1 WHERE NOT EXISTS (SELECT * FROM tt2 WHERE (tt2.d = tt1.b) IS DISTINCT FROM true);
+
+EXPLAIN SELECT b FROM tt1 WHERE NOT EXISTS (SELECT * FROM tt2 WHERE (tt1.b = tt2.d) IS DISTINCT FROM NULL);
+SELECT b FROM tt1 WHERE NOT EXISTS (SELECT * FROM tt2 WHERE (tt1.b = tt2.d) IS DISTINCT FROM NULL);
+create or replace function one(i int) returns int as $$
+begin
+	return 1;
+end
+$$ language PLPGSQL;
+CREATE TABLE tone (a int, b int, c int);
+insert into tone select i,i,i from generate_series(1, 10) i;
+ANALYZE tone;
+
+WITH cte AS (SELECT one(min(a)) from tone) SELECT 1 FROM tone, cte c1;
+
+--- optimizer_xform_bind_threshold should limit the search space and quickly
+--- generate a plan (<100ms, but if this GUC is not set it will take minutes to
+--- optimize)
+create table binding (a int) distributed by (a);
+set optimizer_xform_bind_threshold=100;
+
+set statement_timeout = '15s';
+select a in (
+       select a from binding as t1 where a in (
+           select a from binding as t2 where a in (
+               select a from binding as t3 where a in (
+                   select a from binding as t4 join binding as t5 using(a) group by t4.a
+                   union
+                   select a from binding as t4 join binding as t5 using(a) group by t4.a
+                   union
+                   select a from binding as t4 join binding as t5 using(a) group by t4.a
+               )
+           )
+       )
+   ) from binding;
+reset optimizer_xform_bind_threshold;
+reset statement_timeout;
+
 -- start_ignore
 DROP SCHEMA orca CASCADE;
 -- end_ignore
