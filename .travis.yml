@@ -61,6 +61,15 @@ matrix:
                   packages:
                       - *common_packages
                       - clang-7
+        # macOS, XCode11
+        - os: osx
+          compiler: clang
+          osx_image: xcode11
+          env: T=macos
+          addons:
+            homebrew:
+              packages:
+                - ccache
 
         - stage: check-format
           os: linux
@@ -130,6 +139,7 @@ install:
 
 before_script:
     - ssh-keygen -t "rsa" -f ~/.ssh/id_rsa -N ""
+    - ssh-keyscan $(hostname) >> ~/.ssh/known_hosts
     - cp ~/.ssh/{id_rsa.pub,authorized_keys}
     - ccache --zero-stats
 

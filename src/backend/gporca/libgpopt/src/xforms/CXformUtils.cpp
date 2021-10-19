@@ -38,6 +38,7 @@
 #include "gpopt/operators/CLogicalRowTrigger.h"
 #include "gpopt/operators/CLogicalSelect.h"
 #include "gpopt/operators/CLogicalSequenceProject.h"
+#include "gpopt/operators/CPhysicalInnerHashJoin.h"
 #include "gpopt/operators/CScalarAssertConstraint.h"
 #include "gpopt/operators/CScalarAssertConstraintList.h"
 #include "gpopt/operators/CScalarBitmapBoolOp.h"
@@ -2272,7 +2273,21 @@ CXformUtils::PdrgpcrIndexColumns(CMemoryPool *mp, CColRefArray *colref_array,
 		}
 		ULONG ulPosNonDropped = pmdrel->NonDroppedColAt(ulPos);
 
-		GPOS_ASSERT(gpos::ulong_max != ulPosNonDropped);
+		if (gpos::ulong_max == ulPosNonDropped ||
+			ulPosNonDropped >= colref_array->Size())
+		{
+			// GPDB6 and lower assumes that the root and leaf partitions have
+			// the same underlying column structure. That assumption can be
+			// broken when an exchange partition with or without same dropped
+			// columns as root is inserted into the partition table. Further
+			// complicating the matter is that ORCA always uses the root
+			// partition to construct index metadata. If we detect a mismatch
+			// in the index and relation metadata, then we will not consider
+			// index columns.
+			pdrgpcrIndex->Release();
+			return GPOS_NEW(mp) CColRefArray(mp);
+		}
+
 		GPOS_ASSERT(ulPosNonDropped < colref_array->Size());
 
 		CColRef *colref = (*colref_array)[ulPosNonDropped];
@@ -2733,6 +2748,10 @@ CXformUtils::FProcessGPDBAntiSemiHashJoin(
 		{
 			CExpression *pexprEquality = NULL;
 			CExpression *pexprFalse = NULL;
+
+			// LASJ with Not-In in GPDB returns nothing, if a NULL was
+			// produced by the inner-outer tuple match. So, we should
+			// check NOT NULL for the inner and outer sides only for LASJ.
 			if (FExtractEquality(
 					pexprPred, &pexprEquality,
 					&pexprFalse) &&	 // extracted equality expression
@@ -2744,9 +2763,17 @@ CXformUtils::FProcessGPDBAntiSemiHashJoin(
 				CPhysicalJoin::FHashJoinCompatible(
 					pexprEquality, pexprOuter,
 					pexprInner) &&	// equality is hash-join compatible
-				CUtils::FUsesNullableCol(
-					mp, pexprEquality,
-					pexprInner))  // equality uses an inner nullable column
+				((COperator::EopLogicalLeftAntiSemiJoin ==
+					  pexpr->Pop()->Eopid() &&
+				  !CUtils::FUsesNullableCol(
+					  mp, pexprEquality,
+					  pexprInner) &&  // equality uses an inner NOT NULL column
+				  !CUtils::FUsesNullableCol(
+					  mp, pexprEquality,
+					  pexprOuter)  // equality uses an outer NOT NULL column
+				  ) ||
+				 (COperator::EopLogicalLeftAntiSemiJoinNotIn ==
+				  pexpr->Pop()->Eopid())))
 			{
 				pexprEquality->AddRef();
 				pdrgpexprNew->Append(pexprEquality);
@@ -4801,6 +4828,5 @@ CXformUtils::AddALinearStackOfUnaryExpressions(
 
 	return GPOS_NEW(mp) CExpression(mp, pop, childrenArray);
 }
-
 
 // EOF

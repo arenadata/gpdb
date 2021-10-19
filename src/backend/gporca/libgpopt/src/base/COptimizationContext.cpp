@@ -27,6 +27,7 @@
 
 using namespace gpopt;
 
+FORCE_GENERATE_DBGSTR(COptimizationContext);
 
 // invalid optimization context
 const COptimizationContext COptimizationContext::m_ocInvalid;
@@ -438,7 +439,7 @@ COptimizationContext::PrppCTEProducer(CMemoryPool *mp,
 		COptCtxt::PoctxtFromTLS()->Pcteinfo()->PhmulcrConsumerToProducer(
 			mp, popProducer->UlCTEId(), pcrsInnerOutput,
 			popProducer->Pdrgpcr());
-	CReqdPropPlan *prppProducer = CReqdPropPlan::PrppRemap(
+	CReqdPropPlan *prppProducer = CReqdPropPlan::PrppRemapForCTE(
 		mp, pocProducer->Prpp(), pccConsumer->Pdpplan(), colref_mapping);
 	colref_mapping->Release();
 

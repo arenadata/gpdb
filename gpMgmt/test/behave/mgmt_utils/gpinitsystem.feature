@@ -55,6 +55,44 @@ Feature: gpinitsystem tests
         Given the user runs "gpstate"
         Then gpstate should return a return code of 0
 
+    Scenario: gpinitsystem creates a backout file when gpinitsystem process terminated
+        Given create demo cluster config
+        And all files in gpAdminLogs directory are deleted
+        When the user asynchronously runs "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile" and the process is saved
+        And the user asynchronously sets up to end gpinitsystem process when "Waiting for parallel processes" is printed in the logs
+        And the user waits until saved async process is completed
+        And the user waits until gpcreateseg process is completed
+        Then gpintsystem logs should contain lines about running backout script
+        And the user runs the gpinitsystem backout script
+        And all files in gpAdminLogs directory are deleted
+        And the user runs "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile"
+        And gpinitsystem should return a return code of 0
+        And gpintsystem logs should not contain lines about running backout script
+
+    Scenario: gpinitsystem creates a backout file when gpcreateseg process terminated
+        Given create demo cluster config
+        And all files in gpAdminLogs directory are deleted
+        When the user asynchronously runs "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile" and the process is saved
+        And the user asynchronously sets up to end gpcreateseg process when it starts
+        And the user waits until saved async process is completed
+        Then gpintsystem logs should contain lines about running backout script
+        And the user runs the gpinitsystem backout script
+        And all files in gpAdminLogs directory are deleted
+        And the user runs "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile"
+        And gpinitsystem should return a return code of 0
+        And gpintsystem logs should not contain lines about running backout script
+
+    Scenario: gpinitsystem does not create or need backout file when user terminated very early
+        Given create demo cluster config
+        And all files in gpAdminLogs directory are deleted
+        When the user asynchronously runs "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile" and the process is saved
+        And the user asynchronously sets up to end bin/gpinitsystem process in 0 seconds
+        And the user waits until saved async process is completed
+        Then gpintsystem logs should not contain lines about running backout script
+        And all files in gpAdminLogs directory are deleted
+        And the user runs "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile"
+        Then gpinitsystem should return a return code of 0
+
     Scenario: gpinitsystem fails with exit code 2 when the functions file is not found
        Given create demo cluster config
            # force a load error when trying to source gp_bash_functions.sh

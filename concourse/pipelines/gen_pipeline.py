@@ -81,11 +81,14 @@ JOBS_THAT_SHOULD_NOT_BLOCK_RELEASE = (
 def suggested_git_remote():
     """Try to guess the current git remote"""
     default_remote = "<https://github.com/<github-user>/gpdb>"
-
+    staging_remote = "git@github.com:pivotal/gp-gpdb-staging"
     remote = subprocess.check_output(["git", "ls-remote", "--get-url"]).decode('utf-8').rstrip()
 
     if "greenplum-db/gpdb" in remote:
         return default_remote
+
+    if "pivotal/gp-gpdb-staging" in remote:
+        return staging_remote
 
     if "git@" in remote:
         git_uri = remote.split('@')[1]
@@ -155,7 +158,7 @@ def validate_target(target):
         raise Exception('Invalid target "%s"; no secrets file found.  Please ensure your secrets files in %s are up to date.' % (target, SECRETS_PATH))
 
 
-def create_pipeline(args):
+def create_pipeline(args, git_remote, git_branch):
     """Generate OS specific pipeline sections"""
     if args.test_trigger_false:
         test_trigger = "true"
@@ -170,7 +173,11 @@ def create_pipeline(args):
         'test_sections': args.test_sections,
         'pipeline_configuration': args.pipeline_configuration,
         'test_trigger': test_trigger,
-        'use_ICW_workers': args.use_ICW_workers
+        'use_ICW_workers': args.use_ICW_workers,
+        'build_test_rc_rpm': args.build_test_rc_rpm,
+        'directed_release': args.directed_release,
+        'git_username': git_remote.split('/')[-2],
+        'git_branch': git_branch
     }
 
     pipeline_yml = render_template(args.template_filename, context)
@@ -188,15 +195,7 @@ def create_pipeline(args):
     return True
 
 
-def gen_pipeline(args, pipeline_name, secret_files,
-                 git_remote=None,
-                 git_branch=None):
-
-    if git_remote is None:
-        git_remote = suggested_git_remote()
-    if git_branch is None:
-        git_branch = suggested_git_branch()
-
+def gen_pipeline(args, pipeline_name, secret_files, git_remote, git_branch):
     secrets = ""
     for secret in secret_files:
         secrets += "-l %s/%s " % (SECRETS_PATH, secret)
@@ -234,6 +233,8 @@ def header(args):
   Test sections ............ : %s
   test_trigger ............. : %s
   use_ICW_workers .......... : %s
+  build_test_rc_rpm ........ : %s
+  directed_release ......... : %s
 ======================================================================
 ''' % (args.pipeline_target,
        args.output_filepath,
@@ -241,14 +242,22 @@ def header(args):
        args.os_types,
        args.test_sections,
        args.test_trigger_false,
-       args.use_ICW_workers
+       args.use_ICW_workers,
+       args.build_test_rc_rpm,
+       args.directed_release
        )
 
 
-def print_fly_commands(args):
+def print_fly_commands(args, git_remote, git_branch):
     pipeline_name = os.path.basename(args.output_filepath).rsplit('.', 1)[0]
 
     print(header(args))
+    if args.directed_release:
+        print('NOTE: You can set the directed release pipeline with the following:\n')
+        print(gen_pipeline(args, pipeline_name, ["gpdb_%s_without_asserts-ci-secrets.prod.yml" % BASE_BRANCH],
+                           suggested_git_remote(), git_branch))
+        return
+
     if args.pipeline_target == 'prod':
         print('NOTE: You can set the production pipelines with the following:\n')
         pipeline_name = "gpdb_%s" % BASE_BRANCH if BASE_BRANCH == "master" else BASE_BRANCH
@@ -260,7 +269,7 @@ def print_fly_commands(args):
 
     print('NOTE: You can set the developer pipeline with the following:\n')
     print(gen_pipeline(args, pipeline_name, ["gpdb_%s-ci-secrets.dev.yml" % BASE_BRANCH,
-                                             "ccp_ci_secrets_%s.yml" % args.pipeline_target]))
+                                             "ccp_ci_secrets_%s.yml" % args.pipeline_target], git_remote, git_branch))
 
 
 def main():
@@ -295,7 +304,7 @@ def main():
         action='store',
         dest='os_types',
         default=['centos6'],
-        choices=['centos6', 'centos7', 'centos8', 'oracle7', 'photon3', 'sles12', 'ubuntu18.04', 'win'],
+        choices=['centos6', 'centos7', 'rhel8', 'oracle7', 'photon3', 'sles12', 'ubuntu18.04', 'win'],
         nargs='+',
         help='List of OS values to support'
     )
@@ -337,7 +346,7 @@ def main():
             'Extensions',
             'Gpperfmon'
         ],
-        default=['ICW'],
+        default=[],
         nargs='+',
         help='Select tests sections to run'
     )
@@ -367,7 +376,33 @@ def main():
         help='Set use_ICW_workers to "true".'
     )
 
+    parser.add_argument(
+        '--build-test-rc',
+        action='store_true',
+        dest='build_test_rc_rpm',
+        default=False,
+        help='Generate a release candidate RPM. Useful for testing branches against'
+             'products that consume RC RPMs such as gpupgrade. Use prod'
+             'configuration to build prod RCs.'
+    )
+
+    parser.add_argument(
+        '--directed',
+        action='store_true',
+        dest='directed_release',
+        default=False,
+        help='Generates a pipeline for directed releases. '
+             'This flag can be used only with the prod target.'
+    )
+
     args = parser.parse_args()
+
+    if args.pipeline_target == 'prod' and args.build_test_rc_rpm:
+        raise Exception('Cannot specify a prod pipeline when building a test'
+                        'RC. Please specify one or the other.')
+
+    if args.pipeline_target != 'prod' and args.directed_release:
+        raise Exception('--directed flag can be used only with prod target')
 
     validate_target(args.pipeline_target)
 
@@ -376,7 +411,7 @@ def main():
         print("You can only use one of --output or --user.")
         exit(1)
 
-    if args.pipeline_target == 'prod':
+    if args.pipeline_target == 'prod' and not args.directed_release:
         args.pipeline_configuration = 'prod'
 
     # use_ICW_workers adds tags to the specified concourse definitions which
@@ -384,8 +419,8 @@ def main():
     if args.pipeline_target in ['prod', 'dev', 'cm']:
         args.use_ICW_workers = True
 
-    if args.pipeline_configuration == 'prod' or args.pipeline_configuration == 'full':
-        args.os_types = ['centos6', 'centos7', 'centos8', 'oracle7', 'sles12', 'ubuntu18.04', 'photon3', 'win']
+    if args.pipeline_configuration == 'prod' or args.pipeline_configuration == 'full' or args.directed_release:
+        args.os_types = ['centos6', 'centos7', 'rhel8', 'oracle7', 'sles12', 'ubuntu18.04', 'photon3', 'win']
         args.test_sections = [
             'ICW',
             'Replication',
@@ -402,6 +437,9 @@ def main():
         print("oracle7 depends on centos7")
         args.os_types.append('centos7')
 
+    git_remote = suggested_git_remote()
+    git_branch = suggested_git_branch()
+
     # if generating a dev pipeline but didn't specify an output,
     # don't overwrite the 6X_STABLE pipeline
     if args.pipeline_target != 'prod' and not output_path_is_set:
@@ -411,12 +449,17 @@ def main():
         default_dev_output_filename = 'gpdb-' + args.pipeline_target + '-' + pipeline_file_suffix + '.yml'
         args.output_filepath = os.path.join(PIPELINES_DIR, default_dev_output_filename)
 
-    pipeline_created = create_pipeline(args)
+    if args.directed_release:
+        pipeline_file_suffix = suggested_git_branch()
+        default_dev_output_filename = pipeline_file_suffix + '.yml'
+        args.output_filepath = os.path.join(PIPELINES_DIR, default_dev_output_filename)
+
+    pipeline_created = create_pipeline(args, git_remote, git_branch)
 
     if not pipeline_created:
         exit(1)
 
-    print_fly_commands(args)
+    print_fly_commands(args, git_remote, git_branch)
 
 
 if __name__ == "__main__":

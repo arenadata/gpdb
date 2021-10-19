@@ -1936,7 +1936,12 @@ _mdfd_openseg(SMgrRelation reln, ForkNumber forknum, BlockNumber segno,
 	v->mdfd_vfd = fd;
 	v->mdfd_segno = segno;
 	v->mdfd_chain = NULL;
-	Assert(_mdnblocks(reln, forknum, v) <= ((BlockNumber) RELSEG_SIZE));
+	/*
+	 * Skip the assertion check, it'll cause assertion failure if aocs table
+	 * exceeds 1G. Comment this line for now to avoid future pg merge adds
+	 * back the code.
+	 */
+	/*Assert(_mdnblocks(reln, forknum, v) <= ((BlockNumber) RELSEG_SIZE));*/
 
 	/* all done */
 	return v;
@@ -2000,7 +2005,7 @@ _mdfd_getseg(SMgrRelation reln, ForkNumber forknum, BlockNumber blkno,
 							 zerobuf, skipFsync);
 					pfree(zerobuf);
 				}
-				v->mdfd_chain = _mdfd_openseg(reln, forknum, +nextsegno, O_CREAT);
+				v->mdfd_chain = _mdfd_openseg(reln, forknum, nextsegno, O_CREAT);
 			}
 			else
 			{

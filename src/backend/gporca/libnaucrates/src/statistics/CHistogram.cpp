@@ -117,6 +117,8 @@ CHistogram::SetNullFrequency(CDouble null_freq)
 	m_null_freq = null_freq;
 }
 
+FORCE_GENERATE_DBGSTR(gpnaucrates::CHistogram);
+
 //	print function
 IOstream &
 CHistogram::OsPrint(IOstream &os) const
@@ -152,15 +154,6 @@ CHistogram::OsPrint(IOstream &os) const
 
 	return os;
 }
-
-#ifdef GPOS_DEBUG
-void
-CHistogram::DbgPrint() const
-{
-	CAutoTrace at(CTask::Self()->Pmp());
-	OsPrint(at.Os());
-}
-#endif
 
 // check if histogram is empty
 BOOL
@@ -1803,6 +1796,14 @@ CHistogram::MakeUnionHistogramNormalize(CDouble rows,
 	GPOS_ASSERT(NULL != other_histogram);
 	GPOS_ASSERT(this->IsValid());
 	GPOS_ASSERT(other_histogram->IsValid());
+	if (!other_histogram->IsWellDefined() && !IsWellDefined())
+	{
+		*num_output_rows = CDouble(std::max(rows.Get(), rows_other.Get()));
+
+		CHistogram *result_histogram =
+			GPOS_NEW(m_mp) CHistogram(m_mp, false /* is_well_defined */);
+		return result_histogram;
+	}
 
 	ULONG idx1 = 0;	 // index on buckets from this histogram
 	ULONG idx2 = 0;	 // index on buckets from other histogram

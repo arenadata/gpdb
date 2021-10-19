@@ -29,14 +29,11 @@ using namespace gpmd;
 //		Representation of function properties
 //
 //---------------------------------------------------------------------------
-class CFunctionProp : public CRefCount
+class CFunctionProp : public CRefCount, public DbgPrintMixin<CFunctionProp>
 {
 private:
 	// function stability
 	IMDFunction::EFuncStbl m_efs;
-
-	// function data access
-	IMDFunction::EFuncDataAcc m_efda;
 
 	// does this expression have a volatile Function Scan
 	BOOL m_fHasVolatileFunctionScan;
@@ -50,7 +47,6 @@ private:
 public:
 	// ctor
 	CFunctionProp(IMDFunction::EFuncStbl func_stability,
-				  IMDFunction::EFuncDataAcc func_data_access,
 				  BOOL fHasVolatileFunctionScan, BOOL fScan);
 
 	// dtor
@@ -61,13 +57,6 @@ public:
 	Efs() const
 	{
 		return m_efs;
-	}
-
-	// function data access
-	virtual IMDFunction::EFuncDataAcc
-	Efda() const
-	{
-		return m_efda;
 	}
 
 	// does this expression have a volatile Function Scan

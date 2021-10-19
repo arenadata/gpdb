@@ -41,6 +41,18 @@ COMMAND_NOT_FOUND=127
 #Default size of thread pool for gpstart and gpsegstart
 DEFAULT_GPSTART_NUM_WORKERS=64
 
+#Default size of thread pool on segment hosts
+DEFAULT_SEGHOST_NUM_WORKERS=64
+
+#max size of thread pool on segment hosts
+MAX_SEGHOST_NUM_WORKERS=128
+
+#default batch size of thread pool on master
+DEFAULT_MASTER_NUM_WORKERS=16
+
+#max batch size of thread pool on master
+MAX_MASTER_NUM_WORKERS=64
+
 # Application name used by the pg_rewind instance that gprecoverseg starts
 # during incremental recovery. gpstate uses this to figure out when incremental
 # recovery is active.
@@ -58,13 +70,13 @@ def get_postmaster_pid_locally(datadir):
         return -1
 
 def getPostmasterPID(hostname, datadir):
-    cmdStr="ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
+    cmdStr="echo 'START_CMD_OUTPUT';ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
     name="get postmaster pid"
     cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=hostname)
     try:
         cmd.run(validateAfter=True)
         sout=cmd.get_results().stdout.lstrip(' ')
-        return int(sout.split()[1])
+        return int(sout.split('START_CMD_OUTPUT\n')[1].split()[1])
     except:
         return -1
 
@@ -612,7 +624,7 @@ class GpSegStartArgs(CmdArgs):
         @param parallel - maximum size of a thread pool to start segments
         """
         if parallel is not None:
-            self.append("-B")
+            self.append("-b")
             self.append(str(parallel))
         return self
 
@@ -649,7 +661,7 @@ class GpSegStartCmd(Command):
 #-----------------------------------------------
 class GpSegStopCmd(Command):
     def __init__(self, name, gphome, version,mode,dbs,timeout=SEGMENT_STOP_TIMEOUT_DEFAULT,
-                 verbose=False, ctxt=LOCAL, remoteHost=None, logfileDirectory=False):
+                 verbose=False, ctxt=LOCAL, remoteHost=None, logfileDirectory=False, segment_batch_size=DEFAULT_SEGHOST_NUM_WORKERS):
         self.gphome=gphome
         self.dblist=dbs
         self.dirportlist=[]
@@ -666,8 +678,8 @@ class GpSegStopCmd(Command):
         else:
             setverbose=""
 
-        self.cmdStr="$GPHOME/sbin/gpsegstop.py %s -D %s -m %s -t %s -V '%s'"  %\
-                        (setverbose,dirstr,mode,timeout,version)
+        self.cmdStr="$GPHOME/sbin/gpsegstop.py %s -D %s -m %s -t %s -V '%s' -b %d" %\
+                        (setverbose,dirstr,mode,timeout,version,segment_batch_size)
 
         if (logfileDirectory):
             self.cmdStr = self.cmdStr + " -l '" + logfileDirectory + "'"
@@ -905,7 +917,7 @@ class ConfigureNewSegment(Command):
         if verbose:
             cmdStr += ' -v '
         if batchSize:
-            cmdStr += ' -B %s' % batchSize
+            cmdStr += ' -b %s' % batchSize
         if validationOnly:
             cmdStr += " --validation-only"
         if writeGpIdFileOnly:
@@ -1592,7 +1604,7 @@ class GpRecoverSeg(Command):
 class IfAddrs:
     @staticmethod
     def list_addrs(hostname=None, include_loopback=False):
-        cmd = ['%s/libexec/ifaddrs' % GPHOME]
+        cmd = ['echo "START_CMD_OUTPUT";%s/libexec/ifaddrs' % GPHOME]
         if not include_loopback:
             cmd.append('--no-loopback')
         if hostname:
@@ -1602,7 +1614,7 @@ class IfAddrs:
             args = cmd
 
         result = subprocess.check_output(args)
-        return result.splitlines()
+        return result.split('START_CMD_OUTPUT\n')[1].splitlines()
 
 if __name__ == '__main__':
 

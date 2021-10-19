@@ -1,5 +1,7 @@
 test: setup
-
+test: cached_plan
+test: gpdispatch
+test: checkpoint_dtx_info
 test: lockmodes
 # Put test prepare_limit near to test lockmodes since both of them reboot the
 # cluster during testing. Usually the 2nd reboot should be faster.
@@ -83,13 +85,16 @@ test: invalidated_toast_index
 test: distributed_snapshot
 test: gp_collation
 test: ao_upgrade
-test: bitmap_index_concurrent
-
+test: bitmap_update_words_backup_block
+test: bitmap_index_crash
 # below test utilizes fault injectors so it needs to be in a group by itself
 test: external_table
 
 # This test validates that for AO we delay fsync to checkpointer on mirror.
 test: fsync_ao
+
+# Test deadlock situation when waiting on a resource queue lock
+test: resource_queue_deadlock
 
 # Tests on Append-Optimized tables (row-oriented).
 test: concurrent_index_creation_should_not_deadlock
@@ -230,11 +235,10 @@ test: reindex/reindextable_while_altertable_ao_part_btree reindex/reindextable_w
 test: reindex/reindextable_while_dropindex_ao_part_btree reindex/reindextable_while_dropindex_heap_part_btree reindex/reindextable_while_dropindex_aoco_part_btree
 test: reindex/reindextable_while_reindex_idx_ao_part_btree reindex/reindextable_while_reindex_idx_heap_part_btree reindex/reindextable_while_reindex_idx_aoco_part_btree
 test: reindex/reindextable_while_reindex_idx_ao_bitmap reindex/reindextable_while_reindex_idx_heap_bitmap reindex/reindextable_while_reindex_idx_aoco_bitmap
-test: reindex/serializable_reindex_with_drop_column_ao_part reindex/serializable_reindex_with_drop_column_heap
-test: reindex/serializable_reindex_with_drop_column_part_heap
+test: reindex/serializable_reindex_with_drop_column_heap
 test: reindex/serializable_reindex_with_drop_index_ao reindex/serializable_reindex_with_drop_index_heap
 test: reindex/repeatable_read_reindex_with_insert_heap
-test: reindex/repeatable_read_reindex_with_insert_part_heap reindex/vacuum_analyze_while_reindex_ao_btree
+test: reindex/vacuum_analyze_while_reindex_ao_btree
 test: reindex/vacuum_while_reindex_ao_bitmap reindex/vacuum_while_reindex_heap_btree reindex/vacuum_while_reindex_heap_btree_toast
 
 # test workfile_mgr
@@ -269,3 +273,9 @@ test: distributed_transactions
 
 # Test for distributed commit array overflow during replay on standby
 test: standby_replay_dtx_info
+
+# Test for concurrent vacuum with delete
+test: concurrent_vacuum_with_delete
+
+# test if GUC is synchronized from the QD to QEs.
+test: sync_guc

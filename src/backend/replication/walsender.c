@@ -2865,6 +2865,7 @@ WalSndSignals(void)
 	pqsignal(SIGCONT, SIG_DFL);
 	pqsignal(SIGWINCH, SIG_DFL);
 
+	InitStandardHandlerForSigillSigsegvSigbus_OnMainThread();
 #ifdef SIGILL
 	pqsignal(SIGILL, WalSndCrashHandler);
 #endif
@@ -3212,7 +3213,7 @@ WalSndCtlGetXLogCleanUpTo()
 	/*
 	 * we can't return XLogRecPtr smaller than walsnd_xlogCleanUpTo
 	 * because for e.g the checkpoint creation process may have read it
-	 * already and used it to clean xlog seg files upto that point.
+	 * already and used it to clean xlog seg files up to that point.
 	 */
 	if (WalSndCtl->walsnd_xlogCleanUpTo < min_xlogCleanUpTo)
 		WalSndCtl->walsnd_xlogCleanUpTo = min_xlogCleanUpTo;

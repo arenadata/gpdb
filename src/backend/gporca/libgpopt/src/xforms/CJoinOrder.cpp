@@ -27,6 +27,10 @@
 
 using namespace gpopt;
 
+FORCE_GENERATE_DBGSTR(CJoinOrder);
+FORCE_GENERATE_DBGSTR(CJoinOrder::SEdge);
+FORCE_GENERATE_DBGSTR(CJoinOrder::SComponent);
+
 
 // ctor
 CJoinOrder::SComponent::SComponent(CMemoryPool *mp, CExpression *pexpr,
@@ -513,7 +517,8 @@ CJoinOrder::PcompCombine(SComponent *comp1, SComponent *comp2)
 			CExpression *loj_predicate =
 				CPredicateUtils::PexprConjunction(m_mp, loj_conjuncts);
 			pexpr = CUtils::PexprLogicalJoin<CLogicalLeftOuterJoin>(
-				m_mp, pexprLeft, pexprRight, loj_predicate);
+				m_mp, pexprLeft, pexprRight, loj_predicate,
+				this->EOriginXForm());
 
 			// remaining predicates are place on top as a filter
 			CExpression *filter_predicate =
@@ -559,7 +564,8 @@ CJoinOrder::PcompCombine(SComponent *comp1, SComponent *comp2)
 			CExpression *predicate =
 				CPredicateUtils::PexprConjunction(m_mp, loj_conjuncts);
 			pexpr = CUtils::PexprLogicalJoin<CLogicalInnerJoin>(
-				m_mp, pexprChild1, pexprChild2, predicate);
+				m_mp, pexprChild1, pexprChild2, predicate,
+				this->EOriginXForm());
 		}
 	}
 	// if the component has parent_loj_id > 0, it must be the left child or has the left child

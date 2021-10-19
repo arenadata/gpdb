@@ -18,7 +18,6 @@ try:
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gparray import *
     from gppylib.gplog import get_default_logger, log_to_file_only
-    from gppylib import gphostcache
     from gppylib import userinput
     from gppylib.db import catalog
     from gppylib.commands import unix
@@ -95,10 +94,9 @@ class GpStart:
                 logger.info('Master-only start requested for management utilities.')
             else:
                 logger.warning("****************************************************************************")
-                logger.warning("Master-only start requested. Disruptive action if standby master configured.")
-                logger.warning("This is advisable only under the direct supervision of Greenplum support. ")
-                logger.warning("This mode of operation is not supported in a production environment and ")
+                logger.warning("Master-only start requested. If a standby master is configured, this command")
                 logger.warning("may lead to a split-brain condition and possible unrecoverable data loss.")
+                logger.warning("Maintenance mode should only be used with direction from Greenplum Support.")
                 logger.warning("****************************************************************************")
                 if self.interactive:
                     if not userinput.ask_yesno(None, "\nContinue with master-only startup", 'N'):

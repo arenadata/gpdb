@@ -4,7 +4,7 @@ ARG sigar=https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/centos/7/comm
 ARG sigar_headers=https://ci.arenadata.io/artifactory/ADB/6.7.1_arenadata4/centos/7/community/x86_64/sigar-headers-1.6.5-163.el7.x86_64.rpm
 
 # Install some basic utilities and build tools
-RUN yum makecache && \
+RUN yum makecache && yum update -y ca-certificates && \
     rpm --import http://mirror.centos.org/centos/RPM-GPG-KEY-CentOS-7 && \
     yum -y install epel-release java-1.8.0-openjdk-devel && \
     yum -y install git iproute net-tools openssh-server rsync sudo time vim wget unzip \
@@ -20,8 +20,10 @@ RUN yum makecache && \
     yum -y install libevent-devel libuuid-devel libxml2-devel libyaml-devel libzstd-devel && \
     yum -y install openssl-devel pam-devel readline-devel snappy-devel libuv-devel && \
     yum -y install apache-ivy libicu perl-ExtUtils-Embed perl-Env perl-JSON && \
-    yum -y install perl-IPC-Run perl-Test-Base && \
-    pip install psi && \
+    yum -y install perl-IPC-Run perl-Test-Base libxslt-devel && \
+    # The last python 2.7 pip
+    pip install -U pip==20.3.4 && \
+    pip install psi pytest==3.10.1 && \
     yum clean all
 
 # setup ssh configuration
@@ -45,7 +47,6 @@ RUN yum -y install centos-release-scl && \
     ln -s /usr/bin/cmake3 /usr/bin/cmake && \
     ln -s /usr/bin/ctest3 /usr/bin/ctest && \
     echo -e 'source /opt/rh/devtoolset-7/enable' >> /opt/gcc_env.sh && \
-    echo -e 'source /opt/gcc_env.sh' >> /root/.bashrc && \
     echo -e '#!/bin/sh' >> /etc/profile.d/jdk_home.sh && \
     echo -e 'export JAVA_HOME=/etc/alternatives/java_sdk' >> /etc/profile.d/jdk_home.sh && \
     echo -e 'export PATH=$JAVA_HOME/bin:$PATH' >> /etc/profile.d/jdk_home.sh
@@ -66,8 +67,7 @@ ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend"
 
 # Compile with running mocking tests
-RUN source /opt/gcc_env.sh && \
-    bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
+RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
 
 FROM base as code
 COPY . gpdb_src

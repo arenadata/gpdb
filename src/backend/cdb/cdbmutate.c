@@ -17,6 +17,7 @@
 
 #include "access/hash.h"
 #include "access/xact.h"
+#include "nodes/bitmapset.h"
 #include "parser/parsetree.h"	/* for rt_fetch() */
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
 #include "utils/relcache.h"		/* RelationGetPartitioningKey() */
@@ -27,6 +28,7 @@
 #include "optimizer/var.h"
 #include "parser/parse_relation.h"
 #include "utils/fmgroids.h"
+#include "utils/hsearch.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/datum.h"
@@ -74,8 +76,14 @@ typedef struct ApplyMotionState
 	int			nextMotionID;
 	int			sliceDepth;
 	bool		containMotionNodes;
-	List	   *initPlans;
+	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
 } ApplyMotionState;
+
+typedef struct InitPlanItem
+{
+	int plan_id; /* plan id of the init plan */
+	List *subplans; /* list of subplans that refer to the same init plan */
+} InitPlanItem;
 
 typedef struct
 {
@@ -99,7 +107,7 @@ static void assignMotionID(Node *newnode, ApplyMotionState *context, Node *oldno
 static void add_slice_to_motion(Motion *motion,
 					MotionType motionType,
 					List *hashExprs, List *hashOpfamilies, int numsegments,
-					bool isBroadcast);
+					bool isBroadcast, CdbLocusType targetLocus);
 
 static Node *apply_motion_mutator(Node *node, ApplyMotionState *context);
 
@@ -380,8 +388,11 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	Plan	   *result;
 	ListCell   *cell;
 	GpPolicy   *targetPolicy = NULL;
+	InitPlanItem *item;
 	GpPolicyType targetPolicyType = POLICYTYPE_ENTRY;
 	ApplyMotionState state;
+	HASHCTL ctl;
+	HASH_SEQ_STATUS status;
 	bool		needToAssignDirectDispatchContentIds = false;
 	bool		bringResultToDispatcher = false;
 	int			numsegments = getgpsegmentCount();
@@ -394,7 +405,13 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
 	state.containMotionNodes = false;
-	state.initPlans = NIL;
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.keysize = sizeof(int);
+	ctl.entrysize = sizeof(InitPlanItem);
+	ctl.hash = tag_hash;
+	ctl.hcxt = CurrentMemoryContext;
+	state.planid_subplans = hash_create("plan_id to subplans", 8, &ctl,
+										 HASH_ELEM | HASH_CONTEXT | HASH_FUNCTION);
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 
@@ -529,31 +546,38 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 				if (GpPolicyIsReplicated(query->intoPolicy))
 				{
+					bool needBroadcast = true;
 					/*
 					 * CdbLocusType_SegmentGeneral is only used by replicated
-					 * table right now, so if both input and target are
-					 * replicated table, no need to add a motion
+					 * table right now, so if both input and target are replicated
+					 * table, no need to add a motion.
+					 * And if plan's data are available on all segment as
+					 * CdbLocusType_General, no motion needed.
+					 * The above two cases have an exception if the plan contains volatile
+					 * target list or havingQual, we can not run it on every segments.
 					 */
+
 					if (plan->flow->flotype == FLOW_SINGLETON &&
-						plan->flow->locustype == CdbLocusType_SegmentGeneral)
+						(plan->flow->locustype == CdbLocusType_General ||
+						 plan->flow->locustype == CdbLocusType_SegmentGeneral))
 					{
-						/* do nothing */
+						if (contain_volatile_functions((Node *) query->targetList) ||
+							contain_volatile_functions(query->havingQual))
+						{
+							plan->flow->locustype = CdbLocusType_SingleQE;
+						}
+						else
+							needBroadcast = plan->flow->numsegments == numsegments ? false : true;
 					}
 
-					/*
-					 * plan's data are available on all segment, no motion
-					 * needed
-					 */
-					if (plan->flow->flotype == FLOW_SINGLETON &&
-						plan->flow->locustype == CdbLocusType_General)
+					if (needBroadcast)
 					{
-						/* do nothing */
+						if (!broadcastPlan(plan, false, false, numsegments))
+							ereport(ERROR,
+									(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+									 errmsg("cannot parallelize that SELECT INTO yet")));
 					}
 
-					if (!broadcastPlan(plan, false, false, numsegments))
-						ereport(ERROR,
-								(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-								 errmsg("cannot parallelize that SELECT INTO yet")));
 				}
 				else
 				{
@@ -663,16 +687,24 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	}
 
 	Assert(result->nMotionNodes == state.nextMotionID - 1);
-	Assert(result->nInitPlans == list_length(state.initPlans));
+	Assert(result->nInitPlans == hash_get_num_entries(state.planid_subplans));
 
-	/* Assign slice numbers to the initplans. */
-	foreach(cell, state.initPlans)
+	hash_seq_init(&status, state.planid_subplans);
+	while ((item = (InitPlanItem *) hash_seq_search(&status)) != NULL)
 	{
-		SubPlan    *subplan = (SubPlan *) lfirst(cell);
-
-		Assert(IsA(subplan, SubPlan) &&subplan->qDispSliceId == 0);
-		subplan->qDispSliceId = state.nextMotionID++;
+		int plan_id = item->plan_id;
+		int sliceId = state.nextMotionID++;
+		List *subplans = item->subplans;
+		Assert(list_length(subplans) > 0);
+		foreach(cell, subplans)
+		{
+			SubPlan *subplan = (SubPlan *) lfirst(cell);
+			Assert(IsA(subplan, SubPlan) && subplan->qDispSliceId == 0 &&
+					subplan->plan_id == plan_id);
+			subplan->qDispSliceId = sliceId;
+		}
 	}
+	hash_destroy(state.planid_subplans);
 
 	/*
 	 * Discard subtrees of Query node that aren't needed for execution. Note
@@ -723,8 +755,19 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		 */
 		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
 		{
+			bool		found;
 			bool		saveContainMotionNodes = context->containMotionNodes;
 			int			saveSliceDepth = context->sliceDepth;
+			SubPlan		*subplan = (SubPlan *) node;
+			/*
+			 * If the init-plan refered by `subplan` has been visited, we should
+			 * not re-visit the subplan, or the motions under the init-plan are
+			 * re-counted.
+			 */
+			hash_search(context->planid_subplans, &subplan->plan_id,
+						HASH_FIND, &found);
+			if (found)
+				return node;
 
 			/* reset sliceDepth for each init plan */
 			context->sliceDepth = 0;
@@ -743,7 +786,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	flow = plan->flow;
 
 	saveNextMotionID = context->nextMotionID;
-	saveNumInitPlans = list_length(context->initPlans);
+	saveNumInitPlans = hash_get_num_entries(context->planid_subplans);
 
 	/* Descending into a subquery or a new slice? */
 	saveSliceDepth = context->sliceDepth;
@@ -771,14 +814,29 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		ListCell   *cell;
 		SubPlan    *subplan;
 
+		/*
+		 * Collect all subplans that refer to an init-plan for later usage.
+		 * The subplans that refers to an init-plan update their `qDispSliceId`
+		 * in apply_motion().
+		 * Two or more subplans may refer to the same init-plan, so we group them
+		 * by the plan_id of the init-plan.
+		 */
 		foreach(cell, plan->initPlan)
 		{
+			InitPlanItem *item;
+			bool found;
 			subplan = (SubPlan *) lfirst(cell);
 			Assert(IsA(subplan, SubPlan));
 			Assert(root);
 			Assert(planner_subplan_get_plan(root, subplan));
 
-			context->initPlans = lappend(context->initPlans, subplan);
+			item = hash_search(context->planid_subplans,
+										&subplan->plan_id,
+										HASH_ENTER,
+										&found);
+			if (!found)
+				item->subplans = NIL;
+			item->subplans = lappend(item->subplans, subplan);
 		}
 	}
 
@@ -847,7 +905,9 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				context->sliceDepth == 0)
 				flow->segindex = -1;
 
-			newnode = (Node *) make_union_motion(plan, true, flow->numsegments);
+			newnode = (Node *) make_union_motion(plan, true, flow->numsegments,
+												 flow->segindex == -1 ?
+													CdbLocusType_Entry : CdbLocusType_SingleQE);
 			break;
 
 		case MOVEMENT_BROADCAST:
@@ -860,8 +920,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 												  flow->hashExprs,
 												  flow->hashOpfamilies,
 												  true	/* useExecutorVarFormat */,
-												  flow->numsegments
-				);
+												  flow->numsegments);
 			break;
 
 		case MOVEMENT_EXPLICIT:
@@ -936,7 +995,7 @@ done:
 	 */
 	plan = (Plan *) newnode;
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
-	plan->nInitPlans = list_length(context->initPlans) - saveNumInitPlans;
+	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
 	/*
 	 * Remember if this was a Motion node. This is used at the top of the
@@ -980,7 +1039,7 @@ static void
 add_slice_to_motion(Motion *motion,
 					MotionType motionType,
 					List *hashExprs, List *hashOpfamilies, int numsegments,
-					bool isBroadcast)
+					bool isBroadcast, CdbLocusType targetLocus)
 {
 	Oid		   *hashFuncs;
 	ListCell   *expr_cell;
@@ -1025,6 +1084,8 @@ add_slice_to_motion(Motion *motion,
 
 			break;
 		case MOTIONTYPE_FIXED:
+			Assert(targetLocus == CdbLocusType_Null || targetLocus == CdbLocusType_Entry
+				   || targetLocus == CdbLocusType_SingleQE);
 			if (motion->isBroadcast)
 			{
 				/* broadcast */
@@ -1036,10 +1097,13 @@ add_slice_to_motion(Motion *motion,
 			{
 				/* Focus motion */
 				motion->plan.flow = makeFlow(FLOW_SINGLETON, numsegments);
-				motion->plan.flow->locustype = (motion->plan.flow->segindex < 0) ?
-					CdbLocusType_Entry :
-					CdbLocusType_SingleQE;
-
+				if (targetLocus == CdbLocusType_Entry)
+				{
+					motion->plan.flow->locustype = CdbLocusType_Entry;
+					motion->plan.flow->segindex = -1;
+				}
+				else
+					motion->plan.flow->locustype = CdbLocusType_SingleQE;
 			}
 
 			break;
@@ -1062,14 +1126,15 @@ add_slice_to_motion(Motion *motion,
 }
 
 Motion *
-make_union_motion(Plan *lefttree, bool useExecutorVarFormat, int numsegments)
+make_union_motion(Plan *lefttree, bool useExecutorVarFormat, int numsegments,
+				  CdbLocusType targetLocus)
 {
 	Motion	   *motion;
 
 	motion = make_motion(NULL, lefttree,
 						 0, NULL, NULL, NULL, NULL, /* no ordering */
 						 useExecutorVarFormat);
-	add_slice_to_motion(motion, MOTIONTYPE_FIXED, NIL, NIL, numsegments, false);
+	add_slice_to_motion(motion, MOTIONTYPE_FIXED, NIL, NIL, numsegments, false, targetLocus);
 	return motion;
 }
 
@@ -1077,14 +1142,15 @@ Motion *
 make_sorted_union_motion(PlannerInfo *root, Plan *lefttree, int numSortCols,
 						 AttrNumber *sortColIdx, Oid *sortOperators,
 						 Oid *collations, bool *nullsFirst,
-						 bool useExecutorVarFormat, int numsegments)
+						 bool useExecutorVarFormat, int numsegments,
+						 CdbLocusType targetLocus)
 {
 	Motion	   *motion;
 
 	motion = make_motion(root, lefttree,
 						 numSortCols, sortColIdx, sortOperators, collations, nullsFirst,
 						 useExecutorVarFormat);
-	add_slice_to_motion(motion, MOTIONTYPE_FIXED, NIL, NIL, numsegments, false);
+	add_slice_to_motion(motion, MOTIONTYPE_FIXED, NIL, NIL, numsegments, false, targetLocus);
 	return motion;
 }
 
@@ -1104,7 +1170,7 @@ make_hashed_motion(Plan *lefttree,
 						 useExecutorVarFormat);
 	add_slice_to_motion(motion, MOTIONTYPE_HASH,
 						hashExprs, hashOpfamilies, numsegments,
-						false);
+						false, CdbLocusType_Null);
 	return motion;
 }
 
@@ -1120,7 +1186,7 @@ make_broadcast_motion(Plan *lefttree, bool useExecutorVarFormat,
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
 						NIL, NIL, numsegments,
-						true);
+						true, CdbLocusType_Null);
 	return motion;
 }
 
@@ -1146,7 +1212,7 @@ make_explicit_motion(Plan *lefttree, AttrNumber segidColIdx, bool useExecutorVar
 
 	add_slice_to_motion(motion, MOTIONTYPE_EXPLICIT,
 						NIL, NIL, numsegments,
-						false);
+						false, CdbLocusType_Null);
 	return motion;
 }
 

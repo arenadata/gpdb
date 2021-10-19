@@ -15,6 +15,8 @@
 #include "gpos/io/IOstream.h"
 
 #include "gpopt/operators/CExpression.h"
+#include "gpopt/xforms/CXform.h"
+
 
 // id for component created for relational nodes which are not
 // the child of LOJ
@@ -32,7 +34,7 @@ using namespace gpos;
 //		Helper class for creating compact join orders
 //
 //---------------------------------------------------------------------------
-class CJoinOrder
+class CJoinOrder : public DbgPrintMixin<CJoinOrder>
 {
 public:
 	enum EPosition
@@ -51,7 +53,7 @@ public:
 	//		Struct to capture edge
 	//
 	//---------------------------------------------------------------------------
-	struct SEdge : public CRefCount
+	struct SEdge : public CRefCount, public DbgPrintMixin<SEdge>
 	{
 		// cover of edge
 		CBitSet *m_pbs;
@@ -88,7 +90,7 @@ public:
 	//		Struct to capture component
 	//
 	//---------------------------------------------------------------------------
-	struct SComponent : public CRefCount
+	struct SComponent : public CRefCount, public DbgPrintMixin<SComponent>
 	{
 		// cover
 		CBitSet *m_pbs;
@@ -246,6 +248,12 @@ public:
 
 	// are these childs of the same LOJ
 	BOOL IsChildOfSameLOJ(SComponent *comp1, SComponent *comp2) const;
+
+	virtual CXform::EXformId
+	EOriginXForm() const
+	{
+		return CXform::ExfSentinel;
+	}
 
 };	// class CJoinOrder
 
