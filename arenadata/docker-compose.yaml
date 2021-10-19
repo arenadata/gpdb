@@ -3,7 +3,7 @@
 version: "3"
 services:
   mdw:
-    image: "hub.adsw.io/library/gpdb6_regress:${BRANCH_NAME}"
+    image: "${IMAGE}"
     working_dir: /home/gpadmin
     hostname: mdw
     volumes:
@@ -18,7 +18,7 @@ services:
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw1:
-    image: "hub.adsw.io/library/gpdb6_regress:${BRANCH_NAME}"
+    image: "${IMAGE}"
     privileged: true
     hostname: sdw1
     volumes:
@@ -33,7 +33,7 @@ services:
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw2:
-    image: "hub.adsw.io/library/gpdb6_regress:${BRANCH_NAME}"
+    image: "${IMAGE}"
     privileged: true
     hostname: sdw2
     volumes:
@@ -48,7 +48,7 @@ services:
       echo 'gpadmin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers &&
       tail -f /home/gpadmin/gpdb_src/README.md"
   sdw3:
-    image: "hub.adsw.io/library/gpdb6_regress:${BRANCH_NAME}"
+    image: "${IMAGE}"
     privileged: true
     hostname: sdw3
     volumes:
