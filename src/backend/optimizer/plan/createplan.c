@@ -6897,6 +6897,7 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 	else if (all_subplans_replicated)
 	{
 		mark_plan_replicated((Plan *) node, numsegments);
+		Insist(focusPlan((Plan *) node, false, false));
 	}
 	else
 	{

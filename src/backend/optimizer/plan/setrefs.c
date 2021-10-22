@@ -1341,7 +1341,7 @@ set_subqueryscan_references(PlannerInfo *root,
 		}
 
 		/* Honor the flow of the SubqueryScan, by copying it to the subplan. */
-		result->flow = plan->scan.plan.flow;
+		result->flow = plan->scan.plan.flow;//HERE
 	}
 	else
 	{
@@ -1380,6 +1380,8 @@ trivial_subqueryscan(SubqueryScan *plan)
 	int			attrno;
 	ListCell   *lp,
 			   *lc;
+	Movement	m_subplan,
+				m_scanplan;
 
 	if (plan->scan.plan.qual != NIL)
 		return false;
@@ -1387,6 +1389,16 @@ trivial_subqueryscan(SubqueryScan *plan)
 	if (list_length(plan->scan.plan.targetlist) !=
 		list_length(plan->subplan->targetlist))
 		return false;			/* tlists not same length */
+	//if (plan->subplan->type == T_ModifyTable)
+	//	return false;
+	m_subplan = plan->subplan->flow ?
+			plan->subplan->flow->req_move :
+			MOVEMENT_NONE;
+	m_scanplan = plan->scan.plan.flow ?
+			plan->scan.plan.flow->req_move :
+			MOVEMENT_NONE;
+	if (m_subplan != m_scanplan)
+		return false;
 
 	attrno = 1;
 	forboth(lp, plan->scan.plan.targetlist, lc, plan->subplan->targetlist)
