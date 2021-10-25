@@ -1397,7 +1397,7 @@ trivial_subqueryscan(SubqueryScan *plan)
 	m_scanplan = plan->scan.plan.flow ?
 			plan->scan.plan.flow->req_move :
 			MOVEMENT_NONE;
-	if (m_subplan != m_scanplan)
+	if (m_subplan != MOVEMENT_NONE && m_scanplan == MOVEMENT_NONE)
 		return false;
 
 	attrno = 1;
