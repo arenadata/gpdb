@@ -5389,10 +5389,15 @@ DispatchSyncPGVariable(struct config_generic * gconfig)
 		case PGC_STRING:
 		{
 			struct config_string *sguc = (struct config_string *) gconfig;
-			const char *str = *sguc->variable;
+			char *str = *sguc->variable;
 			int			i;
 
 			appendStringInfo(&buffer, "%s TO ", gconfig->name);
+
+			if (!(gconfig->flags & GUC_LIST_INPUT))
+			{
+				str = quote_literal_cstr(*sguc->variable);
+			}
 
 			/*
 			 * All whitespace characters must be escaped. See
