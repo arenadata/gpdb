@@ -24,6 +24,7 @@ RUN yum makecache && \
     # The last python 2.7 pip
     pip install -U pip==20.3.4 && \
     pip install psi pytest==3.10.1 && \
+    pip install allure-behave==2.4.0
     yum clean all
 
 # setup ssh configuration
