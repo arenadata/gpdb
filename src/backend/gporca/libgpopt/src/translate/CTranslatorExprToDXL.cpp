@@ -970,7 +970,7 @@ CTranslatorExprToDXL::AddBitmapFilterColumns(
 	if (NULL != pexprRecheckCond)
 	{
 		// add the columns used in the recheck condition
-		pcrsAdditional->Include(pexprRecheckCond->DeriveUsedColumns());
+		//pcrsAdditional->Include(pexprRecheckCond->DeriveUsedColumns());
 	}
 
 	if (NULL != pexprScalar)
