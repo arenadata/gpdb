@@ -1016,7 +1016,7 @@ select * from run_dt, extra_flow_dist1
 where dt < extra_flow_dist1.a;
 
 -- case 6 without CTE, nested subquery
-explain (costs off) select * from (
+explain select * from (
 	select dt from (
 		select
 		(
