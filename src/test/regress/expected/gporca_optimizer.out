@@ -13707,9 +13707,9 @@ and first_id in (select first_id from mat_w);
          ->  Shared Scan (share slice:id 1:0)  (cost=0.00..387.98 rows=4 width=1)
                Output: share0_ref1.first_id
                ->  Materialize  (cost=0.00..387.98 rows=4 width=1)
-                     Output: material_test.first_id, material_test.second_id
+                     Output: material_test.first_id
                      ->  Bitmap Heap Scan on orca.material_test  (cost=0.00..387.98 rows=4 width=4)
-                           Output: material_test.first_id, material_test.second_id
+                           Output: material_test.first_id
                            Recheck Cond: (material_test.second_id = ANY ('{1,2,3,4}'::integer[]))
                            ->  Bitmap Index Scan on material_test_idx  (cost=0.00..0.00 rows=0 width=0)
                                  Index Cond: (material_test.second_id = ANY ('{1,2,3,4}'::integer[]))
@@ -13730,7 +13730,7 @@ and first_id in (select first_id from mat_w);
                      ->  Shared Scan (share slice:id 1:0)  (cost=0.00..431.00 rows=4 width=4)
                            Output: share0_ref2.first_id
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: enable_seqscan=on, optimizer=on
+ Settings: optimizer=on
 (31 rows)
 
 with mat_w as (
