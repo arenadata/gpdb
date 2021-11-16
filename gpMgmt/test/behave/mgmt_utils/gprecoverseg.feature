@@ -203,6 +203,19 @@ Feature: gprecoverseg tests
         And the segments are synchronized
         And the cluster is rebalanced
 
+    Scenario: gprecoverseg should not return error when banner configured on host
+        Given the database is running
+        And all the segments are running
+        And the segments are synchronized
+        When the user sets banner on host
+        And user stops all mirror processes
+        And user can start transactions
+        When the user runs "gprecoverseg -a"
+        Then gprecoverseg should return a return code of 0
+        And all the segments are running
+        And the segments are synchronized
+        And the cluster is rebalanced
+
     @demo_cluster
     @concourse_cluster
     Scenario Outline: <scenario> recovery skips unreachable segments
@@ -242,6 +255,19 @@ Feature: gprecoverseg tests
         | scenario    | args |
         | incremental | -a   |
         | full        | -aF  |
+
+    Scenario: gprecoverseg keeps segment logs
+      Given the database is running
+      And all the segments are running
+      And the segments are synchronized
+      And the "primary" segment information is saved
+      And the "primary" segment pg_log dir content saved
+      When user kills "primary" segment process with signal "SIGKILL"
+      And user can start transactions
+      And the user runs "gprecoverseg -a"
+      Then gprecoverseg should return a return code of 0
+      And the "primary" segment pg_log directory content preserved
+
 
 ########################### @concourse_cluster tests ###########################
 # The @concourse_cluster tag denotes the scenario that requires a remote cluster
