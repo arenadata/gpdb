@@ -3117,6 +3117,30 @@ select a in (
 reset optimizer_xform_bind_threshold;
 reset statement_timeout;
 
+-- Test Bitmap Heap Scan's targetlist contains only necessary attrs, not
+-- including ones from Recheck Condition
+create table material_bitmapscan(i int, j int, k timestamp)
+with(appendonly=true) distributed replicated;
+create index material_bitmapscan_idx on material_bitmapscan using btree(k);
+insert into material_bitmapscan
+select i, mod(i, 10), timestamp '2021-06-01' + interval '1' day * mod(i, 30)
+from generate_series(1, 10000) i;
+-- Bitmap Heap Scan should not contain 'material_bitmapscan.k' at the Output
+-- list.
+explain (costs off, verbose) with mat as(
+    select i, j from material_bitmapscan
+    where i = 2 and j = 2 and k = timestamp '2021-06-03'
+)
+select m1.i
+from mat m1 join mat m2 on m1.j = m2.j;
+-- There should be one row without any memory access errors.
+with mat as(
+    select i, j from material_bitmapscan
+    where i = 2 and j = 2 and k = timestamp '2021-06-03'
+)
+select m1.i
+from mat m1 join mat m2 on m1.j = m2.j;
+
 -- start_ignore
 DROP SCHEMA orca CASCADE;
 -- end_ignore

@@ -967,12 +967,6 @@ CTranslatorExprToDXL::AddBitmapFilterColumns(
 	// compute what additional columns are required in the output of the (Dynamic) Bitmap Table Scan
 	CColRefSet *pcrsAdditional = GPOS_NEW(mp) CColRefSet(mp);
 
-	if (NULL != pexprRecheckCond)
-	{
-		// add the columns used in the recheck condition
-		pcrsAdditional->Include(pexprRecheckCond->DeriveUsedColumns());
-	}
-
 	if (NULL != pexprScalar)
 	{
 		// add the columns used in the filter condition
