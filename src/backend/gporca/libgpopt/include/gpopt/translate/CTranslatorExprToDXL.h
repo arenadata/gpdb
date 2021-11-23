@@ -785,10 +785,10 @@ private:
 	// helper to find subplan type from a correlated join expression
 	static EdxlSubPlanType Edxlsubplantype(CExpression *pexprCorrelatedNLJoin);
 
-	// add used columns in the bitmap re-check and the remaining scalar filter condition to the
+	// add columns used in the remaining scalar filter condition to the
 	// required output column
 	static void AddBitmapFilterColumns(
-		CMemoryPool *mp, CPhysicalScan *pop, CExpression *pexprRecheckCond,
+		CMemoryPool *mp, CPhysicalScan *pop,
 		CExpression *pexprScalar,
 		CColRefSet *pcrsReqdOutput	// append the required column reference
 	);
