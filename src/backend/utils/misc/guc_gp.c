@@ -5394,6 +5394,10 @@ DispatchSyncPGVariable(struct config_generic * gconfig)
 
 			appendStringInfo(&buffer, "%s TO ", gconfig->name);
 
+			/*
+			 * Plain string literal or identifier. Quote it.
+			 * GUC_LIST_INPUT should not be quoted or it will break list.
+			 */
 			if (!(gconfig->flags & GUC_LIST_INPUT))
 			{
 				str = quote_literal_cstr(*sguc->variable);
