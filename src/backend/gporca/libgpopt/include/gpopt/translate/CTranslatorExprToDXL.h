@@ -789,7 +789,6 @@ private:
 	// required output column
 	static void AddBitmapFilterColumns(
 		CMemoryPool *mp, CPhysicalScan *pop,
-		CExpression *pexprScalar,
 		CColRefSet *pcrsReqdOutput	// append the required column reference
 	);
 
