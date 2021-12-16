@@ -3610,7 +3610,8 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 
 	// targetlist mismatch leads to different tuple bindings, see #12796
 	if (list_length(child_plan->targetlist) != list_length(plan->targetlist))
-		elog(ERROR, "Shared Scan and child plan targetlist mismatch.");
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,
+			GPOS_WSZ_LIT("Shared Scan and child plan targetlist mismatch."));
 
 	InitializeSpoolingInfo(child_plan, cte_id);
 
