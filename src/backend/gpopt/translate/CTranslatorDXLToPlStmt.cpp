@@ -3608,6 +3608,10 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 		child_plan = materialize_plan;
 	}
 
+	// targetlist mismatch leads to different tuple bindings, see #12796
+	if (list_length(child_plan->targetlist) != list_length(plan->targetlist))
+		elog(ERROR, "Shared Scan and child plan targetlist mismatch.");
+
 	InitializeSpoolingInfo(child_plan, cte_id);
 
 	plan->lefttree = child_plan;
