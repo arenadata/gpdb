@@ -456,6 +456,17 @@ analyze test_tr;
 drop table test_tr;
 
 --
+-- Test analyze for table with maximum float8 value 1.7976931348623157e+308
+-- There should be no "ERROR:  value out of range: overflow"
+--
+set extra_float_digits to 0;
+create table test_max_float8(a double precision);
+insert into test_max_float8 values(1.7976931348623157e+308);
+analyze test_max_float8;
+drop table test_max_float8;
+reset extra_float_digits;
+
+--
 -- Test with both a dropped column and an oversized column
 -- (github issue https://github.com/greenplum-db/gpdb/issues/9503)
 --
