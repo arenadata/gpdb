@@ -479,33 +479,24 @@ select * from locktest_master where coalesce not like 'gp_%' and coalesce not li
 -------------------------+------------------+----------+--------
  partlockt               | ExclusiveLock    | relation | master
  partlockt_1_prt_1       | ExclusiveLock    | relation | master
- partlockt_1_prt_1       | RowExclusiveLock | relation | master
  partlockt_1_prt_1_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_2       | ExclusiveLock    | relation | master
- partlockt_1_prt_2       | RowExclusiveLock | relation | master
  partlockt_1_prt_2_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_3       | ExclusiveLock    | relation | master
- partlockt_1_prt_3       | RowExclusiveLock | relation | master
  partlockt_1_prt_3_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_4       | ExclusiveLock    | relation | master
- partlockt_1_prt_4       | RowExclusiveLock | relation | master
  partlockt_1_prt_4_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_5       | ExclusiveLock    | relation | master
- partlockt_1_prt_5       | RowExclusiveLock | relation | master
  partlockt_1_prt_5_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_6       | ExclusiveLock    | relation | master
- partlockt_1_prt_6       | RowExclusiveLock | relation | master
  partlockt_1_prt_6_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_7       | ExclusiveLock    | relation | master
- partlockt_1_prt_7       | RowExclusiveLock | relation | master
  partlockt_1_prt_7_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_8       | ExclusiveLock    | relation | master
- partlockt_1_prt_8       | RowExclusiveLock | relation | master
  partlockt_1_prt_8_i_idx | RowExclusiveLock | relation | master
  partlockt_1_prt_9       | ExclusiveLock    | relation | master
- partlockt_1_prt_9       | RowExclusiveLock | relation | master
  partlockt_1_prt_9_i_idx | RowExclusiveLock | relation | master
-(28 rows)
+(19 rows)
 
 select * from locktest_segments where coalesce not like 'gp_%' and coalesce not like 'pg_%';
      coalesce      |       mode       | locktype |   node    
