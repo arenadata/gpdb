@@ -164,7 +164,7 @@ CArrayCmpTest:
 ArrayConcat ArrayRef FoldedArrayCmp IN-ArrayCmp NOT-IN-ArrayCmp ArrayCmpAll
 UDA-AnyArray InClauseWithMCV CastedInClauseWithMCV FilterScalarCast
 IN-Nulls-ArrayCmpAny ArrayCmp-IN-ManyElements ArrayCmpAnyEmpty ArrayCmpAllEmpty
-ArrayCmpAnyEmptyLessThan;
+ArrayCmpAnyEmptyLessThan ArrayCmpAll-Disjunct ArrayCmpAll-Disjunct-2;
 
 CCTEPropertiesTest:
 CTE-PushProperties CTE-NoPushProperties;
@@ -258,7 +258,7 @@ COuterJoin1Test:
 ExpandNAryJoinGreedyWithLOJOnly NaryWithLojAndNonLojChilds LOJ_bb_mpph LOJ-Condition-False
 LeftJoin-With-Pred-On-Inner LeftJoin-With-Pred-On-Inner2
 LeftJoin-With-Col-Const-Pred LeftJoin-With-Coalesce LOJWithFalsePred LeftJoin-DPv2-With-Select
-DPv2GreedyOnly DPv2MinCardOnly DPv2QueryOnly LOJ-PushDown;
+DPv2GreedyOnly DPv2MinCardOnly DPv2QueryOnly LOJ-PushDown LeftJoinDPv2JoinOrder;
 
 COuterJoin2Test:
 LOJ-IsNullPred Select-Proj-OuterJoin OuterJoin-With-OuterRefs Join-Disj-Subqs
@@ -492,6 +492,7 @@ add_orca_test(CConstTblGetTest)
 add_orca_test(CScalarIsDistinctFromTest)
 
 add_orca_test(CSubqueryHandlerTest)
+add_orca_test(CXformRightOuterJoin2HashJoinTest)
 
 add_orca_test(CBindingTest)
 add_orca_test(CEngineTest)

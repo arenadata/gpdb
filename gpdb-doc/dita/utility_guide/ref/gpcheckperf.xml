@@ -2,7 +2,6 @@
 <!DOCTYPE topic
   PUBLIC "-//OASIS//DTD DITA Composite//EN" "ditabase.dtd">
 <topic id="topic1">
-    <!-- install_guide/refs/gpactivatestandby.xml has a conref to this topic. -->
     <title id="jq20941">gpcheckperf</title>
     <body>
         <p>Verifies the baseline hardware performance of the specified hosts.</p>
@@ -144,7 +143,7 @@ sdw3-1</codeblock>
                     <pd>Specifies that the <codeph>netperf</codeph> binary should be used to perform
                         the network test instead of the Greenplum network test. To use this option,
                         you must download <codeph>netperf</codeph> from <xref
-                            href="http://www.netperf.org" format="html" scope="external"/> and
+                            href="https://github.com/HewlettPackard/netperf" format="html" scope="external"/> and
                         install it into <codeph>$GPHOME/bin/lib</codeph> on all Greenplum hosts
                         (master and segments).</pd>
                 </plentry>
@@ -162,7 +161,7 @@ sdw3-1</codeblock>
                                     (<codeph>N</codeph>) mode, you must run the test on an
                                     <varname>even</varname> number of hosts.<p>If you would rather
                                     use <codeph>netperf</codeph> (<xref
-                                        href="http://www.netperf.org" format="html" scope="external"
+                                        href="https://github.com/HewlettPackard/netperf" format="html" scope="external"
                                     />) instead of the Greenplum network test, you can download it
                                     and install it into <codeph>$GPHOME/bin/lib</codeph> on all
                                     Greenplum hosts (master and segments). You would then specify

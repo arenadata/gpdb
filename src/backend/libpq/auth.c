@@ -108,6 +108,7 @@ static struct pam_conv pam_passw_conv = {
 static char *pam_passwd = NULL; /* Workaround for Solaris 2.6 brokenness */
 static Port *pam_port_cludge;	/* Workaround for passing "Port *port" into
 								 * pam_passwd_conv_proc */
+static bool pam_no_password;	/* For detecting no-password-given */
 #endif   /* USE_PAM */
 
 
@@ -330,64 +331,51 @@ internal_client_authentication(Port *port)
 {
 	if (IS_QUERY_DISPATCHER())
 	{
-		/* 
+		/*
 		 * The entry-DB (or QE at the master) case.
 		 *
 		 * The goal here is to block network connection from out of
 		 * master to master db with magic bit packet.
 		 * So, only when it comes from the same host, the connection
-		 * is authenticated, if this connection is TCP/UDP. We
-		 * don't assume the connection is via unix domain socket,
-		 * but if it comes, just authenticate it. We'll need to
-		 * verify user on UDS case, but for now we don't do too much
-		 * for the goal described above.
+		 * is authenticated, if this connection is TCP/UDP.
+		 *
+		 * If unix domain socket comes, just authenticate it.
 		 */
-		if(port->raddr.addr.ss_family == AF_INET
+		if (port->raddr.addr.ss_family == AF_INET
 #ifdef HAVE_IPV6
-				|| port->raddr.addr.ss_family == AF_INET6
+			|| port->raddr.addr.ss_family == AF_INET6
 #endif   /* HAVE_IPV6 */
-			   )
+		   )
 		{
-			if (check_same_host_or_net(&port->raddr, ipCmpSameHost) &&
-				!gp_reject_internal_tcp_conn)
+			if (check_same_host_or_net(&port->raddr, ipCmpSameHost))
 			{
-				elog(DEBUG1, "received same host internal TCP connection");
-				FakeClientAuthentication(port);
+				if (gp_reject_internal_tcp_conn)
+				{
+					elog(DEBUG1, "rejecting TCP connection to master using internal"
+						 "connection protocol, because the GUC gp_reject_internal_tcp_conn is true");
+					return false;
+				}
+				else
+				{
+					elog(DEBUG1, "received same host internal TCP connection");
+					FakeClientAuthentication(port);
+					return true;
+				}
 			}
-			else
-			{
-				/* Security violation? */
-				elog(LOG, "rejecting TCP connection to master using internal"
-					 "connection protocol");
-				return false;
-			}
-			return true;
+
+			/* Security violation? */
+			elog(LOG, "rejecting TCP connection to master using internal"
+				 "connection protocol");
+			return false;
 		}
 #ifdef HAVE_UNIX_SOCKETS
 		else if (port->raddr.addr.ss_family == AF_UNIX)
 		{
-			/* 
-			 * Internal connection via a domain socket -- use ident
+			/*
+			 * Internal connection via a domain socket -- consider it authenticated
 			 */
-			char *local_name;
-			struct passwd *pw;
-
-			pw = getpwuid(geteuid());
-			if (pw == NULL)
-			{
-				elog(LOG, "invalid effective UID %d ", geteuid());
-				return false;
-			}
-
-			local_name = pw->pw_name;
-
-			if (!auth_peer(port))
-				return false;
-			else
-			{
-				FakeClientAuthentication(port);
-				return true;
-			}
+			FakeClientAuthentication(port);
+			return true;
 		}
 #endif   /* HAVE_UNIX_SOCKETS */
 		else
@@ -1934,8 +1922,10 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
 					{
 						/*
 						 * Client didn't want to send password.  We
-						 * intentionally do not log anything about this.
+						 * intentionally do not log anything about this,
+						 * either here or at higher levels.
 						 */
+						pam_no_password = true;
 						goto fail;
 					}
 				}
@@ -1994,6 +1984,7 @@ CheckPAMAuth(Port *port, char *user, char *password)
 	 */
 	pam_passwd = password;
 	pam_port_cludge = port;
+	pam_no_password = false;
 
 	/*
 	 * Set the application data portion of the conversation struct.  This is
@@ -2046,22 +2037,26 @@ CheckPAMAuth(Port *port, char *user, char *password)
 
 	if (retval != PAM_SUCCESS)
 	{
-		ereport(LOG,
-				(errmsg("pam_authenticate failed: %s",
-						pam_strerror(pamh, retval))));
+		/* If pam_passwd_conv_proc saw EOF, don't log anything */
+		if (!pam_no_password)
+			ereport(LOG,
+					(errmsg("pam_authenticate failed: %s",
+							pam_strerror(pamh, retval))));
 		pam_passwd = NULL;		/* Unset pam_passwd */
-		return STATUS_ERROR;
+		return pam_no_password ? STATUS_EOF : STATUS_ERROR;
 	}
 
 	retval = pam_acct_mgmt(pamh, 0);
 
 	if (retval != PAM_SUCCESS)
 	{
-		ereport(LOG,
-				(errmsg("pam_acct_mgmt failed: %s",
-						pam_strerror(pamh, retval))));
+		/* If pam_passwd_conv_proc saw EOF, don't log anything */
+		if (!pam_no_password)
+			ereport(LOG,
+					(errmsg("pam_acct_mgmt failed: %s",
+							pam_strerror(pamh, retval))));
 		pam_passwd = NULL;		/* Unset pam_passwd */
-		return STATUS_ERROR;
+		return pam_no_password ? STATUS_EOF : STATUS_ERROR;
 	}
 
 	retval = pam_end(pamh, retval);

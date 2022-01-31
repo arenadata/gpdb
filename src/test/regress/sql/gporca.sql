@@ -3170,6 +3170,49 @@ select * from (select trim(regexp_split_to_table((a)::text, ','::text)) from nes
 select count(*) from (select trim(regexp_split_to_table((a)::text, ','::text)) from nested_srf)a;
 
 reset optimizer_trace_fallback;
+
+-- Test Bitmap Heap Scan's targetlist contains only necessary attrs, not
+-- including ones from Recheck and Filter conditions.
+create table material_bitmapscan(i int, j int, k timestamp, l timestamp)
+with(appendonly=true) distributed replicated;
+create index material_bitmapscan_idx on material_bitmapscan using btree(k);
+insert into material_bitmapscan
+select i, mod(i, 10),
+        timestamp '2021-06-01' + interval '1' day * mod(i, 30),
+        timestamp '2021-06-01' + interval '1' day * mod(i, 30)
+from generate_series(1, 10000) i;
+-- Bitmap Heap Scan should not contain 'material_bitmapscan.k' and
+-- 'material_bitmapscan.l' at the Output list.
+explain (costs off, verbose) with mat as(
+    select i, j from material_bitmapscan
+    where i = 2 and j = 2
+    and k = timestamp '2021-06-03' and l = timestamp '2021-06-03'
+)
+select m1.i
+from mat m1 join mat m2 on m1.j = m2.j;
+-- There should be one row without any memory access errors.
+with mat as(
+    select i, j from material_bitmapscan
+    where i = 2 and j = 2
+    and k = timestamp '2021-06-03' and l = timestamp '2021-06-03'
+)
+select m1.i
+from mat m1 join mat m2 on m1.j = m2.j;
+
+--- Test if orca can produce the correct plan for CTAS
+CREATE TABLE dist_tab_a (a varchar(15)) DISTRIBUTED BY(a);
+INSERT INTO dist_tab_a VALUES('1 '), ('2  '), ('3    ');
+CREATE TABLE dist_tab_b (a char(15), b bigint) DISTRIBUTED BY(a);
+INSERT INTO dist_tab_b VALUES('1 ', 1), ('2  ', 2), ('3    ', 3);
+EXPLAIN CREATE TABLE result_tab AS
+	(SELECT a.a, b.b FROM dist_tab_a a LEFT JOIN dist_tab_b b ON a.a=b.a) DISTRIBUTED BY(a);
+CREATE TABLE result_tab AS
+	(SELECT a.a, b.b FROM dist_tab_a a LEFT JOIN dist_tab_b b ON a.a=b.a) DISTRIBUTED BY(a);
+SELECT gp_segment_id, * FROM result_tab;
+DROP TABLE IF EXISTS dist_tab_a;
+DROP TABLE IF EXISTS dist_tab_b;
+DROP TABLE IF EXISTS result_tab;
+
 -- start_ignore
 DROP SCHEMA orca CASCADE;
 -- end_ignore

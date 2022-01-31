@@ -48,7 +48,7 @@ def show_all_installed(gphome):
     name = x[0].lower()
     if 'ubuntu' in name:
         return "dpkg --get-selections --admindir=%s/share/packages/database/deb | awk '{print \$1}'" % gphome
-    elif 'centos' in name:
+    elif 'centos' in name or 'red hat enterprise linux' in name:
         return "rpm -qa --dbpath %s/share/packages/database" % gphome
     else:
         raise Exception('UNKNOWN platform: %s' % str(x))
@@ -58,7 +58,7 @@ def remove_native_package_command(gphome, full_gppkg_name):
     name = x[0].lower()
     if 'ubuntu' in name:
         return 'fakeroot dpkg --force-not-root --log=/dev/null --instdir=%s --admindir=%s/share/packages/database/deb -r %s' % (gphome, gphome, full_gppkg_name)
-    elif 'centos' in name:
+    elif 'centos' in name or 'red hat enterprise linux' in name:
         return 'rpm -e %s --dbpath %s/share/packages/database' % (full_gppkg_name, gphome)
     else:
         raise Exception('UNKNOWN platform: %s' % str(x))
@@ -194,6 +194,17 @@ def impl(conetxt, tabname):
         sql = ("alter table t exchange partition for (2018) with table {tabname} without validation").format(tabname=tabname)
         dbconn.execSQL(conn, sql)
         conn.commit()
+
+@given('the user create a partition table with name "{tabname}"')
+def impl(conetxt, tabname):
+    dbname = 'gptest'
+    with dbconn.connect(dbconn.DbURL(dbname=dbname), unsetSearchPath=False) as conn:
+        sql = "create table {tabname}(i int) distributed by (i) partition by range(i) (start(0) end(10001) every(1000))".format(tabname=tabname)
+        dbconn.execSQL(conn, sql)
+        sql = "INSERT INTO {tabname} SELECT generate_series(1, 10000)".format(tabname=tabname)
+        dbconn.execSQL(conn, sql)
+        conn.commit()
+
 
 @given('the user executes "{sql}" with named connection "{cname}"')
 def impl(context, cname, sql):
@@ -343,7 +354,6 @@ def impl(context, env_var):
     if env_var in os.environ:
         del os.environ[env_var]
 
-
 @then('{env_var} environment variable should be restored')
 def impl(context, env_var):
     if not hasattr(context, 'orig_env'):
@@ -401,19 +411,105 @@ def impl(context, content):
     wait_for_desired_query_result_on_segment(host, port, query, desired_result)
 
 
+
+def backup_bashrc():
+    file = '~/.bashrc'
+    backup_fle = '~/.bashrc.backup'
+    if (os.path.isfile(file)):
+        command = "cp -f %s %s.backup" % (file, backup_fle)
+        result = run_cmd(command)
+        if (result[0] != 0):
+            raise Exception("Error while backing up bashrc file. STDERR:%s" % (result[2]))
+    return
+
+
+
+def restore_bashrc():
+    file = '~/.bashrc'
+    backup_fle = '~/.bashrc.backup'
+    if (os.path.isfile(backup_fle)):
+        command = "mv -f %s.backup %s" % (backup_fle, file)
+    else:
+        command = "rm -f %s" % (file)
+    result = run_cmd(command)
+    if (result[0] != 0):
+        raise Exception('Error while restoring up bashrc file. ')
+
+
 @given('the user runs "{command}"')
 @when('the user runs "{command}"')
 @then('the user runs "{command}"')
 def impl(context, command):
     run_gpcommand(context, command)
 
-
 @when('the user sets banner on host')
 def impl(context):
-    file = '/etc/bashrc'
+    file = '~/.bashrc'
     command = "echo 'echo \"banner test\"' >> %s; source %s" % (file, file)
-    run_cmd(command)
+    result = run_cmd(command)
+    if(result[0] != 0):
+        raise Exception("Error while updating the bashrc file:%s. STDERR:"% (file))
 
+@when('the user sets multi-line banner on host')
+def impl(context):
+    file = '~/.bashrc'
+    command = "echo 'echo -e \"banner test1\\nbanner test2\\nbanner test-3\\nbanner test4\"' >> %s; source %s" % (file, file)
+    result = run_cmd(command)
+    if(result[0] != 0):
+        raise Exception("Error while updating the bashrc file:%s. STDERR:"% (file))
+
+@when('the user sets banner with separator token on host')
+def impl(context):
+    file = '~/.bashrc'
+    token = 'GP_DELIMITER_FOR_IGNORING_BASH_BANNER'
+    command = "echo 'echo -e \"banner test1\\nbanner %s test2\\nbanner test-3\\nbanner test4\\nbanner test5 %s\"' >> %s; source %s" % (token, token, file, file)
+    result = run_cmd(command)
+    if(result[0] != 0):
+        raise Exception("Error while updating the bashrc file:%s. STDERR:"% (file))
+
+@given('source gp_bash_functions and run simple echo')
+@then('source gp_bash_functions and run simple echo')
+@when('source gp_bash_functions and run simple echo')
+def impl(context):
+    gp_bash_functions = os.getenv("GPHOME") + '/bin/lib/gp_bash_functions.sh'
+    message = 'Hello World. This is a simple command output'
+    command = "source %s; REMOTE_EXECUTE_AND_GET_OUTPUT localhost \"echo %s\"" %(gp_bash_functions, message)
+    result = run_cmd(command)
+    if(result[0] != 0):
+        raise Exception ("Expected error code is 0. Command returned error code:%s.\nStderr:%s\n" % (result[0], result[2]))
+    if(result[1].strip() != message):
+        raise Exception ("Expected output is: [%s] while received output is: [%s] Return code:%s" %(message, result[1], result[0]))
+
+@given('source gp_bash_functions and run complex command')
+@then('source gp_bash_functions and run complex command')
+@when('source gp_bash_functions and run complex command')
+def impl(context):
+    gp_bash_functions = os.getenv("GPHOME") + '/bin/lib/gp_bash_functions.sh'
+    message = 'Hello World. This is a simple command output'
+    command = "source %s; REMOTE_EXECUTE_AND_GET_OUTPUT localhost \"echo %s; hostname | wc -w | xargs\"" %(gp_bash_functions, message)
+    result = run_cmd(command)
+    if(result[0] != 0):
+        raise Exception ("Expected error code is 0. Command returned error code:%s.\nStderr:%s\n" % (result[0], result[2]))
+
+    message = message + "\n1"
+    if(result[1].strip() != message):
+        raise Exception ("Expected output is: [%s] while received output is:[%s] Return code:%s" %(message, result[1], result[0]))
+
+@given('source gp_bash_functions and run echo with separator token')
+@then('source gp_bash_functions and run echo with separator token')
+@when('source gp_bash_functions and run echo with separator token')
+def impl(context):
+    gp_bash_functions = os.getenv("GPHOME") + '/bin/lib/gp_bash_functions.sh'
+    message = 'Hello World. This is a simple command output'
+    token = 'GP_DELIMITER_FOR_IGNORING_BASH_BANNER'
+    command = "source %s; REMOTE_EXECUTE_AND_GET_OUTPUT localhost \"echo %s; echo %s; echo %s\"" %(gp_bash_functions, message, token, message)
+    result = run_cmd(command)
+    if(result[0] != 0):
+        raise Exception ("Expected error code is 0. Command returned error code:%s.\nStderr:%s\n" % (result[0], result[2]))
+
+    message = "%s\n%s\n%s" %(message, token, message)
+    if(result[1].strip() != message):
+        raise Exception ("Expected output is: [%s] while received output is:[%s] Return code:%s" %(message, result[1], result[0]))
 
 @given('the user asynchronously sets up to end {process_name} process in {secs} seconds')
 @when('the user asynchronously sets up to end {process_name} process in {secs} seconds')
@@ -1763,6 +1859,23 @@ def impl(context, dbname):
     drop_database_if_exists(context, dbname)
     create_database(context, dbname)
 
+@then('validate gpcheckcat logs contain skipping ACL and Owner tests')
+def imp(context):
+    dirname = 'gpAdminLogs'
+    absdirname = "%s/%s" % (os.path.expanduser("~"), dirname)
+    if not os.path.exists(absdirname):
+        raise Exception('No such directory: %s' % absdirname)
+    pattern = "%s/gpcheckcat_*.log" % (absdirname)
+    logs_for_a_util = glob.glob(pattern)
+    if not logs_for_a_util:
+        raise Exception('Logs matching "%s" were not created' % pattern)
+    rc, error, output = run_cmd("grep 'Default skipping test: acl' %s" % pattern)
+    if rc:
+        raise Exception("Error executing grep on gpcheckcat logs while finding ACL: %s" % error)
+
+    rc, error, output = run_cmd("grep 'Default skipping test: owner' %s" % pattern)
+    if rc:
+        raise Exception("Error executing grep on gpcheckcat logs while finding Owner: %s" % error)
 
 @then('validate and run gpcheckcat repair')
 def impl(context):
@@ -3006,11 +3119,14 @@ def impl(context, table_name, dbname):
 @given('distribution information from table "{table}" with data in "{dbname}" is saved')
 def impl(context, table, dbname):
     context.pre_redistribution_row_count = _get_row_count_per_segment(table, dbname)
+    context.pre_redistribution_dist_policy = _get_dist_policy_per_partition(table, dbname)
 
 @then('distribution information from table "{table}" with data in "{dbname}" is verified against saved data')
 def impl(context, table, dbname):
     pre_distribution_row_count = context.pre_redistribution_row_count
+    pre_redistribution_dist_policy = context.pre_redistribution_dist_policy
     post_distribution_row_count = _get_row_count_per_segment(table, dbname)
+    post_distribution_dist_policy = _get_dist_policy_per_partition(table, dbname)
 
     if len(pre_distribution_row_count) >= len(post_distribution_row_count):
         raise Exception("Failed to redistribute table. Expected to have more than %d segments, got %d segments" % (len(pre_distribution_row_count), len(post_distribution_row_count)))
@@ -3037,6 +3153,15 @@ def impl(context, table, dbname):
         raise Exception("Unexpected variance for redistributed data in table %s. Relative standard error %f exceeded tolerance factor of %f." %
                 (table, relative_std_error, tolerance))
 
+    for i in range(len(post_distribution_dist_policy)):
+        if(post_distribution_dist_policy[i][0] == pre_redistribution_dist_policy[i][0] or \
+           post_distribution_dist_policy[i][1] != pre_redistribution_dist_policy[i][1] or \
+           post_distribution_dist_policy[i][2] != pre_redistribution_dist_policy[i][2]):
+            raise Exception("""Redistributed policy does not match pre-redistribution policy.
+            before expanded: %s, after expanded: %s""" % (",".join(map(str, pre_redistribution_dist_policy[i])), \
+            ",".join(map(str, post_distribution_dist_policy[i]))))
+
+
 @then('the row count from table "{table_name}" in "{dbname}" is verified against the saved data')
 def impl(context, table_name, dbname):
     saved_row_count = context.table_row_count[table_name]
@@ -3059,6 +3184,14 @@ def _get_row_count_per_segment(table, dbname):
         cursor = dbconn.execSQL(conn, query)
         rows = cursor.fetchall()
         return [row[1] for row in rows] # indices are the gp segment id's, so no need to store them explicitly
+
+def _get_dist_policy_per_partition(table, dbname):
+    with dbconn.connect(dbconn.DbURL(dbname=dbname), unsetSearchPath=False) as conn:
+        query = "select * from gp_distribution_policy where localoid::regclass::text like '%s%%' order by localoid;" % table
+        cursor = dbconn.execSQL(conn, query)
+        rows = cursor.fetchall()
+    # we only need numsegments, distkey, distclass
+    return [row[2:5] for row in rows]
 
 @given('set fault inject "{fault}"')
 @then('set fault inject "{fault}"')
