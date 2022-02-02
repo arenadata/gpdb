@@ -1,8 +1,7 @@
--- For DDL op running over partitioned tables table we should acquire
--- AccessExclusive locks on root relation and child partitions and keep their
--- until transaction completion. Otherwise if locks on partitions are not kept
--- on QD, failure might occur from concurrent queries running on the leaf
--- partitions.
+-- For DDL op running over partitioned table we should acquire AccessExclusive
+-- locks on root relation and child partitions and keep them until transaction
+-- completion. Otherwise if locks on partitions are not kept on QD, failure
+-- might occur from concurrent queries running on the leaf partitions.
 
 -- Prepare setup: create appendonly partitioned table with two partitions
 CREATE extension if NOT EXISTS gp_inject_fault;
@@ -33,18 +32,18 @@ SELECT gp_inject_fault('pg_calculate_table_size_before_pg_aoseg_estimation', 'su
 (1 row)
 2&: SELECT pg_total_relation_size('ptest_1_prt_1'::regclass);  <waiting ...>
 
--- Wait some amount time so that the second session have achieved fault point if
--- it has progress
+-- Wait some amount of time so that second session have reached the fault point
+-- if it has progress
 SELECT pg_sleep(1);
  pg_sleep 
 ----------
           
 (1 row)
 
--- Try to stop txn commit on some segment in the first session up to catalog
--- cache invalidation but after the routine that removes PGPROC entry from
--- ProcArray so that renewed snapshots instantiated in concurrent transactions
--- have treated current transaction as completed
+-- On some segment try to stop commit process in the place after passing the
+-- removing PGPROC entry from ProcArray and not achieving catalog cache
+-- invalidation routine. All renewed snapshots instantiating in concurrent
+-- sessions already have to treat this transaction as completed
 SELECT gp_inject_fault('finish_prepared_after_pgproc_removal_before_cache_invalidation', 'suspend', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
  gp_inject_fault 
 -----------------
