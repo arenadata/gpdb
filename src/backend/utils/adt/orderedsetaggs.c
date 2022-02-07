@@ -1122,7 +1122,7 @@ mode_final(PG_FUNCTION_ARGS)
 	/* Finish the sort */
 	tuplesort_performsort(osastate->sortstate);
 
-	SIMPLE_FAULT_INJECTOR("set_query_finish_pending");
+	SIMPLE_FAULT_INJECTOR("before_tuplesort_getdatum_in_mode_final");
 
 	/* Scan tuples and count frequencies */
 	while (tuplesort_getdatum(osastate->sortstate, true, &val, &isnull))
