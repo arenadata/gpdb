@@ -1168,7 +1168,7 @@ mode_final(PG_FUNCTION_ARGS)
 		CHECK_FOR_INTERRUPTS();
 	}
 
-	if (shouldfree && !last_val_is_mode && last_val)
+	if (shouldfree && !last_val_is_mode && PointerIsValid(DatumGetPointer(last_val)))
 		pfree(DatumGetPointer(last_val));
 
 	/*
