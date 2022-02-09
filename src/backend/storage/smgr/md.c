@@ -1278,6 +1278,7 @@ mdsync(void)
 				{
 					SMgrRelation reln;
 					MdfdVec    *seg;
+					bool		closeSeg = false;
 					char	   *path;
 					int			save_errno;
 
@@ -1302,7 +1303,10 @@ mdsync(void)
 						/*
 						 * For AO table, only access what the segno denoted, instead
 						 * of the chain to the target segment as HEAP.
+						 * _mdf_openseg does not register the file in SMgrRelation
+						 * we must close and free it manually
 						 */
+						closeSeg = true;
 						seg = _mdfd_openseg(reln, forknum, segno, 0);
 					}
 					else
@@ -1314,26 +1318,41 @@ mdsync(void)
 
 					INSTR_TIME_SET_CURRENT(sync_start);
 
-					if (seg != NULL &&
-						FileSync(seg->mdfd_vfd) >= 0)
+					if (seg != NULL)
 					{
-						/* Success; update statistics about sync timing */
-						INSTR_TIME_SET_CURRENT(sync_end);
-						sync_diff = sync_end;
-						INSTR_TIME_SUBTRACT(sync_diff, sync_start);
-						elapsed = INSTR_TIME_GET_MICROSEC(sync_diff);
-						if (elapsed > longest)
-							longest = elapsed;
-						total_elapsed += elapsed;
-						processed++;
-						requests = bms_del_member(requests, segno);
-						if (log_checkpoints)
-							elog(DEBUG1, "checkpoint sync: number=%d file=%s time=%.3f msec",
-								 processed,
-								 FilePathName(seg->mdfd_vfd),
-								 (double) elapsed / 1000);
+						if (FileSync(seg->mdfd_vfd) >= 0)
+						{
+							/* Success; update statistics about sync timing */
+							INSTR_TIME_SET_CURRENT(sync_end);
+							sync_diff = sync_end;
+							INSTR_TIME_SUBTRACT(sync_diff, sync_start);
+							elapsed = INSTR_TIME_GET_MICROSEC(sync_diff);
+							if (elapsed > longest)
+								longest = elapsed;
+							total_elapsed += elapsed;
+							processed++;
+							requests = bms_del_member(requests, segno);
+							if (log_checkpoints)
+								elog(DEBUG1, "checkpoint sync: number=%d file=%s time=%.3f msec",
+									 processed,
+									 FilePathName(seg->mdfd_vfd),
+									 (double) elapsed / 1000);
+							if (closeSeg)
+							{
+								FileClose(seg->mdfd_vfd);
+								pfree(seg);
+							}
 
-						break;	/* out of retry loop */
+							break;	/* out of retry loop */
+						}
+						else
+						{
+							if (closeSeg)
+							{
+								FileClose(seg->mdfd_vfd);
+								pfree(seg);
+							}
+						}
 					}
 
 					/* Compute file name for use in message */
