@@ -1233,6 +1233,55 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
         cdbexplain_sendExecStats(queryDesc);
 
 	/*
+	 * if needed, tear down all mpp specific resources (e.g. interconnect).
+	 */
+	PG_TRY();
+	{
+		/*
+		 * Check and free the results of all gangs. If any QE had an
+		 * error, report it and exit to our error handler via PG_THROW.
+		 * NB: This call doesn't wait, because we already waited previously.
+		 */
+		if (estate->dispatcherState && estate->dispatcherState->primaryResults)
+		{
+			CdbDispatcherState *ds = estate->dispatcherState;
+			estate->dispatcherState = NULL;
+			cdbdisp_destroyDispatcherState(ds);
+		}
+	}
+	PG_CATCH();
+	{
+		/*
+		 * we got an error. do all the necessary cleanup.
+		 */
+		mppExecutorCleanup(queryDesc);
+
+		/*
+		 * Remove our own query's motion layer.
+		 */
+		RemoveMotionLayer(estate->motionlayer_context);
+
+		/*
+		 * GPDB specific
+		 * Clean the special resources created by INITPLAN.
+		 * The resources have long life cycle and are used by the main plan.
+		 * It's too early to clean them in preprocess_initplans.
+		 */
+		if (queryDesc->plannedstmt->nParamExec > 0)
+		{
+			postprocess_initplans(queryDesc);
+		}
+
+		/*
+		 * Release EState and per-query memory context.
+		 */
+		FreeExecutorState(estate);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/*
 	 * GPDB specific
 	 * Clean the special resources created by INITPLAN.
 	 * The resources have long life cycle and are used by the main plan.
