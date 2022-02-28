@@ -468,3 +468,63 @@ with cte as (
 with cte as (
     delete from with_dml_dr where i > 0 returning i
 ) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+
+-- Test quals not pushing down to CTE with DML. Previosuly, pushing down to
+-- INSERT caused filtering of inserting dataset, which may lead to incomplete
+-- dataset inserted. Pushing down of quals to UPDATE and DELETE caused
+-- "could not find replacement targetlist entry for attno 1 (rewriteManip.c:1409)"
+-- error.
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+select count(*) c from with_dml;
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+select count(*) c from with_dml_dr;
+
+explain (costs off)
+with cte as (
+    update with_dml set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+with cte as (
+    update with_dml set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+select count(*) c from with_dml where j = 1000;
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+with cte as (
+    update with_dml_dr set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+select count(*) c from with_dml_dr where j = 1000;
+
+explain (costs off)
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte where i < 2;
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte where i < 2;
+select count(*) c from with_dml;
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte where i < 2;
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte where i < 2;
+select count(*) c from with_dml_dr;
