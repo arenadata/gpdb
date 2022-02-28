@@ -914,6 +914,23 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 											 list_make1_int(root->is_split_update),
 											 rowMarks,
 											 SS_assign_special_param(root));
+
+			/*
+			 * There is a bug with SELECT over DML operations.
+			 * CdbLocusType_Replicated copied to upper (related to SELECT)
+			 * nodes causing conflicts in multiple places, e.g. in
+			 * cdbpath_motion_for_join(), as such locus type is unexpected for
+			 * SELECT queries. We force motion to avoid this.
+			 *
+			 * TODO: It will be better to properly handle
+			 * CdbLocusType_Replicated for SELECT queries, as the proposed
+			 * solution is not optimal. In case we have join to table which is
+			 * also replicated, we'll get unnecessary Gather Motion, forcing
+			 * joining to be made on dispatcher, but not on executor.
+			 */
+			if (returningLists &&
+				plan->flow->locustype == CdbLocusType_Replicated)
+				focusPlan(plan, false, false);
 		}
 	}
 

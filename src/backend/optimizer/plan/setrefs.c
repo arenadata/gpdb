@@ -1380,6 +1380,25 @@ trivial_subqueryscan(SubqueryScan *plan)
 	int			attrno;
 	ListCell   *lp,
 			   *lc;
+	Movement	mSubplan,
+				mScanplan;
+
+	mSubplan = plan->subplan->flow ?
+		plan->subplan->flow->req_move :
+		MOVEMENT_NONE;
+	mScanplan = plan->scan.plan.flow ?
+		plan->scan.plan.flow->req_move :
+		MOVEMENT_NONE;
+
+	/*
+	 * GPDB: Stripping out of SubqueryScan node causes overwriting of
+	 * subplan's flow (see set_subqueryscan_references()). The following check
+	 * restricts such overwriting.
+	 *
+	 * TODO: This check should probably be much more complex and smarter.
+	 */
+	if (mSubplan != MOVEMENT_NONE && mScanplan == MOVEMENT_NONE)
+		return false;
 
 	if (plan->scan.plan.qual != NIL)
 		return false;
