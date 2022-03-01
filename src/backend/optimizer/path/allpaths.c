@@ -1948,6 +1948,17 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	Assert(IsA(cte->ctequery, Query));
 
 	/*
+	 * We can't do DML for each subplan. It'll cause duplicated DML operations
+	 * or mutation errors during apply_motion() of cdbparallelize().
+	 *
+	 * TODO: Better workaround using materialization or something else if
+	 * possible.
+	 */
+	if (cte->cterefcount > 1 &&
+		((Query *) cte->ctequery)->commandType != CMD_SELECT)
+		elog(ERROR, "too much refs to non-SELECT CTE");
+
+	/*
 	 * In PostgreSQL, we use the index to look up the plan ID in the
 	 * cteroot->cte_plan_ids list. In GPDB, CTE plans work differently, and
 	 * we look up the CtePlanInfo struct in the list_cteplaninfo instead.

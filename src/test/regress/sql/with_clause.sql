@@ -1,3 +1,10 @@
+-- start_matchsubs
+--
+-- m/ERROR:  too much refs to non-SELECT CTE \(allpaths\.c:\d+\)/
+-- s/\d+/XXX/g
+--
+-- end_matchsubs
+
 drop table if exists with_test1 cascade;
 create table with_test1 (i int, t text, value int) distributed by (i);
 insert into with_test1 select i%10, 'text' || i%20, i%30 from generate_series(0, 99) i;
@@ -528,3 +535,35 @@ with cte as (
     delete from with_dml_dr where i > 0 returning i
 ) select count(*) from cte where i < 2;
 select count(*) c from with_dml_dr;
+
+-- Test we can't use DML CTE if multiple CTE references found.
+-- Otherwise it'll cause duplicated DML operations or apply_motion() errors, like
+-- "!(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist))" (cdbmutate.c:1203)
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+
+explain (costs off)
+with cte as (
+    update with_dml set j = j + 1 where i <= 5 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+
+explain (costs off)
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
