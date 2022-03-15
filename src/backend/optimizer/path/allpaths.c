@@ -2013,7 +2013,7 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 		config->honor_order_by = false;
 
-		if (!cte->cterecursive)
+		if (!cte->cterecursive && subquery->commandType == CMD_SELECT)
 		{
 			/*
 			 * Adjust the subquery so that 'root', i.e. this subquery, is the

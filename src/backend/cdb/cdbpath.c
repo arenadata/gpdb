@@ -1103,6 +1103,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
 				Assert(root->upd_del_replicated_table > 0);
+				//if (root->upd_del_replicated_table == 0)
+				//	CdbPathLocus_MakeSegmentGeneral(&other->locus, other->locus.numsegments);
 
 				/*
 				 * It only appear when we UPDATE a replicated table.
@@ -1240,7 +1242,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 										CdbPathLocus_NumSegments(outer.locus));
 		else
 		{
-			Assert(false);
+			//Assert(false);
+			elog(WARNING, "REPLICATED");
 			goto fail;
 		}
 	}
@@ -1251,7 +1254,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 										CdbPathLocus_NumSegments(inner.locus));
 		else
 		{
-			Assert(false);
+			//Assert(false);
+			elog(WARNING, "REPLICATED");
 			goto fail;
 		}
 	}

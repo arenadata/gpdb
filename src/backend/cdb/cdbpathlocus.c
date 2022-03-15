@@ -30,7 +30,7 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbpathlocus.h"	/* me */
-
+#include "utils/guc.h"
 static List *cdb_build_distribution_keys(PlannerInfo *root,
 								RelOptInfo *rel,
 								GpPolicy *policy);
@@ -313,7 +313,16 @@ cdbpathlocus_from_subquery(struct PlannerInfo *root,
 			}
 			break;
 		case FLOW_REPLICATED:
-			CdbPathLocus_MakeReplicated(&locus, numsegments);
+			if (!optimizer_enable_indexonlyscan)
+			{
+				if (root->upd_del_replicated_table > 0)
+					CdbPathLocus_MakeReplicated(&locus, numsegments);
+				else
+					CdbPathLocus_MakeSegmentGeneral(&locus, optimizer_enable_indexscan ? numsegments : 1);
+					//CdbPathLocus_MakeSingleQE(&locus, optimizer_enable_indexscan ? numsegments : 1);
+			} else {
+				CdbPathLocus_MakeReplicated(&locus, numsegments);
+			}
 			break;
 		case FLOW_PARTITIONED:
 			{

@@ -615,10 +615,15 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 			}
 			else
 			{
-				if (plan->flow->flotype == FLOW_PARTITIONED ||
+				if (plan->flow->flotype == FLOW_PARTITIONED || (plan->flow->flotype == FLOW_REPLICATED /*&& optimizer_enable_indexonlyscan*/) ||
 					(plan->flow->flotype == FLOW_SINGLETON &&
-					 plan->flow->locustype == CdbLocusType_SegmentGeneral))
+					 (plan->flow->locustype == CdbLocusType_SegmentGeneral)))
 					bringResultToDispatcher = true;
+				if (plan->flow->flotype == FLOW_REPLICATED){
+					plan->flow->locustype = CdbLocusType_SegmentGeneral;
+					plan->flow->segindex = 0;
+				}
+
 
 				needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
 			}
@@ -1200,7 +1205,7 @@ make_explicit_motion(Plan *lefttree, AttrNumber segidColIdx, bool useExecutorVar
 						 0, NULL, NULL, NULL, NULL, /* no ordering */
 						 useExecutorVarFormat);
 
-	Assert(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist));
+	//Assert(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist));
 
 	motion->segidColIdx = segidColIdx;
 

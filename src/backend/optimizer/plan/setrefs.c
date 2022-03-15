@@ -1390,6 +1390,8 @@ trivial_subqueryscan(SubqueryScan *plan)
 
 	if (plan->scan.plan.qual != NIL)
 		return false;
+	//if (plan->subplan->type == T_ModifyTable)
+	//	return false;
 
 	if (list_length(plan->scan.plan.targetlist) !=
 		list_length(plan->subplan->targetlist))

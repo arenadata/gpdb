@@ -2912,7 +2912,6 @@ create_ctescan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys,
 	pathnode->pathkeys = pathkeys;
 
 	pathnode->locus = cdbpathlocus_from_subquery(root, rel->subplan, rel->relid);
-
 	/*
 	 * We can't extract these two values from the subplan, so we simple set
 	 * them to their worst case here.

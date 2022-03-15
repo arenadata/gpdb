@@ -1058,7 +1058,7 @@ ExecInitMotion(Motion *node, EState *estate, int eflags)
 		!node->isBroadcast &&
 		outerPlan(node) &&
 		outerPlan(node)->flow &&
-		outerPlan(node)->flow->locustype == CdbLocusType_Replicated)
+		outerPlan(node)->flow->flotype == FLOW_REPLICATED)
 	{
 		motionstate->isExplictGatherMotion = true;
 	}

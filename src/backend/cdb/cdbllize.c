@@ -1102,9 +1102,9 @@ focusPlan(Plan *plan, bool stable, bool rescannable)
 	 * Already focused and flow is CdbLocusType_SingleQE, CdbLocusType_Entry,
 	 * do nothing.
 	 */
-	if (plan->flow->flotype == FLOW_SINGLETON &&
+	/*if (plan->flow->flotype == FLOW_SINGLETON &&
 		plan->flow->locustype != CdbLocusType_SegmentGeneral)
-		return true;
+		return true;*/
 
 	return adjustPlanFlow(plan, stable, rescannable, MOVEMENT_FOCUS, NIL, NIL,
 						  plan->flow->numsegments);

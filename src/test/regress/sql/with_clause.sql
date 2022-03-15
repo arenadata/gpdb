@@ -358,3 +358,64 @@ WITH RECURSIVE r1 AS (
 	)
 )
 SELECT * FROM r1 LIMIT 1;
+
+--
+-- Test various SELECT statements over DML operations
+--
+create table with_dml(i integer, j integer) distributed by(i);
+create table with_dml_dr(i integer, j integer) distributed replicated;
+-- Test select over insert queries. Gather motion should be here, no matter
+-- what type of distribution is used. Before fix, motion was missed for
+-- distributed replicated table, which caused count(*) to return zero rows.
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+-- Test select over update queries. Check no qual pushed down to update from
+-- select, because it's incorrect to push it down in such way. Queries should
+-- be correctly executed without any rewriting error, e.g. rewriteManip.c:1409.
+explain (costs off)
+with cte as (
+    update with_dml set j = j + 1 where i <= 5 returning j
+) select count(*) from cte where j > 100;
+with cte as (
+    update with_dml set j = j + 1 where i <= 5 returning j
+) select count(*) from cte where j > 100;
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning j
+) select count(*) from cte where j > 100;
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning j
+) select count(*) from cte where j > 100;
+-- Test select over delete queries. Test joining, which caused fatal error
+-- (cdbpath.c:1105) due to incompatibility of using CdbLocusType_Replicated
+-- with select statements.
+explain (costs off)
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
