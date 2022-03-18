@@ -617,7 +617,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 			{
 				if (plan->flow->flotype == FLOW_PARTITIONED ||
 					(plan->flow->flotype == FLOW_SINGLETON &&
-					 plan->flow->locustype == CdbLocusType_SegmentGeneral))
+					 plan->flow->locustype == CdbLocusType_SegmentGeneral ||
+					 query->hasModifyingCTE))
 					bringResultToDispatcher = true;
 
 				needToAssignDirectDispatchContentIds = root->config->gp_enable_direct_dispatch;
