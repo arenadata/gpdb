@@ -2226,15 +2226,14 @@ with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
     returning i
 ) select count(*) from cte;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Aggregate
-   ->  Subquery Scan on cte
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
+                      QUERY PLAN                      
+------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
  Optimizer: Postgres query optimizer
-(6 rows)
+(5 rows)
 
 with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
@@ -2273,16 +2272,15 @@ explain (costs off)
 with cte as (
     update with_dml_dr set j = j + 1 where i <= 5 returning j
 ) select count(*) from cte;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Aggregate
-   ->  Subquery Scan on cte
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Update on with_dml_dr
-                     ->  Seq Scan on with_dml_dr
-                           Filter: (i <= 5)
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Update on with_dml_dr
+               ->  Seq Scan on with_dml_dr
+                     Filter: (i <= 5)
  Optimizer: Postgres query optimizer
-(7 rows)
+(6 rows)
 
 with cte as (
     update with_dml_dr set j = j + 1 where i <= 5 returning j
@@ -2320,16 +2318,15 @@ explain (costs off)
 with cte as (
     delete from with_dml_dr where i > 0 returning i
 ) select count(*) from cte;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Aggregate
-   ->  Subquery Scan on cte
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Delete on with_dml_dr
-                     ->  Seq Scan on with_dml_dr
-                           Filter: (i > 0)
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Delete on with_dml_dr
+               ->  Seq Scan on with_dml_dr
+                     Filter: (i > 0)
  Optimizer: Postgres query optimizer
-(7 rows)
+(6 rows)
 
 with cte as (
     delete from with_dml_dr where i > 0 returning i
@@ -2347,23 +2344,19 @@ with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
     returning i
 ) select count(*) from cte join with_dml on cte.i = with_dml.i;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
- Aggregate
-   ->  Gather Motion 3:1  (slice3; segments: 3)
-         ->  Aggregate
-               ->  Hash Join
-                     Hash Cond: (with_dml.i = cte.i)
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml.i = with_dml_dr.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
                      ->  Seq Scan on with_dml
-                     ->  Hash
-                           ->  Redistribute Motion 1:3  (slice2; segments: 1)
-                                 Hash Key: cte.i
-                                 ->  Subquery Scan on cte
-                                       ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-                                             ->  Insert on with_dml_dr
-                                                   ->  Function Scan on generate_series i
+               ->  Hash
+                     ->  Insert on with_dml_dr
+                           ->  Function Scan on generate_series i
  Optimizer: Postgres query optimizer
-(14 rows)
+(10 rows)
 
 with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
@@ -2379,20 +2372,18 @@ with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
     returning i
 ) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (with_dml_dr.i = cte.i)
-         ->  Gather Motion 1:1  (slice1; segments: 1)
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = with_dml_dr_1.i)
                ->  Seq Scan on with_dml_dr
-         ->  Hash
-               ->  Subquery Scan on cte
-                     ->  Explicit Gather Motion 3:1  (slice2; segments: 3)
-                           ->  Insert on with_dml_dr with_dml_dr_1
-                                 ->  Function Scan on generate_series i
+               ->  Hash
+                     ->  Insert on with_dml_dr with_dml_dr_1
+                           ->  Function Scan on generate_series i
  Optimizer: Postgres query optimizer
-(11 rows)
+(9 rows)
 
 with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
@@ -2407,24 +2398,20 @@ explain (costs off)
 with cte as (
     update with_dml_dr set j = j + 1 where i <= 5 returning i
 ) select count(*) from cte join with_dml on cte.i = with_dml.i;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
- Aggregate
-   ->  Gather Motion 3:1  (slice3; segments: 3)
-         ->  Aggregate
-               ->  Hash Join
-                     Hash Cond: (with_dml.i = cte.i)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml.i = with_dml_dr.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
                      ->  Seq Scan on with_dml
-                     ->  Hash
-                           ->  Redistribute Motion 1:3  (slice2; segments: 1)
-                                 Hash Key: cte.i
-                                 ->  Subquery Scan on cte
-                                       ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-                                             ->  Update on with_dml_dr
-                                                   ->  Seq Scan on with_dml_dr
-                                                         Filter: (i <= 5)
+               ->  Hash
+                     ->  Update on with_dml_dr
+                           ->  Seq Scan on with_dml_dr
+                                 Filter: (i <= 5)
  Optimizer: Postgres query optimizer
-(15 rows)
+(11 rows)
 
 with cte as (
     update with_dml_dr set j = j + 1 where i <= 5 returning i
@@ -2438,21 +2425,19 @@ explain (costs off)
 with cte as (
     update with_dml_dr set j = j + 1 where i <= 5 returning i
 ) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (with_dml_dr.i = cte.i)
-         ->  Gather Motion 1:1  (slice1; segments: 1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = with_dml_dr_1.i)
                ->  Seq Scan on with_dml_dr
-         ->  Hash
-               ->  Subquery Scan on cte
-                     ->  Explicit Gather Motion 3:1  (slice2; segments: 3)
-                           ->  Update on with_dml_dr with_dml_dr_1
-                                 ->  Seq Scan on with_dml_dr with_dml_dr_1
-                                       Filter: (i <= 5)
+               ->  Hash
+                     ->  Update on with_dml_dr with_dml_dr_1
+                           ->  Seq Scan on with_dml_dr with_dml_dr_1
+                                 Filter: (i <= 5)
  Optimizer: Postgres query optimizer
-(12 rows)
+(10 rows)
 
 with cte as (
     update with_dml_dr set j = j + 1 where i <= 5 returning i
@@ -2466,24 +2451,20 @@ explain (costs off)
 with cte as (
     delete from with_dml_dr where i > 0 returning i
 ) select count(*) from cte join with_dml on cte.i = with_dml.i;
-                                         QUERY PLAN                                          
----------------------------------------------------------------------------------------------
- Aggregate
-   ->  Gather Motion 3:1  (slice3; segments: 3)
-         ->  Aggregate
-               ->  Hash Join
-                     Hash Cond: (with_dml.i = cte.i)
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml.i = with_dml_dr.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
                      ->  Seq Scan on with_dml
-                     ->  Hash
-                           ->  Redistribute Motion 1:3  (slice2; segments: 1)
-                                 Hash Key: cte.i
-                                 ->  Subquery Scan on cte
-                                       ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-                                             ->  Delete on with_dml_dr
-                                                   ->  Seq Scan on with_dml_dr
-                                                         Filter: (i > 0)
+               ->  Hash
+                     ->  Delete on with_dml_dr
+                           ->  Seq Scan on with_dml_dr
+                                 Filter: (i > 0)
  Optimizer: Postgres query optimizer
-(15 rows)
+(11 rows)
 
 with cte as (
     delete from with_dml_dr where i > 0 returning i
@@ -2497,21 +2478,19 @@ explain (costs off)
 with cte as (
     delete from with_dml_dr where i > 0 returning i
 ) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Aggregate
-   ->  Hash Join
-         Hash Cond: (with_dml_dr.i = cte.i)
-         ->  Gather Motion 1:1  (slice1; segments: 1)
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = with_dml_dr_1.i)
                ->  Seq Scan on with_dml_dr
-         ->  Hash
-               ->  Subquery Scan on cte
-                     ->  Explicit Gather Motion 3:1  (slice2; segments: 3)
-                           ->  Delete on with_dml_dr with_dml_dr_1
-                                 ->  Seq Scan on with_dml_dr with_dml_dr_1
-                                       Filter: (i > 0)
+               ->  Hash
+                     ->  Delete on with_dml_dr with_dml_dr_1
+                           ->  Seq Scan on with_dml_dr with_dml_dr_1
+                                 Filter: (i > 0)
  Optimizer: Postgres query optimizer
-(12 rows)
+(10 rows)
 
 with cte as (
     delete from with_dml_dr where i > 0 returning i
@@ -2565,12 +2544,12 @@ with cte as (
     insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
     returning i
 ) select count(*) from cte where i > 2;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Aggregate
-   ->  Subquery Scan on cte
-         Filter: (cte.i > 2)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Subquery Scan on cte
+               Filter: (cte.i > 2)
                ->  Insert on with_dml_dr
                      ->  Function Scan on generate_series i
  Optimizer: Postgres query optimizer
@@ -2626,12 +2605,12 @@ explain (costs off)
 with cte as (
     update with_dml_dr set j = 1000 where i = 5 returning i
 ) select count(*) from cte where i = 1;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Aggregate
-   ->  Subquery Scan on cte
-         Filter: (cte.i = 1)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Subquery Scan on cte
+               Filter: (cte.i = 1)
                ->  Update on with_dml_dr
                      ->  Seq Scan on with_dml_dr
                            Filter: (i = 5)
@@ -2687,12 +2666,12 @@ explain (costs off)
 with cte as (
     delete from with_dml_dr where i > 0 returning i
 ) select count(*) from cte where i < 2;
-                          QUERY PLAN                           
----------------------------------------------------------------
- Aggregate
-   ->  Subquery Scan on cte
-         Filter: (cte.i < 2)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Subquery Scan on cte
+               Filter: (cte.i < 2)
                ->  Delete on with_dml_dr
                      ->  Seq Scan on with_dml_dr
                            Filter: (i > 0)
