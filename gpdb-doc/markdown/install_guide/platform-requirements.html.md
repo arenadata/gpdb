@@ -23,6 +23,7 @@ This topic describes the Greenplum Database 6 platform and operating system soft
 
 Greenplum Database 6 runs on the following operating system platforms:
 
+-   Red Hat Enterprise Linux 64-bit 8.x (as of Greenplum Database version 6.20)
 -   Red Hat Enterprise Linux 64-bit 7.x \(See the following [Note](#7x-issue).\)
 -   Red Hat Enterprise Linux 64-bit 6.x
 -   CentOS 64-bit 7.x
@@ -30,7 +31,7 @@ Greenplum Database 6 runs on the following operating system platforms:
 -   Ubuntu 18.04 LTS
 -   Oracle Linux 64-bit 7, using the Red Hat Compatible Kernel \(RHCK\)
 
-**Important:** Significant Greenplum Database performance degradation has been observed when enabling resource group-based workload management on RedHat 6.x and CentOS 6.x systems. This issue is caused by a Linux cgroup kernel bug. This kernel bug has been fixed in CentOS 7.x and Red Hat 7.x systems.
+**Important:** Significant Greenplum Database performance degradation has been observed when enabling resource group-based workload management on RedHat 6.x and CentOS 6.x systems. This issue is caused by a Linux cgroup kernel bug. This kernel bug has been fixed in CentOS 7.x and Red Hat 7.x/8.x systems.
 
 If you use RedHat 6 and the performance with resource groups is acceptable for your use case, upgrade your kernel to version 2.6.32-696 or higher to benefit from other fixes to the cgroups implementation.
 
@@ -104,7 +105,7 @@ On Ubuntu systems, Greenplum Database 6 requires the following software packages
 
 Greenplum Database 6 uses Python 2.7.12, which is included with the product installation \(and not installed as a package dependency\).
 
-**Important:** SSL is supported only on the Greenplum Database coordinator host system. It cannot be used on the segment host systems.
+**Important:** SSL is supported only on the Greenplum Database master host system. It cannot be used on the segment host systems.
 
 **Important:** For all Greenplum Database host systems, if SELinux is enabled in `Enforcing` mode then the Greenplum process and users can operate successfully in the default `Unconfined` context. If increased confinement is required, then you must configure SELinux contexts, policies, and domains based on your security requirements, and test your configuration to ensure there is no functionality or performance impact to Greenplum Database. Similarly, you should either disable or configure firewall software as needed to allow communication between Greenplum hosts. See [Disable or Configure SELinux](prep_os.html).
 
@@ -328,7 +329,7 @@ This table lists the versions of the Greenplum Extensions that are compatible wi
               <tr class="row">
                 <td class="entry nocellnorowborder" style="vertical-align:top;" headers="d78288e683 "><a class="xref" href="../analytics/madlib.html">MADlib Machine Learning</a></td>
 
-                <td class="entry nocellnorowborder" style="vertical-align:top;" headers="d78288e686 ">1.18, 1.17, 1.16</td>
+                <td class="entry nocellnorowborder" style="vertical-align:top;" headers="d78288e686 ">1.19, 1.18, 1.17, 1.16</td>
 
                 <td class="entry cell-norowborder" style="vertical-align:top;" headers="d78288e689 ">Support matrix at <a class="xref" href="https://cwiki.apache.org/confluence/display/MADLIB/FAQ#FAQ-Q1-2WhatdatabaseplatformsdoesMADlibsupportandwhatistheupgradematrix?" target="_blank">MADlib FAQ</a>.</td>
 
@@ -337,7 +338,7 @@ This table lists the versions of the Greenplum Extensions that are compatible wi
               <tr class="row">
                 <td class="entry row-nocellborder" style="vertical-align:top;" headers="d78288e683 "><a class="xref" href="../analytics/postGIS.html">PostGIS Spatial and Geographic Objects</a></td>
 
-                <td class="entry row-nocellborder" style="vertical-align:top;" headers="d78288e686 ">2.5.4+pivotal.4,2.5.4+pivotal.3,
+                <td class="entry row-nocellborder" style="vertical-align:top;" headers="d78288e686 ">2.5.4+pivotal.6.build.1, 2.5.4+pivotal.4, 2.5.4+pivotal.3,
                   2.5.4+pivotal.2, 2.5.4+pivotal.1,<p class="p">2.1.5+pivotal.2-2</p>
 </td>
 

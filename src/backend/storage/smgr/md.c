@@ -201,7 +201,7 @@ static char *_mdfd_segpath(SMgrRelation reln, ForkNumber forknum,
 static MdfdVec *_mdfd_openseg(SMgrRelation reln, ForkNumber forkno,
 			  BlockNumber segno, int oflags);
 static MdfdVec *_mdfd_getseg(SMgrRelation reln, ForkNumber forkno,
-			 BlockNumber blkno, bool skipFsync, ExtensionBehavior behavior, bool *is_seg0);
+			 BlockNumber blkno, bool skipFsync, ExtensionBehavior behavior, bool *seg0_missing);
 static BlockNumber _mdnblocks(SMgrRelation reln, ForkNumber forknum,
 		   MdfdVec *seg);
 
@@ -238,6 +238,16 @@ mdinit(void)
 								   HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 		pendingUnlinks = NIL;
 	}
+}
+
+/*
+ * Get the memory stats of MdCxt.
+ */
+void
+GetMdCxtStat(uint64 *nBlocks, uint64 *nChunks, uint64 *currentAvailable, 
+		uint64 *allAllocated, uint64 *allFreed, uint64 *maxHeld)
+{
+	(MdCxt->methods.stats)(MdCxt, nBlocks, nChunks, currentAvailable, allAllocated, allFreed, maxHeld);
 }
 
 /*
@@ -460,14 +470,14 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char relstor
  * Truncate a file to release disk space.
  */
 static int
-do_truncate(char *path)
+do_truncate(const char *path)
 {
 	int			save_errno;
 	int			ret;
 	int			fd;
 
 	/* truncate(2) would be easier here, but Windows hasn't got it */
-	fd = OpenTransientFile(path, O_RDWR | PG_BINARY, 0);
+	fd = OpenTransientFile((char *) path, O_RDWR | PG_BINARY, 0);
 	if (fd >= 0)
 	{
 		ret = ftruncate(fd, 0);
@@ -1110,7 +1120,6 @@ mdsync(void)
 	uint64		elapsed;
 	uint64		longest = 0;
 	uint64		total_elapsed = 0;
-	bool		is_seg0 = false;
 
 	/*
 	 * This is only called during checkpoints, and checkpoints should only
@@ -1278,8 +1287,10 @@ mdsync(void)
 				{
 					SMgrRelation reln;
 					MdfdVec    *seg;
+					bool		closeSeg = false;
 					char	   *path;
 					int			save_errno;
+					bool		seg0_missing = false;
 
 					/*
 					 * Find or create an smgr hash entry for this relation.
@@ -1302,14 +1313,17 @@ mdsync(void)
 						/*
 						 * For AO table, only access what the segno denoted, instead
 						 * of the chain to the target segment as HEAP.
+						 * _mdf_openseg does not register the file in SMgrRelation
+						 * we must close and free it manually
 						 */
+						closeSeg = true;
 						seg = _mdfd_openseg(reln, forknum, segno, 0);
 					}
 					else
 					{
 						seg = _mdfd_getseg(reln, forknum,
 								(BlockNumber) segno * (BlockNumber) RELSEG_SIZE,
-										false, EXTENSION_RETURN_NULL, &is_seg0);
+										false, EXTENSION_RETURN_NULL, &seg0_missing);
 					}
 
 					INSTR_TIME_SET_CURRENT(sync_start);
@@ -1332,14 +1346,28 @@ mdsync(void)
 								 processed,
 								 FilePathName(seg->mdfd_vfd),
 								 (double) elapsed / 1000);
+						if (closeSeg)
+						{
+							Assert(reln->md_fd[forknum] == NULL);
+							FileClose(seg->mdfd_vfd);
+							pfree(seg);
+						}
 
 						break;	/* out of retry loop */
+					}
+					if (seg != NULL && closeSeg)
+					{
+						Assert(reln->md_fd[forknum] == NULL);
+						FileClose(seg->mdfd_vfd);
+						pfree(seg);
 					}
 
 					/* Compute file name for use in message */
 					save_errno = errno;
-					segno = (is_seg0 ? 0 : segno);
-					path = _mdfd_segpath(reln, forknum, (BlockNumber) segno);
+					if (seg0_missing)
+						path = _mdfd_segpath(reln, forknum, 0);
+					else
+						path = _mdfd_segpath(reln, forknum, (BlockNumber) segno);
 					errno = save_errno;
 
 					/*
@@ -1969,7 +1997,7 @@ _mdfd_openseg(SMgrRelation reln, ForkNumber forknum, BlockNumber segno,
  */
 static MdfdVec *
 _mdfd_getseg(SMgrRelation reln, ForkNumber forknum, BlockNumber blkno,
-			 bool skipFsync, ExtensionBehavior behavior, bool *is_seg0)
+			 bool skipFsync, ExtensionBehavior behavior, bool *seg0_missing)
 {
 	MdfdVec    *v = mdopen(reln, forknum, behavior);
 	BlockNumber targetseg;
@@ -1977,11 +2005,13 @@ _mdfd_getseg(SMgrRelation reln, ForkNumber forknum, BlockNumber blkno,
 
 	if (!v)
 	{
-		if (is_seg0 != NULL)
-			*is_seg0 = true;
+		if (seg0_missing != NULL)
+			*seg0_missing = true;
 
 		return NULL;			/* only possible if EXTENSION_RETURN_NULL */
 	}
+	else if (seg0_missing != NULL)
+		*seg0_missing = false;
 
 	targetseg = blkno / ((BlockNumber) RELSEG_SIZE);
 

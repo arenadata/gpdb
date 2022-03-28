@@ -146,8 +146,7 @@
                     <pt> -n <varname>locale</varname> | --locale=<varname>locale</varname>
                     </pt>
                     <pd>Sets the default locale used by Greenplum Database. If not specified, the 
-                        default locale is <codeph>C</codeph>
-                            (<codeph>POSIX</codeph>). A locale identifier consists of a language
+                        default locale is <codeph>en_US.utf8</codeph>. A locale identifier consists of a language
                         identifier and a region identifier, and optionally a character set encoding.
                         For example, <codeph>sv_SE</codeph> is Swedish as spoken in Sweden,
                             <codeph>en_US</codeph> is U.S. English, and <codeph>fr_CA</codeph> is
@@ -288,8 +287,8 @@
                         on a host across different hosts in the Greenplum Database array. Spreading
                         is only allowed if the number of hosts is greater than the number of segment
                         instances per host. See <xref
-                            href="../../admin_guide/highavail/topics/g-overview-of-segment-mirroring.xml#topic3"
-                        /> for information about Greenplum Database mirroring strategies. </pd>
+                            href="../../admin_guide/highavail/topics/g-overview-of-segment-mirroring.html#topic3" format="html" scope="external"
+                        >Overview of Segment Mirroring</xref> for information about Greenplum Database mirroring strategies. </pd>
                 </plentry>
                 <plentry>
                     <pt>-v | --version</pt>
@@ -517,7 +516,7 @@ sdw1~sdw1~50001~/gpdata/mirror2/gpseg3~9~3
                         the <codeph>pg_hba.conf</codeph> file. </pd>
                     <pd>For information about how Greenplum Database resolves host names in the
                             <codeph>pg_hba.conf</codeph> file, see <xref
-                            href="../../admin_guide/client_auth.xml#topic1"/>.</pd>
+                            href="../../admin_guide/client_auth.html#topic1" format="html" scope="external">Configuring Client Authentication</xref>.</pd>
                 </plentry>
             </parml>
         </section>
@@ -596,8 +595,8 @@ mwd~mwd.local~7001~/data/mirror1/gpseg0~3~0
                 instances being added to the host. Also, if high availability is enabled, you must
                 ensure that the Greenplum system configuration supports failover if a host system
                 fails. For information about Greenplum Database mirroring schemes, see <xref
-                    href="../../best_practices/ha.xml#topic_ngz_qf4_tt"/>.</p>
-            <p>For this simple master and segment instance configuration, the host system
+                  href="../../best_practices/ha.html#topic_ngz_qf4_tt" format="html" scope="external"/>.</p>
+            <p>For this simple coordinator and segment instance configuration, the host system
                     <codeph>gp6m</codeph> is configured with two NICs <codeph>gp6m-1</codeph> and
                     <codeph>gp6m-2</codeph>. In the configuration, the <codeph><xref
                         href="#topic1/array_params" format="dita">QD_PRIMARY_ARRAY</xref></codeph>
