@@ -1414,16 +1414,18 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 	 * to the query, we must obtain an appropriate lock, because this will be
 	 * the first use of those relations in the parse/rewrite/plan pipeline.
 	 *
-	 * If the parent relation is the query's result relation, then we need
-	 * RowExclusiveLock.  Otherwise, if it's accessed FOR UPDATE/SHARE, we
-	 * need RowShareLock; otherwise AccessShareLock.  We can't just grab
-	 * AccessShareLock because then the executor would be trying to upgrade
-	 * the lock, leading to possible deadlocks.  (This code should match the
-	 * parser and rewriter.)
+	 * If the parent relation is the query's result relation, i.e. we have
+	 * UPDATE/DELETE/INSERT operation, then all relevant locks was acquired in
+	 * parse/analyze stage (inside `setTargetTable()` function) and nothing
+	 * needs to be done. Otherwise, if parent is accessed FOR UPDATE/SHARE, we
+	 * need RowShareLock; otherwise AccessShareLock. We can't just grab
+	 * AccessShareLock because then the executor would be trying to upgrade the
+	 * lock, leading to possible deadlocks. (This code should match the parser
+	 * and rewriter.)
 	 */
 	oldrc = get_plan_rowmark(root->rowMarks, rti);
 	if (rti == parse->resultRelation)
-		lockmode = RowExclusiveLock;
+		lockmode = NoLock;
 	else if (oldrc && RowMarkRequiresRowShareLock(oldrc->markType))
 		lockmode = RowShareLock;
 	else
@@ -1584,9 +1586,9 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 				gp_keep_partition_children_locks)
 				releaseLockMode = NoLock;
 			else
-				releaseLockMode = rel_needs_long_lock(childOID) ? NoLock: lockmode;
+				releaseLockMode = rel_is_part_child(childOID) ? lockmode : NoLock;
 
-			heap_close(newrelation, releaseLockMode);
+			heap_close(newrelation, NoLock);
 		}
 	}
 
