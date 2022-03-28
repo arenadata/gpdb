@@ -120,7 +120,7 @@ Enter mirror segment data directory location 2 of 2 &gt; /gpdb/m2</codeblock>
                         the same value that was specified for <codeph>HBA_HOSTNAMES</codeph> when
                         the Greenplum Database system was initialized. For information about how
                         Greenplum Database resolves host names in the <codeph>pg_hba.conf</codeph>
-                        file, see <xref href="../../admin_guide/client_auth.xml"/>.</pd>
+                        file, see <xref href="../../admin_guide/client_auth.html" format="html" scope="external">Configuring Client Authentication</xref>.</pd>
                 </plentry>
                 <plentry>
                     <pt>-i <varname>mirror_config_file</varname></pt>
@@ -240,7 +240,7 @@ Enter mirror segment data directory location 2 of 2 &gt; /gpdb/m2</codeblock>
                 instances being added to the host. Also, if you enable segment mirroring, you must
                 ensure that the Greenplum system configuration supports failover if a host system
                 fails. For information about Greenplum Database mirroring schemes, see <xref
-                    href="../../best_practices/ha.xml#topic_ngz_qf4_tt"/>.</p>
+                    href="../../best_practices/ha.html#topic_ngz_qf4_tt" format="html" scope="external"/>.</p>
             <p>For example, this is a segment instance configuration for a simple Greenplum system.
                 The segment host <codeph>gp6m</codeph> is configured with two NICs,
                     <codeph>gp6m-1</codeph> and <codeph>gp6m-2</codeph>, where the Greenplum
