@@ -4755,11 +4755,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				{
 					if (rel->rd_cdbpolicy->numsegments == getgpsegmentCount())
 					{
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-										errmsg("cannot expand partition table prepare \"%s\"",
-											   RelationGetRelationName(rel)),
-										errdetail("table has already been expanded partiton prepare")));
+						ereport(NOTICE,
+								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+										errmsg("skipped, table \"%s\" has already been expanded partition prepare",
+											   RelationGetRelationName(rel))));
+						pass = AT_PASS_MISC;    /* We do nothing here */
+						break;
 					}
 					if (ps != PART_STATUS_ROOT)
 					{
@@ -5491,7 +5492,7 @@ ATAddToastIfNeeded(List **wqueue, LOCKMODE lockmode)
 		if (tab->relkind == RELKIND_RELATION ||
 			tab->relkind == RELKIND_MATVIEW)
 		{
-			bool is_part = !rel_needs_long_lock(tab->relid);
+			bool is_part;
 
 			/*
 			 * FIXME: we've passed false as is_part_parent to make_new_heap().
@@ -5503,6 +5504,7 @@ ATAddToastIfNeeded(List **wqueue, LOCKMODE lockmode)
 			 * relation's OID, whether an auxiliary table needs valid
 			 * relfrozenxid or not?
 			 */
+			is_part = rel_is_part_child(tab->relid);
 			AlterTableCreateToastTable(tab->relid, (Datum) 0, lockmode,
 									   is_part, false);
 		}
@@ -16063,14 +16065,12 @@ rel_is_parent(Oid relid)
 }
 
 /*
- * partition children, toast tables and indexes, and indexes on partition
- * children do not need long lived locks because the lock on the partition master
- * protects us.
+ * Is the given relation a partition of a partitioned table?
  */
 bool
-rel_needs_long_lock(Oid relid)
+rel_is_part_child(Oid relid)
 {
-	bool needs_lock = true;
+	bool result = false;
 	Relation rel = relation_open(relid, NoLock);
 
 	relid = rel_get_table_oid(rel);
@@ -16078,7 +16078,7 @@ rel_needs_long_lock(Oid relid)
 	relation_close(rel, NoLock);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		needs_lock = !rel_is_child_partition(relid);
+		result = rel_is_child_partition(relid);
 	else
 	{
 		Relation inhrel;
@@ -16100,12 +16100,12 @@ rel_needs_long_lock(Oid relid)
 								   true, NULL, 2, scankey);
 
 		if (systable_getnext(sscan))
-			needs_lock = false;
+			result = true;
 
 		systable_endscan(sscan);
 		heap_close(inhrel, AccessShareLock);
 	}
-	return needs_lock;
+	return result;
 }
 
 

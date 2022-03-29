@@ -875,6 +875,58 @@ CUtils::FHasCTEAnchor(CExpression *pexpr)
 	return false;
 }
 
+// return CTEConsumers' and a set of CTEProducers' CTE ids in the given subtree
+void
+CUtils::CollectConsumersAndProducers(CMemoryPool *mp, CExpression *pexpr,
+									 ULongPtrArray *cteConsumers, UlongCteIdHashSet *cteProducerSet)
+{
+	COperator *pop = pexpr->Pop();
+
+	if (COperator::EopPhysicalCTEConsumer == pexpr->Pop()->Eopid())
+	{
+		cteConsumers->Append(GPOS_NEW(mp) ULONG(CPhysicalCTEConsumer::PopConvert(pop)->UlCTEId()));
+	}
+	else if (COperator::EopPhysicalCTEProducer == pexpr->Pop()->Eopid())
+	{
+		cteProducerSet->Insert(GPOS_NEW(mp) ULONG(CPhysicalCTEProducer::PopConvert(pop)->UlCTEId()));
+	}
+
+	for (ULONG ul = 0; ul < pexpr->Arity(); ul++)
+	{
+		CExpression *pexprChild = (*pexpr)[ul];
+
+		if (!pexprChild->Pop()->FScalar())
+		{
+			CollectConsumersAndProducers(mp, pexprChild, cteConsumers, cteProducerSet);
+		}
+	}
+}
+
+BOOL
+CUtils::hasUnpairedCTEConsumer(CMemoryPool *mp, CExpression *pexpr)
+{
+	BOOL hasUnpairedConsumer = false;
+
+	ULongPtrArray *cteConsumers = GPOS_NEW(mp) ULongPtrArray(mp);
+	UlongCteIdHashSet *cteProducerSet = GPOS_NEW(mp) UlongCteIdHashSet(mp);
+
+	CollectConsumersAndProducers(mp, pexpr, cteConsumers, cteProducerSet);
+
+	// check if every consumer's producer is in ProducerSet
+	for(ULONG ul = 0; ul < cteConsumers->Size(); ul++)
+	{
+		if (!cteProducerSet->Contains((*cteConsumers)[ul]))
+		{
+			hasUnpairedConsumer = true;
+			break;
+		}
+	}
+	cteConsumers->Release();
+	cteProducerSet->Release();
+
+	return hasUnpairedConsumer;
+}
+
 //---------------------------------------------------------------------------
 //	@class:
 //		CUtils::FHasSubqueryOrApply
@@ -1693,8 +1745,8 @@ CUtils::PopAggFunc(
 	CMemoryPool *mp, IMDId *pmdidAggFunc, const CWStringConst *pstrAggFunc,
 	BOOL is_distinct, EAggfuncStage eaggfuncstage, BOOL fSplit,
 	IMDId *
-		pmdidResolvedReturnType	 // return type to be used if original return type is ambiguous
-)
+		pmdidResolvedReturnType,  // return type to be used if original return type is ambiguous
+	EAggfuncKind aggkind)
 {
 	GPOS_ASSERT(NULL != pmdidAggFunc);
 	GPOS_ASSERT(NULL != pstrAggFunc);
@@ -1703,7 +1755,7 @@ CUtils::PopAggFunc(
 
 	return GPOS_NEW(mp)
 		CScalarAggFunc(mp, pmdidAggFunc, pmdidResolvedReturnType, pstrAggFunc,
-					   is_distinct, eaggfuncstage, fSplit);
+					   is_distinct, eaggfuncstage, fSplit, aggkind);
 }
 
 // generate an aggregate function
@@ -1716,15 +1768,39 @@ CUtils::PexprAggFunc(CMemoryPool *mp, IMDId *pmdidAggFunc,
 	GPOS_ASSERT(NULL != colref);
 
 	// generate aggregate function
-	CScalarAggFunc *popScAggFunc = PopAggFunc(
-		mp, pmdidAggFunc, pstrAggFunc, is_distinct, eaggfuncstage, fSplit);
+	CScalarAggFunc *popScAggFunc =
+		PopAggFunc(mp, pmdidAggFunc, pstrAggFunc, is_distinct, eaggfuncstage,
+				   fSplit, NULL, EaggfunckindNormal);
 
-	// generate function arguments
 	CExpression *pexprScalarIdent = PexprScalarIdent(mp, colref);
-	CExpressionArray *pdrgpexpr = GPOS_NEW(mp) CExpressionArray(mp);
-	pdrgpexpr->Append(pexprScalarIdent);
+	CExpressionArray *pdrgpexprArgs = GPOS_NEW(mp) CExpressionArray(mp);
+	pdrgpexprArgs->Append(pexprScalarIdent);
 
-	return GPOS_NEW(mp) CExpression(mp, popScAggFunc, pdrgpexpr);
+	return GPOS_NEW(mp)
+		CExpression(mp, popScAggFunc, PexprAggFuncArgs(mp, pdrgpexprArgs));
+}
+
+// generate arguments of an aggregate function
+CExpressionArray *
+CUtils::PexprAggFuncArgs(CMemoryPool *mp, CExpressionArray *pdrgpexprArgs)
+{
+	CExpressionArray *pdrgpexpr = GPOS_NEW(mp) CExpressionArray(mp);
+
+	pdrgpexpr->Append(GPOS_NEW(mp) CExpression(
+		mp, GPOS_NEW(mp) CScalarValuesList(mp), pdrgpexprArgs));
+
+	pdrgpexpr->Append(GPOS_NEW(mp)
+						  CExpression(mp, GPOS_NEW(mp) CScalarValuesList(mp),
+									  GPOS_NEW(mp) CExpressionArray(mp)));
+
+	pdrgpexpr->Append(GPOS_NEW(mp)
+						  CExpression(mp, GPOS_NEW(mp) CScalarValuesList(mp),
+									  GPOS_NEW(mp) CExpressionArray(mp)));
+
+	pdrgpexpr->Append(GPOS_NEW(mp)
+						  CExpression(mp, GPOS_NEW(mp) CScalarValuesList(mp),
+									  GPOS_NEW(mp) CExpressionArray(mp)));
+	return pdrgpexpr;
 }
 
 
@@ -1735,16 +1811,18 @@ CUtils::PexprCountStar(CMemoryPool *mp)
 	// TODO,  04/26/2012, create count(*) expressions in a system-independent
 	// way using MDAccessor
 
-	CExpressionArray *pdrgpexpr = GPOS_NEW(mp) CExpressionArray(mp);
 	CMDIdGPDB *mdid = GPOS_NEW(mp) CMDIdGPDB(GPDB_COUNT_STAR);
 	CWStringConst *str = GPOS_NEW(mp) CWStringConst(GPOS_WSZ_LIT("count"));
 
+	CExpressionArray *pdrgpexprChildren = GPOS_NEW(mp) CExpressionArray(mp);
+
 	CScalarAggFunc *popScAggFunc =
 		PopAggFunc(mp, mdid, str, false /*is_distinct*/,
-				   EaggfuncstageGlobal /*eaggfuncstage*/, false /*fSplit*/);
+				   EaggfuncstageGlobal /*eaggfuncstage*/, false /*fSplit*/,
+				   NULL, EaggfunckindNormal);
 
-	CExpression *pexprCountStar =
-		GPOS_NEW(mp) CExpression(mp, popScAggFunc, pdrgpexpr);
+	CExpression *pexprCountStar = GPOS_NEW(mp)
+		CExpression(mp, popScAggFunc, PexprAggFuncArgs(mp, pdrgpexprChildren));
 
 	return pexprCountStar;
 }
