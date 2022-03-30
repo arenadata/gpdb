@@ -193,7 +193,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 			if (root->parse->hasModifyingCTE)
 			{
 				ListCell   *lc;
-				Query	   *ctequery;
+				Query	   *ctequery = (Query *) palloc(sizeof(Query));
 
 				foreach(lc, root->parse->cteList)
 				{
@@ -204,8 +204,6 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 						ctequery->commandType == CMD_DELETE)
 						break;
 				}
-
-				Assert(ctequery);
 
 				foreach(lc, ctequery->rtable)
 				{
