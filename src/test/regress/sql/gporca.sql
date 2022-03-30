@@ -2216,7 +2216,7 @@ INSERT INTO onetimefilter1 SELECT i, i FROM generate_series(1,10)i;
 INSERT INTO onetimefilter2 SELECT i, i FROM generate_series(1,10)i;
 ANALYZE onetimefilter1;
 ANALYZE onetimefilter2;
-EXPLAIN WITH abc AS (SELECT onetimefilter1.a, onetimefilter1.b FROM onetimefilter1, onetimefilter2 WHERE onetimefilter1.a=onetimefilter2.a) SELECT (SELECT 1 FROM abc WHERE f1.b = f2.b LIMIT 1), COALESCE((SELECT 2 FROM abc WHERE f1.a=random() AND f1.a=2), 0), (SELECT b FROM abc WHERE b=f1.b) FROM onetimefilter1 f1, onetimefilter2 f2 WHERE f1.b = f2.b;
+EXPLAIN (COSTS OFF) WITH abc AS (SELECT onetimefilter1.a, onetimefilter1.b FROM onetimefilter1, onetimefilter2 WHERE onetimefilter1.a=onetimefilter2.a) SELECT (SELECT 1 FROM abc WHERE f1.b = f2.b LIMIT 1), COALESCE((SELECT 2 FROM abc WHERE f1.a=random() AND f1.a=2), 0), (SELECT b FROM abc WHERE b=f1.b) FROM onetimefilter1 f1, onetimefilter2 f2 WHERE f1.b = f2.b;
 WITH abc AS (SELECT onetimefilter1.a, onetimefilter1.b FROM onetimefilter1, onetimefilter2 WHERE onetimefilter1.a=onetimefilter2.a) SELECT (SELECT 1 FROM abc WHERE f1.b = f2.b LIMIT 1), COALESCE((SELECT 2 FROM abc WHERE f1.a=random() AND f1.a=2), 0), (SELECT b FROM abc WHERE b=f1.b) FROM onetimefilter1 f1, onetimefilter2 f2 WHERE f1.b = f2.b;
 
 
@@ -2940,6 +2940,34 @@ from material_test2
 where first_id in (select first_id from mat_w)
 and first_id in (select first_id from mat_w);
 
+-- Test Bitmap Heap Scan's targetlist contains only necessary attrs, not
+-- including ones from Recheck and Filter conditions.
+create table material_bitmapscan(i int, j int, k timestamp, l timestamp)
+with(appendonly=true) distributed replicated;
+create index material_bitmapscan_idx on material_bitmapscan using btree(k);
+insert into material_bitmapscan
+select i, mod(i, 10),
+        timestamp '2021-06-01' + interval '1' day * mod(i, 30),
+        timestamp '2021-06-01' + interval '1' day * mod(i, 30)
+from generate_series(1, 10000) i;
+-- Bitmap Heap Scan should not contain 'material_bitmapscan.k' and
+-- 'material_bitmapscan.l' at the Output list.
+explain (costs off, verbose) with mat as(
+    select i, j from material_bitmapscan
+    where i = 2 and j = 2
+    and k = timestamp '2021-06-03' and l = timestamp '2021-06-03'
+)
+select m1.i
+from mat m1 join mat m2 on m1.j = m2.j;
+-- There should be one row without any memory access errors.
+with mat as(
+    select i, j from material_bitmapscan
+    where i = 2 and j = 2
+    and k = timestamp '2021-06-03' and l = timestamp '2021-06-03'
+)
+select m1.i
+from mat m1 join mat m2 on m1.j = m2.j;
+
 create table tt_varchar(
 	data character varying
 ) distributed by (data);
@@ -3093,6 +3121,35 @@ insert into tone select i,i,i from generate_series(1, 10) i;
 ANALYZE tone;
 
 WITH cte AS (SELECT one(min(a)) from tone) SELECT 1 FROM tone, cte c1;
+--- if the inner child is already distributed on the join column, orca should
+--- not place any motion on the inner child
+SET optimizer_enable_hashjoin=off;
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.a;
+SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.a;
+
+--- if the inner child is not distributed on the join column, orca should 
+--- redistribute the inner child
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b;
+SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b;
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN (SELECT 1+t2.b as b from tone t2) t2 ON t1.a = t2.b;
+SELECT * FROM tone t1 LEFT OUTER JOIN (SELECT 1+t2.b as b from tone t2) t2 ON t1.a = t2.b;
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b+t2.a+1;
+SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b+t2.a+1;
+
+--- send a broadcast request to the inner child where the inner side clause contains
+--- columns from the outer side
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b-t1.a;
+SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b-t1.a;
+
+--- orca should broadcast the inner child if the guc is set off
+SET optimizer_enable_redistribute_nestloop_loj_inner_child=off;
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b;
+SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.b;
+
+EXPLAIN (COSTS OFF) SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.a;
+SELECT * FROM tone t1 LEFT OUTER JOIN tone t2 ON t1.a = t2.a;
+RESET optimizer_enable_redistribute_nestloop_loj_inner_child;
+RESET optimizer_enable_hashjoin;
 
 --- optimizer_xform_bind_threshold should limit the search space and quickly
 --- generate a plan (<100ms, but if this GUC is not set it will take minutes to
@@ -3116,6 +3173,124 @@ select a in (
    ) from binding;
 reset optimizer_xform_bind_threshold;
 reset statement_timeout;
+
+-- an agg of a non-SRF with a nested SRF should be treated as a SRF, the
+-- optimizer must not eliminate the SRF or it can produce incorrect results
+set optimizer_trace_fallback = on;
+create table nested_srf(a text);
+insert into nested_srf values ('abc,def,ghi');
+
+select * from (select regexp_split_to_table((a)::text, ','::text) from nested_srf)a;
+select count(*) from (select regexp_split_to_table((a)::text, ','::text) from nested_srf)a;
+
+select * from (select trim(regexp_split_to_table((a)::text, ','::text)) from nested_srf)a;
+select count(*) from (select trim(regexp_split_to_table((a)::text, ','::text)) from nested_srf)a;
+
+select count(*) from (select trim( case when a!='abc' then  (regexp_split_to_table((a)::text, ','::text)) else ' ' end) from nested_srf)a;
+select count(regexp_split_to_table((a)::text, ','::text)) from nested_srf;
+-- This produces wrong results on planner
+select count(*) from (select trim(coalesce(regexp_split_to_table((a)::text, ','::text),'')) from nested_srf)a;
+
+truncate nested_srf;
+insert into nested_srf values (NULL);
+
+select * from (select trim(regexp_split_to_table((a)::text, ','::text)) from nested_srf)a;
+select count(*) from (select trim(regexp_split_to_table((a)::text, ','::text)) from nested_srf)a;
+
+reset optimizer_trace_fallback;
+
+--- Test if orca can produce the correct plan for CTAS
+CREATE TABLE dist_tab_a (a varchar(15)) DISTRIBUTED BY(a);
+INSERT INTO dist_tab_a VALUES('1 '), ('2  '), ('3    ');
+CREATE TABLE dist_tab_b (a char(15), b bigint) DISTRIBUTED BY(a);
+INSERT INTO dist_tab_b VALUES('1 ', 1), ('2  ', 2), ('3    ', 3);
+EXPLAIN CREATE TABLE result_tab AS
+	(SELECT a.a, b.b FROM dist_tab_a a LEFT JOIN dist_tab_b b ON a.a=b.a) DISTRIBUTED BY(a);
+CREATE TABLE result_tab AS
+	(SELECT a.a, b.b FROM dist_tab_a a LEFT JOIN dist_tab_b b ON a.a=b.a) DISTRIBUTED BY(a);
+SELECT gp_segment_id, * FROM result_tab;
+DROP TABLE IF EXISTS dist_tab_a;
+DROP TABLE IF EXISTS dist_tab_b;
+DROP TABLE IF EXISTS result_tab;
+
+-- Test ORCA not falling back to Postgres planner during
+-- SimplifySelectOnOuterJoin stage. Previously, we could get assertion error
+-- trying to EberEvaluate() strict function with zero arguments.
+-- Postgres planner will fold our function, because it has additional
+-- eval_const_expressions() call for subplan. ORCA has only one call to
+-- fold_constants() at the very beginning and doesn't perform folding later.
+CREATE TABLE join_null_rej1(i int);
+CREATE TABLE join_null_rej2(i int);
+
+INSERT INTO join_null_rej1(i) VALUES (1), (2), (3);
+INSERT INTO join_null_rej2 SELECT i FROM join_null_rej1;
+
+CREATE OR REPLACE FUNCTION join_null_rej_func() RETURNS int AS $$
+BEGIN
+    RETURN 5;
+END;
+$$ LANGUAGE plpgsql STABLE STRICT;
+
+EXPLAIN (COSTS OFF) SELECT (
+    SELECT count(*) cnt
+    FROM join_null_rej1 t1
+    LEFT JOIN join_null_rej2 t2 ON t1.i = t2.i
+    WHERE t2.i < join_null_rej_func()
+);
+-- Optional, but let's check we get same result for both, folded and
+-- not folded now() frunction.
+SELECT (
+    SELECT count(*) cnt
+    FROM join_null_rej1 t1
+    LEFT JOIN join_null_rej2 t2 ON t1.i = t2.i
+    WHERE t2.i < join_null_rej_func()
+);
+
+-- Test if orca produces bitmap scan on mixed partitions
+create table mixed_part( a int) distributed randomly
+partition by range (a)
+( partition a1 start (1) end (100) with (appendonly='true'),
+partition a2 start (100) end (200) with (appendonly='false'));
+create index idx_mixed_part on mixed_part using btree(a);
+
+insert into mixed_part select i from generate_series(1,199)i;
+insert into mixed_part select 12 from generate_series(1,100)i;
+analyze mixed_part;
+
+explain select * from mixed_part where a=3;
+select * from mixed_part where a=3;
+
+-- Test that orca still produces index scan on heap partitions
+create table heap_part( a int) distributed randomly
+partition by range (a)
+( partition a1 start (1) end (100) with (appendonly='false'),
+partition a2 start (100) end (200) with (appendonly='false'));
+create index idx_heap_part on heap_part using btree(a);
+
+insert into heap_part select i from generate_series(1,199)i;
+insert into heap_part select 12 from generate_series(1,100)i;
+analyze heap_part;
+
+explain select * from heap_part where a=3;
+select * from heap_part where a=3;
+
+-- Generate bitmap scan for mixed index types
+create table part_table13(a int, b int, c int)
+partition by range(b)
+(
+partition p1 start(1) end(10),
+partition p2 start(10) end (20) with (appendonly=true),
+partition p3 start(20) end (30) with (appendonly=true,orientation=column),
+partition p4 start(30) end (40)
+);
+
+create index part_table13_1_idx on part_table13_1_prt_p1 using btree(c);
+create index part_table13_2_idx on part_table13_1_prt_p2 using btree(c);
+create index part_table13_3_idx on part_table13_1_prt_p3 using bitmap(c);
+create index part_table13_4_idx on part_table13_1_prt_p4 using bitmap(c);
+
+explain select * from part_table13 where c=7;
+select * from part_table13 where c=7;
 
 -- start_ignore
 DROP SCHEMA orca CASCADE;

@@ -375,6 +375,22 @@ Feature: gpcheckcat tests
         Then gpcheckcat should print "Table pg_type has a dependency issue on oid .* at content 0" to stdout
         And the user runs "dropdb gpcheckcat_dependency"
 
+    Scenario: gpcheckcat should report no inconsistency of pg_extension between Master and Segements
+        Given database "pgextension_db" is dropped and recreated
+        And the user runs sql "set allow_system_table_mods=true;update pg_extension set extconfig='{2130}', extcondition='{2130}';" in "pgextension_db" on first primary segment
+        Then the user runs "gpcheckcat -R inconsistent pgextension_db"
+        Then gpcheckcat should return a return code of 0
+        And the user runs "dropdb gpextension_db"
+
+    Scenario: gpcheckcat orphaned_toast_tables test should pass when there is valid temp toast table exists
+        Given database "temp_toast" is dropped and recreated
+        And the user connects to "temp_toast" with named connection "default"
+        And the user executes "CREATE TEMP TABLE temp_t1 (c1 text)" with named connection "default"
+        Then the user runs "gpcheckcat -R orphaned_toast_tables temp_toast"
+        And gpcheckcat should return a return code of 0
+        And the user drops the named connection "default"
+        And the user runs "dropdb temp_toast"
+
     Scenario: gpcheckcat should repair "bad reference" orphaned toast tables (caused by missing reltoastrelid)
         Given the database "gpcheckcat_orphans" is broken with "bad reference" orphaned toast tables
         When the user runs "gpcheckcat -R orphaned_toast_tables -g repair_dir gpcheckcat_orphans"
@@ -531,6 +547,13 @@ Feature: gpcheckcat tests
         Then gpcheckcat should return a return code of 0
         And gpcheckcat should print "foreign_key" to stdout
         And gpcheckcat should print "distribution_policy" to stdout
+        And the user runs "dropdb all_good"
+
+    Scenario: run all the checks in gpcheckcat and default skips acl, owner tests  a
+        Given database "all_good" is dropped and recreated
+        Then the user runs "gpcheckcat -v"
+        Then gpcheckcat should return a return code of 0
+        And validate gpcheckcat logs contain skipping ACL and Owner tests
         And the user runs "dropdb all_good"
 
 ########################### @concourse_cluster tests ###########################

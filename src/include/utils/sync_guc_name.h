@@ -10,6 +10,7 @@
 		"dev_opt_unsafe_truncate_in_subtransaction",
 		"dml_ignore_target_partition_check",
 		"dtx_phase2_retry_count",
+		"enable_implicit_timeformat_YYYYMMDDHH24MISS",
 		"execute_pruned_plan",
 		"explain_memory_verbosity",
 		"gin_fuzzy_search_limit",
@@ -117,3 +118,4 @@
 		"temp_tablespaces",
 		"gp_add_column_inherits_table_setting",
 		"gp_resgroup_debug_wait_queue",
+		"gp_log_resqueue_priority_sleep_time",

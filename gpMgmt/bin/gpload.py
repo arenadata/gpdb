@@ -109,6 +109,7 @@ valid_tokens = {
     "delimiter": {'parse_children': True, 'parent': "input"},
     "escape": {'parse_children': True, 'parent': "input"},
     "null_as": {'parse_children': True, 'parent': "input"},
+    "newline": {'parse_children': True, 'parent': "input"},
     "quote": {'parse_children': True, 'parent': "input"},
     "encoding": {'parse_children': True, 'parent': "input"},
     "force_not_null": {'parse_children': False, 'parent': "input"},
@@ -368,6 +369,7 @@ keywords = {
 	"natural": True,
 	"nchar": True,
 	"new": True,
+	"newline": True,
 	"next": True,
 	"no": True,
 	"nocreatedb": True,
@@ -1931,29 +1933,43 @@ class gpload:
                 self.enable_custom_format = 1
 
     def check_custom_formatter(self):
+        # Check if load dataflow extension is necessary
+        load_dataflow = False
+
+        # sql pre processing configured guc and used text
+        sql = self.getconfig('gpload:sql', list, default=None)
+        before = None
+        if sql:
+            before = self.getconfig('gpload:sql:before', unicode, default=None)
+            if before:
+                if 'dataflow.prefer_custom_text' in before.lower().replace(" ", ""):
+                    load_dataflow = True
+
         # Check if 'text_in' custom formatter can be used
         self.support_cusfmt = 0
-        try:
-            # make sure dataflow extension has been created.
-            queryString = """CREATE EXTENSION IF NOT EXISTS dataflow;"""
-            self.db.query(queryString.encode('utf-8'))
-            # load gpss.so to enable "dataflow.prefer_custom_text" guc.
-            queryString = """SELECT dataflow_version();"""
-            self.db.query(queryString.encode('utf-8'))
-            # show "dataflow.prefer_custom_text" guc, this guc only exists in gpdb6.
-            queryString = """SHOW dataflow.prefer_custom_text;"""
-            self.db.query(queryString.encode('utf-8'))
 
-            queryString = """SELECT c.oid FROM pg_catalog.pg_proc c 
-                               LEFT JOIN pg_catalog.pg_namespace n
-                               ON n.oid = c.pronamespace
-                               WHERE c.proname = 'text_in';"""
-            resultList = self.db.query(queryString.encode('utf-8')).getresult()
-            if len(resultList) > 0:
-                self.support_cusfmt = 1
+        if load_dataflow:
+            try:
+                # make sure dataflow extension has been created.
+                queryString = """CREATE EXTENSION IF NOT EXISTS dataflow;"""
+                self.db.query(queryString.encode('utf-8'))
+                # load gpss.so to enable "dataflow.prefer_custom_text" guc.
+                queryString = """SELECT dataflow_version();"""
+                self.db.query(queryString.encode('utf-8'))
+                # show "dataflow.prefer_custom_text" guc, this guc only exists in gpdb6.
+                queryString = """SHOW dataflow.prefer_custom_text;"""
+                self.db.query(queryString.encode('utf-8'))
 
-        except Exception, e:
-            self.log(self.DEBUG, 'could not run SQL "%s": %s' % (queryString, unicode(e)))
+                queryString = """SELECT c.oid FROM pg_catalog.pg_proc c 
+                                   LEFT JOIN pg_catalog.pg_namespace n
+                                   ON n.oid = c.pronamespace
+                                   WHERE c.proname = 'text_in';"""
+                resultList = self.db.query(queryString.encode('utf-8')).getresult()
+                if len(resultList) > 0:
+                    self.support_cusfmt = 1
+
+            except Exception, e:
+                self.log(self.DEBUG, 'could not run SQL "%s": %s' % (queryString, unicode(e)))
 
     def read_table_metadata(self):
         # KAS Note to self. If schema is specified, then probably should use PostgreSQL rules for defining it.
@@ -2267,9 +2283,9 @@ class gpload:
     #
     def get_reuse_staging_table_query(self, encoding_conditions):
 		
-        sql = """SELECT oid::regclass
-                 FROM pg_class
-                 WHERE relname = 'staging_gpload_reusable_%s';""" % (encoding_conditions)
+        sql = """SELECT oid::regclass \
+FROM pg_class \
+WHERE relname = 'staging_gpload_reusable_%s';""" % (encoding_conditions)
 
         self.log(self.DEBUG, "query used to identify reusable temporary relations: %s" % sql)
         return sql
@@ -2287,7 +2303,7 @@ class gpload:
                 pass
         return None
 
-    def get_ext_schematable(self, schemaName, tableName):
+    def get_schematable(self, schemaName, tableName):
         if schemaName is None:
             return tableName
         else:
@@ -2427,6 +2443,16 @@ class gpload:
             self.formatOpts += "force not null %s " % ','.join(force_not_null_columns) #only for csv
             self.reuse_tbl_Opts += "force not null %s " % ','.join(force_not_null_columns)
 
+        newline = self.getconfig('gpload:input:newline', unicode, False)
+        self.log(self.DEBUG, "newline " + unicode(newline))
+        if newline != False: # could be empty string
+            if self.use_customfmt:
+                self.formatOpts += ', newline=%s' % quote_no_slash(newline)
+                self.reuse_tbl_Opts += "newline %s " % quote_no_slash(newline)
+            else:
+                self.formatOpts += "newline %s " % quote_no_slash(newline)
+                self.reuse_tbl_Opts += "newline %s " % quote_no_slash(newline)
+
         encodingCode = None
         encodingStr = self.getconfig('gpload:input:encoding', unicode, None)
         if encodingStr is None:
@@ -2444,10 +2470,6 @@ class gpload:
         if self.log_errors and not limitStr:
             self.control_file_error("gpload:input:log_errors requires " +
                     "gpload:input:error_limit to be specified")
-
-        self.extSchemaName = self.getconfig('gpload:external:schema', unicode, None)
-        if self.extSchemaName == '%':
-            self.extSchemaName = self.schema
 
         # get the list of columns to use in the extnernal table
         if not self.from_cols_from_user:
@@ -2486,7 +2508,7 @@ class gpload:
                     sql = "select * from pg_catalog.pg_tables where schemaname = '%s' and tablename = '%s'" % (quote_unident(self.extSchemaName),  self.extTableName)
                 result = self.db.query(sql.encode('utf-8')).getresult()
                 if len(result) > 0:
-                    self.extSchemaTable = self.get_ext_schematable(quote_unident(self.extSchemaName), self.extTableName)
+                    self.extSchemaTable = self.get_schematable(quote_unident(self.extSchemaName), self.extTableName)
                     self.log(self.INFO, "reusing external staging table %s" % self.extSchemaTable)
                     return
             else:
@@ -2505,7 +2527,7 @@ class gpload:
                     self.extTableName = (resultList[0])[0]
                     # fast match result is only table name, so we need add schema info
                     if self.fast_match:
-                        self.extSchemaTable = self.get_ext_schematable(quote_unident(self.extSchemaName), self.extTableName)
+                        self.extSchemaTable = self.get_schematable(quote_unident(self.extSchemaName), self.extTableName)
                     else:
                         self.extSchemaTable = self.extTableName
                     self.log(self.INFO, "reusing external table %s" % self.extSchemaTable)
@@ -2516,13 +2538,13 @@ class gpload:
                 # around
 
                 self.extTableName = "ext_gpload_reusable_%s" % self.unique_suffix
-                self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.get_ext_schematable(self.extSchemaName, self.extTableName))
+                self.log(self.INFO, "did not find an external table to reuse. creating %s" % self.get_schematable(self.extSchemaName, self.extTableName))
 
         # process the single quotes in order to successfully create an external table.
         self.formatOpts = self.formatOpts.replace("'\''","E'\\''")
 
         # construct a CREATE EXTERNAL TABLE statement and execute it
-        self.extSchemaTable = self.get_ext_schematable(self.extSchemaName, self.extTableName)
+        self.extSchemaTable = self.get_schematable(self.extSchemaName, self.extTableName)
         sql = "create external table %s" % self.extSchemaTable
         sql += "(%s)" % ','.join(map(lambda a:'%s %s' % (a[0], a[1]), from_cols))
 
@@ -2616,6 +2638,7 @@ class gpload:
             # we no longer need the timestamp, since we will never want to create few
             # tables with same encoding_conditions
             self.staging_table_name = "staging_gpload_reusable_%s" % (encoding_conditions)
+            self.staging_table_name = self.get_schematable(self.extSchemaName, self.staging_table_name)
             self.log(self.INFO, "did not find a staging table to reuse. creating %s" % self.staging_table_name)
 		
         # MPP-14667 - self.reuse_tables should change one, and only one, aspect of how we build the following table,
@@ -2894,6 +2917,7 @@ class gpload:
     def do_method(self):
         # Is the table to be truncated before the load?
         preload = self.getconfig('gpload:preload', list, default=None)
+        external = self.getconfig('gpload:external', list, default=None)
         method = self.getconfig('gpload:output:mode', unicode, 'insert').lower()
         self.log_errors = self.getconfig('gpload:input:log_errors', bool, False)
         truncate = False
@@ -2901,6 +2925,10 @@ class gpload:
 
         if not self.options.no_auto_trans and not method=='insert':
             self.db.query("BEGIN")
+
+        self.extSchemaName = self.getconfig('gpload:external:schema', unicode, None)
+        if self.extSchemaName == '%':
+            self.extSchemaName = self.schema
 
         if preload:
             truncate = self.getconfig('gpload:preload:truncate',bool,False)
@@ -2992,7 +3020,9 @@ class gpload:
         start = time.time()
         self.read_config()
         self.setup_connection()
-        self.check_custom_formatter()
+        # Custom formatter only works for gpdb 6 and abover 
+        if withGpVersion and self.gpdb_version >= "6.0.0":
+            self.check_custom_formatter()
         self.read_table_metadata()
         self.read_columns()
         self.read_mapping()

@@ -54,9 +54,9 @@
         must update the <codeph>gp_interconnect_proxy_addresses</codeph> parameter with the
         newly-added segment instances before you re-enable interconnect proxies. For information
         about Greenplum interconnect proxies, see <xref
-          href="../../admin_guide/managing/proxy-ic.xml"/>.</note>
+          href="../../admin_guide/managing/proxy-ic.html" format="html" scope="external">Configuring Proxies for the Greenplum Interconnect</xref>.</note>
       <p>For information about preparing a system for expansion, see <xref
-          href="../../admin_guide/expand/expand-main.xml" scope="peer">Expanding a Greenplum
+          href="../../admin_guide/expand/expand-main.html" format="html" scope="external">Expanding a Greenplum
           System</xref><ph otherprops="op-print"> in the <cite>Greenplum Database Administrator
             Guide</cite></ph>.</p>
     </section>
@@ -238,7 +238,7 @@
         host. Also, if you enable segment mirroring, you must ensure that the expanded Greenplum
         system configuration supports failover if a host system fails. For information about
         Greenplum Database mirroring schemes, see <xref
-          href="../../best_practices/ha.xml#topic_ngz_qf4_tt"/>.</p>
+          href="../../best_practices/ha.html#topic_ngz_qf4_tt" format="html" scope="external"/>.</p>
       <p>For example, this is a <codeph>gpexpand</codeph> configuration file for a simple Greenplum
         system. The segment host <codeph>gp6s1</codeph> and <codeph>gp6s2</codeph> are configured
         with two NICs, <codeph>-s1</codeph> and <codeph>-s2</codeph>, where the Greenplum Database
@@ -261,7 +261,7 @@ gp6s1-s2|gp6s1-s2|50001|/data/mirror1/gpseg3|8|3|m</codeblock>
       <title>See Also</title>
       <p>
         <codeph><xref href="gpssh-exkeys.xml#topic1"/></codeph>, <xref
-          href="../../admin_guide/expand/expand-main.xml" scope="peer">Expanding a Greenplum
+          href="../../admin_guide/expand/expand-main.html" format="html" scope="external">Expanding a Greenplum
           System</xref>
         <ph otherprops="op-print">in the <cite>Greenplum Database Administrator
         Guide</cite></ph></p>

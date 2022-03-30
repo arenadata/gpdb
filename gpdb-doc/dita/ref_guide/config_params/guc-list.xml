@@ -123,6 +123,9 @@
               <xref href="#enable_hashjoin"/>
             </li>
             <li>
+              <xref href="#enable_implicit_timeformat_YYYYMMDDHH24MISS"/>
+            </li>
+            <li>
               <xref href="#enable_indexscan"/>
             </li>
             <li>
@@ -164,6 +167,9 @@
               <xref href="#gp_appendonly_compaction_threshold"/>
             </li>
             <li>
+              <xref href="#gp_autostats_allow_nonowner"/>
+            </li>
+            <li>
               <xref href="#gp_autostats_mode"/>
             </li>
             <li>
@@ -196,6 +202,15 @@
             </li>
             <li>
               <xref href="#gp_default_storage_options"/>
+            </li>
+            <li>
+              <xref href="#gp_dispatch_keepalives_count"/>
+            </li>
+            <li>
+              <xref href="#gp_dispatch_keepalives_idle"/>
+            </li>
+            <li>
+              <xref href="#gp_dispatch_keepalives_interval"/>
             </li>
             <li>
               <xref href="#gp_dynamic_partition_pruning"/>
@@ -287,6 +302,7 @@
             <li>
               <xref href="#gp_resource_manager"/>
             </li>
+            <li><xref href="#gp_retrieve_conn"/></li>
             <li>
               <xref href="#gp_use_legacy_hashops"/></li>
             <li><xref href="#gp_vmem_idle_resource_timeout"/></li>
@@ -452,6 +468,12 @@
               <xref href="#optimizer_enable_multiple_distinct_aggs" type="section"
                 >optimizer_enable_multiple_distinct_aggs</xref>
             </li>
+            <li><xref href="#optimizer_enable_orderedagg" type="section"
+                >optimizer_enable_orderedagg</xref></li>
+            <li>
+              <xref href="#optimizer_force_comprehensive_join_implementation" type="section"
+                >optimizer_force_comprehensive_join_implementation</xref>
+            </li>
             <li>
               <xref href="#optimizer_force_multistage_agg" type="section"
                 >optimizer_force_multistage_agg</xref>
@@ -531,6 +553,9 @@
             </li>
             <li>
               <xref href="#port"/>
+            </li>
+            <li>
+              <xref href="#quote_all_identifiers"/>
             </li>
             <li>
               <xref href="#random_page_cost"/>
@@ -1502,7 +1527,8 @@
     <body>
       <p>Selects the text search configuration that is used by those variants of the text search
         functions that do not have an explicit argument specifying the configuration. See <xref
-          href="../../admin_guide/textsearch/full-text-search.xml#full-text-search"/> for further
+          href="../../admin_guide/textsearch/full-text-search.html#full-text-search" scope="external"
+          format="html">Using Full Text Search</xref> for further
         information. The built-in default is <codeph>pg_catalog.simple</codeph>, but
           <codeph>initdb</codeph> will initialize the configuration file with a setting that
         corresponds to the chosen <codeph>lc_ctype</codeph> locale, if a configuration matching that
@@ -1687,7 +1713,7 @@
             <row>
               <entry colname="col1">a list of absolute directory paths separated by colons</entry>
               <entry colname="col2">$libdir</entry>
-              <entry colname="col3">local<p>system</p><p>restart</p></entry>
+              <entry colname="col3">local<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -1697,16 +1723,24 @@
   <topic id="effective_cache_size">
     <title>effective_cache_size</title>
     <body>
-      <p>Sets the assumption about the effective size of the disk cache that is available to a
-        single query for the Postgres Planner. This is factored into estimates of
-        the cost of using an index; a higher value makes it more likely index scans will be used, a
-        lower value makes it more likely sequential scans will be used. This parameter has no effect
-        on the size of shared memory allocated by a Greenplum server instance, nor does it reserve
+      <p>Sets the assumption about the effective size of the disk cache that is available
+        to a single query for the Postgres Planner. This is factored into estimates of the
+        cost of using an index; a higher value makes it more likely index scans will be used,
+        a lower value makes it more likely sequential scans will be used. When setting this
+        parameter, you should consider both Greenplum Database's shared buffers and the
+        portion of the kernel's disk cache that will be used for data files (though some data
+        might exist in both places). Take also into account the expected number of concurrent
+        queries on different tables, since they will have to share the available space. This
+        parameter has no effect on the size of shared memory allocated by a Greenplum server
+        instance, nor does it reserve
         kernel disk cache; it is used only for estimation purposes.</p>
-      <p>Set this parameter to a number of 32K blocks (for example, <codeph>512</codeph> for 16MB),
-        or specify the size of the effective cache (for example, <codeph>'32MB'</codeph> for 1024
-        blocks). The <codeph>gpconfig</codeph> utility and <codeph>SHOW</codeph> command display the
-        effective cache size value in units such as 'MB' or 'kB'.</p>
+      <p>Set this parameter to a number of
+        <codeph><xref href="#backslash_quote">block_size</xref></codeph> blocks
+        (default 32K) with no units; for example, <codeph>262144</codeph> for 8GB. You can
+        also directly specify the size of the effective cache; for example,
+        <codeph>'1GB'</codeph> specifies a size of 32768 blocks. The
+        <codeph>gpconfig</codeph> utility and <codeph>SHOW</codeph> command display the
+        effective cache size value in units such as 'GB', 'MB', or 'kB'.</p>
       <table id="effective_cache_size_table">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -1721,8 +1755,8 @@
           </thead>
           <tbody>
             <row>
-              <entry colname="col1">floating point</entry>
-              <entry colname="col2">512 (16GB)</entry>
+              <entry colname="col1">1 - INT_MAX <i>or</i> number and unit</entry>
+              <entry colname="col2">524288 (16GB)</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
@@ -1836,6 +1870,38 @@
             <row>
               <entry colname="col1">Boolean</entry>
               <entry colname="col2">on</entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="enable_implicit_timeformat_YYYYMMDDHH24MISS">
+    <title>enable_implicit_timeformat_YYYYMMDDHH24MISS</title>
+    <body>
+      <p>Enables or disables the deprecated implicit conversion of a string with the
+        <i>YYYYMMDDHH24MISS</i> timestamp format to a valid date/time type.</p>
+      <p>The default value is <codeph>off</codeph>. When this parameter is set to
+        <codeph>on</codeph>, Greenplum Database converts a string with the
+        timestamp format <i>YYYYMMDDHH24MISS</i> into a valid date/time type. You
+        may require this conversion when loading data from Greenplum Database 5.</p>
+      <table id="tbl_enable_implicit_timeformat_YYYYMMDDHH24MISS">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">off</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
@@ -2095,7 +2161,7 @@
           </thead>
           <tbody>
             <row>
-              <entry colname="col1">integer</entry>
+              <entry colname="col1">integer (-15 to 3)</entry>
               <entry colname="col2">0</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
@@ -2159,6 +2225,10 @@
               >gp_default_storage_options</xref></codeph>.</li>
           <li> The default data compression setting.</li>
         </ol></p>
+      <p>You must specify <codeph>--skipvalidation</codeph> when modifying this parameter as it is a
+        restricted configuration parameter. Use extreme caution when setting configuration
+        parameters with this option. For
+        example:<codeblock>gpconfig --skipvalidation -c gp_add_column_inherits_table_setting -v on</codeblock></p>
       <p>For information about the data storage compression parameters, see <codeph><xref
             href="../sql_commands/CREATE_TABLE.xml">CREATE TABLE</xref></codeph>.</p>
       <table id="table_nyn_wjd_lmb">
@@ -2266,6 +2336,46 @@
               <entry colname="col1">integer (%)</entry>
               <entry colname="col2">10</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="gp_autostats_allow_nonowner">
+    <title>gp_autostats_allow_nonowner</title>
+    <body>
+      <p>The <codeph>gp_autostats_allow_nonowner</codeph> server configuration parameter
+        determines whether or not to allow Greenplum Database to trigger automatic statistics
+        collection when a table is modified by a non-owner.</p>
+      <p>The default value is <codeph>false</codeph>; Greenplum Database does not trigger
+        automatic statistics collection on a table that is updated by a non-owner.</p>
+      <p>When set to <codeph>true</codeph>, Greenplum Database will also trigger automatic
+         statistics collection on a table when:</p>
+      <ul>
+        <li><codeph>gp_autostats_mode=on_change</codeph> and the table is modified by a non-owner.</li>
+        <li><codeph>gp_autostats_mode=on_no_stats</codeph> and the first user to
+          <codeph>INSERT</codeph> or <codeph>COPY</codeph> into the table is a non-owner.</li>
+      </ul>
+      <p>The <codeph>gp_autostats_allow_nonowner</codeph> configuration parameter can be
+        changed only by a superuser.</p>
+      <table id="gp_auto_stats_allow_nonowner_table">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">false</entry>
+              <entry colname="col3">master<p>session</p><p>reload</p><p>superuser</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -2587,7 +2697,7 @@
             <row>
               <entry colname="col1">boolean</entry>
               <entry colname="col2">off</entry>
-              <entry colname="col3">master<p>system</p><p>reload</p></entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -2754,6 +2864,91 @@
         Greenplum.</note>
     </body>
   </topic>
+  <topic id="gp_dispatch_keepalives_count">
+    <title>gp_dispatch_keepalives_count</title>
+    <body>
+      <p>Maximum number of TCP keepalive retransmits from a Greenplum Query Dispatcher to its Query
+        Executors. It controls the number of consecutive keepalive retransmits that can be lost
+        before a connection between a Query Dispatcher and a Query Executor is considered dead.</p>
+      <table id="table_orj_wng_rrb">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">0 to 127</entry>
+              <entry colname="col2">0 (it uses the system default)</entry>
+              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="gp_dispatch_keepalives_idle">
+    <title>gp_dispatch_keepalives_idle</title>
+    <body>
+      <p>Time in seconds between issuing TCP keepalives from a Greenplum Query Dispatcher to its
+        Query Executors.</p>
+      <table id="table_pwn_wng_rrb">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">0 to 32767</entry>
+              <entry colname="col2">0  (it uses the system default)</entry>
+              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="gp_dispatch_keepalives_interval">
+    <title>gp_dispatch_keepalives_interval</title>
+    <body>
+      <p>Time in seconds between TCP keepalive retransmits from a Greenplum Query Dispatcher to its
+        Query Executors.</p>
+      <table id="table_jpq_wng_rrb">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">0 to 32767</entry>
+              <entry colname="col2">0  (it uses the system default)</entry>
+              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
   <topic id="gp_dynamic_partition_pruning">
     <title>gp_dynamic_partition_pruning</title>
     <body>
@@ -2772,7 +2967,7 @@
           </thead>
           <tbody>
             <row>
-              <entry colname="col1">on/off</entry>
+              <entry colname="col1">Boolean</entry>
               <entry colname="col2">on</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
@@ -2945,7 +3140,8 @@
     <body>
       <p>Controls whether the Greenplum Database Global Deadlock Detector is enabled to manage
         concurrent <codeph>UPDATE</codeph> and <codeph>DELETE</codeph> operations on heap tables to
-        improve performance. See <xref href="../../admin_guide/dml.xml#topic_gdd"/><ph
+        improve performance. See <xref href="../../admin_guide/dml.html#topic_gdd" scope="external"
+          format="html">Inserting, Updating, and Deleting Data</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>.
         The default is <codeph>off</codeph>, the Global Deadlock Detector is disabled. </p>
       <p>If the Global Deadlock Detector is disabled (the default), Greenplum Database runs
@@ -3382,7 +3578,8 @@
       <p>Enable filter pushdown when reading data from external tables. If pushdown fails, a query
         is run without pushing filters to the external data source (instead, Greenplum Database
         applies the same constraints to the result). See <xref
-          href="../../admin_guide/external/g-external-tables.xml#topic3"/> for more information.</p>
+          href="../../admin_guide/external/g-external-tables.html#topic3" scope="external"
+          format="html">Defining External Tables</xref> for more information.</p>
       <table id="enable_filter_pushdown_table">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -3428,7 +3625,7 @@
             <row>
               <entry colname="col1">10 - 3600 seconds</entry>
               <entry colname="col2">1min</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+              <entry colname="col3">master<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -3456,7 +3653,7 @@
             <row>
               <entry colname="col1">integer</entry>
               <entry colname="col2">5</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+              <entry colname="col3">master<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -3484,7 +3681,7 @@
             <row>
               <entry colname="col1">10 - 3600 seconds</entry>
               <entry colname="col2">20 secs</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+              <entry colname="col3">master<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -3643,6 +3840,40 @@
       </table>
     </body>
   </topic>
+  <topic id="gp_log_resqueue_priority_sleep_time">
+    <title>gp_log_resqueue_priority_sleep_time</title>
+    <body>
+      <p>Controls the logging of per-statement sleep time when resource queue-based resource
+        management is active. You can use this information for analysis of sleep time for
+        queries.</p>
+      <p>The default value is <codeph>false</codeph>, do not log the statement sleep time.
+        When set to <codeph>true</codeph>, Greenplum Database:<ul>
+          <li>Logs the current amount of sleep time for a running query every two minutes.</li>
+          <li>Logs the total of sleep time duration for a query at the end of a query.</li>
+        </ul> The information is written to the server log.</p>
+      <table id="table_xkm_nqr_y1b">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">false</entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
   <topic id="gp_gpperfmon_send_interval">
     <title>gp_gpperfmon_send_interval</title>
     <body>
@@ -3668,7 +3899,7 @@
             <row>
               <entry colname="col1">Any valid time expression (number and unit)</entry>
               <entry colname="col2">1sec</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p><p>superuser</p></entry>
+              <entry colname="col3">master<p>session</p><p>reload</p><p>superuser</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -3729,7 +3960,7 @@
             <row>
               <entry colname="col1">none <p>warning</p><p>error</p><p>fatal</p><p>panic</p></entry>
               <entry colname="col2">none</entry>
-              <entry colname="col3">local<p>system</p><p>restart</p></entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -3980,7 +4211,8 @@
         single-quoted string. The Greenplum system consists of a master and a single segment
         instance.<codeblock>gpconfig --skipvalidation -c gp_interconnect_proxy_addresses -v "'1:-1:192.168.180.50:35432,2:0:192.168.180.54:35000'"</codeblock></p>
       <p>For an example of setting <codeph>gp_interconnect_proxy_addresses</codeph>, see <xref
-          href="../../admin_guide/managing/proxy-ic.xml"/>.</p>
+          href="../../admin_guide/managing/proxy-ic.html" scope="external"
+          format="html">Configuring Proxies for the Greenplum Interconnect</xref>.</p>
       <table id="table_dlg_dch_mmb">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -3997,7 +4229,7 @@
             <row>
               <entry colname="col1">string (maximum length - 16384 bytes)</entry>
               <entry colname="col2"/>
-              <entry colname="col3">local<p>system</p><p>restart</p></entry>
+              <entry colname="col3">local<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4144,7 +4376,8 @@
         instances with the server configuration parameter <codeph><xref
             href="#gp_interconnect_proxy_addresses" format="dita"/></codeph>. For information about
         configuring and using proxies with the Greenplum interconnect, see <xref
-          href="../../admin_guide/managing/proxy-ic.xml"/>.</p>
+          href="../../admin_guide/managing/proxy-ic.html" scope="external"
+          format="html">Configuring Proxies for the Greenplum Interconnect</xref>.</p>
       <table id="table_jn5_frn_xv">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -4250,7 +4483,7 @@
             <row>
               <entry colname="col1">512-65536</entry>
               <entry colname="col2">8192</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+              <entry colname="col3">master<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4284,7 +4517,7 @@
             <row>
               <entry colname="col1">integer</entry>
               <entry colname="col2">0</entry>
-              <entry colname="col3">master<p>superuser</p><p>session</p></entry>
+              <entry colname="col3">master<p>superuser</p><p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4366,7 +4599,8 @@
         is allowed in the <codeph>WITH</codeph> clause of a command.</p>
       <p>For information about the <codeph>RECURSIVE</codeph> keyword, see the <codeph><xref
             href="../sql_commands/SELECT.xml">SELECT</xref></codeph> command and <xref
-          href="../../admin_guide/query/topics/CTE-query.xml"/>.</p>
+          href="../../admin_guide/query/topics/CTE-query.html" scope="external"
+          format="html">WITH Queries (Common Table Expressions)</xref>.</p>
       <p>The parameter can be set for a database system, an individual database, or a session or
         query.</p>
       <note>This parameter was previously named <codeph>gp_recursive_cte_prototype</codeph>, but
@@ -4477,7 +4711,7 @@
             <row>
               <entry colname="col1">auto, eager_free</entry>
               <entry colname="col2">eager_free</entry>
-              <entry colname="col3">local<p>system</p><p>superuser</p><p>restart/reload</p></entry>
+              <entry colname="col3">local<p>system</p><p>superuser</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4524,7 +4758,7 @@
             <row>
               <entry colname="col1">Boolean</entry>
               <entry colname="col2">false</entry>
-              <entry colname="col3">session</entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4663,7 +4897,7 @@
             <row>
               <entry colname="col1">0 - <codeph>INT_MAX</codeph> millisecs</entry>
               <entry colname="col2">0 millisecs</entry>
-              <entry colname="col3">master<p>system</p><p>session</p><p>reload</p></entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4675,7 +4909,8 @@
     <body>
       <p>Identifies the resource management scheme currently enabled in the Greenplum Database
         cluster. The default scheme is to use resource queues. For information about Greenplum
-        Database resource management, see <xref href="../../admin_guide/wlmgmt.xml"/>.</p>
+        Database resource management, see <xref href="../../admin_guide/wlmgmt.html" scope="external"
+          format="html">Managing Resources</xref>.</p>
       <table id="gp_resource_manager_table">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -4729,7 +4964,7 @@
             <row>
               <entry colname="col1">none, auto, eager_free</entry>
               <entry colname="col2">eager_free</entry>
-              <entry colname="col3">local<p>system</p><p>restart/reload</p></entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4771,11 +5006,17 @@
     <body>
       <note>The <codeph>gp_resqueue_priority_cpucores_per_segment</codeph> server configuration
         parameter is enforced only when resource queue-based resource management is active.</note>
-      <p>Specifies the number of CPU units allocated per segment instance. For example, if a
-        Greenplum Database cluster has 10-core segment hosts that are configured with four segments,
-        set the value for the segment instances to 2.5. For the master instance, the value would be
-        10. A master host typically has only the master instance running on it, so the value for the
-        master should reflect the usage of all available CPU cores. </p>
+      <p>Specifies the number of CPU units allocated to each segment instance on a
+        segment host. If the segment is configured with primary-mirror segment instance pairs,
+        use the number of primary segment instances on the host in the calculation.
+        Include any CPU core that is available to the operating system, including virtual CPU
+        cores, in the total number of available cores.</p> 
+      <p> For example, if a Greenplum Database cluster has 10-core segment hosts that are
+        configured with four primary segments, set the value to 2.5 on each segment host
+        (10 divided by 4).
+        A master host typically has only a single running master instance, so set the
+        value on the master and standby maaster hosts to reflect the usage of all available
+        CPU cores, in this case 10. </p>
       <p>Incorrect settings can result in CPU under-utilization or query prioritization not working
         as designed. </p>
       <table id="gp_resqueue_priority_cpucores_per_segment_table">
@@ -4832,10 +5073,40 @@
       </table>
     </body>
   </topic>
+  <topic id="gp_retrieve_conn">
+    <title>gp_retrieve_conn</title>
+    <body>
+      <p>A session that you initiate with <codeph>PGOPTIONS='-c gp_retrieve_conn=true'</codeph>
+        is a retrieve session. You use a retrieve session to retrieve query result tuples
+        from a specific endpoint instantiated for a parallel retrieve cursor.</p>
+      <p>The default value is <codeph>false</codeph>.</p>
+      <table id="gp_retrieve_conn_table">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">false</entry>
+              <entry colname="col3">read only</entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
   <topic id="gp_role">
     <title>gp_role</title>
     <body>
-      <p>The role of this server process " set to <i>dispatch</i> for the master and <i>execute</i>
+      <p>The role of this server process is set to <i>dispatch</i> for the master and <i>execute</i>
         for a segment.</p>
       <table id="gp_role_table">
         <tgroup cols="3">
@@ -4886,7 +5157,7 @@
             <row>
               <entry colname="col1">integer</entry>
               <entry colname="col2">0</entry>
-              <entry colname="col3">local<p>system</p><p>restart</p></entry>
+              <entry colname="col3">local<p>system</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -4914,8 +5185,8 @@
           <tbody>
             <row>
               <entry colname="col1">Any valid time expression (number and unit)</entry>
-              <entry colname="col2">10min</entry>
-              <entry colname="col3">local<p>system</p><p>reload</p></entry>
+              <entry colname="col2">3min</entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -6497,7 +6768,7 @@
             <row>
               <entry colname="col1">Integer</entry>
               <entry colname="col2">-1</entry>
-              <entry colname="col3">local<p>system</p><p>restart</p></entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -6967,7 +7238,7 @@
             <row>
               <entry colname="col1">number of kilobytes</entry>
               <entry colname="col2">2MB</entry>
-              <entry colname="col3">local<p>system</p><p>restart</p></entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -7064,7 +7335,8 @@
       <p>The <cmdname>optimizer</cmdname> parameter can be set for a database system, an individual
         database, or a session or query.</p>
       <p>For information about the Postgres Planner and GPORCA, see <xref
-          href="../../admin_guide/query/topics/query.xml">Querying Data</xref><ph
+          href="../../admin_guide/query/topics/query.html" scope="external"
+          format="html">Querying Data</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator
         Guide</cite></ph>.</p>
       <table id="optimizer_guc_table">
@@ -7110,7 +7382,8 @@
         statistics on partitioned tables, see <codeph><xref href="../sql_commands/ANALYZE.xml"
           /></codeph>.</p>
       <p>For information about the Postgres Planner and GPORCA, see <xref
-          href="../../admin_guide/query/topics/query.xml">Querying Data</xref><ph
+          href="../../admin_guide/query/topics/query.html" scope="external"
+          format="html">Querying Data</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator
         Guide</cite></ph>.</p>
       <table id="table_gj5_k5l_vp">
@@ -7204,7 +7477,7 @@
             <row>
               <entry colname="col1">Boolean</entry>
               <entry colname="col2">on</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p><p>superuser</p></entry>
+              <entry colname="col3">master<p>session</p><p>reload</p><p>superuser</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -7324,7 +7597,8 @@
       <p>The parameter can be set for a database system, an individual database, or a session or
         query.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_zqr_knr_hdb">
         <tgroup cols="3">
@@ -7361,7 +7635,8 @@
       <p>The parameter can be set for a database system, an individual database, or a session or
         query.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_igw_npf_fjb">
         <tgroup cols="3">
@@ -7401,7 +7676,8 @@
       <p>The parameter can be set for a database system, an individual database,
         or a session or query.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_igw_npf_fjb">
         <tgroup cols="3">
@@ -7438,7 +7714,8 @@
       <note>Enabling this parameter decreases performance of short running catalog queries. To avoid
         this issue, set this parameter only for a session or a query. </note>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_ykk_rg5_gv">
         <tgroup cols="3">
@@ -7474,7 +7751,43 @@
       <p>The parameter can be set for a database system, an individual database, or a session or
         query.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
+          otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
+      <table id="table_zct_qn1_bpb">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">off</entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="optimizer_enable_orderedagg">
+    <title>optimizer_enable_orderedagg</title>
+    <body>
+      <p>When GPORCA is enabled (the default), this parameter determines whether or not
+        GPORCA generates a query plan for ordered aggregates. This parameter is disabled by
+        default; GPORCA does not generate a plan for a query that includes an ordered
+        aggregate, and the query falls back to the Postgres Planner.</p>
+      <p>You can set this parameter for a database system, an individual database,
+        or a session or query.</p>
+      <p>For information about GPORCA, see <xref
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" format="html" scope="external">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_zct_qn1_bpb">
         <tgroup cols="3">
@@ -7512,7 +7825,8 @@
           <codeph>GROUP BY</codeph> columns for distribution. These plans might perform poorly when
         processing skew is present.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_ebp_rcr_cgb">
         <tgroup cols="3">
@@ -7530,6 +7844,38 @@
             <row>
               <entry colname="col1">Boolean</entry>
               <entry colname="col2">true</entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
+  <topic id="optimizer_force_comprehensive_join_implementation">
+    <title>optimizer_force_comprehensive_join_implementation</title>
+    <body>
+      <p>When GPORCA is enabled (the default), this parameter affects its consideration of
+        nested loop join and hash join alternatives.</p>
+      <p>The default value is <codeph>false</codeph>, GPORCA does not consider nested loop
+        join alternatives when a hash join is available, which significantly improves
+        optimization performance for most queries. When set to <codeph>true</codeph>,
+        GPORCA will explore nested loop join alternatives even when a hash join is possible.</p>
+      <table id="table_ofcji">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">false</entry>
               <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
@@ -7832,7 +8178,8 @@
       <p>Setting this parameter to <codeph>ALWAYS</codeph> generates a minidump for all queries. Set
         this parameter to <codeph>ONERROR</codeph> to minimize total optimization time. </p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="optimizer_minidump">
         <tgroup cols="3">
@@ -7940,7 +8287,8 @@
       <p>The parameter can be set for a database system, an individual database, or a session or
         query.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_s11_lln_t3b">
         <tgroup cols="3">
@@ -8081,7 +8429,8 @@
         and improves GPORCA support of vmem limits when compared to GPORCA-specific memory
         management.</p>
       <p>For information about GPORCA, see <xref
-          href="../../admin_guide/query/topics/query-piv-optimizer.xml">About GPORCA</xref><ph
+          href="../../admin_guide/query/topics/query-piv-optimizer.html" scope="external"
+          format="html">About GPORCA</xref><ph
           otherprops="op-print"> in the <cite>Greenplum Database Administrator Guide</cite></ph>. </p>
       <table id="table_xlm_qxh_gjb">
         <tgroup cols="3">
@@ -8436,6 +8785,36 @@
       </table>
     </body>
   </topic>
+  <topic id="quote_all_identifiers">
+    <title>quote_all_identifiers</title>
+    <body>
+      <p>Ensures that all identifiers are quoted, even if they are not keywords, when the database
+        generates SQL. See also the <codeph>--quote-all-identifiers</codeph> option of <codeph><xref
+            href="../../utility_guide/ref/pg_dump.xml"/></codeph> and <codeph><xref
+            href="../../utility_guide/ref/pg_dumpall.xml"/></codeph>.</p>
+      <table id="table_umd_ds4_brb">
+        <tgroup cols="3">
+          <colspec colnum="1" colname="col1" colwidth="1*"/>
+          <colspec colnum="2" colname="col2" colwidth="1*"/>
+          <colspec colnum="3" colname="col3" colwidth="1*"/>
+          <thead>
+            <row>
+              <entry colname="col1">Value Range</entry>
+              <entry colname="col2">Default</entry>
+              <entry colname="col3">Set Classifications</entry>
+            </row>
+          </thead>
+          <tbody>
+            <row>
+              <entry colname="col1">Boolean</entry>
+              <entry colname="col2">false</entry>
+              <entry colname="col3">local<p>session</p><p>reload</p></entry>
+            </row>
+          </tbody>
+        </tgroup>
+      </table>
+    </body>
+  </topic>
   <topic id="random_page_cost">
     <title>random_page_cost</title>
     <body>
@@ -8588,7 +8967,7 @@
             <row>
               <entry colname="col1">Boolean</entry>
               <entry colname="col2">on</entry>
-              <entry colname="col3">master<p>system</p><p>restart</p></entry>
+              <entry colname="col3">master<p>session</p><p>reload</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -8650,20 +9029,22 @@
           /></codeph>.</p>
       <p>For example, if vmem memory is set to 10GB, and this parameter is 90 (90%), Greenplum
         Database starts terminating queries when the utilized vmem memory exceeds 9 GB.</p>
-      <p>For information about resource queues, see <xref href="../../admin_guide/workload_mgmt.xml"
-        />.</p>
+      <p>For information about resource queues, see <xref href="../../admin_guide/workload_mgmt.html" scope="external"
+          format="html">Using Resource Queues</xref>.</p>
       <p><b>When resource groups are enabled -</b> This parameter sets the percent of utilized
         resource group global shared memory that triggers the termination of queries that are
         managed by resource groups that are configured to use the <codeph>vmtracker</codeph> memory
         auditor, such as <codeph>admin_group</codeph> and <codeph>default_group</codeph>. For
         information about memory auditors, see <xref
-          href="../../admin_guide/workload_mgmt_resgroups.xml#topic8339777"/>.</p>
+          href="../../admin_guide/workload_mgmt_resgroups.html#topic8339777" scope="external"
+          format="html">Memory Auditor</xref>.</p>
       <p>Resource groups have a global shared memory pool when the sum of the
           <codeph>MEMORY_LIMIT</codeph> attribute values configured for all resource groups is less
         than 100. For example, if you have 3 resource groups configured with
           <codeph>memory_limit</codeph> values of 10 , 20, and 30, then global shared memory is 40%
         = 100% - (10% + 20% + 30%). See <xref
-          href="../../admin_guide/workload_mgmt_resgroups.xml#topic833glob"/>.</p>
+          href="../../admin_guide/workload_mgmt_resgroups.html#topic833glob" scope="external"
+          format="html">Global Shared Memory</xref>.</p>
       <p>If the percentage of utilized global shared memory exceeds the specified value, Greenplum
         Database terminates queries based on memory usage, selecting from queries managed by the
         resource groups that are configured to use the <codeph>vmtracker</codeph> memory auditor.
@@ -8673,7 +9054,8 @@
       <p>For example, if global shared memory is 10GB, and this parameter is 90 (90%), Greenplum
         Database starts terminating queries when the utilized global shared memory exceeds 9 GB.</p>
       <p>For information about resource groups, see <xref
-          href="../../admin_guide/workload_mgmt_resgroups.xml"/>.</p>
+          href="../../admin_guide/workload_mgmt_resgroups.html" scope="external"
+          format="html">Using Resource Groups</xref>.</p>
       <table id="runaway_detector_activation_percent_table">
         <tgroup cols="3">
           <colspec colnum="1" colname="col1" colwidth="1*"/>
@@ -9301,20 +9683,21 @@ statement_mem = rg_perseg_mem / max_expected_concurrent_queries</codeblock></li>
     <body>
       <p>Specifies tablespaces in which to create temporary objects (temp tables and indexes on temp
         tables) when a <codeph>CREATE</codeph> command does not explicitly specify a tablespace.
-        Temporary files for purposes such as sorting large data sets are also created in these
-        tablespaces.</p>
-      <p>The value is a comma-separated list of names of tablespaces. When there is more than one name in the list,
-        Greenplum chooses a random member of the list each time a temporary object is to be created;
-        except that within a transaction, successively created temporary objects are placed in
-        successive tablespaces from the list. If the selected element of the list is an empty
-        string, Greenplum automatically uses the default tablespace of the current database
-        instead.</p>
-      <p>When <codeph>temp_tablespaces</codeph> is set interactively, specifying a nonexistent
-        tablespace is an error, as is specifying a tablespace for which the user does not have
-          <codeph>CREATE</codeph> privilege. However, when using a previously set value, nonexistent
-        tablespaces are ignored, as are tablespaces for which the user lacks <codeph>CREATE</codeph>
-        privilege. In particular, this rule applies when using a value set in
-          <codeph>postgresql.conf</codeph>.</p>
+        These tablespaces can also include temporary files for purposes such as large data set sorting. </p>
+      
+      <p>The value is a comma-separated list of tablespace names. When the list contains more than
+        one tablespace name, Greenplum chooses a random list member each time it creates a temporary
+        object. An exception applies within a transaction, where successively created temporary
+        objects are placed in successive tablespaces from the list. If the selected element of the
+        list is an empty string, Greenplum automatically uses the default tablespace of the current
+        database instead.</p>
+      
+      <p>When setting <codeph>temp_tablespaces</codeph> interactively, avoid specifying a
+        nonexistent tablespace, or a tablespace for which the user does have <codeph>CREATE</codeph>
+        privileges. For non-superusers, a superuser must <codeph>GRANT</codeph> them the
+          <codeph>CREATE</codeph> privilege on the temp tablespace.. When using a previously set
+        value (for example a value in <codeph>postgresql.conf</codeph>), nonexistent tablespaces are
+        ignored, as are tablespaces for which the user lacks <codeph>CREATE</codeph> privilege. </p>
       <p>The default value is an empty string, which results in all temporary objects being created
         in the default tablespace of the current database.</p>
       <p>See also <xref href="#default_tablespace" format="dita"/>.</p>
@@ -9447,7 +9830,7 @@ statement_mem = rg_perseg_mem / max_expected_concurrent_queries</codeblock></li>
             <row>
               <entry colname="col1">Boolean</entry>
               <entry colname="col2">true</entry>
-              <entry colname="col3">master<p>system</p><p>reload</p><p>superuser</p></entry>
+              <entry colname="col3">master<p>session</p><p>reload</p><p>superuser</p></entry>
             </row>
           </tbody>
         </tgroup>
@@ -9939,7 +10322,8 @@ statement_mem = rg_perseg_mem / max_expected_concurrent_queries</codeblock></li>
         <note type="warning">Disabling SSL certificate authentication exposes a security risk by not
           validating the <codeph>gpfdists</codeph> SSL certificate. </note></p>
       <p>For information about the <codeph>gpfdists</codeph> protocol, see <xref
-          href="../../admin_guide/external/g-gpfdists-protocol.xml">gpfdists:// Protocol</xref>. For
+          href="../../admin_guide/external/g-gpfdists-protocol.html" scope="external"
+          format="html">gpfdists:// Protocol</xref>. For
         information about running the <codeph>gpfdist</codeph> utility, see <xref
           href="../../utility_guide/ref/gpfdist.xml"/>. </p>
       <table id="table_ncx_n1h_ldb">
@@ -10145,8 +10529,8 @@ statement_mem = rg_perseg_mem / max_expected_concurrent_queries</codeblock></li>
           </thead>
           <tbody>
             <row>
-              <entry colname="col1">integer 10000000 - 2000000000</entry>
-              <entry colname="col2">1000000000</entry>
+              <entry colname="col1">integer 10000000 - INT_MAX</entry>
+              <entry colname="col2">100000000</entry>
               <entry colname="col3">local<p>system</p><p>restart</p></entry>
             </row>
           </tbody>
@@ -10174,7 +10558,7 @@ statement_mem = rg_perseg_mem / max_expected_concurrent_queries</codeblock></li>
           </thead>
           <tbody>
             <row>
-              <entry colname="col1">integer 10000000 - 2000000000</entry>
+              <entry colname="col1">integer 10000000 - INT_MAX</entry>
               <entry colname="col2">500000000</entry>
               <entry colname="col3">local<p>system</p><p>restart</p></entry>
             </row>

@@ -3,6 +3,10 @@
 -- Queries that lead to wrong result when we don't finish executing the subtree below the shared scan being squelched.
 --
 
+-- start_ignore
+CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
+-- end_ignore
+
 CREATE SCHEMA shared_scan;
 
 SET search_path = shared_scan;
@@ -48,12 +52,13 @@ SET statement_timeout = '15s';
 
 RESET statement_timeout;
 
-SELECT *,
+SELECT COUNT(*)
+FROM (SELECT *,
         (
         WITH cte AS (SELECT * FROM jazz WHERE jazz.e = bar.c)
         SELECT 1 FROM cte c1, cte c2
         )
-        FROM bar;
+      FROM bar) as s;
 
 CREATE TABLE t1 (a int, b int);
 CREATE TABLE t2 (a int);
@@ -93,3 +98,42 @@ $$;
 
 -- This should only ERROR and should not SIGSEGV
 SELECT col_mismatch_func2();
+
+-- https://github.com/greenplum-db/gpdb/issues/12701
+-- Disable cte sharing in subquery
+drop table if exists pk_list;
+create table pk_list (id int, schema_name varchar, table_name varchar) distributed by (id);
+drop table if exists calender;
+create table calender (id int, data_hour timestamp) distributed by (id);
+
+explain (costs off)
+with
+	tbls as (select distinct schema_name, table_name as table_nm from pk_list),
+	tbls_daily_report_23 as (select unnest(string_to_array('mart_cm.card' ,',')) as table_nm_23),
+	tbls_w_onl_actl_data as (select unnest(string_to_array('mart_cm.cont_resp,mart_cm.card', ',')) as table_nm_onl_act)
+select  data_hour, stat.schema_name as schema_nm, dt.table_nm
+from (
+	select * from calender c
+	cross join tbls
+) dt
+inner join (
+	select tbls.schema_name, tbls.table_nm as table_name
+	from tbls tbls
+) stat on dt.table_nm = stat.table_name
+where
+	(data_hour = date_trunc('day',data_hour) and stat.schema_name || '.' ||stat.table_name not in (select table_nm_23 from tbls_daily_report_23))
+	and (stat.schema_name || '.' ||stat.table_name not in (select table_nm_onl_act from tbls_w_onl_actl_data))
+	or (stat.schema_name || '.' ||stat.table_name in (select table_nm_onl_act from tbls_w_onl_actl_data));
+
+-- Test the scenario which already opened many fds
+-- start_ignore
+RESET search_path;
+-- end_ignore
+\! mkdir -p /tmp/_gpdb_fault_inject_tmp_dir/
+
+select gp_inject_fault('inject_many_fds_for_shareinputscan', 'skip', dbid) from gp_segment_configuration where role = 'p' and content = 0;
+-- borrow the test query in gp_aggregates
+select case when ten < 5 then ten else ten * 2 end, count(distinct two), count(distinct four) from tenk1 group by 1;
+select gp_inject_fault('inject_many_fds_for_shareinputscan', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = 0;
+
+\! rm -rf /tmp/_gpdb_fault_inject_tmp_dir/

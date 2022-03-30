@@ -216,6 +216,15 @@ enum EOptTraceFlag
 	// Enable handling external partitioned tables
 	EopttraceEnableExternalPartitionedTables = 103040,
 
+	// enable NL Left Join plan alternatives where inner child is redistributed if possible
+	EopttraceEnableRedistributeNLLOJInnerChild = 103041,
+
+	// Explore a nested loop join even if a hash join is possible
+	EopttraceForceComprehensiveJoinImplementation = 103042,
+
+	// Ordered Agg
+	EopttraceEnableOrderedAgg = 103043,
+
 	///////////////////////////////////////////////////////
 	///////////////////// statistics flags ////////////////
 	//////////////////////////////////////////////////////

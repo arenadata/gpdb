@@ -3535,6 +3535,7 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 	// create the shared input scan representing the CTE Producer
 	ShareInputScan *shared_input_scan = MakeNode(ShareInputScan);
 	shared_input_scan->share_id = cte_id;
+	shared_input_scan->discard_output = true;
 	Plan *plan = &(shared_input_scan->scan.plan);
 	plan->plan_node_id = m_dxl_to_plstmt_context->GetNextPlanId();
 
@@ -3607,6 +3608,13 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 
 		child_plan = materialize_plan;
 	}
+
+	// Targetlist mismatch leads to different tuple bindings, see #12796.
+	// We assume targetlist's equivalence. In case of inequality one list
+	// is a subset of another, so it safe to compare only length.
+	if (list_length(child_plan->targetlist) != list_length(plan->targetlist))
+		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,
+			GPOS_WSZ_LIT("Shared Scan and child plan targetlist mismatch."));
 
 	InitializeSpoolingInfo(child_plan, cte_id);
 
@@ -3747,6 +3755,7 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEConsumerToSharedScan(
 
 	ShareInputScan *share_input_scan_cte_consumer = MakeNode(ShareInputScan);
 	share_input_scan_cte_consumer->share_id = cte_id;
+	share_input_scan_cte_consumer->discard_output = false;
 
 	Plan *plan = &(share_input_scan_cte_consumer->scan.plan);
 	plan->plan_node_id = m_dxl_to_plstmt_context->GetNextPlanId();

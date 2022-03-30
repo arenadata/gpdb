@@ -1343,19 +1343,6 @@ AcquireDeletionLock(const ObjectAddress *object, int flags)
 			LockRelationOid(object->objectId, ShareUpdateExclusiveLock);
 		else
 			LockRelationOid(object->objectId, AccessExclusiveLock);
-		/*
-		 * GPDB: If this was a partition, or some other object for which
-		 * we are careful to always lock the parent object, we don't need
-		 * to keep the lock on the sub-object. This helps to keep the lock
-		 * table size in check, if you e.g. drop a table with thousands
-		 * of partitions. It would be unpleasent if you could not drop
-		 * such a table because the lock table runs out of space.
-		 *
-		 * To provide at least some protection though, we still actuire
-		 * the lock momentarily.
-		 */
-		if (!rel_needs_long_lock(object->objectId))
-			UnlockRelationOid(object->objectId, AccessExclusiveLock);
 	}
 	else
 	{
@@ -1372,16 +1359,7 @@ static void
 ReleaseDeletionLock(const ObjectAddress *object)
 {
 	if (object->classId == RelationRelationId)
-	{
-		/*
-		 * GPDB: Since we might already have released the lock (see
-		 * AcquireDeletionLock), we mustn't try to release it again.
-		 */
-		if (!rel_needs_long_lock(object->objectId))
-			return;
-
 		UnlockRelationOid(object->objectId, AccessExclusiveLock);
-	}
 	else
 		/* assume we should lock the whole object not a sub-object */
 		UnlockDatabaseObject(object->classId, object->objectId, 0,
@@ -1962,17 +1940,13 @@ find_expr_references_walker(Node *node,
 							   context->addrs);
 		}
 
-		/* query_tree_walker ignores ORDER BY etc, but we need those opers */
-		find_expr_references_walker((Node *) query->sortClause, context);
-		find_expr_references_walker((Node *) query->groupClause, context);
-		find_expr_references_walker((Node *) query->distinctClause, context);
-
 		/* Examine substructure of query */
 		context->rtables = lcons(query->rtable, context->rtables);
 		result = query_tree_walker(query,
 								   find_expr_references_walker,
 								   (void *) context,
-								   QTW_IGNORE_JOINALIASES);
+								   QTW_IGNORE_JOINALIASES |
+								   QTW_EXAMINE_SORTGROUP);
 		context->rtables = list_delete_first(context->rtables);
 		return result;
 	}

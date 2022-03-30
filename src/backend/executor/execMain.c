@@ -114,7 +114,11 @@
 #include "cdb/memquota.h"
 #include "cdb/cdbtargeteddispatch.h"
 #include "cdb/cdbutil.h"
+#include "cdb/cdbendpoint.h"
 
+#define IS_PARALLEL_RETRIEVE_CURSOR(queryDesc)	(queryDesc->ddesc &&	\
+										queryDesc->ddesc->parallelCursorName &&	\
+										strlen(queryDesc->ddesc->parallelCursorName) > 0)
 
 /* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
 ExecutorStart_hook_type ExecutorStart_hook = NULL;
@@ -151,6 +155,7 @@ static void FillSliceTable(EState *estate, PlannedStmt *stmt);
 static PartitionNode *BuildPartitionNodeFromRoot(Oid relid);
 static void InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate);
 static void AdjustReplicatedTableCounts(EState *estate);
+static void check_epq_safe_on_qes(Plan *plan);
 
 /* end of local decls */
 
@@ -267,6 +272,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
 	EState	   *estate;
 	MemoryContext oldcontext;
+	Slice *slice0 = NULL;
 	GpExecIdentity exec_identity;
 	bool		shouldDispatch;
 	bool		needDtx;
@@ -425,6 +431,7 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
+
 	if (Gp_role == GP_ROLE_DISPATCH &&
 		(queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL ||
 		 queryDesc->plannedstmt->nMotionNodes > 0))
@@ -628,6 +635,11 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			shouldDispatch = false;
 
 		/*
+		 * slice0 is the root slice of the main plan if the query
+		 * needs to be dispatched.
+		 */
+		slice0 = getCurrentSlice(estate, 0);
+		/*
 		 * if in dispatch mode, time to serialize plan and query
 		 * trees, and fire off cdb_exec command to each of the qexecs
 		 */
@@ -717,7 +729,14 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 *
 			 * Main plan is parallel, send plan to it.
 			 */
-			if (queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
+			/*
+			 * When the gangType of slice0 is not GANGTYPE_UNALLOCATED,
+			 * the gang will execute on the QE, so the QD needs to dispatch
+			 * the plan to the segment.
+			 * Otherwise, it will run on QD process, i.e. the current process.
+			 * Only if the children of slice0 is not empty, the QD will dispatch.
+			 */
+			if (slice0 && (slice0->gangType != GANGTYPE_UNALLOCATED || slice0->children))
 				CdbDispatchPlan(queryDesc, needDtx, true);
 		}
 
@@ -749,9 +768,16 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 		else if (exec_identity == GP_ROOT_SLICE)
 		{
 			/* Run a root slice. */
-			if (queryDesc->planstate != NULL &&
-				queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL &&
-				queryDesc->plannedstmt->nMotionNodes > 0 &&
+			/*
+			 * Only if we run on the QD and the slice0 has children,
+			 * it should establish interconnect.
+			 * Note: calling CdbDispatchPlan() doesn't infer to call
+			 * SetupInterconnect(). Like simple INSERT, the QD dispatches
+			 * the plan to the QEs on segments, but it doesn't require
+			 * interconnect to the QE.
+			 */
+			if (queryDesc->planstate != NULL && slice0 &&
+				(slice0->gangType == GANGTYPE_UNALLOCATED && slice0->children) &&
 				!estate->es_interconnect_is_setup)
 			{
 				Assert(!estate->interconnect_context);
@@ -858,6 +884,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	DestReceiver *dest;
 	bool		sendTuples;
 	MemoryContext oldcontext;
+	bool		endpointCreated = false;
+
 	/*
 	 * NOTE: Any local vars that are set in the PG_TRY block and examined in the
 	 * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
@@ -973,20 +1001,56 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 		}
 		else if (exec_identity == GP_ROOT_SLICE)
 		{
+			DestReceiver *endpointDest;
+
 			/*
-			 * Run a root slice
-			 * It corresponds to the "normal" path through the executor
-			 * in that we enter the plan at the top and count on the
-			 * motion nodes at the fringe of the top slice to return
-			 * without ever calling nodes below them.
+			 * When run a root slice, and it is a PARALLEL RETRIEVE CURSOR, it means
+			 * QD become the end point for connection. It is true, for
+			 * instance, SELECT * FROM foo LIMIT 10, and the result should
+			 * go out from QD.
+			 *
+			 * For the scenario: endpoint on QE, the query plan is changed,
+			 * the root slice also exists on QE.
 			 */
-			ExecutePlan(estate,
-						queryDesc->planstate,
-						operation,
-						sendTuples,
-						count,
-						direction,
-						dest);
+			if (IS_PARALLEL_RETRIEVE_CURSOR(queryDesc))
+			{
+				SetupEndpointExecState(queryDesc->tupDesc,
+									   queryDesc->ddesc->parallelCursorName,
+									   operation,
+									   &endpointDest);
+				endpointCreated = true;
+
+				/*
+				 * Once the endpoint has been created in shared memory, send acknowledge
+				 * message to QD so DECLARE PARALLEL RETRIEVE CURSOR statement can finish.
+				 */
+				EndpointNotifyQD(ENDPOINT_READY_ACK_MSG);
+
+				ExecutePlan(estate,
+							queryDesc->planstate,
+							operation,
+							true,
+							count,
+							direction,
+							endpointDest);
+			}
+			else
+			{
+				/*
+				 * Run a root slice
+				 * It corresponds to the "normal" path through the executor
+				 * in that we enter the plan at the top and count on the
+				 * motion nodes at the fringe of the top slice to return
+				 * without ever calling nodes below them.
+				 */
+				ExecutePlan(estate,
+							queryDesc->planstate,
+							operation,
+							sendTuples,
+							count,
+							direction,
+							dest);
+			}
 		}
 		else
 		{
@@ -1032,6 +1096,9 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 	/*
 	 * shutdown tuple receiver, if we started it
 	 */
+	if (endpointCreated)
+		DestroyEndpointExecState();
+
 	if (sendTuples)
 		(*dest->rShutdown) (dest);
 
@@ -1624,6 +1691,41 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 	}
 }
 
+static void
+adjust_root_slice_for_parallel_retrieve_cursor(Flow *flow, Slice *root_slice)
+{
+	int numsegments;
+
+	if (flow->flotype == FLOW_SINGLETON &&
+		(flow->locustype == CdbLocusType_Entry ||
+		flow->locustype == CdbLocusType_General ||
+		flow->locustype == CdbLocusType_SingleQE))
+	{
+		/*
+		 * For these scenarios, parallel retrieve cursor needs to run on entrydb
+		 * since endpoint QE needs to interact with the retrieve connections.
+		 */
+		numsegments = 1;
+		root_slice->gangType = GANGTYPE_ENTRYDB_READER;
+	}
+	else if (flow->locustype == CdbLocusType_SegmentGeneral)
+	{
+		/*
+		 * queries to replicated table run on a single segment.
+		 */
+		numsegments = flow->numsegments;
+		root_slice->gangType = GANGTYPE_SINGLETON_READER;
+	}
+	else
+	{
+		/*
+		 * queries to non-replicated table run on segments.
+		 */
+		numsegments = flow->numsegments;
+		root_slice->gangType = GANGTYPE_PRIMARY_READER;
+	}
+	FillSliceGangInfo(root_slice, numsegments);
+}
 
 /* ----------------------------------------------------------------
  *		InitPlan
@@ -1981,7 +2083,19 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	 * Initialize the slice table.
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		bool isParallelRetrieveCursor = (queryDesc->ddesc &&
+										queryDesc->ddesc->parallelCursorName &&
+										queryDesc->ddesc->parallelCursorName[0]);
+
 		FillSliceTable(estate, plannedstmt);
+		if (isParallelRetrieveCursor)
+		{
+			Slice *root_slice = (Slice*)list_nth(estate->es_sliceTable->slices, 0);
+			Flow  *flow = plannedstmt->planTree->flow;
+			adjust_root_slice_for_parallel_retrieve_cursor(flow, root_slice);
+		}
+	}
 
 	/*
 	 * Initialize private state information for each SubPlan.  We must do this
@@ -2172,10 +2286,10 @@ CheckValidResultRel(Relation resultRel, CmdType operation)
 
 			/*
 			 * Okay only if there's a suitable INSTEAD OF trigger.  Messages
-			 * here should match rewriteHandler.c's rewriteTargetView, except
-			 * that we omit errdetail because we haven't got the information
-			 * handy (and given that we really shouldn't get here anyway, it's
-			 * not worth great exertion to get).
+			 * here should match rewriteHandler.c's rewriteTargetView and
+			 * RewriteQuery, except that we omit errdetail because we haven't
+			 * got the information handy (and given that we really shouldn't
+			 * get here anyway, it's not worth great exertion to get).
 			 */
 			/*
 			 * GPDB_91_MERGE_FIXME: In Greenplum, views are treated as non
@@ -3500,21 +3614,8 @@ EvalPlanQual(EState *estate, EPQState *epqstate,
 
 	Assert(rti > 0);
 
-	/*
-	 * Greenplum cannot create gang in QEs so it does not support
-	 * EvalPlanQual that subplan contain motions. This can happen
-	 * in two cases:
-	 *   1. GDD is enabled, so update|delete can be concurrently executing
-	 *   2. Utility mode connect to a segment and other global transaction
-	 *      do UpdateStatement.
-	 */
-	Assert(subPlan != NULL);
-	if (subPlan->nMotionNodes > 0)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-				 errmsg("EvalPlanQual can not handle subPlan with Motion node")));
-	}
+	/* Greenplum specific check */
+	check_epq_safe_on_qes(subPlan);
 
 	/*
 	 * Get and lock the updated version of the row; if fail, return NULL.
@@ -4202,6 +4303,12 @@ EvalPlanQualStart(EPQState *epqstate, EState *parentestate, Plan *planTree)
 		Plan	   *subplan = (Plan *) lfirst(l);
 		PlanState  *subplanstate;
 
+		/*
+		 * Greenplum specific check
+		 * See Issue https://github.com/greenplum-db/gpdb/issues/12902 for details.
+		 */
+		check_epq_safe_on_qes(subplan);
+
 		subplanstate = ExecInitNode(subplan, estate, 0);
 		estate->es_subplanstates = lappend(estate->es_subplanstates,
 										   subplanstate);
@@ -4771,7 +4878,7 @@ FillSliceGangInfo(Slice *slice, int numsegments)
 				slice->gangSize = numsegments;
 				slice->segments = NIL;
 				for (i = 0; i < numsegments; i++)
-					slice->segments = lappend_int(slice->segments, i);
+					slice->segments = lappend_int(slice->segments, i % getgpsegmentCount());
 			}
 			break;
 		case GANGTYPE_ENTRYDB_READER:
@@ -5178,4 +5285,29 @@ AdjustReplicatedTableCounts(EState *estate)
 
 	if (containReplicatedTable)
 		estate->es_processed = estate->es_processed / numsegments;
+}
+
+static void
+check_epq_safe_on_qes(Plan *plan)
+{
+	Assert(!IS_QUERY_DISPATCHER());
+	/*
+	 * Greenplum cannot create gang in QEs so it does not support
+	 * EvalPlanQual that subplan contain motions. This can happen
+	 * in two cases:
+	 *   1. GDD is enabled, so update|delete can be concurrently executing
+	 *   2. Utility mode connect to a segment and other global transaction
+	 *      do UpdateStatement.
+	 *
+	 * Another case is when to EvalPlanQual, it will try to init all
+	 * the SubPlans (even thoses subplans are not used for current plan
+	 * qual), so we need also check if subplans contain motion. See comments
+	 * of EvalPlanQualStart for details.
+	 */
+	if (plan && plan->nMotionNodes > 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				 errmsg("EvalPlanQual can not handle subPlan with Motion node")));
+	}
 }

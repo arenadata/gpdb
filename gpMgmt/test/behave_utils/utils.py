@@ -125,8 +125,7 @@ def run_gpcommand(context, command, cmd_prefix=''):
 def run_gpcommand_async(context, command):
     cmd = Command(name='run %s' % command, cmdStr='$GPHOME/bin/%s' % (command))
     asyncproc = cmd.runNoWait()
-    if 'asyncproc' not in context:
-        context.asyncproc = asyncproc
+    context.asyncproc = asyncproc
 
 
 def check_stdout_msg(context, msg, escapeStr = False):
@@ -154,8 +153,23 @@ def check_err_msg(context, err_msg):
     if not hasattr(context, 'exception'):
         raise Exception('An exception was not raised and it was expected')
     pat = re.compile(err_msg)
-    if not pat.search(context.error_message):
-        err_str = "Expected error string '%s' and found: '%s'" % (err_msg, context.error_message)
+    actual = context.error_message
+    if type(actual) is bytes:
+        actual = actual.decode()
+    if not pat.search(actual):
+        err_str = "Expected error string '%s' and found: '%s'" % (err_msg, actual)
+        raise Exception(err_str)
+
+
+def check_string_not_present_err_msg(context, err_msg):
+    if not hasattr(context, 'exception'):
+        raise Exception('An exception was not raised and it was expected')
+    pat = re.compile(err_msg)
+    actual = context.error_message
+    if type(actual) is bytes:
+        actual = actual.decode()
+    if pat.search(actual):
+        err_str = "Did not expect error string '%s' but found: '%s'" % (err_msg, actual)
         raise Exception(err_str)
 
 
@@ -601,6 +615,14 @@ def are_segments_synchronized():
     return True
 
 
+def are_segments_synchronized_for_content_ids(content_ids):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    segments = gparray.getDbList()
+    for seg in segments:
+        if seg.content in content_ids and seg.mode != MODE_SYNCHRONIZED:
+            return False
+    return True
+
 def check_row_count(context, tablename, dbname, nrows):
     NUM_ROWS_QUERY = 'select count(*) from %s' % tablename
     # We want to bubble up the exception so that if table does not exist, the test fails
@@ -681,6 +703,14 @@ def are_segments_running():
             result = False
     return result
 
+def is_segment_running(role, contentid):
+    gparray = GpArray.initFromCatalog(dbconn.DbURL())
+    segments = gparray.getDbList()
+    for seg in segments:
+        if seg.getSegmentRole() == role and seg.content == contentid and seg.status != 'u':
+            print("segment is not up - %s" % seg)
+            return False
+    return True
 
 def modify_sql_file(file, hostport):
     if os.path.isfile(file):
@@ -814,23 +844,23 @@ def wait_for_unblocked_transactions(context, num_retries=150):
         raise Exception('Unable to establish a connection to database !!!')
 
 
-def wait_for_desired_query_result_on_segment(host, port, query, desired_result, num_retries=150):
+def wait_for_desired_query_result(dburl, query, desired_result, utility=False):
     """
     Tries once a second to check for the desired query result on the segment.
     Raises an Exception after failing <num_retries> times.
     """
     attempt = 0
+    num_retries = 150
     actual_result = None
-    url = dbconn.DbURL(hostname=host, port=port, dbname='template1')
     while (attempt < num_retries) and (actual_result != desired_result):
         attempt += 1
         try:
-            with dbconn.connect(url, utility=True) as conn:
+            with dbconn.connect(dburl, utility=utility) as conn:
                 cursor = dbconn.execSQL(conn, query)
                 rows = cursor.fetchall()
                 actual_result = rows[0][0]
         except Exception as e:
-            print('could not query segment (%s:%s) %s' % (host, port, e))
+            print('could not query (%s:%s) %s' % (dburl.pghost, dburl.pgport, e))
         time.sleep(1)
 
     if attempt == num_retries:

@@ -829,11 +829,15 @@ cdb_add_join_path(PlannerInfo *root, RelOptInfo *parent_rel, JoinType orig_joint
 			return;
 
 		if (!root->disallow_unique_rowid_path)
+		{
 			path = (Path *) create_unique_rowid_path(root,
 													 parent_rel,
 													 (Path *) new_path,
 													 new_path->outerjoinpath->parent->relids,
 													 required_outer);
+		}
+		else
+			return;
 	}
 	else if (orig_jointype == JOIN_DEDUP_SEMI_REVERSE)
 	{
@@ -844,11 +848,15 @@ cdb_add_join_path(PlannerInfo *root, RelOptInfo *parent_rel, JoinType orig_joint
 			return;
 
 		if (!root->disallow_unique_rowid_path)
+		{
 			path = (Path *) create_unique_rowid_path(root,
 													 parent_rel,
 													 (Path *) new_path,
 													 new_path->innerjoinpath->parent->relids,
 													 required_outer);
+		}
+		else
+			return;
 	}
 
 	add_path(parent_rel, path);
@@ -1603,7 +1611,8 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 		else
 		{
 			subpath = cdbpath_create_motion_path(root, subpath, subpath->pathkeys, false, targetlocus);
-			Insist(subpath);
+			if (!subpath)
+				elog(ERROR, "Can't create valid motion for Append node.");
 		}
 
 		pathnode->sameslice_relids = bms_union(pathnode->sameslice_relids, subpath->sameslice_relids);
@@ -3052,19 +3061,33 @@ create_foreignscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->path.total_cost = total_cost;
 	pathnode->path.pathkeys = pathkeys;
 
-	switch (rel->ftEntry->exec_location)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		switch (rel->ftEntry->exec_location)
+		{
 		case FTEXECLOCATION_ANY:
 			CdbPathLocus_MakeGeneral(&(pathnode->path.locus), getgpsegmentCount());
 			break;
 		case FTEXECLOCATION_ALL_SEGMENTS:
-			CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
+			if (rel->ftEntry)
+			{
+				ForeignServer *server = GetForeignServer(rel->ftEntry->serverid);
+				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), server->num_segments);
+			}
+			else
+				CdbPathLocus_MakeStrewn(&(pathnode->path.locus), getgpsegmentCount());
 			break;
 		case FTEXECLOCATION_MASTER:
 			CdbPathLocus_MakeEntry(&(pathnode->path.locus));
 			break;
 		default:
 			elog(ERROR, "unrecognized exec_location '%c'", rel->ftEntry->exec_location);
+		}
+	}
+	else
+	{
+		/* make entry locus for utility role */
+		CdbPathLocus_MakeEntry(&(pathnode->path.locus));
 	}
 
 	pathnode->fdw_private = fdw_private;

@@ -633,6 +633,16 @@ CheckAttributeType(const char *attname,
 
 		containing_rowtypes = list_delete_first(containing_rowtypes);
 	}
+	else if (att_typtype == TYPTYPE_RANGE)
+	{
+		/*
+		 * If it's a range, recurse to check its subtype.
+		 */
+		CheckAttributeType(attname, get_range_subtype(atttypid),
+						   get_range_collation(atttypid),
+						   containing_rowtypes,
+						   allow_system_table_mods);
+	}
 	else if (OidIsValid((att_typelem = get_element_type(atttypid))))
 	{
 		/*
@@ -2332,7 +2342,6 @@ void
 heap_drop_with_catalog(Oid relid)
 {
 	Relation	rel;
-	bool		is_part_child = false;
 	bool		is_appendonly_rel;
 	bool		is_external_rel;
 	char		relkind;
@@ -2394,15 +2403,11 @@ heap_drop_with_catalog(Oid relid)
 	}
 
 	/*
-	 * Close relcache entry, but *keep* AccessExclusiveLock (unless this is
-	 * a child partition) on the relation until transaction commit.  This
-	 * ensures no one else will try to do something with the doomed relation.
+	 * Close relcache entry, but *keep* AccessExclusiveLock on the relation
+	 * until transaction commit.  This ensures no one else will try to do
+	 * something with the doomed relation.
 	 */
-	is_part_child = !rel_needs_long_lock(RelationGetRelid(rel));
-	if (is_part_child)
-		relation_close(rel, AccessExclusiveLock);
-	else
-		relation_close(rel, NoLock);
+	relation_close(rel, NoLock);
 
 	/*
 	 * Forget any ON COMMIT action for the rel
@@ -3361,8 +3366,15 @@ RelationTruncateIndexes(Relation heapRelation)
 		/* Open the index relation; use exclusive lock, just to be sure */
 		currentIndex = index_open(indexId, AccessExclusiveLock);
 
-		/* Fetch info needed for index_build */
-		indexInfo = BuildIndexInfo(currentIndex);
+		/*
+		 * Fetch info needed for index_build.  Since we know there are no
+		 * tuples that actually need indexing, we can use a dummy IndexInfo.
+		 * This is slightly cheaper to build, but the real point is to avoid
+		 * possibly running user-defined code in index expressions or
+		 * predicates.  We might be getting invoked during ON COMMIT
+		 * processing, and we don't want to run any such code then.
+		 */
+		indexInfo = BuildDummyIndexInfo(currentIndex);
 
 		/* Now truncate the actual file (and discard buffers) */
 		RelationTruncate(currentIndex, 0);

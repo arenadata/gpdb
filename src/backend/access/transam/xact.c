@@ -36,6 +36,7 @@
 #include "catalog/storage_database.h"
 #include "commands/async.h"
 #include "commands/dbcommands.h"
+#include "commands/extension.h"
 #include "commands/resgroupcmds.h"
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"
@@ -73,6 +74,7 @@
 
 #include "access/distributedlog.h"
 #include "cdb/cdbdistributedsnapshot.h"
+#include "cdb/cdbendpoint.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbtm.h"
@@ -2678,18 +2680,19 @@ CommitTransaction(void)
 	AtEOXact_LargeObject(true);
 
 	/*
+	 * Insert notifications sent by NOTIFY commands into the queue.  This
+	 * should be late in the pre-commit sequence to minimize time spent
+	 * holding the notify-insertion lock.  However, this could result in
+	 * creating a snapshot, so we must do it before serializable cleanup.
+	 */
+	PreCommit_Notify();
+
+	/*
 	 * Mark serializable transaction as complete for predicate locking
 	 * purposes.  This should be done as late as we can put it and still allow
 	 * errors to be raised for failure patterns found at commit.
 	 */
 	PreCommit_CheckForSerializationFailure();
-
-	/*
-	 * Insert notifications sent by NOTIFY commands into the queue.  This
-	 * should be late in the pre-commit sequence to minimize time spent
-	 * holding the notify-insertion lock.
-	 */
-	PreCommit_Notify();
 
 	/*
 	 * Prepare all QE.
@@ -2969,14 +2972,14 @@ PrepareTransaction(void)
 	/* close large objects before lower-level cleanup */
 	AtEOXact_LargeObject(true);
 
+	/* NOTIFY requires no work at this point */
+
 	/*
 	 * Mark serializable transaction as complete for predicate locking
 	 * purposes.  This should be done as late as we can put it and still allow
 	 * errors to be raised for failure patterns found at commit.
 	 */
 	PreCommit_CheckForSerializationFailure();
-
-	/* NOTIFY will be handled below */
 
 	/*
 	 * In Postgres, MyXactAccessedTempRel is used to error out if PREPARE TRANSACTION
@@ -3228,6 +3231,10 @@ AbortTransaction(void)
 
 	/* Make sure we have a valid memory context and resource owner */
 	AtAbort_Memory();
+
+	if (Gp_role == GP_ROLE_EXECUTE)
+		ResetExtensionCreatingGlobalVarsOnQE();
+
 	AtAbort_ResourceOwner();
 
 	/*
@@ -3294,6 +3301,7 @@ AbortTransaction(void)
 	 * do abort processing
 	 */
 	AfterTriggerEndXact(false); /* 'false' means it's abort */
+	AtAbort_EndpointExecState();
 	AtAbort_Portals();
 	AtAbort_DispatcherState();
 	AtEOXact_SharedSnapshot();
@@ -5173,6 +5181,15 @@ AbortOutOfAnyTransaction(void)
 
 	/* Ensure we're not running in a doomed memory context */
 	AtAbort_Memory();
+
+	/*
+	 * Greenplum specific behavior:
+	 * Some QEs might already be in Abort State, they still need
+	 * to reset Extension related global vars, so we invoke them
+	 * here (not AbortTransction).
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		ResetExtensionCreatingGlobalVarsOnQE();
 
 	/*
 	 * Get out of any transaction or nested transaction

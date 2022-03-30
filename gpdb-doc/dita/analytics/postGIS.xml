@@ -53,7 +53,11 @@
     <body>
       <p><ph otherprops="pivotal">The Greenplum PostGIS extension package is available from <xref
             href="https://network.pivotal.io/products/pivotal-gpdb" scope="external" format="html"
-            >VMware Tanzu Network</xref>. </ph>You can install the package using the Greenplum
+            >VMware Tanzu Network</xref>. After you download the package, you can follow the
+           instructions in <xref href="../install_guide/verify_sw.xml#topic1"
+             scope="peer" format="dita">Verifying the Greenplum Database Software Download</xref>
+           to verify the integrity of the <b>Greenplum Advanced Analytics PostGIS</b>
+           software.</ph> You can install the package using the Greenplum
         Package Manager (<codeph>gppkg</codeph>). For details, see <codeph>gppkg</codeph> in the
           <cite>Greenplum Database Utility Guide</cite>.</p>
       <p>Greenplum Database supports the PostGIS extension with these component versions.<ul
@@ -66,7 +70,7 @@
           <li>Expat 2.1.0</li>
         </ul></p>
       <p otherprops="pivotal">For the information about supported Greenplum extension packages and
-        software versions, see <xref href="../install_guide/platform-requirements.xml"/>. </p>
+        software versions, see <xref href="../install_guide/platform-requirements.html" scope="external" type="html"/>. </p>
       <p>There have been significant changes in PostGIS 2.5.4 compared with the previously supported
         version of 2.1.5. For a list of new and enhanced functions in PostGIS 2.5, see the PostGIS
         documentation <xref
@@ -157,7 +161,7 @@
         <p>To enable PostGIS support, install the Greenplum PostGIS extension package into the
           Greenplum Database system, and then use the <codeph>CREATE EXTENSION</codeph> command to
           enable PostGIS support for an individual database.</p>
-        <section>
+        <section id="section_dlv_xv1_rqb">
           <title>Installing the Greenplum PostGIS Extension Package</title>
           <p>Install Greenplum PostGIS extension package with the <codeph>gppkg</codeph> utility.
             For example, this command installs the package for RHEL 7.
@@ -290,7 +294,7 @@ DROP EXTENSION IF EXISTS fuzzystrmatch;</codeblock></li>
                 drop the PostGIS schema if required.</p></li>
           </ol>
         </section>
-        <section>
+        <section id="section_wvr_wv1_rqb">
           <title>Uninstalling the Greenplum PostGIS Extension Package</title>
           <p>After PostGIS support has been removed from all databases in the Greenplum Database
             system, you can remove the PostGIS extension package. For example, this
@@ -376,9 +380,9 @@ SELECT name,ST_AsText(geopoint) FROM geotest;</codeblock>
         <title>Building a Spatial Index</title>
         <body>
           <p>You can build a GiST index as follows:</p>
-          <codeblock>CREATE INDEX <i>indexname</i>
-  ON <i>tablename</i>
-  USING GIST ( <i>geometryfield</i> );</codeblock>
+          <codeblock>CREATE INDEX indexname
+  ON tablename
+  USING GIST ( geometryfield );</codeblock>
         </body>
       </topic>
     </topic>

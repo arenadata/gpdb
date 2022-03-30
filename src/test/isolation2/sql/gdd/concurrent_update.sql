@@ -28,20 +28,20 @@ DROP TABLE t_concurrent_update;
 2: UPDATE t_concurrent_update SET b=b+10 WHERE a=1;
 3: BEGIN;
 3: SET optimizer=off;
--- transaction 3 will wait transaction 1 on the segment
+-- transaction 3 will wait transaction 2 on the segment
 3&: UPDATE t_concurrent_update SET b=b+10 WHERE a=1;
 
 -- transaction 2 suspend before commit, but it will wake up transaction 3 on segment
-2: select gp_inject_fault('before_xact_end_procarray', 'suspend', dbid) FROM gp_segment_configuration WHERE role='p' AND content=-1;
+2: select gp_inject_fault('before_xact_end_procarray', 'suspend', '', 'isolation2test', '', 1, 1, 0, dbid) FROM gp_segment_configuration WHERE role='p' AND content=-1;
 2&: END;
 1: select gp_wait_until_triggered_fault('before_xact_end_procarray', 1, dbid) FROM gp_segment_configuration WHERE role='p' AND content=-1;
 -- transaction 3 should wait transaction 2 commit on master
 3<:
 3&: END;
-1: select gp_inject_fault('before_xact_end_procarray', 'reset', dbid) FROM gp_segment_configuration WHERE role='p' AND content=-1;
 -- the query should not get the incorrect distributed snapshot: transaction 1 in-progress
 -- and transaction 2 finished
 1: SELECT * FROM t_concurrent_update;
+1: select gp_inject_fault('before_xact_end_procarray', 'reset', dbid) FROM gp_segment_configuration WHERE role='p' AND content=-1;
 2<:
 3<:
 2q:
@@ -173,3 +173,28 @@ DROP TABLE t_concurrent_update;
 2q:
 
 0:drop table t_splitupdate_raise_error;
+
+-- test eval planqual with initPlan
+-- EvalPlanQualStart will init all subplans even if it does
+-- not use it. If such subplan contains Motion nodes, we should
+-- error out just like the behavior in EvalPlanQual.
+-- See Issue: https://github.com/greenplum-db/gpdb/issues/12902
+-- for details.
+1: create table t_epq_subplans(a int, b int);
+1: insert into t_epq_subplans values (1, 1);
+1: begin;
+1: update t_epq_subplans set b = b + 1;
+
+-- make sure planner will contain InitPlan
+-- NOTE: orca does not generate InitPlan.
+2: explain update t_epq_subplans set b = b + 1 where a > -1.5 * (select max(a) from t_epq_subplans);
+2&: update t_epq_subplans set b = b + 1 where a > -1.5 * (select max(a) from t_epq_subplans);
+
+1: end;
+-- session 2 should throw error and not PANIC
+2<:
+
+1: drop table t_epq_subplans;
+
+1q:
+2q:
