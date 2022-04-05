@@ -32,7 +32,12 @@ Feature: gpinitsystem tests
         Given the user runs "gpstate"
          Then gpstate should return a return code of 0
 
-    Scenario: gpinitsystem exits with status 1 when the user enters nothing for the confirmation
+	Scenario: gpinitsystem exits with status 0 when the user set locale variables
+		Given create demo cluster config
+		When the user runs command "export LC_MONETARY=en_US.UTF-8 | gpinitsystem -c ../gpAux/gpdemo/clusterConfigFile"
+		Then gpinitsystem should return a return code of 0
+
+	Scenario: gpinitsystem exits with status 1 when the user enters nothing for the confirmation
         Given create demo cluster config
         When the user runs command "echo '' | gpinitsystem -c ../gpAux/gpdemo/clusterConfigFile" eok
         Then gpinitsystem should return a return code of 1
