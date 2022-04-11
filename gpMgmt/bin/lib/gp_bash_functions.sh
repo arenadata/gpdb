@@ -194,8 +194,12 @@ WARN_MARK="<<<<<"
 #******************************************************************************
 
 IN_ARRAY () {
-    for v in $2; do
-        if [ x"$1" == x"$v" ]; then
+	local reg=".(cs)?[Uu][Tt][Ff](-|\s)?8"
+	local glibc_codeset=".utf8"
+	local locale=$(sed -E "s/${reg}/${glibc_codeset}/" <<< "$1")
+
+	for v in $2; do
+        if [ x"$locale" == x"$v" ]; then
             return 1
         fi
     done
