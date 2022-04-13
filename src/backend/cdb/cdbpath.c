@@ -1102,7 +1102,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
-				Assert(root->upd_del_replicated_table > 0);
+				//Assert(root->upd_del_replicated_table > 0);
 
 				/*
 				 * It only appear when we UPDATE a replicated table.

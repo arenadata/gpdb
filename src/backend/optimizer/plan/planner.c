@@ -938,6 +938,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 			// if (returningLists &&
 			// 	plan->flow->locustype == CdbLocusType_Replicated)
 			// 	focusPlan(plan, false, false);
+			parent_root->upd_del_replicated_table = root->upd_del_replicated_table;
 		}
 	}
 

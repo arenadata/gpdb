@@ -189,7 +189,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));
 			rel->attr_widths = (int32 *)
 				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(int32));
-			
+			/*
 			if (root->parse->hasModifyingCTE)
 			{
 				ListCell   *lc;
@@ -215,7 +215,7 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 						break;
 					}
 				}
-			}
+			}*/
 			break;
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d",
