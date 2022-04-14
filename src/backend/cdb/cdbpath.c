@@ -1102,32 +1102,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
-				//if (root->parse->hasModifyingCTE)
-				//	return
-				//Assert(root->upd_del_replicated_table > 0 || root->parse->hasModifyingCTE);
-
-				/*
-				 * It only appear when we UPDATE a replicated table.
-				 * All the segment which replicated table storaged must execute
-				 * the plan to delete tuple on himself, so if the segments count
-				 * of broadcast(locus is Replicated) if less than the replicated
-				 * table, we can not execute the plan correctly.
-				 *
-				 * TODO:Can we modify(or add) the broadcast motion for this case?
-				 */
-				Assert(CdbPathLocus_NumSegments(segGeneral->locus) <=
-					   CdbPathLocus_NumSegments(other->locus));
-
-				/*
-				 * Only need to broadcast other to the segments of the
-				 * replicated table.
-				 */
-				if (CdbPathLocus_NumSegments(segGeneral->locus) <
-					CdbPathLocus_NumSegments(other->locus))
-				{
-					other->locus.numsegments =
-							CdbPathLocus_NumSegments(segGeneral->locus);
-				}
+				Assert(root->parse->hasModifyingCTE && root->parse->commandType == CMD_SELECT);
 
 				return other->locus;
 			}
@@ -1237,25 +1212,29 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	 */
 	else if (CdbPathLocus_IsReplicated(outer.locus))
 	{
-		if (root->upd_del_replicated_table > 0 || root->parse->hasModifyingCTE)
+		Assert(false);
+		goto fail;
+		/*if (root->upd_del_replicated_table > 0)
 			CdbPathLocus_MakeReplicated(&inner.move_to,
 										CdbPathLocus_NumSegments(outer.locus));
 		else
 		{
 			Assert(false);
 			goto fail;
-		}
+		}*/
 	}
 	else if (CdbPathLocus_IsReplicated(inner.locus))
 	{
-		if (root->upd_del_replicated_table > 0  || root->parse->hasModifyingCTE)
+		Assert(false);
+		goto fail;
+		/*if (root->upd_del_replicated_table > 0)
 			CdbPathLocus_MakeReplicated(&outer.move_to,
 										CdbPathLocus_NumSegments(inner.locus));
 		else
 		{
 			Assert(false);
 			goto fail;
-		}
+		}*/
 	}
 	/*
 	 * Is either source confined to a single process? NB: Motion to a single
