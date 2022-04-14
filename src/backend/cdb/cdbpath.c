@@ -1102,7 +1102,9 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
-				//Assert(root->upd_del_replicated_table > 0);
+				//if (root->parse->hasModifyingCTE)
+				//	return
+				//Assert(root->upd_del_replicated_table > 0 || root->parse->hasModifyingCTE);
 
 				/*
 				 * It only appear when we UPDATE a replicated table.
@@ -1235,7 +1237,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	 */
 	else if (CdbPathLocus_IsReplicated(outer.locus))
 	{
-		if (root->upd_del_replicated_table > 0)
+		if (root->upd_del_replicated_table > 0 || root->parse->hasModifyingCTE)
 			CdbPathLocus_MakeReplicated(&inner.move_to,
 										CdbPathLocus_NumSegments(outer.locus));
 		else
@@ -1246,7 +1248,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	}
 	else if (CdbPathLocus_IsReplicated(inner.locus))
 	{
-		if (root->upd_del_replicated_table > 0)
+		if (root->upd_del_replicated_table > 0  || root->parse->hasModifyingCTE)
 			CdbPathLocus_MakeReplicated(&outer.move_to,
 										CdbPathLocus_NumSegments(inner.locus));
 		else
