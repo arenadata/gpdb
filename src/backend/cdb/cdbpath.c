@@ -1214,28 +1214,28 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	else if (CdbPathLocus_IsReplicated(outer.locus))
 	{
 		elog(WARNING, "POINT2");
-		goto fail;
-		/*if (root->upd_del_replicated_table > 0)
+
+		if (root->upd_del_replicated_table > 0 || root->parse->hasModifyingCTE)
 			CdbPathLocus_MakeReplicated(&inner.move_to,
 										CdbPathLocus_NumSegments(outer.locus));
 		else
 		{
 			Assert(false);
 			goto fail;
-		}*/
+		}
 	}
 	else if (CdbPathLocus_IsReplicated(inner.locus))
 	{
 		elog(WARNING, "POINT3");
-		goto fail;
-		/*if (root->upd_del_replicated_table > 0)
+
+		if (root->upd_del_replicated_table > 0 || root->parse->hasModifyingCTE)
 			CdbPathLocus_MakeReplicated(&outer.move_to,
 										CdbPathLocus_NumSegments(inner.locus));
 		else
 		{
 			Assert(false);
 			goto fail;
-		}*/
+		}
 	}
 	/*
 	 * Is either source confined to a single process? NB: Motion to a single
