@@ -1102,7 +1102,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
-				Assert(root->parse->hasModifyingCTE && root->parse->commandType == CMD_SELECT);
+				//Assert(root->parse->hasModifyingCTE && root->parse->commandType == CMD_SELECT);
+				elog(WARNING, "POINT1");
 
 				return other->locus;
 			}
@@ -1212,7 +1213,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	 */
 	else if (CdbPathLocus_IsReplicated(outer.locus))
 	{
-		Assert(false);
+		elog(WARNING, "POINT2");
 		goto fail;
 		/*if (root->upd_del_replicated_table > 0)
 			CdbPathLocus_MakeReplicated(&inner.move_to,
@@ -1225,7 +1226,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	}
 	else if (CdbPathLocus_IsReplicated(inner.locus))
 	{
-		Assert(false);
+		elog(WARNING, "POINT3");
 		goto fail;
 		/*if (root->upd_del_replicated_table > 0)
 			CdbPathLocus_MakeReplicated(&outer.move_to,
