@@ -193,10 +193,18 @@ WARN_MARK="<<<<<"
 # Functions
 #******************************************************************************
 
+NORMALIZE_CODESET (){
+	if [[ "$1" =~ .*".".* ]]
+	then
+		local normalize_locale=$(echo $1 | perl -pe "s/(\.[\w-]+@?)/\L\1/g; s/[^\w.@]//g; ")  
+		echo $normalize_locale
+	else
+		echo $1
+	fi
+}
+
 IN_ARRAY () {
-	local reg=".(cs)?[Uu][Tt][Ff](-|\s)?8"
-	local glibc_codeset=".utf8"
-	local locale=$(sed -E "s/${reg}/${glibc_codeset}/" <<< "$1")
+	local locale = $(NORMALIZE_CODESET $1)
 
 	for v in $2; do
         if [ x"$locale" == x"$v" ]; then
