@@ -171,17 +171,30 @@ WARN_MARK="<<<<<"
 # Functions
 #******************************************************************************
 
-IN_ARRAY () {
-	local reg=".(cs)?[Uu][Tt][Ff](-|\s)?8"
-	local glibc_codeset=".utf8"
-	local locale=$(sed -E "s/${reg}/${glibc_codeset}/" <<< "$1")
+#
+# Simplified version of _nl_normalize_codeset from glibc
+# https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=HEAD
+#
 
-    for v in $2; do
-        if [ x"$locale" == x"$v" ]; then
-            return 1
-        fi
-    done
-    return 0
+NORMALIZE_CODESET (){
+	if [[ "$1" =~ .*".".* ]]
+	then
+		local normalize_locale=$(echo $1 | perl -pe "s/(\.[\w-]+@?)/\L\1/g; s/[^\w.@]//g; ")
+		echo $normalize_locale
+	else
+		echo $1
+	fi
+}
+
+IN_ARRAY () {
+	local locale = $(NORMALIZE_CODESET $1)
+
+	for v in $2; do
+		if [ x"$locale" == x"$v" ]; then
+			return 1
+		fi
+	done
+	return 0
 }
 
 #
