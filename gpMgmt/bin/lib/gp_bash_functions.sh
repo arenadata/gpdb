@@ -193,10 +193,15 @@ WARN_MARK="<<<<<"
 # Functions
 #******************************************************************************
 
+#
+# Simplified version of _nl_normalize_codeset from glibc
+# https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=HEAD
+#
+
 NORMALIZE_CODESET (){
 	if [[ "$1" =~ .*".".* ]]
 	then
-		local normalize_locale=$(echo $1 | perl -pe "s/(\.[\w-]+@?)/\L\1/g; s/[^\w.@]//g; ")  
+		local normalize_locale=$(echo $1 | perl -pe "s/(\.[\w-]+@?)/\L\1/g; s/[^\w.@]//g; ")
 		echo $normalize_locale
 	else
 		echo $1
@@ -207,11 +212,11 @@ IN_ARRAY () {
 	local locale = $(NORMALIZE_CODESET $1)
 
 	for v in $2; do
-        if [ x"$locale" == x"$v" ]; then
-            return 1
-        fi
-    done
-    return 0
+		if [ x"$locale" == x"$v" ]; then
+			return 1
+		fi
+	done
+	return 0
 }
 
 #
