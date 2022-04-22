@@ -198,18 +198,39 @@ WARN_MARK="<<<<<"
 # https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=HEAD
 #
 
-NORMALIZE_CODESET (){
-	if [[ "$1" =~ .*".".* ]]
+NORMALIZE_CODESET_IN_LOCALE () {
+	IFS=".|@" read -a arr_locale <<< $1
+	local len=${#arr_locale[@]}
+
+	if [[ $len == 1 ]];
 	then
-		local normalize_locale=$(echo $1 | perl -pe "s/(\.[\w-]+@?)/\L\1/g; s/[^\w.@]//g; ")
-		echo $normalize_locale
-	else
 		echo $1
+	else
+		local normalized_locale=${arr_locale[0]}
+		local codeset=${arr_locale[1]}
+		local desc=${arr_locale[2]}
+
+		local digit_pattern='^[0-9]+$'
+		if [[ $codeset =~ $digit_pattern ]] ;
+		then
+			codeset="iso"
+		else
+			codeset=$(echo $codeset | perl -pe "s/([[:alnum:]-]+)/\L\1/; s/[^[:alnum:]]//g")
+		fi
+
+		normalized_locale=$(echo "$normalized_locale.$codeset")
+
+		if [ ! -z "$desc" ];
+		then
+			normalized_locale=$(echo "$normalized_locale@$desc")
+		fi
+
+		echo $normalized_locale
 	fi
 }
 
 IN_ARRAY () {
-	local locale = $(NORMALIZE_CODESET $1)
+	local locale=$(NORMALIZE_CODESET_IN_LOCALE $1)
 
 	for v in $2; do
 		if [ x"$locale" == x"$v" ]; then
