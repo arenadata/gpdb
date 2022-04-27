@@ -177,36 +177,26 @@ WARN_MARK="<<<<<"
 #
 
 NORMALIZE_CODESET_IN_LOCALE () {
-	IFS=".@" read -a arr_locale <<< $1
+	IFS=".|@" read -a arr_locale <<< $1
 	local len=${#arr_locale[@]}
 
 	if [[ $len == 1 ]];
 	then
 		echo $1
 	else
-		local normalized_locale=${arr_locale[0]}
+		local language_and_territory=${arr_locale[0]}
 		local codeset=$(echo $1 | perl -ne 'print for /((?<=\.).+?(?=@|$))/s')
 		local modifier=$(echo $1 | perl -ne 'print for /((?<=@).+(?=$))/s' )
 
-	local digit_pattern='^[0-9]+$'
-	if [[ $codeset =~ $digit_pattern ]] ;
-	then
-		codeset="iso$codeset"
-	else
-		codeset=$(echo $codeset | perl -pe "s/([[:alnum:]-]+)/\L\1/; s/[^[:alnum:]]//g")
-	fi
+		local digit_pattern='^[0-9]+$'
+		if [[ $codeset =~ $digit_pattern ]] ;
+		then
+			codeset="iso$codeset"
+		else
+			codeset=$(echo $codeset | perl -pe 's/([[:alpha:]])/\L\1/g; s/[^[:alnum:]]//g')
+		fi
 
-	if [ ! -z $codeset ];
-	then
-		normalized_locale=$(echo "$normalized_locale.$codeset")
-	fi
-
-	if [ ! -z "$modifier" ];
-	then
-		normalized_locale=$(echo "$normalized_locale@$modifier")
-	fi
-
-		echo $normalized_locale
+		echo "$language_and_territory$([ ! -z $codeset ] && echo ".$codeset")$([ ! -z $modifier ] && echo "@$modifier")"
 	fi
 }
 
