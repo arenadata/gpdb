@@ -17,10 +17,27 @@ Feature: gpinitsystem tests
         And gpconfig should print "Master  value: off" to stdout
         And gpconfig should print "Segment value: off" to stdout
 
-	Scenario: gpinitsystem exits with status 0 when the user set locale parameters 
-		Given create demo cluster config
-		When the user runs command "gpinitsystem -c ../gpAux/gpdemo/clusterConfigFile --lc-monetary=en_US.UTF-8"
-		Then gpinitsystem should return a return code of 0
+    Scenario: gpinitsystem creates a cluster when the user set LC_ALL env variable
+        Given create demo cluster config
+        When the user runs command "export LC_ALL=en_US.UTF-8"
+        And the user runs command "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile"
+        Then gpinitsystem should return a return code of 0
+        Given the user runs "gpstate"
+        Then gpstate should return a return code of 0
+
+    Scenario: gpinitsystem creates a cluster when the user set -n flag
+        Given create demo cluster config
+        When the user runs command "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile -n en_US.UTF-8" 
+        Then gpinitsystem should return a return code of 0
+        Given the user runs "gpstate"
+        Then gpstate should return a return code of 0
+
+    Scenario: gpinitsystem exits with status 0 when the user set locale parameters
+        Given create demo cluster config
+        When the user runs command "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile --lc-monetary=en_US.UTF-8"
+        Then gpinitsystem should return a return code of 0
+        Given the user runs "gpstate"
+        Then gpstate should return a return code of 0
 
     Scenario: gpinitsystem creates a cluster with a legacy input initialization file
         Given a working directory of the test as '/tmp/gpinitsystem'
