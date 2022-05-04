@@ -1808,6 +1808,40 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 	return result;
 }
 
+bool
+add_nested_subplans(Node *node, adjust_appendrel_attrs_context *context) {
+	if (node == NULL) {
+		return false;
+	}
+
+	if (IsA(node, SubPlan)) {
+		SubPlan *sp = (SubPlan*) node;
+
+		if (!sp->is_initplan) {
+			PlannerInfo *root = context->root;
+			Plan *newsubplan = (Plan *) copyObject(planner_subplan_get_plan(root, sp));
+			PlannerInfo *newsubroot = makeNode(PlannerInfo);
+
+			memcpy(newsubroot, planner_subplan_get_root(root, sp), sizeof(PlannerInfo));
+
+			plan_tree_walker(newsubplan, add_nested_subplans, context);
+
+			root->glob->subplans = lappend(root->glob->subplans, newsubplan);
+			root->glob->subroots = lappend(root->glob->subroots, newsubroot);
+
+			/*
+			 * expression_tree_mutator made a copy of the SubPlan already, so
+			 * we can modify it directly.
+			 */
+			sp->plan_id = list_length(root->glob->subplans);
+		}	
+	} else {
+		plan_tree_walker(node, add_nested_subplans, context);
+	}
+
+	return false;
+}
+
 /**
  * Mutator's function is to modify nodes so that they may be applicable
  * for a child partition.
@@ -2059,28 +2093,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 	 */
 	if (IsA(node, SubPlan))
 	{
-		SubPlan *sp = (SubPlan *) node;
-
-		if (!sp->is_initplan)
-		{
-			PlannerInfo *root = context->root;
-			Plan *newsubplan = (Plan *) copyObject(planner_subplan_get_plan(root, sp));
-			PlannerInfo *newsubroot = makeNode(PlannerInfo);
-
-			memcpy(newsubroot, planner_subplan_get_root(root, sp), sizeof(PlannerInfo));
-
-			/*
-			 * Add the subplan and its subroot to the global lists.
-			 */
-			root->glob->subplans = lappend(root->glob->subplans, newsubplan);
-			root->glob->subroots = lappend(root->glob->subroots, newsubroot);
-
-			/*
-			 * expression_tree_mutator made a copy of the SubPlan already, so
-			 * we can modify it directly.
-			 */
-			sp->plan_id = list_length(root->glob->subplans);
-		}
+		add_nested_subplans(node, context);
 	}
 
 	return node;
