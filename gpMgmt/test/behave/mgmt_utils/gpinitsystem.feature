@@ -17,15 +17,7 @@ Feature: gpinitsystem tests
         And gpconfig should print "Master  value: off" to stdout
         And gpconfig should print "Segment value: off" to stdout
 
-    Scenario: gpinitsystem creates a cluster when the user set LC_ALL env variable
-        Given create demo cluster config
-        And the user runs command "export LC_ALL=en_US.UTF-8"
-        When the user runs command "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile"
-        Then gpinitsystem should return a return code of 0
-        Given the user runs "gpstate"
-        Then gpstate should return a return code of 0
-
-    Scenario: gpinitsystem creates a cluster when the user set -n flag
+    Scenario: gpinitsystem creates a cluster when the user set -n or --locale parameter
         Given create demo cluster config
         When the user runs command "gpinitsystem -a -c ../gpAux/gpdemo/clusterConfigFile -n en_US.UTF-8"
         Then gpinitsystem should return a return code of 0

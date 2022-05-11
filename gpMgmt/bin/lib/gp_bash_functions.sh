@@ -196,29 +196,21 @@ WARN_MARK="<<<<<"
 #
 # Simplified version of _nl_normalize_codeset from glibc
 #https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=1305edd42c44fee6f8660734d2dfa4911ec755d6#l294
-# Input parameter - string with locale defined as [language[_territory][.codeset][@modifier]]  
+# Input parameter - string with locale defined as [language[_territory][.codeset][@modifier]]
 NORMALIZE_CODESET_IN_LOCALE () {
-	IFS=".|@" read -a arr_locale <<< $1
-	local len=${#arr_locale[@]}
+	local language_and_territory=$(echo $1 | perl -ne 'print for /(^.+?(?=\.|@|$))/s')
+	local codeset=$(echo $1 | perl -ne 'print for /((?<=\.).+?(?=@|$))/s')
+	local modifier=$(echo $1 | perl -ne 'print for /((?<=@).+(?=$))/s' )
 
-	if [[ $len == 1 ]];
+	local digit_pattern='^[0-9]+$'
+	if [[ $codeset =~ $digit_pattern ]] ;
 	then
-		echo $1
+		codeset="iso$codeset"
 	else
-		local language_and_territory=${arr_locale[0]}
-		local codeset=$(echo $1 | perl -ne 'print for /((?<=\.).+?(?=@|$))/s')
-		local modifier=$(echo $1 | perl -ne 'print for /((?<=@).+(?=$))/s' )
-
-		local digit_pattern='^[0-9]+$'
-		if [[ $codeset =~ $digit_pattern ]] ;
-		then
-			codeset="iso$codeset"
-		else
-			codeset=$(echo $codeset | perl -pe 's/([[:alpha:]])/\L\1/g; s/[^[:alnum:]]//g')
-		fi
-
-		echo "$language_and_territory$([ ! -z $codeset ] && echo ".$codeset")$([ ! -z $modifier ] && echo "@$modifier")"
+		codeset=$(echo $codeset | perl -pe 's/([[:alpha:]])/\L\1/g; s/[^[:alnum:]]//g')
 	fi
+
+	echo "$language_and_territory$([ ! -z $codeset ] && echo ".$codeset")$([ ! -z $modifier ] && echo "@$modifier")"
 }
 
 IN_ARRAY () {
