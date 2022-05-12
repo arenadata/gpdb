@@ -37,6 +37,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
+#include "optimizer/restrictinfo.h"
 #include "optimizer/subselect.h"
 #include "optimizer/transform.h"
 #include "optimizer/tlist.h"
@@ -1238,6 +1239,11 @@ inheritance_planner(PlannerInfo *root)
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
 		PlannerInfo subroot;
 		Plan	   *subplan;
+		int			childRTindex;
+		RangeTblEntry *childRTE;
+		RelOptInfo *childrel;
+		List	   *childquals;
+		Node	   *childqual;
 
 		/* append_rel_list contains all append rels; ignore others */
 		if (appinfo->parent_relid != parentRTindex)
@@ -1253,6 +1259,52 @@ inheritance_planner(PlannerInfo *root)
 		}
 
 		Assert(parentOid == appinfo->parent_reloid);
+
+		/* See set_append_rel_size for the logic */
+
+		childRTindex = appinfo->child_relid;
+		childRTE = root->simple_rte_array[childRTindex];
+
+		/*
+		 * The child rel's RelOptInfo was already created during
+		 * add_base_rels_to_query.
+		 */
+		childrel = find_base_rel(root, childRTindex);
+		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+
+		/*
+		 * We have to copy the parent's targetlist and quals to the child,
+		 * with appropriate substitution of variables.  However, only the
+		 * baserestrictinfo quals are needed before we can check for
+		 * constraint exclusion; so do that first and then check to see if we
+		 * can disregard this child.
+		 *
+		 * As of 8.4, the child rel's targetlist might contain non-Var
+		 * expressions, which means that substitution into the quals could
+		 * produce opportunities for const-simplification, and perhaps even
+		 * pseudoconstant quals.  To deal with this, we strip the RestrictInfo
+		 * nodes, do the substitution, do const-simplification, and then
+		 * reconstitute the RestrictInfo layer.
+		 */
+/* TODO: fill childquals list
+		childquals = get_all_actual_clauses(rel->baserestrictinfo);
+*/
+		childquals = (List *) adjust_appendrel_attrs(root,
+													 (Node *) childquals,
+													 appinfo);
+		childqual = eval_const_expressions(root, (Node *)
+										   make_ands_explicit(childquals));
+		if (childqual && IsA(childqual, Const) &&
+			(((Const *) childqual)->constisnull ||
+			 !DatumGetBool(((Const *) childqual)->constvalue)))
+		{
+			/*
+			 * Restriction reduces to constant FALSE or constant NULL after
+			 * substitution, so this child need not be scanned.
+			 */
+			set_dummy_rel_pathlist(root, childrel);
+			continue;
+		}
 
 		/*
 		 * We need a working copy of the PlannerInfo so that we can control
