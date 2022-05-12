@@ -69,10 +69,10 @@ source gpAux/gpdemo/gpdemo-env.sh
 ```
 
 The directory and the TCP ports for the demo cluster can be changed on the fly.
-Instead of `make cluster`, consider:
+Instead of `make create-demo-cluster`, consider:
 
 ```
-DATADIRS=/tmp/gpdb-cluster PORT_BASE=5555 make cluster
+DATADIRS=/tmp/gpdb-cluster PORT_BASE=5555 make create-demo-cluster
 ```
 
 The TCP port for the regression test can be changed on the fly:
