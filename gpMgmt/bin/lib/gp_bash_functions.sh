@@ -195,7 +195,7 @@ WARN_MARK="<<<<<"
 
 #
 # Simplified version of _nl_normalize_codeset from glibc
-#https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=1305edd42c44fee6f8660734d2dfa4911ec755d6#l294
+# https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=1305edd42c44fee6f8660734d2dfa4911ec755d6#l294
 # Input parameter - string with locale defined as [language[_territory][.codeset][@modifier]]
 NORMALIZE_CODESET_IN_LOCALE () {
 	local language_and_territory=$(echo $1 | perl -ne 'print for /(^.+?(?=\.|@|$))/s')
