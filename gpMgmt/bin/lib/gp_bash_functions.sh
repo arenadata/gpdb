@@ -178,7 +178,7 @@ WARN_MARK="<<<<<"
 NORMALIZE_CODESET_IN_LOCALE () {
 	local language_and_territory=$(echo $1 | perl -ne 'print for /(^.+?(?=\.|@|$))/s')
 	local codeset=$(echo $1 | perl -ne 'print for /((?<=\.).+?(?=@|$))/s')
-	local modifier=$(echo $1 | perl -ne 'print for /((?<=@).+(?=$))/s' )
+	local modifier=$(echo -n $1 | perl -ne 'print for /((?<=@).+)/s' )
 
 	local digit_pattern='^[0-9]+$'
 	if [[ $codeset =~ $digit_pattern ]] ;
