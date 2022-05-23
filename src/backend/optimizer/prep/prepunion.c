@@ -1815,14 +1815,6 @@ typedef struct nested_subplans_context
 } nested_subplans_context;
 
 static bool
-nested_subplans(Node *node, adjust_appendrel_attrs_context *context) {
-	nested_subplans_context *new_context = (nested_subplans_context*)malloc(sizeof(nested_subplans_context));
-	new_context->root = context->root;
-
-	nested_subplan_mutator(node, new_context);
-}
-
-static bool
 nested_subplan_mutator(Node *node, adjust_appendrel_attrs_context *context) {
 	if (node == NULL) {
 		return false;
@@ -1854,6 +1846,14 @@ nested_subplan_mutator(Node *node, adjust_appendrel_attrs_context *context) {
 	}
 
 	return false;
+}
+
+static bool
+nested_subplans(Node *node, adjust_appendrel_attrs_context *context) {
+	nested_subplans_context *new_context = (nested_subplans_context*)malloc(sizeof(nested_subplans_context));
+	new_context->root = context->root;
+
+	nested_subplan_mutator(node, new_context);
 }
 
 /**
