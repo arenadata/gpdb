@@ -217,7 +217,7 @@ IN_ARRAY () {
 	local locale=$(NORMALIZE_CODESET_IN_LOCALE $1)
 
 	for v in $2; do
-		if [ x"$locale" == x"$v" ]; then
+		if [ x"$locale" == x"$v" ] || [ x"$1" == x"$v" ]; then
 			return 1
 		fi
 	done
