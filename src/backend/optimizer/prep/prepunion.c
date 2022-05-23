@@ -1823,7 +1823,7 @@ nested_subplans(Node *node, adjust_appendrel_attrs_context *context) {
 }
 
 static bool
-nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) {
+nested_subplan_mutator(Node *node, adjust_appendrel_attrs_context *context) {
 	if (node == NULL) {
 		return false;
 	}
@@ -1838,7 +1838,7 @@ nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) {
 
 			memcpy(newsubroot, planner_subplan_get_root(root, sp), sizeof(PlannerInfo));
 
-			plan_tree_walker(newsubplan, nested_subplans_mutator, context);
+			plan_tree_walker(newsubplan, nested_subplan_mutator, context);
 
 			root->glob->subplans = lappend(root->glob->subplans, newsubplan);
 			root->glob->subroots = lappend(root->glob->subroots, newsubroot);
@@ -1850,7 +1850,7 @@ nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) {
 			sp->plan_id = list_length(root->glob->subplans);
 		}	
 	} else {
-		plan_tree_walker(node, nested_subplans_mutator, context);
+		plan_tree_walker(node, nested_subplan_mutator, context);
 	}
 
 	return false;
