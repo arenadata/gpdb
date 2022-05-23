@@ -1808,6 +1808,20 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 	return result;
 }
 
+typedef struct nested_subplans_context
+{
+	plan_tree_base_prefix base;
+	PlannerInfo *root;
+} nested_subplans_context;
+
+static bool
+nested_subplans(Node *node, adjust_appendrel_attrs_context *context) {
+	nested_subplans_context *new_context = (nested_subplans_context*)malloc(sizeof(nested_subplans_context));
+	new_context->root = context->root;
+
+	nested_subplan_mutator(node, new_context);
+}
+
 static bool
 nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) {
 	if (node == NULL) {
@@ -2093,7 +2107,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 	 */
 	if (IsA(node, SubPlan))
 	{
-		nested_subplans_mutator(node, context);
+		nested_subplans(node, context);
 	}
 
 	return node;
