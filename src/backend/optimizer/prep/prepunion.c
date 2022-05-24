@@ -66,6 +66,13 @@ typedef struct
 	int			sublevels_up;
 } adjust_appendrel_attrs_context;
 
+typedef struct
+{
+	plan_tree_base_prefix base; /* Required prefix for
+								 * plan_tree_walker/mutator */
+	PlannerInfo *root;
+} nested_subplan_context;
+
 static Plan *recurse_set_operations(Node *setOp, PlannerInfo *root,
 					   double tuple_fraction,
 					   List *colTypes, List *colCollations,
