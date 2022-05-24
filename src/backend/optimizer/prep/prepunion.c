@@ -1816,7 +1816,7 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 }
 
 static bool
-nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) 
+nested_subplans_mutator(Node *node, nested_subplan_context *context) 
 {
 	if (node == NULL) {
 		return false;
