@@ -1816,7 +1816,8 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 }
 
 static bool
-nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) {
+nested_subplans_mutator(Node *node, adjust_appendrel_attrs_context *context) 
+{
 	if (node == NULL) {
 		return false;
 	}
@@ -2100,7 +2101,12 @@ adjust_appendrel_attrs_mutator(Node *node,
 	 */
 	if (IsA(node, SubPlan))
 	{
-		nested_subplans_mutator(node, context);
+		nested_subplan_context *new_context = 
+									(nested_subplan_context*) palloc(sizeof(nested_subplan_context));
+		new_context->root = context->root;
+
+		nested_subplans_mutator(node, new_context);
+		pfree(new_context);
 	}
 
 	return node;
