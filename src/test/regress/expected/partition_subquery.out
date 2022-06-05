@@ -67,3 +67,4 @@ explain select 1 from t1 where a <= (
                                                  ->  Seq Scan on t2 t3_1  (cost=0.00..1176.25 rows=29 width=0)
  Optimizer: Postgres query optimizer
 (32 rows)
+
