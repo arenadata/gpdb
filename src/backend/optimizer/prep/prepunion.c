@@ -66,13 +66,6 @@ typedef struct
 	int			sublevels_up;
 } adjust_appendrel_attrs_context;
 
-typedef struct
-{
-	plan_tree_base_prefix base; /* Required prefix for
-								 * plan_tree_walker/mutator */
-	PlannerInfo *root;
-} nested_subplan_context;
-
 static Plan *recurse_set_operations(Node *setOp, PlannerInfo *root,
 					   double tuple_fraction,
 					   List *colTypes, List *colCollations,
@@ -1816,7 +1809,7 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 }
 
 static bool
-nested_subplan_mutator(Node *node, nested_subplan_context *context) 
+nested_subplan_mutator(Node *node, plan_tree_base_prefix *context) 
 {
 	if (node == NULL) {
 		return false;
@@ -1826,7 +1819,7 @@ nested_subplan_mutator(Node *node, nested_subplan_context *context)
 		SubPlan *sp = (SubPlan*) node;
 
 		if (!sp->is_initplan) {
-			PlannerInfo *root = context->root;
+			PlannerInfo *root = (PlannerInfo*)context->node;
 			Plan *newsubplan = (Plan *) copyObject(planner_subplan_get_plan(root, sp));
 			PlannerInfo *newsubroot = makeNode(PlannerInfo);
 
@@ -2101,12 +2094,10 @@ adjust_appendrel_attrs_mutator(Node *node,
 	 */
 	if (IsA(node, SubPlan))
 	{
-		nested_subplan_context *new_context = 
-									(nested_subplan_context*) palloc(sizeof(nested_subplan_context));
-		new_context->root = context->root;
+		plan_tree_base_prefix new_context;
+		new_context.node = (Node*)context->root;
 
-		nested_subplan_mutator(node, new_context);
-		pfree(new_context);
+		nested_subplan_mutator(node, &new_context);
 	}
 
 	return node;
