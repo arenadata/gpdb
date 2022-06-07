@@ -1144,6 +1144,7 @@ inheritance_planner(PlannerInfo *root)
 	List	   *rowMarks;
 	ListCell   *lc;
 	Index		rti;
+	RelOptInfo *rel;
 
 	GpPolicy   *parentPolicy = NULL;
 	Oid			parentOid = InvalidOid;
@@ -1234,12 +1235,23 @@ inheritance_planner(PlannerInfo *root)
 	/*
 	 * And now we can get on with generating a plan for each child table.
 	 */
+	PlannerInfo *fakeroot = palloc(sizeof(PlannerInfo));
+	memcpy(fakeroot, root, sizeof(PlannerInfo));
+	setup_simple_rel_arrays(fakeroot);
+	add_base_rels_to_query(fakeroot, (Node *) parse->jointree);
+	deconstruct_jointree(fakeroot);
+	reconsider_outer_join_clauses(fakeroot);
+	generate_implied_quals(fakeroot);
+	generate_base_implied_equalities(fakeroot);
+	rel = fakeroot->simple_rel_array[parentRTindex];
+
 	foreach(lc, root->append_rel_list)
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
 		PlannerInfo subroot;
 		Plan	   *subplan;
 		int			childRTindex;
+		int	childRTindex;
 		RangeTblEntry *childRTE;
 		RelOptInfo *childrel;
 		List	   *childquals;
@@ -1263,13 +1275,13 @@ inheritance_planner(PlannerInfo *root)
 		/* See set_append_rel_size for the logic */
 
 		childRTindex = appinfo->child_relid;
-		childRTE = root->simple_rte_array[childRTindex];
+		childRTE = fakeroot->simple_rte_array[childRTindex];
 
 		/*
 		 * The child rel's RelOptInfo was already created during
 		 * add_base_rels_to_query.
 		 */
-		childrel = find_base_rel(root, childRTindex);
+		childrel = find_base_rel(fakeroot, childRTindex);
 		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
 
 		/*
@@ -1286,23 +1298,32 @@ inheritance_planner(PlannerInfo *root)
 		 * nodes, do the substitution, do const-simplification, and then
 		 * reconstitute the RestrictInfo layer.
 		 */
-/* TODO: fill childquals list
 		childquals = get_all_actual_clauses(rel->baserestrictinfo);
-*/
-		childquals = (List *) adjust_appendrel_attrs(root,
-													 (Node *) childquals,
-													 appinfo);
-		childqual = eval_const_expressions(root, (Node *)
-										   make_ands_explicit(childquals));
+		childquals = (List *) adjust_appendrel_attrs(fakeroot,
+							 (Node *) childquals,
+							 appinfo);
+		childqual = eval_const_expressions(fakeroot, (Node *)
+						   make_ands_explicit(childquals));
 		if (childqual && IsA(childqual, Const) &&
 			(((Const *) childqual)->constisnull ||
 			 !DatumGetBool(((Const *) childqual)->constvalue)))
 		{
 			/*
 			 * Restriction reduces to constant FALSE or constant NULL after
-			 * substitution, so this child need not be scanned.
+			 * substitution, so this child need not be planned.
 			 */
-			set_dummy_rel_pathlist(root, childrel);
+			continue;
+		}
+		childquals = make_ands_implicit((Expr *) childqual);
+		childquals = make_restrictinfos_from_actual_clauses(fakeroot,
+								childquals);
+		childrel->baserestrictinfo = childquals;
+
+		if (relation_excluded_by_constraints(fakeroot, childrel, childRTE))
+		{
+			/*
+			 * This child need not be planned, so we can omit it.
+			 */
 			continue;
 		}
 
