@@ -37,6 +37,7 @@
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
+#include "optimizer/restrictinfo.h"
 #include "optimizer/subselect.h"
 #include "optimizer/transform.h"
 #include "optimizer/tlist.h"
@@ -1143,6 +1144,7 @@ inheritance_planner(PlannerInfo *root)
 	List	   *rowMarks;
 	ListCell   *lc;
 	Index		rti;
+	RelOptInfo *rel;
 
 	GpPolicy   *parentPolicy = NULL;
 	Oid			parentOid = InvalidOid;
@@ -1233,11 +1235,26 @@ inheritance_planner(PlannerInfo *root)
 	/*
 	 * And now we can get on with generating a plan for each child table.
 	 */
+	PlannerInfo *fakeroot = palloc(sizeof(PlannerInfo));
+	memcpy(fakeroot, root, sizeof(PlannerInfo));
+	setup_simple_rel_arrays(fakeroot);
+	add_base_rels_to_query(fakeroot, (Node *) parse->jointree);
+	deconstruct_jointree(fakeroot);
+	reconsider_outer_join_clauses(fakeroot);
+	generate_implied_quals(fakeroot);
+	generate_base_implied_equalities(fakeroot);
+	rel = fakeroot->simple_rel_array[parentRTindex];
+
 	foreach(lc, root->append_rel_list)
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
 		PlannerInfo subroot;
 		Plan	   *subplan;
+		int	childRTindex;
+		RangeTblEntry *childRTE;
+		RelOptInfo *childrel;
+		List	   *childquals;
+		Node	   *childqual;
 
 		/* append_rel_list contains all append rels; ignore others */
 		if (appinfo->parent_relid != parentRTindex)
@@ -1253,6 +1270,58 @@ inheritance_planner(PlannerInfo *root)
 		}
 
 		Assert(parentOid == appinfo->parent_reloid);
+
+		childRTindex = appinfo->child_relid;
+		childRTE = fakeroot->simple_rte_array[childRTindex];
+
+		/*
+		 * The child rel's RelOptInfo was already created during
+		 * add_base_rels_to_query.
+		 */
+		childrel = find_base_rel(fakeroot, childRTindex);
+		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+		/*
+		 * We have to copy the parent's targetlist and quals to the child,
+		 * with appropriate substitution of variables.  However, only the
+		 * baserestrictinfo quals are needed before we can check for
+		 * constraint exclusion; so do that first and then check to see if we
+		 * can disregard this child.
+		 *
+		 * As of 8.4, the child rel's targetlist might contain non-Var
+		 * expressions, which means that substitution into the quals could
+		 * produce opportunities for const-simplification, and perhaps even
+		 * pseudoconstant quals.  To deal with this, we strip the RestrictInfo
+		 * nodes, do the substitution, do const-simplification, and then
+		 * reconstitute the RestrictInfo layer.
+		 */
+		childquals = get_all_actual_clauses(rel->baserestrictinfo);
+		childquals = (List *) adjust_appendrel_attrs(fakeroot,
+							 (Node *) childquals,
+							 appinfo);
+		childqual = eval_const_expressions(fakeroot, (Node *)
+						   make_ands_explicit(childquals));
+		if (childqual && IsA(childqual, Const) &&
+			(((Const *) childqual)->constisnull ||
+			 !DatumGetBool(((Const *) childqual)->constvalue)))
+		{
+			/*
+			 * Restriction reduces to constant FALSE or constant NULL after
+			 * substitution, so this child need not be planned.
+			 */
+			continue;
+		}
+		childquals = make_ands_implicit((Expr *) childqual);
+		childquals = make_restrictinfos_from_actual_clauses(fakeroot,
+								childquals);
+		childrel->baserestrictinfo = childquals;
+
+		if (relation_excluded_by_constraints(fakeroot, childrel, childRTE))
+		{
+			/*
+			 * This child need not be planned, so we can omit it.
+			 */
+			continue;
+		}
 
 		/*
 		 * We need a working copy of the PlannerInfo so that we can control
