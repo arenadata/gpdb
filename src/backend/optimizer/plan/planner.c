@@ -1250,7 +1250,6 @@ inheritance_planner(PlannerInfo *root)
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
 		PlannerInfo subroot;
 		Plan	   *subplan;
-		int			childRTindex;
 		int	childRTindex;
 		RangeTblEntry *childRTE;
 		RelOptInfo *childrel;
