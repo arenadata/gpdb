@@ -1144,6 +1144,7 @@ inheritance_planner(PlannerInfo *root)
 	List	   *rowMarks;
 	ListCell   *lc;
 	Index		rti;
+	PlannerInfo *fakeroot;
 	RelOptInfo *rel;
 
 	GpPolicy   *parentPolicy = NULL;
@@ -1235,7 +1236,12 @@ inheritance_planner(PlannerInfo *root)
 	/*
 	 * And now we can get on with generating a plan for each child table.
 	 */
-	PlannerInfo *fakeroot = palloc(sizeof(PlannerInfo));
+
+	/*
+	 * Make a working copy of the PlannerInfo and fill RelOptInfo
+	 * arrays to check later if the child need to be scanned.
+	 */
+	fakeroot = palloc(sizeof(PlannerInfo));
 	memcpy(fakeroot, root, sizeof(PlannerInfo));
 	setup_simple_rel_arrays(fakeroot);
 	add_base_rels_to_query(fakeroot, (Node *) parse->jointree);
@@ -1271,7 +1277,7 @@ inheritance_planner(PlannerInfo *root)
 
 		Assert(parentOid == appinfo->parent_reloid);
 
-		/* See set_append_rel_size for the logic */
+		/* Check if child needs to be scanned as in set_append_rel_size. */
 
 		childRTindex = appinfo->child_relid;
 		childRTE = fakeroot->simple_rte_array[childRTindex];
