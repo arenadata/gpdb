@@ -1236,21 +1236,6 @@ inheritance_planner(PlannerInfo *root)
 	/*
 	 * And now we can get on with generating a plan for each child table.
 	 */
-
-	/*
-	 * Make a working copy of the PlannerInfo and fill RelOptInfo
-	 * arrays to check later if the child need to be scanned.
-	 */
-	fakeroot = palloc(sizeof(PlannerInfo));
-	memcpy(fakeroot, root, sizeof(PlannerInfo));
-	setup_simple_rel_arrays(fakeroot);
-	add_base_rels_to_query(fakeroot, (Node *) parse->jointree);
-	deconstruct_jointree(fakeroot);
-	reconsider_outer_join_clauses(fakeroot);
-	generate_implied_quals(fakeroot);
-	generate_base_implied_equalities(fakeroot);
-	rel = fakeroot->simple_rel_array[parentRTindex];
-
 	foreach(lc, root->append_rel_list)
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
@@ -1277,8 +1262,31 @@ inheritance_planner(PlannerInfo *root)
 
 		Assert(parentOid == appinfo->parent_reloid);
 
-		/* Check if child needs to be scanned as in set_append_rel_size. */
+		/*
+		 * Make a working copy of the PlannerInfo and fill RelOptInfo
+		 * arrays to check later if the child need to be scanned.
+		 */
+		fakeroot = palloc(sizeof(PlannerInfo));
+		*fakeroot = *root;
 
+		/*
+		 * Generate modified query with this rel as target.  We first apply
+		 * adjust_appendrel_attrs, which copies the Query and changes
+		 * references to the parent RTE to refer to the current child RTE,
+		 * then fool around with subquery RTEs.
+		 */
+		fakeroot->parse = (Query *)
+			adjust_appendrel_attrs(fakeroot, (Node *) parse,
+								   appinfo);
+		setup_simple_rel_arrays(fakeroot);
+		add_base_rels_to_query(fakeroot,
+					(Node *) fakeroot->parse->jointree);
+		deconstruct_jointree(fakeroot);
+		reconsider_outer_join_clauses(fakeroot);
+		generate_implied_quals(fakeroot);
+		generate_base_implied_equalities(fakeroot);
+
+		/* Check if child needs to be scanned as in set_append_rel_size. */
 		childRTindex = appinfo->child_relid;
 		childRTE = fakeroot->simple_rte_array[childRTindex];
 
@@ -1287,7 +1295,7 @@ inheritance_planner(PlannerInfo *root)
 		 * add_base_rels_to_query.
 		 */
 		childrel = find_base_rel(fakeroot, childRTindex);
-		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+		Assert(childrel->reloptkind == RELOPT_BASEREL);
 
 		/*
 		 * We have to copy the parent's targetlist and quals to the child,
@@ -1303,10 +1311,7 @@ inheritance_planner(PlannerInfo *root)
 		 * nodes, do the substitution, do const-simplification, and then
 		 * reconstitute the RestrictInfo layer.
 		 */
-		childquals = get_all_actual_clauses(rel->baserestrictinfo);
-		childquals = (List *) adjust_appendrel_attrs(fakeroot,
-							 (Node *) childquals,
-							 appinfo);
+		childquals = get_all_actual_clauses(childrel->baserestrictinfo);
 		childqual = eval_const_expressions(fakeroot, (Node *)
 						   make_ands_explicit(childquals));
 		if (childqual && IsA(childqual, Const) &&
