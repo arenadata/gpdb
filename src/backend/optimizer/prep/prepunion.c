@@ -1812,9 +1812,7 @@ static bool
 nested_subplan_mutator(Node *node, plan_tree_base_prefix *context) 
 {
 	if (node == NULL) 
-	{
 		return false;
-	}
 
 	if (IsA(node, SubPlan)) 
 	{
@@ -2098,7 +2096,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 	if (IsA(node, SubPlan))
 	{
 		plan_tree_base_prefix new_context;
-		new_context.node = (Node*)context->root;
+		new_context.node = (Node *) context->root;
 
 		nested_subplan_mutator(node, &new_context);
 	}
