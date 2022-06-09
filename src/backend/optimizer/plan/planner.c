@@ -1144,8 +1144,6 @@ inheritance_planner(PlannerInfo *root)
 	List	   *rowMarks;
 	ListCell   *lc;
 	Index		rti;
-	PlannerInfo *fakeroot;
-	RelOptInfo *rel;
 
 	GpPolicy   *parentPolicy = NULL;
 	Oid			parentOid = InvalidOid;
@@ -1239,7 +1237,7 @@ inheritance_planner(PlannerInfo *root)
 	foreach(lc, root->append_rel_list)
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
-		PlannerInfo subroot;
+		PlannerInfo subroot, fakeroot;
 		Plan	   *subplan;
 		int	childRTindex;
 		RangeTblEntry *childRTE;
@@ -1263,11 +1261,10 @@ inheritance_planner(PlannerInfo *root)
 		Assert(parentOid == appinfo->parent_reloid);
 
 		/*
-		 * Make a working copy of the PlannerInfo and fill RelOptInfo
-		 * arrays to check later if the child need to be scanned.
+		 * We need a working copy of the PlannerInfo so that we can control
+		 * propagation of information back to the main copy.
 		 */
-		fakeroot = palloc(sizeof(PlannerInfo));
-		*fakeroot = *root;
+		memcpy(&subroot, root, sizeof(PlannerInfo));
 
 		/*
 		 * Generate modified query with this rel as target.  We first apply
@@ -1275,26 +1272,28 @@ inheritance_planner(PlannerInfo *root)
 		 * references to the parent RTE to refer to the current child RTE,
 		 * then fool around with subquery RTEs.
 		 */
-		fakeroot->parse = (Query *)
-			adjust_appendrel_attrs(fakeroot, (Node *) parse,
+		subroot.parse = (Query *)
+			adjust_appendrel_attrs(&subroot, (Node *) parse,
 								   appinfo);
-		setup_simple_rel_arrays(fakeroot);
-		add_base_rels_to_query(fakeroot,
-					(Node *) fakeroot->parse->jointree);
-		deconstruct_jointree(fakeroot);
-		reconsider_outer_join_clauses(fakeroot);
-		generate_implied_quals(fakeroot);
-		generate_base_implied_equalities(fakeroot);
+
+		fakeroot = subroot;
+		setup_simple_rel_arrays(&fakeroot);
+		add_base_rels_to_query(&fakeroot,
+					(Node *) fakeroot.parse->jointree);
+		deconstruct_jointree(&fakeroot);
+		reconsider_outer_join_clauses(&fakeroot);
+		generate_implied_quals(&fakeroot);
+		generate_base_implied_equalities(&fakeroot);
 
 		/* Check if child needs to be scanned as in set_append_rel_size. */
 		childRTindex = appinfo->child_relid;
-		childRTE = fakeroot->simple_rte_array[childRTindex];
+		childRTE = fakeroot.simple_rte_array[childRTindex];
 
 		/*
 		 * The child rel's RelOptInfo was already created during
 		 * add_base_rels_to_query.
 		 */
-		childrel = find_base_rel(fakeroot, childRTindex);
+		childrel = find_base_rel(&fakeroot, childRTindex);
 		Assert(childrel->reloptkind == RELOPT_BASEREL);
 
 		/*
@@ -1312,7 +1311,7 @@ inheritance_planner(PlannerInfo *root)
 		 * reconstitute the RestrictInfo layer.
 		 */
 		childquals = get_all_actual_clauses(childrel->baserestrictinfo);
-		childqual = eval_const_expressions(fakeroot, (Node *)
+		childqual = eval_const_expressions(&fakeroot, (Node *)
 						   make_ands_explicit(childquals));
 		if (childqual && IsA(childqual, Const) &&
 			(((Const *) childqual)->constisnull ||
@@ -1325,33 +1324,17 @@ inheritance_planner(PlannerInfo *root)
 			continue;
 		}
 		childquals = make_ands_implicit((Expr *) childqual);
-		childquals = make_restrictinfos_from_actual_clauses(fakeroot,
+		childquals = make_restrictinfos_from_actual_clauses(&fakeroot,
 								childquals);
 		childrel->baserestrictinfo = childquals;
 
-		if (relation_excluded_by_constraints(fakeroot, childrel, childRTE))
+		if (relation_excluded_by_constraints(&fakeroot, childrel, childRTE))
 		{
 			/*
 			 * This child need not be planned, so we can omit it.
 			 */
 			continue;
 		}
-
-		/*
-		 * We need a working copy of the PlannerInfo so that we can control
-		 * propagation of information back to the main copy.
-		 */
-		memcpy(&subroot, root, sizeof(PlannerInfo));
-
-		/*
-		 * Generate modified query with this rel as target.  We first apply
-		 * adjust_appendrel_attrs, which copies the Query and changes
-		 * references to the parent RTE to refer to the current child RTE,
-		 * then fool around with subquery RTEs.
-		 */
-		subroot.parse = (Query *)
-			adjust_appendrel_attrs(&subroot, (Node *) parse,
-								   appinfo);
 
 		/*
 		 * The rowMarks list might contain references to subquery RTEs, so
