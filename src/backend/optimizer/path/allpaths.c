@@ -252,7 +252,10 @@ set_base_rel_sizes(PlannerInfo *root)
 
 	/*
 	 * If result relation is excluded by constraint exclusion we shouldn't
-	 * plan this sub-query
+	 * plan this sub-query. Result relation is set to zero for SELECT
+	 * queries. simple_rel_array and simple_rte_array are filled by 
+	 * zeroes during allocation and never use zero-indexed item.
+	 * So, SELECT queries bypass this logic safely.
 	 */
 	resultRel = root->simple_rel_array[resultRelIndex];
 	if (resultRel != NULL && resultRel->reloptkind == RELOPT_BASEREL)
