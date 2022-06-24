@@ -1809,16 +1809,16 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 }
 
 static bool
-nested_subplan_mutator(Node *node, plan_tree_base_prefix *context) 
+nested_subplan_mutator(Node *node, plan_tree_base_prefix *context)
 {
-	if (node == NULL) 
+	if (node == NULL)
 		return false;
 
-	if (IsA(node, SubPlan)) 
+	if (IsA(node, SubPlan))
 	{
 		SubPlan *sp = (SubPlan*) node;
 
-		if (!sp->is_initplan) 
+		if (!sp->is_initplan)
 		{
 			PlannerInfo *root = (PlannerInfo*)context->node;
 			Plan *newsubplan = (Plan *) copyObject(planner_subplan_get_plan(root, sp));
@@ -1836,9 +1836,9 @@ nested_subplan_mutator(Node *node, plan_tree_base_prefix *context)
 			 * we can modify it directly.
 			 */
 			sp->plan_id = list_length(root->glob->subplans);
-		}	
-	} 
-	else 
+		}
+	}
+	else
 		plan_tree_walker(node, nested_subplan_mutator, context);
 
 	return false;
