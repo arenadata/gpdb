@@ -16,23 +16,43 @@ insert into test select i, i % 100 from generate_series(1,1000) as i;
 create language plpythonu;
 -- end_ignore
 
-create or replace function sum_owner_consumption(query text, owner text) returns int as
+create or replace function sum_owner_consumption(query text, owner text, for_entry_db boolean DEFAULT false) returns int as
 $$
 import re
 rv = plpy.execute('EXPLAIN ANALYZE '+ query)
 search_text = owner
 total_consumption = 0
+memory_consumption_per_slice = {}
 count = 0
 comp_regex = re.compile("[^0-9]+(\d+)\/(\d+).+")
+slice_regex = re.compile(".+\((slice\d+)")
+entry_db_regex = re.compile("\s+\((slice\d+)\).+\(entry db\)")
+after_planning_time = False
 for i in range(len(rv)):
     cur_line = rv[i]['QUERY PLAN']
+    if "Planning time" in cur_line:
+        after_planning_time = True
+    if after_planning_time:
+        m = entry_db_regex.match(cur_line)
+        if m is not None:
+            entry_db_slice = m.group(1)
+    else:
+        m = slice_regex.match(cur_line)
+        if m is not None:
+            current_slice = m.group(1)
+            slice_consumption = 0
+            memory_consumption_per_slice[current_slice] = 0
     if search_text.lower() in cur_line.lower():
         print search_text
         m = comp_regex.match(cur_line)
         if m is not None:
             count = count + 1
+            memory_consumption_per_slice[current_slice] = memory_consumption_per_slice[current_slice] + int(m.group(2))
             total_consumption = total_consumption + int(m.group(2))
-return total_consumption
+if for_entry_db:
+    return memory_consumption_per_slice[entry_db_slice]
+else:
+    return total_consumption
 $$
 language plpythonu;
 
