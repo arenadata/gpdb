@@ -12,17 +12,18 @@ insert into test select i, i % 100 from generate_series(1,1000) as i;
 -- start_ignore
 create language plpythonu;
 -- end_ignore
-create or replace function sum_owner_consumption(query text, owner text, for_entry_db boolean DEFAULT false) returns int as
+create or replace function sum_owner_consumption(query text, owner text)
+returns table (slice text, mem_consumption int, is_entry_db boolean) as
 $$
 import re
 rv = plpy.execute('EXPLAIN ANALYZE '+ query)
 search_text = owner
 total_consumption = 0
 memory_consumption_per_slice = {}
-count = 0
 comp_regex = re.compile("[^0-9]+(\d+)\/(\d+).+")
 slice_regex = re.compile(".+\((slice\d+)")
 entry_db_regex = re.compile("\s+\((slice\d+)\).+\(entry db\)")
+entry_db_slice = None
 after_planning_time = False
 for i in range(len(rv)):
     cur_line = rv[i]['QUERY PLAN']
@@ -42,23 +43,25 @@ for i in range(len(rv)):
         print search_text
         m = comp_regex.match(cur_line)
         if m is not None:
-            count = count + 1
             memory_consumption_per_slice[current_slice] = memory_consumption_per_slice[current_slice] + int(m.group(2))
             total_consumption = total_consumption + int(m.group(2))
-if for_entry_db:
-    return memory_consumption_per_slice[entry_db_slice]
-else:
-    return total_consumption
+
+rows = []
+for slice, memory_consumption in  memory_consumption_per_slice.items():
+    row = {'slice': slice, 'mem_consumption': memory_consumption, 'is_entry_db': (slice == entry_db_slice)}
+    rows.append(row);
+
+return rows
 $$
 language plpythonu;
-select sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien') = 0;
+select sum(mem_consumption) = 0 from sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien');
  ?column? 
 ----------
  t
 (1 row)
 
 set execute_pruned_plan=off;
-select sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien') > 0;
+select sum(mem_consumption) > 0 from sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien');
  ?column? 
 ----------
  t
@@ -273,7 +276,7 @@ insert into bar_part select 1, 1 from generate_series(1,100000)i;
 insert into foo select 1, 1 from generate_series(1,80000)i;
 analyze foo;
 analyze bar_part;
-select sum_owner_consumption('select * from bar_part where exists (select 1 from foo where foo.b = bar_part.b and bar_part.b > 0);', 'X_PartitionSelector') between 1 and 1000000;
+select sum(mem_consumption) between 1 and 1000000 from sum_owner_consumption('select * from bar_part where exists (select 1 from foo where foo.b = bar_part.b and bar_part.b > 0);', 'X_PartitionSelector');
  ?column? 
 ----------
  t
@@ -292,14 +295,14 @@ select has_account_type('select simple_sql_function(i) from all_tuples_on_seg0',
 -- should be independent of the tuples. However, before the fix, it increased with
 -- more rows. Check the memory for X_PartitionSelector owner does not go above 1 MB.
 insert into foo select 1, 1 from generate_series(1,80000)i;
-select sum_owner_consumption('select * from bar_part where exists (select 1 from foo where foo.b = bar_part.b and bar_part.b > 0);', 'X_PartitionSelector') between 1 and 1000000;
+select sum(mem_consumption) between 1 and 1000000 from sum_owner_consumption('select * from bar_part where exists (select 1 from foo where foo.b = bar_part.b and bar_part.b > 0);', 'X_PartitionSelector');
  ?column? 
 ----------
  t
 (1 row)
 
 insert into foo select 1, 1 from generate_series(1,80000)i;
-select sum_owner_consumption('select * from bar_part where exists (select 1 from foo where foo.b = bar_part.b and bar_part.b > 0);', 'X_PartitionSelector') between 1 and 1000000;
+select sum(mem_consumption) between 1 and 1000000 from sum_owner_consumption('select * from bar_part where exists (select 1 from foo where foo.b = bar_part.b and bar_part.b > 0);', 'X_PartitionSelector');
  ?column? 
 ----------
  t
