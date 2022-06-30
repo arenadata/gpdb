@@ -20,12 +20,23 @@ DROP TABLE IF EXISTS pt1;
 --end_ignore
 
 
--- When a query has a partitioned table and a correlated subquery, it will fail with Query Optimizer
--- We've implemented a fix, and this test is supposed to make sure that this type of queries works correctly
-create table t1 (a int) partition by range (a) (start (1) end (3) every (1));
-create table t2 (b int8) distributed by (b);
+-- When a query had a partitioned table and a correlated subquery, it 
+-- failed with Query Optimizer. There was implemented a fix which
+-- fixes this problem.
+DROP TABLE IF EXISTS t1, t2;
 
-explain select 1 from t1 where a <= (
-    SELECT 1 FROM t2
-    WHERE t2.b <= (SELECT 1 from t2 as t3 where t3.b = t2.b)
-    and t1.a = t2.b);
+CREATE TABLE t1 (a INT) PARTITION BY RANGE (a) (START (1) END (3) EVERY (1));
+CREATE TABLE t2 (b INT8) DISTRIBUTED BY (b);
+
+INSERT INTO t1 VALUES (1), (2);
+INSERT INTO t2 VALUES (2), (3);
+
+EXPLAIN SELECT * FROM t1 WHERE a <= (
+    SELECT * FROM t2
+    WHERE t2.b <= (SELECT * FROM t2 AS t3 WHERE t3.b = t2.b)
+    AND t1.a = t2.b);
+
+SELECT * FROM t1 WHERE a <= (
+    SELECT * FROM t2
+    WHERE t2.b <= (SELECT * FROM t2 AS t3 WHERE t3.b = t2.b)
+    AND t1.a = t2.b);
