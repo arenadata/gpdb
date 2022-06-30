@@ -27,16 +27,17 @@ memory_consumption_per_slice = {}
 comp_regex = re.compile("[^0-9]+(\d+)\/(\d+).+")
 slice_regex = re.compile(".+\((slice\d+)")
 entry_db_regex = re.compile("\s+\((slice\d+)\).+\(entry db\)")
-entry_db_slice = None
+entry_db_slices = set()
 after_planning_time = False
 for i in range(len(rv)):
     cur_line = rv[i]['QUERY PLAN']
     if "Planning time" in cur_line:
+        # Summary begins here, look for entry db slice
         after_planning_time = True
     if after_planning_time:
         m = entry_db_regex.match(cur_line)
         if m is not None:
-            entry_db_slice = m.group(1)
+            entry_db_slices.add(m.group(1))
     else:
         m = slice_regex.match(cur_line)
         if m is not None:
@@ -52,7 +53,7 @@ for i in range(len(rv)):
 
 rows = []
 for slice, memory_consumption in  memory_consumption_per_slice.items():
-    row = {'slice': slice, 'mem_consumption': memory_consumption, 'is_entry_db': (slice == entry_db_slice)}
+    row = {'slice': slice, 'mem_consumption': memory_consumption, 'is_entry_db': (slice in entry_db_slices)}
     rows.append(row);
 
 return rows
