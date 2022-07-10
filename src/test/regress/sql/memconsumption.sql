@@ -6,6 +6,7 @@ set search_path to memconsumption;
 -- end_ignore
 
 create table test (i int, j int);
+create table t1 (a int, b int, c int) distributed by (a);
 
 set explain_memory_verbosity=detail;
 set execute_pruned_plan=on;
@@ -61,9 +62,11 @@ $$
 language plpythonu;
 
 select sum(mem_consumption) = 0 from sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien');
+select sum(mem_consumption) = 0 from sum_owner_consumption('SELECT * FROM t1, (SELECT * FROM t1 LIMIT 1) a WHERE a.a = t1.a', 'X_Alien') where is_entry_db;
 
 set execute_pruned_plan=off;
 select sum(mem_consumption) > 0 from sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien');
+select sum(mem_consumption) > 0 from sum_owner_consumption('SELECT * FROM t1, (SELECT * FROM t1 LIMIT 1) a WHERE a.a = t1.a', 'X_Alien') where is_entry_db;
 
 create or replace function has_account_type(query text, search_text text) returns int as
 $$
