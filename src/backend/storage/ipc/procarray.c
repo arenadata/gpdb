@@ -4928,7 +4928,7 @@ GetSessionIdByPid(int pid)
 /*
  * Set the destination group slot or group id in PGPROC, and send a signal to the proc.
  * slot is NULL on QE.
- * The process on dispatcher can act as executor(GP_ROLE_EXECUTE) in case of
+ * The process we want to notify on coordinator can act as executor(GP_ROLE_EXECUTE) in case of
  * entrydb. 'isExecutor' helps us to determine a process to which we need to
  * send signal.
  */
@@ -4949,17 +4949,22 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
-		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[i]];
+		PGPROC	   *proc = &allProcs[arrayP->pgprocnos[i]];
 
 		if (proc->mppSessionId != sessionId)
 			continue;
 
 		/*
-		 * Before, we didn't distinguish entrydb processes from target. There
-		 * is a case with enrtydb executors when we can send a signal to
-		 * target process only, but not to entrydb executor process or vice
-		 * versa. As a mediocre solution we assume mppIsWriter for entrydb
-		 * processes is always false.
+		 * Before, we didn't distinguish entrydb processes from main target
+		 * process on coordinator. There was a case with enrtydb executors
+		 * when we can send a signal to target process only, but not to
+		 * entrydb executor process or vice versa. As a mediocre solution we
+		 * assume mppIsWriter for entrydb processes is always false.
+		 *
+		 * We can send a signal to target or entrydb processes only from QD.
+		 * The second (XOR) part of condition checks did we find entrydb
+		 * (isExecutor && !mppIsWriter) or target (!isExecutor &&
+		 * mppIsWriter). If neither, we continue the search.
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH && !(isExecutor ^ proc->mppIsWriter))
 			continue;
@@ -4969,6 +4974,7 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 		backendId = proc->backendId;
 
 		SpinLockAcquire(&proc->movetoMutex);
+		/* only target process needs slot and callerPid to operate */
 		if (Gp_role == GP_ROLE_DISPATCH && proc->mppIsWriter)
 		{
 			/*
@@ -4981,6 +4987,9 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 				elog(NOTICE, "cannot move process, which is already moving");
 				break;
 			}
+			Assert(proc->movetoResSlot == NULL);
+			Assert(slot != NULL);
+
 			proc->movetoResSlot = slot;
 			proc->movetoCallerPid = MyProc->pid;
 		}
@@ -4990,13 +4999,20 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 		if (SendProcSignal(pid, PROCSIG_RESOURCE_GROUP_MOVE_QUERY, backendId))
 		{
 			SpinLockAcquire(&proc->movetoMutex);
-			if (Gp_role == GP_ROLE_DISPATCH)
+			if (Gp_role == GP_ROLE_DISPATCH && proc->mppIsWriter)
 			{
 				proc->movetoResSlot = NULL;
 				proc->movetoCallerPid = InvalidPid;
 			}
 			proc->movetoGroupId = InvalidOid;
 			SpinLockRelease(&proc->movetoMutex);
+
+			/*
+			 * It's not an error, if we can't notify, for example, already
+			 * finished QE process (because of async nature of resgroup
+			 * moving). If we can't notify QD, the caller should raise an
+			 * error by itself, based on returned value.
+			 */
 			elog(NOTICE, "cannot send signal to backend %d with PID %d",
 				 backendId, pid);
 		}
@@ -5004,8 +5020,9 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 			sent = true;
 
 		/*
-		 * don't break for executors, need to signal all the procs of this
-		 * session
+		 * Don't break for executors, need to signal all the procs of this
+		 * session. It's safe to break if we are QD, because we want to notify
+		 * only one process at once - main target or entrydb.
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH)
 			break;
@@ -5045,7 +5062,7 @@ ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result)
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
-		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[i]];
+		PGPROC	   *proc = &allProcs[arrayP->pgprocnos[i]];
 
 		/*
 		 * Also ignore entrydb processes. We use mppIsWriter which described
@@ -5108,7 +5125,7 @@ ResGroupMoveNotifyInitiator(pid_t callerPid)
 	LWLockAcquire(ProcArrayLock, LW_SHARED);
 	for (int i = 0; i < arrayP->numProcs; i++)
 	{
-		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[i]];
+		PGPROC	   *proc = &allProcs[arrayP->pgprocnos[i]];
 
 		if (proc->pid != callerPid)
 			continue;

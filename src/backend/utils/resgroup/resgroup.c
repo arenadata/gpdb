@@ -3938,11 +3938,14 @@ sessionSetSlot(ResGroupSlotData *slot)
 	/*
 	 * Previously, we had an assertion, that MySessionState->resGroupSlot
 	 * should be NULL here. There is a case, when we want to move processes
-	 * from one group to another, but there is entrydb process,
-	 * which keep using the old slot. Entrydb process will clean old slot
-	 * using the pointer from 'self' inside UnassignResGroup() and it's OK,
-	 * but we want to set new slot to session, so we removed assertion.
+	 * from one group to another. We got assertion error on main process,
+	 * if entrydb process not called UnassignResGroup() yet (and vice versa).
+	 * Next call to UnassignResGroup() (by main or entrydb process) will free
+	 * slot and it's OK, but here we want to set new slot to session, so we
+	 * changed assertion.
 	 */
+	AssertImply((Gp_role == GP_ROLE_EXECUTE && !IS_QUERY_DISPATCHER()),
+		MySessionState->resGroupSlot == NULL);
 
 	/*
 	 * SessionStateLock is required since runaway detector will traverse
@@ -4650,7 +4653,7 @@ HandleMoveResourceGroup(void)
 			/*
 			 * setting movetoGroupId to InvalidOid alone without setting
 			 * movetoResSlot to NULL means target process tried to handle, but
-			 * can't do anyting with a command
+			 * can't do anything with a command
 			 */
 			MyProc->movetoGroupId = InvalidOid;
 			callerPid = MyProc->movetoCallerPid;
@@ -4730,6 +4733,12 @@ HandleMoveResourceGroup(void)
 
 		pgstat_report_resgroup(0, self->groupId);
 	}
+
+	/*
+	 * Move entrydb process. This is very similar to moving of target process,
+	 * but without setting session level slot, which was already set by
+	 * target.
+	 */
 	else if (Gp_role == GP_ROLE_EXECUTE && IS_QUERY_DISPATCHER())
 	{
 		SpinLockAcquire(&MyProc->movetoMutex);
@@ -4763,6 +4772,11 @@ HandleMoveResourceGroup(void)
 		/* Add into cgroup */
 		ResGroupOps_AssignGroup(self->groupId, &(self->caps), MyProcPid);
 	}
+
+	/*
+	 * Move segment's executor. Use simple manual counters manipulation. We
+	 * can't call same complex designed for coordinator functions like above.
+	 */
 	else if (Gp_role == GP_ROLE_EXECUTE && !IS_QUERY_DISPATCHER())
 	{
 		SpinLockAcquire(&MyProc->movetoMutex);
