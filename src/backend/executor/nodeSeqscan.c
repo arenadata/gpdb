@@ -99,6 +99,16 @@ SeqNext(SeqScanState *node)
 			ExecClearTuple(slot);
 	}
 
+	if (TupIsNull(slot))
+	{
+		if (node->ss_currentScanDesc_heap)
+			heap_afterscan(node->ss_currentScanDesc_heap);
+		if (node->ss_currentScanDesc_ao)
+			appendonly_afterscan(node->ss_currentScanDesc_ao);
+		if (node->ss_currentScanDesc_aocs)
+			aocs_afterscan(node->ss_currentScanDesc_aocs);
+	}
+
 	return slot;
 }
 
