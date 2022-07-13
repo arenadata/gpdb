@@ -1691,7 +1691,10 @@ heap_afterscan(HeapScanDesc scan)
 	 * unpin scan buffers
 	 */
 	if (BufferIsValid(scan->rs_cbuf))
+	{
 		ReleaseBuffer(scan->rs_cbuf);
+		scan->rs_cbuf = InvalidBuffer;
+	}
 }
 
 /* ----------------
