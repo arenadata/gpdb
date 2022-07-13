@@ -14825,23 +14825,12 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro, List
 		{
 			if (useExistingColumnAttributes)
 			{
-				/*
-				 * Need to remove table level compression settings for the
-				 * AOCO case since they're set at the column level.
-				 */
 				ListCell *lc;
 
 				foreach(lc, opts)
 				{
 					DefElem *de = lfirst(lc);
-
-					if (de->defname &&
-						(strcmp("compresstype", de->defname) == 0 ||
-						 strcmp("compresslevel", de->defname) == 0 ||
-						 strcmp("blocksize", de->defname) == 0))
-						continue;
-					else
-						cs->options = lappend(cs->options, de);
+					cs->options = lappend(cs->options, de);
 				}
 				col_encs = RelationGetUntransformedAttributeOptions(rel);
 			}
