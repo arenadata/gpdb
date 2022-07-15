@@ -65,6 +65,7 @@ RUN mkdir /home/gpadmin/bin_gpdb
 ENV TARGET_OS_VERSION=7
 ENV TARGET_OS=centos
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
+ENV SKIP_UNITTESTS=""
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
 
 # Compile with running mocking tests
@@ -77,6 +78,3 @@ RUN rm -rf gpdb_src/.git/
 FROM base as test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
-
-# Volume for tests output
-VOLUME /home/gpadmin/gpdb_src/src/test
