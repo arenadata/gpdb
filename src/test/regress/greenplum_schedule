@@ -296,4 +296,7 @@ test: create_extension_fail
 # check the row/block statistics is gathered for auxiliary relations of AO table
 test: aux_ao_rels_stat
 
+#check gp_dist_wait_status not failing within a transaction
+test: gp_dist_wait_status
+
 # end of tests
