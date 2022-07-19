@@ -14823,26 +14823,17 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro, List
 
 		if (RelationIsAoCols(rel))
 		{
+			ListCell *lc;
+
+			foreach(lc, opts)
+			{
+				DefElem *de = lfirst(lc);
+				cs->options = lappend(cs->options, de);
+			}
+
 			if (useExistingColumnAttributes)
 			{
-				ListCell *lc;
-
-				foreach(lc, opts)
-				{
-					DefElem *de = lfirst(lc);
-					cs->options = lappend(cs->options, de);
-				}
 				col_encs = RelationGetUntransformedAttributeOptions(rel);
-			}
-			else
-			{
-				ListCell *lc;
-
-				foreach(lc, opts)
-				{
-					DefElem *de = lfirst(lc);
-					cs->options = lappend(cs->options, de);
-				}
 			}
 		}
 		else
