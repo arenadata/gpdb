@@ -16,7 +16,7 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      tail -f /home/gpadmin/gpdb_src/README.md
+      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
   sdw1:
     image: "${IMAGE}"
     privileged: true
@@ -27,7 +27,7 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      tail -f /home/gpadmin/gpdb_src/README.md
+      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
   sdw2:
     image: "${IMAGE}"
     privileged: true
@@ -38,7 +38,7 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      tail -f /home/gpadmin/gpdb_src/README.md
+      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
   sdw3:
     image: "${IMAGE}"
     privileged: true
@@ -49,4 +49,4 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      tail -f /home/gpadmin/gpdb_src/README.md
+      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
