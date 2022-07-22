@@ -52,12 +52,13 @@ for i in range(len(rv)):
             memory_consumption_per_slice[current_slice] = memory_consumption_per_slice[current_slice] + int(m.group(2))
             total_consumption = total_consumption + int(m.group(2))
 
-rows = []
-for slice, memory_consumption in  memory_consumption_per_slice.items():
-    row = {'slice': slice, 'mem_consumption': memory_consumption, 'is_entry_db': (slice in entry_db_slices)}
-    rows.append(row);
-
-return rows
+return [
+        {
+            'slice': slice,
+            'mem_consumption': memory_consumption,
+            'is_entry_db': (slice in entry_db_slices)
+        } for slice, memory_consumption in  memory_consumption_per_slice.items()
+       ]
 $$
 language plpythonu;
 
