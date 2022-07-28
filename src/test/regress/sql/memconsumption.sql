@@ -63,11 +63,31 @@ $$
 language plpythonu;
 
 select sum(mem_consumption) = 0 from sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien');
-select sum(mem_consumption) = 0 from sum_owner_consumption('SELECT * FROM t1, (SELECT * FROM t1 LIMIT 1) a WHERE a.a = t1.a', 'X_Alien') where is_entry_db;
+
+-- Special handling for entry db: there is no entry db for legacy optimizer, so just return true.
+select
+case
+	when settings.is_orca
+	then query_result.check
+	else 'true'
+end result
+from
+(select sum(mem_consumption) = 0 as check from sum_owner_consumption('SELECT * FROM t1, (SELECT * FROM t1 LIMIT 1) a WHERE a.a = t1.a', 'X_Alien') where is_entry_db) query_result,
+(select setting='on' as is_orca from pg_settings where name = 'optimizer') settings;
 
 set execute_pruned_plan=off;
 select sum(mem_consumption) > 0 from sum_owner_consumption('SELECT t1.i, t2.j FROM test as t1 join test as t2 on t1.i = t2.j', 'X_Alien');
-select sum(mem_consumption) > 0 from sum_owner_consumption('SELECT * FROM t1, (SELECT * FROM t1 LIMIT 1) a WHERE a.a = t1.a', 'X_Alien') where is_entry_db;
+
+-- Special handling for entry db: there is no entry db for legacy optimizer, so just return true.
+select
+case
+	when settings.is_orca
+	then query_result.check
+	else 'true'
+end result
+from
+(select sum(mem_consumption) > 0 as check from sum_owner_consumption('SELECT * FROM t1, (SELECT * FROM t1 LIMIT 1) a WHERE a.a = t1.a', 'X_Alien') where is_entry_db) query_result,
+(select setting='on' as is_orca from pg_settings where name = 'optimizer') settings;
 
 create or replace function has_account_type(query text, search_text text) returns int as
 $$
