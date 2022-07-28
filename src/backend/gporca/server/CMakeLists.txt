@@ -342,7 +342,7 @@ JoinOnReplicatedUniversal;
 
 CTaintedReplicatedTest:
 InsertNonSingleton NonSingleton TaintedReplicatedAgg TaintedReplicatedWindowAgg TaintedReplicatedLimit TaintedReplicatedFilter
-InsertReplicatedIntoSerialHashDistributedTable;
+InsertReplicatedIntoSerialHashDistributedTable TaintedReplicatedTablesCTE;
 
 CDqaTest:
 NonSplittableAgg DqaHavingMax DqaMax DqaMin DqaSubqueryMax DqaNoRedistribute DqaAddRef DistinctQueryWithMotions;
