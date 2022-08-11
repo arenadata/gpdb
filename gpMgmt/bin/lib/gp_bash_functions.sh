@@ -193,13 +193,36 @@ WARN_MARK="<<<<<"
 # Functions
 #******************************************************************************
 
-IN_ARRAY () {
-    for v in $2; do
-        if [ x"$1" == x"$v" ]; then
-            return 1
-        fi
-    done
-    return 0
+#
+# Simplified version of _nl_normalize_codeset from glibc
+# https://sourceware.org/git/?p=glibc.git;a=blob;f=intl/l10nflist.c;h=078a450dfec21faf2d26dc5d0cb02158c1f23229;hb=1305edd42c44fee6f8660734d2dfa4911ec755d6#l294
+# Input parameter - string with locale defined as [language[_territory][.codeset][@modifier]]
+NORMALIZE_CODESET_IN_LOCALE () {
+	local language_and_territory=$(echo $1 | perl -ne 'print for /(^.+?(?=\.|@|$))/s')
+	local codeset=$(echo $1 | perl -ne 'print for /((?<=\.).+?(?=@|$))/s')
+	local modifier=$(echo -n $1 | perl -ne 'print for /((?<=@).+)/s' )
+
+	local digit_pattern='^[0-9]+$'
+	if [[ $codeset =~ $digit_pattern ]] ;
+	then
+		codeset="iso$codeset"
+	else
+		codeset=$(echo $codeset | perl -pe 's/([[:alpha:]])/\L\1/g; s/[^[:alnum:]]//g')
+	fi
+
+	echo "$language_and_territory$([ ! -z $codeset ] && echo ".$codeset")$([ ! -z $modifier ] && echo "@$modifier")"
+}
+
+LOCALE_IS_AVAILABLE () {
+	local normalized_locale=$(NORMALIZE_CODESET_IN_LOCALE $1)
+	local all_available_locales=$(locale -a)
+
+	for v in $all_available_locales; do
+		if [ x"$normalized_locale" == x"$v" ] || [ x"$1" == x"$v" ]; then
+			return 1
+		fi
+	done
+	return 0
 }
 
 #
@@ -385,9 +408,9 @@ SED_PG_CONF () {
 				fi
 			else
 				if [ $KEEP_PREV -eq 0 ];then
-					$SED -i'.bak1' -e "s/${SEARCH_TXT}/${SUB_TXT} #${SEARCH_TXT}/" $FILENAME
+					$SED -i'.bak1' -e "s/^[ ]*${SEARCH_TXT}[ ]*=/${SUB_TXT} #${SEARCH_TXT}/" $FILENAME
 				else
-					$SED -i'.bak1' -e "s/${SEARCH_TXT}.*/${SUB_TXT}/" $FILENAME
+					$SED -i'.bak1' -e "s/^[ ]*${SEARCH_TXT}[ ]*=.*/${SUB_TXT}/" $FILENAME
 				fi
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
@@ -396,7 +419,7 @@ SED_PG_CONF () {
 					LOG_MSG "[INFO]:-Replaced line in $FILENAME"
 					$RM -f ${FILENAME}.bak1
 				fi
-				$SED -i'.bak2' -e "s/^#${SEARCH_TXT}/${SEARCH_TXT}/" $FILENAME
+				$SED -i'.bak2' -e "s/^[ ]*#${SEARCH_TXT}[ ]*=/${SEARCH_TXT}/" $FILENAME
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 					ERROR_EXIT "[FATAL]:-Failed to replace #$SEARCH_TXT in $FILENAME" 2
@@ -427,9 +450,9 @@ SED_PG_CONF () {
 			fi
 		else
 			if [ $KEEP_PREV -eq 0 ];then
-				SED_COMMAND="s/${SEARCH_TXT}/${SUB_TXT} #${SEARCH_TXT}/"
+				SED_COMMAND="s/^[ ]*${SEARCH_TXT}[ ]*=/${SUB_TXT} #${SEARCH_TXT}/"
 			else
-				SED_COMMAND="s/${SEARCH_TXT}.*/${SUB_TXT}/"
+				SED_COMMAND="s/^[ ]*${SEARCH_TXT}[ ]*=.*/${SUB_TXT}/"
 			fi
 			$TRUSTED_SHELL $SED_HOST sed -i'.bak1' -f /dev/stdin "$FILENAME" <<< "$SED_COMMAND" > /dev/null 2>&1
 			if [ $RETVAL -ne 0 ]; then
@@ -439,7 +462,7 @@ SED_PG_CONF () {
 				$TRUSTED_SHELL $SED_HOST "$RM -f ${FILENAME}.bak1" > /dev/null 2>&1
 			fi
 
-			SED_COMMAND="s/^#${SEARCH_TXT}/${SEARCH_TXT}/"
+			SED_COMMAND="s/^[ ]*#${SEARCH_TXT}[ ]*=/${SEARCH_TXT}/"
 			$TRUSTED_SHELL $SED_HOST sed -i'.bak2' -f /dev/stdin "$FILENAME" <<< "$SED_COMMAND" > /dev/null 2>&1
 			if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to substitute #${SEARCH_TXT} in $FILENAME on $SED_HOST" 2

@@ -90,6 +90,7 @@
 #include "utils/workfile_mgr.h"
 #include "utils/faultinjector.h"
 #include "utils/resource_manager.h"
+#include "utils/resgroup-ops.h"
 
 #include "catalog/pg_inherits_fn.h"
 #include "catalog/pg_statistic.h"
@@ -305,9 +306,6 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 	if (query_info_collect_hook)
 		(*query_info_collect_hook)(METRICS_QUERY_START, queryDesc);
 
-	/**
-	 * Distribute memory to operators.
-	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		if (!IsResManagerMemoryPolicyNone() &&
@@ -316,12 +314,75 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			elog(GP_RESMANAGER_MEMORY_LOG_LEVEL, "query requested %.0fKB of memory",
 				 (double) queryDesc->plannedstmt->query_mem / 1024.0);
 		}
+	}
 
-		/**
-		 * There are some statements that do not go through the resource queue, so we cannot
-		 * put in a strong assert here. Someday, we should fix resource queues.
+	/*
+	 * Distribute memory to operators.
+	 *
+	 * There are some statements that do not go through the resource queue, so we cannot
+	 * put in a strong assert here. Someday, we should fix resource queues.
+	 */
+	if (queryDesc->plannedstmt->query_mem > 0)
+	{
+		/*
+		 * Whether we should skip operator memory assignment
+		 * - We should never skip operator memory assignment on QD.
+		 * - On QE, not skip in case of resource group enabled, and customer allow QE re-calculate query_mem,
+		 * as the GUC `gp_resource_group_enable_recalculate_query_mem` set to on.
 		 */
-		if (queryDesc->plannedstmt->query_mem > 0)
+		bool	should_skip_operator_memory_assign = true;
+
+		if (Gp_role == GP_ROLE_EXECUTE)
+		{
+			/*
+			 * If resource group is enabled, we should re-calculate query_mem on QE, because the memory
+			 * of the coordinator and segment nodes or the number of instance could be different.
+			 *
+			 * On QE, we only try to recalculate query_mem if resource group enabled. Otherwise, we will skip this
+			 * and the next operator memory assignment if resource queue enabled
+			 */
+			if (IsResGroupEnabled())
+			{
+				int 	total_memory_master = queryDesc->plannedstmt->total_memory_master;
+				int    	nsegments_master = queryDesc->plannedstmt->nsegments_master;
+
+				/*
+				 * memSpill is not in fallback mode, and we enable resource group re-calculate the query_mem on QE,
+				 * then re-calculate the query_mem and re-compute operatorMemKB using this new value
+				 */
+				if (total_memory_master != 0 && nsegments_master != 0)
+				{
+					should_skip_operator_memory_assign = false;
+
+					/* Get total system memory on the QE in MB */
+					int 	total_memory_segment = ResGroupOps_GetTotalMemory();
+					int 	nsegments_segment = ResGroupGetSegmentNum();
+					uint64	master_query_mem = queryDesc->plannedstmt->query_mem;
+
+					/*
+					 * In the resource group environment, when we calculate query_mem, we can roughly use the following
+					 * formula:
+					 *
+					 * 	query_mem = (total_memory * gp_resource_group_memory_limit * memory_limit / nsegments) * memory_spill_ratio / concurrency
+					 *
+					 * Only total_memory and nsegments could differ between QD and QE, so query_mem is proportional to
+					 * the system's available virtual memory and inversely proportional to the number of instances.
+					 */
+					queryDesc->plannedstmt->query_mem *= (total_memory_segment * 1.0 / nsegments_segment) /
+							(total_memory_master * 1.0 / nsegments_master);
+
+					elog(DEBUG1, "re-calculate query_mem, original QD's query_mem: %.0fKB, after recalculation QE's query_mem: %.0fKB",
+						 (double) master_query_mem / 1024.0  , (double) queryDesc->plannedstmt->query_mem / 1024.0);
+				}
+			}
+		}
+		else
+		{
+			/* On QD, we always traverse the plan tree and compute operatorMemKB */
+			should_skip_operator_memory_assign = false;
+		}
+
+		if (!should_skip_operator_memory_assign)
 		{
 			switch(*gp_resmanager_memory_policy)
 			{
@@ -1166,6 +1227,25 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 	if (queryDesc->totaltime)
 		InstrStopNode(queryDesc->totaltime, 0);
 
+	/*
+	 * if needed, collect mpp dispatch results and tear down
+	 * all mpp specific resources (e.g. interconnect).
+	 */
+	PG_TRY();
+	{
+		mppExecutorFinishup(queryDesc);
+	}
+	PG_CATCH();
+	{
+		/*
+		 * we got an error. do all the necessary cleanup.
+		 */
+		mppExecutorCleanup(queryDesc);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
 	MemoryContextSwitchTo(oldcontext);
 
 	estate->es_finished = true;
@@ -1260,44 +1340,14 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
         cdbexplain_sendExecStats(queryDesc);
 
 	/*
-	 * if needed, collect mpp dispatch results and tear down
-	 * all mpp specific resources (e.g. interconnect).
+	 * Free the results of all gangs.
 	 */
-	PG_TRY();
+	if (estate->dispatcherState && estate->dispatcherState->primaryResults)
 	{
-		mppExecutorFinishup(queryDesc);
+		CdbDispatcherState *ds = estate->dispatcherState;
+		estate->dispatcherState = NULL;
+		cdbdisp_destroyDispatcherState(ds);
 	}
-	PG_CATCH();
-	{
-		/*
-		 * we got an error. do all the necessary cleanup.
-		 */
-		mppExecutorCleanup(queryDesc);
-
-		/*
-		 * Remove our own query's motion layer.
-		 */
-		RemoveMotionLayer(estate->motionlayer_context);
-
-		/*
-		 * GPDB specific
-		 * Clean the special resources created by INITPLAN.
-		 * The resources have long life cycle and are used by the main plan.
-		 * It's too early to clean them in preprocess_initplans.
-		 */
-		if (queryDesc->plannedstmt->nParamExec > 0)
-		{
-			postprocess_initplans(queryDesc);
-		}
-
-		/*
-		 * Release EState and per-query memory context.
-		 */
-		FreeExecutorState(estate);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
 
 	/*
 	 * GPDB specific
@@ -3028,6 +3078,7 @@ ExecutePlan(EState *estate,
 {
 	TupleTableSlot *slot;
 	long		current_tuple_count;
+	ListCell *lc;
 
 	/*
 	 * For holdable cursor, the plan is executed without rewinding on gpdb. We
@@ -3049,6 +3100,12 @@ ExecutePlan(EState *estate,
 	/*
 	 * Make sure slice dependencies are met
 	 */
+	foreach(lc, estate->es_subplanstates)
+	{
+		PlanState	   *splanstate = (PlanState *) lfirst(lc);
+
+		ExecSliceDependencyNode(splanstate);
+	}
 	ExecSliceDependencyNode(planstate);
 
 #ifdef FAULT_INJECTOR
