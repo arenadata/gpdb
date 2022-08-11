@@ -6675,6 +6675,13 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 
 				all_subplans_entry = false;
 
+				if (subplan->flow->flotype == FLOW_SINGLETON &&
+					subplan->flow->locustype == CdbLocusType_SegmentGeneral &&
+					contain_volatile_functions((Node *)subplan->targetlist))
+				{
+					subplan->flow->locustype = CdbLocusType_SingleQE;
+				}
+
 				/*
 				 * CdbLocusType_SegmentGeneral is only used by replicated table
 				 * right now, so if both input and target are replicated table,
