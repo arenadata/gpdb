@@ -170,16 +170,17 @@ initNextTableToScan(DynamicBitmapHeapScanState *node)
 		 * the new varnos correspond to
 		 */
 		node->lastRelOid = currentPartitionOid;
+		pfree(attMap);
 	}
 
 	/*
-	 * For the very first partition, the targetlist of planstate is set to null. So, we must
-	 * initialize quals and targetlist, regardless of remapping requirements. For later
-	 * partitions, we only initialize quals and targetlist if a column re-mapping is necessary.
+	 * For the very first partition, the targetlist of planstate is set to null.
+	 * So, we must initialize quals and targetlist.
 	 */
-	if (attMap || node->firstPartition)
+	if (node->firstPartition)
 	{
 		node->firstPartition = false;
+
 		MemoryContextReset(node->partitionMemoryContext);
 		MemoryContext oldCxt = MemoryContextSwitchTo(node->partitionMemoryContext);
 
@@ -191,9 +192,6 @@ initNextTableToScan(DynamicBitmapHeapScanState *node)
 
 		MemoryContextSwitchTo(oldCxt);
 	}
-
-	if (attMap)
-		pfree(attMap);
 
 	DynamicScan_SetTableOid(&node->ss, currentPartitionOid);
 
