@@ -4962,6 +4962,8 @@ void
 RelationCacheInitFileRemove(void)
 {
 	char		path[MAXPGPATH];
+	DIR		   *dir;
+	struct dirent *de;
 
 	/*
 	 * We zap the shared cache file too.  In theory it can't get out of sync
@@ -4973,6 +4975,27 @@ RelationCacheInitFileRemove(void)
 
 	/* Scan everything in the default tablespace */
 	RelationCacheInitFileRemoveInDir("base");
+
+	char *tblspcpath = "pg_tblspc";
+	dir = AllocateDir(tblspcpath);
+	if (dir == NULL)
+	{
+		elog(LOG, "could not open tablespace directory \"%s\": %m",
+			 tblspcpath);
+		return;
+	}
+
+	while ((de = ReadDir(dir, tblspcpath)) != NULL)
+	{
+		if (strspn(de->d_name, "0123456789") == strlen(de->d_name))
+		{
+			char path[MAXPGPATH];
+			sprintf(path, "%s/%s", tblspcpath, de->d_name);
+			RelationCacheInitFileRemoveInDir(path);
+		}
+	}
+
+	FreeDir(dir);
 }
 
 /* Process one per-tablespace directory for RelationCacheInitFileRemove */
