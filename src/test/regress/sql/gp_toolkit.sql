@@ -66,6 +66,12 @@ select logseverity from gp_toolkit.gp_log_system where logseverity='LOG' limit 5
 select logseverity from gp_toolkit.gp_log_database where logseverity='LOG' limit 3;
 select logseverity from gp_toolkit.gp_log_master_concise where logseverity='LOG' limit 5; -- superuser only
 
+begin;
+DECLARE _psql_cursor NO SCROLL CURSOR FOR select logseverity from gp_toolkit.__gp_log_master_ext where logseverity='LOG';
+FETCH FORWARD 1 FROM _psql_cursor;
+CLOSE _psql_cursor;
+commit;
+
 -- GP Command Timings
 --
 -- The output of this is so unpredictable that it's hard to create a useful test case.
