@@ -5029,6 +5029,16 @@ RelationCacheInitFileRemoveInDir(const char *tblspcpath)
 	FreeDir(dir);
 }
 
+void
+RelationCacheInitFileRemoveInDb(const char *dbpath)
+{
+	char		initfilename[MAXPGPATH];
+
+	snprintf(initfilename, sizeof(initfilename), "%s/%s",
+					 dbpath, RELCACHE_INIT_FILENAME);
+	unlink_initfile(initfilename);
+}
+
 static void
 unlink_initfile(const char *initfilename)
 {

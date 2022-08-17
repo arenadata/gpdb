@@ -96,6 +96,7 @@ extern bool RelationIdIsInInitFile(Oid relationId);
 extern void RelationCacheInitFilePreInvalidate(void);
 extern void RelationCacheInitFilePostInvalidate(void);
 extern void RelationCacheInitFileRemove(void);
+extern void RelationCacheInitFileRemoveInDb(const char *dbpath);
 
 extern void IndexSupportInitialize(oidvector *indclass,
 					   Oid *indexOperator,

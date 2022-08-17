@@ -296,6 +296,13 @@ write_database_file(Relation drel, bool startup)
 		 */
 		if (gp_before_filespace_setup && !IsBuiltinTablespace(dattablespace))
 			continue;
+
+		if (startup) {
+			char	   *dbpath = GetDatabasePath(datoid, dattablespace);
+
+			RelationCacheInitFileRemoveInDb(dbpath);
+			pfree(dbpath);
+		}
 	}
 	heap_endscan(scan);
 
