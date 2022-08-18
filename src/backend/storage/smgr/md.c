@@ -617,17 +617,6 @@ mdcreatetablespacedir(
 
 		if (mkdir(tablespacePath, 0700) < 0)
 			*primaryError = errno;
-
-		
-		char	   *linkloc;
-		linkloc = (char *) palloc(10 + 10 + 1);
-		sprintf(linkloc, "pg_tblspc/%u", tablespaceOid);
-
-		if (symlink(tablespacePath, linkloc) < 0)
-			ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create symbolic link \"%s\": %m",
-						linkloc)));
 	}
 
 	if (StorageManagerMirrorMode_SendToMirror(mirrorMode) &&
