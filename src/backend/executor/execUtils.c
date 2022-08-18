@@ -2214,6 +2214,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	{
 		ExecSquelchNode(queryDesc->planstate);
 	}
+
 	/*
 	 * If QD, wait for QEs to finish and check their results.
 	 */
