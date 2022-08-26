@@ -532,6 +532,25 @@ select c from rep_tab where c in (select distinct a from dist_tab);
 explain select c from rep_tab where c in (select distinct d from rand_tab);
 select c from rep_tab where c in (select distinct d from rand_tab);
 
+--
+-- Check sub-selects with distributed replicated tables and volatile functions
+--
+create table t (i int) distributed replicated;
+create table t1 (a int) distributed by (a);
+create or replace function f(i int) returns int language sql security definer as $$ select i; $$;
+-- ensure we make gather motion
+explain (costs off, verbose) SELECT (select f(i) from t);
+explain (costs off, verbose) SELECT (select f(i) from t group by f(i));
+explain (costs off, verbose) SELECT (select i from t group by i having f(i) > 0);
+-- ensure we make broadcast motion
+explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
+-- ensure we do not break broadcast motion
+explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
+explain (costs off, verbose) select 1 as mrs_t1 from t1 where 1 <= ALL (select i from t group by i having random() > 0);
+drop table if exists t;
+drop table if exists t1;
+drop function if exists f(i int);
+
 -- start_ignore
 drop schema rpt cascade;
 -- end_ignore

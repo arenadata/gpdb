@@ -573,6 +573,18 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 		if (ctx->movement == MOVEMENT_BROADCAST)
 		{
 			Assert (NULL != ctx->currentPlanFlow);
+
+			Plan	   *origPlan = planner_subplan_get_plan((PlannerInfo *) ctx->base.node, ctx->sp);
+			PlannerInfo *origRoot = planner_subplan_get_root((PlannerInfo *) ctx->base.node, ctx->sp);
+
+			if ((origPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
+				(contain_volatile_functions((Node *) origPlan->targetlist) ||
+				contain_volatile_functions(origRoot->parse->havingQual)))
+			{
+				scanPlan->flow->locustype = CdbLocusType_SingleQE;
+				scanPlan->flow->flotype = FLOW_SINGLETON;
+			}
+
 			broadcastPlan(scanPlan, false /* stable */ , false /* rescannable */,
 						  ctx->currentPlanFlow->numsegments /* numsegments */);
 		}
@@ -741,6 +753,17 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		if (containingPlanDistributed)
 		{
 			Assert(NULL != context->currentPlanFlow);
+
+			PlannerInfo *origRoot = planner_subplan_get_root(context->root, spExpr);
+
+			if ((newPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
+				(contain_volatile_functions((Node *) newPlan->targetlist) ||
+				contain_volatile_functions(origRoot->parse->havingQual)))
+			{
+				newPlan->flow->locustype = CdbLocusType_SingleQE;
+				newPlan->flow->flotype = FLOW_SINGLETON;
+			}
+
 			broadcastPlan(newPlan, false /* stable */ , false /* rescannable */,
 						  context->currentPlanFlow->numsegments /* numsegments */);
 		}
