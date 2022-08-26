@@ -540,6 +540,7 @@ pgarch_archiveXlog(char *xlog)
 	int			rc;
 
 	char		contentid[12];	/* sign, 10 digits and '\0' */
+	char		dbid[11];	/* 10 digits and '\0' */
 
 	snprintf(pathname, MAXPGPATH, XLOGDIR "/%s", xlog);
 
@@ -575,6 +576,14 @@ pgarch_archiveXlog(char *xlog)
 					sp++;
 					pg_ltoa(GpIdentity.segindex, contentid);
 					strlcpy(dp, contentid, endp - dp);
+					dp += strlen(dp);
+					break;
+				case 'd':
+					/* GPDB: %d: dbid of segment */
+					Assert(GpIdentity.dbid != UNINITIALIZED_GP_IDENTITY_VALUE);
+					sp++;
+					pg_ltoa(GpIdentity.dbid, dbid);
+					strlcpy(dp, dbid, endp - dp);
 					dp += strlen(dp);
 					break;
 				case '%':
