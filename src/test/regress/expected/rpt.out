@@ -1008,6 +1008,7 @@ select distinct id from gp_dist_random('t_replicate_dst') order by id;
   4
   5
 (5 rows)
+
 -- update & delete
 explain (costs off) update t_replicate_volatile set a = 1 where b > random();
 ERROR:  could not devise a plan (cdbpath.c:2074)
