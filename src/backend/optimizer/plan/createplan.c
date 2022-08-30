@@ -6690,7 +6690,8 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 					subplan->flow->flotype == FLOW_SINGLETON &&
 					subplan->flow->locustype == CdbLocusType_SegmentGeneral)
 				{
-					if (contain_volatile_functions((Node *)subplan->targetlist))
+					if (contain_volatile_functions((Node *)subplan->targetlist) ||
+						contain_volatile_functions(root->parse->havingQual))
 					{
 						subplan->flow->locustype = CdbLocusType_SingleQE;
 					}
@@ -6720,7 +6721,8 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 				if (optimizer_replicated_table_insert &&
 					subplan->flow->flotype == FLOW_SINGLETON &&
 					subplan->flow->locustype == CdbLocusType_General &&
-					!contain_volatile_functions((Node *)subplan->targetlist))
+					!contain_volatile_functions((Node *)subplan->targetlist) &&
+					!contain_volatile_functions(root->parse->havingQual))
 				{
 					subplan->dispatch = DISPATCH_PARALLEL;
 					if (subplan->flow->numsegments >= targetPolicy->numsegments)
