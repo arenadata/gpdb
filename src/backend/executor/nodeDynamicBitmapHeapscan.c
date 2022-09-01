@@ -55,14 +55,17 @@ ExecInitDynamicBitmapHeapScan(DynamicBitmapHeapScan *node, EState *estate, int e
 
 	state->scan_state = SCAN_INIT;
 
+	state->ss.ps.qual = (List *) ExecInitExpr((Expr *) node->bitmapheapscan.scan.plan.qual,
+											   (PlanState *) state);
+	state->ss.ps.targetlist = (List *) ExecInitExpr((Expr *) node->bitmapheapscan.scan.plan.targetlist,
+													 (PlanState *) state);
+
 	/* Initialize result tuple type. */
 	ExecInitResultTupleSlot(estate, &state->ss.ps);
 	ExecAssignResultTypeFromTL(&state->ss.ps);
 
 	reloid = getrelid(node->bitmapheapscan.scan.scanrelid, estate->es_range_table);
 	Assert(OidIsValid(reloid));
-
-	state->firstPartition = true;
 
 	/* lastRelOid is used to remap varattno for heterogeneous partitions */
 	state->lastRelOid = reloid;
@@ -171,26 +174,6 @@ initNextTableToScan(DynamicBitmapHeapScanState *node)
 		 */
 		node->lastRelOid = currentPartitionOid;
 		pfree(attMap);
-	}
-
-	/*
-	 * For the very first partition, the targetlist of planstate is set to null.
-	 * So, we must initialize quals and targetlist.
-	 */
-	if (node->firstPartition)
-	{
-		node->firstPartition = false;
-
-		MemoryContextReset(node->partitionMemoryContext);
-		MemoryContext oldCxt = MemoryContextSwitchTo(node->partitionMemoryContext);
-
-		/* Initialize child expressions */
-		scanState->ps.qual = (List *) ExecInitExpr((Expr *) scanState->ps.plan->qual,
-												   (PlanState *) scanState);
-		scanState->ps.targetlist = (List *) ExecInitExpr((Expr *) scanState->ps.plan->targetlist,
-														 (PlanState *) scanState);
-
-		MemoryContextSwitchTo(oldCxt);
 	}
 
 	DynamicScan_SetTableOid(&node->ss, currentPartitionOid);
