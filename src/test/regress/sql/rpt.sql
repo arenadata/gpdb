@@ -546,6 +546,7 @@ select c from rep_tab where c in (select distinct d from rand_tab);
 --
 create table t (i int) distributed replicated;
 create table t1 (a int) distributed by (a);
+create table t2 (a int, b float) distributed replicated;
 create or replace function f(i int) returns int language sql security definer as $$ select i; $$;
 -- ensure we make gather motion
 explain (costs off, verbose) SELECT (select f(i) from t);
@@ -553,11 +554,13 @@ explain (costs off, verbose) SELECT (select f(i) from t group by f(i));
 explain (costs off, verbose) SELECT (select i from t group by i having f(i) > 0);
 -- ensure we make broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
+explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
 explain (costs off, verbose) select 1 as mrs_t1 from t1 where 1 <= ALL (select i from t group by i having random() > 0);
 drop table if exists t;
 drop table if exists t1;
+drop table if exists t2;
 drop function if exists f(i int);
 
 -- start_ignore
