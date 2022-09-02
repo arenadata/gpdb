@@ -72,9 +72,6 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	XLogRecPtr	restartRedoPtr;
 	TimeLineID	restartTli;
 
-	char		buf[12];	/* sign, 10 digits and '\0' */
-	int32		val;
-
 	/* In standby mode, restore_command might not be supplied */
 	if (recoveryRestoreCommand == NULL)
 		goto not_available;
@@ -186,13 +183,16 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 					break;
 				case 'c': /* GPDB: %c: contentId of segment */
 				case 'd': /* GPDB: %d: dbid of segment */
-					val = (sp[1] == 'c') ? GpIdentity.segindex : GpIdentity.dbid;
+				{
+					char	buf[12];  /* sign, 10 digits and '\0' */
+					int32	val = (sp[1] == 'c') ? GpIdentity.segindex : GpIdentity.dbid;
 					Assert(val != UNINITIALIZED_GP_IDENTITY_VALUE);
 					sp++;
 					pg_ltoa(val, buf);
 					strlcpy(dp, buf, endp - dp);
 					dp += strlen(dp);
 					break;
+				}
 				case '%':
 					/* convert %% to a single % */
 					sp++;
