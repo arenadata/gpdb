@@ -539,6 +539,9 @@ pgarch_archiveXlog(char *xlog)
 	const char *sp;
 	int			rc;
 
+	char		buf[12];	/* sign, 10 digits and '\0' */
+	int32		val;
+
 	snprintf(pathname, MAXPGPATH, XLOGDIR "/%s", xlog);
 
 	/*
@@ -569,8 +572,7 @@ pgarch_archiveXlog(char *xlog)
 					break;
 				case 'c': /* GPDB: %c: contentId of segment */
 				case 'd': /* GPDB: %d: dbid of segment */
-					char    buf[12];  /* sign, 10 digits and '\0' */
-					int32   val = (sp[1] == 'c') ? GpIdentity.segindex : GpIdentity.dbid;
+					val = (sp[1] == 'c') ? GpIdentity.segindex : GpIdentity.dbid;
 					Assert(val != UNINITIALIZED_GP_IDENTITY_VALUE);
 					sp++;
 					pg_ltoa(val, buf);
