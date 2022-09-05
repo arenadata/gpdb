@@ -6722,7 +6722,7 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 					subplan->flow->flotype == FLOW_SINGLETON &&
 					subplan->flow->locustype == CdbLocusType_General &&
 					!contain_volatile_functions((Node *)subplan->targetlist) &&
-					!contain_volatile_functions(root->parse->havingQual))
+					!contain_volatile_functions(subplan->qual))
 				{
 					subplan->dispatch = DISPATCH_PARALLEL;
 					if (subplan->flow->numsegments >= targetPolicy->numsegments)
