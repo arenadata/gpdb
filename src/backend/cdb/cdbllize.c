@@ -751,11 +751,9 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		{
 			Assert(NULL != context->currentPlanFlow);
 
-			PlannerInfo *origRoot = planner_subplan_get_root(context->root, spExpr);
-
 			if ((newPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
 				(contain_volatile_functions((Node *) newPlan->targetlist) ||
-				contain_volatile_functions(origRoot->parse->havingQual)))
+				contain_volatile_functions(newPlan->qual)))
 			{
 				newPlan->flow->locustype = CdbLocusType_SingleQE;
 				newPlan->flow->flotype = FLOW_SINGLETON;
