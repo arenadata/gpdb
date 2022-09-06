@@ -550,6 +550,7 @@ create table t2 (a int, b float) distributed replicated;
 create or replace function f(i int) returns int language sql security definer as $$ select i; $$;
 -- ensure we make gather motion
 explain (costs off, verbose) SELECT (select f(i) from t);
+-- ensure we do not make broadcast motion
 explain (costs off, verbose) SELECT (select f(i) from t group by f(i));
 explain (costs off, verbose) SELECT (select i from t group by i having f(i) > 0);
 -- ensure we make broadcast motion

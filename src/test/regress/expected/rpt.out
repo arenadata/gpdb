@@ -1375,6 +1375,7 @@ explain (costs off, verbose) SELECT (select f(i) from t);
  Settings: enable_bitmapscan=off, enable_seqscan=off
 (9 rows)
 
+-- ensure we do not make broadcast motion
 explain (costs off, verbose) SELECT (select f(i) from t group by f(i));
                      QUERY PLAN                      
 -----------------------------------------------------
