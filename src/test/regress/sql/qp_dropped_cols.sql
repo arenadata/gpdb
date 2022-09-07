@@ -8643,16 +8643,16 @@ SET optimizer_enforce_subplans TO ON;
 ALTER TABLE ds_part1 drop column a1;
 ALTER TABLE ds_main exchange partition for (1) with table ds_part1;
 
-INSERT INTO non_part1 SELECT i FROM generate_series(1, 100)i;
-INSERT INTO non_part2 SELECT i, i + 1 FROM generate_series(1, 100)i;
+INSERT INTO non_part1 SELECT i FROM generate_series(1, 1)i;
+INSERT INTO non_part2 SELECT i, i + 1 FROM generate_series(1, 10)i;
 INSERT INTO ds_main SELECT i, i + 1, i + 2 FROM generate_series (1, 1000)i;
 
 analyze ds_main;
 analyze non_part1;
 analyze non_part2;
 
-EXPLAIN (costs off) SELECT * FROM ds_main, non_part2 WHERE ds_main.c = non_part2.e AND non_part2.f < 10 AND a IN ( SELECT a FROM non_part1) order by a;
-SELECT * FROM ds_main, non_part2 WHERE ds_main.c = non_part2.e AND non_part2.f < 10 AND a IN ( SELECT a FROM non_part1) order by a;
+EXPLAIN (costs off) SELECT * FROM ds_main, non_part2 WHERE ds_main.c = non_part2.e AND a IN ( SELECT a FROM non_part1) order by a;
+SELECT * FROM ds_main, non_part2 WHERE ds_main.c = non_part2.e AND a IN ( SELECT a FROM non_part1) order by a;
 
 -- As of this writing, pg_dump creates an invalid dump for some of the tables
 -- here. See https://github.com/greenplum-db/gpdb/issues/3598. So we must drop
