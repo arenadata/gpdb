@@ -16109,6 +16109,16 @@ select * from multi_part_mid_bitmap where date = '2017-02-05' and region = 'usa'
 (0 rows)
 
 -- Exchange partitions with dropped columns and check subplan with attribute remapping into dynamicSeqscan
+-- start_ignore
+DROP TABLE if exists ds_main;
+NOTICE:  table "ds_main" does not exist, skipping
+DROP TABLE if exists ds_part1;
+NOTICE:  table "ds_part1" does not exist, skipping
+DROP TABLE if exists non_part1;
+NOTICE:  table "non_part1" does not exist, skipping
+DROP TABLE if exists non_part2;
+NOTICE:  table "non_part2" does not exist, skipping
+-- end_ignore
 CREATE TABLE ds_main ( a INT, b INT, c INT) PARTITION BY RANGE(c)( START(1) END (10) EVERY (2), DEFAULT PARTITION deflt);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.

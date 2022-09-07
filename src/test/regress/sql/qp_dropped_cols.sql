@@ -8625,6 +8625,13 @@ explain select * from multi_part_mid_bitmap where date = '2017-02-05' and region
 select * from multi_part_mid_bitmap where date = '2017-02-05' and region = 'usa';
 
 -- Exchange partitions with dropped columns and check subplan with attribute remapping into dynamicSeqscan
+-- start_ignore
+DROP TABLE if exists ds_main;
+DROP TABLE if exists ds_part1;
+DROP TABLE if exists non_part1;
+DROP TABLE if exists non_part2;
+-- end_ignore
+
 CREATE TABLE ds_main ( a INT, b INT, c INT) PARTITION BY RANGE(c)( START(1) END (10) EVERY (2), DEFAULT PARTITION deflt);
 CREATE TABLE ds_part1 (a int, a1 int, b int, c int);
 CREATE TABLE non_part1 (c INT);
