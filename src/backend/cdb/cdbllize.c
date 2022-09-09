@@ -576,7 +576,7 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 
 			if ((scanPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
 				(contain_volatile_functions((Node *) scanPlan->targetlist) ||
-				contain_volatile_functions(scanPlan->qual)))
+				contain_volatile_functions((Node *) scanPlan->qual)))
 			{
 				scanPlan->flow->locustype = CdbLocusType_SingleQE;
 				scanPlan->flow->flotype = FLOW_SINGLETON;
@@ -753,7 +753,7 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 
 			if ((newPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
 				(contain_volatile_functions((Node *) newPlan->targetlist) ||
-				contain_volatile_functions(newPlan->qual)))
+				contain_volatile_functions((Node *) newPlan->qual)))
 			{
 				newPlan->flow->locustype = CdbLocusType_SingleQE;
 				newPlan->flow->flotype = FLOW_SINGLETON;
