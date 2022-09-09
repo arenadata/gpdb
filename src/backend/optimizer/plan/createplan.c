@@ -6686,8 +6686,7 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 				 * Obviously, tmp_tab in new segments can't get data if we don't
 				 * add a broadcast here. 
 				 */
-				if (optimizer_replicated_table_insert &&
-					subplan->flow->flotype == FLOW_SINGLETON &&
+				if (subplan->flow->flotype == FLOW_SINGLETON &&
 					subplan->flow->locustype == CdbLocusType_SegmentGeneral)
 				{
 					if (contain_volatile_functions((Node *)subplan->targetlist) ||
@@ -6695,7 +6694,8 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 					{
 						subplan->flow->locustype = CdbLocusType_SingleQE;
 					}
-					else if (subplan->flow->numsegments >= targetPolicy->numsegments)
+					else if (optimizer_replicated_table_insert &&
+							 subplan->flow->numsegments >= targetPolicy->numsegments)
 					{
 						/*
 						 * A query to reach here:
