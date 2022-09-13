@@ -845,6 +845,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	if (IsA(newnode, Motion) &&flow->req_move != MOVEMENT_NONE)
 	{
 		plan = ((Motion *) newnode)->plan.lefttree;
+
+		/* Save previous flow and copy flow of deleting motion. */
 		flow->flow_before_req_move = plan->flow;
 		plan->flow = flow;
 		newnode = (Node *) plan;
