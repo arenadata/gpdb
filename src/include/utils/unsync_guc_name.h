@@ -298,8 +298,6 @@
 		"lc_collate",
 		"lc_ctype",
 		"lc_messages",
-		"lc_monetary",
-		"lc_time",
 		"listen_addresses",
 		"lo_compat_privileges",
 		"local_preload_libraries",
