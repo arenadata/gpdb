@@ -989,14 +989,35 @@ explain (costs off) select a from t_replicate_volatile union all select * from n
 create table t_replicate_dst(id serial, i integer) distributed replicated;
 create table t_replicate_src(i integer) distributed replicated;
 insert into t_replicate_src select i from generate_series(1, 5) i;
-explain (costs off) insert into t_replicate_dst (i) select i from t_replicate_src;
-                    QUERY PLAN                     
----------------------------------------------------
- Insert on t_replicate_dst
+explain (costs off, verbose) insert into t_replicate_dst (i) select i from t_replicate_src;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Insert on rpt.t_replicate_dst
    ->  Broadcast Motion 1:3  (slice1; segments: 1)
-         ->  Seq Scan on t_replicate_src
+         Output: ((nextval('t_replicate_dst_id_seq'::regclass))::integer), t_replicate_src.i
+         ->  Seq Scan on rpt.t_replicate_src
+               Output: nextval('t_replicate_dst_id_seq'::regclass), t_replicate_src.i
  Optimizer: Postgres query optimizer
-(4 rows)
+ Settings: enable_bitmapscan=off, enable_seqscan=off, optimizer=off
+(7 rows)
+
+explain (costs off, verbose) with s as (select i from t_replicate_src group by i having random() > 0) insert into t_replicate_dst (i) select i from s;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Insert on rpt.t_replicate_dst
+   ->  Broadcast Motion 1:3  (slice1; segments: 1)
+         Output: ((nextval('t_replicate_dst_id_seq'::regclass))::integer), "*SELECT*".i
+         ->  Subquery Scan on "*SELECT*"
+               Output: nextval('t_replicate_dst_id_seq'::regclass), "*SELECT*".i
+               ->  HashAggregate
+                     Output: t_replicate_src.i
+                     Group Key: t_replicate_src.i
+                     Filter: (random() > '0'::double precision)
+                     ->  Seq Scan on rpt.t_replicate_src
+                           Output: t_replicate_src.i
+ Optimizer: Postgres query optimizer
+ Settings: enable_bitmapscan=off, enable_seqscan=off, optimizer=off
+(13 rows)
 
 insert into t_replicate_dst (i) select i from t_replicate_src;
 select distinct id from gp_dist_random('t_replicate_dst') order by id;
@@ -1446,24 +1467,6 @@ explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
  Optimizer: Postgres query optimizer
  Settings: enable_bitmapscan=off, enable_seqscan=off
 (7 rows)
-
-explain (costs off, verbose) insert into t1 select max(i) from t group by random();
-                      QUERY PLAN                      
-------------------------------------------------------
- Insert on rpt.t1
-   ->  Redistribute Motion 1:3  (slice1; segments: 1)
-         Output: "*SELECT*".max
-         Hash Key: "*SELECT*".max
-         ->  Subquery Scan on "*SELECT*"
-               Output: "*SELECT*".max
-               ->  HashAggregate
-                     Output: max(t.i), (random())
-                     Group Key: random()
-                     ->  Seq Scan on rpt.t
-                           Output: t.i, random()
- Optimizer: Postgres query optimizer
- Settings: enable_bitmapscan=off, enable_seqscan=off
-(13 rows)
 
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);

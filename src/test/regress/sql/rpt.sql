@@ -429,7 +429,8 @@ explain (costs off) select a from t_replicate_volatile union all select * from n
 create table t_replicate_dst(id serial, i integer) distributed replicated;
 create table t_replicate_src(i integer) distributed replicated;
 insert into t_replicate_src select i from generate_series(1, 5) i;
-explain (costs off) insert into t_replicate_dst (i) select i from t_replicate_src;
+explain (costs off, verbose) insert into t_replicate_dst (i) select i from t_replicate_src;
+explain (costs off, verbose) with s as (select i from t_replicate_src group by i having random() > 0) insert into t_replicate_dst (i) select i from s;
 insert into t_replicate_dst (i) select i from t_replicate_src;
 select distinct id from gp_dist_random('t_replicate_dst') order by id;
 
@@ -556,7 +557,6 @@ explain (costs off, verbose) SELECT (select i from t group by i having f(i) > 0)
 -- ensure we make broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
 explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
-explain (costs off, verbose) insert into t1 select max(i) from t group by random();
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
 explain (costs off, verbose) select 1 as mrs_t1 from t1 where 1 <= ALL (select i from t group by i having random() > 0);
