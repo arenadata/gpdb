@@ -574,9 +574,8 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 		{
 			Assert (NULL != ctx->currentPlanFlow);
 
-			if ((scanPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
-				(contain_volatile_functions((Node *) scanPlan->targetlist) ||
-				 contain_volatile_functions((Node *) scanPlan->qual)))
+			if (scanPlan->flow->locustype == CdbLocusType_SegmentGeneral &&
+				contain_volatile_functions((Node *) scanPlan->qual))
 			{
 				scanPlan->flow->locustype = CdbLocusType_SingleQE;
 				scanPlan->flow->flotype = FLOW_SINGLETON;
