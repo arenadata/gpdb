@@ -558,6 +558,7 @@ explain (costs off, verbose) select * from t1 where a in (select random() from t
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
 -- ensure we make broadcast motion
 explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
+explain (costs off, verbose) select * from t1 where a in (select f(i) from t where i=a and f(i) > 0);
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t group by i having random() > 0);
 drop table if exists t;

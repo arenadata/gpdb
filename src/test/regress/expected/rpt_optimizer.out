@@ -1471,6 +1471,31 @@ explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
  Settings: enable_bitmapscan=off, enable_seqscan=off
 (7 rows)
 
+explain (costs off, verbose) select * from t1 where a in (select f(i) from t where i=a and f(i) > 0);
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)
+   Output: t1.a
+   ->  Seq Scan on rpt.t1
+         Output: t1.a
+         Filter: (SubPlan 1)
+         SubPlan 1  (slice2; segments: 3)
+           ->  Result
+                 Output: f(t.i)
+                 ->  Result
+                       Output: t.i
+                       Filter: (t.i = t1.a)
+                       ->  Materialize
+                             Output: t.i, t.i
+                             ->  Broadcast Motion 1:3  (slice1; segments: 1)
+                                   Output: t.i, t.i
+                                   ->  Seq Scan on rpt.t
+                                         Output: t.i, t.i
+                                         Filter: (f(t.i) > 0)
+ Optimizer: Postgres query optimizer
+ Settings: enable_bitmapscan=off, enable_seqscan=off
+(20 rows)
+
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t group by i having random() > 0);
                                QUERY PLAN                               
