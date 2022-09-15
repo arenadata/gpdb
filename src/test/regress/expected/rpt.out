@@ -1396,7 +1396,6 @@ explain (costs off, verbose) select (select f(i) from t);
  Settings: enable_bitmapscan=off, enable_seqscan=off
 (9 rows)
 
--- ensure we do not make broadcast motion
 explain (costs off, verbose) select (select f(i) from t group by f(i));
                      QUERY PLAN                      
 -----------------------------------------------------
@@ -1432,6 +1431,7 @@ explain (costs off, verbose) select (select i from t group by i having f(i) > 0)
  Settings: enable_bitmapscan=off, enable_seqscan=off
 (13 rows)
 
+-- ensure we do not make broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
                      QUERY PLAN                      
 -----------------------------------------------------
