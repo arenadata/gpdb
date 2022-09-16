@@ -6689,8 +6689,7 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 				if (subplan->flow->flotype == FLOW_SINGLETON &&
 					subplan->flow->locustype == CdbLocusType_SegmentGeneral)
 				{
-					if (contain_volatile_functions((Node *)subplan->targetlist) ||
-						contain_volatile_functions(root->parse->havingQual))
+					if (contain_volatile_functions((Node *)subplan->targetlist))
 					{
 						subplan->flow->locustype = CdbLocusType_SingleQE;
 					}
