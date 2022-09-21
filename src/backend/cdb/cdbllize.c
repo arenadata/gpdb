@@ -749,17 +749,6 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		if (containingPlanDistributed)
 		{
 			Assert(NULL != context->currentPlanFlow);
-
-			PlannerInfo *origRoot = planner_subplan_get_root(context->root, spExpr);
-
-			if ((newPlan->flow->locustype == CdbLocusType_SegmentGeneral) &&
-				(contain_volatile_functions((Node *) newPlan->targetlist) ||
-				 contain_volatile_functions(origRoot->parse->havingQual)))
-			{
-				newPlan->flow->locustype = CdbLocusType_SingleQE;
-				newPlan->flow->flotype = FLOW_SINGLETON;
-			}
-
 			broadcastPlan(newPlan, false /* stable */ , false /* rescannable */,
 						  context->currentPlanFlow->numsegments /* numsegments */);
 		}
