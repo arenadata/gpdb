@@ -41,8 +41,10 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbmutate.h"
+#include "cdb/cdbsetop.h"
 #include "cdb/cdbsubselect.h"
 #include "cdb/cdbvars.h"
+
 
 typedef struct convert_testexpr_context
 {
@@ -644,6 +646,13 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 	{
 		plan->flow->locustype = CdbLocusType_SingleQE;
 		plan->flow->flotype = FLOW_SINGLETON;
+	}
+
+	if (plan->flow->locustype == CdbLocusType_SegmentGeneral &&
+		(contain_volatile_functions((Node *) plan->targetlist) ||
+		 contain_volatile_functions(subquery->havingQual)))
+	{
+		plan = (Plan *) make_motion_gather(subroot, plan, NIL, CdbLocusType_SingleQE);
 	}
 
 	/* Isolate the params needed by this specific subplan */
