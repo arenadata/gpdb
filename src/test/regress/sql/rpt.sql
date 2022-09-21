@@ -549,15 +549,16 @@ create table t (i int) distributed replicated;
 create table t1 (a int) distributed by (a);
 create table t2 (a int, b float) distributed replicated;
 create or replace function f(i int) returns int language sql security definer as $$ select i; $$;
--- ensure we make gather motion
+-- ensure we make gather motion when volatile functions in subplan
 explain (costs off, verbose) select (select f(i) from t);
 explain (costs off, verbose) select (select f(i) from t group by f(i));
 explain (costs off, verbose) select (select i from t group by i having f(i) > 0);
 -- ensure we do not make broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
--- ensure we make broadcast motion
+-- ensure we make broadcast motion when volatile function in deleting motion flow
 explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
+-- ensure we make broadcast motion when volatile function in correlated subplan qual
 explain (costs off, verbose) select * from t1 where a in (select f(i) from t where i=a and f(i) > 0);
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t group by i having random() > 0);
