@@ -6152,7 +6152,7 @@ do_start_bgworker(RegisteredBgWorker *rw)
 		return false;
 	}
 
-	ereport(DEBUG1,
+	ereport(LOG,
 			(errmsg("starting background worker process \"%s\"",
 					rw->rw_worker.bgw_name)));
 
