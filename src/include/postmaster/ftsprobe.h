@@ -93,6 +93,7 @@ typedef struct
 	int retry_count;
 	XLogRecPtr xlogrecptr;
 	PMRestartState restart_state;
+	bool abort_transaction_if_error;
 } fts_segment_info;
 
 typedef struct

@@ -180,6 +180,7 @@ ftsConnectStart(fts_segment_info *ftsInfo)
 			 "(content=%d, dbid=%d): %s",
 			 ftsInfo->primary_cdbinfo->config->segindex, ftsInfo->primary_cdbinfo->config->dbid,
 			 PQerrorMessage(ftsInfo->conn));
+		ftsInfo->abort_transaction_if_error = !ftsInfo->abort_transaction_if_error;
 		return false;
 	}
 
@@ -321,7 +322,18 @@ ftsConnect(fts_context *context)
 					AssertImply(ftsInfo->retry_count > 0,
 								ftsInfo->retry_count <= gp_fts_probe_retries);
 					if (!ftsConnectStart(ftsInfo))
-						ftsInfo->state = nextFailedState(ftsInfo->state);
+					{
+						if (ftsInfo->abort_transaction_if_error)
+						{
+							AbortCurrentTransaction();
+							PQfinish(ftsInfo->conn);
+							ftsInfo->conn = NULL;
+						}
+						else
+						{
+							ftsInfo->state = nextFailedState(ftsInfo->state);
+						}
+					}
 				}
 				else if (ftsInfo->poll_revents & (POLLOUT | POLLIN))
 				{
