@@ -125,7 +125,7 @@ DEFPORT=5432
 ORCA_CONFIG=--enable-orca
 
 rhel6_x86_64_CONFIGFLAGS=--enable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy ${ORCA_CONFIG} --with-libxml
-altlinux8.2_x86_64_CONFIGFLAGS=--enable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy ${ORCA_CONFIG} --with-libxml
+altlinux8.4_x86_64_CONFIGFLAGS=--enable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy ${ORCA_CONFIG} --with-libxml
 astra1.7_x86_64_CONFIGFLAGS=--enable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy ${ORCA_CONFIG} --with-libxml
 rhel7_x86_64_CONFIGFLAGS=--enable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy ${ORCA_CONFIG} --with-libxml
 rhel7_ppc64le_CONFIGFLAGS=--enable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy ${ORCA_CONFIG} --with-libxml
@@ -599,6 +599,15 @@ copylibs :
 		echo "...DONE"; \
 	else \
 	    echo "INFO: Python not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
+	fi
+	# Create the python3.9 directory to flag to build scripts that python has been handled
+	mkdir -p $(INSTLOC)/ext/python3.9
+	@if [ ! -z "$(PYTHONHOME39)" ]; then \
+	    echo "Copying python3.9, ., from $(PYTHONHOME39) into $(INSTLOC)/ext/python3.9..."; \
+	    (cd $(PYTHONHOME39) && tar cf - .) | (cd $(INSTLOC)/ext/python3.9/ && tar xpf -); \
+		echo "...DONE"; \
+	else \
+	    echo "INFO: Python3.9 not found on this platform, $(BLD_ARCH), not copying it into the GPDB package."; \
 	fi
 	mkdir -p $(INSTLOC)/etc
 	mkdir -p $(INSTLOC)/include
