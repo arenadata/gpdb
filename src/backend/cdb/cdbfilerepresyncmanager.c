@@ -1132,15 +1132,17 @@ FileRepPrimary_RunResyncManager(void)
 				continue;
 			}
 		}
-		
+
+		FileRep_GetRelationPath(
+								entry.fileName,
+								entry.relFileNode,
+								entry.segmentFileNum);
+
 		if (entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_DataSynchronized ||
 			entry.mirrorDataSynchronizationState == MirroredRelDataSynchronizationState_None)
 		{
-			if (Debug_filerep_print)
-			{
-				elog(LOG, "Not adding this entry to hash table %s as DataSynchronized/None %d", 
-					entry.fileName, entry.mirrorDataSynchronizationState);
-			}
+			elog(LOG, "Not adding this entry to hash table %s as DataSynchronized/None %d",
+				entry.fileName, entry.mirrorDataSynchronizationState);
 			continue;
 		}
 		
@@ -1202,11 +1204,6 @@ FileRepPrimary_RunResyncManager(void)
 
 		SIMPLE_FAULT_INJECTOR(FileRepResync);
 
-		FileRep_GetRelationPath(
-								entry.fileName, 
-								entry.relFileNode, 
-								entry.segmentFileNum);
-								
 		status = FileRepResync_InsertEntry(&entry);
 		
 		if (status != STATUS_OK)

@@ -5677,10 +5677,9 @@ static void PersistentFileSysObj_MarkPageIncremental(
 
 	if (tupleCopy == NULL)
 	{
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(),
-				 "PersistentFileSysObj_MarkPageIncremental: Skipping 'Free' entry at TID %s",
-				 ItemPointerToString(persistentTid));
+		elog(LOG,
+			 "PersistentFileSysObj_MarkPageIncremental: Skipping 'Free' entry at TID %s",
+			 ItemPointerToString(persistentTid));
 
 		WRITE_PERSISTENT_STATE_ORDERED_UNLOCK;
 		return;
@@ -5763,17 +5762,16 @@ static void PersistentFileSysObj_MarkPageIncremental(
 	}
 	else
 	{
-		if (Debug_persistent_print)
-			elog(Persistent_DebugPrintLevel(),
-				 "PersistentFileSysObj_MarkPageIncremental: Skipping '%s' for page incremental, relation storage manager '%s', "
-				 "persistent state '%s', mirror existence state '%s', mirror synchronization state '%s', serial number " INT64_FORMAT " at TID %s",
-				 PersistentFileSysObjName_ObjectName(&fsObjName),
-				 PersistentFileSysRelStorageMgr_Name(relationStorageManager),
-				 PersistentFileSysObjState_Name(persistentState),
-				 MirroredObjectExistenceState_Name(mirrorExistenceState),
-				 MirroredRelDataSynchronizationState_Name(mirrorDataSynchronizationState),
-				 serialNum,
-				 ItemPointerToString(persistentTid));
+		elog(LOG,
+			 "PersistentFileSysObj_MarkPageIncremental: Skipping '%s' for page incremental, relation storage manager '%s', "
+			 "persistent state '%s', mirror existence state '%s', mirror synchronization state '%s', serial number " INT64_FORMAT " at TID %s",
+			 PersistentFileSysObjName_ObjectName(&fsObjName),
+			 PersistentFileSysRelStorageMgr_Name(relationStorageManager),
+			 PersistentFileSysObjState_Name(persistentState),
+			 MirroredObjectExistenceState_Name(mirrorExistenceState),
+			 MirroredRelDataSynchronizationState_Name(mirrorDataSynchronizationState),
+			 serialNum,
+			 ItemPointerToString(persistentTid));
 
 		heap_freetuple(tupleCopy);
 	}
@@ -5943,13 +5941,17 @@ bool PersistentFileSysObj_ResynchronizeScan(
 										&parentXid,
 										&serialNum);
 
-		if (state == PersistentFileSysState_Free)
-			continue;
-
 		PersistentFileSysObjName_SetRelationFile(
 											&fsObjName,
 											relFileNode,
 											*segmentFileNum);
+
+		if (state == PersistentFileSysState_Free)
+		{
+			elog(LOG, "Skip '%s' -- gp_persistent_relation_node.persistent_state = 'Free'",
+				 PersistentFileSysObjName_ObjectName(&fsObjName));
+			continue;
+		}
 
 		if (state != PersistentFileSysState_BulkLoadCreatePending &&
 			MirroredObjectExistenceState_IsResynchCreated(mirrorExistenceState))
@@ -6097,12 +6099,14 @@ bool PersistentFileSysObj_ResynchronizeRefetch(
 	if (persistentSerialNum != serialNum)
 	{
 		elog(LOG,
-			 "Found different serial number " INT64_FORMAT " than expected serial number" INT64_FORMAT "(persistent file-system object: %u/%u/%u')",
+			 "Found different serial number " INT64_FORMAT " than expected serial number " INT64_FORMAT
+			 	" (persistent file-system object: %u/%u/%u, segment file #%d)",
 			 serialNum,
 			 persistentSerialNum,
 			 relFileNode->spcNode,
 			 relFileNode->dbNode,
-			 relFileNode->relNode);
+			 relFileNode->relNode,
+			 *segmentFileNum);
 
 		return false;
 	}
