@@ -242,9 +242,70 @@ INSERT INTO oneoffplantest VALUES (0), (0), (0);
 -- regardless of the number of tuples in the table.
 select volatilefunc(a) from oneoffplantest;
 
+-- Test cases around using volatile function in replicated datasets that
+-- eventually violates replicating property and requires from plan to process
+-- rows in a single node.
+-- Preparing stage
+create table t_hashdist as select i as a, i as b, i as c from generate_series(1, 10) as i distributed by (a);
+create function values_wrapper() returns setof int
+immutable rows 1000 language plpgsql
+as $$
+begin
+    return query select (values (0)) as t;
+end;
+$$;
+set optimizer to off;
+
+-- gp_execution_segment() function have to be issued on one node (segment or coordinator) under Result node.
+-- The result should be 1.
+select count(distinct(j)) from (select gp_execution_segment()) as t(j), t_hashdist;
+
+-- values_wrapper() / values expression with volatile predicate have to be issued on one node
+explain select * from (select a from values_wrapper() a) x, t_hashdist where x.a > random();
+explain select * from (select a from (values (0)) t(a)) x, t_hashdist where x.a > random();
+
+-- join values_wrapper() on values_wrapper() with volatile join condition have to be issued on one node
+explain select * from t_hashdist,
+    (select a from values_wrapper() a) x,
+    (select a from values_wrapper() a) y
+    where x.a + y.a > random();
+
+-- subquery have to be issued on one node
+explain select * from t_hashdist where a > All (select random() from values_wrapper());
+explain select * from t_hashdist where a > All (select random() from (values (0)) as t);
+
+-- values_wrapper() / values expression have to be issued on one node and broadcastly pulled up into semi join
+explain select * from t_hashdist where a in (select random()::int from values_wrapper());
+explain select * from t_hashdist where a in (select random()::int from (values (0)) as t);
+
+-- different combinations of using volatile function in target list, group by and having clauses
+explain select * from t_hashdist cross join (select random() from values_wrapper()) x;
+explain select * from t_hashdist cross join (select random() from (values (0)) as t) x;
+explain select * from t_hashdist cross join (select a, sum(random()) from values_wrapper() a group by a) x;
+explain select * from t_hashdist cross join (select a, sum(random()) from (values (0)) as t(a) group by a) x;
+explain select * from t_hashdist cross join (
+    select random() as k, sum(a) from values_wrapper() a group by k
+) x;
+explain select * from t_hashdist cross join (
+    select random() as k, sum(a) from (values (0)) as t(a) group by k
+) x;
+explain select * from t_hashdist cross join (
+    select a, count(1) as s from values_wrapper() a group by a having count(1) > random() order by a
+) x;
+explain select * from t_hashdist cross join (
+    select a, count(1) as s from (values (0)) as t(a) group by a having count(1) > random() order by a
+) x;
+
+-- limit clause transforms replicated dataset to singleton
+explain select * from t_hashdist cross join (select * from values_wrapper() limit 1) x;
+explain select * from t_hashdist cross join (select * from (values (0)) as t limit 1) x;
+
+drop function values_wrapper();
+
 -- start_ignore
 drop table if exists bfv_planner_x;
 drop table if exists testbadsql;
 drop table if exists bfv_planner_foo;
 drop table if exists testmedian;
+drop table if exists t_hashdist;
 -- end_ignore

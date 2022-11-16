@@ -2324,6 +2324,7 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/*
 	 * If the function desires to run on segments, mark randomly-distributed.
 	 * If expression contains mutable functions, evaluate it on entry db.
+	 * If volatile function is contained in predicate, evaluate as singleton.
 	 * Otherwise let it be evaluated in the same slice as its parent operator.
 	 */
 	Assert(rte->rtekind == RTE_FUNCTION);
@@ -2334,6 +2335,8 @@ create_functionscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		CdbPathLocus_MakeStrewn(&pathnode->locus);
 	else if (contain_mutable_functions(rte->funcexpr))
 		CdbPathLocus_MakeEntry(&pathnode->locus);
+	else if (contain_volatile_functions((Node *) rel->baserestrictinfo))
+		CdbPathLocus_MakeSingleQE(&pathnode->locus);
 	else
 		CdbPathLocus_MakeGeneral(&pathnode->locus);
 
@@ -2401,17 +2404,23 @@ create_valuesscan_path(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
-    /*
-     * CDB: If VALUES list contains mutable functions, evaluate it on entry db.
-     * Otherwise let it be evaluated in the same slice as its parent operator.
-     */
-    Assert(rte->rtekind == RTE_VALUES);
-    if (contain_mutable_functions((Node *)rte->values_lists))
-        CdbPathLocus_MakeEntry(&pathnode->locus);
-    else
-        CdbPathLocus_MakeGeneral(&pathnode->locus);
+	/*
+	 * CDB: If VALUES list contains mutable functions, evaluate it on entry db.
+	 * If volatile function is contained in predicate, evaluate as singleton.
+	 * Otherwise let it be evaluated in the same slice as its parent operator.
+	 *
+	 * TODO: if values list contains parameter from external scan, locustype
+	 * have to be inherited from that scan
+	 */
+	Assert(rte->rtekind == RTE_VALUES);
+	if (contain_mutable_functions((Node *)rte->values_lists))
+		CdbPathLocus_MakeEntry(&pathnode->locus);
+	else if (contain_volatile_functions((Node *) rel->baserestrictinfo))
+		CdbPathLocus_MakeSingleQE(&pathnode->locus);
+	else
+		CdbPathLocus_MakeGeneral(&pathnode->locus);
 
-    pathnode->motionHazard = false;
+	pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 	pathnode->sameslice_relids = NULL;
 
@@ -2579,8 +2588,8 @@ create_nestloop_path(PlannerInfo *root,
      */
 	inner_must_be_local = path_contains_inner_index(inner_path);
 
-    /* Add motion nodes above subpaths and decide where to join. */
-    join_locus = cdbpath_motion_for_join(root,
+	/* Add motion nodes above subpaths and decide where to join. */
+	join_locus = cdbpath_motion_for_join(root,
                                          jointype,
                                          &outer_path,       /* INOUT */
                                          &inner_path,       /* INOUT */
@@ -2589,8 +2598,16 @@ create_nestloop_path(PlannerInfo *root,
                                          NIL,
                                          false,
                                          inner_must_be_local);
-    if (CdbPathLocus_IsNull(join_locus))
-        return NULL;
+	if (CdbPathLocus_IsNull(join_locus))
+		return NULL;
+
+	/*
+	 * Volatile function inside join qual transforms replicated resulting
+	 * dataset to singleton
+	 */
+	if (CdbPathLocus_IsGeneral(join_locus) &&
+		contain_volatile_functions((Node *) restrict_clauses))
+		CdbPathLocus_MakeSingleQE(&join_locus);
 
     /* Outer might not be ordered anymore after motion. */
     if (!outer_path->pathkeys)
@@ -2706,10 +2723,10 @@ create_mergejoin_path(PlannerInfo *root,
     else
         innermotionkeys = NIL;
 
-    /*
-     * Add motion nodes above subpaths and decide where to join.
-     */
-    join_locus = cdbpath_motion_for_join(root,
+	/*
+	 * Add motion nodes above subpaths and decide where to join.
+	 */
+	join_locus = cdbpath_motion_for_join(root,
                                          jointype,
                                          &outer_path,       /* INOUT */
                                          &inner_path,       /* INOUT */
@@ -2718,8 +2735,16 @@ create_mergejoin_path(PlannerInfo *root,
                                          innermotionkeys,
                                          outersortkeys == NIL,
                                          innersortkeys == NIL);
-    if (CdbPathLocus_IsNull(join_locus))
-        return NULL;
+	if (CdbPathLocus_IsNull(join_locus))
+		return NULL;
+
+	/*
+	 * Volatile function inside join qual transforms replicated resulting
+	 * dataset to singleton
+	 */
+	if (CdbPathLocus_IsGeneral(join_locus) &&
+		contain_volatile_functions((Node *) restrict_clauses))
+		CdbPathLocus_MakeSingleQE(&join_locus);
 
 	/*
 	 * Sort is not needed if subpath is already well enough ordered and a
@@ -2856,6 +2881,14 @@ create_hashjoin_path(PlannerInfo *root,
 										 false);
 	if (CdbPathLocus_IsNull(join_locus))
 		return NULL;
+
+	/*
+	 * Volatile function inside join qual transforms replicated resulting
+	 * dataset to singleton
+	 */
+	if (CdbPathLocus_IsGeneral(join_locus) &&
+		contain_volatile_functions((Node *) restrict_clauses))
+		CdbPathLocus_MakeSingleQE(&join_locus);
 
 	pathnode = makeNode(HashPath);
 

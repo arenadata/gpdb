@@ -735,6 +735,19 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		/* XXX rel->onerow = ??? */
 	}
 
+	/*
+	 * Fix locus type for subplan representing replicated dataset and having
+	 * volatile function within targetlist, group clause (hidden item in
+	 * targetlist) or HAVING qual
+	 */
+	if (rel->subplan->flow->locustype == CdbLocusType_General &&
+		(contain_volatile_functions((Node *) rel->subplan->targetlist) ||
+		 contain_volatile_functions(subquery->havingQual)))
+	{
+		rel->subplan->flow->locustype = CdbLocusType_SingleQE;
+		rel->subplan->flow->flotype = FLOW_SINGLETON;
+	}
+
 	/* Copy number of output rows from subplan */
 	if (rel->onerow)
 		rel->tuples = 1;

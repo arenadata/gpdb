@@ -353,6 +353,295 @@ PL/pgSQL function "volatilefunc" line 4 at assignment
             0
 (3 rows)
 
+-- Test cases around using volatile function in replicated datasets that
+-- eventually violates replicating property and requires from plan to process
+-- rows in a single node.
+-- Preparing stage
+create table t_hashdist as select i as a, i as b, i as c from generate_series(1, 10) as i distributed by (a);
+create function values_wrapper() returns setof int
+immutable rows 1000 language plpgsql
+as $$
+begin
+    return query select (values (0)) as t;
+end;
+$$;
+set optimizer to off;
+-- gp_execution_segment() function have to be issued on one node (segment or coordinator) under Result node.
+-- The result should be 1.
+select count(distinct(j)) from (select gp_execution_segment()) as t(j), t_hashdist;
+ count 
+-------
+     1
+(1 row)
+
+-- values_wrapper() / values expression with volatile predicate have to be issued on one node
+explain select * from (select a from values_wrapper() a) x, t_hashdist where x.a > random();
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Nested Loop  (cost=3.31..337.48 rows=3334 width=16)
+   ->  Function Scan on values_wrapper a  (cost=0.00..267.50 rows=334 width=4)
+         Filter: a::double precision > random()
+   ->  Materialize  (cost=3.31..3.41 rows=4 width=12)
+         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+               ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(8 rows)
+
+explain select * from (select a from (values (0)) t(a)) x, t_hashdist where x.a > random();
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.06..3.76 rows=10 width=16)
+   ->  Nested Loop  (cost=0.06..3.76 rows=4 width=16)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.06..0.09 rows=1 width=4)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.06 rows=3 width=4)
+                     ->  Values Scan on "*VALUES*"  (cost=0.00..0.02 rows=1 width=4)
+                           Filter: column1::double precision > random()
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(9 rows)
+
+-- join values_wrapper() on values_wrapper() with volatile join condition have to be issued on one node
+explain select * from t_hashdist,
+    (select a from values_wrapper() a) x,
+    (select a from values_wrapper() a) y
+    where x.a + y.a > random();
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Nested Loop  (cost=264.31..97190.98 rows=3333334 width=20)
+   ->  Nested Loop  (cost=261.00..30521.00 rows=333334 width=8)
+         Join Filter: (a.a + a.a)::double precision > random()
+         ->  Function Scan on values_wrapper a  (cost=0.00..260.00 rows=334 width=4)
+         ->  Materialize  (cost=261.00..271.00 rows=334 width=4)
+               ->  Function Scan on values_wrapper a  (cost=0.00..260.00 rows=334 width=4)
+   ->  Materialize  (cost=3.31..3.41 rows=4 width=12)
+         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+               ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(11 rows)
+
+-- subquery have to be issued on one node
+explain select * from t_hashdist where a > All (select random() from values_wrapper());
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Nested Loop Left Anti Semi Join (Not-In)  (cost=273.50..526.80 rows=10 width=12)
+   Join Filter: t_hashdist.a::double precision <= "NotIn_SUBQUERY".random
+   ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+   ->  Materialize  (cost=273.50..283.50 rows=334 width=8)
+         ->  Subquery Scan "NotIn_SUBQUERY"  (cost=0.00..272.50 rows=1000 width=8)
+               ->  Function Scan on values_wrapper  (cost=0.00..262.50 rows=1000 width=0)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(9 rows)
+
+explain select * from t_hashdist where a > All (select random() from (values (0)) as t);
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.07..3.92 rows=4 width=12)
+   ->  Nested Loop Left Anti Semi Join (Not-In)  (cost=0.07..3.92 rows=2 width=12)
+         Join Filter: t_hashdist.a::double precision <= "NotIn_SUBQUERY".random
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.07..0.10 rows=1 width=8)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.07 rows=3 width=8)
+                     ->  Subquery Scan "NotIn_SUBQUERY"  (cost=0.00..0.03 rows=1 width=8)
+                           ->  Values Scan on "*VALUES*"  (cost=0.00..0.02 rows=1 width=0)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(10 rows)
+
+-- values_wrapper() / values expression have to be issued on one node and broadcastly pulled up into semi join
+explain select * from t_hashdist where a in (select random()::int from values_wrapper());
+                                               QUERY PLAN                                                
+---------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=300.88..300.98 rows=10 width=18)
+   ->  HashAggregate  (cost=300.88..300.98 rows=4 width=18)
+         Group By: t_hashdist.ctid::bigint
+         ->  Hash Join  (cost=3.23..300.85 rows=4 width=18)
+               Hash Cond: (random()::integer) = t_hashdist.a
+               ->  Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.00..295.00 rows=1000 width=4)
+                     Hash Key: (random()::integer)
+                     ->  Function Scan on values_wrapper  (cost=0.00..265.00 rows=1000 width=0)
+               ->  Hash  (cost=3.10..3.10 rows=4 width=18)
+                     ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=18)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(12 rows)
+
+explain select * from t_hashdist where a in (select random()::int from (values (0)) as t);
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.06..3.22 rows=4 width=12)
+   ->  Hash EXISTS Join  (cost=0.06..3.22 rows=2 width=12)
+         Hash Cond: t_hashdist.a = (random()::integer)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Hash  (cost=0.05..0.05 rows=1 width=4)
+               ->  Redistribute Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.05 rows=1 width=4)
+                     Hash Key: (random()::integer)
+                     ->  Values Scan on "*VALUES*"  (cost=0.00..0.02 rows=1 width=0)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(10 rows)
+
+-- different combinations of using volatile function in target list, group by and having clauses
+explain select * from t_hashdist cross join (select random() from values_wrapper()) x;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Nested Loop  (cost=3.31..475.81 rows=10000 width=20)
+   ->  Function Scan on values_wrapper  (cost=0.00..262.50 rows=1000 width=0)
+   ->  Materialize  (cost=3.31..3.41 rows=4 width=12)
+         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+               ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(7 rows)
+
+explain select * from t_hashdist cross join (select random() from (values (0)) as t) x;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.07..3.77 rows=10 width=20)
+   ->  Nested Loop  (cost=0.07..3.77 rows=4 width=20)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.07..0.10 rows=1 width=8)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.07 rows=3 width=8)
+                     ->  Values Scan on "*VALUES*"  (cost=0.00..0.02 rows=1 width=0)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(8 rows)
+
+explain select * from t_hashdist cross join (select a, sum(random()) from values_wrapper() a group by a) x;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Nested Loop  (cost=268.31..493.31 rows=10000 width=24)
+   ->  HashAggregate  (cost=265.00..280.00 rows=1000 width=12)
+         Group By: a.a
+         ->  Function Scan on values_wrapper a  (cost=0.00..260.00 rows=334 width=4)
+   ->  Materialize  (cost=3.31..3.41 rows=4 width=12)
+         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+               ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(9 rows)
+
+explain select * from t_hashdist cross join (select a, sum(random()) from (values (0)) as t(a) group by a) x;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.09..3.79 rows=10 width=24)
+   ->  Nested Loop  (cost=0.09..3.79 rows=4 width=24)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.09..0.12 rows=1 width=12)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.02..0.08 rows=3 width=12)
+                     ->  HashAggregate  (cost=0.02..0.03 rows=1 width=12)
+                           Group By: "*VALUES*".column1
+                           ->  Values Scan on "*VALUES*"  (cost=0.00..0.01 rows=1 width=4)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(10 rows)
+
+explain select * from t_hashdist cross join (
+    select random() as k, sum(a) from values_wrapper() a group by k
+) x;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Nested Loop  (cost=270.81..495.81 rows=10000 width=28)
+   ->  HashAggregate  (cost=267.50..282.50 rows=1000 width=16)
+         Group By: random()
+         ->  Function Scan on values_wrapper a  (cost=0.00..262.50 rows=334 width=4)
+   ->  Materialize  (cost=3.31..3.41 rows=4 width=12)
+         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+               ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(9 rows)
+
+explain select * from t_hashdist cross join (
+    select random() as k, sum(a) from (values (0)) as t(a) group by k
+) x;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.09..3.79 rows=10 width=28)
+   ->  Nested Loop  (cost=0.09..3.79 rows=4 width=28)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.09..0.12 rows=1 width=16)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.02..0.09 rows=3 width=16)
+                     ->  HashAggregate  (cost=0.02..0.04 rows=1 width=16)
+                           Group By: random()
+                           ->  Values Scan on "*VALUES*"  (cost=0.00..0.02 rows=1 width=4)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(10 rows)
+
+explain select * from t_hashdist cross join (
+    select a, count(1) as s from values_wrapper() a group by a having count(1) > random() order by a
+) x;
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Nested Loop  (cost=313.14..555.64 rows=10000 width=24)
+   ->  GroupAggregate  (cost=309.83..342.33 rows=1000 width=12)
+         Filter: count(1)::double precision > random()
+         Group By: a.a
+         ->  Sort  (cost=309.83..312.33 rows=334 width=4)
+               Sort Key: a.a
+               ->  Function Scan on values_wrapper a  (cost=0.00..260.00 rows=334 width=4)
+   ->  Materialize  (cost=3.31..3.41 rows=4 width=12)
+         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..3.30 rows=10 width=12)
+               ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(12 rows)
+
+explain select * from t_hashdist cross join (
+    select a, count(1) as s from (values (0)) as t(a) group by a having count(1) > random() order by a
+) x;
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.11..3.81 rows=10 width=24)
+   ->  Nested Loop  (cost=0.11..3.81 rows=4 width=24)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.11..0.14 rows=1 width=12)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.02..0.11 rows=3 width=12)
+                     ->  GroupAggregate  (cost=0.02..0.06 rows=1 width=12)
+                           Filter: count(1)::double precision > random()
+                           Group By: "*VALUES*".column1
+                           ->  Sort  (cost=0.02..0.03 rows=1 width=4)
+                                 Sort Key: "*VALUES*".column1
+                                 ->  Values Scan on "*VALUES*"  (cost=0.00..0.01 rows=1 width=4)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(13 rows)
+
+-- limit clause transforms replicated dataset to singleton
+explain select * from t_hashdist cross join (select * from values_wrapper() limit 1) x;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.31..4.01 rows=10 width=16)
+   ->  Nested Loop  (cost=0.31..4.01 rows=4 width=16)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.31..0.34 rows=1 width=4)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.31 rows=3 width=4)
+                     ->  Limit  (cost=0.00..0.26 rows=1 width=4)
+                           ->  Function Scan on values_wrapper  (cost=0.00..260.00 rows=334 width=4)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(9 rows)
+
+explain select * from t_hashdist cross join (select * from (values (0)) as t limit 1) x;
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.07..3.77 rows=10 width=16)
+   ->  Nested Loop  (cost=0.07..3.77 rows=4 width=16)
+         ->  Seq Scan on t_hashdist  (cost=0.00..3.10 rows=4 width=12)
+         ->  Materialize  (cost=0.07..0.10 rows=1 width=4)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)  (cost=0.00..0.06 rows=3 width=4)
+                     ->  Limit  (cost=0.00..0.01 rows=1 width=4)
+                           ->  Values Scan on "*VALUES*"  (cost=0.00..0.01 rows=1 width=4)
+ Settings:  enable_bitmapscan=off; enable_seqscan=off; optimizer=off
+ Optimizer status: legacy query optimizer
+(9 rows)
+
+drop function values_wrapper();
 -- start_ignore
 drop table if exists bfv_planner_x;
 drop table if exists testbadsql;

@@ -2177,6 +2177,17 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		result_plan->flow = pull_up_Flow(result_plan,
 										 result_plan->lefttree,
 										 true);
+
+		/*
+		 * LIMIT/OFFSET clause violates replication property for replicated
+		 * incoming datasets. For this reason the locus of resulting plan has to
+		 * be converted to singleton.
+		 */
+		if (result_plan->flow->locustype == CdbLocusType_General)
+		{
+			result_plan->flow->locustype = CdbLocusType_SingleQE;
+			result_plan->flow->flotype = FLOW_SINGLETON;
+		}
 	}
 
 	Insist(result_plan->flow);

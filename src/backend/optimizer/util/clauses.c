@@ -1002,6 +1002,16 @@ contain_volatile_functions_walker(Node *node, void *context)
 		}
 		/* else fall through to check args */
 	}
+	else if (IsA(node, RestrictInfo))
+	{
+		/*
+		 * We need to handle RestrictInfo, a case of replicated dataset with a
+		 * volatile restriction. We have to find the pattern and turn it into
+		 * singleQE.
+		 */
+		RestrictInfo * info = (RestrictInfo *) node;
+		return contain_volatile_functions_walker((Node *)info->clause, context);
+	}
 	return expression_tree_walker(node, contain_volatile_functions_walker,
 								  context);
 }
