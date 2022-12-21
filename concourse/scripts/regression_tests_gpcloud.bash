@@ -37,11 +37,11 @@ function setup_gpadmin_user() {
 }
 
 function make_cluster() {
-  PYTHONPATH=${SCRIPT_DIR}:${PYTHONPATH} python2 -c "from builds.GpBuild import GpBuild; GpBuild(\"planner\").create_demo_cluster(install_dir='/usr/local/gpdb')"
+  PYTHONPATH=${SCRIPT_DIR}:${PYTHONPATH} python3 -c "from builds.GpBuild import GpBuild; GpBuild(\"planner\").create_demo_cluster(install_dir='/usr/local/gpdb')"
 }
 
 function configure_with_planner() {
-  PYTHONPATH=${SCRIPT_DIR}:${PYTHONPATH} python2 -c "from builds.GpBuild import GpBuild; GpBuild(\"planner\").configure()"
+  PYTHONPATH=${SCRIPT_DIR}:${PYTHONPATH} python3 -c "from builds.GpBuild import GpBuild; GpBuild(\"planner\").configure()"
 }
 
 function copy_gpdb_bits_to_gphome() {
