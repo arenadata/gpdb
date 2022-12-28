@@ -2104,7 +2104,8 @@ CEngine::FCheckEnfdProps(CMemoryPool *mp, CGroupExpression *pgexpr,
 	// Similar exceptions should be OR'd into fDistributionReqdException to
 	// force checking EpetDistribution on the physical operation
 	BOOL fDistributionReqdException =
-		popPhysical->Eopid() == COperator::EopPhysicalLeftOuterIndexNLJoin;
+		popPhysical->Eopid() == COperator::EopPhysicalLeftOuterIndexNLJoin ||
+		prpp->Ped()->PdsRequired()->FProhibitReplicated();
 	BOOL fDistributionReqd =
 		!GPOS_FTRACE(EopttraceDisableMotions) &&
 		((CDistributionSpec::EdtAny != prpp->Ped()->PdsRequired()->Edt()) ||
@@ -2136,13 +2137,6 @@ CEngine::FCheckEnfdProps(CMemoryPool *mp, CGroupExpression *pgexpr,
 	// get partition propagation enforcing type
 	CEnfdProp::EPropEnforcingType epetPartitionPropagation =
 		prpp->Pepp()->Epet(exprhdl, popPhysical, fPartPropagationReqd);
-
-	if (CEnfdProp::EpetUnnecessary == epetDistribution &&
-		prpp->Ped()->PdsRequired()->FProhibitReplicated() &&
-		CDistributionSpec::EdtStrictReplicated == CDrvdPropPlan::Pdpplan(exprhdl.Pdp())->Pds()->Edt())
-	{
-		epetDistribution = CEnfdProp::EpetProhibited;
-	}
 
 	// Skip adding enforcers entirely if any property determines it to be
 	// 'prohibited'. In this way, a property may veto out the creation of an
