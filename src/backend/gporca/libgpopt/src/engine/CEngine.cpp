@@ -2104,8 +2104,7 @@ CEngine::FCheckEnfdProps(CMemoryPool *mp, CGroupExpression *pgexpr,
 	// Similar exceptions should be OR'd into fDistributionReqdException to
 	// force checking EpetDistribution on the physical operation
 	BOOL fDistributionReqdException =
-		popPhysical->Eopid() == COperator::EopPhysicalLeftOuterIndexNLJoin ||
-		prpp->Ped()->PdsRequired()->FProhibitReplicated();
+		popPhysical->Eopid() == COperator::EopPhysicalLeftOuterIndexNLJoin;
 	BOOL fDistributionReqd =
 		!GPOS_FTRACE(EopttraceDisableMotions) &&
 		((CDistributionSpec::EdtAny != prpp->Ped()->PdsRequired()->Edt()) ||

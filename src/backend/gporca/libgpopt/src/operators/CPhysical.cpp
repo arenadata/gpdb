@@ -446,6 +446,13 @@ CPhysical::PdsUnary(CMemoryPool *mp, CExpressionHandle &exprhdl,
 		return pds;
 	}
 
+	if (CDistributionSpec::EdtNonSingleton == pdsRequired->Edt() &&
+		pdsRequired->FProhibitReplicated())
+	{
+		pdsRequired->AddRef();
+		return pdsRequired;
+	}
+
 	// operator does not have distribution requirements, required distribution
 	// will be enforced on its output
 	return GPOS_NEW(mp) CDistributionSpecAny(exprhdl.Pop()->Eopid());

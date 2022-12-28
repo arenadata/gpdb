@@ -126,16 +126,7 @@ CPhysicalFilter::PdsRequired(CMemoryPool *mp, CExpressionHandle &exprhdl,
 		return pdsRequired;
 	}
 
-	CDistributionSpec *pds = CPhysical::PdsUnary(mp, exprhdl, pdsRequired, child_index, ulOptReq);
-
-	if (CDistributionSpec::EdtNonSingleton == pdsRequired->Edt() &&
-		CDistributionSpec::EdtAny == pds->Edt() &&
-		pdsRequired->FProhibitReplicated())
-	{
-		pds->MarkProhibitReplicated();
-	}
-
-	return pds;
+	return CPhysical::PdsUnary(mp, exprhdl, pdsRequired, child_index, ulOptReq);
 }
 
 
