@@ -19,6 +19,7 @@
 #include "gpopt/base/CCTEReq.h"
 #include "gpopt/base/CDistributionSpecAny.h"
 #include "gpopt/base/CDistributionSpecHashed.h"
+#include "gpopt/base/CDistributionSpecNonSingleton.h"
 #include "gpopt/base/CDistributionSpecRandom.h"
 #include "gpopt/base/CDistributionSpecReplicated.h"
 #include "gpopt/base/CDistributionSpecSingleton.h"
@@ -447,7 +448,7 @@ CPhysical::PdsUnary(CMemoryPool *mp, CExpressionHandle &exprhdl,
 	}
 
 	if (CDistributionSpec::EdtNonSingleton == pdsRequired->Edt() &&
-		pdsRequired->FProhibitReplicated())
+		CDistributionSpecNonSingleton::PdsConvert(pdsRequired)->FProhibitReplicated())
 	{
 		pdsRequired->AddRef();
 		return pdsRequired;

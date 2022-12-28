@@ -65,27 +65,13 @@ public:
 	};
 
 private:
-	BOOL m_fProhibitReplicated;
-
 	// private copy ctor
 	CDistributionSpec(const CDistributionSpec &);
 
 public:
 	// ctor
-	CDistributionSpec() : m_fProhibitReplicated(false)
+	CDistributionSpec()
 	{
-	}
-
-	void
-	MarkProhibitReplicated()
-	{
-		m_fProhibitReplicated = true;
-	}
-
-	BOOL
-	FProhibitReplicated() const
-	{
-		return m_fProhibitReplicated;
 	}
 
 	// dtor

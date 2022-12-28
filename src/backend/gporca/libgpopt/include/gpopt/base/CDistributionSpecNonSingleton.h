@@ -39,6 +39,8 @@ private:
 	// should allow this non-singleton spec to be enforced?
 	BOOL m_fAllowEnforced;
 
+	BOOL m_fProhibitReplicated;
+
 	// private copy ctor
 	CDistributionSpecNonSingleton(const CDistributionSpecNonSingleton &);
 
@@ -62,6 +64,18 @@ public:
 	FAllowEnforced() const
 	{
 		return m_fAllowEnforced;
+	}
+
+	void
+	MarkProhibitReplicated()
+	{
+		m_fProhibitReplicated = true;
+	}
+
+	BOOL
+	FProhibitReplicated() const
+	{
+		return m_fProhibitReplicated;
 	}
 
 	// accessor
