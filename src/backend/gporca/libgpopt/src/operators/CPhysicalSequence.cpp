@@ -282,7 +282,7 @@ CPhysicalSequence::PdsRequired(CMemoryPool *mp,
 	}
 
 	if ((CDistributionSpec::EdtSingleton == pdsRequired->Edt() &&
-		CDistributionSpecSingleton::PdssConvert(pdsRequired)->FOnMaster())||
+		CDistributionSpecSingleton::PdssConvert(pdsRequired)->FOnMaster()) ||
 		(CDistributionSpec::EdtNonSingleton == pdsRequired->Edt() &&
 		CDistributionSpecNonSingleton::PdsConvert(pdsRequired)->FProhibitReplicated()))
 	{
