@@ -48,6 +48,8 @@ public:
 	//ctor
 	CDistributionSpecNonSingleton();
 
+	CDistributionSpecNonSingleton(BOOL fProhibitReplicated);
+
 	//ctor
 	explicit CDistributionSpecNonSingleton(BOOL fAllowReplicated,
 										   BOOL fAllowEnforced);
@@ -64,12 +66,6 @@ public:
 	FAllowEnforced() const
 	{
 		return m_fAllowEnforced;
-	}
-
-	void
-	MarkProhibitReplicated()
-	{
-		m_fProhibitReplicated = true;
 	}
 
 	BOOL

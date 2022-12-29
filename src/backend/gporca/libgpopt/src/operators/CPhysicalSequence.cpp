@@ -281,18 +281,17 @@ CPhysicalSequence::PdsRequired(CMemoryPool *mp,
 			true /* fAllowReplicated */, false /* fAllowEnforced */);
 	}
 
-	// first child is non-singleton, request a non-singleton distribution on second child
-	pds = GPOS_NEW(mp) CDistributionSpecNonSingleton();
-
 	if ((CDistributionSpec::EdtSingleton == pdsRequired->Edt() &&
 		CDistributionSpecSingleton::PdssConvert(pdsRequired)->FOnMaster())||
 		(CDistributionSpec::EdtNonSingleton == pdsRequired->Edt() &&
 		CDistributionSpecNonSingleton::PdsConvert(pdsRequired)->FProhibitReplicated()))
 	{
-		CDistributionSpecNonSingleton::PdsConvert(pds)->MarkProhibitReplicated();
+		return GPOS_NEW(mp) CDistributionSpecNonSingleton(
+			true /* fProhibitReplicated */);
 	}
 
-	return pds;
+	// first child is non-singleton, request a non-singleton distribution on second child
+	return GPOS_NEW(mp) CDistributionSpecNonSingleton();
 }
 
 
