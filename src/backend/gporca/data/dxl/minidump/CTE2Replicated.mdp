@@ -52,6 +52,7 @@
      Optimizer: Pivotal Optimizer (GPORCA)
     (39 rows)
   ]]>
+  </dxl:Comment>
   <dxl:Thread Id="0">
     <dxl:OptimizerConfig>
       <dxl:EnumeratorConfig Id="0" PlanSamples="0" CostThreshold="0"/>
