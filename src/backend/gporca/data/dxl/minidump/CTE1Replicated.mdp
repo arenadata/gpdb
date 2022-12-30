@@ -1,5 +1,40 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <dxl:DXLMessage xmlns:dxl="http://greenplum.com/dxl/2010/12/">
+  <dxl:Comment><![CDATA[
+    CREATE TABLE d (a int, b int, c int) DISTRIBUTED BY (a);
+    CREATE TABLE r (a int, b int, c varchar(255)) DISTRIBUTED REPLICATED;
+    INSERT INTO d SELECT 1, generate_series(1,10), 1;
+    INSERT INTO r SELECT 1, 2, generate_series(1,100);
+    EXPLAIN (ANALYZE off, COSTS off, VERBOSE off)
+    WITH e AS (
+        SELECT DISTINCT b FROM d
+    ) SELECT c FROM r JOIN e USING (b) JOIN e f USING (b);
+                                         QUERY PLAN
+    ------------------------------------------------------------------------------------
+     Gather Motion 3:1  (slice2; segments: 3)
+       ->  Sequence
+             ->  Shared Scan (share slice:id 2:0)
+                   ->  Materialize
+                         ->  GroupAggregate
+                               Group Key: d.b
+                               ->  Sort
+                                     Sort Key: d.b
+                                     ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                           Hash Key: d.b
+                                           ->  Seq Scan on d
+             ->  Hash Join
+                   Hash Cond: (share0_ref3.b = r.b)
+                   ->  Hash Join
+                         Hash Cond: (share0_ref3.b = share0_ref2.b)
+                         ->  Shared Scan (share slice:id 2:0)
+                         ->  Hash
+                               ->  Shared Scan (share slice:id 2:0)
+                   ->  Hash
+                         ->  Seq Scan on r
+     Optimizer: Pivotal Optimizer (GPORCA)
+    (21 rows)
+  ]]>
+  </dxl:Comment>
   <dxl:Thread Id="0">
     <dxl:OptimizerConfig>
       <dxl:EnumeratorConfig Id="0" PlanSamples="0" CostThreshold="0"/>
