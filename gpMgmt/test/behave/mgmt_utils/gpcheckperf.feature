@@ -9,7 +9,7 @@ Feature: Tests for gpcheckperf
     And   gpcheckperf should print "disk write tot bytes" to stdout
 
   @concourse_cluster
-  Scenario: gpcheckperf runs sequential network test
+  Scenario: gpcheckperf runs runs sequential network test
     Given the database is running
     When  the user runs "gpcheckperf -h mdw -h sdw1 -d /data/gpdata/ -r n"
     Then  gpcheckperf should return a return code of 0
