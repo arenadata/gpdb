@@ -953,6 +953,26 @@ DefineIndex(Oid relationId,
 				char	   *childnamespace_name;
 
 				childrel = heap_open(childRelid, lockmode);
+
+				/*
+				 * Don't try to create indexes on external tables, though.
+				 * Skip those if a regular index, or fail if trying to create
+				 * a constraint index.
+				 */
+				if (RelationIsExternal(childrel))
+				{
+					if (stmt->unique || stmt->primary)
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+										errmsg("cannot create unique index on partitioned table \"%s\"",
+											   RelationGetRelationName(rel)),
+										errdetail("Table \"%s\" contains partitions that are external tables.",
+												  RelationGetRelationName(rel))));
+
+					heap_close(childrel, lockmode);
+					continue;
+				}
+
 				childidxs = RelationGetIndexList(childrel);
 				attmap =
 					convert_tuples_by_name_map(RelationGetDescr(childrel),
@@ -2509,13 +2529,12 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 
 	/*
 	 * We cannot run REINDEX TABLE on partitioned table inside a user
-	 * transaction block; if we were inside a transaction, then our commit-
+	 * defined function (UDF); if we were inside a UDF, then our commit-
 	 * and start-transaction-command calls would not have the intended effect!
 	 * For example, if it gets called under pl language, it'll mess up
 	 * pl language's transaction management which may cause panic.
 	 */
-	PreventTransactionChain(isTopLevel,
-							"REINDEX TABLE <partitioned_table>");
+	PreventInFunction(isTopLevel, "REINDEX TABLE <partitioned_table>");
 
 	/* various checks on each partition */
 	foreach (lc, prels)

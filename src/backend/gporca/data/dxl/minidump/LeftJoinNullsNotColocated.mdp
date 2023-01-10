@@ -421,7 +421,7 @@ on id2 = id3 distributed by (id1);
     <dxl:Plan Id="0" SpaceSize="10">
       <dxl:PhysicalCTAS Name="fake ctas rel" IsTemporary="true" HasOids="false" StorageType="Heap" DistributionPolicy="Hash" DistributionColumns="0" InsertColumns="0,8,16" VarTypeModList="-1,-1,-1">
         <dxl:Properties>
-          <dxl:Cost StartupCost="0" TotalCost="13046.116228" Rows="83728676.430400" Width="24"/>
+          <dxl:Cost StartupCost="0" TotalCost="32476.658846" Rows="83728676.430400" Width="24"/>
         </dxl:Properties>
         <dxl:DistrOpclasses>
           <dxl:DistrOpclass Mdid="0.10055.1.0"/>
@@ -445,7 +445,7 @@ on id2 = id3 distributed by (id1);
         </dxl:ProjList>
         <dxl:Result>
           <dxl:Properties>
-            <dxl:Cost StartupCost="0" TotalCost="1394.940675" Rows="83728676.430400" Width="28"/>
+            <dxl:Cost StartupCost="0" TotalCost="20825.483293" Rows="83728676.430400" Width="28"/>
           </dxl:Properties>
           <dxl:ProjList>
             <dxl:ProjElem ColId="0" Alias="id1">
@@ -465,7 +465,7 @@ on id2 = id3 distributed by (id1);
           <dxl:OneTimeFilter/>
           <dxl:HashJoin JoinType="Left">
             <dxl:Properties>
-              <dxl:Cost StartupCost="0" TotalCost="1391.957974" Rows="83728676.430400" Width="24"/>
+              <dxl:Cost StartupCost="0" TotalCost="20822.500592" Rows="83728676.430400" Width="24"/>
             </dxl:Properties>
             <dxl:ProjList>
               <dxl:ProjElem ColId="0" Alias="id1">
@@ -488,7 +488,7 @@ on id2 = id3 distributed by (id1);
             </dxl:HashCondList>
             <dxl:HashJoin JoinType="Left">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="899.563151" Rows="81218043.040000" Width="16"/>
+                <dxl:Cost StartupCost="0" TotalCost="5441.987034" Rows="81218043.040000" Width="16"/>
               </dxl:Properties>
               <dxl:ProjList>
                 <dxl:ProjElem ColId="0" Alias="id1">
@@ -516,7 +516,7 @@ on id2 = id3 distributed by (id1);
                   </dxl:ProjElem>
                 </dxl:ProjList>
                 <dxl:Filter/>
-                <dxl:TableDescriptor Mdid="0.24576.1.0" TableName="t1" LockMode="1">
+                <dxl:TableDescriptor Mdid="0.24576.1.0" TableName="t1">
                   <dxl:Columns>
                     <dxl:Column ColId="0" Attno="1" ColName="id1" TypeMdid="0.20.1.0" ColWidth="8"/>
                     <dxl:Column ColId="1" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0" ColWidth="6"/>
@@ -539,7 +539,7 @@ on id2 = id3 distributed by (id1);
                   </dxl:ProjElem>
                 </dxl:ProjList>
                 <dxl:Filter/>
-                <dxl:TableDescriptor Mdid="0.24583.1.0" TableName="t2" LockMode="1">
+                <dxl:TableDescriptor Mdid="0.24583.1.0" TableName="t2">
                   <dxl:Columns>
                     <dxl:Column ColId="8" Attno="1" ColName="id2" TypeMdid="0.20.1.0" ColWidth="8"/>
                     <dxl:Column ColId="9" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0" ColWidth="6"/>
@@ -563,7 +563,7 @@ on id2 = id3 distributed by (id1);
                 </dxl:ProjElem>
               </dxl:ProjList>
               <dxl:Filter/>
-              <dxl:TableDescriptor Mdid="0.24590.1.0" TableName="t3" LockMode="1">
+              <dxl:TableDescriptor Mdid="0.24590.1.0" TableName="t3">
                 <dxl:Columns>
                   <dxl:Column ColId="16" Attno="1" ColName="id3" TypeMdid="0.20.1.0" ColWidth="8"/>
                   <dxl:Column ColId="17" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0" ColWidth="6"/>

@@ -31,7 +31,7 @@ For readable external tables, `gpfdist` parses and serves data files evenly to a
 
 **Note:** When `gpfdist` reads data and encounters a data formatting error, the error message includes a row number indicating the location of the formatting error. `gpfdist` attempts to capture the row that contains the error. However, `gpfdist` might not capture the exact row for some formatting errors.
 
-For readable external tables, if load files are compressed using `gzip` or `bzip2` \(have a `.gz` or `.bz2` file extension\), `gpfdist` uncompresses the data while loading the data \(on the fly\). For writable external tables, `gpfdist` compresses the data using `gzip` if the target file has a `.gz` extension.
+For readable external tables, if load files are compressed using `gzip`, `bzip2`, or `zstd` \(have a `.gz`, `.bz2`, or `.zst` file extension\), `gpfdist` uncompresses the data while loading the data \(on the fly\). For writable external tables, `gpfdist` compresses the data using `gzip` if the target file has a `.gz` extension, `bzip` if the target file has a `.bz2` extension, or `zstd` if the target file has a `.zst` extension.
 
 **Note:** Compression is not supported for readable and writeable external tables when the `gpfdist` utility runs on Windows platforms.
 
@@ -113,12 +113,12 @@ Most likely, you will want to run `gpfdist` on your ETL machines rather than the
 
 ## <a id="notes"></a>Notes 
 
-The server configuration parameter [verify\_gpfdists\_cert](../../ref_guide/config_params/guc-list.html) controls whether SSL certificate authentication is enabled when Greenplum Database communicates with the `gpfdist` utility to either read data from or write data to an external data source. You can set the parameter value to `false` to disable authentication when testing the communication between the Greenplum Database external table and the `gpfdist` utility that is serving the external data. If the value is `false`, these SSL exceptions are ignored:
+The server configuration parameter [verify\_gpfdists\_cert](../../ref_guide/config_params/guc-list.html) controls whether SSL certificate authentication is enabled when Greenplum Database communicates with the `gpfdist` utility to either read data from or write data to an external data source. You can set the parameter value to `false` to deactivate authentication when testing the communication between the Greenplum Database external table and the `gpfdist` utility that is serving the external data. If the value is `false`, these SSL exceptions are ignored:
 
 -   The self-signed SSL certificate that is used by `gpfdist` is not trusted by Greenplum Database.
 -   The host name contained in the SSL certificate does not match the host name that is running `gpfdist`.
 
-**Warning:** Disabling SSL certificate authentication exposes a security risk by not validating the `gpfdists` SSL certificate.
+**Warning:** Deactivating SSL certificate authentication exposes a security risk by not validating the `gpfdists` SSL certificate.
 
 You can set the server configuration parameter [gpfdist\_retry\_timeout](../../ref_guide/config_params/guc-list.html) to control the time that Greenplum Database waits before returning an error when a `gpfdist` server does not respond while Greenplum Database is attempting to write data to `gpfdist`. The default is 300 seconds \(5 minutes\).
 

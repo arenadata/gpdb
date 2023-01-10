@@ -54,7 +54,11 @@ System catalog table and view definitions in alphabetical order.
 
 -   [gp\_session\_endpoints](../system_catalogs/gp_session_endpoints.html)  
 
+-   [gp_stat_archiver](../system_catalogs/gp_stat_archiver.html)
+
 -   [gp\_stat\_replication](../system_catalogs/gp_stat_replication.html)  
+
+-   [gp_suboverflowed_backend](../system_catalogs/gp_suboverflowed_backend.html)
 
 -   [gp\_transaction\_log](../system_catalogs/gp_transaction_log.html)  
 
@@ -123,8 +127,6 @@ System catalog table and view definitions in alphabetical order.
 -   [pg\_language](../system_catalogs/pg_language.html)  
 
 -   [pg\_largeobject](../system_catalogs/pg_largeobject.html)  
-
--   [pg\_listener](../system_catalogs/pg_listener.html)  
 
 -   [pg\_locks](../system_catalogs/pg_locks.html)  
 

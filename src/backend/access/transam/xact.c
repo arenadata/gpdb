@@ -56,6 +56,7 @@
 #include "storage/procarray.h"
 #include "storage/sinvaladt.h"
 #include "storage/smgr.h"
+#include "storage/md.h"
 #include "utils/catcache.h"
 #include "utils/combocid.h"
 #include "utils/faultinjector.h"
@@ -4077,6 +4078,34 @@ PreventTransactionChain(bool isTopLevel, const char *stmtType)
 		CurrentTransactionState->blockState != TBLOCK_STARTED)
 		elog(FATAL, "cannot prevent transaction chain");
 	/* all okay */
+}
+
+/*
+ *	PreventInFunction
+ *
+ *	This routine is to be called by statements that must not run inside
+ *	a user defined function (UDF). This is intended to prevent reindexing
+ *  a partitioned table in a function call. This is used in STABLE release
+ *  only for less impact of current transaction behavior. It will be replaced
+ *  with above PreventTransactionChain() in the next major release to fully
+ *  address preventing multi-transaction statement running in a transaction block.
+ *
+ *	isTopLevel: passed down from ProcessUtility to determine whether we are
+ *	inside a function or multi-query querystring.
+ *	stmtType: statement type name, for error messages.
+ */
+void
+PreventInFunction(bool isTopLevel, const char *stmtType)
+{
+	/*
+	 * inside a function call?
+	 */
+	if (!isTopLevel)
+		ereport(ERROR,
+				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+		/* translator: %s represents an SQL statement name */
+				 errmsg("%s cannot be executed from a function or multi-command string",
+						stmtType)));
 }
 
 /*

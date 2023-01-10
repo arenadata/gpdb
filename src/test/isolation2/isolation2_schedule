@@ -156,6 +156,7 @@ test: uao/vacuum_self_serializable3_row
 test: uao/vacuum_while_insert_row
 test: uao/vacuum_while_vacuum_row
 test: uao/vacuum_cleanup_row
+test: uao/vacuum_index_stats_row
 test: uao/insert_should_not_use_awaiting_drop_row
 test: uao/bitmapindex_rescan_row
 test: reorganize_after_ao_vacuum_skip_drop truncate_after_ao_vacuum_skip_drop mark_all_aoseg_await_drop
@@ -209,6 +210,7 @@ test: uao/vacuum_self_serializable3_column
 test: uao/vacuum_while_insert_column
 test: uao/vacuum_while_vacuum_column
 test: uao/vacuum_cleanup_column
+test: uao/vacuum_index_stats_column
 test: uao/insert_should_not_use_awaiting_drop_column
 test: uao/bitmapindex_rescan_column
 test: add_column_after_vacuum_skip_drop_column
@@ -237,6 +239,7 @@ test: segwalrep/max_slot_wal_keep_size
 test: segwalrep/dtx_recovery_wait_lsn
 test: pg_basebackup
 test: pg_basebackup_with_tablespaces
+test: segwalrep/select_throttle
 test: fts_manual_probe
 test: fts_session_reset
 test: fts_segment_reset
@@ -252,10 +255,11 @@ test: reindex/reindextable_while_altertable_ao_part_btree reindex/reindextable_w
 test: reindex/reindextable_while_dropindex_ao_part_btree reindex/reindextable_while_dropindex_heap_part_btree reindex/reindextable_while_dropindex_aoco_part_btree
 test: reindex/reindextable_while_reindex_idx_ao_part_btree reindex/reindextable_while_reindex_idx_heap_part_btree reindex/reindextable_while_reindex_idx_aoco_part_btree
 test: reindex/reindextable_while_reindex_idx_ao_bitmap reindex/reindextable_while_reindex_idx_heap_bitmap reindex/reindextable_while_reindex_idx_aoco_bitmap
-test: reindex/serializable_reindex_with_drop_column_heap
+test: reindex/serializable_reindex_with_drop_column_ao_part reindex/serializable_reindex_with_drop_column_heap
+test: reindex/serializable_reindex_with_drop_column_part_heap
 test: reindex/serializable_reindex_with_drop_index_ao reindex/serializable_reindex_with_drop_index_heap
 test: reindex/repeatable_read_reindex_with_insert_heap
-test: reindex/vacuum_analyze_while_reindex_ao_btree
+test: reindex/repeatable_read_reindex_with_insert_part_heap reindex/vacuum_analyze_while_reindex_ao_btree
 test: reindex/vacuum_while_reindex_ao_bitmap reindex/vacuum_while_reindex_heap_btree reindex/vacuum_while_reindex_heap_btree_toast
 
 # test workfile_mgr
@@ -311,3 +315,6 @@ test: alter_partition_table_owner
 
 # test copy/insert in utility mode on partition/inheritance hierarchies
 test: copy_insert_utility_mode_hierarchies
+
+# test TCP interconnect teardown bounded wait
+test: tcp_ic_teardown

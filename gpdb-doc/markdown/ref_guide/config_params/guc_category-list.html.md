@@ -117,6 +117,7 @@ These parameters control the usage of GPORCA by Greenplum Database. For informat
 - [optimizer_enable_master_only_queries](guc-list.html#optimizer_enable_master_only_queries)
 - [optimizer_enable_multiple_distinct_aggs](guc-list.html#optimizer_enable_multiple_distinct_aggs)
 - [optimizer_enable_orderedagg](guc-list.html#optimizer_enable_orderedagg)
+- [optimizer_enable_replicated_table](guc-list.html#optimizer_enable_replicated_table)
 - [optimizer_force_agg_skew_avoidance](guc-list.html#optimizer_force_agg_skew_avoidance)
 - [optimizer_force_comprehensive_join_implementation](guc-list.html#optimizer_force_comprehensive_join_implementation)
 - [optimizer_force_multistage_agg](guc-list.html#optimizer_force_multistage_agg)
@@ -140,7 +141,7 @@ These parameters control aspects of SQL query processing such as query operators
 
 ### <a id="topic22"></a>Postgres Planner Control Parameters 
 
-The following parameters control the types of plan operations the Postgres Planner can use. Enable or disable plan operations to force the Postgres Planner to choose a different plan. This is useful for testing and comparing query performance using different plan types.
+The following parameters control the types of plan operations the Postgres Planner can use. Enable or deactivate plan operations to force the Postgres Planner to choose a different plan. This is useful for testing and comparing query performance using different plan types.
 
 - [enable_bitmapscan](guc-list.html#enable_bitmapscan)
 - [enable_groupagg](guc-list.html#enable_groupagg)
@@ -152,6 +153,7 @@ The following parameters control the types of plan operations the Postgres Plann
 - [enable_seqscan](guc-list.html#enable_seqscan)
 - [enable_sort](guc-list.html#enable_sort)
 - [enable_tidscan](guc-list.html#enable_tidscan)
+- [gp_eager_two_phase_agg](guc-list.html#gp_eager_two_phase_agg)
 - [gp_enable_agg_distinct](guc-list.html#gp_enable_agg_distinct)
 - [gp_enable_agg_distinct_pruning](guc-list.html#gp_enable_agg_distinct_pruning)
 - [gp_enable_direct_dispatch](guc-list.html#gp_enable_direct_dispatch)
@@ -290,6 +292,7 @@ These parameters enable and configure query metrics collection. When enabled, Gr
 
 - [gp_enable_query_metrics](guc-list.html#gp_enable_query_metrics)
 - [gp_instrument_shmem_size](guc-list.html#gp_instrument_shmem_size)
+- [gp_max_scan_on_shmem](guc-list.html#gp_max_scan_on_shmem)
 
 ## <a id="topic37"></a>Runtime Statistics Collection Parameters 
 

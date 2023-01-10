@@ -802,6 +802,11 @@ CDistributionSpecHashed::ComputeEquivHashExprs(
 	}
 	GPOS_ASSERT(equiv_distribution_all_exprs->Size() == m_pdrgpexpr->Size());
 	m_equiv_hash_exprs = equiv_distribution_all_exprs;
+
+	if (NULL != m_pdshashedEquiv)
+	{
+		m_pdshashedEquiv->ComputeEquivHashExprs(mp, expression_handle);
+	}
 }
 
 CDistributionSpecHashed *
@@ -963,8 +968,15 @@ CDistributionSpecHashed::GetAllDistributionExprs(CMemoryPool *mp)
 	return all_distribution_exprs;
 }
 
-// create a new spec and which marks the other incoming specs
-// as equivalent
+// return a new spec created by merging the current with the input spec
+// this spec: {spec 1} -> {spec 2} -> {spec 3}
+// other spec: {spec 4} -> {spec 5}
+// output spec: {spec 5} -> {spec 4} -> {spec 3} -> {spec 2} -> {spec 1}
+// The counter intuitive sequence of linked list concatenation was preserved
+// to ensure minimal plan change. Ideally, plan choice shouldn't depend on
+// the traversal order of equivalent distribution specs. But in reality, our
+// code was so written, likely unintentionally, that the traversal order does
+// matter.
 CDistributionSpecHashed *
 CDistributionSpecHashed::Combine(CMemoryPool *mp,
 								 CDistributionSpecHashed *other_spec)
@@ -974,16 +986,38 @@ CDistributionSpecHashed::Combine(CMemoryPool *mp,
 		return this;
 	}
 
-	CDistributionSpecHashed *combined_spec = this->Copy(mp);
-	other_spec->AddRef();
-	CDistributionSpecHashed *temp_spec = combined_spec;
+	CDistributionSpecHashed *combined_spec = other_spec->Copy(mp);
+	CDistributionSpecHashed *prev = NULL, *next = NULL;
 
-	while (NULL != temp_spec->m_pdshashedEquiv)
+	while (NULL != combined_spec)
 	{
-		temp_spec = temp_spec->m_pdshashedEquiv;
+		next = combined_spec->m_pdshashedEquiv;
+		combined_spec->m_pdshashedEquiv = prev;
+		prev = combined_spec;
+		combined_spec = next;
+	}
+	combined_spec = prev;
+
+	CDistributionSpecHashed *this_copy = this->Copy(mp);
+	prev = NULL, next = NULL;
+
+	while (NULL != this_copy)
+	{
+		next = this_copy->m_pdshashedEquiv;
+		this_copy->m_pdshashedEquiv = prev;
+		prev = this_copy;
+		this_copy = next;
+	}
+	this_copy = prev;
+
+	next = combined_spec;
+
+	while (NULL != next->m_pdshashedEquiv)
+	{
+		next = next->m_pdshashedEquiv;
 	}
 
-	temp_spec->m_pdshashedEquiv = other_spec;
+	next->m_pdshashedEquiv = this_copy;
 
 	return combined_spec;
 }
