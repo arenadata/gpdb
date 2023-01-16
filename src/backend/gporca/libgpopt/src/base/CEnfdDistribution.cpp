@@ -180,7 +180,8 @@ CEnfdDistribution::Epet(CExpressionHandle &exprhdl, CPhysical *popPhysical,
 		}
 		else if (EpetUnnecessary == epet &&
 				 CDistributionSpec::EdtNonSingleton == m_pds->Edt() &&
-				 CDistributionSpecNonSingleton::PdsConvert(m_pds)->FProhibitReplicated() &&
+				 CDistributionSpecNonSingleton::PdsConvert(m_pds)
+					 ->FProhibitReplicated() &&
 				 CDistributionSpec::EdtStrictReplicated == pds->Edt())
 		{
 			return EpetProhibited;
