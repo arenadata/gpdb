@@ -117,6 +117,8 @@ write_log(const char *fmt,...)
 
 		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
+		errbuf[pg_mbcliplen(errbuf, strlen(errbuf), sizeof(errbuf) - 1)] = '\0';
+
 		/* Write the message in the CSV format */
 		write_message_to_server_log(LOG,
 									0,

@@ -5107,6 +5107,8 @@ write_stderr(const char *fmt,...)
 
 		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
+		errbuf[pg_mbcliplen(errbuf, strlen(errbuf), sizeof(errbuf) - 1)] = '\0';
+
 		if (!am_syslogger)
 		{
 			/* Write the message in the CSV format */
