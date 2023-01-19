@@ -132,12 +132,13 @@ CLOSE _psql_cursor;
 COMMIT;
 
 -- ensure correct truncate error log according to database encoding
-CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ export LC_ALL=C && echo -n ‘ >/dev/stderr && for i in {1..500}; do echo -n 1 >/dev/stderr; done && echo -n ’ >/dev/stderr && false $$ ON ALL FORMAT 'CSV';
+CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ echo -n ‘ >/dev/stderr && for i in {1..500}; do echo -n 1 >/dev/stderr; done && echo -n ’ >/dev/stderr && false $$ ON ALL FORMAT 'CSV';
 SELECT true FROM table_test;
 DROP EXTERNAL TABLE IF EXISTS table_test;
-CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ export LC_ALL=C && echo -n ‘ >/dev/stderr && for i in {1..2006}; do echo -n 1 >/dev/stderr; done && echo -n ’ >/dev/stderr && true $$ ON ALL FORMAT 'CSV';
+CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ echo -n ‘ >/dev/stderr && for i in {1..2006}; do echo -n 1 >/dev/stderr; done && echo -n ’ >/dev/stderr && true $$ ON ALL FORMAT 'CSV';
 SELECT true FROM table_test;
-SELECT count(*) > 0 FROM gp_toolkit.gp_log_system;
+SELECT logseverity FROM gp_toolkit.gp_log_system WHERE logseverity = 'LOG' LIMIT 5;
+DROP EXTERNAL TABLE IF EXISTS table_test;
 
 -- echo will behave differently on different platforms, force to use bash with -E option
 CREATE EXTERNAL WEB TABLE table_qry (val TEXT)
