@@ -26,7 +26,16 @@
 3:INSERT INTO crash_before_segmentfile_drop SELECT i AS a, 1 AS b, 'hello world' AS c FROM generate_series(1, 10) AS i;
 3:DELETE FROM crash_before_segmentfile_drop WHERE a < 4;
 -- for crash_vacuum_in_appendonly_insert
+-- start_ignore
+3: select a.gp_segment_id, * from gp_dist_random('pg_class') a join gp_dist_random('pg_appendonly') b on relid=oid where segrelid = 106615;
+3: select a.gp_segment_id, * from gp_dist_random('pg_class') a join gp_dist_random('pg_appendonly') b on relid=oid where relid = 'crash_vacuum_in_appendonly_insert'::reglass::oid;
+3: select * from gp_dist_random('gp_fastsequence') where objid = 106615;
+-- end_ignore
 3:DROP TABLE IF EXISTS crash_vacuum_in_appendonly_insert CASCADE;
+-- start_ignore
+3: select a.gp_segment_id, * from gp_dist_random('pg_class') a join gp_dist_random('pg_appendonly') b on relid=oid where segrelid = 106615;
+3: select * from gp_dist_random('gp_fastsequence') where objid = 106615;
+-- end_ignore
 3:CREATE TABLE crash_vacuum_in_appendonly_insert (a INT, b INT, c CHAR(20));
 3:CREATE INDEX crash_vacuum_in_appendonly_insert_index ON crash_vacuum_in_appendonly_insert(b);
 3:INSERT INTO crash_vacuum_in_appendonly_insert SELECT i AS a, 1 AS b, 'hello world' AS c FROM generate_series(1, 10) AS i;
