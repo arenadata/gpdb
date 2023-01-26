@@ -28,7 +28,7 @@
 -- for crash_vacuum_in_appendonly_insert
 -- start_ignore
 3: select a.gp_segment_id, * from gp_dist_random('pg_class') a join gp_dist_random('pg_appendonly') b on relid=oid where segrelid = 106615;
-3: select a.gp_segment_id, * from gp_dist_random('pg_class') a join gp_dist_random('pg_appendonly') b on relid=oid where relid = 'crash_vacuum_in_appendonly_insert'::reglass::oid;
+3: select a.gp_segment_id, * from gp_dist_random('pg_class') a join gp_dist_random('pg_appendonly') b on relid=oid where relid = 'crash_vacuum_in_appendonly_insert'::regclass::oid;
 3: select * from gp_dist_random('gp_fastsequence') where objid = 106615;
 -- end_ignore
 3:DROP TABLE IF EXISTS crash_vacuum_in_appendonly_insert CASCADE;

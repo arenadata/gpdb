@@ -55,6 +55,9 @@ include: helpers/server_helpers.sql;
 -- we already waited for suspend faults to trigger and hence we can proceed to
 -- run next command which would trigger panic fault and help test
 -- crash_recovery
+-- start_ignore
+! psql -Atc "select pg_current_xlog_insert_location() from gp_dist_random('gp_id') where gp_segment_id = 0;" -d postgres -o /tmp/ADBDEV3365;
+-- end_ignore
 3:VACUUM crash_vacuum_in_appendonly_insert;
 1<:
 2<:
@@ -63,6 +66,9 @@ include: helpers/server_helpers.sql;
 0U: SELECT 1;
 0Uq:
 
+-- start_ignore
+! pg_xlogdump -s `cat /tmp/ADBDEV3365` -p `psql -Atc "select datadir from gp_segment_configuration where dbid=2;" -d postgres`;
+-- end_ignore
 -- reset faults as protection incase tests failed and panic didn't happen
 1:SELECT gp_inject_fault('compaction_before_cleanup_phase', 'reset', 2);
 1:SELECT gp_inject_fault('compaction_before_segmentfile_drop', 'reset', 2);
