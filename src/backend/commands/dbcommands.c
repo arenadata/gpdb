@@ -2226,6 +2226,8 @@ dbase_redo(XLogRecPtr beginLoc  __attribute__((unused)), XLogRecPtr lsn  __attri
 		}
 		pfree(parentdir);
 
+		ForgetDatabaseFsyncRequests(xlrec->db_id);
+
 		/*
 		 * Force dirty buffers out to disk, to ensure source database is
 		 * up-to-date for the copy.

@@ -119,7 +119,7 @@ static volatile BufferDesc *BufferAlloc(SMgrRelation smgr,
 			BlockNumber blockNum,
 			BufferAccessStrategy strategy,
 			bool *foundPtr);
-static void FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln);
+static void FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln, bool skipFsync);
 static void AtProcExit_Buffers(int code, Datum arg);
 static int	rnode_comparator(const void *p1, const void *p2);
 
@@ -811,7 +811,7 @@ BufferAlloc(SMgrRelation smgr, char relpersistence, ForkNumber forkNum,
 												smgr->smgr_rnode.node.dbNode,
 											  smgr->smgr_rnode.node.relNode);
 
-				FlushBuffer(buf, NULL);
+				FlushBuffer(buf, NULL, false);
 				ReleaseContentLock(buf);
 
 				TRACE_POSTGRESQL_BUFFER_WRITE_DIRTY_DONE(forkNum, blockNum,
@@ -1865,7 +1865,7 @@ SyncOneBuffer(int buf_id, bool skip_recently_used)
 	PinBuffer_Locked(bufHdr);
 	AcquireContentLock(bufHdr, LW_SHARED);
 
-	FlushBuffer(bufHdr, NULL);
+	FlushBuffer(bufHdr, NULL, false);
 
 	ReleaseContentLock(bufHdr);
 	UnpinBuffer(bufHdr, true);
@@ -2086,9 +2086,11 @@ BufferGetTag(Buffer buffer, RelFileNode *rnode, ForkNumber *forknum,
  *
  * If the caller has an smgr reference for the buffer's relation, pass it
  * as the second parameter.  If not, pass NULL.
+ * 
+ * skipFsync - if true, don't create a fsync request to the checkpointer
  */
 static void
-FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln)
+FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln, bool skipFsync)
 {
 	XLogRecPtr	recptr;
 	ErrorContextCallback errcallback;
@@ -2188,7 +2190,7 @@ FlushBuffer(volatile BufferDesc *buf, SMgrRelation reln)
 			  buf->tag.forkNum,
 			  buf->tag.blockNum,
 			  bufToWrite,
-			  false);
+			  skipFsync);
 
 	if (track_io_timing)
 	{
@@ -2651,7 +2653,7 @@ FlushRelationBuffers(Relation rel)
 		{
 			PinBuffer_Locked(bufHdr);
 			AcquireContentLock(bufHdr, LW_SHARED);
-			FlushBuffer(bufHdr, rel->rd_smgr);
+			FlushBuffer(bufHdr, rel->rd_smgr, false);
 			ReleaseContentLock(bufHdr);
 			UnpinBuffer(bufHdr, true);
 		}
@@ -2701,7 +2703,7 @@ FlushDatabaseBuffers(Oid dbid)
 		{
 			PinBuffer_Locked(bufHdr);
 			LWLockAcquire(bufHdr->content_lock, LW_SHARED);
-			FlushBuffer(bufHdr, NULL);
+			FlushBuffer(bufHdr, NULL, true);
 			LWLockRelease(bufHdr->content_lock);
 			UnpinBuffer(bufHdr, true);
 		}
@@ -2728,7 +2730,7 @@ FlushOneBuffer(Buffer buffer)
 
 	Assert(LWLockHeldByMe(bufHdr->content_lock));
 
-	FlushBuffer(bufHdr, NULL);
+	FlushBuffer(bufHdr, NULL, false);
 }
 
 /*
