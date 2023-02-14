@@ -6,10 +6,6 @@ set optimizer_print_missing_stats = off;
 CREATE TABLE REG_REGION (R_REGIONKEY INT, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) DISTRIBUTED BY (R_REGIONKEY);
 -- start_ignore
 -- end_ignore
--- start_matchsubs
--- m/^ERROR:  http response code 500 from gpfdist .* HTTP\/1.0 500.*$/
--- s/^ERROR:  http response code 500 from gpfdist .* HTTP\/1.0 500.*$/ERROR:  http response code 500 from gpfdist\. HTTP1\.0 500/
--- end_matchsubs
 -- --------------------------------------
 -- 'gpfdist' protocol
 -- --------------------------------------
@@ -669,7 +665,7 @@ INSERT INTO wet_region VALUES(4,'MIDDLE EAST','uickly special');
 -- Check error correctness, if trying to insert too long row
 INSERT INTO wet_pos1(a)
 SELECT string_agg(md5(random()::text), '') from generate_series(1,1100);
-ERROR:  http response code 500 from gpfdist. HTTP1.0 500
+ERROR:  http response code 500 from gpfdist (gpfdist://@hostname@:7070/wet.out): HTTP/1.0 500 no complete data row found for writing
 --
 -- Now use RET to see if data was exported correctly.
 -- NOTE: since we don't bother cleaning up the exported file, it may grow bigger
