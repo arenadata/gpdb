@@ -20,6 +20,9 @@
 #include "naucrates/md/CMDName.h"
 #include "naucrates/md/IMDId.h"
 
+// default value for m_assigned_query_id - no assigned query for table descriptor
+#define UNASSIGNED_QUERYID 0
+
 namespace gpdxl
 {
 using namespace gpmd;
@@ -50,6 +53,11 @@ private:
 	// id of user the table needs to be accessed with
 	ULONG m_execute_as_user_id;
 
+	// identifier of query to which current table belongs.
+	// This field is used for assigning current table entry with
+	// target one within DML operation
+	ULONG m_assigned_query_id;
+
 	// private copy ctor
 	CDXLTableDescr(const CDXLTableDescr &);
 
@@ -58,7 +66,8 @@ private:
 public:
 	// ctor/dtor
 	CDXLTableDescr(CMemoryPool *mp, IMDId *mdid, CMDName *mdname,
-				   ULONG ulExecuteAsUser);
+				   ULONG ulExecuteAsUser,
+				   ULONG assigned_query_id = UNASSIGNED_QUERYID);
 
 	virtual ~CDXLTableDescr();
 
@@ -84,6 +93,9 @@ public:
 
 	// serialize to dxl format
 	void SerializeToDXL(CXMLSerializer *xml_serializer) const;
+
+	// assigned query id
+	ULONG GetAssignedQueryId() const;
 };
 }  // namespace gpdxl
 

@@ -1479,7 +1479,12 @@ CDXLOperatorFactory::MakeDXLTableDescr(CDXLMemoryManager *dxl_memory_manager,
 			EdxltokenTableDescr);
 	}
 
-	return GPOS_NEW(mp) CDXLTableDescr(mp, mdid, mdname, user_id);
+	ULONG assigned_query_id = ExtractConvertAttrValueToUlong(
+		dxl_memory_manager, attrs, EdxltokenAssignedQueryId,
+		EdxltokenTableDescr, true /* is_optional */, UNASSIGNED_QUERYID);
+
+	return GPOS_NEW(mp)
+		CDXLTableDescr(mp, mdid, mdname, user_id, assigned_query_id);
 }
 
 //---------------------------------------------------------------------------

@@ -109,9 +109,9 @@ CDXLTableDescr *
 CTranslatorUtils::GetTableDescr(CMemoryPool *mp, CMDAccessor *md_accessor,
 								CIdGenerator *id_generator,
 								const RangeTblEntry *rte,
-								BOOL *is_distributed_table,	// output
-								BOOL *is_replicated_table	// output
-)
+								BOOL *is_distributed_table,	 // output
+								BOOL *is_replicated_table,	 // output
+								ULONG assigned_query_id)
 {
 	// generate an MDId for the table desc.
 	OID rel_oid = rte->relid;
@@ -133,8 +133,8 @@ CTranslatorUtils::GetTableDescr(CMemoryPool *mp, CMDAccessor *md_accessor,
 	const CWStringConst *tablename = rel->Mdname().GetMDName();
 	CMDName *table_mdname = GPOS_NEW(mp) CMDName(mp, tablename);
 
-	CDXLTableDescr *table_descr =
-		GPOS_NEW(mp) CDXLTableDescr(mp, mdid, table_mdname, rte->checkAsUser);
+	CDXLTableDescr *table_descr = GPOS_NEW(mp) CDXLTableDescr(
+		mp, mdid, table_mdname, rte->checkAsUser, assigned_query_id);
 
 	const ULONG len = rel->ColumnCount();
 

@@ -91,6 +91,11 @@ private:
 	// if true, it means this descriptor has partial indexes
 	BOOL m_fHasPartialIndexes;
 
+	// identifier of query to which current table belongs.
+	// This field is used for assigning current table entry with
+	// target one within DML operation
+	ULONG m_assigned_query_id;
+
 	// private copy ctor
 	CTableDescriptor(const CTableDescriptor &);
 
@@ -103,7 +108,7 @@ public:
 					 BOOL convert_hash_to_random,
 					 IMDRelation::Ereldistrpolicy rel_distr_policy,
 					 IMDRelation::Erelstoragetype erelstoragetype,
-					 ULONG ulExecuteAsUser);
+					 ULONG ulExecuteAsUser, ULONG assigned_query_id);
 
 	// dtor
 	virtual ~CTableDescriptor();
@@ -237,6 +242,12 @@ public:
 	{
 		return m_erelstoragetype == IMDRelation::ErelstorageAppendOnlyCols ||
 			   m_erelstoragetype == IMDRelation::ErelstorageAppendOnlyRows;
+	}
+
+	ULONG
+	GetAssignedQueryId() const
+	{
+		return m_assigned_query_id;
 	}
 
 };	// class CTableDescriptor
