@@ -1110,6 +1110,8 @@ AllocSetDelete(MemoryContext context)
 	while (block != NULL)
 	{
 		AllocBlock	next = block->next;
+		size_t freesz = UserPtr_GetUserPtrSize(block);
+        MemoryContextNoteFree(&set->header, freesz);
 
 #ifdef CLOBBER_FREED_MEMORY
 		wipe_mem(block, block->freeptr - ((char *) block));
@@ -1118,7 +1120,6 @@ AllocSetDelete(MemoryContext context)
 		block = next;
 	}
 
-	MemoryContextNoteFree(&set->header, context->allBytesAlloc - context->allBytesFreed);
 	set->sharedHeaderList = NULL;
 	set->nullAccountHeader = NULL;
 }
