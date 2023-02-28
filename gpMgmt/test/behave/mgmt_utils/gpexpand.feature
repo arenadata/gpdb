@@ -598,11 +598,11 @@ Feature: expand the cluster by adding more segments
         And the user runs command "rm -rf ~/gpAdminLogs/gpinitsystem*"
         And a working directory of the test as '/data/gpdata/gpexpand'
         And a temporary directory under "/data/gpdata/gpexpand/expandedData" to expand into
-        And a cluster is created with mirrors on "mdw" and "sdw1"
+        And a cluster is created with mirrors on "cdw" and "sdw1"
         And database "gptest" exists
         And the user runs command "analyzedb -d gptest -a"
         And there are no gpexpand_inputfiles
-        And the cluster is setup for an expansion on hosts "mdw,sdw1"
+        And the cluster is setup for an expansion on hosts "cdw,sdw1"
         And the number of segments have been saved
         When the user runs gpexpand with a static inputfile for a single-node cluster with mirrors
         Then verify that the cluster has 4 new segments
