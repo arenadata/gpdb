@@ -2030,15 +2030,18 @@ def impl(context, filename):
     for info in segment_info:
         host, datadir = info
         filepath = os.path.join(datadir, filename)
-        cmd_str = 'ssh %s "ls -la %s | grep %s | wc -l"' % (host, datadir, filename)
-        cmd = Command(name='Running remote command: %s' % cmd_str, cmdStr=cmd_str)
+        cmd_str = 'ls -la %s | grep %s | wc -l' % (datadir, filename)
+        cmd = Command(name='check exists directory or not',
+                      cmdStr=cmd_str,
+                      ctxt=REMOTE,
+                      remoteHost=host)
         cmd.run(validateAfter=False)
         try:
             val = int(cmd.get_stdout().strip())
             if val:
                  raise Exception('Path %s on host %s exists (val %s) (cmd %s)' % (filepath, host, val, cmd_str))
         except:
-            raise Exception('Path %s on host %s exists (cmd %s)' % (filepath, host, cmd_str))
+            raise Exception('Path %s on host %s exists (cmd "%s")' % (filepath, host, cmd_str))
 
 
 @given('the gpfdists occupying port {port} on host "{hostfile}"')

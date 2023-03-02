@@ -239,6 +239,12 @@ class PgBaseBackup(Command):
             cmd_tokens.append('./gpperfmon/logs')
             cmd_tokens.append('-E')
             cmd_tokens.append('./promote')
+            cmd_tokens.append('-E')
+            cmd_tokens.append('./db_analyze')
+            cmd_tokens.append('-E')
+            cmd_tokens.append('./pg_log')
+            cmd_tokens.append('-E')
+            cmd_tokens.append('./backups')
         else:
             for path in excludePaths:
                 cmd_tokens.append('-E')

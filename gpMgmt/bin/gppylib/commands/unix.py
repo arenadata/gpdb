@@ -534,7 +534,7 @@ class CreateTar(Command):
         self.srcDirectory = srcDirectory
         self.dstTarFile = dstTarFile
         tarCmd = SYSTEM.getTarCmd()
-        cmdStr = "%s cvPf %s -C %s --exclude=\"db_analyze\" ." % (tarCmd, self.dstTarFile, srcDirectory)
+        cmdStr = "%s cvPf %s -C %s ." % (tarCmd, self.dstTarFile, srcDirectory)
         Command.__init__(self, name, cmdStr, ctxt, remoteHost)
 
 

@@ -606,4 +606,9 @@ Feature: expand the cluster by adding more segments
         And the number of segments have been saved
         When the user runs gpexpand with a static inputfile for a single-node cluster with mirrors
         Then verify that the cluster has 4 new segments
+        And verify that the path "db_dumps" in each segment data directory does not exist
+        And verify that the path "gpperfmon/data" in each segment data directory does not exist
+        And verify that the path "gpperfmon/logs" in each segment data directory does not exist
+        And verify that the path "promote" in each segment data directory does not exist
         And verify that the path "db_analyze" in each segment data directory does not exist
+        And verify that the path "backups" in each segment data directory does not exist
