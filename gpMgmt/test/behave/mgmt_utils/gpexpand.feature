@@ -511,7 +511,6 @@ Feature: expand the cluster by adding more segments
         When the user runs gpexpand to redistribute
         Then the numsegments of table "ext_test" is 4
 
-
     @gpexpand_verify_matview
     Scenario: Gpexpand should succeed when expand materialized view
         Given the database is not running
