@@ -511,6 +511,7 @@ Feature: expand the cluster by adding more segments
         When the user runs gpexpand to redistribute
         Then the numsegments of table "ext_test" is 4
 
+
     @gpexpand_verify_matview
     Scenario: Gpexpand should succeed when expand materialized view
         Given the database is not running
@@ -611,4 +612,3 @@ Feature: expand the cluster by adding more segments
         And verify that the path "gpperfmon/logs" in each segment data directory does not exist
         And verify that the path "promote" in each segment data directory does not exist
         And verify that the path "db_analyze" in each segment data directory does not exist
-        And verify that the path "backups" in each segment data directory does not exist

@@ -2030,7 +2030,7 @@ def impl(context, filename):
     for info in segment_info:
         host, datadir = info
         filepath = os.path.join(datadir, filename)
-        cmd_str = 'ls -la %s | grep %s | wc -l' % (datadir, filename)
+        cmd_str = 'test -d %s && echo 1 || echo 0' % (filepath)
         cmd = Command(name='check exists directory or not',
                       cmdStr=cmd_str,
                       ctxt=REMOTE,
@@ -2039,7 +2039,7 @@ def impl(context, filename):
         try:
             val = int(cmd.get_stdout().strip())
             if val:
-                 raise Exception('Path %s on host %s exists (val %s) (cmd %s)' % (filepath, host, val, cmd_str))
+                raise Exception('Path %s on host %s exists (val %s) (cmd "%s")' % (filepath, host, val, cmd_str))
         except:
             raise Exception('Path %s on host %s exists (cmd "%s")' % (filepath, host, cmd_str))
 
