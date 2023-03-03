@@ -2030,7 +2030,7 @@ def impl(context, filename):
     for info in segment_info:
         host, datadir = info
         filepath = os.path.join(datadir, filename)
-        cmd_str = 'test -d %s && echo 1 || echo 0' % (filepath)
+        cmd_str = 'test -d "%s" && echo 1 || echo 0' % (filepath)
         cmd = Command(name='check exists directory or not',
                       cmdStr=cmd_str,
                       ctxt=REMOTE,
