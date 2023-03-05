@@ -7,18 +7,30 @@
 -- s/Buckets: \d+/Buckets: ###/
 -- m/Batches: \d+/
 -- s/Batches: \d+/Batches: ###/
+-- m/Planning time: .*ms/
+-- s/Planning time: .*ms/Planning time: 0 ms/
+-- m/Execution time: .*ms/
+-- s/Execution time: .*ms/Execution time: 0 ms/
 -- end_matchsubs
 
-CREATE TEMP TABLE empty_table(a int);
+CREATE TEMP TABLE empty_table(a int, b int);
 -- We used to incorrectly report "never executed" for a node that returns 0 rows
 -- from every segment. This was misleading because "never executed" should
 -- indicate that the node was never executed by its parent.
 -- explain_processing_off
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF) SELECT a FROM empty_table;
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) SELECT a FROM empty_table;
 -- explain_processing_on
 
 -- For a node that is truly never executed, we still expect "never executed" to
 -- be reported
 -- explain_processing_off
-EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF, SUMMARY OFF) SELECT t1.a FROM empty_table t1 join empty_table t2 on t1.a = t2.a;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) SELECT t1.a FROM empty_table t1 join empty_table t2 on t1.a = t2.a;
+
+-- Test with predicate
+INSERT INTO empty_table select generate_series(1, 1000)::int as a;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) SELECT a FROM empty_table WHERE b = 2;
+
+ANALYZE a;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) SELECT a FROM empty_table WHERE b = 2;
 -- explain_processing_on
