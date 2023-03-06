@@ -7,10 +7,10 @@
 -- s/Buckets: \d+/Buckets: ###/
 -- m/Batches: \d+/
 -- s/Batches: \d+/Batches: ###/
--- m/Planning time: .*ms/
--- s/Planning time: .*ms/Planning time: 0 ms/
--- m/Execution time: .*ms/
--- s/Execution time: .*ms/Execution time: 0 ms/
+-- m/Execution time: \d+\.\d+ ms/
+-- s/Execution time: \d+\.\d+ ms/Execution time: ##.### ms/
+-- m/Planning time: \d+\.\d+ ms/
+-- s/Planning time: \d+\.\d+ ms/Planning time: ##.### ms/
 -- end_matchsubs
 CREATE TEMP TABLE empty_table(a int, b int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
