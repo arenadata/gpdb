@@ -11,6 +11,12 @@
 -- s/Execution time: \d+\.\d+ ms/Execution time: ##.### ms/
 -- m/Planning time: \d+\.\d+ ms/
 -- s/Planning time: \d+\.\d+ ms/Planning time: ##.### ms/
+-- m/\(slice\d+\)    Executor memory: (\d+)\w bytes\./
+-- s/Executor memory: (\d+)\w bytes\./Executor memory: (#####)K bytes./
+-- m/\(slice\d+\)    Executor memory: (\d+)\w bytes avg x \d+ workers, \d+\w bytes max \(seg\d+\)\./
+-- s/Executor memory: (\d+)\w bytes avg x \d+ workers, \d+\w bytes max \(seg\d+\)\./Executor memory: ####K bytes avg x #### workers, ####K bytes max (seg#)./
+-- m/Memory used:  \d+\w?B/
+-- s/Memory used:  \d+\w?B/Memory used: ###B/
 -- end_matchsubs
 CREATE TEMP TABLE empty_table(a int, b int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -69,8 +75,7 @@ EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) SELECT a FROM empty_table WHERE b = 2;
  Execution time: 1.561 ms
 (9 rows)
 
-ANALYZE a;
-ERROR:  relation "a" does not exist
+ANALYZE empty_table;
 EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF) SELECT a FROM empty_table WHERE b = 2;
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
