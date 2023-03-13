@@ -50,9 +50,9 @@ EXPLAIN SELECT * from boxes LEFT JOIN apples ON apples.id = boxes.apple_id LEFT 
 --- Check Explain Analyze Text output that include the slices information
 -- explain_processing_off
 EXPLAIN (ANALYZE) SELECT * from boxes LEFT JOIN apples ON apples.id = boxes.apple_id LEFT JOIN box_locations ON box_locations.id = boxes.location_id;
-                                                                      QUERY PLAN                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice3; segments: 3)  (cost=0.00..449.00 rows=3 width=28) (actual time=2.418..2.418 rows=0 loops=1)
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice3; segments: 3)  (cost=0.00..449.00 rows=3 width=28) (actual time=2.297..2.297 rows=0 loops=1)
    ->  Nested Loop Left Join  (cost=0.00..449.00 rows=1 width=28) (actual time=0.000..1.899 rows=0 loops=1)
          Join Filter: true
          ->  Redistribute Motion 3:3  (slice2; segments: 3)  (cost=0.00..437.00 rows=1 width=16) (actual time=0.000..1.895 rows=0 loops=1)
@@ -66,7 +66,7 @@ EXPLAIN (ANALYZE) SELECT * from boxes LEFT JOIN apples ON apples.id = boxes.appl
                            Index Cond: (id = boxes.apple_id)
          ->  Index Scan using box_locations_pkey on box_locations  (cost=0.00..12.00 rows=1 width=12) (never executed)
                Index Cond: (id = boxes.location_id)
- Planning time: 31.709 ms
+ Planning time: 14.784 ms
    (slice0)    Executor memory: 192K bytes.
    (slice1)    Executor memory: 60K bytes avg x 3 workers, 60K bytes max (seg0).
    (slice2)    Executor memory: 96K bytes avg x 3 workers, 96K bytes max (seg0).
@@ -75,7 +75,7 @@ EXPLAIN (ANALYZE) SELECT * from boxes LEFT JOIN apples ON apples.id = boxes.appl
    (slice5)    
  Memory used:  128000kB
  Optimizer: Pivotal Optimizer (GPORCA)
- Execution time: 19.424 ms
+ Execution time: 23.433 ms
 (24 rows)
 
 -- explain_processing_on

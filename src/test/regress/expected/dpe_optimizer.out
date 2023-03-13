@@ -813,23 +813,23 @@ select * from t, t1, pt where t1.t2 = t.t2 and t1.tid = ptid;
 -- explain analyze
 --
 explain analyze select * from t, pt where tid = ptid;
-                                                                    QUERY PLAN                                                                    
---------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice2; segments: 3)  (cost=0.00..443.01 rows=18 width=50) (actual time=3.690..5.812 rows=18 loops=1)
-   ->  Nested Loop  (cost=0.00..443.01 rows=6 width=50) (actual time=2.262..3.300 rows=8 loops=1)
+                                                                  QUERY PLAN                                                                   
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)  (cost=0.00..485.01 rows=18 width=50) (actual time=0.750..0.755 rows=18 loops=1)
+   ->  Nested Loop  (cost=0.00..485.01 rows=6 width=50) (actual time=0.313..0.524 rows=9 loops=1)
          Join Filter: true
-         ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..431.00 rows=2 width=19) (actual time=1.427..1.428 rows=2 loops=1)
-               ->  Seq Scan on t  (cost=0.00..431.00 rows=1 width=19) (actual time=0.003..0.003 rows=2 loops=1)
-         ->  Sequence  (cost=0.00..12.00 rows=3 width=31) (actual time=0.545..1.061 rows=4 loops=2)
+         ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..431.00 rows=2 width=19) (actual time=0.208..0.358 rows=2 loops=1)
+               ->  Seq Scan on t  (cost=0.00..431.00 rows=1 width=19) (actual time=0.020..0.021 rows=2 loops=1)
+         ->  Sequence  (cost=0.00..54.00 rows=3 width=31) (actual time=0.048..0.075 rows=4 loops=2)
                ->  Partition Selector for pt (dynamic scan id: 1)  (cost=10.00..100.00 rows=34 width=4) (actual time=0.000..0.006 rows=0 loops=2)
                      Partitions selected: 6 (out of 6)
-               ->  Dynamic Index Scan on pt (dynamic scan id: 1)  (cost=0.00..12.00 rows=3 width=31) (actual time=0.539..1.054 rows=4 loops=2)
+               ->  Dynamic Index Scan on pt (dynamic scan id: 1)  (cost=0.00..54.00 rows=3 width=31) (actual time=0.046..0.073 rows=4 loops=2)
                      Index Cond: (ptid = t.tid)
                      Partitions scanned:  Avg 6.0 (out of 6) x 3 workers of 2 scans.  Max 6 parts (seg0).
  Planning time: 20.481 ms
-   (slice0)    Executor memory: 135K bytes.
-   (slice1)    Executor memory: 58K bytes avg x 3 workers, 58K bytes max (seg0).
-   (slice2)    Executor memory: 144K bytes avg x 3 workers, 144K bytes max (seg0).
+   (slice0)    Executor memory: 386K bytes.
+   (slice1)    Executor memory: 60K bytes avg x 3 workers, 62K bytes max (seg0).
+   (slice2)    Executor memory: 155K bytes avg x 3 workers, 155K bytes max (seg0).
    (slice3)    
  Memory used:  128000kB
  Optimizer: Pivotal Optimizer (GPORCA)
