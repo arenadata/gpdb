@@ -2599,9 +2599,10 @@ shareinput_mutator_xslice_4(Node *node, PlannerInfo *root, bool fPop)
 	 * so we test just once for all node in one slice.  But this code is not
 	 * perf critical so be lazy.
 	 */
-	if (list_member_int(ctxt->qdSlices, motId))
+	if (list_member_int(ctxt->qdSlices, motId) && plan->flow && IsA(plan, ShareInputScan))
 	{
-		if (plan->flow)
+		ShareInputScan *sisc = (ShareInputScan *) plan;
+		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
 			Assert(plan->flow->flotype == FLOW_SINGLETON);
 			plan->flow->segindex = -1;
