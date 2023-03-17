@@ -58,7 +58,6 @@ ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV SKIP_UNITTESTS=
 # To set default locale for unittests
 ENV LANG=en_US.UTF-8
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rh/llvm-toolset-7/root/usr/lib64/
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend"
 
 # Compile with running mocking tests
@@ -71,3 +70,5 @@ RUN rm -rf gpdb_src/.git/
 FROM base as test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
+
+RUN echo -e '/opt/rh/llvm-toolset-7/root/usr/lib64/\n' >> /etc/ld.so.conf && ldconfig
