@@ -20,19 +20,19 @@ DROP FUNCTION ext_cor_func();
 CREATE VIEW ext_cor_view AS
   SELECT 'ext_cor_view: original'::text AS col;
 CREATE EXTENSION test_ext_cor;  -- fail
-ERROR:  view ext_cor_view is not a member of extension "test_ext_cor"
-DETAIL:  An extension is not allowed to replace an object that it does not own.
 SELECT ext_cor_func();
-ERROR:  function ext_cor_func() does not exist
-LINE 1: SELECT ext_cor_func();
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
-SELECT * FROM ext_cor_view;
-          col           
-------------------------
- ext_cor_view: original
+         ext_cor_func         
+------------------------------
+ ext_cor_func: from extension
 (1 row)
 
+SELECT * FROM ext_cor_view;
+             col              
+------------------------------
+ ext_cor_view: from extension
+(1 row)
+
+drop extension test_ext_cor;
 DROP VIEW ext_cor_view;
 CREATE TYPE test_ext_type;
 CREATE EXTENSION test_ext_cor;  -- fail
@@ -48,6 +48,9 @@ ERROR:  operator <<@@(point,polygon) is not a member of extension "test_ext_cor"
 DETAIL:  An extension is not allowed to replace an object that it does not own.
 DROP OPERATOR <<@@ (point, polygon);
 CREATE EXTENSION test_ext_cor;  -- now it should work
+DROP FUNCTION ext_cor_func();
+ERROR:  cannot drop function ext_cor_func() because extension test_ext_cor requires it
+HINT:  You can drop extension test_ext_cor instead.
 SELECT ext_cor_func();
          ext_cor_func         
 ------------------------------
@@ -73,12 +76,163 @@ SELECT point(0,0) <<@@ polygon(circle(point(0,0),1));
 (1 row)
 
 \dx+ test_ext_cor
-Objects in extension "test_ext_cor"
-      Object Description      
-------------------------------
- function ext_cor_func()
- operator <<@@(point,polygon)
- type test_ext_type
- view ext_cor_view
-(4 rows)
+                       List of installed extensions
+     Name     | Version | Schema |              Description               
+--------------+---------+--------+----------------------------------------
+ test_ext_cor | 1.0     | public | Test extension using CREATE OR REPLACE
+(1 row)
 
+--
+-- Another test cases for problem https://github.com/greenplum-db/gpdb/issues/6716.
+-- Segments of gpdb builed with `--enable-cassert` stops with error like
+-- FailedAssertion(""!(stack->state == GUC_SAVE)" at next cases. At gpdb builed
+-- without `--enable-cassert` segments won't stop with errors, but there may be
+-- incorrect search_path.
+--
+--
+-- create extension in the same schema
+--
+begin;
+set search_path=pg_catalog;
+create extension test_ext_cau;
+show search_path;
+ search_path 
+-------------
+ pg_catalog
+(1 row)
+
+rollback;
+--
+-- create extension in the different schema
+--
+create schema differentschema;
+begin;
+set search_path=differentschema;
+show search_path;
+   search_path   
+-----------------
+ differentschema
+(1 row)
+
+create extension test_ext_cau with schema pg_catalog;
+show search_path;
+   search_path   
+-----------------
+ differentschema
+(1 row)
+
+end;
+-- check search_path after transaction commit
+show search_path;
+   search_path   
+-----------------
+ differentschema
+(1 row)
+
+drop extension test_ext_cau;
+create extension test_ext_cau with version '1.0' schema differentschema;
+begin;
+set search_path=differentschema;
+alter extension test_ext_cau update to '1.1';
+end;
+-- check search_path after transaction commit
+show search_path;
+   search_path   
+-----------------
+ differentschema
+(1 row)
+
+drop function differentschema.test_func1(int,int);
+drop extension test_ext_cau;
+--
+-- Test case for create extension from unpackaged
+--
+-- Create extension functions at existing schema (differentschema). Code copied from from test_ext_cau--1.0.sql
+create function test_func1(a int, b int) returns int
+as $$
+begin
+	return a + b;
+end;
+$$
+LANGUAGE plpgsql;
+create function test_func2(a int, b int) returns int
+as $$
+begin
+	return a - b;
+end;
+$$
+LANGUAGE plpgsql;
+-- restore search path
+reset search_path;
+begin;
+-- change search_path
+set search_path=pg_catalog;
+show search_path;
+ search_path 
+-------------
+ pg_catalog
+(1 row)
+
+-- create extension in schema differentschema
+create extension test_ext_cau with schema differentschema version '1.1' from 'unpackaged';
+-- check that search path doesn't changed after create extension
+show search_path;
+ search_path 
+-------------
+ pg_catalog
+(1 row)
+
+-- show that functions belong to schema differentschema (check that create extension works correctly)
+set search_path=differentschema;
+\df
+                                List of functions
+     Schema      |    Name    | Result data type | Argument data types  |  Type  
+-----------------+------------+------------------+----------------------+--------
+ differentschema | test_func1 | integer          | a integer, b integer | normal
+ differentschema | test_func2 | integer          | a integer, b integer | normal
+(2 rows)
+
+SELECT e.extname, ne.nspname AS extschema, p.proname, np.nspname AS proschema
+FROM pg_catalog.pg_extension AS e
+    INNER JOIN pg_catalog.pg_depend AS d ON (d.refobjid = e.oid)
+    INNER JOIN pg_catalog.pg_proc AS p ON (p.oid = d.objid)
+    INNER JOIN pg_catalog.pg_namespace AS ne ON (ne.oid = e.extnamespace)
+    INNER JOIN pg_catalog.pg_namespace AS np ON (np.oid = p.pronamespace)
+WHERE d.deptype = 'e' and e.extname = 'test_ext_cau'
+ORDER BY 1, 3;
+   extname    |    extschema    |  proname   |    proschema    
+--------------+-----------------+------------+-----------------
+ test_ext_cau | differentschema | test_func2 | differentschema
+(1 row)
+
+end;
+-- check search_path after transaction commit
+show search_path;
+   search_path   
+-----------------
+ differentschema
+(1 row)
+
+reset search_path;
+drop function differentschema.test_func1(int,int);
+drop extension test_ext_cau;
+--
+-- check that alter extension (with search_path is set) won't fail (on gpdb builded with --enable-cassert)
+--
+create extension test_ext_cau with version '1.0' schema differentschema;
+begin;
+set search_path=differentschema;
+alter extension test_ext_cau update to '1.1';
+end;
+-- check search_path after transaction commit
+show search_path;
+   search_path   
+-----------------
+ differentschema
+(1 row)
+
+reset search_path;
+drop schema differentschema cascade;
+NOTICE:  drop cascades to function differentschema.test_func2(integer,integer)
+NOTICE:  drop cascades to extension test_ext_cau
+NOTICE:  drop cascades to function differentschema.test_func1(integer,integer)

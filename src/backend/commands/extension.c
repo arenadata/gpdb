@@ -47,6 +47,7 @@
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
@@ -60,6 +61,9 @@
 /* Globally visible state variables */
 bool		creating_extension = false;
 Oid			CurrentExtensionObject = InvalidOid;
+
+/* File visible "segment" variable for GUCs state */
+static int	segment_nestlevel = 0;
 
 /*
  * Internal data structure to hold the results of parsing a control file
@@ -100,7 +104,7 @@ static List *find_update_path(List *evi_list,
 static void get_available_versions_for_extension(ExtensionControlFile *pcontrol,
 									 Tuplestorestate *tupstore,
 									 TupleDesc tupdesc);
-static void ApplyExtensionUpdates(AlterExtensionStmt *stmt, Oid extensionOid,
+static void ApplyExtensionUpdates(Oid extensionOid,
 					  ExtensionControlFile *pcontrol,
 					  const char *initialVersion,
 					  List *updateVersions);
@@ -765,13 +769,40 @@ execute_sql_string(const char *sql, const char *filename)
 	CommandCounterIncrement();
 }
 
+static void
+set_end_state(Node *stmt)
+{
+	AssertState(stmt != NULL);
+	AssertState(nodeTag(stmt) == T_CreateExtensionStmt || nodeTag(stmt) == T_AlterExtensionStmt);
+	if (IsA(stmt, CreateExtensionStmt))
+		((CreateExtensionStmt*)stmt)->create_ext_state = CREATE_EXTENSION_END;
+	else if (IsA(stmt, AlterExtensionStmt))
+		((AlterExtensionStmt*)stmt)->update_ext_state = UPDATE_EXTENSION_END;
+}
+
+static bool
+is_begin_state(const Node *stmt)
+{
+	AssertState(stmt != NULL);
+	AssertState(nodeTag(stmt) == T_CreateExtensionStmt || nodeTag(stmt) == T_AlterExtensionStmt);
+	if (IsA(stmt, CreateExtensionStmt))
+		return ((const CreateExtensionStmt*)stmt)->create_ext_state == CREATE_EXTENSION_BEGIN;
+	else if (IsA(stmt, AlterExtensionStmt))
+		return ((const AlterExtensionStmt*)stmt)->update_ext_state == UPDATE_EXTENSION_BEGIN;
+	else
+		return false;  /* unreachable */
+}
+
 /*
  * Execute the appropriate script file for installing or updating the extension
+ *
+ * This function executes on QD and QE's. On QE's this function only sets up
+ * necessary GUC's and state variables, needed for further execution.
  *
  * If from_version isn't NULL, it's an update
  */
 static void
-execute_extension_script(CreateExtensionStmt *stmt,
+execute_extension_script(Node *stmt,
 						 Oid extensionOid, ExtensionControlFile *control,
 						 const char *from_version,
 						 const char *version,
@@ -782,6 +813,10 @@ execute_extension_script(CreateExtensionStmt *stmt,
 	int			save_nestlevel;
 	StringInfoData pathbuf;
 	ListCell   *lc;
+
+	AssertImply(Gp_role == GP_ROLE_DISPATCH, stmt != NULL &&
+			(nodeTag(stmt) == T_CreateExtensionStmt || nodeTag(stmt) == T_AlterExtensionStmt) &&
+			is_begin_state(stmt));
 
 	filename = get_extension_script_filename(control, from_version, version);
 
@@ -799,11 +834,11 @@ execute_extension_script(CreateExtensionStmt *stmt,
 	if (client_min_messages < WARNING)
 		(void) set_config_option("client_min_messages", "warning",
 								 PGC_USERSET, PGC_S_SESSION,
-								 true, true);
+								 GUC_ACTION_SAVE, true);
 	if (log_min_messages < WARNING)
 		(void) set_config_option("log_min_messages", "warning",
 								 PGC_SUSET, PGC_S_SESSION,
-								 true, true);
+								 GUC_ACTION_SAVE, true);
 
 	/*
 	 * Set up the search path to contain the target schema, then the schemas
@@ -828,7 +863,7 @@ execute_extension_script(CreateExtensionStmt *stmt,
 
 	(void) set_config_option("search_path", pathbuf.data,
 							 PGC_USERSET, PGC_S_SESSION,
-							 true, true);
+							 GUC_ACTION_SAVE, true);
 
 	/*
 	 * Set creating_extension and related variables so that
@@ -837,6 +872,16 @@ execute_extension_script(CreateExtensionStmt *stmt,
 	 */
 	creating_extension = true;
 	CurrentExtensionObject = extensionOid;
+
+	/*
+	 * All necessary variables at segment is set up.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		segment_nestlevel = save_nestlevel;
+		return;
+	}
+
 	PG_TRY();
 	{
 		char	   *c_sql = read_extension_script_file(control, filename);
@@ -899,15 +944,6 @@ execute_extension_script(CreateExtensionStmt *stmt,
 		 * Restore the GUC variables we set above.
 		 */
 		AtEOXact_GUC(true, save_nestlevel);
-		if (Gp_role == GP_ROLE_DISPATCH && stmt != NULL)
-		{
-			/* We must reset QE CurrentExtensionObject to InvalidOid */
-			stmt->create_ext_state = CREATE_EXTENSION_END;
-			CdbDispatchUtilityStatement((Node *) stmt,
-										DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
-										GetAssignedOidsForDispatch(),
-										NULL);
-		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -922,7 +958,7 @@ execute_extension_script(CreateExtensionStmt *stmt,
 	if (Gp_role == GP_ROLE_DISPATCH && stmt != NULL)
 	{
 		/* We must reset QE CurrentExtensionObject to InvalidOid */
-		stmt->create_ext_state = CREATE_EXTENSION_END;
+		set_end_state(stmt);
 		CdbDispatchUtilityStatement((Node *) stmt,
 									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
 									GetAssignedOidsForDispatch(),
@@ -1235,11 +1271,11 @@ CreateExtension(CreateExtensionStmt *stmt)
 				CurrentExtensionObject = InvalidOid;
 				return;
 			case CREATE_EXTENSION_BEGIN:	/* Mark creating_extension flag and add pg_extension catalog tuple */
-				creating_extension = true;
 				break;
 			case CREATE_EXTENSION_END:		/* Mark creating_extension flag = false */
-				creating_extension = false;
-				CurrentExtensionObject = InvalidOid;
+				Assert(segment_nestlevel > 0);
+				AtEOXact_GUC(true, segment_nestlevel);
+				ResetExtensionCreatingGlobalVarsOnQE();
 				return;
 			default:
 				elog(ERROR, "unrecognized create_ext_state: %d",
@@ -1251,8 +1287,7 @@ CreateExtension(CreateExtensionStmt *stmt)
 	 * We use global variables to track the extension being created, so we can
 	 * create only one extension at the same time except QE do CREATE_EXTENSION_BEGIN.
 	 */
-	if (creating_extension && !(stmt->create_ext_state == CREATE_EXTENSION_BEGIN &&
-				Gp_role == GP_ROLE_EXECUTE))
+	if (creating_extension)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("nested CREATE EXTENSION is not supported")));
@@ -1514,6 +1549,14 @@ CreateExtension(CreateExtensionStmt *stmt)
 	if (control->comment != NULL)
 		CreateComments(extensionOid, ExtensionRelationId, 0, control->comment);
 
+	/*
+	 * Execute the installation script file.
+	 *
+	 * In the QD, dispatch the command to segments first, to create the
+	 * extension object. In the QE, *only* create the extension object, not
+	 * the objects that are part of the extension. When we create those
+	 * objects in the QD, we will dispatch separate CREATE commands for each.
+	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/* We must tell QE to create extension */
@@ -1523,21 +1566,27 @@ CreateExtension(CreateExtensionStmt *stmt)
 									GetAssignedOidsForDispatch(),
 									NULL);
 	}
-	else
-	{
-		CurrentExtensionObject = extensionOid;
-	}
+	
+	execute_extension_script((Node *) stmt, extensionOid, control,
+							 oldVersionName, versionName,
+							 requiredSchemas,
+							 schemaName, schemaOid);
 
-	/*
-	 * No need to execute extension script (pure SQL statements) on
-	 * segments, as QD will take care of it when execute each SQL statement
-	 * in the script file.
+	 /*
+	 * On the QD and the QE's updateVersions list is calculated
+	 * and this lists are the same. Thus ApplyExtensionUpdates
+	 * call must be forbidden at QE. (It would be dispatchered
+	 * from QD a bit later)
 	 */
 	if (Gp_role != GP_ROLE_EXECUTE)
-		execute_extension_script(stmt, extensionOid, control,
-								 oldVersionName, versionName,
-								 requiredSchemas,
-								 schemaName, schemaOid);
+	{
+		/*
+		 * If additional update scripts have to be executed, apply the updates as
+		 * though a series of ALTER EXTENSION UPDATE commands were given
+		 */
+		ApplyExtensionUpdates(extensionOid, pcontrol,
+							  versionName, updateVersions);
+	}
 }
 
 /*
@@ -2721,6 +2770,28 @@ ExecAlterExtensionStmt(AlterExtensionStmt *stmt)
 	bool		isnull;
 	ListCell   *lc;
 
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		switch (stmt->update_ext_state)
+		{
+			case UPDATE_EXTENSION_INIT:
+				elog(ERROR, "invalid ALTER EXTENSION UPDATE state");
+				break;
+
+			case UPDATE_EXTENSION_BEGIN:
+				break;
+			case UPDATE_EXTENSION_END:		/* Mark creating_extension flag = false */
+				Assert(segment_nestlevel > 0);
+				AtEOXact_GUC(true, segment_nestlevel);
+				ResetExtensionCreatingGlobalVarsOnQE();
+				return;
+
+			default:
+				elog(ERROR, "unrecognized update_ext_state: %d",
+						stmt->update_ext_state);
+		}
+	}
+
 	/*
 	 * We use global variables to track the extension being created, so we can
 	 * create/update only one extension at the same time.
@@ -2835,16 +2906,8 @@ ExecAlterExtensionStmt(AlterExtensionStmt *stmt)
 	 * Update the pg_extension row and execute the update scripts, one at a
 	 * time
 	 */
-	ApplyExtensionUpdates(stmt, extensionOid, control,
+	ApplyExtensionUpdates(extensionOid, control,
 						  oldVersionName, updateVersions);
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt,
-									DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
-									GetAssignedOidsForDispatch(),
-									NULL);
-	}
 }
 
 /*
@@ -2856,13 +2919,19 @@ ExecAlterExtensionStmt(AlterExtensionStmt *stmt)
  * scripts don't break if newer versions have different control parameters.
  */
 static void
-ApplyExtensionUpdates(AlterExtensionStmt *stmt, Oid extensionOid,
+ApplyExtensionUpdates(Oid extensionOid,
 					  ExtensionControlFile *pcontrol,
 					  const char *initialVersion,
 					  List *updateVersions)
 {
 	const char *oldVersionName = initialVersion;
 	ListCell   *lcv;
+
+	/*
+	 * The update of extension in QE is driven by QD, so we only handle 1 version upgrade
+	 * per dispatch on the QE
+	 */
+	AssertImply(Gp_role == GP_ROLE_EXECUTE, list_length(updateVersions) == 1);
 
 	foreach(lcv, updateVersions)
 	{
@@ -2987,15 +3056,27 @@ ApplyExtensionUpdates(AlterExtensionStmt *stmt, Oid extensionOid,
 			recordDependencyOn(&myself, &otherext, DEPENDENCY_NORMAL);
 		}
 
+		Node *stmt = NULL;
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			AlterExtensionStmt *update_stmt = makeNode(AlterExtensionStmt);
+			update_stmt->extname = pcontrol->name;
+			update_stmt->options = lappend(NIL, makeDefElem("new_version", (Node*)makeString(versionName)));
+			update_stmt->update_ext_state = UPDATE_EXTENSION_BEGIN;
+			stmt = (Node*)update_stmt;
+			CdbDispatchUtilityStatement(stmt,
+										DF_WITH_SNAPSHOT | DF_CANCEL_ON_ERROR | DF_NEED_TWO_PHASE,
+										NIL  /* We don't create any object in UPDATE EXTENSION, so NIL here. */,
+										NULL);
+		}
+
 		/*
 		 * Finally, execute the update script file
-		 * Only execute SQL script on QD.
 		 */
-		if (Gp_role == GP_ROLE_DISPATCH)
-			execute_extension_script(NULL, extensionOid, control,
-								 oldVersionName, versionName,
-								 requiredSchemas,
-								 schemaName, schemaOid);
+		execute_extension_script(stmt, extensionOid, control,
+							 oldVersionName, versionName,
+							 requiredSchemas,
+							 schemaName, schemaOid);
 
 		/*
 		 * Update prior-version name and loop around.  Since
@@ -3210,4 +3291,23 @@ AlterExtensionOwner_oid(Oid extensionOid, Oid newOwnerId)
 	AlterExtensionOwner_internal(rel, extensionOid, newOwnerId);
 
 	heap_close(rel, NoLock);
+}
+
+/*
+ * This function is Greenplum specific. In Greenplum, Create Extension
+ * will first create the catalog entry (this will dispatch to QEs also),
+ * then to create object (like UDFs). Those second-stage operations
+ * will reply on themselves' MPP exeuction (like CreateFunction) so no
+ * execute_extension_script invokation on QEs. Previously, QD dispatch
+ * a new statement to reset the extension related global vars but that
+ * might introduce bugs when error happens. Now we invoke the following
+ * to do reset at AbortOutOfAnyTransaction() and AbortTrasaction() since
+ * error happen means Dtx abort.
+ */
+void
+ResetExtensionCreatingGlobalVarsOnQE(void)
+{
+	creating_extension = false;
+	CurrentExtensionObject = InvalidOid;
+	segment_nestlevel = 0;
 }

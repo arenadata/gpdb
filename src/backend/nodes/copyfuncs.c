@@ -3993,6 +3993,7 @@ _copyAlterExtensionStmt(AlterExtensionStmt *from)
 
 	COPY_STRING_FIELD(extname);
 	COPY_NODE_FIELD(options);
+	COPY_SCALAR_FIELD(update_ext_state);
 
 	return newnode;
 }

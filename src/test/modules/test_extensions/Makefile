@@ -3,8 +3,10 @@
 MODULE = test_extensions
 PGFILEDESC = "test_extensions - regression testing for EXTENSION support"
 
-EXTENSION = test_ext_cor
-DATA = test_ext_cor--1.0.sql
+EXTENSION = test_ext_cor test_ext_cau
+DATA = test_ext_cor--1.0.sql \
+       test_ext_cau--1.0--1.1.sql test_ext_cau--1.0.sql \
+       test_ext_cau--1.1.sql test_ext_cau--unpackaged--1.0.sql
 
 REGRESS = test_extensions
 

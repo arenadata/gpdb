@@ -653,6 +653,10 @@ recursiveDeletion(const ObjectAddress *object,
 									 otherObjDesc)));
 				}
 
+				if (otherObject.classId == ExtensionRelationId &&
+					otherObject.objectId == CurrentExtensionObject)
+					break;
+
 				/*
 				 * 2. When recursing from the other end of this dependency,
 				 * it's okay to continue with the deletion. This holds when

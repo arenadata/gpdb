@@ -1133,6 +1133,13 @@ typedef enum CreateExtensionState
 	CREATE_EXTENSION_END		/* finish to create extension */
 } CreateExtensionState;
 
+typedef enum UpdateExtensionState
+{
+	UPDATE_EXTENSION_INIT,		/* not start to update extension */
+	UPDATE_EXTENSION_BEGIN,     /* start to update extension */
+	UPDATE_EXTENSION_END		/* finish to update extension */
+} UpdateExtensionState;
+
 typedef struct CreateExtensionStmt
 {
 	NodeTag		type;
@@ -1148,6 +1155,7 @@ typedef struct AlterExtensionStmt
 	NodeTag		type;
 	char	   *extname;
 	List	   *options;		/* List of DefElem nodes */
+	UpdateExtensionState update_ext_state;	/* update extension state, only used for ALTER EXTENSION UPDATE */
 } AlterExtensionStmt;
 
 typedef struct AlterExtensionContentsStmt

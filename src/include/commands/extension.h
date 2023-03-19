@@ -48,4 +48,6 @@ extern void AlterExtensionNamespace(List *names, const char *newschema);
 
 extern void AlterExtensionOwner_oid(Oid extensionOid, Oid newOwnerId);
 
+extern void ResetExtensionCreatingGlobalVarsOnQE(void);
+
 #endif   /* EXTENSION_H */
