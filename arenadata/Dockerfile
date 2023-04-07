@@ -54,27 +54,37 @@ RUN yum -y install centos-release-scl && \
 
 RUN rpm -i $sigar && rpm -i $sigar_headers
 
-WORKDIR /home/gpadmin
+WORKDIR /tmp/build
 
 FROM base as build
 
 COPY . gpdb_src
 
-RUN mkdir /home/gpadmin/bin_gpdb
+RUN mkdir bin_gpdb
 
 ENV TARGET_OS_VERSION=7
 ENV TARGET_OS=centos
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
-ENV SKIP_UNITTESTS=""
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
 
 # Compile with running mocking tests
-RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
+RUN bash ./gpdb_src/concourse/scripts/compile_gpdb.bash
 
 FROM base as code
 COPY . gpdb_src
 RUN rm -rf gpdb_src/.git/
 
 FROM base as test
-COPY --from=code /home/gpadmin/gpdb_src gpdb_src
-COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
+COPY --from=code /tmp/build/gpdb_src ./gpdb_src
+COPY --from=build /tmp/build/bin_gpdb ./bin_gpdb
+
+# Volume for tests output
+VOLUME /tmp/build/gpdb_src/src/test
+
+RUN chmod +066 -R /tmp/build
+RUN mkdir /home/gpadmin
+WORKDIR /home/gpadmin
+RUN ln -s /tmp/build/* .
+RUN chmod +066 -R /home/gpadmin
+
+WORKDIR /tmp/build

@@ -31,7 +31,7 @@ We need to execute [../concourse/scripts/ic_gpdb.bash](../concourse/scripts/ic_g
 docker run --name gpdb6_opt_on --rm -it -e TEST_OS=centos \
   -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c optimizer=on' installcheck-world" \
   --sysctl 'kernel.sem=500 1024000 200 4096' gpdb6_regress:latest \
-  bash -c "ssh-keygen -A && /usr/sbin/sshd && bash /home/gpadmin/gpdb_src/concourse/scripts/ic_gpdb.bash"
+  bash -c "ssh-keygen -A && /usr/sbin/sshd && bash ./gpdb_src/concourse/scripts/ic_gpdb.bash"
 ```
 
 * we need to modify `MAKE_TEST_COMMAND` environment variable to run different suite. e.g. we may run test againt Postgres optimizer or ORCA with altering `PGOPTIONS` environment variable;

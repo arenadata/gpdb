@@ -6,7 +6,7 @@ services:
   #hub.adsw.io/library/gpdb6_regress:${BRANCH_NAME}-ppc64le depending on the arch
   cdw:
     image: "${IMAGE}"
-    working_dir: /home/gpadmin
+    working_dir: /tmp/build
     hostname: cdw
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
@@ -16,7 +16,7 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      bash -c "set -e && tail -f ./gpdb_src/README.md"
   sdw1:
     image: "${IMAGE}"
     privileged: true
@@ -27,7 +27,7 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      bash -c "set -e && tail -f ./gpdb_src/README.md"
   sdw2:
     image: "${IMAGE}"
     privileged: true
@@ -38,7 +38,7 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      bash -c "set -e && tail -f ./gpdb_src/README.md"
   sdw3:
     image: "${IMAGE}"
     privileged: true
@@ -49,4 +49,4 @@ services:
     sysctls:
       kernel.sem: 500 1024000 200 4096
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      bash -c "set -e && tail -f ./gpdb_src/README.md"
