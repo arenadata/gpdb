@@ -154,8 +154,10 @@ bool		Debug_datumstream_read_print_varlena_info = false;
 bool		Debug_datumstream_write_use_small_initial_buffers = false;
 bool		gp_create_table_random_default_distribution = true;
 bool		gp_allow_non_uniform_partitioning_ddl = true;
+bool		gp_print_create_gang_time = false;
 bool		gp_enable_exchange_default_partition = false;
 int			dtx_phase2_retry_count = 0;
+bool		gp_log_suboverflow_statement = false;
 
 bool		log_dispatch_stats = false;
 
@@ -362,7 +364,7 @@ bool		optimizer_enable_mergejoin;
 bool		optimizer_prune_unused_columns;
 bool		optimizer_enable_redistribute_nestloop_loj_inner_child;
 bool		optimizer_force_comprehensive_join_implementation;
-
+bool		optimizer_enable_replicated_table;
 
 /* Optimizer plan enumeration related GUCs */
 bool		optimizer_enumerate_plans;
@@ -395,6 +397,7 @@ int			optimizer_join_order;
 int			optimizer_cte_inlining_bound;
 int			optimizer_push_group_by_below_setop_threshold;
 int			optimizer_xform_bind_threshold;
+int			optimizer_skew_factor;
 bool		optimizer_force_multistage_agg;
 bool		optimizer_force_three_stage_scalar_dqa;
 bool		optimizer_force_expanded_distinct_aggs;
@@ -434,6 +437,7 @@ static char *gp_server_version_string;
 /* Query Metrics */
 bool		gp_enable_query_metrics = false;
 int			gp_instrument_shmem_size = 5120;
+int			gp_max_scan_on_shmem = 300;
 
 /* Security */
 bool		gp_reject_internal_tcp_conn = true;
@@ -1644,10 +1648,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 
 	{
 		{"gp_disable_tuple_hints", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Specify if reader should set hint bits on tuples."),
+			gettext_noop("Specify if hint bits on tuples should be deferred."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
+		/*
+		 * If gp_disable_tuple_hints is off, always mark buffer dirty.
+		 * If gp_disable_tuple_hints is on, defer marking the buffer dirty
+		 * until after transaction is identified as old.
+		 * (unless it is a catalog table) See: markDirty
+		 */
 		&gp_disable_tuple_hints,
 		true,
 		NULL, NULL, NULL
@@ -2006,6 +2016,17 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&gp_allow_non_uniform_partitioning_ddl,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_print_create_gang_time", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Allow print information about create gang time."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_print_create_gang_time,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -3204,6 +3225,17 @@ struct config_bool ConfigureNamesBool_gp[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"optimizer_enable_replicated_table", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Enable replicated tables."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE
+		 },
+		 &optimizer_enable_replicated_table,
+		 true,
+		 NULL, NULL, NULL
+	},
+
 
 	{
 		{"gp_log_resqueue_priority_sleep_time", PGC_USERSET, RESOURCES_MGM,
@@ -3211,6 +3243,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 		 NULL,
 		 },
 		 &gp_log_resqueue_priority_sleep_time,
+		 false,
+		 NULL, NULL, NULL
+	},
+
+	{
+		{"gp_log_suboverflow_statement", PGC_SUSET, LOGGING_WHAT,
+		 gettext_noop("Enable logging of statements that cause subtransaction overflow."),
+		 NULL,
+		 },
+		 &gp_log_suboverflow_statement,
 		 false,
 		 NULL, NULL, NULL
 	},
@@ -3344,7 +3386,7 @@ struct config_int ConfigureNamesInt_gp[] =
 			NULL
 		},
 		&gp_resource_group_cpu_priority,
-		10, 1, 256,
+		10, 1, 50,
 		NULL, NULL, NULL
 	},
 
@@ -4077,6 +4119,16 @@ struct config_int ConfigureNamesInt_gp[] =
 	},
 
 	{
+		{"gp_max_scan_on_shmem", PGC_POSTMASTER, UNGROUPED,
+			gettext_noop("Sets the limit of shmem slots used by scan nodes for each backend."),
+			NULL,
+		},
+		&gp_max_scan_on_shmem,
+		300, 0, 3072,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"gp_vmem_protect_limit", PGC_POSTMASTER, RESOURCES_MEM,
 			gettext_noop("Virtual memory limit (in MB) of Greenplum memory protection."),
 			NULL,
@@ -4088,7 +4140,7 @@ struct config_int ConfigureNamesInt_gp[] =
 
 	{
 		{"runaway_detector_activation_percent", PGC_POSTMASTER, RESOURCES_MEM,
-			gettext_noop("The runaway detector activates if the used vmem exceeds this percentage of the vmem quota. Set to 100 to disable runaway detection."),
+			gettext_noop("The runaway detector activates if the used vmem exceeds this percentage of the vmem quota. Set to 0 or 100 to disable runaway detection."),
 			NULL,
 		},
 		&runaway_detector_activation_percent,
@@ -4176,6 +4228,16 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&gp_resource_group_queuing_timeout,
 		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+	{
+		{"gp_resource_group_move_timeout", PGC_USERSET, RESOURCES_MGM,
+			gettext_noop("Wait up to the specified time (in ms) while moving process to another resource group (after queuing on it) before give up."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&gp_resource_group_move_timeout,
+		30000, 10, INT_MAX,
 		NULL, NULL, NULL
 	},
 	{
@@ -4344,6 +4406,17 @@ struct config_int ConfigureNamesInt_gp[] =
 		NULL, NULL, NULL
 	},
 
+    {
+            {"optimizer_skew_factor", PGC_USERSET, DEVELOPER_OPTIONS,
+             gettext_noop("Coefficient of skew ratio computed from sample stastics. Default 0: skew computation from sample statistics turned off. [1,100]: skew ratio computed from sample statistics. The skewness used for costing is the product of the optimizer_skew_factor and the skew ratio."),
+             NULL,
+             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            },
+            &optimizer_skew_factor,
+            0, 0, 100,
+            NULL, NULL, NULL
+    },
+
 	{
 		{"optimizer_join_order_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Maximum number of join children to use dynamic programming based join ordering algorithm."),
@@ -4401,7 +4474,7 @@ struct config_int ConfigureNamesInt_gp[] =
 		{"repl_catchup_within_range", PGC_SUSET, REPLICATION_STANDBY,
 			gettext_noop("Sets the maximum number of xlog segments allowed to lag"
 					  " when the backends can start blocking despite the WAL"
-					   " sender being in catchup phase. (Master Mirroring)"),
+					   " sender being in catchup phase."),
 			NULL,
 			GUC_SUPERUSER_ONLY
 		},
@@ -4521,6 +4594,16 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&gp_dispatch_keepalives_count,
 		0, 0, MAX_GP_DISPATCH_KEEPALIVES_COUNT,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_max_parallel_cursors", PGC_SUSET, RESOURCES,
+			gettext_noop("Parallel cursor concurrency control, -1 means no limit, which is the default"),
+			NULL, GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_max_parallel_cursors,
+		-1, -1, 1024,
 		NULL, NULL, NULL
 	},
 

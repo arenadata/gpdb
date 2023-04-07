@@ -13,11 +13,11 @@ The essential security requirements fall into the following categories:
 
 ## <a id="accesskerb"></a>Accessing a Kerberized Hadoop Cluster 
 
-You can use the Greenplum Platform Extension Framework \(PXF\) to read or write external tables referencing files in a Hadoop file system. If the Hadoop cluster is secured with Kerberos \("Kerberized"\), you must configure Greenplum Database and PXF to allow users accessing external tables to authenticate with Kerberos. Refer to [Configuring PXF for Secure HDFS](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Platform-Extension-Framework/6.3/tanzu-greenplum-platform-extension-framework/GUID-pxf_kerbhdfs.html) for the procedure to perform this setup.
+You can use the Greenplum Platform Extension Framework \(PXF\) to read or write external tables referencing files in a Hadoop file system. If the Hadoop cluster is secured with Kerberos \("Kerberized"\), you must configure Greenplum Database and PXF to allow users accessing external tables to authenticate with Kerberos. Refer to [Configuring PXF for Secure HDFS](https://docs.vmware.com/en/VMware-Greenplum-Platform-Extension-Framework/6.3/vmware-greenplum-platform-extension-framework/GUID-pxf_kerbhdfs.html) for the procedure to perform this setup.
 
 ## <a id="platformhardening"></a>Platform Hardening 
 
-Platform hardening involves assessing and minimizing system vulnerability by following best practices and enforcing federal security standards. Hardening the product is based on the US Department of Defense \(DoD\) guidelines Security Template Implementation Guides \(STIG\). Hardening removes unnecessary packages, disables services that are not required, sets up restrictive file and directory permissions, removes unowned files and directories, performs authentication for single-user mode, and provides options for end users to configure the package to be compliant to the latest STIGs. 
+Platform hardening involves assessing and minimizing system vulnerability by following best practices and enforcing federal security standards. Hardening the product is based on the US Department of Defense \(DoD\) guidelines Security Template Implementation Guides \(STIG\). Hardening removes unnecessary packages, deactivates services that are not required, sets up restrictive file and directory permissions, removes unowned files and directories, performs authentication for single-user mode, and provides options for end users to configure the package to be compliant to the latest STIGs. 
 
 **Parent topic:** [Greenplum Database Security Configuration Guide](../topics/preface.html)
 

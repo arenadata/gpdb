@@ -63,6 +63,24 @@ SELECT gp_request_fts_probe_scan();
  t                         
 (1 row)
 
+-- Do a utility mode SELECT on the erstwhile mirror to ensure that it has been
+-- promoted and can serve queries. Otherwise, gprecoverseg will fail below.
+-- Conveniently, the framework will make this statement block.
+1U: SELECT 1;
+ ?column? 
+----------
+ 1        
+(1 row)
+
+-- Bring back primary and wait until primary and mirror are up & running
+!\retcode gprecoverseg -a;
+(exited with code 0)
+SELECT wait_until_all_segments_synchronized();
+ wait_until_all_segments_synchronized 
+--------------------------------------
+ OK                                   
+(1 row)
+
 -- If there's a memory leak we'll print a special log message. Search if such log record exists, if so,
 -- we might have a memory leak. Check the log for more information about the memory usage.
 -- Note that currently we are only checking MdCxt.
@@ -72,14 +90,7 @@ select count(*) from gp_toolkit.__gp_log_segment_ext where logsegment = 'seg1' a
  0     
 (1 row)
 
--- Bring back primary and re-balance.
-!\retcode gprecoverseg -a;
-(exited with code 0)
-SELECT wait_until_all_segments_synchronized();
- wait_until_all_segments_synchronized 
---------------------------------------
- OK                                   
-(1 row)
+-- re-balance
 !\retcode gprecoverseg -ra;
 (exited with code 0)
 SELECT wait_until_all_segments_synchronized();

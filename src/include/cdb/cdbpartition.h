@@ -72,6 +72,8 @@ extern List *rel_partition_key_attrs(Oid relid);
 
 extern List *rel_partition_keys_ordered(Oid relid);
 
+extern void rel_partition_keys_attrs_with_parclass(Oid relid, List **pkeys, List **parclass);
+
 extern void rel_partition_keys_kinds_ordered(Oid relid, List **pkeys, List **pkinds);
 
 extern bool rel_has_external_partition(Oid relid);
@@ -223,6 +225,7 @@ extern LogicalIndexes * BuildLogicalIndexInfo(Oid relid);
 extern Oid getPhysicalIndexRelid(Relation partRel, LogicalIndexInfo *iInfo);
 
 extern LogicalIndexInfo *logicalIndexInfoForIndexOid(Oid rootOid, Oid indexOid);
+extern LogicalIndexType logicalIndexTypeForIndexOid(Oid indexOid);
 
 extern void InsertPidIntoDynamicTableScanInfo(EState *estate, int32 index, Oid partOid, int32 selectorId);
 

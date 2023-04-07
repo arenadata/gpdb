@@ -30,6 +30,14 @@ The following operating system and Greenplum Database memory settings are signif
 
     The percentage of system memory to allocate to Greenplum Database. The default value is .7 \(70%\).
 
+-   **gp_resource_group_enable_recalculate_query_mem**
+
+    By default, Greenplum Database calculates the maximum per-query memory allotment for all hosts using the memory configuration of, and the number of primary segments configured on, the master host.
+
+    > **Note** The default behavior may lead to out of memory issues and underutilization of resources when the hardware configuration of the master and segment hosts differ.
+
+    If the hardware configuration of your master and segment hosts differ, set the `gp_resource_group_enable_recalculate_query_mem` server configuration parameter to `true`; this prompts Greenplum Database to recalculate the maximum per-query memory allotment on each segment host based on the memory and the number of primary segments configured on that segment host.
+
 -   **gp_workfile_limit_files_per_query**
 
     Set `gp_workfile_limit_files_per_query` to limit the maximum number of temporary spill files \(workfiles\) allowed per query. Spill files are created when a query requires more memory than it is allocated. When the limit is exceeded the query is terminated. The default is zero, which allows an unlimited number of spill files and may fill up the file system.
@@ -71,7 +79,7 @@ Greenplum Database resource groups provide a powerful mechanism for managing the
 -   Greenplum Database assigns unreserved memory \(100 - \(sum of all resource group `MEMORY_LIMIT`s\) to a global shared memory pool. This memory is available to all queries on a first-come, first-served basis.
 -   Alter resource groups dynamically to match the real requirements of the group for the workload and the time of day.
 -   Use the `gp_toolkit` views to examine resource group resource usage and to monitor how the groups are working.
--   Consider using Tanzu Greenplum Command Center to create and manage resource groups, and to define the criteria under which Command Center dynamically assigns a transaction to a resource group.
+-   Consider using VMware Greenplum Command Center to create and manage resource groups, and to define the criteria under which Command Center dynamically assigns a transaction to a resource group.
 
 ## <a id="section113x"></a>Low Memory Queries 
 
@@ -88,7 +96,7 @@ The default resource group for database transactions initiated by Greenplum Data
 
 Certain Greenplum Database administrative utilities may use more than one `CONCURRENCY` slot at runtime, such as `gpbackup` that you invoke with the `--jobs` option. If the utility\(s\) you run require more concurrent transactions than that configured for `admin_group`, consider temporarily increasing the group's `MEMORY_LIMIT` and `CONCURRENCY` values to meet the utility's requirement, making sure to return these parameters back to their original settings when the utility completes.
 
-**Note:** Memory allocation changes that you initiate with `ALTER RESOURCE GROUP` may not take affect immediately due to resource consumption by currently running queries. Be sure to alter resource group parameters in advance of your maintenance window.
+> **Note** Memory allocation changes that you initiate with `ALTER RESOURCE GROUP` may not take affect immediately due to resource consumption by currently running queries. Be sure to alter resource group parameters in advance of your maintenance window.
 
 **Parent topic:** [Greenplum Database Best Practices](intro.html)
 

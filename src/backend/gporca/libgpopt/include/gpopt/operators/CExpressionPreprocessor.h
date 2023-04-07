@@ -65,16 +65,13 @@ private:
 	// constraint property
 	static CExpression *PexprScalarPredicates(
 		CMemoryPool *mp, CPropConstraint *ppc,
-		CPropConstraint *constraintsForOuterRefs, CColRefSet *pcrsNotNull,
+		CPropConstraint *constraintsForOuterRefs,
+		CPropConstraint *ppcFromFilterSubquery, CColRefSet *pcrsNotNull,
 		CColRefSet *pcrs, CColRefSet *pcrsProcessed);
 
 	// eliminate self comparisons
 	static CExpression *PexprEliminateSelfComparison(CMemoryPool *mp,
 													 CExpression *pexpr);
-
-	// remove CTE Anchor nodes
-	static CExpression *PexprRemoveCTEAnchors(CMemoryPool *mp,
-											  CExpression *pexpr);
 
 	// trim superfluos equality
 	static CExpression *PexprPruneSuperfluousEquality(CMemoryPool *mp,
@@ -198,6 +195,15 @@ private:
 	// reorder the scalar cmp children to ensure that left child is Scalar Ident and right Child is Scalar Const
 	static CExpression *PexprReorderScalarCmpChildren(CMemoryPool *mp,
 													  CExpression *pexpr);
+
+	// swap logical select over logical project
+	static CExpression *PexprTransposeSelectAndProject(CMemoryPool *mp,
+													   CExpression *pexpr);
+
+	static CExpression *CollapseSelectAndReplaceColref(CMemoryPool *mp,
+													   CExpression *expr,
+													   CColRef *pcolref,
+													   CExpression *pprojExpr);
 
 	// private ctor
 	CExpressionPreprocessor();

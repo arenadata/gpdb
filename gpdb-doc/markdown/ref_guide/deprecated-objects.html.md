@@ -18,8 +18,6 @@ The following list includes the Greenplum Database 6 deprecated relations.
 
 -   gp\_toolkit.\_\_gp\_localid
 -   gp\_toolkit.\_\_gp\_masterid
--   gp\_toolkit.\_\_gp\_masterid
--   pg\_catalog.gp\_configuration
 -   pg\_catalog.gp\_configuration
 -   pg\_catalog.gp\_db\_interfaces
 -   pg\_catalog.gp\_fault\_strategy
@@ -289,7 +287,6 @@ The following list includes the Greenplum Database 6 deprecated functions and pr
 -   pg\_catalog.json\_each\_text
 -   pg\_catalog.json\_extract\_path\_op
 -   pg\_catalog.json\_extract\_path\_text\_op
--   pg\_catalog.lag
 -   pg\_catalog.lag\_any
 -   pg\_catalog.lag\_bit
 -   pg\_catalog.lag\_bool
@@ -361,7 +358,6 @@ The following list includes the Greenplum Database 6 deprecated functions and pr
 -   pg\_catalog.last\_value\_varbit
 -   pg\_catalog.last\_value\_varchar
 -   pg\_catalog.last\_value\_xid
--   pg\_catalog.lead
 -   pg\_catalog.lead\_any
 -   pg\_catalog.lead\_bit
 -   pg\_catalog.lead\_bool

@@ -74,6 +74,7 @@
 #include "postmaster/postmaster.h"
 #include "replication/syncrep.h"
 #include "storage/sinvaladt.h"
+#include "storage/md.h"
 #include "utils/faultinjector.h"
 #include "utils/resscheduler.h"
 #include "utils/snapmgr.h"
@@ -211,6 +212,15 @@ static XLogRecPtr LastRec;
 /* Local copy of WalRcv->receivedUpto */
 static XLogRecPtr receivedUpto = 0;
 static TimeLineID receiveTLI = 0;
+
+/*
+ * abortedRecPtr is the start pointer of a broken record at end of WAL when
+ * recovery completes; missingContrecPtr is the location of the first
+ * contrecord that went missing.  See CreateOverwriteContrecordRecord for
+ * details.
+ */
+static XLogRecPtr abortedRecPtr;
+static XLogRecPtr missingContrecPtr;
 
 /*
  * During recovery, lastFullPageWrites keeps track of full_page_writes that
@@ -831,12 +841,6 @@ static bool bgwriterLaunched = false;
 static int	MyLockNo = 0;
 static bool holdingAllLocks = false;
 
-/*
- * gpdb: backup of ControlFile->checkPointCopy.redo.  This is used by
- * KeepLogSeg() to avoid pg_rewind failure due to missing xlog file.
- */
-static XLogRecPtr ControlFileOldCheckpointCopyRedo = InvalidXLogRecPtr;
-
 static void readRecoveryCommandFile(void);
 static void exitArchiveRecovery(TimeLineID endTLI, XLogRecPtr endOfLog);
 static bool recoveryStopsBefore(XLogRecord *record);
@@ -849,8 +853,10 @@ static void CheckRequiredParameterValues(void);
 static void XLogReportParameters(void);
 static void checkTimeLineSwitch(XLogRecPtr lsn, TimeLineID newTLI,
 					TimeLineID prevTLI);
+static void VerifyOverwriteContrecord(XLogRecord *xlrec, XLogReaderState *state);
 static void LocalSetXLogInsertAllowed(void);
 static void CreateEndOfRecoveryRecord(void);
+static XLogRecPtr CreateOverwriteContrecordRecord(XLogRecPtr aborted_lsn);
 static void CheckPointGuts(XLogRecPtr checkPointRedo, int flags);
 static void KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo);
 static XLogRecPtr XLogGetReplicationSlotMinimumLSN(void);
@@ -2389,6 +2395,18 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, bool opportunistic)
 		 */
 		if (!Insert->forcePageWrites)
 			NewPage   ->xlp_info |= XLP_BKP_REMOVABLE;
+
+		/*
+		 * If a record was found to be broken at the end of recovery, and
+		 * we're going to write on the page where its first contrecord was
+		 * lost, set the XLP_FIRST_IS_OVERWRITE_CONTRECORD flag on the page
+		 * header.  See CreateOverwriteContrecordRecord().
+		 */
+		if (missingContrecPtr == NewPageBeginPtr)
+		{
+			NewPage->xlp_info |= XLP_FIRST_IS_OVERWRITE_CONTRECORD;
+			missingContrecPtr = InvalidXLogRecPtr;
+		}
 
 		/*
 		 * If first page of an XLOG segment file, make it a long header.
@@ -3980,6 +3998,10 @@ RemoveOldXlogFiles(XLogSegNo segno, XLogRecPtr endptr)
 	}
 
 	FreeDir(xldir);
+
+#ifdef FAULT_INJECTOR
+	SIMPLE_FAULT_INJECTOR("finished_removing_old_xlog_files");
+#endif
 }
 
 /*
@@ -4309,6 +4331,19 @@ ReadRecord(XLogReaderState *xlogreader, XLogRecPtr RecPtr, int emode,
 		EndRecPtr = xlogreader->EndRecPtr;
 		if (record == NULL)
 		{
+			/*
+			 * When not in standby mode we find that WAL ends in an incomplete
+			 * record, keep track of that record.  After recovery is done,
+			 * we'll write a record to indicate downstream WAL readers that
+			 * that portion is to be ignored.
+			 */
+			if (!StandbyMode &&
+				!XLogRecPtrIsInvalid(xlogreader->abortedRecPtr))
+			{
+				abortedRecPtr = xlogreader->abortedRecPtr;
+				missingContrecPtr = xlogreader->missingContrecPtr;
+			}
+
 			if (readFile >= 0)
 			{
 				close(readFile);
@@ -6903,6 +6938,12 @@ StartupXLOG(void)
 		InRecovery = true;
 	}
 
+	/*
+	 * Start recovery assuming that the final record isn't lost.
+	 */
+	abortedRecPtr = InvalidXLogRecPtr;
+	missingContrecPtr = InvalidXLogRecPtr;
+
 	/* REDO */
 	if (InRecovery)
 	{
@@ -7025,7 +7066,7 @@ StartupXLOG(void)
 		CheckRequiredParameterValues();
 
 		UtilityModeFindOrCreateDtmRedoFile();
-		
+
 		/*
 		 * We're in recovery, so unlogged relations may be trashed and must be
 		 * reset.  This should be done BEFORE allowing Hot Standby
@@ -7348,6 +7389,14 @@ StartupXLOG(void)
 				/* Now apply the WAL record itself */
 				RmgrTable[record->xl_rmid].rm_redo(ReadRecPtr, EndRecPtr, record);
 
+				/*
+				 * Verify once if there's a conrecord being overwritten.
+				 * We do it here instead of xlog_redo like 7X because we need
+				 * xlogreader in this function.
+				 */
+				if (record->xl_rmid == RM_XLOG_ID)
+					VerifyOverwriteContrecord(record, xlogreader);
+
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
 
@@ -7473,8 +7522,9 @@ StartupXLOG(void)
 
 	/*
 	 * Kill WAL receiver, if it's still running, before we continue to write
-	 * the startup checkpoint record. It will trump over the checkpoint and
-	 * subsequent records if it's still alive when we start writing WAL.
+	 * the startup checkpoint and aborted-contrecord records. It will trump
+	 * over these records and subsequent ones if it's still alive when we
+	 * start writing WAL.
 	 */
 	ShutdownWalRcv();
 
@@ -7503,8 +7553,12 @@ StartupXLOG(void)
 	StandbyMode = false;
 
 	/*
-	 * Re-fetch the last valid or last applied record, so we can identify the
-	 * exact endpoint of what we consider the valid portion of WAL.
+	 * Determine where to start writing WAL next.
+	 *
+	 * When recovery ended in an incomplete record, write a WAL record about
+	 * that and continue after it.  In all other cases, re-fetch the last
+	 * valid or last applied record, so we can identify the exact endpoint of
+	 * what we consider the valid portion of WAL.
 	 */
 	record = ReadRecord(xlogreader, LastRec, PANIC, false);
 	EndOfLog = EndRecPtr;
@@ -7622,7 +7676,19 @@ StartupXLOG(void)
 		exitArchiveRecovery(xlogreader->readPageTLI, endLogSegNo);
 
 	/*
-	 * Prepare to write WAL starting at EndOfLog position, and init xlog
+	 * Actually, if WAL ended in an incomplete record, skip the parts that
+	 * made it through and start writing after the portion that persisted.
+	 * (It's critical to first write an OVERWRITE_CONTRECORD message, which
+	 * we'll do as soon as we're open for writing new WAL.)
+	 */
+	if (!XLogRecPtrIsInvalid(missingContrecPtr))
+	{
+		Assert(!XLogRecPtrIsInvalid(abortedRecPtr));
+		EndOfLog = missingContrecPtr;
+	}
+
+	/*
+	 * Prepare to write WAL starting at EndOfLog location, and init xlog
 	 * buffer cache using the block containing the last record from the
 	 * previous incarnation.
 	 */
@@ -7679,13 +7745,23 @@ StartupXLOG(void)
 	/* Pre-scan prepared transactions to find out the range of XIDs present */
 	oldestActiveXID = PrescanPreparedTransactions(NULL, NULL);
 
+	LocalSetXLogInsertAllowed();
+
+	/* If necessary, write overwrite-contrecord before doing anything else */
+	if (!XLogRecPtrIsInvalid(abortedRecPtr))
+	{
+		Assert(!XLogRecPtrIsInvalid(missingContrecPtr));
+		CreateOverwriteContrecordRecord(abortedRecPtr);
+		abortedRecPtr = InvalidXLogRecPtr;
+		missingContrecPtr = InvalidXLogRecPtr;
+	}
+
 	/*
 	 * Update full_page_writes in shared memory and write an XLOG_FPW_CHANGE
 	 * record before resource manager writes cleanup WAL records or checkpoint
 	 * record is written.
 	 */
 	Insert->fullPageWrites = lastFullPageWrites;
-	LocalSetXLogInsertAllowed();
 	UpdateFullPageWrites();
 	LocalXLogInsertAllowed = -1;
 
@@ -9072,12 +9148,6 @@ CreateCheckPoint(int flags)
 				(errmsg("concurrent transaction log activity while database system is shutting down")));
 
 	/*
-	 * ControlFile->checkPointCopy.redo will be updated soon so let's store it
-	 * for later use in KeepLogSeg().
-	 */
-	ControlFileOldCheckpointCopyRedo = ControlFile->checkPointCopy.redo;
-
-	/*
 	 * Select point at which we can truncate the log, which we base on the
 	 * prior checkpoint's earliest info or the oldest prepared transaction xlog record's info.
 	 */
@@ -9135,6 +9205,7 @@ CreateCheckPoint(int flags)
 	 * have trouble while fooling with old log segments.
 	 */
 	END_CRIT_SECTION();
+	SIMPLE_FAULT_INJECTOR("checkpoint_control_file_updated");
 
 	/*
 	 * Now that the checkpoint is safely on disk, we can update the point to
@@ -9247,6 +9318,56 @@ CreateEndOfRecoveryRecord(void)
 	END_CRIT_SECTION();
 
 	LocalXLogInsertAllowed = -1;	/* return to "check" state */
+}
+
+/*
+ * Write an OVERWRITE_CONTRECORD message.
+ *
+ * When on WAL replay we expect a continuation record at the start of a page
+ * that is not there, recovery ends and WAL writing resumes at that point.
+ * But it's wrong to resume writing new WAL back at the start of the record
+ * that was broken, because downstream consumers of that WAL (physical
+ * replicas) are not prepared to "rewind".  So the first action after
+ * finishing replay of all valid WAL must be to write a record of this type
+ * at the point where the contrecord was missing; to support xlogreader
+ * detecting the special case, XLP_FIRST_IS_OVERWRITE_CONTRECORD is also added
+ * to the page header where the record occurs.  xlogreader has an ad-hoc
+ * mechanism to report metadata about the broken record, which is what we
+ * use here.
+ *
+ * At replay time, XLP_FIRST_IS_OVERWRITE_CONTRECORD instructs xlogreader to
+ * skip the record it was reading, and pass back the LSN of the skipped
+ * record, so that its caller can verify (on "replay" of that record) that the
+ * XLOG_OVERWRITE_CONTRECORD matches what was effectively overwritten.
+ */
+static XLogRecPtr
+CreateOverwriteContrecordRecord(XLogRecPtr aborted_lsn)
+{
+	XLogRecData 	rdata;
+	xl_overwrite_contrecord xlrec;
+	XLogRecPtr	recptr;
+
+	/* sanity check */
+	if (!RecoveryInProgress())
+		elog(ERROR, "can only be used at end of recovery");
+
+	xlrec.overwritten_lsn = aborted_lsn;
+	xlrec.overwrite_time = GetCurrentTimestamp();
+
+	START_CRIT_SECTION();
+
+	rdata.data = (char *) &xlrec;
+	rdata.len = sizeof(xl_overwrite_contrecord);
+	rdata.buffer = InvalidBuffer;
+	rdata.next = NULL;
+
+	recptr = XLogInsert(RM_XLOG_ID, XLOG_OVERWRITE_CONTRECORD, &rdata);
+
+	XLogFlush(recptr);
+
+	END_CRIT_SECTION();
+
+	return recptr;
 }
 
 /*
@@ -9631,7 +9752,6 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo)
 	XLogSegNo	currSegNo;
 	XLogSegNo	segno;
 	XLogRecPtr	keep;
-	static XLogRecPtr CkptRedoBeforeMinLSN = InvalidXLogRecPtr;
 
 	XLByteToSeg(recptr, currSegNo);
 	segno = currSegNo;
@@ -9661,22 +9781,6 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo)
 #endif
 	if (keep != InvalidXLogRecPtr)
 	{
-		if (!XLogRecPtrIsInvalid(ControlFileOldCheckpointCopyRedo))
-		{
-			/*
-			 * basically with this logic, GPDB never uses restart_lsn as
-			 * lowest cut-off point. Instead always will use Checkpoint redo
-			 * location prior to restart_lsn as cut-off point.
-			 */
-			if (ControlFileOldCheckpointCopyRedo < keep)
-			{
-				keep = ControlFileOldCheckpointCopyRedo;
-				CkptRedoBeforeMinLSN = ControlFileOldCheckpointCopyRedo;
-			}
-			else if (!XLogRecPtrIsInvalid(CkptRedoBeforeMinLSN))
-				keep = CkptRedoBeforeMinLSN;
-		}
-
 		XLByteToSeg(keep, segno);
 
 		/* Cap by max_slot_wal_keep_size ... */
@@ -9892,6 +9996,8 @@ XLogSaveBufferForHint(Buffer buffer, bool buffer_std)
 		rdata[1].next = NULL;
 
 		recptr = XLogInsert(RM_XLOG_ID, XLOG_FPI, rdata);
+
+		wait_to_avoid_large_repl_lag();
 	}
 
 	return recptr;
@@ -10413,6 +10519,37 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 		/* Keep track of full_page_writes */
 		lastFullPageWrites = fpw;
 	}
+}
+
+/*
+ * Verify the payload of a XLOG_OVERWRITE_CONTRECORD record.
+ */
+static void
+VerifyOverwriteContrecord(XLogRecord *record, XLogReaderState *state)
+{
+	xl_overwrite_contrecord xlrec;
+
+	/* no-op if it's not an overwritten contrecord */
+	if ((record->xl_info & ~XLR_INFO_MASK) != XLOG_OVERWRITE_CONTRECORD)
+		return;
+
+	memcpy(&xlrec, XLogRecGetData(record), sizeof(xl_overwrite_contrecord));
+
+	if (xlrec.overwritten_lsn != state->overwrittenRecPtr)
+		elog(FATAL, "mismatching overwritten LSN %X/%X -> %X/%X",
+			 (uint32) (xlrec.overwritten_lsn >> 32),
+			 (uint32) xlrec.overwritten_lsn,
+			 (uint32) (state->overwrittenRecPtr >> 32),
+			 (uint32) state->overwrittenRecPtr);
+
+	ereport(LOG,
+			(errmsg("successfully skipped missing contrecord at %X/%X, overwritten at %s",
+					(uint32) (xlrec.overwritten_lsn >> 32),
+					(uint32) xlrec.overwritten_lsn,
+					timestamptz_to_str(xlrec.overwrite_time))));
+
+	/* Verifying the record should only happen once */
+	state->overwrittenRecPtr = InvalidXLogRecPtr;
 }
 
 #ifdef WAL_DEBUG

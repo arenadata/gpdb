@@ -15,8 +15,6 @@ test: select_dropped_table
 test: update_hash_col_utilitymode execute_on_utilitymode
 
 # Tests for crash recovery
-test: uao_crash_compaction_column
-test: uao_crash_compaction_row
 test: crash_recovery
 test: crash_recovery_redundant_dtx
 test: crash_recovery_dtm
@@ -25,6 +23,8 @@ test: unlogged_appendonly_tables
 test: udf_exception_blocks_panic_scenarios
 test: ao_same_trans_truncate_crash
 test: ao_fsync_panic
+test: uao_crash_compaction_column
+test: uao_crash_compaction_row
 
 test: prevent_ao_wal
 
@@ -156,8 +156,13 @@ test: uao/vacuum_self_serializable3_row
 test: uao/vacuum_while_insert_row
 test: uao/vacuum_while_vacuum_row
 test: uao/vacuum_cleanup_row
+test: uao/vacuum_index_stats_row
 test: uao/insert_should_not_use_awaiting_drop_row
 test: uao/bitmapindex_rescan_row
+test: uao/create_index_allows_readonly_row
+# Refer to the case comment for why it is commented out.
+# test: uao/bad_buffer_on_temp_ao_row
+
 test: reorganize_after_ao_vacuum_skip_drop truncate_after_ao_vacuum_skip_drop mark_all_aoseg_await_drop
 # below test(s) inject faults so each of them need to be in a separate group
 test: segwalrep/master_xlog_switch
@@ -209,8 +214,13 @@ test: uao/vacuum_self_serializable3_column
 test: uao/vacuum_while_insert_column
 test: uao/vacuum_while_vacuum_column
 test: uao/vacuum_cleanup_column
+test: uao/vacuum_index_stats_column
 test: uao/insert_should_not_use_awaiting_drop_column
 test: uao/bitmapindex_rescan_column
+test: uao/create_index_allows_readonly_column
+# Refer to the case comment for why it is commented out.
+# test: uao/bad_buffer_on_temp_ao_column
+
 test: add_column_after_vacuum_skip_drop_column
 test: vacuum_after_vacuum_skip_drop_column
 
@@ -237,6 +247,7 @@ test: segwalrep/max_slot_wal_keep_size
 test: segwalrep/dtx_recovery_wait_lsn
 test: pg_basebackup
 test: pg_basebackup_with_tablespaces
+test: segwalrep/select_throttle
 test: fts_manual_probe
 test: fts_session_reset
 test: fts_segment_reset
@@ -252,10 +263,11 @@ test: reindex/reindextable_while_altertable_ao_part_btree reindex/reindextable_w
 test: reindex/reindextable_while_dropindex_ao_part_btree reindex/reindextable_while_dropindex_heap_part_btree reindex/reindextable_while_dropindex_aoco_part_btree
 test: reindex/reindextable_while_reindex_idx_ao_part_btree reindex/reindextable_while_reindex_idx_heap_part_btree reindex/reindextable_while_reindex_idx_aoco_part_btree
 test: reindex/reindextable_while_reindex_idx_ao_bitmap reindex/reindextable_while_reindex_idx_heap_bitmap reindex/reindextable_while_reindex_idx_aoco_bitmap
-test: reindex/serializable_reindex_with_drop_column_heap
+test: reindex/serializable_reindex_with_drop_column_ao_part reindex/serializable_reindex_with_drop_column_heap
+test: reindex/serializable_reindex_with_drop_column_part_heap
 test: reindex/serializable_reindex_with_drop_index_ao reindex/serializable_reindex_with_drop_index_heap
 test: reindex/repeatable_read_reindex_with_insert_heap
-test: reindex/vacuum_analyze_while_reindex_ao_btree
+test: reindex/repeatable_read_reindex_with_insert_part_heap reindex/vacuum_analyze_while_reindex_ao_btree
 test: reindex/vacuum_while_reindex_ao_bitmap reindex/vacuum_while_reindex_heap_btree reindex/vacuum_while_reindex_heap_btree_toast
 
 # test workfile_mgr
@@ -308,3 +320,8 @@ test: motion_socket
 
 # test alter owner of partition table in utility mode
 test: alter_partition_table_owner
+
+# test copy/insert in utility mode on partition/inheritance hierarchies
+test: copy_insert_utility_mode_hierarchies
+
+test: spilling_hashagg

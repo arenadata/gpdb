@@ -15,6 +15,7 @@
 
 #include "gpopt/base/CDistributionSpec.h"
 #include "gpopt/base/CDistributionSpecHashed.h"
+#include "gpopt/base/CDistributionSpecNonSingleton.h"
 #include "gpopt/base/CDistributionSpecSingleton.h"
 #include "gpopt/base/CDrvdPropPlan.h"
 #include "gpopt/base/CPartIndexMap.h"
@@ -142,6 +143,12 @@ CEnfdDistribution::Epet(CExpressionHandle &exprhdl, CPhysical *popPhysical,
 			return EpetUnnecessary;
 		}
 
+		if (CDistributionSpec::EdtNonSingleton == m_pds->Edt() &&
+			!CDistributionSpecNonSingleton::PdsConvert(m_pds)->FAllowEnforced())
+		{
+			return EpetProhibited;
+		}
+
 		// if operator is a propagator/consumer of any partition index id, prohibit
 		// enforcing any distribution not compatible with what operator delivers
 		// if the derived partition consumers are a subset of the ones in the given
@@ -169,6 +176,14 @@ CEnfdDistribution::Epet(CExpressionHandle &exprhdl, CPhysical *popPhysical,
 		if (FEnforce(epet) && exprhdl.HasOuterRefs())
 		{
 			// disallow plans with outer references below motion operator
+			return EpetProhibited;
+		}
+		else if (EpetUnnecessary == epet &&
+				 CDistributionSpec::EdtNonSingleton == m_pds->Edt() &&
+				 CDistributionSpecNonSingleton::PdsConvert(m_pds)
+					 ->FProhibitReplicated() &&
+				 CDistributionSpec::EdtStrictReplicated == pds->Edt())
+		{
 			return EpetProhibited;
 		}
 		else

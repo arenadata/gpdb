@@ -309,10 +309,10 @@ extern int	gp_snapshotadd_timeout; /* GUC var - timeout specifier for snapshot-c
 extern int	gp_fts_probe_retries; /* GUC var - specifies probe number of retries for FTS */
 extern int	gp_fts_probe_timeout; /* GUC var - specifies probe timeout for FTS */
 extern int	gp_fts_probe_interval; /* GUC var - specifies polling interval for FTS */
-extern int gp_fts_mark_mirror_down_grace_period;
+extern int	gp_fts_mark_mirror_down_grace_period;
 extern int	gp_fts_replication_attempt_count; /* GUC var - specifies replication max attempt count for FTS */
-extern int  gp_dtx_recovery_interval;
-extern int  gp_dtx_recovery_prepared_period;
+extern int	gp_dtx_recovery_interval;
+extern int	gp_dtx_recovery_prepared_period;
 
 extern int gp_gang_creation_retry_count; /* How many retries ? */
 extern int gp_gang_creation_retry_timer; /* How long between retries */
@@ -818,6 +818,7 @@ extern bool gp_enable_gpperfmon;
 extern int gp_gpperfmon_send_interval;
 extern bool gp_enable_query_metrics;
 extern int gp_instrument_shmem_size;
+extern int gp_max_scan_on_shmem;
 
 extern bool dml_ignore_target_partition_check;
 
@@ -908,6 +909,11 @@ extern GpId GpIdentity;
 extern int get_dbid_string_length(void);
 #define UNINITIALIZED_GP_IDENTITY_VALUE (-10000)
 #define IS_QUERY_DISPATCHER() (GpIdentity.segindex == MASTER_CONTENT_ID)
+
+static inline bool is_entry_db()
+{
+	return IS_QUERY_DISPATCHER() && Gp_role == GP_ROLE_EXECUTE;
+}
 
 /* Stores the listener port that this process uses to listen for incoming
  * Interconnect connections from other Motion nodes.

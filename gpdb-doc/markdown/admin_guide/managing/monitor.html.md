@@ -14,7 +14,7 @@ Also, be sure to review [Recommended Monitoring and Maintenance Tasks](../monito
 
 Greenplum Database includes an optional system monitoring and management database, `gpperfmon`, that administrators can enable. The `gpperfmon_install` command-line utility creates the `gpperfmon` database and enables data collection agents that collect and store query and system metrics in the database. Administrators can query metrics in the `gpperfmon` database. See the documentation for the `gpperfmon` database in the _Greenplum Database Reference Guide_.
 
-VMware Tanzu Greenplum Command Center, an optional web-based interface, provides cluster status information, graphical administrative tools, real-time query monitoring, and historical cluster and query data. Download the Greenplum Command Center package from [VMware Tanzu Network](https://network.pivotal.io/products/pivotal-gpdb) and view the documentation at the [Greenplum Command Center Documentation](http://docs.vmware.com/en/VMware-Tanzu-Greenplum-Command-Center/index.html) web site.
+VMware Greenplum Command Center, an optional web-based interface, provides cluster status information, graphical administrative tools, real-time query monitoring, and historical cluster and query data. Download the Greenplum Command Center package from [VMware Tanzu Network](https://network.pivotal.io/products/pivotal-gpdb) and view the documentation at the [Greenplum Command Center Documentation](http://docs.vmware.com/en/VMware-Greenplum-Command-Center/index.html) web site.
 
 ## <a id="topic3"></a>Monitoring System State 
 
@@ -23,6 +23,7 @@ As a Greenplum Database administrator, you must monitor the system for problem e
 -   [Checking System State](#topic12)
 -   [Checking Disk Space Usage](#topic15)
 -   [Checking for Data Distribution Skew](#topic20)
+-   [Checking for and Terminating Overflowed Backends](#overflowed_backends)
 -   [Viewing Metadata Information about Database Objects](#topic24)
 -   [Viewing Session Memory Usage Information](#topic_slt_ddv_1q)
 -   [Viewing Query Workfile Usage Information](#topic27)
@@ -165,7 +166,7 @@ To see the data distribution of a table's rows \(the number of rows on each segm
 
 A table is considered to have a balanced distribution if all segments have roughly the same number of rows.
 
-**Note:** If you run this query on a replicated table, it fails because Greenplum Database does not permit user queries to reference the system column `gp_segment_id` \(or the system columns `ctid`, `cmin`, `cmax`, `xmin`, and `xmax`\) in replicated tables. Because every segment has all of the tables' rows, replicated tables are evenly distributed by definition.
+> **Note** If you run this query on a replicated table, it fails because Greenplum Database does not permit user queries to reference the system column `gp_segment_id` \(or the system columns `ctid`, `cmin`, `cmax`, `xmin`, and `xmax`\) in replicated tables. Because every segment has all of the tables' rows, replicated tables are evenly distributed by definition.
 
 ### <a id="topic23"></a>Checking for Query Processing Skew 
 
@@ -198,6 +199,99 @@ This occurs when the input to a hash join operator is skewed. It does not preven
     -   If the skew occurs while joining a single fact table that is relatively small \(less than 5000 rows\), set the `gp_segments_for_planner` server configuration parameter to 1 and retest the query.
 4.  Check whether the filters applied in the query match distribution keys of the base tables. If the filters and distribution keys are the same, consider redistributing some of the base tables with different distribution keys.
 5.  Check the cardinality of the join keys. If they have low cardinality, try to rewrite the query with different joining columns or additional filters on the tables to reduce the number of rows. These changes could change the query semantics.
+
+## <a id="overflowed_backends"></a>Checking for and Terminating Overflowed Backends
+
+Subtransaction overflow arises when a Greenplum Database backend creates more than 64 subtransactions, resulting in a high lookup cost for visibility checks. This slows query performance, but even more so when it occurs in combination with long-running transactions, which result in still more lookups. Terminating suboverflowed backends and/or backends with long-running transactions can help prevent and alleviate performance problems. 
+
+Greenplum Database includes an extension -- `gp_subtransaction_overflow` -- and a view -- `gp_suboverflowed_backend` -- that is run over a user-defined function to help users query for suboverflowed backends. Users can use segment id and process id information reported in the view to terminate the offending backends, thereby preventing degradation of performance.
+
+Follow these steps to identify and terminate overflowed backends.
+
+1. Create the extension:
+
+    ```
+    CREATE EXTENSION gp_subtransaction_overflow;
+    ```
+
+2. Select all from the view the extension created:
+
+    ```
+    select * from gp_suboverflowed_backend`;
+    ```
+
+    This returns output similar to the following:
+    
+    ```
+   segid |   pids    
+   -------+-----------
+    -1 | 
+     0 | {1731513}
+     1 | {1731514}
+     2 | {1731515}
+   (4 rows)
+    ```
+
+3. Connect to the database in utility mode and query `pg_stat_activity` to return the session id for the process id in the output for a segment. For example: 
+
+    ```
+    select sess_id from pg_stat_activity where pid=1731513;
+    ```
+
+    ```
+    sess_id 
+    ---------
+      10
+    (1 row)
+    ```
+
+4. Terminate the session, which will terminate all associated backends on all segments:
+
+    ```
+    select pg_terminate_backend(pid) from pg_stat_activity where sess_id=10;
+    ``` 
+
+5. Verify that there are no more suboverflowed backends:
+
+    ```
+    select * from gp_suboverflowed_backend`;
+    ```
+
+    
+    ```
+   segid |   pids    
+   -------+-----------
+    -1 | 
+     0 |
+     1 | 
+     2 | 
+   (4 rows)
+    ```
+
+### Logging Statements that Cause Overflowed Subtransactions
+
+You can optionally set a Greenplum configuration parameter, `gp_log_suboverflow_statement`, to record SQL statements that cause overflowed subtransactions. When this parameter is active, statements that cause overflow are recorded in server logs on the master host and segment hosts with the text: `Statement caused suboverflow: <statement>`.  
+
+One way to find these statements is to query the `gp_toolkit.gp_log_system` table. For example, after activating the setting:
+
+```
+SET set gp_log_suboverflow_statement = ON;
+```
+
+you can find statements that caused overflow with a query such as:
+
+```
+SELECT DISTINCT logsegment, logmessage FROM gp_toolkit.gp_log_system
+	WHERE logmessage LIKE 'Statement caused suboverflow%';
+```
+```
+ logsegment |                          logmessage                          
+------------+--------------------------------------------------------------
+ seg0       | Statement caused suboverflow: INSERT INTO t_1352_1 VALUES(i)
+ seg1       | Statement caused suboverflow: INSERT INTO t_1352_1 VALUES(i)
+ seg2       | Statement caused suboverflow: INSERT INTO t_1352_1 VALUES(i)
+(3 rows)
+```
 
 ## <a id="topic24"></a>Viewing Metadata Information about Database Objects 
 
@@ -362,7 +456,7 @@ The following table lists all the defined error codes. Some are not used, but ar
 
 The PL/pgSQL condition name for each error code is the same as the phrase shown in the table, with underscores substituted for spaces. For example, code 22012, DIVISION BY ZERO, has condition name DIVISION\_BY\_ZERO. Condition names can be written in either upper or lower case.
 
-**Note:** PL/pgSQL does not recognize warning, as opposed to error, condition names; those are classes 00, 01, and 02.
+> **Note** PL/pgSQL does not recognize warning, as opposed to error, condition names; those are classes 00, 01, and 02.
 
 |Error Code|Meaning|Constant|
 |----------|-------|--------|

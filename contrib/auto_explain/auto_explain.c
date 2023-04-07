@@ -50,8 +50,16 @@ static ExecutorRun_hook_type prev_ExecutorRun = NULL;
 static ExecutorFinish_hook_type prev_ExecutorFinish = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 
+
+/*
+ * Greenplum specific behavior:
+ *   segment QEs will not init this extension. But for entryDB, which
+ *   is forked from QD, all hooks of auto_explain have already existed
+ *   in it, need to add a condition to disable auto_explain.
+ */
 #define auto_explain_enabled() \
 	(auto_explain_log_min_duration >= 0 && \
+	 Gp_role == GP_ROLE_DISPATCH && \
 	 (nesting_level == 0 || auto_explain_log_nested_statements))
 
 void		_PG_init(void);
@@ -71,8 +79,14 @@ static void explain_ExecutorEnd(QueryDesc *queryDesc);
 void
 _PG_init(void)
 {
-	/* Only run auto_explain on the Query Dispatcher node */
-	if (Gp_role != GP_ROLE_DISPATCH)
+	/*
+	 * Greenplum specific behavior
+	 * Only run auto_explain on the Query Dispatcher node, normally we should
+	 * test Gp_role here (we do this for master branch), however, in Greenplum 6
+	 * all postmaster processes will have Gp_role with the value GP_ROLE_DISPATCH,
+	 * new QEs will set Gp_role when the receive dispatch from QD.
+	 */
+	if (!IS_QUERY_DISPATCHER())
 		return;
 
 	/* Define custom GUC variables. */
@@ -198,8 +212,6 @@ _PG_fini(void)
 static void
 explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	instr_time		starttime;
-
 	if (auto_explain_enabled())
 	{
 		/* Enable per-node instrumentation iff log_analyze is required. */
@@ -214,9 +226,13 @@ explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 
 			queryDesc->instrument_options |= INSTRUMENT_CDB;
 
-			INSTR_TIME_SET_CURRENT(starttime);
-			queryDesc->showstatctx = cdbexplain_showExecStatsBegin(queryDesc,
-																   starttime);
+			if (queryDesc->showstatctx == NULL)
+			{
+				instr_time		starttime;
+				INSTR_TIME_SET_CURRENT(starttime);
+				queryDesc->showstatctx = cdbexplain_showExecStatsBegin(
+											queryDesc, starttime);
+			}
 		}
 	}
 
@@ -310,6 +326,8 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 		if (msec >= auto_explain_log_min_duration)
 		{
 			ExplainState es;
+			MemoryContext oldcxt =
+					MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
 
 			ExplainInitState(&es);
 			es.analyze = (queryDesc->instrument_options && auto_explain_log_analyze);
@@ -351,6 +369,7 @@ explain_ExecutorEnd(QueryDesc *queryDesc)
 					 errhidestmt(true)));
 
 			pfree(es.str->data);
+			MemoryContextSwitchTo(oldcxt);
 		}
 	}
 

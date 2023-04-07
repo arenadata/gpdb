@@ -48,14 +48,10 @@ A database role may have a number of attributes that define what sort of tasks t
 |`CONNECTION LIMIT *connlimit*`|If role can log in, this specifies how many concurrent connections the role can make. -1 \(the default\) means no limit.|
 |`CREATEEXTTABLE` or `NOCREATEEXTTABLE`|Determines whether a role is allowed to create external tables. `NOCREATEEXTTABLE` is the default. For a role with the `CREATEEXTTABLE` attribute, the default external table `type` is `readable` and the default `protocol` is `gpfdist`. Note that external tables that use the `file` or `execute` protocols can only be created by superusers.|
 |`PASSWORD '*password*'`|Sets the role's password. If you do not plan to use password authentication you can omit this option. If no password is specified, the password will be set to null and password authentication will always fail for that user. A null password can optionally be written explicitly as `PASSWORD NULL`.|
-|`ENCRYPTED` or `UNENCRYPTED`|Controls whether a new password is stored as a hash string in the `pg_authid` system catalog. If neither `ENCRYPTED` nor `UNENCRYPTED` is specified, the default behavior is determined by the `password_encryption` configuration parameter, which is `on` by default. If the supplied `*password*` string is already in hashed format, it is stored as-is, regardless of whether `ENCRYPTED` or `UNENCRYPTED` is specified.
-
-See [Protecting Passwords in Greenplum Database](#topic9) for additional information about protecting login passwords.
-
-|
+|`ENCRYPTED` or `UNENCRYPTED`|Controls whether a new password is stored as a hash string in the `pg_authid` system catalog. If neither `ENCRYPTED` nor `UNENCRYPTED` is specified, the default behavior is determined by the `password_encryption` configuration parameter, which is `on` by default. If the supplied `*password*` string is already in hashed format, it is stored as-is, regardless of whether `ENCRYPTED` or `UNENCRYPTED` is specified.<br/><br/>See [Protecting Passwords in Greenplum Database](#topic9) for additional information about protecting login passwords. |
 |`VALID UNTIL 'timestamp'`|Sets a date and time after which the role's password is no longer valid. If omitted the password will be valid for all time.|
 |`RESOURCE QUEUE queue_name`|Assigns the role to the named resource queue for workload management. Any statement that role issues is then subject to the resource queue's limits. Note that the `RESOURCE QUEUE` attribute is not inherited; it must be set on each user-level \(`LOGIN`\) role.|
-|`DENY {deny_interval | deny_point}`|Restricts access during an interval, specified by day or day and time. For more information see [Time-based Authentication](#topic13).|
+|`DENY deny_interval` or `DENY deny_point` | Restricts access during an interval, specified by day or day and time. For more information see [Time-based Authentication](#topic13).|
 
 You can set these attributes when you create the role, or later using the `ALTER ROLE` command. For example:
 
@@ -101,7 +97,7 @@ For managing object privileges, you would then grant the appropriate permissions
 
 ```
 
-The role attributes `LOGIN`, `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `CREATEEXTTABLE`, and `RESOURCE QUEUE` are never inherited as ordinary privileges on database objects are. User members must actually `SET ROLE` to a specific role having one of these attributes in order to make use of the attribute. In the above example, we gave `CREATEDB` and `CREATEROLE` to the `admin` role. If `sally` is a member of `admin`, she could issue the following command to assume the role attributes of the parent role:
+The role attributes `LOGIN`, `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `CREATEEXTTABLE`, and `RESOURCE QUEUE` are never inherited as ordinary privileges on database objects are. User members must actually `SET ROLE` to a specific role having one of these attributes in order to make use of the attribute. In the above example, we gave `CREATEDB` and `CREATEROLE` to the `admin` role. If `sally` is a member of `admin`, then `sally` could issue the following command to assume the role attributes of the parent role:
 
 ```
 => SET ROLE admin;
@@ -311,7 +307,7 @@ When an object \(table, view, sequence, database, function, language, schema, or
             </tr>
           </tbody></table>
 
-**Note:** You must grant privileges for each object individually. For example, granting `ALL` on a database does not grant full access to the objects within that database. It only grants all of the database-level privileges \(`CONNECT`, `CREATE`, `TEMPORARY`\) to the database itself.
+> **Note** You must grant privileges for each object individually. For example, granting `ALL` on a database does not grant full access to the objects within that database. It only grants all of the database-level privileges \(`CONNECT`, `CREATE`, `TEMPORARY`\) to the database itself.
 
 Use the `GRANT` SQL command to give a specified role privileges on an object. For example, to grant the role named `jsmith` insert privileges on the table named `mytable`:
 
@@ -348,7 +344,7 @@ Greenplum Database does not support row-level access or row-level, labeled secur
 
 Greenplum Database is installed with an optional module of encryption/decryption functions called `pgcrypto`. The `pgcrypto` functions allow database administrators to store certain columns of data in encrypted form. This adds an extra layer of protection for sensitive data, as data stored in Greenplum Database in encrypted form cannot be read by anyone who does not have the encryption key, nor can it be read directly from the disks.
 
-**Note:** The `pgcrypto` functions run inside the database server, which means that all the data and passwords move between `pgcrypto` and the client application in clear-text. For optimal security, consider also using SSL connections between the client and the Greenplum master server.
+> **Note** The `pgcrypto` functions run inside the database server, which means that all the data and passwords move between `pgcrypto` and the client application in clear-text. For optimal security, consider also using SSL connections between the client and the Greenplum master server.
 
 To use `pgcrypto` functions, register the `pgcrypto` extension in each database in which you want to use the functions. For example:
 
@@ -379,7 +375,7 @@ The password hash function runs when the password is set by using any of the fol
 
 The `ENCRYPTED` keyword may be omitted when the `password_encryption` system configuration parameter is `on`, which is the default value. The `password_encryption` configuration parameter determines whether clear text or hashed passwords are saved when the `ENCRYPTED` or `UNENCRYPTED` keyword is not present in the command.
 
-**Note:** The SQL command syntax and `password_encryption` configuration variable include the term *encrypt*, but the passwords are not technically encrypted. They are *hashed* and therefore cannot be decrypted.
+> **Note** The SQL command syntax and `password_encryption` configuration variable include the term *encrypt*, but the passwords are not technically encrypted. They are *hashed* and therefore cannot be decrypted.
 
 Although it is not recommended, passwords may be saved in clear text in the database by including the `UNENCRYPTED` keyword in the command or by setting the `password_encryption` configuration variable to `off`. Note that changing the configuration value has no effect on existing passwords, only newly-created or updated passwords.
 
@@ -431,7 +427,7 @@ To set `password_hash_algorithm` in a session, use the SQL `SET` command:
 
 Passwords may be hashed using the SHA-256 hash algorithm instead of the default MD5 hash algorithm. The algorithm produces a 64-byte hexadecimal string prefixed with the characters `sha256`.
 
-**Note:** Although SHA-256 uses a stronger cryptographic algorithm and produces a longer hash string for password hashing, it does not include SHA-256 password hashing over the network during client authentication. To use SHA-256 password hashing, the authentication method must be set to `password` in the `pg_hba.conf` configuration file so that clear text passwords are sent to Greenplum Database. SHA-256 password hashing cannot be used with the `md5` authentication method. **Because clear text passwords are sent over the network, it is very important to use SSL-secured client connections when you use SHA-256.**
+> **Note** Although SHA-256 uses a stronger cryptographic algorithm and produces a longer hash string for password hashing, it does not include SHA-256 password hashing over the network during client authentication. To use SHA-256 password hashing, the authentication method must be set to `password` in the `pg_hba.conf` configuration file so that clear text passwords are sent to Greenplum Database. SHA-256 password hashing cannot be used with the `md5` authentication method. **Because clear text passwords are sent over the network, it is very important to use SSL-secured client connections when you use SHA-256.**
 
 To enable SHA-256 hashing, change the `password_hash_algorithm` configuration parameter from its default value, `MD5`, to `SHA-256`. The parameter can be set either globally or at the session level. To set `password_hash_algorithm` globally, execute these commands in a shell as the `gpadmin` user:
 

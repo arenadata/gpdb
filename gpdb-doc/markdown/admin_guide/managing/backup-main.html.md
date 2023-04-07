@@ -10,7 +10,7 @@ Greenplum Database supports parallel and non-parallel methods for backing up and
 
 `gpbackup` and `gprestore` are the recommended Greenplum Database backup and restore utilities. `gpbackup` utilizes `ACCESS SHARE` locks at the individual table level, instead of `EXCLUSIVE` locks on the `pg_class` catalog table. This enables you to run DML statements during the backup, such as `CREATE`, `ALTER`, `DROP`, and `TRUNCATE` operations, as long as those operations do not target the current backup set. Backup files created with `gpbackup` are designed to provide future capabilities for restoring individual database objects along with their dependencies, such as functions and required user-defined datatypes.
 
-`gpbackup`, `gprestore`, and related utilities are provided as a separate download, [VMware Tanzu™ Greenplum® Backup and Restore](https://network.pivotal.io/products/pivotal-gpdb-backup-restore). Follow the instructions in the [VMware Tanzu Greenplum Backup and Restore Documentation](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Backup-and-Restore/index.html) to install and use these utilities.
+`gpbackup`, `gprestore`, and related utilities are provided as a separate download, [VMware Greenplum Backup and Restore](https://network.pivotal.io/products/pivotal-gpdb-backup-restore). Follow the instructions in the [VMware Greenplum Backup and Restore Documentation](https://docs.vmware.com/en/VMware-Greenplum-Backup-and-Restore/index.html) to install and use these utilities.
 
 ## <a id="nparback"></a>Non-Parallel Backup with pg\_dump 
 
@@ -20,7 +20,7 @@ The PostgreSQL non-parallel utilities should be used only for special cases. The
 
 The `pg_restore` utility requires compressed dump files created by `pg_dump` or `pg_dumpall`. To perform a non-parallel restore using parallel backup files, you can copy the backup files from each segment host to the master host, and then load them through the master.
 
-![](../graphics/nonpar_restore.jpg "Non-parallel Restore Using Parallel Backup Files")
+![Non-parallel Restore Using Parallel Backup Files](../graphics/nonpar_restore.jpg "Non-parallel Restore Using Parallel Backup Files")
 
 Another non-parallel method for backing up Greenplum Database data is to use the `COPY TO` SQL command to copy all or a portion of a table out of the database to a delimited text file on the master host.
 

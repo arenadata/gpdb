@@ -653,13 +653,28 @@ CUtils::PexprScalarArrayCmp(CMemoryPool *mp,
 	IMDId *pmdidArrType = colref->RetrieveType()->GetArrayTypeMdid();
 	IMDId *pmdidCmpOp = colref->RetrieveType()->GetMdidForCmpType(ecmptype);
 
-	pmdidColType->AddRef();
-	pmdidArrType->AddRef();
-	pmdidCmpOp->AddRef();
+	if (!IMDId::IsValid(pmdidColType) || !IMDId::IsValid(pmdidArrType) ||
+		!IMDId::IsValid(pmdidCmpOp))
+	{
+		// cannot construct an ArrayCmp expression if any of these are invalid
+		return NULL;
+	}
 
+	pmdidCmpOp->AddRef();
 	const CMDName mdname = md_accessor->RetrieveScOp(pmdidCmpOp)->Mdname();
 	CWStringConst strOp(mdname.GetMDName()->GetBuffer());
 
+	if (pexprScalarChildren->Size() == 1)
+	{
+		(*pexprScalarChildren)[0]->AddRef();
+		CExpression *scalarCmp = CUtils::PexprScalarCmp(
+			mp, colref, (*pexprScalarChildren)[0], strOp, pmdidCmpOp);
+		pexprScalarChildren->Release();
+		return scalarCmp;
+	}
+
+	pmdidColType->AddRef();
+	pmdidArrType->AddRef();
 	CExpression *pexprArray = GPOS_NEW(mp)
 		CExpression(mp,
 					GPOS_NEW(mp) CScalarArray(mp, pmdidColType, pmdidArrType,
@@ -888,17 +903,20 @@ CUtils::FHasCTEAnchor(CExpression *pexpr)
 // return CTEConsumers' and a set of CTEProducers' CTE ids in the given subtree
 void
 CUtils::CollectConsumersAndProducers(CMemoryPool *mp, CExpression *pexpr,
-									 ULongPtrArray *cteConsumers, UlongCteIdHashSet *cteProducerSet)
+									 ULongPtrArray *cteConsumers,
+									 UlongCteIdHashSet *cteProducerSet)
 {
 	COperator *pop = pexpr->Pop();
 
 	if (COperator::EopPhysicalCTEConsumer == pexpr->Pop()->Eopid())
 	{
-		cteConsumers->Append(GPOS_NEW(mp) ULONG(CPhysicalCTEConsumer::PopConvert(pop)->UlCTEId()));
+		cteConsumers->Append(GPOS_NEW(mp) ULONG(
+			CPhysicalCTEConsumer::PopConvert(pop)->UlCTEId()));
 	}
 	else if (COperator::EopPhysicalCTEProducer == pexpr->Pop()->Eopid())
 	{
-		cteProducerSet->Insert(GPOS_NEW(mp) ULONG(CPhysicalCTEProducer::PopConvert(pop)->UlCTEId()));
+		cteProducerSet->Insert(GPOS_NEW(mp) ULONG(
+			CPhysicalCTEProducer::PopConvert(pop)->UlCTEId()));
 	}
 
 	for (ULONG ul = 0; ul < pexpr->Arity(); ul++)
@@ -907,7 +925,8 @@ CUtils::CollectConsumersAndProducers(CMemoryPool *mp, CExpression *pexpr,
 
 		if (!pexprChild->Pop()->FScalar())
 		{
-			CollectConsumersAndProducers(mp, pexprChild, cteConsumers, cteProducerSet);
+			CollectConsumersAndProducers(mp, pexprChild, cteConsumers,
+										 cteProducerSet);
 		}
 	}
 }
@@ -923,7 +942,7 @@ CUtils::hasUnpairedCTEConsumer(CMemoryPool *mp, CExpression *pexpr)
 	CollectConsumersAndProducers(mp, pexpr, cteConsumers, cteProducerSet);
 
 	// check if every consumer's producer is in ProducerSet
-	for(ULONG ul = 0; ul < cteConsumers->Size(); ul++)
+	for (ULONG ul = 0; ul < cteConsumers->Size(); ul++)
 	{
 		if (!cteProducerSet->Contains((*cteConsumers)[ul]))
 		{
@@ -1821,7 +1840,8 @@ CUtils::PexprCountStar(CMemoryPool *mp)
 	// TODO,  04/26/2012, create count(*) expressions in a system-independent
 	// way using MDAccessor
 
-	CMDIdGPDB *mdid = GPOS_NEW(mp) CMDIdGPDB(GPDB_COUNT_STAR);
+	CMDIdGPDB *mdid =
+		GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidGeneral, GPDB_COUNT_STAR);
 	CWStringConst *str = GPOS_NEW(mp) CWStringConst(GPOS_WSZ_LIT("count"));
 
 	CExpressionArray *pdrgpexprChildren = GPOS_NEW(mp) CExpressionArray(mp);
@@ -4502,42 +4522,44 @@ CUtils::PexprLimit(CMemoryPool *mp, CExpression *pexpr, ULONG ulOffSet,
 		CExpression(mp, popLimit, pexpr, pexprLimitOffset, pexprLimitCount);
 }
 
-// generate part oid
-BOOL
-CUtils::FGeneratePartOid(IMDId *mdid)
-{
-	CMDAccessor *md_accessor = COptCtxt::PoctxtFromTLS()->Pmda();
-	const IMDRelation *pmdrel = md_accessor->RetrieveRel(mdid);
-	BOOL fInsertSortOnParquet =
-		(!GPOS_FTRACE(EopttraceDisableSortForDMLOnParquet) &&
-		 pmdrel->RetrieveRelStorageType() ==
-			 IMDRelation::ErelstorageAppendOnlyParquet);
-
-	COptimizerConfig *optimizer_config =
-		COptCtxt::PoctxtFromTLS()->GetOptimizerConfig();
-	BOOL fInsertSortOnRows =
-		(pmdrel->RetrieveRelStorageType() ==
-		 IMDRelation::ErelstorageAppendOnlyRows) &&
-		(optimizer_config->GetHint()->UlMinNumOfPartsToRequireSortOnInsert() <=
-		 pmdrel->PartitionCount());
-
-	return fInsertSortOnParquet || fInsertSortOnRows;
-}
-
 // check if a given operator is a ANY subquery
 BOOL
 CUtils::FAnySubquery(COperator *pop)
 {
 	GPOS_ASSERT(NULL != pop);
 
-	BOOL fInSubquery = false;
-	if (COperator::EopScalarSubqueryAny == pop->Eopid())
-	{
-		fInSubquery = true;
-	}
+	return COperator::EopScalarSubqueryAny == pop->Eopid();
+}
 
+// check if a given operator is an EXISTS subquery
+BOOL
+CUtils::FExistsSubquery(COperator *pop)
+{
+	GPOS_ASSERT(NULL != pop);
 
-	return fInSubquery;
+	return COperator::EopScalarSubqueryExists == pop->Eopid();
+}
+
+// check if the expression is a correlated EXISTS/ANY subquery
+BOOL
+CUtils::FCorrelatedExistsAnySubquery(CExpression *pexpr)
+{
+	GPOS_ASSERT(NULL != pexpr);
+
+	return (CUtils::FAnySubquery(pexpr->Pop()) ||
+			CUtils::FExistsSubquery(pexpr->Pop())) &&
+		   (*pexpr)[0]->HasOuterRefs();
+}
+
+CScalarProjectElement *
+CUtils::PNthProjectElement(CExpression *pexpr, ULONG ul)
+{
+	GPOS_ASSERT(pexpr->Pop()->Eopid() == COperator::EopLogicalProject);
+
+	// Logical Project's first child is relational child and the second
+	// child is the project list. We initially get the project list and then
+	// the nth element in the project list
+	return CScalarProjectElement::PopConvert((*(*pexpr)[1])[ul]->Pop());
 }
 
 // returns the expression under the Nth project element of a CLogicalProject

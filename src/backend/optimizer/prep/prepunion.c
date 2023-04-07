@@ -1573,10 +1573,11 @@ expand_inherited_rtentry(PlannerInfo *root, RangeTblEntry *rte, Index rti)
 		dsinfo->parentOid = parentOID;
 		dsinfo->rtindex = rti;
 		dsinfo->hasSelector = false;
-
+		dsinfo->partKeyAttnos = NIL;
+		dsinfo->partKeyOpclass = NIL;
 		dsinfo->children = child_relids;
 
-		dsinfo->partKeyAttnos = rel_partition_key_attrs(parentOID);
+		rel_partition_keys_attrs_with_parclass(parentOID, &dsinfo->partKeyAttnos, &dsinfo->partKeyOpclass);
 
 		root->dynamicScans = lappend(root->dynamicScans, dsinfo);
 		dsinfo->dynamicScanId = list_length(root->dynamicScans);
@@ -1808,6 +1809,16 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 	return result;
 }
 
+/*
+ * nested_subplan_mutator
+ *	  Traverse through the plan tree and create subplan copies.
+ *	  Subplan copies are created when several nodes refer to
+ *	  one subplan. Initially, it was done in fixup_subplans,
+ *	  but it caused a sutiation when child plans were further in 
+ *	  a flat plan list then thier parent ones. nested_subplan_mutator
+ *	  is intended to fix this misbehaviour by adding nested subplans
+ *	  right in the place.
+ */
 static bool
 nested_subplan_mutator(Node *node, plan_tree_base_prefix *context)
 {
@@ -1826,7 +1837,7 @@ nested_subplan_mutator(Node *node, plan_tree_base_prefix *context)
 
 			memcpy(newsubroot, planner_subplan_get_root(root, sp), sizeof(PlannerInfo));
 
-			plan_tree_walker(newsubplan, nested_subplan_mutator, context);
+			plan_tree_walker((Node *) newsubplan, nested_subplan_mutator, context);
 
 			root->glob->subplans = lappend(root->glob->subplans, newsubplan);
 			root->glob->subroots = lappend(root->glob->subroots, newsubroot);

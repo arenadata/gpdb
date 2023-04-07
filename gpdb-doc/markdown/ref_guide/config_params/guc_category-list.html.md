@@ -99,6 +99,11 @@ You can configure the execution cost of `VACUUM` and `ANALYZE` commands to reduc
 - [xid_stop_limit](guc-list.html#xid_stop_limit)
 - [xid_warn_limit](guc-list.html#xid_warn_limit)
 
+### <a id="topic20other"></a>Other Parameters 
+
+- [gp\_max\_parallel\_cursors](guc-list.html#gp_max_parallel_cursors)
+
+
 ## <a id="topic57"></a>GPORCA Parameters 
 
 These parameters control the usage of GPORCA by Greenplum Database. For information about GPORCA, see [About GPORCA](../../admin_guide/query/topics/query-piv-optimizer.html) in the *Greenplum Database Administrator Guide*.
@@ -117,6 +122,7 @@ These parameters control the usage of GPORCA by Greenplum Database. For informat
 - [optimizer_enable_master_only_queries](guc-list.html#optimizer_enable_master_only_queries)
 - [optimizer_enable_multiple_distinct_aggs](guc-list.html#optimizer_enable_multiple_distinct_aggs)
 - [optimizer_enable_orderedagg](guc-list.html#optimizer_enable_orderedagg)
+- [optimizer_enable_replicated_table](guc-list.html#optimizer_enable_replicated_table)
 - [optimizer_force_agg_skew_avoidance](guc-list.html#optimizer_force_agg_skew_avoidance)
 - [optimizer_force_comprehensive_join_implementation](guc-list.html#optimizer_force_comprehensive_join_implementation)
 - [optimizer_force_multistage_agg](guc-list.html#optimizer_force_multistage_agg)
@@ -130,6 +136,7 @@ These parameters control the usage of GPORCA by Greenplum Database. For informat
 - [optimizer_penalize_skew](guc-list.html#optimizer_penalize_skew)
 - [optimizer_print_missing_stats](guc-list.html#optimizer_print_missing_stats)
 - [optimizer_print_optimization_stats](guc-list.html#optimizer_print_optimization_stats)
+- [optimizer_skew_factor](guc-list.html#optimizer_skew_factor)
 - [optimizer_sort_factor](guc-list.html#optimizer_sort_factor)
 - [optimizer_use_gpdb_allocators](guc-list.html#optimizer_use_gpdb_allocators)
 - [optimizer_xform_bind_threshold](guc-list.html#optimizer_xform_bind_threshold)
@@ -140,7 +147,7 @@ These parameters control aspects of SQL query processing such as query operators
 
 ### <a id="topic22"></a>Postgres Planner Control Parameters 
 
-The following parameters control the types of plan operations the Postgres Planner can use. Enable or disable plan operations to force the Postgres Planner to choose a different plan. This is useful for testing and comparing query performance using different plan types.
+The following parameters control the types of plan operations the Postgres Planner can use. Enable or deactivate plan operations to force the Postgres Planner to choose a different plan. This is useful for testing and comparing query performance using different plan types.
 
 - [enable_bitmapscan](guc-list.html#enable_bitmapscan)
 - [enable_groupagg](guc-list.html#enable_groupagg)
@@ -152,6 +159,7 @@ The following parameters control the types of plan operations the Postgres Plann
 - [enable_seqscan](guc-list.html#enable_seqscan)
 - [enable_sort](guc-list.html#enable_sort)
 - [enable_tidscan](guc-list.html#enable_tidscan)
+- [gp_eager_two_phase_agg](guc-list.html#gp_eager_two_phase_agg)
 - [gp_enable_agg_distinct](guc-list.html#gp_enable_agg_distinct)
 - [gp_enable_agg_distinct_pruning](guc-list.html#gp_enable_agg_distinct_pruning)
 - [gp_enable_direct_dispatch](guc-list.html#gp_enable_direct_dispatch)
@@ -263,6 +271,7 @@ These configuration parameters control Greenplum Database logging.
 - [log_hostname](guc-list.html#log_hostname)
 - [gp_log_endpoints](guc-list.html#gp_log_endpoints)
 - [gp_log_interconnect](guc-list.html#gp_log_interconnect)
+- [gp_print_create_gang_time](guc-list.html#gp_print_create_gang_time)
 - [log_parser_stats](guc-list.html#log_parser_stats)
 - [log_planner_stats](guc-list.html#log_planner_stats)
 - [log_statement](guc-list.html#log_statement)
@@ -286,10 +295,11 @@ The following parameters configure the data collection agents that populate the 
 
 ### <a id="query-metrics"></a>Query Metrics Collection Parameters 
 
-These parameters enable and configure query metrics collection. When enabled, Greenplum Database saves metrics to shared memory during query execution. These metrics are used by Tanzu Greenplum Command Center, which is included with VMware's commercial version of Greenplum Database.
+These parameters enable and configure query metrics collection. When enabled, Greenplum Database saves metrics to shared memory during query execution. These metrics are used by VMware Greenplum Command Center, which is included with VMware's commercial version of Greenplum Database.
 
 - [gp_enable_query_metrics](guc-list.html#gp_enable_query_metrics)
 - [gp_instrument_shmem_size](guc-list.html#gp_instrument_shmem_size)
+- [gp_max_scan_on_shmem](guc-list.html#gp_max_scan_on_shmem)
 
 ## <a id="topic37"></a>Runtime Statistics Collection Parameters 
 
@@ -470,7 +480,7 @@ The parameters in this topic control the configuration of the Greenplum Database
 - [gp_max_packet_size](guc-list.html#gp_max_packet_size)
 
 
-**Note:** Greenplum Database supports only the UDPIFC \(default\) and TCP interconnect types.
+> **Note** Greenplum Database supports only the UDPIFC \(default\) and TCP interconnect types.
 
 ### <a id="topic51"></a>Dispatch Configuration Parameters 
 

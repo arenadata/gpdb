@@ -29,6 +29,7 @@
  * The max length of cpuset
  */
 #define MaxCpuSetLength 1024
+#define MAX_CGROUP_CONTENTLEN 1024
 
 /*
  * Default value of cpuset
@@ -84,8 +85,9 @@ typedef struct ResGroupCaps
 } ResGroupCaps;
 
 /* Set 'cpuset' to an empty string, and reset all other fields to zero */
-#define ClearResGroupCaps(caps) \
-	MemSet((caps), 0, offsetof(ResGroupCaps, cpuset) + 1)
+#define ClearResGroupCaps(caps) do { \
+	MemSet((caps), 0, offsetof(ResGroupCaps, cpuset) + 1); \
+} while(0)
 
 
 /*
@@ -103,6 +105,7 @@ extern bool gp_resource_group_cpu_ceiling_enforcement;
 extern double gp_resource_group_memory_limit;
 extern bool gp_resource_group_bypass;
 extern int gp_resource_group_queuing_timeout;
+extern int gp_resource_group_move_timeout;
 
 /*
  * Non-GUC global variables.
@@ -165,7 +168,7 @@ extern void DeserializeResGroupInfo(struct ResGroupCaps *capsOut,
 extern bool ShouldAssignResGroupOnMaster(void);
 extern bool ShouldUnassignResGroup(void);
 extern void AssignResGroupOnMaster(void);
-extern void UnassignResGroup(bool releaseSlot);
+extern void UnassignResGroup(void);
 extern void SwitchResGroupOnSegment(const char *buf, int len);
 
 extern bool ResGroupIsAssigned(void);
@@ -228,6 +231,8 @@ extern void ResGroupMoveQuery(int sessionId, Oid groupId, const char *groupName)
 extern int32 ResGroupGetSessionMemUsage(int sessionId);
 extern int32 ResGroupGetGroupAvailableMem(Oid groupId);
 extern Oid ResGroupGetGroupIdBySessionId(int sessionId);
+extern char *getCpuSetByRole(const char *cpuset);
+extern void checkCpuSetByRole(const char *cpuset);
 
 #define LOG_RESGROUP_DEBUG(...) \
 	do {if (Debug_resource_group) elog(__VA_ARGS__); } while(false);

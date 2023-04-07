@@ -778,30 +778,6 @@ gpdb::IsTriggerEnabled(Oid triggerid)
 	return false;
 }
 
-bool
-gpdb::TriggerExists(Oid oid)
-{
-	GP_WRAP_START;
-	{
-		/* catalog tables: pg_trigger */
-		return trigger_exists(oid);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
-bool
-gpdb::CheckConstraintExists(Oid check_constraint_oid)
-{
-	GP_WRAP_START;
-	{
-		/* catalog tables: pg_constraint */
-		return check_constraint_exists(check_constraint_oid);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
 char *
 gpdb::GetCheckConstraintName(Oid check_constraint_oid)
 {
@@ -1204,18 +1180,6 @@ gpdb::FreeHeapTuple(HeapTuple htup)
 		return;
 	}
 	GP_WRAP_END;
-}
-
-bool
-gpdb::IndexExists(Oid oid)
-{
-	GP_WRAP_START;
-	{
-		/* catalog tables: pg_index */
-		return index_exists(oid);
-	}
-	GP_WRAP_END;
-	return false;
 }
 
 Oid
@@ -1823,18 +1787,6 @@ gpdb::GetOpInputTypes(Oid opno, Oid *lefttype, Oid *righttype)
 	GP_WRAP_END;
 }
 
-bool
-gpdb::OperatorExists(Oid oid)
-{
-	GP_WRAP_START;
-	{
-		/* catalog tables: pg_operator */
-		return operator_exists(oid);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
 void *
 gpdb::GPDBAlloc(Size size)
 {
@@ -1975,18 +1927,6 @@ gpdb::ChildPartHasTriggers(Oid oid, int trigger_type)
 	return false;
 }
 
-bool
-gpdb::RelationExists(Oid oid)
-{
-	GP_WRAP_START;
-	{
-		/* catalog tables: pg_class */
-		return relation_exists(oid);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
 void
 gpdb::CdbEstimateRelationSize(RelOptInfo *relOptInfo, Relation rel,
 							  int32 *attr_widths, BlockNumber *pages,
@@ -2059,6 +1999,18 @@ gpdb::GetLogicalIndexInfo(Oid root_oid, Oid index_oid)
 	}
 	GP_WRAP_END;
 	return NULL;
+}
+
+LogicalIndexType
+gpdb::GetLogicalIndexType(Oid index_oid)
+{
+	GP_WRAP_START;
+	{
+		/* catalog tables: pg_index */
+		return logicalIndexTypeForIndexOid(index_oid);
+	}
+	GP_WRAP_END;
+	return INDTYPE_BTREE;
 }
 
 void
@@ -2137,18 +2089,6 @@ gpdb::Equals(void *p1, void *p2)
 	GP_WRAP_START;
 	{
 		return equal(p1, p2);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
-bool
-gpdb::TypeExists(Oid oid)
-{
-	GP_WRAP_START;
-	{
-		/* catalog tables: pg_type */
-		return type_exists(oid);
 	}
 	GP_WRAP_END;
 	return false;
@@ -2434,6 +2374,22 @@ gpdb::GetMergeJoinOpFamilies(Oid opno)
 	return NIL;
 }
 
+
+// get the OID of base elementtype for a given typid
+// eg.: CREATE DOMAIN text_domain as text;
+// SELECT oid, typbasetype from pg_type where typname = 'text_domain';
+// oid         | XXXXX  --> Oid for text_domain
+// typbasetype | 25     --> Oid for base element ie, TEXT
+Oid
+gpdb::GetBaseType(Oid typid)
+{
+	GP_WRAP_START;
+	{
+		return getBaseType(typid);
+	}
+	GP_WRAP_END;
+	return InvalidOid;
+}
 
 // Evaluates 'expr' and returns the result as an Expr.
 // Caller keeps ownership of 'expr' and takes ownership of the result

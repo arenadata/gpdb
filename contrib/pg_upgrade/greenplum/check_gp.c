@@ -17,10 +17,8 @@
 #include "pg_upgrade_greenplum.h"
 #include "check_gp.h"
 
-#define RELSTORAGE_EXTERNAL	'x'
-
-static void check_external_partition(void);
 static void check_covering_aoindex(void);
+static void check_parent_partitions_with_seg_entries(void);
 static void check_partition_indexes(void);
 static void check_orphaned_toastrels(void);
 static void check_online_expansion(void);
@@ -51,9 +49,9 @@ void
 check_greenplum(void)
 {
 	check_online_expansion();
-	check_external_partition();
 	check_covering_aoindex();
-	check_heterogeneous_partition();
+	check_parent_partitions_with_seg_entries();
+    check_heterogeneous_partition();
 	check_partition_indexes();
 	check_foreign_key_constraints_on_root_partition();
 	check_orphaned_toastrels();
@@ -221,87 +219,6 @@ check_unique_primary_constraint(void)
 			   "| on tables.  These constraints need to be removed\n"
 			   "| from the tables before the upgrade.  A list of\n"
 			   "| constraints to remove is in the file:\n"
-			   "| \t%s\n\n", output_path);
-	}
-	else
-		check_ok();
-}
-/*
- *	check_external_partition
- *
- *	External tables cannot be included in the partitioning hierarchy during the
- *	initial definition with CREATE TABLE, they must be defined separately and
- *	injected via ALTER TABLE EXCHANGE. The partitioning system catalogs are
- *	however not replicated onto the segments which means ALTER TABLE EXCHANGE
- *	is prohibited in utility mode. This means that pg_upgrade cannot upgrade a
- *	cluster containing external partitions, they must be handled manually
- *	before/after the upgrade.
- *
- *	Check for the existence of external partitions and refuse the upgrade if
- *	found.
- */
-static void
-check_external_partition(void)
-{
-	char		output_path[MAXPGPATH];
-	FILE	   *script = NULL;
-	bool		found = false;
-	int			dbnum;
-
-	prep_status("Checking for external tables used in partitioning");
-
-	snprintf(output_path, sizeof(output_path), "external_partitions.txt");
-	/*
-	 * We need to query the inheritance catalog rather than the partitioning
-	 * catalogs since they are not available on the segments.
-	 */
-
-	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
-	{
-		PGresult   *res;
-		int			ntups;
-		int			rowno;
-		DbInfo	   *active_db = &old_cluster.dbarr.dbs[dbnum];
-		PGconn	   *conn;
-
-		conn = connectToServer(&old_cluster, active_db->db_name);
-		res = executeQueryOrDie(conn,
-			 "SELECT cc.relname, c.relname AS partname, c.relnamespace "
-			 "FROM   pg_inherits i "
-			 "       JOIN pg_class c ON (i.inhrelid = c.oid AND c.relstorage = '%c') "
-			 "       JOIN pg_class cc ON (i.inhparent = cc.oid);",
-			 RELSTORAGE_EXTERNAL);
-
-		ntups = PQntuples(res);
-
-		if (ntups > 0)
-		{
-			found = true;
-
-			if (script == NULL && (script = fopen(output_path, "w")) == NULL)
-				pg_log(PG_FATAL, "Could not create necessary file:  %s\n",
-					   output_path);
-
-			for (rowno = 0; rowno < ntups; rowno++)
-			{
-				fprintf(script, "External partition \"%s\" in relation \"%s\"\n",
-						PQgetvalue(res, rowno, PQfnumber(res, "partname")),
-						PQgetvalue(res, rowno, PQfnumber(res, "relname")));
-			}
-		}
-
-		PQclear(res);
-		PQfinish(conn);
-	}
-	if (found)
-	{
-		fclose(script);
-		pg_log(PG_REPORT, "fatal\n");
-		gp_fatal_log(
-			   "| Your installation contains partitioned tables with external\n"
-			   "| tables as partitions.  These partitions need to be removed\n"
-			   "| from the partition hierarchy before the upgrade.  A list of\n"
-			   "| external partitions to remove is in the file:\n"
 			   "| \t%s\n\n", output_path);
 	}
 	else
@@ -1600,6 +1517,81 @@ check_views_referencing_deprecated_columns()
 				"| Drop these views before running the upgrade. Please refer to\n"
 				"| the documentation for a complete list of deprecated columns.\n"
 				"| A list of such views is in the file:\n"
+				"| \t%s\n\n", output_path);
+	}
+	else
+		check_ok();
+}
+
+static void
+check_parent_partitions_with_seg_entries(void)
+{
+	char		output_path[MAXPGPATH];
+	FILE	   *script = NULL;
+	bool		found = false;
+	int			dbnum;
+
+	prep_status("Checking AO/CO parent partitions with pg_aoseg entries");
+
+	snprintf(output_path, sizeof(output_path), "parent_partitions_with_seg_entries.txt");
+
+	for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
+	{
+		PGresult    *res;
+		int			ntups;
+		DbInfo	    *active_db = &old_cluster.dbarr.dbs[dbnum];
+		PGconn	    *conn;
+		bool		db_used = false;
+
+		conn = connectToServer(&old_cluster, active_db->db_name);
+		res = executeQueryOrDie(conn,
+							"SELECT relid::regclass AS ao_root_relname, segrelid::regclass AS ao_root_segrelname\n"
+								"FROM  pg_appendonly a JOIN pg_class c ON a.relid = c.oid\n"
+								"WHERE c.oid IN (SELECT parrelid FROM pg_partition\n"
+								"                 UNION SELECT parchildrelid\n"
+								"                 FROM pg_partition_rule)\n"
+								"      AND c.relhassubclass = true\n"
+								"      AND a.relid IS NOT NULL\n"
+								"      AND a.segrelid IS NOT NULL\n"
+								"ORDER BY 1;");
+
+        ntups = PQntuples(res);
+
+        for (int rowno = 0; rowno < ntups; rowno++)
+        {
+			char	   *ao_parent_relname = PQgetvalue(res, rowno, 0);
+			char	   *ao_parent_segrelname = PQgetvalue(res, rowno, 1);
+			PGresult   *ao_parent_segrel_result = executeQueryOrDie(conn, "SELECT 1 FROM %s;", ao_parent_segrelname);
+
+			if (PQntuples(ao_parent_segrel_result) > 0)
+			{
+				found = true;
+				if (script == NULL && (script = fopen(output_path, "w")) == NULL)
+					pg_fatal("Could not create necessary file:  %s\n", output_path);
+				if (!db_used)
+				{
+					fprintf(script, "Database: %s\n", active_db->db_name);
+					db_used = true;
+                }
+				fprintf(script, "  %s has non empty segrel %s\n", ao_parent_relname, ao_parent_segrelname);
+            }
+
+			PQclear(ao_parent_segrel_result);
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (found)
+	{
+		fclose(script);
+		pg_log(PG_REPORT, "fatal\n");
+		gp_fatal_log(
+			"| Your installation contains append-only or column-oriented\n"
+				"| parent partitions that contain entries in their pg_aoseg or pg_aocsseg\n"
+				"| tables respectively. Delete all rows from these pg_aoseg or pg_aocsseg \n"
+				"| tables before upgrading. A list of the problem tables is in the file:\n"
 				"| \t%s\n\n", output_path);
 	}
 	else

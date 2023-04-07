@@ -19,6 +19,7 @@ extern "C" {
 #include "postgres.h"
 
 #include "access/attnum.h"
+#include "nodes/plannodes.h"
 #include "parser/parse_coerce.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
@@ -232,9 +233,6 @@ int32 GetTriggerType(Oid triggerid);
 // is trigger enabled
 bool IsTriggerEnabled(Oid triggerid);
 
-// does trigger exist
-bool TriggerExists(Oid oid);
-
 // does check constraint exist
 bool CheckConstraintExists(Oid check_constraint_oid);
 
@@ -340,9 +338,6 @@ bool HeapAttIsNull(HeapTuple tup, int attnum);
 
 // free heap tuple
 void FreeHeapTuple(HeapTuple htup);
-
-// does an index exist with the given oid
-bool IndexExists(Oid oid);
 
 // get the default hash opclass for type
 Oid GetDefaultDistributionOpclassForType(Oid typid);
@@ -505,9 +500,6 @@ bool IsOpNDVPreserving(Oid opno);
 // get input types for a given operator
 void GetOpInputTypes(Oid opno, Oid *lefttype, Oid *righttype);
 
-// does an operator exist with the given oid
-bool OperatorExists(Oid oid);
-
 // expression tree walker
 bool WalkExpressionTree(Node *node, bool (*walker)(), void *context);
 
@@ -550,9 +542,6 @@ gpos::BOOL IsChildPartDistributionMismatched(Relation rel);
 // have a trigger of the given type
 gpos::BOOL ChildPartHasTriggers(Oid oid, int trigger_type);
 
-// does a relation exist with the given oid
-bool RelationExists(Oid oid);
-
 // estimate the relation size using the real number of blocks and tuple density
 void CdbEstimateRelationSize(RelOptInfo *relOptInfo, Relation rel,
 							 int32 *attr_widths, BlockNumber *pages,
@@ -567,6 +556,9 @@ LogicalIndexes *GetLogicalPartIndexes(Oid oid);
 
 // return the logical info structure for a given logical index oid
 LogicalIndexInfo *GetLogicalIndexInfo(Oid root_oid, Oid index_oid);
+
+// return the logical index type for a given logical index oid
+LogicalIndexType GetLogicalIndexType(Oid index_oid);
 
 // return a list of index oids for a given relation
 List *GetRelationIndexes(Relation relation);
@@ -593,9 +585,6 @@ List *FindMatchingMembersInTargetList(Node *node, List *targetlist);
 
 // check if two gpdb objects are equal
 bool Equals(void *p1, void *p2);
-
-// does a type exist with the given oid
-bool TypeExists(Oid oid);
 
 // check whether a type is composite
 bool IsCompositeType(Oid typid);
@@ -664,6 +653,9 @@ List *GetIndexOpFamilies(Oid index_oid);
 
 // get oids of op classes for the merge join
 List *GetMergeJoinOpFamilies(Oid opno);
+
+// get the OID of base elementtype fora given typid
+Oid GetBaseType(Oid typid);
 
 // returns the result of evaluating 'expr' as an Expr. Caller keeps ownership of 'expr'
 // and takes ownership of the result

@@ -2483,7 +2483,7 @@ where not exists (
 );
                                                                    QUERY PLAN                                                                   
 ------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 3:1  (slice5; segments: 3)
+ Gather Motion 3:1  (slice7; segments: 3)
    ->  Result
          Filter: (COALESCE((count((count()))), '0'::bigint) = '0'::bigint)
          ->  Result
@@ -2496,33 +2496,34 @@ where not exists (
                                        Group Key: tt4x_1.c2
                                        ->  Sort
                                              Sort Key: tt4x_1.c2
-                                             ->  Redistribute Motion 3:3  (slice4; segments: 3)
+                                             ->  Redistribute Motion 3:3  (slice6; segments: 3)
                                                    Hash Key: tt4x_1.c2
                                                    ->  Result
                                                          ->  GroupAggregate
                                                                Group Key: tt4x_1.c2
                                                                ->  Sort
                                                                      Sort Key: tt4x_1.c2
-                                                                     ->  Hash Left Join
-                                                                           Hash Cond: (tt4x_2.c2 = tt4x_4.c1)
+                                                                     ->  Redistribute Motion 1:3  (slice5)
                                                                            ->  Hash Left Join
-                                                                                 Hash Cond: (tt4x_1.c3 = tt4x_2.c1)
-                                                                                 ->  Redistribute Motion 3:3  (slice1; segments: 3)
-                                                                                       Hash Key: tt4x_1.c3
-                                                                                       ->  Seq Scan on tt4x tt4x_1
+                                                                                 Hash Cond: (tt4x_2.c2 = tt4x_4.c1)
+                                                                                 ->  Gather Motion 3:1  (slice2; segments: 3)
+                                                                                       ->  Hash Left Join
+                                                                                             Hash Cond: (tt4x_1.c3 = tt4x_2.c1)
+                                                                                             ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                                                                                   Hash Key: tt4x_1.c3
+                                                                                                   ->  Seq Scan on tt4x tt4x_1
+                                                                                             ->  Hash
+                                                                                                   ->  Seq Scan on tt4x tt4x_2
                                                                                  ->  Hash
-                                                                                       ->  Seq Scan on tt4x tt4x_2
-                                                                           ->  Hash
-                                                                                 ->  Broadcast Motion 3:3  (slice3; segments: 3)
                                                                                        ->  Hash Left Join
                                                                                              Hash Cond: (tt4x_3.c2 = tt4x_4.c1)
-                                                                                             ->  Redistribute Motion 3:3  (slice2; segments: 3)
-                                                                                                   Hash Key: tt4x_3.c2
+                                                                                             ->  Gather Motion 3:1  (slice3; segments: 3)
                                                                                                    ->  Seq Scan on tt4x tt4x_3
                                                                                              ->  Hash
-                                                                                                   ->  Seq Scan on tt4x tt4x_4
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
-(39 rows)
+                                                                                                   ->  Gather Motion 3:1  (slice4; segments: 3)
+                                                                                                         ->  Seq Scan on tt4x tt4x_4
+ Optimizer: Pivotal Optimizer (GPORCA)
+(40 rows)
 
 --
 -- regression test for problems of the sort depicted in bug #3494
@@ -3094,13 +3095,14 @@ where q1 = thousand or q2 = thousand;
                      Join Filter: true
                      ->  Result
                            ->  Result
-                     ->  Result
+                     ->  Materialize
                            ->  Result
+                                 ->  Result
                ->  Bitmap Heap Scan on tenk1
-                     Recheck Cond: ((thousand = "inner".q1) OR (thousand = "outer".q2))
+                     Recheck Cond: ((thousand = "outer".q1) OR (thousand = "outer".q2))
                      ->  BitmapOr
                            ->  Bitmap Index Scan on tenk1_thous_tenthous
-                                 Index Cond: (thousand = "inner".q1)
+                                 Index Cond: (thousand = "outer".q1)
                            ->  Bitmap Index Scan on tenk1_thous_tenthous
                                  Index Cond: (thousand = "outer".q2)
          ->  Hash
@@ -3126,10 +3128,11 @@ where thousand = (q1 + q2);
                      Join Filter: true
                      ->  Result
                            ->  Result
-                     ->  Result
+                     ->  Materialize
                            ->  Result
+                                 ->  Result
                ->  Index Scan using tenk1_thous_tenthous on tenk1
-                     Index Cond: (thousand = ("inner".q1 + "outer".q2))
+                     Index Cond: (thousand = ("outer".q1 + "outer".q2))
          ->  Hash
                ->  Broadcast Motion 3:3  (slice1; segments: 3)
                      ->  Seq Scan on int4_tbl

@@ -1201,7 +1201,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString, uint64 *processed)
 
 	/* Issue automatic ANALYZE if conditions are satisfied (MPP-4082). */
 	if (Gp_role == GP_ROLE_DISPATCH && is_from)
-		auto_stats(AUTOSTATS_CMDTYPE_COPY, relid, *processed, false /* inFunction */);
+		auto_stats(AUTOSTATS_CMDTYPE_COPY, relid, *processed, already_under_executor_run());
 
 	return relid;
 }
@@ -3097,16 +3097,23 @@ CopyTo(CopyState cstate)
 				bool *proj = NULL;
 
 				int nvp = tupDesc->natts;
-				int i;
 
 				if (tupDesc->tdhasoid)
 				{
 				    elog(ERROR, "OIDS=TRUE is not allowed on tables that use column-oriented storage. Use OIDS=FALSE");
 				}
 
-				proj = palloc(sizeof(bool) * nvp);
-				for(i = 0; i < nvp; ++i)
-				    proj[i] = true;
+				proj = palloc0(sizeof(bool) * nvp);
+				/*
+				 * attnumlist is constructed after filtering out dropped
+				 * columns. Use it to mark columns to be projected.
+				 */
+				foreach(cur, cstate->attnumlist)
+				{
+					int	attnum = lfirst_int(cur);
+					Assert(attnum <= nvp);
+					proj[attnum-1] = true;
+				}
 
 				scan = aocs_beginscan(rel, GetActiveSnapshot(),
 									  GetActiveSnapshot(),
@@ -3561,6 +3568,13 @@ CopyFrom(CopyState cstate)
 					 errmsg("cannot copy to non-table relation \"%s\"",
 							RelationGetRelationName(cstate->rel))));
 	}
+
+	if (Gp_role == GP_ROLE_UTILITY && rel_is_parent(cstate->rel->rd_id))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("COPY FROM in utility mode is not supported on roots "
+						   "of inheritance and partition hierarchies"),
+					errhint("consider using COPY FROM with the ON SEGMENT clause")));
 
 	tupDesc = RelationGetDescr(cstate->rel);
 	num_phys_attrs = tupDesc->natts;

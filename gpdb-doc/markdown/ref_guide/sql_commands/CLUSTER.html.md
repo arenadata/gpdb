@@ -43,7 +43,7 @@ In cases where you are accessing single rows randomly within a table, the actual
 
 When an index scan is used, a temporary copy of the table is created that contains the table data in the index order. Temporary copies of each index on the table are created as well. Therefore, you need free space on disk at least equal to the sum of the table size and the index sizes.
 
-When a sequential scan and sort is used, a temporary sort file is also created, so that the peak temporary space requirement is as much as double the table size, plus the index sizes. This method is often faster than the index scan method, but if the disk space requirement is intolerable, you can disable this choice by temporarily setting the [enable\_sort](../config_params/guc-list.html) configuration parameter to `off`.
+When a sequential scan and sort is used, a temporary sort file is also created, so that the peak temporary space requirement is as much as double the table size, plus the index sizes. This method is often faster than the index scan method, but if the disk space requirement is intolerable, you can deactivate this choice by temporarily setting the [enable\_sort](../config_params/guc-list.html) configuration parameter to `off`.
 
 It is advisable to set [maintenance\_work\_mem](../config_params/guc-list.html) configuration parameter to a reasonably large value \(but not more than the amount of RAM you can dedicate to the `CLUSTER` operation\) before clustering.
 
@@ -51,7 +51,7 @@ Because the query optimizer records statistics about the ordering of tables, it 
 
 Because `CLUSTER` remembers which indexes are clustered, you can cluster the tables you want clustered manually the first time, then set up a periodic maintenance script that runs `CLUSTER` without any parameters, so that the desired tables are periodically reclustered.
 
-**Note:** `CLUSTER` is not supported with append-optimized tables.
+> **Note** `CLUSTER` is not supported with append-optimized tables.
 
 ## <a id="section6"></a>Examples 
 

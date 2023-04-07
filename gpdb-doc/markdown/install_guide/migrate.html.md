@@ -2,11 +2,11 @@
 title: Migrating Data from Greenplum 4.3 or 5 to Greenplum 6 
 ---
 
-You can migrate data from Greenplum Database 4.3 or 5 to Greenplum 6 using the standard backup and restore procedures, `gpbackup` and `gprestore`, or by using `gpcopy` for Tanzu Greenplum.
+You can migrate data from Greenplum Database 4.3 or 5 to Greenplum 6 using the standard backup and restore procedures, `gpbackup` and `gprestore`, or by using `gpcopy` for VMware Greenplum.
 
-**Note:** Open source Greenplum Database is available only for Greenplum Database 5 and later.
+> **Note** Open source Greenplum Database is available only for Greenplum Database 5 and later.
 
-**Note:** You can upgrade a Greenplum Database 5.28 system directly to Greenplum 6.9 or later using [gpupgrade](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Upgrade/index.html). You cannot upgrade a Greenplum Database 4.3 system directly to Greenplum 6.
+> **Note** You can upgrade a Greenplum Database 5.28 system directly to Greenplum 6.9 or later using [gpupgrade](https://docs.vmware.com/en/VMware-Greenplum-Upgrade/index.html). You cannot upgrade a Greenplum Database 4.3 system directly to Greenplum 6.
 
 This topic identifies known issues you may encounter when moving data from Greenplum 4.3 to Greenplum 6. You can work around these problems by making needed changes to your Greenplum 4.3 databases so that you can create backups that can be restored successfully to Greenplum 6.
 
@@ -21,14 +21,14 @@ This topic identifies known issues you may encounter when moving data from Green
 
 -   Install and initialize a new Greenplum Database 6 cluster using the version 6 `gpinitsystem` utility.
 
-    **Note:** `gprestore` only supports restoring data to a cluster that has an identical number of hosts and an identical number of segments per host, with each segment having the same `content_id` as the segment in the original cluster. Use `gpcopy` \(Tanzu Greenplum\) if you need to migrate data to a different-sized Greenplum 6 cluster.
+    > **Note** `gprestore` only supports restoring data to a cluster that has an identical number of hosts and an identical number of segments per host, with each segment having the same `content_id` as the segment in the original cluster. Use `gpcopy` \(VMware Greenplum\) if you need to migrate data to a different-sized Greenplum 6 cluster.
 
-    **Note:** Set the Greenplum Database 6 timezone to a value that is compatible with your host systems. Setting the Greenplum Database timezone prevents Greenplum Database from selecting a timezone each time the cluster is restarted. See [Configuring Timezone and Localization Settings](localization.html) for more information.
+    > **Note** Set the Greenplum Database 6 timezone to a value that is compatible with your host systems. Setting the Greenplum Database timezone prevents Greenplum Database from selecting a timezone each time the cluster is restarted. See [Configuring Timezone and Localization Settings](localization.html) for more information.
 
 -   Install the latest release of the Greenplum Backup and Restore utilities, available to download from [VMware Tanzu Network](https://network.pivotal.io/products/pivotal-gpdb-backup-restore) or [github](https://github.com/greenplum-db/gpbackup/releases).
 -   If you intend to install Greenplum Database 6 on the same hardware as your 4.3 system, you will need enough disk space to accommodate over five times the original data set \(two full copies of the primary and mirror data sets, plus the original backup data in ASCII format\) in order to migrate data with `gpbackup` and `gprestore`. Keep in mind that the ASCII backup data will require more disk space than the original data, which may be stored in compressed binary format. Offline backup solutions such as Dell EMC Data Domain can reduce the required disk space on each host.
 
-    If you want to migrate your data on the same hardware but do not have enough free disk space on your host systems, `gpcopy` for Tanzu Greenplum provides the `--truncate-source-after` option to truncate each source table after copying the table to the destination cluster and validating that the copy succeeded. This reduces the amount of free space needed to migrate clusters that reside on the same hardware. See [Migrating Data with gpcopy](../admin_guide/managing/gpcopy-migrate.html) for more information.
+    If you want to migrate your data on the same hardware but do not have enough free disk space on your host systems, `gpcopy` for VMware Greenplum provides the `--truncate-source-after` option to truncate each source table after copying the table to the destination cluster and validating that the copy succeeded. This reduces the amount of free space needed to migrate clusters that reside on the same hardware. See [Migrating Data with gpcopy](../admin_guide/managing/gpcopy-migrate.html) for more information.
 
 -   Install any external modules used in your Greenplum 4.3 system in the Greenplum 6 system before you restore the backup, for example MADlib or PostGIS. If versions of the external modules are not compatible, you may need to exclude tables that reference them when restoring the Greenplum 4.3 backup to Greenplum 6.
 -   The Greenplum 4.3 Oracle Compatibility Functions module is not compatible with Greenplum 6. Uninstall the module from Greenplum 4.3 by running the `uninstall_orafunc.sql` script before you back up your databases:
@@ -53,14 +53,14 @@ This topic identifies known issues you may encounter when moving data from Green
 
 ## <a id="prep-gpdb4"></a>Preparing Greenplum 4.3 and 5 Databases for Backup 
 
-**Note:** A Greenplum 4 system must be at least version 4.3.22 to use the `gpbackup` and `gprestore` utilities. A Greenplum 5 system must be at least version 5.5. Be sure to use the latest release of the backup and restore utilities, available for download from [VMware Tanzu Network](https://network.pivotal.io/products/pivotal-gpdb-backup-restore) or [github](https://github.com/greenplum-db/gpbackup/releases).
+> **Note** A Greenplum 4 system must be at least version 4.3.22 to use the `gpbackup` and `gprestore` utilities. A Greenplum 5 system must be at least version 5.5. Be sure to use the latest release of the backup and restore utilities, available for download from [VMware Tanzu Network](https://network.pivotal.io/products/pivotal-gpdb-backup-restore) or [github](https://github.com/greenplum-db/gpbackup/releases).
 
-**Important:** Make sure that you have a complete backup of all data in the Greenplum Database 4.3 or 5 cluster, and that you can successfully restore the Greenplum Database cluster if necessary.
+> **Important** Make sure that you have a complete backup of all data in the Greenplum Database 4.3 or 5 cluster, and that you can successfully restore the Greenplum Database cluster if necessary.
 
 Following are some issues that are known to cause errors when restoring a Greenplum 4.3 or 5 backup to Greenplum 6. Keep a list of any changes you make to the Greenplum 4.3 or 5 database to enable migration so that you can fix them in Greenplum 6 after restoring the backup.
 
--   If you have configured PXF in your Greenplum Database 5 installation, review [Migrating PXF from Greenplum 5](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Platform-Extension-Framework/6.3/tanzu-greenplum-platform-extension-framework/GUID-migrate_5to6.html) to plan for the PXF migration.
--   Greenplum Database version 6 removes support for the `gphdfs` protocol. If you have created external tables that use gphdfs, remove the external table definitions and \(optionally\) recreate them to use Greenplum Platform Extension Framework \(PXF\) before you migrate the data to Greenplum 6. Refer to [Migrating gphdfs External Tables to PXF](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Platform-Extension-Framework/6.3/tanzu-greenplum-platform-extension-framework/GUID-gphdfs-pxf-migrate.html) in the PXF documentation for the migration procedure.
+-   If you have configured PXF in your Greenplum Database 5 installation, review [Migrating PXF from Greenplum 5](../pxf/migrate_5to6.html) to plan for the PXF migration.
+-   Greenplum Database version 6 removes support for the `gphdfs` protocol. If you have created external tables that use gphdfs, remove the external table definitions and \(optionally\) recreate them to use Greenplum Platform Extension Framework \(PXF\) before you migrate the data to Greenplum 6. Refer to [Migrating gphdfs External Tables to PXF](../pxf/gphdfs-pxf-migrate.html) in the PXF documentation for the migration procedure.
 -   References to catalog tables or their attributes can cause a restore to fail due to catalog changes from Greenplum 4.3 or 5 to Greenplum 6. Here are some catalog issues to be aware of when migrating to Greenplum 6:
     -   In the `pg_class` system table, the `reltoastidxid` column has been removed.
     -   In the `pg_stat_replication` system table, the `procpid` column is renamed to `pid`.
@@ -72,7 +72,7 @@ Following are some issues that are known to cause errors when restoring a Greenp
 -   The `INTO error_table` clause of the `CREATE EXTERNAL TABLE` and `COPY` commands was deprecated in Greenplum 4.3 and is unsupported in Greenplum 5 and 6. Remove this clause from any external table definitions before you create a backup of your Greenplum 4.3 system. The `ERROR_TABLE` parameter of the `gpload` utility load control YAML file must also be removed from any `gpload` YAML files before you run `gpload`.
 -   The `int4_avg_accum()` function signature changed in Greenplum 6 from `int4_avg_accum(bytea, integer)` to `int4_avg_accum(bigint[], integer)`. This function is the state transition function \(*sfunc*\) called when calculating the average of a series of 4-byte integers. If you have created a custom aggregate in a previous Greenplum release that called the built-in `int4_avg_accum()` function, you will need to revise your aggregate for the new signature.
 -   The `string_agg(expression)` function has been removed from Greenplum 6. The function concatenates text values into a string. You can replace the single argument function with the function `string_agg(expression, delimiter)` and specify an empty string as the `delimiter`, for example `string_agg(txt_col1, '').`
--   The `offset` argument of the `lag(expr, offset[, default])` window function has changed from `int8` in Greenplum 4.3 to `int4` in Greenplum 5 and 6.
+-   The `offset` argument of the `lag(value, offset[, default])` and `lead(value, offset[, default])` window functions has changed from data type `int8` (`bigint`) in Greenplum 4.3 and 5 to `int4` (`integer`) in Greenplum 6. If you used these functions to create views in Greenplum 5, you must remove the views before you migrate to Greenplum 6. Refer to [About Migrating Views Created with lag()/lead() Functions](#laglead) for additional information and migration actions.
 -   `gpbackup` saves the distribution policy and distribution key for each table in the backup so that data can be restored to the same segment. If a table's distribution key in the Greenplum 4.3 or 5 database is incompatible with Greenplum 6, `gprestore` cannot restore the table to the correct segment in the Greenplum 6 database. This can happen if the distribution key in the older Greenplum release has columns with data types not allowed in Greenplum 6 distribution keys, or if the data representation for data types has changed or is insufficient for Greenplum 6 to generate the same hash value for a distribution key. You should correct these kinds of problems by altering distribution keys in the tables before you back up the Greenplum database.
 -   Greenplum 6 requires primary keys and unique index keys to match a table's distribution key. The leaf partitions of partitioned tables must have the same distribution policy as the root partition. These known issues should be corrected in the source Greenplum database before you back up the database:
     -   If the primary key is different than the distribution key for a table, alter the table to either remove the primary key or change the primary key to match the distribution key.
@@ -121,17 +121,61 @@ Following are some issues that are known to cause errors when restoring a Greenp
 
 -   In Greenplum Database 4.3 and 5, the undocumented server configuration parameter `allow_system_table_mods` could have a value of `none`, `ddl`, `dml`, or `all`. In Greenplum 6, this parameter has changed to a Boolean value, with a default value of `false`. If there are any references to this parameter in the source database, remove them to prevent errors during the restore.
 
+### <a id="laglead"></a>About Migrating Views Created with lag()/lead() Functions
+
+The `offset` argument of the `lag(value, offset[, default])` and `lead(value, offset[, default])` window functions has changed from data type `int8` (`bigint`) in Greenplum 4.3 and 5 to `int4` (`integer`) in Greenplum 6. If you used these functions to create views in Greenplum 5, you must remove the views before you migrate to Greenplum 6.
+
+In addition to the `offset` argument data type change, Greenplum Database 6 removes all data-type-specific `lag()` and `lead()` functions:
+
+```
+<data-type> lag( value <data-type>[, offset bigint[, default <data-type>]] )
+```
+```
+<data-type> lead( value <data-type>[, offset bigint[, default <data-type>]] )
+```
+
+And replaces them with these more generic function signatures:
+
+```
+anyelement lag( value anyelement[, offset integer[, default anyelement]] )
+```
+```
+anyelement lead( value anyelement[, offset integer[, default anyelement]] )
+```
+
+To migrate to the `lag()` and `lead()` functions in Greenplum Database 6, you must:
+
+1. Identify all views in your Greenplum Database 5 installation that were created using the two- or three-argument `lag()` or `lead()` functions. Run the following SQL command to identify the views:
+
+    ``` sql
+    SELECT ev_class::regclass::text viewname
+      FROM pg_rewrite pgr
+      WHERE ev_action ~
+        (SELECT $$:winfnoid ($$||string_agg(oid::text,'|')||$$) :$$
+          FROM (SELECT DISTINCT oid FROM pg_catalog.pg_proc WHERE (proname, pronamespace) IN
+          (('lag', 11), ('lead', 11)) AND proargtypes[1]=20)s1);
+    ```
+
+1. For each view that you identify:
+
+    1. Note the command that you used to create the view.
+    1. Drop the view in your Greenplum 5 installation.
+    1. After you migrate to Greenplum 6:
+
+        1. Recreate the view, if desired, in your Greenplum 6 installation; be sure to specify an `integer`-type `offset` argument to the function. (You are not required to modify the `value` or `default` argument types in the function because an `anyelement` type accepts any data type.)
+        1. If you have any scripts that invoke `lag()` or `lead()` functions, ensure that that they reference an `integer`-type `offset`.
+
 ## <a id="backup-and-restore"></a>Backing Up and Restoring a Database 
 
-First use `gpbackup` to create a `--metadata-only` backup from the source Greenplum database and restore it to the Greenplum 6 system. This helps find any additional problems that are not identified in [Preparing Greenplum 4.3 and 5 Databases for Backup](#prep-gpdb4). Refer to the [Greenplum Backup and Restore documentation](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Backup-and-Restore/index.html) for syntax and examples for the `gpbackup` and `gprestore` utilities.
+First use `gpbackup` to create a `--metadata-only` backup from the source Greenplum database and restore it to the Greenplum 6 system. This helps find any additional problems that are not identified in [Preparing Greenplum 4.3 and 5 Databases for Backup](#prep-gpdb4). Refer to the [Greenplum Backup and Restore documentation](https://docs.vmware.com/en/VMware-Greenplum-Backup-and-Restore/index.html) for syntax and examples for the `gpbackup` and `gprestore` utilities.
 
 Review the `gprestore` log file for error messages and correct any remaining problems in the source Greenplum database.
 
-When you are able to restore a metadata backup successfully, create the full backup and then restore it to the Greenplum 6 system, or use `gpcopy` \(Tanzu Greenplum\) to transfer the data. If needed, use the `gpbackup` or `gprestore` filter options to omit schemas or tables that cannot be restored without error.
+When you are able to restore a metadata backup successfully, create the full backup and then restore it to the Greenplum 6 system, or use `gpcopy` \(VMware Greenplum\) to transfer the data. If needed, use the `gpbackup` or `gprestore` filter options to omit schemas or tables that cannot be restored without error.
 
-If you use `gpcopy` to migrate Tanzu Greenplum data, initiate the `gpcopy` operation from the Greenplum 4.3.26 \(or later\) or the 5.9 \(or later\) cluster. See [Migrating Data with gpcopy](../admin_guide/managing/gpcopy-migrate.html) for more information.
+If you use `gpcopy` to migrate VMware Greenplum data, initiate the `gpcopy` operation from the Greenplum 4.3.26 \(or later\) or the 5.9 \(or later\) cluster. See [Migrating Data with gpcopy](../admin_guide/managing/gpcopy-migrate.html) for more information.
 
-**Important:** When you restore a backup taken from a Greenplum Database 4.3 or 5 system, `gprestore` warns that the restore will use legacy hash operators when loading the data. This is because Greenplum 6 has new hash algorithms that map distribution keys to segments, but the data in the backup set must be restored to the same segments as the cluster from which the backup was taken. The `gprestore` utility sets the `gp_use_legacy_hashops` server configuration parameter to `on` when restoring to Greenplum 6 from an earlier version so that the restored tables are created using the legacy operator classes instead of the new default operator classes.
+> **Important** When you restore a backup taken from a Greenplum Database 4.3 or 5 system, `gprestore` warns that the restore will use legacy hash operators when loading the data. This is because Greenplum 6 has new hash algorithms that map distribution keys to segments, but the data in the backup set must be restored to the same segments as the cluster from which the backup was taken. The `gprestore` utility sets the `gp_use_legacy_hashops` server configuration parameter to `on` when restoring to Greenplum 6 from an earlier version so that the restored tables are created using the legacy operator classes instead of the new default operator classes.
 
 After restoring, you can redistribute these tables with the `gp_use_legacy_hashops` parameter set to `off` so that the tables use the new Greenplum 6 hash operators. See [Working With Hash Operator Classes in Greenplum 6](#redistribute) for more information and examples.
 
@@ -144,7 +188,7 @@ Recreate any objects you dropped in the Greenplum 4.3 or 5 database to enable mi
 Here are some additional items to consider to complete your migration to Greenplum 6.
 
 -   Greenplum Database 5 and 6 remove automatic casts between the text type and other data types. After you migrate from Greenplum Database version 4.3 to version 6, this changed behavior may impact existing applications and queries. Refer to [About Implicit Text Casting in Greenplum Database](43x_to_5x.html) for information, including a discussion about VMware supported and unsupported workarounds.
--   After migrating data you may need to modify SQL scripts, administration scripts, and user-defined functions as necessary to account for changes in Greenplum Database version 6. Review the [Tanzu Greenplum 6.0.0 Release Notes](https://docs.vmware.com/en/VMware-Tanzu-Greenplum/6/greenplum-database/GUID-relnotes-release-notes.html#release-6.0.0) for features and changes that may necessitate post-migration tasks.
+-   After migrating data you may need to modify SQL scripts, administration scripts, and user-defined functions as necessary to account for changes in Greenplum Database version 6. Review the [VMware Greenplum 6.0.0 Release Notes](https://docs.vmware.com/en/VMware-Greenplum/6/greenplum-database/GUID-relnotes-release-notes.html#release-6.0.0) for features and changes that may necessitate post-migration tasks.
 -   To use the new Greenplum 6 default hash operator classes, use the command `ALTER TABLE <table> SET DISTRIBUTED BY (<key>)` to redistribute tables restored from Greenplum 4.3 or 5 backups. The `gp_use_legacy_hashops` parameter must be set to `off` when you run the command. See [Working With Hash Operator Classes in Greenplum 6](#redistribute) for more information about hash operator classes.
 
 ### <a id="redistribute"></a>Working With Hash Operator Classes in Greenplum 6 
@@ -191,7 +235,7 @@ The operator class name is reported only when it does not match the setting of t
 
 To change the table to use the new jump consistent operator class, use the `ALTER TABLE` command to redistribute the table with the `gp_use_legacy_hashops` parameter set to `off`.
 
-**Note:** Redistributing tables with a large amount of data can take a long time.
+> **Note** Redistributing tables with a large amount of data can take a long time.
 
 ```
 test=# SHOW gp_use_legacy_hashops;

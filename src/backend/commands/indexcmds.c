@@ -53,6 +53,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -437,10 +438,28 @@ DefineIndex(Oid relationId,
 	bool		shouldDispatch;
 	int			i;
 
+	Oid			root_save_userid;
+	int			root_save_sec_context;
+	int			root_save_nestlevel;
+
+	root_save_nestlevel = NewGUCNestLevel();
+
 	if (Gp_role == GP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
 		shouldDispatch = true;
 	else
 		shouldDispatch = false;
+
+	/*
+	 * Force non-concurrent build on temporary relations, even if CONCURRENTLY
+	 * was requested.  Other backends can't access a temporary relation, so
+	 * there's no harm in grabbing a stronger lock, and a non-concurrent DROP
+	 * is more efficient.  Do this before any use of the concurrent option is
+	 * done.
+	 */
+	if (stmt->concurrent && get_rel_persistence(relationId) != RELPERSISTENCE_TEMP)
+		concurrent = true;
+	else
+		concurrent = false;
 
 	/* Exlusion constraint not allowed */
 	Assert(!stmt->excludeOpNames);
@@ -507,6 +526,15 @@ DefineIndex(Oid relationId,
 	}
 
 	rel = heap_open(relationId, lockmode);
+
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations.  We
+	 * already arranged to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
+	SetUserIdAndSecContext(rel->rd_rel->relowner,
+						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
@@ -578,7 +606,7 @@ DefineIndex(Oid relationId,
 	{
 		AclResult	aclresult;
 
-		aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(),
+		aclresult = pg_namespace_aclcheck(namespaceId, root_save_userid,
 										  ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
@@ -617,7 +645,7 @@ DefineIndex(Oid relationId,
 	{
 		AclResult	aclresult;
 
-		aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(),
+		aclresult = pg_tablespace_aclcheck(tablespaceId, root_save_userid,
 										   ACL_CREATE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_TABLESPACE,
@@ -844,6 +872,8 @@ DefineIndex(Oid relationId,
 
 	if (shouldDispatch)
 	{
+		Oid			save_userid;
+		int			save_sec_context;
 		/* make sure the QE uses the same index name that we chose */
 		stmt->idxname = indexRelationName;
 		stmt->oldNode = InvalidOid;
@@ -851,23 +881,41 @@ DefineIndex(Oid relationId,
 		 * Please note, top snapshot dispatched here was taken before lock
 		 * acquiring, but it's OK since with don't use it - see IndexBuildScan
 		 * for used snapshots and more.
+		 *
+		 * Switch to login user, so that the connection to QEs use the
+		 * same user as the connection to QD.
 		 */
+		GetUserIdAndSecContext(&save_userid, &save_sec_context);
+		SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 		CdbDispatchUtilityStatement((Node *) stmt,
 									DF_CANCEL_ON_ERROR |
 									DF_WITH_SNAPSHOT |
 									DF_NEED_TWO_PHASE,
 									GetAssignedOidsForDispatch(),
 									NULL);
+		SetUserIdAndSecContext(save_userid, save_sec_context);
 
 		/* Set indcheckxmin in the master, if it was set on any segment */
 		if (!indexInfo->ii_BrokenHotChain)
 			cdb_sync_indcheckxmin_with_segments(indexRelationId);
 	}
 
+	/*
+	 * Roll back any GUC changes executed by index functions, and keep
+	 * subsequent changes local to this command.  It's barely possible that
+	 * some index function changed a behavior-affecting GUC, e.g. xmloption,
+	 * that affects subsequent steps.
+	 */
+	AtEOXact_GUC(false, root_save_nestlevel);
+	root_save_nestlevel = NewGUCNestLevel();
+
 	/* Add any requested comment */
 	if (stmt->idxcomment != NULL)
 		CreateComments(indexRelationId, RelationRelationId, 0,
 					   stmt->idxcomment);
+
+	AtEOXact_GUC(false, root_save_nestlevel);
+	SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 
 	if (partitioned)
 	{
@@ -913,6 +961,26 @@ DefineIndex(Oid relationId,
 				char	   *childnamespace_name;
 
 				childrel = heap_open(childRelid, lockmode);
+
+				/*
+				 * Don't try to create indexes on external tables, though.
+				 * Skip those if a regular index, or fail if trying to create
+				 * a constraint index.
+				 */
+				if (RelationIsExternal(childrel))
+				{
+					if (stmt->unique || stmt->primary)
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+										errmsg("cannot create unique index on partitioned table \"%s\"",
+											   RelationGetRelationName(rel)),
+										errdetail("Table \"%s\" contains partitions that are external tables.",
+												  RelationGetRelationName(rel))));
+
+					heap_close(childrel, lockmode);
+					continue;
+				}
+
 				childidxs = RelationGetIndexList(childrel);
 				attmap =
 					convert_tuples_by_name_map(RelationGetDescr(childrel),
@@ -1178,6 +1246,16 @@ DefineIndex(Oid relationId,
 	/* Open and lock the parent heap relation */
 	rel = heap_openrv(stmt->relation, ShareUpdateExclusiveLock);
 
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations and
+	 * arrange to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&root_save_userid, &root_save_sec_context);
+	SetUserIdAndSecContext(rel->rd_rel->relowner,
+						   root_save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	root_save_nestlevel = NewGUCNestLevel();
+
 	/* And the target index relation */
 	indexRelation = index_open(indexRelationId, RowExclusiveLock);
 
@@ -1192,6 +1270,12 @@ DefineIndex(Oid relationId,
 
 	/* Now build the index */
 	index_build(rel, indexRelation, indexInfo, stmt->primary, false);
+
+	/* Roll back any GUC changes executed by index functions */
+	AtEOXact_GUC(false, root_save_nestlevel);
+
+	/* Restore userid and security context */
+	SetUserIdAndSecContext(root_save_userid, root_save_sec_context);
 
 	/* Close both the relations, but keep the locks */
 	heap_close(rel, NoLock);
@@ -2453,13 +2537,12 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 
 	/*
 	 * We cannot run REINDEX TABLE on partitioned table inside a user
-	 * transaction block; if we were inside a transaction, then our commit-
+	 * defined function (UDF); if we were inside a UDF, then our commit-
 	 * and start-transaction-command calls would not have the intended effect!
 	 * For example, if it gets called under pl language, it'll mess up
 	 * pl language's transaction management which may cause panic.
 	 */
-	PreventTransactionChain(isTopLevel,
-							"REINDEX TABLE <partitioned_table>");
+	PreventInFunction(isTopLevel, "REINDEX TABLE <partitioned_table>");
 
 	/* various checks on each partition */
 	foreach (lc, prels)

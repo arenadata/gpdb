@@ -202,17 +202,8 @@ main(int argc, char **argv)
 	invalidate_indexes();
 
 	/*
-	 * vacuum freeze the database before restoring the ao segment tables
-	 * catalog data on segments. The catalog copied from the master indicates
-	 * that the files have 0 EOF and will not go further to open the files
-	 * in Prepare phase which will otherwise result in error as the physical
-	 * files are not yet copied from the old segment.
-	 */
-	freeze_all_databases();
-
-	/*
-	 * vacuum freeze is done prior to copying / linking the data. The xmin
-	 * of the tuples (yet to be copied/linked) for the user created tables can be
+	 * Since freeze_master_data() was executed on the copied master, the xmin of
+	 * the tuples (yet to be copied/linked) for the user created tables can be
 	 * lower than the relfrozenxid updated with vacuum freeze.
 	 * So, it's safe / better to update the relfrozenxid, relminmxid for the
 	 * relations using datfrozenxid which is the lowest available relfrozenxid
@@ -222,7 +213,7 @@ main(int argc, char **argv)
 	 * Otherwise, vacuuming those tables once data is copied/linked will error out.
 	 */
 	if (!is_greenplum_dispatcher_mode())
-		update_segment_db_xids();
+		update_db_xids();
 
 	/*
 	 * In a segment, the data directory already contains all the objects,
@@ -247,6 +238,22 @@ main(int argc, char **argv)
 
 	transfer_all_new_tablespaces(&old_cluster.dbarr, &new_cluster.dbarr,
 								 old_cluster.pgdata, new_cluster.pgdata);
+
+	/*
+	 * Tuples of gp_fastsequence are being upgraded using relfilenode transfer.
+	 * Freezing coordinator's data must happen after relfilenodes land. We also
+	 * need to fix the tuple's xmin to ensure they are lower than the
+	 * relfrozenxid. Otherwise subsequent vacuums may fail.
+	 */
+	if (is_greenplum_dispatcher_mode())
+	{
+		start_postmaster(&new_cluster, true);
+
+		update_db_xids();
+		freeze_master_data();
+
+		stop_postmaster(false);
+	}
 
 	/*
 	 * Assuming OIDs are only used in system tables, there is no need to
@@ -551,7 +558,6 @@ prepare_new_cluster(void)
 			  log_opts.verbose ? "--verbose" : "");
 	check_ok();
 
-	get_pg_database_relfilenode(&new_cluster);
 }
 
 
@@ -726,6 +732,13 @@ copy_clog_xlog_xid(void)
 {
 	/* copy old commit logs to new data dir */
 	copy_subdir_files("pg_clog");
+
+	prep_status("Setting oldest XID for new cluster");
+	exec_prog(UTILITY_LOG_FILE, NULL, true,
+			  true, "\"%s/pg_resetxlog\" --binary-upgrade -f -u %u \"%s\"",
+			  new_cluster.bindir, old_cluster.controldata.chkpnt_oldstxid,
+			  new_cluster.pgdata);
+	check_ok();
 
 	/* set the next transaction id and epoch of the new cluster */
 	prep_status("Setting next transaction ID and epoch for new cluster");

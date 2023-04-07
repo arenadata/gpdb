@@ -2259,7 +2259,7 @@ analyze ds_part;
 analyze non_part1;
 analyze non_part2;
 SELECT * FROM ds_part, non_part2 WHERE ds_part.c = non_part2.e AND non_part2.f = 10 AND a IN ( SELECT b + 1 FROM non_part1);
-explain SELECT * FROM ds_part, non_part2 WHERE ds_part.c = non_part2.e AND non_part2.f = 10 AND a IN ( SELECT b + 1 FROM non_part1);
+explain analyze SELECT * FROM ds_part, non_part2 WHERE ds_part.c = non_part2.e AND non_part2.f = 10 AND a IN ( SELECT b + 1 FROM non_part1);
 
 SELECT *, a IN ( SELECT b + 1 FROM non_part1) FROM ds_part, non_part2 WHERE ds_part.c = non_part2.e AND non_part2.f = 10 AND a IN ( SELECT b FROM non_part1);
 CREATE INDEX ds_idx ON ds_part(a);
@@ -3328,6 +3328,7 @@ explain select c from mix_func_cast();
 select a from mix_func_cast();
 select b from mix_func_cast();
 select c from mix_func_cast();
+
 -- the query with empty CTE producer target list should fall back to Postgres
 -- optimizer without any error on build without asserts
 drop table if exists empty_cte_tl_test;

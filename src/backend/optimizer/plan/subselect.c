@@ -41,8 +41,10 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbmutate.h"
+#include "cdb/cdbsetop.h"
 #include "cdb/cdbsubselect.h"
 #include "cdb/cdbvars.h"
+
 
 typedef struct convert_testexpr_context
 {
@@ -102,6 +104,9 @@ assign_param_for_var(PlannerInfo *root, Var *var)
 	ListCell   *ppl;
 	PlannerParamItem *pitem;
 	Index		levelsup;
+
+	/* check multi-level correlated subquery in GPDB planner */
+	check_multi_subquery_correlated(root, var);
 
 	/* Find the query level the Var belongs to */
 	for (levelsup = var->varlevelsup; levelsup > 0; levelsup--)
@@ -504,18 +509,53 @@ IsSubqueryCorrelated(Query *sq)
 	return (ctx.maxLevelsUpVar > 0 || ctx.maxLevelsUpPlaceHolderVar > 0);
 }
 
-/**
- * Returns true if subquery contains references to more than its immediate outer query.
+/*
+ * Check multi-level correlated subquery in Postgres legacy planner
+ *
+ * We could support one-level correlated subquery by adding
+ * broadcast + result(param filter). For multi-level scenario
+ * we should prevent planner from adding another motion above
+ * result node which is from one-level correlated subquery.
+ *
+ * In this function, firstly we find the top root which refer
+ * to Param, then check table distribution below current root
+ * Not support if any distributed table exist.
  */
-bool
-IsSubqueryMultiLevelCorrelated(Query *sq)
+void
+check_multi_subquery_correlated(PlannerInfo *root, Var *var)
 {
-	Assert(sq);
-	CorrelatedVarWalkerContext ctx;
-	ctx.maxLevelsUpVar = 0;
-	ctx.maxLevelsUpPlaceHolderVar = 0;
-	CorrelatedVarWalker((Node *) sq, &ctx);
-	return (ctx.maxLevelsUpVar > 1 || ctx.maxLevelsUpPlaceHolderVar > 1);
+	int levelsup;
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+	if (var->varlevelsup <= 1)
+		return;
+
+	if (list_length(root->parse->rtable) == 0)
+		return;
+
+	for (levelsup = var->varlevelsup; levelsup > 0; levelsup--)
+	{
+		PlannerInfo *parent_root = root->parent_root;
+
+		if (parent_root == NULL)
+			elog(ERROR, "not found parent root when checking skip-level correlations");
+
+		/*
+		 * Only check sublink not include subquery
+		 */
+		if(parent_root->parse->hasSubLinks &&
+			QueryHasDistributedRelation(root->parse, parent_root->is_correlated_subplan))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("correlated subquery with skip-level correlations is not supported")));
+		}
+
+		root = root->parent_root;
+	}
+
+	return;
 }
 
 /*
@@ -593,15 +633,6 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 
 	PlannerConfig *config = CopyPlannerConfig(root->config);
 
-	if ((Gp_role == GP_ROLE_DISPATCH)
-			&& IsSubqueryMultiLevelCorrelated(subquery)
-			&& QueryHasDistributedRelation(subquery, root->is_correlated_subplan))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("correlated subquery with skip-level correlations is not supported")));
-	}
-
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		config->is_under_subplan = true;
@@ -638,13 +669,19 @@ make_subplan(PlannerInfo *root, Query *orig_subquery, SubLinkType subLinkType,
 							&subroot,
 							config);
 
-	if ((plan->flow->locustype == CdbLocusType_SegmentGeneral ||
-		 plan->flow->locustype == CdbLocusType_General) &&
+	if (plan->flow->locustype == CdbLocusType_General &&
 		(contain_volatile_functions((Node *) plan->targetlist) ||
 		 contain_volatile_functions(subquery->havingQual)))
 	{
 		plan->flow->locustype = CdbLocusType_SingleQE;
 		plan->flow->flotype = FLOW_SINGLETON;
+	}
+
+	if (plan->flow->locustype == CdbLocusType_SegmentGeneral &&
+		(contain_volatile_functions((Node *) plan->targetlist) ||
+		 contain_volatile_functions(subquery->havingQual)))
+	{
+		plan = (Plan *) make_motion_gather(subroot, plan, NIL, CdbLocusType_SingleQE);
 	}
 
 	/* Isolate the params needed by this specific subplan */
@@ -1405,11 +1442,19 @@ convert_ANY_sublink_to_join(PlannerInfo *root, SubLink *sublink,
 	Assert(sublink->subLinkType == ANY_SUBLINK);
 	Assert(IsA(subselect, Query));
 
-	/*
-	 * If deeply correlated, then don't pull it up
-	 */
-	if (IsSubqueryMultiLevelCorrelated(subselect))
-		return NULL;
+	/* Delete ORDER BY and DISTINCT.
+	 *
+	 * There is no need to do the group-by or order-by inside the
+	 * subquery, if we have decided to pull up the sublink. For the
+	 * group-by case, after the sublink pull-up, there will be a semi-join
+	 * plan node generated in top level, which will weed out duplicate
+	 * tuples naturally. For the order-by case, after the sublink pull-up,
+	 * the subquery will become a jointree, inside which the tuples' order
+	 * doesn't matter. In a summary, it's safe to elimate the group-by or
+	 * order-by causes here.
+	*/
+	cdbsubselect_drop_orderby(subselect);
+	cdbsubselect_drop_distinct(subselect);
 
 	/*
 	 * If there are CTEs, then the transformation does not work. Don't attempt

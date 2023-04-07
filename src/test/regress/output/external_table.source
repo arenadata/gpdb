@@ -146,6 +146,39 @@ SELECT * FROM table_env WHERE val LIKE 'GP_QUERY%\%' ESCAPE '&' ORDER BY val ASC
  GP_QUERY_STRING=SELECT * FROM table_env WHERE val LIKE 'GP_QUERY%\%' ESCAPE '&' ORDER BY val ASC;
 (1 row)
 
+-- ensure squelching on master
+CREATE EXTERNAL WEB TABLE table_master (val TEXT)
+  EXECUTE E'cat @abs_srcdir@/data/lineitem.csv' ON MASTER
+  FORMAT 'TEXT' (ESCAPE 'OFF');
+BEGIN;
+DECLARE _psql_cursor NO SCROLL CURSOR FOR SELECT 1 FROM table_master;
+FETCH FORWARD 1 FROM _psql_cursor;
+ ?column? 
+----------
+        1
+(1 row)
+
+CLOSE _psql_cursor;
+COMMIT;
+-- ensure correct truncate error log according to database encoding
+CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ (echo -n ‘ && seq 1 500 | cut -b1 | tr -d '\n' && echo -n ’) >/dev/stderr && false $$ ON ALL FORMAT 'CSV';
+SELECT true FROM table_test;
+ERROR:  external table table_test command ended with error. ‘12345678911111111112222222222333333333344444444445555555555666666666677777777778888888888999999999911111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111112222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444445  (seg0 slice1 172.19.0.4:6434 pid=107133)
+DETAIL:  Command: execute: (echo -n ‘ && seq 1 500 | cut -b1 | tr -d '\n' && echo -n ’) >/dev/stderr && false
+DROP EXTERNAL TABLE IF EXISTS table_test;
+CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ (echo -n ‘ && seq 1 2006 | cut -b1 | tr -d '\n' && echo -n ’) >/dev/stderr && true $$ ON ALL FORMAT 'CSV';
+SELECT true FROM table_test;
+ bool 
+------
+(0 rows)
+
+SELECT logseverity FROM gp_toolkit.gp_log_system WHERE logmessage LIKE 'read err msg from pipe%' AND logdatabase = current_database() LIMIT 1;
+ logseverity 
+-------------
+ LOG
+(1 row)
+
+DROP EXTERNAL TABLE IF EXISTS table_test;
 -- echo will behave differently on different platforms, force to use bash with -E option
 CREATE EXTERNAL WEB TABLE table_qry (val TEXT)
   EXECUTE E'/usr/bin/env bash -c ''echo -E "$GP_QUERY_STRING"''' ON SEGMENT 0
@@ -342,6 +375,26 @@ ERROR:  must be superuser to create an external protocol
 CREATE TRUSTED PROTOCOL demoprot_non_superuser (readfunc = 'read_from_file', writefunc = 'write_to_file');
 ERROR:  must be superuser to create an external protocol
 RESET ROLE;
+-- Test pg_exttable's encoding: QE's encoding should be consistent with QD
+-- GitHub Issue #9727: https://github.com/greenplum-db/gpdb/issues/9727
+SET client_encoding = 'ISO-8859-1';
+CREATE EXTERNAL TABLE issue_9727 (d varchar(20)) location ('gpfdist://9727/d.dat') format 'csv' (DELIMITER '|');
+SELECT encoding from pg_exttable where urilocation='{gpfdist://9727:8080/d.dat}';
+ encoding 
+----------
+        6
+(1 row)
+
+SELECT encoding from gp_dist_random('pg_exttable') where urilocation='{gpfdist://9727:8080/d.dat}';
+ encoding 
+----------
+        6
+        6
+        6
+(3 rows)
+
+DROP EXTERNAL TABLE issue_9727;
+RESET client_encoding;
 --
 -- WET tests
 --

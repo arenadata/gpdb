@@ -170,6 +170,10 @@ open_ds_write(Relation rel, DatumStreamWrite **ds, TupleDesc relationTupleDesc,
 										XLogIsNeeded() && RelationNeedsWAL(rel));
 
 	}
+
+	for (int i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+			pfree(opts[i]);
+	pfree(opts);
 }
 
 /*
@@ -230,6 +234,10 @@ open_ds_read(Relation rel, DatumStreamRead **ds, TupleDesc relationTupleDesc,
 										   RelationGetRelationName(rel),
 										    /* title */ titleBuf.data);
 	}
+
+	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+			pfree(opts[i]);
+	pfree(opts);
 }
 
 static void
@@ -509,11 +517,35 @@ aocs_beginscan_internal(Relation relation,
 	return scan;
 }
 
+/* ----------------
+ *		aocs_afterscan	- perform after scan actions
+ *
+ * Release some structures, which is safe to free after initial scan, but
+ * before rescan.
+ * ----------------
+ */
+void
+aocs_afterscan(AOCSScanDesc scan)
+{
+	int			nvp = scan->relationTupleDesc->natts;
+	int			i;
+
+	if (scan->cur_seg >= 0)
+	{
+		for (i = 0; i < nvp; ++i)
+		{
+			if (scan->ds[i])
+				datumstreamread_close_file(scan->ds[i]);
+		}
+	}
+
+	close_ds_read(scan->ds, scan->relationTupleDesc->natts);
+}
+
 void
 aocs_rescan(AOCSScanDesc scan)
 {
-	close_cur_scan_seg(scan);
-	close_ds_read(scan->ds, scan->relationTupleDesc->natts);
+	aocs_afterscan(scan);
 	aocs_initscan(scan);
 }
 
@@ -528,7 +560,9 @@ aocs_endscan(AOCSScanDesc scan)
 	close_ds_read(scan->ds, scan->relationTupleDesc->natts);
 
 	pfree(scan->proj_atts);
+	scan->proj_atts = NULL;
 	pfree(scan->ds);
+	scan->ds = NULL;
 
 	for (i = 0; i < scan->total_seg; ++i)
 	{
@@ -539,7 +573,10 @@ aocs_endscan(AOCSScanDesc scan)
 		}
 	}
 	if (scan->seginfo)
+	{
 		pfree(scan->seginfo);
+		scan->seginfo = NULL;
+	}
 
 	AppendOnlyVisimap_Finish(&scan->visibilityMap, AccessShareLock);
 
@@ -1530,7 +1567,9 @@ aocs_fetch_finish(AOCSFetchDesc aocsFetchDesc)
 			Assert(datumStreamFetchDesc->datumStream != NULL);
 			datumstreamread_close_file(datumStreamFetchDesc->datumStream);
 			destroy_datumstreamread(datumStreamFetchDesc->datumStream);
+			datumStreamFetchDesc->datumStream = NULL;
 			pfree(datumStreamFetchDesc);
+			aocsFetchDesc->datumStreamFetchDesc[colno] = NULL;
 		}
 	}
 	pfree(aocsFetchDesc->datumStreamFetchDesc);
@@ -1758,6 +1797,11 @@ aocs_begin_headerscan(Relation rel, int colno)
 							   "ALTER TABLE ADD COLUMN scan",
 							   &ao_attr);
 	hdesc->colno = colno;
+
+	for (int i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+		pfree(opts[i]);
+	pfree(opts);
+
 	return hdesc;
 }
 
@@ -1845,6 +1889,11 @@ aocs_addcol_init(Relation rel,
 											   titleBuf.data,
 											   XLogIsNeeded() && RelationNeedsWAL(rel));
 	}
+
+	for (i = 0; i < RelationGetNumberOfAttributes(rel); i++)
+			pfree(opts[i]);
+	pfree(opts);
+
 	return desc;
 }
 
@@ -2028,6 +2077,7 @@ aocs_addcol_finish(AOCSAddColumnDesc desc)
 	for (i = 0; i < desc->num_newcols; ++i)
 		destroy_datumstreamwrite(desc->dsw[i]);
 	pfree(desc->dsw);
+	desc->dsw = NULL;
 
 	pfree(desc);
 }

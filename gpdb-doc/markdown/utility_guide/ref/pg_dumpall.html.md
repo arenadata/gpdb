@@ -14,7 +14,7 @@ pg_dumpall -V | --version
 
 ## <a id="section3"></a>Description 
 
-`pg_dumpall` is a standard PostgreSQL utility for backing up all databases in a Greenplum Database \(or PostgreSQL\) instance, and is also supported in Greenplum Database. It creates a single \(non-parallel\) dump file. For routine backups of Greenplum Database it is better to use the Greenplum Database backup utility, [gpbackup](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Backup-and-Restore/index.html), for the best performance.
+`pg_dumpall` is a standard PostgreSQL utility for backing up all databases in a Greenplum Database \(or PostgreSQL\) instance, and is also supported in Greenplum Database. It creates a single \(non-parallel\) dump file. For routine backups of Greenplum Database it is better to use the Greenplum Database backup utility, [gpbackup](https://docs.vmware.com/en/VMware-Greenplum-Backup-and-Restore/index.html), for the best performance.
 
 `pg_dumpall` creates a single script file that contains SQL commands that can be used as input to [psql](psql.html) to restore the databases. It does this by calling [pg\_dump](pg_dump.html) for each database. `pg_dumpall` also dumps global objects that are common to all databases. \(`pg_dump` does not save these objects.\) This currently includes information about database users and groups, and access permissions that apply to databases as a whole.
 
@@ -53,9 +53,9 @@ The SQL script will be written to the standard output. Use the `[-f | --file]` o
 :   Dump only the object definitions \(schema\), not data.
 
 -S username \| --superuser=username
-:   Specify the superuser user name to use when disabling triggers. This is relevant only if `--disable-triggers` is used. It is better to leave this out, and instead start the resulting script as a superuser.
+:   Specify the superuser user name to use when deactivating triggers. This is relevant only if `--disable-triggers` is used. It is better to leave this out, and instead start the resulting script as a superuser.
 
-    **Note:** Greenplum Database does not support user-defined triggers.
+    > **Note** Greenplum Database does not support user-defined triggers.
 
 -t \| --tablespaces-only
 :   Dump only tablespaces, not databases or roles.
@@ -76,12 +76,12 @@ The SQL script will be written to the standard output. Use the `[-f | --file]` o
 :   Dump data as `INSERT` commands with explicit column names \(`INSERT INTO <table> (<column>, ...) VALUES ...`\). This will make restoration very slow; it is mainly useful for making dumps that can be loaded into non-PostgreSQL-based databases. Also, since this option generates a separate command for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents.
 
 --disable-dollar-quoting
-:   This option disables the use of dollar quoting for function bodies, and forces them to be quoted using SQL standard string syntax.
+:   This option deactivates the use of dollar quoting for function bodies, and forces them to be quoted using SQL standard string syntax.
 
 --disable-triggers
-:   This option is relevant only when creating a data-only dump. It instructs `pg_dumpall` to include commands to temporarily disable triggers on the target tables while the data is reloaded. Use this if you have triggers on the tables that you do not want to invoke during data reload. The commands emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with `-S`, or preferably be careful to start the resulting script as a superuser.
+:   This option is relevant only when creating a data-only dump. It instructs `pg_dumpall` to include commands to temporarily deactivate triggers on the target tables while the data is reloaded. Use this if you have triggers on the tables that you do not want to invoke during data reload. The commands emitted for `--disable-triggers` must be done as superuser. So, you should also specify a superuser name with `-S`, or preferably be careful to start the resulting script as a superuser.
 
-    **Note:** Greenplum Database does not support user-defined triggers.
+    > **Note** Greenplum Database does not support user-defined triggers.
 
 --inserts
 :   Dump data as `INSERT` commands \(rather than `COPY`\). This will make restoration very slow; it is mainly useful for making dumps that can be loaded into non-PostgreSQL-based databases. Also, since this option generates a separate command for each row, an error in reloading a row causes only that row to be lost rather than the entire table contents. Note that the restore may fail altogether if you have rearranged column order. The `--column-inserts` option is safe against column order changes, though even slower.

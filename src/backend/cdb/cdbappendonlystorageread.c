@@ -28,7 +28,7 @@
 #include "cdb/cdbappendonlystorageread.h"
 #include "storage/gp_compress.h"
 #include "utils/guc.h"
-
+#include "utils/faultinjector.h"
 
 /*----------------------------------------------------------------
  * Initialization
@@ -238,7 +238,7 @@ AppendOnlyStorageRead_DoOpenFile(AppendOnlyStorageRead *storageRead,
 	elogif(Debug_appendonly_print_read_block, LOG,
 		   "Append-Only storage read: opening table '%s', segment file '%s', fileFlags 0x%x, fileMode 0x%x",
 		   storageRead->relationName,
-		   storageRead->segmentFileName,
+		   filePathName,
 		   fileFlags,
 		   fileMode);
 
@@ -1023,6 +1023,8 @@ AppendOnlyStorageRead_ReadNextBlock(AppendOnlyStorageRead *storageRead)
 	{
 		/* UNDONE: Finish the read for the information only header. */
 	}
+
+	SIMPLE_FAULT_INJECTOR("AppendOnlyStorageRead_ReadNextBlock_success");
 
 	return true;
 }

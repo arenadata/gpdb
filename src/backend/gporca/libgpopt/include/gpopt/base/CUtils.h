@@ -22,6 +22,7 @@
 #include "gpopt/operators/CScalarArrayCmp.h"
 #include "gpopt/operators/CScalarBoolOp.h"
 #include "gpopt/operators/CScalarConst.h"
+#include "gpopt/operators/CScalarProjectElement.h"
 #include "gpopt/xforms/CXform.h"
 
 // fwd declarations
@@ -362,6 +363,11 @@ public:
 	// check if the aggregate is local or global
 	static BOOL FHasGlobalAggFunc(const CExpression *pexprProjList);
 
+	// check if given project list has only aggregate functions
+	// that can be safely executed on replicated slices
+	static BOOL FContainsOnlyReplicationSafeAggFuncs(
+		const CExpression *pexprProjList);
+
 	// generate a bool expression
 	static CExpression *PexprScalarConstBool(CMemoryPool *mp, BOOL value,
 											 BOOL is_null = false);
@@ -700,6 +706,15 @@ public:
 	// returns true if the subquery is a ScalarSubqueryAny
 	static BOOL FAnySubquery(COperator *pop);
 
+	// returns true if the subquery is a ScalarSubqueryExists
+	static BOOL FExistsSubquery(COperator *pop);
+
+	// returns true if the expression is a correlated EXISTS/ANY subquery
+	static BOOL FCorrelatedExistsAnySubquery(CExpression *pexpr);
+
+	static CScalarProjectElement *PNthProjectElement(CExpression *pexpr,
+													 ULONG ul);
+
 	// returns the expression under the Nth project element of a CLogicalProject
 	static CExpression *PNthProjectElementExpr(CExpression *pexpr, ULONG ul);
 
@@ -957,9 +972,6 @@ public:
 	static CExpression *PexprLimit(CMemoryPool *mp, CExpression *pexpr,
 								   ULONG ulOffSet, ULONG count);
 
-	// generate part oid
-	static BOOL FGeneratePartOid(IMDId *mdid);
-
 	// return true if given expression contains window aggregate function
 	static BOOL FHasAggWindowFunc(CExpression *pexpr);
 
@@ -1011,11 +1023,14 @@ public:
 	static BOOL FScalarConstBoolNull(CExpression *pexpr);
 
 	// hash set from CTE ids
-	typedef CHashSet<ULONG, gpos::HashValue<ULONG>, gpos::Equals<ULONG>, CleanupDelete<ULONG> >
+	typedef CHashSet<ULONG, gpos::HashValue<ULONG>, gpos::Equals<ULONG>,
+					 CleanupDelete<ULONG> >
 		UlongCteIdHashSet;
 
-	static void CollectConsumersAndProducers(CMemoryPool *mp, CExpression *pexpr,
-		ULongPtrArray *cteConsumers, UlongCteIdHashSet *cteProducerSet);
+	static void CollectConsumersAndProducers(CMemoryPool *mp,
+											 CExpression *pexpr,
+											 ULongPtrArray *cteConsumers,
+											 UlongCteIdHashSet *cteProducerSet);
 
 	static BOOL hasUnpairedCTEConsumer(CMemoryPool *mp, CExpression *pexpr);
 };	// class CUtils

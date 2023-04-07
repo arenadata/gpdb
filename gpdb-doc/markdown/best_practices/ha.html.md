@@ -99,14 +99,14 @@ Finally, through native API integration, Greenplum Database can stream backups d
 
 -   Back up Greenplum databases regularly unless the data is easily restored from sources.
 
--   Use the `gpbackup` command to specify only the schema and tables that you want backed up. See the [gpbackup](https://docs.vmware.com/en/VMware-Tanzu-Greenplum-Backup-and-Restore/index.html) reference for more information.
+-   Use the `gpbackup` command to specify only the schema and tables that you want backed up. See the [gpbackup](https://docs.vmware.com/en/VMware-Greenplum-Backup-and-Restore/index.html) reference for more information.
 
 -   `gpbackup` places `SHARED ACCESS` locks on the set of tables to back up. Backups with fewer tables are more efficient for selectively restoring schemas and tables, since `gprestore` does not have to search through the entire database.
 
 -   If backups are saved to local cluster storage, move the files to a safe, off-cluster location when the backup is complete. Backup files and database files that reside on the same storage can be lost simultaneously.
 -   If backups are saved to NFS mounts, use a scale-out NFS solution such as Dell EMC Isilon to prevent IO bottlenecks.
 
--   Tanzuy Greenplum customers should consider streaming backups to the Dell EMC Data Domain enterprise backup platform.
+-   VMware Greenplum customers should consider streaming backups to the Dell EMC Data Domain enterprise backup platform.
 
 ## <a id="topic_wlw_wxc_54"></a>Detecting Failed Master and Segment Instances 
 
@@ -131,7 +131,7 @@ The Greenplum Database server `ftsprobe` subprocess handles fault detection. `ft
 -   [gprecoverseg](../utility_guide/ref/gprecoverseg.html) - recover a failed segment
 -   [gpactivatestandby](../utility_guide/ref/gpactivatestandby.html) - make the standby master the active master
 
-[RDBMS MIB Specification](http://tools.ietf.org/html/rfc1697)
+[RDBMS MIB Specification](https://datatracker.ietf.org/doc/html/rfc1697)
 
 ## <a id="topic_ngz_qf4_tt"></a>Segment Mirroring Configurations 
 
@@ -164,7 +164,7 @@ Group mirroring is easiest to set up and is the default Greenplum mirroring conf
 
 The following diagram shows a group mirroring configuration with eight primary segments on four hosts.
 
-![](graphics/group-mirrors.png)
+![Group mirroring configuration](graphics/group-mirrors.png)
 
 Unless both the primary and mirror of the same segment instance fail, up to half of your hosts can fail and the cluster will continue to run as long as resources \(CPU, memory, and IO\) are sufficient to meet the needs.
 
@@ -176,7 +176,7 @@ With spread mirroring, mirrors for each host's primary segments are spread acros
 
 The following diagram shows the spread mirroring configuration for a cluster with three primaries on four hosts.
 
-![](graphics/spread-mirrors.png)
+![Spread mirroring configuration](graphics/spread-mirrors.png)
 
 Expanding a cluster with spread mirroring requires more planning and may take more time. You must either add a set of hosts equal to the number of primaries per host plus one, or you can add two nodes in a group mirroring configuration and, when the expansion is complete, move mirrors to recreate the spread mirror configuration.
 
@@ -188,7 +188,7 @@ With block mirroring, nodes are divided into blocks, for example a block of four
 
 The following diagram shows a single block mirroring configuration for a block of four hosts, each with eight primary segments:
 
-![](graphics/block-mirrors-4x8.png)
+![Block mirroring configuration](graphics/block-mirrors-4x8.png)
 
 If there are eight hosts, an additional four-host block is added with the mirrors for primary segments 32 through 63 set up in the same pattern.
 

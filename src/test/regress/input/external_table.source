@@ -89,6 +89,7 @@ DROP EXTERNAL TABLE IF EXISTS exttab_udfs_1;
 DROP EXTERNAL TABLE IF EXISTS exttab_udfs_2;
 DROP EXTERNAL TABLE IF EXISTS exttab_views_3;
 DROP EXTERNAL WEB TABLE IF EXISTS table_env;
+DROP EXTERNAL WEB TABLE IF EXISTS table_master;
 DROP EXTERNAL WEB TABLE IF EXISTS table_qry;
 
 DROP VIEW IF EXISTS exttab_views_3;
@@ -119,6 +120,25 @@ CREATE EXTERNAL WEB TABLE table_env (val TEXT)
   FORMAT 'TEXT' (ESCAPE 'OFF');
 SELECT * FROM table_env WHERE val LIKE 'GP_QUERY%' ORDER BY val ASC;
 SELECT * FROM table_env WHERE val LIKE 'GP_QUERY%\%' ESCAPE '&' ORDER BY val ASC;
+
+-- ensure squelching on master
+CREATE EXTERNAL WEB TABLE table_master (val TEXT)
+  EXECUTE E'cat @abs_srcdir@/data/lineitem.csv' ON MASTER
+  FORMAT 'TEXT' (ESCAPE 'OFF');
+BEGIN;
+DECLARE _psql_cursor NO SCROLL CURSOR FOR SELECT 1 FROM table_master;
+FETCH FORWARD 1 FROM _psql_cursor;
+CLOSE _psql_cursor;
+COMMIT;
+
+-- ensure correct truncate error log according to database encoding
+CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ (echo -n ‘ && seq 1 500 | cut -b1 | tr -d '\n' && echo -n ’) >/dev/stderr && false $$ ON ALL FORMAT 'CSV';
+SELECT true FROM table_test;
+DROP EXTERNAL TABLE IF EXISTS table_test;
+CREATE EXTERNAL WEB TABLE table_test (text text) EXECUTE $$ (echo -n ‘ && seq 1 2006 | cut -b1 | tr -d '\n' && echo -n ’) >/dev/stderr && true $$ ON ALL FORMAT 'CSV';
+SELECT true FROM table_test;
+SELECT logseverity FROM gp_toolkit.gp_log_system WHERE logmessage LIKE 'read err msg from pipe%' AND logdatabase = current_database() LIMIT 1;
+DROP EXTERNAL TABLE IF EXISTS table_test;
 
 -- echo will behave differently on different platforms, force to use bash with -E option
 CREATE EXTERNAL WEB TABLE table_qry (val TEXT)
@@ -263,6 +283,15 @@ SET ROLE extprot_non_superuser;
 CREATE PROTOCOL demoprot_non_superuser (readfunc = 'read_from_file', writefunc = 'write_to_file');
 CREATE TRUSTED PROTOCOL demoprot_non_superuser (readfunc = 'read_from_file', writefunc = 'write_to_file');
 RESET ROLE;
+
+-- Test pg_exttable's encoding: QE's encoding should be consistent with QD
+-- GitHub Issue #9727: https://github.com/greenplum-db/gpdb/issues/9727
+SET client_encoding = 'ISO-8859-1';
+CREATE EXTERNAL TABLE issue_9727 (d varchar(20)) location ('gpfdist://9727/d.dat') format 'csv' (DELIMITER '|');
+SELECT encoding from pg_exttable where urilocation='{gpfdist://9727:8080/d.dat}';
+SELECT encoding from gp_dist_random('pg_exttable') where urilocation='{gpfdist://9727:8080/d.dat}';
+DROP EXTERNAL TABLE issue_9727;
+RESET client_encoding;
 
 --
 -- WET tests

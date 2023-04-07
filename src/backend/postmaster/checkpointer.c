@@ -58,7 +58,8 @@
 #include "storage/proc.h"
 #include "storage/shmem.h"
 #include "storage/smgr.h"
-#include "storage/spin.h"
+#include "storage/lmgr.h"
+#include "storage/md.h"
 #include "tcop/tcopprot.h"
 #include "utils/faultinjector.h"
 #include "utils/guc.h"
@@ -405,6 +406,9 @@ CheckpointerMain(void)
 			GetMdCxtStat(&nBlocks, &nChunks, &currentAvailable, &allAllocated, &allFreed, &maxHeld);
 			prevAvailable = currentAvailable;
 		}
+
+		if (SIMPLE_FAULT_INJECTOR("ckpt_loop_begin") == FaultInjectorTypeInfiniteLoop)
+			do_checkpoint = true;
 #endif
 		/*
 		 * Process any requests or signals received recently.
@@ -610,6 +614,8 @@ CheckpointerMain(void)
 		 * stats message types.)
 		 */
 		pgstat_send_bgwriter();
+
+		SIMPLE_FAULT_INJECTOR("ckpt_loop_end");
 
 		/*
 		 * Sleep until we are signaled or it's time for another checkpoint or

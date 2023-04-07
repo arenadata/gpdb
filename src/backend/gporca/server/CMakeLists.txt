@@ -72,7 +72,9 @@ NLJ-DistCol-No-Broadcast NLJ-EqAllCol-No-Broadcast NLJ-EqDistCol-InEqNonDistCol-
 NLJ-InEqDistCol-EqNonDistCol-Redistribute CorrelatedNLJWithTrueCondition InferPredicatesInnerOfLOJ
 InferredPredicatesConstraintSimplification NoPushdownPredicateWithCTEAnchor
 InferPredicatesForPartSQ InferPredicatesForQuantifiedSQ DoubleNDVCardinalityEquals
-NotWellDefinedDisjunctConjunctPredicates;
+NotWellDefinedDisjunctConjunctPredicates InferPredicatesIntFromSubquery InferPredicatesFromExistsSubquery
+InferPredicatesIntFromExistsSubquery InferPredicatesFromMultiSubquery InferPredicatesMultiColumns
+InferPredicatesJoinSubquery;
 
 CLikeIDFTest:
 LIKE-Pattern-green LIKE-Pattern-green-2 LIKE-Pattern-Empty Nested-Or-Predicates Join-IDF
@@ -160,7 +162,10 @@ NLJ-Rewindability-CTAS */;
 
 CJoinPredTest:
 MultipleDampedPredJoinCardinality MultipleIndependentPredJoinCardinality MultiDistKeyJoinCardinality
-MultiDistKeyWithOtherPredsJoinCardinality NoDistKeyMultiPredJoinCardinality OneDistKeyMultiPredJoinCardinality;
+MultiDistKeyWithOtherPredsJoinCardinality NoDistKeyMultiPredJoinCardinality OneDistKeyMultiPredJoinCardinality
+JoinOnViewWithCastedColumn JoinOnViewWithCastedColumnAndSubqueryInPredicate JoinOnViewWithVolatileColumn
+JoinOnViewWithMixOfPushableAndNonpushablePredicates JoinOnViewWithSetReturningColumn OuterJoinOnViewWithCastedColumn JoinWithSubqueryProjectColumn
+AggSubqCollapseFalseFilter NestedJoinWithCastedColumn;
 
 CArrayCmpTest:
 ArrayConcat ArrayRef FoldedArrayCmp IN-ArrayCmp NOT-IN-ArrayCmp ArrayCmpAll
@@ -260,7 +265,8 @@ COuterJoin1Test:
 ExpandNAryJoinGreedyWithLOJOnly NaryWithLojAndNonLojChilds LOJ_bb_mpph LOJ-Condition-False
 LeftJoin-With-Pred-On-Inner LeftJoin-With-Pred-On-Inner2
 LeftJoin-With-Col-Const-Pred LeftJoin-With-Coalesce LOJWithFalsePred LeftJoin-DPv2-With-Select
-DPv2GreedyOnly DPv2MinCardOnly DPv2QueryOnly LOJ-PushDown LeftJoinDPv2JoinOrder;
+DPv2GreedyOnly DPv2MinCardOnly DPv2QueryOnly LOJ-PushDown LeftJoinDPv2JoinOrder
+LeftJoinNullsNotColocated InnerJoinBroadcastTableHashSpec LeftJoinBroadcastTableHashSpec InnerJoinReplicatedTableHashSpec;
 
 COuterJoin2Test:
 LOJ-IsNullPred Select-Proj-OuterJoin OuterJoin-With-OuterRefs Join-Disj-Subqs
@@ -326,7 +332,7 @@ ReplicatedTableInClause ReplicatedTableSequenceInsert;
 
 CTaintedReplicatedTest:
 InsertNonSingleton NonSingleton TaintedReplicatedAgg TaintedReplicatedWindowAgg TaintedReplicatedLimit TaintedReplicatedFilter
-InsertReplicatedIntoSerialHashDistributedTable;
+InsertReplicatedIntoSerialHashDistributedTable TaintedReplicatedTablesCTE ReplicatedTableWithAggNoMotion;
 
 CDqaTest:
 NonSplittableAgg DqaHavingMax DqaMax DqaMin DqaSubqueryMax DqaNoRedistribute DqaAddRef;
@@ -348,13 +354,13 @@ Subq2PartialDecorrelate Subq2CorrSQInLOJOn Subq2NotInWhereLOJ Subq2OuterRef2InJo
 Index-Join-With-Subquery-In-Pred NestedSubqLimitBindings;
 
 CIndexOnlyScanTest:
-IndexOnlyScan-NoDistKeyInIndex;
+IndexOnlyScan-NoDistKeyInIndex IndexConstraintsMDidCache;
 
 CRightJoinTest:
 RightJoinHashed RightJoinRedistribute RightJoinReplicated RightJoinBothReplicated RightJoinDPS RightJoinNoDPSNonDistKey RightJoinTVF;
 
 CSqlFunctionTest:
-SqlFuncNullReject SqlFuncPredFactorize SqlFuncDmlScalar SqlFuncDmlTvf;
+SqlFuncNullReject SqlFuncPredFactorize SqlFuncDmlScalar SqlFuncDmlTvf CompositeTypeRelMdId;
 
 CScalarFuncPushDownTest:
 ScalarFuncPushedBelowGather ConstScalarFuncNotPushedBelowGather;
@@ -363,6 +369,7 @@ COrderedAggTest:
 CTAS_OrderedAgg_multiple_cols OrderedAgg_multiple_diffcol OrderedAgg_with_groupby OrderedAgg_computed_col
 OrderedAggUsingGroupColumnInDirectArg OrderedAgg_multiple_samecol OrderedAgg_with_nonOrderedAgg OrderedAgg_single
 OrderedAgg_array_fraction OrderedAgg_multiple_samecol_difforderespec OrderedAgg_with_nonconst_fraction
+OrderedAgg_skewed_data
 ")
 
 set(mdp_dir "../data/dxl/minidump/")
@@ -509,6 +516,7 @@ add_orca_test(CBindingTest)
 add_orca_test(CEngineTest)
 add_orca_test(CEquivalenceClassesTest)
 add_orca_test(CExpressionTest)
+add_orca_test(CGroupTest)
 add_orca_test(CJoinOrderTest)
 add_orca_test(CKeyCollectionTest)
 add_orca_test(CMaxCardTest)

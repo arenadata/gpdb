@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/xact.h"
@@ -71,6 +72,56 @@ add_type_encoding(Oid typid, Datum typoptions)
 	CatalogUpdateIndexes(pg_type_encoding_desc, tuple);
 
 	heap_close(pg_type_encoding_desc, RowExclusiveLock);
+}
+
+/*
+ * Update the type encoding for typid.
+ * If no entry for typid, create one.
+ */
+void
+update_type_encoding(Oid typid, Datum typoptions)
+{
+	Relation 	pgtypeenc;
+	ScanKeyData 	scankey;
+	SysScanDesc 	scan;
+	HeapTuple	tup;
+
+	/* SELECT * FROM pg_type_encoding WHERE typid = :1 FOR UPDATE */
+	pgtypeenc = heap_open(TypeEncodingRelationId, RowExclusiveLock);
+	ScanKeyInit(&scankey, Anum_pg_type_encoding_typid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(typid));
+	scan = systable_beginscan(pgtypeenc, TypeEncodingTypidIndexId, true,
+							  NULL, 1, &scankey);
+
+	tup = systable_getnext(scan);
+	if (HeapTupleIsValid(tup))
+	{
+		/* update case */
+		Datum values[Natts_pg_type_encoding];
+		bool nulls[Natts_pg_type_encoding];
+		bool replaces[Natts_pg_type_encoding];
+		HeapTuple newtuple;
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(replaces, false, sizeof(replaces));
+
+		replaces[Anum_pg_type_encoding_typoptions - 1] = true;
+		values[Anum_pg_type_encoding_typoptions - 1] = typoptions;
+
+		newtuple = heap_modify_tuple(tup, RelationGetDescr(pgtypeenc),
+									 values, nulls, replaces);
+
+		simple_heap_update(pgtypeenc, &tup->t_self, newtuple);
+		CatalogUpdateIndexes(pgtypeenc, newtuple);
+	}
+	else
+	{
+		add_type_encoding(typid, typoptions);
+	}
+	systable_endscan(scan);
+	heap_close(pgtypeenc, NoLock);
 }
 
 /* ----------------------------------------------------------------
@@ -595,10 +646,9 @@ TypeCreate(Oid newTypeOid,
  * If rebuild is true, we remove existing dependencies and rebuild them
  * from scratch.  This is needed for ALTER TYPE, and also when replacing
  * a shell type.  We don't remove an existing extension dependency, though.
- * (That means an extension can't absorb a shell type created in another
- * extension, nor ALTER a type created by another extension.  Also, if it
- * replaces a free-standing shell type or ALTERs a free-standing type,
- * that type will become a member of the extension.)
+ * That means an extension can't absorb a shell type that is free-standing
+ * or belongs to another extension, nor ALTER a type that is free-standing or
+ * belongs to another extension.
  */
 void
 GenerateTypeDependencies(Oid typeObjectId,

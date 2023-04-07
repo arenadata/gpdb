@@ -133,7 +133,7 @@ psql [<option> ...] [<dbname> [<username>]]
 -w --no-password
 :   Never issue a password prompt. If the server requires password authentication and a password is not available by other means such as a .pgpass file, the connection attempt will fail. This option can be useful in batch jobs and scripts where no user is present to enter a password.
 
-:   **Note:** This option remains set for the entire session, and so it affects uses of the meta-command `\connect` as well as the initial connection attempt.
+:   > **Note** This option remains set for the entire session, and so it affects uses of the meta-command `\connect` as well as the initial connection attempt.
 
 ## <a id="section6"></a>Exit Status 
 
@@ -250,7 +250,7 @@ The following meta-commands are defined:
         <br/><br/>For append-optimized tables and column-oriented tables, `\d+` displays the storage options for a table. For append-optimized tables, the options are displayed for the table. For column-oriented tables, storage options are displayed for each column.
 
     -   By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects.
-        <br/><br/>**Note:** If `\d` is used without a pattern argument, it is equivalent to `\dtvmsE` which will show a list of all visible tables, views, materialized views, sequences, and foreign tables.
+        <br/><br/>> **Note** If `\d` is used without a pattern argument, it is equivalent to `\dtvmsE` which will show a list of all visible tables, views, materialized views, sequences, and foreign tables.
 
 
 \\da\[S\] \[aggregate\_pattern\]
@@ -317,7 +317,7 @@ The following meta-commands are defined:
 
 \\dl
 :   This is an alias for `\lo_list`, which shows a list of large objects.
-    <br/><br/>**Note:** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
+    <br/><br/>> **Note** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
 
 \\dL\[S+\] \[pattern\]
 :   Lists procedural languages. If a pattern is specified, only languages whose names match the pattern are listed. By default, only user-created languages are shown; supply the `S` modifier to include system objects. If `+` is appended to the command name, each language is listed with its call handler, validator, access privileges, and whether it is a system object.
@@ -354,7 +354,7 @@ The following meta-commands are defined:
 \\dy\[+\] \[pattern\]
 :   Lists event triggers. If a pattern is specified, only those triggers whose names match the pattern are listed. If `+` is appended to the command name, each object is listed with its associated description.
 
-    **Note:** Greenplum Database does not support user-defined triggers.
+    > **Note** Greenplum Database does not support user-defined triggers.
 
 \\e \| \\edit \[filename\] \[line\_number\]
 :   If filename is specified, the file is edited; after the editor exits, its content is copied back to the query buffer. If no filename is given, the current query buffer is copied to a temporary file which is then edited in the same fashion.
@@ -368,7 +368,7 @@ The following meta-commands are defined:
 \\echo text \[ ... \]
 :   Prints the arguments to the standard output, separated by one space and followed by a newline. This can be useful to intersperse information in the output of scripts. If the first argument is an unquoted `-n`, the trailing newline is not written.
 
-    **Note:** If you use the `\o` command to redirect your query output you might wish to use `\qecho` instead of this command.
+    > **Note** If you use the `\o` command to redirect your query output you might wish to use `\qecho` instead of this command.
 
 \\ef \[function\_description \[line\_number\]\]
 :   This command fetches and edits the definition of the named function, in the form of a `CREATE OR REPLACE FUNCTION` command. Editing is done in the same way as for `\edit`. After the editor exits, the updated command waits in the query buffer; type semicolon or `\g` to send it, or `\r` to cancel.
@@ -439,7 +439,7 @@ The following meta-commands are defined:
 \\lo\_export loid filename
 :   Reads the large object with OID loid from the database and writes it to filename. Note that this is subtly different from the server function `lo_export`, which acts with the permissions of the user that the database server runs as and on the server's file system. Use `\lo_list` to find out the large object's OID.
 
-    **Note:** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
+    > **Note** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
 
 \\lo\_import large\_object\_filename \[comment\]
 :   Stores the file into a large object. Optionally, it associates the given comment with the object. Example:
@@ -452,17 +452,17 @@ lo_import 152801
 
 The response indicates that the large object received object ID 152801 which one ought to remember if one wants to access the object ever again. For that reason it is recommended to always associate a human-readable comment with every object. Those can then be seen with the `\lo_list` command. Note that this command is subtly different from the server-side `lo_import` because it acts as the local user on the local file system, rather than the server's user and file system.
 
-**Note:** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
+> **Note** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
 
 \\lo\_list
 :   Shows a list of all large objects currently stored in the database, along with any comments provided for them.
 
-    **Note:** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
+    > **Note** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
 
 \\lo\_unlink largeobject\_oid
 :   Deletes the large object of the specified OID from the database. Use `\lo_list` to find out the large object's OID.
 
-    **Note:** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
+    > **Note** Greenplum Database does not support the PostgreSQL [large object facility](https://www.postgresql.org/docs/9.4/largeobjects.html) for streaming user data that is stored in large-object structures.
 
 \\o \| \\out \[ filename \]
 \\o \| \\out \[ `|` command \]
@@ -490,10 +490,10 @@ The response indicates that the large object received object ID 152801 which one
     -   **`columns`** – Sets the target width for the `wrapped` format, and also the width limit for determining whether output is wide enough to require the pager or switch to the vertical display in expanded auto mode. The default is zero. Zero causes the target width to be controlled by the environment variable `COLUMNS`, or the detected screen width if `COLUMNS` is not set. In addition, if `columns` is zero then the wrapped format affects screen output only. If columns is nonzero then file and pipe output is wrapped to that width as well.
         <br/><br/>After setting the target width, use the command `\pset format wrapped` to enable the wrapped format.
 
-    -   **`expanded`** \| **`x`** – If value is specified it must be either `on` or `off`, which will enable or disable expanded mode, or `auto`. If value is omitted the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns, with the column name on the left and the data on the right. This mode is useful if the data wouldn't fit on the screen in the normal "horizontal" mode. In the `auto` setting, the expanded mode is used whenever the query output is wider than the screen, otherwise the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
+    -   **`expanded`** \| **`x`** – If value is specified it must be either `on` or `off`, which will activate or deactivate expanded mode, or `auto`. If value is omitted the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns, with the column name on the left and the data on the right. This mode is useful if the data wouldn't fit on the screen in the normal "horizontal" mode. In the `auto` setting, the expanded mode is used whenever the query output is wider than the screen, otherwise the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
     -   **`fieldsep`** – Specifies the field separator to be used in unaligned output mode. That way one can create, for example, tab- or comma-separated output, which other programs might prefer. To set a tab as field separator, type `\pset fieldsep '\t'`. The default field separator is `'|'` \(a vertical bar\).
     -   **`fieldsep_zero`** - Sets the field separator to use in unaligned output format to a zero byte.
-    -   **`footer`** – If value is specified it must be either `on` or `off` which will enable or disable display of the table footer \(the \(n rows\) count\). If value is omitted the command toggles footer display on or off.
+    -   **`footer`** – If value is specified it must be either `on` or `off` which will activate or deactivate display of the table footer \(the \(n rows\) count\). If value is omitted the command toggles footer display on or off.
     -   **`format`** – Sets the output format to one of `unaligned`, `aligned`, `html`, `latex` \(uses `tabular`\), `latex-longtable`, `troff-ms`, or `wrapped`. Unique abbreviations are allowed.
         **`unaligned`** format writes all columns of a row on one line, separated by the currently active field separator. This is useful for creating output that might be intended to be read in by other programs \(for example, tab-separated or comma-separated format\).
         <br/><br/>**`aligned`** format is the standard, human-readable, nicely formatted text output; this is the default.
@@ -507,7 +507,7 @@ The response indicates that the large object received object ID 152801 which one
         <br/><br/>When the `border` setting is greater than zero, this option also determines the characters with which the border lines are drawn. Plain ASCII characters work everywhere, but Unicode characters look nicer on displays that recognize them.
 
     -   **`null 'string'`** – The second argument is a string to print whenever a column is null. The default is to print nothing, which can easily be mistaken for an empty string. For example, one might prefer `\pset null '(null)'`.
-    -   **`numericlocale`** – If value is specified it must be either `on` or `off` which will enable or disable display of a locale-specific character to separate groups of digits to the left of the decimal marker. If value is omitted the command toggles between regular and locale-specific numeric output.
+    -   **`numericlocale`** – If value is specified it must be either `on` or `off` which will activate or deactivate display of a locale-specific character to separate groups of digits to the left of the decimal marker. If value is omitted the command toggles between regular and locale-specific numeric output.
     -   **`pager`** – Controls the use of a pager for query and `psql` help output. If the environment variable `PAGER` is set, the output is piped to the specified program. Otherwise a platform-dependent default \(such as `more`\) is used. When `off`, the pager program is not used. When `on`, the pager is used only when appropriate, i.e. when the output is to a terminal and will not fit on the screen. Pager can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a value toggles pager use on and off.
     -   **`recordsep`** – Specifies the record \(line\) separator to use in unaligned output mode. The default is a newline character.
     -   **`recordsep_zero`** - Sets the record separator to use in unaligned output format to a zero byte.
@@ -515,7 +515,7 @@ The response indicates that the large object received object ID 152801 which one
         <br/><br/>In `latex-longtable` format, this controls the proportional width of each column containing a left-aligned data type. It is specified as a whitespace-separated list of values, e.g. `'0.2 0.2 0.6'`. Unspecified output columns use the last specified value.
 
     -   **`title`** \[text\] – Sets the table title for any subsequently printed tables. This can be used to give your output descriptive tags. If no value is given, the title is unset.
-    -   **`tuples_only`** \| **`t`** \[novalue \| on \| off\] – If value is specified, it must be either `on` or `off` which will enable or disable tuples-only mode. If value is omitted the command toggles between regular and tuples-only output. Regular output includes extra information such as column headers, titles, and various footers. In tuples-only mode, only actual table data is shown. The `\t` command is equivalent to `\pset``tuples_only` and is provided for convenience.
+    -   **`tuples_only`** \| **`t`** \[novalue \| on \| off\] – If value is specified, it must be either `on` or `off` which will activate or deactivate tuples-only mode. If value is omitted the command toggles between regular and tuples-only output. Regular output includes extra information such as column headers, titles, and various footers. In tuples-only mode, only actual table data is shown. The `\t` command is equivalent to `\pset``tuples_only` and is provided for convenience.
 
     **Tip:**
 
@@ -625,7 +625,7 @@ This works in both regular SQL commands and meta-commands; there is more detail 
 
 If you call `\set` without a second argument, the variable is set, with an empty string as value. To unset \(i.e., delete\) a variable, use the command `\unset`. To show the values of all variables, call `\set` without any argument.
 
-**Note:** The arguments of `\set` are subject to the same substitution rules as with other commands. Thus you can construct interesting references such as `\set :foo 'something'` and get 'soft links' or 'variable variables' of Perl or PHP fame, respectively. Unfortunately, there is no way to do anything useful with these constructs. On the other hand, `\set bar :foo` is a perfectly valid way to copy a variable.
+> **Note** The arguments of `\set` are subject to the same substitution rules as with other commands. Thus you can construct interesting references such as `\set :foo 'something'` and get 'soft links' or 'variable variables' of Perl or PHP fame, respectively. Unfortunately, there is no way to do anything useful with these constructs. On the other hand, `\set bar :foo` is a perfectly valid way to copy a variable.
 
 A number of these variables are treated specially by `psql`. They represent certain option settings that can be changed at run time by altering the value of the variable, or in some cases represent changeable state of `psql`. Although you can use these variables for other purposes, this is not recommended, as the program behavior might grow really strange really quickly. By convention, all specially treated variables' names consist of all upper-case ASCII letters \(and possibly digits and underscores\). To ensure maximum compatibility in the future, avoid using such variable names for your own purposes. A list of all specially treated variables follows.
 
@@ -809,7 +809,7 @@ COLUMNS
 :   If `\pset columns` is zero, controls the width for the wrapped format and width for determining if wide output requires the pager or should be switched to the vertical format in expanded auto mode.
 
 PAGER
-:   If the query results do not fit on the screen, they are piped through this command. Typical values are `more` or `less`. The default is platform-dependent. The use of the pager can be disabled by setting PAGER to empty, or by using pager-related options of the `\pset` command.
+:   If the query results do not fit on the screen, they are piped through this command. Typical values are `more` or `less`. The default is platform-dependent. The use of the pager can be deactivated by setting PAGER to empty, or by using pager-related options of the `\pset` command.
 
 PGDATABASE
 PGHOST

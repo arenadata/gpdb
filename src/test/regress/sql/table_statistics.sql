@@ -592,7 +592,6 @@ Alter table stat_part_co_t4 set with (reorganize=true);
 
 select  count(*) from pg_class where relname like 'stat_part_co_t4';
 
-
 \echo '-- start_ignore'
 drop schema stat_heap5 cascade;
 create schema stat_heap5;
@@ -901,7 +900,6 @@ select  count(*) from pg_class where relname like 'stat_part_co_t6';
 Alter table stat_part_co_t6 set with (reorganize=true);
 
 select  count(*) from pg_class where relname like 'stat_part_co_t6';
-
 
 \echo '-- start_ignore'
 drop schema stat_heap7 cascade;

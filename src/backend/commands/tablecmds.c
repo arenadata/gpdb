@@ -60,6 +60,7 @@
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "catalog/toasting.h"
+#include "catalog/gp_fastsequence.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbappendonlyxlog.h"
 #include "cdb/cdbaocsam.h"
@@ -520,7 +521,7 @@ static void inherit_parent(Relation parent_rel, Relation child_rel,
 						   bool is_partition, List *inhAttrNameList);
 static inline void SetConstraints(TupleDesc tupleDesc, char *relName, List **constraints, AttrNumber *attnos);
 static inline void SetSchema(TupleDesc tuple_desc, List **schema, AttrNumber **attnos);
-
+static inline void ErrorOnInvalidDefaultPartition(Relation *rel, AlterPartitionId *id);
 
 
 /* ----------------------------------------------------------------
@@ -1459,6 +1460,14 @@ ao_aux_tables_safe_truncate(Relation rel)
 	relid_set_new_relfilenode(aoseg_relid, RecentXmin);
 	relid_set_new_relfilenode(aoblkdir_relid, RecentXmin);
 	relid_set_new_relfilenode(aovisimap_relid, RecentXmin);
+
+	/*
+	 * Reset existing gp_fastsequence entries for the segrel to an initial entry.
+	 * This mimics the state of the gp_fastsequence row when an empty AO/AOCS
+	 * table is created.
+	 */
+	RemoveFastSequenceEntry(aoseg_relid);
+	InsertInitialFastSequenceEntries(aoseg_relid);
 }
 
 /*
@@ -4852,7 +4861,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 			ATPartitionCheck(cmd->subtype, rel, false, recursing);
 
-			if (Gp_role == GP_ROLE_UTILITY)
+			if (Gp_role == GP_ROLE_UTILITY && !IsBinaryUpgrade)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
  						 errmsg("EXCHANGE is not supported in utility mode")));
@@ -4992,7 +5001,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							PartitionByType t = (parkind == 'r') ?
 												 PARTTYP_RANGE : PARTTYP_LIST;
 
-							n = coerce_partition_value(NULL, n, typid, typmod, t);
+							n = coerce_partition_value_to_const(NULL,
+																n,
+																typid,
+																typmod,
+																t);
 
 							lfirst(lc2) = n;
 
@@ -14821,59 +14834,24 @@ prebuild_temp_table(Relation rel, RangeVar *tmpname, DistributedBy *distro, List
 			rel->rd_rel->relhasindex)
 			cs->buildAoBlkdir = true;
 
-		if (RelationIsAoCols(rel))
+		cs->options = opts;
+
+		if (RelationIsAoRows(rel))
 		{
-			if (useExistingColumnAttributes)
-			{
-				/*
-				 * Need to remove table level compression settings for the
-				 * AOCO case since they're set at the column level.
-				 */
-				ListCell *lc;
-
-				foreach(lc, opts)
-				{
-					DefElem *de = lfirst(lc);
-
-					if (de->defname &&
-						(strcmp("compresstype", de->defname) == 0 ||
-						 strcmp("compresslevel", de->defname) == 0 ||
-						 strcmp("blocksize", de->defname) == 0))
-						continue;
-					else
-						cs->options = lappend(cs->options, de);
-				}
-				col_encs = RelationGetUntransformedAttributeOptions(rel);
-			}
-			else
-			{
-				ListCell *lc;
-
-				foreach(lc, opts)
-				{
-					DefElem *de = lfirst(lc);
-					cs->options = lappend(cs->options, de);
-				}
-			}
+			/*
+			* In order to avoid being affected by the GUC of gp_default_storage_options,
+			* we should re-build storage options from original table.
+			*
+			* The reason is that when we use the default parameters to create a table,
+			* the configuration will not be written to pg_class.reloptions, and then if
+			* gp_default_storage_options is modified, the newly created table will be
+			* inconsistent with the original table.
+			*/
+			cs->options = build_ao_rel_storage_opts(cs->options, rel);
 		}
-		else
-		{
-			cs->options = opts;
 
-			if (RelationIsAoRows(rel))
-			{
-				/*
-				 * In order to avoid being affected by the GUC of gp_default_storage_options,
-				 * we should re-build storage options from original table.
-				 *
-				 * The reason is that when we use the default parameters to create a table,
-				 * the configuration will not be written to pg_class.reloptions, and then if
-				 * gp_default_storage_options is modified, the newly created table will be
-				 * inconsistent with the original table.
-				 */
-				cs->options = build_ao_rel_storage_opts(cs->options, rel);
-			}
-		}
+		if (RelationIsAoCols(rel) && useExistingColumnAttributes)
+			col_encs = RelationGetUntransformedAttributeOptions(rel);
 
 		for (attno = 0; attno < tupdesc->natts; attno++)
 		{
@@ -15274,7 +15252,7 @@ ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd)
 		ExecutorFinish(queryDesc);
 		ExecutorEnd(queryDesc);
 
-		auto_stats(cmdType, relationOid, queryDesc->es_processed, false);
+		auto_stats(cmdType, relationOid, queryDesc->es_processed, already_under_executor_run());
 
 		FreeQueryDesc(queryDesc);
 
@@ -15825,10 +15803,12 @@ ATExecSetDistributedBy(Relation rel, Node *node, AlterTableCmd *cmd)
 		ExecutorEnd(queryDesc);
 
 		if (Gp_role == GP_ROLE_DISPATCH)
+		{
 			auto_stats(cmdType,
 					   relationOid,
 					   queryDesc->es_processed,
-					   false);
+					   already_under_executor_run());
+		}
 
 		FreeQueryDesc(queryDesc);
 
@@ -16471,7 +16451,7 @@ ATPExecPartAlter(List **wqueue, AlteredTableInfo *tab, Relation *rel,
 			else if (prepExchange)
 			{
 				ATPartitionCheck(atc->subtype, *rel, false, false);
-				if (Gp_role == GP_ROLE_UTILITY)
+				if (Gp_role == GP_ROLE_UTILITY && !IsBinaryUpgrade)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("EXCHANGE is not supported in utility mode")));
@@ -16846,14 +16826,14 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 	List				*pcols = NIL; /* partitioned attributes of rel */
 	AlterPartitionIdType orig_pid_type = AT_AP_IDNone;	/* save for NOTICE msg at end... */
 
-	if (Gp_role == GP_ROLE_UTILITY)
+	if (Gp_role == GP_ROLE_UTILITY && !IsBinaryUpgrade)
 		return;
 
 	/* Exchange for SPLIT is different from user-requested EXCHANGE.  The special
 	 * coding to indicate SPLIT is obscure. */
 	is_split = ((AlterPartitionCmd *)pc->arg2)->arg2 != NULL;
 
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_UTILITY && IsBinaryUpgrade))
 	{
 		AlterPartitionId   *pid   = (AlterPartitionId *)pc->partid;
 		PgPartRule   	   *prule = NULL;
@@ -17157,7 +17137,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		}
 
 		/* fix up partitioning rule if we're on the QD*/
-		if (Gp_role == GP_ROLE_DISPATCH)
+		if (Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_UTILITY && IsBinaryUpgrade))
 		{
 			exchange_part_rule(oldrelid, newrelid);
 			CommandCounterIncrement();
@@ -17967,6 +17947,19 @@ make_orientation_options(Relation rel)
 	return l;
 }
 
+static inline void 
+ErrorOnInvalidDefaultPartition(Relation *rel, AlterPartitionId *id)
+{
+	if (id->idtype == AT_AP_IDDefault)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("relation \"%s\" does not have a "
+						"default partition",
+						RelationGetRelationName(*rel))));
+	}
+}
+
 static void
 ATPExecPartSplit(Relation *rel,
                  AlterPartitionCmd *pc)
@@ -18075,12 +18068,7 @@ ATPExecPartSplit(Relation *rel,
 					ListCell *rc;
 					AlterPartitionId *id = (AlterPartitionId *)pc2->partid;
 
-					if (id->idtype == AT_AP_IDDefault)
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("relation \"%s\" does not have a "
-										"default partition",
-										RelationGetRelationName(*rel))));
+					ErrorOnInvalidDefaultPartition(rel, id);
 
 					foreach(rc, prule->pNode->rules)
 					{
@@ -18160,12 +18148,7 @@ ATPExecPartSplit(Relation *rel,
 					ListCell *rc;
 					AlterPartitionId *id = (AlterPartitionId *)pc2->arg1;
 
-					if (id->idtype == AT_AP_IDDefault)
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("relation \"%s\" does not have a "
-										"default partition",
-										RelationGetRelationName(*rel))));
+					ErrorOnInvalidDefaultPartition(rel, id);
 
 					foreach(rc, prule->pNode->rules)
 					{
@@ -18464,8 +18447,10 @@ ATPExecPartSplit(Relation *rel,
 
 			mypc->partid = (Node *)mypid;
 
-			if (intopid)
+			if (intopid && intopid->partiddef)
 				parname = strVal(intopid->partiddef);
+			else if (intopid)
+				ErrorOnInvalidDefaultPartition(rel, intopid);
 
 			if (prule->topRule->parisdefault && i == into_exists)
 			{
@@ -20092,7 +20077,7 @@ ATPrepExchange(Relation rel, AlterPartitionCmd *pc)
 	Relation			 oldrel = NULL;
 	Relation			 newrel = NULL;
 
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH || (Gp_role == GP_ROLE_UTILITY && IsBinaryUpgrade))
 	{
 		AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
 		bool				is_split;
@@ -20607,6 +20592,34 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 	}
 
 	/*
+	 * If we're attaching an external table, we must fail if any of the indexes
+	 * is a constraint index; otherwise, there's nothing to do here.  Do this
+	 * before starting work, to avoid wasting the effort of building a few
+	 * non-unique indexes before coming across a unique one.
+	 */
+	if (RelationIsExternal(attachrel))
+	{
+		foreach(cell, idxes)
+		{
+			Oid			idx = lfirst_oid(cell);
+			Relation	idxRel = index_open(idx, AccessShareLock);
+
+			if (idxRel->rd_index->indisunique ||
+				idxRel->rd_index->indisprimary)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								errmsg("cannot attach external table \"%s\" as partition of partitioned table \"%s\"",
+									   RelationGetRelationName(attachrel),
+									   RelationGetRelationName(rel)),
+								errdetail("Table \"%s\" contains unique indexes.",
+										  RelationGetRelationName(rel))));
+			index_close(idxRel, AccessShareLock);
+		}
+
+		goto out;
+	}
+
+	/*
 	 * For each index on the partitioned table, find a matching one in the
 	 * partition-to-be; if one is not found, create one.
 	 */
@@ -20698,7 +20711,7 @@ AttachPartitionEnsureIndexes(Relation rel, Relation attachrel)
 
 		index_close(idxRel, AccessShareLock);
 	}
-
+out:
 	/* Clean up. */
 	for (i = 0; i < list_length(attachRelIdxs); i++)
 		index_close(attachrelIdxRels[i], AccessShareLock);

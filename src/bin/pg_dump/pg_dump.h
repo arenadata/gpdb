@@ -62,7 +62,6 @@ typedef struct SimpleOidList
 	SimpleOidListCell *tail;
 } SimpleOidList;
 
-
 /*
  * The data structures used to store system catalog information.  Every
  * dumpable object is a subclass of DumpableObject.
@@ -113,7 +112,6 @@ typedef enum
 	DO_BLOB,
 	DO_BLOB_DATA,
 	DO_EXTPROTOCOL,
-	DO_TYPE_STORAGE_OPTIONS,
 	DO_PRE_DATA_BOUNDARY,
 	DO_POST_DATA_BOUNDARY,
 	DO_EVENT_TRIGGER,
@@ -136,15 +134,17 @@ typedef struct _dumpableObject
 	int			allocDeps;		/* allocated size of dependencies[] */
 } DumpableObject;
 
+
 typedef struct _binaryupgradeinfo
 {
-	DumpableObject dobj;
+	DumpableObject dobj; /* used to signal Archiver to dump binary upgrade entry */
 } BinaryUpgradeInfo;
 
 typedef struct _namespaceInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;		/* name of owner, or empty string */
+	Oid			nspowner;		/* OID of owner */
+	const char *rolname;		/* name of owner */
 	char	   *nspacl;
 } NamespaceInfo;
 
@@ -152,6 +152,7 @@ typedef struct _extensionInfo
 {
 	DumpableObject dobj;
 	char	   *namespace;		/* schema containing extension's objects */
+	const char *rolname;
 	bool		relocatable;
 	char	   *extversion;
 	char	   *extconfig;		/* info about configuration tables */
@@ -163,10 +164,12 @@ typedef struct _typeInfo
 	DumpableObject dobj;
 
 	/*
-	 * Note: dobj.name is the pg_type.typname entry.  format_type() might
-	 * produce something different than typname
+	 * Note: dobj.name is the raw pg_type.typname entry.  ftypname is the
+	 * result of format_type(), which will be quoted if needed, and might be
+	 * schema-qualified too.
 	 */
-	char	   *rolname;		/* name of owner, or empty string */
+	char	   *ftypname;
+	const char *rolname;
 	char	   *typacl;
 	Oid			typelem;
 	Oid			typrelid;
@@ -179,32 +182,11 @@ typedef struct _typeInfo
 	/* If it's a domain, we store links to its constraints here: */
 	int			nDomChecks;
 	struct _constraintInfo *domChecks;
+	char		*typstorage; /* GPDB: store the type's encoding clause */
+	Oid			typarrayoid; /* OID for type's auto-generated array type, or 0 */
+	char		*typarrayname; /* name of type's auto-generated array type */
+	Oid			typarrayns; /* schema for type's auto-generated array type */
 } TypeInfo;
-
-typedef struct _typeCache
-{
-	DumpableObject dobj;
-
-	Oid			typnsp;
-
-	Oid			arraytypoid;
-	char	   *arraytypname;
-	Oid			arraytypnsp;
-} TypeCache;
-
-typedef struct _typeStorageOptions
-{
-	DumpableObject dobj;
-
-	/*
-	 * Note: dobj.name is the pg_type.typname entry.  format_type() might
-	 * produce something different than typname
-	 */
-	char     *typnamespace;
-	char     *typoptions; /* storage options */
-	char     *rolname;		/* name of owner, or empty string */
-} TypeStorageOptions;
-
 
 
 typedef struct _shellTypeInfo
@@ -217,7 +199,7 @@ typedef struct _shellTypeInfo
 typedef struct _funcInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;		/* name of owner, or empty string */
+	const char *rolname;
 	Oid			lang;
 	int			nargs;
 	Oid		   *argtypes;
@@ -237,7 +219,7 @@ typedef struct _ptcInfo
 	DumpableObject dobj;
 	char	   *ptcreadfn;
 	char	   *ptcwritefn;
-	char	   *ptcowner;
+	const char *rolname;
 	char	   *ptcacl;
 	bool	   ptctrusted;
 	Oid		   ptcreadid;
@@ -248,7 +230,7 @@ typedef struct _ptcInfo
 typedef struct _oprInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 	char		oprkind;
 	Oid			oprcode;
 } OprInfo;
@@ -256,25 +238,25 @@ typedef struct _oprInfo
 typedef struct _opclassInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 } OpclassInfo;
 
 typedef struct _opfamilyInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 } OpfamilyInfo;
 
 typedef struct _collInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 } CollInfo;
 
 typedef struct _convInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 } ConvInfo;
 
 typedef struct _tableInfo
@@ -283,7 +265,7 @@ typedef struct _tableInfo
 	 * These fields are collected for every table in the database.
 	 */
 	DumpableObject dobj;
-	char	   *rolname;		/* name of owner, or empty string */
+	const char *rolname;
 	char	   *relacl;
 	char		relkind;
 	char		relstorage;
@@ -344,14 +326,36 @@ typedef struct _tableInfo
 	int			numParents;		/* number of (immediate) parent tables */
 	struct _tableInfo **parents;	/* TableInfos of immediate parents */
 	struct _tableDataInfo *dataObj;		/* TableDataInfo, if dumping its data */
-	Oid			parrelid;			/* external partition's parent oid */
+	Oid			parrelid;			/* partition's parent oid */
 	bool		parparent;		/* true if the table is partition parent */
+	int			parlevel;			/* partition level */
 	int			numTriggers;	/* number of triggers for table */
 	struct _triggerInfo *triggers;		/* array of TriggerInfo structs */
 
 	/* GPDB: true if need to ignore root partition's dropped columns */
 	bool		ignoreRootPartDroppedAttr;
+	Oid		toast_index; 				/* OID of toast table's index */
+	Oid		toast_type;					/* OID of toast table's composite type */
+	struct _aotableInfo	*aotbl; /* AO auxilliary table metadata */
+	Oid			reltype;		/* OID of table's composite type, if any */
+	char	*distclause; /* distributed by clause */
+	char	*partclause;	/* partition definition, if table is partition parent */
+	char	*parttemplate;	/* subpartition template */
 } TableInfo;
+
+/* AO auxilliary table metadata */
+typedef struct _aotableInfo
+{
+	bool 	columnstore;
+	Oid 	segrelid;
+	Oid 	segreltype;
+	Oid 	blkdirrelid;
+	Oid 	blkdirreltype;
+	Oid 	blkdiridxid;
+	Oid 	visimaprelid;
+	Oid 	visimapreltype;
+	Oid 	visimapidxid;
+} AOTableInfo;
 
 typedef struct _attrDefInfo
 {
@@ -384,7 +388,16 @@ typedef struct _indxInfo
 	/* if there is an associated constraint object, its dumpId: */
 	DumpId		indexconstraint;
 	int			relpages;		/* relpages of the underlying table */
+	struct _bmIndxInfo *bmidx; /* bitmap index auxiliary table metadata */
 } IndxInfo;
+
+/* bitmap index auxiliary table metadata */
+typedef struct _bmIndxInfo
+{
+	Oid		bmrelid;
+	Oid		bmreltype;
+	Oid		bmidxid;
+} BMIndxInfo;
 
 typedef struct _ruleInfo
 {
@@ -420,7 +433,7 @@ typedef struct _evttriggerInfo
 	DumpableObject dobj;
 	char	   *evtname;
 	char	   *evtevent;
-	char	   *evtowner;
+	const char *evtowner;
 	char	   *evttags;
 	char	   *evtfname;
 	char		evtenabled;
@@ -457,7 +470,7 @@ typedef struct _procLangInfo
 	Oid			laninline;
 	Oid			lanvalidator;
 	char	   *lanacl;
-	char	   *lanowner;		/* name of owner, or empty string */
+	const char *lanowner;
 } ProcLangInfo;
 
 typedef struct _castInfo
@@ -490,7 +503,7 @@ typedef struct _prsInfo
 typedef struct _dictInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 	Oid			dicttemplate;
 	char	   *dictinitoption;
 } TSDictInfo;
@@ -505,14 +518,14 @@ typedef struct _tmplInfo
 typedef struct _cfgInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 	Oid			cfgparser;
 } TSConfigInfo;
 
 typedef struct _fdwInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 	char	   *fdwhandler;
 	char	   *fdwvalidator;
 	char	   *fdwoptions;
@@ -522,7 +535,7 @@ typedef struct _fdwInfo
 typedef struct _foreignServerInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 	Oid			srvfdw;
 	char	   *srvtype;
 	char	   *srvversion;
@@ -533,7 +546,7 @@ typedef struct _foreignServerInfo
 typedef struct _defaultACLInfo
 {
 	DumpableObject dobj;
-	char	   *defaclrole;
+	const char *defaclrole;
 	char		defaclobjtype;
 	char	   *defaclacl;
 } DefaultACLInfo;
@@ -541,22 +554,11 @@ typedef struct _defaultACLInfo
 typedef struct _blobInfo
 {
 	DumpableObject dobj;
-	char	   *rolname;
+	const char *rolname;
 	char	   *blobacl;
 } BlobInfo;
 
-/*
- * We build an array of these with an entry for each object that is an
- * extension member according to pg_depend.
- */
-typedef struct _extensionMemberId
-{
-	CatalogId	catId;			/* tableoid+oid of some member object */
-	ExtensionInfo *ext;			/* owning extension */
-} ExtensionMemberId;
-
 /* global decls */
-extern bool force_quotes;		/* double-quotes for identifiers flag */
 extern bool g_verbose;			/* verbose flag */
 
 /* placeholders for comment starting and ending delimiters */
@@ -565,7 +567,6 @@ extern char g_comment_end[10];
 
 extern char g_opaque_type[10];	/* name for the opaque type */
 
-extern const char *EXT_PARTITION_NAME_POSTFIX;
 /*
  *	common utility functions
  */
@@ -603,8 +604,9 @@ extern OprInfo *findOprByOid(Oid oid);
 extern CollInfo *findCollationByOid(Oid oid);
 extern NamespaceInfo *findNamespaceByOid(Oid oid);
 extern ExtensionInfo *findExtensionByOid(Oid oid);
+extern IndxInfo	*findIndexByOid(Oid oid);
 
-extern void setExtensionMembership(ExtensionMemberId *extmems, int nextmems);
+extern void recordExtensionMembership(CatalogId catId, ExtensionInfo *ext);
 extern ExtensionInfo *findOwningExtension(CatalogId catalogId);
 
 extern void simple_oid_list_append(SimpleOidList *list, Oid val);
@@ -615,9 +617,6 @@ extern void parseOidArray(const char *str, Oid *array, int arraysize);
 extern void sortDumpableObjects(DumpableObject **objs, int numObjs,
 					DumpId preBoundaryId, DumpId postBoundaryId);
 extern void sortDumpableObjectsByTypeName(DumpableObject **objs, int numObjs);
-#if 0 /* GPDB_100_MERGE_FIXME: we don't support pre-7.3 dumps. */
-extern void sortDumpableObjectsByTypeOid(DumpableObject **objs, int numObjs);
-#endif
 extern void sortDataAndIndexObjectsBySize(DumpableObject **objs, int numObjs);
 
 /*
@@ -659,11 +658,14 @@ extern void processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 					   int numExtensions);
 extern EventTriggerInfo *getEventTriggers(Archive *fout, int *numEventTriggers);
 /* START MPP ADDITION */
-extern TypeStorageOptions *getTypeStorageOptions(Archive *fout, int *numTypes);
 extern ExtProtInfo *getExtProtocols(Archive *fout, int *numExtProtocols);
-extern BinaryUpgradeInfo *getBinaryUpgradeObjects(void);
-
+extern BinaryUpgradeInfo *newBinaryUpgradeInfo(void);
+extern void getBinaryUpgradeRelInfo(Archive *fout, BinaryUpgradeInfo *binfo, int *numBinaryUpgradeRelInfoObjects);
+extern void getBinaryUpgradeTypeInfo(Archive *fout, BinaryUpgradeInfo *binfo, int *numBinaryUpgradeTypeInfoObjects);
+extern void getBinaryUpgradeTypeArrInfo(Archive *fout, BinaryUpgradeInfo *binfo, int *numBinaryUpgradeTypeArrObjects);
 extern bool	testExtProtocolSupport(Archive *fout);
+extern void getAOTableInfo(Archive *fout);
+extern void getBMIndxInfo(Archive *fout);
 /* END MPP ADDITION */
 
 

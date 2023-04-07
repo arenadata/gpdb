@@ -33,6 +33,7 @@
 #include "gpopt/operators/CLogicalLimit.h"
 #include "gpopt/operators/CLogicalNAryJoin.h"
 #include "gpopt/operators/CLogicalProject.h"
+#include "gpopt/operators/CLogicalSelect.h"
 #include "gpopt/operators/CLogicalSequenceProject.h"
 #include "gpopt/operators/CLogicalSetOp.h"
 #include "gpopt/operators/CLogicalUnion.h"
@@ -1592,7 +1593,8 @@ CExpressionPreprocessor::PexprAddEqualityPreds(CMemoryPool *mp,
 CExpression *
 CExpressionPreprocessor::PexprScalarPredicates(
 	CMemoryPool *mp, CPropConstraint *ppc,
-	CPropConstraint *constraintsForOuterRefs, CColRefSet *pcrsNotNull,
+	CPropConstraint *constraintsForOuterRefs,
+	CPropConstraint *ppcFromFilterSubquery, CColRefSet *pcrsNotNull,
 	CColRefSet *pcrs, CColRefSet *pcrsProcessed)
 {
 	CExpressionArray *pdrgpexpr = GPOS_NEW(mp) CExpressionArray(mp);
@@ -1601,6 +1603,32 @@ CExpressionPreprocessor::PexprScalarPredicates(
 	while (crsi.Advance())
 	{
 		CColRef *colref = crsi.Pcr();
+		CColRefSet *crs = NULL;	 // equiv class column refset
+
+		if (ppcFromFilterSubquery != NULL &&
+			(crs = ppcFromFilterSubquery->PcrsEquivClass(colref)) != NULL)
+		{
+			// add predicates that are inferred from subquery
+			CConstraint *pcnstr =
+				ppcFromFilterSubquery->Pcnstr()->Pcnstr(mp, crs);
+			CConstraint *pcnstrCol = pcnstr->PcnstrRemapForColumn(mp, colref);
+			CExpression *pexprScalar = pcnstrCol->PexprScalar(mp);
+
+			// do not add a NOT NULL predicate if column is not nullable or if it
+			// already has another predicate on it
+			if (!(CUtils::FScalarNotNull(pexprScalar) &&
+				  (pcrsNotNull->FMember(colref) ||
+				   (ppc->Pcnstr() != NULL &&
+					ppc->Pcnstr()->FConstraint(colref)))))
+			{
+				pexprScalar->AddRef();
+				pdrgpexpr->Append(pexprScalar);
+			}
+
+			pcrsProcessed->Include(colref);
+			pcnstr->Release();
+			pcnstrCol->Release();
+		}
 
 		CExpression *pexprScalar = ppc->PexprScalarMappedFromEquivCols(
 			mp, colref, constraintsForOuterRefs);
@@ -1706,9 +1734,9 @@ CExpressionPreprocessor::PexprWithImpliedPredsOnLOJInnerChild(
 
 	// generate a scalar predicate from the computed constraint, restricted to LOJ inner child
 	CColRefSet *pcrsProcessed = GPOS_NEW(mp) CColRefSet(mp);
-	CExpression *pexprPred =
-		PexprScalarPredicates(mp, ppc, NULL /*no outer refs*/, pcrsInnerNotNull,
-							  pcrsInnerOutput, pcrsProcessed);
+	CExpression *pexprPred = PexprScalarPredicates(
+		mp, ppc, NULL /*no outer refs*/, NULL /*no constraints from subquery*/,
+		pcrsInnerNotNull, pcrsInnerOutput, pcrsProcessed);
 	pcrsProcessed->Release();
 	ppc->Release();
 
@@ -1829,7 +1857,8 @@ CExpressionPreprocessor::PexprFromConstraints(
 	const ULONG ulChildren = pexpr->Arity();
 	CPropConstraint *ppc = pexpr->DerivePropertyConstraint();
 	CColRefSet *pcrsNotNull = pexpr->DeriveNotNullColumns();
-
+	CPropConstraint *ppcFromFilterSubquery =
+		CExpressionUtils::GetPropConstraintFromSubquery(mp, pexpr);
 	CExpressionArray *pdrgpexprChildren = GPOS_NEW(mp) CExpressionArray(mp);
 
 	for (ULONG ul = 0; ul < ulChildren; ul++)
@@ -1859,9 +1888,9 @@ CExpressionPreprocessor::PexprFromConstraints(
 		pcrsOutChild->Exclude(pcrsProcessed);
 
 		// generate predicates for the output columns of child
-		CExpression *pexprPred =
-			PexprScalarPredicates(mp, ppc, constraintsForOuterRefs, pcrsNotNull,
-								  pcrsOutChild, pcrsProcessed);
+		CExpression *pexprPred = PexprScalarPredicates(
+			mp, ppc, constraintsForOuterRefs, ppcFromFilterSubquery,
+			pcrsNotNull, pcrsOutChild, pcrsProcessed);
 		pcrsOutChild->Release();
 
 		if (NULL != pexprPred)
@@ -1878,7 +1907,18 @@ CExpressionPreprocessor::PexprFromConstraints(
 	COperator *pop = pexpr->Pop();
 	pop->AddRef();
 
-	return GPOS_NEW(mp) CExpression(mp, pop, pdrgpexprChildren);
+	CExpression *pexprPred =
+		GPOS_NEW(mp) CExpression(mp, pop, pdrgpexprChildren);
+	if (ppcFromFilterSubquery != NULL)
+	{
+		CExpression *pexprNormalized =
+			CNormalizer::PexprNormalize(mp, pexprPred);
+		pexprPred->Release();
+		pexprPred = pexprNormalized;
+		ppcFromFilterSubquery->Release();
+	}
+
+	return pexprPred;
 }
 
 // eliminate subtrees that have a zero output cardinality, replacing them
@@ -2573,6 +2613,213 @@ CExpressionPreprocessor::PexprExistWithPredFromINSubq(CMemoryPool *mp,
 	return pexprNew;
 }
 
+// Collapse a select over a project and update column reference.
+CExpression *
+CExpressionPreprocessor::CollapseSelectAndReplaceColref(CMemoryPool *mp,
+														CExpression *pexpr,
+														CColRef *pcolref,
+														CExpression *pprojExpr)
+{
+	// remove the logical project
+	//
+	// Input:
+	// +--CLogicalSelect (x = 'meh')
+	//    +--CLogicalProject (col1...n, expr as x)
+	//       +-- CLogicalNAryJoin
+	// Output:
+	// +--CLogicalSelect (expr = 'meh')
+	//    +-- CLogicalNAryJoin
+	if (pexpr->Pop()->Eopid() == COperator::EopLogicalSelect &&
+		(*pexpr)[0]->Pop()->Eopid() == COperator::EopLogicalProject &&
+		(*(*pexpr)[0])[0]->Pop()->Eopid() == COperator::EopLogicalNAryJoin)
+	{
+		(*(*pexpr)[0])[0]->AddRef();
+		CExpression *pexprCollapsedSelect = GPOS_NEW(mp)
+			CExpression(mp, GPOS_NEW(mp) CLogicalSelect(mp), (*(*pexpr)[0])[0],
+						CollapseSelectAndReplaceColref(mp, (*pexpr)[1], pcolref,
+													   pprojExpr));
+
+		CExpression *pexprTransposed =
+			PexprTransposeSelectAndProject(mp, pexprCollapsedSelect);
+		pexprCollapsedSelect->Release();
+		return pexprTransposed;
+	}
+
+	// replace reference
+	if (pexpr->Pop()->Eopid() == COperator::EopScalarIdent &&
+		CColRef::Equals(CScalarIdent::PopConvert(pexpr->Pop())->Pcr(), pcolref))
+	{
+		pprojExpr->AddRef();
+		return pprojExpr;
+	}
+
+	// recurse to children
+	CExpressionArray *pdrgpexprChildren = GPOS_NEW(mp) CExpressionArray(mp);
+	for (ULONG ul = 0; ul < pexpr->Arity(); ul++)
+	{
+		pdrgpexprChildren->Append(CollapseSelectAndReplaceColref(
+			mp, (*pexpr)[ul], pcolref, pprojExpr));
+	}
+
+	COperator *pop = pexpr->Pop();
+	pop->AddRef();
+	return GPOS_NEW(mp) CExpression(mp, pop, pdrgpexprChildren);
+}
+
+// Transpose a select over a project
+//
+// This preprocessing step enables additional opportunities for predicate push
+// down.  In the following example, the select constraint references "b" (18)
+// from the project list. As-is the normalizer cannot push the contraint further
+// than the project.  This step enables further push down by transposing the
+// project/select operators and fixing up corresponding column references.
+//
+// Example:
+//
+// Input:
+// +--CLogicalSelect
+//    |--CLogicalProject
+//    |  |--CLogicalNAryJoin
+//    |  |  |--CLogicalGet "foo" ("foo"), Columns: ["a" (0), "b" (1), ...
+//    |  |  |--CLogicalGet "bar" ("bar"), Columns: ["c" (9), "d" (10), ...
+//    |  |  +--CScalarCmp (=)
+//    |  |     |--CScalarIdent "a" (0)
+//    |  |     +--CScalarIdent "c" (9)
+//    |  +--CScalarProjectList
+//    |     +--CScalarProjectElement "b" (18)
+//    |        +--CScalarFunc (varchar)
+//    |           |--CScalarCast
+//    |           |  +--CScalarIdent "b" (1)
+//    |           |--CScalarConst (104)
+//    |           +--CScalarConst (1)
+//    +--CScalarCmp (=)
+//       |--CScalarCast
+//       |  +--CScalarIdent "b" (18)
+//       +--CScalarConst (1828233457.000)
+// Output:
+// +--CLogicalProject
+//    |--CLogicalSelect
+//    |  |--CLogicalNAryJoin
+//    |  |  |--CLogicalGet "foo" ("foo"), Columns: ["a" (0), "b" (1), ...
+//    |  |  |--CLogicalGet "bar" ("bar"), Columns: ["c" (9), "d" (10), ...
+//    |  |  +--CScalarCmp (=)
+//    |  |     |--CScalarIdent "a" (0)
+//    |  |     +--CScalarIdent "c" (9)
+//    |  +--CScalarCmp (=)
+//    |     |--CScalarCast
+//    |     |  +--CScalarFunc (varchar)
+//    |     |     |--CScalarCast
+//    |     |     |  +--CScalarIdent "b" (1)
+//    |     |     |--CScalarConst (104)
+//    |     |     +--CScalarConst (1)
+//    |     +--CScalarConst (1828233457.000)
+//    +--CScalarProjectList
+//       +--CScalarProjectElement "b" (18)
+//          +--CScalarFunc (varchar)
+//             |--CScalarCast
+//             |  +--CScalarIdent "b" (1)
+//             |--CScalarConst (104)
+//             +--CScalarConst (1)
+CExpression *
+CExpressionPreprocessor::PexprTransposeSelectAndProject(CMemoryPool *mp,
+														CExpression *pexpr)
+{
+	// protect against stack overflow during recursion
+	GPOS_CHECK_STACK_SIZE;
+	GPOS_ASSERT(NULL != mp);
+	GPOS_ASSERT(NULL != pexpr);
+
+	// Transpose:
+	//
+	// Input:
+	// +--CLogicalSelect (x = 'meh')
+	//    +--CLogicalProject (col1...n, expr as x)
+	//       +-- CLogicalNAryJoin
+	// Output:
+	// +--CLogicalProject (col1..n, expr as x)
+	//    +--CLogicalSelect (expr = 'meh')
+	//       +-- CLogicalNAryJoin
+	if (pexpr->Pop()->Eopid() == COperator::EopLogicalSelect &&
+		(*pexpr)[0]->Pop()->Eopid() == COperator::EopLogicalProject &&
+		(*(*pexpr)[0])[0]->Pop()->Eopid() == COperator::EopLogicalNAryJoin)
+	{
+		CExpression *pproject = (*pexpr)[0];
+		CExpression *pprojectList = (*pproject)[1];
+		CExpression *pselectNew = pexpr;
+
+		CExpressionArray *pdrgpexpr = GPOS_NEW(mp) CExpressionArray(mp);
+		for (ULONG ul = 0; ul < pprojectList->Arity(); ul++)
+		{
+			CExpression *pprojexpr =
+				CUtils::PNthProjectElementExpr(pproject, ul);
+
+			if (pprojexpr->DeriveHasNonScalarFunction() ||
+				pprojexpr->DeriveHasSubquery())
+			{
+				// Bail if project expression contains a set-returning function
+				// or subquery
+				pdrgpexpr->Release();
+				pexpr->AddRef();
+				return pexpr;
+			}
+
+			CExpressionHandle exprhdl(mp);
+			exprhdl.Attach(pprojexpr);
+			exprhdl.DeriveProps(NULL /*pdpctxt*/);
+
+			if (exprhdl.FChildrenHaveVolatileFunc())
+			{
+				// Bail if project expression contains a volatile function
+				pdrgpexpr->Release();
+				pexpr->AddRef();
+				return pexpr;
+			}
+
+			// TODO: In order to support mixed pushable and non-pushable
+			//       predicates we need to be able to deconstruct a select
+			//       conjunction constraint into pushable and non-pushable
+			//       parts.
+			//
+			//       NB: JoinOnViewWithMixOfPushableAndNonpushablePredicates.mdp
+			CExpression *prevpselectNew = pselectNew;
+			pselectNew = CollapseSelectAndReplaceColref(
+				mp, prevpselectNew,
+				CUtils::PNthProjectElement(pproject, ul)->Pcr(),
+				CUtils::PNthProjectElementExpr(pproject, ul));
+			if (pexpr != prevpselectNew)
+			{
+				prevpselectNew->Release();
+			}
+		}
+		pdrgpexpr->Append(pselectNew);
+
+		CExpressionArray *pdrgpprojelems = GPOS_NEW(mp) CExpressionArray(mp);
+		for (ULONG ul = 0; ul < pprojectList->Arity(); ul++)
+		{
+			(*pprojectList)[ul]->AddRef();
+			pdrgpprojelems->Append((*pprojectList)[ul]);
+		}
+		pdrgpexpr->Append(GPOS_NEW(mp) CExpression(
+			mp, GPOS_NEW(mp) CScalarProjectList(mp), pdrgpprojelems));
+
+		return GPOS_NEW(mp)
+			CExpression(mp, GPOS_NEW(mp) CLogicalProject(mp), pdrgpexpr);
+	}
+	else
+	{
+		CExpressionArray *pdrgpexprChildren = GPOS_NEW(mp) CExpressionArray(mp);
+		for (ULONG ul = 0; ul < pexpr->Arity(); ul++)
+		{
+			pdrgpexprChildren->Append(
+				PexprTransposeSelectAndProject(mp, (*pexpr)[ul]));
+		}
+
+		COperator *pop = pexpr->Pop();
+		pop->AddRef();
+		return GPOS_NEW(mp) CExpression(mp, pop, pdrgpexprChildren);
+	}
+}
+
 // main driver, pre-processing of input logical expression
 CExpression *
 CExpressionPreprocessor::PexprPreprocess(
@@ -2754,11 +3001,17 @@ CExpressionPreprocessor::PexprPreprocess(
 	GPOS_CHECK_ABORT;
 	pexrReorderedScalarCmpChildren->Release();
 
-	// (27) normalize expression again
-	CExpression *pexprNormalized2 =
-		CNormalizer::PexprNormalize(mp, pexprExistWithPredFromINSubq);
-	GPOS_CHECK_ABORT;
+
+	// (27) swap logical select over logical project
+	CExpression *pexprTransposeSelectAndProject =
+		PexprTransposeSelectAndProject(mp, pexprExistWithPredFromINSubq);
 	pexprExistWithPredFromINSubq->Release();
+
+	// (28) normalize expression again
+	CExpression *pexprNormalized2 =
+		CNormalizer::PexprNormalize(mp, pexprTransposeSelectAndProject);
+	GPOS_CHECK_ABORT;
+	pexprTransposeSelectAndProject->Release();
 
 	return pexprNormalized2;
 }

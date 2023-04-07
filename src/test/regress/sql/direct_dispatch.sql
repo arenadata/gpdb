@@ -314,6 +314,37 @@ select t1.gp_segment_id, t2.gp_segment_id, * from t_test_dd_via_segid t1, t_test
 explain (costs off) select gp_segment_id, count(*) from t_test_dd_via_segid group by gp_segment_id;
 select gp_segment_id, count(*) from t_test_dd_via_segid group by gp_segment_id;
 
+-- test direct dispatch via gp_segment_id qual with conjunction
+create table t_test_dd_via_segid_conj(a int, b int);
+insert into t_test_dd_via_segid_conj select i,i from generate_series(1, 10)i;
+
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where gp_segment_id=0 and a between 1 and 10;
+select gp_segment_id, * from t_test_dd_via_segid_conj where gp_segment_id=0 and a between 1 and 10;
+
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where b between 1 and 5 and gp_segment_id=2 and a between 1 and 10;
+select gp_segment_id, * from t_test_dd_via_segid_conj where b between 1 and 5 and gp_segment_id=2 and a between 1 and 10;
+
+--test direct dispatch via gp_segment_id with disjunction
+
+explain (costs off) select * from t_test_dd_via_segid_conj where gp_segment_id=1 or (a=3 and gp_segment_id=2);
+select * from t_test_dd_via_segid_conj where gp_segment_id=1 or (a=3 and gp_segment_id=2);
+
+--test direct dispatch with constant distribution column and constant/variable gp_segment_id condition
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where a =3 and b between 1 and 10 and gp_segment_id in (0,1);
+select gp_segment_id, * from t_test_dd_via_segid_conj where a =3 and b between 1 and 10 and gp_segment_id in (0,1);
+
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where a =3 and b between 1 and 10 and gp_segment_id <>1;
+select gp_segment_id, * from t_test_dd_via_segid_conj where a =3 and b between 1 and 10 and gp_segment_id <>1;
+
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where a =3 and b between 1 and 100 and gp_segment_id =0;
+select gp_segment_id, * from t_test_dd_via_segid_conj where a =3 and b between 1 and 100 and gp_segment_id =0;
+
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where a in (1,3) and gp_segment_id <> 0;
+select gp_segment_id, * from t_test_dd_via_segid_conj where a in (1,3) and gp_segment_id <> 0;
+
+explain (costs off) select gp_segment_id, * from t_test_dd_via_segid_conj where a in (1,3) and gp_segment_id in (0,1);
+select gp_segment_id, * from t_test_dd_via_segid_conj where a in (1,3) and gp_segment_id in (0,1);
+
 -- test direct dispatch via gp_segment_id qual on distributed randomly table
 alter table t_test_dd_via_segid set distributed randomly;
 
@@ -329,6 +360,25 @@ explain (costs off) select gp_segment_id, id from t_test_dd_via_segid where gp_s
 
 explain (costs off) select gp_segment_id, id from t_test_dd_via_segid where gp_segment_id=1 or gp_segment_id=2 or gp_segment_id=3;
 
+-- https://github.com/greenplum-db/gpdb/issues/14887
+-- If opno of clause does not belong to opfamily of distributed key,
+-- do not use direct dispatch to resolve wrong result
+create table t_14887(a varchar);
+insert into t_14887 values('a   ');
+explain select * from t_14887 where a = 'a'::bpchar;
+select * from t_14887 where a = 'a'::bpchar;
+
+-- texteq does not belong to the hash opfamily of the table's citext distkey.
+-- But from the implementation can deduce: texteq ==> citext_eq, and we can
+-- do the direct dispatch.
+-- But we do not have the kind of implication rule in Postgres: texteq ==> citext_eq.
+CREATE EXTENSION if not exists citext;
+drop table t_14887;
+create table t_14887(a citext);
+insert into t_14887 values('A'),('a');
+explain select * from t_14887 where a = 'a'::text;
+select * from t_14887 where a = 'a'::text;
+
 -- cleanup
 set test_print_direct_dispatch_info=off;
 
@@ -340,6 +390,8 @@ drop table if exists direct_test_partition;
 drop table if exists direct_test_range_partition;
 drop table if exists direct_dispatch_foo;
 drop table if exists direct_dispatch_bar;
+drop table if exists t_14887;
+drop EXTENSION citext;
 
 drop table if exists MPP_22019_a;
 drop table if exists MPP_22019_b;

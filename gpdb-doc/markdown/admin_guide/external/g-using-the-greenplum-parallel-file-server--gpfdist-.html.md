@@ -27,7 +27,8 @@ The `CREATE EXTERNAL TABLE` command `LOCATION` clause connects an external table
 
 External data files can contain rows in CSV format or any delimited text format supported by the `FORMAT` clause of the `CREATE EXTERNAL TABLE` command. In addition, `gpfdist` can be configured with a YAML-formatted file to transform external data files between a supported text format and another format, for example XML or JSON. See <ref\> for an example that shows how to use `gpfdist` to read external XML files into a Greenplum Database readable external table.
 
-For readable external tables, `gpfdist` uncompresses `gzip` \(`.gz`\) and `bzip2` \(.`bz2`\) files automatically. You can use the wildcard character \(\*\) or other C-style pattern matching to denote multiple files to read. External files are assumed to be relative to the directory specified when you started the `gpfdist` instance.
+For readable external tables, `gpfdist` uncompresses `gzip` \(`.gz`\), `bzip2` \(.`bz2`\), and `zstd` \(`.zst`\)  files automatically. You can use the wildcard character \(\*\) or other C-style pattern matching to denote multiple files to read. External files are assumed to be relative to the directory specified when you started the `gpfdist` instance.
+
 
 ## <a id="topic14"></a>About gpfdist Setup and Performance 
 
@@ -35,13 +36,13 @@ You can run `gpfdist` instances on multiple hosts and you can run multiple `gpfd
 
 -   Allow network traffic to use all ETL host network interfaces simultaneously. Run one instance of gpfdist for each interface on the ETL host, then declare the host name of each NIC in the `LOCATION` clause of your external table definition \(see [Examples for Creating External Tables](g-creating-external-tables---examples.html)\).
 
-![](../graphics/ext_tables_multinic.jpg "External Table Using Single gpfdist Instance with Multiple NICs")
+![External Table Using Single gpfdist Instance with Multiple NICs](../graphics/ext_tables_multinic.jpg "External Table Using Single gpfdist Instance with Multiple NICs")
 
 -   Divide external table data equally among multiple gpfdist instances on the ETL host. For example, on an ETL system with two NICs, run two gpfdist instances \(one on each NIC\) to optimize data load performance and divide the external table data files evenly between the two gpfdist servers.
 
-![](../graphics/ext_tables.jpg "External Tables Using Multiple gpfdist Instances with Multiple NICs")
+![External Tables Using Multiple gpfdist Instances with Multiple NICs](../graphics/ext_tables.jpg "External Tables Using Multiple gpfdist Instances with Multiple NICs")
 
-**Note:** Use pipes \(\|\) to separate formatted text when you submit files to gpfdist. Greenplum Database encloses comma-separated text strings in single or double quotes. gpfdist has to remove the quotes to parse the strings. Using pipes to separate formatted text avoids the extra step and improves performance.
+> **Note** Use pipes \(\|\) to separate formatted text when you submit files to gpfdist. Greenplum Database encloses comma-separated text strings in single or double quotes. gpfdist has to remove the quotes to parse the strings. Using pipes to separate formatted text avoids the extra step and improves performance.
 
 ## <a id="topic15"></a>Controlling Segment Parallelism 
 
@@ -104,7 +105,7 @@ $ wget http://<gpfdist_hostname>:<port>/<filename>
 
 The `CREATE EXTERNAL TABLE` definition must have the correct host name, port, and file names for gpfdist. Specify file names and paths relative to the directory from which gpfdist serves files \(the directory path specified when gpfdist started\). See [Examples for Creating External Tables](g-creating-external-tables---examples.html).
 
-If you start gpfdist on your system and IPv6 networking is disabled, gpfdist displays this warning message when testing for an IPv6 port.
+If you start gpfdist on your system and IPv6 networking is deactivated, gpfdist displays this warning message when testing for an IPv6 port.
 
 ```
 [WRN gpfdist.c:2050] Creating the socket failed

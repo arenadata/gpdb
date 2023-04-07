@@ -920,12 +920,40 @@ RecycleGang(Gang *gp, bool forceDestroy)
 
 	if (!gp)
 		return;
-
+	/*
+	 *
+	 * Callers of RecycleGang should not throw ERRORs by design. This is
+	 * because RecycleGang is not re-entrant: For example, an ERROR could be
+	 * thrown whilst the gang's segdbDesc is already freed. This would cause
+	 * RecycleGang to be called again during abort processing, giving rise to
+	 * potential double freeing of the gang's segdbDesc.
+	 *
+	 * Thus, we hold off interrupts until the gang is fully cleaned here to prevent
+	 * throwing an ERROR here.
+	 *
+	 * details See github issue: https://github.com/greenplum-db/gpdb/issues/13393
+	 */
+	HOLD_INTERRUPTS();
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor: 1) discard the query results (if any), 2)
 	 * disconnect the session, and 3) discard any connection error message.
 	 */
+#ifdef FAULT_INJECTOR
+	/*
+	 * select * from gp_segment_configuration a, t13393,
+	 * gp_segment_configuration b where a.dbid = t13393.tc1 limit 0;
+	 *
+	 * above sql has 3 gangs, the first and second gangtype is ENTRYDB_READER
+	 * and the third gang is PRIMARY_READER, the second gang will be destroyed.
+	 * inject an interrupt fault during RecycleGang PRIMARY_READER gang.
+	 */
+	if (gp->size >= 3)
+	{
+		SIMPLE_FAULT_INJECTOR("cdbcomponent_recycle_idle_qe_error");
+		CHECK_FOR_INTERRUPTS();
+	}
+#endif
 	for (i = 0; i < gp->size; i++)
 	{
 		SegmentDatabaseDescriptor *segdbDesc = gp->db_descriptors[i];
@@ -933,5 +961,67 @@ RecycleGang(Gang *gp, bool forceDestroy)
 		Assert(segdbDesc != NULL);
 
 		cdbcomponent_recycleIdleQE(segdbDesc, forceDestroy);
+	}
+	RESUME_INTERRUPTS();
+}
+
+/*
+ * Print the time of create a gang.
+ * if all segDescs of the gang are cached, we regard the gang as reused.
+ * else we print the shortest time and the longest time of estabishing connection to the segDesc.
+ */
+void
+printCreateGangTime(int sliceId, Gang *gang)
+{
+	double	shortestTime = -1, longestTime = -1;
+	int		shortestSegIndex = -1, longestSegIndex = -1;
+	int		size = gang->size;
+	SegmentDatabaseDescriptor *segdbDesc;
+	for (int i = 0; i < size; i++)
+	{
+		segdbDesc = gang->db_descriptors[i];
+		/* the connection of segdbDesc is not cached */
+		if (segdbDesc->establishConnTime != -1)
+		{
+			if (longestTime == -1 || segdbDesc->establishConnTime > longestTime)
+			{
+				longestTime = segdbDesc->establishConnTime;
+				longestSegIndex = segdbDesc->segindex;
+			}
+			if (shortestTime == -1 || segdbDesc->establishConnTime < shortestTime)
+			{
+				shortestTime = segdbDesc->establishConnTime;
+				shortestSegIndex = segdbDesc->segindex;
+			}
+		}
+	}
+
+	/* All the segDescs are cached, and we regard this gang as reused gang. */
+	if (longestTime == -1)
+	{
+		if (sliceId == -1)
+		{
+			elog(INFO, "(Gang) is reused");
+		}
+		else
+		{
+			elog(INFO, "(Slice%d) is reused", sliceId);
+		}
+
+	}
+	else
+	{
+		if (sliceId == -1)
+		{
+			elog(INFO, "The shortest establish conn time: %.2f ms, segindex: %d,\n"
+				"       The longest  establish conn time: %.2f ms, segindex: %d",
+				shortestTime, shortestSegIndex, longestTime, longestSegIndex);
+			}
+		else
+		{
+			elog(INFO, "(Slice%d) The shortest establish conn time: %.2f ms, segindex: %d,\n"
+				 "                The longest  establish conn time: %.2f ms, segindex: %d",
+				sliceId, shortestTime, shortestSegIndex, longestTime, longestSegIndex);
+		}
 	}
 }
