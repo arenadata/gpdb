@@ -2221,19 +2221,39 @@ collect_shareinput_producers(PlannerInfo *root, Plan *plan)
 
 /* Some helper: implements a stack using List. */
 static void
-shareinput_pushmot(ApplyShareInputContext *ctxt, int motid)
+shareinput_pushmot(ApplyShareInputContext *ctxt, Motion *motion)
 {
-	ctxt->motStack = lcons_int(motid, ctxt->motStack);
+	int qds = 0;
+
+	/* Top node of subplan should have a Flow node. */
+	Assert(motion->plan.lefttree);
+	Assert(motion->plan.lefttree->flow);
+
+	if (motion->plan.lefttree->flow->flotype == FLOW_SINGLETON &&
+		motion->plan.lefttree->flow->segindex < 0)
+	{
+		qds = 1;
+	}
+
+	ctxt->qdsStack = lcons_int(qds, ctxt->qdsStack);
+	ctxt->motStack = lcons_int(motion->motionID, ctxt->motStack);
 }
 static void
 shareinput_popmot(ApplyShareInputContext *ctxt)
 {
+	list_delete_first(ctxt->qdsStack);
 	list_delete_first(ctxt->motStack);
 }
 static int
 shareinput_peekmot(ApplyShareInputContext *ctxt)
 {
 	return linitial_int(ctxt->motStack);
+}
+
+static int
+shareinput_peekqds(ApplyShareInputContext *ctxt)
+{
+	return linitial_int(ctxt->qdsStack);
 }
 
 
@@ -2405,7 +2425,7 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 	{
 		Motion	   *motion = (Motion *) plan;
 
-		shareinput_pushmot(ctxt, motion->motionID);
+		shareinput_pushmot(ctxt, motion);
 		return true;
 	}
 
@@ -2413,13 +2433,21 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 	{
 		ShareInputScan *sisc = (ShareInputScan *) plan;
 		int			motId = shareinput_peekmot(ctxt);
+		int			qds = shareinput_peekqds(ctxt);
 		Plan	   *shared = plan->lefttree;
 
-		Assert(sisc->scan.plan.flow);
-		if (sisc->scan.plan.flow->flotype == FLOW_SINGLETON)
+		if (qds == 1)
 		{
-			if (sisc->scan.plan.flow->segindex < 0)
+			ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
+		}
+		else if (qds == -1 && sisc->scan.plan.flow)
+		{
+			Flow *flow = sisc->scan.plan.flow;
+
+			if (flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
+			{
 				ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
+			}
 		}
 
 		if (shared)
@@ -2463,7 +2491,7 @@ shareinput_mutator_xslice_2(Node *node, PlannerInfo *root, bool fPop)
 	{
 		Motion	   *motion = (Motion *) plan;
 
-		shareinput_pushmot(ctxt, motion->motionID);
+		shareinput_pushmot(ctxt, motion);
 		return true;
 	}
 
@@ -2523,7 +2551,7 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 	{
 		Motion	   *motion = (Motion *) plan;
 
-		shareinput_pushmot(ctxt, motion->motionID);
+		shareinput_pushmot(ctxt, motion);
 		return true;
 	}
 
@@ -2559,8 +2587,6 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
-			Assert(sisc->scan.plan.flow);
-			Assert(sisc->scan.plan.flow->flotype == FLOW_SINGLETON);
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
 	}
@@ -2590,7 +2616,7 @@ shareinput_mutator_xslice_4(Node *node, PlannerInfo *root, bool fPop)
 	{
 		Motion	   *motion = (Motion *) plan;
 
-		shareinput_pushmot(ctxt, motion->motionID);
+		shareinput_pushmot(ctxt, motion);
 		/* Do not return.  Motion need to be adjusted as well */
 	}
 
@@ -2617,14 +2643,14 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 	ApplyShareInputContext *ctxt = &glob->share;
 	ShareInputContext walker_ctxt;
 
-	ctxt->motStack = NULL;
 	ctxt->qdShares = NULL;
 	ctxt->qdSlices = NULL;
 	ctxt->nextPlanId = 0;
 
 	ctxt->sliceMarks = palloc0(ctxt->producer_count * sizeof(int));
 
-	shareinput_pushmot(ctxt, 0);
+	ctxt->qdsStack = lcons_int(-1, NULL);
+	ctxt->motStack = lcons_int(0, NULL);
 
 	walker_ctxt.base.node = (Node *) root;
 
