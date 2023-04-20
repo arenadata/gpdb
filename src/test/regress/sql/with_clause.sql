@@ -391,7 +391,7 @@ with recursive rcte(x,y) as
 )
 select * from rcte limit 10;
 
--- ensure orca does not fail when one cte on coordinator has correct flow and another - not
+-- ensure orca doesn't fail (on build with asserts) when one cte on the coordinator has the correct flow and another doesn't
 CREATE TABLE d (a int, b int, c int) DISTRIBUTED BY (a);
 CREATE TABLE r (a int, b int, c char(255)) DISTRIBUTED REPLICATED;
 INSERT INTO d SELECT 1, generate_series(1,10), 1;
