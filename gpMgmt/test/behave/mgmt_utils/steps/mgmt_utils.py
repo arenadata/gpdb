@@ -51,7 +51,7 @@ def show_all_installed(gphome):
     name = x[0].lower()
     if 'ubuntu' in name:
         return "dpkg --get-selections --admindir=%s/share/packages/database/deb | awk '{print \$1}'" % gphome
-    elif 'centos' in name or 'red hat enterprise linux' in name or 'rocky linux' in name:
+    elif 'centos' in name or 'red hat enterprise linux' in name or 'oracle linux server' in name or 'rocky linux' or 'ol' in name:
         return "rpm -qa --dbpath %s/share/packages/database" % gphome
     else:
         raise Exception('UNKNOWN platform: %s' % str(x))
@@ -61,7 +61,7 @@ def remove_native_package_command(gphome, full_gppkg_name):
     name = x[0].lower()
     if 'ubuntu' in name:
         return 'fakeroot dpkg --force-not-root --log=/dev/null --instdir=%s --admindir=%s/share/packages/database/deb -r %s' % (gphome, gphome, full_gppkg_name)
-    elif 'centos' in name or 'red hat enterprise linux' in name or 'rocky linux' in name:
+    elif 'centos' in name or 'red hat enterprise linux' in name or 'oracle linux server' in name or 'rocky linux' or 'ol' in name:
         return 'rpm -e %s --dbpath %s/share/packages/database' % (full_gppkg_name, gphome)
     else:
         raise Exception('UNKNOWN platform: %s' % str(x))
@@ -2016,6 +2016,33 @@ def impl(context, filename, contain, output):
         if (not valuesShouldExist) and (output in actual):
             raise Exception('File %s on host %s contains "%s"' % (filepath, host, output))
 
+@given('verify that the path "{filename}" in each segment data directory does not exist')
+@then('verify that the path "{filename}" in each segment data directory does not exist')
+def impl(context, filename):
+    try:
+        with dbconn.connect(dbconn.DbURL(dbname='template1'), unsetSearchPath=False) as conn:
+            curs = dbconn.execSQL(conn, "SELECT hostname, datadir FROM gp_segment_configuration WHERE content > -1;")
+            result = curs.fetchall()
+            segment_info = [(result[s][0], result[s][1]) for s in range(len(result))]
+    except Exception as e:
+        raise Exception("Could not retrieve segment information: %s" % e.message)
+
+    for info in segment_info:
+        host, datadir = info
+        filepath = os.path.join(datadir, filename)
+        cmd_str = 'test -d "%s" && echo 1 || echo 0' % (filepath)
+        cmd = Command(name='check exists directory or not',
+                      cmdStr=cmd_str,
+                      ctxt=REMOTE,
+                      remoteHost=host)
+        cmd.run(validateAfter=False)
+        try:
+            val = int(cmd.get_stdout().strip())
+            if val:
+                raise Exception('Path %s on host %s exists (val %s) (cmd "%s")' % (filepath, host, val, cmd_str))
+        except:
+            raise Exception('Path %s on host %s exists (cmd "%s")' % (filepath, host, cmd_str))
+
 
 @given('the gpfdists occupying port {port} on host "{hostfile}"')
 def impl(context, port, hostfile):
@@ -3783,8 +3810,8 @@ def are_on_different_subnets(primary_hostname, mirror_hostname):
         primary_broadcast = check_output(['ssh', '-n', primary_hostname, "/sbin/ip addr show ens4 | grep 'inet .* brd' | awk '{ print $4 }'"])
         mirror_broadcast = check_output(['ssh', '-n', mirror_hostname,  "/sbin/ip addr show ens4 | grep 'inet .* brd' | awk '{ print $4 }'"])
     else:
-        primary_broadcast = check_output(['ssh', '-n', primary_hostname, "/sbin/ip addr show eth0 | grep 'inet .* brd' | awk '{ print $4 }'"])
-        mirror_broadcast = check_output(['ssh', '-n', mirror_hostname,  "/sbin/ip addr show eth0 | grep 'inet .* brd' | awk '{ print $4 }'"])
+        primary_broadcast = check_output(['ssh', '-n', primary_hostname, "/sbin/ip addr show | grep 'inet .* brd' | awk '{ print $4 }'"])
+        mirror_broadcast = check_output(['ssh', '-n', mirror_hostname,  "/sbin/ip addr show | grep 'inet .* brd' | awk '{ print $4 }'"])
     if not primary_broadcast:
         raise Exception("primary hostname %s has no broadcast address" % primary_hostname)
     if not mirror_broadcast:
