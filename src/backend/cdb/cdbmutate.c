@@ -2219,14 +2219,19 @@ collect_shareinput_producers(PlannerInfo *root, Plan *plan)
 	shareinput_walker((Node *) plan, &ctx);
 }
 
-enum { ROOT_SLICE = -1, SEGMENT_SLICE = 0, QUERY_DISPATCHER_SLICE = 1 };
+enum
+{
+	ROOT_SLICE = -1,
+	SEGMENT_SLICE = 0,
+	QUERY_DISPATCHER_SLICE = 1
+};
 
 /* Some helper: implements a stack using List. */
 static void
 shareinput_pushmot(ApplyShareInputContext *ctxt, Motion *motion)
 {
-	int	  qds = SEGMENT_SLICE;
-	Flow *flow;
+	int			qds = SEGMENT_SLICE;
+	Flow	   *flow;
 
 	/* Top node of subplan should have a Flow node. */
 	Assert(motion->plan.lefttree);
