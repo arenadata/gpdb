@@ -2219,20 +2219,25 @@ collect_shareinput_producers(PlannerInfo *root, Plan *plan)
 	shareinput_walker((Node *) plan, &ctx);
 }
 
+enum { ROOT_SLICE = -1, SEGMENT_SLICE = 0, QUERY_DISPATCHER_SLICE = 1 };
+
 /* Some helper: implements a stack using List. */
 static void
 shareinput_pushmot(ApplyShareInputContext *ctxt, Motion *motion)
 {
-	int qds = 0;
+	int qds = SEGMENT_SLICE;
 
 	/* Top node of subplan should have a Flow node. */
 	Assert(motion->plan.lefttree);
 	Assert(motion->plan.lefttree->flow);
 
-	if (motion->plan.lefttree->flow->flotype == FLOW_SINGLETON &&
-		motion->plan.lefttree->flow->segindex < 0)
+	Flow *flow = motion->plan.lefttree->flow;
+
+	/* it is singleton on query dispatcher */
+	if (flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
 	{
-		qds = 1;
+		/* it is query dispatcher slice */
+		qds = QUERY_DISPATCHER_SLICE;
 	}
 
 	ctxt->qdsStack = lcons_int(qds, ctxt->qdsStack);
@@ -2438,13 +2443,13 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 		Flow	   *flow = sisc->scan.plan.flow;
 
 		/* it is root slice and flow exists and it is singleton on query dispatcher */
-		if (qds == -1 && flow && flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
+		if (qds == ROOT_SLICE && flow && flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
 		{
 			/* it is query dispatcher slice */
-			qds = 1;
+			qds = QUERY_DISPATCHER_SLICE;
 		}
 
-		if (qds == 1)
+		if (qds == QUERY_DISPATCHER_SLICE)
 		{
 			ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
 		}
@@ -2648,7 +2653,7 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 
 	ctxt->sliceMarks = palloc0(ctxt->producer_count * sizeof(int));
 
-	ctxt->qdsStack = lcons_int(-1, NULL);
+	ctxt->qdsStack = lcons_int(ROOT_SLICE, NULL);
 	ctxt->motStack = lcons_int(0, NULL);
 
 	walker_ctxt.base.node = (Node *) root;
