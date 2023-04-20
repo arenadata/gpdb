@@ -2435,19 +2435,18 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 		int			motId = shareinput_peekmot(ctxt);
 		int			qds = shareinput_peekqds(ctxt);
 		Plan	   *shared = plan->lefttree;
+		Flow	   *flow = sisc->scan.plan.flow;
+
+		/* it is root slice and flow exists and it is singleton on query dispatcher */
+		if (qds == -1 && flow && flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
+		{
+			/* it is query dispatcher slice */
+			qds = 1;
+		}
 
 		if (qds == 1)
 		{
 			ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
-		}
-		else if (qds == -1 && sisc->scan.plan.flow)
-		{
-			Flow *flow = sisc->scan.plan.flow;
-
-			if (flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
-			{
-				ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
-			}
 		}
 
 		if (shared)
