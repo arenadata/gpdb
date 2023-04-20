@@ -2225,18 +2225,17 @@ enum { ROOT_SLICE = -1, SEGMENT_SLICE = 0, QUERY_DISPATCHER_SLICE = 1 };
 static void
 shareinput_pushmot(ApplyShareInputContext *ctxt, Motion *motion)
 {
-	int qds = SEGMENT_SLICE;
+	int	  qds = SEGMENT_SLICE;
+	Flow *flow;
 
 	/* Top node of subplan should have a Flow node. */
 	Assert(motion->plan.lefttree);
 	Assert(motion->plan.lefttree->flow);
 
-	Flow *flow = motion->plan.lefttree->flow;
+	flow = motion->plan.lefttree->flow;
 
-	/* it is singleton on query dispatcher */
 	if (flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
 	{
-		/* it is query dispatcher slice */
 		qds = QUERY_DISPATCHER_SLICE;
 	}
 
@@ -2442,10 +2441,8 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 		Plan	   *shared = plan->lefttree;
 		Flow	   *flow = sisc->scan.plan.flow;
 
-		/* it is root slice and flow exists and it is singleton on query dispatcher */
 		if (qds == ROOT_SLICE && flow && flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
 		{
-			/* it is query dispatcher slice */
 			qds = QUERY_DISPATCHER_SLICE;
 		}
 
