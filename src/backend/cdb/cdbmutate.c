@@ -2247,6 +2247,16 @@ shareinput_query_dispatcher(ApplyShareInputContext *ctxt)
 
 	return flow->flotype == FLOW_SINGLETON && flow->segindex < 0;
 }
+static bool
+shareinput_flow_singleton(ApplyShareInputContext *ctxt)
+{
+	Motion	   *motion = linitial(ctxt->motStack);
+	Flow	   *flow = motion->plan.lefttree->flow;
+
+	Assert(flow);
+
+	return flow->flotype == FLOW_SINGLETON;
+}
 
 /*
  * Replace the target list of ShareInputScan nodes, with references
@@ -2568,7 +2578,7 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
-			Assert(shareinput_query_dispatcher(ctxt));
+			Assert(shareinput_flow_singleton(ctxt));
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
 	}
