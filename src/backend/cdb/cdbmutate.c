@@ -2241,13 +2241,11 @@ static bool
 shareinput_peekqds(ApplyShareInputContext *ctxt)
 {
 	Motion	   *motion = linitial(ctxt->motStack);
+	Flow	   *flow = motion->plan.lefttree->flow;
 
-	/* Top node of subplan should have a Flow node. */
-	Assert(motion->plan.lefttree);
-	Assert(motion->plan.lefttree->flow);
+	Assert(flow);
 
-	return motion->plan.lefttree->flow == FLOW_SINGLETON &&
-		motion->plan.lefttree->flow->segindex < 0;
+	return flow->flotype == FLOW_SINGLETON && flow->segindex < 0;
 }
 
 /*
