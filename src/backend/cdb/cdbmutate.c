@@ -2624,9 +2624,12 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 {
 	Query	   *query = root->parse;
 
-	/* but for CTAS, COPY INTO and UPDATE MATERIALIZED VIEW */
 	if (query->parentStmtType)
 	{
+		/*
+		 * For CTAS, SELECT INTO, COPY INTO, REFRESH MATERIALIZED VIEW,
+		 * the root slice is not executed on the coordinator.
+		 */
 		return false;
 	}
 	else if (IsA(plan, ModifyTable))
@@ -2640,6 +2643,11 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 
 			if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 			{
+				/*
+				 * For the modification node by Postgres planner,
+				 * if the table distribution policy is not master-only,
+				 * then the root slice is not executed on the coordinator.
+				 */
 				return false;
 			}
 		}
@@ -2651,6 +2659,11 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 
 		if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 		{
+			/*
+			 * For the modification node by ORCA planner,
+			 * if the table distribution policy is not master-only,
+			 * then the root slice is not executed on the coordinator.
+			 */
 			return false;
 		}
 	}
@@ -2660,9 +2673,19 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 
 		if (root->glob->is_parallel_cursor)
 		{
-			if (flow->locustype != CdbLocusType_Entry &&
-				flow->locustype != CdbLocusType_General &&
-				flow->locustype != CdbLocusType_SingleQE)
+			if (flow->flotype == FLOW_SINGLETON &&
+				(flow->locustype == CdbLocusType_Entry ||
+				flow->locustype == CdbLocusType_General ||
+				flow->locustype == CdbLocusType_SingleQE))
+			{
+				/*
+				 * For these scenarios, parallel retrieve cursor needs
+				 * to run on coordinator, since endpoint QE needs
+				 * to interact with the retrieve connections.
+				 */
+				return true;
+			}
+			else
 			{
 				return false;
 			}
@@ -2670,10 +2693,17 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 
 		if (flow->flotype != FLOW_SINGLETON || flow->segindex >= 0)
 		{
+			/*
+			 * For non-singleton or singleton on segment,
+			 * the root slice is not executed on the coordinator.
+			 */
 			return false;
 		}
 	}
 
+	/*
+	 * In all other cases, the root slice is executed on the coordinator.
+	 */
 	return true;
 }
 
