@@ -2230,15 +2230,19 @@ shareinput_popmot(ApplyShareInputContext *ctxt)
 {
 	list_delete_first(ctxt->motStack);
 }
-static Motion *
-shareinput_peekmotion(ApplyShareInputContext *ctxt)
-{
-	return linitial(ctxt->motStack);
-}
 static int
 shareinput_peekmot(ApplyShareInputContext *ctxt)
 {
-	return shareinput_peekmotion(ctxt)->motionID;
+	Motion	   *motion = linitial(ctxt->motStack);
+
+	return motion->motionID;
+}
+static Flow *
+shareinput_peekflow(ApplyShareInputContext *ctxt)
+{
+	Motion	   *motion = linitial(ctxt->motStack);
+
+	return motion->plan.lefttree->flow;
 }
 
 /*
@@ -2416,14 +2420,14 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 	if (IsA(plan, ShareInputScan))
 	{
 		ShareInputScan *sisc = (ShareInputScan *) plan;
-		Motion	   *motion = shareinput_peekmotion(ctxt);
-		int			motId = motion->motionID;
+		int			motId = shareinput_peekmot(ctxt);
 		Plan	   *shared = plan->lefttree;
+		Flow	   *flow = shareinput_peekflow(ctxt);
 
-		Assert(motion->plan.lefttree->flow);
-		if (motion->plan.lefttree->flow->flotype == FLOW_SINGLETON)
+		Assert(flow);
+		if (flow->flotype == FLOW_SINGLETON)
 		{
-			if (motion->plan.lefttree->flow->segindex < 0)
+			if (flow->segindex < 0)
 				ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
 		}
 
@@ -2565,10 +2569,10 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
 #ifdef USE_ASSERT_CHECKING
-			Motion	   *motion = shareinput_peekmotion(ctxt);
+			Flow	   *flow = shareinput_peekflow(ctxt);
 
-			Assert(motion->plan.lefttree->flow);
-			Assert(motion->plan.lefttree->flow->flotype == FLOW_SINGLETON);
+			Assert(flow);
+			Assert(flow->flotype == FLOW_SINGLETON);
 #endif
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
