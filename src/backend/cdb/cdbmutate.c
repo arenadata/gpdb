@@ -2619,30 +2619,18 @@ shareinput_mutator_xslice_4(Node *node, PlannerInfo *root, bool fPop)
 	return true;
 }
 
-static Motion *
-fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
+static bool
+root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 {
 	Query	   *query = root->parse;
-	Motion	   *motion = makeNode(Motion);
-	Flow	   *flow;
-
-	motion->plan.lefttree = makeNode(Plan);
-	motion->plan.lefttree->flow = flow = makeNode(Flow);
-
-	/* initial we assume that root slice is executed on coordinator */
-	flow->flotype = FLOW_SINGLETON;
-	flow->segindex = -1;
 
 	/* but for CTAS, COPY INTO and UPDATE MATERIALIZED VIEW */
 	if (query->parentStmtType)
 	{
-		flow->flotype = FLOW_UNDEFINED;
+		return false;
 	}
 	else if (IsA(plan, ModifyTable))
 	{
-		*flow = *plan->flow;
-
-#ifdef USE_ASSERT_CHECKING
 		ModifyTable *mt = (ModifyTable *) plan;
 
 		if (list_length(mt->resultRelations) > 0)
@@ -2652,10 +2640,9 @@ fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 
 			if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 			{
-				Assert(flow->flotype != FLOW_SINGLETON);
+				return false;
 			}
 		}
-#endif
 	}
 	else if (IsA(plan, DML))
 	{
@@ -2664,25 +2651,30 @@ fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 
 		if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 		{
-			flow->flotype = FLOW_UNDEFINED;
+			return false;
 		}
 	}
 	else if (plan->flow)
 	{
-		*flow = *plan->flow;
+		Flow	   *flow = plan->flow;
 
 		if (root->glob->is_parallel_cursor)
 		{
-			if (plan->flow->locustype != CdbLocusType_Entry &&
-				plan->flow->locustype != CdbLocusType_General &&
-				plan->flow->locustype != CdbLocusType_SingleQE)
+			if (flow->locustype != CdbLocusType_Entry &&
+				flow->locustype != CdbLocusType_General &&
+				flow->locustype != CdbLocusType_SingleQE)
 			{
-				flow->flotype = FLOW_UNDEFINED;
+				return false;
 			}
+		}
+
+		if (flow->flotype != FLOW_SINGLETON || flow->segindex >= 0)
+		{
+			return false;
 		}
 	}
 
-	return motion;
+	return true;
 }
 
 Plan *
@@ -2691,6 +2683,17 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 	PlannerGlobal *glob = root->glob;
 	ApplyShareInputContext *ctxt = &glob->share;
 	ShareInputContext walker_ctxt;
+	Motion		fakeMotion = {0};
+	Plan		fakePlan = {0};
+	Flow		fakeFlow = {0};
+
+	fakeMotion.plan.lefttree = &fakePlan;
+	fakeMotion.plan.lefttree->flow = &fakeFlow;
+
+	if (root_slice_is_executed_on_coordinator(plan, root)) {
+		fakeFlow.flotype = FLOW_SINGLETON;
+		fakeFlow.segindex = -1;
+	}
 
 	ctxt->motStack = NULL;
 	ctxt->qdShares = NULL;
@@ -2699,7 +2702,7 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 
 	ctxt->sliceMarks = palloc0(ctxt->producer_count * sizeof(int));
 
-	shareinput_pushmot(ctxt, fake_motion_for_root_slice(plan, root));
+	shareinput_pushmot(ctxt, &fakeMotion);
 
 	walker_ctxt.base.node = (Node *) root;
 
