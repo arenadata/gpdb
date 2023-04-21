@@ -2230,32 +2230,15 @@ shareinput_popmot(ApplyShareInputContext *ctxt)
 {
 	list_delete_first(ctxt->motStack);
 }
+static Motion *
+shareinput_peekmotion(ApplyShareInputContext *ctxt)
+{
+	return linitial(ctxt->motStack);
+}
 static int
 shareinput_peekmot(ApplyShareInputContext *ctxt)
 {
-	Motion	   *motion = linitial(ctxt->motStack);
-
-	return motion->motionID;
-}
-static bool
-shareinput_query_dispatcher(ApplyShareInputContext *ctxt)
-{
-	Motion	   *motion = linitial(ctxt->motStack);
-	Flow	   *flow = motion->plan.lefttree->flow;
-
-	Assert(flow);
-
-	return flow->flotype == FLOW_SINGLETON && flow->segindex < 0;
-}
-static bool
-shareinput_flow_singleton(ApplyShareInputContext *ctxt)
-{
-	Motion	   *motion = linitial(ctxt->motStack);
-	Flow	   *flow = motion->plan.lefttree->flow;
-
-	Assert(flow);
-
-	return flow->flotype == FLOW_SINGLETON;
+	return shareinput_peekmotion(ctxt)->motionID;
 }
 
 /*
@@ -2433,12 +2416,15 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 	if (IsA(plan, ShareInputScan))
 	{
 		ShareInputScan *sisc = (ShareInputScan *) plan;
-		int			motId = shareinput_peekmot(ctxt);
+		Motion	   *motion = shareinput_peekmotion(ctxt);
+		int			motId = motion->motionID;
 		Plan	   *shared = plan->lefttree;
 
-		if (shareinput_query_dispatcher(ctxt))
+		Assert(motion->plan.lefttree->flow);
+		if (motion->plan.lefttree->flow->flotype == FLOW_SINGLETON)
 		{
-			ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
+			if (motion->plan.lefttree->flow->segindex < 0)
+				ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
 		}
 
 		if (shared)
@@ -2578,7 +2564,12 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
-			Assert(shareinput_flow_singleton(ctxt));
+#ifdef USE_ASSERT_CHECKING
+			Motion	   *motion = shareinput_peekmotion(ctxt);
+
+			Assert(motion->plan.lefttree->flow);
+			Assert(motion->plan.lefttree->flow->flotype == FLOW_SINGLETON);
+#endif
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
 	}
