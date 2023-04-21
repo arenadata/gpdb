@@ -2690,7 +2690,8 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 	fakeMotion.plan.lefttree = &fakePlan;
 	fakeMotion.plan.lefttree->flow = &fakeFlow;
 
-	if (root_slice_is_executed_on_coordinator(plan, root)) {
+	if (root_slice_is_executed_on_coordinator(plan, root))
+	{
 		fakeFlow.flotype = FLOW_SINGLETON;
 		fakeFlow.segindex = -1;
 	}
