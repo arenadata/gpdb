@@ -2233,13 +2233,14 @@ shareinput_popmot(ApplyShareInputContext *ctxt)
 static int
 shareinput_peekmot(ApplyShareInputContext *ctxt)
 {
-	Motion *motion = linitial(ctxt->motStack);
+	Motion	   *motion = linitial(ctxt->motStack);
+
 	return motion->motionID;
 }
 static bool
 shareinput_peekqds(ApplyShareInputContext *ctxt)
 {
-	Motion *motion = linitial(ctxt->motStack);
+	Motion	   *motion = linitial(ctxt->motStack);
 
 	/* Top node of subplan should have a Flow node. */
 	Assert(motion->plan.lefttree);
@@ -2622,9 +2623,9 @@ shareinput_mutator_xslice_4(Node *node, PlannerInfo *root, bool fPop)
 static Motion *
 fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 {
-	Query		  *query = root->parse;
-	Motion		  *motion = makeNode(Motion);
-	Flow		  *flow;
+	Query	   *query = root->parse;
+	Motion	   *motion = makeNode(Motion);
+	Flow	   *flow;
 
 	motion->plan.lefttree = makeNode(Plan);
 	motion->plan.lefttree->flow = flow = makeNode(Flow);
@@ -2647,8 +2648,8 @@ fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 
 		if (list_length(mt->resultRelations) > 0)
 		{
-			ListCell *lc = list_head(mt->resultRelations);
-			Oid		  reloid = getrelid(lfirst_int(lc), query->rtable);
+			ListCell   *lc = list_head(mt->resultRelations);
+			Oid			reloid = getrelid(lfirst_int(lc), query->rtable);
 
 			if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 			{
@@ -2659,8 +2660,8 @@ fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 	}
 	else if (IsA(plan, DML))
 	{
-		DML *dml = (DML *) plan;
-		Oid  reloid = getrelid(dml->scanrelid, query->rtable);
+		DML		   *dml = (DML *) plan;
+		Oid			reloid = getrelid(dml->scanrelid, query->rtable);
 
 		if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 		{
