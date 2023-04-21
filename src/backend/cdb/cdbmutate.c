@@ -2568,12 +2568,8 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
-#ifdef USE_ASSERT_CHECKING
-			Flow	   *flow = shareinput_peekflow(ctxt);
-
-			Assert(flow);
-			Assert(flow->flotype == FLOW_SINGLETON);
-#endif
+			Assert(shareinput_peekflow(ctxt));
+			Assert(shareinput_peekflow(ctxt)->flotype == FLOW_SINGLETON);
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
 	}
