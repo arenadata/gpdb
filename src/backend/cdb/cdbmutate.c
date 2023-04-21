@@ -2219,52 +2219,34 @@ collect_shareinput_producers(PlannerInfo *root, Plan *plan)
 	shareinput_walker((Node *) plan, &ctx);
 }
 
-enum
-{
-	ROOT_SLICE = -1,
-	SEGMENT_SLICE = 0,
-	QUERY_DISPATCHER_SLICE = 1
-};
-
 /* Some helper: implements a stack using List. */
 static void
 shareinput_pushmot(ApplyShareInputContext *ctxt, Motion *motion)
 {
-	int			qds = SEGMENT_SLICE;
-	Flow	   *flow;
-
-	/* Top node of subplan should have a Flow node. */
-	Assert(motion->plan.lefttree);
-	Assert(motion->plan.lefttree->flow);
-
-	flow = motion->plan.lefttree->flow;
-
-	if (flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
-	{
-		qds = QUERY_DISPATCHER_SLICE;
-	}
-
-	ctxt->qdsStack = lcons_int(qds, ctxt->qdsStack);
-	ctxt->motStack = lcons_int(motion->motionID, ctxt->motStack);
+	ctxt->motStack = lcons(motion, ctxt->motStack);
 }
 static void
 shareinput_popmot(ApplyShareInputContext *ctxt)
 {
-	list_delete_first(ctxt->qdsStack);
 	list_delete_first(ctxt->motStack);
 }
 static int
 shareinput_peekmot(ApplyShareInputContext *ctxt)
 {
-	return linitial_int(ctxt->motStack);
+	Motion *motion = linitial(ctxt->motStack);
+	return motion->motionID;
 }
-
-static int
+static bool
 shareinput_peekqds(ApplyShareInputContext *ctxt)
 {
-	return linitial_int(ctxt->qdsStack);
-}
+	Motion *motion = linitial(ctxt->motStack);
 
+	/* Top node of subplan should have a Flow node. */
+	Assert(motion->plan.lefttree);
+	Assert(motion->plan.lefttree->flow);
+
+	return motion->plan.lefttree->flow == FLOW_SINGLETON && motion->plan.lefttree->flow->segindex < 0;
+}
 
 /*
  * Replace the target list of ShareInputScan nodes, with references
@@ -2442,16 +2424,10 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 	{
 		ShareInputScan *sisc = (ShareInputScan *) plan;
 		int			motId = shareinput_peekmot(ctxt);
-		int			qds = shareinput_peekqds(ctxt);
+		bool		query_dispatcher_slice = shareinput_peekqds(ctxt);
 		Plan	   *shared = plan->lefttree;
-		Flow	   *flow = sisc->scan.plan.flow;
 
-		if (qds == ROOT_SLICE && flow && flow->flotype == FLOW_SINGLETON && flow->segindex < 0)
-		{
-			qds = QUERY_DISPATCHER_SLICE;
-		}
-
-		if (qds == QUERY_DISPATCHER_SLICE)
+		if (query_dispatcher_slice)
 		{
 			ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
 		}
@@ -2593,6 +2569,7 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
+			Assert(shareinput_peekqds(ctxt));
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
 	}
@@ -2642,6 +2619,68 @@ shareinput_mutator_xslice_4(Node *node, PlannerInfo *root, bool fPop)
 	return true;
 }
 
+static Motion *
+fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
+{
+	Query		  *query = root->parse;
+	Motion		  *motion = makeNode(Motion);
+	Flow		  *flow;
+
+	motion->plan.lefttree = makeNode(Plan);
+	motion->plan.lefttree->flow = flow = makeNode(Flow);
+
+	/* initial we assume that root slice is executed on coordinator */
+	flow->flotype = FLOW_SINGLETON;
+	flow->segindex = -1;
+
+	/* but for CTAS, COPY INTO and UPDATE MATERIALIZED VIEW */
+	if (query->parentStmtType)
+	{
+		flow->flotype = FLOW_UNDEFINED;
+	}
+	else if (IsA(plan, ModifyTable))
+	{
+		ModifyTable *mt = (ModifyTable *) plan;
+
+		if (list_length(mt->resultRelations) > 0)
+		{
+			ListCell *lc = list_head(mt->resultRelations);
+			Oid		  reloid = getrelid(lfirst_int(lc), query->rtable);
+
+			if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
+			{
+				flow->flotype = FLOW_UNDEFINED;
+			}
+		}
+	}
+	else if (IsA(plan, DML))
+	{
+		DML *dml = (DML *) plan;
+		Oid  reloid = getrelid(dml->scanrelid, query->rtable);
+
+		if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
+		{
+			flow->flotype = FLOW_UNDEFINED;
+		}
+	}
+	else if (plan->flow)
+	{
+		*flow = *plan->flow;
+
+		if (root->glob->is_parallel_cursor)
+		{
+			if (plan->flow->locustype != CdbLocusType_Entry &&
+				plan->flow->locustype != CdbLocusType_General &&
+				plan->flow->locustype != CdbLocusType_SingleQE)
+			{
+				flow->flotype = FLOW_UNDEFINED;
+			}
+		}
+	}
+
+	return motion;
+}
+
 Plan *
 apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 {
@@ -2649,14 +2688,14 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 	ApplyShareInputContext *ctxt = &glob->share;
 	ShareInputContext walker_ctxt;
 
+	ctxt->motStack = NULL;
 	ctxt->qdShares = NULL;
 	ctxt->qdSlices = NULL;
 	ctxt->nextPlanId = 0;
 
 	ctxt->sliceMarks = palloc0(ctxt->producer_count * sizeof(int));
 
-	ctxt->qdsStack = lcons_int(ROOT_SLICE, NULL);
-	ctxt->motStack = lcons_int(0, NULL);
+	shareinput_pushmot(ctxt, fake_motion_for_root_slice(plan, root));
 
 	walker_ctxt.base.node = (Node *) root;
 

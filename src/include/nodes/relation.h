@@ -87,7 +87,6 @@ typedef struct ApplyShareInputContext
 	List	   *curr_rtable;
 	int		   *share_refcounts;
 	int			share_refcounts_sz;		/* allocated sized of 'share_refcounts' */
-	List *qdsStack;
 	List *motStack;
 	List *qdShares;
 	List *qdSlices;
