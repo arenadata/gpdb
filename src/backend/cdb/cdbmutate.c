@@ -2640,6 +2640,9 @@ fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 	}
 	else if (IsA(plan, ModifyTable))
 	{
+		*flow = *plan->flow;
+
+#ifdef USE_ASSERT_CHECKING
 		ModifyTable *mt = (ModifyTable *) plan;
 
 		if (list_length(mt->resultRelations) > 0)
@@ -2649,9 +2652,10 @@ fake_motion_for_root_slice(Plan *plan, PlannerInfo *root)
 
 			if (GpPolicyFetch(reloid)->ptype != POLICYTYPE_ENTRY)
 			{
-				flow->flotype = FLOW_UNDEFINED;
+				Assert(flow->flotype != FLOW_SINGLETON);
 			}
 		}
+#endif
 	}
 	else if (IsA(plan, DML))
 	{
