@@ -2246,7 +2246,8 @@ shareinput_peekqds(ApplyShareInputContext *ctxt)
 	Assert(motion->plan.lefttree);
 	Assert(motion->plan.lefttree->flow);
 
-	return motion->plan.lefttree->flow == FLOW_SINGLETON && motion->plan.lefttree->flow->segindex < 0;
+	return motion->plan.lefttree->flow == FLOW_SINGLETON &&
+		motion->plan.lefttree->flow->segindex < 0;
 }
 
 /*
