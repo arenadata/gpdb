@@ -2238,7 +2238,7 @@ shareinput_peekmot(ApplyShareInputContext *ctxt)
 	return motion->motionID;
 }
 static bool
-shareinput_peekqds(ApplyShareInputContext *ctxt)
+shareinput_query_dispatcher(ApplyShareInputContext *ctxt)
 {
 	Motion	   *motion = linitial(ctxt->motStack);
 	Flow	   *flow = motion->plan.lefttree->flow;
@@ -2424,10 +2424,9 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 	{
 		ShareInputScan *sisc = (ShareInputScan *) plan;
 		int			motId = shareinput_peekmot(ctxt);
-		bool		query_dispatcher_slice = shareinput_peekqds(ctxt);
 		Plan	   *shared = plan->lefttree;
 
-		if (query_dispatcher_slice)
+		if (shareinput_query_dispatcher(ctxt))
 		{
 			ctxt->qdShares = list_append_unique_int(ctxt->qdShares, sisc->share_id);
 		}
@@ -2569,7 +2568,7 @@ shareinput_mutator_xslice_3(Node *node, PlannerInfo *root, bool fPop)
 
 		if (list_member_int(ctxt->qdShares, sisc->share_id))
 		{
-			Assert(shareinput_peekqds(ctxt));
+			Assert(shareinput_query_dispatcher(ctxt));
 			ctxt->qdSlices = list_append_unique_int(ctxt->qdSlices, motId);
 		}
 	}
