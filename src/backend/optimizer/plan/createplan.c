@@ -670,10 +670,10 @@ disuse_physical_tlist(PlannerInfo *root, Plan *plan, Path *path)
 			 * If plan has a flow node, ensure all entries of hashExpr
 			 * are in the targetlist.
 			 */
-			if (plan->flow && plan->flow->hashExprs)
+			/*if (plan->flow && plan->flow->hashExprs)
 			{
-				plan->targetlist = add_to_flat_tlist_junk(plan->targetlist, plan->flow->hashExprs, true /* resjunk */);
-			}
+			        plan->targetlist = add_to_flat_tlist_junk(plan->targetlist, plan->flow->hashExprs, true /* resjunk */);
+			//}
 			break;
 		default:
 			break;
