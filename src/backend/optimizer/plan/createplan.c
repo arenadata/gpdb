@@ -667,12 +667,29 @@ disuse_physical_tlist(PlannerInfo *root, Plan *plan, Path *path)
 			plan->targetlist = build_path_tlist(root, path);
 
 			/**
-			 * If plan has a flow node, ensure all entries of hashExpr
+			 * If plan has a flow node, ensure all Var entries of hashExpr
 			 * are in the targetlist.
 			 */
 			if (plan->flow && plan->flow->hashExprs)
 			{
-				plan->targetlist = add_to_flat_tlist_junk(plan->targetlist, plan->flow->hashExprs, true /* resjunk */);
+				List		*var_exprs = NIL;
+				ListCell	*lc;
+
+				foreach(lc, plan->flow->hashExprs)
+				{
+					Expr	*expr = (Expr *) lfirst(lc);
+
+					if (IsA(expr, Var))
+					{
+						var_exprs = lappend(var_exprs, expr);
+					}
+				}
+
+				if (var_exprs)
+				{
+					plan->targetlist = add_to_flat_tlist_junk(plan->targetlist, var_exprs, true /* resjunk */);
+					list_free(var_exprs);
+				}
 			}
 			break;
 		default:
