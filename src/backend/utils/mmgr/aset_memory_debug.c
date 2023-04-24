@@ -19,7 +19,6 @@ update_AllocChunkStats(AllocChunk chunk)
 		return;
 	}
 
-	r->key = chunk->info.key;
 	r->chunk_info = chunk->info;
 	r->stat.bytes = chunk->size;
 	r->stat.count = 1;

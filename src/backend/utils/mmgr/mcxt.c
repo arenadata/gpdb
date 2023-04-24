@@ -797,11 +797,8 @@ MemoryContextStats_recur(MemoryContext topContext, MemoryContext rootContext,
 		   We must to save chunks_htable to other variable (prev_chunk_htable)
 		   to get correct stats of next child.
 		 */
-		is_need_to_print_logs = (child->firstchild == NULL &&
-		                         strcmp(name, prevChildName) == 0 &&
-		                         siblingCount != 0) ||
-		                        (child->firstchild == NULL &&
-		                         siblingCount != 0);
+		is_need_to_print_logs = (child->firstchild != NULL ||
+		                         strcmp(name, prevChildName) != 0);
 		if (is_need_to_print_logs)
 		{
 			prev_chunk_htable = chunks_htable;

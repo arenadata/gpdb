@@ -18,16 +18,15 @@ typedef struct
 
 typedef struct
 {
+	MemoryContextChunkStatKey key;
 	#define DYNAMIC_MEMORY_DEBUG_INIT_MAGIC 0x12345678
 	int32_t init;
-	MemoryContextChunkStatKey key;
 	const char *file;
 	const char *exec_func;
 } MemoryContextChunkInfo;
 
 typedef struct
 {
-	MemoryContextChunkStatKey key;
 	MemoryContextChunkInfo chunk_info;
 	MemoryContextChunkStat stat;
 } MemoryContextChunkStat_htabEntry;
