@@ -1493,3 +1493,52 @@ where x.a + 1 in (select b from t2_dedupsemi_indexonly);
 
 drop table t1_dedupsemi_indexonly;
 drop table t2_dedupsemi_indexonly;
+-- test lateral join inner plan contains limit and where clause
+-- greenplum cannot pass params across motion so one need to prevent
+-- the bottom scan node from appending to its targetlist outer relation
+-- refs. Otherwise it may lead to segfault at the exectution stage.
+--start_ignore
+drop table if exists t1_lateral_where;
+NOTICE:  table "t1_lateral_where" does not exist, skipping
+drop table if exists t2_lateral_where;
+NOTICE:  table "t2_lateral_where" does not exist, skipping
+--end_ignore
+create table t1_lateral_where (c text) distributed by (c);
+create table t2_lateral_where (c text) distributed by (c);
+insert into t1_lateral_where values (1), (2), (3);
+insert into t2_lateral_where values (3), (4);
+explain verbose select * from t2_lateral_where as t2 inner join lateral
+(select * from t1_lateral_where as t1 where t2.c = t1.c limit 1) s on true;
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=10000000000.00..10000000001.80 rows=4 width=4)
+   Output: t2.c, t1.c
+   ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..1.06 rows=2 width=2)
+         Output: t2.c
+         ->  Seq Scan on public.t2_lateral_where t2  (cost=0.00..1.02 rows=1 width=2)
+               Output: t2.c
+   ->  Materialize  (cost=0.00..0.72 rows=1 width=2)
+         Output: t1.c
+         ->  Limit  (cost=0.00..0.70 rows=1 width=2)
+               Output: t1.c
+               ->  Result  (cost=0.00..2.10 rows=3 width=2)
+                     Output: t1.c
+                     Filter: (t2.c = t1.c)
+                     ->  Materialize  (cost=0.00..2.10 rows=1 width=2)
+                           Output: t1.c
+                           ->  Gather Motion 3:1  (slice2; segments: 3)  (cost=0.00..2.09 rows=3 width=2)
+                                 Output: t1.c
+                                 ->  Seq Scan on public.t1_lateral_where t1  (cost=0.00..2.03 rows=1 width=2)
+                                       Output: t1.c
+ Optimizer: Postgres query optimizer
+(20 rows)
+
+select * from t2_lateral_where as t2 inner join lateral
+(select * from t1_lateral_where as t1 where t2.c = t1.c limit 1) s on true;
+ c | c
+---+---
+ 3 | 3
+(1 row)
+
+drop table t1_lateral_where;
+drop table t2_lateral_where;

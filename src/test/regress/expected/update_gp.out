@@ -584,11 +584,11 @@ update t1_13265 set b = 2 where
                ->  Seq Scan on public.t1_13265
                      Output: t1_13265.a, t1_13265.c, t1_13265.d, t1_13265.ctid, t1_13265.gp_segment_id
                ->  Materialize
-                     Output: t2_13265.ctid, t2_13265.c, t2_13265.d, (2)
+                     Output: t2_13265.ctid, t2_13265.c, t2_13265.d
                      ->  Broadcast Motion 3:3  (slice1; segments: 3)
-                           Output: t2_13265.ctid, t2_13265.c, t2_13265.d, (2)
+                           Output: t2_13265.ctid, t2_13265.c, t2_13265.d
                            ->  Seq Scan on public.t2_13265
-                                 Output: t2_13265.ctid, t2_13265.c, t2_13265.d, 2
+                                 Output: t2_13265.ctid, t2_13265.c, t2_13265.d
                                  Filter: (t2_13265.a = 2)
  Optimizer: Postgres query optimizer
  Settings: optimizer=off

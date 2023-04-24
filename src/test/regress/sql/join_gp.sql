@@ -712,3 +712,26 @@ where x.a + 1 in (select b from t2_dedupsemi_indexonly);
 
 drop table t1_dedupsemi_indexonly;
 drop table t2_dedupsemi_indexonly;
+
+-- test lateral join inner plan contains limit and where clause
+-- greenplum cannot pass params across motion so one need to prevent
+-- the bottom scan node from appending to its targetlist outer relation
+-- refs. Otherwise it may lead to segfault at the exectution stage.
+
+--start_ignore
+drop table if exists t1_lateral_where;
+drop table if exists t2_lateral_where;
+--end_ignore
+create table t1_lateral_where (c text) distributed by (c);
+create table t2_lateral_where (c text) distributed by (c);
+insert into t1_lateral_where values (1), (2), (3);
+insert into t2_lateral_where values (3), (4);
+
+explain verbose select * from t2_lateral_where as t2 inner join lateral
+(select * from t1_lateral_where as t1 where t2.c = t1.c limit 1) s on true;
+
+select * from t2_lateral_where as t2 inner join lateral
+(select * from t1_lateral_where as t1 where t2.c = t1.c limit 1) s on true;
+
+drop table t1_lateral_where;
+drop table t2_lateral_where;
