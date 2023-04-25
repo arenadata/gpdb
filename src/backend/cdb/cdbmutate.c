@@ -2695,9 +2695,9 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 				 flow->locustype == CdbLocusType_SingleQE))
 			{
 				/*
-				 * For these scenarios, parallel retrieve cursor needs
-				 * to run on coordinator, since endpoint QE needs to
-				 * interact with the retrieve connections.
+				 * For these scenarios, parallel retrieve cursor needs to run
+				 * on coordinator, since endpoint QE needs to interact with
+				 * the retrieve connections.
 				 */
 				result = true;
 			}
