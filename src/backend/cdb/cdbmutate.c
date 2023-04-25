@@ -2632,7 +2632,8 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 		 */
 		return false;
 	}
-	else if (IsA(plan, ModifyTable))
+
+	if (IsA(plan, ModifyTable))
 	{
 		ModifyTable *mt = (ModifyTable *) plan;
 
@@ -2652,7 +2653,8 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 			}
 		}
 	}
-	else if (IsA(plan, DML))
+
+	if (IsA(plan, DML))
 	{
 		DML		   *dml = (DML *) plan;
 		Oid			reloid = getrelid(dml->scanrelid, query->rtable);
@@ -2667,7 +2669,8 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 			return false;
 		}
 	}
-	else if (plan->flow)
+
+	if (plan->flow)
 	{
 		Flow	   *flow = plan->flow;
 
