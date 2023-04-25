@@ -2713,7 +2713,7 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 	PlannerGlobal *glob = root->glob;
 	ApplyShareInputContext *ctxt = &glob->share;
 	ShareInputContext walker_ctxt;
-	Motion *fakeMotion = makeNode(Motion);
+	Motion	   *fakeMotion = makeNode(Motion);
 
 	fakeMotion->plan.lefttree = makeNode(Plan);
 	fakeMotion->plan.lefttree->flow = makeNode(Flow);
