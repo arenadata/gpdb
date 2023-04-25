@@ -2713,17 +2713,15 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 	PlannerGlobal *glob = root->glob;
 	ApplyShareInputContext *ctxt = &glob->share;
 	ShareInputContext walker_ctxt;
-	Motion		fakeMotion = {0};
-	Plan		fakePlan = {0};
-	Flow		fakeFlow = {0};
+	Motion *fakeMotion = makeNode(Motion);
 
-	fakeMotion.plan.lefttree = &fakePlan;
-	fakeMotion.plan.lefttree->flow = &fakeFlow;
+	fakeMotion->plan.lefttree = makeNode(Plan);
+	fakeMotion->plan.lefttree->flow = makeNode(Flow);
 
 	if (root_slice_is_executed_on_coordinator(plan, root))
 	{
-		fakeFlow.flotype = FLOW_SINGLETON;
-		fakeFlow.segindex = -1;
+		fakeMotion->plan.lefttree->flow->flotype = FLOW_SINGLETON;
+		fakeMotion->plan.lefttree->flow->segindex = -1;
 	}
 
 	ctxt->motStack = NULL;
@@ -2733,7 +2731,7 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 
 	ctxt->sliceMarks = palloc0(ctxt->producer_count * sizeof(int));
 
-	shareinput_pushmot(ctxt, &fakeMotion);
+	shareinput_pushmot(ctxt, fakeMotion);
 
 	walker_ctxt.base.node = (Node *) root;
 
