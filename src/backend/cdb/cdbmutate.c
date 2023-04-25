@@ -2624,7 +2624,7 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 {
 	Query	   *query = root->parse;
 
-	if (query->parentStmtType)
+	if (query->parentStmtType != PARENTSTMTTYPE_NONE)
 	{
 		/*
 		 * For CTAS, SELECT INTO, COPY INTO, REFRESH MATERIALIZED VIEW, the
