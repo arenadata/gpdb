@@ -2723,6 +2723,11 @@ apply_shareinput_xslice(Plan *plan, PlannerInfo *root)
 		fakeMotion->plan.lefttree->flow->flotype = FLOW_SINGLETON;
 		fakeMotion->plan.lefttree->flow->segindex = -1;
 	}
+	else
+	{
+		fakeMotion->plan.lefttree->flow->flotype = FLOW_UNDEFINED;
+		fakeMotion->plan.lefttree->flow->segindex = 0;
+	}
 
 	ctxt->motStack = NULL;
 	ctxt->qdShares = NULL;
