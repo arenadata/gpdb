@@ -2622,6 +2622,10 @@ shareinput_mutator_xslice_4(Node *node, PlannerInfo *root, bool fPop)
 static bool
 root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 {
+	/*
+	 * By default, the root slice is executed on the coordinator.
+	 */
+	bool		result = true;
 	Query	   *query = root->parse;
 
 	if (query->parentStmtType != PARENTSTMTTYPE_NONE)
@@ -2630,7 +2634,7 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 		 * For CTAS, SELECT INTO, COPY INTO, REFRESH MATERIALIZED VIEW, the
 		 * root slice is not executed on the coordinator.
 		 */
-		return false;
+		result = false;
 	}
 
 	if (IsA(plan, ModifyTable))
@@ -2649,7 +2653,7 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 				 * distribution policy is not master-only, then the root slice
 				 * is not executed on the coordinator.
 				 */
-				return false;
+				result = false;
 			}
 		}
 	}
@@ -2666,7 +2670,7 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 			 * distribution policy is not master-only, then the root slice is
 			 * not executed on the coordinator.
 			 */
-			return false;
+			result = false;
 		}
 	}
 
@@ -2674,36 +2678,37 @@ root_slice_is_executed_on_coordinator(Plan *plan, PlannerInfo *root)
 	{
 		Flow	   *flow = plan->flow;
 
-		if (root->glob->is_parallel_cursor)
-		{
-			if (flow->flotype != FLOW_SINGLETON ||
-				(flow->locustype != CdbLocusType_Entry &&
-				 flow->locustype != CdbLocusType_General &&
-				 flow->locustype != CdbLocusType_SingleQE))
-			{
-				/*
-				 * For these scenarios, parallel retrieve cursor doesn't need
-				 * to run on coordinator, since endpoint QE doesn't need to
-				 * interact with the retrieve connections.
-				 */
-				return false;
-			}
-		}
-
 		if (flow->flotype != FLOW_SINGLETON || flow->segindex >= 0)
 		{
 			/*
 			 * For non-singleton or singleton on segment, the root slice is
 			 * not executed on the coordinator.
 			 */
-			return false;
+			result = false;
+		}
+
+		if (root->glob->is_parallel_cursor)
+		{
+			if (flow->flotype == FLOW_SINGLETON &&
+				(flow->locustype == CdbLocusType_Entry ||
+				 flow->locustype == CdbLocusType_General ||
+				 flow->locustype == CdbLocusType_SingleQE))
+			{
+				/*
+				 * For these scenarios, parallel retrieve cursor needs
+				 * to run on coordinator, since endpoint QE needs to
+				 * interact with the retrieve connections.
+				 */
+				result = true;
+			}
+			else
+			{
+				result = false;
+			}
 		}
 	}
 
-	/*
-	 * In all other cases, the root slice is executed on the coordinator.
-	 */
-	return true;
+	return result;
 }
 
 Plan *
