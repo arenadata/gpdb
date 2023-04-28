@@ -641,7 +641,7 @@ recursiveDeletion(const ObjectAddress *object,
 				 * just ereport here, rather than proceeding, since no other
 				 * dependencies are likely to be interesting.)
 				 */
-				if (callingObject == NULL)
+				if (!creating_extension && callingObject == NULL)
 				{
 					char	   *otherObjDesc = getObjectDescription(&otherObject);
 
@@ -653,7 +653,8 @@ recursiveDeletion(const ObjectAddress *object,
 									 otherObjDesc)));
 				}
 
-				if (otherObject.classId == ExtensionRelationId &&
+				if (creating_extension &&
+					otherObject.classId == ExtensionRelationId &&
 					otherObject.objectId == CurrentExtensionObject)
 					break;
 
