@@ -57,7 +57,12 @@ SELECT point(0,0) <<@@ polygon(circle(point(0,0),1));
 
 \dx+ test_ext_cor
 
-
+--
+-- Test that extension can drop its own objects
+--
+create extension test_ext_cau version '1.1';
+alter extension test_ext_cau update to '1.2';
+drop extension test_ext_cau;
 
 --
 -- Another test cases for problem https://github.com/greenplum-db/gpdb/issues/6716.
