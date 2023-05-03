@@ -56,18 +56,13 @@
 */
 
 /*
- * Configure with #define EXTRA_DYNAMIC_MEMORY_DEBUG to enable collecting
+ * Configure with -DEXTRA_DYNAMIC_MEMORY_DEBUG to enable collecting
  * additional data for each allocation at MemoryContexts (function, file and
  * line where was executed allocation function).
  * Execute MemoryContextStats(TopMemoryContext) to print top of allocations
  * for each MemoryContexts after summary counters of context.
- * Change MAX_TOP_ALLOC_CHUNK_STATS for set how much items must be at top.
- * Also should to add EXTRA_DYNAMIC_MEMORY_DEBUG to include/common/fe_memutils.h
+ * Change DYN_MEM_TOP_COUNT for set how much items must be at top.
  */
-
-/*
-#define EXTRA_DYNAMIC_MEMORY_DEBUG
-*/
 
 /*
  * GPDB_93_MERGE_FIXME: This mechanism got broken. If this is resurrected and

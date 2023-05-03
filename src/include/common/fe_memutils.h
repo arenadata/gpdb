@@ -16,19 +16,6 @@ extern void *pg_malloc0(size_t size);
 extern void *pg_realloc(void *pointer, size_t size);
 extern void pg_free(void *pointer);
 
-/*
- * Configure with #define EXTRA_DYNAMIC_MEMORY_DEBUG to enable collecting
- * additional data for each allocation at MemoryContexts (function, file and
- * line where was executed allocation function).
- * Execute MemoryContextStats(TopMemoryContext) to print top of allocations
- * for each MemoryContexts after summary counters of context.
- * Also should to add EXTRA_DYNAMIC_MEMORY_DEBUG to include/utils/palloc.h
- */
-
-/*
-#define EXTRA_DYNAMIC_MEMORY_DEBUG
-*/
-
 #ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
 #include "utils/palloc_memory_debug_undef.h"
 #endif

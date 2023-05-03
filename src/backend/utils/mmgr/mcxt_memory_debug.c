@@ -117,7 +117,7 @@ MemoryContextChunkStats_comparator(const void *l, const void *r)
 	return r_entry->stat.bytes - l_entry->stat.bytes;
 }
 
-void
+static void
 MemoryContext_printTopListOfChunks()
 {
 	if (!chunks_htable)
@@ -146,8 +146,8 @@ MemoryContext_printTopListOfChunks()
 	MemoryContextChunkStat_htabEntry **chunks =
 		palloc(ChunksCount * sizeof(MemoryContextChunkStat_htabEntry *));
 
-	int show_count = ChunksCount < MAX_TOP_ALLOC_CHUNK_STATS ?
-						ChunksCount : MAX_TOP_ALLOC_CHUNK_STATS;
+	int show_count = ChunksCount < DYN_MEM_TOP_COUNT ?
+						ChunksCount : DYN_MEM_TOP_COUNT;
 
 	uint64 sumBytes = 0;
 

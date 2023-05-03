@@ -692,6 +692,11 @@ MemoryContextName(MemoryContext context, MemoryContext relativeTo,
     return cbp;
 }                               /* MemoryContextName */
 
+
+#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
+#include "../backend/utils/mmgr/mcxt_memory_debug.c"
+#endif
+
 /*
  * MemoryContext_LogContextStats
  *		Logs memory consumption details of a given context.
@@ -1577,8 +1582,4 @@ pgport_pfree(void *pointer)
 	pfree(pointer);
 }
 
-#endif
-
-#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
-#include "../backend/utils/mmgr/mcxt_memory_debug.c"
 #endif

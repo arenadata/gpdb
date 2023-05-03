@@ -1,8 +1,12 @@
 #ifndef PALLOC_OVERRIDE_H
 #define PALLOC_OVERRIDE_H
 
-#define MAX_TOP_ALLOC_CHUNK_STATS 10
-#define CHUNKS_TABLE_SIZE 1024
+#ifndef DYN_MEM_TOP_COUNT
+#define DYN_MEM_TOP_COUNT 10
+#endif
+#ifndef DYN_MEM_HTABLE_SIZE
+#define DYN_MEM_HTABLE_SIZE 1024
+#endif
 
 typedef struct
 {
@@ -73,7 +77,5 @@ char *_psprintf(const char *func, const char *file, int LINE, const char *fmt, .
 #define pnstrdup(__pointer__, __size__) _pnstrdup(__pointer__,__size__, __func__, __FILE__, __LINE__)
 
 #define psprintf(...) _psprintf(__func__, __FILE__, __LINE__, __VA_ARGS__)
-
-void MemoryContext_printTopListOfChunks();
 
 #endif

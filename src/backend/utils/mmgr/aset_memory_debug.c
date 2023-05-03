@@ -79,7 +79,7 @@ AllocSetGetAllocatedChunkStats(AllocSet set)
 
 	if (!chunks_htable)
 		chunks_htable = hash_create("HTAB chunks_stats",
-								 CHUNKS_TABLE_SIZE, &hash_ctl, HASH_FUNCTION |
+								 DYN_MEM_HTABLE_SIZE, &hash_ctl, HASH_FUNCTION |
 								 HASH_ELEM | HASH_COMPARE | HASH_CONTEXT);
 
 	for (AllocBlock block = set->blocks; block != NULL; block = block->next)
