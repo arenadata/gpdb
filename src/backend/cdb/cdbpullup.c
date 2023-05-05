@@ -298,36 +298,33 @@ Expr *
 cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 								 Oid hashOpFamily)
 {
+	List	   *hashable_members = NIL;
 	ListCell   *lc;
+	Expr	   *fin_expr = NULL;
 
 	foreach(lc, eclass->ec_members)
 	{
 		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
+
+		/*
+		 * To check if the member is hashable, we should invoke cdb_hashproc_in_opfamily
+		 * to try to see if there is a hash proc for the type in the opfamily.
+		 *
+		 * Previous code just get_opfamily_member here, that is not enough, since
+		 * there are binary compatible types, e.g. varchar and text.
+		 *
+		 * See Issue: https://github.com/greenplum-db/gpdb/issues/12700 for a detailed case.
+		 */
+		if (!OidIsValid(hashOpFamily) ||
+			OidIsValid(cdb_hashproc_in_opfamily_no_error(hashOpFamily, em->em_datatype)))
+			hashable_members = lappend(hashable_members, em);
+	}
+
+	foreach(lc, hashable_members)
+	{
+		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
 		Expr	   *key = (Expr *) em->em_expr;
 		ListCell *lc_tle;
-
-		if (OidIsValid(hashOpFamily))
-		{
-			/*
-			 * To check if the member is hashable, we should invoke cdb_hashproc_in_opfamily
-			 * to try to see if there is a hash proc for the type in the opfamily.
-			 *
-			 * Previous code just get_opfamily_member here, that is not enough, since
-			 * there are binary compatible types, e.g. varchar and text.
-			 *
-			 * See Issue: https://github.com/greenplum-db/gpdb/issues/12700 for a detailed case.
-			 */
-			Oid hash_proc;
-
-			hash_proc = cdb_hashproc_in_opfamily_no_error(hashOpFamily, em->em_datatype);
-
-			if (!OidIsValid(hash_proc))
-				continue;
-		}
-
-		/* A constant is OK regardless of the target list */
-		if (em->em_is_const)
-			return key;
 
 		/*-------
 		 * Try to find this EC member in the target list.
@@ -372,7 +369,10 @@ cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 					if (keyvar->varno == tlvar->varno &&
 						keyvar->varattno == tlvar->varattno &&
 						keyvar->varlevelsup == tlvar->varlevelsup)
-						return key;
+					{
+						fin_expr = key;
+						goto l_done;
+					}
 				}
 			}
 			else
@@ -382,19 +382,37 @@ cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 					key = (Expr *) ((RelabelType *) key)->arg;
 
 				if (equal(tlexpr, key))
-					return key;
+				{
+					fin_expr = key;
+					goto l_done;
+				}
 			}
-		}
-
-		/* Return this item if all referenced Vars are in targetlist. */
-		if (!IsA(key, Var) &&
-			!cdbpullup_missingVarWalker((Node *) key, targetlist))
-		{
-			return key;
 		}
 	}
 
-	return NULL;
+	foreach(lc, hashable_members)
+	{
+		EquivalenceMember *em = (EquivalenceMember *) lfirst(lc);
+		Expr		   *key = (Expr *) em->em_expr;
+
+		/*
+		 * A constant is OK regardless of the target list, or
+		 * return this item if all referenced Vars are in targetlist.
+		 */
+		if (em->em_is_const ||
+			(!IsA(key, Var) &&
+			 !cdbpullup_missingVarWalker((Node *) key, targetlist)))
+		{
+			fin_expr = key;
+			goto l_done;
+		}
+	}
+
+l_done:
+	if (hashable_members)
+		list_free(hashable_members);
+
+	return fin_expr;
 }
 
 /*
