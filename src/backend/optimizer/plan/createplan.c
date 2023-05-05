@@ -643,8 +643,8 @@ use_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
  * needed Vars and not a physical tlist, it must call this routine to
  * undo the decision made by use_physical_tlist().  Currently, Hash, Sort,
  * and Material nodes want this, so they don't have to store useless columns.
- * We need to ensure that all vars (and possibly consts) referenced in Flow
- * node, if any, are added to the targetlist as resjunk.
+ * We need to ensure that all vars referenced in Flow node, if any, are added
+ * to the targetlist as resjunk.
  */
 static void
 disuse_physical_tlist(PlannerInfo *root, Plan *plan, Path *path)
@@ -667,27 +667,12 @@ disuse_physical_tlist(PlannerInfo *root, Plan *plan, Path *path)
 			plan->targetlist = build_path_tlist(root, path);
 
 			/**
-			 * If plan has a flow node, ensure all entries of hashExpr,
-			 * which are not of type Param, are in the targetlist.
+			 * If plan has a flow node, ensure all entries of hashExpr
+			 * are in the targetlist.
 			 */
 			if (plan->flow && plan->flow->hashExprs)
 			{
-				List		*val_exprs = NIL;
-				ListCell	*lc;
-
-				foreach(lc, plan->flow->hashExprs)
-				{
-					Expr	*expr = (Expr *) lfirst(lc);
-
-					if (!IsA(expr, Param))
-						val_exprs = lappend(val_exprs, expr);
-				}
-
-				if (val_exprs)
-				{
-					plan->targetlist = add_to_flat_tlist_junk(plan->targetlist, val_exprs, true /* resjunk */);
-					list_free(val_exprs);
-				}
+				plan->targetlist = add_to_flat_tlist_junk(plan->targetlist, plan->flow->hashExprs, true /* resjunk */);
 			}
 			break;
 		default:
