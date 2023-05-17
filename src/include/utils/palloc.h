@@ -56,7 +56,7 @@
 */
 
 /*
- * Configure with -DEXTRA_DYNAMIC_MEMORY_DEBUG to enable collecting
+ * Add -DEXTRA_DYNAMIC_MEMORY_DEBUG to CFLAGS at ./configure to enable collecting
  * additional data for each allocation at MemoryContexts (function, file and
  * line where was executed allocation function).
  * Execute MemoryContextStats(TopMemoryContext) to print top of allocations
