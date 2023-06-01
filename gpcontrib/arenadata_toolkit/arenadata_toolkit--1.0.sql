@@ -129,3 +129,96 @@ BEGIN
 END$$
 LANGUAGE plpgsql VOLATILE
 EXECUTE ON MASTER;
+
+CREATE FUNCTION arenadata_toolkit.adb_get_relfilenodes(tablespace_oid OID)
+RETURNS TABLE (
+	segindex int2,
+	dbid int2,
+	datoid oid,
+	tablespace_oid oid,
+	relfilepath text,
+	relfilenode oid,
+	reloid oid,
+	size bigint,
+	modified_dttm timestamp without time zone,
+	changed_dttm timestamp without time zone
+)
+EXECUTE ON ALL SEGMENTS
+AS '$libdir/arenadata_toolkit', 'adb_get_relfilenodes'
+LANGUAGE C STABLE STRICT;
+
+CREATE VIEW arenadata_toolkit.__db_segment_files
+AS
+	WITH segfiles AS (
+	SELECT
+		f.segindex,
+		f.dbid,
+		f.datoid,
+		f.tablespace_oid,
+		f.relfilepath,
+		f.relfilenode,
+		f.reloid,
+		f.size,
+		f.modified_dttm,
+		f.changed_dttm
+	FROM pg_tablespace tbl, arenadata_toolkit.adb_get_relfilenodes(tbl.oid) f
+)
+SELECT
+	segfiles.segindex,
+	segfiles.dbid,
+	segfiles.datoid,
+	segfiles.tablespace_oid,
+	gpconf.datadir || '/' || relfilepath AS full_path,
+	segfiles.size,
+	segfiles.relfilenode,
+	gpconf.preferred_role AS segment_preferred_role,
+	gpconf.hostname AS hostname,
+	gpconf.address AS address,
+	segfiles.reloid,
+	segfiles.modified_dttm,
+	segfiles.changed_dttm
+FROM segfiles
+		 INNER JOIN gp_segment_configuration AS gpconf
+					ON segfiles.dbid = gpconf.dbid;
+
+CREATE VIEW arenadata_toolkit.__db_files_current
+AS
+SELECT
+	c.oid AS oid,
+	c.relname AS table_name,
+	n.nspname AS table_schema,
+	c.relkind AS type,
+	c.relstorage AS storage,
+	d.datname AS table_database,
+	t.spcname AS table_tablespace,
+	dbf.segindex AS content,
+	dbf.segment_preferred_role AS segment_preferred_role,
+	dbf.hostname AS hostname,
+	dbf.address AS address,
+	dbf.full_path AS file,
+	dbf.size AS file_size,
+	dbf.modified_dttm AS modifiedtime,
+	dbf.changed_dttm AS changedtime
+FROM arenadata_toolkit.__db_segment_files dbf
+		 LEFT JOIN pg_class AS c
+				   ON c.oid = dbf.reloid
+		 LEFT JOIN pg_namespace n
+				   ON c.relnamespace = n.oid
+		 LEFT JOIN pg_tablespace t
+				   ON dbf.tablespace_oid = t.oid
+		 LEFT JOIN pg_database d
+				   ON dbf.datoid = d.oid;
+
+CREATE VIEW arenadata_toolkit.__db_files_current_unmapped
+AS
+SELECT
+	v.table_database,
+	v.table_tablespace,
+	v.content,
+	v.segment_preferred_role,
+	v.hostname,
+	v.address,
+	v.file,
+	v.file_size
+FROM arenadata_toolkit.__db_files_current v
+WHERE v.oid IS NULL;
