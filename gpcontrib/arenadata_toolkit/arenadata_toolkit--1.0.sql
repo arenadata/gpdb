@@ -16,6 +16,41 @@ END$$;
 
 GRANT ALL ON SCHEMA arenadata_toolkit TO public;
 
+CREATE FUNCTION arenadata_toolkit.adb_relation_storage_size(reloid OID, forkName text default 'main')
+RETURNS bigint
+AS '$libdir/arenadata_toolkit', 'adb_relation_storage_size'
+LANGUAGE C VOLATILE STRICT;
+
+COMMENT ON FUNCTION arenadata_toolkit.adb_relation_storage_size(oid, forkName text) IS 'Provides relation storage size details';
+
+CREATE VIEW arenadata_toolkit.adb_skew_coefficients
+AS
+WITH storage AS (
+    SELECT
+        autoid,
+        arenadata_toolkit.adb_relation_storage_size(autoid) AS size
+    FROM gp_dist_random('gp_toolkit.__gp_user_tables')
+    WHERE autrelstorage != 'x'
+), skew AS (
+    SELECT
+        autoid AS skewoid,
+        stddev(size) AS skewdev,
+        avg(size) AS skewmean
+    FROM storage GROUP BY autoid
+)
+SELECT
+    skew.skewoid AS skcoid,
+    pgn.nspname  AS skcnamespace,
+    pgc.relname  AS skcrelname,
+    case when skewdev > 0 then skewdev/skewmean * 100.0 else 0 end AS skccoeff
+FROM skew
+JOIN pg_catalog.pg_class pgc
+    ON (skew.skewoid = pgc.oid)
+JOIN pg_catalog.pg_namespace pgn
+    ON (pgc.relnamespace = pgn.oid);
+
+GRANT SELECT ON TABLE arenadata_toolkit.adb_skew_coefficients TO public;
+
 /*
  This is part of arenadata_toolkit API for ADB Bundle.
  This function creates tables for performing adb_collect_table_stats.
