@@ -149,20 +149,6 @@ LANGUAGE C STABLE STRICT;
 
 CREATE VIEW arenadata_toolkit.__db_segment_files
 AS
-	WITH segfiles AS (
-	SELECT
-		f.segindex,
-		f.dbid,
-		f.datoid,
-		f.tablespace_oid,
-		f.relfilepath,
-		f.relfilenode,
-		f.reloid,
-		f.size,
-		f.modified_dttm,
-		f.changed_dttm
-	FROM pg_tablespace tbl, arenadata_toolkit.adb_get_relfilenodes(tbl.oid) f
-)
 SELECT
 	segfiles.segindex,
 	segfiles.dbid,
@@ -177,7 +163,7 @@ SELECT
 	segfiles.reloid,
 	segfiles.modified_dttm,
 	segfiles.changed_dttm
-FROM segfiles
+FROM pg_tablespace tbl, arenadata_toolkit.adb_get_relfilenodes(tbl.oid) AS segfiles
 		 INNER JOIN gp_segment_configuration AS gpconf
 					ON segfiles.dbid = gpconf.dbid;
 

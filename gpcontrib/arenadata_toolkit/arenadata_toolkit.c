@@ -14,18 +14,12 @@
 
 PG_MODULE_MAGIC;
 
-#define should_skip(filename) \
-	(pg_strncasecmp(filename, "pg", 2) == 0 \
-	 || pg_strncasecmp(filename, "t_", 2) == 0 \
-	 || pg_strncasecmp(filename + strlen(filename) - 4, "_fsm", 4) == 0 \
-	 || pg_strncasecmp(filename + strlen(filename) - 3, "_vm", 3) == 0 \
-	 || pg_strncasecmp(filename + strlen(filename) - 5, "_init", 5) == 0)
-
 typedef struct
 {
 	char     *datpath;
 	DIR      *dirdesc;
 	TupleDesc tupdesc;
+	char      filename[MAXPGPATH * 2];
 } user_fctx_data;
 
 PG_FUNCTION_INFO_V1(adb_get_relfilenodes);
@@ -35,7 +29,6 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 	Oid              tablespace_oid = MyDatabaseTableSpace;
 
 	struct dirent   *direntry;
-	char             filename[MAXPGPATH * 2];
 	user_fctx_data  *fctx_data;
 	FuncCallContext *funcctx;
 
@@ -78,16 +71,38 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		Oid         reloid;
 		Oid         relfilenode_oid;
 		HeapTuple   tuple;
+		int         filenamelen;
 
 		CHECK_FOR_INTERRUPTS();
 
 		if (direntry->d_type == DT_DIR)
 			continue;
-		if (should_skip(direntry->d_name))
+		if (pg_strncasecmp(direntry->d_name, "pg", 2) == 0 ||
+		    pg_strncasecmp(direntry->d_name, "t_", 2) == 0)
 			continue;
 
-		snprintf(filename, sizeof(filename), "%s/%s",
+		filenamelen = strlen(direntry->d_name);
+		if ((filenamelen >= 3 &&
+		     pg_strcasecmp(direntry->d_name + filenamelen - 3, "_vm") == 0) ||
+		    (filenamelen >= 4 &&
+		     pg_strcasecmp(direntry->d_name + filenamelen - 4, "_fsm") == 0) ||
+		    (filenamelen >= 5 &&
+		     pg_strcasecmp(direntry->d_name + filenamelen - 5, "_init") == 0))
+			continue;
+
+		snprintf(fctx_data->filename, sizeof(fctx_data->filename), "%s/%s",
 				 fctx_data->datpath, direntry->d_name);
+
+		if (stat(fctx_data->filename, &fst) < 0)
+		{
+			if (errno == ENOENT)
+				continue;
+			else
+				ereport(ERROR,
+						(errcode_for_file_access(),
+							errmsg("could not stat file \"%s\": %m",
+								   fctx_data->filename)));
+		}
 
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
@@ -96,28 +111,26 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		values[1] = Int16GetDatum(GpIdentity.dbid);
 		values[2] = DatumGetObjectId(datoid);
 		values[3] = DatumGetObjectId(tablespace_oid);
-		values[4] = CStringGetTextDatum(filename);
+		values[4] = CStringGetTextDatum(fctx_data->filename);
 
-		if (stat(filename, &fst) < 0)
+		relfilenode = strchr(direntry->d_name, '.');
+		if (relfilenode)
 		{
-			if (errno == ENOENT)
-				continue;
+			relfilenode += 1;
+			relfilenode_oid = DirectFunctionCall1(oidin,
+												  CStringGetDatum(relfilenode));
+			reloid = RelidByRelfilenode(tablespace_oid, relfilenode_oid);
+
+			if (OidIsValid(reloid))
+			{
+				values[5] = DatumGetObjectId(relfilenode_oid);
+				values[6] = DatumGetObjectId(reloid);
+			}
 			else
-				ereport(ERROR,
-						(errcode_for_file_access(),
-								errmsg("could not stat file \"%s\": %m",
-									   filename)));
-		}
-
-		relfilenode = strtok(direntry->d_name, ".");
-		relfilenode_oid = DirectFunctionCall1(oidin,
-											  CStringGetDatum(relfilenode));
-		reloid = RelidByRelfilenode(tablespace_oid, relfilenode_oid);
-
-		if (OidIsValid(reloid))
-		{
-			values[5] = DatumGetObjectId(relfilenode_oid);
-			values[6] = DatumGetObjectId(reloid);
+			{
+				nulls[5] = true;
+				nulls[6] = true;
+			}
 		}
 		else
 		{
