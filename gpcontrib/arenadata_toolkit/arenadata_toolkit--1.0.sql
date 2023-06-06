@@ -208,3 +208,119 @@ SELECT
 	v.file_size
 FROM arenadata_toolkit.__db_files_current v
 WHERE v.oid IS NULL;
+
+/*
+ This is part of arenadata_toolkit API for ADB Bundle.
+ This function collects information in db_files_current and db_files_history tables.
+ */
+CREATE FUNCTION arenadata_toolkit.adb_collect_table_stats()
+RETURNS VOID
+AS $$
+DECLARE r record;
+		collecttime timestamp without time zone;
+		rangestart text;
+		rangeend text;
+BEGIN
+	collecttime=now();
+
+	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_partitions p
+					WHERE
+					p.schemaname = 'arenadata_toolkit'
+					AND
+					p.partitionschemaname = 'arenadata_toolkit'
+					AND
+					p.tablename = 'db_files_history'
+					AND
+					collecttime BETWEEN CAST(substring(partitionrangestart FROM '#"%#"::%' FOR '#') AS TIMESTAMP WITHOUT TIME ZONE)
+					AND
+					CAST(substring(partitionrangeend FROM '#"%#"::%' FOR '#') AS TIMESTAMP WITHOUT TIME ZONE)
+					AND
+					p.partitiontype = 'range'
+					AND
+					partitionstartinclusive = 't')
+	THEN
+		EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
+			START (date %1$L) INCLUSIVE
+			END (date %2$L) EXCLUSIVE
+			INTO (PARTITION %3$I, default partition);$fmt$,
+				to_char(collecttime, 'YYYY-MM-01'),
+				to_char(collecttime + interval '1 month','YYYY-MM-01'),
+				'p'||to_char(collecttime, 'YYYYMM'));
+	END IF;
+
+	CREATE TEMPORARY TABLE IF NOT EXISTS db_files_current
+	(
+		oid BIGINT,
+		table_name TEXT,
+		table_schema TEXT,
+		type CHAR(1),
+		storage CHAR(1),
+		table_parent_table TEXT,
+		table_parent_schema TEXT,
+		table_database TEXT,
+		table_tablespace TEXT,
+		"content" INTEGER,
+		segment_preferred_role CHAR(1),
+		hostname TEXT,
+		address TEXT,
+		file TEXT,
+		modifiedtime TIMESTAMP WITHOUT TIME ZONE,
+		file_size BIGINT
+	)
+	DISTRIBUTED RANDOMLY;
+
+	/*
+		Since this table is temporary and user can call this several times in a session
+		then we need to truncate it (an alternative will be to drop it).
+	 */
+	TRUNCATE TABLE db_files_current;
+
+	/* We use temporary table in this case, because we don't want to add own own unmapped
+	   relfilenode oids in a db_files_current and db_files_history tables. The downside of
+	   this approach that if time between calls to adb_collect_table_stats will be less
+	   then checkpointing interval (there will be no unlink peformed), than these unmapped
+	   files will still go to db_files_current and db_files_history as unmapped.
+	*/
+	INSERT INTO db_files_current
+	SELECT
+		f.oid,
+		f.table_name,
+		f.table_schema,
+		f.type,
+		f.storage,
+		part.tablename AS table_parent_table,
+		part.schemaname AS table_parent_schema,
+		f.table_database,
+		f.table_tablespace,
+		f."content",
+		f.segment_preferred_role,
+		f.hostname,
+		f.address,
+		f.file,
+		CURRENT_TIMESTAMP AS modifiedtime,
+		f.file_size
+	FROM arenadata_toolkit.__db_files_current AS f
+	LEFT JOIN pg_partitions AS part
+		ON (part.partitionschemaname = f.table_schema AND part.partitiontablename = f.table_name);
+
+	/*
+	 Here we may truncate it, it's relfilenodes aren't in db_files_current temporary table.
+	 */
+	TRUNCATE TABLE arenadata_toolkit.db_files_current;
+
+	INSERT INTO arenadata_toolkit.db_files_current
+	SELECT *
+	FROM db_files_current;
+
+	INSERT INTO arenadata_toolkit.db_files_history
+	SELECT *, now() AS collecttime
+	FROM arenadata_toolkit.db_files_current;
+
+END$$
+LANGUAGE plpgsql VOLATILE
+EXECUTE ON MASTER;
+
+/*
+	Only for admin usage.
+ */
+REVOKE ALL ON FUNCTION arenadata_toolkit.adb_collect_table_stats() FROM public;
