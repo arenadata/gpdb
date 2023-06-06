@@ -80,11 +80,13 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 
 		if (direntry->d_type == DT_DIR)
 			continue;
-		if (pg_strncasecmp(direntry->d_name, "pg", 2) == 0 ||
-		    pg_strncasecmp(direntry->d_name, "t_", 2) == 0)
-			continue;
 
 		filenamelen = strlen(direntry->d_name);
+		if (filenamelen >= 2 &&
+		    ((direntry->d_name[0] == 'p' && direntry->d_name[1] == 'g') ||
+		     (direntry->d_name[0] == 't' && direntry->d_name[1] == '_')))
+			continue;
+
 		if ((filenamelen >= 3 &&
 		     pg_strcasecmp(direntry->d_name + filenamelen - 3, "_vm") == 0) ||
 		    (filenamelen >= 4 &&
