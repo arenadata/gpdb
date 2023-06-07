@@ -49,7 +49,7 @@ JOIN pg_catalog.pg_class pgc
 JOIN pg_catalog.pg_namespace pgn
     ON (pgc.relnamespace = pgn.oid);
 
-GRANT SELECT ON TABLE arenadata_toolkit.adb_skew_coefficients TO public;
+GRANT SELECT ON arenadata_toolkit.adb_skew_coefficients TO public;
 
 /*
  This is part of arenadata_toolkit API for ADB Bundle.
