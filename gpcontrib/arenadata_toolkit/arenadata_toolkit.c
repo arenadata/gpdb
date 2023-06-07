@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 #include "postgres.h"
 #include "fmgr.h"
@@ -21,6 +22,56 @@ typedef struct
 	DIR      *dirdesc;
 	TupleDesc tupdesc;
 } user_fctx_data;
+
+static int should_skip_file(struct dirent *direntry)
+{
+	int filenamelen;
+
+	if (direntry->d_type == DT_DIR)
+		return 1;
+
+	filenamelen = strlen(direntry->d_name);
+
+	/* Check prefix */
+	if (filenamelen >= 2)
+	{
+		if (tolower(direntry->d_name[0]) == 'p' &&
+		    tolower(direntry->d_name[1]) == 'g')
+			return 1;
+
+		if (tolower(direntry->d_name[0]) == 't' &&
+		    direntry->d_name[1]          == '_')
+			return 1;
+	}
+
+	/* Check postfix */
+	if (filenamelen >= 3)
+	{
+		if (direntry->d_name[filenamelen - 3]          == '_' &&
+		    tolower(direntry->d_name[filenamelen - 2]) == 'v' &&
+		    tolower(direntry->d_name[filenamelen - 1]) == 'm')
+			return 1;
+	}
+	if (filenamelen >= 4)
+	{
+		if (direntry->d_name[filenamelen - 4]          == '_' &&
+		    tolower(direntry->d_name[filenamelen - 3]) == 'f' &&
+		    tolower(direntry->d_name[filenamelen - 2]) == 's' &&
+		    tolower(direntry->d_name[filenamelen - 1]) == 'm')
+			return 1;
+	}
+	if (filenamelen >= 5)
+	{
+		if (direntry->d_name[filenamelen - 5]          == '_' &&
+		    tolower(direntry->d_name[filenamelen - 4]) == 'i' &&
+		    tolower(direntry->d_name[filenamelen - 3]) == 'n' &&
+		    tolower(direntry->d_name[filenamelen - 2]) == 'i' &&
+		    tolower(direntry->d_name[filenamelen - 1]) == 't')
+			return 1;
+	}
+
+	return 0;
+}
 
 PG_FUNCTION_INFO_V1(adb_get_relfilenodes);
 Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
@@ -74,25 +125,10 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		Oid         reloid;
 		Oid         relfilenode_oid;
 		HeapTuple   tuple;
-		int         filenamelen;
 
 		CHECK_FOR_INTERRUPTS();
 
-		if (direntry->d_type == DT_DIR)
-			continue;
-
-		filenamelen = strlen(direntry->d_name);
-		if (filenamelen >= 2 &&
-		    ((direntry->d_name[0] == 'p' && direntry->d_name[1] == 'g') ||
-		     (direntry->d_name[0] == 't' && direntry->d_name[1] == '_')))
-			continue;
-
-		if ((filenamelen >= 3 &&
-		     pg_strcasecmp(direntry->d_name + filenamelen - 3, "_vm") == 0) ||
-		    (filenamelen >= 4 &&
-		     pg_strcasecmp(direntry->d_name + filenamelen - 4, "_fsm") == 0) ||
-		    (filenamelen >= 5 &&
-		     pg_strcasecmp(direntry->d_name + filenamelen - 5, "_init") == 0))
+		if (should_skip_file(direntry) == 1)
 			continue;
 
 		filename = psprintf("%s/%s", fctx_data->datpath, direntry->d_name);

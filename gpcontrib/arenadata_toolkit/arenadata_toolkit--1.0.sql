@@ -217,11 +217,9 @@ CREATE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
 DECLARE r record;
-		collecttime timestamp without time zone;
 		rangestart text;
 		rangeend text;
 BEGIN
-	collecttime=now();
 
 	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_partitions p
 					WHERE
@@ -231,7 +229,7 @@ BEGIN
 					AND
 					p.tablename = 'db_files_history'
 					AND
-					collecttime BETWEEN CAST(substring(partitionrangestart FROM '#"%#"::%' FOR '#') AS TIMESTAMP WITHOUT TIME ZONE)
+					now() BETWEEN CAST(substring(partitionrangestart FROM '#"%#"::%' FOR '#') AS TIMESTAMP WITHOUT TIME ZONE)
 					AND
 					CAST(substring(partitionrangeend FROM '#"%#"::%' FOR '#') AS TIMESTAMP WITHOUT TIME ZONE)
 					AND
@@ -243,9 +241,9 @@ BEGIN
 			START (date %1$L) INCLUSIVE
 			END (date %2$L) EXCLUSIVE
 			INTO (PARTITION %3$I, default partition);$fmt$,
-				to_char(collecttime, 'YYYY-MM-01'),
-				to_char(collecttime + interval '1 month','YYYY-MM-01'),
-				'p'||to_char(collecttime, 'YYYYMM'));
+				to_char(now(), 'YYYY-MM-01'),
+				to_char(now() + interval '1 month','YYYY-MM-01'),
+				'p'||to_char(now(), 'YYYYMM'));
 	END IF;
 
 	CREATE TEMPORARY TABLE IF NOT EXISTS db_files_current
