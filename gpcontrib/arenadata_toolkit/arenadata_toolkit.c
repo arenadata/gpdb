@@ -23,54 +23,51 @@ typedef struct
 	TupleDesc tupdesc;
 } user_fctx_data;
 
-static int should_skip_file(struct dirent *direntry)
+static bool should_skip_file(const char *filename)
 {
 	int filenamelen;
 
-	if (direntry->d_type == DT_DIR)
-		return 1;
-
-	filenamelen = strlen(direntry->d_name);
+	filenamelen = strlen(filename);
 
 	/* Check prefix */
 	if (filenamelen >= 2)
 	{
-		if (tolower(direntry->d_name[0]) == 'p' &&
-		    tolower(direntry->d_name[1]) == 'g')
-			return 1;
+		if (tolower(filename[0]) == 'p' &&
+		    tolower(filename[1]) == 'g')
+			return true;
 
-		if (tolower(direntry->d_name[0]) == 't' &&
-		    direntry->d_name[1]          == '_')
-			return 1;
+		if (tolower(filename[0]) == 't' &&
+		    filename[1]          == '_')
+			return true;
 	}
 
 	/* Check postfix */
 	if (filenamelen >= 3)
 	{
-		if (direntry->d_name[filenamelen - 3]          == '_' &&
-		    tolower(direntry->d_name[filenamelen - 2]) == 'v' &&
-		    tolower(direntry->d_name[filenamelen - 1]) == 'm')
-			return 1;
+		if (filename[filenamelen - 3]          == '_' &&
+		    tolower(filename[filenamelen - 2]) == 'v' &&
+		    tolower(filename[filenamelen - 1]) == 'm')
+			return true;
 	}
 	if (filenamelen >= 4)
 	{
-		if (direntry->d_name[filenamelen - 4]          == '_' &&
-		    tolower(direntry->d_name[filenamelen - 3]) == 'f' &&
-		    tolower(direntry->d_name[filenamelen - 2]) == 's' &&
-		    tolower(direntry->d_name[filenamelen - 1]) == 'm')
-			return 1;
+		if (filename[filenamelen - 4]          == '_' &&
+		    tolower(filename[filenamelen - 3]) == 'f' &&
+		    tolower(filename[filenamelen - 2]) == 's' &&
+		    tolower(filename[filenamelen - 1]) == 'm')
+			return true;
 	}
 	if (filenamelen >= 5)
 	{
-		if (direntry->d_name[filenamelen - 5]          == '_' &&
-		    tolower(direntry->d_name[filenamelen - 4]) == 'i' &&
-		    tolower(direntry->d_name[filenamelen - 3]) == 'n' &&
-		    tolower(direntry->d_name[filenamelen - 2]) == 'i' &&
-		    tolower(direntry->d_name[filenamelen - 1]) == 't')
-			return 1;
+		if (filename[filenamelen - 5]          == '_' &&
+		    tolower(filename[filenamelen - 4]) == 'i' &&
+		    tolower(filename[filenamelen - 3]) == 'n' &&
+		    tolower(filename[filenamelen - 2]) == 'i' &&
+		    tolower(filename[filenamelen - 1]) == 't')
+			return true;
 	}
 
-	return 0;
+	return false;
 }
 
 PG_FUNCTION_INFO_V1(adb_get_relfilenodes);
@@ -99,7 +96,9 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 
 		if (get_call_result_type(fcinfo, NULL, &fctx_data->tupdesc)
 				!= TYPEFUNC_COMPOSITE)
-			elog(ERROR, "return type must be a row type");
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("return type must be a row type")));
 
 		if (!fctx_data->dirdesc)
 			ereport(ERROR,
@@ -128,7 +127,10 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 
 		CHECK_FOR_INTERRUPTS();
 
-		if (should_skip_file(direntry) == 1)
+		if (direntry->d_type == DT_DIR)
+			continue;
+
+		if (should_skip_file(direntry->d_name))
 			continue;
 
 		filename = psprintf("%s/%s", fctx_data->datpath, direntry->d_name);
@@ -140,8 +142,8 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 			else
 				ereport(ERROR,
 						(errcode_for_file_access(),
-							errmsg("could not stat file \"%s\": %m",
-								   filename)));
+						 errmsg("could not stat file \"%s\": %m",
+								filename)));
 		}
 
 		memset(values, 0, sizeof(values));
