@@ -94,17 +94,18 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		fctx_data->datpath = GetDatabasePath(datoid, tablespace_oid);
 		fctx_data->dirdesc = AllocateDir(fctx_data->datpath);
 
+		if (!fctx_data->dirdesc)
+		{
+			/* Nothing to do: empty tablespace (maybe it has been just created)*/
+			MemoryContextSwitchTo(oldcontext);
+			SRF_RETURN_DONE(funcctx);
+		}
+
 		if (get_call_result_type(fcinfo, NULL, &fctx_data->tupdesc)
 				!= TYPEFUNC_COMPOSITE)
 			ereport(ERROR,
-					(errcode_for_file_access(),
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("return type must be a row type")));
-
-		if (!fctx_data->dirdesc)
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read directory \"%s\": %m",
-							fctx_data->datpath)));
 
 		funcctx->attinmeta = TupleDescGetAttInMetadata(fctx_data->tupdesc);
 		funcctx->user_fctx = fctx_data;

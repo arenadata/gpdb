@@ -5,8 +5,8 @@ MODULES = arenadata_toolkit
 EXTENSION = arenadata_toolkit
 DATA = arenadata_toolkit--1.0.sql
 
-REGRESS = arenadata_toolkit_test
-REGRESS_OPTS += --init-file=$(top_srcdir)/src/test/regress/init_file
+REGRESS = arenadata_toolkit_test adb_get_relfilenodes_test
+REGRESS_OPTS += --init-file=init_file
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
