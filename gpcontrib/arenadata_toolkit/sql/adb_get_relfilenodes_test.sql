@@ -7,7 +7,7 @@ CREATE EXTENSION arenadata_toolkit;
 SELECT arenadata_toolkit.adb_create_tables();
 
 -- Test work with empty tablespace
-SELECT table_name, table_schema, table_tablespace, content
+SELECT table_schema, table_tablespace, content, table_name
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test' AND table_name != ''
 	ORDER BY
@@ -20,7 +20,7 @@ SELECT table_name, table_schema, table_tablespace, content
 CREATE TABLE arenadata_toolkit_table(a int, b int)
 	TABLESPACE arenadata_test
 	DISTRIBUTED BY (a);
-SELECT table_name, table_schema, table_tablespace, content
+SELECT table_schema, table_tablespace, content, table_name
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test' AND table_name != ''
 	ORDER BY
@@ -32,7 +32,7 @@ DROP TABLE arenadata_toolkit_table;
 CREATE TABLE arenadata_toolkit_table(a int, b text)
 	TABLESPACE arenadata_test
 	DISTRIBUTED BY (a);
-SELECT table_name, table_schema, table_tablespace, content
+SELECT table_schema, table_tablespace, content, table_name
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test' AND table_name != ''
 	ORDER BY
@@ -45,7 +45,7 @@ CREATE TABLE arenadata_toolkit_table(a int, b int)
 	WITH (APPENDONLY=true)
 	TABLESPACE arenadata_test
 	DISTRIBUTED BY (a);
-SELECT table_name, table_schema, table_tablespace, content
+SELECT table_schema, table_tablespace, content, table_name
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test' AND table_name != ''
 	ORDER BY
@@ -57,7 +57,7 @@ DROP TABLE arenadata_toolkit_table;
 CREATE TEMP TABLE arenadata_toolkit_table(a int, b int)
 	TABLESPACE arenadata_test
 	DISTRIBUTED BY (a);
-SELECT table_name, table_schema, table_tablespace, content
+SELECT table_schema, table_tablespace, content, table_name
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test' AND table_name != ''
 	ORDER BY
@@ -67,7 +67,7 @@ DROP TABLE arenadata_toolkit_table;
 
 -- Check, that there are files at filesystem of tablespace after dropping tables,
 -- which do not apply to tables at tablespace
-SELECT table_name, table_schema, table_tablespace, content
+SELECT table_schema, table_tablespace, content, table_name
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test'
 	ORDER BY

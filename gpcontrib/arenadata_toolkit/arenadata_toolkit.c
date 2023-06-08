@@ -186,6 +186,4 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 
 	FreeDir(fctx_data->dirdesc);
 	SRF_RETURN_DONE(funcctx);
-
-	return (Datum) 0;
 }
