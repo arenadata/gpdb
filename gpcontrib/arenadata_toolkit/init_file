@@ -15,4 +15,10 @@ s/pg_aovisimap_\d+/pg_aovisimap_10000/
 m/pg_aovisimap_\d+_index/
 s/pg_aovisimap_\d+_index/pg_aovisimap_10000_index/
 
+m/        .*table_name        .*/
+s/        .*table_name        .*/        table_name        /
+
+m/+--------------------------.*/
+s/+--------------------------.*/+--------------------------/
+
 -- end_matchsubs

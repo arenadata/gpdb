@@ -23,47 +23,56 @@ typedef struct
 	TupleDesc tupdesc;
 } user_fctx_data;
 
+static bool check_equal_substring(const char *str, const char *sub,
+								  int startPos, int checkLen)
+{
+	for (int pos = 0; pos < checkLen; pos++)
+	{
+		if (tolower(str[startPos + pos]) == sub[pos])
+			continue;
+
+		return false;
+	}
+
+	return true;
+}
+
 static bool should_skip_file(const char *filename)
 {
-	int filenamelen;
-
-	filenamelen = strlen(filename);
-
-	/* Check prefix */
-	if (filenamelen >= 2)
+	/*
+	 * Must use strings with lower case symbols.
+	 * NULL must be at the end of arrays.
+	 */
+	const char *prefixes[] =
 	{
-		if (tolower(filename[0]) == 'p' &&
-		    tolower(filename[1]) == 'g')
-			return true;
-
-		if (tolower(filename[0]) == 't' &&
-		    filename[1]          == '_')
-			return true;
-	}
-
-	/* Check postfix */
-	if (filenamelen >= 3)
+		"pg", "t_", NULL
+	};
+	const char *postfixes[] =
 	{
-		if (filename[filenamelen - 3]          == '_' &&
-		    tolower(filename[filenamelen - 2]) == 'v' &&
-		    tolower(filename[filenamelen - 1]) == 'm')
-			return true;
-	}
-	if (filenamelen >= 4)
+		"_vm", "_fsm", "_init", NULL
+	};
+
+	int filenamelen = strlen(filename);
+	for (int idx = 0; prefixes[idx] != NULL; idx++)
 	{
-		if (filename[filenamelen - 4]          == '_' &&
-		    tolower(filename[filenamelen - 3]) == 'f' &&
-		    tolower(filename[filenamelen - 2]) == 's' &&
-		    tolower(filename[filenamelen - 1]) == 'm')
+		const char * prefix = prefixes[idx];
+		int plen = strlen(prefix);
+		if (filenamelen - plen < 0)
+			continue;
+
+		if (check_equal_substring(filename, prefix, 0, plen))
 			return true;
 	}
-	if (filenamelen >= 5)
+
+	for (int idx = 0; postfixes[idx] != NULL; idx++)
 	{
-		if (filename[filenamelen - 5]          == '_' &&
-		    tolower(filename[filenamelen - 4]) == 'i' &&
-		    tolower(filename[filenamelen - 3]) == 'n' &&
-		    tolower(filename[filenamelen - 2]) == 'i' &&
-		    tolower(filename[filenamelen - 1]) == 't')
+		const char * postfix = postfixes[idx];
+		int plen = strlen(postfix);
+		if (filenamelen - plen < 0)
+			continue;
+
+		int startPos = filenamelen - plen;
+		if (check_equal_substring(filename, postfix, startPos, plen))
 			return true;
 	}
 
