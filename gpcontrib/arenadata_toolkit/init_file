@@ -1,22 +1,10 @@
 -- start_matchsubs
 
-m/pg_toast_\d+/
-s/pg_toast_\d+/pg_toast_10000/
+m/(pg_toast|pg_aovisimap|pg_aoseg)_\d+(.*)?/
+s/(pg_toast|pg_aovisimap|pg_aoseg)_\d+(.*)?/$1_10000$2/
 
-m/pg_toast_\d+_index/
-s/pg_toast_\d+_index/pg_toast_10000_index/
-
-m/pg_aoseg_\d+/
-s/pg_aoseg_\d+/pg_aoseg_10000/
-
-m/pg_aovisimap_\d+/
-s/pg_aovisimap_\d+/pg_aovisimap_10000/
-
-m/pg_aovisimap_\d+_index/
-s/pg_aovisimap_\d+_index/pg_aovisimap_10000_index/
-
-m/        .*table_name        .*/
-s/        .*table_name        .*/        table_name        /
+m/        .*table_name       .*/
+s/        .*table_name       .*/        table_name       /
 
 m/+--------------------------.*/
 s/+--------------------------.*/+--------------------------/

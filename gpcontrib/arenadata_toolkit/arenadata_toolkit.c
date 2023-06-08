@@ -23,57 +23,28 @@ typedef struct
 	TupleDesc tupdesc;
 } user_fctx_data;
 
-static bool check_equal_substring(const char *str, const char *sub,
-								  int startPos, int checkLen)
-{
-	for (int pos = 0; pos < checkLen; pos++)
-	{
-		if (tolower(str[startPos + pos]) == sub[pos])
-			continue;
-
-		return false;
-	}
-
-	return true;
-}
-
+/*
+ * Name of file must be "XXX.X" or "XXX"
+ * where X is digit. Count of digits is not set.
+ */
 static bool should_skip_file(const char *filename)
 {
-	/*
-	 * Must use strings with lower case symbols.
-	 * NULL must be at the end of arrays.
-	 */
-	const char *prefixes[] =
-	{
-		"pg", "t_", NULL
-	};
-	const char *postfixes[] =
-	{
-		"_vm", "_fsm", "_init", NULL
-	};
-
+	int pos = 0;
 	int filenamelen = strlen(filename);
-	for (int idx = 0; prefixes[idx] != NULL; idx++)
+	bool found_dot = false;
+
+	for (; pos < filenamelen; pos++)
 	{
-		const char * prefix = prefixes[idx];
-		int plen = strlen(prefix);
-		if (filenamelen - plen < 0)
+		if (isdigit(filename[pos]))
 			continue;
 
-		if (check_equal_substring(filename, prefix, 0, plen))
-			return true;
-	}
-
-	for (int idx = 0; postfixes[idx] != NULL; idx++)
-	{
-		const char * postfix = postfixes[idx];
-		int plen = strlen(postfix);
-		if (filenamelen - plen < 0)
+		if ('.' == filename[pos] && !found_dot && pos != 0)
+		{
+			found_dot = true;
 			continue;
+		}
 
-		int startPos = filenamelen - plen;
-		if (check_equal_substring(filename, postfix, startPos, plen))
-			return true;
+		return true;
 	}
 
 	return false;
@@ -149,11 +120,11 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		{
 			if (errno == ENOENT)
 				continue;
-			else
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not stat file \"%s\": %m",
-								filename)));
+
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not stat file \"%s\": %m",
+							filename)));
 		}
 
 		memset(values, 0, sizeof(values));
