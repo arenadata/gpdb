@@ -88,7 +88,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
                objname               | objtype | objstorage |             objacl             
 -------------------------------------+---------+------------+--------------------------------
  adb_create_tables                   | proc    | -          | 
- adb_relation_storage_size           | proc    | -          | 
+ adb_relation_storage_size           | proc    | -          | {=X/owner,owner=X/owner}
  adb_skew_coefficients               | table   | v          | {owner=arwdDxt/owner,=r/owner}
  arenadata_toolkit                   | schema  | -          | {owner=UC/owner,=UC/owner}
  daily_operation                     | table   | a          | {owner=arwdDxt/owner}
@@ -129,7 +129,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
                objname               | objtype | objstorage |             objacl             
 -------------------------------------+---------+------------+--------------------------------
  adb_create_tables                   | proc    | -          | 
- adb_relation_storage_size           | proc    | -          | 
+ adb_relation_storage_size           | proc    | -          | {=X/owner,owner=X/owner}
  adb_skew_coefficients               | table   | v          | {owner=arwdDxt/owner,=r/owner}
  arenadata_toolkit                   | schema  | -          | {owner=UC/owner,=UC/owner}
  daily_operation                     | table   | a          | {owner=arwdDxt/owner}
