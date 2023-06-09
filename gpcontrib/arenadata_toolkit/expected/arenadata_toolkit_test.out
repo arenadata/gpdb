@@ -93,6 +93,8 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  adb_collect_table_stats             | proc    | -          | {owner=X/owner}
  adb_create_tables                   | proc    | -          | 
  adb_get_relfilenodes                | proc    | -          | 
+ adb_relation_storage_size           | proc    | -          | {=X/owner,owner=X/owner}
+ adb_skew_coefficients               | table   | v          | {owner=arwdDxt/owner,=r/owner}
  arenadata_toolkit                   | schema  | -          | {owner=UC/owner,=UC/owner}
  daily_operation                     | table   | a          | {owner=arwdDxt/owner}
  db_files_current                    | table   | h          | {owner=arwdDxt/owner,=r/owner}
@@ -100,7 +102,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_history_1_prt_default_part | table   | a          | 
  db_files_history_1_prt_p202306      | table   | a          | 
  operation_exclude                   | table   | a          | 
-(13 rows)
+(15 rows)
 
 -- check that toolkit objects now depends on extension
 SELECT objname, objtype, extname, deptype FROM pg_depend d JOIN
@@ -115,7 +117,8 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_collect_table_stats     | proc    | arenadata_toolkit | e
  adb_create_tables           | proc    | arenadata_toolkit | e
  adb_get_relfilenodes        | proc    | arenadata_toolkit | e
-(6 rows)
+ adb_skew_coefficients       | table   | arenadata_toolkit | e
+(7 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
@@ -140,6 +143,8 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  adb_collect_table_stats             | proc    | -          | {owner=X/owner}
  adb_create_tables                   | proc    | -          | 
  adb_get_relfilenodes                | proc    | -          | 
+ adb_relation_storage_size           | proc    | -          | {=X/owner,owner=X/owner}
+ adb_skew_coefficients               | table   | v          | {owner=arwdDxt/owner,=r/owner}
  arenadata_toolkit                   | schema  | -          | {owner=UC/owner,=UC/owner}
  daily_operation                     | table   | a          | {owner=arwdDxt/owner}
  db_files_current                    | table   | h          | {owner=arwdDxt/owner,=r/owner}
@@ -147,7 +152,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_history_1_prt_default_part | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_p202306      | table   | a          | {owner=arwdDxt/owner}
  operation_exclude                   | table   | a          | {owner=arwdDxt/owner}
-(13 rows)
+(15 rows)
 
 -- check that toolkit objects now depends on extension
 SELECT objname, objtype, extname, deptype FROM pg_depend d JOIN
@@ -162,7 +167,8 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_collect_table_stats     | proc    | arenadata_toolkit | e
  adb_create_tables           | proc    | arenadata_toolkit | e
  adb_get_relfilenodes        | proc    | arenadata_toolkit | e
-(6 rows)
+ adb_skew_coefficients       | table   | arenadata_toolkit | e
+(7 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
