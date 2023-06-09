@@ -216,33 +216,20 @@ typedef struct
 
 /*
  * Name of file must be "XXX.X" or "XXX"
- * where X is digit. Count of digits is not set.
+ * where X is digit. OID must be not more than OID_MAX.
  */
 static bool should_skip_file(const char *filename, Oid *relfilenode_oid)
 {
-	int pos = 0;
-	int filenamelen = strlen(filename);
-	char *endptr = NULL, *dot = NULL;
+	unsigned long int oid, segment;
+	char trailer;
 
-	for (; pos < filenamelen; pos++)
-	{
-		if (isdigit(filename[pos]))
-			continue;
-
-		if ('.' == filename[pos] && !dot && pos != 0)
-		{
-			dot = filename + pos;
-			continue;
-		}
-
+	int count = sscanf(filename, "%lu.%lu%c", &oid, &segment, &trailer);
+	if (count < 1 || count > 2)
 		return true;
-	}
-
-	*relfilenode_oid = strtoul(filename, &endptr, 0);
-	if ((*relfilenode_oid == ULONG_MAX && errno == ERANGE) ||
-	    (dot != NULL && dot != endptr) ||
-	    (dot == NULL && *endptr != '\0'))
+	if (oid > OID_MAX)
 		return true;
+
+	*relfilenode_oid = oid;
 
 	return false;
 }

@@ -117,8 +117,9 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_collect_table_stats     | proc    | arenadata_toolkit | e
  adb_create_tables           | proc    | arenadata_toolkit | e
  adb_get_relfilenodes        | proc    | arenadata_toolkit | e
+ adb_relation_storage_size   | proc    | arenadata_toolkit | e
  adb_skew_coefficients       | table   | arenadata_toolkit | e
-(7 rows)
+(8 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
@@ -167,8 +168,9 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_collect_table_stats     | proc    | arenadata_toolkit | e
  adb_create_tables           | proc    | arenadata_toolkit | e
  adb_get_relfilenodes        | proc    | arenadata_toolkit | e
+ adb_relation_storage_size   | proc    | arenadata_toolkit | e
  adb_skew_coefficients       | table   | arenadata_toolkit | e
-(7 rows)
+(8 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
