@@ -1,4 +1,10 @@
 SET client_min_messages=WARNING;
+-- start_matchsubs
+-- m/(pg_toast|pg_aovisimap|pg_aoseg)_\d+(.*)?/
+-- s/(pg_toast|pg_aovisimap|pg_aoseg)_\d+(.*)?/$1_10000$2/
+-- m/        .*table_name       .*/
+-- s/        .*table_name       .*/        table_name       /
+-- end_matchsubs
 \! mkdir -p /tmp/arenadata_toolkit_test
 CREATE TABLESPACE arenadata_test location '/tmp/arenadata_toolkit_test/';
 CREATE EXTENSION arenadata_toolkit;
@@ -63,30 +69,33 @@ SELECT table_schema, table_tablespace, content, table_name
 
 DROP TABLE arenadata_toolkit_table;
 -- AO table
+-- TODO: column "table_name" was removed from output because of variable length
+-- at this names: oid can be with different length and width of column can be
+-- changed. This cannot be fixed using matchsubs.
 CREATE TABLE arenadata_toolkit_table(a int, b int)
 	WITH (APPENDONLY=true)
 	TABLESPACE arenadata_test
 	DISTRIBUTED BY (a);
-SELECT table_schema, table_tablespace, content, table_name
+SELECT table_schema, table_tablespace, content
 	FROM arenadata_toolkit.__db_files_current
 	WHERE table_tablespace = 'arenadata_test' AND table_name != ''
 	ORDER BY
 		table_name ASC,
 		content ASC;
- table_schema | table_tablespace | content |        table_name        
---------------+------------------+---------+--------------------------
- pg_aoseg     | arenadata_test   |       0 | pg_aoseg_10000
- pg_aoseg     | arenadata_test   |       0 | pg_aovisimap_10000
- pg_aoseg     | arenadata_test   |       0 | pg_aovisimap_10000_index
- pg_aoseg     | arenadata_test   |       1 | pg_aoseg_10000
- pg_aoseg     | arenadata_test   |       1 | pg_aovisimap_10000
- pg_aoseg     | arenadata_test   |       1 | pg_aovisimap_10000_index
- pg_aoseg     | arenadata_test   |       2 | pg_aoseg_10000
- pg_aoseg     | arenadata_test   |       2 | pg_aovisimap_10000
- pg_aoseg     | arenadata_test   |       2 | pg_aovisimap_10000_index
- public       | arenadata_test   |       0 | arenadata_toolkit_table
- public       | arenadata_test   |       1 | arenadata_toolkit_table
- public       | arenadata_test   |       2 | arenadata_toolkit_table
+ table_schema | table_tablespace | content 
+--------------+------------------+---------
+ pg_aoseg     | arenadata_test   |       0
+ pg_aoseg     | arenadata_test   |       0
+ pg_aoseg     | arenadata_test   |       0
+ pg_aoseg     | arenadata_test   |       1
+ pg_aoseg     | arenadata_test   |       1
+ pg_aoseg     | arenadata_test   |       1
+ pg_aoseg     | arenadata_test   |       2
+ pg_aoseg     | arenadata_test   |       2
+ pg_aoseg     | arenadata_test   |       2
+ public       | arenadata_test   |       0
+ public       | arenadata_test   |       1
+ public       | arenadata_test   |       2
 (12 rows)
 
 DROP TABLE arenadata_toolkit_table;

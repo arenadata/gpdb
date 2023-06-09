@@ -1,6 +1,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 #include "postgres.h"
 #include "fmgr.h"
@@ -27,25 +28,31 @@ typedef struct
  * Name of file must be "XXX.X" or "XXX"
  * where X is digit. Count of digits is not set.
  */
-static bool should_skip_file(const char *filename)
+static bool should_skip_file(const char *filename, Oid *relfilenode_oid)
 {
 	int pos = 0;
 	int filenamelen = strlen(filename);
-	bool found_dot = false;
+	char *endptr = NULL, *dot = NULL;
 
 	for (; pos < filenamelen; pos++)
 	{
 		if (isdigit(filename[pos]))
 			continue;
 
-		if ('.' == filename[pos] && !found_dot && pos != 0)
+		if ('.' == filename[pos] && !dot && pos != 0)
 		{
-			found_dot = true;
+			dot = filename + pos;
 			continue;
 		}
 
 		return true;
 	}
+
+	*relfilenode_oid = strtoul(filename, &endptr, 0);
+	if ((*relfilenode_oid == ULONG_MAX && errno == ERANGE) ||
+	    (dot != NULL && dot != endptr) ||
+	    (dot == NULL && *endptr != '\0'))
+		return true;
 
 	return false;
 }
@@ -101,7 +108,7 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		struct stat fst;
 		Datum       values[10];
 		bool        nulls[10];
-		char       *relfilenode, *ptr, *filename;
+		char       *filename;
 		Oid         reloid;
 		Oid         relfilenode_oid;
 		HeapTuple   tuple;
@@ -111,7 +118,7 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		if (direntry->d_type == DT_DIR)
 			continue;
 
-		if (should_skip_file(direntry->d_name))
+		if (should_skip_file(direntry->d_name, &relfilenode_oid))
 			continue;
 
 		filename = psprintf("%s/%s", fctx_data->datpath, direntry->d_name);
@@ -136,15 +143,7 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		values[3] = DatumGetObjectId(tablespace_oid);
 		values[4] = CStringGetTextDatum(filename);
 
-		relfilenode = pstrdup(direntry->d_name);
-		ptr = strchr(relfilenode, '.');
-		if (ptr)
-			*ptr = '\0';
-
-		relfilenode_oid = DirectFunctionCall1(oidin,
-											  CStringGetDatum(relfilenode));
 		reloid = RelidByRelfilenode(tablespace_oid, relfilenode_oid);
-
 		if (OidIsValid(reloid))
 		{
 			values[5] = DatumGetObjectId(relfilenode_oid);
