@@ -218,20 +218,18 @@ typedef struct
  * Name of file must be "XXX.X" or "XXX"
  * where X is digit. OID must be not more than OID_MAX.
  */
-static bool should_skip_file(const char *filename, Oid *relfilenode_oid)
+static Oid get_oid_from_filename(const char *filename)
 {
 	unsigned long int oid, segment;
 	char trailer;
 
 	int count = sscanf(filename, "%lu.%lu%c", &oid, &segment, &trailer);
 	if (count < 1 || count > 2)
-		return true;
+		return InvalidOid;
 	if (oid > OID_MAX)
-		return true;
+		return InvalidOid;
 
-	*relfilenode_oid = oid;
-
-	return false;
+	return oid;
 }
 
 PG_FUNCTION_INFO_V1(adb_get_relfilenodes);
@@ -295,7 +293,8 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 		if (direntry->d_type == DT_DIR)
 			continue;
 
-		if (should_skip_file(direntry->d_name, &relfilenode_oid))
+		relfilenode_oid = get_oid_from_filename(direntry->d_name);
+		if (relfilenode_oid == InvalidOid)
 			continue;
 
 		filename = psprintf("%s/%s", fctx_data->datpath, direntry->d_name);

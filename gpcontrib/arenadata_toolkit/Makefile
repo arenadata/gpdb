@@ -7,6 +7,7 @@ DATA = arenadata_toolkit--1.0.sql
 
 REGRESS = arenadata_toolkit_test arenadata_toolkit_skew_test adb_get_relfilenodes_test
 REGRESS_OPTS += --init-file=$(top_srcdir)/src/test/regress/init_file
+REGRESS_OPTS += --gpd_ignore_headers
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
