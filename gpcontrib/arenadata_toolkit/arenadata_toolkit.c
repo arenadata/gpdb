@@ -216,7 +216,7 @@ typedef struct
 
 /*
  * Name of file must be "XXX.X" or "XXX"
- * where X is digit. OID must be not more than OID_MAX.
+ * where XXX is Oid. OID must be not more than OID_MAX.
  */
 static Oid get_oid_from_filename(const char *filename)
 {
@@ -229,7 +229,7 @@ static Oid get_oid_from_filename(const char *filename)
 	if (oid > OID_MAX)
 		return InvalidOid;
 
-	return oid;
+	return (Oid) oid;
 }
 
 PG_FUNCTION_INFO_V1(adb_get_relfilenodes);

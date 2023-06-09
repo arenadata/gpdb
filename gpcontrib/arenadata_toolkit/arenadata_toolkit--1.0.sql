@@ -200,20 +200,23 @@ REVOKE ALL ON FUNCTION arenadata_toolkit.adb_create_tables() FROM public;
 
 CREATE FUNCTION arenadata_toolkit.adb_get_relfilenodes(tablespace_oid OID)
 RETURNS TABLE (
-	segindex int2,
-	dbid int2,
-	datoid oid,
-	tablespace_oid oid,
-	relfilepath text,
-	relfilenode oid,
-	reloid oid,
-	size bigint,
-	modified_dttm timestamp without time zone,
-	changed_dttm timestamp without time zone
+	segindex INT2,
+	dbid INT2,
+	datoid OID,
+	tablespace_oid OID,
+	relfilepath TEXT,
+	relfilenode OID,
+	reloid OID,
+	size BIGINT,
+	modified_dttm TIMESTAMP WITHOUT TIME ZONE,
+	changed_dttm TIMESTAMP WITHOUT TIME ZONE
 )
 EXECUTE ON ALL SEGMENTS
 AS '$libdir/arenadata_toolkit', 'adb_get_relfilenodes'
 LANGUAGE C STABLE STRICT;
+
+GRANT EXECUTE ON FUNCTION arenadata_toolkit.adb_get_relfilenodes(OID)
+	TO public;
 
 CREATE VIEW arenadata_toolkit.__db_segment_files
 AS
@@ -234,6 +237,8 @@ SELECT
 FROM pg_tablespace tbl, arenadata_toolkit.adb_get_relfilenodes(tbl.oid) AS segfiles
 		 INNER JOIN gp_segment_configuration AS gpconf
 					ON segfiles.dbid = gpconf.dbid;
+
+GRANT SELECT ON arenadata_toolkit.__db_segment_files TO public;
 
 CREATE VIEW arenadata_toolkit.__db_files_current
 AS
@@ -263,6 +268,8 @@ FROM arenadata_toolkit.__db_segment_files dbf
 		 LEFT JOIN pg_database d
 				   ON dbf.datoid = d.oid;
 
+GRANT SELECT ON arenadata_toolkit.__db_files_current TO public;
+
 CREATE VIEW arenadata_toolkit.__db_files_current_unmapped
 AS
 SELECT
@@ -277,6 +284,8 @@ SELECT
 FROM arenadata_toolkit.__db_files_current v
 WHERE v.oid IS NULL;
 
+GRANT SELECT ON arenadata_toolkit.__db_files_current_unmapped TO public;
+
 /*
  This is part of arenadata_toolkit API for ADB Bundle.
  This function collects information in db_files_current and db_files_history tables.
@@ -284,11 +293,9 @@ WHERE v.oid IS NULL;
 CREATE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
-DECLARE r record;
-		rangestart text;
-		rangeend text;
+DECLARE rangestart TEXT;
+		rangeend TEXT;
 BEGIN
-
 	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_partitions p
 					WHERE
 					p.schemaname = 'arenadata_toolkit'
