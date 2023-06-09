@@ -293,8 +293,6 @@ GRANT SELECT ON arenadata_toolkit.__db_files_current_unmapped TO public;
 CREATE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
-DECLARE rangestart TEXT;
-		rangeend TEXT;
 BEGIN
 	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_partitions p
 					WHERE
