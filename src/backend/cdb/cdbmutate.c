@@ -617,7 +617,8 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 			{
 				if ((plan->flow->flotype == FLOW_PARTITIONED ||
 					(plan->flow->flotype == FLOW_SINGLETON &&
-					 plan->flow->locustype == CdbLocusType_SegmentGeneral)) &&
+					 plan->flow->locustype == CdbLocusType_SegmentGeneral) ||
+					 query->hasModifyingCTE) &&
 					 !root->glob->is_parallel_cursor)
 					bringResultToDispatcher = true;
 
