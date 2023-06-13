@@ -1,3 +1,15 @@
+-- start_matchsubs
+--
+-- m/ERROR:  too much refs to non-SELECT CTE \(allpaths\.c:\d+\)/
+-- s/\d+/XXX/g
+--
+-- m/ERROR:  unexpected arguments to set operation \(cdbsetop\.c:\d+\)/
+-- s/\d+/XXX/g
+--
+-- m/ERROR:  unexpected input locus to distinct \(planner\.c:\d+\)/
+-- s/\d+/XXX/g
+--
+-- end_matchsubs
 drop table if exists with_test1 cascade;
 NOTICE:  table "with_test1" does not exist, skipping
 create table with_test1 (i int, t text, value int) distributed by (i);
@@ -2215,3 +2227,804 @@ select * from rcte limit 10;
 ERROR:  window functions in the target list of a recursive query is not supported in Greenplum
 LINE 5:   select first_value(c) over (partition by b), a+x
                  ^
+--
+-- Test various SELECT statements over DML operations
+--
+create table with_dml(i integer, j integer) distributed by(i);
+create table with_dml_dr(i integer, j integer) distributed replicated;
+-- Test select over DML queries. Gather motion should be there, no matter
+-- what type of distribution is used. Before fix, motion was missed for
+-- distributed replicated table, which caused count(*) to return zero rows.
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice2; segments: 3)
+         ->  Aggregate
+               ->  Subquery Scan on cte
+                     ->  Insert on with_dml
+                           ->  Redistribute Motion 1:3  (slice1; segments: 1)
+                                 Hash Key: i.i
+                                 ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(5 rows)
+
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml set j = j + 1 where i <= 5 returning j
+) select count(*) from cte;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Subquery Scan on cte
+                     ->  Update on with_dml
+                           ->  Seq Scan on with_dml
+                                 Filter: (i <= 5)
+ Optimizer: Postgres query optimizer
+(8 rows)
+
+with cte as (
+    update with_dml set j = j + 1 where i <= 5 returning j
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning j
+) select count(*) from cte;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Update on with_dml_dr
+               ->  Seq Scan on with_dml_dr
+                     Filter: (i <= 5)
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning j
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Subquery Scan on cte
+                     ->  Delete on with_dml
+                           ->  Seq Scan on with_dml
+                                 Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(8 rows)
+
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Delete on with_dml_dr
+               ->  Seq Scan on with_dml_dr
+                     Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+-- Test joining, which caused "!(root->upd_del_replicated_table > 0)"
+-- (cdbpath.c:1105) or "!(((bool) 0))" (cdbpath.c:1243) assertion errors due
+-- to incompatibility of CdbLocusType_Replicated with select statements.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml.i = with_dml_dr.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                     ->  Seq Scan on with_dml
+               ->  Hash
+                     ->  Insert on with_dml_dr
+                           ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+ count 
+-------
+     0
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = with_dml_dr_1.i)
+               ->  Seq Scan on with_dml_dr
+               ->  Hash
+                     ->  Insert on with_dml_dr with_dml_dr_1
+                           ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml.i = with_dml_dr.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                     ->  Seq Scan on with_dml
+               ->  Hash
+                     ->  Update on with_dml_dr
+                           ->  Seq Scan on with_dml_dr
+                                 Filter: (i <= 5)
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+ count 
+-------
+     0
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = with_dml_dr_1.i)
+               ->  Seq Scan on with_dml_dr
+               ->  Hash
+                     ->  Update on with_dml_dr with_dml_dr_1
+                           ->  Seq Scan on with_dml_dr with_dml_dr_1
+                                 Filter: (i <= 5)
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+ count 
+-------
+    20
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml.i = with_dml_dr.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                     ->  Seq Scan on with_dml
+               ->  Hash
+                     ->  Delete on with_dml_dr
+                           ->  Seq Scan on with_dml_dr
+                                 Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte join with_dml on cte.i = with_dml.i;
+ count 
+-------
+     0
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = with_dml_dr_1.i)
+               ->  Seq Scan on with_dml_dr
+               ->  Hash
+                     ->  Delete on with_dml_dr with_dml_dr_1
+                           ->  Seq Scan on with_dml_dr with_dml_dr_1
+                                 Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte join with_dml_dr on cte.i = with_dml_dr.i;
+ count 
+-------
+     0
+(1 row)
+
+-- Test joining of replicated table (as CdbLocusType_Replicated) with various
+-- CdbLocusType_Entry scenarios.
+explain with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join (select * from with_dml limit 5) lmt on cte.i = lmt.i;
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice3; segments: 3)  (cost=39.34..39.35 rows=1 width=8)
+   ->  Aggregate  (cost=39.34..39.35 rows=1 width=8)
+         ->  Hash Left Join  (cost=0.59..36.84 rows=334 width=0)
+               Hash Cond: (with_dml_dr.i = lmt.i)
+               ->  Insert on with_dml_dr  (cost=0.00..12.50 rows=334 width=4)
+                     ->  Function Scan on generate_series i  (cost=0.00..12.50 rows=334 width=4)
+               ->  Hash  (cost=0.41..0.41 rows=5 width=4)
+                     ->  Broadcast Motion 1:3  (slice2; segments: 1)  (cost=0.00..0.41 rows=15 width=4)
+                           ->  Subquery Scan on lmt  (cost=0.00..0.21 rows=5 width=4)
+                                 ->  Limit  (cost=0.00..0.16 rows=5 width=8)
+                                       ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..0.16 rows=5 width=8)
+                                             ->  Limit  (cost=0.00..0.06 rows=2 width=8)
+                                                   ->  Seq Scan on with_dml  (cost=0.00..961.00 rows=28700 width=8)
+ Optimizer: Postgres query optimizer
+(14 rows)
+
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join (select * from with_dml limit 5) lmt on cte.i = lmt.i;
+ count 
+-------
+     5
+(1 row)
+
+-- execution(not planning) of this will raise:
+-- ERROR:  INSERT/UPDATE/DELETE must be executed by a writer segworker group
+explain (costs off) with cte as (                                                                                                                                                                
+    insert into with_dml_dr select i, i * 100 from generate_series(2658,2664) i
+    returning i
+) select count(*) from cte join pg_class on cte.i = oid;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: ((with_dml_dr.i)::oid = pg_class.oid)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+               ->  Hash
+                     ->  Broadcast Motion 1:3  (slice1)
+                           ->  Seq Scan on pg_class
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+-- Test joining of one replicated table with another replicated table
+-- propagated on less segments.
+select gp_debug_set_create_table_default_numsegments(1);
+ gp_debug_set_create_table_default_numsegments 
+-----------------------------------------------
+ 1
+(1 row)
+
+create table with_dml_dr_seg1(i integer, j integer) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+ gp_debug_reset_create_table_default_numsegments 
+-------------------------------------------------
+ 
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join with_dml_dr_seg1 on cte.i = with_dml_dr_seg1.i;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 1:1  (slice1; segments: 1)
+   ->  Aggregate
+         ->  Hash Right Join
+               Hash Cond: (with_dml_dr_seg1.i = with_dml_dr.i)
+               ->  Seq Scan on with_dml_dr_seg1
+               ->  Hash
+                     ->  Insert on with_dml_dr
+                           ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join with_dml_dr_seg1 on cte.i = with_dml_dr_seg1.i;
+ count 
+-------
+     5
+(1 row)
+
+truncate with_dml_dr;
+drop table with_dml_dr_seg1;
+-- Test UNION ALL of CTE over replicated table with another table.
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte union all select * from with_dml;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Append
+   ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
+   ->  Gather Motion 3:1  (slice2; segments: 3)
+         ->  Seq Scan on with_dml
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte union all select * from with_dml;
+ i |  j  
+---+-----
+ 1 | 100
+ 2 | 200
+ 3 | 300
+ 4 | 400
+ 5 | 500
+(5 rows)
+
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte union all select * from with_dml_dr;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Append
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
+         ->  Broadcast Motion 1:3  (slice1; segments: 1)
+               ->  Seq Scan on with_dml_dr with_dml_dr_1
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte union all select * from with_dml_dr;
+ i |  j  
+---+-----
+ 1 | 100
+ 2 | 200
+ 3 | 300
+ 4 | 400
+ 5 | 500
+ 1 | 100
+ 2 | 200
+ 3 | 300
+ 4 | 400
+ 5 | 500
+(10 rows)
+
+truncate with_dml_dr;
+-- Test ORDER BY of CTE over replicated table.
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte order by i;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: with_dml_dr.i
+   ->  Sort
+         Sort Key: with_dml_dr.i
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte order by i;
+ i |  j  
+---+-----
+ 1 | 100
+ 2 | 200
+ 3 | 300
+ 4 | 400
+ 5 | 500
+(5 rows)
+
+truncate with_dml_dr;
+-- Test select from CTE used as a part of subquery. Recursive iteration by
+-- roots helps us to detect modifying CTE and create valid plan.
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select count(*) from (select d.i from cte join with_dml d on d.i = cte.i) t;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (d.i = cte.i)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                     ->  Seq Scan on with_dml d
+               ->  Hash
+                     ->  Subquery Scan on cte
+                           ->  Insert on with_dml_dr
+                                 ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select count(*) from (select d.i from cte join with_dml d on d.i = cte.i) t;
+ count 
+-------
+     0
+(1 row)
+
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select count(*) from (select d.i from cte join with_dml_dr d on d.i = cte.i) t;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (d.i = cte.i)
+               ->  Seq Scan on with_dml_dr d
+               ->  Hash
+                     ->  Subquery Scan on cte
+                           ->  Insert on with_dml_dr
+                                 ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select count(*) from (select d.i from cte join with_dml_dr d on d.i = cte.i) t;
+ count 
+-------
+     5
+(1 row)
+
+truncate with_dml_dr;
+-- Test still not working cases, which shows some user-friendly errors and not
+-- stopping cluster.
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select * from cte union select * from with_dml;
+ERROR:  unexpected arguments to set operation (cdbsetop.c:229)
+explain (costs off) with cte as ( 
+    insert into with_dml_dr select i, i * 100  from generate_series(1,5) i 
+    returning i, j
+) select distinct count(*) from cte;
+ERROR:  unexpected input locus to distinct (planner.c:3025)
+-- Test quals not pushing down to CTE with DML. Previosuly, pushing down to
+-- INSERT caused filtering of inserting dataset, which may lead to incomplete
+-- dataset inserted. Pushing down of quals to UPDATE and DELETE caused
+-- "could not find replacement targetlist entry for attno 1 (rewriteManip.c:1409)"
+-- error.
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice2; segments: 3)
+         ->  Aggregate
+               ->  Subquery Scan on cte
+                     Filter: (cte.i > 2)
+                     ->  Insert on with_dml
+                           ->  Redistribute Motion 1:3  (slice1; segments: 1)
+                                 Hash Key: i.i
+                                 ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+ count 
+-------
+     3
+(1 row)
+
+select count(*) c from with_dml;
+ c 
+---
+ 5
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Subquery Scan on cte
+               Filter: (cte.i > 2)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+ count 
+-------
+     3
+(1 row)
+
+select count(*) c from with_dml_dr;
+ c 
+---
+ 5
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Aggregate
+   ->  Gather Motion 1:1  (slice1; segments: 1)
+         ->  Aggregate
+               ->  Subquery Scan on cte
+                     Filter: (cte.i = 1)
+                     ->  Update on with_dml
+                           ->  Seq Scan on with_dml
+                                 Filter: (i = 5)
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    update with_dml set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+ count 
+-------
+     0
+(1 row)
+
+select count(*) c from with_dml where j = 1000;
+ c 
+---
+ 1
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Subquery Scan on cte
+               Filter: (cte.i = 1)
+               ->  Update on with_dml_dr
+                     ->  Seq Scan on with_dml_dr
+                           Filter: (i = 5)
+ Optimizer: Postgres query optimizer
+(8 rows)
+
+with cte as (
+    update with_dml_dr set j = 1000 where i = 5 returning i
+) select count(*) from cte where i = 1;
+ count 
+-------
+     0
+(1 row)
+
+select count(*) c from with_dml_dr where j = 1000;
+ c 
+---
+ 1
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte where i < 2;
+                     QUERY PLAN                     
+----------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Subquery Scan on cte
+                     Filter: (cte.i < 2)
+                     ->  Delete on with_dml
+                           ->  Seq Scan on with_dml
+                                 Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte where i < 2;
+ count 
+-------
+     1
+(1 row)
+
+select count(*) c from with_dml;
+ c 
+---
+ 0
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte where i < 2;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Subquery Scan on cte
+               Filter: (cte.i < 2)
+               ->  Delete on with_dml_dr
+                     ->  Seq Scan on with_dml_dr
+                           Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(8 rows)
+
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte where i < 2;
+ count 
+-------
+     1
+(1 row)
+
+select count(*) c from with_dml_dr;
+ c 
+---
+ 0
+(1 row)
+
+-- Test we can't use DML CTE if multiple CTE references found.
+-- Otherwise it'll cause duplicated DML operations or apply_motion() errors, like
+-- "!(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist))" (cdbmutate.c:1203)
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+ERROR:  too much refs to non-SELECT CTE (allpaths.c:1960)
+explain (costs off)
+with cte as (
+    insert into with_dml_dr select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+ERROR:  too much refs to non-SELECT CTE (allpaths.c:1960)
+explain (costs off)
+with cte as (
+    update with_dml set j = j + 1 where i <= 5 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+ERROR:  too much refs to non-SELECT CTE (allpaths.c:1960)
+explain (costs off)
+with cte as (
+    update with_dml_dr set j = j + 1 where i <= 5 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+ERROR:  too much refs to non-SELECT CTE (allpaths.c:1960)
+explain (costs off)
+with cte as (
+    delete from with_dml where i > 0 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+ERROR:  too much refs to non-SELECT CTE (allpaths.c:1960)
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0 returning i
+) select count(*) from cte where i < (select avg(i) from cte);
+ERROR:  too much refs to non-SELECT CTE (allpaths.c:1960)

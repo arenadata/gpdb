@@ -69,6 +69,22 @@ cdbpath_cost_motion(PlannerInfo *root, CdbMotionPath *motionpath)
 	motionpath->path.memory = subpath->memory;
 }								/* cdbpath_cost_motion */
 
+/*
+ * Check if current root or any root's parent has SELECT query with modifying
+ * CTE inside.
+ */
+static bool
+hasModifyingCTESelectRecur(PlannerInfo *root)
+{
+	while (root)
+	{
+		if (root->parse->hasModifyingCTE &&
+			root->parse->commandType == CMD_SELECT)
+			return true;
+		root = root->parent_root;
+	}
+	return false;
+}
 
 /*
  * cdbpath_create_motion_path
@@ -225,9 +241,17 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			return (Path *) pathnode;
 		}
 
-		/* replicated-->singleton would give redundant copies of the rows. */
+		/*
+		 * replicated-->singleton would give redundant copies of the rows.
+		 * But there is an exception - DML over replicated table should pass
+		 * the check and add motion.
+		 */
 		if (CdbPathLocus_IsReplicated(subpath->locus))
-			goto invalid_motion_request;
+		{
+			if (root->upd_del_replicated_table == 0 &&
+				!hasModifyingCTESelectRecur(root))
+				goto invalid_motion_request;
+		}
 
 		/*
 		 * Must be partitioned-->singleton. If caller gave pathkeys, they'll
@@ -235,7 +259,7 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		 * arbitrarily interleave the rows from the subpath partitions in no
 		 * special order.
 		 */
-		if (!CdbPathLocus_IsPartitioned(subpath->locus))
+		else if (!CdbPathLocus_IsPartitioned(subpath->locus))
 			goto invalid_motion_request;
 	}
 
@@ -344,11 +368,9 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		}
 		else if (CdbPathLocus_IsReplicated(locus))
 		{
-			/*
-			 * Assume that this case only can be generated in
-			 * UPDATE/DELETE statement
-			 */
-			if (root->upd_del_replicated_table == 0)
+			/* Assume that this case only can be generated in DML statement. */
+			if (root->upd_del_replicated_table == 0 &&
+				!hasModifyingCTESelectRecur(root))
 				goto invalid_motion_request;
 
 		}
@@ -1109,7 +1131,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
-				Assert(root->upd_del_replicated_table > 0);
+				Assert(root->upd_del_replicated_table > 0 ||
+					   hasModifyingCTESelectRecur(root));
 
 				/*
 				 * It only appear when we UPDATE a replicated table.
@@ -1119,6 +1142,15 @@ cdbpath_motion_for_join(PlannerInfo *root,
 				 * table, we can not execute the plan correctly.
 				 *
 				 * TODO:Can we modify(or add) the broadcast motion for this case?
+				 *
+				 * Another case - DML over replicated table inside CTE with
+				 * SELECT above. If we joining the result of DML with another
+				 * table, which is too replicated, but has less numsegments,
+				 * then we want DML part of query be executed on all, but
+				 * SELECT part of query be executed on less numsegments.
+				 * "Explicit Gather Motion" will use less numsegments in
+				 * execMotionSender(), so our result will not be flacky
+				 * because of new segments without a data.
 				 */
 				Assert(CdbPathLocus_NumSegments(segGeneral->locus) <=
 					   CdbPathLocus_NumSegments(other->locus));
@@ -1239,10 +1271,27 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	}
 	/*
 	 * Replicated paths shouldn't occur except UPDATE/DELETE on replicated table.
+	 *
+	 * Another case - DML over replicated table inside CTE with SELECT above.
+	 * As an easy solution we want to make another part of join replicated,
+	 * but it may be sub-optimal in several cases: 1) Joining something from
+	 * CdbPathLocus_IsBottleneck (for example CdbLocusType_Entry, like joining
+	 * with LIMIT'ed table) with DML over replicated table. 2) Joining
+	 * something from CdbPathLocus_IsPartitioned (for example
+	 * CdbLocusType_Hashed, like joining with distributed by key table) with
+	 * DML over replicated table.
+	 *
+	 * Making this parts replicated will create unnecessary broadcast motion
+	 * to all segments and execution of non-DML part of query on all segments.
+	 * So, as TODO we should think about all the cases and make the logic
+	 * above locus-dependent. We probably shouldn't touch another part of
+	 * join, but change the current one. To support this solution we should
+	 * add more cases to cdbpath_create_motion_path().
 	 */
 	else if (CdbPathLocus_IsReplicated(outer.locus))
 	{
-		if (root->upd_del_replicated_table > 0)
+		if (root->upd_del_replicated_table > 0 ||
+			hasModifyingCTESelectRecur(root))
 			CdbPathLocus_MakeReplicated(&inner.move_to,
 										CdbPathLocus_NumSegments(outer.locus));
 		else
@@ -1253,7 +1302,8 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	}
 	else if (CdbPathLocus_IsReplicated(inner.locus))
 	{
-		if (root->upd_del_replicated_table > 0)
+		if (root->upd_del_replicated_table > 0 ||
+			hasModifyingCTESelectRecur(root))
 			CdbPathLocus_MakeReplicated(&outer.move_to,
 										CdbPathLocus_NumSegments(inner.locus));
 		else
