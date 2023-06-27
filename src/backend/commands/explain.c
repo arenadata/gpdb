@@ -458,6 +458,24 @@ ExplainOneUtility(Node *utilityStmt, IntoClause *into, ExplainState *es,
 		ExplainOneQuery((Query *) linitial(rewritten), ctas->into, es,
 						queryString, params);
 	}
+	else if (IsA(utilityStmt, DeclareCursorStmt))
+	{
+		/*
+		 * Likewise for DECLARE CURSOR.
+		 *
+		 * Notice that if you say EXPLAIN ANALYZE DECLARE CURSOR then we'll
+		 * actually run the query.  This is different from pre-8.3 behavior
+		 * but seems more useful than not running the query.  No cursor will
+		 * be created, however.
+		 */
+		DeclareCursorStmt *dcs = (DeclareCursorStmt *) utilityStmt;
+		List       *rewritten;
+
+		rewritten = QueryRewrite(castNode(Query, copyObject(dcs->query)));
+		Assert(list_length(rewritten) == 1);
+		ExplainOneQuery((Query *) linitial(rewritten), NULL, es, queryString,
+	                    params);
+	}
 	else if (IsA(utilityStmt, ExecuteStmt))
 		ExplainExecuteQuery((ExecuteStmt *) utilityStmt, into, es,
 							queryString, params);

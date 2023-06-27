@@ -3184,6 +3184,7 @@ static Query *
 transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 {
 	Query	   *result;
+	Query	   *query;
 
 	/*
 	 * Don't allow both SCROLL and NO SCROLL to be specified
@@ -3194,12 +3195,13 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
 				 errmsg("cannot specify both SCROLL and NO SCROLL")));
 
-	result = transformStmt(pstate, stmt->query);
+	query = transformStmt(pstate, stmt->query);
+	stmt->query = (Node *) query;
 
 	/* Grammar should not have allowed anything but SELECT */
-	if (!IsA(result, Query) ||
-		result->commandType != CMD_SELECT ||
-		result->utilityStmt != NULL)
+	if (!IsA(query, Query) ||
+		query->commandType != CMD_SELECT ||
+		query->utilityStmt != NULL)
 		elog(ERROR, "unexpected non-SELECT command in DECLARE CURSOR");
 
 	/* Can not support holdable or scrollable PARALLEL RETRIEVE CURSOR at present */
@@ -3220,47 +3222,47 @@ transformDeclareCursorStmt(ParseState *pstate, DeclareCursorStmt *stmt)
 	 * allowed, but the semantics of when the updates occur might be
 	 * surprising.)
 	 */
-	if (result->hasModifyingCTE)
+	if (query->hasModifyingCTE)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("DECLARE CURSOR must not contain data-modifying statements in WITH")));
 
 	/* FOR UPDATE and WITH HOLD are not compatible */
-	if (result->rowMarks != NIL && (stmt->options & CURSOR_OPT_HOLD))
+	if (query->rowMarks != NIL && (stmt->options & CURSOR_OPT_HOLD))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*------
 		  translator: %s is a SQL row locking clause such as FOR UPDATE */
 				 errmsg("DECLARE CURSOR WITH HOLD ... %s is not supported",
 						LCS_asString(((RowMarkClause *)
-									  linitial(result->rowMarks))->strength)),
+									  linitial(query->rowMarks))->strength)),
 				 errdetail("Holdable cursors must be READ ONLY.")));
 
 	/* FOR UPDATE and SCROLL are not compatible */
-	if (result->rowMarks != NIL && (stmt->options & CURSOR_OPT_SCROLL))
+	if (query->rowMarks != NIL && (stmt->options & CURSOR_OPT_SCROLL))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*------
 		  translator: %s is a SQL row locking clause such as FOR UPDATE */
 				 errmsg("DECLARE SCROLL CURSOR ... %s is not supported",
 						LCS_asString(((RowMarkClause *)
-									  linitial(result->rowMarks))->strength)),
+									  linitial(query->rowMarks))->strength)),
 				 errdetail("Scrollable cursors must be READ ONLY.")));
 
 	/* FOR UPDATE and INSENSITIVE are not compatible */
-	if (result->rowMarks != NIL && (stmt->options & CURSOR_OPT_INSENSITIVE))
+	if (query->rowMarks != NIL && (stmt->options & CURSOR_OPT_INSENSITIVE))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		/*------
 		  translator: %s is a SQL row locking clause such as FOR UPDATE */
 				 errmsg("DECLARE INSENSITIVE CURSOR ... %s is not supported",
 						LCS_asString(((RowMarkClause *)
-									  linitial(result->rowMarks))->strength)),
+									  linitial(query->rowMarks))->strength)),
 				 errdetail("Insensitive cursors must be READ ONLY.")));
 
-	/* We won't need the raw querytree any more */
-	stmt->query = NULL;
-
+	/* represent the command as a utility Query */
+	result = makeNode(Query);
+	result->commandType = CMD_UTILITY;
 	result->utilityStmt = (Node *) stmt;
 
 	return result;
