@@ -652,7 +652,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	GPMemoryProtect_Init();
 
 #ifdef USE_ORCA
-	if (GP_ROLE_DISPATCH == Gp_role)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/* Initialize GPOPT */
 		OptimizerMemoryContext = AllocSetContextCreate(TopMemoryContext,
@@ -1410,7 +1410,7 @@ ShutdownPostgres(int code, Datum arg)
 	ReportOOMConsumption();
 
 #ifdef USE_ORCA
-	if (GP_ROLE_DISPATCH == Gp_role)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		TerminateGPOPT();
 
