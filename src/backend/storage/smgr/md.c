@@ -342,6 +342,9 @@ mdcreate(SMgrRelation reln, ForkNumber forkNum, bool isRedo)
 	reln->md_fd[forkNum]->mdfd_vfd = fd;
 	reln->md_fd[forkNum]->mdfd_segno = 0;
 	reln->md_fd[forkNum]->mdfd_chain = NULL;
+
+	if (!SmgrIsTemp(reln))
+		register_dirty_segment(reln, forkNum, reln->md_fd[forkNum]);
 }
 
 /*
