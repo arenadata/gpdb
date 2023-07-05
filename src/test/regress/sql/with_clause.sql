@@ -405,3 +405,20 @@ WITH e AS (
 ) SELECT * FROM r JOIN h USING (a) JOIN h i USING (a);
 DROP TABLE d;
 DROP TABLE r;
+
+-- Test planner not pushing down quals to non-SELECT queries inside CTE. There
+-- can be a DML operation, and it's incorrect to push down upper quals to it.
+--start_ignore
+drop table if exists with_dml;
+--end_ignore
+create table with_dml (i int, j int) distributed by (i);
+insert into with_dml select i, i*100 from generate_series(1, 5) i;
+explain (costs off)
+with cte as
+(update with_dml set j = 1 returning *)
+select * from cte where cte.i > 2;
+with cte as
+(update with_dml set j = 1 returning *)
+select * from cte where cte.i > 2;
+select * from with_dml;
+drop table with_dml;
