@@ -412,13 +412,14 @@ DROP TABLE r;
 drop table if exists with_dml;
 --end_ignore
 create table with_dml (i int, j int) distributed by (i);
-insert into with_dml select i, i*100 from generate_series(1, 5) i;
 explain (costs off)
-with cte as
-(update with_dml set j = 1 returning *)
-select * from cte where cte.i > 2;
-with cte as
-(update with_dml set j = 1 returning *)
-select * from cte where cte.i > 2;
-select * from with_dml;
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte where i > 2;
+select count(*) c from with_dml;
 drop table with_dml;
