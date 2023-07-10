@@ -379,6 +379,9 @@ ChoosePortalStrategy(List *stmts)
 	/* Note For CreateTableAs, we still use PORTAL_MULTI_QUERY (not like PG)
 	 * since QE needs to use DestRemote to deliver completionTag to QD and
 	 * use DestIntoRel to insert tuples into the table(s).
+	 *
+	 * For modifying CTE we use PORTAL_MULTI_QUERY at QE nodes, because
+	 * we don't need saving the result inside portal's tuple store.
 	 */
 	if (list_length(stmts) == 1)
 	{
@@ -394,10 +397,12 @@ ChoosePortalStrategy(List *stmts)
 					query->utilityStmt == NULL &&
 					query->parentStmtType == PARENTSTMTTYPE_NONE)
 				{
-					if (query->hasModifyingCTE)
+					if (query->hasModifyingCTE && Gp_role != GP_ROLE_EXECUTE)
 						return PORTAL_ONE_MOD_WITH;
-					else
+					else if (!query->hasModifyingCTE)
 						return PORTAL_ONE_SELECT;
+					else
+					    return PORTAL_MULTI_QUERY;
 				}
 				if (query->commandType == CMD_UTILITY &&
 					query->utilityStmt != NULL)
@@ -421,10 +426,12 @@ ChoosePortalStrategy(List *stmts)
 					pstmt->copyIntoClause == NULL &&
 					pstmt->refreshClause == NULL)
 				{
-					if (pstmt->hasModifyingCTE)
+					if (pstmt->hasModifyingCTE && Gp_role != GP_ROLE_EXECUTE)
 						return PORTAL_ONE_MOD_WITH;
-					else
+					else if (!pstmt->hasModifyingCTE)
 						return PORTAL_ONE_SELECT;
+					else
+					    return PORTAL_MULTI_QUERY;
 				}
 			}
 		}
