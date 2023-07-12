@@ -55,4 +55,14 @@ WITH cte AS (
     INSERT INTO with_dml SELECT i, i * 100 FROM generate_series(1,5) i
     RETURNING i
 ) SELECT * FROM cte;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)
+WITH cte AS (
+    UPDATE with_dml SET j = j + 1
+    RETURNING i
+) SELECT * FROM cte;
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)
+WITH cte AS (
+    DELETE FROM with_dml WHERE i > 0
+    RETURNING i
+) SELECT * FROM cte;
 DROP TABLE with_dml;

@@ -122,4 +122,41 @@ WITH cte AS (
  Execution time: 21.314 ms
 (12 rows)
 
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)
+WITH cte AS (
+    UPDATE with_dml SET j = j + 1
+    RETURNING i
+) SELECT * FROM cte;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3) (actual rows=5 loops=1)
+   ->  Update on with_dml (actual rows=3 loops=1)
+         ->  Seq Scan on with_dml (actual rows=3 loops=1)
+ Planning time: 13.933 ms
+   (slice0)    Executor memory: 59K bytes.
+   (slice1)    Executor memory: 58K bytes avg x 3 workers, 58K bytes max (seg0).
+ Memory used:  128000kB
+ Optimizer: Postgres query optimizer
+ Execution time: 4.397 ms
+(9 rows)
+
+EXPLAIN (ANALYZE, TIMING OFF, COSTS OFF)
+WITH cte AS (
+    DELETE FROM with_dml WHERE i > 0
+    RETURNING i
+) SELECT * FROM cte;
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3) (actual rows=5 loops=1)
+   ->  Delete on with_dml (actual rows=3 loops=1)
+         ->  Seq Scan on with_dml (actual rows=3 loops=1)
+               Filter: (i > 0)
+ Planning time: 8.322 ms
+   (slice0)    Executor memory: 59K bytes.
+   (slice1)    Executor memory: 57K bytes avg x 3 workers, 57K bytes max (seg0).
+ Memory used:  128000kB
+ Optimizer: Postgres query optimizer
+ Execution time: 9.462 ms
+(10 rows)
+
 DROP TABLE with_dml;
