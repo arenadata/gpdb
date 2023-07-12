@@ -397,12 +397,11 @@ ChoosePortalStrategy(List *stmts)
 					query->utilityStmt == NULL &&
 					query->parentStmtType == PARENTSTMTTYPE_NONE)
 				{
-					if (query->hasModifyingCTE && Gp_role != GP_ROLE_EXECUTE)
-						return PORTAL_ONE_MOD_WITH;
-					else if (!query->hasModifyingCTE)
+					if (!query->hasModifyingCTE)
 						return PORTAL_ONE_SELECT;
-					else
-					    return PORTAL_MULTI_QUERY;
+					if (Gp_role != GP_ROLE_EXECUTE)
+						return PORTAL_ONE_MOD_WITH;
+					return PORTAL_MULTI_QUERY;
 				}
 				if (query->commandType == CMD_UTILITY &&
 					query->utilityStmt != NULL)
@@ -426,12 +425,11 @@ ChoosePortalStrategy(List *stmts)
 					pstmt->copyIntoClause == NULL &&
 					pstmt->refreshClause == NULL)
 				{
-					if (pstmt->hasModifyingCTE && Gp_role != GP_ROLE_EXECUTE)
-						return PORTAL_ONE_MOD_WITH;
-					else if (!pstmt->hasModifyingCTE)
+					if (!pstmt->hasModifyingCTE)
 						return PORTAL_ONE_SELECT;
-					else
-					    return PORTAL_MULTI_QUERY;
+					if (Gp_role != GP_ROLE_EXECUTE)
+						return PORTAL_ONE_MOD_WITH;
+					return PORTAL_MULTI_QUERY;
 				}
 			}
 		}
