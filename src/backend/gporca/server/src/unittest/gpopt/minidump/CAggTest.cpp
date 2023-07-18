@@ -82,6 +82,9 @@ const CHAR *rgszAggFileNames[] = {
 	"../data/dxl/minidump/DistinctAgg-NonSplittable.mdp",
 	"../data/dxl/minidump/RollupNoAgg.mdp",
 	"../data/dxl/minidump/GroupingSets.mdp",
+	"../data/dxl/minidump/NestedSubLinkWithGroupByAttrs.mdp",
+	"../data/dxl/minidump/NestedSubLinkAndGroupBy.mdp",
+	"../data/dxl/minidump/NestedSubLinkUnderAgg.mdp",
 #ifndef GPOS_DEBUG
 	"../data/dxl/minidump/CapGbCardToSelectCard.mdp",
 	"../data/dxl/minidump/GroupingOnSameTblCol-1.mdp",
