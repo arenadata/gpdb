@@ -462,4 +462,3 @@ CREATE FUNCTION cdblegacyhash_cash(money) RETURNS int4 LANGUAGE internal IMMUTAB
 CREATE FUNCTION cdblegacyhash_complex(complex) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'cdblegacyhash_complex' WITH (OID=6169, DESCRIPTION="Legacy cdbhash function");
 CREATE FUNCTION cdblegacyhash_uuid(uuid) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'cdblegacyhash_uuid' WITH (OID=6170, DESCRIPTION="Legacy cdbhash function");
 CREATE FUNCTION cdblegacyhash_anyenum(anyenum) RETURNS int4 LANGUAGE internal IMMUTABLE STRICT AS 'cdblegacyhash_anyenum' WITH (OID=6171, DESCRIPTION="Legacy cdbhash function");
-CREATE FUNCTION gp_terminate_mpp_backends() RETURNS void LANGUAGE internal VOLATILE PARALLEL RESTRICTED AS 'gp_terminate_mpp_backends' WITH (OID = 6999, DESCRIPTION="terminate all mpp backends on the segment");

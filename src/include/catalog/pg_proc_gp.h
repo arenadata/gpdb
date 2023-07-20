@@ -983,9 +983,5 @@ DESCR("Legacy cdbhash function");
 DATA(insert OID = 6171 ( cdblegacyhash_anyenum  PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 23 "3500" _null_ _null_ _null_ _null_ cdblegacyhash_anyenum _null_ _null_ _null_ n a ));
 DESCR("Legacy cdbhash function");
 
-/* gp_terminate_mpp_backends() => void */
-DATA(insert OID = 6999 ( gp_terminate_mpp_backends  PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 2278 "" _null_ _null_ _null_ _null_ gp_terminate_mpp_backends _null_ _null_ _null_ n a ));
-DESCR("terminate all mpp backends on the segment");
-
 
 /* TIDYCAT_END_PG_PROC_GEN */

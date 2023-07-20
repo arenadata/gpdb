@@ -259,7 +259,7 @@ static void
 TerminateMppBackends()
 {
 	CdbPgResults term_cdb_pgresults = {NULL, 0};
-	const char *term_buf = "select * from gp_terminate_mpp_backends()";
+	const char *term_buf = "select pg_terminate_backend(pid) from pg_stat_activity where pid != pg_backend_pid() and sess_id > 0";
 
 	PG_TRY();
 	{
