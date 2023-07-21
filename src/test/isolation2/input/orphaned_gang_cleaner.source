@@ -3,10 +3,9 @@
 -- save session id into table
 1: CREATE TABLE session (id int) DISTRIBUTED REPLICATED;
 1: INSERT INTO session SELECT current_setting('gp_session_id')::int;
--- create table and function for long query
+-- create table for long query
 1: CREATE TABLE test(i int) DISTRIBUTED BY (i);
 1: INSERT INTO test SELECT i FROM generate_series(1, 100) i;
-1: CREATE OR REPLACE FUNCTION sleep(i integer) RETURNS integer LANGUAGE plpgsql AS $function$ begin perform pg_sleep(10); return i; end; $function$;
 -- run long query
 1&: SELECT pg_sleep(10) FROM test;
 -- panic on next query should restart coordinator
