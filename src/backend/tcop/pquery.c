@@ -397,11 +397,10 @@ ChoosePortalStrategy(List *stmts)
 					query->utilityStmt == NULL &&
 					query->parentStmtType == PARENTSTMTTYPE_NONE)
 				{
-					if (!query->hasModifyingCTE)
-						return PORTAL_ONE_SELECT;
-					if (Gp_role != GP_ROLE_EXECUTE)
+					if (query->hasModifyingCTE)
 						return PORTAL_ONE_MOD_WITH;
-					return PORTAL_MULTI_QUERY;
+					else
+						return PORTAL_ONE_SELECT;
 				}
 				if (query->commandType == CMD_UTILITY &&
 					query->utilityStmt != NULL)
