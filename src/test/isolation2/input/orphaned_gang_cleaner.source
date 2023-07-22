@@ -11,11 +11,12 @@
 -- panic on next query should restart coordinator
 SELECT gp_inject_fault('exec_simple_query_start', 'panic', current_setting('gp_dbid')::int);
 SELECT 1;
--- got error after restartnig
+-- got error after restarting
 1<:
 1q:
+-- ensure first session id is less than saved
+1: SELECT current_setting('gp_session_id')::int < id FROM session;
 -- these should not raise snapshot collision error
-1: SELECT id > 0 FROM session;
 2: SELECT id > 0 FROM session;
 3: SELECT id > 0 FROM session;
 4: SELECT id > 0 FROM session;

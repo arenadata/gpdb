@@ -26,18 +26,19 @@ PANIC:  fault triggered, fault name:'exec_simple_query_start' fault type:'panic'
 server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
--- got error after restartnig
+-- got error after restarting
 1<:  <... completed>
 server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
 1q: ... <quitting>
--- these should not raise snapshot collision error
-1: SELECT id > 0 FROM session;
+-- ensure first session id is less than saved
+1: SELECT current_setting('gp_session_id')::int < id FROM session;
  ?column? 
 ----------
  t        
 (1 row)
+-- these should not raise snapshot collision error
 2: SELECT id > 0 FROM session;
  ?column? 
 ----------
