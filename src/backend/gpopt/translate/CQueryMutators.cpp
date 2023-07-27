@@ -686,7 +686,7 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 		// Handle other top-level outer references in the project element.
 		if (var->varlevelsup == context->m_current_query_level)
 		{
-			if (var->varlevelsup == context->m_agg_levels_up)
+			if (var->varlevelsup >= context->m_agg_levels_up)
 			{
 				// If Var references the top level query inside an Aggref that also
 				// references top level query, the Aggref is moved to the derived query
@@ -701,7 +701,7 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 				//
 				// Note the foo.a var which is in sum() in a subquery must now become a
 				// var referencing the current query level.
-				var->varlevelsup = 0;
+				var->varlevelsup = var->varlevelsup - context->m_agg_levels_up;
 				return (Node *) var;
 			}
 
