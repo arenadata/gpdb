@@ -1,7 +1,5 @@
 -- restart cluster
 !\retcode gpstop -afr;
--- start_ignore
--- end_ignore
 (exited with code 0)
 -- save session id into table
 1: CREATE TABLE session (id int) DISTRIBUTED REPLICATED;
