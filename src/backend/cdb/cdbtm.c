@@ -63,7 +63,6 @@ typedef struct TmControlBlock
 	DistributedTransactionId	seqno;
 	bool						DtmStarted;
 	pid_t						DtxRecoveryPid;
-	bool						CleanupBackends;
 	uint32						NextSnapshotId;
 	int							num_committed_xacts;
 	slock_t						gxidGenLock;
