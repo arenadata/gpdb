@@ -40,7 +40,6 @@
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/timestamp.h"
-#include "cdb/cdbvars.h"
 
 #define atooid(x)  ((Oid) strtoul((x), NULL, 10))
 
