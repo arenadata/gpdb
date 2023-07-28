@@ -6666,9 +6666,6 @@ StartupXLOG(void)
 		 */
 		if (access(BACKUP_LABEL_FILE, F_OK) != 0)
 				SyncAllXLogFiles();
-		SyncDataDirectory();
-		if (Gp_role == GP_ROLE_DISPATCH)
-			*shmCleanupBackends = true;
 	}
 
 	/*
@@ -8145,9 +8142,6 @@ StartupXLOG(void)
 	 */
 	if (fast_promoted)
 		RequestCheckpoint(CHECKPOINT_FORCE);
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-		*shmCleanupBackends = true;
 }
 
 /*
