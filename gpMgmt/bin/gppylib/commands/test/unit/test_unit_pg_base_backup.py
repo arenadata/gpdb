@@ -9,6 +9,9 @@ from gppylib.commands import pg
 from test.unit.gp_unittest import GpTestCase, run_tests
 from psycopg2 import DatabaseError
 
+from gppylib.test.unit.gp_unittest import GpTestCase
+from gppylib.commands.base import CommandResult
+
 class TestUnitPgReplicationSlot(GpTestCase):
     def setUp(self):
         mock_logger = Mock(spec=['log', 'warn', 'info', 'debug', 'error', 'warning', 'fatal'])
