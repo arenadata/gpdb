@@ -42,6 +42,7 @@
 static int frequent_check_times;
 
 volatile bool *shmDtmStarted = NULL;
+volatile bool *shmCleanupBackends;
 volatile pid_t *shmDtxRecoveryPid = NULL;
 
 /* transactions need recover */
@@ -163,7 +164,7 @@ recoverTM(void)
 	 * We just do this when there was abnormal shutdown on master or standby
 	 * promote, else mostly there should not have residual QE processes.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH)
+	if (*shmCleanupBackends)
 		TerminateMppBackends();
 
 	/*
