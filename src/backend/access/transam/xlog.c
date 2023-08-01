@@ -6666,8 +6666,6 @@ StartupXLOG(void)
 		 */
 		if (access(BACKUP_LABEL_FILE, F_OK) != 0)
 				SyncAllXLogFiles();
-
-		*shmCleanupBackends = true;
 	}
 
 	/*
@@ -8144,6 +8142,8 @@ StartupXLOG(void)
 	 */
 	if (fast_promoted)
 		RequestCheckpoint(CHECKPOINT_FORCE);
+
+	*shmCleanupBackends = true;
 }
 
 /*
