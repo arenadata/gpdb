@@ -541,6 +541,18 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	else
 		dest = None_Receiver;
 
+	/*
+	 * In case of ANALYZE query we should discard the UtilityStmt field
+	 * if it contains the DeclareCursorStmt node to execute the query
+	 * on segments instead of opening a cursor.
+	 */
+	if (es->analyze &&
+		plannedstmt->utilityStmt &&
+		IsA(plannedstmt->utilityStmt, DeclareCursorStmt))
+	{
+		plannedstmt->utilityStmt = NULL;
+	}
+
 	/* Create a QueryDesc for the query */
 	queryDesc = CreateQueryDesc(plannedstmt, queryString,
 								GetActiveSnapshot(), InvalidSnapshot,
@@ -2657,6 +2669,9 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		return;
 
 	ns = ((PlanState *) sortstate)->instrument->cdbNodeSummary;
+	/* Might not have received stats from qExecs if they hit errors. */
+	if (!ns)
+		return;
 	for (i = 0; i < NUM_SORT_METHOD; i++)
 	{
 		CdbExplain_Agg	*agg;
