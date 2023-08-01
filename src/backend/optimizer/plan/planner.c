@@ -908,6 +908,14 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 											 list_make1_int(root->is_split_update),
 											 rowMarks,
 											 SS_assign_special_param(root));
+			/*
+			 * Set up the visible plan targetlist as being the same as
+			 * the RETURNING list. This is for the use of
+			 * EXPLAIN; the executor won't pay any attention to the
+			 * targetlist. Also the targetlist might be needed by higher-level nodes,
+			 * such as Material, for correct operation.
+			 */
+			plan->targetlist = copyObject(parse->returningList);
 		}
 	}
 
@@ -1595,7 +1603,7 @@ inheritance_planner(PlannerInfo *root)
 		rowMarks = root->rowMarks;
 
 	/* And last, tack on a ModifyTable node to do the UPDATE/DELETE work */
-	return (Plan *) make_modifytable(root,
+	Plan* plan = (Plan *) make_modifytable(root,
 									 parse->commandType,
 									 parse->canSetTag,
 									 resultRelations,
@@ -1605,6 +1613,15 @@ inheritance_planner(PlannerInfo *root)
 									 is_split_updates,
 									 rowMarks,
 									 SS_assign_special_param(root));
+	/*
+	 * Set up the visible plan targetlist as being the same as
+	 * the RETURNING list. This is for the use of
+	 * EXPLAIN; the executor won't pay any attention to the
+	 * targetlist. Also the targetlist might be needed by higher-level nodes,
+	 * such as Material, for correct operation.
+	 */
+	plan->targetlist = copyObject(parse->returningList);
+	return plan;
 }
 
 #ifdef USE_ASSERT_CHECKING
