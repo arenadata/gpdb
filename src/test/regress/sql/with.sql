@@ -1046,3 +1046,14 @@ WITH updated AS (
 	update rank_tbl set rank = 6 where id = 5 returning rank
 )
 select count(*) from rank_tbl where rank in (select rank from updated);
+
+-- checking that the planner can build a plan with non-select CTE sharing.
+set gp_cte_sharing to on;
+drop table if exists t1;
+create table t1 (
+    c1 int,
+    c2 int)
+distributed randomly;
+explain (costs off) with cte1 as (insert into t1 values (1,2) returning *) select * from cte1 a join cte1 b using(c1);
+reset gp_cte_sharing;
+drop table t1;

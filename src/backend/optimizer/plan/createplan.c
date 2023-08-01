@@ -6367,8 +6367,19 @@ make_modifytable(PlannerInfo *root,
 	node->plan.lefttree = NULL;
 	node->plan.righttree = NULL;
 	node->plan.qual = NIL;
-	/* setrefs.c will fill in the targetlist, if needed */
-	node->plan.targetlist = NIL;
+
+	if(returningLists){
+		/*
+		* Set up the visible plan targetlist as being the same as
+		* the RETURNING list. This is for the use of
+		* EXPLAIN; the executor won't pay any attention to the
+		* targetlist. Also the targetlist might be needed by higher-level nodes,
+		* such as Material, for correct operation.
+		*/
+		node->plan.targetlist = copyObject(linitial(returningLists));
+	}else{
+		node->plan.targetlist = NIL;
+	}
 
 	node->operation = operation;
 	node->canSetTag = canSetTag;
