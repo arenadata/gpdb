@@ -457,7 +457,8 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 
 	if (IsA(node, SeqScan)
 		||IsA(node, ShareInputScan)
-		||IsA(node, ExternalScan))
+		||IsA(node, ExternalScan)
+		||IsA(node, SubqueryScan))
 	{
 		Plan	   *scanPlan = (Plan *) node;
 
