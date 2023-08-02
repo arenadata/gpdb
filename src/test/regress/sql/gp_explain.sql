@@ -329,3 +329,14 @@ CREATE TABLE t1 (a int);
 EXPLAIN ANALYZE INSERT INTO t1 SELECT 1/gp_segment_id
 FROM gp_dist_random('gp_id');
 DROP TABLE t1;
+
+-- checking that the planner can build a plan with non-select CTE sharing.
+set gp_cte_sharing to on;
+drop table if exists t1;
+create table t1 (
+    c1 int,
+    c2 int)
+distributed randomly;
+explain (costs off) with cte1 as (insert into t1 values (1,2) returning *) select * from cte1 a join cte1 b using(c1);
+reset gp_cte_sharing;
+drop table t1;
