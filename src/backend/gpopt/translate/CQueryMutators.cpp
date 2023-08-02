@@ -820,9 +820,8 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 			QTW_IGNORE_RT_SUBQUERIES  // flag -- do not mutate range table entries
 		);
 
-		List *rtable = query->rtable;
-		ListCell *lc = NULL;
-		ForEach(lc, rtable)
+		ListCell   *lc;
+		ForEach(lc, query->rtable)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
