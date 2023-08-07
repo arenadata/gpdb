@@ -1078,6 +1078,11 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 						newRL = lappend(newRL, rlist);
 					}
 					splan->returningLists = newRL;
+
+					/*
+					 * copy the new returningList as it may be needed later.
+					 */
+					splan->plan.targetlist = copyObject(linitial(newRL));
 				}
 
 				foreach(l, splan->resultRelations)
