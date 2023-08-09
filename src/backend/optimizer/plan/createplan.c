@@ -6369,11 +6369,10 @@ make_modifytable(PlannerInfo *root,
 	node->plan.qual = NIL;
 
 	/*
-	 * Set up the visible plan targetlist as being the same as
-	 * the RETURNING list. This is for the use of
-	 * EXPLAIN; the executor won't pay any attention to the
-	 * targetlist. Also the targetlist might be needed by higher-level nodes,
-	 * such as Material, for correct operation.
+	 * Set up the visible plan targetlist as being the same as the first
+	 * RETURNING list. This is for the use of EXPLAIN; the executor won't pay
+	 * any attention to the targetlist. Also the targetlist might be needed by
+	 * higher-level nodes, such as Material, for correct operation.
 	 */
 	if (returningLists)
 		node->plan.targetlist = copyObject(linitial(returningLists));
