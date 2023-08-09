@@ -2,6 +2,12 @@ import gdb
 
 PLANGEN_PLANNER = gdb.parse_and_eval("PLANGEN_PLANNER")
 
+class RangeTblEntry:
+	gdb_type = gdb.lookup_type("RangeTblEntry").pointer()
+
+class Slice:
+	gdb_type = gdb.lookup_type('Slice').pointer()
+
 class NodeTag:
 	gdb_type = gdb.lookup_type('NodeTag')
 
@@ -11,11 +17,56 @@ class Node:
 class Plan:
 	gdb_type = gdb.lookup_type('Plan').pointer()
 
-class RangeTblEntry:
-	gdb_type = gdb.lookup_type("RangeTblEntry").pointer()
+class PlanState:
+	gdb_type = gdb.lookup_type('PlanState').pointer()
 
-class Slice:
-	gdb_type = gdb.lookup_type('Slice').pointer()
+class SubPlan:
+	gdb_type = gdb.lookup_type('SubPlan').pointer()
+
+class SubPlanState:
+	gdb_type = gdb.lookup_type('SubPlanState').pointer()
+
+class ModifyTable:
+	gdb_type = gdb.lookup_type('ModifyTable').pointer()
+
+class ModifyTableState:
+	gdb_type = gdb.lookup_type('ModifyTableState').pointer()
+
+class Append:
+	gdb_type = gdb.lookup_type('Append').pointer()
+
+class AppendState:
+	gdb_type = gdb.lookup_type('AppendState').pointer()
+
+class MergeAppend:
+	gdb_type = gdb.lookup_type('MergeAppend').pointer()
+
+class MergeAppendState:
+	gdb_type = gdb.lookup_type('MergeAppendState').pointer()
+
+class Sequence:
+	gdb_type = gdb.lookup_type('Sequence').pointer()
+
+class SequenceState:
+	gdb_type = gdb.lookup_type('SequenceState').pointer()
+
+class BitmapAnd:
+	gdb_type = gdb.lookup_type('BitmapAnd').pointer()
+
+class BitmapAndState:
+	gdb_type = gdb.lookup_type('BitmapAndState').pointer()
+
+class BitmapOr:
+	gdb_type = gdb.lookup_type('BitmapOr').pointer()
+
+class BitmapOrState:
+	gdb_type = gdb.lookup_type('BitmapOrState').pointer()
+
+class SubqueryScan:
+	gdb_type = gdb.lookup_type('SubqueryScan').pointer()
+
+class SubqueryScanState:
+	gdb_type = gdb.lookup_type('SubqueryScanState').pointer()
 
 class Gang:
 	GANGTYPE_UNALLOCATED = gdb.parse_and_eval("GANGTYPE_UNALLOCATED")       # /* a root slice executed by the qDisp */
@@ -57,6 +108,7 @@ class SetOp:
 			commandStr = "Except All"
 
 		return "%s %s" % (strategyStr, commandStr)
+
 class Agg:
 	gdb_type = gdb.lookup_type('Agg').pointer()
 	# Strategies
@@ -82,11 +134,23 @@ class LocusType:
 	CdbLocusType_Strewn = gdb.parse_and_eval("CdbLocusType_Strewn")
 	CdbLocusType_End = gdb.parse_and_eval("CdbLocusType_End")
 
+class Join:
+	gdb_type = gdb.lookup_type('Join').pointer()
+
 class NestLoop:
 	gdb_type = gdb.lookup_type('NestLoop').pointer()
 
-class Join:
-	gdb_type = gdb.lookup_type('Join')
+class IndexScan:
+	gdb_type = gdb.lookup_type('IndexScan').pointer()
+
+class IndexOnlyScan:
+	gdb_type = gdb.lookup_type('IndexOnlyScan').pointer()
+
+class BitmapIndexScan:
+	gdb_type = gdb.lookup_type('BitmapIndexScan').pointer()
+
+class DynamicBitmapIndexScan:
+	gdb_type = gdb.lookup_type('DynamicBitmapIndexScan').pointer()
 
 class List:
 	gdb_type = gdb.lookup_type('List').pointer()
@@ -282,69 +346,6 @@ class Scan(object):
 		relanme = self.__rtableMap[id]
 		return "%s on %s%s" % (self.__typ, relanme, indexInfo)
 
-class IndexScan:
-	gdb_type = gdb.lookup_type('IndexScan').pointer()
-
-class IndexOnlyScan:
-	gdb_type = gdb.lookup_type('IndexOnlyScan').pointer()
-
-class BitmapIndexScan:
-	gdb_type = gdb.lookup_type('BitmapIndexScan').pointer()
-
-class DynamicBitmapIndexScan:
-	gdb_type = gdb.lookup_type('DynamicBitmapIndexScan').pointer()
-
-class PlanState:
-	gdb_type = gdb.lookup_type('PlanState').pointer()
-
-class SubPlan:
-	gdb_type = gdb.lookup_type('SubPlan').pointer()
-
-class SubPlanState:
-	gdb_type = gdb.lookup_type('SubPlanState').pointer()
-
-class ModifyTable:
-	gdb_type = gdb.lookup_type('ModifyTable').pointer()
-
-class ModifyTableState:
-	gdb_type = gdb.lookup_type('ModifyTableState').pointer()
-
-class Append:
-	gdb_type = gdb.lookup_type('Append').pointer()
-
-class AppendState:
-	gdb_type = gdb.lookup_type('AppendState').pointer()
-
-class MergeAppend:
-	gdb_type = gdb.lookup_type('MergeAppend').pointer()
-
-class MergeAppendState:
-	gdb_type = gdb.lookup_type('MergeAppendState').pointer()
-
-class Sequence:
-	gdb_type = gdb.lookup_type('Sequence').pointer()
-
-class SequenceState:
-	gdb_type = gdb.lookup_type('SequenceState').pointer()
-
-class BitmapAnd:
-	gdb_type = gdb.lookup_type('BitmapAnd').pointer()
-
-class BitmapAndState:
-	gdb_type = gdb.lookup_type('BitmapAndState').pointer()
-
-class BitmapOr:
-	gdb_type = gdb.lookup_type('BitmapOr').pointer()
-
-class BitmapOrState:
-	gdb_type = gdb.lookup_type('BitmapOrState').pointer()
-
-class SubqueryScan:
-	gdb_type = gdb.lookup_type('SubqueryScan').pointer()
-
-class SubqueryScanState:
-	gdb_type = gdb.lookup_type('SubqueryScanState').pointer()
-
 class PlanDumperCmd(gdb.Command):
 	"""Print the plan nodes like pg explain"""
 
@@ -359,34 +360,29 @@ class PlanDumperCmd(gdb.Command):
 		head = plans
 		saved_slice = self.__currentSlice
 		while head != 0:
-			sps = head["data"]["ptr_value"].cast(SubPlanState.gdb_type)
-			sp = sps["xprstate"]["expr"].cast(SubPlan.gdb_type)
+			sp = head["data"]["ptr_value"].cast(Plan.gdb_type)
 			if sliceTable != 0 and sp["qDispSliceId"] > 0:
 				self.__currentSlice = List.list_nth(sliceTable["slices"], sp["qDispSliceId"]).cast(Slice.gdb_type)
-			self.walk_node(sps["planstate"])
+			self.walk_node(sp)
 			head = head["next"]
 		self.__currentSlice = saved_slice
 
-	def walk_member_nodes(self, plans, planstates):
-		# print('walk_member_nodes')
-		cnt = List.list_length(plans)
-		# print('cnt', cnt)
-		for i in range(0, cnt):
-			self.walk_node(planstates[i])
+	# problem with none and null above
+	def walk_member_nodes(self, plans):
+		head = plans["head"]
+		while head != 0:
+			self.walk_node(head["data"]["ptr_value"].cast(Plan.gdb_type))
+			head = head["next"]
 
-	def walk_node(self, planStatePtr):
-		# print('mIN')
-		# print(planStatePtr)
-		planPtr = planStatePtr["plan"]
+	def walk_node(self, planPtr1):
 		save_currentSlice = self.__currentSlice
 
-		nodePtr = planPtr
-		# print(nodePtr)
-		nodeTag = str(planPtr["type"])
+		nodePtr = planPtr1
+		nodeTag = str(planPtr1["type"])
 		if nodeTag.startswith("T_"):
 			nodeTag = nodeTag[2:]
 		else:
-			raise Exception('unknown nodeTag: % %', nodeTag, planPtr)
+			raise Exception('unknown nodeTag: % %', nodeTag, planPtr1)
 		
 		# seems the calculation of current slice is invalid
 		nodeStr = nodeTag
@@ -433,72 +429,40 @@ class PlanDumperCmd(gdb.Command):
 			joinType = str(nodePtr.cast(Join.gdb_type)["jointype"])[5:]
 			nodeStr = "%s %s Join" % (nodeTag, joinType)
 
-		print(nodeStr)
-		# print("aaaaaaaaaaa")
-
 		self.result += "\t" * self.tabCnt + "-> " + nodeStr + "\n"
-
 		self.tabCnt = self.tabCnt + 1
 
-		# print("bbbbbbbbbbbbbbbbb")
-		# print(planPtr)
-
+		planPtr = planPtr1.cast(Plan.gdb_type)
 
 		if planPtr["initPlan"] != 0:
-			self.walk_subplans(planStatePtr["initPlan"], planStatePtr["state"]["es_sliceTable"]) # sliceTable
-
-		# print("cccccccccccccccccccc")
-		# print(planPtr)
-
-		
+			self.walk_subplans(planPtr["initPlan"], self.__state["es_sliceTable"])
 
 		if planPtr["lefttree"] and skipOuter == False:
-			self.walk_node(planStatePtr["lefttree"])
+			self.walk_node(planPtr["lefttree"])
 		elif skipOuter == True:
 			self.result += "\t" * self.tabCnt + "-> See first subplan of Hash Join"
 
 		if planPtr["righttree"]:
-			self.walk_node(planStatePtr["righttree"])
+			self.walk_node(planPtr["righttree"])
 
 		if nodeTag == "ModifyTable":
-			self.walk_member_nodes(
-				planPtr.cast(ModifyTable.gdb_type)["plans"],
-				planStatePtr.cast(ModifyTableState.gdb_type)["mt_plans"]
-			)
+			self.walk_member_nodes(planPtr.cast(ModifyTable.gdb_type)["plans"])
 		elif nodeTag == "Append":
-			self.walk_member_nodes(
-				planPtr.cast(Append.gdb_type)["appendplans"],
-				planStatePtr.cast(AppendState.gdb_type)["appendplans"]
-			)
+			self.walk_member_nodes(planPtr.cast(Append.gdb_type)["appendplans"])
 		elif nodeTag == "MergeAppend":
-			self.walk_member_nodes(
-				planPtr.cast(MergeAppend.gdb_type)["mergeplans"],
-				planStatePtr.cast(MergeAppendState.gdb_type)["mergeplans"],
-			)
+			self.walk_member_nodes(planPtr.cast(MergeAppend.gdb_type)["mergeplans"])
 		elif nodeTag == "Sequence":
-			# print("here")
-			self.walk_member_nodes(
-				planPtr.cast(Sequence.gdb_type)["subplans"],
-				planStatePtr.cast(SequenceState.gdb_type)["subplans"],
-			)
+			self.walk_member_nodes(planPtr.cast(Sequence.gdb_type)["subplans"])
 		elif nodeTag == "BitmapAnd":
-			self.walk_member_nodes(
-				planPtr.cast(BitmapAnd.gdb_type)["bitmapplans"],
-				planStatePtr.cast(BitmapAndState.gdb_type)["bitmapplans"],
-			)
+			self.walk_member_nodes(planPtr.cast(BitmapAnd.gdb_type)["bitmapplans"])
 		elif nodeTag == "BitmapOr":
-			self.walk_member_nodes(
-				planPtr.cast(BitmapOr.gdb_type)["bitmapplans"],
-				planStatePtr.cast(BitmapOrState.gdb_type)["bitmapplans"],
-			)
+			self.walk_member_nodes(planPtr.cast(BitmapOr.gdb_type)["bitmapplans"])
 		elif nodeTag == "SubqueryScan":
-			self.walk_node(planStatePtr.cast(SubqueryScanState.gdb_type)["subplan"])
+			self.walk_node(planPtr.cast(SubqueryScan.gdb_type)["subplan"])
 
-		if planStatePtr["subPlan"] != 0:
-			self.walk_subplans(planStatePtr["subPlan"]) # what if none
-
-		print("dddddddddddddddd")
-		
+		# on the planstate
+		# if planPtr["subPlan"] != 0:
+		# 	self.walk_subplans(planPtr["subPlan"]) # what if none
 
 		self.tabCnt = self.tabCnt - 1
 
@@ -541,9 +505,9 @@ class PlanDumperCmd(gdb.Command):
 			i += 1
 			rtableIter = rtableIter["next"]
 
-		res = self.walk_node( queryDesc["planstate"]) # queryDesc["plannedstmt"]["planTree"])
+		res = self.walk_node(queryDesc["plannedstmt"]["planTree"])
 		with open("/data/Output.txt", "w") as text_file:
 			text_file.write(res)
-		# print(self.result)
+		print(self.result)
 
 PlanDumperCmd()
