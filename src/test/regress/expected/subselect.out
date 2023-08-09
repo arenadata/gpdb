@@ -1004,15 +1004,15 @@ FROM t GROUP BY i, j;
 -- case, when the SubLink column is inside the GROUP BY clause. The fallback
 -- shouldn't occur.
 explain (verbose, costs off)
-SELECT j,
+SELECT j, 1 as c,
 (SELECT j FROM (SELECT j) q2) q1
 FROM t GROUP BY i, j, q1;
                    QUERY PLAN                   
 ------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
-   Output: t.j, ((SubPlan 1)), t.i
+   Output: t.j, 1, ((SubPlan 1)), t.i
    ->  HashAggregate
-         Output: t.j, ((SubPlan 1)), t.i
+         Output: t.j, 1, ((SubPlan 1)), t.i
          Group Key: t.i, t.j, (SubPlan 1)
          ->  Seq Scan on public.t
                Output: t.j, t.i, (SubPlan 1)
@@ -1022,12 +1022,12 @@ FROM t GROUP BY i, j, q1;
  Optimizer: Postgres query optimizer
 (11 rows)
 
-SELECT j,
+SELECT j, 1 as c,
 (SELECT j FROM (SELECT j) q2) q1
 FROM t GROUP BY i, j, q1;
- j | q1 
----+----
- 2 |  2
+ j | c | q1 
+---+---+----
+ 2 | 1 |  2
 (1 row)
 
 -- Ensure that ORCA processes a nested SubLink correctly during query

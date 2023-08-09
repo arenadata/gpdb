@@ -541,10 +541,10 @@ FROM t GROUP BY i, j;
 -- case, when the SubLink column is inside the GROUP BY clause. The fallback
 -- shouldn't occur.
 explain (verbose, costs off)
-SELECT j,
+SELECT j, 1 as c,
 (SELECT j FROM (SELECT j) q2) q1
 FROM t GROUP BY i, j, q1;
-SELECT j,
+SELECT j, 1 as c,
 (SELECT j FROM (SELECT j) q2) q1
 FROM t GROUP BY i, j, q1;
 

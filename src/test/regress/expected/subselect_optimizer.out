@@ -1060,39 +1060,41 @@ FROM t GROUP BY i, j;
 -- case, when the SubLink column is inside the GROUP BY clause. The fallback
 -- shouldn't occur.
 explain (verbose, costs off)
-SELECT j,
+SELECT j, 1 as c,
 (SELECT j FROM (SELECT j) q2) q1
 FROM t GROUP BY i, j, q1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Output: j, ((SubPlan 1))
-   ->  Result
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Result
+   Output: j, 1, ((SubPlan 1))
+   ->  Gather Motion 3:1  (slice1; segments: 3)
          Output: j, ((SubPlan 1))
-         ->  GroupAggregate
-               Output: j, ((SubPlan 1)), i
-               Group Key: t.i, t.j, ((SubPlan 1))
-               ->  Sort
-                     Output: ((SubPlan 1)), i, j
-                     Sort Key: t.i, t.j, ((SubPlan 1))
-                     ->  Result
-                           Output: (SubPlan 1), i, j
-                           ->  Seq Scan on public.t
-                                 Output: i, j
-                           SubPlan 1  (slice1; segments: 3)
-                             ->  Result
-                                   Output: t.j
+         ->  Result
+               Output: j, ((SubPlan 1))
+               ->  GroupAggregate
+                     Output: j, ((SubPlan 1)), i
+                     Group Key: t.i, t.j, ((SubPlan 1))
+                     ->  Sort
+                           Output: ((SubPlan 1)), i, j
+                           Sort Key: t.i, t.j, ((SubPlan 1))
+                           ->  Result
+                                 Output: (SubPlan 1), i, j
+                                 ->  Seq Scan on public.t
+                                       Output: i, j
+                                 SubPlan 1  (slice1; segments: 3)
                                    ->  Result
-                                         Output: true
+                                         Output: t.j
+                                         ->  Result
+                                               Output: true
  Optimizer: Pivotal Optimizer (GPORCA)
-(20 rows)
+(22 rows)
 
-SELECT j,
+SELECT j, 1 as c,
 (SELECT j FROM (SELECT j) q2) q1
 FROM t GROUP BY i, j, q1;
- j | q1 
----+----
- 2 |  2
+ j | c | q1 
+---+---+----
+ 2 | 1 |  2
 (1 row)
 
 -- Ensure that ORCA processes a nested SubLink correctly during query
