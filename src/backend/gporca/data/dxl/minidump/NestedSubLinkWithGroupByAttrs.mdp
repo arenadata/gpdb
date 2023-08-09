@@ -6,7 +6,7 @@
 	 during query normalization, 
 	 CREATE TABLE t (i int, j int) distributed by (i);
 
-	 explain (verbose, costs off) SELECT, (SELECT j FROM (SELECT j) q2)
+	 explain (verbose, costs off) SELECT j, (SELECT j FROM (SELECT j) q2)
 	 FROM t GROUP BY i, j;
 ----------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)

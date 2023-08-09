@@ -6,8 +6,8 @@
 	 case, when the SubLink column is inside the GROUP BY clause.
 	 CREATE TABLE t (i int, j int) distributed by (i);
 
-	 explain (verbose, costs off) SELECT, (SELECT j FROM (SELECT j) q2) q1
-	 FROM t GROUP BY i, j q1;
+	 explain (verbose, costs off) SELECT j, (SELECT j FROM (SELECT j) q2) q1
+	 FROM t GROUP BY i, j, q1;
 ------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    Output: j, ((SubPlan 1))
