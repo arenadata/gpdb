@@ -517,3 +517,44 @@ fetch backward all in c1;
 
 commit;
 --end_ignore
+
+-- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
+-- the nested SubLink, which are referenced in GROUP BY clause, are processed
+-- during query normalization. The inner part of SubPLan should contain only t.j
+-- start_ignore
+DROP TABLE IF EXISTS t;
+DROP TABLE IF EXISTS s;
+-- end_ignore
+CREATE TABLE t (i int, j int) distributed by (i);
+CREATE TABLE s (i int, j int) distributed by (i);
+INSERT INTO t VALUES (1, 2);
+explain (verbose, costs off)
+SELECT j,
+(SELECT j FROM (SELECT j) q2)
+FROM t GROUP BY i, j;
+SELECT j,
+(SELECT j FROM (SELECT j) q2)
+FROM t GROUP BY i, j;
+
+-- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
+-- the nested SubLink are processed during query normalization for the
+-- case, when the SubLink column is inside the GROUP BY clause. The fallback
+-- shouldn't occur.
+explain (verbose, costs off)
+SELECT j,
+(SELECT j FROM (SELECT j) q2) q1
+FROM t GROUP BY i, j, q1;
+SELECT j,
+(SELECT j FROM (SELECT j) q2) q1
+FROM t GROUP BY i, j, q1;
+
+-- Ensure that ORCA processes a nested SubLink correctly during query
+-- normalization. The correlated attribute under the AggRef should be
+-- mutated in a right way, it should correspond to a proper column after
+-- normalization. The fallback shouldn't occur.
+INSERT INTO s values (1,1);
+explain (verbose, costs off)
+SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
+SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
+DROP TABLE t;
+DROP TABLE s;

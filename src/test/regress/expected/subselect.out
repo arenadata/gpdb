@@ -960,3 +960,114 @@ fetch backward all in c1;
 
 commit;
 --end_ignore
+-- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
+-- the nested SubLink, which are referenced in GROUP BY clause, are processed
+-- during query normalization. The inner part of SubPLan should contain only t.j
+-- start_ignore
+DROP TABLE IF EXISTS t;
+NOTICE:  table "t" does not exist, skipping
+DROP TABLE IF EXISTS s;
+NOTICE:  table "s" does not exist, skipping
+-- end_ignore
+CREATE TABLE t (i int, j int) distributed by (i);
+CREATE TABLE s (i int, j int) distributed by (i);
+INSERT INTO t VALUES (1, 2);
+explain (verbose, costs off)
+SELECT j,
+(SELECT j FROM (SELECT j) q2)
+FROM t GROUP BY i, j;
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Output: t.j, ((SubPlan 1)), t.i
+   ->  HashAggregate
+         Output: t.j, (SubPlan 1), t.i
+         Group Key: t.i, t.j
+         ->  Seq Scan on public.t
+               Output: t.j, t.i
+         SubPlan 1  (slice1; segments: 1)
+           ->  Result
+                 Output: t.j
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+SELECT j,
+(SELECT j FROM (SELECT j) q2)
+FROM t GROUP BY i, j;
+ j | j 
+---+---
+ 2 | 2
+(1 row)
+
+-- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
+-- the nested SubLink are processed during query normalization for the
+-- case, when the SubLink column is inside the GROUP BY clause. The fallback
+-- shouldn't occur.
+explain (verbose, costs off)
+SELECT j,
+(SELECT j FROM (SELECT j) q2) q1
+FROM t GROUP BY i, j, q1;
+                   QUERY PLAN                   
+------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Output: t.j, ((SubPlan 1)), t.i
+   ->  HashAggregate
+         Output: t.j, ((SubPlan 1)), t.i
+         Group Key: t.i, t.j, (SubPlan 1)
+         ->  Seq Scan on public.t
+               Output: t.j, t.i, (SubPlan 1)
+               SubPlan 1  (slice1; segments: 1)
+                 ->  Result
+                       Output: t.j
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+SELECT j,
+(SELECT j FROM (SELECT j) q2) q1
+FROM t GROUP BY i, j, q1;
+ j | q1 
+---+----
+ 2 |  2
+(1 row)
+
+-- Ensure that ORCA processes a nested SubLink correctly during query
+-- normalization. The correlated attribute under the AggRef should be
+-- mutated in a right way, it should correspond to a proper column after
+-- normalization. The fallback shouldn't occur.
+INSERT INTO s values (1,1);
+explain (verbose, costs off)
+SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Aggregate
+   Output: (SubPlan 2)
+   ->  Gather Motion 3:1  (slice2; segments: 3)
+         Output: (max((SubPlan 1)))
+         ->  Aggregate
+               Output: max((SubPlan 1))
+               ->  Seq Scan on public.t
+                     Output: t.i
+               SubPlan 1  (slice2; segments: 3)
+                 ->  Result
+                       Output: s.i
+                       Filter: (s.j = t.i)
+                       ->  Materialize
+                             Output: s.i, s.j
+                             ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                                   Output: s.i, s.j
+                                   ->  Seq Scan on public.s
+                                         Output: s.i, s.j
+   SubPlan 2  (slice0)
+     ->  Result
+           Output: max((max((SubPlan 1))))
+ Optimizer: Postgres query optimizer
+(22 rows)
+
+SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
+ max 
+-----
+   1
+(1 row)
+
+DROP TABLE t;
+DROP TABLE s;
