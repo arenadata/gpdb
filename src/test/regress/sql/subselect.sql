@@ -556,6 +556,7 @@ from t group by i, j, q1;
 -- mutated in a right way, it should correspond to a proper column after
 -- normalization. The fallback shouldn't occur.
 insert into s values (1,1);
+
 explain (verbose, costs off)
 select (select max((select s.i from s where s.j = t.i))) from t;
 
