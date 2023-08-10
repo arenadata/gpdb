@@ -964,18 +964,18 @@ commit;
 -- the nested SubLink, which are referenced in GROUP BY clause, are processed
 -- during query normalization. The inner part of SubPLan should contain only t.j
 -- start_ignore
-DROP TABLE IF EXISTS t;
+drop table if exists t;
 NOTICE:  table "t" does not exist, skipping
-DROP TABLE IF EXISTS s;
+drop table if exists s;
 NOTICE:  table "s" does not exist, skipping
 -- end_ignore
-CREATE TABLE t (i int, j int) distributed by (i);
-CREATE TABLE s (i int, j int) distributed by (i);
-INSERT INTO t VALUES (1, 2);
+create table t (i int, j int) distributed by (i);
+create table s (i int, j int) distributed by (i);
+insert into t values (1, 2);
 explain (verbose, costs off)
-SELECT j,
-(SELECT j FROM (SELECT j) q2)
-FROM t GROUP BY i, j;
+select j,
+(select j from (select j) q2)
+from t group by i, j;
                 QUERY PLAN                
 ------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -991,9 +991,9 @@ FROM t GROUP BY i, j;
  Optimizer: Postgres query optimizer
 (11 rows)
 
-SELECT j,
-(SELECT j FROM (SELECT j) q2)
-FROM t GROUP BY i, j;
+select j,
+(select j from (select j) q2)
+from t group by i, j;
  j | j 
 ---+---
  2 | 2
@@ -1004,9 +1004,9 @@ FROM t GROUP BY i, j;
 -- case, when the SubLink column is inside the GROUP BY clause. The fallback
 -- shouldn't occur.
 explain (verbose, costs off)
-SELECT j, 1 as c,
-(SELECT j FROM (SELECT j) q2) q1
-FROM t GROUP BY i, j, q1;
+select j, 1 as c,
+(select j from (select j) q2) q1
+from t group by i, j, q1;
                    QUERY PLAN                   
 ------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -1022,9 +1022,9 @@ FROM t GROUP BY i, j, q1;
  Optimizer: Postgres query optimizer
 (11 rows)
 
-SELECT j, 1 as c,
-(SELECT j FROM (SELECT j) q2) q1
-FROM t GROUP BY i, j, q1;
+select j, 1 as c,
+(select j from (select j) q2) q1
+from t group by i, j, q1;
  j | c | q1 
 ---+---+----
  2 | 1 |  2
@@ -1034,9 +1034,9 @@ FROM t GROUP BY i, j, q1;
 -- normalization. The correlated attribute under the AggRef should be
 -- mutated in a right way, it should correspond to a proper column after
 -- normalization. The fallback shouldn't occur.
-INSERT INTO s values (1,1);
+insert into s values (1,1);
 explain (verbose, costs off)
-SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
+select (select max((select s.i from s where s.j = t.i))) from t;
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
  Aggregate
@@ -1063,11 +1063,11 @@ SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
  Optimizer: Postgres query optimizer
 (22 rows)
 
-SELECT (SELECT max((SELECT s.i FROM s WHERE s.j = t.i))) FROM t;
+select (select max((select s.i from s where s.j = t.i))) from t;
  max 
 -----
    1
 (1 row)
 
-DROP TABLE t;
-DROP TABLE s;
+drop table t;
+drop table s;
