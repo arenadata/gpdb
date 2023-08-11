@@ -530,11 +530,13 @@ insert into t values (1, 2);
 explain (verbose, costs off)
 select j,
 (select j from (select j) q2)
-from t group by i, j;
+from t
+group by i, j;
 
 select j,
 (select j from (select j) q2)
-from t group by i, j;
+from t
+group by i, j;
 
 -- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
 -- the nested SubLink are processed during query normalization for the
@@ -543,11 +545,13 @@ from t group by i, j;
 explain (verbose, costs off)
 select j, 1 as c,
 (select j from (select j) q2) q1
-from t group by i, j, q1;
+from t
+group by i, j, q1;
 
 select j, 1 as c,
 (select j from (select j) q2) q1
-from t group by i, j, q1;
+from t
+group by i, j, q1;
 
 -- Ensure that ORCA processes a nested SubLink correctly during query
 -- normalization. The correlated attribute under the AggRef should be

@@ -814,11 +814,8 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 	if (IsA(node, Query))
 	{
 		Query *query = gpdb::MutateQueryTree(
-			(Query *) node,
-			(MutatorWalkerFn) RunExtractAggregatesMutator,
-			context,
-			QTW_IGNORE_RT_SUBQUERIES
-		);
+			(Query *) node, (MutatorWalkerFn) RunExtractAggregatesMutator,
+			context, QTW_IGNORE_RT_SUBQUERIES);
 
 		ListCell *lc;
 		ForEach(lc, query->rtable)

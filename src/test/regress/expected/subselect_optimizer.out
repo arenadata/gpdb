@@ -1021,7 +1021,8 @@ insert into t values (1, 2);
 explain (verbose, costs off)
 select j,
 (select j from (select j) q2)
-from t group by i, j;
+from t
+group by i, j;
                   QUERY PLAN                  
 ----------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -1046,7 +1047,8 @@ from t group by i, j;
 
 select j,
 (select j from (select j) q2)
-from t group by i, j;
+from t
+group by i, j;
  j | j 
 ---+---
  2 | 2
@@ -1059,7 +1061,8 @@ from t group by i, j;
 explain (verbose, costs off)
 select j, 1 as c,
 (select j from (select j) q2) q1
-from t group by i, j, q1;
+from t
+group by i, j, q1;
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Result
@@ -1088,7 +1091,8 @@ from t group by i, j, q1;
 
 select j, 1 as c,
 (select j from (select j) q2) q1
-from t group by i, j, q1;
+from t
+group by i, j, q1;
  j | c | q1 
 ---+---+----
  2 | 1 |  2
