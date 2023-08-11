@@ -243,6 +243,7 @@ class Motion(object):
 	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # 2		/* Send tuples to the segment explicitly specified in their segid column */
 	gdb_type = gdb.lookup_type('Motion').pointer()
 	def __init__(self, val, state, pstmt, currentSlice):
+		# TODO: current_slice should be fixed
 		self.__plan = val
 		self.__state = state
 		self.__pstmt = pstmt
@@ -250,7 +251,6 @@ class Motion(object):
 		self.__currentSlice = currentSlice
 
 		slices = self.__state["es_sliceTable"]["slices"]
-
 		self.__currentSlice = List.list_nth(slices, int(self.__mot["motionID"])).cast(Slice.gdb_type)
 
 		parentIdx = int(self.__currentSlice["parentIndex"])
@@ -313,7 +313,7 @@ class ShareInputScan(object):
 	def print_node(self):
 		slice_id = -1
 		if self.__currentSlice != 0:
-			# does it calculates correctly, motions rewrites current slice???
+			# TODO: does it calculates correctly, motions rewrites current slice???
 			slice_id = int(self.__currentSlice["sliceIndex"])
 
 		return "ShareInputScan (share slice:id %d:%d)" % (slice_id, int(self.__sics["share_id"]))
@@ -357,32 +357,38 @@ class PlanDumperCmd(gdb.Command):
 		self.tabCnt = 0
 
 	def walk_subplans(self, plans, sliceTable):
-		head = plans
+		# problem with none and null above sliceTable
+		head = plans["head"]
 		saved_slice = self.__currentSlice
 		while head != 0:
-			sp = head["data"]["ptr_value"].cast(Plan.gdb_type)
+			sp = head["data"]["ptr_value"].cast(SubPlan.gdb_type)
 			if sliceTable != 0 and sp["qDispSliceId"] > 0:
 				self.__currentSlice = List.list_nth(sliceTable["slices"], sp["qDispSliceId"]).cast(Slice.gdb_type)
-			self.walk_node(sp)
+			
+			# the basic explain.c works with the planstates of plan - it means that it has the states for all nodes
+			# from plan starting from root. In case of coredumps we may have the plannedstmt which contains planTree
+			# - full plan, but the planstates for this plna may be partial in bounds of Motion of current slice, so
+			# the link how to calculate
+			self.__curPlanName = str(sp["plan_name"])
+			sp_plan = List.list_nth(self.__pstmt["subplans"], int(sp["plan_id"]) - 1).cast(Plan.gdb_type)
+			self.walk_node(sp_plan)
 			head = head["next"]
 		self.__currentSlice = saved_slice
 
-	# problem with none and null above
 	def walk_member_nodes(self, plans):
 		head = plans["head"]
 		while head != 0:
 			self.walk_node(head["data"]["ptr_value"].cast(Plan.gdb_type))
 			head = head["next"]
 
-	def walk_node(self, planPtr1):
+	def walk_node(self, nodePtr):
+		nodeTag = str(nodePtr["type"])
+		planPtr = nodePtr.cast(Plan.gdb_type)
 		save_currentSlice = self.__currentSlice
-
-		nodePtr = planPtr1
-		nodeTag = str(planPtr1["type"])
 		if nodeTag.startswith("T_"):
 			nodeTag = nodeTag[2:]
 		else:
-			raise Exception('unknown nodeTag: % %', nodeTag, planPtr1)
+			raise Exception('unknown nodeTag: % %', nodeTag, planPtr)
 		
 		# seems the calculation of current slice is invalid
 		nodeStr = nodeTag
@@ -390,15 +396,15 @@ class PlanDumperCmd(gdb.Command):
 		simpleScans = ["SeqScan", "DynamicSeqScan", "ExternalScan", "DynamicIndexScan", "BitmapHeapScan", "DynamicBitmapHeapScan", "TidScan", "SubqueryScan", "FunctionScan", "TableFunctionScan", "ValuesScan", "CteScan", "WorkTableScan", "ForeignScan"]
 		if nodeTag == "DML" or nodeTag == "ModifyTable":
 			# unified approach for the DML and ModifyTable nodes instead of original code
-			operation = self.__pstmt["commandType"][4:] # drop 'CMD_' prefix
+			operation = str(self.__pstmt["commandType"])[4:] # drop 'CMD_' prefix
 			nodeStr += " " + operation
 			if nodeTag == "ModifyTable":
-				rti = nodePtr.cast(ModifyTable.gdb_type)["resultRelations"]["head"]["data"]["int_value"]
-				nodeStr += (" on %s" % self.rtableMap[rti])
+				rti = int(planPtr.cast(ModifyTable.gdb_type)["resultRelations"]["head"]["data"]["int_value"])
+				nodeStr += (" on %s" % str(self.rtableMap[rti]))
 		elif nodeTag == "NestLoop":
-			skipOuter = bool(nodePtr.cast(NestLoop.gdb_type)["shared_outer"])
+			skipOuter = bool(planPtr.cast(NestLoop.gdb_type)["shared_outer"])
 		elif nodeTag == "Agg":
-			agg = nodePtr.cast(Agg.gdb_type)
+			agg = planPtr.cast(Agg.gdb_type)
 			strategy = agg["aggstrategy"]
 			nodeStr = "Aggregate ???"
 			if strategy == Agg.AGG_PLAIN: 
@@ -408,41 +414,42 @@ class PlanDumperCmd(gdb.Command):
 			elif strategy == Agg.AGG_HASHED: 
 				nodeStr = "HashAggregate"
 		elif nodeTag == "SetOp":
-			nodeStr = SetOp.print_node(nodePtr)
+			nodeStr = SetOp.print_node(planPtr)
 		elif nodeTag == "Motion":
-			nodeStr = Motion(nodePtr, self.__state, self.__pstmt, self.__currentSlice).print_node()
+			nodeStr = Motion(planPtr, self.__state, self.__pstmt, self.__currentSlice).print_node()
 		elif nodeTag == "ShareInputScan":
-			nodeStr = ShareInputScan(nodePtr, self.__currentSlice).print_node()
+			nodeStr = ShareInputScan(planPtr, self.__currentSlice).print_node()
 		elif nodeTag in simpleScans:
-			nodeStr = Scan(nodePtr, self.rtableMap, nodeTag).print_node(None)
+			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(None)
 		elif nodeTag == "IndexScan":
-			nodeStr = Scan(nodePtr, self.rtableMap, nodeTag).print_node(nodePtr.cast(IndexScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(IndexScan.gdb_type)["indexid"])
 		elif nodeTag == "IndexOnlyScan":
-			nodeStr = Scan(nodePtr, self.rtableMap, nodeTag).print_node(nodePtr.cast(IndexOnlyScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(IndexOnlyScan.gdb_type)["indexid"])
 		elif nodeTag == "BitmapIndexScan":
-			nodeStr = Scan(nodePtr, self.rtableMap, nodeTag).print_node(nodePtr.cast(BitmapIndexScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(BitmapIndexScan.gdb_type)["indexid"])
 		elif nodeTag == "DynamicBitmapIndexScan":
-			nodeStr = Scan(nodePtr, self.rtableMap, nodeTag).print_node(nodePtr.cast(DynamicBitmapIndexScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(DynamicBitmapIndexScan.gdb_type)["indexid"])
 		elif nodeTag == "PartitionSelector":
-			nodeStr = PartitionSelector(nodePtr, self.reloidMap).print_node()
+			nodeStr = PartitionSelector(planPtr, self.reloidMap).print_node()
 		elif nodeStr in ["NestLoop", "MergeJoin", "HashJoin"]:
-			joinType = str(nodePtr.cast(Join.gdb_type)["jointype"])[5:]
+			joinType = str(planPtr.cast(Join.gdb_type)["jointype"])[5:]
 			nodeStr = "%s %s Join" % (nodeTag, joinType)
 
+		if self.__curPlanName != "":
+			self.result +=  "\t" * (self.tabCnt -1)+ ("  %s (%s)\n" % (self.__curPlanName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
+			self.__curPlanName = ""
 		self.result += "\t" * self.tabCnt + "-> " + nodeStr + "\n"
 		self.tabCnt = self.tabCnt + 1
 
-		planPtr = planPtr1.cast(Plan.gdb_type)
-
-		if planPtr["initPlan"] != 0:
+		if planPtr["initPlan"] != 0: # +
 			self.walk_subplans(planPtr["initPlan"], self.__state["es_sliceTable"])
 
-		if planPtr["lefttree"] and skipOuter == False:
+		if planPtr["lefttree"] != 0 and skipOuter == False:
 			self.walk_node(planPtr["lefttree"])
 		elif skipOuter == True:
 			self.result += "\t" * self.tabCnt + "-> See first subplan of Hash Join"
 
-		if planPtr["righttree"]:
+		if planPtr["righttree"] != 0:
 			self.walk_node(planPtr["righttree"])
 
 		if nodeTag == "ModifyTable":
@@ -460,6 +467,7 @@ class PlanDumperCmd(gdb.Command):
 		elif nodeTag == "SubqueryScan":
 			self.walk_node(planPtr.cast(SubqueryScan.gdb_type)["subplan"])
 
+		
 		# on the planstate
 		# if planPtr["subPlan"] != 0:
 		# 	self.walk_subplans(planPtr["subPlan"]) # what if none
@@ -483,13 +491,14 @@ class PlanDumperCmd(gdb.Command):
 		queryDesc = gdb.parse_and_eval(args)
 		self.__state = queryDesc["estate"]
 		self.__pstmt = queryDesc["plannedstmt"]
+		self.__curPlanName = ""
 
 		# the logic of the original getCurrentSlice nd LocallyExecutedSliceIndex is embedded into getCurrentSlice
 		self.__currentSlice = getCurrentSlice(self.__state, int(self.__state["es_sliceTable"]["localSlice"])).cast(Slice.gdb_type)
 		# *sliceTable = planstate->state->es_sliceTable;
 		# seems no need, it must be the same as queryDesc.estate
 		# for motion, esatete  == plansatate->state it's a global 
-		self.__state = queryDesc["planstate"]["state"]
+		# self.__state = queryDesc["planstate"]["state"]
 
 		i = 1
 		self.rtableMap = {}
@@ -506,8 +515,9 @@ class PlanDumperCmd(gdb.Command):
 			rtableIter = rtableIter["next"]
 
 		res = self.walk_node(queryDesc["plannedstmt"]["planTree"])
-		with open("/data/Output.txt", "w") as text_file:
-			text_file.write(res)
+		# with open("/data/Output.txt", "w") as text_file:
+		# 	text_file.write(res)
 		print(self.result)
+		self.result = ""
 
 PlanDumperCmd()
