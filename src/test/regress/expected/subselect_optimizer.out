@@ -1009,9 +1009,9 @@ fetch backward all in c1;
 ERROR:  backward scan is not supported in this version of Greenplum Database
 commit;
 --end_ignore
--- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
--- the nested SubLink, which are referenced in GROUP BY clause, are processed
--- during query normalization. The inner part of SubPLan should contain only t.j
+-- Ensure that both planners produce valid plans for the query with the nested
+-- SubLink, which contains attributes referenced in query's GROUP BY clause.
+-- The inner part of SubPlan should contain only t.j.
 -- start_ignore
 drop table if exists t;
 NOTICE:  table "t" does not exist, skipping
@@ -1054,9 +1054,8 @@ group by i, j;
  2 | 2
 (1 row)
 
--- Ensure that ORCA correctly builts Query dxl tree and all attributes inside
--- the nested SubLink are processed during query normalization for the
--- case, when the SubLink column is inside the GROUP BY clause. The fallback
+-- Ensure that both planners produce valid plans for the query with the nested
+-- SubLink, and this SubLink is inside the GROUP BY clause. For ORCA the fallback
 -- shouldn't occur.
 explain (verbose, costs off)
 select j, 1 as c,
@@ -1098,10 +1097,9 @@ group by i, j, q1;
  2 | 1 |  2
 (1 row)
 
--- Ensure that ORCA processes a nested SubLink correctly during query
--- normalization. The correlated attribute under the AggRef should be
--- mutated in a right way, it should correspond to a proper column after
--- normalization. The fallback shouldn't occur.
+-- Ensure that both planners produce valid plans for the query with the nested
+-- SubLink, and this SubLink is referenced in the GROUP BY clause. For ORCA the fallback
+-- shouldn't occur.
 -- start_ignore
 drop table if exists s;
 NOTICE:  table "s" does not exist, skipping
