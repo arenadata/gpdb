@@ -2856,3 +2856,40 @@ release_ss_cache_for_dynamic_scan(HTAB *ss_table, List *relids)
 	hash_destroy(ss_table);
 	list_free(relids);
 }
+
+typedef struct InitPlanFinderContext
+{
+	plan_tree_base_prefix base;
+	Bitmapset			 *bms_initplans;
+} InitPlanFinderContext;
+
+static bool
+InitPlanFinderWalker(Node *node, void *context)
+{
+	if (NULL == node)
+		return false;
+
+	InitPlanFinderContext *ctx = (InitPlanFinderContext *) context;
+
+	if (IsA(node, SubPlan))
+	{
+		int i = ((SubPlan *)node)->plan_id - 1;
+		if (!bms_is_member(i, ctx->bms_initplans))
+			ctx->bms_initplans = bms_add_member(ctx->bms_initplans, i);
+		else
+			return false;
+	}
+
+	return plan_tree_walker(node, InitPlanFinderWalker, ctx);
+}
+
+Bitmapset *
+getInitPlans(PlannedStmt *plannedstmt, Plan *root)
+{
+	InitPlanFinderContext ctx;
+
+	ctx.base.node = (Node *)plannedstmt;
+	ctx.bms_initplans = NULL;
+	InitPlanFinderWalker((Node *)root, &ctx);
+	return ctx.bms_initplans;
+}

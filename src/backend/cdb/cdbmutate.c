@@ -776,6 +776,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 			/* reset sliceDepth for each init plan */
 			context->sliceDepth = 0;
+			context->containMotionNodes = false;
 			node = plan_tree_mutator(node, apply_motion_mutator, context);
 
 			context->containMotionNodes = saveContainMotionNodes;

@@ -1215,3 +1215,95 @@ explain (costs off) select * from r where b in (select b from s where c=10 order
 select * from r where b in (select b from s where c=10 order by c);
 explain (costs off) select * from r where b in (select b from s where c=10 order by c limit 2);
 select * from r where b in (select b from s where c=10 order by c limit 2);
+
+-- Ensure that InitPlans and correlated SubPlans, which contain writable
+-- non-SELECT operations, are generated and are executed correctly.
+-- start_ignore
+drop table if exists t1;
+drop table if exists t2;
+--end_ignore
+create table t1(i int , j int) distributed by (i);
+create table t2(i int, j int) distributed by (i);
+insert into t2 values (1, 1), (2, 2);
+
+explain (costs off)
+with cte as
+(insert into t1
+ select i, i * 10 from generate_series(1, 5) i
+ returning *)
+ select count(*) from t2
+where exists (select i from cte);
+
+with cte as
+(insert into t1
+ select i, i * 10 from generate_series(1, 5) i
+ returning *)
+select count(*) from t2
+where exists (select i from cte);
+
+explain (costs off)
+with cte as
+(update t1 set i = j - 1
+ returning *)
+select count(*) from t2
+where exists (select i from cte);
+
+with cte as
+(update t1 set i = j - 1
+ returning *)
+select count(*) from t2
+where exists (select i from cte);
+
+explain (costs off)
+with cte as
+(delete from t1
+ returning *)
+select count(*) from t2
+where exists (select i from cte);
+
+with cte as
+(delete from t1
+ returning *)
+select count(*) from t2
+where exists (select i from cte);
+
+explain (costs off)
+with cte as
+(insert into t1
+ select i, i * 10 from generate_series(1, 5) i
+ returning *)
+ select count(*) from t2
+where t2.i in (select i from cte where t2.j = cte.j);
+
+with cte as
+(insert into t1
+ select i, i * 10 from generate_series(1, 5) i
+ returning *)
+ select count(*) from t2
+where t2.i in (select i from cte where t2.j = cte.j);
+
+explain (costs off)
+with cte as
+(update t1 set i = j - 1
+ returning *)
+select count(*) from t2
+where t2.i in (select i from cte where t2.j = cte.j);
+
+with cte as
+(update t1 set i = j - 1
+ returning *)
+select count(*) from t2
+where t2.i in (select i from cte where t2.j = cte.j);
+
+explain (costs off)
+with cte as
+(delete from t1
+ returning *)
+select count(*) from t2
+where t2.i in (select i from cte where t2.j = cte.j);
+
+with cte as
+(delete from t1
+ returning *)
+select count(*) from t2
+where t2.i in (select i from cte where t2.j = cte.j);
