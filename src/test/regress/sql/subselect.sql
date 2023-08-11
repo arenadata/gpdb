@@ -523,10 +523,8 @@ commit;
 -- during query normalization. The inner part of SubPLan should contain only t.j
 -- start_ignore
 drop table if exists t;
-drop table if exists s;
 -- end_ignore
 create table t (i int, j int) distributed by (i);
-create table s (i int, j int) distributed by (i);
 insert into t values (1, 2);
 
 explain (verbose, costs off)
@@ -555,6 +553,10 @@ from t group by i, j, q1;
 -- normalization. The correlated attribute under the AggRef should be
 -- mutated in a right way, it should correspond to a proper column after
 -- normalization. The fallback shouldn't occur.
+-- start_ignore
+drop table if exists s;
+-- end_ignore
+create table s (i int, j int) distributed by (i);
 insert into s values (1,1);
 
 explain (verbose, costs off)
@@ -562,5 +564,5 @@ select (select max((select s.i from s where s.j = t.i))) from t;
 
 select (select max((select s.i from s where s.j = t.i))) from t;
 
-drop table t;
 drop table s;
+drop table t;

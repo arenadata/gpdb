@@ -815,9 +815,9 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 	{
 		Query *query = gpdb::MutateQueryTree(
 			(Query *) node,
-			(MutatorWalkerFn) CQueryMutators::RunExtractAggregatesMutator,
+			(MutatorWalkerFn) RunExtractAggregatesMutator,
 			context,
-			QTW_IGNORE_RT_SUBQUERIES  // flag -- do not mutate range table entries
+			QTW_IGNORE_RT_SUBQUERIES
 		);
 
 		ListCell *lc;
