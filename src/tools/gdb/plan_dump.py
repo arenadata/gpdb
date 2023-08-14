@@ -1,4 +1,5 @@
 import gdb
+import re
 
 PLANGEN_PLANNER = gdb.parse_and_eval("PLANGEN_PLANNER")
 
@@ -246,16 +247,12 @@ class Motion(object):
 	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # 2		 Send tuples to the segment explicitly specified in their segid column */
 	gdb_type = gdb.lookup_type('Motion').pointer()
 	def __init__(self, val, state, pstmt, currentSlice):
-		# TODO: current_slice should be fixed
 		self.__plan = val
-		self.__state = state
 		self.__pstmt = pstmt
 		self.__mot = val.cast(Motion.gdb_type)
 		self.__currentSlice = currentSlice
 
-		slices = self.__state["es_sliceTable"]["slices"]
-		self.__currentSlice = List.list_nth(slices, int(self.__mot["motionID"])).cast(Slice.gdb_type)
-
+		slices = state["es_sliceTable"]["slices"]
 		parentIdx = int(self.__currentSlice["parentIndex"])
 		if parentIdx == -1:
 			self.__parentSlice = 0
@@ -316,7 +313,6 @@ class ShareInputScan(object):
 	def print_node(self):
 		slice_id = -1
 		if self.__currentSlice != 0:
-			# TODO: does it calculates correctly, motions rewrites current slice???
 			slice_id = int(self.__currentSlice["sliceIndex"])
 
 		return "ShareInputScan (share slice:id %d:%d)" % (slice_id, int(self.__sics["share_id"]))
@@ -348,19 +344,33 @@ class Scan(object):
 		id = int(self.scan["scanrelid"])
 		relanme = self.__rtableMap[id]
 		return "%s on %s%s" % (self.__typ, relanme, indexInfo)
+	
+def prettify_char(charPtr):
+	#re.sub("^(0x){0,1}([a-fA-F0-9]+)\s+", "", str(charPtr)), older version won't work with gdb.Value.string() which is more simple
+	#now here is workaround with the gdb.execute('set print address')
+	return str(charPtr)
 
 class PlanDumperCmd(gdb.Command):
 	"""Print the plan nodes like pg explain"""
 
+	def __cleanup__(self):
+		self.__result = ""
+		self.__tabCnt = 0
+		self.__curPlanName = None
+		self.__currentSlice = None
+		self.__pstmt = None
+		self.__state = None
+		self.__saved_print_address = None
+
 	def __init__(self):
 		super(PlanDumperCmd, self).__init__("plan_dump_cmd", gdb.COMMAND_USER)
-		self.result = ""
-		self.tabCnt = 0
+		self.__saved_print_address = gdb.parameter('print address')
+		self.__cleanup__()
 
 	def walk_initplans(self, plans, sliceTable):
 		"""
 		This function (and walk_subplans) is an analog of ExplainSubplans
-		from explain.c, but instead of working with the PlanStates (like
+		from explain.c (for init plans), but instead of working with the PlanStates (like
 		original function does) of plan (the EXPLAIN has all states of
 		plan nodes starting from root), this function can't rely on PlanStates,
 		because coredump's from segments may contain only part planstate 
@@ -383,13 +393,18 @@ class PlanDumperCmd(gdb.Command):
 		self.__currentSlice = saved_slice
 	
 	def walk_subplans(self, plannode):
-		tag = str(plannode["type"])
+		"""
+		Analog of ExplainSubPlans (only for subplans initPlans are handle by
+		function above, unlike original  verison). Works with Plan nodes unlike 
+		original version which works with PlanState.
+		"""
 		if plannode["qual"] != 0:
 			self.walker(plannode["qual"])
 		if plannode["targetlist"] != 0:
 			self.walker(plannode["targetlist"])
 
 		# Processing of other node types should be added later.
+		tag = str(plannode["type"])
 		if tag == "T_Result":
 			resNode = plannode.cast(Result.gdb_type)
 			if resNode["resconstantqual"] != 0:
@@ -412,6 +427,7 @@ class PlanDumperCmd(gdb.Command):
 			self.walker(node.cast(TargetEntry.gdb_type)["expr"])
 
 	def walk_member_nodes(self, plans):
+		"""This function is an analog of ExplaiMemberNodes"""
 		head = plans["head"]
 		while head != 0:
 			self.walk_node(head["data"]["ptr_value"].cast(Plan.gdb_type))
@@ -437,7 +453,7 @@ class PlanDumperCmd(gdb.Command):
 			nodeStr += " " + operation
 			if nodeTag == "ModifyTable":
 				rti = int(planPtr.cast(ModifyTable.gdb_type)["resultRelations"]["head"]["data"]["int_value"])
-				nodeStr += (" on %s" % str(self.rtableMap[rti]))
+				nodeStr += (" on %s" % self.rtableMap[rti])
 		elif nodeTag == "NestLoop":
 			skipOuter = bool(planPtr.cast(NestLoop.gdb_type)["shared_outer"])
 		elif nodeTag == "Agg":
@@ -453,6 +469,10 @@ class PlanDumperCmd(gdb.Command):
 		elif nodeTag == "SetOp":
 			nodeStr = SetOp.print_node(planPtr)
 		elif nodeTag == "Motion":
+			slices = self.__state["es_sliceTable"]["slices"]
+			self.__currentSlice = List.list_nth(slices,
+				int(planPtr.cast(Motion.gdb_type)["motionID"])
+			).cast(Slice.gdb_type)
 			nodeStr = Motion(planPtr, self.__state, self.__pstmt, self.__currentSlice).print_node()
 		elif nodeTag == "ShareInputScan":
 			nodeStr = ShareInputScan(planPtr, self.__currentSlice).print_node()
@@ -473,11 +493,11 @@ class PlanDumperCmd(gdb.Command):
 			nodeStr = "%s %s Join" % (nodeTag, joinType)
 
 		if self.__curPlanName is not None:
-			planName = str(self.__curPlanName)
-			self.result +=  "\t" * (self.tabCnt-1)+ ("%s (%s)\n" % (planName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
+			planName = prettify_char(self.__curPlanName)
+			self.__result +=  "\t" * (self.__tabCnt-1)+ ("%s (%s)\n" % (planName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
 			self.__curPlanName = None
-		self.result += "\t" * self.tabCnt + "-> " + nodeStr + "\n"
-		self.tabCnt = self.tabCnt + 1
+		self.__result += "\t" * self.__tabCnt + "-> " + nodeStr + "\n"
+		self.__tabCnt = self.__tabCnt + 1
 
 		if planPtr["initPlan"] != 0:
 			self.walk_initplans(planPtr["initPlan"], self.__state["es_sliceTable"])
@@ -485,7 +505,7 @@ class PlanDumperCmd(gdb.Command):
 		if planPtr["lefttree"] != 0 and skipOuter == False:
 			self.walk_node(planPtr["lefttree"])
 		elif skipOuter == True:
-			self.result += "\t" * self.tabCnt + "-> See first subplan of Hash Join"
+			self.__result += "\t" * self.__tabCnt + "-> See first subplan of Hash Join"
 
 		if planPtr["righttree"] != 0:
 			self.walk_node(planPtr["righttree"])
@@ -507,10 +527,10 @@ class PlanDumperCmd(gdb.Command):
 
 		self.walk_subplans(planPtr)
 
-		self.tabCnt = self.tabCnt - 1
+		self.__tabCnt = self.__tabCnt - 1
 		self.__currentSlice = save_currentSlice
 
-		return self.result
+		return self.__result
 
 	def complete(self, text, word):
 		# We expect the argument passed to be a symbol so fallback to the
@@ -522,10 +542,22 @@ class PlanDumperCmd(gdb.Command):
 		# We can pass args here and use Python CLI utilities like argparse
 		# to do argument parsing. Based on ExplainPrintPlan
 
-		queryDesc = gdb.parse_and_eval(args)
+		# To prevent hex prefixes before char arrays
+		self.__saved_print_address = gdb.parameter('print address')
+		gdb.execute('set print address off')
+
+		parsedArgs = gdb.string_to_argv(args)
+		queryDesc = gdb.parse_and_eval(parsedArgs[0])
+		outputFile = None
+		if len(parsedArgs) > 0:
+			outputFile = parsedArgs[1]
+
+		print(gdb.string_to_argv(args))
+		print(args)
+		print(args[1])
+
 		self.__state = queryDesc["estate"]
 		self.__pstmt = queryDesc["plannedstmt"]
-		self.__curPlanName = ""
 
 		# the logic of the original getCurrentSlice nd LocallyExecutedSliceIndex is embedded into getCurrentSlice
 		self.__currentSlice = getCurrentSlice(self.__state, int(self.__state["es_sliceTable"]["localSlice"])).cast(Slice.gdb_type)
@@ -536,7 +568,7 @@ class PlanDumperCmd(gdb.Command):
 		rtableIter = self.__pstmt["rtable"]["head"] # *(RangeTblEntry*)queryDesc.plannedstmt.rtable.head.data.ptr_value
 		while rtableIter != 0:
 			rte = rtableIter["data"]["ptr_value"].cast(RangeTblEntry.gdb_type)
-			name = str(rte["eref"]["aliasname"])
+			name = prettify_char(rte["eref"]["aliasname"])
 			self.reloidMap[int(rte["relid"])] = name
 			# start with 1 instead of original 0 and other stuff with scanrelid - 1
 			# From explain_target_rel refname = (char *) list_nth(es->rtable_names, rti - 1);
@@ -545,9 +577,22 @@ class PlanDumperCmd(gdb.Command):
 			rtableIter = rtableIter["next"]
 
 		self.walk_node(queryDesc["plannedstmt"]["planTree"])
-		# with open("/data/Output.txt", "w") as text_file:
-		# 	text_file.write(res)
-		print(self.result)
-		self.result = ""
+
+		result = self.__result
+
+		print_addr = "on"
+		if self.__saved_print_address == False:
+			print_addr = "off"
+
+		# restore print address
+		gdb.execute('set print address ' + print_addr)
+
+		print(result)
+		if outputFile is not None:
+			with open(outputFile, "w") as text_file:
+				text_file.write(result)
+
+
+		self.__cleanup__()
 
 PlanDumperCmd()
