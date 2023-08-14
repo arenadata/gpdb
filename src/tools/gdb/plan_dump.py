@@ -8,9 +8,6 @@ class RangeTblEntry:
 class Slice:
 	gdb_type = gdb.lookup_type('Slice').pointer()
 
-# class NodeTag:
-# 	gdb_type = gdb.lookup_type('NodeTag')
-
 class Node:
 	gdb_type = gdb.lookup_type('Node').pointer()
 
@@ -74,6 +71,23 @@ class SubqueryScanState:
 class Result:
 	gdb_type = gdb.lookup_type('Result').pointer()
 
+class Join:
+	gdb_type = gdb.lookup_type('Join').pointer()
+
+class NestLoop:
+	gdb_type = gdb.lookup_type('NestLoop').pointer()
+
+class IndexScan:
+	gdb_type = gdb.lookup_type('IndexScan').pointer()
+
+class IndexOnlyScan:
+	gdb_type = gdb.lookup_type('IndexOnlyScan').pointer()
+
+class BitmapIndexScan:
+	gdb_type = gdb.lookup_type('BitmapIndexScan').pointer()
+
+class DynamicBitmapIndexScan:
+	gdb_type = gdb.lookup_type('DynamicBitmapIndexScan').pointer()
 
 class Gang:
 	GANGTYPE_UNALLOCATED = gdb.parse_and_eval("GANGTYPE_UNALLOCATED")			# a root slice executed by the qDisp */
@@ -140,24 +154,6 @@ class LocusType:
 	CdbLocusType_HashedOJ = gdb.parse_and_eval("CdbLocusType_HashedOJ")
 	CdbLocusType_Strewn = gdb.parse_and_eval("CdbLocusType_Strewn")
 	CdbLocusType_End = gdb.parse_and_eval("CdbLocusType_End")
-
-class Join:
-	gdb_type = gdb.lookup_type('Join').pointer()
-
-class NestLoop:
-	gdb_type = gdb.lookup_type('NestLoop').pointer()
-
-class IndexScan:
-	gdb_type = gdb.lookup_type('IndexScan').pointer()
-
-class IndexOnlyScan:
-	gdb_type = gdb.lookup_type('IndexOnlyScan').pointer()
-
-class BitmapIndexScan:
-	gdb_type = gdb.lookup_type('BitmapIndexScan').pointer()
-
-class DynamicBitmapIndexScan:
-	gdb_type = gdb.lookup_type('DynamicBitmapIndexScan').pointer()
 
 class List:
 	gdb_type = gdb.lookup_type('List').pointer()
