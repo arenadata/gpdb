@@ -687,7 +687,7 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 		// Handle other top-level outer references in the project element.
 		if (var->varlevelsup == context->m_current_query_level)
 		{
-			if (var->varlevelsup == context->m_agg_levels_up)
+			if (var->varlevelsup >= context->m_agg_levels_up)
 			{
 				// If Var references the top level query inside an Aggref that also
 				// references top level query, the Aggref is moved to the derived query
@@ -701,8 +701,21 @@ CQueryMutators::RunExtractAggregatesMutator(Node *node,
 				//       from foo group by foo.a, foo.b) fnew;
 				//
 				// Note the foo.a var which is in sum() in a subquery must now become a
-				// var referencing the current query level.
-				var->varlevelsup = 0;
+				// var referencing the right query level, which corresponds to
+				// the RTE that var have referenced before. In example above
+				// foo.a inside sum had been referencing the level of foo and
+				// it had had varlevelsup = 1, after normalization it was
+				// pulled up with Aggref to derived query by one level, and varlevelsup
+				// was changed correspondingly to 0.
+				// Another example can be for the case when Aggref contains
+				// a subquery: select (select max(select foo.a)) from foo;
+				// This is transformed into:
+				// select (select fnew.max_t)
+				// from (select max(select foo.a) max_t from foo) fnew;
+				// Here the foo.a inside max have referenced foo at
+				// varlevelsup = 2 inside Aggref at level 1, and foo.a inside
+				// Aggref is changed relatively to Aggref level.
+				var->varlevelsup -= context->m_agg_levels_up;
 				return (Node *) var;
 			}
 
