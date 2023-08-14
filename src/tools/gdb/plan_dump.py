@@ -1,5 +1,4 @@
 import gdb
-import re
 
 PLANGEN_PLANNER = gdb.parse_and_eval("PLANGEN_PLANNER")
 
@@ -322,10 +321,10 @@ class PartitionSelector(object):
 
 	def __init__(self, node, reloidMap):
 		self._ps = node.cast(PartitionSelector.gdb_type)
-		self.reloidMap = reloidMap
+		self.__reloidMap = reloidMap
 
 	def print_node(self):
-		relname = self.reloidMap[int(self._ps["relid"])]
+		relname = self.__reloidMap[int(self._ps["relid"])]
 		return "PartitionSelector for %s (dynamic scan id: %d)" % (relname, int(self._ps["scanId"]))
 
 class Scan(object):
@@ -345,11 +344,6 @@ class Scan(object):
 		relanme = self.__rtableMap[id]
 		return "%s on %s%s" % (self.__typ, relanme, indexInfo)
 	
-def prettify_char(charPtr):
-	#re.sub("^(0x){0,1}([a-fA-F0-9]+)\s+", "", str(charPtr)), older version won't work with gdb.Value.string() which is more simple
-	#now here is workaround with the gdb.execute('set print address')
-	return str(charPtr)
-
 class PlanDumperCmd(gdb.Command):
 	"""Print the plan nodes like pg explain"""
 
@@ -360,11 +354,11 @@ class PlanDumperCmd(gdb.Command):
 		self.__currentSlice = None
 		self.__pstmt = None
 		self.__state = None
-		self.__saved_print_address = None
+		self.__rtableMap = {}
+		self.__reloidMap = {}
 
 	def __init__(self):
 		super(PlanDumperCmd, self).__init__("plan_dump_cmd", gdb.COMMAND_USER)
-		self.__saved_print_address = gdb.parameter('print address')
 		self.__cleanup__()
 
 	def walk_initplans(self, plans, sliceTable):
@@ -443,17 +437,22 @@ class PlanDumperCmd(gdb.Command):
 		else:
 			raise Exception('unknown nodeTag: % %', nodeTag, planPtr)
 		
-		# seems the calculation of current slice is invalid
 		nodeStr = nodeTag
 		skipOuter = False
-		simpleScans = ["SeqScan", "DynamicSeqScan", "ExternalScan", "DynamicIndexScan", "BitmapHeapScan", "DynamicBitmapHeapScan", "TidScan", "SubqueryScan", "FunctionScan", "TableFunctionScan", "ValuesScan", "CteScan", "WorkTableScan", "ForeignScan"]
+		simpleScans = [
+			"SeqScan", "DynamicSeqScan", "ExternalScan", "DynamicIndexScan",
+			"BitmapHeapScan", "DynamicBitmapHeapScan", "TidScan",
+			"SubqueryScan", "FunctionScan", "TableFunctionScan", "ValuesScan",
+			"CteScan","WorkTableScan", "ForeignScan"
+		]
+
 		if nodeTag == "DML" or nodeTag == "ModifyTable":
 			# unified approach for the DML and ModifyTable nodes instead of original code
 			operation = str(self.__pstmt["commandType"])[4:] # drop 'CMD_' prefix
 			nodeStr += " " + operation
 			if nodeTag == "ModifyTable":
 				rti = int(planPtr.cast(ModifyTable.gdb_type)["resultRelations"]["head"]["data"]["int_value"])
-				nodeStr += (" on %s" % self.rtableMap[rti])
+				nodeStr += (" on %s" % self.__rtableMap[rti])
 		elif nodeTag == "NestLoop":
 			skipOuter = bool(planPtr.cast(NestLoop.gdb_type)["shared_outer"])
 		elif nodeTag == "Agg":
@@ -477,23 +476,23 @@ class PlanDumperCmd(gdb.Command):
 		elif nodeTag == "ShareInputScan":
 			nodeStr = ShareInputScan(planPtr, self.__currentSlice).print_node()
 		elif nodeTag in simpleScans:
-			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(None)
+			nodeStr = Scan(planPtr, self.__rtableMap, nodeTag).print_node(None)
 		elif nodeTag == "IndexScan":
-			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(IndexScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.__rtableMap, nodeTag).print_node(planPtr.cast(IndexScan.gdb_type)["indexid"])
 		elif nodeTag == "IndexOnlyScan":
-			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(IndexOnlyScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.__rtableMap, nodeTag).print_node(planPtr.cast(IndexOnlyScan.gdb_type)["indexid"])
 		elif nodeTag == "BitmapIndexScan":
-			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(BitmapIndexScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.__rtableMap, nodeTag).print_node(planPtr.cast(BitmapIndexScan.gdb_type)["indexid"])
 		elif nodeTag == "DynamicBitmapIndexScan":
-			nodeStr = Scan(planPtr, self.rtableMap, nodeTag).print_node(planPtr.cast(DynamicBitmapIndexScan.gdb_type)["indexid"])
+			nodeStr = Scan(planPtr, self.__rtableMap, nodeTag).print_node(planPtr.cast(DynamicBitmapIndexScan.gdb_type)["indexid"])
 		elif nodeTag == "PartitionSelector":
-			nodeStr = PartitionSelector(planPtr, self.reloidMap).print_node()
+			nodeStr = PartitionSelector(planPtr, self.__reloidMap).print_node()
 		elif nodeStr in ["NestLoop", "MergeJoin", "HashJoin"]:
 			joinType = str(planPtr.cast(Join.gdb_type)["jointype"])[5:]
 			nodeStr = "%s %s Join" % (nodeTag, joinType)
 
 		if self.__curPlanName is not None:
-			planName = prettify_char(self.__curPlanName)
+			planName = self.__curPlanName.string()
 			self.__result +=  "\t" * (self.__tabCnt-1)+ ("%s (%s)\n" % (planName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
 			self.__curPlanName = None
 		self.__result += "\t" * self.__tabCnt + "-> " + nodeStr + "\n"
@@ -542,57 +541,42 @@ class PlanDumperCmd(gdb.Command):
 		# We can pass args here and use Python CLI utilities like argparse
 		# to do argument parsing. Based on ExplainPrintPlan
 
-		# To prevent hex prefixes before char arrays
-		self.__saved_print_address = gdb.parameter('print address')
-		gdb.execute('set print address off')
-
 		parsedArgs = gdb.string_to_argv(args)
 		queryDesc = gdb.parse_and_eval(parsedArgs[0])
 		outputFile = None
-		if len(parsedArgs) > 0:
+		if len(parsedArgs) > 1:
 			outputFile = parsedArgs[1]
-
-		print(gdb.string_to_argv(args))
-		print(args)
-		print(args[1])
 
 		self.__state = queryDesc["estate"]
 		self.__pstmt = queryDesc["plannedstmt"]
 
 		# the logic of the original getCurrentSlice nd LocallyExecutedSliceIndex is embedded into getCurrentSlice
-		self.__currentSlice = getCurrentSlice(self.__state, int(self.__state["es_sliceTable"]["localSlice"])).cast(Slice.gdb_type)
+		self.__currentSlice = getCurrentSlice(
+			self.__state, int( self.__state["es_sliceTable"]["localSlice"])
+		).cast(Slice.gdb_type)
 
 		i = 1
-		self.rtableMap = {}
-		self.reloidMap = {}
+		self.__rtableMap = {}
+		self.__reloidMap = {}
 		rtableIter = self.__pstmt["rtable"]["head"] # *(RangeTblEntry*)queryDesc.plannedstmt.rtable.head.data.ptr_value
 		while rtableIter != 0:
 			rte = rtableIter["data"]["ptr_value"].cast(RangeTblEntry.gdb_type)
-			name = prettify_char(rte["eref"]["aliasname"])
-			self.reloidMap[int(rte["relid"])] = name
+			name = rte["eref"]["aliasname"].string()
+			self.__reloidMap[int(rte["relid"])] = name
 			# start with 1 instead of original 0 and other stuff with scanrelid - 1
 			# From explain_target_rel refname = (char *) list_nth(es->rtable_names, rti - 1);
-			self.rtableMap[i] = name
+			self.__rtableMap[i] = name
 			i += 1
 			rtableIter = rtableIter["next"]
 
 		self.walk_node(queryDesc["plannedstmt"]["planTree"])
 
 		result = self.__result
-
-		print_addr = "on"
-		if self.__saved_print_address == False:
-			print_addr = "off"
-
-		# restore print address
-		gdb.execute('set print address ' + print_addr)
+		self.__cleanup__()
 
 		print(result)
 		if outputFile is not None:
 			with open(outputFile, "w") as text_file:
 				text_file.write(result)
-
-
-		self.__cleanup__()
 
 PlanDumperCmd()
