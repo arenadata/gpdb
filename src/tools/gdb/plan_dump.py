@@ -8,11 +8,14 @@ class RangeTblEntry:
 class Slice:
 	gdb_type = gdb.lookup_type('Slice').pointer()
 
-class NodeTag:
-	gdb_type = gdb.lookup_type('NodeTag')
+# class NodeTag:
+# 	gdb_type = gdb.lookup_type('NodeTag')
 
 class Node:
 	gdb_type = gdb.lookup_type('Node').pointer()
+
+class TargetEntry:
+	gdb_type = gdb.lookup_type('TargetEntry').pointer()
 
 class Plan:
 	gdb_type = gdb.lookup_type('Plan').pointer()
@@ -68,12 +71,16 @@ class SubqueryScan:
 class SubqueryScanState:
 	gdb_type = gdb.lookup_type('SubqueryScanState').pointer()
 
+class Result:
+	gdb_type = gdb.lookup_type('Result').pointer()
+
+
 class Gang:
-	GANGTYPE_UNALLOCATED = gdb.parse_and_eval("GANGTYPE_UNALLOCATED")       # /* a root slice executed by the qDisp */
-	GANGTYPE_ENTRYDB_READER = gdb.parse_and_eval("GANGTYPE_ENTRYDB_READER")    # /* a 1-gang with read access to the entry db */
-	GANGTYPE_SINGLETON_READER = gdb.parse_and_eval("GANGTYPE_SINGLETON_READER")	# /* a 1-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_READER = gdb.parse_and_eval("GANGTYPE_PRIMARY_READER")    # /* a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_WRITER = gdb.parse_and_eval("GANGTYPE_PRIMARY_WRITER")	# /* the N-gang that can update the segment dbs */
+	GANGTYPE_UNALLOCATED = gdb.parse_and_eval("GANGTYPE_UNALLOCATED")			# a root slice executed by the qDisp */
+	GANGTYPE_ENTRYDB_READER = gdb.parse_and_eval("GANGTYPE_ENTRYDB_READER")		# a 1-gang with read access to the entry db */
+	GANGTYPE_SINGLETON_READER = gdb.parse_and_eval("GANGTYPE_SINGLETON_READER")	# a 1-gang to read the segment dbs */
+	GANGTYPE_PRIMARY_READER = gdb.parse_and_eval("GANGTYPE_PRIMARY_READER")		# a 1-gang or N-gang to read the segment dbs */
+	GANGTYPE_PRIMARY_WRITER = gdb.parse_and_eval("GANGTYPE_PRIMARY_WRITER")		# the N-gang that can update the segment dbs */
 
 class SetOp:
 	gdb_type = gdb.lookup_type("SetOp").pointer()
@@ -117,10 +124,10 @@ class Agg:
 	AGG_HASHED = gdb.parse_and_eval('AGG_HASHED')
 
 class Flow:
-	FLOW_UNDEFINED = gdb.parse_and_eval("FLOW_UNDEFINED")			#	/* used prior to calculation of type of derived flow */
-	FLOW_SINGLETON = gdb.parse_and_eval("FLOW_SINGLETON")			#	/* flow has single stream */
-	FLOW_REPLICATED = gdb.parse_and_eval("FLOW_REPLICATED")			#	/* flow is replicated across IOPs */
-	FLOW_PARTITIONED = gdb.parse_and_eval("FLOW_PARTITIONED")		#	/* flow is partitioned across IOPs */
+	FLOW_UNDEFINED = gdb.parse_and_eval("FLOW_UNDEFINED")		# used prior to calculation of type of derived flow */
+	FLOW_SINGLETON = gdb.parse_and_eval("FLOW_SINGLETON")		# flow has single stream */
+	FLOW_REPLICATED = gdb.parse_and_eval("FLOW_REPLICATED")		# flow is replicated across IOPs */
+	FLOW_PARTITIONED = gdb.parse_and_eval("FLOW_PARTITIONED")	# flow is partitioned across IOPs */
 
 class LocusType:
 	CdbLocusType_Null = gdb.parse_and_eval("CdbLocusType_Null")
@@ -238,9 +245,9 @@ def getCurrentSlice(estate, sliceIndex):
 	return None
 
 class Motion(object):
-	MOTIONTYPE_HASH = gdb.parse_and_eval("MOTIONTYPE_HASH") #	0	/* Use hashing to select a segindex destination */
-	MOTIONTYPE_FIXED = gdb.parse_and_eval("MOTIONTYPE_FIXED") #	1	/* Send tuples to a fixed set of segindexes */
-	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # 2		/* Send tuples to the segment explicitly specified in their segid column */
+	MOTIONTYPE_HASH = gdb.parse_and_eval("MOTIONTYPE_HASH") #	0	 Use hashing to select a segindex destination */
+	MOTIONTYPE_FIXED = gdb.parse_and_eval("MOTIONTYPE_FIXED") #	1	 Send tuples to a fixed set of segindexes */
+	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # 2		 Send tuples to the segment explicitly specified in their segid column */
 	gdb_type = gdb.lookup_type('Motion').pointer()
 	def __init__(self, val, state, pstmt, currentSlice):
 		# TODO: current_slice should be fixed
@@ -350,30 +357,63 @@ class PlanDumperCmd(gdb.Command):
 	"""Print the plan nodes like pg explain"""
 
 	def __init__(self):
-		super(PlanDumperCmd, self).__init__(
-			"plan_dump_cmd", gdb.COMMAND_USER
-		)
+		super(PlanDumperCmd, self).__init__("plan_dump_cmd", gdb.COMMAND_USER)
 		self.result = ""
 		self.tabCnt = 0
 
-	def walk_subplans(self, plans, sliceTable):
-		# problem with none and null above sliceTable
+	def walk_initplans(self, plans, sliceTable):
+		"""
+		This function (and walk_subplans) is an analog of ExplainSubplans
+		from explain.c, but instead of working with the PlanStates (like
+		original function does) of plan (the EXPLAIN has all states of
+		plan nodes starting from root), this function can't rely on PlanStates,
+		because coredump's from segments may contain only part planstate 
+		(queryDesc->planstate) nodes of the original plan 
+		(queryDesc->plannedstmt->planTree), so this function works with the
+		Plan nodes, and it's processing differs (in case of subPlans (not init plans
+		the PlanState nodes have the subPlan field, while the Plan nodes does not))
+		"""
 		head = plans["head"]
 		saved_slice = self.__currentSlice
 		while head != 0:
 			sp = head["data"]["ptr_value"].cast(SubPlan.gdb_type)
 			if sliceTable != 0 and sp["qDispSliceId"] > 0:
 				self.__currentSlice = List.list_nth(sliceTable["slices"], sp["qDispSliceId"]).cast(Slice.gdb_type)
-			
-			# the basic explain.c works with the planstates of plan - it means that it has the states for all nodes
-			# from plan starting from root. In case of coredumps we may have the plannedstmt which contains planTree
-			# - full plan, but the planstates for this plna may be partial in bounds of Motion of current slice, so
-			# the link how to calculate
-			self.__curPlanName = str(sp["plan_name"])
+
+			self.__curPlanName = sp["plan_name"]
 			sp_plan = List.list_nth(self.__pstmt["subplans"], int(sp["plan_id"]) - 1).cast(Plan.gdb_type)
 			self.walk_node(sp_plan)
 			head = head["next"]
 		self.__currentSlice = saved_slice
+	
+	def walk_subplans(self, plannode):
+		tag = str(plannode["type"])
+		if plannode["qual"] != 0:
+			self.walker(plannode["qual"])
+		if plannode["targetlist"] != 0:
+			self.walker(plannode["targetlist"])
+
+		# Processing of other node types should be added later.
+		if tag == "T_Result":
+			resNode = plannode.cast(Result.gdb_type)
+			if resNode["resconstantqual"] != 0:
+				self.walker(resNode["resconstantqual"])
+
+	def walker(self, node):
+		tag = str(node["type"])
+		if tag == "T_List":
+			listNode = node.cast(List.gdb_type)
+			head = listNode["head"]
+			while head != 0:
+				self.walker(head["data"]["ptr_value"].cast(Node.gdb_type))
+				head = head["next"]
+		if tag == "T_SubPlan":
+			sp = node.cast(SubPlan.gdb_type)
+			self.__curPlanName = sp["plan_name"]
+			sp_plan = List.list_nth(self.__pstmt["subplans"], int(sp["plan_id"]) - 1).cast(Plan.gdb_type)
+			self.walk_node(sp_plan)
+		if tag == "T_TargetEntry":
+			self.walker(node.cast(TargetEntry.gdb_type)["expr"])
 
 	def walk_member_nodes(self, plans):
 		head = plans["head"]
@@ -382,6 +422,7 @@ class PlanDumperCmd(gdb.Command):
 			head = head["next"]
 
 	def walk_node(self, nodePtr):
+		"""This function is an analog of ExplainNode"""
 		nodeTag = str(nodePtr["type"])
 		planPtr = nodePtr.cast(Plan.gdb_type)
 		save_currentSlice = self.__currentSlice
@@ -435,14 +476,15 @@ class PlanDumperCmd(gdb.Command):
 			joinType = str(planPtr.cast(Join.gdb_type)["jointype"])[5:]
 			nodeStr = "%s %s Join" % (nodeTag, joinType)
 
-		if self.__curPlanName != "":
-			self.result +=  "\t" * (self.tabCnt -1)+ ("  %s (%s)\n" % (self.__curPlanName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
-			self.__curPlanName = ""
+		if self.__curPlanName is not None:
+			planName = str(self.__curPlanName)
+			self.result +=  "\t" * (self.tabCnt-1)+ ("%s (%s)\n" % (planName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
+			self.__curPlanName = None
 		self.result += "\t" * self.tabCnt + "-> " + nodeStr + "\n"
 		self.tabCnt = self.tabCnt + 1
 
-		if planPtr["initPlan"] != 0: # +
-			self.walk_subplans(planPtr["initPlan"], self.__state["es_sliceTable"])
+		if planPtr["initPlan"] != 0:
+			self.walk_initplans(planPtr["initPlan"], self.__state["es_sliceTable"])
 
 		if planPtr["lefttree"] != 0 and skipOuter == False:
 			self.walk_node(planPtr["lefttree"])
@@ -467,13 +509,9 @@ class PlanDumperCmd(gdb.Command):
 		elif nodeTag == "SubqueryScan":
 			self.walk_node(planPtr.cast(SubqueryScan.gdb_type)["subplan"])
 
-		
-		# on the planstate
-		# if planPtr["subPlan"] != 0:
-		# 	self.walk_subplans(planPtr["subPlan"]) # what if none
+		self.walk_subplans(planPtr)
 
 		self.tabCnt = self.tabCnt - 1
-
 		self.__currentSlice = save_currentSlice
 
 		return self.result
@@ -495,10 +533,6 @@ class PlanDumperCmd(gdb.Command):
 
 		# the logic of the original getCurrentSlice nd LocallyExecutedSliceIndex is embedded into getCurrentSlice
 		self.__currentSlice = getCurrentSlice(self.__state, int(self.__state["es_sliceTable"]["localSlice"])).cast(Slice.gdb_type)
-		# *sliceTable = planstate->state->es_sliceTable;
-		# seems no need, it must be the same as queryDesc.estate
-		# for motion, esatete  == plansatate->state it's a global 
-		# self.__state = queryDesc["planstate"]["state"]
 
 		i = 1
 		self.rtableMap = {}
@@ -514,7 +548,7 @@ class PlanDumperCmd(gdb.Command):
 			i += 1
 			rtableIter = rtableIter["next"]
 
-		res = self.walk_node(queryDesc["plannedstmt"]["planTree"])
+		self.walk_node(queryDesc["plannedstmt"]["planTree"])
 		# with open("/data/Output.txt", "w") as text_file:
 		# 	text_file.write(res)
 		print(self.result)
