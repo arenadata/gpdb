@@ -440,6 +440,17 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 								GetActiveSnapshot(), InvalidSnapshot,
 								dest, NULL, 0);
 
+	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+	{
+		Assert(queryString);
+		gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
+		gpmon_qlog_query_text(queryDesc->gpmon_pkt,
+				queryString,
+				application_name,
+				NULL,
+				NULL);
+	}
+
 	RestoreOidAssignments(saved_dispatch_oids);
 
 	/* call ExecutorStart to prepare the plan for execution */
