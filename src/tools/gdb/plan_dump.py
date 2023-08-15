@@ -166,11 +166,11 @@ class List:
 			match = match["next"]
 			n -= 1
 		return match["data"]["ptr_value"]
-	
+
 	@staticmethod
 	def list_length(lst):
 		return int(lst.cast(List.gdb_type)["length"])
-	
+
 def show_dispatch_info(slice, plan, pstmt):
 	if slice == 0:
 		return ""
@@ -213,7 +213,7 @@ def show_dispatch_info(slice, plan, pstmt):
 					if aplan["appendplans"] != 0:
 						fplan = List.list_nth(aplan["appendplans"], 0).cast(Plan.gdb_type)
 						continue
-				
+
 				raise "could not find flow for node of type %s" % tag
 
 			if fplan["flow"] == 0:
@@ -300,7 +300,7 @@ class Motion(object):
 			else:
 				# Otherwise find out receiver size from plan
 				motion_recv = int(self.__plan["flow"]["numsegments"])
-		
+
 		return '%s %d:%d %s' % (sname, motion_snd, motion_recv, show_dispatch_info(self.__currentSlice, self.__plan, self.__pstmt))
 
 class ShareInputScan(object):
@@ -316,7 +316,7 @@ class ShareInputScan(object):
 			slice_id = int(self.__currentSlice["sliceIndex"])
 
 		return "ShareInputScan (share slice:id %d:%d)" % (slice_id, int(self.__sics["share_id"]))
-	
+
 class PartitionSelector(object):
 	gdb_type = gdb.lookup_type("PartitionSelector").pointer()
 
@@ -344,7 +344,7 @@ class Scan(object):
 		id = int(self.scan["scanrelid"])
 		relanme = self.__rtableMap[id]
 		return "%s on %s%s" % (self.__typ, relanme, indexInfo)
-	
+
 class PlanDumperCmd(gdb.Command):
 	"""Print the plan nodes like pg explain"""
 
@@ -368,8 +368,8 @@ class PlanDumperCmd(gdb.Command):
 		from explain.c (for init plans), but instead of working with the PlanStates (like
 		original function does) of plan (the EXPLAIN has all states of
 		plan nodes starting from root), this function can't rely on PlanStates,
-		because coredump's from segments may contain only part planstate 
-		(queryDesc->planstate) nodes of the original plan 
+		because coredump's from segments may contain only part planstate
+		(queryDesc->planstate) nodes of the original plan
 		(queryDesc->plannedstmt->planTree), so this function works with the
 		Plan nodes, and it's processing differs (in case of subPlans (not init plans
 		the PlanState nodes have the subPlan field, while the Plan nodes does not))
@@ -386,11 +386,11 @@ class PlanDumperCmd(gdb.Command):
 			self.walk_node(sp_plan)
 			head = head["next"]
 		self.__currentSlice = saved_slice
-	
+
 	def walk_subplans(self, plannode, sliceTable):
 		"""
 		Analog of ExplainSubPlans (only for subplans initPlans are handle by
-		function above, unlike original  verison). Works with Plan nodes unlike 
+		function above, unlike original  verison). Works with Plan nodes unlike
 		original version which works with PlanState.
 		"""
 		if plannode["qual"] != 0:
@@ -442,7 +442,7 @@ class PlanDumperCmd(gdb.Command):
 			nodeTag = nodeTag[2:]
 		else:
 			raise Exception('unknown nodeTag: % %', nodeTag, planPtr)
-		
+
 		nodeStr = nodeTag
 		skipOuter = False
 		simpleScans = [
@@ -465,11 +465,11 @@ class PlanDumperCmd(gdb.Command):
 			agg = planPtr.cast(Agg.gdb_type)
 			strategy = agg["aggstrategy"]
 			nodeStr = "Aggregate ???"
-			if strategy == Agg.AGG_PLAIN: 
+			if strategy == Agg.AGG_PLAIN:
 				nodeStr = "Aggregate"
-			elif strategy == Agg.AGG_SORTED: 
+			elif strategy == Agg.AGG_SORTED:
 				nodeStr = "GroupAggregate"
-			elif strategy == Agg.AGG_HASHED: 
+			elif strategy == Agg.AGG_HASHED:
 				nodeStr = "HashAggregate"
 		elif nodeTag == "SetOp":
 			nodeStr = SetOp.print_node(planPtr)
@@ -501,6 +501,7 @@ class PlanDumperCmd(gdb.Command):
 			planName = self.__curPlanName.string()
 			self.__result +=  "\t" * (self.__tabCnt-1)+ ("%s (%s)\n" % (planName, show_dispatch_info(self.__currentSlice, planPtr, self.__pstmt)))
 			self.__curPlanName = None
+
 		self.__result += "\t" * self.__tabCnt + "-> " + nodeStr + "\n"
 		self.__tabCnt = self.__tabCnt + 1
 
