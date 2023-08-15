@@ -235,7 +235,8 @@ def getCurrentSlice(estate, sliceIndex):
 	sliceTable = estate["es_sliceTable"]
 	if sliceTable == 0:
 		return None
-	sliceIndex = estate["es_sliceTable"]["localSlice"]
+	# IN CASE OF COREDUMPS FROM SEGMENTS, SEEMS TEHRE SHOULDN'T BE LOCALSLICE IT SHOULD BE 0
+	# sliceIndex = estate["es_sliceTable"]["localSlice"]
 	if sliceIndex >= 0 and sliceIndex < List.list_length(sliceTable["slices"]):
 		return List.list_nth(sliceTable["slices"], sliceIndex)
 	return None
@@ -303,7 +304,7 @@ class Motion(object):
 		return '%s %d:%d %s' % (sname, motion_snd, motion_recv, show_dispatch_info(self.__currentSlice, self.__plan, self.__pstmt))
 
 class ShareInputScan(object):
-	gdb_type = gdb.lookup_type("ShareInputScan")
+	gdb_type = gdb.lookup_type("ShareInputScan").pointer()
 
 	def __init__(self, node, currentSlice):
 		self.__sics = node.cast(ShareInputScan.gdb_type)
@@ -351,7 +352,7 @@ class PlanDumperCmd(gdb.Command):
 		self.__result = ""
 		self.__tabCnt = 0
 		self.__curPlanName = None
-		self.__currentSlice = None
+		self.__currentSlice = 0
 		self.__pstmt = None
 		self.__state = None
 		self.__rtableMap = {}
@@ -386,31 +387,36 @@ class PlanDumperCmd(gdb.Command):
 			head = head["next"]
 		self.__currentSlice = saved_slice
 	
-	def walk_subplans(self, plannode):
+	def walk_subplans(self, plannode, sliceTable):
 		"""
 		Analog of ExplainSubPlans (only for subplans initPlans are handle by
 		function above, unlike original  verison). Works with Plan nodes unlike 
 		original version which works with PlanState.
 		"""
 		if plannode["qual"] != 0:
-			self.walker(plannode["qual"])
+			self.walker(plannode["qual"], sliceTable)
 		if plannode["targetlist"] != 0:
-			self.walker(plannode["targetlist"])
+			self.walker(plannode["targetlist"], sliceTable)
 
 		# Processing of other node types should be added later.
 		tag = str(plannode["type"])
 		if tag == "T_Result":
 			resNode = plannode.cast(Result.gdb_type)
 			if resNode["resconstantqual"] != 0:
-				self.walker(resNode["resconstantqual"])
+				self.walker(resNode["resconstantqual"], sliceTable)
+		elif tag in ["T_NestLoop", "T_MergeJoin", "T_HashJoin"]:
+			joinQual = plannode.cast(Join.gdb_type)["joinqual"]
+			if joinQual != 0:
+				self.walker(joinQual.cast(Node.gdb_type), sliceTable)
+			# and node specific quals should be added here
 
-	def walker(self, node):
+	def walker(self, node, sliceTable):
 		tag = str(node["type"])
 		if tag == "T_List":
 			listNode = node.cast(List.gdb_type)
 			head = listNode["head"]
 			while head != 0:
-				self.walker(head["data"]["ptr_value"].cast(Node.gdb_type))
+				self.walker(head["data"]["ptr_value"].cast(Node.gdb_type), sliceTable)
 				head = head["next"]
 		if tag == "T_SubPlan":
 			sp = node.cast(SubPlan.gdb_type)
@@ -418,7 +424,7 @@ class PlanDumperCmd(gdb.Command):
 			sp_plan = List.list_nth(self.__pstmt["subplans"], int(sp["plan_id"]) - 1).cast(Plan.gdb_type)
 			self.walk_node(sp_plan)
 		if tag == "T_TargetEntry":
-			self.walker(node.cast(TargetEntry.gdb_type)["expr"])
+			self.walker(node.cast(TargetEntry.gdb_type)["expr"], sliceTable)
 
 	def walk_member_nodes(self, plans):
 		"""This function is an analog of ExplaiMemberNodes"""
@@ -524,7 +530,7 @@ class PlanDumperCmd(gdb.Command):
 		elif nodeTag == "SubqueryScan":
 			self.walk_node(planPtr.cast(SubqueryScan.gdb_type)["subplan"])
 
-		self.walk_subplans(planPtr)
+		self.walk_subplans(planPtr, self.__state["es_sliceTable"])
 
 		self.__tabCnt = self.__tabCnt - 1
 		self.__currentSlice = save_currentSlice
@@ -551,9 +557,10 @@ class PlanDumperCmd(gdb.Command):
 		self.__pstmt = queryDesc["plannedstmt"]
 
 		# the logic of the original getCurrentSlice nd LocallyExecutedSliceIndex is embedded into getCurrentSlice
-		self.__currentSlice = getCurrentSlice(
-			self.__state, int( self.__state["es_sliceTable"]["localSlice"])
-		).cast(Slice.gdb_type)
+		if self.__state["es_sliceTable"] != 0:
+			self.__currentSlice = getCurrentSlice(
+				self.__state, 0 #int( self.__state["es_sliceTable"]["localSlice"]) seems it's incorrect in case of segments
+			).cast(Slice.gdb_type)
 
 		i = 1
 		self.__rtableMap = {}
