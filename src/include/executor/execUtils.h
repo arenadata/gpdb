@@ -47,4 +47,5 @@ extern void AssertSliceTableIsValid(SliceTable *st, struct PlannedStmt *pstmt);
 extern HTAB *create_ss_cache_for_dynamic_scan(char *name, EState *estate);
 extern void  release_ss_cache_for_dynamic_scan(HTAB *reltable, List *relids);
 
+extern Bitmapset *getInitPlans(PlannedStmt *plannedstmt, Plan *root);
 #endif
