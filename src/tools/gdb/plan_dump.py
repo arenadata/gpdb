@@ -231,21 +231,30 @@ def show_dispatch_info(slice, plan, pstmt):
 	else:
 		return ("slice%d; segments %d") % (int(slice["sliceIndex"]), segments)
 
-def getCurrentSlice(estate, sliceIndex):
+
+def getCurrentSlice(estate):
+	"""
+	Analog of eponymous function from exlpain.c, but instead of original
+	version it's doesn't accept the second argument `sliceIndex`. At the
+	original code, the result LocallyExecutingSliceIndex() function call
+	is passed as second argument to this function, which would always
+	return 0 (zero index):
+	- if estate.es_sliceTable is NULL the 0 would be returned
+	- if sliceTable exists it would return the estate->es_sliceTable->localSlice,
+	  which would be 0 on the coordinator which executes the explain.
+	"""
 	sliceTable = estate["es_sliceTable"]
 	if sliceTable == 0:
 		return None
-	# IN CASE OF COREDUMPS FROM SEGMENTS, SEEMS TEHRE SHOULDN'T BE LOCALSLICE IT SHOULD BE 0
-	# sliceIndex = estate["es_sliceTable"]["localSlice"]
-	if sliceIndex >= 0 and sliceIndex < List.list_length(sliceTable["slices"]):
-		return List.list_nth(sliceTable["slices"], sliceIndex)
-	return None
+	return List.list_nth(sliceTable["slices"], 0)
 
 class Motion(object):
-	MOTIONTYPE_HASH = gdb.parse_and_eval("MOTIONTYPE_HASH") #	0	 Use hashing to select a segindex destination */
-	MOTIONTYPE_FIXED = gdb.parse_and_eval("MOTIONTYPE_FIXED") #	1	 Send tuples to a fixed set of segindexes */
-	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # 2		 Send tuples to the segment explicitly specified in their segid column */
 	gdb_type = gdb.lookup_type('Motion').pointer()
+	# motion types
+	MOTIONTYPE_HASH = gdb.parse_and_eval("MOTIONTYPE_HASH") # Use hashing to select a segindex destination */
+	MOTIONTYPE_FIXED = gdb.parse_and_eval("MOTIONTYPE_FIXED") #	Send tuples to a fixed set of segindexes */
+	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # Send tuples to the segment explicitly specified in their segid column */
+
 	def __init__(self, val, state, pstmt, currentSlice):
 		self.__plan = val
 		self.__pstmt = pstmt
@@ -557,11 +566,8 @@ class PlanDumperCmd(gdb.Command):
 		self.__state = queryDesc["estate"]
 		self.__pstmt = queryDesc["plannedstmt"]
 
-		# the logic of the original getCurrentSlice nd LocallyExecutedSliceIndex is embedded into getCurrentSlice
 		if self.__state["es_sliceTable"] != 0:
-			self.__currentSlice = getCurrentSlice(
-				self.__state, 0 #int( self.__state["es_sliceTable"]["localSlice"]) seems it's incorrect in case of segments
-			).cast(Slice.gdb_type)
+			self.__currentSlice = getCurrentSlice(self.__state).cast(Slice.gdb_type)
 
 		i = 1
 		self.__rtableMap = {}
