@@ -260,6 +260,10 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	ErrorContextCallback plerrcontext;
 	int			i;
 	int			rc;
+	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+
+	if (log_min_messages > DEBUG5)
+		gp_enable_gpperfmon = false;
 
 	/*
 	 * Setup the execution state
@@ -491,6 +495,8 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	/* Clean up any leftover temporary memory */
 	plpgsql_destroy_econtext(&estate);
 	exec_eval_cleanup(&estate);
+
+	gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 
 	/*
 	 * Pop the error context stack
