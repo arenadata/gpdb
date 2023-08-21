@@ -694,16 +694,6 @@ execute_sql_string(const char *sql, const char *filename)
 	ListCell   *lc1;
 
 	/*
-	 * Since "warning" logging level is set during extension creation,
-	 * we can't log such queries with lower logging levels. Also, start
-	 * time is filled in the executor, so we can't log just a parent
-	 * "create extension" query, it's either nothing or everything. Since
-	 * such queries weren't logged correctly before this patch, we decided
-	 * to remove this logging entirely
-	 */
-	gp_enable_gpperfmon = false;
-
-	/*
 	 * Parse the SQL string into a list of raw parse trees.
 	 */
 	raw_parsetree_list = pg_parse_query(sql);
@@ -753,6 +743,17 @@ execute_sql_string(const char *sql, const char *filename)
 										sql,
 										GetActiveSnapshot(), NULL,
 										dest, NULL, GP_INSTRUMENT_OPTS);
+
+				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
+				{
+					Assert(sql);
+					gpmon_qlog_query_submit(qdesc->gpmon_pkt);
+					gpmon_qlog_query_text(qdesc->gpmon_pkt,
+							sql,
+							application_name,
+							NULL,
+							NULL);
+				}
 
 				ExecutorStart(qdesc, 0);
 				ExecutorRun(qdesc, ForwardScanDirection, 0);
