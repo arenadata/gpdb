@@ -263,8 +263,10 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	int			rc;
 	orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
 
-	if (log_min_messages > DEBUG5)
+	if (log_min_messages > DEBUG4)
+	{
 		gp_enable_gpperfmon = false;
+	}
 
 	/*
 	 * Setup the execution state
