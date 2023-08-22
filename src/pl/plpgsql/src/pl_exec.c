@@ -240,6 +240,7 @@ static char *format_expr_params(PLpgSQL_execstate *estate,
 static char *format_preparedparamsdata(PLpgSQL_execstate *estate,
 						  const PreparedParamsData *ppd);
 
+bool orig_gp_enable_gpperfmon;
 
 /* ----------
  * plpgsql_exec_function	Called by the call handler for
@@ -260,7 +261,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo,
 	ErrorContextCallback plerrcontext;
 	int			i;
 	int			rc;
-	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+	orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
 
 	if (log_min_messages > DEBUG5)
 		gp_enable_gpperfmon = false;
@@ -899,6 +900,7 @@ static void
 plpgsql_exec_error_callback(void *arg)
 {
 	PLpgSQL_execstate *estate = (PLpgSQL_execstate *) arg;
+	gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 
 	/* if we are doing RAISE, don't report its location */
 	if (estate->err_text == raise_skip_msg)
