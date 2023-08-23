@@ -1217,7 +1217,9 @@ explain (costs off) select * from r where b in (select b from s where c=10 order
 select * from r where b in (select b from s where c=10 order by c limit 2);
 
 -- Test that Explicit Redistribute Motion is applied properly for
--- queries that have modifying operation inside a SubPlan
+-- queries that have modifying operation inside a SubPlan. That
+-- requires the ModifyTable's top Flow node to be copied correctly inside
+-- ParallelizeSubPlan function.
 --start_ignore
 drop table if exists t1;
 drop table if exists t2;

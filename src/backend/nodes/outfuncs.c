@@ -1955,7 +1955,7 @@ _outFlow(StringInfo str, const Flow *node)
 
 	WRITE_NODE_FIELD(hashExprs);
 	WRITE_NODE_FIELD(hashOpfamilies);
-
+	WRITE_INT16_FIELD(segidColIdx);
 	WRITE_NODE_FIELD(flow_before_req_move);
 }
 
