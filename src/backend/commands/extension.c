@@ -744,16 +744,7 @@ execute_sql_string(const char *sql, const char *filename)
 										GetActiveSnapshot(), NULL,
 										dest, NULL, GP_INSTRUMENT_OPTS);
 
-				if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
-				{
-					Assert(sql);
-					gpmon_qlog_query_submit(qdesc->gpmon_pkt);
-					gpmon_qlog_query_text(qdesc->gpmon_pkt,
-							sql,
-							application_name,
-							NULL,
-							NULL);
-				}
+				qdesc->gpmon_pkt = NULL;
 
 				ExecutorStart(qdesc, 0);
 				ExecutorRun(qdesc, ForwardScanDirection, 0);
@@ -827,6 +818,12 @@ execute_extension_script(Node *stmt,
 	int			save_nestlevel;
 	StringInfoData pathbuf;
 	ListCell   *lc;
+	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+
+	if (gp_enable_gpperfmon > DEBUG4)
+	{
+		gp_enable_gpperfmon = false;
+	}
 
 	AssertImply(Gp_role == GP_ROLE_DISPATCH, stmt != NULL &&
 			(nodeTag(stmt) == T_CreateExtensionStmt || nodeTag(stmt) == T_AlterExtensionStmt) &&
@@ -970,6 +967,8 @@ execute_extension_script(Node *stmt,
 		c_sql = text_to_cstring(DatumGetTextPP(t_sql));
 
 		execute_sql_string(c_sql, filename);
+
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 	}
 	PG_CATCH();
 	{
@@ -985,6 +984,8 @@ execute_extension_script(Node *stmt,
 		 */
 		AtEOXact_GUC(true, save_nestlevel);
 		PG_RE_THROW();
+
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 	}
 	PG_END_TRY();
 
