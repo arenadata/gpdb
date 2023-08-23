@@ -721,6 +721,8 @@ execute_sql_string(const char *sql, const char *filename)
 										   0);
 		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
 
+PG_TRY();
+{
 		foreach(lc2, stmt_list)
 		{
 			Node	   *stmt = (Node *) lfirst(lc2);
@@ -744,8 +746,6 @@ execute_sql_string(const char *sql, const char *filename)
 										GetActiveSnapshot(), NULL,
 										dest, NULL, GP_INSTRUMENT_OPTS);
 
-				qdesc->gpmon_pkt = NULL;
-
 				ExecutorStart(qdesc, 0);
 				ExecutorRun(qdesc, ForwardScanDirection, 0);
 				ExecutorFinish(qdesc);
@@ -765,6 +765,12 @@ execute_sql_string(const char *sql, const char *filename)
 
 			PopActiveSnapshot();
 		}
+}
+PG_CATCH();
+{
+	PG_RE_THROW();
+}
+PG_END_TRY();
 	}
 
 	/* Be sure to advance the command counter after the last script command */
@@ -871,6 +877,7 @@ execute_extension_script(Node *stmt,
 		(void) set_config_option("log_min_messages", "warning",
 								 PGC_SUSET, PGC_S_SESSION,
 								 GUC_ACTION_SAVE, true, 0);
+	gp_enable_gpperfmon = false;
 
 	/*
 	 * Set up the search path to contain the target schema, then the schemas
