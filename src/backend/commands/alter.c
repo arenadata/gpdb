@@ -457,6 +457,7 @@ ExecRenameStmt(RenameStmt *stmt)
  * argument which, if not null, receives the address of the object that the
  * altered object now depends on.
  */
+// TODO test it on the both dispatcher and segment
 ObjectAddress
 ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddress)
 {
@@ -464,9 +465,17 @@ ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddre
 	ObjectAddress refAddr;
 	Relation	rel;
 	List   *currexts;
+	Node *object = stmt->object;
+
+	/*
+	 * object is a not NULL List if "ALTER TRIGGER DEPENDS on ext" called (see gram.y)
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && object != NULL &&
+		IsA(object, List) && list_length((List*)object) > 0)
+		object = (Node*)list_copy((List*)object);
 
 	address =
-		get_object_address_rv(stmt->objectType, stmt->relation, (List *) stmt->object,
+		get_object_address_rv(stmt->objectType, stmt->relation, (List*)object,
 							  &rel, AccessExclusiveLock, false);
 
 	/*
@@ -508,6 +517,9 @@ ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddre
 									NIL,
 									NULL);
 	}
+
+	if (object != stmt->object)
+		list_free((List*)object);
 
 	return address;
 }
