@@ -27,7 +27,7 @@ COPY test_extdep_commands FROM stdin WITH DELIMITER ',';
 \.
 SELECT command FROM test_extdep_commands ORDER BY i;
 -- First, test that dependent objects go away when the extension is dropped.
-SELECT * FROM test_extdep_commands ORDER BY i \gexec
+SELECT command FROM test_extdep_commands ORDER BY i \gexec
 -- A dependent object made dependent again has no effect
 ALTER FUNCTION test_ext.b() DEPENDS ON EXTENSION test_ext5;
 -- make sure we have the right dependencies on the extension
