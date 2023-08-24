@@ -39,6 +39,7 @@
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
+#include "catalog/storage.h"
 #include "commands/progress.h"
 #include "commands/tablespace.h"
 #include "common/controldata_utils.h"
@@ -9133,6 +9134,7 @@ CreateCheckPoint(int flags)
 	bool		shutdown;
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
+	XLogRecPtr	chkptr;
 	XLogSegNo	_logSegNo;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
 	char* 		dtxCheckPointInfo;
@@ -9519,6 +9521,15 @@ CreateCheckPoint(int flags)
 	pfree(dtxCheckPointInfo);
 	dtxCheckPointInfo = NULL;
 
+	chkptr = ProcLastRecPtr;
+	if (!shutdown)
+	{
+		XLogRecPtr	pd_recptr = PendingDeleteXLogInsert();
+
+		if (pd_recptr != InvalidXLogRecPtr)
+			recptr = pd_recptr;
+	}
+
 	/*
 	 * We mustn't write any new WAL after a shutdown checkpoint, or it will be
 	 * overwritten at next startup.  No-one should even try, this just allows
@@ -9554,7 +9565,7 @@ CreateCheckPoint(int flags)
 	LWLockAcquire(ControlFileLock, LW_EXCLUSIVE);
 	if (shutdown)
 		ControlFile->state = DB_SHUTDOWNED;
-	ControlFile->checkPoint = ProcLastRecPtr;
+	ControlFile->checkPoint = chkptr;
 	ControlFile->checkPointCopy = checkPoint;
 	ControlFile->time = (pg_time_t) time(NULL);
 	/* crash recovery should always recover to the end of WAL */

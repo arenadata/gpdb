@@ -26,8 +26,16 @@ typedef struct PendingRelXactDelete
 	TransactionId xid;
 }			PendingRelXactDelete;
 
+
+typedef struct PendingRelXactDeleteArray
+{
+	size_t		count;
+	PendingRelXactDelete array[FLEXIBLE_ARRAY_MEMBER];
+}			PendingRelXactDeleteArray;
+
 extern Size PendingDeleteShmemSize(void);
 extern void PendingDeleteShmemInit(void);
+extern XLogRecPtr PendingDeleteXLogInsert(void);
 
 extern SMgrRelation RelationCreateStorage(RelFileNode rnode,
 										  char relpersistence,

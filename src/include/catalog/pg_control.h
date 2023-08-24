@@ -88,7 +88,7 @@ typedef struct CheckPoint
 #define XLOG_NEXTRELFILENODE			0xC0
 #define XLOG_NEXTGXID					0xD0
 #define XLOG_OVERWRITE_CONTRECORD		0xE0
-
+#define XLOG_PENDING_DELETE				0xF0
 
 /*
  * System status indicator.  Note this is stored in pg_control; if you change

@@ -303,6 +303,82 @@ PendingDeleteShmemRemove(dsa_pointer node_ptr)
 }
 
 /*
+ * Dump all pending delete nodes to char array.
+ * Return NULL if there no nodes.
+ */
+static PendingRelXactDeleteArray *
+PendingDeleteXLogShmemDump(Size *size)
+{
+	dsa_pointer pdl_node_dsa;
+	PendingRelXactDeleteArray *xrelnode_array;
+
+	elog(LOG, "Serializing pending deletes to array.");
+
+	PendingDeleteAttachDsa();
+
+	/*
+	 * For now, this function can't be called concurrently, so we can use
+	 * LW_EXCLUSIVE, but keep the code strict.
+	 */
+	LWLockAcquire(PendingDeleteLock, LW_SHARED);
+
+	pdl_node_dsa = PendingDeleteShmem->pdl_head;
+
+	if (!DsaPointerIsValid(pdl_node_dsa))
+	{
+		LWLockRelease(PendingDeleteLock);
+		return NULL;
+	}
+
+	*size = sizeof(size_t) + sizeof(PendingRelXactDelete) * PendingDeleteShmem->pdl_count;
+	xrelnode_array = palloc(*size);
+	xrelnode_array->count = 0;
+
+	while (DsaPointerIsValid(pdl_node_dsa))
+	{
+		PendingDeleteListNode *pdl_node = dsa_get_address(pendingDeleteDsa, pdl_node_dsa);
+
+		memcpy(&xrelnode_array->array[xrelnode_array->count], &pdl_node->xrelnode, sizeof(pdl_node->xrelnode));
+		xrelnode_array->count++;
+
+		pdl_node_dsa = pdl_node->next;
+	}
+
+	Assert(xrelnode_array->count == PendingDeleteShmem->pdl_count);
+
+	LWLockRelease(PendingDeleteLock);
+
+	elog(LOG, "Pending deletes serialized. Count: %lu.", xrelnode_array->count);
+
+	return xrelnode_array;
+}
+
+/*
+ * Insert XLOG_PENDING_DELETE record to XLog.
+ */
+XLogRecPtr
+PendingDeleteXLogInsert(void)
+{
+	XLogRecPtr	recptr;
+	Size		size;
+	PendingRelXactDeleteArray *xrelnode_array = PendingDeleteXLogShmemDump(&size);
+
+	if (!xrelnode_array)
+		return InvalidXLogRecPtr;
+
+	XLogBeginInsert();
+	XLogRegisterData((char *) xrelnode_array, size);
+	recptr = XLogInsert(RM_XLOG_ID, XLOG_PENDING_DELETE);
+	XLogFlush(recptr);
+
+	elog(LOG, "Pending delete XLog record inserted.");
+
+	pfree(xrelnode_array);
+
+	return recptr;
+}
+
+/*
  * RelationCreateStorage
  *		Create physical storage for a relation.
  *
