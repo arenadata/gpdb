@@ -325,7 +325,7 @@ PendingDeleteXLogShmemDump(Size *size)
 	dsa_pointer pdl_node_dsa;
 	PendingRelXactDeleteArray *xrelnode_array;
 
-	elog(LOG, "Serializing pending deletes to array.");
+	elog(DEBUG2, "Serializing pending deletes to array.");
 
 	PendingDeleteAttachDsa();
 
@@ -361,7 +361,7 @@ PendingDeleteXLogShmemDump(Size *size)
 
 	LWLockRelease(PendingDeleteLock);
 
-	elog(LOG, "Pending deletes serialized. Count: %lu.", xrelnode_array->count);
+	elog(DEBUG2, "Pending deletes serialized. Count: %lu.", xrelnode_array->count);
 
 	return xrelnode_array;
 }
@@ -384,7 +384,7 @@ PendingDeleteXLogInsert(void)
 	recptr = XLogInsert(RM_XLOG_ID, XLOG_PENDING_DELETE);
 	XLogFlush(recptr);
 
-	elog(LOG, "Pending delete XLog record inserted.");
+	elog(DEBUG3, "Pending delete XLog record inserted.");
 
 	pfree(xrelnode_array);
 
