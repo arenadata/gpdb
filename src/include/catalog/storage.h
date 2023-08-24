@@ -19,6 +19,16 @@
 #include "storage/smgr.h"
 #include "utils/relcache.h"
 
+/* Pending delete node linked to xact it created */
+typedef struct PendingRelXactDelete
+{
+	RelFileNodePendingDelete relnode;
+	TransactionId xid;
+}			PendingRelXactDelete;
+
+extern Size PendingDeleteShmemSize(void);
+extern void PendingDeleteShmemInit(void);
+
 extern SMgrRelation RelationCreateStorage(RelFileNode rnode,
 										  char relpersistence,
 										  SMgrImpl smgr_which);

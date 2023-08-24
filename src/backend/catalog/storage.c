@@ -31,8 +31,10 @@
 #include "common/relpath.h"
 #include "commands/dbcommands.h"
 #include "storage/freespace.h"
+#include "storage/ipc.h"
 #include "storage/proc.h"
 #include "storage/smgr.h"
+#include "utils/dsa.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -62,9 +64,243 @@ typedef struct PendingRelDelete
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
 	int			nestLevel;		/* xact nesting level of request */
 	struct PendingRelDelete *next;	/* linked-list link */
+	dsa_pointer shmem_ptr;		/* ptr to shared pending delete list */
 } PendingRelDelete;
 
+/*
+ * Shared pending delete list node.
+ * Doubly linked list provides O(1) remove.
+ */
+typedef struct PendingDeleteListNode
+{
+	PendingRelXactDelete xrelnode;
+	dsa_pointer next;
+	dsa_pointer prev;
+}			PendingDeleteListNode;
+
+/* A struct to track pending deletes. Placed in static shared memory area. */
+typedef struct PendingDeleteShmemStruct
+{
+	dsa_pointer pdl_head;		/* ptr to list head of PendingDeleteListNode */
+	size_t		pdl_count;		/* count of PendingDeleteListNode nodes */
+	char		dsa_mem[FLEXIBLE_ARRAY_MEMBER]; /* a minimal memory area which
+												 * can be used for dsa
+												 * initialization */
+}			PendingDeleteShmemStruct;
+
 static PendingRelDelete *pendingDeletes = NULL; /* head of linked list */
+static dsa_area *pendingDeleteDsa = NULL;	/* ptr to DSA area attached by
+											 * current process */
+
+static PendingDeleteShmemStruct * PendingDeleteShmem = NULL;	/* shared pending delete
+																 * state  */
+/*
+ * Calculate size for pending delete shmem.
+ * The flexible array member should fit DSA.
+ */
+Size
+PendingDeleteShmemSize(void)
+{
+	Size		size;
+
+	size = offsetof(PendingDeleteShmemStruct, dsa_mem);
+	/* dsa initialized over flexible static dsa_mem */
+	size = add_size(size, dsa_minimum_size());
+
+	return size;
+}
+
+/*
+ * Initialize pending delete shmem struct.
+ */
+void
+PendingDeleteShmemInit(void)
+{
+	Size		size = PendingDeleteShmemSize();
+	bool		found;
+
+	PendingDeleteShmem = (PendingDeleteShmemStruct *)
+		ShmemInitStruct("Pending Delete",
+						size,
+						&found);
+
+	if (!found)
+	{
+		dsa_area   *dsa = dsa_create_in_place(
+											  PendingDeleteShmem->dsa_mem,
+											  dsa_minimum_size(),
+											  LWTRANCHE_PENDING_DELETE_DSA,
+											  NULL
+		);
+
+		/*
+		 * we can't allocate memory segments inside postmaster, so list will
+		 * be initialized at runtime
+		 */
+		PendingDeleteShmem->pdl_head = InvalidDsaPointer;
+		PendingDeleteShmem->pdl_count = 0;
+		elog(DEBUG2, "Pending delete shared memory initialized.");
+
+		/*
+		 * segments will be released by dsm_postmaster_shutdown(), but keep it
+		 * clean anyway
+		 */
+		on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmem->dsa_mem);
+
+		/*
+		 * we don't need dsa ptr here, all future dsa calls will be in
+		 * backends
+		 */
+		dsa_detach(dsa);
+	}
+}
+
+/*
+ * Prepend shared list with new pending delete node.
+ * dsa - a ptr tu currently attached dsa area
+ * cur - ptr to already allocated node
+ */
+static void
+PendingDeleteShmemLinkNode(dsa_area *dsa, dsa_pointer cur)
+{
+	dsa_pointer head;
+	PendingDeleteListNode *cur_node;
+
+	cur_node = (PendingDeleteListNode *) dsa_get_address(dsa, cur);
+
+	LWLockAcquire(PendingDeleteLock, LW_EXCLUSIVE);
+
+	head = PendingDeleteShmem->pdl_head;
+	cur_node->next = head;
+	cur_node->prev = InvalidDsaPointer;
+	if (DsaPointerIsValid(head))
+	{
+		PendingDeleteListNode *head_node = (PendingDeleteListNode *) dsa_get_address(dsa, head);
+
+		head_node->prev = cur;
+	}
+	PendingDeleteShmem->pdl_head = cur;
+	PendingDeleteShmem->pdl_count++;
+
+	LWLockRelease(PendingDeleteLock);
+
+	elog(DEBUG2, "Pending delete rel added to shmem.");
+}
+
+/*
+ * Remove pending delete node from shared list
+ * dsa - a ptr tu currently attached dsa area
+ * cur - ptr to node which is already linked to list
+ */
+static void
+PendingDeleteShmemUnlinkNode(dsa_area *dsa, dsa_pointer cur)
+{
+	dsa_pointer head;
+	PendingDeleteListNode *cur_node;
+
+	cur_node = dsa_get_address(dsa, cur);
+
+	LWLockAcquire(PendingDeleteLock, LW_EXCLUSIVE);
+
+	head = PendingDeleteShmem->pdl_head;
+
+	if (DsaPointerIsValid(cur_node->next))
+	{
+		PendingDeleteListNode *next_node = dsa_get_address(dsa, cur_node->next);
+
+		next_node->prev = cur_node->prev;
+	}
+
+	if (DsaPointerIsValid(cur_node->prev))
+	{
+		PendingDeleteListNode *prev_node = dsa_get_address(dsa, cur_node->prev);
+
+		prev_node->next = cur_node->next;
+	}
+
+	if (cur == head)
+		PendingDeleteShmem->pdl_head = cur_node->next;
+
+	PendingDeleteShmem->pdl_count--;
+
+	LWLockRelease(PendingDeleteLock);
+
+	elog(DEBUG2, "Pending delete rel removed from shmem.");
+}
+
+/*
+ * Attach dsa once per process.
+ */
+static void
+PendingDeleteAttachDsa(void)
+{
+	MemoryContext oldcxt;
+
+	if (pendingDeleteDsa)
+		return;
+
+	/*
+	 * Keep the DSA area ptr in TopMemoryContext to avoid excessive
+	 * attach/detach at every add/remove
+	 */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	pendingDeleteDsa = dsa_attach_in_place(PendingDeleteShmem->dsa_mem, NULL);
+	MemoryContextSwitchTo(oldcxt);
+
+	/* pin mappings, so they can survive res owner life end */
+	dsa_pin_mapping(pendingDeleteDsa);
+	/* disconnect from dsa on shmem exit */
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmem->dsa_mem);
+
+	elog(DEBUG3, "Pending delete DSA attached");
+}
+
+/*
+ * Add pending delete node to shmem.
+ * Return dsa ptr of newly created node. This ptr can be used for fast remove.
+ */
+static dsa_pointer
+PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid)
+{
+	dsa_pointer pdl_node_dsa;
+	PendingDeleteListNode *pdl_node;
+
+	elog(DEBUG2, "Trying to add pending delete rel %d to shmem (xid: %d).", relnode->node.relNode, xid);
+
+	if (xid == InvalidTransactionId || !IsUnderPostmaster)
+		return InvalidDsaPointer;
+
+	PendingDeleteAttachDsa();
+
+	pdl_node_dsa = dsa_allocate(pendingDeleteDsa, sizeof(*pdl_node));
+	pdl_node = dsa_get_address(pendingDeleteDsa, pdl_node_dsa);
+
+	memcpy(&pdl_node->xrelnode.relnode, relnode, sizeof(*relnode));
+	pdl_node->xrelnode.xid = xid;
+
+	PendingDeleteShmemLinkNode(pendingDeleteDsa, pdl_node_dsa);
+
+	return pdl_node_dsa;
+}
+
+/*
+ * Fast remove pending delete node from shmem.
+ * node_ptr is a ptr to already added node.
+ */
+static void
+PendingDeleteShmemRemove(dsa_pointer node_ptr)
+{
+	elog(DEBUG2, "Trying to remove pending delete rel from shmem.");
+
+	if (!DsaPointerIsValid(node_ptr))
+		return;
+
+	PendingDeleteAttachDsa();
+
+	PendingDeleteShmemUnlinkNode(pendingDeleteDsa, node_ptr);
+
+	dsa_free(pendingDeleteDsa, node_ptr);
+}
 
 /*
  * RelationCreateStorage
@@ -84,6 +320,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	SMgrRelation srel;
 	BackendId	backend;
 	bool		needs_wal;
+	TransactionId xid = InvalidTransactionId;
 
 	switch (relpersistence)
 	{
@@ -108,7 +345,10 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	smgrcreate(srel, MAIN_FORKNUM, false);
 
 	if (needs_wal)
+	{
+		xid = GetCurrentTransactionId();
 		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, smgr_which);
+	}
 
 	/* Add the relation to the list of stuff to delete at abort */
 	pending = (PendingRelDelete *)
@@ -119,6 +359,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->relnode.smgr_which = smgr_which;
 	pending->next = pendingDeletes;
+	pending->shmem_ptr = PendingDeleteShmemAdd(&pending->relnode, xid);
 	pendingDeletes = pending;
 
 	return srel;
@@ -163,6 +404,8 @@ RelationDropStorage(Relation rel)
 	pending->relnode.smgr_which =
 		RelationIsAppendOptimized(rel) ? SMGR_AO : SMGR_MD;
 	pending->next = pendingDeletes;
+	/* drop operation can't produce orphaned pending delete node */
+	pending->shmem_ptr = InvalidDsaPointer;
 	pendingDeletes = pending;
 
 	/*
@@ -214,6 +457,7 @@ RelationPreserveStorage(RelFileNode rnode, bool atCommit)
 				prev->next = next;
 			else
 				pendingDeletes = next;
+			PendingDeleteShmemRemove(pending->shmem_ptr);
 			pfree(pending);
 			/* prev does not change */
 		}
@@ -480,6 +724,7 @@ smgrDoPendingDeletes(bool isCommit)
 				srels[nrels++] = srel;
 			}
 			/* must explicitly free the list entry */
+			PendingDeleteShmemRemove(pending->shmem_ptr);
 			pfree(pending);
 			/* prev does not change */
 		}
@@ -580,6 +825,7 @@ PostPrepare_smgr(void)
 		next = pending->next;
 		pendingDeletes = next;
 		/* must explicitly free the list entry */
+		PendingDeleteShmemRemove(pending->shmem_ptr);
 		pfree(pending);
 	}
 }
