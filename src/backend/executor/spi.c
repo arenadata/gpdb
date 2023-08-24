@@ -2606,78 +2606,91 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, int64 tcount)
 		ResetUsage();
 #endif
 
+	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+
 	/* Select execution options */
 	if (fire_triggers)
 		eflags = 0;				/* default run-to-completion flags */
 	else
 		eflags = EXEC_FLAG_SKIP_TRIGGERS;
 
-	Oid			relationOid = InvalidOid; 	/* relation that is modified */
-	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
-	bool		checkTuples;
-
-	/*
-	 * Temporarily disable gpperfmon since we don't send information for internal queries in
-	 * most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
-	 */
-	if (log_min_messages > DEBUG4)
+	PG_TRY();
 	{
-		gp_enable_gpperfmon = false;
-	}
+		Oid			relationOid = InvalidOid; 	/* relation that is modified */
+		AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
+		bool		checkTuples;
 
-	ExecutorStart(queryDesc, 0);
-
-	ExecutorRun(queryDesc, ForwardScanDirection, tcount);
-
-	/*
-	 * In GPDB, in a INSERT/UPDATE/DELETE ... RETURNING statement, the
-	 * es_processed counter is only updated in ExecutorEnd, when we
-	 * collect the results from each segment. Therefore, we cannot
-	 * call _SPI_checktuples() just yet.
-	 */
-	if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->hasReturning) &&
-		queryDesc->dest->mydest == DestSPI)
-	{
-		checkTuples = true;
-	}
-	else
-		checkTuples = false;
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-		autostats_get_cmdtype(queryDesc, &cmdType, &relationOid);
-
-	ExecutorFinish(queryDesc);
-	ExecutorEnd(queryDesc);
-	/* FreeQueryDesc is done by the caller */
-
-	/*
-	 * Now that ExecutorEnd() has run, set # of rows processed (see comment
-	 * above) and call _SPI_checktuples()
-	 */
-	_SPI_current->processed = queryDesc->es_processed;
-	_SPI_current->lastoid = queryDesc->es_lastoid;
-	if (checkTuples)
-	{
-#ifdef FAULT_INJECTOR
 		/*
-		 * only check number tuples if the SPI 64 bit test is NOT running
+		 * Temporarily disable gpperfmon since we don't send information for internal queries in
+		 * most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
 		 */
-		if (!FaultInjector_InjectFaultIfSet("executor_run_high_processed",
-									   DDLNotSpecified,
-									   "" /* databaseName */,
-									   "" /* tableName */))
+		if (log_min_messages > DEBUG4)
 		{
-#endif /* FAULT_INJECTOR */
-			if (_SPI_checktuples())
-				elog(ERROR, "consistency check on SPI tuple count failed");
-#ifdef FAULT_INJECTOR
+			gp_enable_gpperfmon = false;
 		}
-#endif /* FAULT_INJECTOR */
-	}
 
-	/* MPP-14001: Running auto_stats */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		auto_stats(cmdType, relationOid, queryDesc->es_processed, true /* inFunction */);
+		ExecutorStart(queryDesc, 0);
+
+		ExecutorRun(queryDesc, ForwardScanDirection, tcount);
+
+		/*
+		 * In GPDB, in a INSERT/UPDATE/DELETE ... RETURNING statement, the
+		 * es_processed counter is only updated in ExecutorEnd, when we
+		 * collect the results from each segment. Therefore, we cannot
+		 * call _SPI_checktuples() just yet.
+		 */
+		if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->hasReturning) &&
+			queryDesc->dest->mydest == DestSPI)
+		{
+			checkTuples = true;
+		}
+		else
+			checkTuples = false;
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+			autostats_get_cmdtype(queryDesc, &cmdType, &relationOid);
+
+		ExecutorFinish(queryDesc);
+		ExecutorEnd(queryDesc);
+		/* FreeQueryDesc is done by the caller */
+
+		/*
+		 * Now that ExecutorEnd() has run, set # of rows processed (see comment
+		 * above) and call _SPI_checktuples()
+		 */
+		_SPI_current->processed = queryDesc->es_processed;
+		_SPI_current->lastoid = queryDesc->es_lastoid;
+		if (checkTuples)
+		{
+#ifdef FAULT_INJECTOR
+			/*
+			 * only check number tuples if the SPI 64 bit test is NOT running
+			 */
+			if (!FaultInjector_InjectFaultIfSet("executor_run_high_processed",
+										   DDLNotSpecified,
+										   "" /* databaseName */,
+										   "" /* tableName */))
+			{
+#endif /* FAULT_INJECTOR */
+				if (_SPI_checktuples())
+					elog(ERROR, "consistency check on SPI tuple count failed");
+#ifdef FAULT_INJECTOR
+			}
+#endif /* FAULT_INJECTOR */
+		}
+
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+
+		/* MPP-14001: Running auto_stats */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			auto_stats(cmdType, relationOid, queryDesc->es_processed, true /* inFunction */);
+	}
+	PG_CATCH();
+	{
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	_SPI_current->processed = queryDesc->es_processed;	/* Mpp: Dispatched
 														 * queries fill in this
