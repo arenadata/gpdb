@@ -7668,6 +7668,9 @@ StartupXLOG(void)
 			 * end of main redo apply loop
 			 */
 
+			/* drop all orphaned files from base */
+			PendingDeleteRedoDropFiles();
+
 			if (reachedStopPoint)
 			{
 				if (!reachedConsistency)
@@ -10943,6 +10946,10 @@ xlog_redo(XLogReaderState *record)
 
 		/* Keep track of full_page_writes */
 		lastFullPageWrites = fpw;
+	}
+	else if (info == XLOG_PENDING_DELETE)
+	{
+		PendingDeleteRedoRecord(record);
 	}
 }
 
