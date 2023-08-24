@@ -2095,11 +2095,6 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 	ListCell   *lc1;
 	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
 
-	if (log_min_messages > DEBUG4)
-	{
-		gp_enable_gpperfmon = false;
-	}
-
 	/*
 	 * Setup error traceback support for ereport()
 	 */
@@ -2286,6 +2281,14 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 
 PG_TRY();
 {
+			/*
+			* Temporarily disable gpperfmon since we don't send information for internal queries in
+			* most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
+			*/
+			if (log_min_messages > DEBUG4)
+			{
+				gp_enable_gpperfmon = false;
+			}
 
 			if (IsA(stmt, PlannedStmt) &&
 				((PlannedStmt *) stmt)->utilityStmt == NULL)
@@ -2631,15 +2634,6 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, int64 tcount)
 	Oid			relationOid = InvalidOid; 	/* relation that is modified */
 	AutoStatsCmdType cmdType = AUTOSTATS_CMDTYPE_SENTINEL; 	/* command type */
 	bool		checkTuples;
-
-	/*
-	 * Temporarily disable gpperfmon since we don't send information for internal queries in
-	 * most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
-	 */
-	if (log_min_messages > DEBUG4)
-	{
-		gp_enable_gpperfmon = false;
-	}
 
 	ExecutorStart(queryDesc, 0);
 
