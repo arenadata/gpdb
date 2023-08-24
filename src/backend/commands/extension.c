@@ -721,8 +721,6 @@ execute_sql_string(const char *sql, const char *filename)
 										   0);
 		stmt_list = pg_plan_queries(stmt_list, 0, NULL);
 
-PG_TRY();
-{
 		foreach(lc2, stmt_list)
 		{
 			Node	   *stmt = (Node *) lfirst(lc2);
@@ -765,12 +763,6 @@ PG_TRY();
 
 			PopActiveSnapshot();
 		}
-}
-PG_CATCH();
-{
-	PG_RE_THROW();
-}
-PG_END_TRY();
 	}
 
 	/* Be sure to advance the command counter after the last script command */
@@ -825,11 +817,6 @@ execute_extension_script(Node *stmt,
 	StringInfoData pathbuf;
 	ListCell   *lc;
 	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
-
-	if (gp_enable_gpperfmon > DEBUG4)
-	{
-		gp_enable_gpperfmon = false;
-	}
 
 	AssertImply(Gp_role == GP_ROLE_DISPATCH, stmt != NULL &&
 			(nodeTag(stmt) == T_CreateExtensionStmt || nodeTag(stmt) == T_AlterExtensionStmt) &&
@@ -979,6 +966,8 @@ execute_extension_script(Node *stmt,
 	}
 	PG_CATCH();
 	{
+		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+
 		/*
 		 * For QEs, the two global variables will be reset
 		 * during abort transaction. (refer: AtAbort_Extension_QE()).
@@ -991,8 +980,6 @@ execute_extension_script(Node *stmt,
 		 */
 		AtEOXact_GUC(true, save_nestlevel);
 		PG_RE_THROW();
-
-		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 	}
 	PG_END_TRY();
 
