@@ -305,10 +305,8 @@ PendingDeleteShmemRemove(dsa_pointer node_ptr)
 {
 	elog(DEBUG2, "Trying to remove pending delete rel from shmem.");
 
-	if (!DsaPointerIsValid(node_ptr))
+	if (!DsaPointerIsValid(node_ptr) || !pendingDeleteDsa)
 		return;
-
-	PendingDeleteAttachDsa();
 
 	PendingDeleteShmemUnlinkNode(pendingDeleteDsa, node_ptr);
 
@@ -403,6 +401,9 @@ PendingDeleteRedoAdd(PendingRelXactDelete * pd)
 
 	elog(DEBUG2, "Trying to add pending delete rel %d during redo (xid: %d).", pd->relnode.node.relNode, pd->xid);
 
+	if (pd->xid == InvalidTransactionId)
+		return;
+
 	if (!pendingDeleteRedo)
 	{
 		HASHCTL		ctl;
@@ -463,7 +464,7 @@ PendingDeleteRedoRemove(TransactionId xid)
 
 	elog(DEBUG2, "Trying to remove pending delete rels during redo (xid: %d).", xid);
 
-	if (xid == InvalidTransactionId)
+	if (xid == InvalidTransactionId || !pendingDeleteRedo)
 		return;
 
 	h_node = (PendingDeleteHtabNode *) hash_search(pendingDeleteRedo, &xid, HASH_REMOVE, NULL);
