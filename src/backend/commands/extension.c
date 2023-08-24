@@ -864,7 +864,6 @@ execute_extension_script(Node *stmt,
 		(void) set_config_option("log_min_messages", "warning",
 								 PGC_SUSET, PGC_S_SESSION,
 								 GUC_ACTION_SAVE, true, 0);
-	gp_enable_gpperfmon = false;
 
 	/*
 	 * Set up the search path to contain the target schema, then the schemas
@@ -910,6 +909,8 @@ execute_extension_script(Node *stmt,
 
 	PG_TRY();
 	{
+		gp_enable_gpperfmon = false;
+
 		char	   *c_sql = read_extension_script_file(control, filename);
 		Datum		t_sql;
 
