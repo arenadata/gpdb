@@ -218,12 +218,6 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 	PLpgSQL_execstate *save_cur_estate;
 	Datum		retval;
 	int			rc;
-	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
-
-	if (log_min_messages > DEBUG4)
-	{
-		gp_enable_gpperfmon = false;
-	}
 
 	/*
 	 * Connect to SPI manager
@@ -257,13 +251,9 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 		}
 		else
 			retval = plpgsql_exec_function(func, fcinfo, NULL);
-
-		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
 	}
 	PG_CATCH();
 	{
-		gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
-
 		/* Decrement use-count, restore cur_estate, and propagate error */
 		func->use_count--;
 		func->cur_estate = save_cur_estate;
