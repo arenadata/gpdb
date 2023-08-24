@@ -2391,8 +2391,8 @@ PG_TRY();
 }
 PG_CATCH();
 {
-	gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
-	PG_RE_THROW();
+			gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+			PG_RE_THROW();
 }
 PG_END_TRY();
 
