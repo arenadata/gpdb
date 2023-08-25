@@ -457,7 +457,6 @@ ExecRenameStmt(RenameStmt *stmt)
  * argument which, if not null, receives the address of the object that the
  * altered object now depends on.
  */
-// TODO test it on the both dispatcher and segment
 ObjectAddress
 ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt, ObjectAddress *refAddress)
 {
