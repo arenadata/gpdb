@@ -491,7 +491,7 @@ PendingDeleteRedoDropFiles(void)
 
 	elog(DEBUG2, "Trying to drop pending delete rels.");
 
-	if (hash_get_num_entries(pendingDeleteRedo) == 0)
+	if (!pendingDeleteRedo || hash_get_num_entries(pendingDeleteRedo) == 0)
 		return;
 
 	/* iterate over whole htab */
