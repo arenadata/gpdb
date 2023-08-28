@@ -7371,13 +7371,9 @@ xact_redo_abort(xl_xact_parsed_abort *parsed, TransactionId xid,
 		XLogFlush(lsn);
 
 		DropRelationFiles(parsed->xnodes, parsed->nrels, true);
-
-		/*
-		 * Drop operation can't produce orphaned pending delete, so it's safe
-		 * to call this inside condition
-		 */
-		PendingDeleteRedoRemove(xid);
 	}
+
+	PendingDeleteRedoRemove(xid);
 
 	if (parsed->ndeldbs > 0)
 	{
