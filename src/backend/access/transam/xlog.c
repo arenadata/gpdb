@@ -7618,6 +7618,11 @@ StartupXLOG(void)
 					}
 				}
 
+				/* drop all orphaned files from base during recovery */
+				if (record->xl_rmid == RM_XLOG_ID &&
+					(record->xl_info & ~XLR_INFO_MASK) == XLOG_CHECKPOINT_SHUTDOWN)
+					PendingDeleteRedoDropFiles();
+
 				/*
 				 * If rm_redo called XLogRequestWalReceiverReply, then we wake
 				 * up the receiver so that it notices the updated
@@ -7667,9 +7672,6 @@ StartupXLOG(void)
 			/*
 			 * end of main redo apply loop
 			 */
-
-			/* drop all orphaned files from base */
-			PendingDeleteRedoDropFiles();
 
 			if (reachedStopPoint)
 			{
@@ -8062,7 +8064,11 @@ StartupXLOG(void)
 								  CHECKPOINT_WAIT);
 		}
 		else
+		{
 			CreateCheckPoint(CHECKPOINT_END_OF_RECOVERY | CHECKPOINT_IMMEDIATE);
+			/* drop all orphaned files from base after recovery */
+			PendingDeleteRedoDropFiles();
+		}
 	}
 
 	if (ArchiveRecoveryRequested)
