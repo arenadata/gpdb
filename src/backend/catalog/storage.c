@@ -580,6 +580,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	BackendId	backend;
 	bool		needs_wal;
 	TransactionId xid = InvalidTransactionId;
+	XLogRecPtr	recptr;
 
 	switch (relpersistence)
 	{
@@ -600,14 +601,20 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 			return NULL;		/* placate compiler */
 	}
 
-	srel = smgropen(rnode, backend, smgr_which);
-	smgrcreate(srel, MAIN_FORKNUM, false);
-
 	if (needs_wal)
 	{
 		xid = GetCurrentTransactionId();
-		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, smgr_which);
+		recptr = log_smgrcreate(&rnode, MAIN_FORKNUM, smgr_which);
+		
+		/*
+		 * We should flush last record. Otherwise, in case of a crush after
+		 * file creation, file may be orphaned.
+		 */
+		XLogFlush(recptr);
 	}
+
+	srel = smgropen(rnode, backend, smgr_which);
+	smgrcreate(srel, MAIN_FORKNUM, false);
 
 	/* Add the relation to the list of stuff to delete at abort */
 	pending = (PendingRelDelete *)
@@ -627,10 +634,11 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 /*
  * Perform XLogInsert of an XLOG_SMGR_CREATE record to WAL.
  */
-void
+XLogRecPtr
 log_smgrcreate(const RelFileNode *rnode, ForkNumber forkNum, SMgrImpl impl)
 {
 	xl_smgr_create xlrec;
+	XLogRecPtr	recptr;
 
 	/*
 	 * Make an XLOG entry reporting the file creation.
@@ -641,7 +649,9 @@ log_smgrcreate(const RelFileNode *rnode, ForkNumber forkNum, SMgrImpl impl)
 
 	XLogBeginInsert();
 	XLogRegisterData((char *) &xlrec, sizeof(xlrec));
-	XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLR_SPECIAL_REL_UPDATE);
+	recptr = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLR_SPECIAL_REL_UPDATE);
+
+	return recptr;
 }
 
 /*
