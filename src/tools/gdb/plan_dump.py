@@ -1,5 +1,5 @@
 # To setup the command inside gdb session, run:
-#    source path_to_gdb_sources/src/tools/gdb/plan_dump.py
+#    source path_to_gpdb_sources/src/tools/gdb/plan_dump.py
 # plan_dump_cmd is a gdb command which may be useful at core-dump debugging
 # process. This command prints the plan tree, like the postgres EXPLAIN does,
 # but the command is less informative (also command works with Plan* structures
