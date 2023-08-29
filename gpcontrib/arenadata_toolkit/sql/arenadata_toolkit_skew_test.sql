@@ -1,4 +1,5 @@
 CREATE EXTENSION arenadata_toolkit;
+SET client_min_messages=WARNING;
 
 ----------------------------------------------------------------------------------------------------------
 -- test helpers
@@ -160,6 +161,54 @@ insert into co   SELECT 1, i AS j FROM generate_series(1, 10000) i;
 SELECT skcnamespace, skcrelname, round(skccoeff, 2) as skccoeff_round FROM adb_skew_coefficients order by skcrelname;
 
 DROP TABLE heap, ao, co;
+
+----------------------------------------------------------------------------------------------------------
+-- test adb_skew_coefficients view on partitioned table
+----------------------------------------------------------------------------------------------------------
+
+CREATE TABLE part_table (id int, a int, b int, str text)
+	DISTRIBUTED BY (id)
+	PARTITION BY RANGE (a)
+		SUBPARTITION BY RANGE (b)
+			SUBPARTITION TEMPLATE (
+					START (1) END (3) EVERY (1))
+				SUBPARTITION BY LIST (str)
+					SUBPARTITION TEMPLATE (
+						SUBPARTITION sub_prt1 VALUES ('sub_prt1'),
+						SUBPARTITION sub_prt2 VALUES ('sub_prt2'))
+	(START (1) END (3) EVERY (1));
+
+-- check that adb_skew_coefficients works on empty table
+SELECT skcnamespace, skcrelname, round(skccoeff, 2) as skccoeff_round
+	FROM adb_skew_coefficients
+	WHERE skcrelname LIKE 'part_table%'
+	order by skcrelname;
+
+-- add small data to all parts of table
+insert into part_table select i,1,1,'sub_prt1' from generate_series(1,100) as i;
+insert into part_table select i,1,2,'sub_prt1' from generate_series(1,100) as i;
+insert into part_table select i,2,1,'sub_prt1' from generate_series(1,100) as i;
+insert into part_table select i,2,2,'sub_prt1' from generate_series(1,100) as i;
+insert into part_table select i,1,1,'sub_prt2' from generate_series(1,100) as i;
+insert into part_table select i,1,2,'sub_prt2' from generate_series(1,100) as i;
+insert into part_table select i,2,1,'sub_prt2' from generate_series(1,100) as i;
+insert into part_table select i,2,2,'sub_prt2' from generate_series(1,100) as i;
+
+SELECT skcnamespace, skcrelname, round(skccoeff, 2) as skccoeff_round
+	FROM adb_skew_coefficients
+	WHERE skcrelname LIKE 'part_table%'
+	order by skcrelname;
+
+-- add a lot of data for one part to generate big skew coefficient
+-- distributing by first columnt is helps to us to put all data to one segment
+insert into part_table select 1,1,1,'sub_prt2' from generate_series(1,10000) as i;
+
+SELECT skcnamespace, skcrelname, round(skccoeff, 2) as skccoeff_round
+	FROM adb_skew_coefficients
+	WHERE skcrelname LIKE 'part_table%' and skccoeff != 0
+	order by skcrelname;
+
+DROP TABLE part_table;
 
 DROP FUNCTION compare_table_and_forks_size_calculation(OID);
 DROP FUNCTION check_size_diff(OID);
