@@ -170,7 +170,7 @@ PendingDeleteShmemInit(void)
 
 /*
  * Prepend shared list with new pending delete node.
- * dsa - a ptr tu currently attached dsa area
+ * dsa - a ptr to currently attached dsa area
  * cur - ptr to already allocated node
  */
 static void
