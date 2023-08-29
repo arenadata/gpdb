@@ -1,16 +1,16 @@
 # To setup the command inside gdb session, run:
 #    source path_to_gpdb_sources/src/tools/gdb/plan_dump.py
 # plan_dump_cmd is a gdb command which may be useful at core-dump debugging
-# process. This command prints the plan tree, like the postgres EXPLAIN does,
+# process. This command prints the plan tree, like the EXPLAIN does,
 # but the command is less informative (also command works with Plan* structures
 # instead of PlanState* like it's done at EXPLAIN, because the core-dumps of
 # segments would contain the full planTree (tree of Plan* structs), while the
 # PlanState* tree may be sliced - as a result there would be only part of plan
-# which should be processed by the segment's GANG). The command accepts two
+# which should be processed by the segment's gang). The command accepts two
 # arguments plan_dump_cmd queryDesc out_file_path:
 # - queryDesc is required - pointer to QueryDesc structure, it's also
 #   requried that fields of this structure, like plannedstmt and estate
-#   won't be NULL)
+#   won't be NULL
 # - out_file_path optional argument - filesystem path to save the plan tree.
 
 import gdb
