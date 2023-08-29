@@ -2208,7 +2208,6 @@ select count(*) from rank_tbl where rank in (select rank from updated);
 (1 row)
 
 -- checking that the planner can build a plan with non-select CTE sharing.
-set gp_cte_sharing to on;
 --start_ignore
 drop table if exists t1;
 --end_ignore
@@ -2237,5 +2236,5 @@ with cte1 as (
  Optimizer: Postgres query optimizer
 (16 rows)
 
-reset gp_cte_sharing;
 drop table t1;
+
