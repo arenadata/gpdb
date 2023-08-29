@@ -1251,7 +1251,7 @@ drop table t1;
 
 -- Test correlated SubPlans containing writable operation are
 -- planned and executed correctly. The result of modifying operations
--- should be broadcasted and materialized.
+-- should be broadcasted (or focused) and materialized.
 -- start_ignore
 drop table if exists t1;
 drop table if exists t2;
