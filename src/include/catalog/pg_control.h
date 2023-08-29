@@ -90,6 +90,7 @@ typedef struct CheckPoint
 #define XLOG_OVERWRITE_CONTRECORD		0xE0
 #define XLOG_PENDING_DELETE				0xF0
 
+
 /*
  * System status indicator.  Note this is stored in pg_control; if you change
  * it, you must bump PG_CONTROL_VERSION
