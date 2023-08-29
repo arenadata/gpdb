@@ -1058,4 +1058,8 @@ with cte1 as (
   insert into t1 values (1,2) returning *
 ) select * from cte1 a join cte1 b using(c1);
 
+with cte1 as (
+  insert into t1 values (1,2) returning *
+) select * from cte1 a join cte1 b using(c1);
+
 drop table t1;
