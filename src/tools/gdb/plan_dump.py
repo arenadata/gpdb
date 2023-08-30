@@ -106,11 +106,11 @@ class DynamicBitmapIndexScan:
 	gdb_type = gdb.lookup_type('DynamicBitmapIndexScan').pointer()
 
 class Gang:
-	GANGTYPE_UNALLOCATED = gdb.parse_and_eval("GANGTYPE_UNALLOCATED")			# a root slice executed by the qDisp */
-	GANGTYPE_ENTRYDB_READER = gdb.parse_and_eval("GANGTYPE_ENTRYDB_READER")		# a 1-gang with read access to the entry db */
-	GANGTYPE_SINGLETON_READER = gdb.parse_and_eval("GANGTYPE_SINGLETON_READER")	# a 1-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_READER = gdb.parse_and_eval("GANGTYPE_PRIMARY_READER")		# a 1-gang or N-gang to read the segment dbs */
-	GANGTYPE_PRIMARY_WRITER = gdb.parse_and_eval("GANGTYPE_PRIMARY_WRITER")		# the N-gang that can update the segment dbs */
+	GANGTYPE_UNALLOCATED = gdb.parse_and_eval("GANGTYPE_UNALLOCATED")			# a root slice executed by the qDisp
+	GANGTYPE_ENTRYDB_READER = gdb.parse_and_eval("GANGTYPE_ENTRYDB_READER")		# a 1-gang with read access to the entry db
+	GANGTYPE_SINGLETON_READER = gdb.parse_and_eval("GANGTYPE_SINGLETON_READER")	# a 1-gang to read the segment dbs
+	GANGTYPE_PRIMARY_READER = gdb.parse_and_eval("GANGTYPE_PRIMARY_READER")		# a 1-gang or N-gang to read the segment dbs
+	GANGTYPE_PRIMARY_WRITER = gdb.parse_and_eval("GANGTYPE_PRIMARY_WRITER")		# the N-gang that can update the segment dbs
 
 class SetOp:
 	gdb_type = gdb.lookup_type("SetOp").pointer()
@@ -154,10 +154,10 @@ class Agg:
 	AGG_HASHED = gdb.parse_and_eval('AGG_HASHED')
 
 class Flow:
-	FLOW_UNDEFINED = gdb.parse_and_eval("FLOW_UNDEFINED")		# used prior to calculation of type of derived flow */
-	FLOW_SINGLETON = gdb.parse_and_eval("FLOW_SINGLETON")		# flow has single stream */
-	FLOW_REPLICATED = gdb.parse_and_eval("FLOW_REPLICATED")		# flow is replicated across IOPs */
-	FLOW_PARTITIONED = gdb.parse_and_eval("FLOW_PARTITIONED")	# flow is partitioned across IOPs */
+	FLOW_UNDEFINED = gdb.parse_and_eval("FLOW_UNDEFINED")		# used prior to calculation of type of derived flow
+	FLOW_SINGLETON = gdb.parse_and_eval("FLOW_SINGLETON")		# flow has single stream
+	FLOW_REPLICATED = gdb.parse_and_eval("FLOW_REPLICATED")		# flow is replicated across IOPs
+	FLOW_PARTITIONED = gdb.parse_and_eval("FLOW_PARTITIONED")	# flow is partitioned across IOPs
 
 class LocusType:
 	CdbLocusType_Null = gdb.parse_and_eval("CdbLocusType_Null")
@@ -267,9 +267,9 @@ def getCurrentSlice(estate):
 class Motion(object):
 	gdb_type = gdb.lookup_type('Motion').pointer()
 	# motion types
-	MOTIONTYPE_HASH = gdb.parse_and_eval("MOTIONTYPE_HASH") # Use hashing to select a segindex destination */
-	MOTIONTYPE_FIXED = gdb.parse_and_eval("MOTIONTYPE_FIXED") #	Send tuples to a fixed set of segindexes */
-	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # Send tuples to the segment explicitly specified in their segid column */
+	MOTIONTYPE_HASH = gdb.parse_and_eval("MOTIONTYPE_HASH") # Use hashing to select a segindex destination
+	MOTIONTYPE_FIXED = gdb.parse_and_eval("MOTIONTYPE_FIXED") #	Send tuples to a fixed set of segindexes
+	MOTIONTYPE_EXPLICIT = gdb.parse_and_eval("MOTIONTYPE_EXPLICIT") # Send tuples to the segment explicitly specified in their segid column
 
 	def __init__(self, val, state, pstmt, currentSlice):
 		self.__plan = val
