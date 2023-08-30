@@ -567,7 +567,16 @@ class PlanDump(gdb.Command):
 		# Based on ExplainPrintPlan
 
 		parsedArgs = gdb.string_to_argv(args)
+		if len(parsedArgs) < 1:
+			raise Exception('Please specify the queryDesc')
+
 		queryDesc = gdb.parse_and_eval(parsedArgs[0])
+		if queryDesc == 0 or queryDesc["estate"] == 0 or queryDesc["plannedstmt"] == 0:
+			raise Exception(
+				"Invalid queryDesc argument, please check that it's not NULL "
+				"and queryDesc->estate/queryDesc->plannedstmt is not NULL too"
+			)
+
 		outputFile = None
 		if len(parsedArgs) > 1:
 			outputFile = parsedArgs[1]
