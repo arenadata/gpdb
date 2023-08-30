@@ -1,14 +1,14 @@
 # To setup the command inside gdb session, run:
 #    source path_to_gpdb_sources/src/tools/gdb/plan_dump.py
-# plan_dump_cmd is a gdb command which may be useful at core dump debugging
+# plan_dump is a gdb command which may be useful at core dump debugging
 # process. This command prints the plan tree, like the EXPLAIN does,
-# but the command is less informative (also command works with Plan* structures
-# instead of PlanState* like it's done at EXPLAIN, because the core dumps of
-# segments would contain the full planTree (tree of Plan* structs), while the
-# PlanState* tree may be sliced - as a result there would be only part of plan
-# which should be processed by the segment's gang). The command accepts two
-# arguments:
-# plan_dump_cmd queryDesc out_file_path
+# but the command is less informative. The plan_dump command works with
+# Plan* structures instead of PlanState* like it's done at EXPLAIN, because
+# the core dumps of segments would contain the full planTree (tree of Plan*
+# structs), while the PlanState* tree may be sliced - as a result there would
+# be only part of plan which should be processed by the segment's gang).
+# The command accepts two arguments:
+# plan_dump queryDesc out_file_path
 # - queryDesc is required - pointer to QueryDesc structure, it's also
 #   requried that fields of this structure, like plannedstmt and estate
 #   won't be NULL
@@ -370,7 +370,7 @@ class Scan(object):
 		relanme = self.__rtableMap[id]
 		return "%s on %s%s" % (self.__typ, relanme, indexInfo)
 
-class PlanDumperCmd(gdb.Command):
+class PlanDump(gdb.Command):
 	"""Print the plan nodes like pg explain"""
 
 	def __cleanup__(self):
@@ -384,7 +384,7 @@ class PlanDumperCmd(gdb.Command):
 		self.__reloidMap = {}
 
 	def __init__(self):
-		super(PlanDumperCmd, self).__init__("plan_dump_cmd", gdb.COMMAND_USER, gdb.COMPLETE_SYMBOL)
+		super(PlanDump, self).__init__("plan_dump", gdb.COMMAND_USER, gdb.COMPLETE_SYMBOL)
 		self.__cleanup__()
 
 	def walk_initplans(self, plans, sliceTable):
@@ -602,4 +602,4 @@ class PlanDumperCmd(gdb.Command):
 			with open(outputFile, "w") as text_file:
 				text_file.write(result)
 
-PlanDumperCmd()
+PlanDump()
