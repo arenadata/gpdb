@@ -1,13 +1,14 @@
 # To setup the command inside gdb session, run:
 #    source path_to_gpdb_sources/src/tools/gdb/plan_dump.py
-# plan_dump_cmd is a gdb command which may be useful at core-dump debugging
+# plan_dump_cmd is a gdb command which may be useful at core dump debugging
 # process. This command prints the plan tree, like the EXPLAIN does,
 # but the command is less informative (also command works with Plan* structures
-# instead of PlanState* like it's done at EXPLAIN, because the core-dumps of
+# instead of PlanState* like it's done at EXPLAIN, because the core dumps of
 # segments would contain the full planTree (tree of Plan* structs), while the
 # PlanState* tree may be sliced - as a result there would be only part of plan
 # which should be processed by the segment's gang). The command accepts two
-# arguments plan_dump_cmd queryDesc out_file_path:
+# arguments:
+# plan_dump_cmd queryDesc out_file_path
 # - queryDesc is required - pointer to QueryDesc structure, it's also
 #   requried that fields of this structure, like plannedstmt and estate
 #   won't be NULL
@@ -304,7 +305,7 @@ class Motion(object):
 				motion_recv = 1
 		elif typ == Motion.MOTIONTYPE_EXPLICIT:
 			sname = "Explicit Redistribute Motion"
-			# motion_recv = getgpsegmentCount() it's not easy to implement analog for core-dump
+			# motion_recv = getgpsegmentCount() it's not easy to implement analog for core dump
 
 		if self.__pstmt["planGen"] == PLANGEN_PLANNER:
 			slice = self.__currentSlice
@@ -383,7 +384,7 @@ class PlanDumperCmd(gdb.Command):
 		self.__reloidMap = {}
 
 	def __init__(self):
-		super(PlanDumperCmd, self).__init__("plan_dump_cmd", gdb.COMMAND_USER)
+		super(PlanDumperCmd, self).__init__("plan_dump_cmd", gdb.COMMAND_USER, gdb.COMPLETE_SYMBOL)
 		self.__cleanup__()
 
 	def walk_initplans(self, plans, sliceTable):
@@ -562,15 +563,8 @@ class PlanDumperCmd(gdb.Command):
 
 		return self.__result
 
-	def complete(self, text, word):
-		# We expect the argument passed to be a symbol so fallback to the
-		# internal tab-completion handler for symbols
-		return gdb.COMPLETE_SYMBOL
-
 	def invoke(self, args, from_tty):
-		# does the commentary needed and also the complete/invoke
-		# We can pass args here and use Python CLI utilities like argparse
-		# to do argument parsing. Based on ExplainPrintPlan
+		# Based on ExplainPrintPlan
 
 		parsedArgs = gdb.string_to_argv(args)
 		queryDesc = gdb.parse_and_eval(parsedArgs[0])
