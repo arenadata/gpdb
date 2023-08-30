@@ -577,10 +577,6 @@ class PlanDump(gdb.Command):
 				"and queryDesc->estate/queryDesc->plannedstmt is not NULL too"
 			)
 
-		outputFile = None
-		if len(parsedArgs) > 1:
-			outputFile = parsedArgs[1]
-
 		self.__state = queryDesc["estate"]
 		self.__pstmt = queryDesc["plannedstmt"]
 
@@ -607,8 +603,8 @@ class PlanDump(gdb.Command):
 		self.__cleanup__()
 
 		print(result)
-		if outputFile is not None:
-			with open(outputFile, "w") as text_file:
+		if len(parsedArgs) > 1:
+			with open(parsedArgs[1], "w") as text_file:
 				text_file.write(result)
 
 PlanDump()
