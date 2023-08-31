@@ -1044,6 +1044,7 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			{
 				ModifyTable *splan = (ModifyTable *) plan;
 
+				Assert(splan->plan.targetlist == NIL);
 				Assert(splan->plan.qual == NIL);
 
 				splan->withCheckOptionLists =
@@ -1080,7 +1081,12 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 					splan->returningLists = newRL;
 
 					/*
-					 * copy the new returningList as it may be needed later.
+					 * Set up the visible plan targetlist as being the same as
+					 * the first RETURNING list. This is for the use of
+					 * EXPLAIN; the executor won't pay any attention to the
+					 * targetlist.  We postpone this step until here so that
+					 * we don't have to do set_returning_clause_references()
+					 * twice on identical targetlists.
 					 */
 					splan->plan.targetlist = copyObject(linitial(newRL));
 				}
