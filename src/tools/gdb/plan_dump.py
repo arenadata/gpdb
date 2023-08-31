@@ -6,7 +6,7 @@
 # Plan* structures instead of PlanState* like it's done at EXPLAIN, because
 # the core dumps of segments would contain the full planTree (tree of Plan*
 # structs), while the PlanState* tree may be sliced - as a result there would
-# be only part of plan which should be processed by the segment's gang).
+# be only part of plan which should be processed by the segment's gang.
 # The command accepts two arguments:
 # plan_dump queryDesc out_file_path
 # - queryDesc is required - pointer to QueryDesc structure, it's also
