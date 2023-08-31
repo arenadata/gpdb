@@ -1047,7 +1047,7 @@ WITH updated AS (
 )
 select count(*) from rank_tbl where rank in (select rank from updated);
 
--- checking that the planner can build a plan with non-select CTE sharing.
+-- Test that the planner can build a plan with non-select CTE sharing.
 --start_ignore
 drop table if exists t1;
 --end_ignore
