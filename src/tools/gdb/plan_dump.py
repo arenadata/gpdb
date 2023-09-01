@@ -10,7 +10,7 @@
 # The command accepts two arguments:
 # plan_dump queryDesc out_file_path
 # - queryDesc is required - pointer to QueryDesc structure, it's also
-#   requried that fields of this structure, like plannedstmt and estate
+#   required that fields of this structure, like plannedstmt and estate
 #   won't be NULL
 # - out_file_path optional argument - filesystem path to save the plan tree.
 
