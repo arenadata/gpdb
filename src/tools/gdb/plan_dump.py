@@ -193,9 +193,7 @@ def show_dispatch_info(slice, plan, pstmt):
 
 	typ = slice["gangType"]
 	segments = 0
-	if typ == Gang.GANGTYPE_UNALLOCATED or typ == Gang.GANGTYPE_ENTRYDB_READER:
-		segments = 0
-	elif typ == Gang.GANGTYPE_PRIMARY_WRITER or typ == Gang.GANGTYPE_PRIMARY_READER or typ == Gang.GANGTYPE_SINGLETON_READER:
+	if typ == Gang.GANGTYPE_PRIMARY_WRITER or typ == Gang.GANGTYPE_PRIMARY_READER or typ == Gang.GANGTYPE_SINGLETON_READER:
 		if bool(slice["directDispatch"]["isDirectDispatch"]) == True:
 			segments = List.list_length(slice["directDispatch"]["contentIds"])
 		elif pstmt["planGen"] == PLANGEN_PLANNER:
@@ -255,7 +253,7 @@ def getCurrentSlice(estate):
 	original code, the result LocallyExecutingSliceIndex() function call
 	is passed as second argument to this function, which would always
 	return 0 (zero index):
-	- if estate.es_sliceTable is NULL the 0 would be returned
+	- if estate.es_sliceTable is NULL the None would be returned
 	- if sliceTable exists it would return the estate->es_sliceTable->localSlice,
 	  which would be 0 on the coordinator which executes the explain.
 	"""
@@ -393,11 +391,9 @@ class PlanDump(gdb.Command):
 		from explain.c (for init plans), but instead of working with the PlanStates (like
 		original function does) of plan (the EXPLAIN has all states of
 		plan nodes starting from root), this function can't rely on PlanStates,
-		because coredump's from segments may contain only part planstate
+		because core dumps from segments may contain only part of planstate
 		(queryDesc->planstate) nodes of the original plan
-		(queryDesc->plannedstmt->planTree), so this function works with the
-		Plan nodes, and it's processing differs (in case of subPlans (not init plans
-		the PlanState nodes have the subPlan field, while the Plan nodes does not))
+		(queryDesc->plannedstmt->planTree), so this function works with the Plan nodes.
 		"""
 		head = plans["head"]
 		saved_slice = self.__currentSlice
@@ -414,8 +410,8 @@ class PlanDump(gdb.Command):
 
 	def walk_subplans(self, plannode, sliceTable):
 		"""
-		Analog of ExplainSubPlans (only for subplans initPlans are handle by
-		function above, unlike original  verison). Works with Plan nodes unlike
+		Analog of ExplainSubPlans (only for subplans, initPlans are handled by
+		function above, unlike original verison). Works with Plan nodes unlike
 		original version which works with PlanState.
 		"""
 		if plannode["qual"] != 0:
@@ -452,7 +448,7 @@ class PlanDump(gdb.Command):
 			self.walker(node.cast(TargetEntry.gdb_type)["expr"], sliceTable)
 
 	def walk_member_nodes(self, plans):
-		"""This function is an analog of ExplaiMemberNodes"""
+		"""This function is an analog of ExplainMemberNodes"""
 		head = plans["head"]
 		while head != 0:
 			self.walk_node(head["data"]["ptr_value"].cast(Plan.gdb_type))
