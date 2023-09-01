@@ -6,12 +6,12 @@ EXTENSION = arenadata_toolkit
 EXTENSION_VERSION = 1.1
 DATA = \
        arenadata_toolkit--1.0.sql \
-       arenadata_toolkit--1.0-1.1.sql
+       arenadata_toolkit--1.0--1.1.sql
 
 DATA_built = $(EXTENSION)--$(EXTENSION_VERSION).sql
 
-$(EXTENSION)--$(EXTENSION_VERSION).sql: $(DATA)
-	cat $(DATA) > $(EXTENSION)--$(EXTENSION_VERSION).sql
+$(DATA_built): $(DATA)
+	cat $(DATA) > $(DATA_built)
 
 REGRESS = arenadata_toolkit_test arenadata_toolkit_skew_test adb_get_relfilenodes_test
 REGRESS_OPTS += --init-file=$(top_srcdir)/src/test/regress/init_file
