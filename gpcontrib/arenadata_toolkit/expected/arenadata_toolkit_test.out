@@ -101,9 +101,8 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_history                    | table   | a          | 
  db_files_history_1_prt_default_part | table   | a          | 
  db_files_history_1_prt_p202306      | table   | a          | 
- get_full_storage_size               | proc    | -          | {owner=X/owner}
  operation_exclude                   | table   | a          | 
-(16 rows)
+(15 rows)
 
 -- check that toolkit objects now depends on extension
 SELECT objname, objtype, extname, deptype FROM pg_depend d JOIN
@@ -120,8 +119,7 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_get_relfilenodes        | proc    | arenadata_toolkit | e
  adb_relation_storage_size   | proc    | arenadata_toolkit | e
  adb_skew_coefficients       | table   | arenadata_toolkit | e
- get_full_storage_size       | proc    | arenadata_toolkit | e
-(9 rows)
+(8 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
@@ -154,9 +152,8 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_history                    | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_default_part | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_p202306      | table   | a          | {owner=arwdDxt/owner}
- get_full_storage_size               | proc    | -          | {owner=X/owner}
  operation_exclude                   | table   | a          | {owner=arwdDxt/owner}
-(16 rows)
+(15 rows)
 
 -- check that toolkit objects now depends on extension
 SELECT objname, objtype, extname, deptype FROM pg_depend d JOIN
@@ -173,8 +170,7 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_get_relfilenodes        | proc    | arenadata_toolkit | e
  adb_relation_storage_size   | proc    | arenadata_toolkit | e
  adb_skew_coefficients       | table   | arenadata_toolkit | e
- get_full_storage_size       | proc    | arenadata_toolkit | e
-(9 rows)
+(8 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
