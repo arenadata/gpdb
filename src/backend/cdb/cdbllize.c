@@ -662,15 +662,14 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 	if (IsA(node, ModifyTable))
 	{
 		Plan   *mplan = (Plan *) node;
+
 		if (ctx->movement == MOVEMENT_BROADCAST)
 			broadcastPlan(mplan, false /* stable */ , false /* rescannable */,
 					ctx->currentPlanFlow->numsegments);
 		else
 			focusPlan(mplan, false /* stable */ , false /* rescannable */);
 
-		Plan   *mat = materialize_subplan((PlannerInfo *) ctx->base.node, mplan);
-
-		return (Node *) mat;
+		return (Node *) materialize_subplan((PlannerInfo *) ctx->base.node, mplan);
 	}
 
 	Node	   *result = plan_tree_mutator(node, ParallelizeCorrelatedSubPlanMutator, ctx);
