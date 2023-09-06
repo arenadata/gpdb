@@ -661,13 +661,13 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 
 	if (IsA(node, ModifyTable))
 	{
-		Plan   *mplan = (Plan *) node;
+		Plan	   *mplan = (Plan *) node;
 
 		if (ctx->movement == MOVEMENT_BROADCAST)
-			broadcastPlan(mplan, false /* stable */ , false /* rescannable */,
-					ctx->currentPlanFlow->numsegments);
+			broadcastPlan(mplan, false /* stable */ , false /* rescannable */ ,
+						  ctx->currentPlanFlow->numsegments);
 		else
-			focusPlan(mplan, false /* stable */ , false /* rescannable */);
+			focusPlan(mplan, false /* stable */ , false /* rescannable */ );
 
 		return (Node *) materialize_subplan((PlannerInfo *) ctx->base.node, mplan);
 	}
