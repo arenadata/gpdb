@@ -1265,7 +1265,7 @@ with cte as
 (insert into t1
  select i from generate_series(1, 5) i
  returning *)
- select * from t2
+select * from t2
 where t2.i in (select i from cte where t2.i = cte.i)
 order by i;
 
@@ -1273,7 +1273,7 @@ with cte as
 (insert into t1
  select i from generate_series(1, 5) i
  returning *)
- select * from t2
+select * from t2
 where t2.i in (select i from cte where t2.i = cte.i)
 order by i;
 
@@ -1321,7 +1321,7 @@ with cte as
 (insert into t1
  select i from generate_series(1, 5) i
  returning *)
- select * from t_repl
+select * from t_repl
 where t_repl.i in (select i from cte where t_repl.i = cte.i)
 order by i;
 
@@ -1329,7 +1329,7 @@ with cte as
 (insert into t1
  select i from generate_series(1, 5) i
  returning *)
- select * from t_repl
+select * from t_repl
 where t_repl.i in (select i from cte where t_repl.i = cte.i)
 order by i;
 
