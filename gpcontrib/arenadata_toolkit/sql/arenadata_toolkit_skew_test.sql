@@ -1,5 +1,4 @@
 CREATE EXTENSION arenadata_toolkit;
-SET client_min_messages=WARNING;
 
 ----------------------------------------------------------------------------------------------------------
 -- test helpers
