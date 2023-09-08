@@ -24,7 +24,7 @@
 #include "access/subtrans.h"
 #include "access/twophase.h"
 #include "access/distributedlog.h"
-#include "catalog/storage.h"
+#include "catalog/storage_pending.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbvars.h"
 #include "commands/async.h"

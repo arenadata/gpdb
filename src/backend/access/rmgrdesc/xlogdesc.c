@@ -18,7 +18,7 @@
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
-#include "catalog/storage.h"
+#include "catalog/storage_pending.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 
