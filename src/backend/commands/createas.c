@@ -421,7 +421,8 @@ ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 								dest, params, 0);
 
 	if (gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
-	{		
+	{
+		Assert(queryString);
 		gpmon_qlog_query_submit(queryDesc->gpmon_pkt);
 		gpmon_qlog_query_text(queryDesc->gpmon_pkt,
 				queryString,
