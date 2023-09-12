@@ -2641,11 +2641,11 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, int64 tcount)
 		ExecutorRun(queryDesc, ForwardScanDirection, tcount);
 
 		/*
-		* In GPDB, in a INSERT/UPDATE/DELETE ... RETURNING statement, the
-		* es_processed counter is only updated in ExecutorEnd, when we
-		* collect the results from each segment. Therefore, we cannot
-		* call _SPI_checktuples() just yet.
-		*/
+		 * In GPDB, in a INSERT/UPDATE/DELETE ... RETURNING statement, the
+		 * es_processed counter is only updated in ExecutorEnd, when we
+		 * collect the results from each segment. Therefore, we cannot
+		 * call _SPI_checktuples() just yet.
+		 */
 		if ((res == SPI_OK_SELECT || queryDesc->plannedstmt->hasReturning) &&
 			queryDesc->dest->mydest == DestSPI)
 		{
@@ -2662,21 +2662,21 @@ _SPI_pquery(QueryDesc *queryDesc, bool fire_triggers, int64 tcount)
 		/* FreeQueryDesc is done by the caller */
 
 		/*
-		* Now that ExecutorEnd() has run, set # of rows processed (see comment
-		* above) and call _SPI_checktuples()
-		*/
+		 * Now that ExecutorEnd() has run, set # of rows processed (see comment
+		 * above) and call _SPI_checktuples()
+		 */
 		_SPI_current->processed = queryDesc->es_processed;
 		_SPI_current->lastoid = queryDesc->es_lastoid;
 		if (checkTuples)
 		{
 #ifdef FAULT_INJECTOR
 			/*
-			* only check number tuples if the SPI 64 bit test is NOT running
-			*/
+			 * only check number tuples if the SPI 64 bit test is NOT running
+			 */
 			if (!FaultInjector_InjectFaultIfSet("executor_run_high_processed",
-										DDLNotSpecified,
-										"" /* databaseName */,
-										"" /* tableName */))
+										   DDLNotSpecified,
+										   "" /* databaseName */,
+										   "" /* tableName */))
 			{
 #endif /* FAULT_INJECTOR */
 				if (_SPI_checktuples())
