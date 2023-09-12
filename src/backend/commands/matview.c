@@ -32,6 +32,7 @@
 #include "commands/matview.h"
 #include "commands/tablecmds.h"
 #include "commands/tablespace.h"
+#include "commands/queue.h"
 #include "executor/executor.h"
 #include "executor/spi.h"
 #include "miscadmin.h"
@@ -43,6 +44,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/resscheduler.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
@@ -447,8 +449,8 @@ refresh_matview_datafill(DestReceiver *dest, Query *query,
 		gpmon_qlog_query_text(queryDesc->gpmon_pkt,
 				queryString,
 				application_name,
-				NULL,
-				NULL);
+				GetResqueueName(GetResQueueId()),
+				GetResqueuePriority(GetResQueueId()));
 	}
 
 	RestoreOidAssignments(saved_dispatch_oids);
