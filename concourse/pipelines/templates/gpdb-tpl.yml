@@ -203,6 +203,8 @@ anchors:
 groups:
 - name: all
   jobs:
+  - gate_compile_start
+  {% if os_type == compile_platform %}
   - check_format
 {% if "rhel8" in os_types %}
   - compile_gpdb_rhel8
@@ -264,17 +266,21 @@ groups:
 {%endif %}
 
 
-{% if pipeline_configuration == "prod" or build_test_rc_rpm or directed_release %}
+{% if ( ("release" in test_sections and os_type == compile_platform) or build_test_rc_rpm or directed_release) %}
 ## ======================================================================
 
 - name: Release
   jobs:
-{% if pipeline_configuration == "prod" or directed_release %}
+{% if "release" in test_sections or directed_release %}
+  - gate_icw_end
+  - gate_cli_end
   - gate_release_candidate_start
   - Release_Candidate
 {% if not directed_release %}
   - Publish Server Builds
 {% endif %}
+{% if not directed_release %}
+  - build_release_candidate_rpms
 {% endif %}
 {% if not directed_release %}
   - Build_Release_Candidate_RPMs
@@ -285,11 +291,13 @@ groups:
 
 - name: Compile
   jobs:
-{% if "rhel8" in os_types %}
-  - compile_gpdb_rhel8
-  - test_gpdb_clients_rhel8
-{% endif %}
-{% if "win" in os_types %}
+  - gate_compile_start
+  - compile_gpdb_[[ compile_platform ]]
+  {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+  - prepare_binary_swap_gpdb_[[ os_type ]]
+  {% endif %}
+  - test_gpdb_clients_[[ os_type ]]
+  {% if os_type == compile_platform %}
   - compile_gpdb_clients_windows
 {% endif %}
 
@@ -470,7 +478,17 @@ resources:
     username: _json_key
     password: ((data-gpdb-private-images-container-registry-readonly-service-account-key))
 
-- name: gpdb7-rhel8-test
+{% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+- name: previous_gpdb
+  type: tanzunet
+  source:
+    api_token: ((pivotal-gpdb-pivnet-api-token))
+    product_slug: pivotal-gpdb
+    product_version: ((pivotal-gpdb-pivnet-product-version))
+{% endif %}
+
+{% if os_type != compile_platform %}
+- name: gpdb7-[[ compile_platform ]]-build
   type: registry-image
   source:
     repository: gcr.io/data-gpdb-private-images/gpdb7-rhel8-test
@@ -481,7 +499,7 @@ resources:
 
 {% if pipeline_configuration == "prod" or directed_release %}
 {% if not directed_release %}
-- name: bin_gpdb_rhel8_icw_green
+- name: bin_gpdb_icw_green
   type: s3
   source:
     access_key_id: ((aws-bucket-access-key-id))
@@ -490,20 +508,20 @@ resources:
     secret_access_key: ((aws-bucket-secret-access-key))
     versioned_file: bin_gpdb_rhel8/gpdb_branch_master/icw_green/bin_gpdb.tar.gz
 
-- name: bin_gpdb_rhel8_rc
+{% if os_type == compile_platform %}
+- name: bin_gpdb_rc
   type: gcs
   source:
     bucket: ((gcs-bucket))
     json_key: ((concourse-gcs-resources-service-account-key))
-    regexp: server/published/main/server-rc-(.*)-rhel8_x86_64((rc-build-type-gcs)).tar.gz
+    regexp: server/published/main/server-rc-(.*)-[[ dist ]]_x86_64((rc-build-type-gcs)).tar.gz
 
-- name: bin_gpdb_clients_rhel8_rc
+- name: bin_gpdb_clients_rc
   type: gcs
   source:
     bucket: ((gcs-bucket))
     json_key: ((concourse-gcs-resources-service-account-key))
-    regexp: clients/published/main/clients-rc-(.*)-rhel8_x86_64((rc-build-type-gcs)).tar.gz
-
+    regexp: clients/published/main/clients-rc-(.*)-[[ dist ]]_x86_64((rc-build-type-gcs)).tar.gz
 {% endif %}
 - name: server_src_rc
   type: gcs
@@ -517,13 +535,13 @@ resources:
 {% endif %}
 {% endif %}
 
-{% if pipeline_configuration == "prod" or build_test_rc_rpm %}
-- name: gpdb_rpm_installer_rhel8
+{% if ( ("release" in test_sections and os_type == compile_platform) or build_test_rc_rpm) %}
+- name: gpdb_rpm_installer_[[ os_type ]]
   type: gcs
   source:
     bucket: ((gcs-bucket))
     json_key: ((concourse-gcs-resources-service-account-key))
-    regexp: server/published/main/greenplum-db-(.*)-rhel8-x86_64((rc-build-type-gcs)).rpm
+    regexp: server/published/main/greenplum-db-(.*)-[[ dist ]]-x86_64((rc-build-type-gcs)).rpm
 
 - name: greenplum-database-release
   type: git
@@ -549,25 +567,33 @@ resources:
     json_key: ((concourse-gcs-resources-service-account-key))
     versioned_file: ((pipeline-name))/bin_gpdb_rhel8/bin_gpdb.tar.gz
 
-- name: bin_gpdb_clients_rhel8
+{% if compile_platform == default_os_type %}
+- name: llvm-with-asserts-packages
+  type: gcs
+  source:
+    bucket: pivotal-gpdb-concourse-resources-prod
+    json_key: ((concourse-gcs-resources-service-account-key))
+    regexp: gp-internal-artifacts/[[ default_os_type ]]/llvm-with-asserts-(.*)-[[ dist ]]_x86_64.tar.gz
+{% endif %}
+
+{% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+- name: binary_swap_gpdb_[[ os_type ]]
   type: gcs
   source:
     bucket: ((gcs-bucket-intermediates))
     json_key: ((concourse-gcs-resources-service-account-key))
     versioned_file: ((pipeline-name))/bin_gpdb_clients_rhel8/bin_gpdb_clients.tar.gz
 
-{% if pipeline_configuration == "prod" %}
-- name: server-build-rhel8
+{% if os_type == compile_platform %}
+- name: server-build-[[ os_type ]]
   type: gcs
   source:
     bucket: ((gcs-bucket))
     json_key: ((concourse-gcs-resources-service-account-key))
-    regexp: server/published/main/server-build-(.*)-rhel8_x86_64((rc-build-type-gcs)).tar.gz
+    regexp: server/published/main/server-build-(.*)-[[ dist ]]_x86_64((rc-build-type-gcs)).tar.gz
 {% endif %}
 
-{% endif %}
-
-{% if "win" in os_types %}
+{% if os_type == compile_platform %}
 - name: bin_gpdb_clients_windows
   type: gcs
   source:
@@ -606,6 +632,31 @@ jobs:
 ##         |_|
 ## ======================================================================
 
+## ======================================================================
+##   ____                      _ _
+##  / ___|___  _ __ ___  _ __ (_) | ___
+## | |   / _ \| '_ ` _ \| '_ \| | |/ _ \
+## | |__| (_) | | | | | | |_) | | |  __/
+##  \____\___/|_| |_| |_| .__/|_|_|\___|
+##                      |_|
+## ======================================================================
+
+- name: gate_compile_start
+  plan:
+  - get: gpdb_src
+    {% if os_type != compile_platform and pipeline_target == "prod" %}
+    trigger: false
+    {% else %}
+    trigger: true
+    {% endif %}
+    params:
+      skip_download: 'true'
+  {% if os_type != compile_platform and pipeline_target == "prod" %}
+  - get: reduced-frequency-trigger
+    trigger: true
+  {% endif %}
+
+{% if os_type == compile_platform %}
 - name: check_format
   plan:
     - get: gpdb_src
@@ -637,9 +688,16 @@ jobs:
         trigger: ((reduced-frequency-trigger-flag))
       - get: gpdb_src
         passed:
+        {% if os_type == compile_platform %}
           - check_format
-        trigger: ((gpdb_src-trigger-flag))
-      - get: gpdb7-rhel8-build
+        {% else %}
+          - gate_compile_start
+        {% endif %}
+        trigger: true
+      - get: gpdb7-[[ compile_platform ]]-build
+      {% if compile_platform == default_os_type %}
+      - get: llvm-with-asserts-packages
+      {% endif %}
   - task: compile_gpdb
     image: gpdb7-rhel8-build
     file: gpdb_src/concourse/tasks/compile_gpdb.yml
@@ -656,7 +714,28 @@ jobs:
         params:
           file: gpdb_artifacts/bin_gpdb_clients.tar.gz
 
-- name: test_gpdb_clients_rhel8
+{% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+- name: prepare_binary_swap_gpdb_[[ os_type ]]
+  plan:
+  - in_parallel:
+      steps:
+      - get: gpdb_src
+        trigger: true
+        passed: [compile_gpdb_[[ compile_platform ]]]
+      - get: gpdb_package
+        resource: previous_gpdb
+        params:
+          globs: [greenplum-db-7*-el8-x86_64.rpm]
+      - get: gpdb7-[[ compile_platform ]]-build
+  - task: generate_previous_bin_gpdb
+    file: gpdb_src/concourse/tasks/extract_package.yml
+    image: gpdb7-[[ compile_platform ]]-build
+  - put: binary_swap_gpdb_[[ os_type ]]
+    params:
+      file: gpdb_artifacts/bin_gpdb.tar.gz
+{% endif %}
+
+- name: test_gpdb_clients_[[ os_type ]]
   plan:
     - in_parallel:
         steps:
@@ -674,8 +753,7 @@ jobs:
       image: gpdb7-rhel8-test
       file: gpdb_src/concourse/tasks/test_gpdb_clients.yml
 
-{% endif %}
-{% if "win" in os_types %}
+{% if os_type == compile_platform %}
 - name: compile_gpdb_clients_windows
   serial: true
   plan:
@@ -683,10 +761,12 @@ jobs:
       steps:
       - get: gpdb_src
         trigger: true
-      - get: gpdb7-rhel8-build
+        passed:
+        - check_format
+      - get: gpdb7-[[ compile_platform ]]-build
   - task: compile_gpdb_windows_remote
     file: gpdb_src/concourse/tasks/compile_gpdb_remote_windows.yml
-    image: gpdb7-rhel8-build
+    image: gpdb7-[[ compile_platform ]]-build
     params:
       REMOTE_HOST: ((remote_win_host_build))
       REMOTE_PORT: ((remote_win_port_build))
@@ -695,8 +775,92 @@ jobs:
   - put: bin_gpdb_clients_windows
     params:
       file: "gpdb_artifacts/greenplum-clients-x86_64.tar.gz"
+
+- name: publish_server_builds
+  old_name: Publish Server Builds
+  plan:
+    - in_parallel:
+        steps:
+          - get: gpdb_src
+            trigger: true
+            passed:
+              - compile_gpdb_[[ compile_platform ]]
+          - get: bin_gpdb
+            passed: [compile_gpdb_[[ compile_platform ]]]
+          - get: gpdb7-[[ compile_platform ]]-build
+    - task: rename_server_build_artifacts
+      image: gpdb7-[[ compile_platform ]]-build
+      config:
+        platform: linux
+        inputs:
+          - name: gpdb_src
+          - name: bin_gpdb
+        outputs:
+          - name: output
+        params:
+          RC_BUILD_TYPE_GCS: ((rc-build-type-gcs))
+        run:
+          path: bash
+          args:
+            - -ec
+            - |
+              server_version="$(./gpdb_src/getversion --short)"
+              cp bin_gpdb/bin_gpdb.tar.gz "output/server-build-${server_version}-[[ dist ]]_x86_64${RC_BUILD_TYPE_GCS}.tar.gz"
+    - in_parallel:
+        steps:
+          - put: server-build-[[ os_type ]]
+            params:
+              file: output/server-build-*-[[ dist ]]*.tar.gz
+
 {% endif %}
-{% if "ICW" in test_sections %}
+
+- name: gate_compile_end
+  plan:
+    - get: gpdb_src
+      trigger: true
+      params:
+        skip_download: 'true'
+      passed:
+      {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+      - prepare_binary_swap_gpdb_[[ os_type ]]
+      {% endif %}
+      {% if os_type == compile_platform %}
+      - compile_gpdb_clients_windows
+      - publish_server_builds
+      {% endif %}
+      - test_gpdb_clients_[[ os_type ]]
+    - get: bin_gpdb
+      params:
+        skip_download: 'true'
+      passed:
+      - test_gpdb_clients_[[ os_type ]]
+      {% if os_type == compile_platform %}
+      - publish_server_builds
+      {% endif %}
+    - get: bin_gpdb_clients
+      params:
+        skip_download: 'true'
+      passed:
+      - test_gpdb_clients_[[ os_type ]]
+    {% if os_type == compile_platform %}
+    - get: bin_gpdb_clients_windows
+      params:
+        skip_download: 'true'
+      passed:
+      - compile_gpdb_clients_windows
+    - get: server-build-[[ os_type ]]
+      params:
+        skip_download: 'true'
+      passed: [publish_server_builds]
+    {% endif %}
+    {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+    - get: binary_swap_gpdb_[[ os_type ]]
+      params:
+        skip_download: 'true'
+      passed: [ prepare_binary_swap_gpdb_[[ os_type ]] ]
+    {% endif %}
+
+{% if "icw" in test_sections %}
 ## ======================================================================
 ##  ___ ______        __
 ## |_ _/ ___\ \      / /
@@ -704,8 +868,31 @@ jobs:
 ##  | | |___  \ V  V /
 ## |___\____|  \_/\_/
 ## ======================================================================
-{% if "rhel8" in os_types %}
-- name: gpdb_pitr_rhel8
+- name: gate_icw_start
+  plan:
+    - in_parallel:
+        steps:
+        - get: bin_gpdb
+          params:
+            skip_download: 'true'
+          passed: [gate_compile_end]
+          trigger: true
+        {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+        - get: binary_swap_gpdb_[[ os_type ]]
+          params:
+            skip_download: 'true'
+          passed: [gate_compile_end]
+        {% endif %}
+        - get: gpdb_src
+          params:
+            skip_download: 'true'
+          passed: [gate_compile_end]
+        - get: bin_gpdb_clients
+          params:
+            skip_download: 'true'
+          passed: [ gate_compile_end ]
+
+- name: gpdb_pitr_[[ os_type ]]
   plan:
   - in_parallel:
       steps:
@@ -785,12 +972,50 @@ jobs:
     tags: [icw-rhel8]
     {% endif %}
     file: gpdb_src/concourse/tasks/ic_gpdb.yml
-    image: gpdb7-rhel8-test
+    image: gpdb7-[[ os_type ]]-test
+    timeout: 24h
+    params:
+      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on -c jit=off' installcheck-world
+      TEST_OS: [[ test_os ]]
+      CONFIGURE_FLAGS: ((configure_flags))
+      BLDWRAP_POSTGRES_CONF_ADDONS:
+        - optimizer_use_gpdb_allocators=off
+
+- name: icw_planner_[[ os_type ]]
+  plan:
+  - in_parallel:
+      steps:
+      - get: gpdb_src
+        passed: [gate_icw_start]
+      - get: bin_gpdb
+        passed: [gate_icw_start]
+        trigger: true
+      {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+      - get: binary_swap_gpdb
+        passed: [gate_icw_start]
+        resource: binary_swap_gpdb_[[ os_type ]]
+      {% endif %}
+      - get: gpdb7-[[ os_type ]]-test
+      {% if compile_platform == default_os_type %}
+      - get: llvm-with-asserts-packages
+      {% endif %}
+  - task: ic_gpdb
+    {% if use_ICW_workers %}
+    tags: [icw-worker]
+    {% endif %}
+    {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+    file: gpdb_src/concourse/tasks/ic_gpdb_binary_swap.yml
+    {% else %}
+    file: gpdb_src/concourse/tasks/ic_gpdb.yml
+    {% endif %}
+    image: gpdb7-[[ os_type ]]-test
     timeout: 24h
     params:
       MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=off -c jit=off' installcheck-world
-      TEST_OS: centos
+      TEST_OS: [[ test_os ]]
+      {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
       TEST_BINARY_SWAP: ((test-binary-swap))
+      {% endif %}
       CONFIGURE_FLAGS: ((configure_flags))
       DUMP_DB: "true"
   - put: icw_planner_rhel8_dump
@@ -804,20 +1029,34 @@ jobs:
       - get: gpdb_src
         passed: [compile_gpdb_rhel8]
       - get: bin_gpdb
-        passed: [compile_gpdb_rhel8]
-        resource: bin_gpdb_rhel8
-        trigger: [[ test_trigger ]]
-      - get: gpdb7-rhel8-test
+        passed: [gate_icw_start]
+        trigger: true
+      {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+      - get: binary_swap_gpdb
+        passed: [gate_icw_start]
+        resource: binary_swap_gpdb_[[ os_type ]]
+      {% endif %}
+      - get: gpdb7-[[ os_type ]]-test
+      {% if compile_platform == default_os_type %}
+      - get: llvm-with-asserts-packages
+      {% endif %}
   - task: ic_gpdb
     {% if use_ICW_workers %}
     tags: [icw-rhel8]
     {% endif %}
+    {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+    file: gpdb_src/concourse/tasks/ic_gpdb_binary_swap.yml
+    {% else %}
     file: gpdb_src/concourse/tasks/ic_gpdb.yml
-    image: gpdb7-rhel8-test
+    {% endif %}
+    image: gpdb7-[[ os_type ]]-test
     timeout: 24h
     params:
       MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=off -c jit=on -c jit_above_cost=0 -c gp_explain_jit=off' installcheck
-      TEST_OS: centos
+      TEST_OS: [[ test_os ]]
+      {% if os_type == "rhel8" or os_type == "oel8" or os_type == "rocky8" %}
+      TEST_BINARY_SWAP: ((test-binary-swap))
+      {% endif %}
       CONFIGURE_FLAGS: ((configure_flags))
 
 - name: icw_gporca_icproxy_rhel8
@@ -1063,6 +1302,88 @@ jobs:
         PLATFORM: rhel8-gpdb7
     - task: gpinitsystem
       file: ccp_src/ci/tasks/gpinitsystem.yml
+      params:
+        <<: *default_platform
+    - task: test_upgrade
+      file: gpdb_src/concourse/tasks/test_upgrade.yml
+      input_mapping:
+        sqldump: icw_planner_[[ os_type ]]_dump
+      params:
+        NUMBER_OF_NODES: 2
+
+- name: icw_planner_resgroup_[[ os_type ]]
+  plan:
+    - in_parallel:
+        steps:
+          - get: gpdb_src
+            passed: [gate_icw_start]
+          - get: gpdb_binary
+            resource: bin_gpdb
+            passed: [gate_icw_start]
+            trigger: true
+          - get: ccp_src
+          - get: ccp-image
+          - get: terraform.d
+            params:
+              unpack: true
+    - put: terraform
+      params:
+        <<: *ccp_default_params
+        vars:
+          <<: *ccp_default_vars
+          instance_type: n1-standard-32
+          number_of_nodes: 1
+          segments_per_host: 3
+          disk_size: 800
+    - task: gen_cluster
+      file: ccp_src/ci/tasks/gen_cluster.yml
+      params:
+        <<: *ccp_gen_cluster_default_params
+        DATA_MOUNT_DIR: "/home/gpadmin"
+        CREATE_DATA_DIR: false
+    - task: run_tests
+      file: gpdb_src/concourse/tasks/ic_resgroup.yml
+      image: ccp-image
+      params:
+        TEST_OS: [[ os_type ]]
+        MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=off -c jit=off' installcheck-world
+        BLDWRAP_POSTGRES_CONF_ADDONS:
+          - gp_resource_manager=group
+      on_success:
+        <<: *ccp_destroy
+  ensure:
+    <<: *set_failed
+
+- name: icw_gporca_resgroup_[[ os_type ]]
+  plan:
+    - in_parallel:
+        steps:
+          - get: gpdb_src
+            passed: [gate_icw_start]
+          - get: gpdb_binary
+            resource: bin_gpdb
+            passed: [gate_icw_start]
+            trigger: true
+          - get: ccp_src
+          - get: ccp-image
+          - get: terraform.d
+            params:
+              unpack: true
+    - put: terraform
+      params:
+        <<: *ccp_default_params
+        vars:
+          <<: *ccp_default_vars
+          instance_type: n1-standard-32
+          number_of_nodes: 1
+          segments_per_host: 3
+          disk_size: 800
+    - task: gen_cluster
+      file: ccp_src/ci/tasks/gen_cluster.yml
+      params:
+        <<: *ccp_gen_cluster_default_params
+        DATA_MOUNT_DIR: "/home/gpadmin"
+        CREATE_DATA_DIR: false
     - task: run_tests
       file: gpdb_src/concourse/tasks/ic_gpdb_resgroup.yml
       image: ccp-image
@@ -1073,6 +1394,61 @@ jobs:
   ensure:
     <<: *set_failed
 
+- name: gate_icw_end
+  plan:
+  - in_parallel:
+      steps:
+      - get: bin_gpdb
+        passed:
+        - icw_gporca_[[ os_type ]]
+        - icw_gporca_jit_[[ os_type ]]
+        - icw_gporca_memory_[[ os_type ]]
+        - icw_planner_jit_[[ os_type ]]
+        - icw_gporca_icproxy_[[ os_type ]]
+        - icw_planner_icproxy_[[ os_type ]]
+        - icw_gporca_ictcp_[[ os_type ]]
+        - icw_mirrorless_[[ os_type ]]
+        - icw_extensions_gpcloud_[[ os_type ]]
+        - unit_tests_gporca_[[ os_type ]]
+        - gpdb_pitr_[[ os_type ]]
+        - gpexpand_[[ os_type ]]
+        - pg_upgrade_[[ os_type ]]
+        - interconnect_[[ os_type ]]
+      - get: icw_planner_[[ os_type ]]_dump
+        params:
+          skip_download: 'true'
+        passed:
+        - pg_upgrade_[[ os_type ]]
+        - gpexpand_[[ os_type ]]
+      - get: gpdb_src
+        params:
+          skip_download: 'true'
+        passed:
+        - icw_gporca_[[ os_type ]]
+        - icw_gporca_jit_[[ os_type ]]
+        - icw_gporca_memory_[[ os_type ]]
+        - icw_planner_jit_[[ os_type ]]
+        - icw_gporca_icproxy_[[ os_type ]]
+        - icw_planner_icproxy_[[ os_type ]]
+        - icw_gporca_ictcp_[[ os_type ]]
+        - icw_mirrorless_[[ os_type ]]
+        - icw_extensions_gpcloud_[[ os_type ]]
+        - unit_tests_gporca_[[ os_type ]]
+        - gpdb_pitr_[[ os_type ]]
+        - gpexpand_[[ os_type ]]
+        - pg_upgrade_[[ os_type ]]
+        - icw_planner_resgroup_[[ os_type ]]
+        - icw_gporca_resgroup_[[ os_type ]]
+        - interconnect_[[ os_type ]]
+        trigger: true
+      - get: bin_gpdb_clients
+        params:
+          skip_download: 'true'
+        passed: [unit_tests_gporca_[[ os_type ]]]
+{% if ("release" in test_sections and os_type == compile_platform) %}
+  - put: bin_gpdb_icw_green
+    params:
+      file: bin_gpdb/bin_gpdb.tar.gz
 {% endif %}
 
 {% endif %}
@@ -1096,7 +1472,7 @@ jobs:
         trigger: true
       - get: bin_gpdb_rhel8
         passed:
-        - compile_gpdb_rhel8
+        - gate_compile_end
 
 - name: check_centos
   plan:
@@ -1188,6 +1564,8 @@ jobs:
         {% endif %}
         - task: gpinitsystem
           file: ccp_src/ci/tasks/gpinitsystem.yml
+          params:
+            <<: *default_platform
         - task: [[ test.name ]]_concourse_cluster_tests
           file: gpdb_src/concourse/tasks/run_behave_on_ccp_cluster.yml
           image: gpdb7-rhel8-test
@@ -1219,6 +1597,86 @@ jobs:
 
 {% endif %}
 {% endfor %}
+
+- name: resource_group_[[ os_type ]]
+  plan:
+    - in_parallel:
+        steps:
+          - get: gpdb_src
+            passed: [gate_cli_start]
+          - get: gpdb_binary
+            resource: bin_gpdb
+            passed: [gate_cli_start]
+            trigger: true
+          - get: ccp_src
+          - get: ccp-image
+          - get: terraform.d
+            params:
+              unpack: true
+    - put: terraform
+      params:
+        <<: *ccp_default_params
+        vars:
+          <<: *ccp_default_vars
+          instance_type: n1-standard-2
+    - task: gen_cluster
+      file: ccp_src/ci/tasks/gen_cluster.yml
+      params:
+        <<: *ccp_gen_cluster_default_params
+    - task: gpinitsystem
+      file: ccp_src/ci/tasks/gpinitsystem.yml
+      params:
+        <<: *default_platform
+    - task: run_tests
+      file: gpdb_src/concourse/tasks/ic_gpdb_resgroup.yml
+      image: ccp-image
+      params:
+        TEST_OS: [[ os_type ]]
+      on_success:
+        <<: *ccp_destroy
+  ensure:
+    <<: *set_failed
+
+- name: resource_group_v2_[[ os_type ]]
+  plan:
+    - in_parallel:
+        steps:
+          - get: gpdb_src
+            passed: [gate_cli_start]
+          - get: gpdb_binary
+            resource: bin_gpdb
+            passed: [gate_cli_start]
+            trigger: true
+          - get: ccp_src
+          - get: ccp-image
+          - get: terraform.d
+            params:
+              unpack: true
+    - put: terraform
+      params:
+        <<: *ccp_default_params
+        vars:
+          <<: *ccp_default_vars
+          instance_type: n1-standard-2
+          PLATFORM: [[ os_type ]]-cgroup2-gpdb7
+    - task: gen_cluster
+      file: ccp_src/ci/tasks/gen_cluster.yml
+      params:
+        <<: *ccp_gen_cluster_default_params
+        PLATFORM: [[ os_type ]]-cgroup2-gpdb7
+    - task: gpinitsystem
+      file: ccp_src/ci/tasks/gpinitsystem.yml
+      params:
+        <<: *default_platform
+    - task: run_tests
+      file: gpdb_src/concourse/tasks/ic_gpdb_resgroup_v2.yml
+      image: ccp-image
+      params:
+        TEST_OS: [[ os_type ]]
+      on_success:
+        <<: *ccp_destroy
+  ensure:
+    <<: *set_failed
 
 - name: cli_cross_subnet
   plan:
@@ -1348,7 +1806,8 @@ jobs:
     - task: gpinitsystem
       file: ccp_src/ci/tasks/gpinitsystem.yml
       params:
-        GPINIT_STANDBY_MASTER: '-s mdw-2'
+        GPINIT_STANDBY_COORDINATOR: '-s cdw-2'
+        <<: *default_platform
     - task: cross_subnet_tests
       file: gpdb_src/concourse/tasks/run_behave_on_ccp_cluster.yml
       image: ccp-image
@@ -1488,9 +1947,7 @@ jobs:
 
 {% endif %}
 
-{% endif %} # end CLI test_sections
-
-{% if pipeline_configuration == "prod" or build_test_rc_rpm or directed_release %}
+{% if ( ("release" in test_sections and os_type == compile_platform ) or build_test_rc_rpm or directed_release) %}
 ## ======================================================================
 ##  ____      _
 ## |  _ \ ___| | ___  __ _ ___  ___
@@ -1507,60 +1964,16 @@ jobs:
       - get: gpdb_src
         trigger: true
         passed:
-        - check_format
-        - compile_gpdb_rhel8
-        - icw_gporca_rhel8
-        - icw_gporca_jit_rhel8
-        - icw_planner_rhel8
-        - icw_planner_jit_rhel8
-        - icw_gporca_icproxy_rhel8
-        - icw_planner_icproxy_rhel8
-        - icw_gporca_ictcp_rhel8
-        - icw_mirrorless_rhel8
-        - icw_extensions_gpcloud_rhel8
-        - cli_cross_subnet
-        - unit_tests_gporca_rhel8
-        - test_gpdb_clients_rhel8
-        - gpdb_pitr_rhel8
-{% for test in CLI_BEHAVE_TESTS %}
-{% if "rhel8" in os_types %}
-        - [[ test.name ]]_rhel8
-        - resource_group_rhel8
-        - interconnect_rhel8
-{% endif %}
-{% endfor %}
-        - pg_upgrade_rhel8
-        - gpexpand_rhel8
-        - check_centos
-      - get: bin_gpdb_rhel8
+          - gate_icw_end
+          - gate_cli_end
+      - get: bin_gpdb
+        params:
+          skip_download: 'true'
         trigger: true
         passed:
-        - compile_gpdb_rhel8
-        - icw_planner_rhel8
-        - icw_planner_jit_rhel8
-        - icw_gporca_rhel8
-        - icw_gporca_jit_rhel8
-        - icw_gporca_icproxy_rhel8
-        - icw_planner_icproxy_rhel8
-        - icw_gporca_ictcp_rhel8
-        - icw_mirrorless_rhel8
-        - icw_extensions_gpcloud_rhel8
-        - resource_group_rhel8
-        - interconnect_rhel8
-        - cli_cross_subnet
-  {% for test in CLI_BEHAVE_TESTS %}
-        - [[ test.name ]]_rhel8
-{% endfor %}
-      - get: bin_gpdb_clients_rhel8
-        passed:
-        - compile_gpdb_rhel8
-
-{% if not directed_release %}
-- name: Publish Server Builds
-  plan:
-  - in_parallel:
-      steps:
-      - get: gpdb_src
+          - gate_icw_end
+          - gate_cli_end
+      - get: bin_gpdb_clients
         trigger: true
         passed:
         - compile_gpdb_rhel8
@@ -1576,10 +1989,12 @@ jobs:
       steps:
       - put: server-build-rhel8
         params:
-          file: output/server-build-*-rhel8*.tar.gz
+          skip_download: 'true'
+        passed:
+          - gate_icw_end
 
-{% endif %}
-- name: Release_Candidate
+- name: release_candidate
+  old_name: Release_Candidate
   plan:
   - in_parallel:
       steps:
@@ -1599,10 +2014,25 @@ jobs:
       steps:
 {% if not directed_release %}
       - task: rename_rc_artifacts
-        image: gpdb7-rhel8-build
-        file: gpdb_src/concourse/tasks/rename_rc_artifacts.yml
-        params:
-          RC_BUILD_TYPE_GCS: ((rc-build-type-gcs))
+        image: gpdb7-[[ compile_platform ]]-build
+        config:
+          platform: linux
+          inputs:
+            - name: gpdb_src
+            - name: bin_gpdb
+            - name: bin_gpdb_clients
+          outputs:
+            - name: release_candidates
+          params:
+            RC_BUILD_TYPE_GCS: ((rc-build-type-gcs))
+          run:
+            path: bash
+            args:
+              - -ec
+              - |
+                gpdb_semver=$(gpdb_src/getversion | cut -d' ' -f1)
+                cp -v bin_gpdb/bin_gpdb.tar.gz release_candidates/server-rc-${gpdb_semver}-[[ dist ]]_x86_64${RC_BUILD_TYPE_GCS}.tar.gz
+                cp -v bin_gpdb_clients/bin_gpdb_clients.tar.gz release_candidates/clients-rc-${gpdb_semver}-[[ dist ]]_x86_64${RC_BUILD_TYPE_GCS}.tar.gz
       - task: verify_gpdb_versions
         image: gpdb7-rhel8-build
         file: gpdb_src/concourse/tasks/verify_gpdb_versions.yml
@@ -1620,21 +2050,23 @@ jobs:
   - in_parallel:
       steps:
 {% if not directed_release %}
-      - put: bin_gpdb_rhel8_rc
-        params:
-          file: "release_candidates/server-rc-*rhel8*.tar.gz"
-      - put: bin_gpdb_clients_rhel8_rc
-        params:
-          file: "release_candidates/clients-rc-*rhel8*.tar.gz"
-{% endif %}
+      {% if os_type == default_os_type %}
       - put: server_src_rc
         params:
           file: "server_tar/*server-src-rc-*.tar.gz"
-
+      {% endif %}
+      - put: bin_gpdb_rc
+        params:
+          file: "release_candidates/server-rc-*[[ dist ]]*.tar.gz"
+      - put: bin_gpdb_clients_rc
+        params:
+          file: "release_candidates/clients-rc-*[[ dist ]]*.tar.gz"
+{% endif %}
 {% endif %}
 
-{% if not directed_release %}
-- name: Build_Release_Candidate_RPMs
+{% if not directed_release and os_type == compile_platform %}
+- name: build_release_candidate_rpms
+  old_name: Build_Release_Candidate_RPMs
   plan:
     - in_parallel:
         steps:
@@ -1650,14 +2082,12 @@ jobs:
 {% if not build_test_rc_rpm %}
             passed: [gate_release_candidate_start]
 {% endif %}
-          - get: gpdb7-rhel8-build
+          - get: gpdb7-[[ compile_platform ]]-build
           - get: greenplum-database-release
           - get: license_file
     - task: create_gpdb_rpm_package_rhel8
       file: greenplum-database-release/ci/concourse/tasks/build-gpdb-rpm.yml
-      image: gpdb7-rhel8-build
-      input_mapping:
-        bin_gpdb: bin_gpdb_rhel8
+      image: gpdb7-[[ compile_platform ]]-build
       output_mapping:
         gpdb_rpm_installer: gpdb_rpm_rhel8
       params:
@@ -1668,7 +2098,7 @@ jobs:
         GPDB_URL: https://github.com/greenplum-db/gpdb
         GPDB_OSS: false
     - task: rename_rc_artifacts
-      image: gpdb7-rhel8-build
+      image: gpdb7-[[ compile_platform ]]-build
       config:
         platform: linux
         inputs:
@@ -1687,9 +2117,9 @@ jobs:
 {% if build_test_rc_rpm %}
               # Uniquely name the rpm using the github username and test branch
               # to prevent filename collisions on GCS.
-              cp -v gpdb_rpm_rhel8/*.rpm renamed_gpdb_rpm_rhel8/greenplum-db-[[ git_username ]]-[[ git_branch ]]-${gpdb_semver}-rhel8-x86_64${RC_BUILD_TYPE_GCS}.rpm
+              cp -v gpdb_rpm_[[ os_type ]]/*.rpm renamed_gpdb_rpm_[[ os_type ]]/greenplum-db-[[ git_username ]]-[[ git_branch ]]-${gpdb_semver}-[[ dist ]]-x86_64${RC_BUILD_TYPE_GCS}.rpm
 {% else %}
-              cp -v gpdb_rpm_rhel8/*.rpm renamed_gpdb_rpm_rhel8/greenplum-db-${gpdb_semver}-rhel8-x86_64${RC_BUILD_TYPE_GCS}.rpm
+              cp -v gpdb_rpm_[[ os_type ]]/*.rpm renamed_gpdb_rpm_[[ os_type ]]/greenplum-db-${gpdb_semver}-[[ dist ]]-x86_64${RC_BUILD_TYPE_GCS}.rpm
 {% endif %}
     - in_parallel:
         steps:
