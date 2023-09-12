@@ -1049,17 +1049,19 @@ select count(*) from rank_tbl where rank in (select rank from updated);
 
 -- Test that the planner can build a plan with non-select CTE sharing.
 --start_ignore
-drop table if exists t1;
+DROP TABLE IF EXISTS t1;
 --end_ignore
-create table t1 (c1 int,c2 int) distributed randomly;
+CREATE TABLE t1 (c1 int,c2 int) DISTRIBUTED RANDOMLY;
 
-explain (costs off)
-with cte1 as (
-  insert into t1 values (1,2) returning *
-) select * from cte1 a join cte1 b using(c1);
+EXPLAIN (COSTS OFF)
+WITH cte1 AS (
+  INSERT INTO t1 VALUES (1,2) RETURNING *
+)
+SELECT * FROM cte1 a JOIN cte1 b USING(c1);
 
-with cte1 as (
-  insert into t1 values (1,2) returning *
-) select * from cte1 a join cte1 b using(c1);
+WITH cte1 AS (
+  INSERT INTO t1 VALUES (1,2) RETURNING *
+)
+SELECT * FROM cte1 a JOIN cte1 b USING(c1);
 
-drop table t1;
+DROP TABLE t1;
