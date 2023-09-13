@@ -2093,7 +2093,6 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 	ErrorContextCallback spierrcontext;
 	CachedPlan *cplan = NULL;
 	ListCell   *lc1;
-	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
 
 	/*
 	 * Setup error traceback support for ereport()
@@ -2279,6 +2278,8 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 
 			dest = CreateDestReceiver(canSetTag ? DestSPI : DestNone);
 
+			bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+			
 PG_TRY();
 {
 			/*
