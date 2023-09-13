@@ -2217,7 +2217,7 @@ EXPLAIN (COSTS OFF)
 WITH cte1 AS (
 	INSERT INTO t1 VALUES ( 1, 2 ) RETURNING *
 )
-SELECT * FROM cte1 a JOIN cte1 b USING(c1);
+SELECT * FROM cte1 a JOIN cte1 b USING (c1);
                                            QUERY PLAN
 ------------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice4; segments: 3)
@@ -2241,7 +2241,7 @@ SELECT * FROM cte1 a JOIN cte1 b USING(c1);
 WITH cte1 AS (
 	INSERT INTO t1 VALUES ( 1, 2 ) RETURNING *
 )
-SELECT * FROM cte1 a JOIN cte1 b USING(c1);
+SELECT * FROM cte1 a JOIN cte1 b USING (c1);
  c1 | c2 | c2 
 ----+----+----
   1 |  2 |  2
