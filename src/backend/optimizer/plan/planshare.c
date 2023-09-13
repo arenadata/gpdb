@@ -214,6 +214,7 @@ prepare_plan_for_sharing(PlannerInfo *root, Plan *common)
 		if (IsA(common, ModifyTable))
 		{
 			ModifyTable *mt = (ModifyTable *)common;
+			Assert(mt->returningLists);
 			shared->targetlist = copyObject(linitial(mt->returningLists));
 		}
 
