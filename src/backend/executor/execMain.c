@@ -2226,7 +2226,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 	Assert(estate->es_subplanstates == NIL);
 	Bitmapset *locallyExecutableSubplans = NULL;
 	Plan *start_plan_node = plannedstmt->planTree;
-	Bitmapset *initplans = NULL;
 
 	/*
 	 * If eliminateAliens is true then we extract the local Motion node
@@ -2249,8 +2248,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		locallyExecutableSubplans = getLocallyExecutableSubplans(plannedstmt, start_plan_node);
 	}
 
-	initplans = getInitPlans(plannedstmt, start_plan_node);
-
 	int subplan_idx = 0;
 	foreach(l, plannedstmt->subplans)
 	{
@@ -2267,13 +2264,11 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			/*
 			 * A subplan will never need to do BACKWARD scan nor MARK/RESTORE.
 			 *
-			 * GPDB: If it's not an Init Plan, we always set the REWIND flag
-			 * to delay eagerfree.
+			 * GPDB: We always set the REWIND flag, to delay eagerfree.
 			 */
 			sp_eflags = eflags
 				& (EXEC_FLAG_EXPLAIN_ONLY | EXEC_FLAG_WITH_NO_DATA);
-			if (!bms_is_member(subplan_idx, initplans))
-				sp_eflags |= EXEC_FLAG_REWIND;
+			sp_eflags |= EXEC_FLAG_REWIND;
 
 			Plan	   *subplan = (Plan *) lfirst(l);
 			subplanstate = ExecInitNode(subplan, estate, sp_eflags);
