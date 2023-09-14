@@ -2265,13 +2265,11 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			 * A subplan will never need to do BACKWARD scan nor MARK/RESTORE.
 			 *
 			 * GPDB: We always set the REWIND flag, except InitPlans,
-			 * to delay eagerfree. For ORCA generated plans the usage
-			 * of rewindPlanIDs is unnecessary.
+			 * to delay eagerfree.
 			 */
 			sp_eflags = eflags
 				& (EXEC_FLAG_EXPLAIN_ONLY | EXEC_FLAG_WITH_NO_DATA);
-			if (plannedstmt->planGen == PLANGEN_OPTIMIZER ||
-				bms_is_member(subplan_idx + 1, plannedstmt->rewindPlanIDs))
+			if (bms_is_member(subplan_idx + 1, plannedstmt->rewindPlanIDs))
 				sp_eflags |= EXEC_FLAG_REWIND;
 
 			Plan	   *subplan = (Plan *) lfirst(l);
