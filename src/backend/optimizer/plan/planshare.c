@@ -211,13 +211,6 @@ prepare_plan_for_sharing(PlannerInfo *root, Plan *common)
 		Material *m = make_material(common);
 		shared = (Plan *) m;
 
-		if (IsA(common, ModifyTable))
-		{
-			ModifyTable *mt = (ModifyTable *)common;
-			Assert(mt->returningLists);
-			shared->targetlist = copyObject(linitial(mt->returningLists));
-		}
-
 		cost_material(&matpath, root,
 					  common->startup_cost,
 					  common->total_cost,
