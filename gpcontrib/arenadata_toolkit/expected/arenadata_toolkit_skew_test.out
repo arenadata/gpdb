@@ -308,7 +308,7 @@ INSERT INTO part_table SELECT i,1,2,2,2,'sub_prt1' FROM generate_series(1,100) a
 INSERT INTO part_table SELECT i,2,1,1,1,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,2,1,'sub_prt1' FROM generate_series(1,100) as i;
-INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt1' FROM generate_series(1,100) as i;
+INSERT INTO part_table SELECT i,2,1,2,2,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,1,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,2,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,2,1,'sub_prt1' FROM generate_series(1,100) as i;
@@ -324,7 +324,7 @@ INSERT INTO part_table SELECT i,1,2,2,2,'sub_prt2' FROM generate_series(1,100) a
 INSERT INTO part_table SELECT i,2,1,1,1,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,2,1,'sub_prt2' FROM generate_series(1,100) as i;
-INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt2' FROM generate_series(1,100) as i;
+INSERT INTO part_table SELECT i,2,1,2,2,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,1,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,2,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,2,1,'sub_prt2' FROM generate_series(1,100) as i;
@@ -409,7 +409,7 @@ SELECT skcnamespace, skcrelname, round(skccoeff, 2) as skccoeff_round
 	order by skcrelname;
    skcnamespace    |                        skcrelname                         | skccoeff_round 
 -------------------+-----------------------------------------------------------+----------------
- arenadata_toolkit | part_table                                                |          28.87
+ arenadata_toolkit | part_table                                                |          27.35
  arenadata_toolkit | part_table_1_prt_1                                        |          47.24
  arenadata_toolkit | part_table_1_prt_1_2_prt_1                                |          74.23
  arenadata_toolkit | part_table_1_prt_1_2_prt_1_3_prt_1                        |         103.92

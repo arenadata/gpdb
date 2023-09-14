@@ -197,7 +197,7 @@ INSERT INTO part_table SELECT i,1,2,2,2,'sub_prt1' FROM generate_series(1,100) a
 INSERT INTO part_table SELECT i,2,1,1,1,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,2,1,'sub_prt1' FROM generate_series(1,100) as i;
-INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt1' FROM generate_series(1,100) as i;
+INSERT INTO part_table SELECT i,2,1,2,2,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,1,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,2,'sub_prt1' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,2,1,'sub_prt1' FROM generate_series(1,100) as i;
@@ -214,7 +214,7 @@ INSERT INTO part_table SELECT i,1,2,2,2,'sub_prt2' FROM generate_series(1,100) a
 INSERT INTO part_table SELECT i,2,1,1,1,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,1,2,1,'sub_prt2' FROM generate_series(1,100) as i;
-INSERT INTO part_table SELECT i,2,1,1,2,'sub_prt2' FROM generate_series(1,100) as i;
+INSERT INTO part_table SELECT i,2,1,2,2,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,1,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,1,2,'sub_prt2' FROM generate_series(1,100) as i;
 INSERT INTO part_table SELECT i,2,2,2,1,'sub_prt2' FROM generate_series(1,100) as i;

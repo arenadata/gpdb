@@ -5,21 +5,20 @@ ALTER FUNCTION arenadata_toolkit.adb_get_relfilenodes(tablespace_oid OID) ROWS 3
 CREATE OR REPLACE VIEW arenadata_toolkit.adb_skew_coefficients
 AS
 WITH recursive cte AS (
-	WITH all_tables_sizes AS (
-		SELECT t1.autrelname relname, t1.autoid id, inhparent parent_id,
-				arenadata_toolkit.adb_relation_storage_size(t1.autoid) AS size
-			FROM gp_dist_random('gp_toolkit.__gp_user_tables') t1
-			LEFT JOIN pg_inherits t2 ON inhrelid = t1.autoid
-			WHERE autrelstorage != 'x')
-		SELECT *, ROW_NUMBER () OVER (PARTITION BY id
-										ORDER BY id) AS seg_id
-			FROM all_tables_sizes
+	SELECT
+			pgc.oid id,
+			pgc.gp_segment_id seg_id,
+			arenadata_toolkit.adb_relation_storage_size(pgc.oid) size,
+			inh.inhparent parent_id
+		FROM gp_dist_random('pg_class') pgc
+		LEFT JOIN pg_inherits inh ON inh.inhrelid = pgc.oid
+		WHERE pgc.relkind = 'r' AND pgc.relstorage != 'x' AND
+			pgc.relnamespace IN (SELECT aunoid FROM gp_toolkit.__gp_user_namespaces)
 	UNION ALL
-		SELECT t1.autrelname relname, t1.autoid id, inhparent parent_id, size, seg_id
-			FROM gp_toolkit.__gp_user_tables t1
-			LEFT JOIN pg_inherits t2 ON inhrelid = t1.autoid
-			JOIN cte ON cte.parent_id = t1.autoid
-			WHERE autrelstorage != 'x'
+		SELECT cte.parent_id id, cte.seg_id, cte.size, inh.inhparent parent_id
+			FROM cte
+			LEFT JOIN pg_inherits inh ON inhrelid = cte.parent_id
+			WHERE cte.parent_id != 0
 	),
 	tables_size_by_segments AS (
 		SELECT id, sum(size) as size, seg_id
@@ -30,12 +29,12 @@ WITH recursive cte AS (
 			FROM tables_size_by_segments
 			GROUP BY id)
 	SELECT
-		skew.skewoid AS skcoid,
-		pgn.nspname  AS skcnamespace,
-		pgc.relname  AS skcrelname,
-		CASE WHEN skewdev > 0 THEN skewdev/skewmean * 100.0 ELSE 0 END AS skccoeff
-	FROM skew
-	JOIN pg_catalog.pg_class pgc ON (skew.skewoid = pgc.oid)
-	JOIN pg_catalog.pg_namespace pgn ON (pgc.relnamespace = pgn.oid);
+			skew.skewoid AS skcoid,
+			pgn.nspname  AS skcnamespace,
+			pgc.relname  AS skcrelname,
+			CASE WHEN skewdev > 0 THEN skewdev/skewmean * 100.0 ELSE 0 END AS skccoeff
+		FROM skew
+		JOIN pg_catalog.pg_class pgc ON (skew.skewoid = pgc.oid)
+		JOIN pg_catalog.pg_namespace pgn ON (pgc.relnamespace = pgn.oid);
 
 GRANT SELECT ON arenadata_toolkit.adb_skew_coefficients TO public;
