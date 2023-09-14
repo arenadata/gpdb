@@ -1043,6 +1043,8 @@ CTranslatorDXLToScalar::TranslateSubplanFromChildPlan(
 	subplan->is_multirow = false;
 	subplan->unknownEqFalse = false;
 
+	dxl_to_plstmt_ctxt->AddSubPlanExpr(subplan);
+
 	return subplan;
 }
 
