@@ -2,28 +2,33 @@
 
 ALTER FUNCTION arenadata_toolkit.adb_get_relfilenodes(tablespace_oid OID) ROWS 30000000;
 
+CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_rel_storage_size_on_seg(reloid OID, forkName TEXT default 'main')
+RETURNS BIGINT
+AS '$libdir/arenadata_toolkit', 'adb_relation_storage_size'
+LANGUAGE C VOLATILE STRICT EXECUTE ON ALL SEGMENTS;
+
+REVOKE EXECUTE ON FUNCTION arenadata_toolkit.adb_rel_storage_size_on_seg(OID, TEXT) FROM public;
+
 CREATE OR REPLACE VIEW arenadata_toolkit.adb_skew_coefficients
 AS
 WITH recursive cte AS (
 	SELECT
-			pgc.oid id,
-			pgc.gp_segment_id seg_id,
-			arenadata_toolkit.adb_relation_storage_size(pgc.oid) size,
-			inh.inhparent parent_id
-		FROM gp_dist_random('pg_class') pgc
-		LEFT JOIN pg_inherits inh ON inh.inhrelid = pgc.oid
-		WHERE pgc.relkind = 'r' AND pgc.relstorage != 'x' AND
-			pgc.relnamespace IN (SELECT aunoid FROM gp_toolkit.__gp_user_namespaces)
+			oid id,
+			gp_segment_id seg_id,
+			(SELECT arenadata_toolkit.adb_rel_storage_size_on_seg(oid)) size
+		FROM gp_dist_random('pg_class')
+		WHERE relkind = 'r' AND relstorage != 'x' AND
+			relnamespace IN (SELECT aunoid FROM gp_toolkit.__gp_user_namespaces)
 	UNION ALL
-		SELECT cte.parent_id id, cte.seg_id, cte.size, inh.inhparent parent_id
+		SELECT inhparent id, seg_id, size
 			FROM cte
-			LEFT JOIN pg_inherits inh ON inhrelid = cte.parent_id
-			WHERE cte.parent_id != 0
+			LEFT JOIN pg_inherits ON inhrelid = id
+			WHERE inhparent != 0
 	),
 	tables_size_by_segments AS (
-		SELECT id, sum(size) as size, seg_id
+		SELECT id, sum(size) AS size
 			FROM cte
-			GROUP BY (id, seg_id)),
+			GROUP BY id, seg_id),
 	skew AS (
 		SELECT id AS skewoid, stddev(size) AS skewdev, avg(size) AS skewmean
 			FROM tables_size_by_segments
