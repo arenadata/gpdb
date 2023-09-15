@@ -2381,3 +2381,87 @@ create table t_new as (with cte as
 select * from cte);
 ERROR:  cannot create plan with several writing gangs
 drop table with_dml;
+-- Test various SELECT statements from CTE with
+-- modifying DML operations over replicated tables
+--start_ignore
+drop table if exists with_dml_dr;
+NOTICE:  table "with_dml_dr" does not exist, skipping
+--end_ignore
+create table with_dml_dr(i int, j int) distributed replicated;
+-- Test plain SELECT from CTE with modifying DML queries on replicated table.
+-- Explicit Gather Motion should present at the top of the plan.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(5 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    update with_dml_dr
+    set j = j + 1 where i <= 5
+    returning j
+) select count(*) from cte;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Update on with_dml_dr
+               ->  Seq Scan on with_dml_dr
+                     Filter: (i <= 5)
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    update with_dml_dr
+    set j = j + 1 where i <= 5
+    returning j
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0
+    returning i
+) select count(*) from cte;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Delete on with_dml_dr
+               ->  Seq Scan on with_dml_dr
+                     Filter: (i > 0)
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    delete from with_dml_dr where i > 0
+    returning i
+) select count(*) from cte;
+ count 
+-------
+     5
+(1 row)
+

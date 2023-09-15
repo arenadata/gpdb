@@ -481,3 +481,49 @@ create table t_new as (with cte as
 (delete from with_dml where i > 0 returning *)
 select * from cte);
 drop table with_dml;
+
+-- Test various SELECT statements from CTE with
+-- modifying DML operations over replicated tables
+--start_ignore
+drop table if exists with_dml_dr;
+--end_ignore
+create table with_dml_dr(i int, j int) distributed replicated;
+
+-- Test plain SELECT from CTE with modifying DML queries on replicated table.
+-- Explicit Gather Motion should present at the top of the plan.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte;
+
+explain (costs off)
+with cte as (
+    update with_dml_dr
+    set j = j + 1 where i <= 5
+    returning j
+) select count(*) from cte;
+
+with cte as (
+    update with_dml_dr
+    set j = j + 1 where i <= 5
+    returning j
+) select count(*) from cte;
+
+explain (costs off)
+with cte as (
+    delete from with_dml_dr where i > 0
+    returning i
+) select count(*) from cte;
+
+with cte as (
+    delete from with_dml_dr where i > 0
+    returning i
+) select count(*) from cte;
