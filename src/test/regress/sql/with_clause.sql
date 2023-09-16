@@ -527,3 +527,18 @@ with cte as (
     delete from with_dml_dr where i > 0
     returning i
 ) select count(*) from cte;
+
+-- Test ORDER BY clause is applied correctly to the result of modifying
+-- CTE over replicated table.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select * from cte order by i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select * from cte order by i;

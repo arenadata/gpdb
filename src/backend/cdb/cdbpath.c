@@ -225,17 +225,16 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			return (Path *) pathnode;
 		}
 
-		/* replicated-->singleton would give redundant copies of the rows. */
-		if (CdbPathLocus_IsReplicated(subpath->locus))
-			goto invalid_motion_request;
-
 		/*
-		 * Must be partitioned-->singleton. If caller gave pathkeys, they'll
+		 * Partitioned-->singleton. If caller gave pathkeys, they'll
 		 * be used for Merge Receive. If no pathkeys, Union Receive will
 		 * arbitrarily interleave the rows from the subpath partitions in no
 		 * special order.
+		 * Replicated-->singleton is allowed, because Explicit Gather Motion
+		 * exists, which don't give reduntant copies of rows.
 		 */
-		if (!CdbPathLocus_IsPartitioned(subpath->locus))
+		else if (!CdbPathLocus_IsPartitioned(subpath->locus) &&
+				 !CdbPathLocus_IsReplicated(subpath->locus))
 			goto invalid_motion_request;
 	}
 

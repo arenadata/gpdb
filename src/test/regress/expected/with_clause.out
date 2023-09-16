@@ -2462,3 +2462,36 @@ with cte as (
      5
 (1 row)
 
+-- Test ORDER BY clause is applied correctly to the result of modifying
+-- CTE over replicated table.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select * from cte order by i;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: with_dml_dr.i
+   ->  Sort
+         Sort Key: with_dml_dr.i
+         ->  Insert on with_dml_dr
+               ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select * from cte order by i;
+ i 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+(5 rows)
+
