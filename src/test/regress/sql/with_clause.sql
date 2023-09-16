@@ -542,3 +542,27 @@ with cte as (
     select i, i * 100 from generate_series(1,5) i
     returning i
 ) select * from cte order by i;
+
+-- Test join operations between CTE conaining various modifying DML operations
+-- over replicated table and other tables. Ensure that CdbLocusType_Replicated
+-- is compatible with other type of locuses during joins.
+-- Test join CdbLocusType_Replicated with CdbLocusType_SegmentGeneral.
+--start_ignore
+drop table if exists t_repl;
+--end_ignore
+create table t_repl (i int, j int) distributed replicated;
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_repl using (i);
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_repl using (i);
+
+drop table t_repl;

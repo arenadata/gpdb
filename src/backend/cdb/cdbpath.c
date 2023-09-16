@@ -1108,134 +1108,143 @@ cdbpath_motion_for_join(PlannerInfo *root,
 
 			if (CdbPathLocus_IsReplicated(other->locus))
 			{
-				Assert(root->upd_del_replicated_table > 0);
+				int numsegments = CdbPathLocus_CommonSegments(segGeneral->locus,
+															  other->locus);
 
 				/*
-				 * It only appear when we UPDATE a replicated table.
-				 * All the segment which replicated table storaged must execute
-				 * the plan to delete tuple on himself, so if the segments count
-				 * of broadcast(locus is Replicated) if less than the replicated
-				 * table, we can not execute the plan correctly.
+				 * In case when we UPDATE/DELETE a replicated table,
+				 * upd_del_replicated is set to true. Here we need to be sure
+				 * that all the segments, at which replicated table are
+				 * storaged, must execute the plan to delete tuple on himself,
+				 * so if the segments count of broadcast(locus is Replicated)
+				 * is less than the replicated table, we can not execute the
+				 * plan correctly.
 				 *
 				 * TODO:Can we modify(or add) the broadcast motion for this case?
 				 */
-				Assert(CdbPathLocus_NumSegments(segGeneral->locus) <=
-					   CdbPathLocus_NumSegments(other->locus));
-
-				/*
-				 * Only need to broadcast other to the segments of the
-				 * replicated table.
-				 */
-				if (CdbPathLocus_NumSegments(segGeneral->locus) <
-					CdbPathLocus_NumSegments(other->locus))
+				if (root->upd_del_replicated_table > 0 &&
+					bms_is_member(root->upd_del_replicated_table, segGeneral->path->parent->relids))
 				{
-					other->locus.numsegments =
-							CdbPathLocus_NumSegments(segGeneral->locus);
-				}
+					Assert(CdbPathLocus_NumSegments(segGeneral->locus) <=
+						   CdbPathLocus_NumSegments(other->locus));
 
-				return other->locus;
-			}
-
-			Assert(CdbPathLocus_IsBottleneck(other->locus) ||
-				   CdbPathLocus_IsSegmentGeneral(other->locus) ||
-				   CdbPathLocus_IsPartitioned(other->locus));
-
-			/*
-			 * For UPDATE/DELETE, replicated table can't guarantee a logic row has
-			 * same ctid or item pointer on each copy. If we broadcast matched tuples
-			 * to all segments, the segments may update the wrong tuples or can't
-			 * find a valid tuple according to ctid or item pointer.
-			 *
-			 * So For UPDATE/DELETE on replicated table, we broadcast other path so
-			 * all target tuples can be selected on all copys and then be updated
-			 * locally.
-			 */
-			if (root->upd_del_replicated_table > 0 &&
-				bms_is_member(root->upd_del_replicated_table, segGeneral->path->parent->relids))
-			{
-				CdbPathLocus_MakeReplicated(&other->move_to,
-											CdbPathLocus_NumSegments(segGeneral->locus));
-			}
-			/*
-			 * other is bottleneck, move inner to other
-			 */
-			else if (CdbPathLocus_IsBottleneck(other->locus))
-			{
-				/*
-				 * if the locus type is equal and segment count is unequal,
-				 * we will dispatch the one on more segments to the other
-				 */
-				numsegments = CdbPathLocus_CommonSegments(segGeneral->locus,
-														  other->locus);
-				segGeneral->move_to = other->locus;
-				segGeneral->move_to.numsegments = numsegments;
-			}
-			else if (!segGeneral->ok_to_replicate)
-			{
-				int numsegments = CdbPathLocus_CommonSegments(segGeneral->locus,
-															  other->locus);
-				/* put both inner and outer to single QE */
-				CdbPathLocus_MakeSingleQE(&segGeneral->move_to, numsegments);
-				CdbPathLocus_MakeSingleQE(&other->move_to, numsegments);
-			}
-			else
-			{
-				/*
-				 * If all other's segments have segGeneral stored, then no motion
-				 * is needed.
-				 *
-				 * A sql to reach here:
-				 *     select * from d2 a join r1 b using (c1);
-				 * where d2 is a replicated table on 2 segment,
-				 *       r1 is a random table on 1 segments.
-				 */
-				if (CdbPathLocus_NumSegments(segGeneral->locus) >=
-					CdbPathLocus_NumSegments(other->locus))
-				{
+					other->locus.numsegments = numsegments;
 					return other->locus;
 				}
-
 				/*
-				 * Otherwise there is some segments where other is on but
-				 * segGeneral is not, in such a case motions are needed.
-				 */
-
-				/*
-				 * For the case that other is a Hashed table and redistribute
-				 * clause matches other's distribute keys, we could redistribute
-				 * segGeneral to other.
-				 */
-				if (CdbPathLocus_IsHashed(other->locus) &&
-					cdbpath_match_preds_to_distkey(root,
-												   redistribution_clauses,
-												   other->path,
-												   other->locus,
-												   &segGeneral->move_to))    /* OUT */
-				{
-					/* the result is distributed on the same segments with other */
-					AssertEquivalent(CdbPathLocus_NumSegments(other->locus),
-									 CdbPathLocus_NumSegments(segGeneral->move_to));
-				}
-				/*
-				 * Otherwise gather both of them to a SingleQE, this is not usually
-				 * a best choice as the SingleQE might be on QD, so although the
-				 * overall cost is low it increases the load on QD.
-				 *
-				 * FIXME: is it possible to only gather other to segGeneral?
+				 * Otherwise, the modifying DML operation over a replicated
+				 * table inside CTE is assumed.
 				 */
 				else
 				{
-					int numsegments = CdbPathLocus_NumSegments(segGeneral->locus);
-
-					Assert(CdbPathLocus_NumSegments(segGeneral->locus) <
-						   CdbPathLocus_NumSegments(other->locus));
-
 					CdbPathLocus_MakeSingleQE(&segGeneral->move_to, numsegments);
 					CdbPathLocus_MakeSingleQE(&other->move_to, numsegments);
 				}
 			}
+			else
+			{
+				Assert(CdbPathLocus_IsBottleneck(other->locus) ||
+					   CdbPathLocus_IsSegmentGeneral(other->locus) ||
+					   CdbPathLocus_IsPartitioned(other->locus));
+
+				/*
+				 * For UPDATE/DELETE, replicated table can't guarantee a logic row has
+				 * same ctid or item pointer on each copy. If we broadcast matched tuples
+				 * to all segments, the segments may update the wrong tuples or can't
+				 * find a valid tuple according to ctid or item pointer.
+				 *
+				 * So For UPDATE/DELETE on replicated table, we broadcast other path so
+				 * all target tuples can be selected on all copys and then be updated
+				 * locally.
+				 */
+				if (root->upd_del_replicated_table > 0 &&
+					bms_is_member(root->upd_del_replicated_table, segGeneral->path->parent->relids))
+				{
+					CdbPathLocus_MakeReplicated(&other->move_to,
+												CdbPathLocus_NumSegments(segGeneral->locus));
+				}
+				/*
+				 * other is bottleneck, move inner to other
+				 */
+				else if (CdbPathLocus_IsBottleneck(other->locus))
+				{
+					/*
+					 * if the locus type is equal and segment count is unequal,
+					 * we will dispatch the one on more segments to the other
+					 */
+					numsegments = CdbPathLocus_CommonSegments(segGeneral->locus,
+															  other->locus);
+					segGeneral->move_to = other->locus;
+					segGeneral->move_to.numsegments = numsegments;
+				}
+				else if (!segGeneral->ok_to_replicate)
+				{
+					int numsegments = CdbPathLocus_CommonSegments(segGeneral->locus,
+																  other->locus);
+					/* put both inner and outer to single QE */
+					CdbPathLocus_MakeSingleQE(&segGeneral->move_to, numsegments);
+					CdbPathLocus_MakeSingleQE(&other->move_to, numsegments);
+				}
+				else
+				{
+					/*
+					 * If all other's segments have segGeneral stored, then no motion
+					 * is needed.
+					 *
+					 * A sql to reach here:
+					 *     select * from d2 a join r1 b using (c1);
+					 * where d2 is a replicated table on 2 segment,
+					 *       r1 is a random table on 1 segments.
+					 */
+					if (CdbPathLocus_NumSegments(segGeneral->locus) >=
+							CdbPathLocus_NumSegments(other->locus))
+					{
+						return other->locus;
+					}
+
+					/*
+					 * Otherwise there is some segments where other is on but
+					 * segGeneral is not, in such a case motions are needed.
+					 */
+
+					/*
+					 * For the case that other is a Hashed table and redistribute
+					 * clause matches other's distribute keys, we could redistribute
+					 * segGeneral to other.
+					 */
+					if (CdbPathLocus_IsHashed(other->locus) &&
+						cdbpath_match_preds_to_distkey(root,
+													   redistribution_clauses,
+													   other->path,
+													   other->locus,
+													   &segGeneral->move_to))    /* OUT */
+					{
+						/* the result is distributed on the same segments with other */
+						AssertEquivalent(CdbPathLocus_NumSegments(other->locus),
+										 CdbPathLocus_NumSegments(segGeneral->move_to));
+					}
+					/*
+					 * Otherwise gather both of them to a SingleQE, this is not usually
+					 * a best choice as the SingleQE might be on QD, so although the
+					 * overall cost is low it increases the load on QD.
+					 *
+					 * FIXME: is it possible to only gather other to segGeneral?
+					 */
+					else
+					{
+						int numsegments = CdbPathLocus_NumSegments(segGeneral->locus);
+
+						Assert(CdbPathLocus_NumSegments(segGeneral->locus) <
+							   CdbPathLocus_NumSegments(other->locus));
+
+						CdbPathLocus_MakeSingleQE(&segGeneral->move_to, numsegments);
+						CdbPathLocus_MakeSingleQE(&other->move_to, numsegments);
+					}
+				}
+			}
 		}
 	}
+
 	/*
 	 * Replicated paths shouldn't occur except UPDATE/DELETE on replicated table.
 	 */
