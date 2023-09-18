@@ -196,9 +196,6 @@ private:
 	// Set InitPlanVariable in PlannedStmt
 	void SetInitPlanVariables(PlannedStmt *);
 
-	// Set the rewindPlanIDs bitmapset in the PlannedStmt
-	void SetRewindPlanIds(PlannedStmt *);
-
 	// translate DXL table scan node into a SeqScan node
 	Plan *TranslateDXLTblScan(
 		const CDXLNode *tbl_scan_dxlnode, CDXLTranslateContext *output_context,

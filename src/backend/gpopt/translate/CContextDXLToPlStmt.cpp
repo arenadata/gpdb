@@ -56,8 +56,7 @@ CContextDXLToPlStmt::CContextDXLToPlStmt(
 	  m_subplan_entries_list(subplan_entries_list),
 	  m_result_relation_index(0),
 	  m_into_clause(NULL),
-	  m_distribution_policy(NULL),
-	  m_subplan_exprs_list(NULL)
+	  m_distribution_policy(NULL)
 {
 	m_cte_consumer_info = GPOS_NEW(m_mp) HMUlCTEConsumerInfo(m_mp);
 	m_num_partition_selectors_array = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
@@ -75,7 +74,6 @@ CContextDXLToPlStmt::~CContextDXLToPlStmt()
 {
 	m_cte_consumer_info->Release();
 	m_num_partition_selectors_array->Release();
-	gpdb::ListFree(m_subplan_exprs_list);
 }
 
 //---------------------------------------------------------------------------
@@ -351,20 +349,6 @@ CContextDXLToPlStmt::AddCtasInfo(IntoClause *into_clause,
 
 	m_into_clause = into_clause;
 	m_distribution_policy = distribution_policy;
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CContextDXLToPlStmt::AddSubPlanExpr
-//
-//	@doc:
-//		Add a SubPlan expression node for a subplan.
-//
-//---------------------------------------------------------------------------
-void
-CContextDXLToPlStmt::AddSubPlanExpr(SubPlan *splan)
-{
-	m_subplan_exprs_list = gpdb::LAppend(m_subplan_exprs_list, splan);
 }
 
 //---------------------------------------------------------------------------

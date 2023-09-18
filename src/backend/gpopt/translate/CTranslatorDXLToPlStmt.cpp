@@ -281,8 +281,6 @@ CTranslatorDXLToPlStmt::GetPlannedStmtFromDXL(const CDXLNode *dxlnode,
 
 	SetInitPlanVariables(planned_stmt);
 
-	SetRewindPlanIds(planned_stmt);
-
 	if (CMD_SELECT == m_cmd_type && NULL != dxlnode->GetDXLDirectDispatchInfo())
 	{
 		List *direct_dispatch_segids =
@@ -465,30 +463,6 @@ CTranslatorDXLToPlStmt::SetParamIds(Plan *plan)
 	plan->allParam = bitmapset;
 }
 
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorDXLToPlStmt::SetRewindPlanIds
-//
-//	@doc:
-//		Fills rewindPlanIDs bitmapset in PlannedStmt with plan_id of all
-//		SubPlans, except InitPlans.
-//---------------------------------------------------------------------------
-void
-CTranslatorDXLToPlStmt::SetRewindPlanIds(PlannedStmt *planned_stmt)
-{
-	Bitmapset *bitmapset = NULL;
-	List *subplan_exprs_list = m_dxl_to_plstmt_context->GetSubPlanExprsList();
-	ListCell *lc = NULL;
-
-	ForEach(lc, subplan_exprs_list)
-	{
-		SubPlan *subplan = (SubPlan *) lfirst(lc);
-		if (!subplan->is_initplan)
-			bitmapset = gpdb::BmsAddMember(bitmapset, subplan->plan_id);
-	}
-
-	planned_stmt->rewindPlanIDs = bitmapset;
-}
 
 //---------------------------------------------------------------------------
 //	@function:
