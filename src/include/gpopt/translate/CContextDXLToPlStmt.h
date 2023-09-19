@@ -128,9 +128,6 @@ private:
 	// CTAS distribution policy
 	GpPolicy *m_distribution_policy;
 
-	// list of all SubPlan nodes corresponding to m_subplan_entries_list
-	List *m_subplan_exprs_list;
-
 public:
 	// ctor/dtor
 	CContextDXLToPlStmt(CMemoryPool *mp, CIdGenerator *plan_id_counter,
@@ -186,12 +183,6 @@ public:
 		return m_result_relation_index;
 	}
 
-	List *
-	GetSubPlanExprsList() const
-	{
-		return m_subplan_exprs_list;
-	}
-
 	// add a range table entry
 	void AddRTE(RangeTblEntry *rte, BOOL is_result_relation = false);
 
@@ -205,8 +196,6 @@ public:
 
 	// add CTAS information
 	void AddCtasInfo(IntoClause *into_clause, GpPolicy *distribution_policy);
-
-	void AddSubPlanExpr(SubPlan *);
 
 	// into clause
 	IntoClause *
