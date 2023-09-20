@@ -4,6 +4,9 @@
 -- s/\d+/XXX/g
 --
 -- end_matchsubs
+-- start_ignore
+create extension if not exists gp_debug_numsegments;
+-- end_ignore
 
 drop table if exists with_test1 cascade;
 create table with_test1 (i int, t text, value int) distributed by (i);
@@ -566,3 +569,155 @@ with cte as (
 ) select count(*) from cte left join t_repl using (i);
 
 drop table t_repl;
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_SingleQE.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join
+  (select random() * 0 v from generate_series(1,5)) x on cte.i = x.v;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join
+  (select random() * 0 v from generate_series(1,5)) x on cte.i = x.v;
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_Entry.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(-5,-1) i
+    returning i
+) select count(*) from cte left join gp_segment_configuration on cte.i = port;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(-5,-1) i
+    returning i
+) select count(*) from cte left join gp_segment_configuration on cte.i = port;
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_General.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i)
+select count(*) from cte join
+(select a from generate_series(1,5) a) x on cte.i = x.a;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i)
+select count(*) from cte join
+(select a from generate_series(1,5) a) x on cte.i = x.a;
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_Hashed
+-- and CdbLocusType_Strewn.
+--start_ignore
+drop table if exists t_hashed;
+drop table if exists t_strewn;
+--end_ignore
+create table t_hashed (i int, j int) distributed by (i);
+create table t_strewn (i int, j int) distributed randomly;
+insert into t_hashed values (1,1);
+insert into t_strewn values (1,1);
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed on cte.i = t_hashed.i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed on cte.i = t_hashed.i;
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_hashed on cte.i = t_hashed.i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_hashed on cte.i = t_hashed.i;
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn on cte.i = t_strewn.i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn on cte.i = t_strewn.i;
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_strewn on cte.i = t_strewn.i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_strewn on cte.i = t_strewn.i;
+
+drop table t_strewn;
+drop table t_hashed;
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_Hashed and
+-- CdbLocusType_Strewn in case when relations are propagated on
+-- different number of segments.
+select gp_debug_set_create_table_default_numsegments(2);
+create table t_hashed_seg2 (i int, j int) distributed by (i);
+create table t_strewn_seg2 (i int, j int) distributed randomly;
+select gp_debug_reset_create_table_default_numsegments();
+
+insert into t_hashed_seg2 values (1,1);
+insert into t_strewn_seg2 values (1,1);
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed_seg2 on cte.i = t_hashed_seg2.i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed_seg2 on cte.i = t_hashed_seg2.i;
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn_seg2 on cte.i = t_strewn_seg2.i;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn_seg2 on cte.i = t_strewn_seg2.i;
+
+drop table t_strewn_seg2;
+drop table t_hashed_seg2;

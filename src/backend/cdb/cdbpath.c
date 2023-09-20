@@ -1246,28 +1246,60 @@ cdbpath_motion_for_join(PlannerInfo *root,
 	}
 
 	/*
-	 * Replicated paths shouldn't occur except UPDATE/DELETE on replicated table.
+	 * Replicated paths shouldn't occur except UPDATE/DELETE on replicated
+	 * table or modifying CTEs with DML operations on replicated table with
+	 * SELECT command above. In first case when we UPDATE/DELETE replicated
+	 * table, the flag upd_del_replicated_table is set true, and, therefore,
+	 * we need to make any other probable locus replicated in order to achieve
+	 * correct update/delete.
 	 */
-	else if (CdbPathLocus_IsReplicated(outer.locus))
+	else if (CdbPathLocus_IsReplicated(outer.locus) ||
+			 CdbPathLocus_IsReplicated(inner.locus))
 	{
-		if (root->upd_del_replicated_table > 0)
-			CdbPathLocus_MakeReplicated(&inner.move_to,
-										CdbPathLocus_NumSegments(outer.locus));
-		else
+		CdbpathMfjRel *replicated;
+		CdbpathMfjRel *other;
+
+		if (CdbPathLocus_IsReplicated(outer.locus))
 		{
-			Assert(false);
-			goto fail;
+			replicated = &outer;
+			other = &inner;
 		}
-	}
-	else if (CdbPathLocus_IsReplicated(inner.locus))
-	{
-		if (root->upd_del_replicated_table > 0)
-			CdbPathLocus_MakeReplicated(&outer.move_to,
-										CdbPathLocus_NumSegments(inner.locus));
 		else
 		{
-			Assert(false);
-			goto fail;
+			replicated = &inner;
+			other = &outer;
+		}
+
+		/* Common UPDATE/DELETE on replicated table */
+		if (root->upd_del_replicated_table > 0)
+			CdbPathLocus_MakeReplicated(&other->move_to,
+								CdbPathLocus_NumSegments(replicated->locus));
+		else
+		{
+			int numsegments = CdbPathLocus_CommonSegments(replicated->locus,
+														  other->locus);
+
+			if (CdbPathLocus_IsBottleneck(other->locus))
+			{
+				/*
+				 * bring locus Replicated to singleton in order to perform join
+				 * on single segment
+				 */
+				replicated->move_to = other->locus;
+				replicated->move_to.numsegments = numsegments;
+			}
+			else if (CdbPathLocus_IsPartitioned(other->locus))
+			{
+				if (replicated->ok_to_replicate &&
+					CdbPathLocus_NumSegments(replicated->locus) ==
+					CdbPathLocus_NumSegments(other->locus))
+					return other->locus;
+				else
+				{
+					CdbPathLocus_MakeSingleQE(&replicated->move_to, numsegments);
+					CdbPathLocus_MakeSingleQE(&other->move_to, numsegments);
+				}
+			}
 		}
 	}
 	/*

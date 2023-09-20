@@ -2535,3 +2535,312 @@ with cte as (
 (1 row)
 
 drop table t_repl;
+-- Test join CdbLocusType_Replicated with CdbLocusType_SingleQE.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join
+  (select random() * 0 v from generate_series(1,5)) x on cte.i = x.v;
+                                          QUERY PLAN                                           
+-----------------------------------------------------------------------------------------------
+ Aggregate
+   ->  Hash Left Join
+         Hash Cond: ((with_dml_dr.i)::double precision = ((random() * '0'::double precision)))
+         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+         ->  Hash
+               ->  Function Scan on generate_series
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join
+  (select random() * 0 v from generate_series(1,5)) x on cte.i = x.v;
+ count 
+-------
+     5
+(1 row)
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_Entry.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(-5,-1) i
+    returning i
+) select count(*) from cte left join gp_segment_configuration on cte.i = port;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Aggregate
+   ->  Hash Left Join
+         Hash Cond: (with_dml_dr.i = gp_segment_configuration.port)
+         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+         ->  Hash
+               ->  Seq Scan on gp_segment_configuration
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(-5,-1) i
+    returning i
+) select count(*) from cte left join gp_segment_configuration on cte.i = port;
+ count 
+-------
+     5
+(1 row)
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_General.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i)
+select count(*) from cte join
+(select a from generate_series(1,5) a) x on cte.i = x.a;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = a.a)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+               ->  Hash
+                     ->  Function Scan on generate_series a
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i)
+select count(*) from cte join
+(select a from generate_series(1,5) a) x on cte.i = x.a;
+ count 
+-------
+     5
+(1 row)
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_Hashed
+-- and CdbLocusType_Strewn.
+--start_ignore
+drop table if exists t_hashed;
+NOTICE:  table "t_hashed" does not exist, skipping
+drop table if exists t_strewn;
+NOTICE:  table "t_strewn" does not exist, skipping
+--end_ignore
+create table t_hashed (i int, j int) distributed by (i);
+create table t_strewn (i int, j int) distributed randomly;
+insert into t_hashed values (1,1);
+insert into t_strewn values (1,1);
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed on cte.i = t_hashed.i;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Hash Join
+                     Hash Cond: (with_dml_dr.i = t_hashed.i)
+                     ->  Insert on with_dml_dr
+                           ->  Function Scan on generate_series i
+                     ->  Hash
+                           ->  Seq Scan on t_hashed
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed on cte.i = t_hashed.i;
+ count 
+-------
+     1
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_hashed on cte.i = t_hashed.i;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Hash Left Join
+         Hash Cond: (with_dml_dr.i = t_hashed.i)
+         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+         ->  Hash
+               ->  Gather Motion 3:1  (slice2; segments: 3)
+                     ->  Seq Scan on t_hashed
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_hashed on cte.i = t_hashed.i;
+ count 
+-------
+     5
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn on cte.i = t_strewn.i;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Hash Join
+                     Hash Cond: (with_dml_dr.i = t_strewn.i)
+                     ->  Insert on with_dml_dr
+                           ->  Function Scan on generate_series i
+                     ->  Hash
+                           ->  Seq Scan on t_strewn
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn on cte.i = t_strewn.i;
+ count 
+-------
+     1
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_strewn on cte.i = t_strewn.i;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Hash Left Join
+         Hash Cond: (with_dml_dr.i = t_strewn.i)
+         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+         ->  Hash
+               ->  Gather Motion 3:1  (slice2; segments: 3)
+                     ->  Seq Scan on t_strewn
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_strewn on cte.i = t_strewn.i;
+ count 
+-------
+     5
+(1 row)
+
+drop table t_strewn;
+drop table t_hashed;
+-- Test join CdbLocusType_Replicated with CdbLocusType_Hashed and
+-- CdbLocusType_Strewn in case when relations are propagated on
+-- different number of segments.
+select gp_debug_set_create_table_default_numsegments(2);
+ gp_debug_set_create_table_default_numsegments 
+-----------------------------------------------
+ 2
+(1 row)
+
+create table t_hashed_seg2 (i int, j int) distributed by (i);
+create table t_strewn_seg2 (i int, j int) distributed randomly;
+select gp_debug_reset_create_table_default_numsegments();
+ gp_debug_reset_create_table_default_numsegments 
+-------------------------------------------------
+ 
+(1 row)
+
+insert into t_hashed_seg2 values (1,1);
+insert into t_strewn_seg2 values (1,1);
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed_seg2 on cte.i = t_hashed_seg2.i;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Hash Join
+         Hash Cond: (with_dml_dr.i = t_hashed_seg2.i)
+         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+         ->  Hash
+               ->  Gather Motion 2:1  (slice2; segments: 2)
+                     ->  Seq Scan on t_hashed_seg2
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_hashed_seg2 on cte.i = t_hashed_seg2.i;
+ count 
+-------
+     1
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn_seg2 on cte.i = t_strewn_seg2.i;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Aggregate
+   ->  Hash Join
+         Hash Cond: (with_dml_dr.i = t_strewn_seg2.i)
+         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
+         ->  Hash
+               ->  Gather Motion 2:1  (slice2; segments: 2)
+                     ->  Seq Scan on t_strewn_seg2
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte join t_strewn_seg2 on cte.i = t_strewn_seg2.i;
+ count 
+-------
+     1
+(1 row)
+
+drop table t_strewn_seg2;
+drop table t_hashed_seg2;
