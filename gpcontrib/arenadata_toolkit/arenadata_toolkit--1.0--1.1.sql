@@ -23,10 +23,10 @@ WITH recursive cte AS (
 	WHERE relkind = 'r' AND relstorage != 'x' AND
 		relnamespace IN (SELECT aunoid FROM gp_toolkit.__gp_user_namespaces)
 	UNION ALL
-		SELECT inhparent AS id, seg_id, size
-		FROM cte
-		LEFT JOIN pg_inherits ON inhrelid = id
-		WHERE inhparent != 0
+	SELECT inhparent AS id, seg_id, size
+	FROM cte
+	LEFT JOIN pg_catalog.pg_inherits ON inhrelid = id
+	WHERE inhparent != 0
 ), tables_size_by_segments AS (
 	SELECT id, sum(size) AS size
 	FROM cte
@@ -37,7 +37,8 @@ WITH recursive cte AS (
 		stddev(size) AS skewdev,
 		avg(size) AS skewmean
 	FROM tables_size_by_segments
-	GROUP BY id)
+	GROUP BY id
+)
 SELECT
 	skew.skewoid AS skcoid,
 	pgn.nspname  AS skcnamespace,
