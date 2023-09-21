@@ -30,6 +30,7 @@ extern "C" {
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
+#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 }
@@ -41,6 +42,7 @@ extern "C" {
 #include "gpopt/base/CUtils.h"
 #include "gpopt/gpdbwrappers.h"
 #include "gpopt/mdcache/CMDAccessor.h"
+#include "gpopt/mdcache/CMDCache.h"
 #include "gpopt/translate/CTranslatorRelcacheToDXL.h"
 #include "gpopt/translate/CTranslatorScalarToDXL.h"
 #include "gpopt/translate/CTranslatorUtils.h"
@@ -308,7 +310,7 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 
 		GPOS_TRY
 		{
-			if (IsIndexSupported(index_rel))
+			if (IsIndexSupported(index_rel) && IsIndexVisible(index_rel))
 			{
 				CMDIdGPDB *mdid_index =
 					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
@@ -317,6 +319,10 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 				CMDIndexInfo *md_index_info =
 					GPOS_NEW(mp) CMDIndexInfo(mdid_index, is_partial);
 				md_index_info_array->Append(md_index_info);
+			}
+			else if (!IsIndexVisible(index_rel))
+			{
+				CMDCache::SetTransient(TransactionXmin);
 			}
 
 			gpdb::CloseRelation(index_rel);
@@ -364,7 +370,7 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 
 		GPOS_TRY
 		{
-			if (IsIndexSupported(index_rel))
+			if (IsIndexSupported(index_rel) && IsIndexVisible(index_rel))
 			{
 				CMDIdGPDB *mdid_index =
 					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
@@ -372,6 +378,10 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 				CMDIndexInfo *md_index_info = GPOS_NEW(mp)
 					CMDIndexInfo(mdid_index, false /* is_partial */);
 				md_index_info_array->Append(md_index_info);
+			}
+			else if (!IsIndexVisible(index_rel))
+			{
+				CMDCache::SetTransient(TransactionXmin);
 			}
 
 			gpdb::CloseRelation(index_rel);
@@ -3327,6 +3337,23 @@ CTranslatorRelcacheToDXL::IsIndexSupported(Relation index_rel)
 			BITMAP_AM_OID == index_rel->rd_rel->relam ||
 			GIST_AM_OID == index_rel->rd_rel->relam ||
 			GIN_AM_OID == index_rel->rd_rel->relam);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorRelcacheToDXL::IsIndexVisible
+//
+//	@doc:
+//		Check if index is visible in current transaction
+//
+//---------------------------------------------------------------------------
+BOOL
+CTranslatorRelcacheToDXL::IsIndexVisible(Relation index_rel)
+{
+	return !(index_rel->rd_index->indcheckxmin &&
+			 !TransactionIdPrecedes(
+				 HeapTupleHeaderGetXmin(index_rel->rd_indextuple->t_data),
+				 TransactionXmin));
 }
 
 //---------------------------------------------------------------------------

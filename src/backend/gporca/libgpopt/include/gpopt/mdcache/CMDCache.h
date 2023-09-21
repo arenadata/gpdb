@@ -44,6 +44,12 @@ private:
 	// the maximum size of the cache
 	static ULLONG m_ullCacheQuota;
 
+	// is cached data transient
+	static BOOL m_transient;
+
+	// in which transaction did it become transient
+	static uint32_t m_transientXmin;
+
 	// private ctor
 	CMDCache(){};
 
@@ -84,6 +90,28 @@ public:
 	Pcache()
 	{
 		return m_pcache;
+	}
+
+	// mark cache as transient
+	static void
+	SetTransient(uint32_t transientXmin)
+	{
+		m_transient = true;
+		m_transientXmin = transientXmin;
+	}
+
+	// get transaction id in which did it become transient
+	static uint32_t
+	GetTransientXmin()
+	{
+		return m_transientXmin;
+	}
+
+	// get is cached data transient
+	static BOOL
+	IsTransient()
+	{
+		return m_transient;
 	}
 
 };	// class CMDCache

@@ -24,6 +24,12 @@ CMDAccessor::MDCache *CMDCache::m_pcache = NULL;
 // maximum size of the cache
 ULLONG CMDCache::m_ullCacheQuota = UNLIMITED_CACHE_QUOTA;
 
+// is cached data is transient
+BOOL CMDCache::m_transient = false;
+
+// in which transaction did it become transient
+uint32_t CMDCache::m_transientXmin = 0;
+
 //---------------------------------------------------------------------------
 //	@function:
 //		CMDCache::Init
@@ -127,6 +133,9 @@ CMDCache::Reset()
 
 	Shutdown();
 	Init();
+
+	m_transient = false;
+	m_transientXmin = 0;
 }
 
 // EOF
