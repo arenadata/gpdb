@@ -2261,3 +2261,48 @@ SELECT * FROM cte1 a JOIN cte1 b USING (c1);
 (1 row)
 
 DROP TABLE t1;
+-- Test join prefetch_inner in the case of bottleneck join
+SET optimizer = off;
+--start_ignore
+DROP TABLE IF EXISTS d;
+--end_ignore
+CREATE TABLE d (c1 int, c2 int) DISTRIBUTED BY (c1);
+INSERT INTO d (VALUES ( 2, 0 ),( 2 , 0 ));
+EXPLAIN (COSTS OFF) WITH cte AS (
+	SELECT count(*) c1 FROM d
+) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (b.c1 = share0_ref1.c1)
+   ->  Subquery Scan on b
+         ->  Limit
+               ->  Gather Motion 3:1  (slice2; segments: 3)
+                     ->  Limit
+                           ->  Hash Join
+                                 Hash Cond: (d.c1 = share0_ref2.c1)
+                                 ->  Seq Scan on d
+                                 ->  Hash
+                                       ->  Redistribute Motion 1:3  (slice1)
+                                             Hash Key: share0_ref2.c1
+                                             ->  Shared Scan (share slice:id 1:0)
+   ->  Hash
+         ->  Shared Scan (share slice:id 0:0)
+               ->  Materialize
+                     ->  Aggregate
+                           ->  Gather Motion 3:1  (slice3; segments: 3)
+                                 ->  Aggregate
+                                       ->  Seq Scan on d d_1
+ Optimizer: Postgres query optimizer
+(21 rows)
+
+WITH cte AS (
+	SELECT count(*) c1 FROM d
+) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+ c1 | c2 
+----+----
+  2 |  0
+(1 row)
+
+RESET optimizer;
+DROP TABLE d;

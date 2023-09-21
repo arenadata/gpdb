@@ -1065,3 +1065,23 @@ WITH cte1 AS (
 SELECT * FROM cte1 a JOIN cte1 b USING (c1);
 
 DROP TABLE t1;
+
+-- Test join prefetch_inner in the case of bottleneck join
+SET optimizer = off;
+--start_ignore
+DROP TABLE IF EXISTS d;
+--end_ignore
+CREATE TABLE d (c1 int, c2 int) DISTRIBUTED BY (c1);
+
+INSERT INTO d (VALUES ( 2, 0 ),( 2 , 0 ));
+
+EXPLAIN (COSTS OFF) WITH cte AS (
+	SELECT count(*) c1 FROM d
+) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+
+WITH cte AS (
+	SELECT count(*) c1 FROM d
+) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+
+RESET optimizer;
+DROP TABLE d;

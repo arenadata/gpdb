@@ -786,7 +786,7 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 	 * join gang only contains one process, so there is no
 	 * risk for motion deadlock.
 	 */
-	if (CdbPathLocus_IsBottleneck(best_path->path.locus))
+	if (CdbPathLocus_IsBottleneck(best_path->path.locus) && !IsA(plan, HashJoin))
 	{
 		((Join *) plan)->prefetch_inner = false;
 		((Join *) plan)->prefetch_joinqual = false;
