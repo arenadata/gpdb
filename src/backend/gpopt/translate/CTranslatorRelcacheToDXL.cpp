@@ -310,19 +310,22 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 
 		GPOS_TRY
 		{
-			if (IsIndexSupported(index_rel) && IsIndexVisible(index_rel))
+			if (IsIndexSupported(index_rel))
 			{
-				CMDIdGPDB *mdid_index =
-					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
-				BOOL is_partial = (NULL != logicalIndexInfo->partCons) ||
-								  (NIL != logicalIndexInfo->defaultLevels);
-				CMDIndexInfo *md_index_info =
-					GPOS_NEW(mp) CMDIndexInfo(mdid_index, is_partial);
-				md_index_info_array->Append(md_index_info);
-			}
-			else if (!IsIndexVisible(index_rel))
-			{
-				CMDCache::SetTransient(TransactionXmin);
+				if (IsIndexVisible(index_rel))
+				{
+					CMDIdGPDB *mdid_index =
+						GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
+					BOOL is_partial = (NULL != logicalIndexInfo->partCons) ||
+									  (NIL != logicalIndexInfo->defaultLevels);
+					CMDIndexInfo *md_index_info =
+						GPOS_NEW(mp) CMDIndexInfo(mdid_index, is_partial);
+					md_index_info_array->Append(md_index_info);
+				}
+				else
+				{
+					CMDCache::SetTransient(TransactionXmin);
+				}
 			}
 
 			gpdb::CloseRelation(index_rel);
@@ -370,18 +373,21 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 
 		GPOS_TRY
 		{
-			if (IsIndexSupported(index_rel) && IsIndexVisible(index_rel))
+			if (IsIndexSupported(index_rel))
 			{
-				CMDIdGPDB *mdid_index =
-					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
-				// for a regular table, external table or leaf partition, an index is always complete
-				CMDIndexInfo *md_index_info = GPOS_NEW(mp)
-					CMDIndexInfo(mdid_index, false /* is_partial */);
-				md_index_info_array->Append(md_index_info);
-			}
-			else if (!IsIndexVisible(index_rel))
-			{
-				CMDCache::SetTransient(TransactionXmin);
+				if (IsIndexVisible(index_rel))
+				{
+					CMDIdGPDB *mdid_index =
+						GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
+					// for a regular table, external table or leaf partition, an index is always complete
+					CMDIndexInfo *md_index_info = GPOS_NEW(mp)
+						CMDIndexInfo(mdid_index, false /* is_partial */);
+					md_index_info_array->Append(md_index_info);
+				}
+				else
+				{
+					CMDCache::SetTransient(TransactionXmin);
+				}
 			}
 
 			gpdb::CloseRelation(index_rel);
