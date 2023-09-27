@@ -37,6 +37,7 @@
 #include "catalog/storage.h"
 #include "catalog/storage_tablespace.h"
 #include "catalog/storage_database.h"
+#include "catalog/storage_pending.h"
 #include "commands/async.h"
 #include "commands/dbcommands.h"
 #include "commands/extension.h"

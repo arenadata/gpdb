@@ -3,15 +3,6 @@
 
 #include "access/xlog.h"
 
-//TODO: Find a better WA for "atomics.h may not be included from frontend code"
-#ifdef FRONTEND
-#undef FRONTEND
-#include "utils/dsa.h"
-#define FRONTEND
-#else
-#include "utils/dsa.h"
-#endif
-
 /* Pending delete node linked to xact it created */
 typedef struct PendingRelXactDelete
 {
@@ -28,8 +19,12 @@ typedef struct PendingRelXactDeleteArray
 extern Size PendingDeleteShmemSize(void);
 extern void PendingDeleteShmemInit(void);
 
-extern dsa_pointer PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid);
-extern void PendingDeleteShmemRemove(dsa_pointer node_ptr);
+/*
+ * We can't include "dsa.h" here as it use "atomics.h", which can't be included if FRONTEND defined.
+ * To avoid including, void* is used. dsa_ptr is a pointer to dsa_pointer.
+ */
+extern void PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid, void *dsa_ptr);
+extern void PendingDeleteShmemRemove(void *dsa_ptr);
 
 extern XLogRecPtr PendingDeleteXLogInsert(void);
 

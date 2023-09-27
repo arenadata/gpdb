@@ -34,6 +34,7 @@
 #include "storage/freespace.h"
 #include "storage/proc.h"
 #include "storage/smgr.h"
+#include "utils/dsa.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
 
@@ -132,8 +133,8 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->relnode.smgr_which = smgr_which;
 	pending->next = pendingDeletes;
-	pending->shmem_ptr = PendingDeleteShmemAdd(&pending->relnode, xid);
 	pendingDeletes = pending;
+	PendingDeleteShmemAdd(&pending->relnode, xid, &pending->shmem_ptr);
 
 	return srel;
 }
@@ -233,7 +234,7 @@ RelationPreserveStorage(RelFileNode rnode, bool atCommit)
 				prev->next = next;
 			else
 				pendingDeletes = next;
-			PendingDeleteShmemRemove(pending->shmem_ptr);
+			PendingDeleteShmemRemove(&pending->shmem_ptr);
 			pfree(pending);
 			/* prev does not change */
 		}
@@ -500,7 +501,7 @@ smgrDoPendingDeletes(bool isCommit)
 				srels[nrels++] = srel;
 			}
 			/* must explicitly free the list entry */
-			PendingDeleteShmemRemove(pending->shmem_ptr);
+			PendingDeleteShmemRemove(&pending->shmem_ptr);
 			pfree(pending);
 			/* prev does not change */
 		}
@@ -601,7 +602,7 @@ PostPrepare_smgr(void)
 		next = pending->next;
 		pendingDeletes = next;
 		/* must explicitly free the list entry */
-		PendingDeleteShmemRemove(pending->shmem_ptr);
+		PendingDeleteShmemRemove(&pending->shmem_ptr);
 		pfree(pending);
 	}
 }

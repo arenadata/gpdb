@@ -8,6 +8,7 @@
 #include "storage/lwlock.h"
 #include "storage/md.h"
 #include "storage/shmem.h"
+#include "utils/dsa.h"
 #include "utils/hsearch.h"
 
 /*
@@ -212,8 +213,8 @@ PendingDeleteAttachDsa(void)
  * Add pending delete node to shmem.
  * Return dsa ptr of newly created node. This ptr can be used for fast remove.
  */
-dsa_pointer
-PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid)
+void
+PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid, void *dsa_ptr)
 {
 	dsa_pointer pdl_node_dsa;
 	PendingDeleteListNode *pdl_node;
@@ -221,7 +222,10 @@ PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid)
 	elog(DEBUG2, "Trying to add pending delete rel %d to shmem (xid: %d).", relnode->node.relNode, xid);
 
 	if (xid == InvalidTransactionId || !IsUnderPostmaster)
-		return InvalidDsaPointer;
+	{
+		*((dsa_pointer*)dsa_ptr) = InvalidDsaPointer;
+		return;
+	}
 
 	PendingDeleteAttachDsa();
 
@@ -233,7 +237,7 @@ PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid)
 
 	PendingDeleteShmemLinkNode(pendingDeleteDsa, pdl_node_dsa);
 
-	return pdl_node_dsa;
+	*((dsa_pointer*)dsa_ptr) = pdl_node_dsa;
 }
 
 /*
@@ -241,8 +245,10 @@ PendingDeleteShmemAdd(RelFileNodePendingDelete * relnode, TransactionId xid)
  * node_ptr is a ptr to already added node.
  */
 void
-PendingDeleteShmemRemove(dsa_pointer node_ptr)
+PendingDeleteShmemRemove(void *dsa_ptr)
 {
+	dsa_pointer node_ptr = *((dsa_pointer*)dsa_ptr);
+	
 	elog(DEBUG2, "Trying to remove pending delete rel from shmem.");
 
 	if (!DsaPointerIsValid(node_ptr) || !pendingDeleteDsa)
