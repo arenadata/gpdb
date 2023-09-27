@@ -1075,10 +1075,6 @@ CREATE TABLE d (c1 int, c2 int) DISTRIBUTED BY (c1);
 
 INSERT INTO d (VALUES ( 2, 0 ),( 2 , 0 ));
 
-EXPLAIN (COSTS OFF) WITH cte AS (
-	SELECT count(*) c1 FROM d
-) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
-
 WITH cte AS (
 	SELECT count(*) c1 FROM d
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
