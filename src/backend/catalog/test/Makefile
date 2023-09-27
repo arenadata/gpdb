@@ -16,7 +16,10 @@ storage_tablespace.t: $(top_srcdir)/src/backend/catalog/storage_tablespace.o
 		storage_tablespace_test.c \
 		-o storage_tablespace_test.o && ./storage_tablespace_test.o
 
-storage_pending.t: $(top_srcdir)/src/backend/catalog/storage_pending.o \
-	$(MOCK_DIR)/backend/storage/ipc/shmem_mock.o
+storage_pending.t: \
+	$(MOCK_DIR)/backend/utils/mmgr/dsa_mock.o \
+	$(MOCK_DIR)/backend/storage/lmgr/lwlock_mock.o \
+	$(MOCK_DIR)/backend/utils/fmgr/fmgr_mock.o \
+	$(MOCK_DIR)/backend/access/hash/hash_mock.o
 
 check: storage_tablespace.t storage_pending.t
