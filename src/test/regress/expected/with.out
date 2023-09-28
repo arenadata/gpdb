@@ -2274,39 +2274,40 @@ EXPLAIN (ANALYZE, COSTS OFF) WITH cte AS (
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
                                                          QUERY PLAN                                                         
 ----------------------------------------------------------------------------------------------------------------------------
- Hash Join (actual time=5.254..5.777 rows=1 loops=1)
+ Hash Join (actual time=5.783..6.238 rows=1 loops=1)
    Hash Cond: (b.c1 = share0_ref1.c1)
    Extra Text: Hash chain length 1.0 avg, 1 max, using 1 of 131072 buckets.
-   ->  Subquery Scan on b (actual time=0.560..0.562 rows=1 loops=1)
-         ->  Limit (actual time=0.557..0.558 rows=1 loops=1)
-               ->  Gather Motion 3:1  (slice2; segments: 3) (actual time=0.556..0.556 rows=1 loops=1)
-                     ->  Limit (actual time=4.291..4.705 rows=1 loops=1)
-                           ->  Hash Join (actual time=4.290..4.290 rows=1 loops=1)
+   ->  Subquery Scan on b (actual time=0.595..0.596 rows=1 loops=1)
+         ->  Limit (actual time=0.592..0.593 rows=1 loops=1)
+               ->  Gather Motion 3:1  (slice2; segments: 3) (actual time=0.591..0.591 rows=1 loops=1)
+                     ->  Limit (actual time=4.705..5.100 rows=1 loops=1)
+                           ->  Hash Join (actual time=4.705..4.705 rows=1 loops=1)
                                  Hash Cond: (d.c1 = share0_ref2.c1)
                                  Extra Text: (seg0)   Hash chain length 1.0 avg, 1 max, using 1 of 131072 buckets.
                                  ->  Seq Scan on d (actual time=0.010..0.010 rows=1 loops=1)
-                                 ->  Hash (actual time=3.739..3.739 rows=1 loops=1)
-                                       ->  Redistribute Motion 1:3  (slice1) (actual time=3.735..3.735 rows=1 loops=1)
+                                 ->  Hash (actual time=4.027..4.027 rows=1 loops=1)
+                                       ->  Redistribute Motion 1:3  (slice1) (actual time=4.024..4.025 rows=1 loops=1)
                                              Hash Key: share0_ref2.c1
-                                             ->  Shared Scan (share slice:id 1:0) (actual time=0.060..0.074 rows=1 loops=1)
-   ->  Hash (actual time=4.414..4.414 rows=1 loops=1)
+                                             ->  Shared Scan (share slice:id 1:0) (actual time=0.079..0.081 rows=1 loops=1)
+   ->  Hash (actual time=5.048..5.048 rows=1 loops=1)
          Buckets: 131072  Batches: 1  Memory Usage: 1kB
-         ->  Shared Scan (share slice:id 0:0) (actual time=4.406..4.409 rows=1 loops=1)
-               ->  Materialize (actual time=4.369..4.369 rows=0 loops=1)
-                     ->  Aggregate (actual time=1.578..1.578 rows=1 loops=1)
-                           ->  Gather Motion 3:1  (slice3; segments: 3) (actual time=1.196..1.565 rows=3 loops=1)
-                                 ->  Aggregate (actual time=0.034..0.034 rows=1 loops=1)
-                                       ->  Seq Scan on d d_1 (actual time=0.030..0.030 rows=2 loops=1)
- Planning time: 1.547 ms
+         ->  Shared Scan (share slice:id 0:0) (actual time=5.043..5.045 rows=1 loops=1)
+               ->  Materialize (actual time=5.008..5.008 rows=0 loops=1)
+                     ->  Aggregate (actual time=1.824..1.824 rows=1 loops=1)
+                           ->  Gather Motion 3:1  (slice3; segments: 3) (actual time=0.480..1.809 rows=3 loops=1)
+                                 ->  Aggregate (actual time=0.065..0.065 rows=1 loops=1)
+                                       ->  Seq Scan on d d_1 (actual time=0.061..0.062 rows=2 loops=1)
+ Planning time: 1.424 ms
    (slice0)    Executor memory: 1520K bytes.  Work_mem: 1K bytes max.
    (slice1)    Executor memory: 156K bytes (entry db).
    (slice2)    Executor memory: 1100K bytes avg x 3 workers, 1100K bytes max (seg0).  Work_mem: 1K bytes max.
    (slice3)    Executor memory: 60K bytes avg x 3 workers, 60K bytes max (seg0).
  Memory used:  128000kB
  Optimizer: Postgres query optimizer
- Execution time: 6.866 ms
+ Execution time: 7.385 ms
 (31 rows)
 
+-- Test that the logic for Nested loop and Merge Join has not changed.
 SET enable_hashjoin = off;
 SET enable_nestloop = on;
 -- Test with nestedloop join
@@ -2315,33 +2316,33 @@ EXPLAIN (ANALYZE, COSTS OFF) WITH cte AS (
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
                                                          QUERY PLAN                                                         
 ----------------------------------------------------------------------------------------------------------------------------
- Nested Loop (actual time=6.960..6.996 rows=1 loops=1)
+ Nested Loop (actual time=5.511..5.557 rows=1 loops=1)
    Join Filter: (share0_ref1.c1 = b.c1)
-   ->  Shared Scan (share slice:id 0:0) (actual time=6.765..6.769 rows=1 loops=1)
-         ->  Materialize (actual time=6.726..6.726 rows=0 loops=1)
-               ->  Aggregate (actual time=1.232..1.232 rows=1 loops=1)
-                     ->  Gather Motion 3:1  (slice1; segments: 3) (actual time=0.630..1.224 rows=3 loops=1)
-                           ->  Aggregate (actual time=0.012..0.012 rows=1 loops=1)
-                                 ->  Seq Scan on d (actual time=0.005..0.006 rows=2 loops=1)
-   ->  Materialize (actual time=0.188..0.188 rows=1 loops=1)
-         ->  Subquery Scan on b (actual time=0.182..0.183 rows=1 loops=1)
-               ->  Limit (actual time=0.179..0.180 rows=1 loops=1)
-                     ->  Gather Motion 3:1  (slice3; segments: 3) (actual time=0.178..0.178 rows=1 loops=1)
-                           ->  Limit (actual time=6.056..6.057 rows=1 loops=1)
-                                 ->  Nested Loop (actual time=6.055..6.055 rows=1 loops=1)
+   ->  Shared Scan (share slice:id 0:0) (actual time=5.069..5.073 rows=1 loops=1)
+         ->  Materialize (actual time=4.999..4.999 rows=0 loops=1)
+               ->  Aggregate (actual time=0.923..0.923 rows=1 loops=1)
+                     ->  Gather Motion 3:1  (slice1; segments: 3) (actual time=0.377..0.911 rows=3 loops=1)
+                           ->  Aggregate (actual time=0.008..0.008 rows=1 loops=1)
+                                 ->  Seq Scan on d (actual time=0.005..0.005 rows=2 loops=1)
+   ->  Materialize (actual time=0.430..0.431 rows=1 loops=1)
+         ->  Subquery Scan on b (actual time=0.421..0.422 rows=1 loops=1)
+               ->  Limit (actual time=0.415..0.415 rows=1 loops=1)
+                     ->  Gather Motion 3:1  (slice3; segments: 3) (actual time=0.413..0.413 rows=1 loops=1)
+                           ->  Limit (actual time=4.051..4.052 rows=1 loops=1)
+                                 ->  Nested Loop (actual time=4.050..4.050 rows=1 loops=1)
                                        Join Filter: (d_1.c1 = share0_ref2.c1)
-                                       ->  Redistribute Motion 1:3  (slice2) (actual time=6.039..6.039 rows=1 loops=1)
+                                       ->  Redistribute Motion 1:3  (slice2) (actual time=4.005..4.005 rows=1 loops=1)
                                              Hash Key: share0_ref2.c1
-                                             ->  Shared Scan (share slice:id 2:0) (actual time=0.078..0.082 rows=1 loops=1)
-                                       ->  Seq Scan on d d_1 (actual time=0.006..0.006 rows=1 loops=1)
- Planning time: 1.411 ms
+                                             ->  Shared Scan (share slice:id 2:0) (actual time=0.110..0.115 rows=1 loops=1)
+                                       ->  Seq Scan on d d_1 (actual time=0.017..0.017 rows=1 loops=1)
+ Planning time: 1.309 ms
    (slice0)    Executor memory: 512K bytes.
    (slice1)    Executor memory: 60K bytes avg x 3 workers, 60K bytes max (seg0).
    (slice2)    Executor memory: 156K bytes (entry db).
    (slice3)    Executor memory: 60K bytes avg x 3 workers, 60K bytes max (seg0).
  Memory used:  128000kB
  Optimizer: Postgres query optimizer
- Execution time: 8.153 ms
+ Execution time: 6.990 ms
 (27 rows)
 
 SET enable_nestloop = off;
@@ -2352,44 +2353,44 @@ EXPLAIN (ANALYZE, COSTS OFF) WITH cte AS (
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
                                                             QUERY PLAN                                                            
 ----------------------------------------------------------------------------------------------------------------------------------
- Merge Join (actual time=4.675..4.739 rows=1 loops=1)
+ Merge Join (actual time=5.083..5.107 rows=1 loops=1)
    Merge Cond: (share0_ref1.c1 = b.c1)
-   ->  Sort (actual time=4.326..4.343 rows=1 loops=1)
+   ->  Sort (actual time=4.770..4.774 rows=1 loops=1)
          Sort Key: share0_ref1.c1
          Sort Method:  quicksort  Memory: 33kB
-         ->  Shared Scan (share slice:id 0:0) (actual time=4.263..4.265 rows=1 loops=1)
-               ->  Materialize (actual time=4.196..4.196 rows=0 loops=1)
-                     ->  Aggregate (actual time=0.187..0.187 rows=1 loops=1)
-                           ->  Gather Motion 3:1  (slice1; segments: 3) (actual time=0.178..0.181 rows=3 loops=1)
-                                 ->  Aggregate (actual time=0.008..0.008 rows=1 loops=1)
-                                       ->  Seq Scan on d (actual time=0.004..0.005 rows=2 loops=1)
-   ->  Sort (actual time=0.338..0.338 rows=1 loops=1)
+         ->  Shared Scan (share slice:id 0:0) (actual time=4.700..4.702 rows=1 loops=1)
+               ->  Materialize (actual time=4.674..4.674 rows=0 loops=1)
+                     ->  Aggregate (actual time=1.320..1.320 rows=1 loops=1)
+                           ->  Gather Motion 3:1  (slice1; segments: 3) (actual time=0.805..1.312 rows=3 loops=1)
+                                 ->  Aggregate (actual time=0.010..0.010 rows=1 loops=1)
+                                       ->  Seq Scan on d (actual time=0.006..0.007 rows=2 loops=1)
+   ->  Sort (actual time=0.307..0.308 rows=1 loops=1)
          Sort Key: b.c1
          Sort Method:  quicksort  Memory: 33kB
-         ->  Subquery Scan on b (actual time=0.298..0.299 rows=1 loops=1)
-               ->  Limit (actual time=0.293..0.294 rows=1 loops=1)
-                     ->  Gather Motion 3:1  (slice3; segments: 3) (actual time=0.292..0.292 rows=1 loops=1)
-                           ->  Limit (actual time=3.871..3.872 rows=1 loops=1)
-                                 ->  Merge Join (actual time=3.870..3.870 rows=1 loops=1)
+         ->  Subquery Scan on b (actual time=0.285..0.286 rows=1 loops=1)
+               ->  Limit (actual time=0.282..0.283 rows=1 loops=1)
+                     ->  Gather Motion 3:1  (slice3; segments: 3) (actual time=0.281..0.281 rows=1 loops=1)
+                           ->  Limit (actual time=3.418..3.418 rows=1 loops=1)
+                                 ->  Merge Join (actual time=3.417..3.417 rows=1 loops=1)
                                        Merge Cond: (share0_ref2.c1 = d_1.c1)
-                                       ->  Sort (actual time=3.695..3.695 rows=1 loops=1)
+                                       ->  Sort (actual time=3.250..3.250 rows=1 loops=1)
                                              Sort Key: share0_ref2.c1
                                              Sort Method:  quicksort  Memory: 99kB
-                                             ->  Redistribute Motion 1:3  (slice2) (actual time=3.494..3.494 rows=1 loops=1)
+                                             ->  Redistribute Motion 1:3  (slice2) (actual time=3.051..3.052 rows=1 loops=1)
                                                    Hash Key: share0_ref2.c1
-                                                   ->  Shared Scan (share slice:id 2:0) (actual time=0.086..0.093 rows=1 loops=1)
-                                       ->  Sort (actual time=0.166..0.166 rows=1 loops=1)
+                                                   ->  Shared Scan (share slice:id 2:0) (actual time=0.090..0.093 rows=1 loops=1)
+                                       ->  Sort (actual time=0.162..0.162 rows=1 loops=1)
                                              Sort Key: d_1.c1
                                              Sort Method:  quicksort  Memory: 33kB
                                              ->  Seq Scan on d d_1 (actual time=0.005..0.005 rows=2 loops=1)
- Planning time: 1.273 ms
+ Planning time: 1.153 ms
    (slice0)    Executor memory: 544K bytes.  Work_mem: 65K bytes max.
    (slice1)    Executor memory: 44K bytes avg x 3 workers, 44K bytes max (seg0).
    (slice2)    Executor memory: 156K bytes (entry db).
    (slice3)    Executor memory: 134K bytes avg x 3 workers, 156K bytes max (seg0).  Work_mem: 65K bytes max.
  Memory used:  128000kB
  Optimizer: Postgres query optimizer
- Execution time: 7.444 ms
+ Execution time: 6.199 ms
 (38 rows)
 
 RESET enable_hashjoin;

@@ -1080,6 +1080,7 @@ EXPLAIN (ANALYZE, COSTS OFF) WITH cte AS (
 	SELECT count(*) c1 FROM d
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
 
+-- Test that the logic for Nested loop and Merge Join has not changed.
 SET enable_hashjoin = off;
 SET enable_nestloop = on;
 
