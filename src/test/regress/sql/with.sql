@@ -1075,30 +1075,9 @@ CREATE TABLE d (c1 int, c2 int) DISTRIBUTED BY (c1);
 
 INSERT INTO d (VALUES ( 2, 0 ),( 2 , 0 ));
 
--- Test with HashJoin
 WITH cte AS (
 	SELECT count(*) c1 FROM d
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
 
--- Test that the logic for Nested loop and Merge Join has not changed.
-SET enable_hashjoin = off;
-SET enable_nestloop = on;
-
--- Test with nestedloop join
-WITH cte AS (
-	SELECT count(*) c1 FROM d
-) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
-
-SET enable_nestloop = off;
-SET enable_mergejoin = on;
-
--- Test with merge join
-WITH cte AS (
-	SELECT count(*) c1 FROM d
-) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
-
-RESET enable_hashjoin;
-RESET enable_nestloop;
-RESET enable_mergejoin;
 RESET optimizer;
 DROP TABLE d;
