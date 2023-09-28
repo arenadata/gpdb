@@ -455,9 +455,18 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 		}
 	}
 
+	/*
+	 * If the ModifyTable node appears inside the correlated Subplan, it has
+	 * to be handled the same way as various *Scan nodes. Currently such
+	 * situation may occur only for modifying CTE cases, and, therefore,
+	 * mutator shouldn't go under ModifyTable's plans and should broadcast or
+	 * focus the result of modifying operation if needed.
+	 */
 	if (IsA(node, SeqScan)
 		||IsA(node, ShareInputScan)
-		||IsA(node, ExternalScan))
+		||IsA(node, ExternalScan)
+		||(IsA(node, SubqueryScan) && IsA(((SubqueryScan *) node)->subplan, ModifyTable))
+		||IsA(node,ModifyTable))
 	{
 		Plan	   *scanPlan = (Plan *) node;
 
@@ -657,19 +666,6 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 		node = (Node *) plan->lefttree;
 		Assert(node);
 		return ParallelizeCorrelatedSubPlanMutator(node, ctx);
-	}
-
-	if (IsA(node, ModifyTable))
-	{
-		Plan	   *mplan = (Plan *) node;
-
-		if (ctx->movement == MOVEMENT_BROADCAST)
-			broadcastPlan(mplan, false /* stable */ , false /* rescannable */ ,
-						  ctx->currentPlanFlow->numsegments);
-		else
-			focusPlan(mplan, false /* stable */ , false /* rescannable */ );
-
-		return (Node *) materialize_subplan((PlannerInfo *) ctx->base.node, mplan);
 	}
 
 	Node	   *result = plan_tree_mutator(node, ParallelizeCorrelatedSubPlanMutator, ctx);
