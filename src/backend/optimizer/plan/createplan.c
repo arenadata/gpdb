@@ -782,19 +782,6 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 	if (partition_selector_created)
 		((Join *) plan)->prefetch_inner = true;
 
-	/* CDB: if the join's locus is bottleneck which means the
-	 * join gang only contains one process, so there is no
-	 * risk for motion deadlock. But prefetch_inner may still be necessary in the
-	 * case of HashJoin with SharedScan, the writing part of which is always in
-	 * the inner. So do not override it in the case of HashJoin.
-	 */
-	if (CdbPathLocus_IsBottleneck(best_path->path.locus) && !IsA(plan, HashJoin))
-	{
-		((Join *) plan)->prefetch_inner = false;
-		((Join *) plan)->prefetch_joinqual = false;
-		((Join *) plan)->prefetch_qual = false;
-	}
-
 	plan->flow = cdbpathtoplan_create_flow(root,
 			best_path->path.locus,
 			best_path->path.parent ? best_path->path.parent->relids
@@ -3295,6 +3282,15 @@ create_nestloop_plan(PlannerInfo *root,
 			prefetch = true;
 	}
 
+	/* CDB: if the join's locus is bottleneck which means the
+	 * join gang only contains one process, so there is no
+	 * risk for motion deadlock.
+	 */
+	if (CdbPathLocus_IsBottleneck(best_path->path.locus))
+	{
+		prefetch = false;
+	}
+
 	if (prefetch)
 		join_plan->join.prefetch_inner = true;
 
@@ -3430,6 +3426,15 @@ create_mergejoin_plan(PlannerInfo *root,
 				best_path->materialize_inner = true;
 			set_mat_cdb_strict = true;
 		}
+	}
+
+	/* CDB: if the join's locus is bottleneck which means the
+	 * join gang only contains one process, so there is no
+	 * risk for motion deadlock.
+	 */
+	if (CdbPathLocus_IsBottleneck(best_path->jpath.path.locus))
+	{
+		prefetch = false;
 	}
 
 	/*
