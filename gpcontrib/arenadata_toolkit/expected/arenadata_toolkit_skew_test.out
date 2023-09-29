@@ -299,10 +299,7 @@ SELECT skcnamespace, skcrelname, round(skccoeff, 2) AS skccoeff_round
 
 -- add small data to all parts of table
 INSERT INTO part_table
-	SELECT i+1, mod(i/8,2)+1, mod(i/4,2)+1, mod(i/2,2)+1, mod(i,2)+1, 'sub_prt1'
-	FROM generate_series(0,399) as i;
-INSERT INTO part_table
-	SELECT i+1, mod(i/8,2)+1, mod(i/4,2)+1, mod(i/2,2)+1, mod(i,2)+1, 'sub_prt2'
+	SELECT i+1, mod(i/16,2)+1, mod(i/8,2)+1, mod(i/4,2)+1, mod(i/2,2)+1, 'sub_prt' || mod(i,2)+1
 	FROM generate_series(0,399) as i;
 SELECT skcnamespace, skcrelname, round(skccoeff, 2) AS skccoeff_round
 	FROM adb_skew_coefficients
