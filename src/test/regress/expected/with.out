@@ -2261,7 +2261,9 @@ SELECT * FROM cte1 a JOIN cte1 b USING (c1);
 (1 row)
 
 DROP TABLE t1;
--- Test join prefetch_inner in the case of bottleneck join
+-- Ensure that prefetch is not disabled for HashJoin in case of join at single segment.
+-- Test Shared Scan producer is executed under inner part of join first and the
+-- deadlock between Shared Scans does not occur
 SET optimizer = off;
 --start_ignore
 DROP TABLE IF EXISTS d;
