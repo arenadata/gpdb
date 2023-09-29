@@ -875,8 +875,6 @@ typedef struct Join
 	List	   *joinqual;		/* JOIN quals (in addition to plan.qual) */
 
 	bool		prefetch_inner; /* to avoid deadlock in MPP */
-	bool		prefetch_joinqual; /* to avoid deadlock in MPP */
-	bool		prefetch_qual; /* to avoid deadlock in MPP */
 } Join;
 
 /* ----------------
