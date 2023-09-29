@@ -590,8 +590,26 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 				scanPlan->flow->flotype = FLOW_SINGLETON;
 			}
 
-			broadcastPlan(scanPlan, false /* stable */ , false /* rescannable */,
-						  ctx->currentPlanFlow->numsegments /* numsegments */);
+			/*
+			 * Replicated locus can't be reduced to SingleQE as it's done for
+			 * SegmentGeneral locus, because it's executed at full n-gang
+			 * Therefore, in case of volatile quals we must focus Replicated
+			 * plan first, apply the quals, and then broadcast it back.
+			 */
+			if (scanPlan->flow->locustype == CdbLocusType_Replicated &&
+				contain_volatile_functions((Node *) scanPlan->qual))
+			{
+				focusPlan(scanPlan, false /* stable */ , false /* rescannable */ );
+				Plan	   *res = (Plan *) make_result((PlannerInfo *) ctx->base.node, resTL, NULL, scanPlan);
+
+				res->flow = pull_up_Flow(res, res->lefttree);
+				broadcastPlan(res, false /* stable */ , false /* rescannable */ ,
+					   ctx->currentPlanFlow->numsegments /* numsegments */ );
+				scanPlan = res;
+			}
+			else if (scanPlan->flow->locustype != CdbLocusType_Replicated)
+				broadcastPlan(scanPlan, false /* stable */ , false /* rescannable */ ,
+					   ctx->currentPlanFlow->numsegments /* numsegments */ );
 		}
 		else
 		{

@@ -721,3 +721,42 @@ with cte as (
 
 drop table t_strewn_seg2;
 drop table t_hashed_seg2;
+
+-- Test proper handling of the volatile conditions, which are
+-- applied to the result of modifying CTEs over replicated tables.
+-- Before the volatile filtration the result should be gathered.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(2,5) i
+    returning i
+) select count(*) from cte where cte.i > 1 * random();
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(2,5) i
+    returning i
+) select count(*) from cte where cte.i > 1 * random();
+
+-- Test when volatile functions are applied properly when
+-- modifying CTE is references inside the correlated SubPlan
+-- start_ignore
+drop table if exists t1;
+--end_ignore
+create table t1(i int) distributed by (i);
+insert into t1 values (1), (2);
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(2,5) i
+    returning i
+) select * from t1
+where t1.i in (select i from cte where t1.i = cte.i and cte.i > 1 * random());
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(2,5) i
+    returning i
+) select * from t1
+where t1.i in (select i from cte where t1.i = cte.i and cte.i > 1 * random());

@@ -2105,7 +2105,7 @@ has_redistributable_clause(RestrictInfo *restrictinfo)
  *    1. if we are update or delete statement on replicated table
  *       simply reject the query
  *    2. if it is general locus, simply change it to singleQE
- *    3. if it is segmentgeneral, use a motion to bring it to
+ *    3. if it is segmentgeneral or replicated, use a motion to bring it to
  *       singleQE and then create a projection path
  *
  * If we do not find the pattern, simply return the input path.
@@ -2116,7 +2116,9 @@ has_redistributable_clause(RestrictInfo *restrictinfo)
 Path *
 turn_volatile_seggen_to_singleqe(PlannerInfo *root, Path *path, Node *node)
 {
-	if ((CdbPathLocus_IsSegmentGeneral(path->locus) || CdbPathLocus_IsGeneral(path->locus)) &&
+	if ((CdbPathLocus_IsSegmentGeneral(path->locus) ||
+		 CdbPathLocus_IsGeneral(path->locus) ||
+		 CdbPathLocus_IsReplicated(path->locus)) &&
 		(contain_volatile_functions(node)))
 	{
 		CdbPathLocus     singleQE;
