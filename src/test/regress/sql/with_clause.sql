@@ -3,6 +3,9 @@
 -- m/ERROR:  Too much references to non-SELECT CTE \(allpaths\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  Cannot broadcast Replicated locus \(cdbllize\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 -- start_ignore
 create extension if not exists gp_debug_numsegments;

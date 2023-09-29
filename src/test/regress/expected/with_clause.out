@@ -3,6 +3,9 @@
 -- m/ERROR:  Too much references to non-SELECT CTE \(allpaths\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  Cannot broadcast Replicated locus \(cdbllize\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 drop table if exists with_test1 cascade;
 NOTICE:  table "with_test1" does not exist, skipping

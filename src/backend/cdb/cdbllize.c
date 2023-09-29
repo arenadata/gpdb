@@ -590,6 +590,10 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 				scanPlan->flow->flotype = FLOW_SINGLETON;
 			}
 
+			if (scanPlan->flow->locustype == CdbLocusType_Replicated &&
+				scanPlan->flow->numsegments != ctx->currentPlanFlow->numsegments)
+				elog(ERROR, "Cannot broadcast Replicated locus");
+
 			/*
 			 * Replicated locus can't be reduced to SingleQE as it's done for
 			 * SegmentGeneral locus, because it's executed at full n-gang
@@ -776,6 +780,11 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		if (containingPlanDistributed)
 		{
 			Assert(NULL != context->currentPlanFlow);
+
+			if (newPlan->flow->locustype == CdbLocusType_Replicated &&
+				newPlan->flow->numsegments != context->currentPlanFlow->numsegments)
+				elog(ERROR, "Cannot broadcast Replicated locus");
+
 			broadcastPlan(newPlan, false /* stable */ , false /* rescannable */,
 						  context->currentPlanFlow->numsegments /* numsegments */);
 		}
