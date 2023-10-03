@@ -426,6 +426,58 @@ PendingDeleteRedoRemove(TransactionId xid)
 	elog(DEBUG2, "Pending delete rels removed during redo (xid: %d).", xid);
 }
 
+static RelFileNodePendingDelete*
+PendingDeleteRedoPrepareDropNodes(PendingDeleteHtabNode *h_node, int *count)
+{
+	ListCell   *cell;
+	int			i;
+	RelFileNodePendingDelete *relnode_array;
+
+	/*
+	 * In concurrent environment CREATE and PENDING_DELETE log records
+	 * with same rel node may come one after another. This cause
+	 * duplicates in pending delete list. To avoid smgr errors, we should
+	 * filter it before DropRelationFiles() call.
+	 */
+	foreach(cell, h_node->relnode_list)
+	{
+		RelFileNodePendingDelete *o_relnode = (RelFileNodePendingDelete *) lfirst(cell);
+		ListCell   *i_cell = lnext(cell);
+		ListCell   *i_cell_prev = cell;
+
+		while (i_cell)
+		{
+			ListCell   *i_cell_next = lnext(i_cell);
+			RelFileNodePendingDelete *i_relnode = (RelFileNodePendingDelete *) lfirst(i_cell);
+
+			if (RelFileNodeEquals(o_relnode->node, i_relnode->node))
+			{
+				elog(DEBUG2, "Duplicate pending delete node found: (rel: %d; xid: %d)",
+						o_relnode->node.relNode, h_node->xid);
+				h_node->relnode_list = list_delete_cell(h_node->relnode_list, i_cell, i_cell_prev);
+				pfree(i_relnode);
+			}
+			else
+				i_cell_prev = i_cell;
+
+			i_cell = i_cell_next;
+		}
+	}
+
+	*count = list_length(h_node->relnode_list);
+	relnode_array = palloc(sizeof(*relnode_array) * (*count));
+
+	/* copy rels from list to array, we use one batch per one xid to drop */
+	foreach_with_count(cell, h_node->relnode_list, i)
+	{
+		RelFileNodePendingDelete *relnode = (RelFileNodePendingDelete *) lfirst(cell);
+
+		memcpy(&relnode_array[i], relnode, sizeof(*relnode_array));
+	}
+
+	return relnode_array;
+}
+
 /*
  * Drop all orphaned pending delete nodes.
  */
@@ -444,52 +496,8 @@ PendingDeleteRedoDropFiles(void)
 	hash_seq_init(&seq_status, pendingDeleteRedo);
 	while ((h_node = (PendingDeleteHtabNode *) hash_seq_search(&seq_status)) != NULL)
 	{
-		ListCell   *cell;
-		int			i;
 		int			count;
-		RelFileNodePendingDelete *relnode_array;
-
-		/*
-		 * In concurrent environment CREATE and PENDING_DELETE log records
-		 * with same rel node may come one after another. This cause
-		 * duplicates in pending delete list. To avoid smgr errors, we should
-		 * filter it before DropRelationFiles() call.
-		 */
-		foreach(cell, h_node->relnode_list)
-		{
-			RelFileNodePendingDelete *o_relnode = (RelFileNodePendingDelete *) lfirst(cell);
-			ListCell   *i_cell = lnext(cell);
-			ListCell   *i_cell_prev = cell;
-
-			while (i_cell)
-			{
-				ListCell   *i_cell_next = lnext(i_cell);
-				RelFileNodePendingDelete *i_relnode = (RelFileNodePendingDelete *) lfirst(i_cell);
-
-				if (RelFileNodeEquals(o_relnode->node, i_relnode->node))
-				{
-					elog(DEBUG2, "Duplicate pending delete node found: (rel: %d; xid: %d)",
-						 o_relnode->node.relNode, h_node->xid);
-					h_node->relnode_list = list_delete_cell(h_node->relnode_list, i_cell, i_cell_prev);
-					pfree(i_relnode);
-				}
-				else
-					i_cell_prev = i_cell;
-
-				i_cell = i_cell_next;
-			}
-		}
-
-		count = list_length(h_node->relnode_list);
-		relnode_array = palloc(sizeof(*relnode_array) * count);
-
-		/* copy rels from list to array, we use one batch per one xid to drop */
-		foreach_with_count(cell, h_node->relnode_list, i)
-		{
-			RelFileNodePendingDelete *relnode = (RelFileNodePendingDelete *) lfirst(cell);
-
-			memcpy(&relnode_array[i], relnode, sizeof(*relnode_array));
-		}
+		RelFileNodePendingDelete *relnode_array = PendingDeleteRedoPrepareDropNodes(h_node, &count);
 
 		DropRelationFiles(relnode_array, count, true);
 

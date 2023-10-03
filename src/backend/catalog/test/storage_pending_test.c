@@ -9,6 +9,9 @@
 #include "../storage_pending.c"
 //#include "catalog/storage_pending.h"
 
+RelFileNodePendingDelete relnode1 = {{1}};
+RelFileNodePendingDelete relnode2 = {{2}};
+RelFileNodePendingDelete relnode3 = {{3}};
 static PendingDeleteListNode pdl_node1;
 static PendingDeleteListNode pdl_node2;
 static PendingDeleteListNode pdl_node3;
@@ -55,9 +58,8 @@ __wrap_dsa_get_address(dsa_area * area, dsa_pointer dp)
 	return __real_dsa_get_address(area, dp);
 }
 
-static void add_node(dsa_pointer dsa_ptr, TransactionId xid)
+static void add_node(RelFileNodePendingDelete *relnode, TransactionId xid, dsa_pointer dsa_ptr)
 {
-	RelFileNodePendingDelete relnode;
 	PendingDeleteListNode *pdl_node = dsa_ptr_to_node(dsa_ptr);
 	
 	will_return(dsa_allocate_extended, dsa_ptr);
@@ -67,14 +69,14 @@ static void add_node(dsa_pointer dsa_ptr, TransactionId xid)
 
 	will_be_called(LWLockAcquire);
 	will_be_called(LWLockRelease);
-	expect_any(LWLockAcquire, lock);
+	expect_any(LWLockAcquire, lock); 
 	expect_any(LWLockAcquire, mode);
 	expect_any(LWLockRelease, lock);
 
-	PendingDeleteShmemAdd(&relnode, xid, &dsa_ptr);
+	PendingDeleteShmemAdd(relnode, xid, &dsa_ptr);
 
 	assert_true(pdl_node->xrelnode.xid == xid);
-	assert_memory_equal(&pdl_node->xrelnode.relnode, &relnode, sizeof(relnode));
+	assert_memory_equal(&pdl_node->xrelnode.relnode, relnode, sizeof(*relnode));
 }
 
 static void remove_node(dsa_pointer dsa_ptr)
@@ -98,13 +100,13 @@ test__add_node_to_shmem(void **state)
 	assert_true(PendingDeleteShmem->pdl_head == InvalidDsaPointer);
 	assert_int_equal(PendingDeleteShmem->pdl_count, 0);
 	
-	add_node(dsa_ptr1, 1);
+	add_node(&relnode1, 1, dsa_ptr1);
 	assert_true(pdl_node1.next == InvalidDsaPointer);
 	assert_true(pdl_node1.prev == InvalidDsaPointer);
 	assert_true(PendingDeleteShmem->pdl_head == dsa_ptr1);
 	assert_int_equal(PendingDeleteShmem->pdl_count, 1);
 
-	add_node(dsa_ptr2, 2);
+	add_node(&relnode2, 2, dsa_ptr2);
 	assert_true(pdl_node1.next == InvalidDsaPointer);
 	assert_true(pdl_node1.prev == dsa_ptr2);
 	assert_true(pdl_node2.next == dsa_ptr1);
@@ -112,7 +114,7 @@ test__add_node_to_shmem(void **state)
 	assert_true(PendingDeleteShmem->pdl_head == dsa_ptr2);
 	assert_int_equal(PendingDeleteShmem->pdl_count, 2);
 
-	add_node(dsa_ptr3, 3);
+	add_node(&relnode3, 3, dsa_ptr3);
 	assert_true(pdl_node1.next == InvalidDsaPointer);
 	assert_true(pdl_node1.prev == dsa_ptr2);
 	assert_true(pdl_node2.next == dsa_ptr1);
@@ -186,6 +188,43 @@ test__dump_empty_shmem_to_array(void **state)
 	assert_true(xrelnode_array == NULL);
 }
 
+static void
+test__redo_prepare_nodes(void **state)
+{
+	PendingRelXactDelete pd1 = {relnode1, 1};
+	PendingRelXactDelete pd2 = {relnode2, 2};
+	PendingRelXactDelete pd3 = {relnode3, 3};
+	PendingDeleteHtabNode *h_node;
+	RelFileNodePendingDelete *relnode_array;
+	int count;
+
+	PendingDeleteRedoAdd(&pd1);
+	PendingDeleteRedoAdd(&pd1);
+	PendingDeleteRedoAdd(&pd2);
+	PendingDeleteRedoAdd(&pd3);
+
+	assert_true(pendingDeleteRedo != NULL);
+
+	PendingDeleteRedoRemove(3);
+
+	assert_true(pendingDeleteRedo != NULL);
+
+	h_node = (PendingDeleteHtabNode *) hash_search(pendingDeleteRedo, &pd1.xid, HASH_FIND, NULL);
+	assert_true(h_node != NULL);
+	relnode_array = PendingDeleteRedoPrepareDropNodes(h_node, &count);
+	assert_int_equal(count, 1);
+	assert_memory_equal(&pd1.relnode, &relnode_array[0].node, sizeof(pd1.relnode));
+
+	h_node = (PendingDeleteHtabNode *) hash_search(pendingDeleteRedo, &pd2.xid, HASH_FIND, NULL);
+	assert_true(h_node != NULL);
+	relnode_array = PendingDeleteRedoPrepareDropNodes(h_node, &count);
+	assert_int_equal(count, 1);
+	assert_memory_equal(&pd2.relnode, &relnode_array[0].node, sizeof(pd2.relnode));
+
+	h_node = (PendingDeleteHtabNode *) hash_search(pendingDeleteRedo, &pd3.xid, HASH_FIND, NULL);
+	assert_true(h_node == NULL);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -197,6 +236,7 @@ main(int argc, char *argv[])
 		unit_test(test__dump_shmem_to_array),
 		unit_test(test__remove_node_from_shmem),
 		unit_test(test__dump_empty_shmem_to_array),
+		unit_test(test__redo_prepare_nodes),
 		unit_test_teardown(teardown_globals, teardown_globals),
 	};
 
