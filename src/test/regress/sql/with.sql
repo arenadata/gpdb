@@ -1075,7 +1075,7 @@ DROP TABLE IF EXISTS d;
 --end_ignore
 CREATE TABLE d (c1 int, c2 int) DISTRIBUTED BY (c1);
 
-INSERT INTO d (VALUES ( 2, 0 ),( 2 , 0 ));
+INSERT INTO d VALUES ( 2, 0 ),( 2 , 0 );
 
 WITH cte AS (
 	SELECT count(*) c1 FROM d
