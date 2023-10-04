@@ -1,5 +1,6 @@
 create extension if not exists gp_inject_fault;
 create extension if not exists plpython3u;
+
 create or replace procedure find_last_pending_delete_record(wal_name text, data_dir text)
 as $$
     import os
@@ -62,6 +63,8 @@ call print_pending_delete();
 
 select gp_inject_fault_infinite('checkpoint_control_file_updated', 'reset', dbid)
 from gp_segment_configuration WHERE role='p';
+
+
 drop table test_heap;
 drop procedure print_pending_delete();
 drop procedure find_last_pending_delete_record(text, text);
