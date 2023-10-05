@@ -788,7 +788,8 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 	 * case of HashJoin with SharedScan, the writing part of which is always in
 	 * the inner. So do not override it in the case of HashJoin.
 	 */
-	if (CdbPathLocus_IsBottleneck(best_path->path.locus) && !IsA(plan, HashJoin))
+	if (CdbPathLocus_IsBottleneck(best_path->path.locus) &&
+		!(root->config->gp_cte_sharing && IsA(plan, HashJoin)))
 	{
 		((Join *) plan)->prefetch_inner = false;
 		((Join *) plan)->prefetch_joinqual = false;
