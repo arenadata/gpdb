@@ -773,6 +773,15 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 			break;
 	}
 
+	/*
+	 * If we injected a partition selector to the inner side, we must evaluate
+	 * the inner side before the outer side, so that the partition selector
+	 * can influence the execution of the outer side.
+	 */
+	Assert(plan->type == best_path->path.pathtype);
+	if (partition_selector_created)
+		((Join *) plan)->prefetch_inner = true;
+
 	/* CDB: if the join's locus is bottleneck which means the
 	 * join gang only contains one process, so there is no
 	 * risk for motion deadlock. But prefetch_inner may still be necessary in the
@@ -783,16 +792,9 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 		!(root->config->gp_cte_sharing && IsA(plan, HashJoin)))
 	{
 		((Join *) plan)->prefetch_inner = false;
+		((Join *) plan)->prefetch_joinqual = false;
+		((Join *) plan)->prefetch_qual = false;
 	}
-
-	/*
-	 * If we injected a partition selector to the inner side, we must evaluate
-	 * the inner side before the outer side, so that the partition selector
-	 * can influence the execution of the outer side.
-	 */
-	Assert(plan->type == best_path->path.pathtype);
-	if (partition_selector_created)
-		((Join *) plan)->prefetch_inner = true;
 
 	plan->flow = cdbpathtoplan_create_flow(root,
 			best_path->path.locus,
