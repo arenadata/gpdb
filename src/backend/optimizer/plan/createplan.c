@@ -791,6 +791,7 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 	if (CdbPathLocus_IsBottleneck(best_path->path.locus) &&
 		!(root->config->gp_cte_sharing && IsA(plan, HashJoin)))
 	{
+		Assert(!partition_selector_created);
 		((Join *) plan)->prefetch_inner = false;
 		((Join *) plan)->prefetch_joinqual = false;
 		((Join *) plan)->prefetch_qual = false;
