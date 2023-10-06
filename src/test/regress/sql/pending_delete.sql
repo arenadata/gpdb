@@ -37,6 +37,7 @@ begin
     end loop;
 end $$;
 
+-- TODO: add checkpoint before test begin, move tests to separate group in schedule
 begin;
 create table test_ao(i int) with (appendonly=true);
 insert into test_ao select generate_series(1, 10000);
