@@ -2085,6 +2085,14 @@ shareinput_mutator_dag_to_tree(Node *node, PlannerInfo *root, bool fPop)
 	ApplyShareInputContext *ctxt = &glob->share;
 	Plan	   *plan = (Plan *) node;
 
+	/*
+	 * HashJoin requires prefetch_inner to be enabled when it has a SharedScan
+	 * at the bottom.
+	 */
+	if(IsA(plan, HashJoin) && ctxt->producer_count){
+		((Join*) plan)->prefetch_inner = true;
+	}
+
 	if (fPop)
 		return true;
 
