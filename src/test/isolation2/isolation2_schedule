@@ -255,6 +255,9 @@ test: appendonly_analyze_progress
 test: aoco_analyze_progress
 test: ao_index_build_progress
 
+# test orphaned files machinery
+test: pending_delete
+
 # this test contains some fault injection that might get mis-hit by autovacuum process,
 # so it needs to be run with autovacuum being disabled
 test: segwalrep/die_commit_pending_replication

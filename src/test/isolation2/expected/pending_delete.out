@@ -1,0 +1,91 @@
+-- start_matchsubs
+-- m/^ERROR:  Error on receive from .*: server closed the connection unexpectedly/
+-- s/^ERROR:  Error on receive from .*: server closed the connection unexpectedly/ERROR: server closed the connection unexpectedly/
+--
+-- m/^ERROR:  could not stat file.*: No such file or directory/
+-- s/^ERROR:  could not stat file.*: No such file or directory/ERROR:  could not stat file: No such file or directory/
+-- end_matchsubs
+
+------------------------------------------
+
+0: create table pdl_paths(id int, path text) distributed replicated;
+CREATE TABLE
+
+----------------------------
+1: begin;
+BEGIN
+1: create table test_ao(i int) with (appendonly=true);
+CREATE TABLE
+1: insert into test_ao select generate_series(1,10000);
+INSERT 0 10000
+
+1: copy ( select id, current_setting('data_directory')||'/'||pg_relation_filepath(relid::regclass) from ( select unnest(array[1, 2, 3]) as id, unnest(array[relid, segrelid, visimaprelid]) as relid from pg_appendonly where relid = 'test_ao'::regclass::oid ) t ) to '/tmp/pdl_paths.csv' with csv;
+COPY 3
+
+1: copy (select pg_backend_pid()) to '/tmp/pdl_pid.csv' with csv;
+COPY 1
+!\retcode kill -9 $(cat /tmp/pdl_pid.csv);
+(exited with code 0)
+1: commit;
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+1q: ... <quitting>
+0q: ... <quitting>
+
+2: truncate pdl_paths;
+TRUNCATE TABLE
+2: copy pdl_paths from '/tmp/pdl_paths.csv' with csv;
+COPY 3
+
+2: select pg_stat_file(path) from pdl_paths where id = 1;
+ERROR:  could not stat file: No such file or directory
+2: select pg_stat_file(path) from pdl_paths where id = 2;
+ERROR:  could not stat file: No such file or directory
+2: select pg_stat_file(path) from pdl_paths where id = 3;
+ERROR:  could not stat file: No such file or directory
+2q: ... <quitting>
+----------------------------
+0: create or replace function get_full_relpath_on_segments(regclass) returns table(gp_segment_id int, path text) language sql as $$ select gp_execution_segment(), current_setting('data_directory')||'/'||pg_relation_filepath($1) $$ execute on all segments;
+CREATE FUNCTION
+
+1: begin;
+BEGIN
+1: create table test_ao(i int) with (appendonly=true);
+CREATE TABLE
+1: insert into test_ao select generate_series(1,10000);
+INSERT 0 10000
+
+1: copy ( select t1.id, t2.path from( select unnest(array[1, 2, 3]) as id, unnest(array[relid, segrelid, visimaprelid]) as relid from pg_appendonly where relid = 'test_ao'::regclass::oid ) t1, get_full_relpath_on_segments(t1.relid::regclass) t2 where t2.gp_segment_id = 0 ) to '/tmp/pdl_paths.csv' with csv;
+COPY 3
+
+0: !\retcode kill -9 $(ps aux | grep 'postgres' | grep $(psql postgres -Atc "select port from gp_segment_configuration where content=0 and role='p'") | awk '{print $2}');
+(exited with code 0)
+0q: ... <quitting>
+
+1: commit;
+ERROR: server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+
+1: truncate pdl_paths;
+TRUNCATE TABLE
+1: copy pdl_paths from '/tmp/pdl_paths.csv' with csv;
+COPY 3
+
+1: select pg_stat_file(path) from gp_dist_random('pdl_paths') where gp_execution_segment() = 0 and id = 1;
+ERROR:  could not stat file: No such file or directory
+1: select pg_stat_file(path) from gp_dist_random('pdl_paths') where gp_execution_segment() = 0 and id = 2;
+ERROR:  could not stat file: No such file or directory
+1: select pg_stat_file(path) from gp_dist_random('pdl_paths') where gp_execution_segment() = 0 and id = 3;
+ERROR:  could not stat file: No such file or directory
+----------------------------
+
+0: drop table pdl_paths;
+DROP TABLE
+0: drop function get_full_relpath_on_segments;
+DROP FUNCTION
+0: !\retcode rm -f /tmp/pdl_paths.csv;
+(exited with code 0)
+0: !\retcode rm -f /tmp/pdl_pid.csv;
+(exited with code 0)
