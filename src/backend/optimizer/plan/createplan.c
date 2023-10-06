@@ -781,17 +781,15 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 	Assert(plan->type == best_path->path.pathtype);
 	if (partition_selector_created)
 		((Join *) plan)->prefetch_inner = true;
-
-	/* CDB: if the join's locus is bottleneck which means the
-	 * join gang only contains one process, so there is no
-	 * risk for motion deadlock. But prefetch_inner may still be necessary in the
-	 * case of HashJoin with SharedScan, the writing part of which is always in
-	 * the inner. So do not override it in the case of HashJoin.
-	 */
-	if (CdbPathLocus_IsBottleneck(best_path->path.locus) &&
+	else if (CdbPathLocus_IsBottleneck(best_path->path.locus) &&
 		!(root->config->gp_cte_sharing && IsA(plan, HashJoin)))
 	{
-		Assert(!partition_selector_created);
+		/* CDB: if the join's locus is bottleneck which means the
+		 * join gang only contains one process, so there is no
+		 * risk for motion deadlock. But prefetch_inner may still be necessary in the
+		 * case of HashJoin with SharedScan, the writing part of which is always in
+		 * the inner. So do not override it in the case of HashJoin.
+		 */
 		((Join *) plan)->prefetch_inner = false;
 		((Join *) plan)->prefetch_joinqual = false;
 		((Join *) plan)->prefetch_qual = false;
