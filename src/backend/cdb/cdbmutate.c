@@ -2089,9 +2089,11 @@ shareinput_mutator_dag_to_tree(Node *node, PlannerInfo *root, bool fPop)
 	{
 		/*
 		 * HashJoin requires prefetch_inner to be enabled if there is a
-		 * SharedScan in the plan.
+		 * SharedScan in the plan even if it is on bottleneck.
 		 */
-		if (IsA(plan, HashJoin) && ctxt->producer_count > 0)
+		if (IsA(plan, HashJoin) && ctxt->producer_count > 0 &&
+			(plan->flow->locustype == CdbLocusType_SingleQE ||
+			 plan->flow->locustype == CdbLocusType_Entry))
 			((Join*) plan)->prefetch_inner = true;
 
 		return true;
