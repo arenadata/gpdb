@@ -2092,7 +2092,7 @@ shareinput_mutator_dag_to_tree(Node *node, PlannerInfo *root, bool fPop)
 		 * SharedScan in the plan even if it is on bottleneck.
 		 */
 		if (IsA(plan, HashJoin) && ctxt->producer_count > 0 &&
-			(plan->flow->locustype == CdbLocusType_SingleQE ||
+			CdbPathLocus_IsBottleneck(*(plan->flow))
 			 plan->flow->locustype == CdbLocusType_Entry))
 			((Join*) plan)->prefetch_inner = true;
 
