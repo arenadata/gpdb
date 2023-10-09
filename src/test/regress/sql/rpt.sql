@@ -562,6 +562,21 @@ explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
 explain (costs off, verbose) select * from t1 where a in (select f(i) from t where i=a and f(i) > 0);
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t group by i having random() > 0);
+-- ensure we make motion when volatile function in target list of CTE
+explain (costs off, verbose) with cte as (select a, a * random() from generate_series(1, 5) a)
+select * from cte join t1 using(a);
+-- ensure we make motion when volatile function in target list of union
+explain (costs off, verbose) select * from (
+    select random() as a from generate_series(1,5)
+    union
+    select random() as a from generate_series(1,5)
+)
+a join t1 on a.a = t1.a;
+-- ensure we make motion when volatile function in target list of subplan of multiset function
+explain (costs off, verbose) select * from (
+    SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from generate_series(1,5)a))
+) a join t1 using(a);
+
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
