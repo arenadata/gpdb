@@ -8687,3 +8687,114 @@ DELETE FROM dist_key_dropped_pt WHERE b=6;
 -- the tables, or the pg_upgrade test fails.
 set client_min_messages='warning';
 drop schema qp_dropped_cols cascade;
+
+-- Test modifying DML on leaf partition when parent has dropped columns and
+-- the partition has not. Ensure that DML commands pass without execution
+-- errors and produce valid results.
+RESET search_path;
+-- start_ignore
+DROP TABLE IF EXISTS t_part_dropped;
+-- end_ignore
+CREATE TABLE t_part_dropped (c1 int, c2 int, c3 int, c4 int) DISTRIBUTED BY (c1)
+PARTITION BY LIST (c3) (PARTITION p0 VALUES (0));
+
+ALTER TABLE t_part_dropped DROP c2;
+ALTER TABLE t_part_dropped ADD PARTITION p2 VALUES (2);
+
+-- Partition selection should go smoothly when inserting into leaf
+-- partition with different attribute structure.
+INSERT INTO t_part_dropped VALUES (1, 2, 4);
+INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4);
+INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 0);
+
+-- Ensure that split update on leaf and root partitions does not
+-- throw partition selection error in both planners.
+UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
+UPDATE t_part_dropped SET c1 = 3;
+
+INSERT INTO t_part_dropped VALUES (1, 2, 0);
+
+-- Ensure that split update on leaf partition does not throw constraint error
+-- (legacy planner does not choose the wrong partition at insert) and does not
+-- throw partition selection error (ORCA).
+UPDATE t_part_dropped_1_prt_p2 SET c1 = 2 WHERE c4 = 0;
+SELECT count(*) FROM t_part_dropped_1_prt_p2;
+
+-- Split update on root relation should choose the correct partition
+-- at insert (legacy planner doesn't put the tuple to wrong partition).
+UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
+SELECT count(*) FROM t_part_dropped_1_prt_p2;
+SELECT * FROM t_part_dropped_1_prt_p0;
+
+-- For ORCA the partition selection error should not occur.
+DELETE FROM t_part_dropped_1_prt_p2;
+
+DROP TABLE t_part_dropped;
+
+-- Test modifying DML on leaf partition after it was exchanged with a relation,
+-- that contained dropped columns. Ensure that DML commands pass without
+-- execution errors and produce valid results.
+-- start_ignore
+DROP TABLE IF EXISTS t_part;
+DROP TABLE IF EXISTS t_new_part;
+-- end_ignore
+CREATE TABLE t_part (c1 int, c2 int, c3 int, c4 int) DISTRIBUTED BY (c1)
+PARTITION BY LIST (c3) (PARTITION p0 VALUES (0));
+
+ALTER TABLE t_part ADD PARTITION p2 VALUES (2);
+CREATE TABLE t_new_part (c1 int, c11 int, c2 int, c3 int, c4 int);
+ALTER TABLE t_new_part DROP c11;
+ALTER TABLE t_part EXCHANGE PARTITION FOR (2) WITH TABLE t_new_part;
+
+INSERT INTO t_part VALUES (1, 5, 2, 5);
+INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
+
+-- Ensure that split update on leaf and root partitions does not
+-- throw partition selection error in both planners.
+UPDATE t_part_1_prt_p2 SET c1 = 2;
+UPDATE t_part SET c1 = 3;
+
+INSERT INTO t_part VALUES (1, 0, 2, 0);
+
+-- Ensure that split update on leaf partition does not throw constraint error
+-- (legacy planner does not choose the wrong partition at insert) and does not
+-- throw partition selection error (ORCA).
+UPDATE t_part_1_prt_p2 SET c1 = 2 WHERE c4 = 0;
+
+SELECT count(*) FROM t_part_1_prt_p2;
+
+-- For ORCA the partition selection error should not occur.
+DELETE FROM t_part_1_prt_p2;
+
+DROP TABLE t_part;
+DROP TABLE t_new_part;
+
+-- Test split update execution of a plan from legacy planner in case
+-- when parent relation has several partitions, and one of them has
+-- physically-different attribute structure from parent's due to
+-- dropped columns. Ensure that split update does not reconstruct tuple
+-- of correct (without dropped attributes) partition.
+CREATE TABLE t_part (c1 int, c2 int, c3 int, c4 int) DISTRIBUTED BY (c1)
+PARTITION BY LIST (c3) (PARTITION p0 VALUES (0));
+
+-- This one is not compatible with the parent due to dropped columns
+CREATE TABLE t_new_part0 (c1 int, c11 int, c2 int, c3 int, c4 int);
+ALTER TABLE t_new_part0 drop c11;
+ALTER TABLE t_part EXCHANGE PARTITION FOR (0) WITH TABLE t_new_part0;
+
+-- This partition is compatible with the parent.
+ALTER TABLE t_part ADD PARTITION p2 VALUES (2);
+CREATE TABLE t_new_part2 (c1 int, c2 int, c3 int, c4 int);
+ALTER TABLE t_part EXCHANGE PARTITION FOR (2) WITH TABLE t_new_part2;
+
+-- Insert into correct partition, and perform split update on root,
+-- that will execute split update on each subplan in case of inheritance
+-- plan (legacy planner). Ensure that split update does not reconstruct the
+-- tuple at insert.
+INSERT INTO t_part VALUES (1, 4, 2, 2);
+UPDATE t_part SET c1=3;
+SELECT * FROM t_part_1_prt_p2;
+
+DROP TABLE t_part;
+DROP TABLE t_new_part0;
+DROP TABLE t_new_part2;

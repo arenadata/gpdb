@@ -4558,6 +4558,7 @@ targetid_get_partition(Oid targetid, EState *estate, bool openIndices)
 {
 	ResultRelInfo *parentInfo = estate->es_result_relations;
 	ResultRelInfo *childInfo = estate->es_result_relations;
+	ResultRelInfo *currRelInfo = estate->es_result_relation_info;
 	ResultPartHashEntry *entry;
 	bool		found;
 
@@ -4603,10 +4604,27 @@ targetid_get_partition(Oid targetid, EState *estate, bool openIndices)
 		if (openIndices)
 			ExecOpenIndices(childInfo);
 
-		map_part_attrs(parentInfo->ri_RelationDesc,
-					   childInfo->ri_RelationDesc,
-					   &(childInfo->ri_partInsertMap),
-					   TRUE); /* throw on error, so result not needed */
+		/*
+		 * If we are currently modifying a leaf partition, i.e we called
+		 * a DML command straight on child partition, or it's inheritance
+		 * plan execution (e.g. UPDATE command on root, which leads to multiple
+		 * subplans, and es_result_relations points to one of the partitions),
+		 * it will be better to omit building an ri_partInsertMap. In both
+		 * planners when we are executing a DML just on leaf partition,
+		 * the tuple descriptor already matches the partition's, and the extra
+		 * mapping in unnecessary (besides the map from makePartitionCheckMap,
+		 * which only helps to select partition in slot_get_partition).
+		 * Otherwise, there is a chance to reconstruct already valid tuple and
+		 * get the wrong results (e.g. target partition relation descriptor is
+		 * different from parentInfo's, but it's UPDATE (legacy planner) and
+		 * parentInfo represents another partition, which is not the true
+		 * parent).
+		 */
+		if (!currRelInfo || RelationGetRelid(currRelInfo->ri_RelationDesc) != targetid)
+			map_part_attrs(parentInfo->ri_RelationDesc,
+						   childInfo->ri_RelationDesc,
+						   &(childInfo->ri_partInsertMap),
+						   TRUE); /* throw on error, so result not needed */
 	}
 	return childInfo;
 }
@@ -4631,21 +4649,65 @@ values_get_partition(Datum *values, bool *nulls, TupleDesc tupdesc,
 ResultRelInfo *
 slot_get_partition(TupleTableSlot *slot, EState *estate)
 {
-	ResultRelInfo *resultRelInfo;
+	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
+	TupleDesc	tupdesc = NULL;
 	AttrNumber max_attr;
 	Datum *values;
 	bool *nulls;
 
 	Assert(PointerIsValid(estate->es_result_partitions));
 
-	max_attr = estate->es_partition_state->max_partition_attr;
+	/*
+	 * If we previously found out that we need to map attribute numbers
+	 * (in case if child part has physically-different attribute numbers from
+	 * parent's), we must extract slot values according to that mapping.
+	 */
+	if (resultRelInfo->ri_PartCheckMap != NULL)
+	{
+		Datum	   *parent_values;
+		bool	   *parent_nulls;
+		Relation	parentRel = resultRelInfo->ri_PartitionParent;
+		TupleDesc	parentTupdesc;
+		AttrMap	   *map;
 
-	slot_getsomeattrs(slot, max_attr);
-	values = slot_get_values(slot);
-	nulls = slot_get_isnull(slot);
+		Assert(parentRel != NULL);
+		parentTupdesc = RelationGetDescr(parentRel);
 
-	resultRelInfo = get_part(estate, values, nulls, slot->tts_tupleDescriptor,
+		slot_getallattrs(slot);
+		values = slot_get_values(slot);
+		nulls = slot_get_isnull(slot);
+		parent_values = palloc(parentTupdesc->natts * sizeof(Datum));
+		parent_nulls = palloc0(parentTupdesc->natts * sizeof(bool));
+
+		map = resultRelInfo->ri_PartCheckMap;
+		reconstructTupleValues(map, values, nulls, slot->tts_tupleDescriptor->natts,
+							   parent_values, parent_nulls, parentTupdesc->natts);
+
+		/* Now we have values/nulls in parent's view. */
+		values = parent_values;
+		nulls = parent_nulls;
+		tupdesc = RelationGetDescr(parentRel);
+	}
+	else
+	{
+		max_attr = estate->es_partition_state->max_partition_attr;
+		slot_getsomeattrs(slot, max_attr);
+		/* values/nulls pointing to partslot's array. */
+		values = slot_get_values(slot);
+		nulls = slot_get_isnull(slot);
+		tupdesc = slot->tts_tupleDescriptor;
+	}
+
+	resultRelInfo = get_part(estate, values, nulls, tupdesc,
 							 true);
+
+	/* Free up if we allocated mapped attributes. */
+	if (values != slot_get_values(slot) &&
+		nulls != slot_get_isnull(slot))
+	{
+		pfree(values);
+		pfree(nulls);
+	}
 
 	return resultRelInfo;
 }
