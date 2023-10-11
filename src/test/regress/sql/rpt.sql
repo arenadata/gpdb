@@ -568,6 +568,10 @@ explain (costs off, verbose) with cte as (
     select a * random() as a from generate_series(1, 5) a
 )
 select * from cte join (select * from t1 join cte using(a))b using(a);
+set gp_cte_sharing = off;
+explain (costs off, verbose) with cte as (select a, a * random() from generate_series(1, 5) a)
+select * from cte join t1 using(a);
+reset gp_cte_sharing;
 -- ensure we make motion when volatile function in target list of union
 explain (costs off, verbose) select * from (
     select random() as a from generate_series(1,5)
@@ -579,8 +583,6 @@ a join t1 on a.a = t1.a;
 explain (costs off, verbose) select * from (
     SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from generate_series(1,5)a))
 ) a join t1 using(a);
-
-reset gp_cte_sharing;
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
