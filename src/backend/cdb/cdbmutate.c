@@ -2089,7 +2089,7 @@ shareinput_mutator_dag_to_tree(Node *node, PlannerInfo *root, bool fPop)
 	{
 		/*
 		 * HashJoin requires prefetch_inner to be enabled if there is a
-		 * SharedScan in the plan but in the case of bottleneck, it can be
+		 * SharedScan in the plan, but in the case of bottleneck it can be
 		 * turned off for optimization reasons, so we turn it on again.
 		 */
 		if (IsA(plan, HashJoin) && ctxt->producer_count > 0 &&
