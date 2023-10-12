@@ -2088,9 +2088,13 @@ shareinput_mutator_dag_to_tree(Node *node, PlannerInfo *root, bool fPop)
 	if (fPop)
 	{
 		/*
-		 * HashJoin requires prefetch_inner to be enabled if there is a
-		 * SharedScan in the plan, but in the case of bottleneck it can be
-		 * turned off for optimization reasons, so we turn it on again.
+		 * If there is a shared scan under HashJoin, producer is in the inner
+		 * subplan and consumer is in the outer, then we need to enable
+		 * prefetch_inner to avoid deadlock. In the case of bottleneck, we can
+		 * turn off prefetch_inner for optimization reasons in the create_join_plan
+		 * function. So we need to turn it back on. To simplify the logic, we
+		 * enable prefetch_inner for all hash joins located on bottleneck if
+		 * there is a shared scan in the plan.
 		 */
 		if (IsA(plan, HashJoin) && ctxt->producer_count > 0 &&
 			CdbPathLocus_IsBottleneck(*(plan->flow)))
