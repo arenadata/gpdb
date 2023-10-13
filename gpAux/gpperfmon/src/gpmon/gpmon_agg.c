@@ -1304,7 +1304,6 @@ static void fmt_qlog(char* line, const int line_size, qdnode_t* qdnode, const ch
 	char timfinished[GPMON_DATE_BUF_SIZE];
 	double cpu_skew = 0.0f;
 	double row_skew = 0.0f;
-	int query_hash = 0;
 	apr_int64_t rowsout = 0;
 	float cpu_current;
 	cpu_skew = get_cpu_skew(qdnode);
@@ -1340,7 +1339,7 @@ static void fmt_qlog(char* line, const int line_size, qdnode_t* qdnode, const ch
 		snprintf(timfinished, GPMON_DATE_BUF_SIZE,  "null");
 	}
 
-	snprintf(line, line_size, "%s|%d|%d|%d|%s|%s|%d|%s|%s|%s|%s|%" FMT64 "|%" FMT64 "|%.4f|%.2f|%.2f|%d",
+	snprintf(line, line_size, "%s|%d|%d|%d|%s|%s|%d|%s|%s|%s|%s|%" FMT64 "|%" FMT64 "|%.4f|%.2f|%.2f",
 		nowstr,
 		qdnode->qlog.key.tmid,
 		qdnode->qlog.key.ssid,
@@ -1356,8 +1355,7 @@ static void fmt_qlog(char* line, const int line_size, qdnode_t* qdnode, const ch
 		qdnode->qlog.cpu_elapsed,
 		cpu_current,
 		cpu_skew,
-		row_skew,
-		query_hash);
+		row_skew);
 }
 
 
@@ -1377,8 +1375,7 @@ static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, a
 	}
 	else
 	{
-		/* Query text "joined" by python script */
-		fprintf(fp, "%s|||||\n", line);
+		fprintf(fp, "%s\n", line);
 		return bytes_written;
 	}
 }
@@ -1484,18 +1481,20 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 	qfptr = fopen(qfname, "r");
     if (!qfptr)
     {
-	    fprintf(fp, "|||||\n");
-	    bytes_written += 6;
+	    /* 0 it's query hash */
+	    fprintf(fp, "|0|||||\n");
+	    bytes_written += 8;
 	    return bytes_written;
     }
 
-    // 0 add query text
-    // 1 add query plan
-    // 2 add application name
-    // 3 add rsqname
-    // 4 add priority
+    // 0 add query hash
+    // 1 add query text
+    // 2 add query plan
+    // 3 add application name
+    // 4 add rsqname
+    // 5 add priority
 
-    int total_iterations = 5;
+    int total_iterations = 6;
     int all_good = 1;
     int iter;
     int retCode = APR_SUCCESS;
@@ -1504,7 +1503,13 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 	    fprintf(fp, "|");
         bytes_written++;
 
-        if (!all_good || iter == 1){
+        if(iter == 0){
+            fprintf(fp, "0");
+            bytes_written++;
+            continue;
+        }
+
+        if (!all_good || iter == 2){
             // we have no data for query plan
             // if we failed once already don't bother trying to parse query file
             continue;

@@ -4299,3 +4299,8 @@ def impl(context):
 		os.environ['LC_ALL'] = default_locale
 	else:
 		del os.environ['LC_ALL']
+
+@then('run query for {second} seconds')
+def impl(context, second):
+	cmd = Command(name='psql', cmdStr="-c 'create table bla as SELECT * from generate_series(1, %s) test_adcc where pg_sleep(1) is not null; drop table bla;'" % second)
+	cmd.runNoWait()
