@@ -1513,6 +1513,8 @@ explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t gr
  Settings: enable_bitmapscan=off, enable_seqscan=off
 (20 rows)
 
+reset enable_bitmapscan;
+reset enable_seqscan;
 set gp_cte_sharing = on;
 -- ensure we make motion when volatile function in target list of CTE
 explain (costs off, verbose) with cte as (
@@ -1560,7 +1562,7 @@ select * from cte join (select * from t1 join cte using(a))b using(a);
                                        ->  Seq Scan on rpt.t1
                                              Output: t1.a
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: enable_bitmapscan=off, enable_seqscan=off, gp_cte_sharing=on
+ Settings: gp_cte_sharing=on, optimizer=on
 (40 rows)
 
 set gp_cte_sharing = off;
@@ -1594,7 +1596,7 @@ select * from cte join t1 using(a);
                      ->  Seq Scan on rpt.t1
                            Output: t1.a
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: enable_bitmapscan=off, enable_seqscan=off, gp_cte_sharing=off
+ Settings: gp_cte_sharing=off, optimizer=on
 (27 rows)
 
 reset gp_cte_sharing;
@@ -1640,7 +1642,7 @@ a join t1 on a.a = t1.a;
                      ->  Seq Scan on rpt.t1
                            Output: t1.a
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: enable_bitmapscan=off, enable_seqscan=off
+ Settings: optimizer=on
 (34 rows)
 
 -- ensure we make motion when volatile function in target list of subplan of multiset function
@@ -1669,12 +1671,39 @@ explain (costs off, verbose) select * from (
                                        Output: (random())::integer
                                        Function Call: generate_series(1, 5)
  Optimizer: Postgres query optimizer
- Settings: enable_bitmapscan=off, enable_seqscan=off
+ Settings: optimizer=on
 (21 rows)
+
+-- start_ignore
+drop table if exists d;
+NOTICE:  table "d" does not exist, skipping
+-- end_ignore
+create table d (b int, a int default 1) distributed by (b);
+insert into d select * from generate_series(0, 20) j;
+-- make sure that the tuples are on more than one segment.
+SELECT count(distinct(gp_segment_id)) > 1 from d;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- change distribution without reorganize
+alter table d set distributed randomly;
+insert into t2 values (1, 1), (2, 2), (3, 3);
+-- result should be count = 1
+with cte as (
+    select a, b * random() as r from t2
+)
+select count(distinct(r)) from cte join d on cte.a = d.a;
+ count 
+-------
+     1
+(1 row)
 
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
+drop table if exists d; 
 drop function if exists f(i int);
 -- start_ignore
 drop schema rpt cascade;

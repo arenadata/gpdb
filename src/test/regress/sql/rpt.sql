@@ -562,6 +562,8 @@ explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
 explain (costs off, verbose) select * from t1 where a in (select f(i) from t where i=a and f(i) > 0);
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t group by i having random() > 0);
+reset enable_bitmapscan;
+reset enable_seqscan;
 set gp_cte_sharing = on;
 -- ensure we make motion when volatile function in target list of CTE
 explain (costs off, verbose) with cte as (
@@ -583,9 +585,29 @@ a join t1 on a.a = t1.a;
 explain (costs off, verbose) select * from (
     SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from generate_series(1,5)a))
 ) a join t1 using(a);
+
+-- start_ignore
+drop table if exists d;
+-- end_ignore
+create table d (b int, a int default 1) distributed by (b);
+insert into d select * from generate_series(0, 20) j;
+-- make sure that the tuples are on more than one segment.
+SELECT count(distinct(gp_segment_id)) > 1 from d;
+-- change distribution without reorganize
+alter table d set distributed randomly;
+
+insert into t2 values (1, 1), (2, 2), (3, 3);
+
+-- result should be count = 1
+with cte as (
+    select a, b * random() as r from t2
+)
+select count(distinct(r)) from cte join d on cte.a = d.a;
+
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
+drop table if exists d;
 drop function if exists f(i int);
 
 -- start_ignore
