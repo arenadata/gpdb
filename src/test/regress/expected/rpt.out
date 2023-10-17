@@ -1668,10 +1668,10 @@ select count(distinct(r)) from cte join d on cte.a = d.a;
      1
 (1 row)
 
+drop table d;
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
-drop table if exists d;
 drop function if exists f(i int);
 -- start_ignore
 drop schema rpt cascade;

@@ -604,10 +604,11 @@ with cte as (
 )
 select count(distinct(r)) from cte join d on cte.a = d.a;
 
+drop table d;
+
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
-drop table if exists d;
 drop function if exists f(i int);
 
 -- start_ignore

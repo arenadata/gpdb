@@ -1562,7 +1562,7 @@ select * from cte join (select * from t1 join cte using(a))b using(a);
                                        ->  Seq Scan on rpt.t1
                                              Output: t1.a
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: gp_cte_sharing=on, optimizer=on
+ Settings: gp_cte_sharing=on
 (40 rows)
 
 set gp_cte_sharing = off;
@@ -1596,7 +1596,7 @@ select * from cte join t1 using(a);
                      ->  Seq Scan on rpt.t1
                            Output: t1.a
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: gp_cte_sharing=off, optimizer=on
+ Settings: gp_cte_sharing=off
 (27 rows)
 
 reset gp_cte_sharing;
@@ -1642,8 +1642,7 @@ a join t1 on a.a = t1.a;
                      ->  Seq Scan on rpt.t1
                            Output: t1.a
  Optimizer: Pivotal Optimizer (GPORCA)
- Settings: optimizer=on
-(34 rows)
+(33 rows)
 
 -- ensure we make motion when volatile function in target list of subplan of multiset function
 explain (costs off, verbose) select * from (
@@ -1671,8 +1670,7 @@ explain (costs off, verbose) select * from (
                                        Output: (random())::integer
                                        Function Call: generate_series(1, 5)
  Optimizer: Postgres query optimizer
- Settings: optimizer=on
-(21 rows)
+(20 rows)
 
 -- start_ignore
 drop table if exists d;
@@ -1700,10 +1698,10 @@ select count(distinct(r)) from cte join d on cte.a = d.a;
      1
 (1 row)
 
+drop table d;
 drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
-drop table if exists d; 
 drop function if exists f(i int);
 -- start_ignore
 drop schema rpt cascade;
