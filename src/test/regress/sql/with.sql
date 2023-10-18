@@ -1046,3 +1046,40 @@ WITH updated AS (
 	update rank_tbl set rank = 6 where id = 5 returning rank
 )
 select count(*) from rank_tbl where rank in (select rank from updated);
+
+-- Test that the planner can build a plan with non-select CTE sharing.
+--start_ignore
+DROP TABLE IF EXISTS t1;
+--end_ignore
+CREATE TABLE t1 (c1 int, c2 int) DISTRIBUTED RANDOMLY;
+
+EXPLAIN (VERBOSE, COSTS OFF)
+WITH cte1 AS (
+	INSERT INTO t1 VALUES ( 1, 2 ) RETURNING *
+)
+SELECT * FROM cte1 a JOIN cte1 b USING (c1);
+
+WITH cte1 AS (
+	INSERT INTO t1 VALUES ( 1, 2 ) RETURNING *
+)
+SELECT * FROM cte1 a JOIN cte1 b USING (c1);
+
+DROP TABLE t1;
+
+-- Ensure that prefetch is not disabled for HashJoin in case of join at single segment.
+-- Test Shared Scan producer is executed under inner part of join first and the
+-- deadlock between Shared Scans does not occur
+SET optimizer = off;
+--start_ignore
+DROP TABLE IF EXISTS d;
+--end_ignore
+CREATE TABLE d (c1 int, c2 int) DISTRIBUTED BY (c1);
+
+INSERT INTO d VALUES ( 2, 0 ),( 2, 0 );
+
+WITH cte AS (
+	SELECT count(*) c1 FROM d
+) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+
+RESET optimizer;
+DROP TABLE d;
