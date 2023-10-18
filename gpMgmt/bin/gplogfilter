@@ -415,9 +415,9 @@ try:
         # - second part is ordered by name and lays out at the end
         # All LogNameInfo structures are marked for belonging to the user
         # specified time range. Log names without time stamp always should
-        # always be processed, because them may contain log entries inside
-        # specified range, so LogNameInfo for such names always makred as
-        # belonging to the range.
+        # be processed, because them may contain log entries inside specified
+        # range, so LogNameInfo for such names always marked as belonging to
+        # the range.
         logsInfoArr = getLogInfoArrayByNamesOrderedAndMarkedInTSRange(args, begin, end)
 
         for logInfo in logsInfoArr:
