@@ -1503,13 +1503,15 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 	    fprintf(fp, "|");
         bytes_written++;
 
-        if(iter == 0){
+        if (iter == 0)
+        {
             fprintf(fp, "0");
             bytes_written++;
             continue;
         }
 
-        if (!all_good || iter == 2){
+        if (!all_good || iter == 2)
+        {
             // we have no data for query plan
             // if we failed once already don't bother trying to parse query file
             continue;
