@@ -565,7 +565,7 @@ explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t gr
 reset enable_bitmapscan;
 reset enable_seqscan;
 set gp_cte_sharing = on;
--- ensure we make motion when volatile function in target list of CTE
+-- ensure that the volatile function is executed on one segment if it is in the CTE target list
 explain (costs off, verbose) with cte as (
     select a * random() as a from generate_series(1, 5) a
 )
@@ -574,18 +574,22 @@ set gp_cte_sharing = off;
 explain (costs off, verbose) with cte as (select a, a * random() from generate_series(1, 5) a)
 select * from cte join t1 using(a);
 reset gp_cte_sharing;
--- ensure we make motion when volatile function in target list of union
+-- ensure that the volatile function is executed on one segment if it is in the union target list
 explain (costs off, verbose) select * from (
     select random() as a from generate_series(1,5)
     union
     select random() as a from generate_series(1,5)
 )
 a join t1 on a.a = t1.a;
--- ensure we make motion when volatile function in target list of subplan of multiset function
+-- ensure that the volatile function is executed on one segment if it is in target list of subplan of multiset function
 explain (costs off, verbose) select * from (
     SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from generate_series(1,5)a))
 ) a join t1 using(a);
 
+-- if there is a volatile function in the target list of a plan with the locus type
+-- General or Segment General, then such a plan should be executed on single
+-- segment, since it is assumed that nodes with such locus types will give the same
+-- result on all segments, which is impossible for a volatile function.
 -- start_ignore
 drop table if exists d;
 -- end_ignore
@@ -596,10 +600,6 @@ alter table d set distributed randomly;
 
 insert into t2 values (1, 1), (2, 2), (3, 3);
 
--- In the case of a volatile function in the target list in a query with scan over
--- a node with a General or SegmentGeneral locus. The function call should be made
--- on single segment, since it is assumed that nodes with such locus will give the
--- same result on all segments. So result should be count = 1
 with cte as (
     select a, b * random() as r from t2
 )
