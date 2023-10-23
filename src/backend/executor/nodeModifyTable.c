@@ -2477,16 +2477,6 @@ makePartitionCheckMap(EState *estate, ResultRelInfo *resultRelInfo)
 	 */
 	parentRelid = estate->es_result_partitions->part->parrelid;
 
-	if (resultRelInfo->ri_PartitionParent &&
-		parentRelid != RelationGetRelid(resultRelInfo->ri_PartitionParent))
-	{
-		resultRelInfo->ri_PartCheckTupDescMatch = 0;
-		if (resultRelInfo->ri_PartCheckMap != NULL)
-			pfree(resultRelInfo->ri_PartCheckMap);
-		if (resultRelInfo->ri_PartitionParent)
-			relation_close(resultRelInfo->ri_PartitionParent, AccessShareLock);
-	}
-
 	if (resultRelInfo->ri_PartCheckTupDescMatch == 0 &&
 		parentRelid != RelationGetRelid(resultRelInfo->ri_RelationDesc))
 	{
