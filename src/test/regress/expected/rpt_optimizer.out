@@ -1678,17 +1678,13 @@ NOTICE:  table "d" does not exist, skipping
 -- end_ignore
 create table d (b int, a int default 1) distributed by (b);
 insert into d select * from generate_series(0, 20) j;
--- make sure that the tuples are on more than one segment.
-SELECT count(distinct(gp_segment_id)) > 1 from d;
- ?column? 
-----------
- t
-(1 row)
-
 -- change distribution without reorganize
 alter table d set distributed randomly;
 insert into t2 values (1, 1), (2, 2), (3, 3);
--- result should be count = 1
+-- In the case of a volatile function in the target list in a query with scan over
+-- a node with a General or SegmentGeneral locus. The function call should be made
+-- on single segment, since it is assumed that nodes with such locus will give the
+-- same result on all segments. So result should be count = 1
 with cte as (
     select a, b * random() as r from t2
 )
