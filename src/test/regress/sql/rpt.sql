@@ -569,9 +569,11 @@ set gp_cte_sharing = on;
 explain (costs off, verbose) with cte as (
     select a * random() as a from generate_series(1, 5) a
 )
-select * from cte join (select * from t1 join cte using(a))b using(a);
+select * from cte join (select * from t1 join cte using(a)) b using(a);
 set gp_cte_sharing = off;
-explain (costs off, verbose) with cte as (select a, a * random() from generate_series(1, 5) a)
+explain (costs off, verbose) with cte as (
+    select a, a * random() from generate_series(1, 5) a
+)
 select * from cte join t1 using(a);
 reset gp_cte_sharing;
 -- ensure that the volatile function is executed on one segment if it is in the union target list
@@ -583,7 +585,7 @@ explain (costs off, verbose) select * from (
 a join t1 on a.a = t1.a;
 -- ensure that the volatile function is executed on one segment if it is in target list of subplan of multiset function
 explain (costs off, verbose) select * from (
-    SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from generate_series(1,5)a))
+    SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from generate_series(1,5) a ) )
 ) a join t1 using(a);
 
 -- if there is a volatile function in the target list of a plan with the locus type
