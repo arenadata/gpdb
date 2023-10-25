@@ -1482,7 +1482,8 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
     if (!qfptr)
     {
 	    /* 0 it's query hash */
-	    bytes_written += fprintf(fp, "|0|||||\n");
+	    fputs("|0|||||\n", fp);
+	    bytes_written += 8;
 	    return bytes_written;
     }
 
