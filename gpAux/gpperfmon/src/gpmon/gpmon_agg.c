@@ -1482,8 +1482,7 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
     if (!qfptr)
     {
 	    /* 0 it's query hash */
-	    fprintf(fp, "|0|||||\n");
-	    bytes_written += 8;
+	    bytes_written += fprintf(fp, "|0|||||\n");
 	    return bytes_written;
     }
 
@@ -1505,7 +1504,7 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 
         if (iter == 0)
         {
-            fprintf(fp, "0");
+            fputc('0', fp);
             bytes_written++;
             continue;
         }
