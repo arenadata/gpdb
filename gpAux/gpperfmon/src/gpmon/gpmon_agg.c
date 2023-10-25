@@ -1375,7 +1375,8 @@ static apr_uint32_t write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr, a
 	}
 	else
 	{
-		fprintf(fp, "%s\n", line);
+		fputs(line, fp);
+		fputc('\n', fp);
 		return bytes_written;
 	}
 }
