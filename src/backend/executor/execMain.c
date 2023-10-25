@@ -4558,9 +4558,9 @@ targetid_get_partition(Oid targetid, EState *estate, bool openIndices)
 {
 	ResultRelInfo *parentInfo = estate->es_result_relations;
 	ResultRelInfo *childInfo = estate->es_result_relations;
-	ResultRelInfo *currRelInfo = estate->es_result_relation_info;
 	ResultPartHashEntry *entry;
 	bool		found;
+	Oid			parentRelid = estate->es_result_partitions->part->parrelid;
 
 	if (parentInfo->ri_partition_hash == NULL)
 	{
@@ -4605,22 +4605,22 @@ targetid_get_partition(Oid targetid, EState *estate, bool openIndices)
 			ExecOpenIndices(childInfo);
 
 		/*
-		 * If we are currently modifying a leaf partition, i.e we called
-		 * a DML command straight on child partition, or it's inheritance
-		 * plan execution (e.g. UPDATE command on root, which leads to multiple
-		 * subplans, and es_result_relations points to one of the partitions),
-		 * it will be better to omit building an ri_partInsertMap. In both
-		 * planners when we are executing a DML just on leaf partition,
-		 * the tuple descriptor already matches the partition's, and the extra
-		 * mapping in unnecessary (besides the map from makePartitionCheckMap,
-		 * which only helps to select partition in slot_get_partition).
+		 * es_result_relations does not always represent the parent relation.
+		 * E.g. planner's UPDATE command on parent partition leads to multiple
+		 * subplans and result relations due to preceding inheritance planning.
+		 * In this case es_result_relations points to one of the partitions, not
+		 * to the parent. Thus, the descriptor mapping should be performed only
+		 * for the case if es_result_relations really corresponds to the parent.
 		 * Otherwise, there is a chance to reconstruct already valid tuple and
 		 * get the wrong results (e.g. target partition relation descriptor is
 		 * different from parentInfo's, but it's UPDATE (legacy planner) and
 		 * parentInfo represents another partition, which is not the true
-		 * parent).
+		 * parent). Moreover, if we are initially modify a leaf partition,
+		 * i.e we called a DML command straight on child partition, or it's
+		 * inheritance plan execution, the tuple descriptor already matches
+		 * the partition's, and the extra mapping is unnecessary.
 		 */
-		if (!currRelInfo || RelationGetRelid(currRelInfo->ri_RelationDesc) != targetid)
+		if (RelationGetRelid(parentInfo->ri_RelationDesc) == parentRelid)
 			map_part_attrs(parentInfo->ri_RelationDesc,
 						   childInfo->ri_RelationDesc,
 						   &(childInfo->ri_partInsertMap),
