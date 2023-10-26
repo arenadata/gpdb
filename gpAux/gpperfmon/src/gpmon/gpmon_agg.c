@@ -1479,23 +1479,25 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 	snprintf(qfname, qfname_size, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid,
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
 
+	/* query hash */
+	fputs("|0", fp);
+	bytes_written += 2;
+
 	qfptr = fopen(qfname, "r");
     if (!qfptr)
     {
-	    /* 0 it's query hash */
-	    fputs("|0|||||\n", fp);
-	    bytes_written += 8;
+	    fprintf(fp, "|||||\n");
+	    bytes_written += 6;
 	    return bytes_written;
     }
 
-    // 0 add query hash
-    // 1 add query text
-    // 2 add query plan
-    // 3 add application name
-    // 4 add rsqname
-    // 5 add priority
+    // 0 add query text
+    // 1 add query plan
+    // 2 add application name
+    // 3 add rsqname
+    // 4 add priority
 
-    int total_iterations = 6;
+    int total_iterations = 5;
     int all_good = 1;
     int iter;
     int retCode = APR_SUCCESS;
@@ -1504,15 +1506,7 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 	    fprintf(fp, "|");
         bytes_written++;
 
-        if (iter == 0)
-        {
-            fputc('0', fp);
-            bytes_written++;
-            continue;
-        }
-
-        if (!all_good || iter == 2)
-        {
+        if (!all_good || iter == 1){
             // we have no data for query plan
             // if we failed once already don't bother trying to parse query file
             continue;
