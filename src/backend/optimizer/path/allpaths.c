@@ -2125,16 +2125,25 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 			subplan = subquery_planner(cteroot->glob, subquery, cteroot, cte->cterecursive,
 									   tuple_fraction, &subroot, config);
 
-			cteplaninfo->shared_plan = prepare_plan_for_sharing(cteroot, subplan);
+			if (subplan->flow->locustype != CdbLocusType_SegmentGeneral)
+				cteplaninfo->shared_plan = prepare_plan_for_sharing(cteroot, subplan);
+
 			cteplaninfo->subroot = subroot;
 		}
 
 		/*
 		 * Create another ShareInputScan to reference the already-created
-		 * subplan.
+		 * subplan if not avoiding sharing. Sharing SegmentGeneral subplan may
+		 * lead to deadlock when executed with 1-gang and joined with Hashed.
+		 * Forcing locus to Replicated leads to redundant motions if we join
+		 * shared plan with another SegmentGeneral node. Thus, we should avoid
+		 * sharing SegmentGeneral subplans.
 		 */
-		subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
-		subroot = cteplaninfo->subroot;
+		if (cteplaninfo->shared_plan)
+		{
+			subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
+			subroot = cteplaninfo->subroot;
+		}
 	}
 
 	pathkeys = subroot->query_pathkeys;
