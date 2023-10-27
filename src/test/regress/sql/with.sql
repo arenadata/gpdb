@@ -1083,3 +1083,42 @@ WITH cte AS (
 
 RESET optimizer;
 DROP TABLE d;
+
+-- Check if sharing is disabled for a SegmentGeneral CTE to avoid deadlock if CTE is
+-- executed with 1-gang and joined with Hashed
+SET optimizer = off;
+SET gp_cte_sharing = on;
+--start_ignore
+DROP TABLE IF EXISTS d;
+DROP TABLE IF EXISTS r;
+--end_ignore
+
+CREATE TABLE d (a int, b int) DISTRIBUTED BY (a);
+INSERT INTO d VALUES (1,2),(2,3);
+CREATE TABLE r (a int, b int) DISTRIBUTED REPLICATED;
+INSERT INTO r VALUES (1,2),(3,4);
+
+EXPLAIN (COSTS off)
+with cte as (
+    select count(*) a from r
+) select * from cte join (select * from d join cte using(a) limit 1) d_join_cte using(a);
+
+with cte as (
+    select count(*) a from r
+) select * from cte join (select * from d join cte using(a) limit 1) d_join_cte using(a);
+
+-- Check if sharing is still enabled for other cases
+ALTER TABLE r SET DISTRIBUTED BY (a);
+
+EXPLAIN (COSTS off)
+with cte as (
+    select count(*) a from r
+) select * from cte join (select * from d join cte using(a) limit 1) d_join_cte using(a);
+
+with cte as (
+    select count(*) a from r
+) select * from cte join (select * from d join cte using(a) limit 1) d_join_cte using(a);
+
+RESET optimizer;
+DROP TABLE d;
+DROP TABLE r;
