@@ -11,11 +11,9 @@ GPMONDIR = 'gpperfmon/data'
 for line in open(os.path.join(GPMONDIR, "queries_now.dat")):
     line = line.strip().split('|')
     line.append('0') # query hash
-    line.append('') # qrytxt
-    line.append('') # query plan
-    line.append('') # appname
-    line.append('') # rsqname
-    line.append('') # priority
+    # allocate space for qrytxt, query plan, appname, rsqname and priority
+    line.extend(['']*5)
+
     (tmid, xid, cid) = line[1:4]
     qrytxt = ''
     appname = ''

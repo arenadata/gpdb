@@ -29,6 +29,13 @@ Feature: gpperfmon
         Given the database "gpperfmon" does not exist
         Then gpperfmon is configured and running in qamode
 
+    @gpperfmon_query_now
+    Scenario: get info about current queries
+        Given gpperfmon is configured and running in qamode
+        Then run query for 20 seconds
+        And wait until the results from boolean sql "select count(*) > 0 from queries_now" is "true"
+        And wait until the results from boolean sql "select count(*) > 0 from queries_now_fast" is "true"
+
     @gpperfmon_database_history
     Scenario: gpperfmon adds to database_history table
         Given gpperfmon is configured and running in qamode
@@ -175,10 +182,3 @@ Feature: gpperfmon
         And wait until the process "gpsmon" is up
         # Note that the code considers partition_age + 1 as the number of partitions to keep
         Then wait until the results from boolean sql "SELECT count(*) = 6 FROM pg_namespace n INNER JOIN pg_class cl ON cl.relnamespace = n.oid INNER JOIN pg_partition pp ON pp.parrelid = cl.oid INNER JOIN pg_partition_rule ppr ON ppr.paroid = pp.oid WHERE n.nspname = 'public' AND cl.relname = 'diskspace_history'" is "true"
-
-        @gpperfmon_query_now
-        Scenario: get info about current queries
-            Given gpperfmon is configured and running in qamode
-            Then run query for 30 seconds
-            And wait until the results from boolean sql "select count(*) > 0 from queries_now" is "true"
-            And wait until the results from boolean sql "select count(*) > 0 from queries_now_fast" is "true"
