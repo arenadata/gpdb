@@ -4686,7 +4686,7 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 		/* Now we have values/nulls in parent's view. */
 		values = parent_values;
 		nulls = parent_nulls;
-		tupdesc = RelationGetDescr(parentRel);
+		tupdesc = parentTupdesc;
 	}
 	else
 	{
