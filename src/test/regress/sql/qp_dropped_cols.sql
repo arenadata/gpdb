@@ -8712,16 +8712,16 @@ INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 0);
 UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
 UPDATE t_part_dropped SET c1 = 3;
 
-INSERT INTO t_part_dropped VALUES (1, 2, 0);
-
 -- Ensure that split update on leaf partition does not throw constraint error
--- (legacy planner does not choose the wrong partition at insert) and does not
--- throw partition selection error (ORCA).
+-- (executor does not choose the wrong partition at insert stage of update).
+INSERT INTO t_part_dropped VALUES (1, 2, 0);
 UPDATE t_part_dropped_1_prt_p2 SET c1 = 2 WHERE c4 = 0;
+
 SELECT count(*) FROM t_part_dropped_1_prt_p2;
 
 -- Split update on root relation should choose the correct partition
--- at insert (legacy planner doesn't put the tuple to wrong partition).
+-- at insert (executor doesn't put the tuple to wrong partition for legacy
+-- planner case).
 UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
 SELECT count(*) FROM t_part_dropped_1_prt_p2;
 SELECT * FROM t_part_dropped_1_prt_p0;
@@ -8754,11 +8754,9 @@ INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
 UPDATE t_part_1_prt_p2 SET c1 = 2;
 UPDATE t_part SET c1 = 3;
 
-INSERT INTO t_part VALUES (1, 0, 2, 0);
-
 -- Ensure that split update on leaf partition does not throw constraint error
--- (legacy planner does not choose the wrong partition at insert) and does not
--- throw partition selection error (ORCA).
+-- (executor does not choose the wrong partition at insert stage of update).
+INSERT INTO t_part VALUES (1, 0, 2, 0);
 UPDATE t_part_1_prt_p2 SET c1 = 2 WHERE c4 = 0;
 
 SELECT count(*) FROM t_part_1_prt_p2;
@@ -8792,7 +8790,7 @@ ALTER TABLE t_part EXCHANGE PARTITION FOR (2) WITH TABLE t_new_part2;
 -- plan (legacy planner). Ensure that split update does not reconstruct the
 -- tuple at insert.
 INSERT INTO t_part VALUES (1, 4, 2, 2);
-UPDATE t_part SET c1=3;
+UPDATE t_part SET c1 = 3;
 SELECT * FROM t_part_1_prt_p2;
 
 DROP TABLE t_part;
