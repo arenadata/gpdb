@@ -1474,14 +1474,12 @@ static apr_uint32_t write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nows
 		return 0;
 	}
 
-	fprintf(fp, "%s", line);
+	/* The query hash column is always 0 */
+	fprintf(fp, "%s|0", line);
+	bytes_written += 2;
 
 	snprintf(qfname, qfname_size, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid,
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
-
-	/* query hash */
-	fputs("|0", fp);
-	bytes_written += 2;
 
 	qfptr = fopen(qfname, "r");
     if (!qfptr)
