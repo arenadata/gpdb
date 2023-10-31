@@ -939,7 +939,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		(contain_volatile_functions((Node *) plan->targetlist) ||
 		 contain_volatile_functions(parse->havingQual)))
 	{
-		plan = (Plan *) make_motion_gather(*subroot, plan, NIL, CdbLocusType_SingleQE);
+		plan = (Plan *) make_motion_gather(root, plan, NIL, CdbLocusType_SingleQE);
 	}
 
 	/* Return internal info if caller wants it */
