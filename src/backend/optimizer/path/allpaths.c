@@ -2104,7 +2104,7 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * subplan will not be used by InitPlans, so that they can be shared
 		 * if this CTE is referenced multiple times (excluding in InitPlans).
 		 */
-		if (cteplaninfo->shared_plan == NULL)
+		if (cteplaninfo->subplan == NULL)
 		{
 			PlannerConfig *config = CopyPlannerConfig(root->config);
 
@@ -2125,8 +2125,9 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 			subplan = subquery_planner(cteroot->glob, subquery, cteroot, cte->cterecursive,
 									   tuple_fraction, &subroot, config);
 
-			if (subplan->flow->locustype != CdbLocusType_SegmentGeneral)
-				cteplaninfo->shared_plan = prepare_plan_for_sharing(cteroot, subplan);
+			cteplaninfo->subplan = (subplan->flow->locustype != CdbLocusType_SegmentGeneral) ?
+			                       prepare_plan_for_sharing(cteroot, subplan) :
+			                       subplan;
 
 			cteplaninfo->subroot = subroot;
 		}
@@ -2139,11 +2140,11 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * shared plan with another SegmentGeneral node. Thus, we should avoid
 		 * sharing SegmentGeneral subplans.
 		 */
-		if (cteplaninfo->shared_plan)
-		{
-			subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
-			subroot = cteplaninfo->subroot;
-		}
+		subplan = (cteplaninfo->subplan->flow->locustype != CdbLocusType_SegmentGeneral) ?
+		          share_prepared_plan(cteroot, cteplaninfo->subplan) :
+		          (Plan *) copyObject(cteplaninfo->subplan);
+
+		subroot = cteplaninfo->subroot;
 	}
 
 	pathkeys = subroot->query_pathkeys;
