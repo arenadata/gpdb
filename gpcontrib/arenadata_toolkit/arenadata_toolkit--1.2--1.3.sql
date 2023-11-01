@@ -36,7 +36,7 @@ RETURNS TABLE (table_schema NAME, table_name NAME) AS
 $$
 BEGIN
 	RETURN query
-    SELECT n.nspname AS table_schema, c.relname AS table_name
+	SELECT n.nspname AS table_schema, c.relname AS table_name
 	FROM pg_class c
 	JOIN pg_namespace n ON c.relnamespace = n.oid
 	LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid AND o.objid = c.oid AND o.staactionname = actionname
