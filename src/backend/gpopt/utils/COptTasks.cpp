@@ -35,7 +35,6 @@
 #include "cdb/cdbvars.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
-#include "utils/snapmgr.h"
 #undef setstate
 
 #include "gpos/_api.h"
@@ -500,9 +499,8 @@ COptTasks::OptimizeTask(void *ptr)
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
 	}
 	else if (reset_mdcache ||
-			 (CMDCache::IsTransient() &&
-			  !TransactionIdEquals(TransactionXmin,
-								   CMDCache::GetTransientXmin())))
+			 (CMDCache::IsContainTransientRelation() &&
+			  gpdb::GetTransactionXmin() != CMDCache::GetTransientXmin()))
 	{
 		CMDCache::Reset();
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
@@ -609,7 +607,8 @@ COptTasks::OptimizeTask(void *ptr)
 					(PlannedStmt *) gpdb::CopyObject(ConvertToPlanStmtFromDXL(
 						mp, &mda, plan_dxl, opt_ctxt->m_query->canSetTag,
 						query_to_dxl_translator->GetDistributionHashOpsKind()));
-				opt_ctxt->m_plan_stmt->transientPlan = CMDCache::IsTransient();
+				opt_ctxt->m_plan_stmt->transientPlan =
+					CMDCache::IsContainTransientRelation();
 			}
 
 			CStatisticsConfig *stats_conf = optimizer_config->GetStatsConf();

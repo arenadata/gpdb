@@ -24,10 +24,12 @@ CMDAccessor::MDCache *CMDCache::m_pcache = NULL;
 // maximum size of the cache
 ULLONG CMDCache::m_ullCacheQuota = UNLIMITED_CACHE_QUOTA;
 
-// is cached data is transient
-BOOL CMDCache::m_transient = false;
-
-// in which transaction did it become transient
+// if we have cached a relation that contain an index that cannot be used in
+// the current transaction, then after it ends, the cache must be reset.
+// to read this relation again.
+//
+// here we save the transaction id in which this happened.
+// for more info see src/backend/access/heap/README.HOT
 uint32_t CMDCache::m_transientXmin = 0;
 
 //---------------------------------------------------------------------------
@@ -134,7 +136,6 @@ CMDCache::Reset()
 	Shutdown();
 	Init();
 
-	m_transient = false;
 	m_transientXmin = 0;
 }
 

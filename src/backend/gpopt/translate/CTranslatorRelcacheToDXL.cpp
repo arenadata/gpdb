@@ -30,7 +30,6 @@ extern "C" {
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
-#include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 }
@@ -324,7 +323,11 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 				}
 				else
 				{
-					CMDCache::SetTransient(TransactionXmin);
+					// If the index is valid, but cannot yet be used, ignore it; but
+					// mark the plan we are generating and cache as transient. See
+					// src/backend/access/heap/README.HOT for discussion.
+					CMDCache::MarkContainTransientRelation(
+						gpdb::GetTransactionXmin());
 				}
 			}
 
@@ -386,7 +389,11 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 				}
 				else
 				{
-					CMDCache::SetTransient(TransactionXmin);
+					// If the index is valid, but cannot yet be used, ignore it; but
+					// mark the plan we are generating and cache as transient. See
+					// src/backend/access/heap/README.HOT for discussion.
+					CMDCache::MarkContainTransientRelation(
+						gpdb::GetTransactionXmin());
 				}
 			}
 
@@ -3357,9 +3364,9 @@ BOOL
 CTranslatorRelcacheToDXL::IsIndexVisible(Relation index_rel)
 {
 	return !(index_rel->rd_index->indcheckxmin &&
-			 !TransactionIdPrecedes(
-				 HeapTupleHeaderGetXmin(index_rel->rd_indextuple->t_data),
-				 TransactionXmin));
+			 !gpdb::IsTransactionIdPrecedes(
+				 gpdb::GetTupleHeaderXmin(index_rel->rd_indextuple->t_data),
+				 gpdb::GetTransactionXmin()));
 }
 
 //---------------------------------------------------------------------------

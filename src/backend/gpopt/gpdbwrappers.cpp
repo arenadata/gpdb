@@ -29,6 +29,8 @@
 #include "gpopt/utils/gpdbdefs.h"
 #include "naucrates/exception.h"
 extern "C" {
+#include <utils/snapmgr.h>
+
 #include "catalog/pg_collation.h"
 #include "utils/memutils.h"
 }
@@ -2719,6 +2721,36 @@ gpdb::GPDBAllocSetContextCreate()
 	}
 	GP_WRAP_END;
 	return NULL;
+}
+
+TransactionId
+gpdb::GetTupleHeaderXmin(HeapTupleHeaderData *header)
+{
+	GP_WRAP_START;
+	{
+		return HeapTupleHeaderGetXmin(header);
+	}
+	GP_WRAP_END;
+}
+
+bool
+gpdb::IsTransactionIdPrecedes(TransactionId id1, TransactionId id2)
+{
+	GP_WRAP_START;
+	{
+		return TransactionIdPrecedes(id1, id2);
+	}
+	GP_WRAP_END;
+}
+
+TransactionId
+gpdb::GetTransactionXmin()
+{
+	GP_WRAP_START;
+	{
+		return TransactionXmin;
+	}
+	GP_WRAP_END;
 }
 
 // EOF

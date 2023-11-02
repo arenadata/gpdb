@@ -708,6 +708,12 @@ MemoryContext GPDBAllocSetContextCreate();
 
 void GPDBMemoryContextDelete(MemoryContext context);
 
+TransactionId GetTupleHeaderXmin(HeapTupleHeaderData *header);
+
+bool IsTransactionIdPrecedes(TransactionId id1, TransactionId id2);
+
+TransactionId GetTransactionXmin();
+
 }  //namespace gpdb
 
 #define ForEach(cell, l) \
