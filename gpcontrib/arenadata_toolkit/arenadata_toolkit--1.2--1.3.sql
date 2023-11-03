@@ -12,7 +12,7 @@ BEGIN
 	SELECT n.nspname AS table_schema, c.relname AS table_name
 	FROM pg_class c
 	JOIN pg_namespace n ON c.relnamespace = n.oid
-	LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid AND o.objid = c.oid AND o.staactionname = actionname
+	LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid AND o.objid = c.oid AND o.staactionname = UPPER(actionname)
 	LEFT JOIN pg_partition_rule p ON p.parchildrelid = c.oid
 	WHERE c.relkind = 'r'
 		AND c.relstorage != 'x'
@@ -39,7 +39,7 @@ BEGIN
 	SELECT n.nspname AS table_schema, c.relname AS table_name
 	FROM pg_class c
 	JOIN pg_namespace n ON c.relnamespace = n.oid
-	LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid AND o.objid = c.oid AND o.staactionname = actionname
+	LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid AND o.objid = c.oid AND o.staactionname = UPPER(actionname)
 	LEFT JOIN pg_partition_rule p ON p.parchildrelid = c.oid
 	WHERE c.relkind = 'r'
 		AND c.relstorage != 'x'
