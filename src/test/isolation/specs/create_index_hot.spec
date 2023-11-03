@@ -50,4 +50,5 @@ permutation
 "s2forceindexscan"
 "s2select"
 "s2abort"
+"s2forceindexscan"
 "s2expalin"
