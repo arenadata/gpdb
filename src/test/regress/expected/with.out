@@ -2290,9 +2290,9 @@ DROP TABLE IF EXISTS r;
 NOTICE:  table "r" does not exist, skipping
 --end_ignore
 CREATE TABLE d (a int, b int) DISTRIBUTED BY (a);
-INSERT INTO d VALUES (1,2),(2,3);
+INSERT INTO d VALUES ( 1, 2 ),( 2, 3 );
 CREATE TABLE r (a int, b int) DISTRIBUTED REPLICATED;
-INSERT INTO r VALUES (1,2),(3,4);
+INSERT INTO r VALUES ( 1, 2 ),( 3, 4 );
 EXPLAIN (COSTS off)
 WITH cte AS (
     SELECT count(*) a FROM r

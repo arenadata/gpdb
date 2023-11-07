@@ -2140,9 +2140,20 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * shared plan with another SegmentGeneral node. Thus, we should avoid
 		 * sharing SegmentGeneral subplans.
 		 */
-		subplan = (cteplaninfo->subplan->flow->locustype != CdbLocusType_SegmentGeneral) ?
-		          share_prepared_plan(cteroot, cteplaninfo->subplan) :
-		          (Plan *) copyObject(cteplaninfo->subplan);
+		if (cteplaninfo->subplan->flow->locustype != CdbLocusType_SegmentGeneral)
+		{
+			subplan = share_prepared_plan(cteroot, cteplaninfo->subplan);
+		}
+		else
+		{
+			/*
+			 * If we are not sharing and subplan was created just now, use it.
+			 * Otherwise, make a copy of it to avoid construction of DAG
+			 * instead of a tree.
+			 */
+			if (subplan == NULL)
+				subplan = (Plan *) copyObject(cteplaninfo->subplan);
+		}
 
 		subroot = cteplaninfo->subroot;
 	}
