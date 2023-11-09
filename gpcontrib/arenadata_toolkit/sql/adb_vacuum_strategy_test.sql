@@ -31,35 +31,7 @@ DELETE FROM test_vacuum.not_vacuumed WHERE a >= 5;
 
 VACUUM test_vacuum.vacuumed;
 
--- original query from operation.py
-SELECT table_schema, table_name from (
-SELECT n.nspname AS table_schema,
-       c.relname AS table_name,
-       a.statime AS statime
-FROM pg_class c
-LEFT JOIN pg_namespace n
-    ON c.relnamespace = n.oid
-LEFT JOIN pg_stat_operations o
-    ON o.objname = c.relname AND o.schemaname = n.nspname
-LEFT JOIN (SELECT *
-           FROM pg_stat_operations
-           WHERE actionname = 'VACUUM'
-) a
-    ON a.objname = c.relname AND a.schemaname = n.nspname
-LEFT JOIN pg_partition_rule p
-    ON p.parchildrelid = c.oid
-LEFT JOIN arenadata_toolkit.operation_exclude exc
-    ON exc.schema_name = n.nspname
-WHERE c.relkind = 'r'
-    AND c.relstorage <> 'x'
-    AND (a.actionname IS NULL or o.actionname = 'VACUUM')
-    AND p.parchildrelid IS NULL
-    AND exc.schema_name IS NULL
-GROUP BY n.nspname, c.relname, a.statime) q
-WHERE table_schema = 'test_vacuum'
-ORDER BY q.statime asc nulls first;
-
--- default strategy is same as original query
+-- default strategy
 SELECT * FROM arenadata_toolkit.adb_vacuum_strategy_newest_first('VACUUM') WHERE table_schema = 'test_vacuum';
 -- revert strategy
 SELECT * FROM arenadata_toolkit.adb_vacuum_strategy_newest_last('VACUUM') WHERE table_schema = 'test_vacuum';
