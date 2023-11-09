@@ -38,7 +38,7 @@ SELECT * FROM arenadata_toolkit.adb_vacuum_strategy_newest_first('VACUUM') WHERE
  test_vacuum  | vacuumed
 (3 rows)
 
--- revert strategy
+-- reversed strategy
 SELECT * FROM arenadata_toolkit.adb_vacuum_strategy_newest_last('VACUUM') WHERE table_schema = 'test_vacuum';
  table_schema |  table_name  
 --------------+--------------

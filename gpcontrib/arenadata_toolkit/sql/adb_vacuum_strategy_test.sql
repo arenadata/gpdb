@@ -33,7 +33,7 @@ VACUUM test_vacuum.vacuumed;
 
 -- default strategy
 SELECT * FROM arenadata_toolkit.adb_vacuum_strategy_newest_first('VACUUM') WHERE table_schema = 'test_vacuum';
--- revert strategy
+-- reversed strategy
 SELECT * FROM arenadata_toolkit.adb_vacuum_strategy_newest_last('VACUUM') WHERE table_schema = 'test_vacuum';
 
 DROP SCHEMA test_vacuum CASCADE;
