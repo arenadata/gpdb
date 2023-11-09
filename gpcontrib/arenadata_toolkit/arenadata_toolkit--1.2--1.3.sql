@@ -1,8 +1,9 @@
 /* gpcontrib/arenadata_toolkit/arenadata_toolkit--1.2--1.3.sql */
 
 /*
- * Returns column pair (table_schema, table_name) ordered by haven't been vacuumed
- * before at the head of the list and vacuumed before by ascending order (default strategy)
+ * Returns pairs of columns (table_schema, table_name) ordered by increasing vacuum time.
+ * In this list, tables that are not yet vacuumed are located first,
+ * and already vacuumed - at the end (default strategy).
  */
 CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(actionname TEXT)
 RETURNS TABLE (table_schema NAME, table_name NAME) AS
@@ -28,8 +29,9 @@ $$ LANGUAGE plpgsql EXECUTE ON MASTER;
 REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(actionname TEXT) FROM public;
 
 /*
- * Returns column pair (table_schema, table_name) ordered by haven't been vacuumed
- * before at the end of the list and vacuumed before by ascending order
+ * Returns pairs of columns (table_schema, table_name) ordered by increasing vacuum time.
+ * In this list, tables that are already vacuumed are located first,
+ * and tables that are not yet vacuumed are located at the end.
  */
 CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_last(actionname TEXT)
 RETURNS TABLE (table_schema NAME, table_name NAME) AS
