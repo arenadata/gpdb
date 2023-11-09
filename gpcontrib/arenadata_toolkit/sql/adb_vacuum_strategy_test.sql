@@ -5,6 +5,7 @@ CREATE SCHEMA test_vacuum;
 
 CREATE TABLE test_vacuum.vacuumed (a int) DISTRIBUTED BY (a);
 CREATE TABLE test_vacuum.not_vacuumed (a int) DISTRIBUTED BY (a);
+-- Disable multiple notifications about the creation of multiple subpartitions.
 SET client_min_messages=WARNING;
 CREATE TABLE test_vacuum.part_table (id INT, a INT, b INT, c INT, d INT, str TEXT)
 DISTRIBUTED BY (id)
