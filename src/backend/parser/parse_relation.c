@@ -39,6 +39,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbpartition.h"
 
 
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,
@@ -531,6 +532,20 @@ GetCTEForRTE(ParseState *pstate, RangeTblEntry *rte, int rtelevelsup)
 	return NULL;				/* keep compiler quiet */
 }
 
+static bool
+IsAppendOptimizedByOid(Oid oid)
+{
+	Relation	rel;
+	bool		result;
+
+	rel = heap_open(oid, NoLock);
+
+	result = RelationIsAppendOptimized(rel);
+	heap_close(rel, NoLock);
+
+	return result;
+}
+
 /*
  * scanRTEForColumn
  *	  Search the column names of a single RTE for the given name.
@@ -601,6 +616,9 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		 */
 		if (GpPolicyIsReplicated(GpPolicyFetch(rte->relid)) &&
 			Gp_role != GP_ROLE_UTILITY)
+			return result;
+
+		if (IsAppendOptimizedByOid(rte->relid))
 			return result;
 
 		/* quick check to see if name could be a system column */
