@@ -1,30 +1,35 @@
 /* gpcontrib/arenadata_toolkit/arenadata_toolkit--1.2--1.3.sql */
 
 /*
- * Returns the columns (table_schema, table_name, statime) unordered.
+ * Returns columns (table_schema, table_name) ordered by increasing vacuum time.
+ * In this list, if arg is true, then tables that are not yet vacuumed are located first,
+ * and already vacuumed - at the end, else (arg is false) tables that are already
+ * vacuumed are located first, and tables that are not yet vacuumed are located at the end.
  */
-CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_unordered(actionname TEXT)
-RETURNS TABLE (table_schema NAME, table_name NAME, statime TIMESTAMPTZ) AS
-$$
+CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_arg(actionname TEXT, arg BOOLEAN)
+RETURNS TABLE (table_schema NAME, table_name NAME) AS
+$func$
 BEGIN
-	RETURN query
-	SELECT n.nspname AS table_schema, c.relname AS table_name, o.statime
+	RETURN query EXECUTE format($$
+	SELECT n.nspname AS table_schema, c.relname AS table_name
 	FROM pg_class c
 	JOIN pg_namespace n ON c.relnamespace = n.oid
 	LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid
-		AND o.objid = c.oid AND o.staactionname = UPPER(actionname)
+		AND o.objid = c.oid AND o.staactionname = UPPER(%L)
 	LEFT JOIN pg_partition_rule p ON p.parchildrelid = c.oid
 	WHERE c.relkind = 'r'
 		AND c.relstorage != 'x'
 		AND n.nspname NOT IN (SELECT schema_name FROM arenadata_toolkit.operation_exclude)
-		AND p.parchildrelid IS NULL;
+		AND p.parchildrelid IS NULL
+		ORDER BY statime ASC NULLS %s
+	$$, actionname, CASE arg WHEN true THEN 'FIRST' ELSE 'LAST' END);
 END;
-$$ LANGUAGE plpgsql EXECUTE ON MASTER;
+$func$ LANGUAGE plpgsql IMMUTABLE EXECUTE ON MASTER;
 
 /*
  * Only for admin usage.
  */
-REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_unordered(actionname TEXT) FROM public;
+REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_arg(actionname TEXT, arg BOOLEAN) FROM public;
 
 /*
  * Returns columns (table_schema, table_name) ordered by increasing vacuum time.
@@ -34,13 +39,8 @@ REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_unordered(actionnam
 CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(actionname TEXT)
 RETURNS TABLE (table_schema NAME, table_name NAME) AS
 $$
-BEGIN
-	RETURN query
-	SELECT u.table_schema, u.table_name
-	FROM arenadata_toolkit.adb_vacuum_strategy_unordered(actionname) u
-	ORDER BY u.statime ASC NULLS FIRST;
-END;
-$$ LANGUAGE plpgsql EXECUTE ON MASTER;
+	SELECT arenadata_toolkit.adb_vacuum_strategy_arg(actionname, true);
+$$ LANGUAGE sql IMMUTABLE EXECUTE ON MASTER;
 
 /*
  * Only for admin usage.
@@ -55,13 +55,8 @@ REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(action
 CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_last(actionname TEXT)
 RETURNS TABLE (table_schema NAME, table_name NAME) AS
 $$
-BEGIN
-	RETURN query
-	SELECT u.table_schema, u.table_name
-	FROM arenadata_toolkit.adb_vacuum_strategy_unordered(actionname) u
-	ORDER BY u.statime ASC NULLS LAST;
-END;
-$$ LANGUAGE plpgsql EXECUTE ON MASTER;
+	SELECT arenadata_toolkit.adb_vacuum_strategy_arg(actionname, false);
+$$ LANGUAGE sql IMMUTABLE EXECUTE ON MASTER;
 
 /*
  * Only for admin usage.
