@@ -51,7 +51,8 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 	  m_pcrTupleOid(pcrTupleOid),
 	  m_pds(NULL),
 	  m_pos(NULL),
-	  m_pcrsRequiredLocal(NULL)
+	  m_pcrsRequiredLocal(NULL),
+	  m_pdrgpcrOutput(NULL)
 {
 	GPOS_ASSERT(CLogicalDML::EdmlSentinel != edmlop);
 	GPOS_ASSERT(NULL != ptabdesc);
@@ -114,6 +115,13 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 		}
 	}
 	m_pos = PosComputeRequired(mp, ptabdesc);
+
+	if (CLogicalDML::EdmlDelete == m_edmlop)
+	{
+		m_pdrgpcrOutput = m_pdrgpcrSource;
+		m_pdrgpcrSource = GPOS_NEW(mp) CColRefArray(mp);
+	}
+
 	ComputeRequiredLocalColumns(mp);
 }
 
@@ -133,6 +141,8 @@ CPhysicalDML::~CPhysicalDML()
 	m_pds->Release();
 	m_pos->Release();
 	m_pcrsRequiredLocal->Release();
+	if (m_pdrgpcrOutput)
+		m_pdrgpcrOutput->Release();
 }
 
 //---------------------------------------------------------------------------

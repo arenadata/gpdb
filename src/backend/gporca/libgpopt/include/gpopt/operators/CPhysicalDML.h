@@ -70,6 +70,9 @@ private:
 	// required columns by local members
 	CColRefSet *m_pcrsRequiredLocal;
 
+	// output columns
+	CColRefArray *m_pdrgpcrOutput;
+
 	// compute required order spec
 	COrderSpec *PosComputeRequired(CMemoryPool *mp, CTableDescriptor *ptabdesc);
 
@@ -157,6 +160,13 @@ public:
 	PdrgpcrSource() const
 	{
 		return m_pdrgpcrSource;
+	}
+
+	// array of output columns
+	CColRefArray *
+	PdrgpcrOutput() const
+	{
+		return m_pdrgpcrOutput;
 	}
 
 	// match function
