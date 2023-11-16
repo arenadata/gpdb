@@ -14,7 +14,7 @@ BEGIN
 	SELECT nspname, relname
 	FROM pg_catalog.pg_class c
 	JOIN pg_catalog.pg_namespace n ON relnamespace = n.oid
-		LEFT JOIN pg_catalog.pg_stat_last_operation ON classid = 'pg_class'::regclass::oid
+		LEFT JOIN pg_catalog.pg_stat_last_operation ON classid = 'pg_catalog.pg_class'::pg_catalog.regclass
 			AND objid = c.oid AND staactionname = UPPER(%L)
 		LEFT JOIN pg_catalog.pg_partition_rule ON parchildrelid = c.oid
 	WHERE relkind = 'r'
