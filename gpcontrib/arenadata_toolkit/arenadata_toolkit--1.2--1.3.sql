@@ -13,14 +13,12 @@ BEGIN
 	RETURN query EXECUTE format($$
 	SELECT nspname, relname
 	FROM pg_catalog.pg_class c
-	JOIN pg_catalog.pg_namespace n ON relnamespace = n.oid
-		LEFT JOIN pg_catalog.pg_stat_last_operation ON classid = 'pg_catalog.pg_class'::pg_catalog.regclass
-			AND objid = c.oid AND staactionname = UPPER(%L)
+		JOIN pg_catalog.pg_namespace n ON relnamespace = n.oid
 		LEFT JOIN pg_catalog.pg_partition_rule ON parchildrelid = c.oid
-	WHERE relkind = 'r'
-		AND relstorage != 'x'
+		LEFT JOIN pg_catalog.pg_stat_last_operation ON staactionname = UPPER(%L)
+			AND objid = c.oid AND classid = 'pg_catalog.pg_class'::pg_catalog.regclass
+	WHERE relkind = 'r' AND relstorage != 'x' AND parchildrelid IS NULL
 		AND nspname NOT IN (SELECT schema_name FROM arenadata_toolkit.operation_exclude)
-		AND parchildrelid IS NULL
 	ORDER BY statime ASC NULLS %s
 	$$, actionname, CASE WHEN newest_first THEN 'FIRST' ELSE 'LAST' END);
 END;
