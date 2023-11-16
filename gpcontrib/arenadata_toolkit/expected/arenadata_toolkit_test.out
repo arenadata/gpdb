@@ -96,7 +96,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  adb_relation_storage_size             | proc    | -          | {=X/owner,owner=X/owner}
  adb_relation_storage_size_on_segments | proc    | -          | {=X/owner,owner=X/owner}
  adb_skew_coefficients                 | table   | v          | {owner=arwdDxt/owner,=r/owner}
- adb_vacuum_strategy_arg               | proc    | -          | {owner=X/owner}
+ adb_vacuum_strategy                   | proc    | -          | {owner=X/owner}
  adb_vacuum_strategy_newest_first      | proc    | -          | {owner=X/owner}
  adb_vacuum_strategy_newest_last       | proc    | -          | {owner=X/owner}
  arenadata_toolkit                     | schema  | -          | {owner=UC/owner,=U/owner}
@@ -124,7 +124,7 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_relation_storage_size             | proc    | arenadata_toolkit | e
  adb_relation_storage_size_on_segments | proc    | arenadata_toolkit | e
  adb_skew_coefficients                 | table   | arenadata_toolkit | e
- adb_vacuum_strategy_arg               | proc    | arenadata_toolkit | e
+ adb_vacuum_strategy                   | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_first      | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_last       | proc    | arenadata_toolkit | e
 (12 rows)
@@ -155,7 +155,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  adb_relation_storage_size             | proc    | -          | {=X/owner,owner=X/owner}
  adb_relation_storage_size_on_segments | proc    | -          | {=X/owner,owner=X/owner}
  adb_skew_coefficients                 | table   | v          | {owner=arwdDxt/owner,=r/owner}
- adb_vacuum_strategy_arg               | proc    | -          | {owner=X/owner}
+ adb_vacuum_strategy                   | proc    | -          | {owner=X/owner}
  adb_vacuum_strategy_newest_first      | proc    | -          | {owner=X/owner}
  adb_vacuum_strategy_newest_last       | proc    | -          | {owner=X/owner}
  arenadata_toolkit                     | schema  | -          | {owner=UC/owner,=U/owner}
@@ -183,7 +183,7 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_relation_storage_size             | proc    | arenadata_toolkit | e
  adb_relation_storage_size_on_segments | proc    | arenadata_toolkit | e
  adb_skew_coefficients                 | table   | arenadata_toolkit | e
- adb_vacuum_strategy_arg               | proc    | arenadata_toolkit | e
+ adb_vacuum_strategy                   | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_first      | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_last       | proc    | arenadata_toolkit | e
 (12 rows)
