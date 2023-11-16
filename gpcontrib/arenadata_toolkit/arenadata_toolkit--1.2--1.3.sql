@@ -11,16 +11,16 @@ RETURNS TABLE (table_schema NAME, table_name NAME) AS
 $func$
 BEGIN
 	RETURN query EXECUTE format($$
-	SELECT n.nspname, c.relname
-	FROM pg_class c
-	JOIN pg_namespace n ON c.relnamespace = n.oid
-		LEFT JOIN pg_stat_last_operation o ON o.classid = 'pg_class'::regclass::oid
-			AND o.objid = c.oid AND o.staactionname = UPPER(%L)
-		LEFT JOIN pg_partition_rule p ON p.parchildrelid = c.oid
-	WHERE c.relkind = 'r'
-		AND c.relstorage != 'x'
-		AND n.nspname NOT IN (SELECT schema_name FROM arenadata_toolkit.operation_exclude)
-		AND p.parchildrelid IS NULL
+	SELECT nspname, relname
+	FROM pg_catalog.pg_class c
+	JOIN pg_catalog.pg_namespace n ON relnamespace = n.oid
+		LEFT JOIN pg_catalog.pg_stat_last_operation ON classid = 'pg_class'::regclass::oid
+			AND objid = c.oid AND staactionname = UPPER(%L)
+		LEFT JOIN pg_catalog.pg_partition_rule ON parchildrelid = c.oid
+	WHERE relkind = 'r'
+		AND relstorage != 'x'
+		AND nspname NOT IN (SELECT schema_name FROM arenadata_toolkit.operation_exclude)
+		AND parchildrelid IS NULL
 	ORDER BY statime ASC NULLS %s
 	$$, actionname, CASE WHEN newest_first THEN 'FIRST' ELSE 'LAST' END);
 END;
