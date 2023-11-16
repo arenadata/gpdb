@@ -1,9 +1,9 @@
 /* gpcontrib/arenadata_toolkit/arenadata_toolkit--1.2--1.3.sql */
 
 /*
- * Returns columns (table_schema, table_name) ordered by increasing vacuum time.
- * In this list, if first is true, then tables that are not yet vacuumed are located first,
- * and already vacuumed - at the end, else (arg is false) tables that are already
+ * Returns columns (table_schema, table_name) ordered by increasing vacuum time. In this
+ * list, if newest_first is true, then tables that are not yet vacuumed are located first,
+ * and already vacuumed - at the end, else (newest_first is false) tables that are already
  * vacuumed are located first, and tables that are not yet vacuumed are located at the end.
  */
 CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy(actionname TEXT, newest_first BOOLEAN)
@@ -22,12 +22,12 @@ BEGIN
 	ORDER BY statime ASC NULLS %s
 	$$, actionname, CASE WHEN newest_first THEN 'FIRST' ELSE 'LAST' END);
 END;
-$func$ LANGUAGE plpgsql IMMUTABLE EXECUTE ON MASTER;
+$func$ LANGUAGE plpgsql STABLE EXECUTE ON MASTER;
 
 /*
  * Only for admin usage.
  */
-REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy(actionname TEXT, newest_first BOOLEAN) FROM public;
+REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy(TEXT, BOOLEAN) FROM public;
 
 /*
  * Returns columns (table_schema, table_name) ordered by increasing vacuum time.
@@ -38,12 +38,12 @@ CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(actionname TE
 RETURNS TABLE (table_schema NAME, table_name NAME) AS
 $$
 	SELECT arenadata_toolkit.adb_vacuum_strategy(actionname, true);
-$$ LANGUAGE sql IMMUTABLE EXECUTE ON MASTER;
+$$ LANGUAGE sql STABLE EXECUTE ON MASTER;
 
 /*
  * Only for admin usage.
  */
-REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(actionname TEXT) FROM public;
+REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_first(TEXT) FROM public;
 
 /*
  * Returns columns (table_schema, table_name) ordered by increasing vacuum time.
@@ -54,9 +54,9 @@ CREATE FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_last(actionname TEX
 RETURNS TABLE (table_schema NAME, table_name NAME) AS
 $$
 	SELECT arenadata_toolkit.adb_vacuum_strategy(actionname, false);
-$$ LANGUAGE sql IMMUTABLE EXECUTE ON MASTER;
+$$ LANGUAGE sql STABLE EXECUTE ON MASTER;
 
 /*
  * Only for admin usage.
  */
-REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_last(actionname TEXT) FROM public;
+REVOKE ALL ON FUNCTION arenadata_toolkit.adb_vacuum_strategy_newest_last(TEXT) FROM public;
