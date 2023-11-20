@@ -238,18 +238,21 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 			dmlstate->ps.state->es_result_relation_info->ri_RelationDesc->rd_att->tdhasoid,
 			dmlstate->cleanedUpSlot);
 
-	/*
-	 * We don't maintain typmod in the targetlist, so we should fixup the
-	 * junkfilter to use the same tuple descriptor as the result relation.
-	 * Otherwise the mismatch of tuple descriptor will cause a break in
-	 * ExecInsert()->reconstructMatchingTupleSlot().
-	 */
-	TupleDesc cleanTupType = CreateTupleDescCopy(dmlstate->ps.state->es_result_relation_info->ri_RelationDesc->rd_att);
+	if (estate->es_plannedstmt->commandType != CMD_DELETE)
+	{
+		/*
+		* We don't maintain typmod in the targetlist, so we should fixup the
+		* junkfilter to use the same tuple descriptor as the result relation.
+		* Otherwise the mismatch of tuple descriptor will cause a break in
+		* ExecInsert()->reconstructMatchingTupleSlot().
+		*/
+		TupleDesc cleanTupType = CreateTupleDescCopy(dmlstate->ps.state->es_result_relation_info->ri_RelationDesc->rd_att);
 
-	ExecSetSlotDescriptor(dmlstate->junkfilter->jf_resultSlot, cleanTupType);
+		ExecSetSlotDescriptor(dmlstate->junkfilter->jf_resultSlot, cleanTupType);
 
-	ReleaseTupleDesc(dmlstate->junkfilter->jf_cleanTupType);
-	dmlstate->junkfilter->jf_cleanTupType = cleanTupType;
+		ReleaseTupleDesc(dmlstate->junkfilter->jf_cleanTupType);
+		dmlstate->junkfilter->jf_cleanTupType = cleanTupType;
+	}
 
 	if (estate->es_instrument && (estate->es_instrument & INSTRUMENT_CDB))
 	{
