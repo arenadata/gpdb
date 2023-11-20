@@ -37,6 +37,7 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp)
 	: CLogical(mp),
 	  m_ptabdesc(NULL),
 	  m_pdrgpcrSource(NULL),
+	  m_pdrgpcrOutput(NULL),
 	  m_pbsModified(NULL),
 	  m_pcrAction(NULL),
 	  m_pcrTableOid(NULL),
@@ -57,13 +58,14 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp)
 //---------------------------------------------------------------------------
 CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 						 CTableDescriptor *ptabdesc,
-						 CColRefArray *pdrgpcrSource, CBitSet *pbsModified,
+						 CColRefArray *pdrgpcrSource, CColRefArray *pdrgpcrOutput, CBitSet *pbsModified,
 						 CColRef *pcrAction, CColRef *pcrCtid,
 						 CColRef *pcrSegmentId, CColRef *pcrTupleOid, CColRef *pcrTableOid)
 	: CLogical(mp),
 	  m_edmlop(edmlop),
 	  m_ptabdesc(ptabdesc),
 	  m_pdrgpcrSource(pdrgpcrSource),
+	  m_pdrgpcrOutput(pdrgpcrOutput),
 	  m_pbsModified(pbsModified),
 	  m_pcrAction(pcrAction),
 	  m_pcrTableOid(pcrTableOid),
@@ -115,6 +117,7 @@ CLogicalDML::~CLogicalDML()
 {
 	CRefCount::SafeRelease(m_ptabdesc);
 	CRefCount::SafeRelease(m_pdrgpcrSource);
+	CRefCount::SafeRelease(m_pdrgpcrOutput);
 	CRefCount::SafeRelease(m_pbsModified);
 }
 
@@ -224,8 +227,15 @@ CLogicalDML::PopCopyWithRemappedColumns(CMemoryPool *mp,
 
 	m_ptabdesc->AddRef();
 
+	CColRefArray *output_array = NULL;
+	if (m_pdrgpcrOutput)
+	{
+		output_array =
+			CUtils::PdrgpcrRemap(mp, m_pdrgpcrSource, colref_mapping, must_exist);
+	}
+
 	return GPOS_NEW(mp)
-		CLogicalDML(mp, m_edmlop, m_ptabdesc, colref_array, m_pbsModified,
+		CLogicalDML(mp, m_edmlop, m_ptabdesc, colref_array, output_array, m_pbsModified,
 					pcrAction, pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid);
 }
 

@@ -5788,7 +5788,7 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 		pfDML, false /*fRemap*/, false /*fRoot*/);
 
 	CDXLTableDescr *table_descr = MakeDXLTableDescr(
-		ptabdesc, NULL /*pdrgpcrOutput*/, NULL /*requiredProperties*/);
+		ptabdesc, popDML->PdrgpcrOutput(), NULL /*requiredProperties*/);
 	ULongPtrArray *pdrgpul = CUtils::Pdrgpul(m_mp, pdrgpcrSource);
 
 	CDXLDirectDispatchInfo *dxl_direct_dispatch_info =

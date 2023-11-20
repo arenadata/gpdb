@@ -82,6 +82,9 @@ CXformImplementDML::Transform(CXformContext *pxfctxt, CXformResult *pxfres,
 
 	CColRefArray *pdrgpcrSource = popDML->PdrgpcrSource();
 	pdrgpcrSource->AddRef();
+	CColRefArray *pdrgpcrOutput = popDML->PdrgpcrOutput();
+	if (pdrgpcrOutput)
+		pdrgpcrOutput->AddRef();
 	CBitSet *pbsModified = popDML->PbsModified();
 	pbsModified->AddRef();
 
@@ -99,7 +102,7 @@ CXformImplementDML::Transform(CXformContext *pxfctxt, CXformResult *pxfres,
 	CExpression *pexprAlt = GPOS_NEW(mp) CExpression(
 		mp,
 		GPOS_NEW(mp)
-			CPhysicalDML(mp, edmlop, ptabdesc, pdrgpcrSource, pbsModified,
+			CPhysicalDML(mp, edmlop, ptabdesc, pdrgpcrSource, pdrgpcrOutput, pbsModified,
 						 pcrAction, pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid),
 		pexprChild);
 	// add alternative to transformation result

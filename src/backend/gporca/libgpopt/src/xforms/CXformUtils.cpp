@@ -1338,6 +1338,17 @@ CXformUtils::PexprLogicalDMLOverProject(
 		pexprProject = PexprRowTrigger(mp, pexprProject, edmlop, rel_mdid,
 									   true /*fBefore*/, colref_array);
 	}
+	
+	CColRefArray *output_array = NULL;
+	if (CLogicalDML::EdmlDelete == edmlop)
+	{
+		output_array = pexprChild->DeriveOutputColumns()->Pdrgpcr(mp);
+		if (!FTriggersExist(edmlop, ptabdesc, false /*fBefore*/))
+		{
+			colref_array->Release();
+			colref_array = GPOS_NEW(mp) CColRefArray(mp);
+		}
+	}
 
 	if (CLogicalDML::EdmlInsert == edmlop)
 	{
@@ -1354,7 +1365,7 @@ CXformUtils::PexprLogicalDMLOverProject(
 	CExpression *pexprDML = GPOS_NEW(mp) CExpression(
 		mp,
 		GPOS_NEW(mp)
-			CLogicalDML(mp, edmlop, ptabdesc, colref_array,
+			CLogicalDML(mp, edmlop, ptabdesc, colref_array, output_array,
 						GPOS_NEW(mp) CBitSet(mp) /*pbsModified*/, pcrAction,
 						pcrCtid, pcrSegmentId, NULL /*pcrTupleOid*/, pcrTableOid),
 		pexprProject);

@@ -163,7 +163,7 @@ CXformUpdate2DML::Transform(CXformContext *pxfctxt, CXformResult *pxfres,
 	CExpression *pexprDML = GPOS_NEW(mp) CExpression(
 		mp,
 		GPOS_NEW(mp) CLogicalDML(mp, CLogicalDML::EdmlUpdate, ptabdesc,
-								 pdrgpcrDelete, pbsModified, pcrAction, pcrCtid,
+								 pdrgpcrDelete, NULL, pbsModified, pcrAction, pcrCtid,
 								 pcrSegmentId, pcrTupleOid, pcrTableOid),
 		pexprAssertConstraints);
 

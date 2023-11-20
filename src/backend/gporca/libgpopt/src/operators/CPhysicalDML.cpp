@@ -36,13 +36,14 @@ using namespace gpopt;
 //---------------------------------------------------------------------------
 CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 						   CTableDescriptor *ptabdesc,
-						   CColRefArray *pdrgpcrSource, CBitSet *pbsModified,
+						   CColRefArray *pdrgpcrSource, CColRefArray *pdrgpcrOutput, CBitSet *pbsModified,
 						   CColRef *pcrAction, CColRef *pcrCtid,
 						   CColRef *pcrSegmentId, CColRef *pcrTupleOid, CColRef *pcrTableOid)
 	: CPhysical(mp),
 	  m_edmlop(edmlop),
 	  m_ptabdesc(ptabdesc),
 	  m_pdrgpcrSource(pdrgpcrSource),
+	  m_pdrgpcrOutput(pdrgpcrOutput),
 	  m_pbsModified(pbsModified),
 	  m_pcrAction(pcrAction),
 	  m_pcrTableOid(pcrTableOid),
@@ -63,7 +64,7 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 		NULL != pcrCtid && NULL != pcrSegmentId);
 
 	m_pds =
-		CPhysical::PdsCompute(m_mp, m_ptabdesc, pdrgpcrSource, pcrSegmentId);
+		CPhysical::PdsCompute(m_mp, m_ptabdesc, pdrgpcrOutput ? pdrgpcrOutput : pdrgpcrSource, pcrSegmentId);
 
 	if (CDistributionSpec::EdtHashed == m_pds->Edt() &&
 		ptabdesc->ConvertHashToRandom())
@@ -133,6 +134,8 @@ CPhysicalDML::~CPhysicalDML()
 	m_pds->Release();
 	m_pos->Release();
 	m_pcrsRequiredLocal->Release();
+	if (m_pdrgpcrOutput)
+		m_pdrgpcrOutput->Release();
 }
 
 //---------------------------------------------------------------------------
