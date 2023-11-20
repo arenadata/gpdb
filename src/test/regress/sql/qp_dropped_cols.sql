@@ -8703,13 +8703,20 @@ ALTER TABLE t_part_dropped ADD PARTITION p2 VALUES (2);
 
 -- Partition selection should go smoothly when inserting into leaf
 -- partition with different attribute structure.
+EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped VALUES (1, 2, 4);
 INSERT INTO t_part_dropped VALUES (1, 2, 4);
+
+EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4);
 INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4);
+
 INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 0);
 
 -- Ensure that split update on leaf and root partitions does not
 -- throw partition selection error in both planners.
+EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
 UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
+
+EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped SET c1 = 3;
 UPDATE t_part_dropped SET c1 = 3;
 
 -- Ensure that split update on leaf partition does not throw constraint error
@@ -8722,11 +8729,14 @@ SELECT count(*) FROM t_part_dropped_1_prt_p2;
 -- Split update on root relation should choose the correct partition
 -- at insert (executor doesn't put the tuple to wrong partition for legacy
 -- planner case).
+EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
 UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
+
 SELECT count(*) FROM t_part_dropped_1_prt_p2;
 SELECT * FROM t_part_dropped_1_prt_p0;
 
 -- For ORCA the partition selection error should not occur.
+EXPLAIN (COSTS OFF, VERBOSE) DELETE FROM t_part_dropped_1_prt_p2;
 DELETE FROM t_part_dropped_1_prt_p2;
 
 DROP TABLE t_part_dropped;
@@ -8746,12 +8756,18 @@ CREATE TABLE t_new_part (c1 int, c11 int, c2 int, c3 int, c4 int);
 ALTER TABLE t_new_part DROP c11;
 ALTER TABLE t_part EXCHANGE PARTITION FOR (2) WITH TABLE t_new_part;
 
+EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part VALUES (1, 5, 2, 5);
 INSERT INTO t_part VALUES (1, 5, 2, 5);
+
+EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
 INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
 
 -- Ensure that split update on leaf and root partitions does not
 -- throw partition selection error in both planners.
+EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_1_prt_p2 SET c1 = 2;
 UPDATE t_part_1_prt_p2 SET c1 = 2;
+
+EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
 UPDATE t_part SET c1 = 3;
 
 -- Ensure that split update on leaf partition does not throw constraint error
@@ -8762,6 +8778,7 @@ UPDATE t_part_1_prt_p2 SET c1 = 2 WHERE c4 = 0;
 SELECT count(*) FROM t_part_1_prt_p2;
 
 -- For ORCA the partition selection error should not occur.
+EXPLAIN (COSTS OFF, VERBOSE) DELETE FROM t_part_1_prt_p2;
 DELETE FROM t_part_1_prt_p2;
 
 DROP TABLE t_part;
@@ -8775,7 +8792,15 @@ DROP TABLE t_new_part;
 CREATE TABLE t_part (c1 int, c2 int, c3 int, c4 int) DISTRIBUTED BY (c1)
 PARTITION BY LIST (c3) (PARTITION p0 VALUES (0));
 
--- This one is not compatible with the parent due to dropped columns
+-- Legacy planner UPDATE's plan consists of several subplans (partitioned
+-- relations are considered in inheritance planner), and their execution
+-- order varies depending on the order the partitions have been added.
+-- Therefore, we add each partition through EXCHANGE to get UPDATE's
+-- test plan in a form such that the t_new_part0 update comes first, and the
+-- t_new_part2 comes second. This aspect is crucial because executor's
+-- partitions related logic depended on that fact, what led to the
+-- issue this test demonstrates.
+-- This paritition is not compatible with the parent due to dropped columns
 CREATE TABLE t_new_part0 (c1 int, c11 int, c2 int, c3 int, c4 int);
 ALTER TABLE t_new_part0 drop c11;
 ALTER TABLE t_part EXCHANGE PARTITION FOR (0) WITH TABLE t_new_part0;
@@ -8790,7 +8815,10 @@ ALTER TABLE t_part EXCHANGE PARTITION FOR (2) WITH TABLE t_new_part2;
 -- plan (legacy planner). Ensure that split update does not reconstruct the
 -- tuple at insert.
 INSERT INTO t_part VALUES (1, 4, 2, 2);
+
+EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
 UPDATE t_part SET c1 = 3;
+
 SELECT * FROM t_part_1_prt_p2;
 
 DROP TABLE t_part;
