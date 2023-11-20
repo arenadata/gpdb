@@ -101,7 +101,7 @@ public:
 		m_transientXmin = xmin;
 	}
 
-	// get transaction id in which did it become transient
+	// get the transaction ID in which the cache became transient
 	static uint32_t
 	GetTransientXmin()
 	{
