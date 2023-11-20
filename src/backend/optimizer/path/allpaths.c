@@ -2136,9 +2136,6 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * Create another ShareInputScan to reference the already-created
 		 * subplan if not avoiding sharing. Sharing SegmentGeneral subplan may
 		 * lead to deadlock when executed with 1-gang and joined with Hashed.
-		 * Forcing locus to Replicated leads to redundant motions if we join
-		 * shared plan with another SegmentGeneral node. Thus, we should avoid
-		 * sharing SegmentGeneral subplans.
 		 */
 		if (cteplaninfo->subplan->flow->locustype != CdbLocusType_SegmentGeneral)
 		{
