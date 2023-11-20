@@ -1144,7 +1144,8 @@ checkPartitionUpdate(EState *estate, TupleTableSlot *partslot,
 
 	/*
 	 * If we find we need to map attribute numbers (in case if child part has
-	 * physically-different attribute numbers from parent's)
+	 * physically-different attribute numbers from parent's, the mapping is
+	 * performed inside the makePartitionCheckMap function)
 	 * max_partition_attr could also be bogus for this child part, so we end
 	 * up materializing the whole columns using slot_getallattrs().
 	 */
@@ -2477,6 +2478,23 @@ makePartitionCheckMap(EState *estate, ResultRelInfo *resultRelInfo)
 	 */
 	parentRelid = estate->es_result_partitions->part->parrelid;
 
+	/*
+	 * I don't believe this is the case currently, but we check the parent relid
+	 * in case the updating partition has changed since the last time we opened it.
+	 */
+	if (resultRelInfo->ri_PartitionParent &&
+		parentRelid != RelationGetRelid(resultRelInfo->ri_PartitionParent))
+	{
+		resultRelInfo->ri_PartCheckTupDescMatch = 0;
+		if (resultRelInfo->ri_PartCheckMap != NULL)
+			pfree(resultRelInfo->ri_PartCheckMap);
+		if (resultRelInfo->ri_PartitionParent)
+			relation_close(resultRelInfo->ri_PartitionParent, AccessShareLock);
+	}
+
+	/*
+	 * Check this at the first pass only to avoid repeated catalog access.
+	 */
 	if (resultRelInfo->ri_PartCheckTupDescMatch == 0 &&
 		parentRelid != RelationGetRelid(resultRelInfo->ri_RelationDesc))
 	{
