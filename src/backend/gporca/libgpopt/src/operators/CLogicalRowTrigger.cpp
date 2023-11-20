@@ -93,6 +93,8 @@ CLogicalRowTrigger::InitFunctionProperties()
 	const IMDRelation *pmdrel = md_accessor->RetrieveRel(m_rel_mdid);
 	const ULONG ulTriggers = pmdrel->TriggerCount();
 
+	m_efs = IMDFunction::EfsImmutable;
+
 	for (ULONG ul = 0; ul < ulTriggers; ul++)
 	{
 		const IMDTrigger *pmdtrigger =
