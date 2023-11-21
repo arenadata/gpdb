@@ -170,12 +170,12 @@ static bool is_session_active(apr_int32_t ssid, apr_hash_t *hash, apr_pool_t *po
 {
 	char *key = apr_psprintf(pool, "%d", ssid);
 	char *active_session = apr_hash_get(hash, key, APR_HASH_KEY_STRING);
-	if (active_session == NULL)
-	{
-		TR0(("Found inactive session, ssid:%d\n", ssid));
-		return false;
-	}
-	return true;
+
+	if (active_session != NULL)
+		return true;
+
+	TR0(("Found inactive session, ssid:%d\n", ssid));
+	return false;
 }
 
 static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
