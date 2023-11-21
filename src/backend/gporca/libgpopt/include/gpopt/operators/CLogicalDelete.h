@@ -37,6 +37,9 @@ private:
 	// columns to delete
 	CColRefArray *m_pdrgpcr;
 
+	// output columns
+	CColRefArray *m_pdrgpcrOutput;
+
 	// ctid column
 	CColRef *m_pcrCtid;
 
@@ -80,6 +83,13 @@ public:
 	Pdrgpcr() const
 	{
 		return m_pdrgpcr;
+	}
+
+		// array of output column references
+	CColRefArray *
+	PdrgpcrOutput() const
+	{
+		return m_pdrgpcrOutput;
 	}
 
 	// ctid column

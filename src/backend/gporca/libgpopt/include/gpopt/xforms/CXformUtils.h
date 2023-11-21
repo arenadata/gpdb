@@ -423,7 +423,7 @@ public:
 	static CExpression *PexprLogicalDMLOverProject(
 		CMemoryPool *mp, CExpression *pexprChild,
 		CLogicalDML::EDMLOperator edmlop, CTableDescriptor *ptabdesc,
-		CColRefArray *colref_array, CColRef *pcrCtid, CColRef *pcrSegmentId,
+		CColRefArray *colref_array, CColRefArray *output_array, CColRef *pcrCtid, CColRef *pcrSegmentId,
 		CColRef *pcrTableOid);
 
 	// check whether there are any BEFORE or AFTER triggers on the

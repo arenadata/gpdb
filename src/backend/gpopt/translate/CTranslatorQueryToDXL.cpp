@@ -1202,7 +1202,7 @@ CTranslatorQueryToDXL::TranslateDeleteQueryToDXL()
 	for (ULONG ul = 0; ul < num_of_non_sys_cols; ul++)
 	{
 		const IMDColumn *mdcol = md_rel->GetMdCol(ul);
-		if (mdcol->IsSystemColumn() || mdcol->IsDropped())
+		if (/*mdcol->IsSystemColumn() ||*/ mdcol->IsDropped())
 		{
 			continue;
 		}
