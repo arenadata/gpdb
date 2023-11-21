@@ -34,6 +34,7 @@ using namespace gpopt;
 //		Ctor
 //
 //---------------------------------------------------------------------------
+#include "gpopt/xforms/CXformUtils.h"
 CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 						   CTableDescriptor *ptabdesc,
 						   CColRefArray *pdrgpcrSource, CBitSet *pbsModified,
@@ -114,6 +115,13 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 		}
 	}
 	m_pos = PosComputeRequired(mp, ptabdesc);
+
+	if (CLogicalDML::EdmlDelete == edmlop && !CXformUtils::FTriggersExist(edmlop, ptabdesc, false /*fBefore*/))
+	{
+		m_pdrgpcrSource->Release();
+		m_pdrgpcrSource = GPOS_NEW(mp) CColRefArray(mp);
+	}
+
 	ComputeRequiredLocalColumns(mp);
 }
 
