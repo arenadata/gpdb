@@ -26,6 +26,7 @@
 #include "gpos/error/CAutoExceptionStack.h"
 #include "gpos/error/CException.h"
 
+#include "gpopt/mdcache/CMDCache.h"
 #include "gpopt/utils/gpdbdefs.h"
 #include "naucrates/exception.h"
 extern "C" {
@@ -2591,7 +2592,8 @@ register_mdcache_invalidation_callbacks(void)
 								  (Datum) 0);
 }
 
-// Has there been any catalog changes since last call?
+// We reset the cache in case of a catalog change or if the transaction in which
+// the cache was marked as transient has ended.
 bool
 gpdb::MDCacheNeedsReset(void)
 {
@@ -2604,8 +2606,12 @@ gpdb::MDCacheNeedsReset(void)
 		}
 		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
 		{
-			if ((gpdb::GPDBTransactionIdIsValid(CMDCache::GetTransientXmin()) &&
-				 gpdb::GetTransactionXmin() != CMDCache::GetTransientXmin()))
+			// the catalog has not changed, but is the cache transient,
+			// if so, has the transaction ended?
+			if ((gpdb::GPDBTransactionIdIsValid(
+					 gpopt::CMDCache::GetTransientXmin()) &&
+				 gpdb::GetTransactionXmin() !=
+					 gpopt::CMDCache::GetTransientXmin()))
 			{
 				return true;
 			}
