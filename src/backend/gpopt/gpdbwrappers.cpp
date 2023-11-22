@@ -2592,7 +2592,7 @@ register_mdcache_invalidation_callbacks(void)
 								  (Datum) 0);
 }
 
-// We reset the cache in case of a catalog change or if the transaction in which
+// We reset the cache in case of a catalog change or if the transaction, in which
 // the cache was marked as transient has ended.
 bool
 gpdb::MDCacheNeedsReset(void)
