@@ -2606,15 +2606,13 @@ gpdb::MDCacheNeedsReset(void)
 		}
 		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
 		{
-			// the catalog has not changed, but is the cache transient,
-			// if so, has the transaction ended?
+			// the catalog has not changed, but the transaction, at which the
+			// cache was marked as transient, has ended
 			if ((gpdb::GPDBTransactionIdIsValid(
 					 gpopt::CMDCache::GetTransientXmin()) &&
 				 gpdb::GetTransactionXmin() !=
 					 gpopt::CMDCache::GetTransientXmin()))
-			{
 				return true;
-			}
 
 			return false;
 		}
