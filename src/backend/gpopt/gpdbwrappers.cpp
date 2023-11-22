@@ -2598,13 +2598,6 @@ gpdb::MDCacheNeedsReset(void)
 {
 	GP_WRAP_START;
 	{
-		if ((gpdb::GPDBTransactionIdIsValid(
-				 gpopt::CMDCache::GetTransientXmin()) &&
-			 gpdb::GetTransactionXmin() != gpopt::CMDCache::GetTransientXmin()))
-		{
-			return true;
-		}
-
 		if (!mdcache_invalidation_counter_registered)
 		{
 			register_mdcache_invalidation_callbacks();
@@ -2615,6 +2608,13 @@ gpdb::MDCacheNeedsReset(void)
 		else
 		{
 			last_mdcache_invalidation_counter = mdcache_invalidation_counter;
+			return true;
+		}
+
+		if ((gpdb::GPDBTransactionIdIsValid(
+				 gpopt::CMDCache::GetTransientXmin()) &&
+			 gpdb::GetTransactionXmin() != gpopt::CMDCache::GetTransientXmin()))
+		{
 			return true;
 		}
 	}
