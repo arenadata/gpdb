@@ -326,7 +326,8 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 					// If the index is valid, but cannot yet be used, ignore it; but
 					// mark the plan we are generating and cache as transient. See
 					// src/backend/access/heap/README.HOT for discussion.
-					CMDCache::MarkContainTransientRelation();
+					CMDCache::MarkContainTransientRelation(
+						gpdb::GetTransactionXmin());
 				}
 			}
 
@@ -391,7 +392,8 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 					// If the index is valid, but cannot yet be used, ignore it; but
 					// mark the plan we are generating and cache as transient. See
 					// src/backend/access/heap/README.HOT for discussion.
-					CMDCache::MarkContainTransientRelation();
+					CMDCache::MarkContainTransientRelation(
+						gpdb::GetTransactionXmin());
 				}
 			}
 

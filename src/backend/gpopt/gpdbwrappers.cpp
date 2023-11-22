@@ -2775,14 +2775,4 @@ gpdb::GetTransactionXmin()
 	GP_WRAP_END;
 }
 
-bool
-gpdb::GPDBTransactionIdIsValid(TransactionId xid)
-{
-	GP_WRAP_START;
-	{
-		return TransactionIdIsValid(xid);
-	}
-	GP_WRAP_END;
-}
-
 // EOF

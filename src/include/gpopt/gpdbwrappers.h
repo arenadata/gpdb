@@ -23,7 +23,6 @@ extern "C" {
 #include "parser/parse_coerce.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
-#include "access/transam.h"
 }
 
 #include "gpos/types.h"
@@ -716,8 +715,6 @@ TransactionId GetHeapTupleHeaderXmin(HeapTupleHeaderData *header);
 bool GPDBTransactionIdPrecedes(TransactionId id1, TransactionId id2);
 
 TransactionId GetTransactionXmin();
-
-bool GPDBTransactionIdIsValid(TransactionId xid);
 
 }  //namespace gpdb
 
