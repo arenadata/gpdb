@@ -19,6 +19,8 @@
 
 #include "gpopt/mdcache/CMDAccessor.h"
 #include "gpopt/mdcache/CMDKey.h"
+__extension__
+#include "gpopt/gpdbwrappers.h"
 
 namespace gpopt
 {
@@ -49,7 +51,7 @@ private:
 	// we save the transaction's xmin. If later TransactionXmin changes from
 	// the saved value, the cache will be reset and the relation will be
 	// reloaded with the index usage.
-	static uint32_t m_transientXmin;
+	static TransactionId m_transientXmin;
 
 	// private ctor
 	CMDCache(){};
@@ -95,13 +97,13 @@ public:
 
 	// mark cache as transient
 	static void
-	MarkContainTransientRelation(uint32_t xmin)
+	MarkContainTransientRelation()
 	{
-		m_transientXmin = xmin;
+		m_transientXmin = gpdb::GetTransactionXmin();
 	}
 
 	// get the transaction id in which the cache became transient
-	static uint32_t
+	static TransactionId
 	GetTransientXmin()
 	{
 		return m_transientXmin;

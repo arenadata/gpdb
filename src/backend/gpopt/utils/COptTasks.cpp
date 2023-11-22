@@ -499,7 +499,7 @@ COptTasks::OptimizeTask(void *ptr)
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
 	}
 	else if (reset_mdcache ||
-			 (TransactionIdIsValid(CMDCache::GetTransientXmin()) &&
+			 (gpdb::GPDBTransactionIdIsValid(CMDCache::GetTransientXmin()) &&
 			  gpdb::GetTransactionXmin() != CMDCache::GetTransientXmin()))
 	{
 		CMDCache::Reset();
