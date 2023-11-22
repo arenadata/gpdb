@@ -30,10 +30,9 @@
 #include "gpopt/utils/gpdbdefs.h"
 #include "naucrates/exception.h"
 extern "C" {
-#include <utils/snapmgr.h>
-
 #include "catalog/pg_collation.h"
 #include "utils/memutils.h"
+#include "utils/snapmgr.h"
 }
 #define GP_WRAP_START                                            \
 	sigjmp_buf local_sigjmp_buf;                                 \
