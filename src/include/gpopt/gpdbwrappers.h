@@ -716,6 +716,8 @@ bool GPDBTransactionIdPrecedes(TransactionId id1, TransactionId id2);
 
 TransactionId GetTransactionXmin();
 
+bool GPDBTransactionIdIsValid(TransactionId xid);
+
 }  //namespace gpdb
 
 #define ForEach(cell, l) \

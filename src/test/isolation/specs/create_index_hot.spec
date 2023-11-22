@@ -25,7 +25,7 @@ teardown
 # a broken HOT chain.
 #FIXME do not turn off the optimizer when ORCA stops always using Split Update.
 session "s1"
-step "s1optimizeroff" {set optimizer = off;}
+step "s1optimizeroff" { set optimizer = off; }
 step "s1update" { update hot set c = '$' where c = '#'; }
 step "s1createindexonc" { create index idx_c on hot (c); }
 
