@@ -608,7 +608,8 @@ COptTasks::OptimizeTask(void *ptr)
 						mp, &mda, plan_dxl, opt_ctxt->m_query->canSetTag,
 						query_to_dxl_translator->GetDistributionHashOpsKind()));
 				opt_ctxt->m_plan_stmt->transientPlan =
-					TransactionIdIsValid(CMDCache::GetTransientXmin());
+					gpdb::GPDBTransactionIdIsValid(
+						CMDCache::GetTransientXmin());
 			}
 
 			CStatisticsConfig *stats_conf = optimizer_config->GetStatsConf();
