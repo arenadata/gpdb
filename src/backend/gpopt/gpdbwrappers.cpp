@@ -26,7 +26,6 @@
 #include "gpos/error/CAutoExceptionStack.h"
 #include "gpos/error/CException.h"
 
-#include "gpopt/mdcache/CMDCache.h"
 #include "gpopt/utils/gpdbdefs.h"
 #include "naucrates/exception.h"
 extern "C" {
@@ -2608,13 +2607,6 @@ gpdb::MDCacheNeedsReset(void)
 		else
 		{
 			last_mdcache_invalidation_counter = mdcache_invalidation_counter;
-			return true;
-		}
-
-		if ((gpdb::GPDBTransactionIdIsValid(
-				 gpopt::CMDCache::GetTransientXmin()) &&
-			 gpdb::GetTransactionXmin() != gpopt::CMDCache::GetTransientXmin()))
-		{
 			return true;
 		}
 	}
