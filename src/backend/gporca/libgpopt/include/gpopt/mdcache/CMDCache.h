@@ -44,12 +44,11 @@ private:
 	// the maximum size of the cache
 	static ULLONG m_ullCacheQuota;
 
-	// if we have cached a relation that contain an index that cannot be used in
-	// the current transaction, then after it ends, the cache must be reset.
-	// to read this relation again.
-	//
-	// here we save the transaction id in which this happened.
-	// for more info see src/backend/access/heap/README.HOT
+	// if we have cached a relation without an index, because that index cannot
+	// be used in the current transaction (for more info see src/backend/access/heap/README.HOT),
+	// we save the transaction's xmin. If later TransactionXmin changes from
+	// the saved value, the cache will be reset and the relation will be
+	// reloaded with the index usage.
 	static uint32_t m_transientXmin;
 
 	// private ctor
@@ -101,18 +100,11 @@ public:
 		m_transientXmin = xmin;
 	}
 
-	// get the transaction ID in which the cache became transient
+	// get the transaction id in which the cache became transient
 	static uint32_t
 	GetTransientXmin()
 	{
 		return m_transientXmin;
-	}
-
-	// get is cached data transient
-	static BOOL
-	IsContainTransientRelation()
-	{
-		return m_transientXmin != 0;
 	}
 
 };	// class CMDCache

@@ -1,6 +1,6 @@
 Parsed test spec with 2 sessions
 
-starting permutation: s2begin s2select s1optimizeroff s1update s1createindexonc s2select s2forceindexscan s2select s2abort s2forceindexscan s2expalin
+starting permutation: s2begin s2select s1optimizeroff s1update s1createindexonc s2select s2forceindexscan s2select
 step s2begin: BEGIN ISOLATION LEVEL SERIALIZABLE;
 step s2select: select '#' as expected, c from hot where c = '#'
                   union all
@@ -24,12 +24,3 @@ step s2select: select '#' as expected, c from hot where c = '#'
 expected       c              
 
 #              #              
-step s2abort: abort;
-step s2forceindexscan: set enable_indexscan=on; set enable_seqscan=off;
-step s2expalin: explain (costs off) select c from hot where c = '$';
-QUERY PLAN     
-
-Gather Motion 3:1  (slice1; segments: 3)
-  ->  Index Only Scan using idx_c on hot
-        Index Cond: (c = '$'::bpchar)
-Optimizer: Postgres query optimizer

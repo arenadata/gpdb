@@ -24,12 +24,7 @@ CMDAccessor::MDCache *CMDCache::m_pcache = NULL;
 // maximum size of the cache
 ULLONG CMDCache::m_ullCacheQuota = UNLIMITED_CACHE_QUOTA;
 
-// if we have cached a relation that contain an index that cannot be used in
-// the current transaction, then after it ends, the cache must be reset.
-// to read this relation again.
-//
-// here we save the transaction id in which this happened.
-// for more info see src/backend/access/heap/README.HOT
+// the id of transaction, after the end of which the cache must be reset
 uint32_t CMDCache::m_transientXmin = 0;
 
 //---------------------------------------------------------------------------

@@ -3382,8 +3382,8 @@ BOOL
 CTranslatorRelcacheToDXL::IsIndexVisible(Relation index_rel)
 {
 	return !(index_rel->rd_index->indcheckxmin &&
-			 !gpdb::IsTransactionIdPrecedes(
-				 gpdb::GetTupleHeaderXmin(index_rel->rd_indextuple->t_data),
+			 !gpdb::GPDBTransactionIdPrecedes(
+				 gpdb::GetHeapTupleHeaderXmin(index_rel->rd_indextuple->t_data),
 				 gpdb::GetTransactionXmin()));
 }
 

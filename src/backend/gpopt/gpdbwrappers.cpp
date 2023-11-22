@@ -2738,7 +2738,7 @@ gpdb::IsTypeRange(Oid typid)
 }
 
 TransactionId
-gpdb::GetTupleHeaderXmin(HeapTupleHeaderData *header)
+gpdb::GetHeapTupleHeaderXmin(HeapTupleHeaderData *header)
 {
 	GP_WRAP_START;
 	{
@@ -2748,7 +2748,7 @@ gpdb::GetTupleHeaderXmin(HeapTupleHeaderData *header)
 }
 
 bool
-gpdb::IsTransactionIdPrecedes(TransactionId id1, TransactionId id2)
+gpdb::GPDBTransactionIdPrecedes(TransactionId id1, TransactionId id2)
 {
 	GP_WRAP_START;
 	{

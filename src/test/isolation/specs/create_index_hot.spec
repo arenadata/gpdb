@@ -35,20 +35,16 @@ step "s2select" { select '#' as expected, c from hot where c = '#'
                   union all
                   select '$', c from hot where c = '$'; }
 step "s2forceindexscan" { set enable_indexscan=on; set enable_seqscan=off; }
-step "s2abort" { abort; }
-step "s2expalin" { explain (costs off) select c from hot where c = '$'; }
+teardown        { abort; }
 
 permutation
-"s2begin"
-"s2select"
+  "s2begin"
+  "s2select"
 
-"s1optimizeroff"
-"s1update"
-"s1createindexonc"
+  "s1optimizeroff"
+  "s1update"
+  "s1createindexonc"
 
-"s2select"
-"s2forceindexscan"
-"s2select"
-"s2abort"
-"s2forceindexscan"
-"s2expalin"
+  "s2select"
+  "s2forceindexscan"
+  "s2select"

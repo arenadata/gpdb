@@ -499,7 +499,7 @@ COptTasks::OptimizeTask(void *ptr)
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
 	}
 	else if (reset_mdcache ||
-			 (CMDCache::IsContainTransientRelation() &&
+			 (TransactionIdIsValid(CMDCache::GetTransientXmin()) &&
 			  gpdb::GetTransactionXmin() != CMDCache::GetTransientXmin()))
 	{
 		CMDCache::Reset();
@@ -608,7 +608,7 @@ COptTasks::OptimizeTask(void *ptr)
 						mp, &mda, plan_dxl, opt_ctxt->m_query->canSetTag,
 						query_to_dxl_translator->GetDistributionHashOpsKind()));
 				opt_ctxt->m_plan_stmt->transientPlan =
-					CMDCache::IsContainTransientRelation();
+					TransactionIdIsValid(CMDCache::GetTransientXmin());
 			}
 
 			CStatisticsConfig *stats_conf = optimizer_config->GetStatsConf();

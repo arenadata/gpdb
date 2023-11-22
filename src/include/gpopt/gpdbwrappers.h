@@ -710,9 +710,9 @@ void GPDBMemoryContextDelete(MemoryContext context);
 
 bool IsTypeRange(Oid typid);
 
-TransactionId GetTupleHeaderXmin(HeapTupleHeaderData *header);
+TransactionId GetHeapTupleHeaderXmin(HeapTupleHeaderData *header);
 
-bool IsTransactionIdPrecedes(TransactionId id1, TransactionId id2);
+bool GPDBTransactionIdPrecedes(TransactionId id1, TransactionId id2);
 
 TransactionId GetTransactionXmin();
 
