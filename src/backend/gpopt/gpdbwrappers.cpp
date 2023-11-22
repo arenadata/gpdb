@@ -2603,7 +2603,15 @@ gpdb::MDCacheNeedsReset(void)
 			mdcache_invalidation_counter_registered = true;
 		}
 		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
+		{
+			if ((gpdb::GPDBTransactionIdIsValid(CMDCache::GetTransientXmin()) &&
+				 gpdb::GetTransactionXmin() != CMDCache::GetTransientXmin()))
+			{
+				return true;
+			}
+
 			return false;
+		}
 		else
 		{
 			last_mdcache_invalidation_counter = mdcache_invalidation_counter;
