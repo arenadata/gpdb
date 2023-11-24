@@ -934,8 +934,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		plan->flow->locustype = CdbLocusType_SingleQE;
 		plan->flow->flotype = FLOW_SINGLETON;
 	}
-
-	if (plan->flow->locustype == CdbLocusType_SegmentGeneral &&
+	else if (plan->flow->locustype == CdbLocusType_SegmentGeneral &&
 		(contain_volatile_functions((Node *) plan->targetlist) ||
 		 contain_volatile_functions(parse->havingQual)))
 	{
