@@ -35,6 +35,7 @@ extern "C" {
 
 #include "gpopt/gpdbwrappers.h"
 #include "gpopt/mdcache/CMDAccessor.h"
+#include "gpopt/mdcache/CMDCache.h"
 #include "gpopt/translate/CIndexQualInfo.h"
 #include "gpopt/translate/CTranslatorDXLToPlStmt.h"
 #include "gpopt/translate/CTranslatorUtils.h"
@@ -306,6 +307,9 @@ CTranslatorDXLToPlStmt::GetPlannedStmtFromDXL(const CDXLNode *dxlnode,
 			}
 		}
 	}
+
+	planned_stmt->transientPlan =
+		gpdb::GPDBTransactionIdIsValid(CMDCache::GetTransientXmin());
 
 	return planned_stmt;
 }
