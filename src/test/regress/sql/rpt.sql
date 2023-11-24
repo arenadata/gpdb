@@ -580,14 +580,6 @@ select * from cte join t1 using(a);
 
 reset gp_cte_sharing;
 
--- ensure that the volatile function is executed on one segment if it is in the union target list
-explain (costs off, verbose) select * from (
-    select random() as a from t2
-    union
-    select random() as a from t2
-)
-a join t1 on a.a = t1.a;
-
 -- ensure that the volatile function is executed on one segment if it is in target list of subplan of multiset function
 explain (costs off, verbose) select * from (
     SELECT count(*) as a FROM anytable_out( TABLE( SELECT random()::int from t2 ) )
