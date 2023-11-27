@@ -4697,12 +4697,11 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 							 true);
 
 	/* Free up if we allocated mapped attributes. */
-	if (values != slot_get_values(slot) &&
-		nulls != slot_get_isnull(slot))
-	{
+	if (values != slot_get_values(slot))
 		pfree(values);
+
+	if (nulls != slot_get_isnull(slot))
 		pfree(nulls);
-	}
 
 	return resultRelInfo;
 }
