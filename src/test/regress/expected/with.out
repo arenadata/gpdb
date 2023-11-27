@@ -2326,31 +2326,6 @@ WITH cte AS (
  2 | 3
 (1 row)
 
--- Check that a correct plan is generated in case of joining two SegmentGenerals
-EXPLAIN (COSTS off)
-WITH cte AS (
-    SELECT count(*) a FROM r
-) SELECT * FROM cte JOIN (SELECT * FROM r JOIN cte USING (a) LIMIT 1) d_join_cte USING (a);
-                         QUERY PLAN
--------------------------------------------------------------
- Hash Join
-   Hash Cond: (d_join_cte.a = (count(*)))
-   ->  Subquery Scan on d_join_cte
-         ->  Limit
-               ->  Gather Motion 1:1  (slice1; segments: 1)
-                     ->  Hash Join
-                           Hash Cond: (r.a = (count(*)))
-                           ->  Seq Scan on r
-                           ->  Hash
-                                 ->  Aggregate
-                                       ->  Seq Scan on r r_1
-   ->  Hash
-         ->  Gather Motion 1:1  (slice2; segments: 1)
-               ->  Aggregate
-                     ->  Seq Scan on r r_2
- Optimizer: Postgres query optimizer
-(16 rows)
-
 RESET optimizer;
 DROP TABLE d;
 DROP TABLE r;

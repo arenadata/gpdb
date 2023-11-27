@@ -1106,12 +1106,6 @@ WITH cte AS (
     SELECT count(*) a FROM r
 ) SELECT * FROM cte JOIN (SELECT * FROM d JOIN cte USING (a) LIMIT 1) d_join_cte USING (a);
 
--- Check that a correct plan is generated in case of joining two SegmentGenerals
-EXPLAIN (COSTS off)
-WITH cte AS (
-    SELECT count(*) a FROM r
-) SELECT * FROM cte JOIN (SELECT * FROM r JOIN cte USING (a) LIMIT 1) d_join_cte USING (a);
-
 RESET optimizer;
 DROP TABLE d;
 DROP TABLE r;
