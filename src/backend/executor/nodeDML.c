@@ -105,8 +105,7 @@ ExecDML(DMLState *node)
 		 */
 		if (RelationGetRelid(relInfo->ri_RelationDesc) !=
 			node->ps.state->es_result_partitions->part->parrelid)
-			makePartitionCheckMap(node->ps.state,
-								  relInfo);
+			makePartitionCheckMap(node->ps.state, relInfo);
 
 		/*
 		 * DML node always performs partition selection, and if we want to

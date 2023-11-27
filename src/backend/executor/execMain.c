@@ -4560,7 +4560,6 @@ targetid_get_partition(Oid targetid, EState *estate, bool openIndices)
 	ResultRelInfo *childInfo = estate->es_result_relations;
 	ResultPartHashEntry *entry;
 	bool		found;
-	Oid			parentRelid = estate->es_result_partitions->part->parrelid;
 
 	if (parentInfo->ri_partition_hash == NULL)
 	{
@@ -4592,6 +4591,7 @@ targetid_get_partition(Oid targetid, EState *estate, bool openIndices)
 	{
 		int			natts;
 		Relation	resultRelation;
+		Oid			parentRelid = estate->es_result_partitions->part->parrelid;
 
 		natts = parentInfo->ri_RelationDesc->rd_att->natts; /* in base relation */
 
@@ -4650,8 +4650,7 @@ ResultRelInfo *
 slot_get_partition(TupleTableSlot *slot, EState *estate)
 {
 	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
-	TupleDesc	tupdesc = NULL;
-	AttrNumber max_attr;
+	TupleDesc	tupdesc;
 	Datum *values;
 	bool *nulls;
 
@@ -4664,33 +4663,29 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 	 */
 	if (resultRelInfo->ri_PartCheckMap != NULL)
 	{
-		Datum	   *parent_values;
-		bool	   *parent_nulls;
+		Datum	   *slot_values;
+		bool	   *slot_nulls;
 		Relation	parentRel = resultRelInfo->ri_PartitionParent;
-		TupleDesc	parentTupdesc;
 		AttrMap	   *map;
 
 		Assert(parentRel != NULL);
-		parentTupdesc = RelationGetDescr(parentRel);
+		tupdesc = RelationGetDescr(parentRel);
 
 		slot_getallattrs(slot);
-		values = slot_get_values(slot);
-		nulls = slot_get_isnull(slot);
-		parent_values = palloc(parentTupdesc->natts * sizeof(Datum));
-		parent_nulls = palloc0(parentTupdesc->natts * sizeof(bool));
-
-		map = resultRelInfo->ri_PartCheckMap;
-		reconstructTupleValues(map, values, nulls, slot->tts_tupleDescriptor->natts,
-							   parent_values, parent_nulls, parentTupdesc->natts);
+		slot_values = slot_get_values(slot);
+		slot_nulls = slot_get_isnull(slot);
+		values = palloc(tupdesc->natts * sizeof(Datum));
+		nulls = palloc0(tupdesc->natts * sizeof(bool));
 
 		/* Now we have values/nulls in parent's view. */
-		values = parent_values;
-		nulls = parent_nulls;
-		tupdesc = parentTupdesc;
+		map = resultRelInfo->ri_PartCheckMap;
+		reconstructTupleValues(map, slot_values, slot_nulls, slot->tts_tupleDescriptor->natts,
+							   values, nulls, tupdesc->natts);
 	}
 	else
 	{
-		max_attr = estate->es_partition_state->max_partition_attr;
+		AttrNumber	max_attr = estate->es_partition_state->max_partition_attr;
+
 		slot_getsomeattrs(slot, max_attr);
 		/* values/nulls pointing to partslot's array. */
 		values = slot_get_values(slot);
