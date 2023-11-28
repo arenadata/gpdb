@@ -2516,19 +2516,18 @@ with cte as (
     select i, i * 100 from generate_series(1,5) i
     returning i
 ) select count(*) from cte left join t_repl using (i);
-                             QUERY PLAN                              
----------------------------------------------------------------------
- Aggregate
-   ->  Hash Right Join
-         Hash Cond: (t_repl.i = with_dml_dr.i)
-         ->  Gather Motion 1:1  (slice1; segments: 1)
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Right Join
+               Hash Cond: (t_repl.i = with_dml_dr.i)
                ->  Seq Scan on t_repl
-         ->  Hash
-               ->  Explicit Gather Motion 3:1  (slice2; segments: 3)
+               ->  Hash
                      ->  Insert on with_dml_dr
                            ->  Function Scan on generate_series i
  Optimizer: Postgres query optimizer
-(10 rows)
+(9 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2540,6 +2539,89 @@ with cte as (
      5
 (1 row)
 
+-- Test join CdbLocusType_Replicated with CdbLocusType_SegmentGeneral
+-- in case when relations are propagated on different number of segments.
+--start_ignore
+drop table if exists with_dml_dr_seg2;
+NOTICE:  table "with_dml_dr_seg2" does not exist, skipping
+--end_ignore
+select gp_debug_set_create_table_default_numsegments(2);
+ gp_debug_set_create_table_default_numsegments 
+-----------------------------------------------
+ 2
+(1 row)
+
+create table with_dml_dr_seg2 (i int, j int) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+ gp_debug_reset_create_table_default_numsegments 
+-------------------------------------------------
+ 
+(1 row)
+
+-- SegmentGeneral's number of segments is larger than Replicated's,
+-- the join is performed at number of segments of Replicated locus.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_repl using (i);
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Explicit Gather Motion 2:1  (slice1; segments: 2)
+   ->  Aggregate
+         ->  Hash Right Join
+               Hash Cond: (t_repl.i = with_dml_dr_seg2.i)
+               ->  Seq Scan on t_repl
+               ->  Hash
+                     ->  Insert on with_dml_dr_seg2
+                           ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_repl using (i);
+ count 
+-------
+     5
+(1 row)
+
+-- SegmentGeneral's number of segments is less than Replicated's,
+-- the join is performed at SingleQE.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join with_dml_dr_seg2 using (i);
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Hash Right Join
+         Hash Cond: (with_dml_dr_seg2.i = with_dml_dr.i)
+         ->  Gather Motion 1:1  (slice1; segments: 1)
+               ->  Seq Scan on with_dml_dr_seg2
+         ->  Hash
+               ->  Explicit Gather Motion 3:1  (slice2; segments: 3)
+                     ->  Insert on with_dml_dr
+                           ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(10 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join with_dml_dr_seg2 using (i);
+ count 
+-------
+     5
+(1 row)
+
+drop table with_dml_dr_seg2;
 drop table t_repl;
 -- Test join CdbLocusType_Replicated with CdbLocusType_SingleQE.
 explain (costs off)
@@ -2850,6 +2932,41 @@ with cte as (
 
 drop table t_strewn_seg2;
 drop table t_hashed_seg2;
+-- Test join CdbLocusType_Replicated with CdbLocusType_Replicated.
+-- Join can be performed correctly only when CTE is shared.
+set gp_cte_sharing = 1;
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte a join cte b using (i);
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Aggregate
+         ->  Hash Join
+               Hash Cond: (share0_ref2.i = share0_ref1.i)
+               ->  Shared Scan (share slice:id 1:0)
+               ->  Hash
+                     ->  Shared Scan (share slice:id 1:0)
+                           ->  Materialize
+                                 ->  Insert on with_dml_dr
+                                       ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte a join cte b using (i);
+ count 
+-------
+     5
+(1 row)
+
+reset gp_cte_sharing;
 -- Test proper handling of the volatile conditions, which are
 -- applied to the result of modifying CTEs over replicated tables.
 -- Before the volatile filtration the result should be gathered.

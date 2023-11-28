@@ -571,6 +571,46 @@ with cte as (
     returning i
 ) select count(*) from cte left join t_repl using (i);
 
+-- Test join CdbLocusType_Replicated with CdbLocusType_SegmentGeneral
+-- in case when relations are propagated on different number of segments.
+--start_ignore
+drop table if exists with_dml_dr_seg2;
+--end_ignore
+select gp_debug_set_create_table_default_numsegments(2);
+create table with_dml_dr_seg2 (i int, j int) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+
+-- SegmentGeneral's number of segments is larger than Replicated's,
+-- the join is performed at number of segments of Replicated locus.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_repl using (i);
+
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join t_repl using (i);
+
+-- SegmentGeneral's number of segments is less than Replicated's,
+-- the join is performed at SingleQE.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join with_dml_dr_seg2 using (i);
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte left join with_dml_dr_seg2 using (i);
+
+drop table with_dml_dr_seg2;
 drop table t_repl;
 
 -- Test join CdbLocusType_Replicated with CdbLocusType_SingleQE.
@@ -724,6 +764,25 @@ with cte as (
 
 drop table t_strewn_seg2;
 drop table t_hashed_seg2;
+
+-- Test join CdbLocusType_Replicated with CdbLocusType_Replicated.
+-- Join can be performed correctly only when CTE is shared.
+set gp_cte_sharing = 1;
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte a join cte b using (i);
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i
+) select count(*) from cte a join cte b using (i);
+
+reset gp_cte_sharing;
 
 -- Test proper handling of the volatile conditions, which are
 -- applied to the result of modifying CTEs over replicated tables.
