@@ -22,6 +22,7 @@ test: unlogged_heap_tables
 test: unlogged_appendonly_tables
 test: udf_exception_blocks_panic_scenarios
 test: ao_same_trans_truncate_crash
+test: frozen_insert_crash
 test: ao_fsync_panic
 test: uao_crash_compaction_column
 test: uao_crash_compaction_row
@@ -250,7 +251,7 @@ test: segwalrep/max_slot_wal_keep_size
 test: segwalrep/dtx_recovery_wait_lsn
 test: pg_basebackup
 test: pg_basebackup_with_tablespaces
-test: segwalrep/select_throttle
+test: segwalrep/hintbit_throttle
 test: fts_manual_probe
 test: fts_session_reset
 test: fts_segment_reset

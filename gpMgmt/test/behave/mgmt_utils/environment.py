@@ -21,7 +21,8 @@ def before_all(context):
 def before_feature(context, feature):
     # we should be able to run gpexpand without having a cluster initialized
     tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors',
-                    'gpconfig', 'gpssh-exkeys', 'gpstop', 'gpinitsystem', 'cross_subnet']
+                    'gpconfig', 'gpssh-exkeys', 'gpstop', 'gpinitsystem', 'cross_subnet',
+                    'gplogfilter']
     if set(context.feature.tags).intersection(tags_to_skip):
         return
 
@@ -109,6 +110,9 @@ def before_scenario(context, scenario):
     if 'gprecoverseg' in context.feature.tags:
         context.mirror_context = MirrorMgmtContext()
 
+    if 'gprecoverseg_newhost' in context.feature.tags:
+        context.mirror_context = MirrorMgmtContext()
+
     if 'gpconfig' in context.feature.tags:
         context.gpconfig_context = GpConfigContext()
 
@@ -116,7 +120,8 @@ def before_scenario(context, scenario):
         context.gpssh_exkeys_context = GpsshExkeysMgmtContext(context)
 
     tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors',
-                    'gpconfig', 'gpssh-exkeys', 'gpstop', 'gpinitsystem', 'cross_subnet']
+                    'gpconfig', 'gpssh-exkeys', 'gpstop', 'gpinitsystem', 'cross_subnet',
+                    'gplogfilter']
     if set(context.feature.tags).intersection(tags_to_skip):
         return
 
@@ -148,7 +153,8 @@ def after_scenario(context, scenario):
 
     # NOTE: gpconfig after_scenario cleanup is in the step `the gpconfig context is setup`
     tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpinitstandby',
-                    'gpconfig', 'gpstop', 'gpinitsystem', 'cross_subnet']
+                    'gpconfig', 'gpstop', 'gpinitsystem', 'cross_subnet',
+                    'gplogfilter']
     if set(context.feature.tags).intersection(tags_to_skip):
         return
 
@@ -194,4 +200,10 @@ def after_scenario(context, scenario):
 
     if os.getenv('SUSPEND_PG_REWIND') is not None:
         del os.environ['SUSPEND_PG_REWIND']
+
+    if "remove_rsync_bash" in scenario.effective_tags:
+        for host in context.hosts_with_rsync_bash:
+            cmd = Command(name='remove /usr/local/bin/rsync', cmdStr="sudo rm /usr/local/bin/rsync", remoteHost=host,
+                          ctxt=REMOTE)
+            cmd.run(validateAfter=True)
 
