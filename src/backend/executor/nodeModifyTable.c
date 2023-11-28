@@ -2479,8 +2479,9 @@ makePartitionCheckMap(EState *estate, ResultRelInfo *resultRelInfo)
 	parentRelid = estate->es_result_partitions->part->parrelid;
 
 	/*
-	 * I don't believe this is the case currently, but we check the parent relid
-	 * in case the updating partition has changed since the last time we opened it.
+	 * I don't believe this is the case currently, but we check the parent
+	 * relid in case the updating partition has changed since the last time we
+	 * opened it.
 	 */
 	if (resultRelInfo->ri_PartitionParent &&
 		parentRelid != RelationGetRelid(resultRelInfo->ri_PartitionParent))
