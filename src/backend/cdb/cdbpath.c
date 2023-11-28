@@ -1273,7 +1273,7 @@ cdbpath_motion_for_join(PlannerInfo *root,
 		 */
 		if (CdbPathLocus_IsBottleneck(other->locus))
 			CdbPathLocus_MakeSimple(&replicated->move_to,
-									other->locus->locustype, numsegments);
+									other->locus.locustype, numsegments);
 		else if (CdbPathLocus_IsPartitioned(other->locus))
 		{
 			if (replicated->ok_to_replicate &&
