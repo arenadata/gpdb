@@ -309,7 +309,7 @@ CTranslatorDXLToPlStmt::GetPlannedStmtFromDXL(const CDXLNode *dxlnode,
 	}
 
 	planned_stmt->transientPlan =
-		gpdb::GPDBTransactionIdIsValid(CMDCache::GetTransientXmin());
+		gpdb::GPDBTransactionIdIsValid(CMDCache::GetCacheTransactionXmin());
 
 	return planned_stmt;
 }

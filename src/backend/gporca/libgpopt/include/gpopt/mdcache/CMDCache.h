@@ -45,11 +45,11 @@ private:
 	static ULLONG m_ullCacheQuota;
 
 	// if we have cached a relation without an index, because that index cannot
-	// be used in the current transaction (for more info see src/backend/access/heap/README.HOT),
-	// we save the transaction's xmin. If later TransactionXmin changes from
+	// be used in the current snapshot (for more info see src/backend/access/heap/README.HOT),
+	// we save the TransactionXmin. If later TransactionXmin changes from
 	// the saved value, the cache will be reset and the relation will be
 	// reloaded with the index usage.
-	static uint32_t m_transientXmin;
+	static uint32_t m_transactionXmin;
 
 	// private ctor
 	CMDCache(){};
@@ -93,18 +93,17 @@ public:
 		return m_pcache;
 	}
 
-	// mark cache as transient
 	static void
-	MarkContainTransientRelation(uint32_t xmin)
+	MarkContainTemporaryRelation(uint32_t xmin)
 	{
-		m_transientXmin = xmin;
+		m_transactionXmin = xmin;
 	}
 
-	// get the transaction id in which the cache became transient
+	// get the transaction xmin in which the cache become temporary
 	static uint32_t
-	GetTransientXmin()
+	GetCacheTransactionXmin()
 	{
-		return m_transientXmin;
+		return m_transactionXmin;
 	}
 
 };	// class CMDCache
