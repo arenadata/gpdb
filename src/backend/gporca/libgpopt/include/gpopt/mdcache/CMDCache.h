@@ -49,7 +49,7 @@ private:
 	// we save the TransactionXmin. If later TransactionXmin changes from
 	// the saved value, the cache will be reset and the relation will be
 	// reloaded with the index usage.
-	static uint32_t m_transactionXmin;
+	static uint32_t m_xmin;
 
 	// private ctor
 	CMDCache(){};
@@ -96,14 +96,14 @@ public:
 	static void
 	MarkContainTemporaryRelation(uint32_t xmin)
 	{
-		m_transactionXmin = xmin;
+		m_xmin = xmin;
 	}
 
 	// get the transaction xmin in which the cache become temporary
 	static uint32_t
 	GetCacheTransactionXmin()
 	{
-		return m_transactionXmin;
+		return m_xmin;
 	}
 
 };	// class CMDCache

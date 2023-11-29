@@ -25,7 +25,7 @@ CMDAccessor::MDCache *CMDCache::m_pcache = NULL;
 ULLONG CMDCache::m_ullCacheQuota = UNLIMITED_CACHE_QUOTA;
 
 // the id of transaction, after the end of which the cache must be reset
-uint32_t CMDCache::m_transactionXmin = 0;
+uint32_t CMDCache::m_xmin = 0;
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -131,7 +131,7 @@ CMDCache::Reset()
 	Shutdown();
 	Init();
 
-	m_transactionXmin = 0;
+	m_xmin = 0;
 }
 
 // EOF
