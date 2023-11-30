@@ -90,6 +90,15 @@ Feature: gpperfmon
         Then wait until the results from boolean sql "SELECT count(*) = 0 FROM queries_history WHERE query_text like '--alter distributed by%'" is "true"
         And wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_history WHERE query_text like '--end flag%'" is "true"
 
+    @gpperfmon_query_history
+    Scenario: gpperfmon adds time-consuming queries with different executed statement to queries_now and queries_history
+        Given gpperfmon is configured and running in qamode
+        When the user truncates "queries_history" tables in "gpperfmon"
+        Then run function with query from table for 80 seconds
+        And wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_now WHERE query_text like '%where pg_sleep(80) is not null'" is "true"
+        When waiting 80 seconds
+        Then wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_history WHERE query_text like '%where pg_sleep(80) is not null'" is "true"
+
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table
         Given gpperfmon is configured and running in qamode

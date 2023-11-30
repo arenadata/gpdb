@@ -4304,3 +4304,24 @@ def impl(context):
 def impl(context, second):
 	cmd = Command(name='psql', cmdStr="-c 'SELECT * from generate_series(1, %s) a where pg_sleep(1) is not null;'" % second)
 	cmd.runNoWait()
+
+@then('run function with query from table for {second} seconds')
+def impl(context):
+	qry = """
+		DO $$
+			DECLARE r record;
+		BEGIN
+			FOR r IN
+				select '
+					DROP TABLE IF EXISTS test;
+					CREATE TABLE test(a int, b int) DISTRIBUTED BY (a);
+					INSERT INTO test VALUES (1, 1);
+				' as stmt
+				from '' where pg_sleep(%s) is not null
+			LOOP
+				EXECUTE r.stmt;
+			END LOOP;
+		END$$;
+	""" % second
+	cmd = Command(name='psql', cmdStr=qry)
+	cmd.run(validateAfter=true)
