@@ -99,7 +99,7 @@ public:
 		m_xmin = xmin;
 	}
 
-	// get the transaction xmin in which the cache become temporary
+	// get the TransactionXmin in which the cache become temporary
 	static uint32_t
 	GetCacheTransactionXmin()
 	{

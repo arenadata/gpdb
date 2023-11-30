@@ -3377,7 +3377,7 @@ CTranslatorRelcacheToDXL::IsIndexSupported(Relation index_rel)
 //		CTranslatorRelcacheToDXL::IsIndexVisible
 //
 //	@doc:
-//		Check if index is visible in current transaction
+//		Check if index is visible in the current snapshot
 //
 //---------------------------------------------------------------------------
 BOOL
