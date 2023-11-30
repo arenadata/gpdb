@@ -1329,30 +1329,28 @@ apr_status_t gpdb_check_partitions(mmon_options_t *opt)
 	return result;
 }
 
-static void convert_tuples_to_hash(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
+static void hash_ssids(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
 {
 	int rowcount = PQntuples(result);
 	int i = 0;
 	for (; i < rowcount; i++)
 	{
 		char* sessid = PQgetvalue(result, i, 0);
-		char* query  = PQgetvalue(result, i, 1);
 
 		char *sessid_copy = apr_pstrdup(pool, sessid);
-		char *query_copy  = apr_pstrdup(pool, query);
-		if (sessid_copy == NULL || query_copy == NULL)
+		if (sessid_copy == NULL)
 		{
-			gpmon_warning(FLINE, "Out of memory");
+			gpmon_warning(FLINE, "Failed to retrieve ssid from pg_stat_query");
 			continue;
 		}
-		apr_hash_set(hash, sessid_copy, APR_HASH_KEY_STRING, query_copy);
+		apr_hash_set(hash, sessid_copy, APR_HASH_KEY_STRING, "");
 	}
 }
 
-apr_hash_t *get_active_queries(apr_pool_t *pool)
+apr_hash_t *get_active_sessions(apr_pool_t *pool)
 {
 	PGresult   *result = NULL;
-	apr_hash_t *active_query_tab = NULL;
+	apr_hash_t *active_session_tab = NULL;
 
 	PGconn *conn = PQconnectdb(GPDB_CONNECTION_STRING);
 	if (PQstatus(conn) != CONNECTION_OK)
@@ -1374,21 +1372,21 @@ apr_hash_t *get_active_queries(apr_pool_t *pool)
 	}
 	else
 	{
-		active_query_tab = apr_hash_make(pool);
-		if (! active_query_tab)
+		active_session_tab = apr_hash_make(pool);
+		if (!active_session_tab)
 		{
 			gpmon_warning(FLINE, "Out of memory");
 		}
 		else
 		{
-			convert_tuples_to_hash(result, active_query_tab, pool);
+			hash_ssids(result, active_session_tab, pool);
 		}
 	}
 
 	PQclear(result);
 	PQfinish(conn);
 
-	return active_query_tab;
+	return active_session_tab;
 }
 
 const char *iconv_encodings[] = {
