@@ -26,7 +26,6 @@
 #include "gpos/error/CAutoExceptionStack.h"
 #include "gpos/error/CException.h"
 
-#include "gpopt/mdcache/CMDCache.h"
 #include "gpopt/utils/gpdbdefs.h"
 #include "naucrates/exception.h"
 extern "C" {

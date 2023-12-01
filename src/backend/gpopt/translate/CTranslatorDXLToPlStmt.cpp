@@ -35,7 +35,6 @@ extern "C" {
 
 #include "gpopt/gpdbwrappers.h"
 #include "gpopt/mdcache/CMDAccessor.h"
-#include "gpopt/mdcache/CMDCache.h"
 #include "gpopt/translate/CIndexQualInfo.h"
 #include "gpopt/translate/CTranslatorDXLToPlStmt.h"
 #include "gpopt/translate/CTranslatorUtils.h"
