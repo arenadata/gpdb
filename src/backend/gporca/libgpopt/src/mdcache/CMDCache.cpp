@@ -24,9 +24,6 @@ CMDAccessor::MDCache *CMDCache::m_pcache = NULL;
 // maximum size of the cache
 ULLONG CMDCache::m_ullCacheQuota = UNLIMITED_CACHE_QUOTA;
 
-// TransactionXmin after changing which the cache must be reset
-uint32_t CMDCache::m_xmin = 0;
-
 //---------------------------------------------------------------------------
 //	@function:
 //		CMDCache::Init
@@ -130,8 +127,6 @@ CMDCache::Reset()
 
 	Shutdown();
 	Init();
-
-	m_xmin = 0;
 }
 
 // EOF

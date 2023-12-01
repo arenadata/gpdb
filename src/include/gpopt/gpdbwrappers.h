@@ -718,6 +718,9 @@ TransactionId GetTransactionXmin();
 
 bool GPDBTransactionIdIsValid(TransactionId xid);
 
+void SetMDCacheTransactionXmin(TransactionId xid);
+
+TransactionId GetMDCacheTransactionXmin();
 }  //namespace gpdb
 
 #define ForEach(cell, l) \

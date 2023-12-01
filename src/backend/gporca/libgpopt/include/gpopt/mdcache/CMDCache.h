@@ -44,13 +44,6 @@ private:
 	// the maximum size of the cache
 	static ULLONG m_ullCacheQuota;
 
-	// if we have cached a relation without an index, because that index cannot
-	// be used in the current snapshot (for more info see src/backend/access/heap/README.HOT),
-	// we save the TransactionXmin. If later TransactionXmin changes from
-	// the saved value, the cache will be reset and the relation will be
-	// reloaded with the index usage.
-	static uint32_t m_xmin;
-
 	// private ctor
 	CMDCache(){};
 
@@ -91,19 +84,6 @@ public:
 	Pcache()
 	{
 		return m_pcache;
-	}
-
-	static void
-	MarkContainTemporaryRelation(uint32_t xmin)
-	{
-		m_xmin = xmin;
-	}
-
-	// get the TransactionXmin in which the cache become temporary
-	static uint32_t
-	GetCacheTransactionXmin()
-	{
-		return m_xmin;
 	}
 
 };	// class CMDCache

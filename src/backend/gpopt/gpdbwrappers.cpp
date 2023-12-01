@@ -2511,6 +2511,13 @@ static bool mdcache_invalidation_counter_registered = false;
 static int64 mdcache_invalidation_counter = 0;
 static int64 last_mdcache_invalidation_counter = 0;
 
+// if we have cached a relation without an index, because that index cannot
+// be used in the current snapshot (for more info see src/backend/access/heap/README.HOT),
+// we save the TransactionXmin. If later TransactionXmin changes from
+// the saved value, the cache will be reset and the relation will be
+// reloaded with the index usage.
+static TransactionId mdcache_transaction_xmin;
+
 static void
 mdsyscache_invalidation_counter_callback(Datum arg, int cacheid,
 										 uint32 hashvalue)
@@ -2606,15 +2613,11 @@ gpdb::MDCacheNeedsReset(void)
 		}
 		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
 		{
-			// the catalog has not changed, but the snapshot, at which the
-			// cache was marked as temporary, has changed
-			if ((gpdb::GPDBTransactionIdIsValid(
-					 gpopt::CMDCache::GetCacheTransactionXmin()) &&
-				 gpdb::GetTransactionXmin() !=
-					 gpopt::CMDCache::GetCacheTransactionXmin()))
-				return true;
-
-			return false;
+			// the catalog has not changed, but if the snapshot in which the
+			// cache is marked as temporary has changed, then the cache must be
+			// reset.
+			return gpdb::GPDBTransactionIdIsValid(mdcache_transaction_xmin) &&
+				   gpdb::GetTransactionXmin() != mdcache_transaction_xmin;
 		}
 		else
 		{
@@ -2786,6 +2789,18 @@ gpdb::GPDBTransactionIdIsValid(TransactionId xid)
 		return TransactionIdIsValid(xid);
 	}
 	GP_WRAP_END;
+}
+
+void
+gpdb::SetMDCacheTransactionXmin(TransactionId xid)
+{
+	mdcache_transaction_xmin = xid;
+}
+
+TransactionId
+gpdb::GetMDCacheTransactionXmin()
+{
+	return mdcache_transaction_xmin;
 }
 
 // EOF

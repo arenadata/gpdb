@@ -327,8 +327,7 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 					// mark the plan we are generating as transient and cache as
 					// contain temporary relation. See src/backend/access/heap/README.HOT
 					// for discussion.
-					CMDCache::MarkContainTemporaryRelation(
-						gpdb::GetTransactionXmin());
+					gpdb::SetMDCacheTransactionXmin(gpdb::GetTransactionXmin());
 				}
 			}
 
@@ -394,8 +393,7 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 					// mark the plan we are generating as transient and cache as
 					// contain temporary relation. See src/backend/access/heap/README.HOT
 					// for discussion.
-					CMDCache::MarkContainTemporaryRelation(
-						gpdb::GetTransactionXmin());
+					gpdb::SetMDCacheTransactionXmin(gpdb::GetTransactionXmin());
 				}
 			}
 
