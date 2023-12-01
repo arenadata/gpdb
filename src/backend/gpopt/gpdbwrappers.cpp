@@ -2774,11 +2774,7 @@ gpdb::GPDBTransactionIdPrecedes(TransactionId id1, TransactionId id2)
 TransactionId
 gpdb::GetTransactionXmin()
 {
-	GP_WRAP_START;
-	{
-		return TransactionXmin;
-	}
-	GP_WRAP_END;
+	return TransactionXmin;
 }
 
 bool
