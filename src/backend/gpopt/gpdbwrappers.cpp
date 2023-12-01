@@ -2606,15 +2606,13 @@ gpdb::MDCacheNeedsReset(void)
 		}
 		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
 		{
-			// the catalog has not changed, but the snapshot, at which the
-			// cache was marked as temporary, has changed
-			if ((gpdb::GPDBTransactionIdIsValid(
-					 gpopt::CMDCache::GetCacheTransactionXmin()) &&
-				 gpdb::GetTransactionXmin() !=
-					 gpopt::CMDCache::GetCacheTransactionXmin()))
-				return true;
-
-			return false;
+			// the catalog has not changed, but if the snapshot in which the
+			// cache is marked as temporary has changed, then the cache must be
+			// reset.
+			return gpdb::GPDBTransactionIdIsValid(
+					   gpopt::CMDCache::GetCacheTransactionXmin()) &&
+				   gpdb::GetTransactionXmin() !=
+					   gpopt::CMDCache::GetCacheTransactionXmin();
 		}
 		else
 		{
