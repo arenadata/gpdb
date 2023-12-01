@@ -2516,7 +2516,7 @@ static int64 last_mdcache_invalidation_counter = 0;
 // we save the TransactionXmin. If later TransactionXmin changes from
 // the saved value, the cache will be reset and the relation will be
 // reloaded with the index usage.
-static TransactionId mdcache_transaction_xmin;
+static TransactionId mdcache_transaction_xmin = InvalidTransactionId;
 
 static void
 mdsyscache_invalidation_counter_callback(Datum arg, int cacheid,
