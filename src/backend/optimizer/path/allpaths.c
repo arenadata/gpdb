@@ -2110,20 +2110,30 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 			subplan = subquery_planner(cteroot->glob, subquery, cteroot, cte->cterecursive,
 									   tuple_fraction, &subroot, config);
 
-			if (!CdbPathLocus_IsSegmentGeneral(*subplan->flow))
+			/*
+			 * Sharing General and SegmentGeneral subplan may lead to deadlock
+			 * when executed with 1-gang and joined with n-gang.
+			 */
+			if (!CdbPathLocus_IsGeneral(*subplan->flow) &&
+			    !CdbPathLocus_IsSegmentGeneral(*subplan->flow))
+			{
 				cteplaninfo->subplan = prepare_plan_for_sharing(cteroot, subplan);
+			}
 			else
+			{
 				cteplaninfo->subplan = subplan;
+			}
 
 			cteplaninfo->subroot = subroot;
 		}
 
 		/*
 		 * Create another ShareInputScan to reference the already-created
-		 * subplan if not avoiding sharing. Sharing SegmentGeneral subplan may
-		 * lead to deadlock when executed with 1-gang and joined with n-gang.
+		 * subplan if not avoiding sharing. Avoid sharing General and
+		 * SegmentGeneral subplans.
 		 */
-		if (!CdbPathLocus_IsSegmentGeneral(*cteplaninfo->subplan->flow))
+		if (!CdbPathLocus_IsGeneral(*cteplaninfo->subplan->flow) &&
+		    !CdbPathLocus_IsSegmentGeneral(*cteplaninfo->subplan->flow))
 		{
 			subplan = share_prepared_plan(cteroot, cteplaninfo->subplan);
 		}

@@ -2278,6 +2278,42 @@ WITH cte AS (
   2 |  0
 (1 row)
 
+-- Test that conusmer and producer slices are on single segment in case when
+-- Shared Scan is generated over a node with a General locus
+EXPLAIN (COSTS OFF)
+WITH cte AS (
+	SELECT count(*) c1 FROM (VALUES ( 1, 2 ),( 3, 4 )) v
+)
+SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (b.c1 = (count(*)))
+   ->  Subquery Scan on b
+         ->  Limit
+               ->  Gather Motion 3:1  (slice1; segments: 3)
+                     ->  Limit
+                           ->  Hash Join
+                                 Hash Cond: (d.c1 = (count(*)))
+                                 ->  Seq Scan on d
+                                 ->  Hash
+                                       ->  Aggregate
+                                             ->  Values Scan on "*VALUES*"
+   ->  Hash
+         ->  Aggregate
+               ->  Values Scan on "*VALUES*_1"
+ Optimizer: Postgres query optimizer
+(16 rows)
+
+WITH cte AS (
+    SELECT count(*) c1 FROM (VALUES ( 1, 2 ),( 3, 4 )) v
+)
+SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
+ c1 | c2 
+----+----
+  2 |  0
+(1 row)
+
 RESET optimizer;
 DROP TABLE d;
 -- Check if sharing is disabled for a SegmentGeneral CTE to avoid deadlock if CTE is
