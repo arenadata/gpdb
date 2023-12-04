@@ -14,7 +14,7 @@ CREATE TABLE ao_table_without_toast(a INT, b INT)
 WITH (APPENDOPTIMIZED=true, ORIENTATION=COLUMN)
 DISTRIBUTED BY (a);
 
--- Check that toast exist only for first table
+-- Check that toast exist only for "with_toast" tables
 SELECT relname
 FROM pg_class
 WHERE reltoastrelid = 0 AND
