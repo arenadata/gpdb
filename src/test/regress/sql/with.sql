@@ -1081,23 +1081,10 @@ WITH cte AS (
 	SELECT count(*) c1 FROM d
 ) SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
 
--- Test that conusmer and producer slices are on single segment in case when
--- Shared Scan is generated over a node with a General locus
-EXPLAIN (COSTS OFF)
-WITH cte AS (
-	SELECT count(*) c1 FROM (VALUES ( 1, 2 ),( 3, 4 )) v
-)
-SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
-
-WITH cte AS (
-    SELECT count(*) c1 FROM (VALUES ( 1, 2 ),( 3, 4 )) v
-)
-SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (c1);
-
 RESET optimizer;
 DROP TABLE d;
 
--- Check if sharing is disabled for a SegmentGeneral CTE to avoid deadlock if CTE is
+-- Test if sharing is disabled for a SegmentGeneral CTE to avoid deadlock if CTE is
 -- executed with 1-gang and joined with n-gang
 SET optimizer = off;
 --start_ignore
@@ -1118,6 +1105,19 @@ WITH cte AS (
 WITH cte AS (
     SELECT count(*) a FROM r
 ) SELECT * FROM cte JOIN (SELECT * FROM d JOIN cte USING (a) LIMIT 1) d_join_cte USING (a);
+
+-- Test if sharing is disabled for a General CTE to avoid deadlock if CTE is
+-- executed with coordinator gang and joined with n-gang
+EXPLAIN (COSTS OFF)
+WITH cte AS (
+	SELECT count(*) a FROM (VALUES ( 1, 2 ),( 3, 4 )) v
+)
+SELECT * FROM cte JOIN (SELECT * FROM d JOIN cte USING (a) LIMIT 1) d_join_cte USING (a);
+
+WITH cte AS (
+    SELECT count(*) a FROM (VALUES ( 1, 2 ),( 3, 4 )) v
+)
+SELECT * FROM cte JOIN (SELECT * FROM d JOIN cte USING (a) LIMIT 1) d_join_cte USING (a);
 
 RESET optimizer;
 DROP TABLE d;
