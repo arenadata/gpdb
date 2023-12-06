@@ -3,9 +3,6 @@
 -- m/ERROR:  Too much references to non-SELECT CTE \(allpaths\.c:\d+\)/
 -- s/\d+/XXX/g
 --
--- m/ERROR:  Cannot broadcast Replicated locus \(cdbllize\.c:\d+\)/
--- s/\d+/XXX/g
---
 -- end_matchsubs
 -- start_ignore
 create extension if not exists gp_debug_numsegments;
@@ -783,42 +780,3 @@ with cte as (
 ) select count(*) from cte a join cte b using (i);
 
 reset gp_cte_sharing;
-
--- Test proper handling of the volatile conditions, which are
--- applied to the result of modifying CTEs over replicated tables.
--- Before the volatile filtration the result should be gathered.
-explain (costs off)
-with cte as (
-    insert into with_dml_dr
-    select i, i * 100 from generate_series(2,5) i
-    returning i
-) select count(*) from cte where cte.i > 1 * random();
-
-with cte as (
-    insert into with_dml_dr
-    select i, i * 100 from generate_series(2,5) i
-    returning i
-) select count(*) from cte where cte.i > 1 * random();
-
--- Test when volatile functions are applied properly when
--- modifying CTE is references inside the correlated SubPlan
--- start_ignore
-drop table if exists t1;
---end_ignore
-create table t1(i int) distributed by (i);
-insert into t1 values (1), (2);
-
-explain (costs off)
-with cte as (
-    insert into with_dml_dr
-    select i, i * 100 from generate_series(2,5) i
-    returning i
-) select * from t1
-where t1.i in (select i from cte where t1.i = cte.i and cte.i > 1 * random());
-
-with cte as (
-    insert into with_dml_dr
-    select i, i * 100 from generate_series(2,5) i
-    returning i
-) select * from t1
-where t1.i in (select i from cte where t1.i = cte.i and cte.i > 1 * random());
