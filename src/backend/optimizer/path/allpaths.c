@@ -2129,8 +2129,8 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 		/*
 		 * Create another ShareInputScan to reference the already-created
-		 * subplan if not avoiding sharing. Avoid sharing General and
-		 * SegmentGeneral subplans.
+		 * subplan if not avoiding sharing for General and SegmentGeneral
+		 * subplans.
 		 */
 		if (!CdbPathLocus_IsGeneral(*cteplaninfo->subplan->flow) &&
 		    !CdbPathLocus_IsSegmentGeneral(*cteplaninfo->subplan->flow))
