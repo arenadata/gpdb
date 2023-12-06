@@ -14,16 +14,12 @@ CREATE TABLE ao_table_without_toast(a INT, b INT)
 WITH (APPENDOPTIMIZED=true, ORIENTATION=COLUMN)
 DISTRIBUTED BY (a);
 
--- Check that toast exist only for "with_toast" tables
-SELECT relname
+-- Check that toast exists only for "with_toast" tables
+SELECT relname, reltoastrelid != 0 with_toast
 FROM pg_class
-WHERE reltoastrelid = 0 AND
-      relnamespace IN (SELECT oid FROM pg_namespace WHERE nspname = 'public');
-
-SELECT relname
-FROM pg_class
-WHERE reltoastrelid != 0 AND
-      relnamespace IN (SELECT oid FROM pg_namespace WHERE nspname = 'public');
+WHERE relname IN ('heap_table_with_toast', 'heap_table_without_toast',
+                  'ao_table_with_toast', 'ao_table_without_toast')
+ORDER BY 1;
 
 -- Insert initial data to tables
 INSERT INTO heap_table_with_toast SELECT i, 'short_text' FROM generate_series(1,15) AS i;
@@ -32,21 +28,11 @@ INSERT INTO ao_table_with_toast SELECT i, 'short_text' FROM generate_series(1,15
 INSERT INTO ao_table_without_toast SELECT i, i*10 FROM generate_series(1,15) AS i;
 
 -- Check sizes on segments
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size_on_segments((
-    SELECT oid FROM pg_class WHERE relname = 'heap_table_with_toast'))
-ORDER BY 1;
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size_on_segments((
-    SELECT oid FROM pg_class WHERE relname = 'heap_table_without_toast'))
-ORDER BY 1;
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size_on_segments((
-    SELECT oid FROM pg_class WHERE relname = 'ao_table_with_toast'))
-ORDER BY 1;
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size_on_segments((
-    SELECT oid FROM pg_class WHERE relname = 'ao_table_without_toast'))
-ORDER BY 1;
+SELECT relname, sizes.gp_segment_id, sizes.size
+FROM pg_class, arenadata_toolkit.adb_relation_storage_size_on_segments(oid) sizes
+WHERE relname IN ('heap_table_with_toast', 'heap_table_without_toast',
+                  'ao_table_with_toast', 'ao_table_without_toast')
+ORDER BY 1, 2;
 
 -- Add random large data to get non-zero toast table's size
 UPDATE heap_table_with_toast SET b = (
@@ -59,26 +45,17 @@ UPDATE ao_table_with_toast SET b = (
     FROM generate_series(1,50000))
 WHERE a = 1;
 
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size_on_segments((
-    SELECT oid FROM pg_class WHERE relname = 'heap_table_with_toast'))
-ORDER BY 1;
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size_on_segments((
-    SELECT oid FROM pg_class WHERE relname = 'ao_table_with_toast'))
-ORDER BY 1;
+SELECT relname, sizes.gp_segment_id, sizes.size
+FROM pg_class, arenadata_toolkit.adb_relation_storage_size_on_segments(oid) sizes
+WHERE relname IN ('heap_table_with_toast', 'ao_table_with_toast')
+ORDER BY 1, 2;
 
 -- Check summary size of tables
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size((
-    SELECT oid FROM pg_class WHERE relname = 'heap_table_with_toast'));
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size((
-    SELECT oid FROM pg_class WHERE relname = 'heap_table_without_toast'));
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size((
-    SELECT oid FROM pg_class WHERE relname = 'ao_table_with_toast'));
-
-SELECT * FROM arenadata_toolkit.adb_relation_storage_size((
-    SELECT oid FROM pg_class WHERE relname = 'ao_table_without_toast'));
+SELECT relname, adb_relation_storage_size size
+FROM pg_class, arenadata_toolkit.adb_relation_storage_size(oid)
+WHERE relname IN ('heap_table_with_toast', 'heap_table_without_toast',
+                  'ao_table_with_toast', 'ao_table_without_toast')
+ORDER BY 1;
 
 -- Cleanup
 DROP TABLE heap_table_with_toast;
