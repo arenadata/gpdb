@@ -60,6 +60,8 @@ static CdbVisitOpt pathnode_walk_kids(Path *path,
 				   CdbVisitOpt (*walker)(Path *path, void *context),
 				   void *context);
 
+static bool path_contains_volatile_functions(Path *path);
+
 /*
  * pathnode_walk_node
  *    Calls a 'walker' function for the given Path node; or returns
@@ -3199,6 +3201,27 @@ create_nestloop_path(PlannerInfo *root,
 	Relids		inner_req_outer = PATH_REQ_OUTER(inner_path);
 	bool		inner_must_be_local = !bms_is_empty(inner_req_outer);
 
+	/*
+	 * If either inner or outer path has Replicated locus and has volatile
+	 * functions in it, it would better to block the join, because the proper
+	 * handling of such functions can't be achieved. Replicated locus with
+	 * volatility should be gathered to SingleQE, but in this case this path
+	 * will have the Explicit Gather Motion node above, that can't be removed.
+	 * It will lead to the situation when two motion nodes one just above
+	 * another are present in the plan. (e.g. this SingleQE will be joined with
+	 * Hashed, and the SingleQE will be Redistributed. Thus, we get Explicit
+	 * Gather Motion with Redistribute Motion right above it). It's important
+	 * to admit, that currently this case occurs only with CTEs containing
+	 * modifying DML over replicated tables.
+	 */
+	if (CdbPathLocus_IsReplicated(outer_path->locus) &&
+		path_contains_volatile_functions(outer_path))
+		elog(ERROR, "could not devise a plan");
+
+	if (CdbPathLocus_IsReplicated(inner_path->locus) &&
+		path_contains_volatile_functions(inner_path))
+		elog(ERROR, "could not devise a plan");
+
 	/* Add motion nodes above subpaths and decide where to join. */
 	join_locus = cdbpath_motion_for_join(root,
 										 jointype,
@@ -3433,6 +3456,18 @@ create_mergejoin_path(PlannerInfo *root,
 	preserve_outer_ordering = preserve_outer_ordering || !bms_is_empty(PATH_REQ_OUTER(outer_path));
 	preserve_inner_ordering = preserve_inner_ordering || !bms_is_empty(PATH_REQ_OUTER(inner_path));
 
+	/*
+	 * Block join if path has locus Replicated and contains volatile functions
+	 * inside. In more details, see comment for NestLoop.
+	 */
+	if (CdbPathLocus_IsReplicated(outer_path->locus) &&
+		path_contains_volatile_functions(outer_path))
+		elog(ERROR, "could not devise a plan");
+
+	if (CdbPathLocus_IsReplicated(inner_path->locus) &&
+		path_contains_volatile_functions(inner_path))
+		elog(ERROR, "could not devise a plan");
+
 	join_locus = cdbpath_motion_for_join(root,
 										 jointype,
 										 &outer_path,       /* INOUT */
@@ -3536,6 +3571,18 @@ create_hashjoin_path(PlannerInfo *root,
 	CdbPathLocus join_locus;
 	bool		outer_must_be_local = !bms_is_empty(PATH_REQ_OUTER(outer_path));
 	bool		inner_must_be_local = !bms_is_empty(PATH_REQ_OUTER(inner_path));
+
+	/*
+	 * Block join if path has locus Replicated and contains volatile functions
+	 * inside. In more details, see comment for NestLoop.
+	 */
+	if (CdbPathLocus_IsReplicated(outer_path->locus) &&
+		path_contains_volatile_functions(outer_path))
+		elog(ERROR, "could not devise a plan");
+
+	if (CdbPathLocus_IsReplicated(inner_path->locus) &&
+		path_contains_volatile_functions(inner_path))
+		elog(ERROR, "could not devise a plan");
 
 	/* Add motion nodes above subpaths and decide where to join. */
 	join_locus = cdbpath_motion_for_join(root,
@@ -3806,4 +3853,39 @@ create_projection_path_with_quals(PlannerInfo *root,
 	pathnode->path.locus = subpath->locus;
 
 	return pathnode;
+}
+
+/*
+ * Check whether given path contains volatile functions inside.
+ */
+static bool
+path_contains_volatile_functions(Path *path)
+{
+	RelOptInfo *relinfo = path->parent;
+
+	if (contain_volatile_functions((Node *) relinfo->baserestrictinfo))
+		return true;
+
+	switch (path->pathtype)
+	{
+		case T_CteScan:
+		case T_SubqueryScan:
+			return plan_contains_volatile_functions(relinfo->subroot, (Node *) relinfo->subplan);
+		case T_HashJoin:
+		case T_NestLoop:
+		case T_MergeJoin:
+			{
+				JoinPath   *jpath = (JoinPath *) path;
+
+				if (contain_volatile_functions((Node *) jpath->joinrestrictinfo))
+					return true;
+			}
+			break;
+		case T_Material:
+			return path_contains_volatile_functions(((MaterialPath *) path)->subpath);
+		default:
+			break;
+	}
+
+	return false;
 }

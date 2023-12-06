@@ -128,4 +128,6 @@ extern bool subexpression_match(Expr *expr1, Expr *expr2);
 // resolve the join alias varno/varattno information to its base varno/varattno information
 extern Query *flatten_join_alias_var_optimizer(Query *query, int queryLevel);
 
+extern bool plan_contains_volatile_functions(PlannerInfo *root, Node *node);
+
 #endif   /* CLAUSES_H */

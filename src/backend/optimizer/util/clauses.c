@@ -154,6 +154,8 @@ static Node *substitute_actual_srf_parameters_mutator(Node *node,
 static bool tlist_matches_coltypelist(List *tlist, List *coltypelist);
 static bool contain_grouping_clause_walker(Node *node, void *context);
 
+static bool subplan_qual_walker(Node *node, void *context);
+
 /*
  * Greenplum specific functions
  */
@@ -5885,4 +5887,73 @@ should_eval_stable_functions(PlannerInfo *root)
 	 * subquery.
 	 */
 	return root->parse->rtable || root->query_level > 1;
+}
+
+typedef struct VolatileQualWalkerContext
+{
+	plan_tree_base_prefix base; /* Required prefix for plan_tree_walker */
+}	VolatileWalkerContext;
+
+bool
+plan_contains_volatile_functions(PlannerInfo *root, Node *node)
+{
+	if(!(nodeTag(node) >= T_Plan_Start && nodeTag(node) < T_Plan_End))
+		return false;
+
+	VolatileWalkerContext ctx;
+
+	ctx.base.node = (Node *) root;
+	return subplan_qual_walker(node, &ctx);
+}
+
+/*
+ * Traverse the plan to check whether given node contains volatile
+ * functions inside its quals or targetlist.
+ */
+static bool
+subplan_qual_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (nodeTag(node) >= T_Plan_Start && nodeTag(node) < T_Plan_End)
+	{
+		Plan	   *plan = (Plan *) node;
+
+		if (contain_volatile_functions((Node *) plan->qual) ||
+			contain_volatile_functions((Node *) plan->targetlist))
+			return true;
+	}
+
+	switch (nodeTag(node))
+	{
+		case T_ModifyTable:
+			{
+				ModifyTable *mtplan = (ModifyTable *) node;
+				List		*retlist = NIL;
+
+				if (mtplan->returningLists)
+					retlist = linitial(mtplan->returningLists);
+
+				if (contain_volatile_functions((Node *) retlist))
+					return true;
+
+				return false;
+			}
+			break;
+		case T_HashJoin:
+		case T_NestLoop:
+		case T_MergeJoin:
+			{
+				Join	   *join = (Join *) node;
+
+				if (contain_volatile_functions((Node *) join->joinqual))
+					return true;
+			}
+			break;
+		default:
+			break;
+	}
+
+	return plan_tree_walker(node, subplan_qual_walker, context);
 }

@@ -3,6 +3,9 @@
 -- m/ERROR:  Too much references to non-SELECT CTE \(allpaths\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  could not devise a plan \(pathnode\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 -- start_ignore
 create extension if not exists gp_debug_numsegments;
@@ -780,3 +783,71 @@ with cte as (
 ) select count(*) from cte a join cte b using (i);
 
 reset gp_cte_sharing;
+
+-- Test proper handling of the volatile functions, which are applied
+-- to the subplan with locus Replicated or present in its targetlsit,
+-- during joins. If such subplan occurs in one of join operands the error
+-- should be thrown. For plain SELECT without joins and a few other types
+-- of queries this aspect is not solved.
+--start_ignore
+drop table if exists t1;
+drop table if exists t2;
+--end_ignore
+create table t1 (i int, j int) distributed by (i);
+create table t2 (i int, j int) distributed replicated;
+
+-- Volatile qual applied to CTE.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1 join cte using(i) where cte.j > random();
+
+-- Volatile returning list.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j * random()
+) select * from t1 join cte using(i);
+
+-- Resulting locus of join between locus Replicated and SegmentGeneral is
+-- also Replicated. Subquery with Replicated locus has volatile function in
+-- its target list.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from (select t2.i* random(), cte.i from cte join t2 using (i)) s
+  join t1 using (i);
+
+-- Case of more complicated subplan structure.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j * random()
+),
+cte2 as (select * from cte)
+select * from t1 join cte2 using(i);
+
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+),
+cte2 as (select * from cte where cte.i > random() order by j)
+select * from t1 join cte2 using(i);
+
+-- Volatile join conditions.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+),
+cte2 as (select t2.j, cte.i from cte join t2 on t2.i = cte.i * random())
+select * from t1 join cte2 using(i);
