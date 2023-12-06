@@ -2597,8 +2597,8 @@ register_mdcache_invalidation_callbacks(void)
 								  (Datum) 0);
 }
 
-// We reset the cache in case of a catalog change or if the snapshot in which
-// the cache was marked as contain temporary relation has changed.
+// We reset the cache in case of a catalog change or if TransactionXmin changed
+// from that we save in mdcache_transaction_xmin.
 bool
 gpdb::MDCacheNeedsReset(void)
 {
@@ -2611,11 +2611,9 @@ gpdb::MDCacheNeedsReset(void)
 		}
 		if (last_mdcache_invalidation_counter == mdcache_invalidation_counter)
 		{
-			// the catalog has not changed, but if the snapshot in which the
-			// cache is marked as temporary has changed, then the cache must be
-			// reset.
-			return gpdb::GPDBTransactionIdIsValid(mdcache_transaction_xmin) &&
-				   gpdb::GetTransactionXmin() != mdcache_transaction_xmin;
+			return TransactionIdIsValid(mdcache_transaction_xmin) &&
+				   !TransactionIdEquals(TransactionXmin,
+										mdcache_transaction_xmin);
 		}
 		else
 		{
@@ -2749,52 +2747,35 @@ gpdb::IsTypeRange(Oid typid)
 	return false;
 }
 
-TransactionId
-gpdb::GetHeapTupleHeaderXmin(HeapTupleHeaderData *header)
-{
-	GP_WRAP_START;
-	{
-		return HeapTupleHeaderGetXmin(header);
-	}
-	GP_WRAP_END;
-}
-
 bool
-gpdb::GPDBTransactionIdPrecedes(TransactionId id1, TransactionId id2)
+gpdb::MarkMDCacheAsTransient(Relation index_rel)
 {
 	GP_WRAP_START;
 	{
-		return TransactionIdPrecedes(id1, id2);
+		bool result =
+			index_rel->rd_index->indcheckxmin &&
+			!TransactionIdPrecedes(
+				HeapTupleHeaderGetXmin(index_rel->rd_indextuple->t_data),
+				TransactionXmin);
+		if (result)
+			mdcache_transaction_xmin = TransactionXmin;
+		return result;
 	}
 	GP_WRAP_END;
-}
-
-TransactionId
-gpdb::GetTransactionXmin()
-{
-	return TransactionXmin;
-}
-
-bool
-gpdb::GPDBTransactionIdIsValid(TransactionId xid)
-{
-	GP_WRAP_START;
-	{
-		return TransactionIdIsValid(xid);
-	}
-	GP_WRAP_END;
+	// ignore index if we can't check it visibility for some reason
+	return true;
 }
 
 void
-gpdb::SetMDCacheTransactionXmin(TransactionId xid)
+gpdb::UnMarkMDCacheAsTransient()
 {
-	mdcache_transaction_xmin = xid;
+	mdcache_transaction_xmin = InvalidTransactionId;
 }
 
-TransactionId
-gpdb::GetMDCacheTransactionXmin()
+bool
+gpdb::IsMDCacheTransient()
 {
-	return mdcache_transaction_xmin;
+	return TransactionIdIsValid(mdcache_transaction_xmin);
 }
 
 // EOF

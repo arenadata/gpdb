@@ -262,9 +262,6 @@ private:
 	// check if index is supported
 	static BOOL IsIndexSupported(Relation index_rel);
 
-	// check if index is visible
-	static BOOL IsIndexVisible(Relation index_rel);
-
 	// retrieve index info list of partitioned table
 	static List *RetrievePartTableIndexInfo(Relation rel);
 

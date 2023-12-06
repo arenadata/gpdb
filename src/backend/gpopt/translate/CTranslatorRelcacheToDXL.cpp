@@ -310,7 +310,10 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 		{
 			if (IsIndexSupported(index_rel))
 			{
-				if (IsIndexVisible(index_rel))
+				// If the index is valid, but cannot yet be used, ignore it; but
+				// mark the plan we are generating and cache as transient.
+				// See src/backend/access/heap/README.HOT for discussion.
+				if (!gpdb::MarkMDCacheAsTransient(index_rel))
 				{
 					CMDIdGPDB *mdid_index =
 						GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
@@ -319,14 +322,6 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 					CMDIndexInfo *md_index_info =
 						GPOS_NEW(mp) CMDIndexInfo(mdid_index, is_partial);
 					md_index_info_array->Append(md_index_info);
-				}
-				else
-				{
-					// If the index is valid, but cannot yet be used, ignore it; but
-					// mark the plan we are generating as transient and cache as
-					// contain temporary relation. See src/backend/access/heap/README.HOT
-					// for discussion.
-					gpdb::SetMDCacheTransactionXmin(gpdb::GetTransactionXmin());
 				}
 			}
 
@@ -377,7 +372,10 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 		{
 			if (IsIndexSupported(index_rel))
 			{
-				if (IsIndexVisible(index_rel))
+				// If the index is valid, but cannot yet be used, ignore it; but
+				// mark the plan we are generating and cache as transient.
+				// See src/backend/access/heap/README.HOT for discussion.
+				if (!gpdb::MarkMDCacheAsTransient(index_rel))
 				{
 					CMDIdGPDB *mdid_index =
 						GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
@@ -385,14 +383,6 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 					CMDIndexInfo *md_index_info = GPOS_NEW(mp)
 						CMDIndexInfo(mdid_index, false /* is_partial */);
 					md_index_info_array->Append(md_index_info);
-				}
-				else
-				{
-					// If the index is valid, but cannot yet be used, ignore it; but
-					// mark the plan we are generating as transient and cache as
-					// contain temporary relation. See src/backend/access/heap/README.HOT
-					// for discussion.
-					gpdb::SetMDCacheTransactionXmin(gpdb::GetTransactionXmin());
 				}
 			}
 
@@ -3367,23 +3357,6 @@ CTranslatorRelcacheToDXL::IsIndexSupported(Relation index_rel)
 			BITMAP_AM_OID == index_rel->rd_rel->relam ||
 			GIST_AM_OID == index_rel->rd_rel->relam ||
 			GIN_AM_OID == index_rel->rd_rel->relam);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorRelcacheToDXL::IsIndexVisible
-//
-//	@doc:
-//		Check if index is visible in the current snapshot
-//
-//---------------------------------------------------------------------------
-BOOL
-CTranslatorRelcacheToDXL::IsIndexVisible(Relation index_rel)
-{
-	return !(index_rel->rd_index->indcheckxmin &&
-			 !gpdb::GPDBTransactionIdPrecedes(
-				 gpdb::GetHeapTupleHeaderXmin(index_rel->rd_indextuple->t_data),
-				 gpdb::GetTransactionXmin()));
 }
 
 //---------------------------------------------------------------------------
