@@ -930,3 +930,20 @@ where t1.i in (select i from cte);
 
 drop table with_dml_dr_seg2;
 drop table t1;
+
+-- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t2;
+
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t2;
+
+drop table t2;
+drop table with_dml_dr;

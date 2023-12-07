@@ -3121,3 +3121,32 @@ where t1.i in (select i from cte);
 ERROR:  could not parallelize SubPlan (cdbllize.c:819)
 drop table with_dml_dr_seg2;
 drop table t1;
+-- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t2;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Insert on with_dml_dr
+               ->  Result
+         ->  Seq Scan on t2
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t2;
+ i | j 
+---+---
+ 1 | 1
+(1 row)
+
+drop table t2;
+drop table with_dml_dr;

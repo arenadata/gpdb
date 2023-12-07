@@ -344,12 +344,18 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		else if (CdbPathLocus_IsReplicated(locus))
 		{
 			/*
-			 * Assume that this case only can be generated in
-			 * UPDATE/DELETE statement
+			 * No motion needed for the case SegmentGeneral --> Replicated.
+			 * If number of SegmentGenerals' segments is greater, its number
+			 * can be reduced. Otherwise the situation is invalid. Currently,
+			 * the only case is UNION ALL command, where one of the operands
+			 * has Replicated locus.
 			 */
-			if (root->upd_del_replicated_table == 0)
-				goto invalid_motion_request;
-
+			if (CdbPathLocus_NumSegments(subpath->locus) >=
+				CdbPathLocus_NumSegments(locus))
+			{
+				subpath->locus.numsegments = locus.numsegments;
+				return subpath;
+			}
 		}
 		else if (CdbPathLocus_IsSegmentGeneral(locus))
 		{
