@@ -636,7 +636,7 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 			 * segments. It means that if Replicated plan is executed at
 			 * different segments from main plan, the result of Replicated plan
 			 * should be firstly focused and then broadcasted (to avoid
-			 * duplicates. However, in current setting this will be an
+			 * duplicates). However, in current setting this will be an
 			 * overhead. Therefore, such  movements are blocked with an error
 			 * for now.
 			 */
@@ -817,7 +817,7 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 			/*
 			 * Replicated locus can't be broadcasted properly because of data
 			 * duplicates. In this case and in the case of volatile functions
-			 * under the replicated subplan the error is thrown.
+			 * under the Replicated subplan the error is thrown.
 			 */
 			if (newPlan->flow->locustype == CdbLocusType_Replicated)
 			{
