@@ -308,21 +308,19 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 
 		GPOS_TRY
 		{
-			if (IsIndexSupported(index_rel))
+			// If the index is supported, but cannot yet be used, ignore it; but
+			// mark the plan we are generating and cache as transient.
+			// See src/backend/access/heap/README.HOT for discussion.
+			if (IsIndexSupported(index_rel) &&
+				!gpdb::MarkMDCacheAsTransient(index_rel))
 			{
-				// If the index is valid, but cannot yet be used, ignore it; but
-				// mark the plan we are generating and cache as transient.
-				// See src/backend/access/heap/README.HOT for discussion.
-				if (!gpdb::MarkMDCacheAsTransient(index_rel))
-				{
-					CMDIdGPDB *mdid_index =
-						GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
-					BOOL is_partial = (NULL != logicalIndexInfo->partCons) ||
-									  (NIL != logicalIndexInfo->defaultLevels);
-					CMDIndexInfo *md_index_info =
-						GPOS_NEW(mp) CMDIndexInfo(mdid_index, is_partial);
-					md_index_info_array->Append(md_index_info);
-				}
+				CMDIdGPDB *mdid_index =
+					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
+				BOOL is_partial = (NULL != logicalIndexInfo->partCons) ||
+								  (NIL != logicalIndexInfo->defaultLevels);
+				CMDIndexInfo *md_index_info =
+					GPOS_NEW(mp) CMDIndexInfo(mdid_index, is_partial);
+				md_index_info_array->Append(md_index_info);
 			}
 
 			gpdb::CloseRelation(index_rel);
@@ -370,20 +368,18 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 
 		GPOS_TRY
 		{
-			if (IsIndexSupported(index_rel))
+			// If the index is supported, but cannot yet be used, ignore it; but
+			// mark the plan we are generating and cache as transient.
+			// See src/backend/access/heap/README.HOT for discussion.
+			if (IsIndexSupported(index_rel) &&
+				!gpdb::MarkMDCacheAsTransient(index_rel))
 			{
-				// If the index is valid, but cannot yet be used, ignore it; but
-				// mark the plan we are generating and cache as transient.
-				// See src/backend/access/heap/README.HOT for discussion.
-				if (!gpdb::MarkMDCacheAsTransient(index_rel))
-				{
-					CMDIdGPDB *mdid_index =
-						GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
-					// for a regular table, external table or leaf partition, an index is always complete
-					CMDIndexInfo *md_index_info = GPOS_NEW(mp)
-						CMDIndexInfo(mdid_index, false /* is_partial */);
-					md_index_info_array->Append(md_index_info);
-				}
+				CMDIdGPDB *mdid_index =
+					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
+				// for a regular table, external table or leaf partition, an index is always complete
+				CMDIndexInfo *md_index_info = GPOS_NEW(mp)
+					CMDIndexInfo(mdid_index, false /* is_partial */);
+				md_index_info_array->Append(md_index_info);
 			}
 
 			gpdb::CloseRelation(index_rel);
