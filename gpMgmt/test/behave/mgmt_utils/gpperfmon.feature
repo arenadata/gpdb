@@ -105,15 +105,15 @@ Feature: gpperfmon
                         CREATE TABLE test(a int, b int) DISTRIBUTED BY (a);
                         INSERT INTO test VALUES (1, 1);
                     ' as stmt
-                    where pg_sleep(30) is not null
+                    where pg_sleep(100) is not null
                 LOOP
                     EXECUTE r.stmt;
                 END LOOP;
             END$$;
         """
-        Then wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_now WHERE query_text like '%where pg_sleep(30) is not null'" is "true"
+        Then wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_now WHERE query_text like '%where pg_sleep(100) is not null'" is "true"
         When waiting "10" seconds
-        Then wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_history WHERE query_text like '%where pg_sleep(30) is not null'" is "true"
+        Then wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_history WHERE query_text like '%where pg_sleep(100) is not null'" is "true"
 
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table
