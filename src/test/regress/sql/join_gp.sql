@@ -7,6 +7,12 @@
 -- m/ERROR:  workfile compresssion is not supported by this build/
 -- end_matchignore
 
+-- start_matchsubs
+--
+-- m/ERROR:  could not devise a query plan for the given query \(pathnode\.c:\d+\)/
+-- s/\d+/XXX/g
+--
+-- end_matchsubs
 --
 -- test numeric hash join
 --
