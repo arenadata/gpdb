@@ -479,7 +479,9 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 		apr_int32_t age = newagg->generation - dp->last_updated_generation - 1;
 		if (age > 0)
 		{
-			if (status == GPMON_QLOG_STATUS_DONE || status == GPMON_QLOG_STATUS_ERROR ||
+			if (status == GPMON_QLOG_STATUS_DONE ||
+			    status == GPMON_QLOG_STATUS_ERROR ||
+			    status == GPMON_QLOG_STATUS_INVALID ||
 			    !is_session_active(dp->qlog.key.ssid, active_session_tab, newagg->pool))
 			{
 				if (0 != strcmp(dp->qlog.db, GPMON_DB))
