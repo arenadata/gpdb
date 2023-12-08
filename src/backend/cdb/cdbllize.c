@@ -461,8 +461,7 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 	 * Therefore, for any node with locus Replicated containing volatile
 	 * functions we stop further planning and throw an error.
 	 */
-	if (is_plan_node(node) &&
-		ctx->movement == MOVEMENT_BROADCAST)
+	if (is_plan_node(node) && ctx->movement == MOVEMENT_BROADCAST)
 	{
 		Plan	   *plan = (Plan *) node;
 
@@ -472,7 +471,7 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 				contain_volatile_functions((Node *) plan->qual))
 				elog(ERROR, "could not parallelize SubPlan");
 
-			if (IsA(plan, HashJoin) ||IsA(plan, MergeJoin) ||
+			if (IsA(plan, HashJoin) || IsA(plan, MergeJoin) ||
 				IsA(plan, NestLoop))
 			{
 				Join	   *join = (Join *) node;
