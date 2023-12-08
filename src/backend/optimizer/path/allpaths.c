@@ -2114,14 +2114,14 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 			 * Sharing General and SegmentGeneral subplan may lead to deadlock
 			 * when executed with 1-gang and joined with n-gang.
 			 */
-			if (!CdbPathLocus_IsGeneral(*subplan->flow) &&
-			    !CdbPathLocus_IsSegmentGeneral(*subplan->flow))
+			if (CdbPathLocus_IsGeneral(*subplan->flow) ||
+			    CdbPathLocus_IsSegmentGeneral(*subplan->flow))
 			{
-				cteplaninfo->subplan = prepare_plan_for_sharing(cteroot, subplan);
+				cteplaninfo->subplan = subplan;
 			}
 			else
 			{
-				cteplaninfo->subplan = subplan;
+				cteplaninfo->subplan = prepare_plan_for_sharing(cteroot, subplan);
 			}
 
 			cteplaninfo->subroot = subroot;
