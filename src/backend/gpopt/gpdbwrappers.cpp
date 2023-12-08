@@ -2775,7 +2775,12 @@ gpdb::ResetMDCacheTransient()
 bool
 gpdb::IsMDCacheTransient()
 {
-	return TransactionIdIsValid(mdcache_transaction_xmin);
+	GP_WRAP_START;
+	{
+		return TransactionIdIsValid(mdcache_transaction_xmin);
+	}
+	GP_WRAP_END;
+	return false;
 }
 
 // EOF
