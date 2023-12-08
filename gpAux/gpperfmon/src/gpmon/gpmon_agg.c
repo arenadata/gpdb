@@ -455,8 +455,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 		return e;
 	}
 
-	apr_hash_t *active_session_tab = get_active_sessions(newagg->pool);
-	if (!active_session_tab)
+	apr_hash_t *active_session_set = get_active_sessions(newagg->pool);
+	if (!active_session_set)
 	{
 		agg_destroy(newagg);
 		return APR_EINVAL;
@@ -482,7 +482,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 			if (status == GPMON_QLOG_STATUS_DONE ||
 			    status == GPMON_QLOG_STATUS_ERROR ||
 			    status == GPMON_QLOG_STATUS_INVALID ||
-			    !is_session_active(dp->qlog.key.ssid, active_session_tab, newagg->pool))
+			    !is_session_active(dp->qlog.key.ssid, active_session_set, newagg->pool))
 			{
 				if (0 != strcmp(dp->qlog.db, GPMON_DB))
 				{

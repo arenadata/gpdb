@@ -1350,7 +1350,7 @@ static void hash_ssids(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
 apr_hash_t *get_active_sessions(apr_pool_t *pool)
 {
 	PGresult   *result = NULL;
-	apr_hash_t *active_session_tab = NULL;
+	apr_hash_t *active_session_set = NULL;
 
 	PGconn *conn = PQconnectdb(GPDB_CONNECTION_STRING);
 	if (PQstatus(conn) != CONNECTION_OK)
@@ -1372,21 +1372,21 @@ apr_hash_t *get_active_sessions(apr_pool_t *pool)
 	}
 	else
 	{
-		active_session_tab = apr_hash_make(pool);
-		if (!active_session_tab)
+		active_session_set = apr_hash_make(pool);
+		if (!active_session_set)
 		{
 			gpmon_warning(FLINE, "Out of memory");
 		}
 		else
 		{
-			hash_ssids(result, active_session_tab, pool);
+			hash_ssids(result, active_session_set, pool);
 		}
 	}
 
 	PQclear(result);
 	PQfinish(conn);
 
-	return active_session_tab;
+	return active_session_set;
 }
 
 const char *iconv_encodings[] = {
