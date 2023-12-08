@@ -2112,10 +2112,10 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 			/*
 			 * Sharing General and SegmentGeneral subplan may lead to deadlock
-			 * when executed with 1-gang and joined with n-gang.
+			 * when executed with 1-gang and joined with N-gang.
 			 */
 			if (CdbPathLocus_IsGeneral(*subplan->flow) ||
-			    CdbPathLocus_IsSegmentGeneral(*subplan->flow))
+				CdbPathLocus_IsSegmentGeneral(*subplan->flow))
 			{
 				cteplaninfo->subplan = subplan;
 			}
@@ -2132,19 +2132,20 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		 * subplan if not avoiding sharing for General and SegmentGeneral
 		 * subplans.
 		 */
-		if (!CdbPathLocus_IsGeneral(*cteplaninfo->subplan->flow) &&
-		    !CdbPathLocus_IsSegmentGeneral(*cteplaninfo->subplan->flow))
-		{
-			subplan = share_prepared_plan(cteroot, cteplaninfo->subplan);
-		}
-		else if (subplan == NULL)
+		if (CdbPathLocus_IsGeneral(*cteplaninfo->subplan->flow) ||
+			CdbPathLocus_IsSegmentGeneral(*cteplaninfo->subplan->flow))
 		{
 			/*
 			 * If we are not sharing and subplan was created just now, use it.
 			 * Otherwise, make a copy of it to avoid construction of DAG
 			 * instead of a tree.
 			 */
-			subplan = (Plan *) copyObject(cteplaninfo->subplan);
+			if (subplan == NULL)
+				subplan = (Plan *) copyObject(cteplaninfo->subplan);
+		}
+		else
+		{
+			subplan = share_prepared_plan(cteroot, cteplaninfo->subplan);
 		}
 
 		subroot = cteplaninfo->subroot;
