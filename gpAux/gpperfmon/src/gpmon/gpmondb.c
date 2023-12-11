@@ -1340,7 +1340,7 @@ static void hash_ssids(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
 		char *sessid_copy = apr_pstrdup(pool, sessid);
 		if (sessid_copy == NULL)
 		{
-			gpmon_warning(FLINE, "Failed to retrieve ssid from pg_stat_query");
+			gpmon_warning(FLINE, "Out of memory");
 			continue;
 		}
 		apr_hash_set(hash, sessid_copy, APR_HASH_KEY_STRING, "");
