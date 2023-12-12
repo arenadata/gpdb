@@ -4,10 +4,10 @@ DISTRIBUTED BY (a);
 CREATE TABLE heap_table_without_toast(a INT, b INT)
 DISTRIBUTED BY (a);
 CREATE TABLE ao_table_with_toast(a INT, b TEXT)
-WITH (APPENDOPTIMIZED=true, ORIENTATION=COLUMN)
+WITH (APPENDOPTIMIZED=true)
 DISTRIBUTED BY (a);
 CREATE TABLE ao_table_without_toast(a INT, b INT)
-WITH (APPENDOPTIMIZED=true, ORIENTATION=COLUMN)
+WITH (APPENDOPTIMIZED=true)
 DISTRIBUTED BY (a);
 -- Check that toast exists only for "with_toast" tables
 SELECT relname, reltoastrelid != 0 with_toast
@@ -36,12 +36,12 @@ WHERE relname IN ('heap_table_with_toast', 'heap_table_without_toast',
 ORDER BY 1, 2;
          relname          | gp_segment_id | size  
 --------------------------+---------------+-------
- ao_table_with_toast      |             0 |   160
- ao_table_with_toast      |             1 |   136
- ao_table_with_toast      |             2 |   192
+ ao_table_with_toast      |             0 |   168
+ ao_table_with_toast      |             1 |   112
+ ao_table_with_toast      |             2 |   216
  ao_table_without_toast   |             0 |   128
- ao_table_without_toast   |             1 |   112
- ao_table_without_toast   |             2 |   144
+ ao_table_without_toast   |             1 |    88
+ ao_table_without_toast   |             2 |   160
  heap_table_with_toast    |             0 | 32768
  heap_table_with_toast    |             1 | 32768
  heap_table_with_toast    |             2 | 32768
@@ -65,9 +65,9 @@ WHERE relname IN ('heap_table_with_toast', 'ao_table_with_toast')
 ORDER BY 1, 2;
         relname        | gp_segment_id | size  
 -----------------------+---------------+-------
- ao_table_with_toast   |             0 |   160
- ao_table_with_toast   |             1 | 50248
- ao_table_with_toast   |             2 |   192
+ ao_table_with_toast   |             0 |   168
+ ao_table_with_toast   |             1 | 65704
+ ao_table_with_toast   |             2 |   216
  heap_table_with_toast |             0 | 32768
  heap_table_with_toast |             1 | 98304
  heap_table_with_toast |             2 | 32768
@@ -81,8 +81,8 @@ WHERE relname IN ('heap_table_with_toast', 'heap_table_without_toast',
 ORDER BY 1;
          relname          |  size  
 --------------------------+--------
- ao_table_with_toast      |  50600
- ao_table_without_toast   |    384
+ ao_table_with_toast      |  66088
+ ao_table_without_toast   |    376
  heap_table_with_toast    | 163840
  heap_table_without_toast |  98304
 (4 rows)

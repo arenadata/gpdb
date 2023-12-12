@@ -7,11 +7,11 @@ CREATE TABLE heap_table_without_toast(a INT, b INT)
 DISTRIBUTED BY (a);
 
 CREATE TABLE ao_table_with_toast(a INT, b TEXT)
-WITH (APPENDOPTIMIZED=true, ORIENTATION=COLUMN)
+WITH (APPENDOPTIMIZED=true)
 DISTRIBUTED BY (a);
 
 CREATE TABLE ao_table_without_toast(a INT, b INT)
-WITH (APPENDOPTIMIZED=true, ORIENTATION=COLUMN)
+WITH (APPENDOPTIMIZED=true)
 DISTRIBUTED BY (a);
 
 -- Check that toast exists only for "with_toast" tables
