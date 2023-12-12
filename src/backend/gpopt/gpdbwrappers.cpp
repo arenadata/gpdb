@@ -2770,7 +2770,7 @@ gpdb::MarkMDCacheAsTransient(Relation index_rel)
 }
 
 void
-gpdb::ResetMDCacheTransientMark()
+gpdb::ResetMDCacheTransientState()
 {
 	mdcache_transaction_xmin = InvalidTransactionId;
 }
