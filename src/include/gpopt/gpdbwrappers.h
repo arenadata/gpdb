@@ -712,7 +712,7 @@ bool IsTypeRange(Oid typid);
 
 bool MarkMDCacheAsTransient(Relation index_rel);
 
-void ResetMDCacheTransient();
+void ResetMDCacheTransientMark();
 
 bool IsMDCacheTransient();
 

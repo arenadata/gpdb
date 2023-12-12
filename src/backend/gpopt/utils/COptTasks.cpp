@@ -497,13 +497,13 @@ COptTasks::OptimizeTask(void *ptr)
 	{
 		CMDCache::Init();
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
-		gpdb::ResetMDCacheTransient();
+		gpdb::ResetMDCacheTransientMark();
 	}
 	else if (reset_mdcache)
 	{
 		CMDCache::Reset();
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
-		gpdb::ResetMDCacheTransient();
+		gpdb::ResetMDCacheTransientMark();
 	}
 	else if (CMDCache::ULLGetCacheQuota() !=
 			 (ULLONG) optimizer_mdcache_size * 1024L)

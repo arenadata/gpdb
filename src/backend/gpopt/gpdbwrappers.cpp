@@ -2747,6 +2747,9 @@ gpdb::IsTypeRange(Oid typid)
 	return false;
 }
 
+// Check that the index is usable in the current snapshot and if not, save the
+// xmin of the current snapshot. returns true if the index is not usable and
+// should be skipped.
 bool
 gpdb::MarkMDCacheAsTransient(Relation index_rel)
 {
@@ -2767,7 +2770,7 @@ gpdb::MarkMDCacheAsTransient(Relation index_rel)
 }
 
 void
-gpdb::ResetMDCacheTransient()
+gpdb::ResetMDCacheTransientMark()
 {
 	mdcache_transaction_xmin = InvalidTransactionId;
 }
