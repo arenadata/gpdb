@@ -710,11 +710,11 @@ void GPDBMemoryContextDelete(MemoryContext context);
 
 bool IsTypeRange(Oid typid);
 
-bool SetMDCacheTransientState(Relation index_rel);
+bool MDCacheSetTransientState(Relation index_rel);
 
-void ResetMDCacheTransientState();
+void MDCacheResetTransientState();
 
-bool IsMDCacheTransient();
+bool MDCacheInTransientState();
 
 }  //namespace gpdb
 

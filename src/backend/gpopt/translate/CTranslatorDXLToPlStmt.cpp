@@ -307,7 +307,7 @@ CTranslatorDXLToPlStmt::GetPlannedStmtFromDXL(const CDXLNode *dxlnode,
 		}
 	}
 
-	planned_stmt->transientPlan = gpdb::IsMDCacheTransient();
+	planned_stmt->transientPlan = gpdb::MDCacheInTransientState();
 
 	return planned_stmt;
 }

@@ -2751,7 +2751,7 @@ gpdb::IsTypeRange(Oid typid)
 // xmin of the current snapshot. returns true if the index is not usable and
 // should be skipped.
 bool
-gpdb::SetMDCacheTransientState(Relation index_rel)
+gpdb::MDCacheSetTransientState(Relation index_rel)
 {
 	GP_WRAP_START;
 	{
@@ -2770,13 +2770,13 @@ gpdb::SetMDCacheTransientState(Relation index_rel)
 }
 
 void
-gpdb::ResetMDCacheTransientState()
+gpdb::MDCacheResetTransientState()
 {
 	mdcache_transaction_xmin = InvalidTransactionId;
 }
 
 bool
-gpdb::IsMDCacheTransient()
+gpdb::MDCacheInTransientState()
 {
 	GP_WRAP_START;
 	{
