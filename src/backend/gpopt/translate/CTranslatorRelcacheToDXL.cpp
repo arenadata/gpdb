@@ -312,7 +312,7 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForPartTable(CMemoryPool *mp,
 			// mark the plan we are generating and cache as transient.
 			// See src/backend/access/heap/README.HOT for discussion.
 			if (IsIndexSupported(index_rel) &&
-				!gpdb::MarkMDCacheAsTransient(index_rel))
+				!gpdb::SetMDCacheTransientState(index_rel))
 			{
 				CMDIdGPDB *mdid_index =
 					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);
@@ -372,7 +372,7 @@ CTranslatorRelcacheToDXL::RetrieveRelIndexInfoForNonPartTable(CMemoryPool *mp,
 			// mark the plan we are generating and cache as transient.
 			// See src/backend/access/heap/README.HOT for discussion.
 			if (IsIndexSupported(index_rel) &&
-				!gpdb::MarkMDCacheAsTransient(index_rel))
+				!gpdb::SetMDCacheTransientState(index_rel))
 			{
 				CMDIdGPDB *mdid_index =
 					GPOS_NEW(mp) CMDIdGPDB(IMDId::EmdidInd, index_oid);

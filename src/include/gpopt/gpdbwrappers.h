@@ -710,7 +710,7 @@ void GPDBMemoryContextDelete(MemoryContext context);
 
 bool IsTypeRange(Oid typid);
 
-bool MarkMDCacheAsTransient(Relation index_rel);
+bool SetMDCacheTransientState(Relation index_rel);
 
 void ResetMDCacheTransientState();
 

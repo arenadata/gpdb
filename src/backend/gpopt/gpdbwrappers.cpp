@@ -2751,7 +2751,7 @@ gpdb::IsTypeRange(Oid typid)
 // xmin of the current snapshot. returns true if the index is not usable and
 // should be skipped.
 bool
-gpdb::MarkMDCacheAsTransient(Relation index_rel)
+gpdb::SetMDCacheTransientState(Relation index_rel)
 {
 	GP_WRAP_START;
 	{
