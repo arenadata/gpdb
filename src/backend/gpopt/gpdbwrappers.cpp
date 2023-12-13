@@ -2626,6 +2626,42 @@ gpdb::MDCacheNeedsReset(void)
 	return true;
 }
 
+bool
+gpdb::MDCacheSetTransientState(Relation index_rel)
+{
+	GP_WRAP_START;
+	{
+		bool result =
+			index_rel->rd_index->indcheckxmin &&
+			!TransactionIdPrecedes(
+				HeapTupleHeaderGetXmin(index_rel->rd_indextuple->t_data),
+				TransactionXmin);
+		if (result)
+			mdcache_transaction_xmin = TransactionXmin;
+		return result;
+	}
+	GP_WRAP_END;
+	// ignore index if we can't check it visibility for some reason
+	return true;
+}
+
+void
+gpdb::MDCacheResetTransientState()
+{
+	mdcache_transaction_xmin = InvalidTransactionId;
+}
+
+bool
+gpdb::MDCacheInTransientState()
+{
+	GP_WRAP_START;
+	{
+		return TransactionIdIsValid(mdcache_transaction_xmin);
+	}
+	GP_WRAP_END;
+	return false;
+}
+
 // returns true if a query cancel is requested in GPDB
 bool
 gpdb::IsAbortRequested(void)
@@ -2742,45 +2778,6 @@ gpdb::IsTypeRange(Oid typid)
 	GP_WRAP_START;
 	{
 		return type_is_range(typid);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
-// Check that the index is usable in the current snapshot and if not, save the
-// xmin of the current snapshot. returns true if the index is not usable and
-// should be skipped.
-bool
-gpdb::MDCacheSetTransientState(Relation index_rel)
-{
-	GP_WRAP_START;
-	{
-		bool result =
-			index_rel->rd_index->indcheckxmin &&
-			!TransactionIdPrecedes(
-				HeapTupleHeaderGetXmin(index_rel->rd_indextuple->t_data),
-				TransactionXmin);
-		if (result)
-			mdcache_transaction_xmin = TransactionXmin;
-		return result;
-	}
-	GP_WRAP_END;
-	// ignore index if we can't check it visibility for some reason
-	return true;
-}
-
-void
-gpdb::MDCacheResetTransientState()
-{
-	mdcache_transaction_xmin = InvalidTransactionId;
-}
-
-bool
-gpdb::MDCacheInTransientState()
-{
-	GP_WRAP_START;
-	{
-		return TransactionIdIsValid(mdcache_transaction_xmin);
 	}
 	GP_WRAP_END;
 	return false;
