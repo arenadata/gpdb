@@ -2646,13 +2646,13 @@ gpdb::MDCacheSetTransientState(Relation index_rel)
 }
 
 void
-gpdb::MDCacheResetTransientState()
+gpdb::MDCacheResetTransientState(void)
 {
 	mdcache_transaction_xmin = InvalidTransactionId;
 }
 
 bool
-gpdb::MDCacheInTransientState()
+gpdb::MDCacheInTransientState(void)
 {
 	GP_WRAP_START;
 	{

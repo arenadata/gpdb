@@ -682,8 +682,8 @@ FaultInjectorType_e InjectFaultInOptTasks(const char *fault_name);
 // return the number of leaf partition for a given table oid
 gpos::ULONG CountLeafPartTables(Oid oidRelation);
 
-// We reset the cache in case of a catalog change or if TransactionXmin changed
-// from that we save in mdcache_transaction_xmin.
+// Does the metadata cache need to be reset (because of a catalog
+// table has been changed or TransactionXmin changed from that we saved)?
 bool MDCacheNeedsReset(void);
 
 // Check that the index is usable in the current snapshot and if not, save the
@@ -692,10 +692,10 @@ bool MDCacheNeedsReset(void);
 bool MDCacheSetTransientState(Relation index_rel);
 
 // reset TransactionXmin value that we saved
-void MDCacheResetTransientState();
+void MDCacheResetTransientState(void);
 
 // check if TransactionXmin value that we saved are valid
-bool MDCacheInTransientState();
+bool MDCacheInTransientState(void);
 
 // returns true if a query cancel is requested in GPDB
 bool IsAbortRequested(void);
