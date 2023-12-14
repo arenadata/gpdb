@@ -2510,10 +2510,11 @@ static bool mdcache_invalidation_counter_registered = false;
 static int64 mdcache_invalidation_counter = 0;
 static int64 last_mdcache_invalidation_counter = 0;
 
-// if we have cached a relation without an index, because that index cannot
-// be used in the current snapshot (for more info see src/backend/access/heap/README.HOT),
-// we save TransactionXmin. If TransactionXmin changes later, the cache will
-// be reset and the relation will be reloaded with that index.
+// If we have cached a relation without an index, because that index cannot
+// be used in the current snapshot (for more info see
+// src/backend/access/heap/README.HOT), we save TransactionXmin. If
+// TransactionXmin changes later, the cache will be reset and the relation will
+// be reloaded with that index.
 static TransactionId mdcache_transaction_xmin = InvalidTransactionId;
 
 static void

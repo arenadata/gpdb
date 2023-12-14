@@ -687,14 +687,14 @@ gpos::ULONG CountLeafPartTables(Oid oidRelation);
 bool MDCacheNeedsReset(void);
 
 // Check that the index is usable in the current snapshot and if not, save the
-// xmin of the current snapshot. returns true if the index is not usable and
+// xmin of the current snapshot. Returns true if the index is not usable and
 // should be skipped.
 bool MDCacheSetTransientState(Relation index_rel);
 
 // reset TransactionXmin value that we saved
 void MDCacheResetTransientState(void);
 
-// check if TransactionXmin value that we saved are valid
+// returns true if cache is in transient state
 bool MDCacheInTransientState(void);
 
 // returns true if a query cancel is requested in GPDB
