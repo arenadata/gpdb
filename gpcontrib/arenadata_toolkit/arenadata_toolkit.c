@@ -161,13 +161,10 @@ calculate_ao_storage_perSegFile(const int segno, void *ctx)
 static int64
 calculate_toast_table_size(Oid toastrelid, ForkNumber forknum)
 {
-	int64		size;
-	Relation	toastRel;
+	Relation toastRel = relation_open(toastrelid, AccessShareLock);
+	int64    size = calculate_relation_size(toastRel, forknum);
 
-	toastRel = relation_open(toastrelid, AccessShareLock);
-	size = calculate_relation_size(toastRel, forknum);
 	relation_close(toastRel, AccessShareLock);
-
 	return size;
 }
 
