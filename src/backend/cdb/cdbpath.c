@@ -2110,7 +2110,9 @@ has_redistributable_clause(RestrictInfo *restrictinfo)
 Path *
 turn_volatile_seggen_to_singleqe(PlannerInfo *root, Path *path, Node *node)
 {
-	if ((CdbPathLocus_IsSegmentGeneral(path->locus) || CdbPathLocus_IsGeneral(path->locus)) &&
+	if ((CdbPathLocus_IsSegmentGeneral(path->locus) ||
+		 CdbPathLocus_IsGeneral(path->locus) ||
+		 CdbPathLocus_IsReplicated(path->locus)) &&
 		(contain_volatile_functions(node)))
 	{
 		CdbPathLocus     singleQE;
