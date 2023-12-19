@@ -617,8 +617,8 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 			Gp_role != GP_ROLE_UTILITY)
 			return result;
 
-		/*
-		 *
+		/* In GPDB tables that have append-optimized storage system columns are not
+		 * stored in tuples, so we check it here
 		 */
 		if (IsAppendOptimizedByOid(rte->relid))
 			return result;
