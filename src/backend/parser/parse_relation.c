@@ -39,7 +39,6 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbpartition.h"
 
 
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,
@@ -533,12 +532,12 @@ GetCTEForRTE(ParseState *pstate, RangeTblEntry *rte, int rtelevelsup)
 }
 
 static bool
-IsAppendOptimizedByOid(Oid oid)
+IsAppendOptimizedByOid(Oid relid)
 {
 	Relation	rel;
 	bool		result;
 
-	rel = heap_open(oid, NoLock);
+	rel = heap_open(relid, NoLock);
 
 	result = RelationIsAppendOptimized(rel);
 	heap_close(rel, NoLock);
@@ -618,6 +617,9 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 			Gp_role != GP_ROLE_UTILITY)
 			return result;
 
+		/*
+		 *
+		 */
 		if (IsAppendOptimizedByOid(rte->relid))
 			return result;
 
