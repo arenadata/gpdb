@@ -456,46 +456,6 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 	}
 
 	/*
-	 * Currently, Replicated locus can't be properly broadcasted in case, when
-	 * subplan contains volatile quals, targetlist elements or joinquals.
-	 * Therefore, for any node with locus Replicated containing volatile
-	 * functions we stop further planning and throw an error.
-	 */
-	if (is_plan_node(node) && ctx->movement == MOVEMENT_BROADCAST)
-	{
-		Plan	   *plan = (Plan *) node;
-
-		if (plan->flow && plan->flow->locustype == CdbLocusType_Replicated)
-		{
-			if (contain_volatile_functions((Node *) plan->targetlist) ||
-				contain_volatile_functions((Node *) plan->qual))
-				elog(ERROR, "could not parallelize SubPlan");
-
-			if (IsA(plan, HashJoin) || IsA(plan, MergeJoin) ||
-				IsA(plan, NestLoop))
-			{
-				Join	   *join = (Join *) node;
-
-				if (contain_volatile_functions((Node *) join->joinqual))
-					elog(ERROR, "could not parallelize SubPlan");
-			}
-
-			/*
-			 * We are checking ModifyTable node here, because in code branch
-			 * below ParallelizeCorrelatedSubPlanMutator returns.
-			 */
-			if (IsA(node, SubqueryScan))
-			{
-				Plan	   *sp = ((SubqueryScan *) node)->subplan;
-
-				if (IsA(sp, ModifyTable) &&
-					contain_volatile_functions((Node *) sp->targetlist))
-					elog(ERROR, "could not parallelize SubPlan");
-			}
-		}
-	}
-
-	/*
 	 * If the ModifyTable node appears inside the correlated Subplan, it has
 	 * to be handled the same way as various *Scan nodes. Currently such
 	 * situation may occur only for modifying CTE cases, and, therefore,
@@ -630,20 +590,28 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 				scanPlan->flow->flotype = FLOW_SINGLETON;
 			}
 
-			/*
-			 * Replicated locus is always executed strictly at its number of
-			 * segments. It means that if Replicated plan is executed at
-			 * different segments from main plan, the result of Replicated plan
-			 * should be firstly focused and then broadcasted (to avoid
-			 * duplicates). However, in current setting this will be an
-			 * overhead. Therefore, such  movements are blocked with an error
-			 * for now.
-			 */
 			if (scanPlan->flow->locustype == CdbLocusType_Replicated &&
 				scanPlan->flow->numsegments != ctx->currentPlanFlow->numsegments)
-				elog(ERROR, "could not parallelize SubPlan");
+				elog(ERROR, "Cannot broadcast Replicated locus");
 
-			if (scanPlan->flow->locustype != CdbLocusType_Replicated)
+			/*
+			 * Replicated locus can't be reduced to SingleQE as it's done for
+			 * SegmentGeneral locus, because it's executed at full n-gang
+			 * Therefore, in case of volatile quals we must focus Replicated
+			 * plan first, apply the quals, and then broadcast it back.
+			 */
+			if (scanPlan->flow->locustype == CdbLocusType_Replicated &&
+				contain_volatile_functions((Node *) scanPlan->qual))
+			{
+				focusPlan(scanPlan, false /* stable */ , false /* rescannable */ );
+				Plan	   *res = (Plan *) make_result((PlannerInfo *) ctx->base.node, resTL, NULL, scanPlan);
+
+				res->flow = pull_up_Flow(res, res->lefttree);
+				broadcastPlan(res, false /* stable */ , false /* rescannable */ ,
+					   ctx->currentPlanFlow->numsegments /* numsegments */ );
+				scanPlan = res;
+			}
+			else if (scanPlan->flow->locustype != CdbLocusType_Replicated)
 				broadcastPlan(scanPlan, false /* stable */ , false /* rescannable */ ,
 					   ctx->currentPlanFlow->numsegments /* numsegments */ );
 		}
@@ -813,21 +781,9 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		{
 			Assert(NULL != context->currentPlanFlow);
 
-			/*
-			 * Replicated locus can't be broadcasted properly because of data
-			 * duplicates. In this case and in the case of volatile functions
-			 * under the Replicated subplan the error is thrown.
-			 */
-			if (newPlan->flow->locustype == CdbLocusType_Replicated)
-			{
-				if (newPlan->flow->numsegments != context->currentPlanFlow->numsegments)
-					elog(ERROR, "could not parallelize SubPlan");
-
-				PlannerInfo *subroot = planner_subplan_get_root(context->root, spExpr);
-
-				if (plan_contains_volatile_functions(subroot, (Node *) newPlan))
-					elog(ERROR, "could not parallelize SubPlan");
-			}
+			if (newPlan->flow->locustype == CdbLocusType_Replicated &&
+				newPlan->flow->numsegments != context->currentPlanFlow->numsegments)
+				elog(ERROR, "Cannot broadcast Replicated locus");
 
 			broadcastPlan(newPlan, false /* stable */ , false /* rescannable */,
 						  context->currentPlanFlow->numsegments /* numsegments */);
