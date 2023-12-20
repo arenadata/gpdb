@@ -9,6 +9,9 @@
 -- m/ERROR:  could not devise a plan \(cdbpath\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  could not parallelize SubPlan \(cdbllize\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 -- start_ignore
 create extension if not exists gp_debug_numsegments;
@@ -849,3 +852,56 @@ with cte as (
 ) select * from cte join t_repl on cte.i = t_repl.j * random();
 
 drop table t_repl;
+
+-- Test that node with locus Replicated is not boradcasted inside
+-- a correlated/uncorrlated SubPlan. In case of different number of
+-- segments between replicated node inside the SubPlan and main plan
+-- the proper error should be thrown.
+--start_ignore
+drop table if exists t1;
+drop table if exists with_dml_dr_seg2;
+--end_ignore
+
+create table t1 (i int, j int) distributed by (i);
+select gp_debug_set_create_table_default_numsegments(2);
+create table with_dml_dr_seg2 (i int, j int) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+
+-- Case when number of segments is equal, no Broadcast at the top of CTE plan.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte);
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte where cte.i = t1.j);
+
+-- Case with unequal number of segments between replicated node inside the
+-- SubPlan and main plan, the error should be thrown.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte);
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte where cte.i = t1.j);
+
+drop table with_dml_dr_seg2;
+drop table t1;
+drop table with_dml_dr;

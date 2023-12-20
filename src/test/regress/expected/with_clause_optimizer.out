@@ -9,6 +9,9 @@
 -- m/ERROR:  could not devise a plan \(cdbpath\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  could not parallelize SubPlan \(cdbllize\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 drop table if exists with_test1 cascade;
 NOTICE:  table "with_test1" does not exist, skipping
@@ -3045,3 +3048,91 @@ with cte as (
 ) select * from cte join t_repl on cte.i = t_repl.j * random();
 ERROR:  could not devise a plan (cdbpath.c:2132)
 drop table t_repl;
+-- Test that node with locus Replicated is not boradcasted inside
+-- a correlated/uncorrlated SubPlan. In case of different number of
+-- segments between replicated node inside the SubPlan and main plan
+-- the proper error should be thrown.
+--start_ignore
+drop table if exists t1;
+NOTICE:  table "t1" does not exist, skipping
+drop table if exists with_dml_dr_seg2;
+NOTICE:  table "with_dml_dr_seg2" does not exist, skipping
+--end_ignore
+create table t1 (i int, j int) distributed by (i);
+select gp_debug_set_create_table_default_numsegments(2);
+ gp_debug_set_create_table_default_numsegments 
+-----------------------------------------------
+ 2
+(1 row)
+
+create table with_dml_dr_seg2 (i int, j int) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+ gp_debug_reset_create_table_default_numsegments 
+-------------------------------------------------
+ 
+(1 row)
+
+-- Case when number of segments is equal, no Broadcast at the top of CTE plan.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte);
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on t1
+         Filter: (hashed SubPlan 1)
+         SubPlan 1  (slice1; segments: 3)
+           ->  Materialize
+                 ->  Subquery Scan on cte
+                       ->  Insert on with_dml_dr
+                             ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte where cte.i = t1.j);
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on t1
+         Filter: (SubPlan 1)
+         SubPlan 1  (slice1; segments: 3)
+           ->  Result
+                 Filter: (cte.i = t1.j)
+                 ->  Materialize
+                       ->  Subquery Scan on cte
+                             ->  Insert on with_dml_dr
+                                   ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+-- Case with unequal number of segments between replicated node inside the
+-- SubPlan and main plan, the error should be thrown.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte);
+ERROR:  could not parallelize SubPlan (cdbllize.c:775)
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte where cte.i = t1.j);
+ERROR:  could not parallelize SubPlan (cdbllize.c:598)
+drop table with_dml_dr_seg2;
+drop table t1;
+drop table with_dml_dr;

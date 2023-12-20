@@ -590,28 +590,14 @@ ParallelizeCorrelatedSubPlanMutator(Node *node, ParallelizeCorrelatedPlanWalkerC
 				scanPlan->flow->flotype = FLOW_SINGLETON;
 			}
 
-			if (scanPlan->flow->locustype == CdbLocusType_Replicated &&
-				scanPlan->flow->numsegments != ctx->currentPlanFlow->numsegments)
-				elog(ERROR, "Cannot broadcast Replicated locus");
-
 			/*
-			 * Replicated locus can't be reduced to SingleQE as it's done for
-			 * SegmentGeneral locus, because it's executed at full n-gang
-			 * Therefore, in case of volatile quals we must focus Replicated
-			 * plan first, apply the quals, and then broadcast it back.
+			 * Broadcasting Replicated locus leads to data duplicates.
 			 */
 			if (scanPlan->flow->locustype == CdbLocusType_Replicated &&
-				contain_volatile_functions((Node *) scanPlan->qual))
-			{
-				focusPlan(scanPlan, false /* stable */ , false /* rescannable */ );
-				Plan	   *res = (Plan *) make_result((PlannerInfo *) ctx->base.node, resTL, NULL, scanPlan);
+				scanPlan->flow->numsegments != ctx->currentPlanFlow->numsegments)
+				elog(ERROR, "could not parallelize SubPlan");
 
-				res->flow = pull_up_Flow(res, res->lefttree);
-				broadcastPlan(res, false /* stable */ , false /* rescannable */ ,
-					   ctx->currentPlanFlow->numsegments /* numsegments */ );
-				scanPlan = res;
-			}
-			else if (scanPlan->flow->locustype != CdbLocusType_Replicated)
+			if (scanPlan->flow->locustype != CdbLocusType_Replicated)
 				broadcastPlan(scanPlan, false /* stable */ , false /* rescannable */ ,
 					   ctx->currentPlanFlow->numsegments /* numsegments */ );
 		}
@@ -781,12 +767,16 @@ ParallelizeSubplan(SubPlan *spExpr, PlanProfile *context)
 		{
 			Assert(NULL != context->currentPlanFlow);
 
+			/*
+			 * Broadcasting Replicated locus leads to data duplicates.
+			 */
 			if (newPlan->flow->locustype == CdbLocusType_Replicated &&
 				newPlan->flow->numsegments != context->currentPlanFlow->numsegments)
-				elog(ERROR, "Cannot broadcast Replicated locus");
+				elog(ERROR, "could not parallelize SubPlan");
 
-			broadcastPlan(newPlan, false /* stable */ , false /* rescannable */,
-						  context->currentPlanFlow->numsegments /* numsegments */);
+			if (newPlan->flow->locustype != CdbLocusType_Replicated)
+				broadcastPlan(newPlan, false /* stable */ , false /* rescannable */,
+							  context->currentPlanFlow->numsegments /* numsegments */);
 		}
 		else
 		{
