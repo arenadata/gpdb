@@ -3,6 +3,12 @@
 -- m/ERROR:  Too much references to non-SELECT CTE \(allpaths\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  could not devise a plan \(planner\.c:\d+\)/
+-- s/\d+/XXX/g
+--
+-- m/ERROR:  could not devise a plan \(cdbpath\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 -- start_ignore
 create extension if not exists gp_debug_numsegments;
@@ -782,18 +788,64 @@ with cte as (
 reset gp_cte_sharing;
 
 -- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+--start_ignore
+drop table if exists t_repl;
+--end_ignore
+create table t_repl (i int, j int) distributed replicated;
+
 explain (costs off)
 with cte as (
     insert into with_dml_dr
     values (1,1)
     returning i, j
-) select * from cte union all select * from t2;
+) select * from cte union all select * from t_repl;
 
 with cte as (
     insert into with_dml_dr
     values (1,1)
     returning i, j
-) select * from cte union all select * from t2;
+) select * from cte union all select * from t_repl;
 
-drop table t2;
-drop table with_dml_dr;
+-- Test prohibition of volatile functions applied to the
+-- locus Replicated. The appropriate error should be thrown.
+-- Prohibit volatile qualifications.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from cte where cte.j > random();
+
+-- Prohibit volatile returning list
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j * random()
+) select * from cte;
+
+-- Prohibit volatile targetlist.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select i, j * random() from cte;
+
+-- Prohibit volatile having qualifications.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select i, sum(j) from cte group by i having sum(j) > random();
+
+-- Prohibit volatile join qualifications.
+explain (costs off, verbose)
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,5) i
+    returning i, j
+) select * from cte join t_repl on cte.i = t_repl.j * random();
+
+drop table t_repl;
