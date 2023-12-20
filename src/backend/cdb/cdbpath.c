@@ -344,11 +344,11 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		else if (CdbPathLocus_IsReplicated(locus))
 		{
 			/*
-			 * No motion needed for the case SegmentGeneral --> Replicated.
-			 * If number of SegmentGenerals' segments is greater, its number
-			 * can be reduced. Otherwise the situation is invalid. Currently,
-			 * the only case is UNION ALL command, where one of the operands
-			 * has Replicated locus.
+			 * No motion needed for the case SegmentGeneral --> Replicated in
+			 * case if number of SegmentGeneral's segments is greater or equal
+			 * than Replicated's. Otherwise SegmentGeneral will be broadcasted
+			 * from 1 segment. Currently, the only case is UNION ALL command,
+			 * where one of the operands has Replicated locus.
 			 */
 			if (CdbPathLocus_NumSegments(subpath->locus) >=
 				CdbPathLocus_NumSegments(locus))

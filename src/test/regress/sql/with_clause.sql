@@ -790,27 +790,13 @@ with cte as (
 
 reset gp_cte_sharing;
 
--- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+-- Test prohibition of volatile functions applied to the
+-- locus Replicated. The appropriate error should be thrown.
 --start_ignore
 drop table if exists t_repl;
 --end_ignore
 create table t_repl (i int, j int) distributed replicated;
 
-explain (costs off)
-with cte as (
-    insert into with_dml_dr
-    values (1,1)
-    returning i, j
-) select * from cte union all select * from t_repl;
-
-with cte as (
-    insert into with_dml_dr
-    values (1,1)
-    returning i, j
-) select * from cte union all select * from t_repl;
-
--- Test prohibition of volatile functions applied to the
--- locus Replicated. The appropriate error should be thrown.
 -- Prohibit volatile qualifications.
 explain (costs off, verbose)
 with cte as (
@@ -902,6 +888,62 @@ with cte as (
 ) select * from t1
 where t1.i in (select i from cte where cte.i = t1.j);
 
-drop table with_dml_dr_seg2;
 drop table t1;
+
+-- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+--start_ignore
+drop table if exists t_repl;
+drop table if exists t_repl_seg2;
+--end_ignore
+create table t_repl (i int, j int) distributed replicated;
+
+select gp_debug_set_create_table_default_numsegments(2);
+create table t_repl_seg2 (i int, j int) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+
+-- Case when SegmentGeneral is originally propagated at less number
+-- of segments.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl_seg2;
+
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl_seg2;
+
+-- Case when final number of segments is aligned to Replicated subplan.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+
+with cte as (
+    insert into with_dml_dr_seg2
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+
+drop table t_repl_seg2;
+drop table t_repl;
+drop table with_dml_dr_seg2;
 drop table with_dml_dr;

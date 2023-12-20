@@ -2970,40 +2970,13 @@ with cte as (
 (1 row)
 
 reset gp_cte_sharing;
--- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+-- Test prohibition of volatile functions applied to the
+-- locus Replicated. The appropriate error should be thrown.
 --start_ignore
 drop table if exists t_repl;
 NOTICE:  table "t_repl" does not exist, skipping
 --end_ignore
 create table t_repl (i int, j int) distributed replicated;
-explain (costs off)
-with cte as (
-    insert into with_dml_dr
-    values (1,1)
-    returning i, j
-) select * from cte union all select * from t_repl;
-                    QUERY PLAN                     
----------------------------------------------------
- Explicit Gather Motion 3:1  (slice1; segments: 3)
-   ->  Append
-         ->  Insert on with_dml_dr
-               ->  Result
-         ->  Seq Scan on t_repl
- Optimizer: Postgres query optimizer
-(6 rows)
-
-with cte as (
-    insert into with_dml_dr
-    values (1,1)
-    returning i, j
-) select * from cte union all select * from t_repl;
- i | j 
----+---
- 1 | 1
-(1 row)
-
--- Test prohibition of volatile functions applied to the
--- locus Replicated. The appropriate error should be thrown.
 -- Prohibit volatile qualifications.
 explain (costs off, verbose)
 with cte as (
@@ -3130,6 +3103,111 @@ with cte as (
 ) select * from t1
 where t1.i in (select i from cte where cte.i = t1.j);
 ERROR:  could not parallelize SubPlan (cdbllize.c:598)
-drop table with_dml_dr_seg2;
 drop table t1;
+-- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
+--start_ignore
+drop table if exists t_repl;
+NOTICE:  table "t_repl" does not exist, skipping
+drop table if exists t_repl_seg2;
+NOTICE:  table "t_repl_seg2" does not exist, skipping
+--end_ignore
+create table t_repl (i int, j int) distributed replicated;
+select gp_debug_set_create_table_default_numsegments(2);
+ gp_debug_set_create_table_default_numsegments 
+-----------------------------------------------
+ 2
+(1 row)
+
+create table t_repl_seg2 (i int, j int) distributed replicated;
+select gp_debug_reset_create_table_default_numsegments();
+ gp_debug_reset_create_table_default_numsegments 
+-------------------------------------------------
+ 
+(1 row)
+
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Insert on with_dml_dr
+               ->  Result
+         ->  Seq Scan on t_repl
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+ i | j 
+---+---
+ 1 | 1
+(1 row)
+
+-- Case when SegmentGeneral is originally propagated at less number
+-- of segments.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl_seg2;
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Explicit Gather Motion 3:1  (slice2; segments: 3)
+   ->  Append
+         ->  Insert on with_dml_dr
+               ->  Result
+         ->  Broadcast Motion 1:3  (slice1; segments: 1)
+               ->  Seq Scan on t_repl_seg2
+ Optimizer: Postgres query optimizer
+(7 rows)
+
+with cte as (
+    insert into with_dml_dr
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl_seg2;
+ i | j 
+---+---
+ 1 | 1
+(1 row)
+
+-- Case when final number of segments is aligned to Replicated subplan.
+explain (costs off)
+with cte as (
+    insert into with_dml_dr_seg2
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+                    QUERY PLAN                     
+---------------------------------------------------
+ Explicit Gather Motion 2:1  (slice1; segments: 2)
+   ->  Append
+         ->  Insert on with_dml_dr_seg2
+               ->  Result
+         ->  Seq Scan on t_repl
+ Optimizer: Postgres query optimizer
+(6 rows)
+
+with cte as (
+    insert into with_dml_dr_seg2
+    values (1,1)
+    returning i, j
+) select * from cte union all select * from t_repl;
+ i | j 
+---+---
+ 1 | 1
+(1 row)
+
+drop table t_repl_seg2;
+drop table t_repl;
+drop table with_dml_dr_seg2;
 drop table with_dml_dr;
