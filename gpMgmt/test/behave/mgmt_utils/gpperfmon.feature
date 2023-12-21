@@ -96,12 +96,10 @@ Feature: gpperfmon
         When the user truncates "queries_history" tables in "gpperfmon"
         When below sql is executed in "gptest" db
         """
-        BEGIN;
-        DECLARE curs CURSOR FOR SELECT g, g || repeat('hello ', 10) FROM generate_series(1, 10000) g;
-        SELECT pg_sleep(100);
-        END;
+        SET log_min_messages = "debug4";
+        DO $$ BEGIN PERFORM pg_sleep(80); END$$;
         """
-        Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text like '%END;'" is "true"
+        Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text = 'SELECT pg_sleep(80)'" is "true"
 
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table
