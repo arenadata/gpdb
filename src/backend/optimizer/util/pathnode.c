@@ -1531,7 +1531,7 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 				(targetlocustype != CdbLocusType_Replicated ||
 				 CdbPathLocus_IsReplicated(subpath->locus)))
 			{
-				/* When there are multiple SingleQE, use the common segments.*/
+				/* When there are multiple SingleQE, use the common segments */
 				numsegments = Min(numsegments,
 								  CdbPathLocus_NumSegments(subpath->locus));
 			}
