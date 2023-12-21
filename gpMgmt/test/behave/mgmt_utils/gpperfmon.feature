@@ -91,7 +91,7 @@ Feature: gpperfmon
         And wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_history WHERE query_text like '--end flag%'" is "true"
 
     @gpperfmon_query_history
-    Scenario: gpperfmon adds time-consuming queries with different executed statement to queries_history
+    Scenario: gpperfmon does not lose the query text if its text differs from the text in pg_stat_activity
         Given gpperfmon is configured and running in qamode
         When the user truncates "queries_history" tables in "gpperfmon"
         When below sql is executed in "gptest" db
