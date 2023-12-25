@@ -949,15 +949,16 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	{
 		plan = (Plan *) make_motion_gather(root, plan, NIL, CdbLocusType_SingleQE);
 	}
-
-	/*
-	 * Replicated locus is not supported yet in context of
-	 * volatile functions handling.
-	 */
-	if (plan->flow->locustype == CdbLocusType_Replicated &&
-		(contain_volatile_functions((Node *) plan->targetlist) ||
-		 contain_volatile_functions(parse->havingQual)))
+	else if (plan->flow->locustype == CdbLocusType_Replicated &&
+			 (contain_volatile_functions((Node *) plan->targetlist) ||
+			  contain_volatile_functions(parse->havingQual)))
+	{
+		/*
+		 * Replicated locus is not supported yet in context of volatile
+		 * functions handling.
+		 */
 		elog(ERROR, "could not devise a plan");
+	}
 
 	/* Return internal info if caller wants it */
 	if (subroot)

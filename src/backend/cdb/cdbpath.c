@@ -2124,18 +2124,19 @@ turn_volatile_seggen_to_singleqe(PlannerInfo *root, Path *path, Node *node)
 						  path->parent->relids))
 			elog(ERROR, "could not devise a plan");
 
-		/*
-		 * Replicated locus is not supported yet in context of
-		 * volatile functions handling.
-		 */
-		if (CdbPathLocus_IsReplicated(path->locus))
-			elog(ERROR, "could not devise a plan");
-
 		if (CdbPathLocus_IsGeneral(path->locus))
 		{
 			CdbPathLocus_MakeSingleQE(&(path->locus),
 									  getgpsegmentCount());
 			return path;
+		}
+		else if (CdbPathLocus_IsReplicated(path->locus))
+		{
+			/*
+			 * Replicated locus is not supported yet in context of
+			 * volatile functions handling.
+			 */
+			elog(ERROR, "could not devise a plan");
 		}
 
 		CdbPathLocus_MakeSingleQE(&singleQE,
