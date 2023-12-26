@@ -1329,7 +1329,7 @@ apr_status_t gpdb_check_partitions(mmon_options_t *opt)
 	return result;
 }
 
-static void hash_ssids(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
+static void convert_tuples_to_hash(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
 {
 	int rowcount = PQntuples(result);
 	int i = 0;
@@ -1337,13 +1337,10 @@ static void hash_ssids(PGresult *result, apr_hash_t *hash, apr_pool_t *pool)
 	{
 		char* sessid = PQgetvalue(result, i, 0);
 
-		char *sessid_copy = apr_pstrdup(pool, sessid);
-		if (sessid_copy == NULL)
-		{
-			gpmon_warning(FLINE, "Out of memory");
-			continue;
-		}
-		apr_hash_set(hash, sessid_copy, APR_HASH_KEY_STRING, "");
+		apr_int32_t* ssid = apr_palloc(pool, sizeof(apr_int32_t));
+		*ssid = atoi(sessid);
+
+		apr_hash_set(hash, ssid, sizeof(apr_int32_t), "");
 	}
 }
 
@@ -1379,7 +1376,7 @@ apr_hash_t *get_active_sessions(apr_pool_t *pool)
 		}
 		else
 		{
-			hash_ssids(result, active_session_set, pool);
+			convert_tuples_to_hash(result, active_session_set, pool);
 		}
 	}
 
