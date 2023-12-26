@@ -81,7 +81,6 @@ extern mmon_options_t opt;
 extern apr_queue_t* message_queue;
 
 extern void incremement_tail_bytes(apr_uint64_t bytes);
-static bool is_session_active(apr_int32_t ssid, apr_hash_t *hash);
 
 /**
  * Disk space check helper function
@@ -164,11 +163,6 @@ static apr_status_t  check_disk_space(mmon_fsinfo_t* rec)
 		rec->sent_error_flag = DISK_SPACE_NO_MESSAGE_SENT;
 	}
 	return 0;
-}
-
-static bool is_session_active(apr_int32_t ssid, apr_hash_t *hash)
-{
-	return apr_hash_get(hash, &ssid, sizeof(ssid)) != NULL;
 }
 
 static apr_status_t agg_put_fsinfo(agg_t* agg, const gpmon_fsinfo_t* met)
@@ -475,7 +469,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 			if (status == GPMON_QLOG_STATUS_DONE ||
 			    status == GPMON_QLOG_STATUS_ERROR ||
 			    status == GPMON_QLOG_STATUS_INVALID ||
-			    !is_session_active(dp->qlog.key.ssid, active_session_set))
+			    apr_hash_get(active_session_set, &dp->qlog.key.ssid, 
+							 sizeof(dp->qlog.key.ssid)) == NULL)
 			{
 				if (0 != strcmp(dp->qlog.db, GPMON_DB))
 				{

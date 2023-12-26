@@ -1338,6 +1338,11 @@ static void convert_tuples_to_hash(PGresult *result, apr_hash_t *hash, apr_pool_
 		char* sessid = PQgetvalue(result, i, 0);
 
 		apr_int32_t* ssid = apr_palloc(pool, sizeof(apr_int32_t));
+		if (ssid == NULL)
+		{
+			gpmon_warning(FLINE, "Out of memory");
+			continue;
+		}
 		*ssid = atoi(sessid);
 
 		apr_hash_set(hash, ssid, sizeof(apr_int32_t), "");
