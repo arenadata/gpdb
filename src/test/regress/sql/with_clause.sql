@@ -856,40 +856,78 @@ select gp_debug_set_create_table_default_numsegments(2);
 create table with_dml_dr_seg2 (i int, j int) distributed replicated;
 select gp_debug_reset_create_table_default_numsegments();
 
+insert into t1 select i, i * 100 from generate_series(1, 6) i;
+
 -- Case when number of segments is equal, no Broadcast at the top of CTE plan.
 explain (costs off)
 with cte as (
     insert into with_dml_dr
-    select i, i * 100 from generate_series(1,5) i
+    select i, i * 100 from generate_series(1,6) i
     returning i, j
 ) select * from t1
-where t1.i in (select i from cte);
+where t1.i in (select i from cte)
+order by 1;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,6) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte)
+order by 1;
 
 explain (costs off)
 with cte as (
     insert into with_dml_dr
-    select i, i * 100 from generate_series(1,5) i
+    select i, i * 100 from generate_series(1,6) i
     returning i, j
 ) select * from t1
-where t1.i in (select i from cte where cte.i = t1.j);
+where t1.i in (select i from cte where cte.i = t1.j)
+order by 1;
+
+with cte as (
+    insert into with_dml_dr
+    select i, i * 100 from generate_series(1,6) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte where cte.i = t1.j)
+order by 1;
 
 -- Case with unequal number of segments between replicated node inside the
 -- SubPlan and main plan, the error should be thrown.
 explain (costs off)
 with cte as (
     insert into with_dml_dr_seg2
-    select i, i * 100 from generate_series(1,5) i
+    select i, i * 100 from generate_series(1,6) i
     returning i, j
 ) select * from t1
-where t1.i in (select i from cte);
+where t1.i in (select i from cte)
+order by 1;
+
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,6) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte)
+order by 1;
 
 explain (costs off)
 with cte as (
     insert into with_dml_dr_seg2
-    select i, i * 100 from generate_series(1,5) i
+    select i, i * 100 from generate_series(1,6) i
     returning i, j
 ) select * from t1
-where t1.i in (select i from cte where cte.i = t1.j);
+where t1.i in (select i from cte where cte.i = t1.j)
+order by 1;
+
+with cte as (
+    insert into with_dml_dr_seg2
+    select i, i * 100 from generate_series(1,6) i
+    returning i, j
+) select * from t1
+where t1.i in (select i from cte where cte.i = t1.j)
+order by 1;
 
 drop table t1;
 
@@ -904,18 +942,23 @@ select gp_debug_set_create_table_default_numsegments(2);
 create table t_repl_seg2 (i int, j int) distributed replicated;
 select gp_debug_reset_create_table_default_numsegments();
 
+insert into t_repl values (2, 2);
+insert into t_repl_seg2 values (2, 2);
+
 explain (costs off)
 with cte as (
     insert into with_dml_dr
     values (1,1)
     returning i, j
-) select * from cte union all select * from t_repl;
+) select * from cte union all select * from t_repl
+order by 1;
 
 with cte as (
     insert into with_dml_dr
     values (1,1)
     returning i, j
-) select * from cte union all select * from t_repl;
+) select * from cte union all select * from t_repl
+order by 1;
 
 -- Case when SegmentGeneral is originally propagated at less number
 -- of segments.
@@ -924,13 +967,15 @@ with cte as (
     insert into with_dml_dr
     values (1,1)
     returning i, j
-) select * from cte union all select * from t_repl_seg2;
+) select * from cte union all select * from t_repl_seg2
+order by 1;
 
 with cte as (
     insert into with_dml_dr
     values (1,1)
     returning i, j
-) select * from cte union all select * from t_repl_seg2;
+) select * from cte union all select * from t_repl_seg2
+order by 1;
 
 -- Case when final number of segments is aligned to Replicated subplan.
 explain (costs off)
@@ -938,13 +983,15 @@ with cte as (
     insert into with_dml_dr_seg2
     values (1,1)
     returning i, j
-) select * from cte union all select * from t_repl;
+) select * from cte union all select * from t_repl
+order by 1;
 
 with cte as (
     insert into with_dml_dr_seg2
     values (1,1)
     returning i, j
-) select * from cte union all select * from t_repl;
+) select * from cte union all select * from t_repl
+order by 1;
 
 drop table t_repl_seg2;
 drop table t_repl;
