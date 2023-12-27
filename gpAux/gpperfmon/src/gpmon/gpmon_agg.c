@@ -466,10 +466,10 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool, apr
 		apr_int32_t age = newagg->generation - dp->last_updated_generation - 1;
 		if (age > 0)
 		{
-			if ( (status != GPMON_QLOG_STATUS_SUBMIT
-				 && status != GPMON_QLOG_STATUS_CANCELING
-				 && status != GPMON_QLOG_STATUS_START)
-				 || apr_hash_get(active_session_set, &dp->qlog.key.ssid, 
+			if (  (status != GPMON_QLOG_STATUS_SUBMIT
+				   && status != GPMON_QLOG_STATUS_CANCELING
+				   && status != GPMON_QLOG_STATUS_START)
+				   || apr_hash_get(active_session_set, &dp->qlog.key.ssid, 
 							 sizeof(dp->qlog.key.ssid)) == NULL)
 			{
 				if (0 != strcmp(dp->qlog.db, GPMON_DB))
