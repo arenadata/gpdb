@@ -564,18 +564,20 @@ drop table if exists t_repl;
 --end_ignore
 create table t_repl (i int, j int) distributed replicated;
 
+insert into t_repl values (1, 1), (2, 2), (3, 3);
+
 explain (costs off)
 with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
+) select count(*) from cte join t_repl using (i);
 
 with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
+) select count(*) from cte join t_repl using (i);
 
 -- Test join CdbLocusType_Replicated with CdbLocusType_SegmentGeneral
 -- in case when relations are propagated on different number of segments.
@@ -586,6 +588,7 @@ select gp_debug_set_create_table_default_numsegments(2);
 create table with_dml_dr_seg2 (i int, j int) distributed replicated;
 select gp_debug_reset_create_table_default_numsegments();
 
+
 -- SegmentGeneral's number of segments is larger than Replicated's,
 -- the join is performed at number of segments of Replicated locus.
 explain (costs off)
@@ -593,13 +596,13 @@ with cte as (
     insert into with_dml_dr_seg2
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
+) select count(*) from cte join t_repl using (i);
 
 with cte as (
     insert into with_dml_dr_seg2
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
+) select count(*) from cte join t_repl using (i);
 
 -- SegmentGeneral's number of segments is less than Replicated's,
 -- the join is performed at SingleQE.
@@ -608,13 +611,13 @@ with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join with_dml_dr_seg2 using (i);
+) select count(*) from cte join with_dml_dr_seg2 using (i);
 
 with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join with_dml_dr_seg2 using (i);
+) select count(*) from cte join with_dml_dr_seg2 using (i);
 
 drop table with_dml_dr_seg2;
 drop table t_repl;
@@ -673,8 +676,8 @@ drop table if exists t_strewn;
 --end_ignore
 create table t_hashed (i int, j int) distributed by (i);
 create table t_strewn (i int, j int) distributed randomly;
-insert into t_hashed values (1,1);
-insert into t_strewn values (1,1);
+insert into t_hashed select i, i * 2 from generate_series(1, 10) i;
+insert into t_strewn select i, i * 2 from generate_series(1, 10) i;
 
 explain (costs off)
 with cte as (
@@ -739,8 +742,8 @@ create table t_hashed_seg2 (i int, j int) distributed by (i);
 create table t_strewn_seg2 (i int, j int) distributed randomly;
 select gp_debug_reset_create_table_default_numsegments();
 
-insert into t_hashed_seg2 values (1,1);
-insert into t_strewn_seg2 values (1,1);
+insert into t_hashed_seg2 select i, i * 2 from generate_series(1, 10) i;
+insert into t_strewn_seg2 select i, i * 2 from generate_series(1, 10) i;
 
 explain (costs off)
 with cte as (

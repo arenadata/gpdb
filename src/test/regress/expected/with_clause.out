@@ -2513,22 +2513,23 @@ drop table if exists t_repl;
 NOTICE:  table "t_repl" does not exist, skipping
 --end_ignore
 create table t_repl (i int, j int) distributed replicated;
+insert into t_repl values (1, 1), (2, 2), (3, 3);
 explain (costs off)
 with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
-                            QUERY PLAN                            
-------------------------------------------------------------------
+) select count(*) from cte join t_repl using (i);
+                         QUERY PLAN                         
+------------------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
    ->  Aggregate
-         ->  Hash Right Join
-               Hash Cond: (t_repl.i = with_dml_dr.i)
-               ->  Seq Scan on t_repl
+         ->  Hash Join
+               Hash Cond: (with_dml_dr.i = t_repl.i)
+               ->  Insert on with_dml_dr
+                     ->  Function Scan on generate_series i
                ->  Hash
-                     ->  Insert on with_dml_dr
-                           ->  Function Scan on generate_series i
+                     ->  Seq Scan on t_repl
  Optimizer: Postgres query optimizer
 (9 rows)
 
@@ -2536,10 +2537,10 @@ with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
+) select count(*) from cte join t_repl using (i);
  count 
 -------
-     5
+     3
 (1 row)
 
 -- Test join CdbLocusType_Replicated with CdbLocusType_SegmentGeneral
@@ -2568,17 +2569,17 @@ with cte as (
     insert into with_dml_dr_seg2
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
-                            QUERY PLAN                            
-------------------------------------------------------------------
+) select count(*) from cte join t_repl using (i);
+                         QUERY PLAN                         
+------------------------------------------------------------
  Explicit Gather Motion 2:1  (slice1; segments: 2)
    ->  Aggregate
-         ->  Hash Right Join
-               Hash Cond: (t_repl.i = with_dml_dr_seg2.i)
-               ->  Seq Scan on t_repl
+         ->  Hash Join
+               Hash Cond: (with_dml_dr_seg2.i = t_repl.i)
+               ->  Insert on with_dml_dr_seg2
+                     ->  Function Scan on generate_series i
                ->  Hash
-                     ->  Insert on with_dml_dr_seg2
-                           ->  Function Scan on generate_series i
+                     ->  Seq Scan on t_repl
  Optimizer: Postgres query optimizer
 (9 rows)
 
@@ -2586,10 +2587,10 @@ with cte as (
     insert into with_dml_dr_seg2
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join t_repl using (i);
+) select count(*) from cte join t_repl using (i);
  count 
 -------
-     5
+     3
 (1 row)
 
 -- SegmentGeneral's number of segments is less than Replicated's,
@@ -2599,11 +2600,11 @@ with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join with_dml_dr_seg2 using (i);
+) select count(*) from cte join with_dml_dr_seg2 using (i);
                              QUERY PLAN                              
 ---------------------------------------------------------------------
  Aggregate
-   ->  Hash Right Join
+   ->  Hash Join
          Hash Cond: (with_dml_dr_seg2.i = with_dml_dr.i)
          ->  Gather Motion 1:1  (slice1; segments: 1)
                ->  Seq Scan on with_dml_dr_seg2
@@ -2618,7 +2619,7 @@ with cte as (
     insert into with_dml_dr
     select i, i * 100 from generate_series(1,5) i
     returning i
-) select count(*) from cte left join with_dml_dr_seg2 using (i);
+) select count(*) from cte join with_dml_dr_seg2 using (i);
  count 
 -------
      5
@@ -2730,8 +2731,8 @@ NOTICE:  table "t_strewn" does not exist, skipping
 --end_ignore
 create table t_hashed (i int, j int) distributed by (i);
 create table t_strewn (i int, j int) distributed randomly;
-insert into t_hashed values (1,1);
-insert into t_strewn values (1,1);
+insert into t_hashed select i, i * 2 from generate_series(1, 10) i;
+insert into t_strewn select i, i * 2 from generate_series(1, 10) i;
 explain (costs off)
 with cte as (
     insert into with_dml_dr
@@ -2759,7 +2760,7 @@ with cte as (
 ) select count(*) from cte join t_hashed on cte.i = t_hashed.i;
  count 
 -------
-     1
+     5
 (1 row)
 
 explain (costs off)
@@ -2819,7 +2820,7 @@ with cte as (
 ) select count(*) from cte join t_strewn on cte.i = t_strewn.i;
  count 
 -------
-     1
+     5
 (1 row)
 
 explain (costs off)
@@ -2871,8 +2872,8 @@ select gp_debug_reset_create_table_default_numsegments();
  
 (1 row)
 
-insert into t_hashed_seg2 values (1,1);
-insert into t_strewn_seg2 values (1,1);
+insert into t_hashed_seg2 select i, i * 2 from generate_series(1, 10) i;
+insert into t_strewn_seg2 select i, i * 2 from generate_series(1, 10) i;
 explain (costs off)
 with cte as (
     insert into with_dml_dr
@@ -2900,7 +2901,7 @@ with cte as (
 ) select count(*) from cte join t_hashed_seg2 on cte.i = t_hashed_seg2.i;
  count 
 -------
-     1
+     5
 (1 row)
 
 explain (costs off)
@@ -2930,7 +2931,7 @@ with cte as (
 ) select count(*) from cte join t_strewn_seg2 on cte.i = t_strewn_seg2.i;
  count 
 -------
-     1
+     5
 (1 row)
 
 drop table t_strewn_seg2;
@@ -2984,7 +2985,7 @@ with cte as (
     select i, i * 100 from generate_series(1,5) i
     returning i, j
 ) select * from cte where cte.j > random();
-ERROR:  could not devise a plan (cdbpath.c:2132)
+ERROR:  could not devise a plan (cdbpath.c:2139)
 -- Prohibit volatile returning list
 explain (costs off, verbose)
 with cte as (
@@ -3016,7 +3017,7 @@ with cte as (
     select i, i * 100 from generate_series(1,5) i
     returning i, j
 ) select * from cte join t_repl on cte.i = t_repl.j * random();
-ERROR:  could not devise a plan (cdbpath.c:2132)
+ERROR:  could not devise a plan (cdbpath.c:2139)
 drop table t_repl;
 -- Test that node with locus Replicated is not boradcasted inside
 -- a correlated/uncorrlated SubPlan. In case of different number of
@@ -3050,18 +3051,19 @@ with cte as (
     returning i, j
 ) select * from t1
 where t1.i in (select i from cte);
-                             QUERY PLAN                             
---------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)
    ->  Seq Scan on t1
          Filter: (hashed SubPlan 1)
-         SubPlan 1  (slice1; segments: 3)
+         SubPlan 1  (slice2; segments: 3)
            ->  Materialize
-                 ->  Subquery Scan on cte
-                       ->  Insert on with_dml_dr
-                             ->  Function Scan on generate_series i
+                 ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                       ->  Subquery Scan on cte
+                             ->  Insert on with_dml_dr
+                                   ->  Function Scan on generate_series i
  Optimizer: Postgres query optimizer
-(9 rows)
+(10 rows)
 
 explain (costs off)
 with cte as (
@@ -3094,7 +3096,20 @@ with cte as (
     returning i, j
 ) select * from t1
 where t1.i in (select i from cte);
-ERROR:  could not parallelize SubPlan (cdbllize.c:775)
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)
+   ->  Seq Scan on t1
+         Filter: (hashed SubPlan 1)
+         SubPlan 1  (slice2; segments: 3)
+           ->  Materialize
+                 ->  Broadcast Motion 2:3  (slice1; segments: 2)
+                       ->  Subquery Scan on cte
+                             ->  Insert on with_dml_dr_seg2
+                                   ->  Function Scan on generate_series i
+ Optimizer: Postgres query optimizer
+(10 rows)
+
 explain (costs off)
 with cte as (
     insert into with_dml_dr_seg2
@@ -3102,7 +3117,7 @@ with cte as (
     returning i, j
 ) select * from t1
 where t1.i in (select i from cte where cte.i = t1.j);
-ERROR:  could not parallelize SubPlan (cdbllize.c:598)
+ERROR:  could not parallelize SubPlan (cdbllize.c:820)
 drop table t1;
 -- Test UNION ALL command when combining SegmentGeneral locus and Replicated.
 --start_ignore
