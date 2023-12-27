@@ -3046,7 +3046,7 @@ select gp_debug_reset_create_table_default_numsegments();
  
 (1 row)
 
-insert into t1 select i, i * 100 from generate_series(1, 6) i;
+insert into t1 select i, i from generate_series(1, 6) i;
 -- Case when number of segments is equal, no Broadcast at the top of CTE plan.
 explain (costs off)
 with cte as (
@@ -3079,14 +3079,14 @@ with cte as (
 ) select * from t1
 where t1.i in (select i from cte)
 order by 1;
- i |  j  
----+-----
- 1 | 100
- 2 | 200
- 3 | 300
- 4 | 400
- 5 | 500
- 6 | 600
+ i | j 
+---+---
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 5 | 5
+ 6 | 6
 (6 rows)
 
 explain (costs off)
@@ -3124,7 +3124,13 @@ where t1.i in (select i from cte where cte.i = t1.j)
 order by 1;
  i | j 
 ---+---
-(0 rows)
+ 1 | 1
+ 2 | 2
+ 3 | 3
+ 4 | 4
+ 5 | 5
+ 6 | 6
+(6 rows)
 
 -- Case with unequal number of segments between replicated node inside the
 -- SubPlan and main plan, the error should be thrown.

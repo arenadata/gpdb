@@ -856,7 +856,7 @@ select gp_debug_set_create_table_default_numsegments(2);
 create table with_dml_dr_seg2 (i int, j int) distributed replicated;
 select gp_debug_reset_create_table_default_numsegments();
 
-insert into t1 select i, i * 100 from generate_series(1, 6) i;
+insert into t1 select i, i from generate_series(1, 6) i;
 
 -- Case when number of segments is equal, no Broadcast at the top of CTE plan.
 explain (costs off)
