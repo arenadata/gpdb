@@ -3910,6 +3910,55 @@ DROP TABLE skip_correlated_t3;
 DROP TABLE skip_correlated_t4;
 reset optimizer_join_order;
 reset optimizer_trace_fallback;
+--------------------------------------------------------------------------------
+-- Ensure ORCA generates the correct plan with the exists clause
+-- for the partitioned table.
+--------------------------------------------------------------------------------
+CREATE TABLE offers (
+    id int,
+    product int,
+    date date
+) DISTRIBUTED BY (id);
+INSERT INTO offers SELECT 0, 0, '2023-01-01';
+CREATE TABLE contacts (
+    contact text,
+    id int,
+    date date
+) DISTRIBUTED BY (id) PARTITION BY RANGE(date) (START (date '2023-01-01') INCLUSIVE END (date '2023-02-01') EXCLUSIVE EVERY (INTERVAL '1 month'));
+NOTICE:  CREATE TABLE will create partition "contacts_1_prt_1" for table "contacts"
+INSERT INTO contacts SELECT '0', 0, '2023-01-01';
+EXPLAIN (COSTS off, VERBOSE on)
+SELECT id FROM offers WHERE EXISTS (
+    SELECT id FROM contacts WHERE product = 0 OR contacts.id = offers.id
+);
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice3; segments: 3)
+   Output: offers.id
+   ->  HashAggregate
+         Output: offers.id
+         Group Key: offers.ctid, offers.gp_segment_id
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Output: offers.id, offers.ctid, offers.gp_segment_id
+               Hash Key: offers.ctid
+               ->  Nested Loop
+                     Output: offers.id, offers.ctid, offers.gp_segment_id
+                     Join Filter: ((offers.product = 0) OR (contacts_1_prt_1.id = offers.id))
+                     ->  Append
+                           ->  Seq Scan on qp_correlated_query.contacts_1_prt_1
+                                 Output: contacts_1_prt_1.id
+                     ->  Materialize
+                           Output: offers.id, offers.product, offers.ctid, offers.gp_segment_id
+                           ->  Broadcast Motion 3:3  (slice1; segments: 3)
+                                 Output: offers.id, offers.product, offers.ctid, offers.gp_segment_id
+                                 ->  Seq Scan on qp_correlated_query.offers
+                                       Output: offers.id, offers.product, offers.ctid, offers.gp_segment_id
+ Optimizer: Postgres query optimizer
+ Settings: optimizer=off
+(22 rows)
+
+DROP TABLE offers;
+DROP TABLE contacts;
 -- ----------------------------------------------------------------------
 -- Test: teardown.sql
 -- ----------------------------------------------------------------------
