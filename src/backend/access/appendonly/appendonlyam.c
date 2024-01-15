@@ -1024,6 +1024,9 @@ AppendOnlyExecutorReadBlock_ProcessTuple(AppendOnlyExecutorReadBlock *executorRe
 		if (formatVersion < AORelationVersion_GetLatest())
 			tuple = upgrade_tuple(executorReadBlock, tuple, slot->tts_mt_bind, formatVersion, &shouldFree);
 		ExecStoreMinimalTuple(tuple, slot, shouldFree);
+
+		slot->PRIVATE_tts_flags |= TTS_APPEND_OPTIMIZED;
+
 		slot_set_ctid(slot, &fake_ctid);
 	}
 

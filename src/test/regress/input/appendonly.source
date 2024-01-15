@@ -811,3 +811,10 @@ insert into fix_ao_truncate_last_sequence select 1, 1 from generate_series(1, 5)
 select count(*) from fix_ao_truncate_last_sequence;
 abort;
 
+-- check reporting of missing attributes for AO table
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+insert into test_reporting values (1);
+select xmin, xmax, * from test_reporting;
+abort;
+
