@@ -130,7 +130,6 @@ BEGIN
 -- Cleanup
 	DROP EXTENSION arenadata_toolkit;
 	DROP SCHEMA arenadata_toolkit CASCADE;
-	DROP TABLE IF EXISTS pg_temp.db_files_current;
 
 END$$
 LANGUAGE plpgsql;

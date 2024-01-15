@@ -99,6 +99,5 @@ DROP EXTENSION arenadata_toolkit;
 -- from "DROP SCHEMA arenadata_toolkit CASCADE;"
 SET client_min_messages=WARNING;
 DROP SCHEMA arenadata_toolkit CASCADE;
-DROP TABLE IF EXISTS pg_temp.db_files_current;
 RESET client_min_messages;
 \! rm -rf /tmp/tblspace_location_test_dir

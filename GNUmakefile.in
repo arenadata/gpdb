@@ -208,7 +208,16 @@ installcheck-mirrorless:
 .PHONY: installcheck-gpcheckcat
 installcheck-world: installcheck-gpcheckcat
 installcheck-gpcheckcat:
-	gpcheckcat -A
+# Restarting cluster before run gpcheckcat is needed to minimize connection number
+# for gpcheckcat. gpcheckcat cleans all temp namespace (like "pg_temp_<CON_NUM>"
+# and "pg_toast_temp_<CON_NUM>"). gpcheckcat does not do for active connections.
+# It may lead to the next situation: At the past (before previouse restarting
+# cluster) temporary table was created at pg_temp (while was connection with number
+# 467 for example). Next restarting cluster was executed. And when gpcheckcat starts,
+# it gets the same number for connection (467). gpcheckcat does not clean pg_temp
+# (and pg_toast_temp) because this connection is active. After it gpcheckcat find
+# error because namespace pg_temp still exist.
+	gpstop -ar && gpcheckcat -A
 $(call recurse,installcheck-world,gpcontrib/gp_replica_check,installcheck)
 $(call recurse,installcheck-world,contrib/pg_upgrade,check)
 

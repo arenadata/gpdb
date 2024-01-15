@@ -91,5 +91,4 @@ DROP TABLE part_table;
 DROP FUNCTION remove_partition_from_db_files_history();
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit CASCADE;
-DROP TABLE IF EXISTS pg_temp.db_files_current;
 RESET client_min_messages;
