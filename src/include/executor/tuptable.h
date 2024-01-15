@@ -121,7 +121,6 @@
 #define         TTS_VIRTUAL     8
 #define         TTS_APPEND_OPTIMIZED 16
 
-
 typedef struct TupleTableSlot
 {
 	NodeTag		type;

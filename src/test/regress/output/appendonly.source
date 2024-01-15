@@ -1718,6 +1718,24 @@ abort;
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
 insert into test_reporting values (1);
-select xmin, xmax, * from test_reporting;
-ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg0 slice1 127.0.1.1:6002 pid=397202) (execTuples.c:1604)
+select xmin, * from test_reporting;
+ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+abort;
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+insert into test_reporting values (1);
+select xmax, * from test_reporting;
+ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+abort;
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+insert into test_reporting values (1);
+select cmin, * from test_reporting;
+ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+abort;
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+insert into test_reporting values (1);
+select cmax, * from test_reporting;
+ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
 abort;
