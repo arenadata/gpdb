@@ -3958,32 +3958,23 @@ SELECT id FROM offers WHERE EXISTS (
 
 CREATE INDEX ON contacts USING bitmap(id);
 EXPLAIN (COSTS off, VERBOSE on)
-SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
-);
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
+SELECT id, EXISTS (
+    SELECT id FROM contacts WHERE id = 1
+) FROM offers;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
  Gather Motion 3:1  (slice2; segments: 3)
-   Output: offers.id
-   ->  Result
-         Output: offers.id
-         One-Time Filter: $0
+   Output: offers.id, ($0)
+   ->  Seq Scan on qp_correlated_query.offers
+         Output: offers.id, $0
          InitPlan 1 (returns $0)  (slice3)
-           ->  Limit
-                 Output: contacts_1_prt_1.id
-                 ->  Gather Motion 1:1  (slice1; segments: 1)
-                       Output: contacts_1_prt_1.id
-                       ->  Limit
-                             Output: contacts_1_prt_1.id
-                             ->  Append
-                                   ->  Seq Scan on qp_correlated_query.contacts_1_prt_1
-                                         Output: contacts_1_prt_1.id
-                                         Filter: (contacts_1_prt_1.id = 0)
-         ->  Seq Scan on qp_correlated_query.offers
-               Output: offers.id, offers.product, offers.date
+           ->  Gather Motion 1:1  (slice1; segments: 1)
+                 ->  Append
+                       ->  Seq Scan on qp_correlated_query.contacts_1_prt_1
+                             Filter: (contacts_1_prt_1.id = 1)
  Optimizer: Postgres query optimizer
  Settings: optimizer=off
-(20 rows)
+(11 rows)
 
 CREATE INDEX ON contacts USING btree(id);
 EXPLAIN (COSTS off, VERBOSE on)

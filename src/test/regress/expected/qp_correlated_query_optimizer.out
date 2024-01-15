@@ -4101,37 +4101,38 @@ SELECT id FROM offers WHERE EXISTS (
 
 CREATE INDEX ON contacts USING bitmap(id);
 EXPLAIN (COSTS off, VERBOSE on)
-SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
-);
-                                                  QUERY PLAN                                                   
----------------------------------------------------------------------------------------------------------------
- Result
-   Output: offers.id
-   Filter: (SubPlan 1)
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         Output: offers.id
+SELECT id, EXISTS (
+    SELECT id FROM contacts WHERE id = 1
+) FROM offers;
+                                                        QUERY PLAN                                                         
+---------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)
+   Output: offers.id, ((SubPlan 1))
+   ->  Result
+         Output: offers.id, (SubPlan 1)
          ->  Seq Scan on qp_correlated_query.offers
                Output: offers.id
-   SubPlan 1  (slice0)
-     ->  Limit
-           Output: contacts.id
-           ->  Materialize
-                 Output: contacts.id
-                 ->  Gather Motion 3:1  (slice2; segments: 3)
-                       Output: contacts.id
-                       ->  Sequence
+         SubPlan 1  (slice2; segments: 3)
+           ->  Result
+                 Output: "outer".ColRef_0021
+                 ->  Result
+                       Output: true, contacts.id
+                       ->  Materialize
                              Output: contacts.id
-                             ->  Partition Selector for contacts (dynamic scan id: 1)
-                                   Partitions selected: 1 (out of 1)
-                             ->  Dynamic Bitmap Heap Scan on qp_correlated_query.contacts (dynamic scan id: 1)
+                             ->  Broadcast Motion 3:3  (slice1; segments: 3)
                                    Output: contacts.id
-                                   Recheck Cond: (contacts.id = 0)
-                                   ->  Dynamic Bitmap Index Scan on contacts_id_idx
-                                         Index Cond: (contacts.id = 0)
+                                   ->  Sequence
+                                         Output: contacts.id
+                                         ->  Partition Selector for contacts (dynamic scan id: 1)
+                                               Partitions selected: 1 (out of 1)
+                                         ->  Dynamic Bitmap Heap Scan on qp_correlated_query.contacts (dynamic scan id: 1)
+                                               Output: contacts.id
+                                               Recheck Cond: (contacts.id = 1)
+                                               ->  Dynamic Bitmap Index Scan on contacts_id_idx
+                                                     Index Cond: (contacts.id = 1)
  Optimizer: Pivotal Optimizer (GPORCA)
  Settings: optimizer=on
-(25 rows)
+(26 rows)
 
 CREATE INDEX ON contacts USING btree(id);
 EXPLAIN (COSTS off, VERBOSE on)

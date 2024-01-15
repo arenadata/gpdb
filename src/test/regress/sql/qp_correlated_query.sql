@@ -857,9 +857,9 @@ SELECT id FROM offers WHERE EXISTS (
 );
 CREATE INDEX ON contacts USING bitmap(id);
 EXPLAIN (COSTS off, VERBOSE on)
-SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
-);
+SELECT id, EXISTS (
+    SELECT id FROM contacts WHERE id = 1
+) FROM offers;
 CREATE INDEX ON contacts USING btree(id);
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
