@@ -1002,7 +1002,8 @@ AddNewAttributeTuples(Oid new_rel_oid,
 					  TupleDesc tupdesc,
 					  char relkind,
 					  bool oidislocal,
-					  int oidinhcount)
+					  int oidinhcount,
+					  bool appendOnlyRel)
 {
 	Form_pg_attribute attr;
 	int			i;
@@ -1069,6 +1070,15 @@ AddNewAttributeTuples(Oid new_rel_oid,
 			if (!tupdesc->tdhasoid &&
 				SysAtt[i]->attnum == ObjectIdAttributeNumber)
 				continue;
+
+			/* skip xmin for AO table */
+			if (appendOnlyRel &&
+				(SysAtt[i]->attnum == MinTransactionIdAttributeNumber ||
+				 SysAtt[i]->attnum == MinCommandIdAttributeNumber ||
+				 SysAtt[i]->attnum == MaxTransactionIdAttributeNumber ||
+				 SysAtt[i]->attnum == MaxCommandIdAttributeNumber
+				)) 
+				continue;			
 
 			memcpy(&attStruct, (char *) SysAtt[i], sizeof(FormData_pg_attribute));
 
@@ -1705,7 +1715,7 @@ heap_create_with_catalog(const char *relname,
 	 * now add tuples to pg_attribute for the attributes in our new relation.
 	 */
 	AddNewAttributeTuples(relid, new_rel_desc->rd_att, relkind,
-						  oidislocal, oidinhcount);
+						  oidislocal, oidinhcount, appendOnlyRel);
 
 	/*
 	 * Make a dependency link to force the relation to be deleted if its

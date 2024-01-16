@@ -814,24 +814,26 @@ abort;
 -- check reporting of missing attributes for AO table
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select xmin, * from test_reporting;
+abort;
+
+-- check reporting of missing attributes for AO table
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+explain select xmin, * from test_reporting;
 abort;
 
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select xmax, * from test_reporting;
 abort;
 
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select cmin, * from test_reporting;
 abort;
 
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select cmax, * from test_reporting;
 abort;

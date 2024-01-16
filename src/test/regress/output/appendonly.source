@@ -1717,25 +1717,37 @@ abort;
 -- check reporting of missing attributes for AO table
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select xmin, * from test_reporting;
-ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+ERROR:  column "xmin" does not exist
+LINE 1: select xmin, * from test_reporting;
+               ^
+abort;
+-- check reporting of missing attributes for AO table
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+explain select xmin, * from test_reporting;
+ERROR:  column "xmin" does not exist
+LINE 1: explain select xmin, * from test_reporting;
+                       ^
 abort;
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select xmax, * from test_reporting;
-ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+ERROR:  column "xmax" does not exist
+LINE 1: select xmax, * from test_reporting;
+               ^
 abort;
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select cmin, * from test_reporting;
-ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+ERROR:  column "cmin" does not exist
+LINE 1: select cmin, * from test_reporting;
+               ^
 abort;
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
-insert into test_reporting values (1);
 select cmax, * from test_reporting;
-ERROR:  AO-table has no xmin, xmax, cmin, cmax, attributes (execTuples.c:1604)  (seg1 slice1 127.0.1.1:6003 pid=160646) (execTuples.c:1604)
+ERROR:  column "cmax" does not exist
+LINE 1: select cmax, * from test_reporting;
+               ^
 abort;
