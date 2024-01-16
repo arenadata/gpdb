@@ -139,6 +139,34 @@ select wait_until_all_segments_synchronized();
 -- verify no segment is down after recovery
 select count(*) from gp_segment_configuration where status = 'd';
 
+-- start_ignore
+-- After error, schemas for temporary table still exist (like 'pg_temp'
+-- and 'pg_toast_temp').
+-- Lets remove all such temporary schemas for inactive connections
+DO $$
+DECLARE
+	nsp TEXT; /* in func */
+BEGIN
+	FOR nsp IN
+		SELECT distinct nspname
+		FROM (
+			SELECT nspname,
+			       regexp_replace(nspname, 'pg(_toast)?_temp_', '')::int as sess_id
+			FROM gp_dist_random('pg_namespace')
+			WHERE nspname ~ '^pg(_toast)?_temp_[0-9]+'
+			UNION
+			SELECT nspname,
+			       regexp_replace(nspname, 'pg(_toast)?_temp_', '')::int as sess_id
+			FROM pg_namespace
+			WHERE nspname ~ '^pg(_toast)?_temp_[0-9]+'
+		) n
+		LEFT OUTER JOIN pg_stat_activity x using (sess_id)
+		WHERE x.sess_id is null
+	LOOP
+		EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', nsp); /* in func */
+	END LOOP; /* in func */
+END $$;
+-- end_ignore
 !\retcode gpconfig -r gp_fts_probe_retries --masteronly;
 !\retcode gpconfig -r gp_gang_creation_retry_count --skipvalidation --masteronly;
 !\retcode gpconfig -r gp_gang_creation_retry_timer --skipvalidation --masteronly;

@@ -830,3 +830,32 @@ SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration;
 -- Apply settings
 \! gpstop -u;
 --- end_ignore
+
+-- start_ignore
+-- After error, schemas for temporary table still exist (like 'pg_temp'
+-- and 'pg_toast_temp').
+-- Lets remove all such temporary schemas for inactive connections
+DO $$
+DECLARE
+	nsp TEXT;
+BEGIN
+	FOR nsp IN
+		SELECT distinct nspname
+		FROM (
+			SELECT nspname,
+			       regexp_replace(nspname, 'pg(_toast)?_temp_', '')::int as sess_id
+			FROM gp_dist_random('pg_namespace')
+			WHERE nspname ~ '^pg(_toast)?_temp_[0-9]+'
+			UNION
+			SELECT nspname,
+			       regexp_replace(nspname, 'pg(_toast)?_temp_', '')::int as sess_id
+			FROM pg_namespace
+			WHERE nspname ~ '^pg(_toast)?_temp_[0-9]+'
+		) n
+		LEFT OUTER JOIN pg_stat_activity x using (sess_id)
+		WHERE x.sess_id is null
+	LOOP
+		EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', nsp);
+	END LOOP;
+END $$;
+-- end_ignore
