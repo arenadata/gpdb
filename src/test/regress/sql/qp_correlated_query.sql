@@ -843,13 +843,13 @@ CREATE TABLE offers (
     product int,
     date date
 ) DISTRIBUTED BY (id);
-INSERT INTO offers SELECT 0, 0, '2023-01-01';
+INSERT INTO offers SELECT i, i, '2023-01-01'::date + (i||' min')::interval FROM generate_series(1, 1000) i;
 CREATE TABLE contacts (
     contact int,
     id int,
     date date
 ) DISTRIBUTED BY (id) PARTITION BY RANGE(date) (START (date '2023-01-01') INCLUSIVE END (date '2023-02-01') EXCLUSIVE EVERY (INTERVAL '1 month'));
-INSERT INTO contacts SELECT '0', 0, '2023-01-01';
+INSERT INTO contacts SELECT i, i, '2023-01-01'::date + (i||' min')::interval FROM generate_series(1, 1000) i;
 SET optimizer_enforce_subplans = on;
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
@@ -857,9 +857,9 @@ SELECT id FROM offers WHERE EXISTS (
 );
 CREATE INDEX ON contacts USING bitmap(id);
 EXPLAIN (COSTS off, VERBOSE on)
-SELECT id, EXISTS (
-    SELECT id FROM contacts WHERE id = 1
-) FROM offers;
+SELECT id FROM offers WHERE EXISTS (
+    SELECT id FROM contacts WHERE id = 0
+);
 CREATE INDEX ON contacts USING btree(id);
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
