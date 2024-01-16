@@ -179,7 +179,7 @@ CLogicalDynamicGetBase::DeriveOutputColumns(CMemoryPool *mp,
 											CExpressionHandle &	 // exprhdl
 )
 {
-	CColRefSet *pcrs = GPOS_NEW(mp) CColRefSet(mp);	
+	CColRefSet *pcrs = GPOS_NEW(mp) CColRefSet(mp);
 	for (ULONG i = 0; i < m_pdrgpcrOutput->Size(); i++)
 	{
 		// We want to limit the output columns to only those which are referenced in the query
