@@ -3930,7 +3930,7 @@ INSERT INTO contacts SELECT i, i, '2023-01-01'::date + (i||' min')::interval FRO
 SET optimizer_enforce_subplans = on;
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
+    SELECT id FROM contacts WHERE id = 1
 );
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -3949,7 +3949,7 @@ SELECT id FROM offers WHERE EXISTS (
                              ->  Append
                                    ->  Seq Scan on qp_correlated_query.contacts_1_prt_1
                                          Output: contacts_1_prt_1.id
-                                         Filter: (contacts_1_prt_1.id = 0)
+                                         Filter: (contacts_1_prt_1.id = 1)
          ->  Seq Scan on qp_correlated_query.offers
                Output: offers.id, offers.product, offers.date
  Optimizer: Postgres query optimizer
@@ -3959,7 +3959,7 @@ SELECT id FROM offers WHERE EXISTS (
 CREATE INDEX ON contacts USING bitmap(id);
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
+    SELECT id FROM contacts WHERE id = 1
 );
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -3978,7 +3978,7 @@ SELECT id FROM offers WHERE EXISTS (
                              ->  Append
                                    ->  Seq Scan on qp_correlated_query.contacts_1_prt_1
                                          Output: contacts_1_prt_1.id
-                                         Filter: (contacts_1_prt_1.id = 0)
+                                         Filter: (contacts_1_prt_1.id = 1)
          ->  Seq Scan on qp_correlated_query.offers
                Output: offers.id, offers.product, offers.date
  Optimizer: Postgres query optimizer
@@ -3988,7 +3988,7 @@ SELECT id FROM offers WHERE EXISTS (
 CREATE INDEX ON contacts USING btree(id);
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
+    SELECT id FROM contacts WHERE id = 1
 );
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -4007,7 +4007,7 @@ SELECT id FROM offers WHERE EXISTS (
                              ->  Append
                                    ->  Seq Scan on qp_correlated_query.contacts_1_prt_1
                                          Output: contacts_1_prt_1.id
-                                         Filter: (contacts_1_prt_1.id = 0)
+                                         Filter: (contacts_1_prt_1.id = 1)
          ->  Seq Scan on qp_correlated_query.offers
                Output: offers.id, offers.product, offers.date
  Optimizer: Postgres query optimizer

@@ -853,17 +853,17 @@ INSERT INTO contacts SELECT i, i, '2023-01-01'::date + (i||' min')::interval FRO
 SET optimizer_enforce_subplans = on;
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
+    SELECT id FROM contacts WHERE id = 1
 );
 CREATE INDEX ON contacts USING bitmap(id);
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
+    SELECT id FROM contacts WHERE id = 1
 );
 CREATE INDEX ON contacts USING btree(id);
 EXPLAIN (COSTS off, VERBOSE on)
 SELECT id FROM offers WHERE EXISTS (
-    SELECT id FROM contacts WHERE id = 0
+    SELECT id FROM contacts WHERE id = 1
 );
 RESET optimizer_enforce_subplans;
 DROP TABLE offers;
