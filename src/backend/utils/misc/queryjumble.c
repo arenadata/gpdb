@@ -179,6 +179,7 @@ JumbleRangeTable(JumbleState *jstate, List *rtable)
 				APP_JUMB(rte->jointype);
 				break;
 			case RTE_FUNCTION:
+			case RTE_TABLEFUNCTION:
 				JumbleExpr(jstate, (Node *) rte->functions);
 				break;
 			case RTE_VALUES:
@@ -597,9 +598,21 @@ JumbleExpr(JumbleState *jstate, Node *node)
 				JumbleExpr(jstate, rtfunc->funcexpr);
 			}
 			break;
+		case T_GroupId:
+			/*
+			 * Struct GroupId has only the node tag, already added to the jumble
+			 * in the code above. So just leave case empty to suppress warning.
+			 */
+			break;
 		case T_Integer:
 			{
 				APP_JUMB(intVal(node));
+			}
+			break;
+		case T_TableValueExpr:
+			{
+				TableValueExpr *tve = (TableValueExpr *) node;
+				JumbleQueryInternal(jstate, (Query *) tve->subquery);
 			}
 			break;
 		case T_GroupingClause:

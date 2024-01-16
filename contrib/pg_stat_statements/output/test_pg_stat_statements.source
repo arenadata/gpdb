@@ -1,4 +1,4 @@
-CREATE TABLE t(a int, b int) DISTRIBUTED BY (a);
+CREATE TABLE t(a int, b text) DISTRIBUTED BY (a);
 -- Known issue: query is not added to pg_stat_statements statistics in
 -- case it is planned by GPORCA. So disable GPORCA during tests.
 SET optimizer='off';
@@ -93,6 +93,47 @@ SELECT query, calls FROM pg_stat_statements ORDER BY query;
  SELECT COUNT (*) FROM t GROUP BY ROLLUP(b);    |     1
  SELECT pg_stat_statements_reset();             |     1
 (3 rows)
+
+-- check group_id() in query
+SELECT group_id() AS c FROM t GROUP BY GROUPING SETS ((a), (a,b));
+ c 
+---
+(0 rows)
+
+-- check anytable parameter for a function
+CREATE FUNCTION multiset_1(a anytable) RETURNS TABLE(a int, b text)
+    AS '@abs_srcdir@/../../src/test/regress/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+CREATE FUNCTION multiset_2(a anytable) RETURNS TABLE(a int, b text)
+    AS '@abs_srcdir@/../../src/test/regress/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+SELECT pg_stat_statements_reset();
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
+SELECT * FROM multiset_1(TABLE(SELECT * FROM t));
+ a | b 
+---+---
+(0 rows)
+
+SELECT * FROM multiset_1(TABLE(SELECT * FROM t WHERE a=0));
+ a | b 
+---+---
+(0 rows)
+
+SELECT * FROM multiset_2(TABLE(SELECT * FROM t));
+ a | b 
+---+---
+(0 rows)
+
+SELECT query, calls FROM pg_stat_statements ORDER BY query;
+                            query                            | calls 
+-------------------------------------------------------------+-------
+ SELECT * FROM multiset_1(TABLE(SELECT * FROM t));           |     1
+ SELECT * FROM multiset_1(TABLE(SELECT * FROM t WHERE a=?)); |     1
+ SELECT * FROM multiset_2(TABLE(SELECT * FROM t));           |     1
+ SELECT pg_stat_statements_reset();                          |     1
+(4 rows)
 
 RESET optimizer;
 DROP TABLE t;

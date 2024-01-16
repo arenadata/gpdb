@@ -5,7 +5,7 @@
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 DROP TABLE IF EXISTS t;
 -- end_ignore
-CREATE TABLE t(a int, b int) DISTRIBUTED BY (a);
+CREATE TABLE t(a int, b text) DISTRIBUTED BY (a);
 
 -- Known issue: query is not added to pg_stat_statements statistics in
 -- case it is planned by GPORCA. So disable GPORCA during tests.
@@ -35,6 +35,23 @@ SELECT pg_stat_statements_reset();
 
 SELECT COUNT (*) FROM t GROUP BY ROLLUP(a, b);
 SELECT COUNT (*) FROM t GROUP BY ROLLUP(b);
+
+SELECT query, calls FROM pg_stat_statements ORDER BY query;
+
+-- check group_id() in query
+SELECT group_id() AS c FROM t GROUP BY GROUPING SETS ((a), (a,b));
+
+-- check anytable parameter for a function
+CREATE FUNCTION multiset_1(a anytable) RETURNS TABLE(a int, b text)
+    AS '@abs_srcdir@/../../src/test/regress/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+CREATE FUNCTION multiset_2(a anytable) RETURNS TABLE(a int, b text)
+    AS '@abs_srcdir@/../../src/test/regress/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
+
+SELECT pg_stat_statements_reset();
+
+SELECT * FROM multiset_1(TABLE(SELECT * FROM t));
+SELECT * FROM multiset_1(TABLE(SELECT * FROM t WHERE a=0));
+SELECT * FROM multiset_2(TABLE(SELECT * FROM t));
 
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
 
