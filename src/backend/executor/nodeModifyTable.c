@@ -315,6 +315,55 @@ ExecInsert(TupleTableSlot *parentslot,
 	rel_is_external = RelationIsExternal(resultRelationDesc);
 
 	/*
+	 * if we set the GUC gp_detect_data_correctness to true, we just verify the data belongs
+	 * to current partition and segment, we'll not insert the data really, so just return NULL.
+	 *
+	 * Above has already checked the partition correctness, so we just need check distribution
+	 * correctness.
+	 */
+	if (gp_detect_data_correctness)
+	{
+		/* Initialize hash function and structure */
+		CdbHash  *hash;
+		GpPolicy *policy = resultRelationDesc->rd_cdbpolicy;
+		MemTuple memTuple = ExecFetchSlotMemTuple(parentslot);
+
+		/* Skip randomly and replicated distributed relation */
+		if (!GpPolicyIsHashPartitioned(policy))
+			return NULL;
+
+		hash = makeCdbHashForRelation(resultRelationDesc);
+
+		cdbhashinit(hash);
+
+		/* Add every attribute in the distribution policy to the hash */
+		for (int i = 0; i < policy->nattrs; i++)
+		{
+			int			attnum = policy->attrs[i];
+			bool		isNull;
+			Datum		attr;
+
+			attr = memtuple_getattr(memTuple, parentslot->tts_mt_bind,
+									attnum, &isNull);
+
+			cdbhash(hash, i + 1, attr, isNull);
+		}
+
+		/* End check if one tuple is in the wrong segment */
+		if (cdbhashreduce(hash) != GpIdentity.segindex)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_CHECK_VIOLATION),
+							errmsg("trying to insert row into wrong segment")));
+		}
+
+		freeCdbHash(hash);
+
+		/* Do nothing */
+		return NULL;
+	}
+
+	/*
 	 * Prepare the right kind of "insert desc".
 	 */
 	if (rel_is_aorows)
@@ -1111,7 +1160,6 @@ checkPartitionUpdate(EState *estate, TupleTableSlot *partslot,
 	Datum	   *values = NULL;
 	bool	   *nulls = NULL;
 	TupleDesc	tupdesc = NULL;
-	Oid			parentRelid;
 	Oid			targetid;
 
 	Assert(estate->es_partition_state != NULL &&
@@ -1123,81 +1171,12 @@ checkPartitionUpdate(EState *estate, TupleTableSlot *partslot,
 	Assert(PointerIsValid(estate->es_result_partitions));
 
 	/*
-	 * As opposed to INSERT, resultRelation here is the same child part
-	 * as scan origin.  However, the partition selection is done with the
-	 * parent partition's attribute numbers, so if this result (child) part
-	 * has physically-different attribute numbers due to dropped columns,
-	 * we should map the child attribute numbers to the parent's attribute
-	 * numbers to perform the partition selection.
-	 * EState doesn't have the parent relation information at the moment,
-	 * so we have to do a hard job here by opening it and compare the
-	 * tuple descriptors.  If we find we need to map attribute numbers,
-	 * max_partition_attr could also be bogus for this child part,
-	 * so we end up materializing the whole columns using slot_getallattrs().
-	 * The purpose of this code is just to prevent the tuple from
-	 * incorrectly staying in default partition that has no constraint
-	 * (parts with constraint will throw an error if the tuple is changing
-	 * partition keys to out of part value anyway.)  It's a bit overkill
-	 * to do this complicated logic just for this purpose, which is necessary
-	 * with our current partitioning design, but I hope some day we can
-	 * change this so that we disallow phyisically-different tuple descriptor
-	 * across partition.
+	 * If we find we need to map attribute numbers (in case if child part has
+	 * physically-different attribute numbers from parent's, the mapping is
+	 * performed inside the makePartitionCheckMap function)
+	 * max_partition_attr could also be bogus for this child part, so we end
+	 * up materializing the whole columns using slot_getallattrs().
 	 */
-	parentRelid = estate->es_result_partitions->part->parrelid;
-
-	/*
-	 * I don't believe this is the case currently, but we check the parent relid
-	 * in case the updating partition has changed since the last time we opened it.
-	 */
-	if (resultRelInfo->ri_PartitionParent &&
-		parentRelid != RelationGetRelid(resultRelInfo->ri_PartitionParent))
-	{
-		resultRelInfo->ri_PartCheckTupDescMatch = 0;
-		if (resultRelInfo->ri_PartCheckMap != NULL)
-			pfree(resultRelInfo->ri_PartCheckMap);
-		if (resultRelInfo->ri_PartitionParent)
-			relation_close(resultRelInfo->ri_PartitionParent, AccessShareLock);
-	}
-
-	/*
-	 * Check this at the first pass only to avoid repeated catalog access.
-	 */
-	if (resultRelInfo->ri_PartCheckTupDescMatch == 0 &&
-		parentRelid != RelationGetRelid(resultRelInfo->ri_RelationDesc))
-	{
-		Relation	parentRel;
-		TupleDesc	resultTupdesc, parentTupdesc;
-
-		/*
-		 * We are on a child part, let's see the tuple descriptor looks like
-		 * the parent's one.  Probably this won't cause deadlock because
-		 * DML should have opened the parent table with appropriate lock.
-		 */
-		parentRel = relation_open(parentRelid, AccessShareLock);
-		resultTupdesc = RelationGetDescr(resultRelationDesc);
-		parentTupdesc = RelationGetDescr(parentRel);
-		if (!equalTupleDescs(resultTupdesc, parentTupdesc, false))
-		{
-			AttrMap		   *map;
-			MemoryContext	oldcontext;
-
-			/* Tuple looks different.  Construct attribute mapping. */
-			oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
-			map_part_attrs(resultRelationDesc, parentRel, &map, true);
-			MemoryContextSwitchTo(oldcontext);
-
-			/* And save it for later use. */
-			resultRelInfo->ri_PartCheckMap = map;
-
-			resultRelInfo->ri_PartCheckTupDescMatch = -1;
-		}
-		else
-			resultRelInfo->ri_PartCheckTupDescMatch = 1;
-
-		resultRelInfo->ri_PartitionParent = parentRel;
-		/* parentRel will be closed as part of ResultRelInfo cleanup */
-	}
-
 	if (resultRelInfo->ri_PartCheckMap != NULL)
 	{
 		Datum	   *parent_values;
@@ -1906,6 +1885,19 @@ ExecModifyTable(ModifyTableState *node)
 				slot = ExecFilterJunk(junkfilter, slot);
 		}
 
+		/*
+		 * We have to ensure that partition selection in INSERT or UPDATE will
+		 * consider leaf partition's attributes as coherent with root
+		 * partition's attribute numbers, because partition selection is
+		 * performed using root's attribute numbers (all partition rules are
+		 * based on the parent relation's tuple descriptor). In case when
+		 * child partition has different attribute numbers from parent's
+		 * due to dropped columns, the partition selection may go wrong without
+		 * extra validation.
+		 */
+		if (operation != CMD_DELETE && estate->es_result_partitions)
+			makePartitionCheckMap(estate, estate->es_result_relation_info);
+
 		switch (operation)
 		{
 			case CMD_INSERT:
@@ -2483,5 +2475,89 @@ ExecSquelchModifyTable(ModifyTableState *node)
 		result = ExecModifyTable(node);
 		if (!result)
 			break;
+	}
+}
+
+/*
+ * Build a attribute mapping between child partition and the root partition in
+ * case if child partition has physically-different attribute numbers from
+ * root's due to dropped columns.
+ */
+void
+makePartitionCheckMap(EState *estate, ResultRelInfo *resultRelInfo)
+{
+	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	Oid			parentRelid;
+
+	Assert(PointerIsValid(estate->es_result_partitions));
+
+	/*
+	 * The partition selection operation is done with the parent partition's
+	 * attribute numbers, so if child partition has physically-different
+	 * attribute numbers due to dropped columns, we should map the child
+	 * attribute numbers to the parent's attribute numbers to perform the
+	 * partition selection. EState may not have the parent relation
+	 * information at the moment, so we have to do a hard job here by opening
+	 * it and compare the tuple descriptors. The purpose of this code is to
+	 * prevent the tuple from being incorrectly interpreted during partition
+	 * selection, that can be performed in ExecInsert, ExecDelete and
+	 * checkPartitionUpdate functions when we work with the leaf partition as
+	 * result relation.
+	 */
+	parentRelid = estate->es_result_partitions->part->parrelid;
+
+	/*
+	 * I don't believe this is the case currently, but we check the parent
+	 * relid in case the updating partition has changed since the last time we
+	 * opened it.
+	 */
+	if (resultRelInfo->ri_PartitionParent &&
+		parentRelid != RelationGetRelid(resultRelInfo->ri_PartitionParent))
+	{
+		resultRelInfo->ri_PartCheckTupDescMatch = 0;
+		if (resultRelInfo->ri_PartCheckMap != NULL)
+			pfree(resultRelInfo->ri_PartCheckMap);
+		if (resultRelInfo->ri_PartitionParent)
+			relation_close(resultRelInfo->ri_PartitionParent, AccessShareLock);
+	}
+
+	/*
+	 * Check this at the first pass only to avoid repeated catalog access.
+	 */
+	if (resultRelInfo->ri_PartCheckTupDescMatch == 0 &&
+		parentRelid != RelationGetRelid(resultRelInfo->ri_RelationDesc))
+	{
+		Relation	parentRel;
+		TupleDesc	resultTupdesc,
+					parentTupdesc;
+
+		/*
+		 * We are on a child part, let's see the tuple descriptor looks like
+		 * the parent's one.  Probably this won't cause deadlock because DML
+		 * should have opened the parent table with appropriate lock.
+		 */
+		parentRel = relation_open(parentRelid, AccessShareLock);
+		resultTupdesc = RelationGetDescr(resultRelationDesc);
+		parentTupdesc = RelationGetDescr(parentRel);
+		if (!equalTupleDescs(resultTupdesc, parentTupdesc, false))
+		{
+			AttrMap    *map;
+			MemoryContext oldcontext;
+
+			/* Tuple looks different. Construct attribute mapping. */
+			oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+			map_part_attrs(resultRelationDesc, parentRel, &map, true);
+			MemoryContextSwitchTo(oldcontext);
+
+			/* And save it for later use. */
+			resultRelInfo->ri_PartCheckMap = map;
+
+			resultRelInfo->ri_PartCheckTupDescMatch = -1;
+		}
+		else
+			resultRelInfo->ri_PartCheckTupDescMatch = 1;
+
+		resultRelInfo->ri_PartitionParent = parentRel;
+		/* parentRel will be closed as part of ResultRelInfo cleanup */
 	}
 }
