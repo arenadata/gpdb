@@ -468,41 +468,6 @@ mdunlink(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char relstor
 		mdunlinkfork(rnode, forkNum, isRedo, relstorage);
 }
 
-/*
- * Truncate a file to release disk space.
- */
-static int
-do_truncate(const char *path)
-{
-	int			save_errno;
-	int			ret;
-	int			fd;
-
-	/* truncate(2) would be easier here, but Windows hasn't got it */
-	fd = OpenTransientFile((char *) path, O_RDWR | PG_BINARY, 0);
-	if (fd >= 0)
-	{
-		ret = ftruncate(fd, 0);
-		save_errno = errno;
-		CloseTransientFile(fd);
-		errno = save_errno;
-	}
-	else
-		ret = -1;
-
-	/* Log a warning here to avoid repetition in callers. */
-	if (ret < 0 && errno != ENOENT)
-	{
-		save_errno = errno;
-		ereport(WARNING,
-				(errcode_for_file_access(),
-				 errmsg("could not truncate file \"%s\": %m", path)));
-		errno = save_errno;
-	}
-
-	return ret;
-}
-
 static void
 mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char relstorage)
 {
@@ -519,7 +484,7 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 		if (!RelFileNodeBackendIsTemp(rnode))
 		{
 			/* Prevent other backends' fds from holding on to the disk space */
-			ret = do_truncate(path);
+			ret = TruncateFileByName(path);
 		}
 		else
 			ret = 0;
@@ -537,7 +502,7 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	else
 	{
 		/* Prevent other backends' fds from holding on to the disk space */
-		ret = do_truncate(path);
+		ret = TruncateFileByName(path);
 
 		/* Register request to unlink first segment later */
 		register_unlink(rnode);
@@ -572,7 +537,7 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 				 * Prevent other backends' fds from holding on to the disk
 				 * space.
 				 */
-				if (do_truncate(segpath) < 0 && errno == ENOENT)
+				if (TruncateFileByName(segpath) < 0 && errno == ENOENT)
 					break;
 			}
 

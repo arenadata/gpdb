@@ -3440,3 +3440,35 @@ FileSetIsTempFile(File file, bool isTempFile)
 	else
 		VfdCache[file].fdstate &= ~FD_TEMPORARY;
 }
+
+int
+TruncateFileByName(FileName fileName)
+{
+	int			save_errno;
+	int			ret;
+	int			fd;
+
+	/* truncate(2) would be easier here, but Windows hasn't got it */
+	fd = OpenTransientFile(fileName, O_RDWR | PG_BINARY, 0);
+	if (fd >= 0)
+	{
+		ret = ftruncate(fd, 0);
+		save_errno = errno;
+		CloseTransientFile(fd);
+		errno = save_errno;
+	}
+	else
+		ret = -1;
+
+	/* Log a warning here to avoid repetition in callers. */
+	if (ret < 0 && errno != ENOENT)
+	{
+		save_errno = errno;
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not truncate file \"%s\": %m", fileName)));
+		errno = save_errno;
+	}
+
+	return ret;
+}

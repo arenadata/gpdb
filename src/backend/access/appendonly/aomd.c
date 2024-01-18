@@ -250,6 +250,9 @@ mdunlink_ao_perFile(const int segno, void *ctx)
 	char *segPathSuffixPosition = unlinkFiles->segpathSuffixPosition;
 
 	sprintf(segPathSuffixPosition, ".%u", segno);
+
+	TruncateFileByName(segPath);
+
 	if (unlink(segPath) != 0)
 	{
 		/* ENOENT is expected after the end of the extensions */
