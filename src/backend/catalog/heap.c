@@ -1074,7 +1074,9 @@ AddNewAttributeTuples(Oid new_rel_oid,
 			/* skip xmin for AO table */
 			if (appendOnlyRel &&
 				(SysAtt[i]->attnum == MinTransactionIdAttributeNumber ||
-				 SysAtt[i]->attnum == MaxTransactionIdAttributeNumber
+				 SysAtt[i]->attnum == MinCommandIdAttributeNumber ||
+				 SysAtt[i]->attnum == MaxTransactionIdAttributeNumber ||
+				 SysAtt[i]->attnum == MaxCommandIdAttributeNumber
 				)) 
 				continue;			
 
