@@ -1125,7 +1125,7 @@ CTranslatorQueryToDXL::ExtractStorageOptionStr(DefElem *def_elem)
 //
 //	@doc:
 //		returns the corresponding ColId for the given system
-//		attribute numbber
+//		attribute number
 //
 //---------------------------------------------------------------------------
 ULONG

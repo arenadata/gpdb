@@ -46,10 +46,10 @@ private:
 	// segmentId column
 	CColRef *m_pcrSegmentId;
 
-	// table oid column (has value NULL in case of on non partitioned tables)
+	// tuple oid column
 	CColRef *m_pcrTupleOid;
 
-	// table oid column
+	// table oid column (has value NULL in case of on non partitioned tables)
 	CColRef *m_pcrTableOid;
 
 	// private copy ctor
