@@ -1701,14 +1701,15 @@ expand_all_col_privileges(Oid table_oid, Form_pg_class classForm,
 		if (classForm->relkind == RELKIND_VIEW && curr_att < 0)
 			continue;
 
-		/* AO tables has no xmin, xmax attributes*/
+		/* AO tables has no xmin, xmax attributes */
 		if ((classForm->relstorage == RELSTORAGE_AOROWS ||
-				classForm->relstorage == RELSTORAGE_AOCOLS) &&
+			 classForm->relstorage == RELSTORAGE_AOCOLS) &&
 			(curr_att == MinTransactionIdAttributeNumber ||
-				 curr_att == MinCommandIdAttributeNumber ||
-				 curr_att == MaxTransactionIdAttributeNumber ||
-				 curr_att == MaxCommandIdAttributeNumber
-		   )) {
+			 curr_att == MinCommandIdAttributeNumber ||
+			 curr_att == MaxTransactionIdAttributeNumber ||
+			 curr_att == MaxCommandIdAttributeNumber
+			 ))
+		{
 			continue;
 		}
 

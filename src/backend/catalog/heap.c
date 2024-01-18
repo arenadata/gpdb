@@ -1071,14 +1071,14 @@ AddNewAttributeTuples(Oid new_rel_oid,
 				SysAtt[i]->attnum == ObjectIdAttributeNumber)
 				continue;
 
-			/* skip xmin for AO table */
+			/* skip xmin, xmax, cmin, cmax for AO table */
 			if (appendOnlyRel &&
 				(SysAtt[i]->attnum == MinTransactionIdAttributeNumber ||
 				 SysAtt[i]->attnum == MinCommandIdAttributeNumber ||
 				 SysAtt[i]->attnum == MaxTransactionIdAttributeNumber ||
 				 SysAtt[i]->attnum == MaxCommandIdAttributeNumber
-				)) 
-				continue;			
+				 ))
+				continue;
 
 			memcpy(&attStruct, (char *) SysAtt[i], sizeof(FormData_pg_attribute));
 
