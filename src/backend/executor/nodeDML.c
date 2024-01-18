@@ -104,7 +104,8 @@ ExecDML(DMLState *node)
 		 * it will be allocated at es_result_relations.
 		 */
 		if (RelationGetRelid(relInfo->ri_RelationDesc) !=
-			node->ps.state->es_result_partitions->part->parrelid)
+			node->ps.state->es_result_partitions->part->parrelid &&
+			action != DML_DELETE)
 			makePartitionCheckMap(node->ps.state, relInfo);
 
 		/*
