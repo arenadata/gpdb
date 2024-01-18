@@ -3967,30 +3967,30 @@ insert into test_in_predicate values (0, 1);
 explain (verbose, costs off) delete from test where not exists(
   select 1 from test_in_predicate where test.i = test_in_predicate.i and test.j = test_in_predicate.j
 );
-                                                                      QUERY PLAN                                                                      
-------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
  Delete on partition_pruning.test_1_prt_2
    ->  Merge Anti Join
-         Output: test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.tableoid, test_in_predicate.ctid
+         Output: test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_in_predicate.ctid
          Merge Cond: ((test_1_prt_2.i = test_in_predicate.i) AND (test_1_prt_2.j = test_in_predicate.j))
          ->  Sort
-               Output: test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.tableoid, test_1_prt_2.i, test_1_prt_2.j
+               Output: test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.i, test_1_prt_2.j
                Sort Key: test_1_prt_2.i, test_1_prt_2.j
                ->  Seq Scan on partition_pruning.test_1_prt_2
-                     Output: test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.tableoid, test_1_prt_2.i, test_1_prt_2.j
+                     Output: test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.i, test_1_prt_2.j
          ->  Sort
                Output: test_in_predicate.ctid, test_in_predicate.i, test_in_predicate.j
                Sort Key: test_in_predicate.i, test_in_predicate.j
                ->  Seq Scan on partition_pruning.test_in_predicate
                      Output: test_in_predicate.ctid, test_in_predicate.i, test_in_predicate.j
    ->  Merge Anti Join
-         Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.tableoid, test_in_predicate.ctid
+         Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_in_predicate.ctid
          Merge Cond: ((test_1_prt_extra.i = test_in_predicate.i) AND (test_1_prt_extra.j = test_in_predicate.j))
          ->  Sort
-               Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.tableoid, test_1_prt_extra.i, test_1_prt_extra.j
+               Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.i, test_1_prt_extra.j
                Sort Key: test_1_prt_extra.i, test_1_prt_extra.j
                ->  Seq Scan on partition_pruning.test_1_prt_extra
-                     Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.tableoid, test_1_prt_extra.i, test_1_prt_extra.j
+                     Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.i, test_1_prt_extra.j
          ->  Sort
                Output: test_in_predicate.ctid, test_in_predicate.i, test_in_predicate.j
                Sort Key: test_in_predicate.i, test_in_predicate.j
@@ -4057,7 +4057,7 @@ explain (verbose, costs off) update test_1_prt_extra set k = 10 where j = 2;
 (6 rows)
 
 update test_1_prt_extra set k = 10 where j = 2;
-ERROR:  moving tuple from partition "test_1_prt_extra" to partition "test_1_prt_2" not supported  (seg1 127.0.1.1:6003 pid=56966)
+ERROR:  moving tuple from partition "test_1_prt_extra" to partition "test_1_prt_2" not supported  (seg1 127.0.0.1:6003 pid=237031)
 -- Check that update performed correctly and tuple moved to correct partition
 select tableoid::regclass, ctid, i, j, k from test;
      tableoid     | ctid  | i | j | k 
@@ -4105,30 +4105,30 @@ select tableoid::regclass, ctid, i, j, k from test;
 explain (verbose, costs off) update test set k = 10  where not exists(
   select 1 from test_in_predicate where test.i = test_in_predicate.i and test.j = test_in_predicate.j
 );
-                                                                              QUERY PLAN                                                                              
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                QUERY PLAN                                                                 
+-------------------------------------------------------------------------------------------------------------------------------------------
  Update on partition_pruning.test_1_prt_2
    ->  Merge Anti Join
-         Output: test_1_prt_2.i, test_1_prt_2.j, 10, test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.tableoid, test_in_predicate.ctid
+         Output: test_1_prt_2.i, test_1_prt_2.j, 10, test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_in_predicate.ctid
          Merge Cond: ((test_1_prt_2.i = test_in_predicate.i) AND (test_1_prt_2.j = test_in_predicate.j))
          ->  Sort
-               Output: test_1_prt_2.i, test_1_prt_2.j, test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.tableoid
+               Output: test_1_prt_2.i, test_1_prt_2.j, test_1_prt_2.ctid, test_1_prt_2.gp_segment_id
                Sort Key: test_1_prt_2.i, test_1_prt_2.j
                ->  Seq Scan on partition_pruning.test_1_prt_2
-                     Output: test_1_prt_2.i, test_1_prt_2.j, test_1_prt_2.ctid, test_1_prt_2.gp_segment_id, test_1_prt_2.tableoid
+                     Output: test_1_prt_2.i, test_1_prt_2.j, test_1_prt_2.ctid, test_1_prt_2.gp_segment_id
          ->  Sort
                Output: test_in_predicate.ctid, test_in_predicate.i, test_in_predicate.j
                Sort Key: test_in_predicate.i, test_in_predicate.j
                ->  Seq Scan on partition_pruning.test_in_predicate
                      Output: test_in_predicate.ctid, test_in_predicate.i, test_in_predicate.j
    ->  Merge Anti Join
-         Output: test_1_prt_extra.i, test_1_prt_extra.j, 10, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.tableoid, test_in_predicate.ctid
+         Output: test_1_prt_extra.i, test_1_prt_extra.j, 10, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_in_predicate.ctid
          Merge Cond: ((test_1_prt_extra.i = test_in_predicate.i) AND (test_1_prt_extra.j = test_in_predicate.j))
          ->  Sort
-               Output: test_1_prt_extra.i, test_1_prt_extra.j, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.tableoid
+               Output: test_1_prt_extra.i, test_1_prt_extra.j, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id
                Sort Key: test_1_prt_extra.i, test_1_prt_extra.j
                ->  Seq Scan on partition_pruning.test_1_prt_extra
-                     Output: test_1_prt_extra.i, test_1_prt_extra.j, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, test_1_prt_extra.tableoid
+                     Output: test_1_prt_extra.i, test_1_prt_extra.j, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id
          ->  Sort
                Output: test_in_predicate.ctid, test_in_predicate.i, test_in_predicate.j
                Sort Key: test_in_predicate.i, test_in_predicate.j
@@ -4141,7 +4141,7 @@ explain (verbose, costs off) update test set k = 10  where not exists(
 update test set k = 10  where not exists(
   select 1 from test_in_predicate where test.i = test_in_predicate.i and test.j = test_in_predicate.j
 );
-ERROR:  moving tuple from partition "test_1_prt_extra" to partition "test_1_prt_2" not supported  (seg1 127.0.1.1:6003 pid=56966)
+ERROR:  moving tuple from partition "test_1_prt_extra" to partition "test_1_prt_2" not supported  (seg1 127.0.0.1:6003 pid=237031)
 -- Check that update performed correctly and tuple moved to correct partition
 select tableoid::regclass, ctid, i, j, k from test;
      tableoid     | ctid  | i | j | k 
