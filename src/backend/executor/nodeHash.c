@@ -768,12 +768,20 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	/* EXPLAIN ANALYZE batch statistics */
 	if (stats && stats->nbatchstats < nbatch)
 	{
-		Size		sz = nbatch * sizeof(stats->batchstats[0]);
+		Size 		j;
+		Size		sz = nbatch * sizeof(HashJoinBatchStats *);
+
+		/* Switch to a memory context that survives until ExecutorEnd. */
+		MemoryContext querycxt = hashtable->hjstate->js.ps.state->es_query_cxt;
+		MemoryContext oldcxt = MemoryContextSwitchTo(querycxt);
 
 		stats->batchstats =
-			(HashJoinBatchStats *) repalloc(stats->batchstats, sz);
-		sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
-		memset(stats->batchstats + stats->nbatchstats, 0, sz);
+			(HashJoinBatchStats **) repalloc(stats->batchstats, sz);
+		for (j = oldnbatch; j < nbatch; j++)
+			stats->batchstats[j] = palloc0(sizeof(HashJoinBatchStats));
+
+		MemoryContextSwitchTo(oldcxt);
+
 		stats->nbatchstats = nbatch;
 	}
 
@@ -832,7 +840,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 				hashtable->spaceUsed -= spaceTuple;
 				spaceFreed += spaceTuple;
 				if (stats)
-					stats->batchstats[batchno].spillspace_in += spaceTuple;
+					stats->batchstats[batchno]->spillspace_in += spaceTuple;
 
 				pfree(tuple);
 				nfreed++;
@@ -854,8 +862,8 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	if (stats)
 	{
 		stats->workmem_max = Max(stats->workmem_max, spaceUsedBefore);
-		stats->batchstats[curbatch].spillspace_out += spaceFreed;
-		stats->batchstats[curbatch].spillrows_out += nfreed;
+		stats->batchstats[curbatch]->spillspace_out += spaceFreed;
+		stats->batchstats[curbatch]->spillrows_out += nfreed;
 	}
 
 	/*
@@ -1381,6 +1389,7 @@ ExecHashTableExplainInit(HashState *hashState, HashJoinState *hjstate,
 						 HashJoinTable hashtable)
 {
 	MemoryContext oldcxt;
+	Size 		i;
 	int			nbatch = Max(hashtable->nbatch, 1);
 
     START_MEMORY_ACCOUNT(hashState->ps.memoryAccountId);
@@ -1397,7 +1406,10 @@ ExecHashTableExplainInit(HashState *hashState, HashJoinState *hjstate,
 
     /* Create per-batch statistics array. */
     hashtable->stats->batchstats =
-        (HashJoinBatchStats *)palloc0(nbatch * sizeof(hashtable->stats->batchstats[0]));
+        (HashJoinBatchStats **)palloc(nbatch * sizeof(HashJoinBatchStats *));
+    for (i = 0; i < nbatch; i++)
+        hashtable->stats->batchstats[i] = palloc0(sizeof(HashJoinBatchStats));
+
     hashtable->stats->nbatchstats = nbatch;
 
     /* Restore caller's memory context. */
@@ -1463,15 +1475,15 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 
         /* Space actually taken by hash rows in completed batches... */
         for (i = 0; i <= stats->endedbatch; i++)
-            workmemwanted += stats->batchstats[i].hashspace_final;
+            workmemwanted += stats->batchstats[i]->hashspace_final;
 
         /* ... plus workfile size for original batches not reached, plus... */
         for (; i < hashtable->nbatch_original; i++)
-            workmemwanted += stats->batchstats[i].innerfilesize;
+            workmemwanted += stats->batchstats[i]->innerfilesize;
 
         /* ... rows spilled to unreached oflo batches, in case quitting early */
         for (; i < stats->nbatchstats; i++)
-            workmemwanted += stats->batchstats[i].spillspace_in;
+            workmemwanted += stats->batchstats[i]->spillspace_in;
 
         /*
          * Sometimes workfiles are used even though all the data would fit
@@ -1571,7 +1583,7 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
     /* Add up the batch stats. */
     for (i = ibatch_begin; i < ibatch_end; i++)
     {
-        HashJoinBatchStats *bs = &stats->batchstats[i];
+        HashJoinBatchStats *bs = stats->batchstats[i];
 
         cdbexplain_agg_upd(&irdbytes, (double)bs->irdbytes, i);
         cdbexplain_agg_upd(&iwrbytes, (double)bs->iwrbytes, i);
@@ -1669,9 +1681,9 @@ ExecHashTableExplainBatchEnd(HashState *hashState, HashJoinTable hashtable)
 {
     int                 curbatch = hashtable->curbatch;
     HashJoinTableStats *stats = hashtable->stats;
-    HashJoinBatchStats *batchstats = &stats->batchstats[curbatch];
+    HashJoinBatchStats *batchstats = stats->batchstats[curbatch];
     int                 i;
-    
+	
     START_MEMORY_ACCOUNT(hashState->ps.memoryAccountId);
     {
     Assert(!hashtable->eagerlyReleased);
@@ -1713,7 +1725,7 @@ ExecHashTableExplainBatchEnd(HashState *hashState, HashJoinTable hashtable)
 		 */
 		for (i = curbatch + 1; i < hashtable->nbatch; i++)
 		{
-			HashJoinBatchStats *bs = &stats->batchstats[i];
+			HashJoinBatchStats *bs = stats->batchstats[i];
 			uint64              filebytes = 0;
 
 			if (hashtable->outerBatchFile &&

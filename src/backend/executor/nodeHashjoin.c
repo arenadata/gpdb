@@ -1462,7 +1462,7 @@ ExecHashJoinReloadHashTable(HashJoinState *hjstate)
 		if (hjstate->js.ps.instrument && hjstate->js.ps.instrument->need_cdb)
 		{
 			Assert(hashtable->stats);
-			hashtable->stats->batchstats[curbatch].innerfilesize =
+			hashtable->stats->batchstats[curbatch]->innerfilesize =
 				BufFileGetSize(hashtable->innerBatchFile[curbatch]);
 		}
 
