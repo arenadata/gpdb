@@ -41,17 +41,11 @@ SELECT query, calls FROM pg_stat_statements ORDER BY query;
 -- check group_id() in query
 SELECT group_id() AS c FROM t GROUP BY GROUPING SETS ((a), (a,b));
 
--- check anytable parameter for a function
-CREATE FUNCTION multiset_1(a anytable) RETURNS TABLE(a int, b text)
-    AS '@abs_srcdir@/../../src/test/regress/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
-CREATE FUNCTION multiset_2(a anytable) RETURNS TABLE(a int, b text)
-    AS '@abs_srcdir@/../../src/test/regress/regress.so', 'multiset_example' LANGUAGE C READS SQL DATA;
-
+--- check anytable parameter for a function
 SELECT pg_stat_statements_reset();
 
-SELECT * FROM multiset_1(TABLE(SELECT * FROM t));
-SELECT * FROM multiset_1(TABLE(SELECT * FROM t WHERE a=0));
-SELECT * FROM multiset_2(TABLE(SELECT * FROM t));
+SELECT COUNT(1) FROM anytable_out(TABLE(SELECT * FROM t)) WHERE 1 = 0;
+SELECT COUNT(1) FROM anytable_out(TABLE(SELECT * FROM t WHERE a=0)) WHERE 1 = 0;
 
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
 
