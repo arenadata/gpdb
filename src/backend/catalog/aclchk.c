@@ -1709,9 +1709,7 @@ expand_all_col_privileges(Oid table_oid, Form_pg_class classForm,
 			 curr_att == MaxTransactionIdAttributeNumber ||
 			 curr_att == MaxCommandIdAttributeNumber
 			 ))
-		{
 			continue;
-		}
 
 		attTuple = SearchSysCache2(ATTNUM,
 								   ObjectIdGetDatum(table_oid),
