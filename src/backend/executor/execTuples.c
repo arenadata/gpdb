@@ -1602,7 +1602,7 @@ slot_getsysattr(TupleTableSlot *slot, int attnum, Datum *result, bool *isnull)
 						case MaxCommandIdAttributeNumber:
 							if (slot->PRIVATE_tts_flags & TTS_APPEND_OPTIMIZED)
 							{
-								elog(ERROR, "AO-table has no xmin, xmax, cmin, cmax, attributes");
+								elog(ERROR, "AO-table has no xmin, xmax, cmin, cmax attributes");
 							}
 							/* fallthrough */
                         default:
