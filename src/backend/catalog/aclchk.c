@@ -1701,7 +1701,7 @@ expand_all_col_privileges(Oid table_oid, Form_pg_class classForm,
 		if (classForm->relkind == RELKIND_VIEW && curr_att < 0)
 			continue;
 
-		/* AO tables has no xmin, xmax attributes */
+		/* AO tables has no xmin, xmax, cmin, cmax attributes */
 		if ((classForm->relstorage == RELSTORAGE_AOROWS ||
 			 classForm->relstorage == RELSTORAGE_AOCOLS) &&
 			(curr_att == MinTransactionIdAttributeNumber ||
