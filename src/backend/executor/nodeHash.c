@@ -768,7 +768,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	/* EXPLAIN ANALYZE batch statistics */
 	if (stats && stats->nbatchstats < nbatch)
 	{
-		Size		sz = nbatch * sizeof(HashJoinBatchStats);
+		Size		sz = nbatch * sizeof(stats->batchstats[0]);
 
 		/*
 		 * We use repalloc_huge because the condition in the beginning
@@ -781,7 +781,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 		 */
 		stats->batchstats =
 			(HashJoinBatchStats *) repalloc_huge(stats->batchstats, sz);
-		sz = (nbatch - stats->nbatchstats) * sizeof(HashJoinBatchStats);
+		sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
 		memset(stats->batchstats + stats->nbatchstats, 0, sz);
 		stats->nbatchstats = nbatch;
 	}
