@@ -44,8 +44,10 @@ SELECT group_id() AS c FROM t GROUP BY GROUPING SETS ((a), (a,b));
 --- check anytable parameter for a function
 SELECT pg_stat_statements_reset();
 
-SELECT COUNT(1) FROM anytable_out(TABLE(SELECT * FROM t)) WHERE 1 = 0;
-SELECT COUNT(1) FROM anytable_out(TABLE(SELECT * FROM t WHERE a=0)) WHERE 1 = 0;
+-- call of anytable_out will cause an error,
+-- thus prevent actual call by adding FALSE condition
+SELECT * FROM anytable_out(TABLE(SELECT * FROM t)) WHERE 1 = 0;
+SELECT * FROM anytable_out(TABLE(SELECT * FROM t WHERE a=0)) WHERE 1 = 0;
 
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
 

@@ -107,24 +107,24 @@ SELECT pg_stat_statements_reset();
  
 (1 row)
 
-SELECT COUNT(1) FROM anytable_out(TABLE(SELECT * FROM t)) WHERE 1 = 0;
- count 
--------
-     0
-(1 row)
+-- call of anytable_out will cause an error,
+-- thus prevent actual call by adding FALSE condition
+SELECT * FROM anytable_out(TABLE(SELECT * FROM t)) WHERE 1 = 0;
+ anytable_out 
+--------------
+(0 rows)
 
-SELECT COUNT(1) FROM anytable_out(TABLE(SELECT * FROM t WHERE a=0)) WHERE 1 = 0;
- count 
--------
-     0
-(1 row)
+SELECT * FROM anytable_out(TABLE(SELECT * FROM t WHERE a=0)) WHERE 1 = 0;
+ anytable_out 
+--------------
+(0 rows)
 
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
-                                      query                                       | calls 
-----------------------------------------------------------------------------------+-------
- SELECT COUNT(?) FROM anytable_out(TABLE(SELECT * FROM t)) WHERE ? = ?;           |     1
- SELECT COUNT(?) FROM anytable_out(TABLE(SELECT * FROM t WHERE a=?)) WHERE ? = ?; |     1
- SELECT pg_stat_statements_reset();                                               |     1
+                                   query                                   | calls 
+---------------------------------------------------------------------------+-------
+ SELECT * FROM anytable_out(TABLE(SELECT * FROM t)) WHERE ? = ?;           |     1
+ SELECT * FROM anytable_out(TABLE(SELECT * FROM t WHERE a=?)) WHERE ? = ?; |     1
+ SELECT pg_stat_statements_reset();                                        |     1
 (3 rows)
 
 RESET optimizer;
