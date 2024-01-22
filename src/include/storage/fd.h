@@ -145,6 +145,4 @@ extern const char *FileGetFilename(File file);
 extern void FileSetIsWorkfile(File file);
 extern void FileSetIsTempFile(File file, bool isTempFile);
 
-extern int	TruncateFileByName(FileName fileName);
-
 #endif   /* FD_H */

@@ -37,6 +37,7 @@
 #include "cdb/cdbappendonlyxlog.h"
 #include "common/relpath.h"
 #include "utils/guc.h"
+#include "storage/md.h"
 
 #define SEGNO_SUFFIX_LENGTH 12
 
@@ -251,7 +252,7 @@ mdunlink_ao_perFile(const int segno, void *ctx)
 
 	sprintf(segPathSuffixPosition, ".%u", segno);
 
-	TruncateFileByName(segPath);
+	do_truncate(segPath);
 
 	if (unlink(segPath) != 0)
 	{
