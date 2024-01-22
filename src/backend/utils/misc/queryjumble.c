@@ -605,9 +605,7 @@ JumbleExpr(JumbleState *jstate, Node *node)
 			 */
 			break;
 		case T_Integer:
-			{
-				APP_JUMB(intVal(node));
-			}
+			APP_JUMB(intVal(node));
 			break;
 		case T_TableValueExpr:
 			{

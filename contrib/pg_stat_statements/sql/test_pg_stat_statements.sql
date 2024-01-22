@@ -16,9 +16,13 @@ SELECT pg_stat_statements_reset();
 SELECT GROUPING (a) FROM t GROUP BY ROLLUP(a, b);
 -- launch not equivalent query
 SELECT GROUPING (b) FROM t GROUP BY ROLLUP(a, b);
+-- check group_id() in a query
+SELECT group_id() FROM t GROUP BY ROLLUP(a, b);
 
 -- check that 2 queries have separate entries
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
+
+SELECT pg_stat_statements_reset();
 
 -- check that different grouping options result in separate entries
 SELECT COUNT (*) FROM t GROUP BY ROLLUP(a, b);
@@ -37,9 +41,6 @@ SELECT COUNT (*) FROM t GROUP BY ROLLUP(a, b);
 SELECT COUNT (*) FROM t GROUP BY ROLLUP(b);
 
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
-
--- check group_id() in query
-SELECT group_id() AS c FROM t GROUP BY GROUPING SETS ((a), (a,b));
 
 --- check anytable parameter for a function
 SELECT pg_stat_statements_reset();
