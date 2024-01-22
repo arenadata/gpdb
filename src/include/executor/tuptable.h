@@ -119,7 +119,6 @@
 #define         TTS_SHOULDFREE 	2
 #define         TTS_SHOULDFREE_MEM 	4	/* should pfree tts_memtuple? */
 #define         TTS_VIRTUAL     8
-#define         TTS_APPEND_OPTIMIZED 16
 
 typedef struct TupleTableSlot
 {
