@@ -143,7 +143,7 @@ ALTER TABLE ALL IN TABLESPACE testspace_renamed SET TABLESPACE pg_default;
 DROP TABLESPACE testspace_renamed;
 
 -- create a new tablespace and check that within this tablespace,
--- after dropping the AO table, size of all deleted (but possibly still opened) files is 0
+-- after dropping the AO table, size of all deleted (but still opened) files is 0
 CREATE TABLESPACE testspace LOCATION '@testtablespace@';
 create table t(b int) with (appendonly = true) TABLESPACE testspace;
 insert into t select generate_series(1,10000000);

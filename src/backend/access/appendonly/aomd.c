@@ -36,8 +36,8 @@
 #include "cdb/cdbappendonlystorage.h"
 #include "cdb/cdbappendonlyxlog.h"
 #include "common/relpath.h"
-#include "utils/guc.h"
 #include "storage/md.h"
+#include "utils/guc.h"
 
 #define SEGNO_SUFFIX_LENGTH 12
 
