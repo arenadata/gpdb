@@ -731,6 +731,10 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	if (oldnbatch > Min(INT_MAX / 2, MaxAllocSize / (sizeof(void *) * 2)))
 		return;
 
+	/* avoid repalloc_huge overflow on 32 bit systems */
+	if (stats && oldnbatch > MaxAllocHugeSize / (sizeof(HashJoinBatchStats) * 2))
+		return;
+
 	/* A reusable hash table can only respill during first pass */
 	AssertImply(hashtable->hjstate->reuse_hashtable, hashtable->first_pass);
 
