@@ -594,11 +594,11 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 	{
 		attnum = specialAttNum(colname);
 
-		if (relstorage_is_ao(get_rel_relstorage(rte->relid)) &&
-			(attnum == MinTransactionIdAttributeNumber ||
+		if ((attnum == MinTransactionIdAttributeNumber ||
 			 attnum == MinCommandIdAttributeNumber ||
 			 attnum == MaxTransactionIdAttributeNumber ||
-			 attnum == MaxCommandIdAttributeNumber))
+			 attnum == MaxCommandIdAttributeNumber) &&
+			relstorage_is_ao(get_rel_relstorage(rte->relid)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -607,14 +607,12 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 					 parser_errposition(pstate, location)));
 		}
 
-		/*
-		 * In GPDB, system columns like gp_segment_id, ctid, xmin/xmax seem to
-		 * be ambiguous for replicated table, replica in each segment has
-		 * different value of those columns, between sessions, different
-		 * replicas are choosen to provide data, so it's weird for users to
-		 * see different system columns between sessions. So for replicated
-		 * table, we don't expose system columns unless it's GP_ROLE_UTILITY
-		 * for debug purpose.
+		/* In GPDB, system columns like gp_segment_id, ctid, xmin/xmax seem to be
+		 * ambiguous for replicated table, replica in each segment has different
+		 * value of those columns, between sessions, different replicas are choosen
+		 * to provide data, so it's weird for users to see different system columns
+		 * between sessions. So for replicated table, we don't expose system columns
+		 * unless it's GP_ROLE_UTILITY for debug purpose.
 		 */
 		if (GpPolicyIsReplicated(GpPolicyFetch(rte->relid)) &&
 			Gp_role != GP_ROLE_UTILITY)
