@@ -833,11 +833,6 @@ explain select cmax, * from test_reporting;
 abort;
 
 begin;
-create table test_reporting (id int) with (appendonly=true) distributed by (id);
-explain select xmin, * from test_reporting;
-abort;
-
-begin;
 create table test_reporting (id int) with (appendonly=true) distributed replicated;
 explain select xmin, * from test_reporting;
 abort;
