@@ -592,6 +592,12 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 	 */
 	if (rte->rtekind == RTE_RELATION)
 	{
+		/* AO tables by nature do not have special system columns like 
+		 * xmin, cmax, cmin, cmax. Here we can check for that columns access
+		 * and provide meaningfull message to the user.
+		 * We want to do this before check for replicated tables, so 
+		 * replicated AO tables also covered with this logic.
+		 */
 		attnum = specialAttNum(colname);
 
 		if ((attnum == MinTransactionIdAttributeNumber ||
