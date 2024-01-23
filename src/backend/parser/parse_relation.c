@@ -598,6 +598,8 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		 * We want to do this before check for replicated tables, so 
 		 * replicated AO tables also covered with this logic.
 		 */
+
+		/* quick check to see if name could be a system column */
 		attnum = specialAttNum(colname);
 
 		if ((attnum == MinTransactionIdAttributeNumber ||
@@ -623,8 +625,6 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 		if (GpPolicyIsReplicated(GpPolicyFetch(rte->relid)) &&
 			Gp_role != GP_ROLE_UTILITY)
 			return result;
-
-		/* quick check to see if name could be a system column */
 
 		/* In constraint check, no system column is allowed except tableOid */
 		/*
