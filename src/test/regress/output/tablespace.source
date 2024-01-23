@@ -252,9 +252,14 @@ NOTICE:  no matching relations in tablespace "testspace_renamed" found
 -- Should succeed
 DROP TABLESPACE testspace_renamed;
 -- create a new tablespace and check that within this tablespace,
--- after dropping the AO table, size of all deleted (but still opened) files is 0
+-- after dropping the AO table (both row and column oriented), size of all deleted (but still opened) files is 0
 CREATE TABLESPACE testspace LOCATION '@testtablespace@';
-create table t(b int) with (appendonly = true) TABLESPACE testspace;
+create table t(b int) with (appendoptimized = true, orientation=row) TABLESPACE testspace;
+insert into t select generate_series(1,10000000);
+drop table t;
+\! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
+size: 0
+create table t(b int) with (appendoptimized = true, orientation=column) TABLESPACE testspace;
 insert into t select generate_series(1,10000000);
 drop table t;
 \! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
