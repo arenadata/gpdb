@@ -25,7 +25,7 @@ SELECT group_id() FROM t GROUP BY ROLLUP(a, b);
 ----------
 (0 rows)
 
--- check that 2 queries have separate entries
+-- check that queries have separate entries
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
                        query                       | calls 
 ---------------------------------------------------+-------

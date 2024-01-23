@@ -19,7 +19,7 @@ SELECT GROUPING (b) FROM t GROUP BY ROLLUP(a, b);
 -- check group_id() in a query
 SELECT group_id() FROM t GROUP BY ROLLUP(a, b);
 
--- check that 2 queries have separate entries
+-- check that queries have separate entries
 SELECT query, calls FROM pg_stat_statements ORDER BY query;
 
 SELECT pg_stat_statements_reset();
