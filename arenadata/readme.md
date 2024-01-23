@@ -92,7 +92,7 @@ bash arenadata/scripts/run_behave_tests.bash gpstart gpstop
 Tests use `allure-behave` package and store allure output files in `allure-results` folder
 **NOTE** that `allure-behave` has too old a version because it is compatible with `python2`.
 Also, the allure report for each failed test has gpdb logs attached files. See `gpMgmt/test/behave_utils/arenadata/formatter.py`
-It required to add `gpMgmt/tests` directory to `PYTHONPATH`.
+It required to add `gpMgmt/test` directory to `PYTHONPATH`.
 
 Greenplum cluster in Docker containers has its own peculiarities in preparing a cluster for tests.
 All tests are run in one way or another on the demo cluster, wherever possible.
