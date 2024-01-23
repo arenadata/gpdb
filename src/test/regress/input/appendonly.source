@@ -837,3 +837,28 @@ begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
 select cmax, * from test_reporting;
 abort;
+
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+select xmin, * from test_reporting;
+abort;
+
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed replicated;
+explain select xmin, * from test_reporting;
+abort;
+
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed replicated;
+select xmax, * from test_reporting;
+abort;
+
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed replicated;
+select cmin, * from test_reporting;
+abort;
+
+begin;
+create table test_reporting (id int) with (appendonly=true) distributed replicated;
+select cmax, * from test_reporting;
+abort;

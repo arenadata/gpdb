@@ -592,19 +592,35 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 	 */
 	if (rte->rtekind == RTE_RELATION)
 	{
-		/* In GPDB, system columns like gp_segment_id, ctid, xmin/xmax seem to be
-		 * ambiguous for replicated table, replica in each segment has different
-		 * value of those columns, between sessions, different replicas are choosen
-		 * to provide data, so it's weird for users to see different system columns
-		 * between sessions. So for replicated table, we don't expose system columns
-		 * unless it's GP_ROLE_UTILITY for debug purpose.
+		attnum = specialAttNum(colname);
+
+		if (relstorage_is_ao(get_rel_relstorage(rte->relid)) &&
+			(attnum == MinTransactionIdAttributeNumber ||
+			 attnum == MinCommandIdAttributeNumber ||
+			 attnum == MaxTransactionIdAttributeNumber ||
+			 attnum == MaxCommandIdAttributeNumber))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("AO-table has no \"%s\" column",
+							colname),
+					 parser_errposition(pstate, location)));
+		}
+
+		/*
+		 * In GPDB, system columns like gp_segment_id, ctid, xmin/xmax seem to
+		 * be ambiguous for replicated table, replica in each segment has
+		 * different value of those columns, between sessions, different
+		 * replicas are choosen to provide data, so it's weird for users to
+		 * see different system columns between sessions. So for replicated
+		 * table, we don't expose system columns unless it's GP_ROLE_UTILITY
+		 * for debug purpose.
 		 */
 		if (GpPolicyIsReplicated(GpPolicyFetch(rte->relid)) &&
 			Gp_role != GP_ROLE_UTILITY)
 			return result;
 
 		/* quick check to see if name could be a system column */
-		attnum = specialAttNum(colname);
 
 		/* In constraint check, no system column is allowed except tableOid */
 		/*
