@@ -775,13 +775,12 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 		Size		sz = nbatch * sizeof(stats->batchstats[0]);
 
 		/*
-		 * We use repalloc_huge because the condition in the beginning
-		 * assumes that oldnbatches and nbatches will be used to
-		 * index values of size 8 or less (size of void*), but the
-		 * size of HashJoinBatchStats structure is 80 bytes, so even
-		 * if we pass that check, this still might not fit in the
-		 * MaxAllocSize. The maximum amount of memory we can request
-		 * here is slightly less than 5GB, estimated for
+		 * We use repalloc_huge because the condition in the beginning assumes
+		 * that oldnbatches and nbatches will be used to index values of size 8
+		 * or less (size of void*), but the size of HashJoinBatchStats
+		 * structure is 80 bytes, so even if we pass that check, this still
+		 * might not fit in the MaxAllocSize. The maximum amount of memory we
+		 * can request here is slightly less than 5GB, estimated for
 		 * MaxAllocSize = 1GB.
 		 */
 		stats->batchstats =
