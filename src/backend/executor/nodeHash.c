@@ -781,7 +781,8 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 		 * size of HashJoinBatchStats structure is 80 bytes, so even
 		 * if we pass that check, this still might not fit in the
 		 * MaxAllocSize. The maximum amount of memory we can request
-		 * here is ~10GB.
+		 * here is slightly less than 5GB, estimated for
+		 * MaxAllocSize = 1GB.
 		 */
 		stats->batchstats =
 			(HashJoinBatchStats *) repalloc_huge(stats->batchstats, sz);
