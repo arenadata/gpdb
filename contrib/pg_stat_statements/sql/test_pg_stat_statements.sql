@@ -9,7 +9,7 @@ CREATE TABLE t(a int, b text) DISTRIBUTED BY (a);
 
 -- Known issue: query is not added to pg_stat_statements statistics in
 -- case it is planned by GPORCA. So disable GPORCA during tests.
-SET optimizer='off';
+SET optimizer=off;
 
 SELECT pg_stat_statements_reset();
 
