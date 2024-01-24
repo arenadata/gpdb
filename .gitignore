@@ -65,5 +65,3 @@ compile_commands.json
 /Debug/
 /Release/
 /CMakeLists.txt
-*.BAK
-gpMgmt/bin/
