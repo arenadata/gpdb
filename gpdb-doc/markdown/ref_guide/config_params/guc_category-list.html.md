@@ -340,6 +340,7 @@ These configuration parameters set defaults that are used for client connections
 - [search_path](guc-list.html#search_path)
 - [statement_timeout](guc-list.html#statement_timeout)
 - [temp_tablespaces](guc-list.html#temp_tablespaces)
+- [temp_file_tablespaces](guc-list.html#temp_file_tablespaces)
 - [vacuum_freeze_min_age](guc-list.html#vacuum_freeze_min_age)
 
 ### <a id="topic41"></a>Locale and Formatting Parameters 
