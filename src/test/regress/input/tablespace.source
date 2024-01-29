@@ -142,17 +142,26 @@ ALTER TABLE ALL IN TABLESPACE testspace_renamed SET TABLESPACE pg_default;
 -- Should succeed
 DROP TABLESPACE testspace_renamed;
 
--- create a new tablespace and check that within this tablespace,
--- after dropping the AO table (both row and column oriented), size of all deleted (but still opened) files is 0
+-- Create a new tablespace and check that within this tablespace,
+-- after dropping the table, the size of all deleted (but still opened) files is 0.
 CREATE TABLESPACE testspace LOCATION '@testtablespace@';
+DROP TABLE IF EXISTS t;
 
-CREATE TABLE t(b int) WITH (appendoptimized = true, orientation=row) TABLESPACE testspace;
-INSERT INTO t SELECT generate_series(1,1000);
+-- Checking that the AO row-oriented table doesn't leave non-zero files.
+CREATE TABLE t(a int, b int) WITH (appendoptimized = true, orientation=row) TABLESPACE testspace;
+INSERT INTO t SELECT i, i FROM generate_series(1,1000) i;
 DROP TABLE t;
 \! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
 
-CREATE TABLE t(b int) WITH (appendoptimized = true, orientation=column) TABLESPACE testspace;
-INSERT INTO t SELECT generate_series(1,1000);
+-- Checking that the AO column-oriented table doesn't leave non-zero files.
+CREATE TABLE t(a int, b int) WITH (appendoptimized = true, orientation=column) TABLESPACE testspace;
+INSERT INTO t SELECT i, i FROM generate_series(1,1000) i;
+DROP TABLE t;
+\! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
+
+-- Checking that the temp heap table doesn't leave non-zero files.
+CREATE TEMP TABLE t(a int, b int) TABLESPACE testspace;
+INSERT INTO t SELECT i, i FROM generate_series(1,20000000) i;
 DROP TABLE t;
 \! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
 

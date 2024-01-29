@@ -514,16 +514,12 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	/*
 	 * Delete or truncate the first segment.
 	 */
+
+	/* Prevent other backends' fds from holding on to the disk space */
+	ret = do_truncate(path);
+
 	if (isRedo || forkNum != MAIN_FORKNUM || RelFileNodeBackendIsTemp(rnode))
 	{
-		if (!RelFileNodeBackendIsTemp(rnode))
-		{
-			/* Prevent other backends' fds from holding on to the disk space */
-			ret = do_truncate(path);
-		}
-		else
-			ret = 0;
-
 		/* Next unlink the file, unless it was already found to be missing */
 		if (ret == 0 || errno != ENOENT)
 		{
@@ -536,9 +532,6 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	}
 	else
 	{
-		/* Prevent other backends' fds from holding on to the disk space */
-		ret = do_truncate(path);
-
 		/* Register request to unlink first segment later */
 		register_unlink(rnode);
 	}
