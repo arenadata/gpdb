@@ -4010,9 +4010,25 @@ ProcessInterrupts(const char* filename, int lineno)
 						(errcode(ERRCODE_GP_OPERATION_CANCELED),
 						 errmsg("canceling MPP operation%s", cancel_msg_str.data)));
 			else
-				ereport(ERROR,
-						(errcode(ERRCODE_QUERY_CANCELED),
-						 errmsg("canceling statement due to user request%s", cancel_msg_str.data)));
+			{
+				char		msec_str[32];
+
+				switch (check_log_duration(msec_str, false))
+				{
+					case 0:
+						ereport(ERROR,
+								(errcode(ERRCODE_QUERY_CANCELED),
+										errmsg("canceling statement due to user request%s", cancel_msg_str.data)));
+						break;
+					case 1:
+					case 2:
+						ereport(ERROR,
+								(errcode(ERRCODE_QUERY_CANCELED),
+										errmsg("canceling statement due to user request%s, duration:%s",
+											   cancel_msg_str.data, msec_str)));
+						break;
+				}
+			}
 		}
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
@@ -5492,6 +5508,7 @@ PostgresMain(int argc, char *argv[],
 
 					SetUserIdAndSecContext(GetOuterUserId(), 0);
 
+					SIMPLE_FAULT_INJECTOR("qe_exec_finished");
 					send_ready_for_query = true;
 				}
 				break;

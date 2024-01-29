@@ -29,6 +29,13 @@ Feature: gpperfmon
         Given the database "gpperfmon" does not exist
         Then gpperfmon is configured and running in qamode
 
+    @gpperfmon_query_now
+    Scenario: get info about current queries
+        Given gpperfmon is configured and running in qamode
+        Then run query for 20 seconds
+        And wait until the results from boolean sql "select count(*) > 0 from queries_now" is "true"
+        And wait until the results from boolean sql "select count(*) > 0 from queries_now_fast" is "true"
+
     @gpperfmon_database_history
     Scenario: gpperfmon adds to database_history table
         Given gpperfmon is configured and running in qamode
@@ -82,6 +89,17 @@ Feature: gpperfmon
         """
         Then wait until the results from boolean sql "SELECT count(*) = 0 FROM queries_history WHERE query_text like '--alter distributed by%'" is "true"
         And wait until the results from boolean sql "SELECT count(*) = 1 FROM queries_history WHERE query_text like '--end flag%'" is "true"
+
+    @gpperfmon_query_history
+    Scenario: gpperfmon does not lose the query text if its text differs from the text in pg_stat_activity
+        Given gpperfmon is configured and running in qamode
+        When the user truncates "queries_history" tables in "gpperfmon"
+        When below sql is executed in "gptest" db
+        """
+        SET log_min_messages = "debug4";
+        DO $$ BEGIN PERFORM pg_sleep(80); END$$;
+        """
+        Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text = 'SELECT pg_sleep(80)'" is "true"
 
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table

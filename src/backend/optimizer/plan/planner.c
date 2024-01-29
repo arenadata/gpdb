@@ -908,6 +908,15 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 											 list_make1_int(root->is_split_update),
 											 rowMarks,
 											 SS_assign_special_param(root));
+
+			/*
+			 * Currently, we prohibit applying volatile functions
+			 * to the result of modifying CTE with locus Replicated.
+			 */
+			if (parent_root && parent_root->parse->hasModifyingCTE &&
+				plan->flow->locustype == CdbLocusType_Replicated &&
+				contain_volatile_functions((Node *) parse->returningList))
+				elog(ERROR, "could not devise a plan");
 		}
 	}
 
@@ -921,6 +930,34 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	{
 		Assert(root->parse == parse); /* GPDB isn't always careful about this. */
 		SS_finalize_plan(root, plan, true);
+	}
+
+	/*
+	 * If plan contains volatile functions in the target list, then we need
+	 * bring it to SingleQE
+	 */
+	if (plan->flow->locustype == CdbLocusType_General &&
+		(contain_volatile_functions((Node *) plan->targetlist) ||
+		 contain_volatile_functions(parse->havingQual)))
+	{
+		plan->flow->locustype = CdbLocusType_SingleQE;
+		plan->flow->flotype = FLOW_SINGLETON;
+	}
+	else if (plan->flow->locustype == CdbLocusType_SegmentGeneral &&
+		(contain_volatile_functions((Node *) plan->targetlist) ||
+		 contain_volatile_functions(parse->havingQual)))
+	{
+		plan = (Plan *) make_motion_gather(root, plan, NIL, CdbLocusType_SingleQE);
+	}
+	else if (plan->flow->locustype == CdbLocusType_Replicated &&
+			 (contain_volatile_functions((Node *) plan->targetlist) ||
+			  contain_volatile_functions(parse->havingQual)))
+	{
+		/*
+		 * Replicated locus is not supported yet in context of volatile
+		 * functions handling.
+		 */
+		elog(ERROR, "could not devise a plan");
 	}
 
 	/* Return internal info if caller wants it */

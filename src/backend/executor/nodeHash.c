@@ -62,6 +62,8 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
                             int             ibatch_end,
                             const char     *title);
 
+static inline void ResetWorkFileSetStatsInfo(HashJoinTable hashtable);
+
 /* ----------------------------------------------------------------
  *		ExecHash
  *
@@ -339,6 +341,8 @@ ExecHashTableCreate(HashState *hashState, HashJoinState *hjstate, List *hashOper
 	hashtable->eagerlyReleased = false;
 	hashtable->hjstate = hjstate;
 	hashtable->first_pass = true;
+
+	ResetWorkFileSetStatsInfo(hashtable);
 
 	/*
 	 * Create temporary memory contexts in which to keep the hashtable working
@@ -727,6 +731,10 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	if (oldnbatch > Min(INT_MAX / 2, MaxAllocSize / (sizeof(void *) * 2)))
 		return;
 
+	/* avoid repalloc_huge overflow on 32 bit systems */
+	if (stats && oldnbatch > MaxAllocHugeSize / (sizeof(HashJoinBatchStats) * 2))
+		return;
+
 	/* A reusable hash table can only respill during first pass */
 	AssertImply(hashtable->hjstate->reuse_hashtable, hashtable->first_pass);
 
@@ -766,8 +774,17 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 	{
 		Size		sz = nbatch * sizeof(stats->batchstats[0]);
 
+		/*
+		 * We use repalloc_huge because the condition in the beginning assumes
+		 * that oldnbatches and nbatches will be used to index values of size 8
+		 * or less (size of void*), but the size of HashJoinBatchStats
+		 * structure is 80 bytes, so even if we pass that check, this still
+		 * might not fit in the MaxAllocSize. The maximum amount of memory we
+		 * can request here is slightly less than 5GB, estimated for
+		 * MaxAllocSize = 1GB.
+		 */
 		stats->batchstats =
-			(HashJoinBatchStats *) repalloc(stats->batchstats, sz);
+			(HashJoinBatchStats *) repalloc_huge(stats->batchstats, sz);
 		sz = (nbatch - stats->nbatchstats) * sizeof(stats->batchstats[0]);
 		memset(stats->batchstats + stats->nbatchstats, 0, sz);
 		stats->nbatchstats = nbatch;
@@ -1502,6 +1519,16 @@ ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf)
 				hashtable->nbatch_outstart,
 				hashtable->nbatch,
 				"Secondary Overflow");
+
+		appendStringInfo(buf,
+						 "Work file set: %u files (%u compressed), "
+						 "avg file size %lu, "
+						 "compression buffer size %lu bytes \n",
+						 hashtable->workset_num_files,
+						 hashtable->workset_num_files_compressed,
+						 hashtable->workset_avg_file_size,
+						 hashtable->workset_compression_buf_total);
+		ResetWorkFileSetStatsInfo(hashtable);
     }
 
     /* Report hash chain statistics. */
@@ -2098,4 +2125,12 @@ ExecHashRemoveNextSkewBucket(HashState *hashState, HashJoinTable hashtable)
 		hashtable->spaceUsed -= hashtable->spaceUsedSkew;
 		hashtable->spaceUsedSkew = 0;
 	}
+}
+
+static inline void ResetWorkFileSetStatsInfo(HashJoinTable hashtable)
+{
+	hashtable->workset_num_files = 0;
+	hashtable->workset_num_files_compressed = 0;
+	hashtable->workset_avg_file_size = 0;
+	hashtable->workset_compression_buf_total = 0;
 }
