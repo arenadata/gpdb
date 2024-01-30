@@ -1240,7 +1240,7 @@ done:
 	 * Restore previous ModifyTable state, in case this wasn't the first
 	 * one.
 	 */
-	if(IsA(node, ModifyTable))
+	if (IsA(node, ModifyTable))
 		context->mt = save_mt;
 
 	return newnode;
