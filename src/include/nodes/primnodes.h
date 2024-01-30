@@ -154,8 +154,8 @@ typedef struct Expr
  * subplans; for example, in a join node varno becomes INNER_VAR or OUTER_VAR
  * and varattno becomes the index of the proper element of that subplan's
  * target list.  But varnoold/varoattno continue to hold the original values.
- * The code doesn't really need varnoold/varoattno, but they are very useful
- * for debugging and interpreting completed plans, so we keep them around.
+ * They are very useful for debugging and interpreting completed plans, so we
+ * keep them around.
  */
 #define    INNER_VAR		65000		/* reference to inner subplan */
 #define    OUTER_VAR		65001		/* reference to outer subplan */
@@ -180,7 +180,7 @@ typedef struct Var
 	Index		varlevelsup;	/* for subquery variables referencing outer
 								 * relations; 0 in a normal var, >0 means N
 								 * levels up */
-	Index		varnoold;		/* original value of varno, for debugging */
+	Index		varnoold;		/* original value of varno */
 	AttrNumber	varoattno;		/* original value of varattno */
 	int			location;		/* token location, or -1 if unknown */
 } Var;
