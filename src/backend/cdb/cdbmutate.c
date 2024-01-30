@@ -900,9 +900,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 					ListCell   *mt_lcm;
 
 					TargetEntry *target_tle = (TargetEntry *) lfirst(target_lcr);
-					Oid			expr_relid = InvalidOid;
-
-					expr_relid = get_relid_from_expr(target_tle->expr, rtable);
+					Oid			expr_relid = get_relid_from_expr(target_tle->expr, rtable);
 
 					if (!OidIsValid(expr_relid))
 						continue;
@@ -1131,7 +1129,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				ListCell   *target_lcr;
 
 				bool finished = false;
-				bool need_motion = true;
+				bool need_motion = false;
 				List *rtable = root->glob->finalrtable;
 
 				/*
@@ -1153,11 +1151,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 					expr_relid = get_relid_from_expr(target_tle->expr, rtable);
 
 					if (!OidIsValid(expr_relid))
-					{
-						/* Unknown relation ID, expect Explicit Motion */
-						need_motion = true;
 						continue;
-					}
 
 					forboth(mt_lcr, context->mt.resultRelids, mt_lcm, context->mt.needExplicitMotion)
 					{
