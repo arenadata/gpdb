@@ -67,7 +67,8 @@
 
 typedef struct ModifyTableMotionState
 {
-	Bitmapset  *resultReloids; 			/* Oids of relations to be modified */
+	Bitmapset  *resultRtis; 			/* Indexes into rtable for relations to
+										 * be modified */
 	bool		needExplicitMotion;
 	int			nMotionsAbove;			/* Number of Redistribute/Broadcast
 										 * motions above the current node */
@@ -419,7 +420,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
 
-	state.mt.resultReloids = NULL;
+	state.mt.resultRtis = NULL;
 	state.mt.needExplicitMotion = false;
 	state.mt.nMotionsAbove = 0;
 	state.mt.isChecking = false;
@@ -826,7 +827,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * Sanity check, since we don't allow multiple ModifyTable nodes
 			 * in the same plan.
 			 */
-			Assert(context->mt.resultReloids == NULL);
+			Assert(context->mt.resultRtis == NULL);
 			Assert(context->mt.nMotionsAbove == 0);
 			Assert(!context->mt.needExplicitMotion);
 			Assert(!context->mt.isChecking);
@@ -836,16 +837,15 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * is a part of inheritance tree, ModifyTable node will have more
 			 * than one relation in resultRelations.
 			 *
-			 * We make a list of resulting relations' Oids to compare them
+			 * We make a list of resulting relations' indexes to compare them
 			 * later.
 			 */
 			foreach(lcr, mt->resultRelations)
 			{
 				Index		rti = lfirst_int(lcr);
-				Oid 		relid = getrelid(rti, root->glob->finalrtable);
 
-				context->mt.resultReloids = bms_add_member(context->mt.resultReloids,
-														   relid);
+				context->mt.resultRtis = bms_add_member(context->mt.resultRtis,
+														rti);
 			}
 
 			context->mt.isChecking = true;
@@ -902,10 +902,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_ForeignScan:
 					{
 						Scan	   *scan = (Scan *) node;
-						List	   *rtable = root->glob->finalrtable;
-						Oid			scan_reloid = getrelid(scan->scanrelid, rtable);
 
-						if (bms_is_member(scan_reloid, context->mt.resultReloids))
+						if (bms_is_member(scan->scanrelid, context->mt.resultRtis))
 						{
 							/*
 							 * We need Explicit Redistribute Motion only if
