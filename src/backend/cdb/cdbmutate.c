@@ -71,10 +71,9 @@ typedef struct ModifyTableMotionState
 	bool		needExplicitMotion;
 	int			nMotionsAbove;			/* Number of Redistribute/Broadcast
 										 * motions above the current node */
-	bool		isChecking;				/* True if we are currently checking
-										 * the plan for motions */
-	bool 		isEnabled;				/* True if we encountered ModifyTable
-										 * node with UPDATE/DELETE */
+	bool		isChecking;				/* True if we encountered ModifyTable
+										 * node with UPDATE/DELETE and we plan
+										 * to insert Explicit Motions */
 } ModifyTableMotionState;
 
 /*
@@ -423,7 +422,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.mt.resultReloids = NULL;
 	state.mt.needExplicitMotion = false;
 	state.mt.nMotionsAbove = 0;
-	state.mt.isEnabled = false;
 	state.mt.isChecking = false;
 
 	memset(&ctl, 0, sizeof(ctl));
@@ -830,7 +828,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 */
 			Assert(context->mt.resultReloids == NULL);
 			Assert(context->mt.nMotionsAbove == 0);
-			Assert(!context->mt.isEnabled);
 			Assert(!context->mt.needExplicitMotion);
 
 			/*
@@ -850,7 +847,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 														   relid);
 			}
 
-			context->mt.isEnabled = true;
 			context->mt.isChecking = true;
 		}
 	}
@@ -1152,7 +1148,7 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
-	if (context->mt.isEnabled && IsA(node, Motion))
+	if (context->mt.isChecking && IsA(node, Motion))
 	{
 		Motion	   *motion = (Motion *) node;
 
