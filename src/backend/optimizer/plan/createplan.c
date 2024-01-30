@@ -6499,12 +6499,12 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 		 */
 		if (IsA(plan, Motion))
 		{
-			Motion *motion = (Motion *) plan;
+			Motion	   *motion = (Motion *) plan;
 
 			if ((motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast) ||
 				motion->motionType == MOTIONTYPE_HASH)
 			{
-				ListCell *lcr;
+				ListCell   *lcr;
 
 				foreach(lcr, plan->targetlist)
 				{
@@ -6513,7 +6513,7 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 
 					if (relid_is_subclass)
 					{
-						Oid target_reltypeid = get_rel_type_id(target_rte->relid);
+						Oid			target_reltypeid = get_rel_type_id(target_rte->relid);
 
 						/*
 						 * Does relid inherit from a table in targetlist?
@@ -6521,8 +6521,10 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 						if (OidIsValid(target_reltypeid) && OidIsValid(reltypeid) &&
 							typeInheritsFrom(reltypeid, target_reltypeid))
 						{
-							/* There is a Motion on parent table before scan on
-							   the child */
+							/*
+							 * There is a Motion on parent table before scan
+							 * on the child
+							 */
 							return false;
 						}
 					}
@@ -6535,9 +6537,10 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 				}
 			}
 		}
+
 		/*
-		 * If this is a scan and it's scanrelid matches relid, we encountered a
-		 * scan before any Motions.
+		 * If this is a scan and it's scanrelid matches relid, we encountered
+		 * a scan before any Motions.
 		 */
 		else
 		{
@@ -6561,17 +6564,17 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 				case T_CteScan:
 				case T_WorkTableScan:
 				case T_ForeignScan:
-				{
-					Scan *scan = (Scan *) plan;
-					RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
-
-					if (target_rte->relid == relid)
 					{
-						/* There wasn't any Motions before scan */
-						return true;
+						Scan	   *scan = (Scan *) plan;
+						RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
+
+						if (target_rte->relid == relid)
+						{
+							/* There wasn't any Motions before scan */
+							return true;
+						}
 					}
 					break;
-				}
 				default:
 					break;
 			}
@@ -6599,13 +6602,14 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 static bool
 can_elide_explicit_motion(Plan *plan, List *rtable, Oid relid)
 {
-	bool relid_is_subclass;
-	Oid reltypeid;
+	bool		relid_is_subclass;
+	Oid			reltypeid;
 
 	/*
-	 * Even if previous Motions were performed on a leaf partition or inherited
-	 * table, targetlists from Motions refer to relids of their parents. So, if
-	 * relid has a superclass, we should check for type inheritance too.
+	 * Even if previous Motions were performed on a leaf partition or
+	 * inherited table, targetlists from Motions refer to relids of their
+	 * parents. So, if relid has a superclass, we should check for type
+	 * inheritance too.
 	 */
 	LockRelationOid(relid, AccessShareLock);
 	relid_is_subclass = has_superclass(relid);
@@ -6874,13 +6878,13 @@ adjust_modifytable_flow(PlannerInfo *root, ModifyTable *node, List *is_split_upd
 					node->oid_col_idxes = lappend_int(node->oid_col_idxes, 0);
 
 					/*
-					 * If an Explicit Motion has no Motions underneath it, then
-					 * the row to update must originate from the same segment,
-					 * and no Motion is needed.
+					 * If an Explicit Motion has no Motions underneath it,
+					 * then the row to update must originate from the same
+					 * segment, and no Motion is needed.
 					 *
-					 * We elide the motion even if there are Motions, as long as
-					 * they are not between the scan on the target table and the
-					 * ModifyTable.
+					 * We elide the motion even if there are Motions, as long
+					 * as they are not between the scan on the target table
+					 * and the ModifyTable.
 					 */
 					if (!can_elide_explicit_motion(subplan, root->parse->rtable, rte->relid))
 						request_explicit_motion(subplan, rti, root->glob->finalrtable);
