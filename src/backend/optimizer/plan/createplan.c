@@ -6490,30 +6490,30 @@ make_modifytable(PlannerInfo *root,
  */
 static bool
 can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
-								  bool relid_is_subclass, Oid reltypeid)
+								  Oid reltypeid, bool *early_exit)
 {
-	while (plan)
+	while (plan && !(*early_exit))
 	{
-		/*
-		 * If this is a Motion, check Oids from the Motion's targetlist.
-		 */
 		if (IsA(plan, Motion))
 		{
-			Motion	   *motion = (Motion *) plan;
+			Motion *motion = (Motion *) plan;
 
-			if ((motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast) ||
-				motion->motionType == MOTIONTYPE_HASH)
+			/*
+			* If this is a Broadcast Motion, check Oids from the Motion's
+			* targetlist.
+			*/
+			if (motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast)
 			{
-				ListCell   *lcr;
+				ListCell *lcr;
 
 				foreach(lcr, plan->targetlist)
 				{
 					TargetEntry *tle = (TargetEntry *) lfirst(lcr);
 					RangeTblEntry *target_rte = rt_fetch(tle->resno, rtable);
 
-					if (relid_is_subclass)
+					if (OidIsValid(reltypeid))
 					{
-						Oid			target_reltypeid = get_rel_type_id(target_rte->relid);
+						Oid target_reltypeid = get_rel_type_id(target_rte->relid);
 
 						/*
 						 * Does relid inherit from a table in targetlist?
@@ -6536,8 +6536,62 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 					}
 				}
 			}
-		}
+			/*
+			 * If this is a Redistribute Motion, get relation ID from Motion's
+			 * hashExprs. We can only get relation ID out of Var nodes, so we
+			 * bail out early when we encounter any other expression node.
+			 */
+			else if (motion->motionType == MOTIONTYPE_HASH)
+			{
+				ListCell *lcr;
 
+				foreach(lcr, motion->hashExprs)
+				{
+					Node *expr = (Node *) lfirst(lcr);
+					Oid expr_relid = InvalidOid;
+
+					if (IsA(expr, Var))
+					{
+						Var *var = (Var *) expr;
+						RangeTblEntry *rte = rt_fetch(var->varno, rtable);
+						expr_relid = rte->relid;
+					}
+					else
+					{
+						/*
+						 * We cant't get relation ID here. Bail out before we
+						 * hit a scan.
+						 */
+						*early_exit = true;
+						return false;
+					}
+
+					if (OidIsValid(reltypeid))
+					{
+						Oid expr_reltypeid = get_rel_type_id(expr_relid);
+
+						/*
+						 * Does relid inherit from this table?
+						 */
+						if (OidIsValid(expr_reltypeid) && OidIsValid(reltypeid) &&
+							typeInheritsFrom(reltypeid, expr_reltypeid))
+						{
+							/*
+							 * There is a Motion on parent table before scan
+							 * on the child
+							 */
+							return false;
+						}
+					}
+
+					if (relid == expr_relid)
+					{
+						/* There is a Motion before scan */
+						return false;
+					}
+				}
+			}
+		}
 		/*
 		 * If this is a scan and it's scanrelid matches relid, we encountered
 		 * a scan before any Motions.
@@ -6565,7 +6619,7 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 				case T_WorkTableScan:
 				case T_ForeignScan:
 					{
-						Scan	   *scan = (Scan *) plan;
+						Scan *scan = (Scan *) plan;
 						RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
 
 						if (target_rte->relid == relid)
@@ -6585,7 +6639,7 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 		 */
 		if (plan->righttree &&
 			can_elide_explicit_motion_recurse(plan->righttree, rtable, relid,
-											  relid_is_subclass, reltypeid))
+											  reltypeid, early_exit))
 			return true;
 
 		plan = plan->lefttree;
@@ -6602,8 +6656,10 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 static bool
 can_elide_explicit_motion(Plan *plan, List *rtable, Oid relid)
 {
-	bool		relid_is_subclass;
-	Oid			reltypeid;
+	bool relid_is_subclass;
+	Oid reltypeid;
+
+	bool early_exit = false;
 
 	/*
 	 * Even if previous Motions were performed on a leaf partition or
@@ -6617,8 +6673,8 @@ can_elide_explicit_motion(Plan *plan, List *rtable, Oid relid)
 
 	reltypeid = relid_is_subclass ? get_rel_type_id(relid) : InvalidOid;
 
-	return can_elide_explicit_motion_recurse(plan, rtable, relid,
-											 relid_is_subclass, reltypeid);
+	return can_elide_explicit_motion_recurse(plan, rtable, relid, reltypeid,
+											 &early_exit);
 }
 
 /*
