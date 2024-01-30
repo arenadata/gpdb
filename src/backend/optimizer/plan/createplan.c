@@ -6518,16 +6518,20 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 						/*
 						 * Does relid inherit from a table in targetlist?
 						 */
-						if (target_reltypeid != InvalidOid && reltypeid != InvalidOid &&
+						if (OidIsValid(target_reltypeid) && OidIsValid(reltypeid) &&
 							typeInheritsFrom(reltypeid, target_reltypeid))
+						{
 							/* There is a Motion on parent table before scan on
 							   the child */
 							return false;
+						}
 					}
 
 					if (target_rte->relid == relid)
+					{
 						/* There is a Motion before scan */
 						return false;
+					}
 				}
 			}
 		}
@@ -6548,14 +6552,26 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 				case T_BitmapIndexScan:
 				case T_DynamicBitmapIndexScan:
 				case T_BitmapHeapScan:
-				case T_DynamicBitmapHeapScan: {
+				case T_DynamicBitmapHeapScan:
+				case T_TidScan:
+				case T_SubqueryScan:
+				case T_FunctionScan:
+				case T_TableFunctionScan:
+				case T_ValuesScan:
+				case T_CteScan:
+				case T_WorkTableScan:
+				case T_ForeignScan:
+				{
 					Scan *scan = (Scan *) plan;
 					RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
 
 					if (target_rte->relid == relid)
+					{
 						/* There wasn't any Motions before scan */
 						return true;
-				} break;
+					}
+					break;
+				}
 				default:
 					break;
 			}
