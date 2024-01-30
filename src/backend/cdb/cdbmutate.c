@@ -773,9 +773,15 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	/* An expression node might have subtrees containing plans to be mutated. */
 	if (!is_plan_node(node))
 	{
+		/*
+		 * mt.isChecking is true whether we are checking for motions underneath
+		 * to add Explicit Reditribute Motion, ignoring any in InitPlans. So if
+		 * we recurse into an InitPlan, save it and temporarily set it to false.
+		 */
 		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
 		{
 			bool		found;
+			bool		saveMtIsChecking = context->mt.isChecking;
 			int			saveSliceDepth = context->sliceDepth;
 			SubPlan		*subplan = (SubPlan *) node;
 			/*
@@ -790,8 +796,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 			/* reset sliceDepth for each init plan */
 			context->sliceDepth = 0;
+			context->mt.isChecking = false;
 			node = plan_tree_mutator(node, apply_motion_mutator, context);
 
+			context->mt.isChecking = saveMtIsChecking;
 			context->sliceDepth = saveSliceDepth;
 
 			return node;
