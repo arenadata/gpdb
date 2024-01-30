@@ -2278,9 +2278,8 @@ WITH cte AS (
   2 |  0
 (1 row)
 
--- Test cross slice Shared Scan with reader in slice 0. In this case we should send
--- a notification about the completion of the reading by Shared Scan consumer
--- before we receive the result of the query otherwise we can get deadlock.
+-- Test cross slice Shared Scan with consumer in slice 0.
+-- The consumer should be in slice 0
 EXPLAIN (COSTS OFF) WITH cte AS (
 	SELECT c1 FROM d LIMIT 2
 )
@@ -2310,6 +2309,7 @@ SELECT * FROM cte a JOIN (SELECT * FROM d JOIN cte USING (c1) LIMIT 1) b USING (
  Optimizer: Postgres query optimizer
 (21 rows)
 
+-- Deadlock shouldn't happen
 WITH cte AS (
 	SELECT c1 FROM d LIMIT 2
 )
