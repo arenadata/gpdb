@@ -82,8 +82,8 @@ NOTICE:  merging column "a" with inherited definition
 NOTICE:  merging column "b" with inherited definition
 insert into base_tbl select g, g from generate_series(1, 5) g;
 explain (costs off) update base_tbl set a=a+1;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Update on base_tbl
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Hash Key: ((base_tbl.a + 1))
@@ -93,10 +93,9 @@ explain (costs off) update base_tbl set a=a+1;
          Hash Key: ((child_a.a + 1))
          ->  Split
                ->  Seq Scan on child_a
-   ->  Explicit Redistribute Motion 3:3  (slice3; segments: 3)
-         ->  Seq Scan on child_b
+   ->  Seq Scan on child_b
  Optimizer: Postgres query optimizer
-(12 rows)
+(11 rows)
 
 update base_tbl set a = 5;
 --
@@ -623,26 +622,24 @@ insert into t2_13265 values (2, null, 2, 2);
 explain (verbose, costs off)
 update t1_13265 set b = 2 where
 (c, d) not in (select c, d from t2_13265 where a = 2);
-                                                    QUERY PLAN                                                     
--------------------------------------------------------------------------------------------------------------------
+                                                 QUERY PLAN                                                  
+-------------------------------------------------------------------------------------------------------------
  Update on public.t1_13265
-   ->  Explicit Redistribute Motion 3:3  (slice2; segments: 3)
+   ->  Nested Loop Left Anti Semi (Not-In) Join
          Output: t1_13265.a, 2, t1_13265.c, t1_13265.d, t1_13265.ctid, t1_13265.gp_segment_id, t2_13265.ctid
-         ->  Nested Loop Left Anti Semi (Not-In) Join
-               Output: t1_13265.a, 2, t1_13265.c, t1_13265.d, t1_13265.ctid, t1_13265.gp_segment_id, t2_13265.ctid
-               Join Filter: ((t1_13265.c = t2_13265.c) AND (t1_13265.d = t2_13265.d))
-               ->  Seq Scan on public.t1_13265
-                     Output: t1_13265.a, t1_13265.c, t1_13265.d, t1_13265.ctid, t1_13265.gp_segment_id
-               ->  Materialize
+         Join Filter: ((t1_13265.c = t2_13265.c) AND (t1_13265.d = t2_13265.d))
+         ->  Seq Scan on public.t1_13265
+               Output: t1_13265.a, t1_13265.c, t1_13265.d, t1_13265.ctid, t1_13265.gp_segment_id
+         ->  Materialize
+               Output: t2_13265.ctid, t2_13265.c, t2_13265.d, (2)
+               ->  Broadcast Motion 1:3  (slice1; segments: 1)
                      Output: t2_13265.ctid, t2_13265.c, t2_13265.d, (2)
-                     ->  Broadcast Motion 3:3  (slice1; segments: 3)
-                           Output: t2_13265.ctid, t2_13265.c, t2_13265.d, (2)
-                           ->  Seq Scan on public.t2_13265
-                                 Output: t2_13265.ctid, t2_13265.c, t2_13265.d, 2
-                                 Filter: (t2_13265.a = 2)
+                     ->  Seq Scan on public.t2_13265
+                           Output: t2_13265.ctid, t2_13265.c, t2_13265.d, 2
+                           Filter: (t2_13265.a = 2)
  Optimizer: Postgres query optimizer
  Settings: optimizer=off
-(17 rows)
+(15 rows)
 
 update t1_13265 set b = 2 where
 (c, d) not in (select c, d from t2_13265 where a = 2);
@@ -678,43 +675,39 @@ insert into from_table select i*1.5,i*2,i*3,'xx'||i,'yy'||i, i+1 from generate_s
 explain (costs off)
 update into_table set d=from_table.d, e=from_table.e, f=from_table.f from from_table
 where into_table.a=from_table.a and into_table.b=from_table.b and into_table.c=from_table.c;
-                                                                      QUERY PLAN                                                                      
-------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
  Update on into_table_1_prt_1
-   ->  Explicit Redistribute Motion 3:3  (slice2; segments: 3)
-         ->  Hash Join
-               Hash Cond: ((into_table_1_prt_1.a = from_table.a) AND (into_table_1_prt_1.b = from_table.b) AND (into_table_1_prt_1.c = from_table.c))
-               ->  Seq Scan on into_table_1_prt_1
-               ->  Hash
-                     ->  Redistribute Motion 3:3  (slice1; segments: 3)
-                           Hash Key: from_table.a, from_table.b, from_table.c
-                           ->  Seq Scan on from_table
-   ->  Explicit Redistribute Motion 3:3  (slice4; segments: 3)
-         ->  Hash Join
-               Hash Cond: ((into_table_1_prt_2.a = from_table.a) AND (into_table_1_prt_2.b = from_table.b) AND (into_table_1_prt_2.c = from_table.c))
-               ->  Seq Scan on into_table_1_prt_2
-               ->  Hash
-                     ->  Redistribute Motion 3:3  (slice3; segments: 3)
-                           Hash Key: from_table.a, from_table.b, from_table.c
-                           ->  Seq Scan on from_table
-   ->  Explicit Redistribute Motion 3:3  (slice6; segments: 3)
-         ->  Hash Join
-               Hash Cond: ((into_table_1_prt_3.a = from_table.a) AND (into_table_1_prt_3.b = from_table.b) AND (into_table_1_prt_3.c = from_table.c))
-               ->  Seq Scan on into_table_1_prt_3
-               ->  Hash
-                     ->  Redistribute Motion 3:3  (slice5; segments: 3)
-                           Hash Key: from_table.a, from_table.b, from_table.c
-                           ->  Seq Scan on from_table
-   ->  Explicit Redistribute Motion 3:3  (slice8; segments: 3)
-         ->  Hash Join
-               Hash Cond: ((into_table_1_prt_4.a = from_table.a) AND (into_table_1_prt_4.b = from_table.b) AND (into_table_1_prt_4.c = from_table.c))
-               ->  Seq Scan on into_table_1_prt_4
-               ->  Hash
-                     ->  Redistribute Motion 3:3  (slice7; segments: 3)
-                           Hash Key: from_table.a, from_table.b, from_table.c
-                           ->  Seq Scan on from_table
+   ->  Hash Join
+         Hash Cond: ((into_table_1_prt_1.a = from_table.a) AND (into_table_1_prt_1.b = from_table.b) AND (into_table_1_prt_1.c = from_table.c))
+         ->  Seq Scan on into_table_1_prt_1
+         ->  Hash
+               ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                     Hash Key: from_table.a, from_table.b, from_table.c
+                     ->  Seq Scan on from_table
+   ->  Hash Join
+         Hash Cond: ((into_table_1_prt_2.a = from_table.a) AND (into_table_1_prt_2.b = from_table.b) AND (into_table_1_prt_2.c = from_table.c))
+         ->  Seq Scan on into_table_1_prt_2
+         ->  Hash
+               ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                     Hash Key: from_table.a, from_table.b, from_table.c
+                     ->  Seq Scan on from_table
+   ->  Hash Join
+         Hash Cond: ((into_table_1_prt_3.a = from_table.a) AND (into_table_1_prt_3.b = from_table.b) AND (into_table_1_prt_3.c = from_table.c))
+         ->  Seq Scan on into_table_1_prt_3
+         ->  Hash
+               ->  Redistribute Motion 3:3  (slice3; segments: 3)
+                     Hash Key: from_table.a, from_table.b, from_table.c
+                     ->  Seq Scan on from_table
+   ->  Hash Join
+         Hash Cond: ((into_table_1_prt_4.a = from_table.a) AND (into_table_1_prt_4.b = from_table.b) AND (into_table_1_prt_4.c = from_table.c))
+         ->  Seq Scan on into_table_1_prt_4
+         ->  Hash
+               ->  Redistribute Motion 3:3  (slice4; segments: 3)
+                     Hash Key: from_table.a, from_table.b, from_table.c
+                     ->  Seq Scan on from_table
  Optimizer: Postgres query optimizer
-(34 rows)
+(30 rows)
 
 -- start_matchsubs
 -- m/"into_table_1_prt_\d" to partition "into_table_1_prt_\d"/
