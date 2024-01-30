@@ -900,23 +900,19 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 						{
 							if (context->mt.nMotionsAbove > 0)
 							{
-								/*
-								 * There are motions above. We don't need
-								 * to check other nodes in this subtree
-								 * anymore.
-								 */
+								/* There are motions above */
 								context->mt.needExplicitMotion = true;
-								context->mt.isChecking = false;
 							}
 							else
 							{
-								/*
-								 * There aren't any motions above, but
-								 * there might be some underneath.
-								 */
+								/* There aren't any motions above */
 								context->mt.needExplicitMotion = false;
 							}
-
+							/*
+							 * We don't need to check other nodes in this
+							 * subtree anymore.
+							 */
+							context->mt.isChecking = false;
 							break;
 						}
 					}
@@ -1084,12 +1080,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 														flow->segidColIdx,
 														true	/* useExecutorVarFormat */
 					);
-
-				/*
-				 * Continue checking in case of another Explicit Redistribute
-				 * Motion is needed.
-				 */
-				context->mt.isChecking = true;
 			}
 			else
 			{
@@ -1099,6 +1089,12 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				flow->req_move = MOVEMENT_NONE;
 				flow->flow_before_req_move = NULL;
 			}
+
+			/*
+			 * Continue checking in case of another Explicit Redistribute
+			 * Motion is needed.
+			 */
+			context->mt.isChecking = true;
 			break;
 
 		case MOVEMENT_NONE:
