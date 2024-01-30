@@ -1095,8 +1095,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			}
 
 			/*
-			 * Continue checking in case of another Explicit Redistribute
-			 * Motion is needed.
+			 * If we're here, it means we are directly under the ModifyTable
+			 * node. We are about to go to out of the recursion and go into
+			 * other subtree. So continue checking in case of another Explicit
+			 * Redistribute Motion is needed.
 			 */
 			context->mt.isChecking = true;
 			break;
