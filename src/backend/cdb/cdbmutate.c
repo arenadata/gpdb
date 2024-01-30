@@ -759,7 +759,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	int			saveNextMotionID;
 	int			saveNumInitPlans;
 	int			saveSliceDepth;
-	ModifyTableMotionState save_mt;
 
 #ifdef USE_ASSERT_CHECKING
 	PlannerInfo *root = (PlannerInfo *) context->base.node;
@@ -812,12 +811,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		if (mt->operation == CMD_UPDATE || mt->operation == CMD_DELETE)
 		{
 			ListCell   *lcr;
-
-			/*
-			 * If there was another ModifyTable node before, save the previous
-			 * state.
-			 */
-			save_mt = context->mt;
 
 			context->mt.resultRelids = NIL;
 			context->mt.needExplicitMotion = false;
@@ -1153,18 +1146,6 @@ done:
 	plan = (Plan *) newnode;
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
-
-	/* 
-	 * Restore previous ModifyTable state, in case this wasn't the first
-	 * one.
-	 */
-	if (IsA(node, ModifyTable))
-	{
-		ModifyTable *mt = (ModifyTable *) node;
-
-		if (mt->operation == CMD_UPDATE || mt->operation == CMD_DELETE)
-			context->mt = save_mt;
-	}
 
 	if (context->mt.isChecking)
 	{
