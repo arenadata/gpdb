@@ -906,16 +906,12 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 						if (bms_is_member(scan_reloid, context->mt.resultReloids))
 						{
-							if (context->mt.nMotionsAbove > 0)
-							{
-								/* There are motions above */
-								context->mt.needExplicitMotion = true;
-							}
-							else
-							{
-								/* There aren't any motions above */
-								context->mt.needExplicitMotion = false;
-							}
+							/*
+							 * We need Explicit Redistribute Motion only if
+							 * there were any motions above.
+							 */
+							context->mt.needExplicitMotion = context->mt.nMotionsAbove > 0;
+
 							/*
 							 * We don't need to check other nodes in this
 							 * subtree anymore.
