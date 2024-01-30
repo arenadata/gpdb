@@ -1148,20 +1148,17 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
-	if (context->mt.isChecking)
+	if (context->mt.isChecking && IsA(node, Motion))
 	{
-		if (IsA(node, Motion))
-		{
-			Motion	   *motion = (Motion *) node;
+		Motion	   *motion = (Motion *) node;
 
-			if (motion->motionType == MOTIONTYPE_HASH ||
-				(motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast))
-			{
-				/*
-				 * We're going out of this motion node.
-				 */
-				context->mt.nMotionsAbove -= 1;
-			}
+		if (motion->motionType == MOTIONTYPE_HASH ||
+			(motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast))
+		{
+			/*
+			 * We're going out of this motion node.
+			 */
+			context->mt.nMotionsAbove -= 1;
 		}
 	}
 
