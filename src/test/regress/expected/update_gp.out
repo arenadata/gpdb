@@ -208,8 +208,9 @@ DROP TABLE keo2;
 DROP TABLE keo3;
 DROP TABLE keo4;
 DROP TABLE keo5;
--- Explicit Redistribute Motion shouled be added only if there is a motion
--- between the scan and the ModifyTable on the relation we are going to update. (test case not applicable to ORCA)
+-- Explicit Redistribute Motion should be added only if there is a motion
+-- between the scan and the ModifyTable on the relation we are going to update.
+-- (test case not applicable to ORCA)
 CREATE TABLE t1 (i int, j int) DISTRIBUTED BY (i);
 CREATE TABLE t2 (i int) DISTRIBUTED BY (i);
 CREATE TABLE t_strewn (i int) DISTRIBUTED RANDOMLY;
