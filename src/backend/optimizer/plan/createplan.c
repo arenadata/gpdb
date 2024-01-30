@@ -6492,8 +6492,6 @@ static bool
 can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 								  bool relid_is_subclass, Oid reltypeid)
 {
-	RangeTblEntry *target_rte;
-
 	while (plan)
 	{
 		/*
@@ -6506,13 +6504,12 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 			if ((motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast) ||
 				motion->motionType == MOTIONTYPE_HASH)
 			{
-				TargetEntry *tle;
 				ListCell *lcr;
 
 				foreach(lcr, plan->targetlist)
 				{
-					tle = (TargetEntry *) lfirst(lcr);
-					target_rte = rt_fetch(tle->resno, rtable);
+					TargetEntry *tle = (TargetEntry *) lfirst(lcr);
+					RangeTblEntry *target_rte = rt_fetch(tle->resno, rtable);
 
 					if (relid_is_subclass)
 					{
@@ -6540,8 +6537,6 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 		 */
 		else
 		{
-			Scan *scan;
-
 			switch (nodeTag(plan))
 			{
 				case T_SeqScan:
@@ -6553,14 +6548,14 @@ can_elide_explicit_motion_recurse(Plan *plan, List *rtable, Oid relid,
 				case T_BitmapIndexScan:
 				case T_DynamicBitmapIndexScan:
 				case T_BitmapHeapScan:
-				case T_DynamicBitmapHeapScan:
-					scan = (Scan *) plan;
-					target_rte = rt_fetch(scan->scanrelid, rtable);
+				case T_DynamicBitmapHeapScan: {
+					Scan *scan = (Scan *) plan;
+					RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
 
 					if (target_rte->relid == relid)
 						/* There wasn't any Motions before scan */
 						return true;
-					break;
+				} break;
 				default:
 					break;
 			}
@@ -6600,10 +6595,7 @@ can_elide_explicit_motion(Plan *plan, List *rtable, Oid relid)
 	relid_is_subclass = has_superclass(relid);
 	UnlockRelationOid(relid, AccessShareLock);
 
-	if (relid_is_subclass)
-		reltypeid = get_rel_type_id(relid);
-	else
-		reltypeid = InvalidOid;
+	reltypeid = relid_is_subclass ? get_rel_type_id(relid) : InvalidOid;
 
 	return can_elide_explicit_motion_recurse(plan, rtable, relid,
 											 relid_is_subclass, reltypeid);
