@@ -70,7 +70,8 @@ typedef struct ModifyTableMotionState
 	List	   *resultRelids; 			/* Oid list of relations to be 
 										 * modified */
 	List	   *needExplicitMotion;		/* Boolean list matching resultRelids */
-	bool		isChecking;
+	bool		enabled;				/* Did we encounter UPDATE/DELETE? */
+	bool		isChecking;				/* Are we still looking for motions? */
 } ModifyTableMotionState;
 
 /*
@@ -418,6 +419,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 	state.mt.resultRelids = NIL;
 	state.mt.needExplicitMotion = NIL;
+	state.mt.enabled = false;
 	state.mt.isChecking = false;
 
 	memset(&ctl, 0, sizeof(ctl));
@@ -869,6 +871,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 															 false);
 			}
 
+			context->mt.enabled = true;
 			context->mt.isChecking = true;
 		}
 	}
@@ -1128,14 +1131,21 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			{
 				ListCell   *target_lcr;
 
-				bool finished = false;
 				bool need_motion = false;
+				bool finished = false;
 				List *rtable = root->glob->finalrtable;
 
 				/*
-				 * Search this motion's targetlist for matching relations in
-				 * ModifyTable context. On match, retrieve boolean value we set
-				 * when checking for motions and scans.
+				 * If this isn't UPDATE/DELETE, we don't need Explicit
+				 * Redistribute Motion
+				 */
+				if (!context->mt.enabled)
+					break;
+
+				/*
+				 * Search this motion's targetlist for matching relations
+				 * in ModifyTable context. On match, retrieve boolean value
+				 * we set when checking for motions and scans.
 				 */
 				foreach(target_lcr, plan->targetlist)
 				{
@@ -1176,17 +1186,17 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				else
 				{
 					/*
-					 * Restore flow if Explicit Redistribute Motion is not
-					 * needed
-					 */
+					* Restore flow if Explicit Redistribute Motion is not
+					* needed
+					*/
 					flow->req_move = MOVEMENT_NONE;
 					flow->flow_before_req_move = NULL;
 				}
 
 				/*
-				 * Continue checking in case of another Explicit Redistribute
-				 * Motion
-				 */
+				* Continue checking in case of another Explicit Redistribute
+				* Motion
+				*/
 				context->mt.isChecking = true;
 			}
 			break;
