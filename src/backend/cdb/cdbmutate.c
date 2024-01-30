@@ -67,8 +67,7 @@
 
 typedef struct ModifyTableMotionState
 {
-	List	   *resultRelids; 			/* Oid list of relations to be 
-										 * modified */
+	Bitmapset  *resultReloids; 			/* Oids of relations to be modified */
 	bool		needExplicitMotion;
 	int			nMotionsAbove;			/* Number of Redistribute/Broadcast
 										 * motions above the current node */
@@ -420,7 +419,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
 
-	state.mt.resultRelids = NIL;
+	state.mt.resultReloids = NULL;
 	state.mt.needExplicitMotion = false;
 	state.mt.nMotionsAbove = 0;
 	state.mt.isChecking = false;
@@ -819,7 +818,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * Sanity check, since we don't allow multiple ModifyTable nodes
 			 * in the same plan.
 			 */
-			Assert(context->mt.resultRelids == NULL);
+			Assert(context->mt.resultReloids == NULL);
 			Assert(context->mt.nMotionsAbove == 0);
 			Assert(!context->mt.needExplicitMotion);
 
@@ -836,8 +835,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				Index		rti = lfirst_int(lcr);
 				RangeTblEntry *rte = rt_fetch(rti, root->glob->finalrtable);
 
-				context->mt.resultRelids = lappend_oid(context->mt.resultRelids,
-													   rte->relid);
+				context->mt.resultReloids = bms_add_member(context->mt.resultReloids,
+														  rte->relid);
 			}
 
 			context->mt.isChecking = true;
@@ -893,39 +892,32 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_WorkTableScan:
 				case T_ForeignScan:
 					{
-						ListCell   *mt_lcr;
-
 						Scan	   *scan = (Scan *) node;
 						List	   *rtable = root->glob->finalrtable;
 						RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
 
-						foreach(mt_lcr, context->mt.resultRelids)
+						if (bms_is_member(target_rte->relid, context->mt.resultReloids))
 						{
-							Oid			mt_relid = lfirst_oid(mt_lcr);
-
-							if (target_rte->relid == mt_relid)
+							if (context->mt.nMotionsAbove > 0)
 							{
-								if (context->mt.nMotionsAbove > 0)
-								{
-									/*
-									 * There are motions above. We don't need
-									 * to check other nodes in this subtree
-									 * anymore.
-									 */
-									context->mt.needExplicitMotion = true;
-									context->mt.isChecking = false;
-								}
-								else
-								{
-									/*
-									 * There aren't any motions above, but
-									 * there might be some underneath.
-									 */
-									context->mt.needExplicitMotion = false;
-								}
-
-								break;
+								/*
+								 * There are motions above. We don't need
+								 * to check other nodes in this subtree
+								 * anymore.
+								 */
+								context->mt.needExplicitMotion = true;
+								context->mt.isChecking = false;
 							}
+							else
+							{
+								/*
+								 * There aren't any motions above, but
+								 * there might be some underneath.
+								 */
+								context->mt.needExplicitMotion = false;
+							}
+
+							break;
 						}
 					}
 					break;
