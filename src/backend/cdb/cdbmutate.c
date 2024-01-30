@@ -46,7 +46,6 @@
 #include "catalog/gp_policy.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "catalog/pg_inherits_fn.h" /* typeInheritsFrom() */
 
 #include "catalog/pg_proc.h"
 #include "catalog/pg_trigger.h"
@@ -64,7 +63,6 @@
 #include "cdb/cdbtargeteddispatch.h"
 
 #include "executor/executor.h"
-#include "storage/lmgr.h" /* LockRelationOid(), UnlockRelationOid() */
 
 
 typedef struct ModifyTableMotionState
@@ -904,9 +902,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 					TargetEntry *target_tle = (TargetEntry *) lfirst(target_lcr);
 					Oid			expr_relid = InvalidOid;
 
-					if (!context->mt.isChecking)
-						break;
-
 					expr_relid = get_relid_from_expr(target_tle->expr, rtable);
 
 					if (!OidIsValid(expr_relid))
@@ -1170,8 +1165,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 						if (expr_relid == mt_relid)
 						{
-							need_motion = (bool) lfirst_int(mt_lcm);
 							finished = true;
+							need_motion = (bool) lfirst_int(mt_lcm);
 							break;
 						}
 					}
