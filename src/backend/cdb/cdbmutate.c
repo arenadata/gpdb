@@ -743,6 +743,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	return result;
 }
 
+
 /*
  * Function apply_motion_mutator() is the workhorse for apply_motion().
  */
@@ -763,6 +764,36 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 	if (node == NULL)
 		return NULL;
+
+	/* An expression node might have subtrees containing plans to be mutated. */
+	if (!is_plan_node(node))
+	{
+		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
+		{
+			bool		found;
+			int			saveSliceDepth = context->sliceDepth;
+			SubPlan		*subplan = (SubPlan *) node;
+			/*
+			 * If the init-plan refered by `subplan` has been visited, we should
+			 * not re-visit the subplan, or the motions under the init-plan are
+			 * re-counted.
+			 */
+			hash_search(context->planid_subplans, &subplan->plan_id,
+						HASH_FIND, &found);
+			if (found)
+				return node;
+
+			/* reset sliceDepth for each init plan */
+			context->sliceDepth = 0;
+			node = plan_tree_mutator(node, apply_motion_mutator, context);
+
+			context->sliceDepth = saveSliceDepth;
+
+			return node;
+		}
+		else
+			return plan_tree_mutator(node, apply_motion_mutator, context);
+	}
 
 	/*
 	 * For UPDATE/DELETE, we check if there's any Redistribute or Broadcast
@@ -1022,10 +1053,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		}
 	}
 
-	/* An expression node might have subtrees containing plans to be mutated. */
-	if (!is_plan_node(node))
-		return plan_tree_mutator(node, apply_motion_mutator, context);
-
 	plan = (Plan *) node;
 	flow = plan->flow;
 
@@ -1182,7 +1209,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			{
 				newnode = (Node *) make_explicit_motion(plan,
 														flow->segidColIdx,
-														true /* useExecutorVarFormat */
+														true	/* useExecutorVarFormat */
 					);
 			}
 			else

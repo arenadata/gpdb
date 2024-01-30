@@ -63,7 +63,6 @@
 #include "cdb/cdbsetop.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbpartition.h"	/* rel_partition_get_master() etc. */
 
 
 static Plan *create_subplan(PlannerInfo *root, Path *best_path);		/* CDB */
