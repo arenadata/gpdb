@@ -829,6 +829,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			Assert(context->mt.resultReloids == NULL);
 			Assert(context->mt.nMotionsAbove == 0);
 			Assert(!context->mt.needExplicitMotion);
+			Assert(!context->mt.isChecking);
 
 			/*
 			 * When UPDATE/DELETE occurs on a partitioned table, or a table that
