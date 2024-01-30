@@ -833,10 +833,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			foreach(lcr, mt->resultRelations)
 			{
 				Index		rti = lfirst_int(lcr);
-				RangeTblEntry *rte = rt_fetch(rti, root->glob->finalrtable);
+				Oid 		relid = getrelid(rti, root->glob->finalrtable);
 
 				context->mt.resultReloids = bms_add_member(context->mt.resultReloids,
-														  rte->relid);
+														   relid);
 			}
 
 			context->mt.isChecking = true;
@@ -894,9 +894,9 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 					{
 						Scan	   *scan = (Scan *) node;
 						List	   *rtable = root->glob->finalrtable;
-						RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
+						Oid			scan_reloid = getrelid(scan->scanrelid, rtable);
 
-						if (bms_is_member(target_rte->relid, context->mt.resultReloids))
+						if (bms_is_member(scan_reloid, context->mt.resultReloids))
 						{
 							if (context->mt.nMotionsAbove > 0)
 							{
