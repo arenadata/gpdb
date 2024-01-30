@@ -70,8 +70,11 @@ typedef struct ModifyTableMotionState
 	List	   *resultRelids; 			/* Oid list of relations to be 
 										 * modified */
 	bool		needExplicitMotion;
-	int			nMotionsAbove;
-	bool		isChecking;
+	int			nMotionsAbove;			/* Number of Redistribute/Broadcast
+										 * motions above the current node */
+	bool		isChecking;				/* True if we encountered ModifyTable
+										 * node with UPDATE/DELETE and we plan
+										 * to insert Explicit Motions */
 } ModifyTableMotionState;
 
 /*
