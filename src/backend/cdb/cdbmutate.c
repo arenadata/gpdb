@@ -66,14 +66,12 @@
 #include "executor/executor.h"
 #include "storage/lmgr.h" /* LockRelationOid(), UnlockRelationOid() */
 
+
 typedef struct ModifyTableMotionState
 {
 	List	   *resultRelids; 			/* Oid list of relations to be 
 										 * modified */
-	List	   *resultReltypeids;		/* Oid list of relation's types. If a
-										 * relation isn't a subclass, it's
-										 * InvalidOid */
-	bool		needExplicitMotion;
+	List	   *needExplicitMotion;		/* Boolean list matching resultRelids */
 	bool		isChecking;
 } ModifyTableMotionState;
 
@@ -421,8 +419,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.sliceDepth = 0;
 
 	state.mt.resultRelids = NIL;
-	state.mt.resultReltypeids = NIL;
-	state.mt.needExplicitMotion = false;
+	state.mt.needExplicitMotion = NIL;
 	state.mt.isChecking = false;
 
 	memset(&ctl, 0, sizeof(ctl));
@@ -751,6 +748,35 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 
 
 /*
+ * Try to retrieve relation ID from this Expr node.
+ *
+ * This is used to look inside Motion's targetlists to compare with IDs from
+ * ModifyTable. We look at varnoold, because varno may be already set to
+ * INNER_VAR/OUTER_VAR.
+ *
+ * Result is InvalidOid if we couldn't get relation ID.
+ */
+static Oid
+get_relid_from_expr(Expr *expr, List *rtable)
+{
+	if (IsA(expr, Var))
+	{
+		Var		   *var = (Var *) expr;
+
+		if (var->varnoold > 0 &&
+			var->varnoold <= list_length(rtable))
+		{
+			RangeTblEntry *expr_rte = rt_fetch(var->varnoold, rtable);
+			return expr_rte->relid;
+		}
+	}
+
+	/* We can't get relation ID easily */
+	return InvalidOid;
+}
+
+
+/*
  * Function apply_motion_mutator() is the workhorse for apply_motion().
  */
 static Node *
@@ -816,39 +842,36 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		{
 			ListCell   *lcr;
 
-			/* If there was previous ModifyTable node, save it's state. We can't
-			 * keep just a single boolean value, since there may be several
-			 * ModifyTable nodes in the tree. So we check them separately. */
+			/*
+			 * If there was another ModifyTable node before, save the previous
+			 * state.
+			 */
 			save_mt = context->mt;
 
 			context->mt.resultRelids = NIL;
-			context->mt.resultReltypeids = NIL;
+			context->mt.needExplicitMotion = NIL;
 
 			/*
-			 * Make lists of resulting relations' Oids
+			 * When UPDATE/DELETE occurs on a partitioned table, or a table that
+			 * is a part of inheritance tree, ModifyTable node will have more
+			 * than one relation in resultRelations.
+			 *
+			 * We make a list of resulting relations' Oids to compare them
+			 * later, and a list of booleans of the same length to remember
+			 * what we found.
 			 */
 			foreach(lcr, mt->resultRelations)
 			{
-				Oid			reltypeid;
-
 				Index		rti = lfirst_int(lcr);
 				RangeTblEntry *rte = rt_fetch(rti, root->glob->finalrtable);
-				bool		is_subclass = false;
-
-				LockRelationOid(rte->relid, AccessShareLock);
-				is_subclass = has_superclass(rte->relid);
-				UnlockRelationOid(rte->relid, AccessShareLock);
-
-				reltypeid = is_subclass ? get_rel_type_id(rte->relid) : InvalidOid;
 
 				context->mt.resultRelids = lappend_oid(context->mt.resultRelids,
 													   rte->relid);
-				context->mt.resultReltypeids = lappend_oid(context->mt.resultReltypeids,
-														   reltypeid);
+				context->mt.needExplicitMotion = lappend_int(context->mt.needExplicitMotion,
+															 false);
 			}
 
 			context->mt.isChecking = true;
-			context->mt.needExplicitMotion = false;
 		}
 	}
 
@@ -866,91 +889,17 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			List	   *rtable = root->glob->finalrtable;
 
 			/*
-			 * If this is a Redistribute Motion, get relation ID from Motion's
-			 * hashExprs. We can only get relation ID out of Var nodes, so we
-			 * bail out early when we encounter any other expression node.
+			 * Check Oids from the Motion's targetlist.
 			 */
-			if (motion->motionType == MOTIONTYPE_HASH)
-			{
-				ListCell   *expr_lce;
-
-				foreach(expr_lce, motion->hashExprs)
-				{
-					ListCell   *mt_lcr;
-					ListCell   *mt_lct;
-
-					Node	   *expr = (Node *) lfirst(expr_lce);
-					Oid			expr_relid = InvalidOid;
-
-					if (!context->mt.isChecking)
-						break;
-
-					if (IsA(expr, Var))
-					{
-						RangeTblEntry *expr_rte;
-						Var		   *var = (Var *) expr;
-
-						if (var->varnoold > 0 &&
-							var->varnoold <= list_length(rtable))
-						{
-							expr_rte = rt_fetch(var->varnoold, rtable);
-							expr_relid = expr_rte->relid;
-						}
-					}
-
-					if (!OidIsValid(expr_relid))
-					{
-						/* We can't get relation ID easily */
-						context->mt.isChecking = false;
-						context->mt.needExplicitMotion = true;
-						break;
-					}
-
-					forboth(mt_lcr, context->mt.resultRelids, mt_lct, context->mt.resultReltypeids)
-					{
-						Oid			mt_relid = lfirst_oid(mt_lcr);
-						Oid			mt_reltypeid = lfirst_oid(mt_lct);
-
-						if (OidIsValid(mt_reltypeid))
-						{
-							Oid			expr_reltypeid = get_rel_type_id(expr_relid);
-
-							if (OidIsValid(expr_reltypeid) &&
-							  typeInheritsFrom(mt_reltypeid, expr_reltypeid))
-							{
-								/*
-								 * There is a Motion on parent table before
-								 * scan on the child
-								 */
-								context->mt.isChecking = false;
-								context->mt.needExplicitMotion = true;
-								break;
-							}
-						}
-
-						if (expr_relid == mt_relid)
-						{
-							/* There is a Motion before scan */
-							context->mt.isChecking = false;
-							context->mt.needExplicitMotion = true;
-							break;
-						}
-					}
-				}
-			}
-
-			/*
-			 * If this is a Broadcast Motion, check Oids from the Motion's
-			 * targetlist.
-			 */
-			else if (motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast)
+			if (motion->motionType == MOTIONTYPE_HASH ||
+				(motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast))
 			{
 				ListCell   *target_lcr;
 
 				foreach(target_lcr, motion->plan.targetlist)
 				{
 					ListCell   *mt_lcr;
-					ListCell   *mt_lct;
+					ListCell   *mt_lcm;
 
 					TargetEntry *target_tle = (TargetEntry *) lfirst(target_lcr);
 					Oid			expr_relid = InvalidOid;
@@ -958,55 +907,20 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 					if (!context->mt.isChecking)
 						break;
 
-					if (IsA(target_tle->expr, Var))
-					{
-						RangeTblEntry *expr_rte;
-						Var		   *var = (Var *) target_tle->expr;
-
-						if (var->varnoold > 0 &&
-							var->varnoold <= list_length(rtable))
-						{
-							expr_rte = rt_fetch(var->varnoold, rtable);
-							expr_relid = expr_rte->relid;
-						}
-					}
+					expr_relid = get_relid_from_expr(target_tle->expr, rtable);
 
 					if (!OidIsValid(expr_relid))
-					{
-						/* We can't get relation ID easily */
-						context->mt.isChecking = false;
-						context->mt.needExplicitMotion = true;
-						break;
-					}
+						continue;
 
-					forboth(mt_lcr, context->mt.resultRelids, mt_lct, context->mt.resultReltypeids)
+					forboth(mt_lcr, context->mt.resultRelids, mt_lcm, context->mt.needExplicitMotion)
 					{
 						Oid			mt_relid = lfirst_oid(mt_lcr);
-						Oid			mt_reltypeid = lfirst_oid(mt_lct);
-
-						if (OidIsValid(mt_reltypeid))
-						{
-							Oid			target_reltypeid = get_rel_type_id(expr_relid);
-
-							if (OidIsValid(target_reltypeid) &&
-							typeInheritsFrom(mt_reltypeid, target_reltypeid))
-							{
-								/*
-								 * There is a Motion on parent table before
-								 * scan on the child
-								 */
-								context->mt.isChecking = false;
-								context->mt.needExplicitMotion = true;
-								break;
-							}
-						}
 
 						if (expr_relid == mt_relid)
 						{
-							/* There is a Motion before scan */
+							/* There is a Motion before scan. */
+							lfirst_int(mt_lcm) = true;
 							context->mt.isChecking = false;
-							context->mt.needExplicitMotion = true;
-							break;
 						}
 					}
 				}
@@ -1041,21 +955,25 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_ForeignScan:
 					{
 						ListCell   *mt_lcr;
+						ListCell   *mt_lcm;
 
 						Scan	   *scan = (Scan *) node;
 						List	   *rtable = root->glob->finalrtable;
 						RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
 
-						foreach(mt_lcr, context->mt.resultRelids)
+						forboth(mt_lcr, context->mt.resultRelids, mt_lcm, context->mt.needExplicitMotion)
 						{
 							Oid			mt_relid = lfirst_oid(mt_lcr);
 
 							if (target_rte->relid == mt_relid)
 							{
-								/* There wasn't any Motions before scan */
-								context->mt.isChecking = false;
-								context->mt.needExplicitMotion = false;
-								break;
+								/*
+								 * There is a scan before Motions.
+								 *
+								 * We don't stop checking because there might
+								 * be motions in other subtrees.
+								 */
+								lfirst_oid(mt_lcm) = false;
 							}
 						}
 					}
@@ -1214,29 +1132,74 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			break;
 
 		case MOVEMENT_EXPLICIT:
-			/*
-			 * add an ExplicitRedistribute motion node only if child plan
-			 * nodes have a motion node between ModifyTable and the scan
-			 */
-			if (context->mt.needExplicitMotion)
 			{
-				newnode = (Node *) make_explicit_motion(plan,
-														flow->segidColIdx,
-														true	/* useExecutorVarFormat */
-					);
-			}
-			else
-			{
-				/*
-				 * no motion nodes in child plan nodes - no need for
-				 * ExplicitRedistribute: restore flow
-				 */
-				flow->req_move = MOVEMENT_NONE;
-				flow->flow_before_req_move = NULL;
-			}
+				ListCell   *target_lcr;
 
-			/* Continue checking in case another Explicit Motion is needed */
-			context->mt.isChecking = true;
+				bool finished = false;
+				bool need_motion = true;
+				List *rtable = root->glob->finalrtable;
+
+				/*
+				 * Search this motion's targetlist for matching relations in
+				 * ModifyTable context. On match, retrieve boolean value we set
+				 * when checking for motions and scans.
+				 */
+				foreach(target_lcr, plan->targetlist)
+				{
+					ListCell   *mt_lcr;
+					ListCell   *mt_lcm;
+
+					TargetEntry *target_tle = (TargetEntry *) lfirst(target_lcr);
+					Oid			expr_relid = InvalidOid;
+
+					if (finished)
+						break;
+
+					expr_relid = get_relid_from_expr(target_tle->expr, rtable);
+
+					if (!OidIsValid(expr_relid))
+					{
+						/* Unknown relation ID, expect Explicit Motion */
+						need_motion = true;
+						continue;
+					}
+
+					forboth(mt_lcr, context->mt.resultRelids, mt_lcm, context->mt.needExplicitMotion)
+					{
+						Oid			mt_relid = lfirst_oid(mt_lcr);
+
+						if (expr_relid == mt_relid)
+						{
+							need_motion = (bool) lfirst_int(mt_lcm);
+							finished = true;
+							break;
+						}
+					}
+				}
+
+				if (need_motion)
+				{
+					newnode = (Node *) make_explicit_motion(plan,
+															flow->segidColIdx,
+															true	/* useExecutorVarFormat */
+						);
+				}
+				else
+				{
+					/*
+					 * Restore flow if Explicit Redistribute Motion is not
+					 * needed
+					 */
+					flow->req_move = MOVEMENT_NONE;
+					flow->flow_before_req_move = NULL;
+				}
+
+				/*
+				 * Continue checking in case of another Explicit Redistribute
+				 * Motion
+				 */
+				context->mt.isChecking = true;
+			}
 			break;
 
 		case MOVEMENT_NONE:
@@ -1284,6 +1247,10 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
+	/* 
+	 * Restore previous ModifyTable state, in case this wasn't the first
+	 * one.
+	 */
 	if(IsA(node, ModifyTable))
 		context->mt = save_mt;
 
