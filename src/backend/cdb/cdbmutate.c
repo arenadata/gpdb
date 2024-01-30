@@ -815,9 +815,13 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		{
 			ListCell   *lcr;
 
-			context->mt.resultRelids = NIL;
-			context->mt.needExplicitMotion = false;
-			context->mt.nMotionsAbove = 0;
+			/*
+			 * Sanity check, since we don't allow multiple ModifyTable nodes
+			 * in the same plan.
+			 */
+			Assert(context->mt.resultRelids == NULL);
+			Assert(context->mt.nMotionsAbove == 0);
+			Assert(!context->mt.needExplicitMotion);
 
 			/*
 			 * When UPDATE/DELETE occurs on a partitioned table, or a table that
