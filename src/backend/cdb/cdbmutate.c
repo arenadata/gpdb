@@ -901,62 +901,24 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_WorkTableScan:
 				case T_ForeignScan:
 					{
-						ListCell   *lcr;
-
 						Scan	   *scan = (Scan *) node;
 						List	   *rtable = root->glob->finalrtable;
 						Oid			scan_reloid = getrelid(scan->scanrelid, rtable);
 
 						if (bms_is_member(scan_reloid, context->mt.resultReloids))
 						{
-							bool has_ctid = false;
-
-							/*
-							 * We need to make sure that this scan retrieves
-							 * ctid from the relation, because citd is required
-							 * for DELETE/UPDATE to find modified tuples. If
-							 * this scan's targetlist does not retrive ctid, it
-							 * does not affect the result of UPDATE/DELETE.
-							 */
-							foreach(lcr, scan->plan.targetlist)
-							{
-								TargetEntry *scan_tle = lfirst(lcr);
-
-								if (IsA(scan_tle->expr, Var))
-								{
-									Var *var = (Var *) scan_tle->expr;
-
-									if (var->varoattno == SelfItemPointerAttributeNumber)
-									{
-										has_ctid = true;
-										break;
-									}
-								}
-							}
-
-							if (!has_ctid)
-								break;
-
 							/*
 							 * We need Explicit Redistribute Motion only if
 							 * there were any motions above.
 							 */
-							if (context->mt.nMotionsAbove > 0)
-							{
-								context->mt.needExplicitMotion = true;
-							}
-							else
-							{
-								context->mt.needExplicitMotion = false;
-								/*
-								 * This is a scan without any Motions above.
-								 * We don't care if there are more scans of
-								 * this table with any motions above, as the
-								 * unaltered ctid we need for ModifyTable is
-								 * already available.
-								 */
-								context->mt.isChecking = false;
-							}
+							context->mt.needExplicitMotion = context->mt.nMotionsAbove > 0;
+
+							/*
+							 * We don't need to check other nodes in this
+							 * subtree anymore.
+							 */
+							context->mt.isChecking = false;
+							break;
 						}
 					}
 					break;
