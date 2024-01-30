@@ -46,6 +46,7 @@
 #include "catalog/gp_policy.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_inherits_fn.h" /* typeInheritsFrom() */
 
 #include "catalog/pg_proc.h"
 #include "catalog/pg_trigger.h"
@@ -63,6 +64,7 @@
 #include "cdb/cdbtargeteddispatch.h"
 
 #include "executor/executor.h"
+#include "storage/lmgr.h" /* LockRelationOid(), UnlockRelationOid() */
 
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
@@ -75,8 +77,15 @@ typedef struct ApplyMotionState
 								 * plan_tree_walker/mutator */
 	int			nextMotionID;
 	int			sliceDepth;
-	bool		containMotionNodes;
 	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
+
+	/* Context for ModifyTable to elide Explicit Redistribute Motion */
+	List	   *mtResultRelids; 	 /* Oid list of relations to be modified */
+	List 	   *mtResultReltypeids;  /* Oid list of relation's types. If a
+									  * relation isn't a subclass, it's
+									  * InvalidOid */
+	bool		mtNeedExplicitMotion;
+	bool		mtIsChecking;
 } ApplyMotionState;
 
 typedef struct InitPlanItem
@@ -404,7 +413,12 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 													 * plan */
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
-	state.containMotionNodes = false;
+
+	state.mtResultRelids = NIL;
+	state.mtResultReltypeids = NIL;
+	state.mtNeedExplicitMotion = false;
+	state.mtIsChecking = false;
+
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(int);
 	ctl.entrysize = sizeof(InitPlanItem);
@@ -729,7 +743,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	return result;
 }
 
-
 /*
  * Function apply_motion_mutator() is the workhorse for apply_motion().
  */
@@ -751,42 +764,264 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	if (node == NULL)
 		return NULL;
 
+	/*
+	 * For UPDATE/DELETE, we check if there's any Redistribute or Broadcast
+	 * Motions before scan in the same subtree for the table we're going to
+	 * modify. If we encounter the scan before any motions, then we can elide
+	 * unneccessary Explicit Redistribute Motion.
+	 */
+	if (IsA(node, ModifyTable))
+	{
+		ModifyTable *mt = (ModifyTable *) node;
+		
+		if (mt->operation == CMD_UPDATE || mt->operation == CMD_DELETE)
+		{
+			ListCell *lcr;
+
+			context->mtResultRelids = NIL;
+			context->mtResultReltypeids = NIL;
+
+			/*
+			* Make lists of resulting relations' Oids
+			*/
+			foreach(lcr, mt->resultRelations)
+			{
+				Oid reltypeid;
+
+				Index rti = lfirst_int(lcr);
+				RangeTblEntry *rte = rt_fetch(rti, root->glob->finalrtable);
+				bool is_subclass = false;
+
+				LockRelationOid(rte->relid, AccessShareLock);
+				is_subclass = has_superclass(rte->relid);
+				UnlockRelationOid(rte->relid, AccessShareLock);
+				
+				reltypeid = is_subclass ? get_rel_type_id(rte->relid) : InvalidOid;
+
+				context->mtResultRelids = lappend_oid(context->mtResultRelids,
+													  rte->relid);
+				context->mtResultReltypeids = lappend_oid(context->mtResultReltypeids,
+														  reltypeid);
+			}
+
+			context->mtIsChecking = true;
+		}
+	}
+
+	/*
+	 * Elide Explicit Redistribute Motion if there's no motions between the scan
+	 * and the ModifyTable that affect the relation we are going to update.
+	 */
+	if (context->mtIsChecking)
+	{
+
+		if (IsA(node, Motion))
+		{
+			Motion *motion = (Motion *) node;
+			List *rtable = root->glob->finalrtable;
+
+			/*
+			 * If this is a Redistribute Motion, get relation ID from Motion's
+			 * hashExprs. We can only get relation ID out of Var nodes, so we
+			 * bail out early when we encounter any other expression node.
+			 */
+			if (motion->motionType == MOTIONTYPE_HASH)
+			{
+				ListCell *expr_lce;
+
+				foreach (expr_lce, motion->hashExprs)
+				{
+					ListCell *mt_lcr;
+					ListCell *mt_lct;
+
+					Node *expr = (Node *) lfirst(expr_lce);
+					Oid expr_relid = InvalidOid;
+
+					if (!context->mtIsChecking)
+						break;
+
+					if (IsA(expr, Var))
+					{
+						RangeTblEntry *expr_rte;
+						Var *var = (Var *) expr;
+
+						if (var->varnoold > 0 &&
+							var->varnoold <= list_length(rtable))
+						{
+							expr_rte = rt_fetch(var->varnoold, rtable);
+							expr_relid = expr_rte->relid;
+						}
+					}
+
+					if (!OidIsValid(expr_relid))
+					{
+						/* We can't get relation ID easily */
+						context->mtIsChecking = false;
+						context->mtNeedExplicitMotion = true;
+						break;
+					}
+
+					forboth(mt_lcr, context->mtResultRelids, mt_lct, context->mtResultReltypeids)
+					{
+						Oid mt_relid = lfirst_oid(mt_lcr);
+						Oid mt_reltypeid = lfirst_oid(mt_lct);
+
+						if (OidIsValid(mt_reltypeid))
+						{
+							Oid expr_reltypeid = get_rel_type_id(expr_relid);
+
+							if (OidIsValid(expr_reltypeid) &&
+								typeInheritsFrom(mt_reltypeid, expr_reltypeid))
+							{
+								/*
+								 * There is a Motion on parent table before scan
+								 * on the child
+								 */
+								context->mtIsChecking = false;
+								context->mtNeedExplicitMotion = true;
+								break;
+							}
+						}
+
+						if (expr_relid == mt_relid)
+						{
+							/* There is a Motion before scan */
+							context->mtIsChecking = false;
+							context->mtNeedExplicitMotion = true;
+							break;
+						}
+					}
+				}
+			}
+			/*
+			 * If this is a Broadcast Motion, check Oids from the Motion's
+			 * targetlist.
+			 */
+			else if (motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast)
+			{
+				ListCell *target_lcr;
+
+				foreach(target_lcr, motion->plan.targetlist)
+				{
+					ListCell *mt_lcr;
+					ListCell *mt_lct;
+
+					TargetEntry *target_tle = (TargetEntry *) lfirst(target_lcr);
+					Oid expr_relid = InvalidOid;
+
+					if (!context->mtIsChecking)
+						break;
+
+					if (IsA(target_tle->expr, Var))
+					{
+						RangeTblEntry *expr_rte;
+						Var *var = (Var *) target_tle->expr;
+
+						if (var->varnoold > 0 && 
+							var->varnoold <= list_length(rtable))
+						{
+							expr_rte = rt_fetch(var->varnoold, rtable);
+							expr_relid = expr_rte->relid;
+						}
+					}
+
+					if (!OidIsValid(expr_relid))
+					{
+						/* We can't get relation ID easily */
+						context->mtIsChecking = false;
+						context->mtNeedExplicitMotion = true;
+						break;
+					}
+
+					forboth(mt_lcr, context->mtResultRelids, mt_lct, context->mtResultReltypeids)
+					{
+						Oid mt_relid = lfirst_oid(mt_lcr);
+						Oid mt_reltypeid = lfirst_oid(mt_lct);
+
+						if (OidIsValid(mt_reltypeid))
+						{
+							Oid target_reltypeid = get_rel_type_id(expr_relid);
+
+							if (OidIsValid(target_reltypeid) &&
+								typeInheritsFrom(mt_reltypeid, target_reltypeid))
+							{
+								/*
+								 * There is a Motion on parent table before scan
+								 * on the child
+								 */
+								context->mtIsChecking = false;
+								context->mtNeedExplicitMotion = true;
+								break;
+							}
+						}
+
+						if (expr_relid == mt_relid)
+						{
+							/* There is a Motion before scan */
+							context->mtIsChecking = false;
+							context->mtNeedExplicitMotion = true;
+							break;
+						}
+					}
+				}
+			}
+		}
+		/*
+		 * If this is a scan and it's scanrelid matches ModifyTable's relid, we
+		 * encountered a scan before any Motions.
+		 */
+		else
+		{
+			switch (nodeTag(node))
+			{
+				case T_SeqScan:
+				case T_DynamicSeqScan:
+				case T_ExternalScan:
+				case T_IndexScan:
+				case T_DynamicIndexScan:
+				case T_IndexOnlyScan:
+				case T_BitmapIndexScan:
+				case T_DynamicBitmapIndexScan:
+				case T_BitmapHeapScan:
+				case T_DynamicBitmapHeapScan:
+				case T_TidScan:
+				case T_SubqueryScan:
+				case T_FunctionScan:
+				case T_TableFunctionScan:
+				case T_ValuesScan:
+				case T_CteScan:
+				case T_WorkTableScan:
+				case T_ForeignScan:
+					{
+						ListCell *mt_lcr;
+
+						Scan *scan = (Scan *) node;
+						List *rtable = root->glob->finalrtable;
+						RangeTblEntry *target_rte = rt_fetch(scan->scanrelid, rtable);
+
+						foreach(mt_lcr, context->mtResultRelids)
+						{
+							Oid mt_relid = lfirst_oid(mt_lcr);
+
+							if (target_rte->relid == mt_relid)
+							{
+								/* There wasn't any Motions before scan */
+								context->mtIsChecking = false;
+								context->mtNeedExplicitMotion = false;
+								break;
+							}
+						}
+					}
+					break;
+				default:
+					break;
+			}
+		}
+	}
+
 	/* An expression node might have subtrees containing plans to be mutated. */
 	if (!is_plan_node(node))
-	{
-		/*
-		 * The containMotionNodes flag keeps track of whether there are any
-		 * Motion nodes, ignoring any in InitPlans. So if we recurse into an
-		 * InitPlan, save and restore the flag.
-		 */
-		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
-		{
-			bool		found;
-			bool		saveContainMotionNodes = context->containMotionNodes;
-			int			saveSliceDepth = context->sliceDepth;
-			SubPlan		*subplan = (SubPlan *) node;
-			/*
-			 * If the init-plan refered by `subplan` has been visited, we should
-			 * not re-visit the subplan, or the motions under the init-plan are
-			 * re-counted.
-			 */
-			hash_search(context->planid_subplans, &subplan->plan_id,
-						HASH_FIND, &found);
-			if (found)
-				return node;
-
-			/* reset sliceDepth for each init plan */
-			context->sliceDepth = 0;
-			node = plan_tree_mutator(node, apply_motion_mutator, context);
-
-			context->containMotionNodes = saveContainMotionNodes;
-			context->sliceDepth = saveSliceDepth;
-
-			return node;
-		}
-		else
-			return plan_tree_mutator(node, apply_motion_mutator, context);
-	}
+		return plan_tree_mutator(node, apply_motion_mutator, context);
 
 	plan = (Plan *) node;
 	flow = plan->flow;
@@ -936,20 +1171,15 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			break;
 
 		case MOVEMENT_EXPLICIT:
-
 			/*
 			 * add an ExplicitRedistribute motion node only if child plan
-			 * nodes have a motion node
+			 * nodes have a motion node between ModifyTable and the scan
 			 */
-			if (context->containMotionNodes)
+			if (context->mtNeedExplicitMotion)
 			{
-				/*
-				 * motion node in child nodes: add a ExplicitRedistribute
-				 * motion
-				 */
 				newnode = (Node *) make_explicit_motion(plan,
 														flow->segidColIdx,
-														true	/* useExecutorVarFormat */
+														true /* useExecutorVarFormat */
 					);
 			}
 			else
@@ -962,6 +1192,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				flow->flow_before_req_move = NULL;
 			}
 
+			/* Continue checking in case another Explicit Motion is needed */
+			context->mtIsChecking = true;
 			break;
 
 		case MOVEMENT_NONE:
@@ -1008,17 +1240,6 @@ done:
 	plan = (Plan *) newnode;
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
-
-	/*
-	 * Remember if this was a Motion node. This is used at the top of the
-	 * tree, with MOVEMENT_EXPLICIT, to avoid adding an explicit motion, if
-	 * there were no Motion in the subtree. Note that this does not take
-	 * InitPlans containing Motion nodes into account. InitPlans are executed
-	 * as a separate step before the main plan, and hence any Motion nodes in
-	 * them don't need to affect the way the main plan is executed.
-	 */
-	if (IsA(newnode, Motion))
-		context->containMotionNodes = true;
 
 	return newnode;
 }								/* apply_motion_mutator */
