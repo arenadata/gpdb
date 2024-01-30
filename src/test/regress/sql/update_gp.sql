@@ -123,6 +123,7 @@ DROP TABLE keo5;
 CREATE TABLE t1 (i int, j int) DISTRIBUTED BY (i);
 CREATE TABLE t2 (i int) DISTRIBUTED BY (i);
 CREATE TABLE t_strewn (i int) DISTRIBUTED RANDOMLY;
+CREATE TABLE t_strewn2 (i int) DISTRIBUTED RANDOMLY;
 
 EXPLAIN (costs off)
 UPDATE t1 SET j = t_strewn.i FROM t_strewn WHERE t_strewn.i = t1.i;
@@ -135,9 +136,14 @@ WHERE 0 < ALL (SELECT i FROM cte);
 EXPLAIN (costs off, verbose)
 DELETE FROM t_strewn WHERE t_strewn.i = (SELECT t2.i FROM t2 WHERE t_strewn.i = t2.i);
 
+EXPLAIN (costs off)
+UPDATE t_strewn SET i = t_strewn2.i
+FROM t_strewn2 WHERE t_strewn.i = t_strewn2.i;
+
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t_strewn;
+DROP TABLE t_strewn2;
 
 -- Explicit Redistribute Motion should not be mistakenly elided for inherited
 -- tables. (test case not applicable to ORCA)
