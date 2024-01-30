@@ -1241,7 +1241,12 @@ done:
 	 * one.
 	 */
 	if (IsA(node, ModifyTable))
-		context->mt = save_mt;
+	{
+		ModifyTable *mt = (ModifyTable *) node;
+
+		if (mt->operation == CMD_UPDATE || mt->operation == CMD_DELETE)
+			context->mt = save_mt;
+	}
 
 	return newnode;
 }								/* apply_motion_mutator */
