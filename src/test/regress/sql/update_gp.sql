@@ -138,6 +138,60 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t_strewn;
 
+-- Explicit Redistribute Motion should not be mistakenly elided for inherited
+-- tables. (test case not applicable to ORCA)
+CREATE TABLE i (i int, j int) DISTRIBUTED BY (i);
+INSERT INTO i SELECT
+  generate_series(1, 100), generate_series(1, 100) * 3;
+
+CREATE TABLE foo (f1 serial, f2 text, f3 int) DISTRIBUTED RANDOMLY;
+
+INSERT INTO foo (f2, f3)
+  VALUES ('first', 1), ('second', 2), ('third', 3);
+
+CREATE TABLE foochild (fc int) INHERITS (foo);
+
+INSERT INTO foochild
+  VALUES(123, 'child', 999, -123);
+
+EXPLAIN (costs off, verbose)
+DELETE FROM foo
+  USING i
+  WHERE foo.f1 = i.j;
+
+DELETE FROM foo
+  USING i
+  WHERE foo.f1 = i.j;
+
+DROP TABLE i;
+DROP TABLE foochild;
+DROP TABLE foo;
+
+-- Explicit Redistribute Motion should not be mistakenly elided for partitioned
+-- tables. (test case not applicable to ORCA)
+CREATE TABLE t1 (a int, b int) DISTRIBUTED BY (a)
+PARTITION BY
+  range(b) (start(1) end(101) every(50));
+
+CREATE TABLE t2 (a int, b int) DISTRIBUTED BY (b)
+PARTITION BY
+  range(a) (start(1) end(101) every(25), default partition def);
+
+INSERT INTO t1 SELECT
+  generate_series(1, 100) * 3, generate_series(1, 100);
+INSERT INTO t2 SELECT
+  generate_series(1, 100), generate_series(1, 100) * 3;
+INSERT INTO t2 VALUES
+  (generate_series(101, 111), NULL);
+
+EXPLAIN (costs off, verbose)
+DELETE FROM t1 USING t2 WHERE t1.a = t2.a;
+
+DELETE FROM t1 USING t2 WHERE t1.a = t2.a;
+
+DROP TABLE t1;
+DROP TABLE t2;
+
 --
 -- text types. We should support the following updates.
 --
