@@ -143,28 +143,7 @@ select count(*) from gp_segment_configuration where status = 'd';
 -- After error, schemas for temporary table still exist (like 'pg_temp'
 -- and 'pg_toast_temp').
 -- Lets remove all such temporary schemas for inactive connections
-DO $$
-DECLARE
-	nsp TEXT; /* in func */
-BEGIN
-	FOR nsp IN
-		SELECT distinct nspname
-		FROM (
-			SELECT nspname
-			FROM gp_dist_random('pg_namespace')
-			WHERE nspname ~ '^pg(_toast)?_temp_[0-9]+'
-			UNION
-			SELECT nspname
-			FROM pg_namespace
-			WHERE nspname ~ '^pg(_toast)?_temp_[0-9]+'
-		) n
-		LEFT OUTER JOIN pg_stat_activity x on
-			sess_id = regexp_replace(nspname, 'pg(_toast)?_temp_', '')::int
-		WHERE x.sess_id is null
-	LOOP
-		EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', nsp); /* in func */
-	END LOOP; /* in func */
-END $$;
+! psql -d isolation2test -f sql/remove_temp_schemas.sql;
 -- end_ignore
 !\retcode gpconfig -r gp_fts_probe_retries --masteronly;
 !\retcode gpconfig -r gp_gang_creation_retry_count --skipvalidation --masteronly;
