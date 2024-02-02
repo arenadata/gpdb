@@ -7100,7 +7100,6 @@ atpxPartAddList(Relation rel,
 						List	   *l2 = spec->partElem;
 						PartitionElem *pel;
 
-
 						if (l2 && list_length(l2))
 						{
 							pel = (PartitionElem *) linitial(l2);
