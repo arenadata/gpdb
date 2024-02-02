@@ -7042,155 +7042,156 @@ atpxPartAddList(Relation rel,
 				skipTableRelid = RangeVarGetRelid(t->relation, NoLock, true);
 			}
 
-			for_each_cell(lc, lnext(lc))
+		/* FIXME: indent this or remove condition above if it is not needed */
+		for_each_cell(lc, lnext(lc))
+		{
+			Node	   *q = lfirst(lc);
+
+			/*
+			 * MPP-6379, MPP-10421: If the statement is an expanded index
+			 * creation statement on the parent (or the "skipped table"),
+			 * ignore it. We get into this situation when the parent has one
+			 * or more indexes on it that our new partition is inheriting.
+			 */
+			if (IsA(q, IndexStmt))
 			{
-				Node	   *q = lfirst(lc);
+				IndexStmt  *istmt = (IndexStmt *) q;
+				Oid			idxRelid = RangeVarGetRelid(istmt->relation, NoLock, true);
 
-				/*
-				 * MPP-6379, MPP-10421: If the statement is an expanded index
-				 * creation statement on the parent (or the "skipped table"),
-				 * ignore it. We get into this situation when the parent has one
-				 * or more indexes on it that our new partition is inheriting.
-				 */
-				if (IsA(q, IndexStmt))
+				if (idxRelid == RelationGetRelid(rel))
+					continue;
+
+				if (OidIsValid(skipTableRelid) &&
+					(idxRelid == skipTableRelid))
+					continue;
+			}
+
+			/*
+			 * XXX XXX: fix the first Alter Table Statement to have the
+			 * correct maxpartno.  Whoohoo!!
+			 */
+			if (bFixFirstATS && q && IsA(q, AlterTableStmt))
+			{
+				PartitionSpec *spec = NULL;
+				AlterTableStmt *ats;
+				AlterTableCmd *atc;
+				List	   *cmds;
+
+				bFixFirstATS = false;
+
+				ats = (AlterTableStmt *) q;
+				Assert(IsA(ats, AlterTableStmt));
+
+				cmds = ats->cmds;
+
+				Assert(cmds && (list_length(cmds) > 1));
+
+				atc = (AlterTableCmd *) lsecond(cmds);
+
+				Assert(atc->def);
+
+				pBy = (PartitionBy *) atc->def;
+
+				Assert(IsA(pBy, PartitionBy));
+
+				spec = (PartitionSpec *) pBy->partSpec;
+
+				if (spec)
 				{
-					IndexStmt  *istmt = (IndexStmt *) q;
-					Oid			idxRelid = RangeVarGetRelid(istmt->relation, NoLock, true);
+					List	   *l2 = spec->partElem;
+					PartitionElem *pel;
 
-					if (idxRelid == RelationGetRelid(rel))
-						continue;
-
-					if (OidIsValid(skipTableRelid) &&
-						(idxRelid == skipTableRelid))
-						continue;
-				}
-
-				/*
-				 * XXX XXX: fix the first Alter Table Statement to have the
-				 * correct maxpartno.  Whoohoo!!
-				 */
-				if (bFixFirstATS && q && IsA(q, AlterTableStmt))
-				{
-					PartitionSpec *spec = NULL;
-					AlterTableStmt *ats;
-					AlterTableCmd *atc;
-					List	   *cmds;
-
-					bFixFirstATS = false;
-
-					ats = (AlterTableStmt *) q;
-					Assert(IsA(ats, AlterTableStmt));
-
-					cmds = ats->cmds;
-
-					Assert(cmds && (list_length(cmds) > 1));
-
-					atc = (AlterTableCmd *) lsecond(cmds);
-
-					Assert(atc->def);
-
-					pBy = (PartitionBy *) atc->def;
-
-					Assert(IsA(pBy, PartitionBy));
-
-					spec = (PartitionSpec *) pBy->partSpec;
-
-					if (spec)
+					if (l2 && list_length(l2))
 					{
-						List	   *l2 = spec->partElem;
-						PartitionElem *pel;
+						pel = (PartitionElem *) linitial(l2);
 
-						if (l2 && list_length(l2))
-						{
-							pel = (PartitionElem *) linitial(l2);
-
-							pel->partno = maxpartno;
-						}
-
+						pel->partno = maxpartno;
 					}
 
-				}					/* end first alter table fixup */
-				else if (IsA(q, CreateStmt))
-				{
-					/* propagate owner */
-					((CreateStmt *) q)->ownerid = ownerid;
 				}
 
+			}					/* end first alter table fixup */
+			else if (IsA(q, CreateStmt))
+			{
+				/* propagate owner */
+				((CreateStmt *) q)->ownerid = ownerid;
+			}
+
+			/*
+			 * normal case - add partitions using CREATE statements that get
+			 * dispatched to the segments
+			 */
+			if (!bSetTemplate)
+				ProcessUtility(q,
+							   synthetic_sql,
+							   PROCESS_UTILITY_SUBCOMMAND,
+							   NULL,
+							   dest,
+							   NULL);
+			else
+			{					/* setting subpartition template only */
+
 				/*
-				 * normal case - add partitions using CREATE statements that get
-				 * dispatched to the segments
+				 * find all the alter table statements that contain
+				 * partaddinternal, and extract the definitions.  Only build
+				 * the catalog entries for subpartition templates, not "real"
+				 * table entries.
 				 */
-				if (!bSetTemplate)
-					ProcessUtility(q,
-								   synthetic_sql,
-								   PROCESS_UTILITY_SUBCOMMAND,
-								   NULL,
-								   dest,
-								   NULL);
-				else
-				{					/* setting subpartition template only */
+				if (IsA(q, AlterTableStmt))
+				{
+					AlterTableStmt *at2 = (AlterTableStmt *) q;
+					List	   *l2 = at2->cmds;
+					ListCell   *lc2;
 
-					/*
-					 * find all the alter table statements that contain
-					 * partaddinternal, and extract the definitions.  Only build
-					 * the catalog entries for subpartition templates, not "real"
-					 * table entries.
-					 */
-					if (IsA(q, AlterTableStmt))
+					foreach(lc2, l2)
 					{
-						AlterTableStmt *at2 = (AlterTableStmt *) q;
-						List	   *l2 = at2->cmds;
-						ListCell   *lc2;
+						AlterTableCmd *ac2 = (AlterTableCmd *) lfirst(lc2);
 
-						foreach(lc2, l2)
+						if (ac2->subtype == AT_PartAddInternal)
 						{
-							AlterTableCmd *ac2 = (AlterTableCmd *) lfirst(lc2);
+							PartitionBy *templ_pby =
+							(PartitionBy *) ac2->def;
 
-							if (ac2->subtype == AT_PartAddInternal)
+							Assert(IsA(templ_pby, PartitionBy));
+
+							/*
+							 * skip the first one because it's the fake parent
+							 * partition definition for the subpartition
+							 * template entries
+							 */
+
+							if (bFirst_TemplateOnly)
 							{
-								PartitionBy *templ_pby =
-								(PartitionBy *) ac2->def;
-
-								Assert(IsA(templ_pby, PartitionBy));
+								bFirst_TemplateOnly = false;
 
 								/*
-								 * skip the first one because it's the fake parent
-								 * partition definition for the subpartition
-								 * template entries
+								 * MPP-5992: only set one level of templates
+								 * -- we might have templates for
+								 * subpartitions of the subpartitions, which
+								 * would add duplicate templates into the
+								 * table. Only add templates of the specified
+								 * depth and skip deeper template definitions.
 								 */
-
-								if (bFirst_TemplateOnly)
-								{
-									bFirst_TemplateOnly = false;
-
-									/*
-									 * MPP-5992: only set one level of templates
-									 * -- we might have templates for
-									 * subpartitions of the subpartitions, which
-									 * would add duplicate templates into the
-									 * table. Only add templates of the specified
-									 * depth and skip deeper template definitions.
-									 */
-									pby_templ_depth = templ_pby->partDepth + 1;
-
-								}
-								else
-								{
-									if (templ_pby->partDepth == pby_templ_depth)
-										add_part_to_catalog(
-															RelationGetRelid(rel),
-															(PartitionBy *) ac2->def,
-															true);
-								}
+								pby_templ_depth = templ_pby->partDepth + 1;
 
 							}
-						}			/* end foreach lc2 l2 */
-					}
-				}					/* end else setting subpartition templates
-									 * only */
+							else
+							{
+								if (templ_pby->partDepth == pby_templ_depth)
+									add_part_to_catalog(
+														RelationGetRelid(rel),
+														(PartitionBy *) ac2->def,
+														true);
+							}
 
-				ii++;
-			}						/* end for each cell */
+						}
+					}			/* end foreach lc2 l2 */
+				}
+			}					/* end else setting subpartition templates
+								 * only */
+
+			ii++;
+		}						/* end for each cell */
 		}
 	}
 
