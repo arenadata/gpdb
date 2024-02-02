@@ -559,15 +559,12 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 		{
 			sprintf(segpath, "%s.%u", path, segno);
 
-			if (!RelFileNodeBackendIsTemp(rnode))
-			{
-				/*
-				 * Prevent other backends' fds from holding on to the disk
-				 * space.
-				 */
-				if (do_truncate(segpath) < 0 && errno == ENOENT)
-					break;
-			}
+			/*
+			 * Prevent other backends' fds from holding on to the disk
+			 * space.
+			 */
+			if (do_truncate(segpath) < 0 && errno == ENOENT)
+				break;
 
 			if (unlink(segpath) < 0)
 			{
