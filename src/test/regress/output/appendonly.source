@@ -1715,59 +1715,41 @@ select count(*) from fix_ao_truncate_last_sequence;
 
 abort;
 -- check reporting of missing attributes for AO table
-begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select xmin, * from test_reporting;
 ERROR:  AO-table has no "xmin" column
 LINE 1: explain select xmin, * from test_reporting;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select xmax, * from test_reporting;
 ERROR:  AO-table has no "xmax" column
 LINE 1: explain select xmax, * from test_reporting;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select cmin, * from test_reporting;
 ERROR:  AO-table has no "cmin" column
 LINE 1: explain select cmin, * from test_reporting;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select cmax, * from test_reporting;
 ERROR:  AO-table has no "cmax" column
 LINE 1: explain select cmax, * from test_reporting;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed replicated;
-explain select xmin, * from test_reporting;
+drop table test_reporting;
+-- Replicated tables using different code pathes and we want to be sure than 
+-- all code pathes are covered by tests.
+create table test_reporting_r (id int) with (appendonly=true) distributed replicated;
+explain select xmin, * from test_reporting_r;
 ERROR:  AO-table has no "xmin" column
-LINE 1: explain select xmin, * from test_reporting;
+LINE 1: explain select xmin, * from test_reporting_r;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed replicated;
-explain select xmax, * from test_reporting;
+explain select xmax, * from test_reporting_r;
 ERROR:  AO-table has no "xmax" column
-LINE 1: explain select xmax, * from test_reporting;
+LINE 1: explain select xmax, * from test_reporting_r;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed replicated;
-explain select cmin, * from test_reporting;
+explain select cmin, * from test_reporting_r;
 ERROR:  AO-table has no "cmin" column
-LINE 1: explain select cmin, * from test_reporting;
+LINE 1: explain select cmin, * from test_reporting_r;
                        ^
-abort;
-begin;
-create table test_reporting (id int) with (appendonly=true) distributed replicated;
-explain select cmax, * from test_reporting;
+explain select cmax, * from test_reporting_r;
 ERROR:  AO-table has no "cmax" column
-LINE 1: explain select cmax, * from test_reporting;
+LINE 1: explain select cmax, * from test_reporting_r;
                        ^
-abort;
+drop table test_reporting_r;
