@@ -812,6 +812,9 @@ select count(*) from fix_ao_truncate_last_sequence;
 abort;
 
 -- check reporting of missing attributes for AO table
+-- These tests are checking error processing and after error raised, 
+-- the transaction switches into aborted state not allowing 
+-- new statements inside it. That's why transaction blocks are necessary here.
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select xmin, * from test_reporting;
@@ -832,6 +835,8 @@ create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select cmax, * from test_reporting;
 abort;
 
+-- Replicated tables using different code pathes and we want to be sure than 
+-- all code pathes are covered by tests.
 begin;
 create table test_reporting (id int) with (appendonly=true) distributed replicated;
 explain select xmin, * from test_reporting;
