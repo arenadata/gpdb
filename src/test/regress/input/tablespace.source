@@ -168,10 +168,6 @@ DROP TABLE t;
 -- Enable gp_inject_fault extension.
 -- This extension will be used in test below to force flushing of all dirty
 -- pages by the bg writer process.
-\! gpconfig -c shared_preload_libraries -v 'gp_inject_fault';
-\! gpstop -raq -M fast;
-\c
-
 CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
 -- Reset all faults.
 SELECT gp_inject_fault_infinite('all', 'reset', dbid) FROM gp_segment_configuration;
@@ -194,9 +190,3 @@ DROP TABLE t;
 \! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
 
 DROP TABLESPACE testspace;
-
--- start_ignore
--- Disable gp_inject_fault
-\! gpconfig -r shared_preload_libraries;
-\! gpstop -raq -M fast;
--- end_ignore
