@@ -882,6 +882,9 @@ dumpTransProtoStats()
 	snprintf(tmpbuf, 32, "%d." UINT64_FORMAT "txt", MyProcPid, getCurrentTime());
 	FILE	   *ofile = fopen(tmpbuf, "w+");
 
+	if (ofile == NULL)
+		return;
+
 	pthread_mutex_lock(&trans_proto_stats.lock);
 	while (trans_proto_stats.head)
 	{
@@ -6760,6 +6763,9 @@ dumpICBufferList(ICBufferList *list, const char *fname)
 {
 	FILE	   *ofile = fopen(fname, "w+");
 
+	if (ofile == NULL)
+		return;
+
 	dumpICBufferList_Internal(list, ofile);
 	fclose(ofile);
 }
@@ -6773,6 +6779,9 @@ dumpUnackQueueRing(const char *fname)
 {
 	FILE	   *ofile = fopen(fname, "w+");
 	int			i;
+
+	if (ofile == NULL)
+		return;
 
 	fprintf(ofile, "UnackQueueRing: currentTime " UINT64_FORMAT ", idx %d numOutstanding %d numSharedOutstanding %d\n",
 			unack_queue_ring.currentTime, unack_queue_ring.idx,
@@ -6801,6 +6810,9 @@ dumpConnections(ChunkTransportStateEntry *pEntry, const char *fname)
 	MotionConn *conn;
 
 	FILE	   *ofile = fopen(fname, "w+");
+
+	if (ofile == NULL)
+		return;
 
 	fprintf(ofile, "Entry connections: conn num %d \n", pEntry->numConns);
 	fprintf(ofile, "==================================\n");
