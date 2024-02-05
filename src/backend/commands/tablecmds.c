@@ -16756,12 +16756,11 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		pn = RelationBuildPartitionDesc(rel, false);
 		pcols = get_partition_attrs(pn);
 
+		Assert(pid);
 		prule = get_part_rule(rel, pid, true, true, NULL, false);
 
-		if (!prule)
-			return;
-
-		if (prule && prule->topRule && prule->topRule->children)
+		Assert(prule && prule->topRule);
+		if (prule->topRule->children)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot EXCHANGE PARTITION for "
