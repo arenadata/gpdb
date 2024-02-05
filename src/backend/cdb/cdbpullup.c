@@ -382,10 +382,6 @@ cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 			}
 			else
 			{
-				/* ignore RelabelType nodes on both sides */
-				while (key && IsA(key, RelabelType))
-					key = (Expr *) ((RelabelType *) key)->arg;
-
 				if (equal(tlexpr, key))
 					return key;
 			}
