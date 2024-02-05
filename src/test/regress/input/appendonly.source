@@ -812,7 +812,11 @@ select count(*) from fix_ao_truncate_last_sequence;
 abort;
 
 -- check reporting of missing attributes for AO table
+-- start_ignore
 drop table if exists test_reporting;
+drop table if exists test_reporting_r;
+-- end_ignore
+
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select xmin, * from test_reporting;
 explain select xmax, * from test_reporting;
@@ -822,9 +826,13 @@ explain select cmax, * from test_reporting;
 
 -- Replicated tables using different code pathes and we want to be sure than 
 -- all code pathes are covered by tests.
-drop table if exists test_reporting_r;
 create table test_reporting_r (id int) with (appendonly=true) distributed replicated;
 explain select xmin, * from test_reporting_r;
 explain select xmax, * from test_reporting_r;
 explain select cmin, * from test_reporting_r;
 explain select cmax, * from test_reporting_r;
+
+-- start_ignore
+drop table if exists test_reporting;
+drop table if exists test_reporting_r;
+-- end_ignore

@@ -1715,8 +1715,12 @@ select count(*) from fix_ao_truncate_last_sequence;
 
 abort;
 -- check reporting of missing attributes for AO table
+-- start_ignore
 drop table if exists test_reporting;
 NOTICE:  table "test_reporting" does not exist, skipping
+drop table if exists test_reporting_r;
+NOTICE:  table "test_reporting_r" does not exist, skipping
+-- end_ignore
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
 explain select xmin, * from test_reporting;
 ERROR:  AO-table has no "xmin" column
@@ -1736,8 +1740,6 @@ LINE 1: explain select cmax, * from test_reporting;
                        ^
 -- Replicated tables using different code pathes and we want to be sure than 
 -- all code pathes are covered by tests.
-drop table if exists test_reporting_r;
-NOTICE:  table "test_reporting_r" does not exist, skipping
 create table test_reporting_r (id int) with (appendonly=true) distributed replicated;
 explain select xmin, * from test_reporting_r;
 ERROR:  AO-table has no "xmin" column
@@ -1755,3 +1757,7 @@ explain select cmax, * from test_reporting_r;
 ERROR:  AO-table has no "cmax" column
 LINE 1: explain select cmax, * from test_reporting_r;
                        ^
+-- start_ignore
+drop table if exists test_reporting;
+drop table if exists test_reporting_r;
+-- end_ignore
