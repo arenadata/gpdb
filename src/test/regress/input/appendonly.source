@@ -832,7 +832,5 @@ explain select xmax, * from test_reporting_r;
 explain select cmin, * from test_reporting_r;
 explain select cmax, * from test_reporting_r;
 
--- start_ignore
 drop table test_reporting;
 drop table test_reporting_r;
--- end_ignore

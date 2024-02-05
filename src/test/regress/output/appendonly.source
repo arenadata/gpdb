@@ -1753,5 +1753,5 @@ explain select cmax, * from test_reporting_r;
 ERROR:  AO-table has no "cmax" column
 LINE 1: explain select cmax, * from test_reporting_r;
                        ^
--- start_ignore
--- end_ignore
+drop table test_reporting;
+drop table test_reporting_r;
