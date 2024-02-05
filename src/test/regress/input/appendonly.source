@@ -833,6 +833,6 @@ explain select cmin, * from test_reporting_r;
 explain select cmax, * from test_reporting_r;
 
 -- start_ignore
-drop table if exists test_reporting;
-drop table if exists test_reporting_r;
+drop table test_reporting;
+drop table test_reporting_r;
 -- end_ignore
