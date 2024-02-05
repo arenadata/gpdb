@@ -11117,7 +11117,7 @@ get_partition_recursive(PartitionNode *pn, deparse_context *head,
 					{
 						first_every_rule = NULL;
 
-						if (!strlen(rule->parname))
+						if (!rule->parname || !strlen(rule->parname))
 							prev_rule = first_every_rule = rule;
 						else
 						{
