@@ -360,7 +360,7 @@ cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 			 * Check if targetlist is a List of TargetEntry. (Planner's
 			 * RelOptInfo targetlists don't have TargetEntry nodes.)
 			 */
-			if (tlexpr && IsA(tlexpr, TargetEntry))
+			if (IsA(tlexpr, TargetEntry))
 				tlexpr = (Node *) ((TargetEntry *) tlexpr)->expr;
 
 			/* ignore RelabelType nodes on both sides */
