@@ -3,7 +3,7 @@ DECLARE
 	nsp TEXT;
 BEGIN
 	FOR nsp IN
-		SELECT distinct nspname
+		SELECT nspname
 		FROM (
 			SELECT nspname
 			FROM gp_dist_random('pg_namespace')
