@@ -164,7 +164,6 @@ INSERT INTO t SELECT i, i FROM generate_series(1,1000) i;
 DROP TABLE t;
 \! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
 
--- start_ignore
 -- Enable gp_inject_fault extension.
 -- This extension will be used in test below to force flushing of all dirty
 -- pages by the bg writer process.
@@ -177,7 +176,6 @@ CHECKPOINT;
 SELECT pg_sleep(1);
 -- Force flushing all dirty pages by the bg writer process.
 SELECT gp_inject_fault_infinite('bg_buffer_sync_default_logic', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content > -1;
--- end_ignore
 
 -- Checking that the temp heap table doesn't leave non-zero files.
 CREATE TEMP TABLE t(a int, b int) TABLESPACE testspace;
@@ -187,8 +185,6 @@ SELECT pg_sleep(1);
 DROP TABLE t;
 \! find /proc/[0-9]*/fd -lname '@testtablespace@*(deleted)' -exec stat -Lc '%s' {} \; 2>/dev/null | awk 'BEGIN {sum=0} {sum += $1} END {print "size:",  sum}';
 
--- start_ignore
-SELECT gp_inject_fault_infinite('bg_buffer_sync_default_logic', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content > -1;
--- end_ignore
+SELECT gp_inject_fault('bg_buffer_sync_default_logic', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content > -1;
 
 DROP TABLESPACE testspace;
