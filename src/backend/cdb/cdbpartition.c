@@ -7042,7 +7042,7 @@ atpxPartAddList(Relation rel,
 				skipTableRelid = RangeVarGetRelid(t->relation, NoLock, true);
 			}
 
-		/* FIXME: indent this or remove condition above if it is not needed */
+		/* FIXME: indent this */
 		for_each_cell(lc, lnext(lc))
 		{
 			Node	   *q = lfirst(lc);
