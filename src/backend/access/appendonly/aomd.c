@@ -252,7 +252,8 @@ mdunlink_ao_perFile(const int segno, void *ctx)
 
 	sprintf(segPathSuffixPosition, ".%u", segno);
 
-	do_truncate(segPath);
+	if (do_truncate(segPath) < 0 && errno == ENOENT)
+		return false;
 
 	if (unlink(segPath) != 0)
 	{
