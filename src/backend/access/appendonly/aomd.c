@@ -252,6 +252,7 @@ mdunlink_ao_perFile(const int segno, void *ctx)
 
 	sprintf(segPathSuffixPosition, ".%u", segno);
 
+	/* Prevent other backends' fds from holding on to the disk space */
 	if (do_truncate(segPath) < 0 && errno == ENOENT)
 		return false;
 
