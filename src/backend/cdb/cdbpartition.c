@@ -5235,7 +5235,6 @@ get_part_rule(Relation rel,
 		lc = lnext(lc);
 
 		pid2 = (AlterPartitionId *) lfirst(lc);
-		Assert(pid2);
 
 		return get_part_rule1(rel, pid2, bExistError, bMustExist, pSearch,
 							  pNode, pstrdup(prule2->relname), &pNode2);
@@ -5250,9 +5249,6 @@ get_part_rule(Relation rel,
 		StringInfoData sid1,
 					sid2;
 
-		/* prule2 must exist */
-		Assert(bExistError && bMustExist);
-
 		initStringInfo(&sid1);
 		initStringInfo(&sid2);
 		appendStringInfoString(&sid1, relnamBuf);
@@ -5261,12 +5257,12 @@ get_part_rule(Relation rel,
 		{
 
 			pid2 = (AlterPartitionId *) lfirst(lc);
-			Assert(pid2);
 
 			prule2 = get_part_rule1(rel,
 									pid2,
 									bExistError, bMustExist,
 									pSearch, pNode, sid1.data, &pNode2);
+			Assert(prule2);
 
 			pNode = pNode2;
 
