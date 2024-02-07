@@ -2668,6 +2668,8 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 	if (!es->analyze)
 		return;
 
+	Assert(((PlanState *) sortstate)->instrument);
+
 	ns = ((PlanState *) sortstate)->instrument->cdbNodeSummary;
 	/* Might not have received stats from qExecs if they hit errors. */
 	if (!ns)
