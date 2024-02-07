@@ -31,7 +31,6 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
-#include "cdb/cdbpartition.h"
 
 #include "catalog/aocatalog.h"
 #include "catalog/pg_exttable.h"
