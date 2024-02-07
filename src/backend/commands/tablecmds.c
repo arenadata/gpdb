@@ -16756,10 +16756,11 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 		pn = RelationBuildPartitionDesc(rel, false);
 		pcols = get_partition_attrs(pn);
 
-		Assert(pid);
 		prule = get_part_rule(rel, pid, true, true, NULL, false);
 
-		Assert(prule && prule->topRule);
+		if (!prule || !prule->topRule)
+			return;
+
 		if (prule->topRule->children)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
