@@ -143,7 +143,7 @@ select count(*) from gp_segment_configuration where status = 'd';
 -- After error, schemas for temporary table still exist (like 'pg_temp'
 -- and 'pg_toast_temp').
 -- Lets remove all such temporary schemas for inactive connections
-! psql -d isolation2test -f sql/remove_temp_schemas.sql;
+! psql -d isolation2test -f ../regression/sql/remove_temp_schemas.sql;
 -- end_ignore
 !\retcode gpconfig -r gp_fts_probe_retries --masteronly;
 !\retcode gpconfig -r gp_gang_creation_retry_count --skipvalidation --masteronly;
