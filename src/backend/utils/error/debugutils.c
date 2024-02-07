@@ -216,10 +216,10 @@ void dump_tupdesc(TupleDesc tupdesc, const char *fname)
     int i;
 
     if (ofile == NULL)
-	{
-		fprintf(stderr, "dump_tupdesc: can't open \"%s\" for output", fname);
-		return;
-	}
+    {
+        fprintf(stderr, "dump_tupdesc: can't open \"%s\" for output", fname);
+        return;
+    }
 
     fprintf(ofile, "TupleDesc: natts %d, hasoid %s\n", tupdesc->natts, tupdesc->tdhasoid ? "true" : "false");
     fprintf(ofile, "Name\t\tattlen\tattbyval\tattalign\n");
@@ -246,10 +246,10 @@ void dump_mt_bind(MemTupleBinding *mt_bind, const char *fname)
     int i;
 
     if (ofile == NULL)
-	{
-		fprintf(stderr, "dump_mt_bind: can't open \"%s\" for output", fname);
-		return;
-	}
+    {
+        fprintf(stderr, "dump_mt_bind: can't open \"%s\" for output", fname);
+        return;
+    }
 
     fprintf(ofile, "Mt_bind: column_align %d, nbm_extra_size %d\n",
             mt_bind->column_align, mt_bind->null_bitmap_extra_size);
