@@ -726,17 +726,13 @@ ExecDelete(ItemPointer tupleid,
 	/*
 	 * If we are executing DML on partitioned table, the tableoid attribute
 	 * is expected to be in a incoming slot. tableoid corrsponds to a leaf
-	 * partition, which is going to be the target resultRelInfo. If we are
-	 * updating the root partition and the attribute is absent the error is
-	 * thrown.
+	 * partition, which is going to be the target resultRelInfo.
 	 */
-	if (planGen == PLANGEN_OPTIMIZER && estate->es_result_partitions)
+	if (planGen == PLANGEN_OPTIMIZER && estate->es_result_partitions &&
+		OidIsValid(tableoid))
 	{
-		if (OidIsValid(tableoid))
-			resultRelInfo = targetid_get_partition(tableoid, estate, true);
-		else if (RelationGetRelid(estate->es_result_relation_info->ri_RelationDesc) ==
-				 estate->es_result_partitions->part->parrelid)
-			elog(ERROR, "tableoid value is missing in the tuple for DELETE");
+		resultRelInfo = targetid_get_partition(tableoid, estate, true);
+		estate->es_result_relation_info = resultRelInfo;
 	}
 
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
