@@ -640,6 +640,8 @@ use_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 static void
 disuse_physical_tlist(PlannerInfo *root, Plan *plan, Path *path)
 {
+	Assert(plan);
+
 	/* Only need to undo it for path types handled by create_scan_plan() */
 	switch (path->pathtype)
 	{
