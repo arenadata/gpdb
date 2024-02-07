@@ -585,7 +585,7 @@ pushJsonbValueScalar(JsonbParseState **pstate, JsonbIteratorToken seq,
 			appendKey(*pstate, scalarVal);
 			break;
 		case WJB_VALUE:
-			Assert(IsAJsonbScalar(scalarVal));
+			Assert(scalarVal && IsAJsonbScalar(scalarVal));
 			appendValue(*pstate, scalarVal);
 			break;
 		case WJB_ELEM:
