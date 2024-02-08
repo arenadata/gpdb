@@ -5272,7 +5272,15 @@ get_part_rule(Relation rel,
 									pid2,
 									bExistError, bMustExist,
 									pSearch, pNode, sid1.data, &pNode2);
-			Assert(prule2);
+			if (!prule2)
+			{
+				if (!bExistError)
+					return NULL;
+				else if (bMustExist)
+					ereport(ERROR,
+						 (errcode(ERRCODE_INTERNAL_ERROR),
+						  errmsg("Alter Partition Id List does not contain partitioning rule")));
+			}
 
 			pNode = pNode2;
 
