@@ -16758,7 +16758,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 
 		prule = get_part_rule(rel, pid, true, true, NULL, false);
 
-		if (!prule || !prule->topRule)
+		if (!prule || prule->topRule == NULL)
 			return;
 
 		if (prule->topRule->children)
