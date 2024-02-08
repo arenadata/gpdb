@@ -17136,7 +17136,7 @@ ATPExecPartRename(Relation rel,
 
 		relation_close(targetrelation, AccessExclusiveLock);
 
-		if (0 == prule->topRule->parparentoid)
+		if (prule->topRule && 0 == prule->topRule->parparentoid)
 		{
 			StrNCpy(parentname,
 					RelationGetRelationName(rel), NAMEDATALEN);
