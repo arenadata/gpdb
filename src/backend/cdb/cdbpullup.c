@@ -382,14 +382,13 @@ cdbpullup_findEclassInTargetList(EquivalenceClass *eclass, List *targetlist,
 			}
 			else
 			{
-				if ((tlexpr || key) && equal(tlexpr, key))
+				if (equal(tlexpr, key))
 					return key;
 			}
 		}
 
 		/* Return this item if all referenced Vars are in targetlist. */
-		if (key &&
-			!IsA(key, Var) &&
+		if (key && !IsA(key, Var) &&
 			!cdbpullup_missingVarWalker((Node *) key, targetlist))
 		{
 			return key;
