@@ -3216,10 +3216,11 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				}
 				else
 				{
-					allNewCols = lappend(allNewCols, pstrdup(outputstr));
-
 					if (outputstr)
+					{
+						allNewCols = lappend(allNewCols, pstrdup(outputstr));
 						pfree(outputstr);
+					}
 
 					sqlRc = 1;
 				}
