@@ -5228,7 +5228,17 @@ get_part_rule(Relation rel,
 
 		lc = list_head(l1);
 		prule2 = (PgPartRule *) lfirst(lc);
-		Assert(prule2);
+
+		if (!prule2)
+		{
+			if (!bExistError)
+				return NULL;
+			else if (bMustExist)
+				ereport(ERROR,
+					 (errcode(ERRCODE_INTERNAL_ERROR),
+					  errmsg("Alter Partition Id Rule does not contain partitioning rule")));
+		}
+
 		if (prule2->topRule && prule2->topRule->children)
 			pNode = prule2->topRule->children;
 
