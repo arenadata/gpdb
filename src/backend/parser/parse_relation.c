@@ -597,7 +597,7 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, char *colname,
 
 		/*
 		 * AO tables by nature do not have special system columns like xmin,
-		 * cmax, cmin, cmax. Here we can check for that columns access and
+		 * xmax, cmin, cmax. Here we can check for that columns access and
 		 * provide meaningfull message to the user. We want to do this before
 		 * check for replicated tables, so replicated AO tables also covered
 		 * with this logic.
