@@ -19367,7 +19367,7 @@ ATPExecPartTruncate(Relation rel,
 
 		rv->location = pc->location;
 
-		if (prule->topRule->children)
+		if (prule->topRule && prule->topRule->children)
 		{
 			List *l1 = atpxTruncateList(rel2, prule->topRule->children);
 
@@ -19386,7 +19386,7 @@ ATPExecPartTruncate(Relation rel,
 					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
-		if (prule && prule->topRule && prule->topRule->children
+		if (prule->topRule && prule->topRule->children
 			&& (ts->behavior != DROP_CASCADE ))
 		{
 			ereport(NOTICE,
