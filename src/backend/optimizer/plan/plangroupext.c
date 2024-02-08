@@ -430,11 +430,7 @@ plan_grouping_extension(PlannerInfo *root,
 	context.qual = qual;
 	context.numGroupCols = *p_numGroupCols;
 	context.grpColIdx = palloc0(context.numGroupCols * sizeof(AttrNumber));
-	memcpy(context.grpColIdx, *p_grpColIdx,
-		   context.numGroupCols * sizeof(AttrNumber));
 	context.grpOperators = palloc0(context.numGroupCols * sizeof(Oid));
-	memcpy(context.grpOperators, *p_grpOperators,
-		   context.numGroupCols * sizeof(Oid));
 	context.numDistinctCols = 0;
 	context.distinctColIdx = NULL;
 	context.agg_costs = agg_costs;
@@ -518,6 +514,11 @@ plan_grouping_extension(PlannerInfo *root,
 			(Oid *) palloc0((*p_numGroupCols + 2) * sizeof(Oid));
 	}
 	
+	memcpy(context.grpColIdx, *p_grpColIdx,
+		   context.numGroupCols * sizeof(AttrNumber));
+	memcpy(context.grpOperators, *p_grpOperators,
+		   context.numGroupCols * sizeof(Oid));
+
 	(*p_numGroupCols) += 2;
 
 	*p_tlist = context.tlist;
