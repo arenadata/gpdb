@@ -18362,11 +18362,12 @@ ATPExecPartSplit(Relation *rel,
 			else if (intopid)
 				ErrorOnInvalidDefaultPartition(rel, intopid);
 
-			if (prule->topRule->parisdefault && i == into_exists)
+			if (prule->topRule &&
+				prule->topRule->parisdefault && i == into_exists)
 			{
 				/* nothing to do */
 			}
-			else
+			else if (prule->topRule != NULL)
 			{
 				if (prule->pNode->part->parkind == 'r')
 				{
@@ -18384,8 +18385,7 @@ ATPExecPartSplit(Relation *rel,
 						/* MPP-6589: if the partition has an "open"
 						 * START, pass a NULL partStart
 						 */
-						if (prule->topRule &&
-							prule->topRule->parrangestart)
+						if (prule->topRule->parrangestart)
 						{
 							ri = makeNode(PartitionRangeItem);
 							ri->location = -1;
