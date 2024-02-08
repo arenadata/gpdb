@@ -5231,9 +5231,9 @@ get_part_rule(Relation rel,
 
 		if (!prule2)
 		{
-			if (!bExistError)
+			if (!bExistError || !bMustExist)
 				return NULL;
-			else if (bMustExist)
+			else
 				ereport(ERROR,
 					 (errcode(ERRCODE_INTERNAL_ERROR),
 					  errmsg("Alter Partition Id Rule does not contain partitioning rule")));
@@ -5274,9 +5274,9 @@ get_part_rule(Relation rel,
 									pSearch, pNode, sid1.data, &pNode2);
 			if (!prule2)
 			{
-				if (!bExistError)
+				if (!bExistError || !bMustExist)
 					return NULL;
-				else if (bMustExist)
+				else
 					ereport(ERROR,
 						 (errcode(ERRCODE_INTERNAL_ERROR),
 						  errmsg("Alter Partition Id List does not contain partitioning rule")));
