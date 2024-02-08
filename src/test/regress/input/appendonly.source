@@ -815,6 +815,7 @@ abort;
 -- start_ignore
 drop table if exists test_reporting;
 drop table if exists test_reporting_r;
+drop table if exists test_reporting_c;
 -- end_ignore
 
 create table test_reporting (id int) with (appendonly=true) distributed by (id);
@@ -823,6 +824,15 @@ explain select xmax, * from test_reporting;
 explain select cmin, * from test_reporting;
 explain select cmax, * from test_reporting;
 
+-- Check column oriented tables as well
+create table test_reporting_c (id int) 
+    with (appendonly=true, orientation=column) 
+    distributed by (id);
+
+explain select xmin, * from test_reporting_c;
+explain select xmax, * from test_reporting_c;
+explain select cmin, * from test_reporting_c;
+explain select cmax, * from test_reporting_c;
 
 -- Replicated tables using different code pathes and we want to be sure than 
 -- all code pathes are covered by tests.
@@ -834,3 +844,4 @@ explain select cmax, * from test_reporting_r;
 
 drop table test_reporting;
 drop table test_reporting_r;
+drop table test_reporting_c;
