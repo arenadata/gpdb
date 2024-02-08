@@ -173,9 +173,6 @@ CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
 -- Start with a clean state (no dirty buffers) by performing a checkpoint.
 -- It will also protect from a random timed checkpoint during the test, that could lead to not stable test result.
 CHECKPOINT;
--- After a checkpoint is requested, need to wait for some time to ensure that the checkpointer process 
--- completes its work before the actual test starts.
-SELECT pg_sleep(1);
 -- Force flushing all dirty pages by the bg writer process.
 SELECT gp_inject_fault_infinite('bg_buffer_sync_default_logic', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content > -1;
 
