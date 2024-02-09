@@ -329,9 +329,8 @@ auth_failed(Port *port, int status, char *logdetail)
 			errstr = gettext_noop("authentication failed for user \"%s\": invalid authentication method");
 			break;
 	  }
-
-		cdetail = psprintf(_("Connection matched pg_hba.conf line %d: \"%s\""),
-							 port->hba->linenumber, port->hba->rawline);
+	  cdetail = psprintf(_("Connection matched pg_hba.conf line %d: \"%s\""),
+						   port->hba->linenumber, port->hba->rawline);
 	}
 
     /*
