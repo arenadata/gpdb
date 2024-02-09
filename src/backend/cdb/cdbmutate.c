@@ -842,10 +842,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 */
 			foreach(lcr, mt->resultRelations)
 			{
-				Index		rti = lfirst_int(lcr);
-
 				context->mt.resultRtis = bms_add_member(context->mt.resultRtis,
-														rti);
+														lfirst_int(lcr));
 			}
 
 			context->mt.isChecking = true;
