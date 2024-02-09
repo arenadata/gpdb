@@ -179,7 +179,7 @@ dotnode(void *node, const char *fname)
 
 	if (ofile == NULL)
 	{
-		fprintf(stderr, "dotnode: can't open \"%s\" for output", fname);
+		elog(WARNING, "could not open dump file %s", fname);
 		return;
 	}
 
@@ -217,7 +217,7 @@ void dump_tupdesc(TupleDesc tupdesc, const char *fname)
 
     if (ofile == NULL)
     {
-        fprintf(stderr, "dump_tupdesc: can't open \"%s\" for output", fname);
+        elog(WARNING, "could not open dump file %s", fname);
         return;
     }
 
@@ -247,7 +247,7 @@ void dump_mt_bind(MemTupleBinding *mt_bind, const char *fname)
 
     if (ofile == NULL)
     {
-        fprintf(stderr, "dump_mt_bind: can't open \"%s\" for output", fname);
+        elog(WARNING, "could not open dump file %s", fname);
         return;
     }
 
