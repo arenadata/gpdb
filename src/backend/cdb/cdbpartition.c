@@ -5277,9 +5277,10 @@ get_part_rule(Relation rel,
 				if (!bExistError || !bMustExist)
 					return NULL;
 				else
-					ereport(ERROR,
-						 (errcode(ERRCODE_INTERNAL_ERROR),
-						  errmsg("Alter Partition Id List does not contain partitioning rule")));
+				{
+					/* get_part_rule1() can't return NULL in this case */
+					Insist(0);
+				}
 			}
 
 			pNode = pNode2;
