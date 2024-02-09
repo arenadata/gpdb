@@ -93,6 +93,8 @@ BEGIN
 		RETURN NEXT from_version || ': column tablespace_location check';
 	END IF;
 
+-- Table "db_files_history_backup_YYYYMMDDtHHMMSS" must be created only if
+-- from_version is less than 1.4
 	IF EXISTS (SELECT 1
 			   FROM pg_tables
 			   WHERE schemaname='arenadata_toolkit' AND
@@ -135,10 +137,12 @@ BEGIN
 END$$
 LANGUAGE plpgsql;
 
-SELECT do_upgrade_test_for_arenadata_toolkit('1.0') ORDER BY 1;
-SELECT do_upgrade_test_for_arenadata_toolkit('1.1') ORDER BY 1;
-SELECT do_upgrade_test_for_arenadata_toolkit('1.2') ORDER BY 1;
-SELECT do_upgrade_test_for_arenadata_toolkit('1.3') ORDER BY 1;
+create external web table ver (x text)
+	execute
+	E'find $(pg_config --sharedir) -name "arenadata_toolkit--*--*.sql" -type f -printf "%f\\n" \\
+	 | grep -oP "arenadata_toolkit--(\\d+\\.\\d+)" | grep -oP "(\\d+\\.\\d+)"'
+	on master format 'text';
+SELECT do_upgrade_test_for_arenadata_toolkit(x) from ver ORDER BY 1;
 
 -- Cleanup
 DROP FUNCTION do_upgrade_test_for_arenadata_toolkit(TEXT);
