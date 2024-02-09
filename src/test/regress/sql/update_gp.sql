@@ -120,10 +120,12 @@ DROP TABLE keo5;
 -- Explicit Redistribute Motion should be added only if there is a motion
 -- between the scan and the ModifyTable on the relation we are going to modify.
 -- (test case not applicable to ORCA)
+-- start_ignore
 DROP TABLE IF EXISTS t1;
 DROP TABLE IF EXISTS t2;
 DROP TABLE IF EXISTS t_strewn;
 DROP TABLE IF EXISTS t_strewn2;
+-- end_ignore
 
 CREATE TABLE t1 (i int, j int) DISTRIBUTED BY (i);
 CREATE TABLE t2 (i int) DISTRIBUTED BY (i);
@@ -164,9 +166,11 @@ DROP TABLE t2;
 
 -- Explicit Redistribute Motion should not be mistakenly elided for inherited
 -- tables. (test case not applicable to ORCA)
+-- start_ignore
 DROP TABLE IF EXISTS i;
 DROP TABLE IF EXISTS foochild;
 DROP TABLE IF EXISTS foo;
+-- end_ignore
 
 CREATE TABLE i (i int, j int) DISTRIBUTED BY (i);
 INSERT INTO i SELECT
@@ -225,6 +229,7 @@ DROP TABLE t2;
 -- index.
 CREATE TABLE t1 (a int, b int);
 CREATE TABLE t2 (a int, b int);
+
 INSERT INTO t1 SELECT a, a FROM generate_series(1, 100) a;
 INSERT INTO t2 SELECT a, a FROM generate_series(1, 100) a;
 
