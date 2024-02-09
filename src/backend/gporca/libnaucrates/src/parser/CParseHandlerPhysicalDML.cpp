@@ -43,7 +43,8 @@ CParseHandlerPhysicalDML::CParseHandlerPhysicalDML(
 	  m_ctid_colid(0),
 	  m_segid_colid(0),
 	  m_preserve_oids(false),
-	  m_tuple_oid_colid(0)
+	  m_tuple_oid_colid(0),
+	  m_fSplit(true)
 {
 }
 
@@ -124,6 +125,16 @@ CParseHandlerPhysicalDML::StartElement(const XMLCh *const,	// element_uri,
 			m_parse_handler_mgr->GetDXLMemoryManager(), attrs,
 			EdxltokenTupleOidColId, EdxltokenPhysicalDMLUpdate);
 	}
+
+	const XMLCh *fSplit =
+		attrs.getValue(CDXLTokens::XmlstrToken(EdxltokenSplitUpdate));
+	if (NULL != fSplit)
+	{
+		m_fSplit = CDXLOperatorFactory::ConvertAttrValueToBool(
+			m_parse_handler_mgr->GetDXLMemoryManager(), fSplit,
+			EdxltokenSplitUpdate, EdxltokenPhysicalDMLUpdate);
+	}
+
 
 	// parse handler for physical operator
 	CParseHandlerBase *child_parse_handler =
@@ -225,7 +236,7 @@ CParseHandlerPhysicalDML::EndElement(const XMLCh *const,  // element_uri,
 	CDXLPhysicalDML *dxl_op = GPOS_NEW(m_mp) CDXLPhysicalDML(
 		m_mp, m_dxl_dml_type, table_descr, m_src_colids_array, m_action_colid,
 		m_ctid_colid, m_segid_colid, m_preserve_oids, m_tuple_oid_colid,
-		dxl_direct_dispatch_info);
+		dxl_direct_dispatch_info, m_fSplit);
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 
 	// set statistics and physical properties

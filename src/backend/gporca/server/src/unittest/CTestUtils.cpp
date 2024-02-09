@@ -1813,7 +1813,7 @@ CTestUtils::PexprLogicalUpdate(CMemoryPool *mp)
 	return GPOS_NEW(mp) CExpression(
 		mp,
 		GPOS_NEW(mp) CLogicalUpdate(mp, ptabdesc, pdrgpcrDelete, pdrgpcrInsert,
-									colref, colref, NULL /*pcrTupleOid*/),
+									colref, colref, NULL /*pcrTupleOid*/, true),
 		pexprGet);
 }
 

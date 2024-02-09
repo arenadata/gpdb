@@ -69,6 +69,9 @@ private:
 	// compute required order spec
 	COrderSpec *PosComputeRequired(CMemoryPool *mp, CTableDescriptor *ptabdesc);
 
+	// Split Update
+	BOOL m_fSplit;
+
 	// compute local required columns
 	void ComputeRequiredLocalColumns(CMemoryPool *mp);
 
@@ -80,7 +83,7 @@ public:
 	CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 				 CTableDescriptor *ptabdesc, CColRefArray *pdrgpcrSource,
 				 CBitSet *pbsModified, CColRef *pcrAction, CColRef *pcrCtid,
-				 CColRef *pcrSegmentId, CColRef *pcrTupleOid);
+				 CColRef *pcrSegmentId, CColRef *pcrTupleOid, BOOL fSplit);
 
 	// dtor
 	virtual ~CPhysicalDML();
@@ -146,6 +149,13 @@ public:
 	PdrgpcrSource() const
 	{
 		return m_pdrgpcrSource;
+	}
+
+	// Is update using split
+	BOOL
+	FSplit() const
+	{
+		return m_fSplit;
 	}
 
 	// match function

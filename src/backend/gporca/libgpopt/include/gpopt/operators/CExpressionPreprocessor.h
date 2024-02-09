@@ -213,6 +213,9 @@ private:
 	static CExpression *PexprTransposeSelectAndProject(CMemoryPool *mp,
 													   CExpression *pexpr);
 
+	static CExpression *ConvertSplitUpdateToInPlaceUpdate(CMemoryPool *mp,
+														  CExpression *expr);
+
 	static CExpression *CollapseSelectAndReplaceColref(CMemoryPool *mp,
 													   CExpression *expr,
 													   CColRef *pcolref,

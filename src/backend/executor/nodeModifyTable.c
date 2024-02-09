@@ -1301,7 +1301,8 @@ ExecUpdate(ItemPointer tupleid,
 		   TupleTableSlot *planSlot,
 		   EPQState *epqstate,
 		   EState *estate,
-		   bool canSetTag)
+		   bool canSetTag,
+		   PlanGenerator planGen)
 {
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
@@ -1370,8 +1371,12 @@ ExecUpdate(ItemPointer tupleid,
 
 	/* see if this update would move the tuple to a different partition */
 	if (estate->es_result_partitions)
+	{
 		checkPartitionUpdate(estate, slot, resultRelInfo);
 
+		if (planGen == PLANGEN_OPTIMIZER)
+			slot = reconstructMatchingTupleSlot(slot, resultRelInfo);
+	}
 	/* BEFORE ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_update_before_row)
@@ -1570,6 +1575,17 @@ lreplace:;
 		if (!ItemPointerEquals(tupleid, &hufd.ctid))
 				{
 					TupleTableSlot *epqslot;
+
+					/*
+					 * TODO: DML node doesn't initialize `epqstate` parameter so
+					 * we exclude EPQ routine for this type of modification and
+					 * act as in RR and upper isolation levels.
+					 */
+					if (!epqstate)
+						ereport(ERROR,
+								(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+										errmsg("could not serialize access due to concurrent update"),
+										errhint("Use PostgreSQL Planner instead of Optimizer for this query via optimizer=off GUC setting")));
 
 					epqslot = EvalPlanQual(estate,
 										   epqstate,
@@ -1942,7 +1958,7 @@ ExecModifyTable(ModifyTableState *node)
 						slot = ExecUpdate(tupleid, segid,
 										  oldtuple, slot, planSlot,
 										  &node->mt_epqstate, estate,
-										  node->canSetTag);
+										  node->canSetTag, PLANGEN_PLANNER);
 						break;
 					}
 

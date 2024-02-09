@@ -59,7 +59,8 @@ ExecUpdate(ItemPointer tupleid,
 		   TupleTableSlot *planSlot,
 		   EPQState *epqstate,
 		   EState *estate,
-		   bool canSetTag);
+		   bool canSetTag,
+		   PlanGenerator planGen);
 
 
 #endif   /* EXECDML_H */

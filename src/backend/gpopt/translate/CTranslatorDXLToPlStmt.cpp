@@ -4100,6 +4100,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 	DML *dml = MakeNode(DML);
 	Plan *plan = &(dml->plan);
 	AclMode acl_mode = ACL_NO_RIGHTS;
+	BOOL isSplit = phy_dml_dxlop->FSplit();
 
 	switch (phy_dml_dxlop->GetDmlOpType())
 	{
@@ -4186,11 +4187,21 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 		dml_target_list = target_list_with_dropped_cols;
 	}
 
-	// Extract column numbers of the action and ctid columns from the
-	// target list.
-	dml->actionColIdx = AddTargetEntryForColId(&dml_target_list, &child_context,
-											   phy_dml_dxlop->ActionColId(),
-											   true /*is_resjunk*/);
+	// Doesn't needed for in place update
+	if (isSplit || CMD_UPDATE != m_cmd_type)
+	{
+		// Extract column numbers of the action and ctid columns from the
+		// target list.
+		dml->actionColIdx = AddTargetEntryForColId(
+			&dml_target_list, &child_context, phy_dml_dxlop->ActionColId(),
+			true /*is_resjunk*/);
+		GPOS_ASSERT(0 != dml->actionColIdx);
+	}
+	else
+	{
+		dml->actionColIdx = 0;
+	}
+
 	dml->ctidColIdx = AddTargetEntryForColId(&dml_target_list, &child_context,
 											 phy_dml_dxlop->GetCtIdColId(),
 											 true /*is_resjunk*/);
@@ -4204,8 +4215,6 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 	{
 		dml->tupleoidColIdx = 0;
 	}
-
-	GPOS_ASSERT(0 != dml->actionColIdx);
 
 	plan->targetlist = dml_target_list;
 

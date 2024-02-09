@@ -38,7 +38,8 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 						   CTableDescriptor *ptabdesc,
 						   CColRefArray *pdrgpcrSource, CBitSet *pbsModified,
 						   CColRef *pcrAction, CColRef *pcrCtid,
-						   CColRef *pcrSegmentId, CColRef *pcrTupleOid)
+						   CColRef *pcrSegmentId, CColRef *pcrTupleOid,
+						   BOOL fSplit)
 	: CPhysical(mp),
 	  m_edmlop(edmlop),
 	  m_ptabdesc(ptabdesc),
@@ -50,7 +51,8 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 	  m_pcrTupleOid(pcrTupleOid),
 	  m_pds(NULL),
 	  m_pos(NULL),
-	  m_pcrsRequiredLocal(NULL)
+	  m_pcrsRequiredLocal(NULL),
+	  m_fSplit(fSplit)
 {
 	GPOS_ASSERT(CLogicalDML::EdmlSentinel != edmlop);
 	GPOS_ASSERT(NULL != ptabdesc);
@@ -80,33 +82,8 @@ CPhysicalDML::CPhysicalDML(CMemoryPool *mp, CLogicalDML::EDMLOperator edmlop,
 		// Update of the distribution key: This will be handled with a Split node below the DML node,
 		//         with the split deleting the existing rows and this DML node inserting the new rows,
 		//         so this is handled here like an insert, using hash distribution for all partitions.
-		BOOL is_update_without_changing_distribution_key = false;
 
-		if (CLogicalDML::EdmlUpdate == edmlop)
-		{
-			CDistributionSpecHashed *hashDistSpec =
-				CDistributionSpecHashed::PdsConvert(m_pds);
-			CColRefSet *updatedCols = GPOS_NEW(mp) CColRefSet(mp);
-			CColRefSet *distributionCols = hashDistSpec->PcrsUsed(mp);
-
-			// compute a ColRefSet of the updated columns
-			for (ULONG c = 0; c < pdrgpcrSource->Size(); c++)
-			{
-				if (pbsModified->Get(c))
-				{
-					updatedCols->Include((*pdrgpcrSource)[c]);
-				}
-			}
-
-			is_update_without_changing_distribution_key =
-				!updatedCols->FIntersects(distributionCols);
-
-			updatedCols->Release();
-			distributionCols->Release();
-		}
-
-		if (CLogicalDML::EdmlDelete == edmlop ||
-			is_update_without_changing_distribution_key)
+		if (CLogicalDML::EdmlDelete == edmlop || !fSplit)
 		{
 			m_pds->Release();
 			m_pds = GPOS_NEW(mp) CDistributionSpecRandom();
@@ -437,7 +414,8 @@ CPhysicalDML::Matches(COperator *pop) const
 			   m_pcrSegmentId == popDML->PcrSegmentId() &&
 			   m_pcrTupleOid == popDML->PcrTupleOid() &&
 			   m_ptabdesc->MDId()->Equals(popDML->Ptabdesc()->MDId()) &&
-			   m_pdrgpcrSource->Equals(popDML->PdrgpcrSource());
+			   m_pdrgpcrSource->Equals(popDML->PdrgpcrSource()) &&
+			   m_fSplit == popDML->FSplit();
 	}
 
 	return false;
@@ -538,7 +516,11 @@ CPhysicalDML::ComputeRequiredLocalColumns(CMemoryPool *mp)
 
 	// include source columns
 	m_pcrsRequiredLocal->Include(m_pdrgpcrSource);
-	m_pcrsRequiredLocal->Include(m_pcrAction);
+	// Action column is not required for InPlaceUpdate operator.
+	if (m_fSplit)
+	{
+		m_pcrsRequiredLocal->Include(m_pcrAction);
+	}
 
 	if (CLogicalDML::EdmlDelete == m_edmlop ||
 		CLogicalDML::EdmlUpdate == m_edmlop)
@@ -570,9 +552,9 @@ CPhysicalDML::OsPrint(IOstream &os) const
 	}
 
 	os << SzId() << " (";
-	os << CLogicalDML::m_rgwszDml[m_edmlop] << ", ";
 	m_ptabdesc->Name().OsPrint(os);
-	os << "), Source Columns: [";
+	CLogicalDML::PrintOperatorType(os, m_edmlop, m_fSplit);
+	os << "Source Columns: [";
 	CUtils::OsPrintDrgPcr(os, m_pdrgpcrSource);
 	os << "], Action: (";
 	m_pcrAction->OsPrint(os);

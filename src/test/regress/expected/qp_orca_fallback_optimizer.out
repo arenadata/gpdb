@@ -57,14 +57,13 @@ DETAIL:  Feature not supported: UPDATE with constraints
 
 set optimizer_enable_dml_constraints=on;
 explain update constr_tab set b = 10;
-                                  QUERY PLAN                                   
--------------------------------------------------------------------------------
- Update  (cost=0.00..431.08 rows=1 width=1)
-   ->  Split  (cost=0.00..431.00 rows=1 width=30)
-         ->  Result  (cost=0.00..431.00 rows=1 width=30)
-               ->  Seq Scan on constr_tab  (cost=0.00..431.00 rows=1 width=26)
+                               QUERY PLAN
+-------------------------------------------------------------------------
+ Update  (cost=0.00..431.03 rows=1 width=1)
+   ->  Result  (cost=0.00..431.00 rows=1 width=26)
+         ->  Seq Scan on constr_tab  (cost=0.00..431.00 rows=1 width=22)
  Optimizer: Pivotal Optimizer (GPORCA)
-(5 rows)
+(4 rows)
 
 -- Same, with NOT NULL constraint.
 DROP TABLE IF EXISTS constr_tab;

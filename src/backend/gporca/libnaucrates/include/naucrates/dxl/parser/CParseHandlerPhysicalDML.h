@@ -59,6 +59,9 @@ private:
 	// private copy ctor
 	CParseHandlerPhysicalDML(const CParseHandlerPhysicalDML &);
 
+	// Split Update
+	BOOL m_fSplit;
+
 	// process the start of an element
 	void StartElement(
 		const XMLCh *const element_uri,			// URI of element's namespace

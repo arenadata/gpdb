@@ -36,7 +36,8 @@ CLogicalUpdate::CLogicalUpdate(CMemoryPool *mp)
 	  m_pdrgpcrInsert(NULL),
 	  m_pcrCtid(NULL),
 	  m_pcrSegmentId(NULL),
-	  m_pcrTupleOid(NULL)
+	  m_pcrTupleOid(NULL),
+	  m_fSplit(true)
 {
 	m_fPattern = true;
 }
@@ -52,14 +53,16 @@ CLogicalUpdate::CLogicalUpdate(CMemoryPool *mp)
 CLogicalUpdate::CLogicalUpdate(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 							   CColRefArray *pdrgpcrDelete,
 							   CColRefArray *pdrgpcrInsert, CColRef *pcrCtid,
-							   CColRef *pcrSegmentId, CColRef *pcrTupleOid)
+							   CColRef *pcrSegmentId, CColRef *pcrTupleOid,
+							   BOOL fSplit)
 	: CLogical(mp),
 	  m_ptabdesc(ptabdesc),
 	  m_pdrgpcrDelete(pdrgpcrDelete),
 	  m_pdrgpcrInsert(pdrgpcrInsert),
 	  m_pcrCtid(pcrCtid),
 	  m_pcrSegmentId(pcrSegmentId),
-	  m_pcrTupleOid(pcrTupleOid)
+	  m_pcrTupleOid(pcrTupleOid),
+	  m_fSplit(fSplit)
 
 {
 	GPOS_ASSERT(NULL != ptabdesc);
@@ -118,7 +121,8 @@ CLogicalUpdate::Matches(COperator *pop) const
 		   m_pcrTupleOid == popUpdate->PcrTupleOid() &&
 		   m_ptabdesc->MDId()->Equals(popUpdate->Ptabdesc()->MDId()) &&
 		   m_pdrgpcrDelete->Equals(popUpdate->PdrgpcrDelete()) &&
-		   m_pdrgpcrInsert->Equals(popUpdate->PdrgpcrInsert());
+		   m_pdrgpcrInsert->Equals(popUpdate->PdrgpcrInsert()) &&
+		   m_fSplit == popUpdate->FSplit();
 }
 
 //---------------------------------------------------------------------------
@@ -175,7 +179,7 @@ CLogicalUpdate::PopCopyWithRemappedColumns(CMemoryPool *mp,
 	}
 	return GPOS_NEW(mp)
 		CLogicalUpdate(mp, m_ptabdesc, pdrgpcrDelete, pdrgpcrInsert, pcrCtid,
-					   pcrSegmentId, pcrTupleOid);
+					   pcrSegmentId, pcrTupleOid, m_fSplit);
 }
 
 //---------------------------------------------------------------------------
@@ -282,10 +286,17 @@ CLogicalUpdate::OsPrint(IOstream &os) const
 	{
 		return COperator::OsPrint(os);
 	}
-
 	os << SzId() << " (";
 	m_ptabdesc->Name().OsPrint(os);
-	os << "), Delete Columns: [";
+	if (m_fSplit)
+	{
+		os << "), Split Update";
+	}
+	else
+	{
+		os << "), In-place Update";
+	}
+	os << ", Delete Columns: [";
 	CUtils::OsPrintDrgPcr(os, m_pdrgpcrDelete);
 	os << "], Insert Columns: [";
 	CUtils::OsPrintDrgPcr(os, m_pdrgpcrInsert);

@@ -32,7 +32,8 @@ CDXLPhysicalDML::CDXLPhysicalDML(
 	CMemoryPool *mp, const EdxlDmlType dxl_dml_type,
 	CDXLTableDescr *table_descr, ULongPtrArray *src_colids_array,
 	ULONG action_colid, ULONG ctid_colid, ULONG segid_colid, BOOL preserve_oids,
-	ULONG tuple_oid, CDXLDirectDispatchInfo *dxl_direct_dispatch_info)
+	ULONG tuple_oid, CDXLDirectDispatchInfo *dxl_direct_dispatch_info,
+	BOOL fSplit)
 	: CDXLPhysical(mp),
 	  m_dxl_dml_type(dxl_dml_type),
 	  m_dxl_table_descr(table_descr),
@@ -42,7 +43,8 @@ CDXLPhysicalDML::CDXLPhysicalDML(
 	  m_segid_colid(segid_colid),
 	  m_preserve_oids(preserve_oids),
 	  m_tuple_oid(tuple_oid),
-	  m_direct_dispatch_info(dxl_direct_dispatch_info)
+	  m_direct_dispatch_info(dxl_direct_dispatch_info),
+	  m_fSplit(fSplit)
 {
 	GPOS_ASSERT(EdxldmlSentinel > dxl_dml_type);
 	GPOS_ASSERT(NULL != table_descr);
@@ -133,11 +135,17 @@ CDXLPhysicalDML::SerializeToDXL(CXMLSerializer *xml_serializer,
 	if (Edxldmlupdate == m_dxl_dml_type)
 	{
 		xml_serializer->AddAttribute(
+			CDXLTokens::GetDXLTokenStr(EdxltokenSplitUpdate), m_fSplit);
+	}
+
+	if (Edxldmlupdate == m_dxl_dml_type && !m_fSplit)
+	{
+		xml_serializer->AddAttribute(
 			CDXLTokens::GetDXLTokenStr(EdxltokenUpdatePreservesOids),
 			m_preserve_oids);
 	}
 
-	if (m_preserve_oids)
+	if (m_preserve_oids && !m_fSplit)
 	{
 		xml_serializer->AddAttribute(
 			CDXLTokens::GetDXLTokenStr(EdxltokenTupleOidColId), m_tuple_oid);

@@ -353,29 +353,29 @@ UPDATE 1
 -- make sure planner will contain InitPlan
 -- NOTE: orca does not generate InitPlan.
 2: explain update t_epq_subplans set b = b + 1 where a > -1.5 * (select max(a) from t_epq_subplans);
- QUERY PLAN                                                                                                                                    
------------------------------------------------------------------------------------------------------------------------------------------------
- Update  (cost=0.00..1324032.68 rows=1 width=1)                                                                                                                                                                                       
-   ->  Split  (cost=0.00..1324032.61 rows=1 width=22)
-         ->  Result  (cost=0.00..1324032.61 rows=1 width=22)
-               ->  Seq Scan on t_epq_subplans  (cost=0.00..1324032.61 rows=1 width=18)
-                     Filter: ((a)::numeric > ((-1.5) * ((SubPlan 1))::numeric))
-                     SubPlan 1  (slice0; segments: 3)
-                       ->  Materialize  (cost=0.00..431.00 rows=1 width=4)
-                             ->  Broadcast Motion 1:3  (slice2; segments: 1)  (cost=0.00..431.00 rows=3 width=4)
-                                   ->  Aggregate  (cost=0.00..431.00 rows=1 width=4)
-                                         ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..431.00 rows=1 width=4)
-                                               ->  Aggregate  (cost=0.00..431.00 rows=1 width=4)
-                                                     ->  Seq Scan on t_epq_subplans t_epq_subplans_1  (cost=0.00..431.00 rows=1 width=4)
- Optimizer: Pivotal Optimizer (GPORCA)                                                                                                         
-(14 rows)
+ QUERY PLAN                                                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------
+ Update  (cost=0.00..1324032.63 rows=1 width=1)                                                                                    
+   ->  Result  (cost=0.00..1324032.61 rows=1 width=18)                                                                             
+         ->  Seq Scan on t_epq_subplans  (cost=0.00..1324032.61 rows=1 width=18)                                                   
+               Filter: ((a)::numeric > ('-1.5'::numeric * ((SubPlan 1))::numeric))                                                 
+               SubPlan 1  (slice0; segments: 3)                                                                                    
+                 ->  Materialize  (cost=0.00..431.00 rows=1 width=4)                                                               
+                       ->  Broadcast Motion 1:3  (slice2; segments: 1)  (cost=0.00..431.00 rows=3 width=4)                         
+                             ->  Aggregate  (cost=0.00..431.00 rows=1 width=4)                                                     
+                                   ->  Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..431.00 rows=1 width=4)                
+                                         ->  Aggregate  (cost=0.00..431.00 rows=1 width=4)                                         
+                                               ->  Seq Scan on t_epq_subplans t_epq_subplans_1  (cost=0.00..431.00 rows=1 width=4) 
+ Optimizer: Pivotal Optimizer (GPORCA)                                                                                             
+(12 rows)
 2&: update t_epq_subplans set b = b + 1 where a > -1.5 * (select max(a) from t_epq_subplans);  <waiting ...>
 
 1: end;
 END
 -- session 2 should throw error and not PANIC
 2<:  <... completed>
-ERROR:  tuple to be updated was already moved to another segment due to concurrent update  (seg1 127.0.1.1:6003 pid=116712)
+ERROR:  could not serialize access due to concurrent update  (seg1 172.17.0.2:6003 pid=86009)
+HINT:  Use PostgreSQL Planner instead of Optimizer for this query via optimizer=off GUC setting
 
 1: drop table t_epq_subplans;
 DROP

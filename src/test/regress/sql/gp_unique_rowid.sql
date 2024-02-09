@@ -51,8 +51,6 @@ explain (costs off ) update rank_12402 set rank = 1 where id in (select id from 
 
 -- Test for fake ctid works well
 -- issue: https://github.com/greenplum-db/gpdb/issues/12512
--- NOTE: orca use split-update, planner use update, behavior is different when
--- tuple is updated by self.
 
 -- test ctid for subquery in update
 create table t_12512(a int, b int, c int);

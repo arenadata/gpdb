@@ -69,6 +69,9 @@ private:
 	// direct dispatch info for insert statements
 	CDXLDirectDispatchInfo *m_direct_dispatch_info;
 
+	// Is Split Update
+	BOOL m_fSplit;
+
 	// private copy ctor
 	CDXLPhysicalDML(const CDXLPhysicalDML &);
 
@@ -79,7 +82,8 @@ public:
 					ULongPtrArray *src_colids_array, ULONG action_colid,
 					ULONG ctid_colid, ULONG segid_colid, BOOL preserve_oids,
 					ULONG tuple_oid,
-					CDXLDirectDispatchInfo *dxl_direct_dispatch_info);
+					CDXLDirectDispatchInfo *dxl_direct_dispatch_info,
+					BOOL fSplit);
 
 	// dtor
 	virtual ~CDXLPhysicalDML();
@@ -151,6 +155,13 @@ public:
 	GetDXLDirectDispatchInfo() const
 	{
 		return m_direct_dispatch_info;
+	}
+
+	// Is update using split
+	BOOL
+	FSplit() const
+	{
+		return m_fSplit;
 	}
 
 #ifdef GPOS_DEBUG
