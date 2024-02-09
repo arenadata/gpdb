@@ -211,6 +211,60 @@ DELETE FROM t1 USING t2 WHERE t1.a = t2.a;
 DROP TABLE t1;
 DROP TABLE t2;
 
+-- Explicit Redistribute Motion should not be elided if we encounter a scan on
+-- the same table that we are going to update, but with different range table
+-- index.
+CREATE TABLE t(a int, b int);
+CREATE TABLE d(a int, b int);
+INSERT INTO t SELECT a, a FROM generate_series(1, 100) a;
+INSERT INTO d SELECT a, a FROM generate_series(1, 100) a;
+
+EXPLAIN (costs off) update d trg
+SET b = src.b1
+FROM (SELECT t.a AS a1, t.b AS b1, d.a AS a2, d.b AS b2 FROM t JOIN d USING (b)) src
+WHERE trg.a = src.a1
+    AND trg.a = 2;
+
+-- Use Nested Loop to change left tree with the right tree, to swap the extra
+-- scan we don't indend to detect with the real one. 
+SET enable_hashjoin = off;
+SET enable_nestloop = on;
+
+EXPLAIN (costs off) update d trg
+SET b = src.b1
+FROM (SELECT t.a AS a1, t.b AS b1, d.a AS a2, d.b AS b2 FROM t JOIN d USING (b)) src
+WHERE trg.a = src.a1
+    AND trg.a = 2;
+
+RESET enable_hashjoin;
+RESET enable_nestloop;
+
+DROP TABLE t;
+DROP TABLE d;
+
+-- Explicit Redistribute Motion should be elided for every partition that does
+-- not have any motions above the scan on the table/partition we are going to
+-- update.
+CREATE TABLE into_table (a int, b int, c int) DISTRIBUTED BY (b)
+    PARTITION BY RANGE(b) (start (1) end(5) every(1));
+
+CREATE TABLE from_table (a int, b int, c int) DISTRIBUTED BY (a);
+
+INSERT INTO into_table SELECT i * 2, i, i * 3 FROM generate_series(1,4) i;
+INSERT INTO from_table SELECT i, i * 2, i * 3 FROM generate_series(1,4) i;
+
+-- These partitions will need to have Explicit Redistribute above them.
+TRUNCATE into_table_1_prt_1;
+TRUNCATE into_table_1_prt_3;
+ANALYZE into_table_1_prt_1;
+ANALYZE into_table_1_prt_3;
+
+EXPLAIN (costs off)
+    UPDATE into_table SET c = from_table.b FROM from_table;
+
+DROP TABLE into_table;
+DROP TABLE from_table;
+
 --
 -- text types. We should support the following updates.
 --
