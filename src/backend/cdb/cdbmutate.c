@@ -865,8 +865,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		{
 			Motion	   *motion = (Motion *) node;
 
-			if (motion->motionType == MOTIONTYPE_HASH ||
-				(motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast))
+			if (motion->motionType == MOTIONTYPE_HASH || motion->isBroadcast)
 			{
 				context->mt.nMotionsAbove += 1;
 			}
@@ -1151,8 +1150,7 @@ done:
 	{
 		Motion	   *motion = (Motion *) node;
 
-		if (motion->motionType == MOTIONTYPE_HASH ||
-			(motion->motionType == MOTIONTYPE_FIXED && motion->isBroadcast))
+		if (motion->motionType == MOTIONTYPE_HASH || motion->isBroadcast)
 		{
 			/*
 			 * We're going out of this motion node.
