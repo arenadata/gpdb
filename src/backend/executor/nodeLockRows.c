@@ -225,7 +225,10 @@ lnext:
 				}
 
 				/* Store target tuple for relation's scan node */
-				EvalPlanQualSetTuple(&node->lr_epqstate, erm->rti, copyTuple);
+				if (node->lr_epqstate.estate != NULL)
+					EvalPlanQualSetTuple(&node->lr_epqstate, erm->rti, copyTuple);
+				else
+					elog(ERROR, "valid lr_epqstate was expected");
 
 				/* Continue loop until we have all target tuples */
 				break;
