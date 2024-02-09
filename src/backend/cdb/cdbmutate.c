@@ -824,8 +824,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			ListCell   *lcr;
 
 			/*
-			 * Sanity check, since we don't allow multiple ModifyTable nodes
-			 * in the same plan.
+			 * Sanity check, since we don't allow multiple ModifyTable nodes.
 			 */
 			Assert(context->mt.resultRtis == NULL);
 			Assert(context->mt.nMotionsAbove == 0);
@@ -837,7 +836,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * is a part of inheritance tree, ModifyTable node will have more
 			 * than one relation in resultRelations.
 			 *
-			 * We make a list of resulting relations' indexes to compare them
+			 * We make a set of resulting relations' indexes to compare them
 			 * later.
 			 */
 			foreach(lcr, mt->resultRelations)
