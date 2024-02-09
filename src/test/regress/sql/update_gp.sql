@@ -118,8 +118,13 @@ DROP TABLE keo4;
 DROP TABLE keo5;
 
 -- Explicit Redistribute Motion should be added only if there is a motion
--- between the scan and the ModifyTable on the relation we are going to update.
+-- between the scan and the ModifyTable on the relation we are going to modify.
 -- (test case not applicable to ORCA)
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+DROP TABLE IF EXISTS t_strewn;
+DROP TABLE IF EXISTS t_strewn2;
+
 CREATE TABLE t1 (i int, j int) DISTRIBUTED BY (i);
 CREATE TABLE t2 (i int) DISTRIBUTED BY (i);
 CREATE TABLE t_strewn (i int) DISTRIBUTED RANDOMLY;
@@ -159,6 +164,10 @@ DROP TABLE t2;
 
 -- Explicit Redistribute Motion should not be mistakenly elided for inherited
 -- tables. (test case not applicable to ORCA)
+DROP TABLE IF EXISTS i;
+DROP TABLE IF EXISTS foochild;
+DROP TABLE IF EXISTS foo;
+
 CREATE TABLE i (i int, j int) DISTRIBUTED BY (i);
 INSERT INTO i SELECT
   generate_series(1, 100), generate_series(1, 100) * 3;
@@ -212,16 +221,16 @@ DROP TABLE t1;
 DROP TABLE t2;
 
 -- Explicit Redistribute Motion should not be elided if we encounter a scan on
--- the same table that we are going to update, but with different range table
+-- the same table that we are going to modify, but with different range table
 -- index.
-CREATE TABLE t(a int, b int);
-CREATE TABLE d(a int, b int);
-INSERT INTO t SELECT a, a FROM generate_series(1, 100) a;
-INSERT INTO d SELECT a, a FROM generate_series(1, 100) a;
+CREATE TABLE t1 (a int, b int);
+CREATE TABLE t2 (a int, b int);
+INSERT INTO t1 SELECT a, a FROM generate_series(1, 100) a;
+INSERT INTO t2 SELECT a, a FROM generate_series(1, 100) a;
 
-EXPLAIN (costs off) update d trg
+EXPLAIN (costs off) update t2 trg
 SET b = src.b1
-FROM (SELECT t.a AS a1, t.b AS b1, d.a AS a2, d.b AS b2 FROM t JOIN d USING (b)) src
+FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
 WHERE trg.a = src.a1
     AND trg.a = 2;
 
@@ -230,40 +239,40 @@ WHERE trg.a = src.a1
 SET enable_hashjoin = off;
 SET enable_nestloop = on;
 
-EXPLAIN (costs off) update d trg
+EXPLAIN (costs off) update t2 trg
 SET b = src.b1
-FROM (SELECT t.a AS a1, t.b AS b1, d.a AS a2, d.b AS b2 FROM t JOIN d USING (b)) src
+FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
 WHERE trg.a = src.a1
     AND trg.a = 2;
 
 RESET enable_hashjoin;
 RESET enable_nestloop;
 
-DROP TABLE t;
-DROP TABLE d;
+DROP TABLE t1;
+DROP TABLE t2;
 
 -- Explicit Redistribute Motion should be elided for every partition that does
 -- not have any motions above the scan on the table/partition we are going to
 -- update.
-CREATE TABLE into_table (a int, b int, c int) DISTRIBUTED BY (b)
+CREATE TABLE t1 (a int, b int, c int) DISTRIBUTED BY (b)
     PARTITION BY RANGE(b) (start (1) end(5) every(1));
 
-CREATE TABLE from_table (a int, b int, c int) DISTRIBUTED BY (a);
+CREATE TABLE t2 (a int, b int, c int) DISTRIBUTED BY (a);
 
-INSERT INTO into_table SELECT i * 2, i, i * 3 FROM generate_series(1,4) i;
-INSERT INTO from_table SELECT i, i * 2, i * 3 FROM generate_series(1,4) i;
+INSERT INTO t1 SELECT i * 2, i, i * 3 FROM generate_series(1,4) i;
+INSERT INTO t2 SELECT i, i * 2, i * 3 FROM generate_series(1,4) i;
 
 -- These partitions will need to have Explicit Redistribute above them.
-TRUNCATE into_table_1_prt_1;
-TRUNCATE into_table_1_prt_3;
-ANALYZE into_table_1_prt_1;
-ANALYZE into_table_1_prt_3;
+TRUNCATE t1_1_prt_1;
+TRUNCATE t1_1_prt_3;
+ANALYZE t1_1_prt_1;
+ANALYZE t1_1_prt_3;
 
 EXPLAIN (costs off)
-    UPDATE into_table SET c = from_table.b FROM from_table;
+    UPDATE t1 SET c = t2.b FROM t2;
 
-DROP TABLE into_table;
-DROP TABLE from_table;
+DROP TABLE t1;
+DROP TABLE t2;
 
 --
 -- text types. We should support the following updates.
