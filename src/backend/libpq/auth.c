@@ -261,7 +261,7 @@ static void
 auth_failed(Port *port, int status, char *logdetail)
 {
 	const char *errstr;
-	char	   *cdetail = NULL;
+	char	   *cdetail;
 	int			errcode_return = ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION;
 
 	/*
@@ -282,6 +282,7 @@ auth_failed(Port *port, int status, char *logdetail)
 	{
 		errstr = gettext_noop("authentication failed for user \"%s\": "
 							  "invalid authentication method");
+		cdetail = NULL;
 	}
 	else
 	{
