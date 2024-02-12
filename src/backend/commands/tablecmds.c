@@ -6512,6 +6512,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		oldslot = MakeSingleTupleTableSlot(oldTupDesc);
 		newslot = MakeSingleTupleTableSlot(newTupDesc);
 
+		Insist(newTupDesc && oldTupDesc);
+
 		/* Preallocate values/isnull arrays */
 		i = Max(newTupDesc->natts, oldTupDesc->natts);
 		values = (Datum *) palloc0(i * sizeof(Datum));
