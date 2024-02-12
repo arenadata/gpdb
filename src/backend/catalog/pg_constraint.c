@@ -837,6 +837,60 @@ get_constraint_relation_oids(Oid constraint_oid, Oid *conrelid, Oid *confrelid)
 }
 
 /*
+ * get_constraint_relation_columns
+ *		Find the columns of the relations to which a constraint refers.
+ */
+List *
+get_constraint_relation_columns(Oid constraint_oid)
+{
+	List		*conkeys_list = NIL;
+	HeapTuple 	tp;
+	Relation	pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
+
+	tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
+	if (HeapTupleIsValid(tp))
+	{
+		bool 	is_null;
+		int16	*conkeys;
+		int		num_conkeys;
+		int 	i = 0;
+		Datum adatum = heap_getattr(tp, Anum_pg_constraint_conkey,
+							  		RelationGetDescr(pg_constraint), &is_null);
+
+		if (is_null)
+		{
+			elog(LOG, "null conkey for constraint %u",
+				 constraint_oid);
+			return conkeys_list;
+		}
+
+		ArrayType  *arr = DatumGetArrayTypeP(adatum);
+
+		ReleaseSysCache(tp); 
+
+		num_conkeys = ARR_DIMS(arr)[0];
+
+		if (ARR_NDIM(arr) != 1 ||
+			num_conkeys < 0 ||
+			ARR_HASNULL(arr) ||
+			ARR_ELEMTYPE(arr) != INT2OID)
+			elog(ERROR, "conkey is not a 1-D smallint array");
+
+		conkeys = (int16 *) ARR_DATA_PTR(arr);
+
+		for (i = 0; i < num_conkeys; i++)
+		{
+			AttrNumber	attnum = conkeys[i];
+			conkeys_list = lappend_int(conkeys_list, attnum);
+		}
+	}
+
+	heap_close(pg_constraint, AccessShareLock);
+
+	return conkeys_list;
+}
+
+/*
  * get_relation_constraint_oid
  *		Find a constraint on the specified relation with the specified name.
  *		Returns constraint's OID.

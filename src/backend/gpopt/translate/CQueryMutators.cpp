@@ -16,10 +16,15 @@
 extern "C" {
 #include "postgres.h"
 
+#include "catalog/pg_constraint.h"
 #include "nodes/makefuncs.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "optimizer/tlist.h"
 #include "optimizer/walkers.h"
+#include "parser/parse_oper.h"
+#include "parser/parse_clause.h"
+
 }
 
 #include "gpopt/base/CUtils.h"
@@ -34,6 +39,366 @@ extern "C" {
 
 using namespace gpdxl;
 using namespace gpmd;
+
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CQueryMutators::GroupingListContainsPrimaryKey
+//
+//	@doc:
+//		Checks if list grouping_list contains all columns from conkeys of
+//		Primary Key in relation conrelid. grouping_list is treated as flat
+//		list of SortGroupClauses, other nodes are ignored.
+//---------------------------------------------------------------------------
+BOOL
+CQueryMutators::GroupingListContainsPrimaryKey(Query *query, List *grouping_list,
+										 List *conkeys, Oid conrelid)
+{
+	bool		result = false;
+	uint32		found_col_cnt = 0;
+	ListCell	*lc_conkey = NULL;
+
+	// go over every conkey of constraint
+	ForEach(lc_conkey, conkeys)
+	{
+		AttrNumber	attnum = lfirst_int(lc_conkey);
+		bool		found_col = false;
+		ListCell 	*lgc = NULL;
+		
+		// search for conkey in grouping list
+		ForEach(lgc, grouping_list)
+		{
+			Node *grpcl = (Node *) lfirst(lgc);
+
+			if (NULL == grpcl)
+			{
+				continue;
+			}
+
+			if (IsA(grpcl, SortGroupClause))
+			{
+				SortGroupClause *sgc = (SortGroupClause *) grpcl;
+				Node * expr = get_sortgroupclause_expr(sgc, query->targetList);
+
+				GPOS_ASSERT(IsA(expr, Var));
+
+				Var *var = (Var *) expr;
+
+				RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
+					query->rtable, var->varno - 1);
+
+				GPOS_ASSERT(NULL != rte);
+
+				if (IsA(var, Var) &&
+					(var->varattno == attnum) &&
+					(var->varlevelsup == 0) &&
+					(rte->relid == conrelid) )
+				{
+					found_col = true;
+					found_col_cnt++;
+					break;
+				}
+			}
+		}
+		if (!found_col)
+		{
+			break;
+		}
+	}
+
+	// check that all conkeys were found
+	if (gpdb::ListLength(conkeys) == found_col_cnt)
+	{
+		result = true;
+	}
+
+	return result;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CQueryMutators::AddMissingGroupClauseMutator
+//
+//	@doc:
+//		Traverses the groupClause, adds new SortGroupClause (defined by m_gc 
+//		field in context) to all grouping lists where m_gc has functional 
+//		dependency.  
+//---------------------------------------------------------------------------
+Node* 
+CQueryMutators::AddMissingGroupClauseMutator(Node *node,
+										 SContextAddMissingGroupClause *context)
+{
+	if (NULL == node)
+	{
+		return NULL;
+	}
+
+	if (IsA(node, SortGroupClause))
+	{
+		if (context->m_parent_is_grouping_clause)
+		{
+			// In case the SortGroupClause is direct element of groupsets list of GroupingClause,
+			// we should treat it in a special way - consider it like a 1-element list.
+			List *new_list = ListMake1((Node *) gpdb::CopyObject(node));
+			if (GroupingListContainsPrimaryKey(
+					context->m_query, new_list, context->m_conkeys, context->m_conrelid))
+			{
+				new_list = gpdb::LAppend(new_list, gpdb::CopyObject((Node *) context->m_gc));
+				return (Node *)new_list;
+			}
+			gpdb::ListFreeDeep(new_list);
+		}
+		return (Node *) gpdb::CopyObject(node);
+	}
+
+	if (IsA(node, GroupingClause))
+	{
+		GroupingClause *original_grouping_clause = (GroupingClause *) node;
+		GroupingClause *new_grouping_clause = makeNode(GroupingClause);
+		new_grouping_clause->groupType = original_grouping_clause->groupType;
+		new_grouping_clause->groupsets = NIL;
+		ListCell *l = NULL;
+		ForEach(l, original_grouping_clause->groupsets)
+		{
+			Node *n = (Node *) lfirst(l);
+			// need to add this flag before processing of every element of the groupsets list,
+			// because nested lists may rewrite it
+			context->m_parent_is_grouping_clause = true;
+			new_grouping_clause->groupsets =
+				gpdb::LAppend(
+					new_grouping_clause->groupsets, AddMissingGroupClauseMutator(n, context));
+		}
+		return (Node *) new_grouping_clause;
+	}
+
+	if (IsA(node, List))
+	{
+		// construct new list
+		List *originalList = (List*) node;
+		List *new_list = NIL;
+		ListCell *l = NULL;
+		context->m_parent_is_grouping_clause = false;
+		ForEach(l, originalList)
+		{
+			Node *n = (Node *) lfirst(l);
+			new_list = gpdb::LAppend(new_list, AddMissingGroupClauseMutator(n, context));
+		}
+
+		if (GroupingListContainsPrimaryKey(
+				context->m_query, new_list, context->m_conkeys, context->m_conrelid))
+		{
+			new_list = gpdb::LAppend(new_list, gpdb::CopyObject((Node *) context->m_gc));
+		}
+		return (Node *)new_list;
+	}
+	return gpdb::MutateExpressionTree(
+		node, (MutatorWalkerFn) AddMissingGroupClauseMutator, context);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CQueryMutators::GetGroupUniqueTargetlistEntriesWalker
+//
+//	@doc:
+//		Goes over the groupClause expression tree and collects unique
+//		references to targetlist entries.
+//---------------------------------------------------------------------------
+BOOL
+CQueryMutators::GetGroupUniqueTargetlistEntriesWalker(Node *node,
+										 SContexGetGroupUniqueTleWalker *context)
+{
+	if (NULL == node)
+	{
+		return false;
+	}
+
+	if (IsA(node, SortGroupClause))
+	{
+		SortGroupClause *sgc = (SortGroupClause *) node;
+		context->m_grouping_tle_refs = list_append_unique_int(
+			context->m_grouping_tle_refs, sgc->tleSortGroupRef);
+		return false;
+	}
+	return expression_tree_walker(
+		node, (ExprWalkerFn)GetGroupUniqueTargetlistEntriesWalker, context);
+};
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CQueryMutators::GroupingFuncRewriteWalker
+//
+//	@doc:
+//		Goes over the expression tree and update arguments of GROUPING
+//		function.
+//---------------------------------------------------------------------------
+BOOL
+CQueryMutators::GroupingFuncRewriteWalker(Node *node,
+											SContexGroupingFuncRewriteWalker *context)
+{
+	if (NULL == node)
+	{
+		return false;
+	}
+
+	if (IsA(node, GroupingFunc))
+	{
+		GroupingFunc *gf = (GroupingFunc *)node;
+		ListCell *arg_lc;
+		List *newargs = NIL;
+
+		gf->ngrpcols = context->m_ngrpcols;
+
+		// For each argument in gf->args, find its new position
+		foreach (arg_lc, gf->args)
+		{
+			int arg = intVal(lfirst(arg_lc));
+			int new_arg = gpdb::ListNthInt(context->m_grouping_tle_refs_mapping, arg);
+			newargs = gpdb::LAppend(newargs, makeInteger(new_arg));
+		}
+
+		// Free gf->args since we do not need it any more.
+		gpdb::ListFreeDeep(gf->args);
+		gf->args = newargs;
+		return false;
+	}
+	return expression_tree_walker(
+		node, (ExprWalkerFn)GroupingFuncRewriteWalker, context);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CQueryMutators::ExtractVarsIntoTargetlistWalker
+//
+//	@doc:
+//		Goes over the expression tree, finds all vars that do not have relevant
+//		targetlist entries, and adds resjunk targetlist entries for such vars
+//		to targetList
+//---------------------------------------------------------------------------
+BOOL
+CQueryMutators::ExtractVarsIntoTargetlistWalker (Node *node,
+										 SContextExtrVarsIntoTlWalker *context)
+{
+	if (NULL == node)
+	{
+		return false;
+	}
+
+	if (IsA(node, Aggref))
+	{
+		// do not examine what is inside Aggref
+		return false;
+	}
+
+	if (IsA(node, Var))
+	{
+		bool found = false;
+		ListCell *lc_tle = NULL;
+		ForEach(lc_tle, context->m_query->targetList)
+		{
+			TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
+
+			if (IsA(target_entry->expr, Var))
+			{
+				if (equal((Node *)target_entry->expr, (Node*)node))
+				{
+					found = true;
+					break;
+				}
+			}
+		}
+		if (!found)
+		{
+			int ressno = gpdb::ListLength(context->m_query->targetList) + 1;
+			TargetEntry * newTargetEntry = gpdb::MakeTargetEntry(
+				(Expr *)node, ressno, NULL, true);
+
+			context->m_query->targetList = gpdb::LAppend(
+				context->m_query->targetList, newTargetEntry);
+		}
+		return false;
+	}
+	return expression_tree_walker(
+		node, (ExprWalkerFn)ExtractVarsIntoTargetlistWalker, (void *) context);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CQueryMutators::AddMissingGroupClauseWalker
+//
+//	@doc:
+//		Goes over the expression tree, finds all targetlist entries with
+//		Var expression,that is not a grouping column. For all such targetlist
+//		entries the function adds an explicit SortGroupClause into groupClause
+//---------------------------------------------------------------------------
+BOOL
+CQueryMutators::AddMissingGroupClauseWalker(Node *node,
+										 SContextAddMissingGroupClause *context)
+{
+	if (NULL == node)
+	{
+		return false;
+	}
+
+	if (IsA(node, TargetEntry))
+	{
+		TargetEntry * target_entry = (TargetEntry *) node;
+		Node * expr = (Node *) target_entry->expr;
+		if (IsA(expr, Aggref))
+		{
+			// do not examine what is inside Aggref
+			return false;
+		}
+		if (IsA(expr, Var))
+		{
+			Var * var = (Var *) expr;
+			RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
+				context->m_query->rtable, var->varno - 1);
+			GPOS_ASSERT(NULL != rte);
+
+			// skip relations that are not constrained by primary key, that is currently checked
+			if (context->m_conrelid != rte->relid)
+			{
+				return false;
+			}
+
+			if (!CTranslatorUtils::IsGroupingColumn(expr,
+													context->m_query->groupClause,
+													context->m_query->targetList))
+			{
+				// add new SortGroupClause to groupClause
+				SortGroupClause *gc;
+				Oid			sortop;
+				Oid			eqop;
+				bool		hashable;
+
+				get_sort_group_operators(exprType(expr),
+										true, true, false,
+										&sortop, &eqop, NULL, &hashable);
+
+				gc = makeNode(SortGroupClause);
+				gc->tleSortGroupRef = assignSortGroupRef(target_entry, context->m_query->targetList);
+				gc->eqop = eqop;
+				gc->sortop = sortop;
+				gc->nulls_first = false;
+				gc->hashable = hashable;
+
+				context->m_gc = gc;
+				context->m_parent_is_grouping_clause = false;
+
+				List * old_group_clause = context->m_query->groupClause;
+
+				context->m_query->groupClause = (List *) AddMissingGroupClauseMutator(
+					(Node *)context->m_query->groupClause, context);
+				gpdb::ListFreeDeep(old_group_clause);
+				gpdb::GPDBFree(context->m_gc);
+			}
+			return false;
+		}
+	}
+
+	return expression_tree_walker(
+		node, (ExprWalkerFn)AddMissingGroupClauseWalker, context);
+}
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -161,6 +526,96 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 										 const Query *query)
 {
 	Query *query_copy = (Query *) gpdb::CopyObject(const_cast<Query *>(query));
+
+	// If there is a functional dependency proved for a relation on a set of
+	// grouping columns, then it is valid to have a column in the target list even
+	// if it is not listed explicitly in the groupClause. To make ORCA
+	// correctrly process such cases, we add all such target list entries into
+	// groupClause's grouping sets, where the functional dependency exists.
+	// If there is such functional dependency existing, the OID of
+	// Primary Key constraint resides in the constraintDeps list. As the constraintDeps
+	// list contains only Primary Key OIDs, we skip checks of constraint type
+	// in all code below. Refer to function check_functional_grouping for more details.
+	if (0 != gpdb::ListLength(query_copy->constraintDeps))
+	{
+		// Explicit adding of functionally dependent columns requires following steps:
+		// 1. extract such columns from targetlist expressions, and if they do not have a relevant target entry,
+		//    add resjunk target list entries for them.
+		// 2. store current unique TargetlistEntry references in groupClause - they will be needed at step 4.
+		// 3. update all grouping sets that contain Primary Key
+		// 4. update arguments of GROUPING functions, because they could be shifted after step 2.
+
+		// Step 1.
+		// If there is an expression with functionally dependent var, at this point
+		// it may not have a relevant target list entry (as it was not explicitly listed in groupClause).
+		// For all such vars we add resjunc target list entries into targetList.
+		SContextExtrVarsIntoTlWalker ctx_extr_vars_into_tl(query_copy);
+		ExtractVarsIntoTargetlistWalker((Node *)query_copy->targetList, &ctx_extr_vars_into_tl);
+		
+		// Step 2.
+		// Store current unique TargetlistEntry references in groupClause.
+		// After modifying groupClause, they will be needed to update
+		// arguments inside grouping functions.
+		SContexGetGroupUniqueTleWalker ctx_old_grouping_tle_refs;
+		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause, &ctx_old_grouping_tle_refs);
+
+		// Step 3.
+		// Update groupClause - add all functionally dependent entries explicitly.
+		ListCell *lc_constraint = NULL;
+		foreach(lc_constraint, query_copy->constraintDeps)
+		{
+			Oid constraintOid = lfirst_oid(lc_constraint);
+			Oid conrelid = 0;
+			Oid confrelid = 0; // not used, but function get_constraint_relation_oids requires it..
+			get_constraint_relation_oids(constraintOid, &conrelid, &confrelid);
+			List * conkeys_list = get_constraint_relation_columns(constraintOid);
+			SContextAddMissingGroupClause ctx_fix_group_clause(query_copy, conrelid, conkeys_list);
+
+			AddMissingGroupClauseWalker( (Node*)query_copy->targetList, &ctx_fix_group_clause);
+
+			list_free(conkeys_list);
+		}
+		// End of update groupClause.
+
+		// Step 4.
+		// Get updated unique TargetlistEntry references in groupClause.
+		SContexGetGroupUniqueTleWalker ctx_new_grouping_tle_refs;
+		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause, &ctx_new_grouping_tle_refs);
+
+		// Calculate the difference between tle references before and after the update of groupClause.
+		// Store the differences in grouping_tle_refs_mapping.
+		List * grouping_tle_refs_old = ctx_old_grouping_tle_refs.m_grouping_tle_refs;
+		List * grouping_tle_refs_new = ctx_new_grouping_tle_refs.m_grouping_tle_refs;
+		List * grouping_tle_refs_mapping = NIL;
+		ListCell *lc_tle_ref_old = NULL;
+		foreach(lc_tle_ref_old, grouping_tle_refs_old)
+		{
+			int tle_ref_old = lfirst_int(lc_tle_ref_old);
+			ListCell *lc_tle_ref_new = NULL;
+			uint32 i = 0;
+
+			foreach(lc_tle_ref_new, grouping_tle_refs_new)
+			{
+				if (tle_ref_old == lfirst_int(lc_tle_ref_new))
+				{
+					break;
+				}
+				i++;
+			}
+
+			GPOS_ASSERT(i < gpdb::ListLength(grouping_tle_refs_new));
+
+			grouping_tle_refs_mapping = list_append_unique_int(grouping_tle_refs_mapping, i);
+		}
+
+		// Finally fix arguments of grouping functions.
+		SContexGroupingFuncRewriteWalker ctx_grouping_func_rewrite(grouping_tle_refs_mapping,
+																	gpdb::ListLength(grouping_tle_refs_new));
+
+		GroupingFuncRewriteWalker((Node *) query_copy->targetList, &ctx_grouping_func_rewrite);
+
+		gpdb::ListFree(grouping_tle_refs_mapping);
+	}
 
 	if (!NeedsProjListNormalization(query_copy))
 	{

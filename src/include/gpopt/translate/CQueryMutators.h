@@ -145,6 +145,98 @@ class CQueryMutators
 
 	} CContextTLWalker;
 
+	// context for walker to collect unique TargetlistEntry references in groupClause
+	typedef struct SContexGetGroupUniqueTleWalker
+	{
+		// list to store unique TargetlistEntry references in groupClause
+		List *m_grouping_tle_refs;
+
+		// ctor
+		SContexGetGroupUniqueTleWalker()
+			: m_grouping_tle_refs(NIL)
+		{
+		}
+
+		// dtor
+		~SContexGetGroupUniqueTleWalker()
+		{
+			gpdb::ListFree(m_grouping_tle_refs);
+		}
+	}CContexGetGroupUniqueTleWalker;
+
+	typedef struct SContexGroupingFuncRewriteWalker
+	{
+		// list to store the differences between tle references
+		// before and after the update of groupClause
+		List *m_grouping_tle_refs_mapping;
+		// number of unique TargetlistEntry references in groupClause
+		int m_ngrpcols;
+
+		// ctor
+		SContexGroupingFuncRewriteWalker(List *grouping_tle_refs_mapping, int ngrpcols)
+			: m_grouping_tle_refs_mapping(grouping_tle_refs_mapping), m_ngrpcols(ngrpcols)
+		{
+		}
+	}CContexGroupingFuncRewriteWalker;
+
+	// context for walker to extract vars that do not have TargetlistEntry and
+	// add relevant resjunk TargetlistEntry into query
+	typedef struct SContextExtrVarsIntoTlWalker
+	{
+		Query *m_query;
+
+		// ctor
+		SContextExtrVarsIntoTlWalker(Query * query)
+			:m_query(query)
+		{
+		}
+	}CContextExtrVarsIntoTlWalker;
+
+	// context for walker and mutator to add missing grouping colums to groupClause
+	// that have functional dependency on groupClause
+	typedef struct SContextAddMissingGroupClause
+	{
+		// query that is being processed
+		Query	*m_query;
+		// primary key relation id
+		Oid		m_conrelid;
+		// list of columns that define primary key in relation with m_conrelid 
+		List	*m_conkeys;
+
+		// new SortGroupClause to be added into groupClause
+		SortGroupClause *m_gc;
+		// utility field for mutator, indicating that currently processed SortGroupClause
+		// is direct element of groupsets of some GroupingClause
+		BOOL m_parent_is_grouping_clause;
+
+		// ctor
+		SContextAddMissingGroupClause(Query * query, Oid conrelid, List * conkeys)
+			: m_query(query), m_conrelid(conrelid), m_conkeys(conkeys),
+			  m_gc(NULL), m_parent_is_grouping_clause(false)
+		{
+		}
+	}CContextAddMissingGroupClause;
+
+private:
+
+	static BOOL GroupingListContainsPrimaryKey(Query *query, List *grouping_list,
+										List * conkeys, Oid conrelid);
+
+	static BOOL GetGroupUniqueTargetlistEntriesWalker(Node *node,
+										SContexGetGroupUniqueTleWalker *context);
+
+	static BOOL GroupingFuncRewriteWalker(Node *node,
+										SContexGroupingFuncRewriteWalker *context);
+
+	static BOOL ExtractVarsIntoTargetlistWalker(Node *node,
+										SContextExtrVarsIntoTlWalker *context);
+
+	static BOOL AddMissingGroupClauseWalker(Node *node,
+										SContextAddMissingGroupClause *context);
+
+	static Node* AddMissingGroupClauseMutator(Node * node,
+										SContextAddMissingGroupClause *context);
+
 public:
 	// fall back during since the target list refers to a attribute which algebrizer at this point cannot resolve
 	static BOOL ShouldFallback(Node *node, SContextTLWalker *context);
