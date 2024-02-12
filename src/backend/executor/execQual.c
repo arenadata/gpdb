@@ -2256,10 +2256,6 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 
 	callerContext = CurrentMemoryContext;
 
-	funcrettype = exprType((Node *) funcexpr->expr);
-
-	returnsTuple = type_is_rowtype(funcrettype);
-
 	/*
 	 * Prepare a resultinfo node for communication.  We always do this even if
 	 * not expecting a set result, so that we can pass expectedDesc.  In the
@@ -2293,6 +2289,9 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 	{
 		FuncExprState *fcache = (FuncExprState *) funcexpr;
 		ExprDoneCond argDone;
+
+		funcrettype = exprType((Node *) funcexpr->expr);
+		returnsTuple = type_is_rowtype(funcrettype);
 
 		/*
 		 * This path is similar to ExecMakeFunctionResult.
