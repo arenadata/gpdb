@@ -539,13 +539,10 @@ plan_grouping_extension(PlannerInfo *root,
 void
 free_canonical_groupingsets(CanonicalGroupingSets *canonical_grpsets)
 {
-	int grpset_no;
 	if (canonical_grpsets)
 	{
-		for (grpset_no=0; grpset_no<canonical_grpsets->ngrpsets; grpset_no++)
-		{
+		for (int grpset_no=0; grpset_no<canonical_grpsets->ngrpsets; grpset_no++)
 			bms_free(canonical_grpsets->grpsets[grpset_no]);
-		}
 
 		if (canonical_grpsets->grpsets)
 			pfree(canonical_grpsets->grpsets);
