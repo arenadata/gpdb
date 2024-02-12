@@ -490,8 +490,7 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 	size_t		nread = 0;
 	size_t		nthistime;
 
-	if (!file)
-		elog(ERROR, "failed to acquire spill file");
+	Insist(file);
 
 	switch (file->state)
 	{
