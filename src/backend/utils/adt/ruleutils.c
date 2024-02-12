@@ -10867,7 +10867,7 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 {
 	char *str;
 
-	if (!*first_rule)
+	if (first_rule && !*first_rule)
 	{
 		appendStringInfoString(body->buf, ", ");
 		*needcomma = false;
