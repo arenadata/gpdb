@@ -13,21 +13,9 @@ BEGIN
 		ALTER TABLE arenadata_toolkit.db_files_current
 		ADD COLUMN tablespace_location TEXT;
 	END IF;
-END $$;
 
-DO $$
-BEGIN
-	IF EXISTS (SELECT 1
-			   FROM pg_tables
-			   WHERE schemaname LIKE 'pg_temp%' AND
-			         tablename = 'db_files_current')
-	THEN
-		DROP TABLE pg_temp.db_files_current;
-	END IF;
-END $$;
+	DROP TABLE IF EXISTS pg_temp.db_files_current;
 
-DO $$
-BEGIN
 	IF (SELECT a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
@@ -68,10 +56,7 @@ BEGIN
 		LEFT JOIN pg_database d ON dbf.datoid = d.oid
 		LEFT JOIN gp_segment_configuration gpconf ON dbf.dbid = gpconf.dbid;
 	END IF;
-END $$;
 
-DO $$
-BEGIN
 	IF (SELECT a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
@@ -95,10 +80,7 @@ BEGIN
 		FROM arenadata_toolkit.__db_files_current v
 		WHERE v.oid IS NULL;
 	END IF;
-END $$;
 
-DO $$
-BEGIN
 	IF (SELECT a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
@@ -122,7 +104,7 @@ RETURNS VOID
 AS $$
 BEGIN
 	IF NOT EXISTS (
-		SELECT 1
+		SELECT
 		FROM pg_partition pp
 		JOIN pg_class cl1 ON pp.parrelid = cl1.oid
 		JOIN pg_partition_rule pr ON pr.paroid = pp.oid
@@ -241,7 +223,7 @@ CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_create_tables()
 RETURNS VOID
 AS $$
 BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables
+	IF NOT EXISTS (SELECT FROM pg_catalog.pg_tables
 					WHERE schemaname = 'arenadata_toolkit' AND tablename  = 'db_files_history')
 	THEN
 		EXECUTE FORMAT($fmt$CREATE TABLE arenadata_toolkit.db_files_history(
@@ -289,7 +271,7 @@ BEGIN
 	 for these tables, so revoking them here may lead to a problems with an access.
 	 For fresh new deployments we may set as we want.
 	 */
-	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables
+	IF NOT EXISTS (SELECT FROM pg_catalog.pg_tables
 					WHERE schemaname = 'arenadata_toolkit' AND tablename  = 'daily_operation')
 	THEN
 		CREATE TABLE arenadata_toolkit.daily_operation
@@ -310,7 +292,7 @@ BEGIN
 		REVOKE ALL ON TABLE arenadata_toolkit.daily_operation FROM public;
 	END IF;
 
-	IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_tables
+	IF NOT EXISTS (SELECT FROM pg_catalog.pg_tables
 					WHERE schemaname = 'arenadata_toolkit' AND tablename  = 'operation_exclude')
 	THEN
 
@@ -332,7 +314,7 @@ BEGIN
 				('pg_toast');
 	END IF;
 
-	IF NOT EXISTS (SELECT 1 FROM pg_tables
+	IF NOT EXISTS (SELECT FROM pg_tables
 					WHERE schemaname = 'arenadata_toolkit' AND tablename = 'db_files_current')
 	THEN
 		CREATE TABLE arenadata_toolkit.db_files_current
@@ -365,7 +347,7 @@ BEGIN
 	 collect_table_stats.sql deletes it in normal conditions,
 	 but we drop it here as a double check.
 	 */
-	IF EXISTS (SELECT 1 FROM pg_tables
+	IF EXISTS (SELECT FROM pg_tables
 				WHERE schemaname = 'arenadata_toolkit' AND tablename = 'db_files')
 	THEN
 		DROP EXTERNAL TABLE arenadata_toolkit.db_files;

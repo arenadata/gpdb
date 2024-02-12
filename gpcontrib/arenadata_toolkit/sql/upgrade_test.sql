@@ -95,7 +95,7 @@ BEGIN
 
 -- Table "db_files_history_backup_YYYYMMDDtHHMMSS" must be created only if
 -- from_version is less than 1.4
-	IF EXISTS (SELECT 1
+	IF EXISTS (SELECT
 			   FROM pg_tables
 			   WHERE schemaname='arenadata_toolkit' AND
 			         tablename SIMILAR TO 'db_files_history_backup_[0-9]{8}t[0-9]{6}')
