@@ -16612,6 +16612,7 @@ ATPExecPartDrop(Relation rel,
 								 "final partition ")));
 
 		}
+		Assert(prule->topRule != NULL);
 		rel2 = heap_open(prule->topRule->parchildrelid, NoLock);
 
 		elog(DEBUG5, "dropping partition oid %u", prule->topRule->parchildrelid);
@@ -16627,7 +16628,7 @@ ATPExecPartDrop(Relation rel,
 		ds->removeType = OBJECT_TABLE;
 		ds->bAllowPartn = true; /* allow drop of partitions */
 
-		if (prule->topRule && prule->topRule->children)
+		if (prule->topRule->children)
 		{
 			List *l1 = atpxDropList(rel2, prule->topRule->children);
 
@@ -16647,7 +16648,7 @@ ATPExecPartDrop(Relation rel,
 					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
-		if (prule->topRule && prule->topRule->children
+		if (prule->topRule->children
 			&& (ds->behavior != DROP_CASCADE ))
 		{
 			ereport(NOTICE,
