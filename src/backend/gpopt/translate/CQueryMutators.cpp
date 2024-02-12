@@ -343,15 +343,17 @@ CQueryMutators::AddMissingGroupClauseWalker(
 		return false;
 	}
 
+	if (IsA(node, Aggref))
+	{
+		// do not examine what is inside Aggref
+		return false;
+	}
+
 	if (IsA(node, TargetEntry))
 	{
 		TargetEntry *target_entry = (TargetEntry *) node;
 		Node *expr = (Node *) target_entry->expr;
-		if (IsA(expr, Aggref))
-		{
-			// do not examine what is inside Aggref
-			return false;
-		}
+
 		if (IsA(expr, Var))
 		{
 			Var *var = (Var *) expr;
@@ -585,6 +587,9 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 
 			list_free(conkeys_list);
 		}
+		// remove constraintDeps
+		gpdb::ListFree(query_copy->constraintDeps);
+		query_copy->constraintDeps = NIL;
 		// End of update groupClause.
 
 		// Step 4.

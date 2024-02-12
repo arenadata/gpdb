@@ -3686,6 +3686,7 @@ SELECT l.a, l.b, count(r.b) AS cnt FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY
 -- Plus check expressions with aggregate functions 
 SELECT l.a, l.b, count(r.b) + avg(r.a) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;
 SELECT l.a, l.b, count(r.b) + avg(l.a) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;
+SELECT l.a, l.b, count(r.b) + avg(l.c) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;
 SELECT l.a, l.b, count(r.b) + avg(r.a) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;
 -- Plus check aggregate functions with expression as parameters
 SELECT l.a, l.b, avg(r.a + l.c) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;

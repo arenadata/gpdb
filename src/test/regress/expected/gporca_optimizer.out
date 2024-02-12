@@ -16348,6 +16348,16 @@ SELECT l.a, l.b, count(r.b) + avg(l.a) AS agg_expr FROM t1 AS l JOIN t2 AS r ON 
  5 | text0 |     7.0000000000000000
 (5 rows)
 
+SELECT l.a, l.b, count(r.b) + avg(l.c) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;
+ a |   b   |        agg_expr        
+---+-------+------------------------
+ 1 | text1 | 2.00000000000000000000
+ 2 | text2 | 3.00000000000000000000
+ 3 | text3 | 2.00000000000000000000
+ 4 | text4 | 3.00000000000000000000
+ 5 | text0 | 2.00000000000000000000
+(5 rows)
+
 SELECT l.a, l.b, count(r.b) + avg(r.a) AS agg_expr FROM t1 AS l JOIN t2 AS r ON l.a=r.a GROUP BY l.a ORDER BY l.a;
  a |   b   |        agg_expr        
 ---+-------+------------------------
