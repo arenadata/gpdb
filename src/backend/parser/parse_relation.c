@@ -1355,7 +1355,8 @@ addRangeTableEntryForFunction(ParseState *pstate,
 		 * mark this here because this is where we know that the function is being
 		 * used as a RangeTableEntry.
 		 */
-		if (funcexpr && IsA(funcexpr, FuncExpr))
+		Assert(funcexpr);
+		if (IsA(funcexpr, FuncExpr))
 		{
 			FuncExpr		*func = (FuncExpr *) funcexpr;
 
