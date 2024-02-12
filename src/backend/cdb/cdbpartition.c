@@ -2768,15 +2768,16 @@ partition_policies_equal(GpPolicy *p, PartitionNode *pn)
 			}
 			else
 			{
-				if (p->attrs == 0)
-					/* random policy, skip */
-					;
-				if (memcmp(p->attrs, rel->rd_cdbpolicy->attrs,
+				if (p->attrs && memcmp(p->attrs, rel->rd_cdbpolicy->attrs,
 						   (sizeof(AttrNumber) * p->nattrs)))
 				{
 					heap_close(rel, NoLock);
 					return false;
 				}
+
+				if (p->attrs == 0)
+					/* random policy, skip */
+					;
 			}
 			if (!partition_policies_equal(p, rule->children))
 			{
