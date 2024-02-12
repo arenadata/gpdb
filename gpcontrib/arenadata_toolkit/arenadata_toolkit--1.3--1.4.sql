@@ -2,13 +2,13 @@
 
 DO $$
 BEGIN
-	IF (SELECT a.attrelid IS NULL
+	IF a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
 		                       n.nspname = 'arenadata_toolkit'
 		LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND
 		                            a.attname = 'tablespace_location'
-		WHERE c.relname = 'db_files_current')
+		WHERE c.relname = 'db_files_current'
 	THEN
 		ALTER TABLE arenadata_toolkit.db_files_current
 		ADD COLUMN tablespace_location TEXT;
@@ -16,13 +16,13 @@ BEGIN
 
 	DROP TABLE IF EXISTS pg_temp.db_files_current;
 
-	IF (SELECT a.attrelid IS NULL
+	IF a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
 		                       n.nspname = 'arenadata_toolkit'
 		LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND
 		                            a.attname = 'tablespace_location'
-		WHERE c.relname = '__db_files_current')
+		WHERE c.relname = '__db_files_current'
 	THEN
 		CREATE OR REPLACE VIEW arenadata_toolkit.__db_files_current
 		AS
@@ -57,13 +57,13 @@ BEGIN
 		LEFT JOIN gp_segment_configuration gpconf ON dbf.dbid = gpconf.dbid;
 	END IF;
 
-	IF (SELECT a.attrelid IS NULL
+	IF a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
 		                       n.nspname = 'arenadata_toolkit'
 		LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND
 		                            a.attname = 'tablespace_location'
-		WHERE c.relname = '__db_files_current_unmapped')
+		WHERE c.relname = '__db_files_current_unmapped'
 	THEN
 		CREATE OR REPLACE VIEW arenadata_toolkit.__db_files_current_unmapped
 		AS
@@ -81,13 +81,13 @@ BEGIN
 		WHERE v.oid IS NULL;
 	END IF;
 
-	IF (SELECT a.attrelid IS NULL
+	IF a.attrelid IS NULL
 		FROM pg_class c
 		JOIN pg_namespace n ON n.oid = c.relnamespace AND
 		                       n.nspname = 'arenadata_toolkit'
 		LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND
 		                            a.attname = 'tablespace_location'
-		WHERE c.relname = 'db_files_history')
+		WHERE c.relname = 'db_files_history'
 	THEN
 		EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history
 							RENAME TO %1$I;$fmt$,

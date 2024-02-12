@@ -5,9 +5,9 @@ SET client_min_messages=WARNING;
 SELECT arenadata_toolkit.adb_create_tables();
 RESET client_min_messages;
 
-\! mkdir -p /tmp/tblspace_location_test_dir;
+\! rm -rf @testtablespace@ && mkdir @testtablespace@;
 
-CREATE TABLESPACE test_tblspc LOCATION '/tmp/tblspace_location_test_dir';
+CREATE TABLESPACE test_tblspc LOCATION '@testtablespace@';
 
 CREATE TABLE table_at_pg_default(a int)
 DISTRIBUTED REPLICATED;
@@ -33,29 +33,28 @@ SELECT
 		WHEN 'pg_global' = files.table_tablespace AND
 			 files.tablespace_location = gpconf.datadir || '/global'
 		THEN '<SEGMENT_BASE_DIR>/global'
+		WHEN 'test_tblspc' = files.table_tablespace AND
+			 files.tablespace_location = '@testtablespace@'
+		THEN '<TEST_TABLESPACE_LOCATION_DIR>'
 		ELSE files.tablespace_location
 	END AS tablespace_location
 FROM (SELECT '__db_files_current' source_table_name, content, table_name,
 	         table_tablespace, tablespace_location, segment_preferred_role::CHAR(1)
 	  FROM arenadata_toolkit.__db_files_current
-	  WHERE table_name IN ('table_at_pg_default', 'table_at_custom_tblspc',
-						   'gp_segment_configuration') -- example of table at pg_global
-	  UNION
+	  UNION ALL
 	  SELECT 'db_files_current' source_table_name, content, table_name,
-	         table_tablespace, tablespace_location, segment_preferred_role::CHAR(1)
+	         table_tablespace, tablespace_location, segment_preferred_role
 	  FROM arenadata_toolkit.db_files_current
-	  WHERE table_name IN ('table_at_pg_default', 'table_at_custom_tblspc',
-						   'gp_segment_configuration') -- example of table at pg_global
-	  UNION
+	  UNION ALL
 	  SELECT 'db_files_history' source_table_name, content, table_name,
-	         table_tablespace, tablespace_location, segment_preferred_role::CHAR(1)
+	         table_tablespace, tablespace_location, segment_preferred_role
 	  FROM arenadata_toolkit.db_files_history
-	  WHERE table_name IN ('table_at_pg_default', 'table_at_custom_tblspc',
-						   'gp_segment_configuration') -- example of table at pg_global
 	  ) files
-LEFT JOIN gp_segment_configuration gpconf
-		  ON gpconf.content = files.content AND
-		  gpconf.preferred_role = files.segment_preferred_role
+JOIN gp_segment_configuration gpconf ON
+		gpconf.content = files.content AND
+		gpconf.preferred_role = files.segment_preferred_role
+WHERE table_name IN ('table_at_pg_default', 'table_at_custom_tblspc',
+					 'gp_segment_configuration') -- example of table at pg_global
 ORDER BY source_table_name, table_name, content;
 
 -- Cleanup
@@ -68,4 +67,4 @@ DROP EXTENSION arenadata_toolkit;
 SET client_min_messages=WARNING;
 DROP SCHEMA arenadata_toolkit CASCADE;
 RESET client_min_messages;
-\! rm -rf /tmp/tblspace_location_test_dir
+\! rm -rf @testtablespace@
