@@ -4091,7 +4091,7 @@ EvalPlanQualSetTuple(EPQState *epqstate, Index rti, HeapTuple tuple)
 {
 	EState	   *estate = epqstate->estate;
 
-	Assert(estate);
+	Insist(estate);
 	Assert(rti > 0);
 
 	/*
