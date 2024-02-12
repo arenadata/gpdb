@@ -585,7 +585,7 @@ pushJsonbValueScalar(JsonbParseState **pstate, JsonbIteratorToken seq,
 			appendKey(*pstate, scalarVal);
 			break;
 		case WJB_VALUE:
-			Assert(scalarVal && IsAJsonbScalar(scalarVal));
+			Assert(IsAJsonbScalar(scalarVal));
 			appendValue(*pstate, scalarVal);
 			break;
 		case WJB_ELEM:
@@ -676,6 +676,7 @@ appendValue(JsonbParseState *pstate, JsonbValue *scalarVal)
 {
 	JsonbValue *object = &pstate->contVal;
 
+	Insist(scalarVal);
 	Assert(object->type == jbvObject);
 
 	object->val.object.pairs[object->val.object.nPairs++].value = *scalarVal;
