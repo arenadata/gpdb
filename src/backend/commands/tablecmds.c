@@ -16058,10 +16058,11 @@ wack_pid_relname(AlterPartitionId 		 *pid,
 
 		par_prule = *ppar_prule;
 
-		*plrelname = par_prule->relname;
-
 		if (par_prule && par_prule->topRule && par_prule->topRule->children)
+		{
 			*ppNode = par_prule->topRule->children;
+			*plrelname = par_prule->relname;
+		}
 
 		lc = lnext(lc);
 
