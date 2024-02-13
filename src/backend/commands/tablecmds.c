@@ -6504,6 +6504,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 		econtext = GetPerTupleExprContext(estate);
 
+		Insist(newTupDesc && oldTupDesc);
+
 		/*
 		 * Make tuple slots for old and new tuples.  Note that even when the
 		 * tuples are the same, the tupDescs might not be (consider ADD COLUMN
@@ -6511,8 +6513,6 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		 */
 		oldslot = MakeSingleTupleTableSlot(oldTupDesc);
 		newslot = MakeSingleTupleTableSlot(newTupDesc);
-
-		Insist(newTupDesc && oldTupDesc);
 
 		/* Preallocate values/isnull arrays */
 		i = Max(newTupDesc->natts, oldTupDesc->natts);
