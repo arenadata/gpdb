@@ -2665,10 +2665,8 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 	CdbExplain_NodeSummary *ns;
 	int			i;
 
-	if (!es->analyze)
+	if (!es->analyze || !((PlanState *) sortstate)->instrument)
 		return;
-
-	Insist(((PlanState *) sortstate)->instrument);
 
 	ns = ((PlanState *) sortstate)->instrument->cdbNodeSummary;
 	/* Might not have received stats from qExecs if they hit errors. */
