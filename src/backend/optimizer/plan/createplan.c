@@ -3687,6 +3687,7 @@ create_hashjoin_plan(PlannerInfo *root,
 	 * Rearrange hashclauses, if needed, so that the outer variable is always
 	 * on the left.
 	 */
+	Assert(best_path->jpath.outerjoinpath != NULL);
 	hashclauses = get_switched_clauses(best_path->path_hashclauses,
 							 best_path->jpath.outerjoinpath->parent->relids);
 
