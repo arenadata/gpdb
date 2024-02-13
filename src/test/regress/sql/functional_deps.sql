@@ -262,7 +262,7 @@ ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
 EXECUTE foo;  -- fail
 
 -- Test functional dependencies with GPORCA
-RESET optimizer;
+SET optimizer = on;
 -- Enable logs that allow to show GPORCA failed to produce a plan
 SET optimizer_trace_fallback = on;
 
@@ -395,3 +395,4 @@ DROP TABLE t2;
 DROP TABLE t3;
 
 RESET optimizer_trace_fallback;
+RESET optimizer;

@@ -519,7 +519,7 @@ ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
 EXECUTE foo;  -- fail
 ERROR:  column "articles.keywords" must appear in the GROUP BY clause or be used in an aggregate function
 -- Test functional dependencies with GPORCA
-RESET optimizer;
+SET optimizer = on;
 -- Enable logs that allow to show GPORCA failed to produce a plan
 SET optimizer_trace_fallback = on;
 CREATE TABLE t1 (a int PRIMARY KEY, b text, c int);
@@ -1723,3 +1723,4 @@ DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
 RESET optimizer_trace_fallback;
+RESET optimizer;
