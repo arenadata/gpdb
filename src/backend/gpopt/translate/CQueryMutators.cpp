@@ -174,11 +174,11 @@ CQueryMutators::AddMissingGroupClauseMutator(
 	if (IsA(node, List))
 	{
 		// construct new list
-		List *originalList = (List *) node;
+		List *original_list = (List *) node;
 		List *new_list = NIL;
 		ListCell *l = NULL;
 		context->m_parent_is_grouping_clause = false;
-		ForEach(l, originalList)
+		ForEach(l, original_list)
 		{
 			Node *n = (Node *) lfirst(l);
 			new_list = gpdb::LAppend(new_list,
@@ -573,19 +573,20 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 		ListCell *lc_constraint = NULL;
 		foreach (lc_constraint, query_copy->constraintDeps)
 		{
-			Oid constraintOid = lfirst_oid(lc_constraint);
+			Oid constraint_oid = lfirst_oid(lc_constraint);
 			Oid conrelid = 0;
 			Oid confrelid =
 				0;	// not used, but function get_constraint_relation_oids requires it..
-			get_constraint_relation_oids(constraintOid, &conrelid, &confrelid);
-			List *conkeys_list = get_constraint_relation_columns(constraintOid);
+			get_constraint_relation_oids(constraint_oid, &conrelid, &confrelid);
+			List *conkeys_list =
+				get_constraint_relation_columns(constraint_oid);
 			SContextAddMissingGroupClause ctx_fix_group_clause(
 				query_copy, conrelid, conkeys_list);
 
 			AddMissingGroupClauseWalker((Node *) query_copy->targetList,
 										&ctx_fix_group_clause);
 
-			list_free(conkeys_list);
+			gpdb::ListFree(conkeys_list);
 		}
 		// remove constraintDeps
 		gpdb::ListFree(query_copy->constraintDeps);
