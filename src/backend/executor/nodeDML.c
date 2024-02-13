@@ -160,15 +160,25 @@ ExecDML(DMLState *node)
 	{
 		int32 segid = GpIdentity.segindex;
 		Datum ctid = slot_getattr(slot, plannode->ctidColIdx, &isnull);
+		Oid tableoid = InvalidOid;
 
 		Assert(!isnull);
 
-		Oid tableoid = InvalidOid;
 		if (AttributeNumberIsValid(plannode->tableoidColIdx))
 		{
 			Datum dtableoid = slot_getattr(slot, plannode->tableoidColIdx, &isnull);
 			tableoid = isnull ? InvalidOid : DatumGetObjectId(dtableoid);
 		}
+
+		/*
+		 * If tableoid is valid, it means that we are executing UPDATE/DELETE
+		 * on partitioned table (root partition). In order to avoid partition
+		 * pruning in ExecDelete one can use tableoid to build target
+		 * ResultRelInfo for the leaf partition.
+		 */
+		if (OidIsValid(tableoid) && node->ps.state->es_result_partitions)
+			node->ps.state->es_result_relation_info =
+				targetid_get_partition(tableoid, node->ps.state, true);
 
 		ItemPointer  tupleid = (ItemPointer) DatumGetPointer(ctid);
 		ItemPointerData tuple_ctid = *tupleid;
@@ -189,8 +199,7 @@ ExecDML(DMLState *node)
 				   node->ps.state,
 				   !isUpdate, /* GPDB_91_MERGE_FIXME: where to get canSetTag? */
 				   PLANGEN_OPTIMIZER /* Plan origin */,
-				   isUpdate,
-				   tableoid);
+				   isUpdate);
 	}
 
 	return slot;

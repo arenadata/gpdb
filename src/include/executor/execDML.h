@@ -49,8 +49,7 @@ ExecDelete(ItemPointer tupleid,
 		   EState *estate,
 		   bool canSetTag,
 		   PlanGenerator planGen,
-		   bool isUpdate,
-		   Oid tableoid);
+		   bool isUpdate);
 
 extern TupleTableSlot *
 ExecUpdate(ItemPointer tupleid,

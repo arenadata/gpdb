@@ -698,11 +698,10 @@ ExecDelete(ItemPointer tupleid,
 		   EState *estate,
 		   bool canSetTag,
 		   PlanGenerator planGen,
-		   bool isUpdate,
-		   Oid tableoid)
+		   bool isUpdate)
 {
-	ResultRelInfo *resultRelInfo;
-	Relation	resultRelationDesc;
+	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
+	Relation	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	HTSU_Result result;
 	HeapUpdateFailureData hufd;
 	TupleTableSlot *slot = NULL;
@@ -720,22 +719,6 @@ ExecDelete(ItemPointer tupleid,
 			 BlockIdGetBlockNumber(&(tupleid->ip_blkid)),
 			 tupleid->ip_posid,
 			 segid);
-
-	resultRelInfo = estate->es_result_relation_info;
-
-	/*
-	 * If we are executing DML on partitioned table, the tableoid attribute
-	 * is expected to be in a incoming slot. tableoid corrsponds to a leaf
-	 * partition, which is going to be the target resultRelInfo.
-	 */
-	if (planGen == PLANGEN_OPTIMIZER && estate->es_result_partitions &&
-		OidIsValid(tableoid))
-	{
-		resultRelInfo = targetid_get_partition(tableoid, estate, true);
-		estate->es_result_relation_info = resultRelInfo;
-	}
-
-	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
 	if (planGen == PLANGEN_PLANNER)
 	{
@@ -1960,14 +1943,14 @@ ExecModifyTable(ModifyTableState *node)
 					{
 						slot = ExecDelete(tupleid, segid, oldtuple, planSlot,
 										  &node->mt_epqstate, estate, false,
-										  PLANGEN_PLANNER, true /* isUpdate */, InvalidOid);
+										  PLANGEN_PLANNER, true /* isUpdate */);
 					}
 				}
 				break;
 			case CMD_DELETE:
 				slot = ExecDelete(tupleid, segid, oldtuple, planSlot,
 								  &node->mt_epqstate, estate, node->canSetTag,
-								  PLANGEN_PLANNER, false /* isUpdate */, InvalidOid);
+								  PLANGEN_PLANNER, false /* isUpdate */);
 				break;
 			default:
 				elog(ERROR, "unknown operation");
