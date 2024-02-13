@@ -1281,6 +1281,8 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
 			Selectivity heursel;
 			Selectivity prefixsel;
 
+			Assert(prefix);
+
 			if (pstatus == Pattern_Prefix_Partial)
 				prefixsel = prefix_selectivity(root, &vardata, vartype,
 											   opfamily, prefix);
