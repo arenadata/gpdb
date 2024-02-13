@@ -1775,7 +1775,7 @@ SetupTCPInterconnect(EState *estate)
 		i = 0;
 		while (n > 0 &&
 			   outgoing_count < expectedTotalOutgoing &&
-			   i < sendingChunkTransportState->numConns)
+			   i < sendingChunkTransportState ? sendingChunkTransportState->numConns : 0)
 		{						/* loop to check outgoing connections */
 			conn = &sendingChunkTransportState->conns[i++];
 			switch (conn->state)
