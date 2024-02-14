@@ -442,12 +442,16 @@ plan_grouping_extension(PlannerInfo *root,
 	context.canonical_rollups = NIL;
 	context.curr_grpset_no = 0;
 
-	if (*p_grpColIdx != NULL)
+	if (*p_numGroupCols > 0)
+	{
+		Assert(*p_grpColIdx);
+		Assert(*p_grpOperators);
+
 		memcpy(context.grpColIdx, *p_grpColIdx,
 			   context.numGroupCols * sizeof(AttrNumber));
-	if (*p_grpOperators != NULL)
 		memcpy(context.grpOperators, *p_grpOperators,
 			   context.numGroupCols * sizeof(Oid));
+	}
 
 	/*
 	 * GPDB_91_MERGE_FIXME: The code in this file assumes that there is a
