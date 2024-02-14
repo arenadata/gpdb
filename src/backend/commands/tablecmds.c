@@ -6504,7 +6504,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 		econtext = GetPerTupleExprContext(estate);
 
-		Insist(newTupDesc && oldTupDesc);
+		Assert(newTupDesc && oldTupDesc);
 
 		/*
 		 * Make tuple slots for old and new tuples.  Note that even when the
