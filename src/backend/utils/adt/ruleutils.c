@@ -10893,7 +10893,7 @@ write_out_rule(PartitionRule *rule, PartitionNode *pn, Node *start,
 
 	if (str && strlen(str))
 	{
-		if (strlen(body->buf->data) && !first_rule &&
+		if (strlen(body->buf->data) && first_rule && !*first_rule &&
 			!PRETTY_INDENT(body))
 			appendStringInfoString(body->buf, " ");
 
