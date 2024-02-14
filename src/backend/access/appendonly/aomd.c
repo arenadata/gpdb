@@ -252,7 +252,10 @@ mdunlink_ao_perFile(const int segno, void *ctx)
 
 	sprintf(segPathSuffixPosition, ".%u", segno);
 
-	/* Prevent other backends' fds from holding on to the disk space */
+	/*
+	 * unlink is not enough to return disk space to the OS immediately, because
+	 * the file can be still opened by other process
+	 */
 	if (do_truncate(segPath) < 0 && errno == ENOENT)
 		return false;
 
