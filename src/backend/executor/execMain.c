@@ -4112,6 +4112,7 @@ EvalPlanQualGetTuple(EPQState *epqstate, Index rti)
 {
 	EState	   *estate = epqstate->estate;
 
+	Insist(estate);
 	Assert(rti > 0);
 
 	return estate->es_epqTuple[rti - 1];
