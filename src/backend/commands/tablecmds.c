@@ -6800,13 +6800,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			 * We use the old tuple descriptor instead of oldrel's tuple descriptor,
 			 * which may already contain altered column.
 			 */
-			if (oldTupDesc)
-			{
-				Assert(oldTupDesc->natts <= nvp);
-				memset(proj, true, oldTupDesc->natts);
-			}
-			else
-				memset(proj, true, nvp);
+			
+			Assert(oldTupDesc->natts <= nvp);
+			memset(proj, true, oldTupDesc->natts);
 
 			if(newrel)
 				idesc = aocs_insert_init(newrel, segno, false);
