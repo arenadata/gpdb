@@ -512,18 +512,17 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	path = relpath(rnode, forkNum);
 
 	/*
-	 * Delete or truncate the first segment.
+	 * Truncate and unlink the first segment.
 	 */
+
+	/*
+	 * unlink is not enough to return disk space to the OS immediately, because
+	 * the file can be still opened by other process
+	 */
+	ret = do_truncate(path);
+
 	if (isRedo || forkNum != MAIN_FORKNUM || RelFileNodeBackendIsTemp(rnode))
 	{
-		if (!RelFileNodeBackendIsTemp(rnode))
-		{
-			/* Prevent other backends' fds from holding on to the disk space */
-			ret = do_truncate(path);
-		}
-		else
-			ret = 0;
-
 		/* Next unlink the file, unless it was already found to be missing */
 		if (ret == 0 || errno != ENOENT)
 		{
@@ -536,9 +535,6 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	}
 	else
 	{
-		/* Prevent other backends' fds from holding on to the disk space */
-		ret = do_truncate(path);
-
 		/* Register request to unlink first segment later */
 		register_unlink(rnode);
 	}
@@ -566,15 +562,12 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 		{
 			sprintf(segpath, "%s.%u", path, segno);
 
-			if (!RelFileNodeBackendIsTemp(rnode))
-			{
-				/*
-				 * Prevent other backends' fds from holding on to the disk
-				 * space.
-				 */
-				if (do_truncate(segpath) < 0 && errno == ENOENT)
-					break;
-			}
+			/*
+			 * unlink is not enough to return disk space to the OS immediately,
+			 * because the file can be still opened by other process
+			 */
+			if (do_truncate(segpath) < 0 && errno == ENOENT)
+				break;
 
 			if (unlink(segpath) < 0)
 			{
