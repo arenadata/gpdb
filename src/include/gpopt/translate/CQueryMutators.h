@@ -165,8 +165,8 @@ class CQueryMutators
 
 	typedef struct SContexGroupingFuncRewriteWalker
 	{
-		// list to store the differences between tle references
-		// before and after the update of groupClause
+		// list to store the mapping of the new positions of tle references after
+		// the update of groupClause
 		List *m_grouping_tle_refs_mapping;
 		// number of unique TargetlistEntry references in groupClause
 		int m_ngrpcols;

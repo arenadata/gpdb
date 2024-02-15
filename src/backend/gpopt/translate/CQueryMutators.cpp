@@ -16,14 +16,10 @@
 extern "C" {
 #include "postgres.h"
 
-#include "catalog/pg_constraint.h"
 #include "nodes/makefuncs.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
-#include "optimizer/tlist.h"
 #include "optimizer/walkers.h"
-#include "parser/parse_clause.h"
-#include "parser/parse_oper.h"
 }
 
 #include "gpopt/base/CUtils.h"
@@ -78,7 +74,8 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 			if (IsA(grpcl, SortGroupClause))
 			{
 				SortGroupClause *sgc = (SortGroupClause *) grpcl;
-				Node *expr = get_sortgroupclause_expr(sgc, query->targetList);
+				Node *expr =
+					gpdb::GetSortGroupClauseExpr(sgc, query->targetList);
 
 				GPOS_ASSERT(IsA(expr, Var));
 
@@ -219,11 +216,11 @@ CQueryMutators::GetGroupUniqueTargetlistEntriesWalker(
 	if (IsA(node, SortGroupClause))
 	{
 		SortGroupClause *sgc = (SortGroupClause *) node;
-		context->m_grouping_tle_refs = list_append_unique_int(
+		context->m_grouping_tle_refs = gpdb::LAppendUniqueInt(
 			context->m_grouping_tle_refs, sgc->tleSortGroupRef);
 		return false;
 	}
-	return expression_tree_walker(
+	return gpdb::WalkExpressionTree(
 		node, (ExprWalkerFn) GetGroupUniqueTargetlistEntriesWalker, context);
 };
 
@@ -253,12 +250,12 @@ CQueryMutators::GroupingFuncRewriteWalker(
 		gf->ngrpcols = context->m_ngrpcols;
 
 		// For each argument in gf->args, find its new position
-		foreach (arg_lc, gf->args)
+		ForEach(arg_lc, gf->args)
 		{
 			int arg = intVal(lfirst(arg_lc));
 			int new_arg =
 				gpdb::ListNthInt(context->m_grouping_tle_refs_mapping, arg);
-			newargs = gpdb::LAppend(newargs, makeInteger(new_arg));
+			newargs = gpdb::LAppend(newargs, gpdb::MakeIntegerValue(new_arg));
 		}
 
 		// Free gf->args since we do not need it any more.
@@ -266,7 +263,7 @@ CQueryMutators::GroupingFuncRewriteWalker(
 		gf->args = newargs;
 		return false;
 	}
-	return expression_tree_walker(
+	return gpdb::WalkExpressionTree(
 		node, (ExprWalkerFn) GroupingFuncRewriteWalker, context);
 }
 
@@ -304,7 +301,7 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 
 			if (IsA(target_entry->expr, Var))
 			{
-				if (equal((Node *) target_entry->expr, (Node *) node))
+				if (gpdb::Equals(target_entry->expr, node))
 				{
 					found = true;
 					break;
@@ -322,7 +319,7 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 		}
 		return false;
 	}
-	return expression_tree_walker(
+	return gpdb::WalkExpressionTree(
 		node, (ExprWalkerFn) ExtractVarsIntoTargetlistWalker, (void *) context);
 }
 
@@ -379,11 +376,11 @@ CQueryMutators::AddMissingGroupClauseWalker(
 				Oid eqop;
 				bool hashable;
 
-				get_sort_group_operators(exprType(expr), true, true, false,
-										 &sortop, &eqop, NULL, &hashable);
+				gpdb::GetSortGroupOperators(exprType(expr), true, true, false,
+											&sortop, &eqop, NULL, &hashable);
 
 				gc = makeNode(SortGroupClause);
-				gc->tleSortGroupRef = assignSortGroupRef(
+				gc->tleSortGroupRef = gpdb::AssignSortGroupRef(
 					target_entry, context->m_query->targetList);
 				gc->eqop = eqop;
 				gc->sortop = sortop;
@@ -405,7 +402,7 @@ CQueryMutators::AddMissingGroupClauseWalker(
 		}
 	}
 
-	return expression_tree_walker(
+	return gpdb::WalkExpressionTree(
 		node, (ExprWalkerFn) AddMissingGroupClauseWalker, context);
 }
 
@@ -579,15 +576,16 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 		// Step 3.
 		// Update groupClause - add all functionally dependent entries explicitly.
 		ListCell *lc_constraint = NULL;
-		foreach (lc_constraint, query_copy->constraintDeps)
+		ForEach(lc_constraint, query_copy->constraintDeps)
 		{
 			Oid constraint_oid = lfirst_oid(lc_constraint);
 			Oid conrelid = 0;
 			Oid confrelid =
 				0;	// not used, but function get_constraint_relation_oids requires it..
-			get_constraint_relation_oids(constraint_oid, &conrelid, &confrelid);
+			gpdb::GetConstraintRelationOids(constraint_oid, &conrelid,
+											&confrelid);
 			List *conkeys_list =
-				get_constraint_relation_columns(constraint_oid);
+				gpdb::GetConstraintRelationColumns(constraint_oid);
 			SContextAddMissingGroupClause ctx_fix_group_clause(
 				query_copy, conrelid, conkeys_list);
 
@@ -607,22 +605,21 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause,
 											  &ctx_new_grouping_tle_refs);
 
-		// Calculate the difference between the tle references before and after
-		// the update of groupClause.
-		// Store the differences in the grouping_tle_refs_mapping.
+		// Find new positions of the tle references after the update of groupClause.
+		// Store new positions in the grouping_tle_refs_mapping.
 		List *grouping_tle_refs_old =
 			ctx_old_grouping_tle_refs.m_grouping_tle_refs;
 		List *grouping_tle_refs_new =
 			ctx_new_grouping_tle_refs.m_grouping_tle_refs;
 		List *grouping_tle_refs_mapping = NIL;
 		ListCell *lc_tle_ref_old = NULL;
-		foreach (lc_tle_ref_old, grouping_tle_refs_old)
+		ForEach(lc_tle_ref_old, grouping_tle_refs_old)
 		{
 			int tle_ref_old = lfirst_int(lc_tle_ref_old);
 			ListCell *lc_tle_ref_new = NULL;
 			uint32 i = 0;
 
-			foreach (lc_tle_ref_new, grouping_tle_refs_new)
+			ForEach(lc_tle_ref_new, grouping_tle_refs_new)
 			{
 				if (tle_ref_old == lfirst_int(lc_tle_ref_new))
 				{
@@ -634,7 +631,7 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 			GPOS_ASSERT(i < gpdb::ListLength(grouping_tle_refs_new));
 
 			grouping_tle_refs_mapping =
-				list_append_unique_int(grouping_tle_refs_mapping, i);
+				gpdb::LAppendInt(grouping_tle_refs_mapping, i);
 		}
 
 		// Finally fix arguments of grouping functions.
