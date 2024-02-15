@@ -1241,6 +1241,8 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
 
 		if (eqopr == InvalidOid)
 			elog(ERROR, "no = operator for opfamily %u", opfamily);
+
+		Insist(prefix != NULL);
 		result = var_eq_const(&vardata, eqopr, prefix->constvalue,
 							  false, true);
 	}
