@@ -15,7 +15,7 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj);
 /* -------------------------------------------------------------------------- */
 int mapred_parse_error(mapred_parser_t *parser, char *fmt, ...)
 {
-	mapred_object_t *obj;
+	mapred_object_t *obj = NULL;
 	va_list arg;
 
 	if (parser)
