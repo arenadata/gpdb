@@ -3316,7 +3316,7 @@ RenameRelation(RenameStmt *stmt)
 	oldrelname = RelationGetRelationName(targetrelation);
 
 	/* if this is a child table of a partitioning configuration, complain */
-	if (stmt && rel_is_child_partition(relid) && !stmt->bAllowPartn)
+	if (rel_is_child_partition(relid) && !stmt->bAllowPartn)
 	{
 		Oid		 master = rel_partition_get_master(relid);
 		char	*pretty	= rel_get_part_path_pretty(relid,
@@ -3341,7 +3341,7 @@ RenameRelation(RenameStmt *stmt)
 	 * the rename of each partition is allowed, but this block doesn't
 	 * get invoked recursively.
 	 */
-	if (stmt && !rel_is_child_partition(relid) && !stmt->bAllowPartn &&
+	if (!rel_is_child_partition(relid) && !stmt->bAllowPartn &&
 		(Gp_role == GP_ROLE_DISPATCH))
 	{
 		PartitionNode *pNode;
@@ -7810,7 +7810,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * If we are adding an OID column, we have to tell Phase 3 to rewrite the
 	 * table to fix that.
 	 */
-	if (isOid)
+	if (tab && isOid)
 		tab->rewrite = true;
 
 	/*
@@ -7886,7 +7886,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * We have to do it while processing the root partition because that's the
 	 * only level where the `ADD COLUMN` subcommands are populated.
 	 */
-	if (!recursing && tab->relkind == RELKIND_RELATION)
+	if (!recursing && tab && tab->relkind == RELKIND_RELATION)
 	{
 		bool	aocs_write_new_columns_only;
 		/*
@@ -16612,6 +16612,7 @@ ATPExecPartDrop(Relation rel,
 								 "final partition ")));
 
 		}
+		Assert(prule->topRule != NULL);
 		rel2 = heap_open(prule->topRule->parchildrelid, NoLock);
 
 		elog(DEBUG5, "dropping partition oid %u", prule->topRule->parchildrelid);
@@ -16647,7 +16648,7 @@ ATPExecPartDrop(Relation rel,
 					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
-		if (prule->topRule && prule->topRule->children
+		if (prule->topRule->children
 			&& (ds->behavior != DROP_CASCADE ))
 		{
 			ereport(NOTICE,
@@ -16758,10 +16759,10 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 
 		prule = get_part_rule(rel, pid, true, true, NULL, false);
 
-		if (!prule)
+		if (!prule || prule->topRule == NULL)
 			return;
 
-		if (prule && prule->topRule && prule->topRule->children)
+		if (prule->topRule->children)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot EXCHANGE PARTITION for "
@@ -17126,6 +17127,7 @@ ATPExecPartRename(Relation rel,
 								lrelname,
 								NULL);
 
+		Assert(prule->topRule != NULL);
 		targetrelation = relation_open(prule->topRule->parchildrelid,
 									   AccessExclusiveLock);
 
@@ -17180,7 +17182,7 @@ ATPExecPartRename(Relation rel,
 		renStmt->newname = relname;
 		renStmt->bAllowPartn = true; /* allow rename of partitions */
 
-		if (prule && prule->topRule && prule->topRule->children)
+		if (prule->topRule->children)
 				pNode = prule->topRule->children;
 		else
 				pNode = NULL;
@@ -17921,6 +17923,7 @@ ATPExecPartSplit(Relation *rel,
 		prule = get_part_rule(*rel, pid, true, true, NULL, false);
 
 		/* Error out on external partition */
+		Assert(prule->topRule != NULL);
 		existrel = heap_open(prule->topRule->parchildrelid, NoLock);
 		if (RelationIsExternal(existrel))
 		{
@@ -18384,8 +18387,7 @@ ATPExecPartSplit(Relation *rel,
 						/* MPP-6589: if the partition has an "open"
 						 * START, pass a NULL partStart
 						 */
-						if (prule->topRule &&
-							prule->topRule->parrangestart)
+						if (prule->topRule->parrangestart)
 						{
 							ri = makeNode(PartitionRangeItem);
 							ri->location = -1;
@@ -18423,8 +18425,7 @@ ATPExecPartSplit(Relation *rel,
 						/* MPP-6589: if the partition has an "open"
 						 * END, pass a NULL partEnd
 						 */
-						if (prule->topRule &&
-							prule->topRule->parrangeend)
+						if (prule->topRule->parrangeend)
 						{
 							ri = makeNode(PartitionRangeItem);
 							ri->location = -1;
@@ -19356,6 +19357,7 @@ ATPExecPartTruncate(Relation rel,
 		DestReceiver 	*dest = None_Receiver;
 		Relation	  	 rel2;
 
+		Assert(prule->topRule != NULL);
 		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 		if (RelationIsExternal(rel2))
 			ereport(ERROR,
@@ -19386,7 +19388,7 @@ ATPExecPartTruncate(Relation rel,
 					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
-		if (prule && prule->topRule && prule->topRule->children
+		if (prule->topRule->children
 			&& (ts->behavior != DROP_CASCADE ))
 		{
 			ereport(NOTICE,
