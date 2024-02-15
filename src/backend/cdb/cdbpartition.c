@@ -5264,15 +5264,7 @@ get_part_rule(Relation rel,
 									bExistError, bMustExist,
 									pSearch, pNode, sid1.data, &pNode2);
 			if (!prule2)
-			{
-				if (!bExistError || !bMustExist)
-					return NULL;
-				else
-				{
-					/* get_part_rule1() can't return NULL in this case */
-					Insist(0);
-				}
-			}
+				return NULL;
 
 			pNode = pNode2;
 
