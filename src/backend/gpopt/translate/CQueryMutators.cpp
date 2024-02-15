@@ -135,8 +135,9 @@ CQueryMutators::AddMissingGroupClauseMutator(
 	{
 		if (context->m_parent_is_grouping_clause)
 		{
-			// In case the SortGroupClause is direct element of groupsets list of GroupingClause,
-			// we should treat it in a special way - consider it like a 1-element list.
+			// In case the SortGroupClause is direct element of groupsets list
+			// of GroupingClause, we should treat it in a special way - consider
+			// it like a 1-element list.
 			List *new_list = ListMake1((Node *) gpdb::CopyObject(node));
 			if (GroupingListContainsPrimaryKey(context->m_query, new_list,
 											   context->m_conkeys,
@@ -161,8 +162,8 @@ CQueryMutators::AddMissingGroupClauseMutator(
 		ForEach(l, original_grouping_clause->groupsets)
 		{
 			Node *n = (Node *) lfirst(l);
-			// need to add this flag before processing of every element of the groupsets list,
-			// because nested lists may rewrite it
+			// need to add this flag before processing of every element of the
+			// groupsets list, because nested lists may rewrite it
 			context->m_parent_is_grouping_clause = true;
 			new_grouping_clause->groupsets =
 				gpdb::LAppend(new_grouping_clause->groupsets,
@@ -361,7 +362,8 @@ CQueryMutators::AddMissingGroupClauseWalker(
 				context->m_query->rtable, var->varno - 1);
 			GPOS_ASSERT(NULL != rte);
 
-			// skip relations that are not constrained by primary key, that is currently checked
+			// skip relations that are not constrained by primary key, that is
+			// currently being checked
 			if (context->m_conrelid != rte->relid)
 			{
 				return false;
@@ -535,26 +537,32 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 	Query *query_copy = (Query *) gpdb::CopyObject(const_cast<Query *>(query));
 
 	// If there is a functional dependency proved for a relation on a set of
-	// grouping columns, then it is valid to have a column in the target list even
-	// if it is not listed explicitly in the groupClause. To make ORCA
-	// correctrly process such cases, we add all such target list entries into
+	// grouping columns, then it is valid to have a column in the target list
+	// even if it is not listed explicitly in the groupClause. To make ORCA
+	// correctly process such cases, we add all such target list entries into
 	// groupClause's grouping sets, where the functional dependency exists.
 	// If there is such functional dependency existing, the OID of
-	// Primary Key constraint resides in the constraintDeps list. As the constraintDeps
-	// list contains only Primary Key OIDs, we skip checks of constraint type
-	// in all code below. Refer to function check_functional_grouping for more details.
+	// Primary Key constraint resides in the constraintDeps list. As the
+	// constraintDeps list contains only Primary Key OIDs, we skip checks of
+	// constraint type in all code below.
+	// Refer to function check_functional_grouping for more details.
 	if (0 != gpdb::ListLength(query_copy->constraintDeps))
 	{
-		// Explicit adding of functionally dependent columns requires following steps:
-		// 1. extract such columns from targetlist expressions, and if they do not have a relevant target entry,
-		//    add resjunk target list entries for them.
-		// 2. store current unique TargetlistEntry references in groupClause - they will be needed at step 4.
-		// 3. update all grouping sets that contain Primary Key
-		// 4. update arguments of GROUPING functions, because they could be shifted after step 2.
+		// Explicit addition of functionally dependent columns requires the
+		// following steps:
+		// 1. Extract such columns from targetlist expressions, and if they do
+		// not have a relevant target entry, add resjunk target list entries for
+		// them.
+		// 2. Store current unique TargetlistEntry references in groupClause -
+		// they will be needed at step 4.
+		// 3. Update all grouping sets that contain Primary Key
+		// 4. Update arguments of GROUPING functions, because they could be
+		// shifted after step 3.
 
 		// Step 1.
-		// If there is an expression with functionally dependent var, at this point
-		// it may not have a relevant target list entry (as it was not explicitly listed in groupClause).
+		// If there is an expression with a functionally dependent var, at this
+		// point it may not have a relevant target list entry (as it was not
+		// explicitly listed in groupClause).
 		// For all such vars we add resjunc target list entries into targetList.
 		SContextExtrVarsIntoTlWalker ctx_extr_vars_into_tl(query_copy);
 		ExtractVarsIntoTargetlistWalker((Node *) query_copy->targetList,
@@ -562,7 +570,7 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 
 		// Step 2.
 		// Store current unique TargetlistEntry references in groupClause.
-		// After modifying groupClause, they will be needed to update
+		// After modifying groupClause, they will be required to update
 		// arguments inside grouping functions.
 		SContexGetGroupUniqueTleWalker ctx_old_grouping_tle_refs;
 		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause,
@@ -599,8 +607,9 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause,
 											  &ctx_new_grouping_tle_refs);
 
-		// Calculate the difference between tle references before and after the update of groupClause.
-		// Store the differences in grouping_tle_refs_mapping.
+		// Calculate the difference between the tle references before and after
+		// the update of groupClause.
+		// Store the differences in the grouping_tle_refs_mapping.
 		List *grouping_tle_refs_old =
 			ctx_old_grouping_tle_refs.m_grouping_tle_refs;
 		List *grouping_tle_refs_new =

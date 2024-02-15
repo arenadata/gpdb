@@ -192,8 +192,8 @@ class CQueryMutators
 		}
 	} CContextExtrVarsIntoTlWalker;
 
-	// context for walker and mutator to add missing grouping colums to groupClause
-	// that have functional dependency on groupClause
+	// context for walker and mutator to add missing grouping colums to the
+	// groupClause that have functional dependency on the groupClause
 	typedef struct SContextAddMissingGroupClause
 	{
 		// query that is being processed
@@ -205,8 +205,8 @@ class CQueryMutators
 
 		// new SortGroupClause to be added into groupClause
 		SortGroupClause *m_gc;
-		// utility field for mutator, indicating that currently processed SortGroupClause
-		// is direct element of groupsets of some GroupingClause
+		// utility field for mutator, indicating that currently processed
+		// SortGroupClause is direct element of groupsets of some GroupingClause
 		BOOL m_parent_is_grouping_clause;
 
 		// ctor
