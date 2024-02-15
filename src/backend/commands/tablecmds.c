@@ -16061,7 +16061,7 @@ wack_pid_relname(AlterPartitionId 		 *pid,
 		Assert(par_prule);
 
 		*plrelname = par_prule->relname;
-		
+
 		if (par_prule->topRule && par_prule->topRule->children)
 			*ppNode = par_prule->topRule->children;
 
