@@ -16057,7 +16057,6 @@ wack_pid_relname(AlterPartitionId 		 *pid,
 		*ppar_prule = (PgPartRule*) lfirst(lc);
 
 		par_prule = *ppar_prule;
-
 		Assert(par_prule);
 
 		*plrelname = par_prule->relname;
