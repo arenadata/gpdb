@@ -640,8 +640,6 @@ use_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 static void
 disuse_physical_tlist(PlannerInfo *root, Plan *plan, Path *path)
 {
-	Insist(plan);
-
 	/* Only need to undo it for path types handled by create_scan_plan() */
 	switch (path->pathtype)
 	{
@@ -3697,8 +3695,8 @@ create_hashjoin_plan(PlannerInfo *root,
 	 * either!
 	 */
 	disuse_physical_tlist(root, inner_plan, best_path->jpath.innerjoinpath);
-	if (outer_plan)
-		disuse_physical_tlist(root, outer_plan, best_path->jpath.outerjoinpath);
+	Assert(outer_plan);
+	disuse_physical_tlist(root, outer_plan, best_path->jpath.outerjoinpath);
 
 	/* If we expect batching, suppress excess columns in outer tuples too */
 	if (best_path->num_batches > 1)
