@@ -490,8 +490,6 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 	size_t		nread = 0;
 	size_t		nthistime;
 
-	Insist(file);
-
 	switch (file->state)
 	{
 		case BFS_RANDOM_ACCESS:
