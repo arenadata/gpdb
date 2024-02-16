@@ -647,6 +647,7 @@ appendKey(JsonbParseState *pstate, JsonbValue *string)
 {
 	JsonbValue *object = &pstate->contVal;
 
+	Insist(string);
 	Assert(object->type == jbvObject);
 	Assert(string->type == jbvString);
 
