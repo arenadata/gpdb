@@ -34,6 +34,7 @@ CDXLTableDescr::CDXLTableDescr(CMemoryPool *mp, IMDId *mdid, CMDName *mdname,
 	: m_mp(mp),
 	  m_mdid(mdid),
 	  m_mdname(mdname),
+	  m_mdalias(NULL),
 	  m_dxl_column_descr_array(NULL),
 	  m_execute_as_user_id(ulExecuteAsUser)
 {
@@ -85,6 +86,26 @@ CDXLTableDescr::MdName() const
 {
 	return m_mdname;
 }
+
+
+// table alias accessors
+const CMDName *
+CDXLTableDescr::MdAlias() const
+{
+	return m_mdalias;
+}
+
+void
+CDXLTableDescr::SetMdAlias(CMDName *alias)
+{
+	if (NULL != m_mdalias)
+	{
+		GPOS_DELETE(m_mdalias);
+	}
+
+	m_mdalias = alias;
+}
+
 
 //---------------------------------------------------------------------------
 //	@function:
@@ -197,6 +218,12 @@ CDXLTableDescr::SerializeToDXL(CXMLSerializer *xml_serializer) const
 
 	xml_serializer->AddAttribute(CDXLTokens::GetDXLTokenStr(EdxltokenTableName),
 								 m_mdname->GetMDName());
+
+	if (NULL != m_mdalias)
+	{
+		xml_serializer->AddAttribute(CDXLTokens::GetDXLTokenStr(EdxltokenAlias),
+									 m_mdalias->GetMDName());
+	}
 
 	if (GPDXL_DEFAULT_USERID != m_execute_as_user_id)
 	{

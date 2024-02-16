@@ -136,6 +136,14 @@ CTranslatorUtils::GetTableDescr(CMemoryPool *mp, CMDAccessor *md_accessor,
 	CDXLTableDescr *table_descr =
 		GPOS_NEW(mp) CDXLTableDescr(mp, mdid, table_mdname, rte->checkAsUser);
 
+	if (NULL != rte->alias)
+	{
+		CMDName *table_alias =
+			CDXLUtils::CreateMDNameFromCharArray(mp, rte->alias->aliasname);
+
+		table_descr->SetMdAlias(table_alias);
+	}
+
 	const ULONG len = rel->ColumnCount();
 
 	IMDRelation::Ereldistrpolicy distribution_policy =

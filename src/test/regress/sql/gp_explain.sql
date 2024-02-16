@@ -329,3 +329,15 @@ CREATE TABLE t1 (a int);
 EXPLAIN ANALYZE INSERT INTO t1 SELECT 1/gp_segment_id
 FROM gp_dist_random('gp_id');
 DROP TABLE t1;
+
+
+
+create table foo_alias (a int, b int);
+insert into foo_alias select generate_series(1,10);
+
+explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+
+set optimizer_enable_table_alias=on;
+explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+
+drop table foo_alias;

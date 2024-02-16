@@ -1483,7 +1483,21 @@ CDXLOperatorFactory::MakeDXLTableDescr(CDXLMemoryManager *dxl_memory_manager,
 			EdxltokenTableDescr);
 	}
 
-	return GPOS_NEW(mp) CDXLTableDescr(mp, mdid, mdname, user_id);
+	CDXLTableDescr *ret =
+		GPOS_NEW(mp) CDXLTableDescr(mp, mdid, mdname, user_id);
+
+	const XMLCh *table_alias_xml =
+		attrs.getValue(CDXLTokens::XmlstrToken(EdxltokenAlias));
+
+	if (NULL != table_alias_xml)
+	{
+		CMDName *md_alias = CDXLUtils::CreateMDNameFromXMLChar(
+			dxl_memory_manager, table_alias_xml);
+
+		ret->SetMdAlias(md_alias);
+	}
+
+	return ret;
 }
 
 //---------------------------------------------------------------------------
