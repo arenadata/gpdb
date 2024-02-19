@@ -232,11 +232,13 @@ CParseHandlerLogicalCTAS::EndElement(const XMLCh *const,  // element_uri,
 	IMdIdArray *distr_opfamilies =
 		dynamic_cast<CParseHandlerMetadataIdList *>(opfamilies_parse_handler)
 			->GetMdIdArray();
+	GPOS_ASSERT(NULL != distr_opfamilies);
 	distr_opfamilies->AddRef();
 
 	IMdIdArray *distr_opclasses =
 		dynamic_cast<CParseHandlerMetadataIdList *>(opclasses_parse_handler)
 			->GetMdIdArray();
+	GPOS_ASSERT(NULL != distr_opclasses);
 	distr_opclasses->AddRef();
 
 
