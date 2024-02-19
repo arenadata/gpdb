@@ -387,7 +387,7 @@ explain (verbose on, costs off) select a, b , sum(c + d), e from mfuncdep1 join 
                                              ->  Seq Scan on public.mfuncdep1
                                                    Output: mfuncdep1.a, mfuncdep1.b, mfuncdep1.c, mfuncdep1.d, mfuncdep1.e
  Optimizer: Postgres query optimizer
- Settings: enable_groupagg=off, optimizer=off
+ Settings: enable_groupagg=off
 (28 rows)
 
 select a, b , sum(c + d), e from mfuncdep1 join mfuncdep2 on c = b2 group by a,b order by 1;
