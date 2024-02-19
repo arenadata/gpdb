@@ -331,6 +331,9 @@ FROM gp_dist_random('gp_id');
 DROP TABLE t1;
 
 
+-- start_ignore
+drop table if exists foo_alias;
+-- end_ignore
 
 create table foo_alias (a int, b int);
 insert into foo_alias select generate_series(1,10);
