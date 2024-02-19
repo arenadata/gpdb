@@ -203,6 +203,7 @@ CParseHandlerOptimizerConfig::EndElement(const XMLCh *const,  // element_uri,
 
 	CParseHandlerCTEConfig *pphCTEConfig =
 		dynamic_cast<CParseHandlerCTEConfig *>((*this)[2]);
+	GPOS_ASSERT(NULL != pphCTEConfig);
 	CCTEConfig *pcteconfig = pphCTEConfig->GetCteConf();
 	pcteconfig->AddRef();
 
