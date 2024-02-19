@@ -151,6 +151,7 @@ CParseHandlerDynamicTableScan::EndElement(const XMLCh *const,  // element_uri,
 
 
 	// set table descriptor
+	GPOS_ASSERT(NULL != table_descr_parse_handler);
 	CDXLTableDescr *table_descr = table_descr_parse_handler->GetDXLTableDescr();
 	table_descr->AddRef();
 	CDXLPhysicalDynamicTableScan *dxl_op =
@@ -159,10 +160,13 @@ CParseHandlerDynamicTableScan::EndElement(const XMLCh *const,  // element_uri,
 
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 	// set statictics and physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add constructed children
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != filter_parse_handler);
 	AddChildFromParseHandler(filter_parse_handler);
 
 #ifdef GPOS_DEBUG
