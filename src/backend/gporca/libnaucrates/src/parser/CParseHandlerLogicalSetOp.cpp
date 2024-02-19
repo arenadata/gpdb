@@ -212,7 +212,8 @@ CParseHandlerLogicalSetOp::EndElement(const XMLCh *const,  // element_uri,
 	// get the columns descriptors
 	CParseHandlerColDescr *col_descr_parse_handler =
 		dynamic_cast<CParseHandlerColDescr *>((*this)[0]);
-	GPOS_ASSERT(NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
+	GPOS_ASSERT(NULL != col_descr_parse_handler &&
+				NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
 	CDXLColDescrArray *cold_descr_dxl_array =
 		col_descr_parse_handler->GetDXLColumnDescrArray();
 

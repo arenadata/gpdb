@@ -214,11 +214,16 @@ CParseHandlerLogicalCTAS::EndElement(const XMLCh *const,  // element_uri,
 	CParseHandlerLogicalOp *child_parse_handler =
 		dynamic_cast<CParseHandlerLogicalOp *>((*this)[4]);
 
-	GPOS_ASSERT(NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
-	GPOS_ASSERT(NULL != ctas_options_parse_handler->GetDxlCtasStorageOption());
-	GPOS_ASSERT(NULL != opfamilies_parse_handler->GetMdIdArray());
-	GPOS_ASSERT(NULL != opclasses_parse_handler->GetMdIdArray());
-	GPOS_ASSERT(NULL != child_parse_handler->CreateDXLNode());
+	GPOS_ASSERT(NULL != col_descr_parse_handler &&
+				NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
+	GPOS_ASSERT(NULL != ctas_options_parse_handler &&
+				NULL != ctas_options_parse_handler->GetDxlCtasStorageOption());
+	GPOS_ASSERT(NULL != opfamilies_parse_handler &&
+				NULL != opfamilies_parse_handler->GetMdIdArray());
+	GPOS_ASSERT(NULL != opclasses_parse_handler &&
+				NULL != opclasses_parse_handler->GetMdIdArray());
+	GPOS_ASSERT(NULL != child_parse_handler &&
+				NULL != child_parse_handler->CreateDXLNode());
 
 	CDXLColDescrArray *dxl_column_descr_array =
 		col_descr_parse_handler->GetDXLColumnDescrArray();
@@ -232,11 +237,13 @@ CParseHandlerLogicalCTAS::EndElement(const XMLCh *const,  // element_uri,
 	IMdIdArray *distr_opfamilies =
 		dynamic_cast<CParseHandlerMetadataIdList *>(opfamilies_parse_handler)
 			->GetMdIdArray();
+	GPOS_ASSERT(NULL != distr_opfamilies);
 	distr_opfamilies->AddRef();
 
 	IMdIdArray *distr_opclasses =
 		dynamic_cast<CParseHandlerMetadataIdList *>(opclasses_parse_handler)
 			->GetMdIdArray();
+	GPOS_ASSERT(NULL != distr_opclasses);
 	distr_opclasses->AddRef();
 
 
