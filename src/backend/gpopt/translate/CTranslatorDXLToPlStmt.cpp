@@ -4937,10 +4937,10 @@ CTranslatorDXLToPlStmt::CreateTargetListWithNullsForDroppedCols(
 		Expr *expr = NULL;
 		if (md_col->IsDropped())
 		{
+			const IMDType *md_type = m_md_accessor->PtMDType<IMDTypeInt4>();
+			GPOS_ASSERT(NULL != md_type);
 			// add a NULL element
-			OID oid_type = CMDIdGPDB::CastMdid(
-							   m_md_accessor->PtMDType<IMDTypeInt4>()->MDId())
-							   ->Oid();
+			OID oid_type = CMDIdGPDB::CastMdid(md_type->MDId())->Oid();
 
 			expr = (Expr *) gpdb::MakeNULLConst(oid_type);
 		}

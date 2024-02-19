@@ -48,6 +48,8 @@ IMDId *
 CScalarDMLAction::MdidType() const
 {
 	CMDAccessor *md_accessor = COptCtxt::PoctxtFromTLS()->Pmda();
-	return md_accessor->PtMDType<IMDTypeInt4>()->MDId();
+	const IMDType *md_type = md_accessor->PtMDType<IMDTypeInt4>();
+	GPOS_ASSERT(NULL != md_type);
+	return md_type->MDId();
 }
 // EOF
