@@ -214,6 +214,7 @@ CExpressionPreprocessor::PexprSimplifyQuantifiedSubqueries(CMemoryPool *mp,
 		1 == (*pexpr)[0]->DeriveMaxCard().Ull())
 	{
 		CExpression *pexprInner = (*pexpr)[0];
+		GPOS_ASSERT(NULL != pexprInner);
 
 		// skip intermediate unary nodes
 		CExpression *pexprChild = pexprInner;
