@@ -178,9 +178,12 @@ CParseHandlerPhysicalSplit::EndElement(const XMLCh *const,	// element_uri,
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 
 	// set statistics and physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != child_parse_handler);
 	AddChildFromParseHandler(child_parse_handler);
 
 #ifdef GPOS_DEBUG

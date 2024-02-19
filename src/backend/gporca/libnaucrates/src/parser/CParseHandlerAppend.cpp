@@ -164,10 +164,13 @@ CParseHandlerAppend::EndElement(const XMLCh *const,	 // element_uri,
 		dynamic_cast<CParseHandlerFilter *>((*this)[2]);
 
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add constructed children
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != filter_parse_handler);
 	AddChildFromParseHandler(filter_parse_handler);
 
 	GPOS_ASSERT(3 <= this->Length());
@@ -178,6 +181,7 @@ CParseHandlerAppend::EndElement(const XMLCh *const,	 // element_uri,
 	{
 		CParseHandlerPhysicalOp *child_parse_handler =
 			dynamic_cast<CParseHandlerPhysicalOp *>((*this)[ul]);
+		GPOS_ASSERT(NULL != child_parse_handler);
 		AddChildFromParseHandler(child_parse_handler);
 	}
 

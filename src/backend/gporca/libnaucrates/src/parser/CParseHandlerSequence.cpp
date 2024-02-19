@@ -128,6 +128,7 @@ CParseHandlerSequence::EndElement(const XMLCh *const,  // element_uri,
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 
 	// set statistics and physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add project list

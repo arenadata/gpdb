@@ -149,11 +149,15 @@ CParseHandlerAssert::EndElement(const XMLCh *const,	 // element_uri,
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[3]);
 
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add constructed children
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != assert_pred_parse_handler);
 	AddChildFromParseHandler(assert_pred_parse_handler);
+	GPOS_ASSERT(NULL != child_parse_handler);
 	AddChildFromParseHandler(child_parse_handler);
 
 #ifdef GPOS_DEBUG

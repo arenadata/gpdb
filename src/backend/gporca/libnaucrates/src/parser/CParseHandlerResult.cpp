@@ -174,17 +174,22 @@ CParseHandlerResult::EndElement(const XMLCh *const,	 // element_uri,
 
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
 	// set statictics and physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add constructed children
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != filter_parse_handler);
 	AddChildFromParseHandler(filter_parse_handler);
+	GPOS_ASSERT(NULL != one_time_filter_parse_handler);
 	AddChildFromParseHandler(one_time_filter_parse_handler);
 
 	if (this->Length() == 5)
 	{
 		CParseHandlerPhysicalOp *child_parse_handler =
 			dynamic_cast<CParseHandlerPhysicalOp *>((*this)[4]);
+		GPOS_ASSERT(NULL != child_parse_handler);
 		AddChildFromParseHandler(child_parse_handler);
 	}
 

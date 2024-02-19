@@ -111,6 +111,7 @@ CParseHandlerValuesScan::EndElement(const XMLCh *const,	 // element_uri,
 		dynamic_cast<CParseHandlerProperties *>((*this)[0]);
 
 	// set statistics and physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// valuesscan has project list element as its second child

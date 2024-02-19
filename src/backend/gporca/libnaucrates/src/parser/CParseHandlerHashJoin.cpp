@@ -173,14 +173,21 @@ CParseHandlerHashJoin::EndElement(const XMLCh *const,  // element_uri,
 
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
 	// set statictics and physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add children
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != filter_parse_handler);
 	AddChildFromParseHandler(filter_parse_handler);
+	GPOS_ASSERT(NULL != hashjoin_filter_parse_handler);
 	AddChildFromParseHandler(hashjoin_filter_parse_handler);
+	GPOS_ASSERT(NULL != hash_clauses_parse_handler);
 	AddChildFromParseHandler(hash_clauses_parse_handler);
+	GPOS_ASSERT(NULL != left_child_parse_handler);
 	AddChildFromParseHandler(left_child_parse_handler);
+	GPOS_ASSERT(NULL != right_child_parse_handler);
 	AddChildFromParseHandler(right_child_parse_handler);
 
 #ifdef GPOS_DEBUG

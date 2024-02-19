@@ -156,8 +156,9 @@ CParseHandlerAgg::EndElement(const XMLCh *const,  // element_uri,
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[4]);
 
 	// set grouping cols list
-	GPOS_ASSERT(NULL !=
-				grouping_col_list_parse_handler->GetGroupingColidArray());
+	GPOS_ASSERT(NULL != grouping_col_list_parse_handler &&
+				NULL !=
+					grouping_col_list_parse_handler->GetGroupingColidArray());
 
 	ULongPtrArray *grouping_colid_array =
 		grouping_col_list_parse_handler->GetGroupingColidArray();
@@ -167,11 +168,15 @@ CParseHandlerAgg::EndElement(const XMLCh *const,  // element_uri,
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
 
 	// set physical properties
+	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add children
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
+	GPOS_ASSERT(NULL != filter_parse_handler);
 	AddChildFromParseHandler(filter_parse_handler);
+	GPOS_ASSERT(NULL != child_parse_handler);
 	AddChildFromParseHandler(child_parse_handler);
 
 	// deactivate handler
