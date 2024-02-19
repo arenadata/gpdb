@@ -247,6 +247,7 @@ CParseHandlerOptimizerConfig::EndElement(const XMLCh *const,  // element_uri,
 
 	CParseHandlerTraceFlags *pphTraceFlags =
 		dynamic_cast<CParseHandlerTraceFlags *>((*this)[this->Length() - 1]);
+	GPOS_ASSERT(NULL != pphTraceFlags);
 	pphTraceFlags->GetTraceFlagBitSet()->AddRef();
 	m_pbs = pphTraceFlags->GetTraceFlagBitSet();
 
