@@ -1,7 +1,7 @@
 -- from http://www.depesz.com/index.php/2010/04/19/getting-unique-elements/
 
--- Test functional dependencies with standard planner
-SET optimizer = off;
+-- Enable logs that allow to show GPORCA failed to produce a plan
+SET optimizer_trace_fallback = on;
 
 CREATE TEMP TABLE articles (
     id int CONSTRAINT articles_pkey PRIMARY KEY,
@@ -261,10 +261,14 @@ ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
 
 EXECUTE foo;  -- fail
 
--- Test functional dependencies with GPORCA
+-- Known issue (ADBDEV-4888) - in case there is a column in the target list
+-- that is not explicitly listed in the GROUP BY clause but has a functional
+-- dependency on another column in the GROUP BY clause, Postgres planner might
+-- output column values in grouped rows, that actually cannot be uniquely
+-- identified. As it can introduce instability in the tests, all the queries
+-- below are temporarily tested only with GPORCA.
+-- TODO: remove the hard-coded optimizer option below once ADBDEV-4888 is fixed.
 SET optimizer = on;
--- Enable logs that allow to show GPORCA failed to produce a plan
-SET optimizer_trace_fallback = on;
 
 -- start_ignore
 DROP TABLE IF EXISTS test_table1;
