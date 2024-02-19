@@ -1099,7 +1099,7 @@ CStatisticsUtils::DeriveStatsForDynamicScan(CMemoryPool *mp,
 	if (NULL != unsupported_pred_stats)
 	{
 		CStatistics *cleft_semi_join_stats = dynamic_cast<CStatistics *>(left_semi_join_stats);
-		GPOS_ASSERT(cleft_semi_join_stats);
+		GPOS_ASSERT(NULL != cleft_semi_join_stats);
 
 		// apply the unsupported join filters as a filter on top of the join results.
 		// TODO,  June 13 2014 we currently only cap NDVs for filters
