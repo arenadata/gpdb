@@ -227,15 +227,19 @@ CParseHandlerMDRelationExternal::EndElement(
 	CParseHandlerMetadataIdList *mdid_check_constraint_parse_handler =
 		dynamic_cast<CParseHandlerMetadataIdList *>((*this)[3]);
 
-	GPOS_ASSERT(NULL != md_cols_parse_handler->GetMdColArray());
-	GPOS_ASSERT(NULL !=
-				md_index_info_list_parse_handler->GetMdIndexInfoArray());
-	GPOS_ASSERT(NULL != mdid_check_constraint_parse_handler->GetMdIdArray());
+	GPOS_ASSERT(NULL != md_cols_parse_handler &&
+				NULL != md_cols_parse_handler->GetMdColArray());
+	GPOS_ASSERT(NULL != md_index_info_list_parse_handler &&
+				NULL !=
+					md_index_info_list_parse_handler->GetMdIndexInfoArray());
+	GPOS_ASSERT(NULL != mdid_check_constraint_parse_handler &&
+				NULL != mdid_check_constraint_parse_handler->GetMdIdArray());
 
 	// refcount child objects
 	CMDColumnArray *md_col_array = md_cols_parse_handler->GetMdColArray();
 	CMDIndexInfoArray *md_index_info_array =
 		md_index_info_list_parse_handler->GetMdIndexInfoArray();
+	GPOS_ASSERT(NULL != mdid_triggers_parse_list);
 	IMdIdArray *mdid_triggers_array = mdid_triggers_parse_list->GetMdIdArray();
 	IMdIdArray *mdid_check_constraint_array =
 		mdid_check_constraint_parse_handler->GetMdIdArray();
@@ -252,6 +256,7 @@ CParseHandlerMDRelationExternal::EndElement(
 		distr_opfamilies = dynamic_cast<CParseHandlerMetadataIdList *>(
 							   m_opfamilies_parse_handler)
 							   ->GetMdIdArray();
+		GPOS_ASSERT(NULL != distr_opfamilies);
 		distr_opfamilies->AddRef();
 	}
 
