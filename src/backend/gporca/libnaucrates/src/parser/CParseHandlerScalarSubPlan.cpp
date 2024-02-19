@@ -189,10 +189,12 @@ CParseHandlerScalarSubPlan::EndElement(const XMLCh *const,	// element_uri,
 	CParseHandlerPhysicalOp *child_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[2]);
 
+	GPOS_ASSERT(NULL != parse_handler_subplan_param_list);
 	CDXLColRefArray *dxl_colref_array =
 		parse_handler_subplan_param_list->GetDXLColRefArray();
 	dxl_colref_array->AddRef();
 
+	GPOS_ASSERT(NULL != parse_handler_subplan_test_expr);
 	CDXLNode *dxl_subplan_test_expr =
 		parse_handler_subplan_test_expr->GetDXLTestExpr();
 	if (NULL != dxl_subplan_test_expr)
@@ -207,6 +209,7 @@ CParseHandlerScalarSubPlan::EndElement(const XMLCh *const,	// element_uri,
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 
 	// add constructed children
+	GPOS_ASSERT(NULL != child_parse_handler);
 	AddChildFromParseHandler(child_parse_handler);
 
 	// deactivate handler
