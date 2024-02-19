@@ -335,6 +335,8 @@ DROP TABLE t1;
 drop table if exists foo_alias;
 -- end_ignore
 
+reset optimizer_enable_table_alias;
+
 create table foo_alias (a int, b int);
 insert into foo_alias select generate_series(1,10);
 
@@ -344,3 +346,4 @@ set optimizer_enable_table_alias=on;
 explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
 
 drop table foo_alias;
+reset optimizer_enable_table_alias;
