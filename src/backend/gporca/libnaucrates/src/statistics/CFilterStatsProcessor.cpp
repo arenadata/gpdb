@@ -110,7 +110,7 @@ CFilterStatsProcessor::SelectivityOfPredicate(CMemoryPool *mp,
 							dummy_width_set, stats_config);
 
 	CStatistics *cbase_table_stats = dynamic_cast<CStatistics *>(base_table_stats);
-	GPOS_ASSERT(cbase_table_stats);
+	GPOS_ASSERT(NULL != cbase_table_stats);
 
 	// derive stats based on local filter
 	IStatistics *result_stats = CFilterStatsProcessor::MakeStatsFilter(
