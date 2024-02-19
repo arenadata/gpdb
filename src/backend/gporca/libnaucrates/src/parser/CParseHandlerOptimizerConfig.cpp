@@ -208,6 +208,7 @@ CParseHandlerOptimizerConfig::EndElement(const XMLCh *const,  // element_uri,
 
 	CParseHandlerWindowOids *pphDefoidsGPDB =
 		dynamic_cast<CParseHandlerWindowOids *>((*this)[3]);
+	GPOS_ASSERT(NULL != pphDefoidsGPDB);
 	CWindowOids *pwindowoidsGPDB = pphDefoidsGPDB->GetWindowOids();
 	GPOS_ASSERT(NULL != pwindowoidsGPDB);
 	pwindowoidsGPDB->AddRef();
