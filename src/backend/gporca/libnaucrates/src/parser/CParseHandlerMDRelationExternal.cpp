@@ -193,6 +193,7 @@ CParseHandlerMDRelationExternal::EndElement(
 		//		{
 		CParseHandlerScalarOp *pphPartCnstr =
 			dynamic_cast<CParseHandlerScalarOp *>((*this)[Length() - 1]);
+		GPOS_ASSERT(NULL != pphPartCnstr);
 		CDXLNode *pdxlnPartConstraint = pphPartCnstr->CreateDXLNode();
 		pdxlnPartConstraint->AddRef();
 		m_part_constraint = GPOS_NEW(m_mp) CMDPartConstraintGPDB(
