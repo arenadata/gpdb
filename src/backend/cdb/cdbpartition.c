@@ -2771,7 +2771,7 @@ partition_policies_equal(GpPolicy *p, PartitionNode *pn)
 				if (p->attrs == 0)
 					/* random policy, skip */
 					;
-				if (memcmp(p->attrs, rel->rd_cdbpolicy->attrs,
+				else if (memcmp(p->attrs, rel->rd_cdbpolicy->attrs,
 						   (sizeof(AttrNumber) * p->nattrs)))
 				{
 					heap_close(rel, NoLock);
@@ -5228,7 +5228,9 @@ get_part_rule(Relation rel,
 
 		lc = list_head(l1);
 		prule2 = (PgPartRule *) lfirst(lc);
-		if (prule2 && prule2->topRule && prule2->topRule->children)
+
+		Assert(prule2);
+		if (prule2->topRule && prule2->topRule->children)
 			pNode = prule2->topRule->children;
 
 		lc = lnext(lc);
@@ -5261,12 +5263,14 @@ get_part_rule(Relation rel,
 									pid2,
 									bExistError, bMustExist,
 									pSearch, pNode, sid1.data, &pNode2);
+			if (!prule2)
+				return NULL;
 
 			pNode = pNode2;
 
 			if (!pNode)
 			{
-				if (prule2 && prule2->topRule && prule2->topRule->children)
+				if (prule2->topRule && prule2->topRule->children)
 					pNode = prule2->topRule->children;
 			}
 
@@ -5377,7 +5381,7 @@ atpxPart_validate_spec(PartitionBy *pBy,
 								 * to re-order the ALTER statements */
 
 	/* fixup the pnode_tmpl to get the right parlevel */
-	if (pNode && (pNode->rules || pNode->default_part))
+	if (pNode->rules || pNode->default_part)
 	{
 		pNode_tmpl = get_parts(pNode->part->parrelid,
 							   pNode->part->parlevel + 1,
@@ -5693,10 +5697,11 @@ atpxPartAddList(Relation rel,
 			heap_open(par_prule->topRule->parchildrelid, AccessShareLock);
 
 	Assert((PARTTYP_LIST == part_type) || (PARTTYP_RANGE == part_type));
+	Assert(pelem);
 
 	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
 
-	if (pelem && pelem->boundSpec)
+	if (pelem->boundSpec)
 	{
 		if (PARTTYP_RANGE == part_type)
 		{
@@ -6736,7 +6741,7 @@ atpxPartAddList(Relation rel,
 
 			free_parsestate(pstate);
 		}						/* end if parttype_range */
-	}							/* end if pelem && pelem->boundspec */
+	}							/* end if pelem->boundspec */
 
 	/*
 	 * Create a phony CREATE TABLE statement for the parent table. The
@@ -6816,7 +6821,7 @@ atpxPartAddList(Relation rel,
 	(void) atpxPart_validate_spec(pBy, rel, ct, pelem, pNode, partName,
 								  isDefault, part_type, "");
 
-	if (pelem && pelem->boundSpec)
+	if (pelem->boundSpec)
 	{
 		if (PARTTYP_LIST == part_type)
 		{
@@ -7041,8 +7046,8 @@ atpxPartAddList(Relation rel,
 
 				skipTableRelid = RangeVarGetRelid(t->relation, NoLock, true);
 			}
-		}
 
+		/* FIXME: indent this */
 		for_each_cell(lc, lnext(lc))
 		{
 			Node	   *q = lfirst(lc);
@@ -7070,7 +7075,7 @@ atpxPartAddList(Relation rel,
 			 * XXX XXX: fix the first Alter Table Statement to have the
 			 * correct maxpartno.  Whoohoo!!
 			 */
-			if (bFixFirstATS && q && IsA(q, AlterTableStmt))
+			if (bFixFirstATS && IsA(q, AlterTableStmt))
 			{
 				PartitionSpec *spec = NULL;
 				AlterTableStmt *ats;
@@ -7192,7 +7197,7 @@ atpxPartAddList(Relation rel,
 
 			ii++;
 		}						/* end for each cell */
-
+		}
 	}
 
 	if (par_prule && par_prule->topRule)
