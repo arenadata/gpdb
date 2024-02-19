@@ -136,7 +136,8 @@ CParseHandlerTableDescr::EndElement(const XMLCh *const,	 // element_uri,
 	CParseHandlerColDescr *col_descr_parse_handler =
 		dynamic_cast<CParseHandlerColDescr *>((*this)[0]);
 
-	GPOS_ASSERT(NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
+	GPOS_ASSERT(NULL != col_descr_parse_handler &&
+				NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
 
 	CDXLColDescrArray *dxl_column_descr_array =
 		col_descr_parse_handler->GetDXLColumnDescrArray();

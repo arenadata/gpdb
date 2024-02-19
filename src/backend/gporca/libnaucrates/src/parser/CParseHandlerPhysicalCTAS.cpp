@@ -220,12 +220,18 @@ CParseHandlerPhysicalCTAS::EndElement(const XMLCh *const,  // element_uri,
 	CParseHandlerPhysicalOp *child_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[5]);
 
-	GPOS_ASSERT(NULL != prop_parse_handler->GetProperties());
-	GPOS_ASSERT(NULL != opclasses_parse_handler->GetMdIdArray());
-	GPOS_ASSERT(NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
-	GPOS_ASSERT(NULL != ctas_options_parse_handler->GetDxlCtasStorageOption());
-	GPOS_ASSERT(NULL != proj_list_parse_handler->CreateDXLNode());
-	GPOS_ASSERT(NULL != child_parse_handler->CreateDXLNode());
+	GPOS_ASSERT(NULL != prop_parse_handler &&
+				NULL != prop_parse_handler->GetProperties());
+	GPOS_ASSERT(NULL != opclasses_parse_handler &&
+				NULL != opclasses_parse_handler->GetMdIdArray());
+	GPOS_ASSERT(NULL != col_descr_parse_handler &&
+				NULL != col_descr_parse_handler->GetDXLColumnDescrArray());
+	GPOS_ASSERT(NULL != ctas_options_parse_handler &&
+				NULL != ctas_options_parse_handler->GetDxlCtasStorageOption());
+	GPOS_ASSERT(NULL != proj_list_parse_handler &&
+				NULL != proj_list_parse_handler->CreateDXLNode());
+	GPOS_ASSERT(NULL != child_parse_handler &&
+				NULL != child_parse_handler->CreateDXLNode());
 
 	CDXLColDescrArray *dxl_col_descr_array =
 		col_descr_parse_handler->GetDXLColumnDescrArray();
