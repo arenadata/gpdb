@@ -180,18 +180,6 @@ class CQueryMutators
 		}
 	} CContexGroupingFuncRewriteWalker;
 
-	// context for walker to extract vars that do not have TargetlistEntry and
-	// add relevant resjunk TargetlistEntry into query
-	typedef struct SContextExtrVarsIntoTlWalker
-	{
-		Query *m_query;
-
-		// ctor
-		SContextExtrVarsIntoTlWalker(Query *query) : m_query(query)
-		{
-		}
-	} CContextExtrVarsIntoTlWalker;
-
 	// context for walker and mutator to add missing grouping colums to the
 	// groupClause that have functional dependency on the groupClause
 	typedef struct SContextAddMissingGroupClause
@@ -230,9 +218,6 @@ private:
 
 	static BOOL GroupingFuncRewriteWalker(
 		Node *node, SContexGroupingFuncRewriteWalker *context);
-
-	static BOOL ExtractVarsIntoTargetlistWalker(
-		Node *node, SContextExtrVarsIntoTlWalker *context);
 
 	static BOOL AddMissingGroupClauseWalker(
 		Node *node, SContextAddMissingGroupClause *context);

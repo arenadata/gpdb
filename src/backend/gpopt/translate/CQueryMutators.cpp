@@ -269,62 +269,6 @@ CQueryMutators::GroupingFuncRewriteWalker(
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CQueryMutators::ExtractVarsIntoTargetlistWalker
-//
-//	@doc:
-//		Goes over the expression tree, finds all vars that do not have relevant
-//		targetlist entries, and adds resjunk targetlist entries for such vars
-//		to targetList
-//---------------------------------------------------------------------------
-BOOL
-CQueryMutators::ExtractVarsIntoTargetlistWalker(
-	Node *node, SContextExtrVarsIntoTlWalker *context)
-{
-	if (NULL == node)
-	{
-		return false;
-	}
-
-	if (IsA(node, Aggref))
-	{
-		// do not examine what is inside Aggref
-		return false;
-	}
-
-	if (IsA(node, Var))
-	{
-		bool found = false;
-		ListCell *lc_tle = NULL;
-		ForEach(lc_tle, context->m_query->targetList)
-		{
-			TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
-
-			if (IsA(target_entry->expr, Var))
-			{
-				if (gpdb::Equals(target_entry->expr, node))
-				{
-					found = true;
-					break;
-				}
-			}
-		}
-		if (!found)
-		{
-			int ressno = gpdb::ListLength(context->m_query->targetList) + 1;
-			TargetEntry *newTargetEntry =
-				gpdb::MakeTargetEntry((Expr *) node, ressno, NULL, true);
-
-			context->m_query->targetList =
-				gpdb::LAppend(context->m_query->targetList, newTargetEntry);
-		}
-		return false;
-	}
-	return gpdb::WalkExpressionTree(
-		node, (ExprWalkerFn) ExtractVarsIntoTargetlistWalker, (void *) context);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
 //		CQueryMutators::AddMissingGroupClauseWalker
 //
 //	@doc:
@@ -400,6 +344,37 @@ CQueryMutators::AddMissingGroupClauseWalker(
 			}
 			return false;
 		}
+	}
+
+	// find all vars that do not have relevant targetlist entries, and add
+	// resjunk targetlist entries for such vars to targetList
+	if (IsA(node, Var))
+	{
+		bool found = false;
+		ListCell *lc_tle = NULL;
+		ForEach(lc_tle, context->m_query->targetList)
+		{
+			TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
+
+			if (IsA(target_entry->expr, Var))
+			{
+				if (gpdb::Equals(target_entry->expr, node))
+				{
+					found = true;
+					break;
+				}
+			}
+		}
+		if (!found)
+		{
+			int ressno = gpdb::ListLength(context->m_query->targetList) + 1;
+			TargetEntry *newTargetEntry =
+				gpdb::MakeTargetEntry((Expr *) node, ressno, NULL, true);
+
+			context->m_query->targetList =
+				gpdb::LAppend(context->m_query->targetList, newTargetEntry);
+		}
+		return false;
 	}
 
 	return gpdb::WalkExpressionTree(
@@ -547,25 +522,13 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 	{
 		// Explicit addition of functionally dependent columns requires the
 		// following steps:
-		// 1. Extract such columns from targetlist expressions, and if they do
-		// not have a relevant target entry, add resjunk target list entries for
-		// them.
-		// 2. Store current unique TargetlistEntry references in groupClause -
-		// they will be needed at step 4.
-		// 3. Update all grouping sets that contain Primary Key
-		// 4. Update arguments of GROUPING functions, because they could be
+		// 1. Store current unique TargetlistEntry references in groupClause -
+		// they will be needed at step 3.
+		// 2. Update all grouping sets that contain Primary Key
+		// 3. Update arguments of GROUPING functions, because they could be
 		// shifted after step 3.
 
 		// Step 1.
-		// If there is an expression with a functionally dependent var, at this
-		// point it may not have a relevant target list entry (as it was not
-		// explicitly listed in groupClause).
-		// For all such vars we add resjunc target list entries into targetList.
-		SContextExtrVarsIntoTlWalker ctx_extr_vars_into_tl(query_copy);
-		ExtractVarsIntoTargetlistWalker((Node *) query_copy->targetList,
-										&ctx_extr_vars_into_tl);
-
-		// Step 2.
 		// Store current unique TargetlistEntry references in groupClause.
 		// After modifying groupClause, they will be required to update
 		// arguments inside grouping functions.
@@ -573,7 +536,7 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause,
 											  &ctx_old_grouping_tle_refs);
 
-		// Step 3.
+		// Step 2.
 		// Update groupClause - add all functionally dependent entries explicitly.
 		ListCell *lc_constraint = NULL;
 		ForEach(lc_constraint, query_copy->constraintDeps)
@@ -599,7 +562,7 @@ CQueryMutators::NormalizeGroupByProjList(CMemoryPool *mp,
 		query_copy->constraintDeps = NIL;
 		// End of update groupClause.
 
-		// Step 4.
+		// Step 3.
 		// Get updated unique TargetlistEntry references in groupClause.
 		SContexGetGroupUniqueTleWalker ctx_new_grouping_tle_refs;
 		GetGroupUniqueTargetlistEntriesWalker((Node *) query_copy->groupClause,
