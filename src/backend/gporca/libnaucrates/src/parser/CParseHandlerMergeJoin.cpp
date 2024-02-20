@@ -171,23 +171,24 @@ CParseHandlerMergeJoin::EndElement(const XMLCh *const,	// element_uri,
 	CParseHandlerPhysicalOp *right_child_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[6]);
 
+	GPOS_ASSERT(NULL != prop_parse_handler);
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
+	GPOS_ASSERT(NULL != filter_parse_handler);
+	GPOS_ASSERT(NULL != join_filter_parse_handler);
+	GPOS_ASSERT(NULL != merge_clause_parse_handler);
+	GPOS_ASSERT(NULL != left_child_parse_handler);
+	GPOS_ASSERT(NULL != right_child_parse_handler);
+
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
 	// set statictics and physical properties
-	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add children
-	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
-	GPOS_ASSERT(NULL != filter_parse_handler);
 	AddChildFromParseHandler(filter_parse_handler);
-	GPOS_ASSERT(NULL != join_filter_parse_handler);
 	AddChildFromParseHandler(join_filter_parse_handler);
-	GPOS_ASSERT(NULL != merge_clause_parse_handler);
 	AddChildFromParseHandler(merge_clause_parse_handler);
-	GPOS_ASSERT(NULL != left_child_parse_handler);
 	AddChildFromParseHandler(left_child_parse_handler);
-	GPOS_ASSERT(NULL != right_child_parse_handler);
 	AddChildFromParseHandler(right_child_parse_handler);
 
 #ifdef GPOS_DEBUG
