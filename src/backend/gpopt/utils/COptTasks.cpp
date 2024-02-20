@@ -637,8 +637,9 @@ COptTasks::OptimizeTask(void *ptr)
 		CRefCount::SafeRelease(trace_flags);
 		CRefCount::SafeRelease(plan_dxl);
 		CMDCache::Shutdown();
-
-		IErrorContext *errctxt = CTask::Self()->GetErrCtxt();
+		CTask *task = CTask::Self();
+		GPOS_ASSERT(NULL != task);
+		IErrorContext *errctxt = task->GetErrCtxt();
 
 		opt_ctxt->m_should_error_out = ShouldErrorOut(ex);
 		opt_ctxt->m_is_unexpected_failure = IsLoggableFailure(ex);

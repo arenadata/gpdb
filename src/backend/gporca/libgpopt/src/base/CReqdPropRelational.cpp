@@ -120,7 +120,9 @@ CReqdPropRelational::Compute(CMemoryPool *mp, CExpressionHandle &exprhdl,
 CReqdPropRelational *
 CReqdPropRelational::GetReqdRelationalProps(CReqdProp *prp)
 {
-	return dynamic_cast<CReqdPropRelational *>(prp);
+	CReqdPropRelational *rel_prp = dynamic_cast<CReqdPropRelational *>(prp);
+	GPOS_ASSERT(NULL != rel_prp);
+	return rel_prp;
 }
 
 
