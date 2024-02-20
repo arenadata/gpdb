@@ -1486,15 +1486,15 @@ CDXLOperatorFactory::MakeDXLTableDescr(CDXLMemoryManager *dxl_memory_manager,
 	CDXLTableDescr *ret =
 		GPOS_NEW(mp) CDXLTableDescr(mp, mdid, mdname, user_id);
 
-	const XMLCh *table_alias_xml =
+	const XMLCh *table_alias_name =
 		attrs.getValue(CDXLTokens::XmlstrToken(EdxltokenAlias));
 
-	if (NULL != table_alias_xml)
+	if (NULL != table_alias_name)
 	{
-		CMDName *md_alias = CDXLUtils::CreateMDNameFromXMLChar(
-			dxl_memory_manager, table_alias_xml);
+		CMDName *mdalias = CDXLUtils::CreateMDNameFromXMLChar(
+			dxl_memory_manager, table_alias_name);
 
-		ret->SetMdAlias(md_alias);
+		ret->SetMdAlias(mdalias);
 	}
 
 	return ret;

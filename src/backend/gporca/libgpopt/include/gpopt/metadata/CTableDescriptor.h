@@ -151,6 +151,7 @@ public:
 	void
 	SetAlias(const CWStringConst *alias_str)
 	{
+		GPOS_ASSERT(NULL == m_alias);
 		m_alias = GPOS_NEW(m_mp) CName(m_mp, alias_str);
 	}
 

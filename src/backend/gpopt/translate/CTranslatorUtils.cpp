@@ -138,10 +138,10 @@ CTranslatorUtils::GetTableDescr(CMemoryPool *mp, CMDAccessor *md_accessor,
 
 	if (NULL != rte->alias)
 	{
-		CMDName *table_alias =
+		CMDName *table_mdalias =
 			CDXLUtils::CreateMDNameFromCharArray(mp, rte->alias->aliasname);
 
-		table_descr->SetMdAlias(table_alias);
+		table_descr->SetMdAlias(table_mdalias);
 	}
 
 	const ULONG len = rel->ColumnCount();
