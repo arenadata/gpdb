@@ -91,7 +91,9 @@ public:
 	static CWorker *
 	Self()
 	{
-		return dynamic_cast<CWorker *>(IWorker::Self());
+		CWorker *worker = dynamic_cast<CWorker *>(IWorker::Self());
+		GPOS_ASSERT(NULL != worker);
+		return worker;
 	}
 
 	// host system callback function to report abort requests
