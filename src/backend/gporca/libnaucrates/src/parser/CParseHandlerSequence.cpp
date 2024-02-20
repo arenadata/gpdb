@@ -123,12 +123,12 @@ CParseHandlerSequence::EndElement(const XMLCh *const,  // element_uri,
 	// construct node from the created child nodes
 	CParseHandlerProperties *prop_parse_handler =
 		dynamic_cast<CParseHandlerProperties *>((*this)[0]);
+	GPOS_ASSERT(NULL != prop_parse_handler);
 
 	CDXLPhysicalSequence *dxl_op = GPOS_NEW(m_mp) CDXLPhysicalSequence(m_mp);
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 
 	// set statistics and physical properties
-	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	// add project list
