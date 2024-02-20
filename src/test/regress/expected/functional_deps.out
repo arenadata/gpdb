@@ -1436,7 +1436,7 @@ SELECT grouping(a) AS g_a, grouping(b) AS g_b, avg(c) AS avg_c FROM test_table1 
    1 |   1 | 0.48000000000000000000
 (1 row)
 
--- Check sub-query in FROM clause
+-- Check sub-query
 SELECT * FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), ()) ORDER BY a) AS sub_t;
  a  |   b   | c 
 ----+-------+---
@@ -1500,6 +1500,66 @@ GROUP BY GROUPING SETS ((sub_t.a, sub_t.b, sub_t.c), ()) ORDER BY sub_t.a;
     |       |  
     |       |  
 (27 rows)
+
+SELECT (SELECT c) FROM test_table1 GROUP BY a ORDER BY a;
+ c 
+---
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+ 1
+ 0
+(25 rows)
+
+SELECT b, (SELECT c FROM (SELECT c) AS alias_test_table1) FROM test_table1 GROUP BY a ORDER BY a;
+   b   | c 
+-------+---
+ text1 | 0
+ text2 | 1
+ text3 | 0
+ text4 | 1
+ text0 | 0
+ text1 | 1
+ text2 | 0
+ text3 | 1
+ text4 | 0
+ text0 | 1
+ text1 | 0
+ text2 | 1
+ text3 | 0
+ text4 | 1
+ text0 | 0
+ text1 | 1
+ text2 | 0
+ text3 | 1
+ text4 | 0
+ text0 | 1
+ text1 | 0
+ text2 | 1
+ text3 | 0
+ text4 | 1
+ text0 | 0
+(25 rows)
 
 -- Check cases with primary key consisting of more than 1 column
 SELECT a, b, c FROM test_table2 GROUP BY a, c ORDER BY a, c;

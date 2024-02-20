@@ -145,10 +145,10 @@ class CQueryMutators
 
 	} CContextTLWalker;
 
-	// context for walker to collect unique TargetlistEntry references in groupClause
+	// context for walker to collect unique TargetEntry references in groupClause
 	typedef struct SContexGetGroupUniqueTleWalker
 	{
-		// list to store unique TargetlistEntry references in groupClause
+		// list to store unique TargetEntry references in groupClause
 		List *m_grouping_tle_refs;
 
 		// ctor
@@ -168,7 +168,7 @@ class CQueryMutators
 		// list to store the mapping of the new positions of tle references after
 		// the update of groupClause
 		List *m_grouping_tle_refs_mapping;
-		// number of unique TargetlistEntry references in groupClause
+		// number of unique TargetEntry references in groupClause
 		int m_ngrpcols;
 
 		// ctor
@@ -182,7 +182,7 @@ class CQueryMutators
 
 	// context for walker and mutator to add missing grouping colums to the
 	// groupClause that have functional dependency on the groupClause
-	typedef struct SContextAddMissingGroupClause
+	typedef struct SContextFixGroupDependentTargets
 	{
 		// query that is being processed
 		Query *m_query;
@@ -190,6 +190,8 @@ class CQueryMutators
 		Oid m_conrelid;
 		// list of columns that define primary key in relation with m_conrelid
 		List *m_conkeys;
+		// the current query level
+		ULONG m_current_query_level;
 
 		// new SortGroupClause to be added into groupClause
 		SortGroupClause *m_gc;
@@ -198,10 +200,11 @@ class CQueryMutators
 		BOOL m_parent_is_grouping_clause;
 
 		// ctor
-		SContextAddMissingGroupClause(Query *query, Oid conrelid, List *conkeys)
+		SContextFixGroupDependentTargets(Query *query)
 			: m_query(query),
-			  m_conrelid(conrelid),
-			  m_conkeys(conkeys),
+			  m_conrelid(0),
+			  m_conkeys(0),
+			  m_current_query_level(0),
 			  m_gc(NULL),
 			  m_parent_is_grouping_clause(false)
 		{
@@ -219,11 +222,16 @@ private:
 	static BOOL GroupingFuncRewriteWalker(
 		Node *node, SContexGroupingFuncRewriteWalker *context);
 
+	static BOOL ExtractVarsIntoTargetlistWalker(
+		Node *node, SContextFixGroupDependentTargets *context);
+
 	static BOOL AddMissingGroupClauseWalker(
-		Node *node, SContextAddMissingGroupClause *context);
+		Node *node, SContextFixGroupDependentTargets *context);
 
 	static Node *AddMissingGroupClauseMutator(
-		Node *node, SContextAddMissingGroupClause *context);
+		Node *node, SContextFixGroupDependentTargets *context);
+
+	static void FixGroupDependentTargets(Query *query);
 
 public:
 	// fall back during since the target list refers to a attribute which algebrizer at this point cannot resolve

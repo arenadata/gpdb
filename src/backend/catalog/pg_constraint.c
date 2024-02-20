@@ -839,6 +839,7 @@ get_constraint_relation_oids(Oid constraint_oid, Oid *conrelid, Oid *confrelid)
 /*
  * get_constraint_relation_columns
  *		Find the columns of the relations to which a constraint refers.
+ *		Returns the list of found columns.
  */
 List *
 get_constraint_relation_columns(Oid constraint_oid)
