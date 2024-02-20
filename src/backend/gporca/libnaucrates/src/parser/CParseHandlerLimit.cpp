@@ -147,18 +147,19 @@ CParseHandlerLimit::EndElement(const XMLCh *const,	// element_uri,
 		CParseHandlerScalarOp *offset_parse_handler =
 			dynamic_cast<CParseHandlerScalarOp *>((*this)[4]);
 
-		// set statistics and physical properties
 		GPOS_ASSERT(NULL != prop_parse_handler);
+		GPOS_ASSERT(NULL != proj_list_parse_handler);
+		GPOS_ASSERT(NULL != child_parse_handler);
+		GPOS_ASSERT(NULL != count_parse_handler);
+		GPOS_ASSERT(NULL != offset_parse_handler);
+
+		// set statistics and physical properties
 		CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 		// add constructed children
-		GPOS_ASSERT(NULL != proj_list_parse_handler);
 		AddChildFromParseHandler(proj_list_parse_handler);
-		GPOS_ASSERT(NULL != child_parse_handler);
 		AddChildFromParseHandler(child_parse_handler);
-		GPOS_ASSERT(NULL != count_parse_handler);
 		AddChildFromParseHandler(count_parse_handler);
-		GPOS_ASSERT(NULL != offset_parse_handler);
 		AddChildFromParseHandler(offset_parse_handler);
 
 		// deactivate handler

@@ -155,12 +155,13 @@ CParseHandlerAgg::EndElement(const XMLCh *const,  // element_uri,
 	CParseHandlerPhysicalOp *child_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[4]);
 
-	// set grouping cols list
 	GPOS_ASSERT(NULL != prop_parse_handler);
 	GPOS_ASSERT(NULL != grouping_col_list_parse_handler);
 	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	GPOS_ASSERT(NULL != filter_parse_handler);
 	GPOS_ASSERT(NULL != child_parse_handler);
+
+	// set grouping cols list
 	GPOS_ASSERT(NULL !=
 				grouping_col_list_parse_handler->GetGroupingColidArray());
 
