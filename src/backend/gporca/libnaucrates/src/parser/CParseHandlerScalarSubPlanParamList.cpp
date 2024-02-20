@@ -137,8 +137,8 @@ CParseHandlerScalarSubPlanParamList::EndElement(
 	{
 		CParseHandlerScalarSubPlanParam *parse_handler_subplan_param =
 			dynamic_cast<CParseHandlerScalarSubPlanParam *>((*this)[ul]);
-
 		GPOS_ASSERT(NULL != parse_handler_subplan_param);
+
 		CDXLColRef *dxl_colref = parse_handler_subplan_param->MakeDXLColRef();
 		dxl_colref->AddRef();
 		m_dxl_colref_array->Append(dxl_colref);
