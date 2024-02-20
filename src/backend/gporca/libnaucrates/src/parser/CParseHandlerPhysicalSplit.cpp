@@ -165,10 +165,15 @@ CParseHandlerPhysicalSplit::EndElement(const XMLCh *const,	// element_uri,
 		dynamic_cast<CParseHandlerProperties *>((*this)[0]);
 	CParseHandlerProjList *proj_list_parse_handler =
 		dynamic_cast<CParseHandlerProjList *>((*this)[1]);
+
+	GPOS_ASSERT(NULL != prop_parse_handler);
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	GPOS_ASSERT(NULL != proj_list_parse_handler->CreateDXLNode());
 
 	CParseHandlerPhysicalOp *child_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[2]);
+
+	GPOS_ASSERT(NULL != child_parse_handler);
 	GPOS_ASSERT(NULL != child_parse_handler->CreateDXLNode());
 
 	CDXLPhysicalSplit *dxl_op = GPOS_NEW(m_mp) CDXLPhysicalSplit(
@@ -178,12 +183,9 @@ CParseHandlerPhysicalSplit::EndElement(const XMLCh *const,	// element_uri,
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, dxl_op);
 
 	// set statistics and physical properties
-	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
-	GPOS_ASSERT(NULL != proj_list_parse_handler);
 	AddChildFromParseHandler(proj_list_parse_handler);
-	GPOS_ASSERT(NULL != child_parse_handler);
 	AddChildFromParseHandler(child_parse_handler);
 
 #ifdef GPOS_DEBUG
