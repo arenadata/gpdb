@@ -162,7 +162,7 @@ CParseHandlerAgg::EndElement(const XMLCh *const,  // element_uri,
 	GPOS_ASSERT(NULL != filter_parse_handler);
 	GPOS_ASSERT(NULL != child_parse_handler);
 	GPOS_ASSERT(NULL !=
-					grouping_col_list_parse_handler->GetGroupingColidArray());
+				grouping_col_list_parse_handler->GetGroupingColidArray());
 
 	ULongPtrArray *grouping_colid_array =
 		grouping_col_list_parse_handler->GetGroupingColidArray();
