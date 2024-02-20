@@ -170,12 +170,12 @@ CLogicalUnionAll::PstatsDeriveUnionAll(CMemoryPool *mp,
 		CStatistics *cresult_stats = dynamic_cast<CStatistics *>(result_stats);
 		GPOS_ASSERT(NULL != cresult_stats);
 
-		CStatistics *cchild_stats = dynamic_cast<CStatistics *>(exprhdl.Pstats(ul));
+		CStatistics *cchild_stats =
+			dynamic_cast<CStatistics *>(exprhdl.Pstats(ul));
 		GPOS_ASSERT(NULL != cchild_stats);
 
 		CStatistics *stats = CUnionAllStatsProcessor::CreateStatsForUnionAll(
-			mp, cresult_stats,
-			cchild_stats,
+			mp, cresult_stats, cchild_stats,
 			CColRef::Pdrgpul(mp, pdrgpcrOutput),
 			CColRef::Pdrgpul(mp, (*pdrgpdrgpcrInput)[0]),
 			CColRef::Pdrgpul(mp, (*pdrgpdrgpcrInput)[ul]));
