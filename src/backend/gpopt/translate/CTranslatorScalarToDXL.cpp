@@ -2433,10 +2433,10 @@ CTranslatorScalarToDXL::CreateIDatumFromGpdbDatum(CMemoryPool *mp,
 	ULONG length = md_type->Length();
 	if (!md_type->IsPassedByValue() && !is_null)
 	{
-		const CMDTypeGenericGPDB *mdtype =
+		const CMDTypeGenericGPDB *md_gpdb_type =
 			dynamic_cast<const CMDTypeGenericGPDB *>(md_type);
-		GPOS_ASSERT(NULL != mdtype);
-		INT len = mdtype->GetGPDBLength();
+		GPOS_ASSERT(NULL != md_gpdb_type);
+		INT len = md_gpdb_type->GetGPDBLength();
 		length = (ULONG) gpdb::DatumSize(gpdb_datum, md_type->IsPassedByValue(),
 										 len);
 	}
