@@ -628,8 +628,7 @@ CLogicalGbAgg::PstatsDerive(CMemoryPool *mp, IStatistics *child_stats,
 	GPOS_ASSERT(NULL != cchild_stats);
 
 	IStatistics *stats = CGroupByStatsProcessor::CalcGroupByStats(
-		mp, cchild_stats, pdrgpulGroupingCols,
-		pdrgpulComputedCols, keys);
+		mp, cchild_stats, pdrgpulGroupingCols, pdrgpulComputedCols, keys);
 
 	// clean up
 	pdrgpulGroupingCols->Release();
