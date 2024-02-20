@@ -199,6 +199,7 @@ CParseHandlerMDRelationCtas::EndElement(const XMLCh *const,	 // element_uri,
 	IMdIdArray *distr_opclasses = opclasses_parse_handler->GetMdIdArray();
 	distr_opclasses->AddRef();
 
+
 	m_imd_obj = GPOS_NEW(m_mp) CMDRelationCtasGPDB(
 		m_mp, m_mdid, m_mdname_schema, m_mdname, m_is_temp_table, m_has_oids,
 		m_rel_storage_type, m_rel_distr_policy, md_col_array, m_distr_col_array,

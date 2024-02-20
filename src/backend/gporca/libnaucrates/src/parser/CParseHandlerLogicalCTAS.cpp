@@ -239,6 +239,7 @@ CParseHandlerLogicalCTAS::EndElement(const XMLCh *const,  // element_uri,
 	IMdIdArray *distr_opclasses = opclasses_parse_handler->GetMdIdArray();
 	distr_opclasses->AddRef();
 
+
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(
 		m_mp,
 		GPOS_NEW(m_mp) CDXLLogicalCTAS(
