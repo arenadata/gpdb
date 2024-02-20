@@ -1105,10 +1105,10 @@ CStatisticsUtils::DeriveStatsForDynamicScan(CMemoryPool *mp,
 		// apply the unsupported join filters as a filter on top of the join results.
 		// TODO,  June 13 2014 we currently only cap NDVs for filters
 		// (also look at CJoinStatsProcessor::CalcAllJoinStats since most of this code was taken from there)
-        IStatistics *stats_after_join_filter =
-                CFilterStatsProcessor::MakeStatsFilter(mp, cleft_semi_join_stats,
-                                                                                           unsupported_pred_stats,
-                                                                                           false /* do_cap_NDVs */);
+		IStatistics *stats_after_join_filter =
+			CFilterStatsProcessor::MakeStatsFilter(mp, cleft_semi_join_stats,
+												   unsupported_pred_stats,
+												   false /* do_cap_NDVs */);
 		left_semi_join_stats->Release();
 		left_semi_join_stats = stats_after_join_filter;
 	}
