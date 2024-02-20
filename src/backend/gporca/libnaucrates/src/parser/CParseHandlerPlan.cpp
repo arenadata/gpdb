@@ -177,8 +177,8 @@ CParseHandlerPlan::EndElement(const XMLCh *const,  // element_uri,
 	CParseHandlerPhysicalOp *operator_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[0]);
 
-	GPOS_ASSERT(NULL != operator_parse_handler &&
-				NULL != operator_parse_handler->CreateDXLNode());
+	GPOS_ASSERT(NULL != operator_parse_handler);
+	GPOS_ASSERT(NULL != operator_parse_handler->CreateDXLNode());
 
 	// store constructed child
 	m_dxl_node = operator_parse_handler->CreateDXLNode();
