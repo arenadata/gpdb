@@ -194,16 +194,20 @@ CParseHandlerMDRelationCtas::EndElement(const XMLCh *const,	 // element_uri,
 	md_col_array->AddRef();
 	dxl_ctas_storage_options->AddRef();
 
+	CParseHandlerMetadataIdList *copfamilies_parse_handler =
+		dynamic_cast<CParseHandlerMetadataIdList *>(opfamilies_parse_handler);
+	GPOS_ASSERT(NULL != copfamilies_parse_handler);
 	IMdIdArray *distr_opfamilies =
-		dynamic_cast<CParseHandlerMetadataIdList *>(opfamilies_parse_handler)
-			->GetMdIdArray();
-	GPOS_ASSERT(NULL != distr_opfamilies);
+
+		copfamilies_parse_handler->GetMdIdArray();
 	distr_opfamilies->AddRef();
 
+	CParseHandlerMetadataIdList *copclasses_parse_handler =
+		dynamic_cast<CParseHandlerMetadataIdList *>(opclasses_parse_handler);
+	GPOS_ASSERT(NULL != copclasses_parse_handler);
 	IMdIdArray *distr_opclasses =
-		dynamic_cast<CParseHandlerMetadataIdList *>(opclasses_parse_handler)
-			->GetMdIdArray();
-	GPOS_ASSERT(NULL != distr_opclasses);
+
+		copclasses_parse_handler->GetMdIdArray();
 	distr_opclasses->AddRef();
 
 
