@@ -285,7 +285,9 @@ public:
 	static CTask *
 	Self()
 	{
-		return dynamic_cast<CTask *>(ITask::Self());
+		CTask *task = dynamic_cast<CTask *>(ITask::Self());
+		GPOS_ASSERT(NULL != task);
+		return task;
 	}
 
 };	// class CTask
