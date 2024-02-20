@@ -177,14 +177,15 @@ CParseHandlerMDRelationCtas::EndElement(const XMLCh *const,	 // element_uri,
 	CParseHandlerMetadataIdList *opclasses_parse_handler =
 		dynamic_cast<CParseHandlerMetadataIdList *>((*this)[3]);
 
-	GPOS_ASSERT(NULL != md_cols_parse_handler &&
-				NULL != md_cols_parse_handler->GetMdColArray());
-	GPOS_ASSERT(NULL != ctas_options_parse_handler &&
-				NULL != ctas_options_parse_handler->GetDxlCtasStorageOption());
-	GPOS_ASSERT(NULL != opfamilies_parse_handler &&
-				NULL != opfamilies_parse_handler->GetMdIdArray());
-	GPOS_ASSERT(NULL != opclasses_parse_handler &&
-				NULL != opclasses_parse_handler->GetMdIdArray());
+	GPOS_ASSERT(NULL != md_cols_parse_handler);
+	GPOS_ASSERT(NULL != ctas_options_parse_handler);
+	GPOS_ASSERT(NULL != opfamilies_parse_handler);
+	GPOS_ASSERT(NULL != opclasses_parse_handler);
+
+	GPOS_ASSERT(NULL != md_cols_parse_handler->GetMdColArray());
+	GPOS_ASSERT(NULL != ctas_options_parse_handler->GetDxlCtasStorageOption());
+	GPOS_ASSERT(NULL != opfamilies_parse_handler->GetMdIdArray());
+	GPOS_ASSERT(NULL != opclasses_parse_handler->GetMdIdArray());
 
 	CMDColumnArray *md_col_array = md_cols_parse_handler->GetMdColArray();
 	CDXLCtasStorageOptions *dxl_ctas_storage_options =
