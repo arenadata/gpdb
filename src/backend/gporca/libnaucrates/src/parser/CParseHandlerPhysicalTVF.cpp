@@ -148,9 +148,9 @@ CParseHandlerPhysicalTVF::EndElement(const XMLCh *const,  // element_uri,
 
 	CParseHandlerProperties *prop_parse_handler =
 		dynamic_cast<CParseHandlerProperties *>((*this)[0]);
+	GPOS_ASSERT(NULL != prop_parse_handler);
 
 	// set statistics and physical properties
-	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	CParseHandlerProjList *proj_list_parse_handler =
