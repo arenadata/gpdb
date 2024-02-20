@@ -247,6 +247,7 @@ CParseHandlerMDRelation::EndElement(const XMLCh *const,	 // element_uri,
 {
 	CParseHandlerMDIndexInfoList *pphMdlIndexInfo =
 		dynamic_cast<CParseHandlerMDIndexInfoList *>((*this)[1]);
+	GPOS_ASSERT(NULL != pphMdlIndexInfo);
 	if (0 == XMLString::compareString(
 				 CDXLTokens::XmlstrToken(EdxltokenPartConstraint),
 				 element_local_name))
@@ -292,7 +293,7 @@ CParseHandlerMDRelation::EndElement(const XMLCh *const,	 // element_uri,
 		dynamic_cast<CParseHandlerMetadataIdList *>((*this)[3]);
 
 	GPOS_ASSERT(NULL != md_cols_parse_handler);
-	GPOS_ASSERT(NULL != pphMdlIndexInfo);
+	GPOS_ASSERT(NULL != pphMdidlTriggers);
 	GPOS_ASSERT(NULL != pphMdidlCheckConstraints);
 
 	GPOS_ASSERT(NULL != md_cols_parse_handler->GetMdColArray());
@@ -303,7 +304,6 @@ CParseHandlerMDRelation::EndElement(const XMLCh *const,	 // element_uri,
 	CMDColumnArray *md_col_array = md_cols_parse_handler->GetMdColArray();
 	CMDIndexInfoArray *md_index_info_array =
 		pphMdlIndexInfo->GetMdIndexInfoArray();
-	GPOS_ASSERT(NULL != pphMdidlTriggers);
 	IMdIdArray *mdid_triggers_array = pphMdidlTriggers->GetMdIdArray();
 	IMdIdArray *mdid_check_constraint_array =
 		pphMdidlCheckConstraints->GetMdIdArray();
