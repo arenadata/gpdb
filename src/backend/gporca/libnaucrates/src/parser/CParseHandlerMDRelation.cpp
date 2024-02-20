@@ -291,12 +291,13 @@ CParseHandlerMDRelation::EndElement(const XMLCh *const,	 // element_uri,
 	CParseHandlerMetadataIdList *pphMdidlCheckConstraints =
 		dynamic_cast<CParseHandlerMetadataIdList *>((*this)[3]);
 
-	GPOS_ASSERT(NULL != md_cols_parse_handler &&
-				NULL != md_cols_parse_handler->GetMdColArray());
-	GPOS_ASSERT(NULL != pphMdlIndexInfo &&
-				NULL != pphMdlIndexInfo->GetMdIndexInfoArray());
-	GPOS_ASSERT(NULL != pphMdidlCheckConstraints &&
-				NULL != pphMdidlCheckConstraints->GetMdIdArray());
+	GPOS_ASSERT(NULL != md_cols_parse_handler);
+	GPOS_ASSERT(NULL != pphMdlIndexInfo);
+	GPOS_ASSERT(NULL != pphMdidlCheckConstraints);
+
+	GPOS_ASSERT(NULL != md_cols_parse_handler->GetMdColArray());
+	GPOS_ASSERT(NULL != pphMdlIndexInfo->GetMdIndexInfoArray());
+	GPOS_ASSERT(NULL != pphMdidlCheckConstraints->GetMdIdArray());
 
 	// refcount child objects
 	CMDColumnArray *md_col_array = md_cols_parse_handler->GetMdColArray();
