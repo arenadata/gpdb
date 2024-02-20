@@ -151,23 +151,23 @@ CParseHandlerPhysicalRowTrigger::EndElement(
 
 	CParseHandlerProperties *prop_parse_handler =
 		dynamic_cast<CParseHandlerProperties *>((*this)[0]);
+	GPOS_ASSERT(NULL != prop_parse_handler);
 
 	m_dxl_node = GPOS_NEW(m_mp) CDXLNode(m_mp, m_dxl_op);
 
 	// set statistics and physical properties
-	GPOS_ASSERT(NULL != prop_parse_handler);
 	CParseHandlerUtils::SetProperties(m_dxl_node, prop_parse_handler);
 
 	CParseHandlerProjList *proj_list_parse_handler =
 		dynamic_cast<CParseHandlerProjList *>((*this)[1]);
-	GPOS_ASSERT(NULL != proj_list_parse_handler &&
-				NULL != proj_list_parse_handler->CreateDXLNode());
+	GPOS_ASSERT(NULL != proj_list_parse_handler);
+	GPOS_ASSERT(NULL != proj_list_parse_handler->CreateDXLNode());
 	AddChildFromParseHandler(proj_list_parse_handler);
 
 	CParseHandlerPhysicalOp *child_parse_handler =
 		dynamic_cast<CParseHandlerPhysicalOp *>((*this)[2]);
-	GPOS_ASSERT(NULL != child_parse_handler &&
-				NULL != child_parse_handler->CreateDXLNode());
+	GPOS_ASSERT(NULL != child_parse_handler);
+	GPOS_ASSERT(NULL != child_parse_handler->CreateDXLNode());
 	AddChildFromParseHandler(child_parse_handler);
 
 #ifdef GPOS_DEBUG
