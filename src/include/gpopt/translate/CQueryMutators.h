@@ -192,12 +192,14 @@ class CQueryMutators
 		List *m_conkeys;
 		// the current query level
 		ULONG m_current_query_level;
-
 		// new SortGroupClause to be added into groupClause
 		SortGroupClause *m_gc;
 		// utility field for mutator, indicating that currently processed
 		// SortGroupClause is direct element of groupsets of some GroupingClause
 		BOOL m_parent_is_grouping_clause;
+		// list to store new target list entries with vars from expressions in
+		// the target list, that do not have yet their own target list entries
+		List *m_tlist_addition;
 
 		// ctor
 		SContextFixGroupDependentTargets(Query *query)
@@ -206,26 +208,24 @@ class CQueryMutators
 			  m_conkeys(0),
 			  m_current_query_level(0),
 			  m_gc(NULL),
-			  m_parent_is_grouping_clause(false)
+			  m_parent_is_grouping_clause(false),
+			  m_tlist_addition(NIL)
 		{
 		}
-	} CContextAddMissingGroupClause;
+	} CContextFixGroupDependentTargets;
 
 private:
 	static BOOL GroupingListContainsPrimaryKey(Query *query,
 											   List *grouping_list,
 											   List *conkeys, Oid conrelid);
 
-	static BOOL GetGroupUniqueTargetlistEntriesWalker(
+	static BOOL GetGroupUniqueTleReferencesWalker(
 		Node *node, SContexGetGroupUniqueTleWalker *context);
 
 	static BOOL GroupingFuncRewriteWalker(
 		Node *node, SContexGroupingFuncRewriteWalker *context);
 
-	static BOOL ExtractVarsIntoTargetlistWalker(
-		Node *node, SContextFixGroupDependentTargets *context);
-
-	static BOOL AddMissingGroupClauseWalker(
+	static BOOL GetVarsWithoutTleWalker(
 		Node *node, SContextFixGroupDependentTargets *context);
 
 	static Node *AddMissingGroupClauseMutator(

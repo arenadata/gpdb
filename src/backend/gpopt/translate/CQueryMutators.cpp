@@ -198,14 +198,14 @@ CQueryMutators::AddMissingGroupClauseMutator(
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CQueryMutators::GetGroupUniqueTargetlistEntriesWalker
+//		CQueryMutators::GetGroupUniqueTleReferencesWalker
 //
 //	@doc:
 //		Goes over the groupClause expression tree and collects unique
 //		references to targetlist entries.
 //---------------------------------------------------------------------------
 BOOL
-CQueryMutators::GetGroupUniqueTargetlistEntriesWalker(
+CQueryMutators::GetGroupUniqueTleReferencesWalker(
 	Node *node, SContexGetGroupUniqueTleWalker *context)
 {
 	if (NULL == node)
@@ -221,7 +221,7 @@ CQueryMutators::GetGroupUniqueTargetlistEntriesWalker(
 		return false;
 	}
 	return gpdb::WalkExpressionTree(
-		node, (ExprWalkerFn) GetGroupUniqueTargetlistEntriesWalker, context);
+		node, (ExprWalkerFn) GetGroupUniqueTleReferencesWalker, context);
 };
 
 //---------------------------------------------------------------------------
@@ -269,15 +269,16 @@ CQueryMutators::GroupingFuncRewriteWalker(
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CQueryMutators::ExtractVarsIntoTargetlistWalker
+//		CQueryMutators::GetVarsWithoutTleWalker
 //
 //	@doc:
 //		Goes over the expression tree, finds all vars that do not have relevant
 //		targetlist entries, and adds resjunk targetlist entries for such vars
-//		to targetList
+//		to a m_tlist_addition in the context, that later will be added to the
+//		original target list.
 //---------------------------------------------------------------------------
 BOOL
-CQueryMutators::ExtractVarsIntoTargetlistWalker(
+CQueryMutators::GetVarsWithoutTleWalker(
 	Node *node, SContextFixGroupDependentTargets *context)
 {
 	if (NULL == node)
@@ -292,7 +293,7 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 	}
 
 	// find all vars that do not have relevant targetlist entries, and add
-	// resjunk targetlist entries for such vars to targetList
+	// resjunk targetlist entries for such vars to m_tlist_addition
 	if (IsA(node, Var))
 	{
 		bool found = false;
@@ -320,8 +321,8 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 				TargetEntry *newTargetEntry =
 					gpdb::MakeTargetEntry((Expr *) var, ressno, NULL, true);
 
-				context->m_query->targetList =
-					gpdb::LAppend(context->m_query->targetList, newTargetEntry);
+				context->m_tlist_addition =
+					gpdb::LAppend(context->m_tlist_addition, newTargetEntry);
 			}
 		}
 		else
@@ -337,7 +338,7 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 		SubLink *sublink = (SubLink *) node;
 
 		context->m_current_query_level++;
-		ExtractVarsIntoTargetlistWalker((Node *) sublink->subselect, context);
+		GetVarsWithoutTleWalker((Node *) sublink->subselect, context);
 		context->m_current_query_level--;
 
 		return false;
@@ -347,7 +348,7 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 	if (IsA(node, Query))
 	{
 		Query *query = (Query *) node;
-		ExtractVarsIntoTargetlistWalker((Node *) query->targetList, context);
+		GetVarsWithoutTleWalker((Node *) query->targetList, context);
 
 		List *rtable = query->rtable;
 		ListCell *lc = NULL;
@@ -359,96 +360,14 @@ CQueryMutators::ExtractVarsIntoTargetlistWalker(
 			{
 				Query *subquery = rte->subquery;
 				context->m_current_query_level++;
-				ExtractVarsIntoTargetlistWalker((Node *) subquery, context);
+				GetVarsWithoutTleWalker((Node *) subquery, context);
 				context->m_current_query_level--;
 			}
 		}
 	}
-	return gpdb::WalkExpressionTree(
-		node, (ExprWalkerFn) ExtractVarsIntoTargetlistWalker, (void *) context);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CQueryMutators::AddMissingGroupClauseWalker
-//
-//	@doc:
-//		Goes over the expression tree, finds all targetlist entries with
-//		Var expression,that is not a grouping column. For all such targetlist
-//		entries the function adds an explicit SortGroupClause into groupClause
-//---------------------------------------------------------------------------
-BOOL
-CQueryMutators::AddMissingGroupClauseWalker(
-	Node *node, SContextFixGroupDependentTargets *context)
-{
-	if (NULL == node)
-	{
-		return false;
-	}
-
-	if (IsA(node, Aggref))
-	{
-		// do not examine what is inside Aggref
-		return false;
-	}
-
-	if (IsA(node, TargetEntry))
-	{
-		TargetEntry *target_entry = (TargetEntry *) node;
-		Node *expr = (Node *) target_entry->expr;
-
-		if (IsA(expr, Var))
-		{
-			Var *var = (Var *) expr;
-			RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
-				context->m_query->rtable, var->varno - 1);
-			GPOS_ASSERT(NULL != rte);
-
-			// skip relations that are not constrained by primary key, that is
-			// currently being checked
-			if (context->m_conrelid != rte->relid)
-			{
-				return false;
-			}
-
-			if (!CTranslatorUtils::IsGroupingColumn(
-					expr, context->m_query->groupClause,
-					context->m_query->targetList))
-			{
-				// add new SortGroupClause to groupClause
-				SortGroupClause *gc;
-				Oid sortop;
-				Oid eqop;
-				bool hashable;
-
-				gpdb::GetSortGroupOperators(exprType(expr), true, true, false,
-											&sortop, &eqop, NULL, &hashable);
-
-				gc = makeNode(SortGroupClause);
-				gc->tleSortGroupRef = gpdb::AssignSortGroupRef(
-					target_entry, context->m_query->targetList);
-				gc->eqop = eqop;
-				gc->sortop = sortop;
-				gc->nulls_first = false;
-				gc->hashable = hashable;
-
-				context->m_gc = gc;
-				context->m_parent_is_grouping_clause = false;
-
-				List *old_group_clause = context->m_query->groupClause;
-
-				context->m_query->groupClause =
-					(List *) AddMissingGroupClauseMutator(
-						(Node *) context->m_query->groupClause, context);
-				gpdb::ListFreeDeep(old_group_clause);
-				gpdb::GPDBFree(context->m_gc);
-			}
-			return false;
-		}
-	}
 
 	return gpdb::WalkExpressionTree(
-		node, (ExprWalkerFn) AddMissingGroupClauseWalker, context);
+		node, (ExprWalkerFn) GetVarsWithoutTleWalker, (void *) context);
 }
 
 //---------------------------------------------------------------------------
@@ -489,16 +408,18 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 		// explicitly listed in groupClause).
 		// For all such vars we add resjunc target list entries into targetList.
 		SContextFixGroupDependentTargets ctx_fix_dependent_targets(query);
-		ExtractVarsIntoTargetlistWalker((Node *) query->targetList,
-										&ctx_fix_dependent_targets);
+		GetVarsWithoutTleWalker((Node *) query->targetList,
+								&ctx_fix_dependent_targets);
+		query->targetList = gpdb::ListConcat(
+			query->targetList, ctx_fix_dependent_targets.m_tlist_addition);
 
 		// Step 2.
 		// Store current unique TargetEntry references in groupClause.
 		// After modifying groupClause, they will be required to update
 		// arguments inside grouping functions.
 		SContexGetGroupUniqueTleWalker ctx_old_grouping_tle_refs;
-		GetGroupUniqueTargetlistEntriesWalker((Node *) query->groupClause,
-											  &ctx_old_grouping_tle_refs);
+		GetGroupUniqueTleReferencesWalker((Node *) query->groupClause,
+										  &ctx_old_grouping_tle_refs);
 
 		// Step 3.
 		// Update groupClause - add all functionally dependent entries explicitly.
@@ -516,9 +437,63 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 			ctx_fix_dependent_targets.m_conkeys =
 				gpdb::GetConstraintRelationColumns(constraint_oid);
 
-			AddMissingGroupClauseWalker((Node *) query->targetList,
-										&ctx_fix_dependent_targets);
+			ListCell *lc_tle = NULL;
+			ForEach(lc_tle, query->targetList)
+			{
+				TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
+				Node *expr = (Node *) target_entry->expr;
 
+				if (IsA(expr, Var))
+				{
+					Var *var = (Var *) expr;
+					RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
+						query->rtable, var->varno - 1);
+					GPOS_ASSERT(NULL != rte);
+
+					// skip relations that are not constrained by primary key, that is
+					// currently being checked
+					if (conrelid != rte->relid)
+					{
+						continue;
+					}
+
+					if (!CTranslatorUtils::IsGroupingColumn(
+							expr, query->groupClause, query->targetList))
+					{
+						// add new SortGroupClause to groupClause
+						SortGroupClause *gc;
+						Oid sortop;
+						Oid eqop;
+						bool hashable;
+
+						gpdb::GetSortGroupOperators(exprType(expr), true, true,
+													false, &sortop, &eqop, NULL,
+													&hashable);
+
+						gc = makeNode(SortGroupClause);
+						gc->tleSortGroupRef = gpdb::AssignSortGroupRef(
+							target_entry, query->targetList);
+						gc->eqop = eqop;
+						gc->sortop = sortop;
+						gc->nulls_first = false;
+						gc->hashable = hashable;
+
+						ctx_fix_dependent_targets.m_gc = gc;
+						ctx_fix_dependent_targets.m_parent_is_grouping_clause =
+							false;
+
+						List *old_group_clause = query->groupClause;
+
+						query->groupClause =
+							(List *) AddMissingGroupClauseMutator(
+								(Node *) query->groupClause,
+								&ctx_fix_dependent_targets);
+
+						gpdb::ListFreeDeep(old_group_clause);
+						gpdb::GPDBFree(gc);
+					}
+				}
+			}
 			gpdb::ListFree(ctx_fix_dependent_targets.m_conkeys);
 		}
 		// remove constraintDeps
@@ -529,8 +504,8 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 		// Step 4.
 		// Get updated unique TargetEntry references in groupClause.
 		SContexGetGroupUniqueTleWalker ctx_new_grouping_tle_refs;
-		GetGroupUniqueTargetlistEntriesWalker((Node *) query->groupClause,
-											  &ctx_new_grouping_tle_refs);
+		GetGroupUniqueTleReferencesWalker((Node *) query->groupClause,
+										  &ctx_new_grouping_tle_refs);
 
 		// Find new positions of the tle references after the update of groupClause.
 		// Store new positions in the grouping_tle_refs_mapping.
