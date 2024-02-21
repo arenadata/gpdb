@@ -446,6 +446,12 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 				if (IsA(expr, Var))
 				{
 					Var *var = (Var *) expr;
+
+					if (var->varlevelsup != 0)
+					{
+						continue;
+					}
+
 					RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
 						query->rtable, var->varno - 1);
 					GPOS_ASSERT(NULL != rte);
