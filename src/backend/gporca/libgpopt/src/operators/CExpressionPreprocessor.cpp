@@ -208,7 +208,7 @@ CExpressionPreprocessor::PexprSimplifyQuantifiedSubqueries(CMemoryPool *mp,
 	GPOS_CHECK_STACK_SIZE;
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pexpr);
-	
+
 	COperator *pop = pexpr->Pop();
 	BOOL quantified = CUtils::FQuantifiedSubquery(pop);
 	if (quantified)
