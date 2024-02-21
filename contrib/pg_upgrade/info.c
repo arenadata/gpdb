@@ -649,6 +649,9 @@ get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo)
 				last_tablespace = curr->tablespace = pg_strdup(tablespace);
 				curr->tblsp_alloc = true;
 			}
+
+			if (tablespace != PQgetvalue(res, relnum, i_spclocation))
+				pg_free(tablespace);
 		}
 		else
 			/* A zero reltablespace oid indicates the database tablespace. */
