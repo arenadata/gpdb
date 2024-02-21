@@ -844,21 +844,22 @@ get_constraint_relation_oids(Oid constraint_oid, Oid *conrelid, Oid *confrelid)
 List *
 get_constraint_relation_columns(Oid constraint_oid)
 {
-	List	 *conkeys_list = NIL;
-	HeapTuple tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
+	List	   *conkeys_list = NIL;
+	HeapTuple	tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
+
 	if (HeapTupleIsValid(tp))
 	{
-		bool	 is_null;
-		Relation pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
-		Datum	 adatum = heap_getattr(tp,
-									  Anum_pg_constraint_conkey,
-									  RelationGetDescr(pg_constraint),
-									  &is_null);
+		bool		is_null;
+		Relation	pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
+		Datum		adatum = heap_getattr(tp,
+										  Anum_pg_constraint_conkey,
+										  RelationGetDescr(pg_constraint),
+										  &is_null);
 
 		if (!is_null)
 		{
-			Datum *conkeys;
-			int	   num_conkeys = 0;
+			Datum	   *conkeys;
+			int			num_conkeys = 0;
 
 			deconstruct_array(DatumGetArrayTypeP(adatum),
 							  INT2OID, 2, true, 's',
@@ -866,7 +867,8 @@ get_constraint_relation_columns(Oid constraint_oid)
 
 			for (int i = 0; i < num_conkeys; i++)
 			{
-				AttrNumber attnum = DatumGetInt16(conkeys[i]);
+				AttrNumber	attnum = DatumGetInt16(conkeys[i]);
+
 				conkeys_list = lappend_int(conkeys_list, attnum);
 			}
 		}
