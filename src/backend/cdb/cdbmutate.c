@@ -889,12 +889,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_BitmapHeapScan:
 				case T_DynamicBitmapHeapScan:
 				case T_TidScan:
-				case T_SubqueryScan:
-				case T_FunctionScan:
-				case T_TableFunctionScan:
-				case T_ValuesScan:
-				case T_CteScan:
-				case T_WorkTableScan:
 				case T_ForeignScan:
 					{
 						Scan	   *scan = (Scan *) node;
