@@ -279,6 +279,22 @@ EXPLAIN (costs off)
 DROP TABLE t1;
 DROP TABLE t2;
 
+-- Explicit Redistribute Motion should not be elided if there's a Gather Motion
+-- beneath the ModifyTable. (test case not applicable to ORCA)
+CREATE TABLE t1 (a int) DISTRIBUTED BY (a);
+
+INSERT INTO t1 SELECT i FROM generate_series(1,4) i;
+
+-- "USING pg_class" forces a Gather Motion.
+EXPLAIN (costs off)
+DELETE FROM t1
+USING pg_class;
+
+DELETE FROM t1
+USING pg_class;
+
+DROP TABLE t1;
+
 --
 -- text types. We should support the following updates.
 --
