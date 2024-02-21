@@ -261,13 +261,13 @@ ALTER TABLE articles DROP CONSTRAINT articles_pkey RESTRICT;
 
 EXECUTE foo;  -- fail
 
--- Known issue (ADBDEV-4888) - in case there is a column in the target list
--- that is not explicitly listed in the GROUP BY clause but has a functional
--- dependency on another column in the GROUP BY clause, Postgres planner might
--- output column values in grouped rows, that actually cannot be uniquely
--- identified. As it can introduce instability in the tests, all the queries
--- below are temporarily tested only with GPORCA.
--- TODO: remove the hard-coded optimizer option below once ADBDEV-4888 is fixed.
+-- Known issue - in case there is a column in the target list that is not
+-- explicitly listed in the GROUP BY clause but has a functional dependency on
+-- another column in the GROUP BY clause, Postgres planner might output column
+-- values in grouped rows, that actually cannot be uniquely identified. As it
+-- can introduce instability in the tests, all the queries below are
+-- temporarily tested only with GPORCA.
+-- TODO: remove the hard-coded optimizer option below once this issue is fixed.
 SET optimizer = on;
 
 -- start_ignore
