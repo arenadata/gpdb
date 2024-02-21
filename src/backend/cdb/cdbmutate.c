@@ -810,10 +810,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	}
 
 	/*
-	 * For UPDATE/DELETE, we check if there's any Redistribute or Broadcast
-	 * Motions before scan in the same subtree for the table we're going to
-	 * modify. If we encounter the scan before any motions, then we can elide
-	 * unneccessary Explicit Redistribute Motion.
+	 * For UPDATE/DELETE, we check if there's any Redistribute, Broadcast
+	 * or Gather Motions before scan in the same subtree for the table we're
+	 * going to modify. If we encounter the scan before any motions, then we can
+	 * elide unneccessary Explicit Redistribute Motion.
 	 */
 	if (IsA(node, ModifyTable))
 	{
@@ -857,18 +857,11 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	{
 
 		/*
-		 * Remember if we are descending into a Redistribute or Broadcast
-		 * Motion node.
+		 * Remember if we are descending into a Redistribute, Broadcast or
+		 * Gather Motion node.
 		 */
 		if (IsA(node, Motion))
-		{
-			Motion	   *motion = (Motion *) node;
-
-			if (motion->motionType == MOTIONTYPE_HASH || motion->isBroadcast)
-			{
-				context->mt.nMotionsAbove += 1;
-			}
-		}
+			context->mt.nMotionsAbove += 1;
 
 		/*
 		 * If this is a scan and it's scanrelid matches ModifyTable's relid,
@@ -1141,15 +1134,8 @@ done:
 
 	if (context->mt.isChecking && IsA(node, Motion))
 	{
-		Motion	   *motion = (Motion *) node;
-
-		if (motion->motionType == MOTIONTYPE_HASH || motion->isBroadcast)
-		{
-			/*
-			 * We're going out of this motion node.
-			 */
-			context->mt.nMotionsAbove -= 1;
-		}
+		/* We're going out of this motion node. */
+		context->mt.nMotionsAbove -= 1;
 	}
 
 	return newnode;
