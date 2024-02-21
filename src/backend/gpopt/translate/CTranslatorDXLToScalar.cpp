@@ -761,8 +761,7 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 	// generate the child plan,
 	// Translate DXL->PlStmt translator to handle subplan's relational children
 	CTranslatorDXLToPlStmt dxl_to_plstmt_translator(
-		m_mp, m_md_accessor,
-		plstmt->GetDXLToPlStmtContext(),
+		m_mp, m_md_accessor, plstmt->GetDXLToPlStmtContext(),
 		m_num_of_segments);
 	CDXLTranslationContextArray *prev_siblings_ctxt_arr =
 		GPOS_NEW(m_mp) CDXLTranslationContextArray(m_mp);
