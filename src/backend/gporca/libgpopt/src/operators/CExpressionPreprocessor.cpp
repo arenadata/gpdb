@@ -208,13 +208,13 @@ CExpressionPreprocessor::PexprSimplifyQuantifiedSubqueries(CMemoryPool *mp,
 	GPOS_CHECK_STACK_SIZE;
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pexpr);
+	GPOS_ASSERT(NULL != (*pexpr)[0]);
 
 	COperator *pop = pexpr->Pop();
 	if (CUtils::FQuantifiedSubquery(pop) &&
 		1 == (*pexpr)[0]->DeriveMaxCard().Ull())
 	{
 		CExpression *pexprInner = (*pexpr)[0];
-		GPOS_ASSERT(NULL != pexprInner);
 
 		// skip intermediate unary nodes
 		CExpression *pexprChild = pexprInner;
