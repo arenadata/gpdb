@@ -98,11 +98,7 @@ CDXLTableDescr::MdAlias() const
 void
 CDXLTableDescr::SetMdAlias(CMDName *alias)
 {
-	if (NULL != m_mdalias)
-	{
-		GPOS_DELETE(m_mdalias);
-	}
-
+	GPOS_ASSERT(NULL == m_mdalias);
 	m_mdalias = alias;
 }
 
