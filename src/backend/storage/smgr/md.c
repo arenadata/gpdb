@@ -512,17 +512,29 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	path = relpath(rnode, forkNum);
 
 	/*
-	 * Truncate and unlink the first segment.
+	 * Delete or truncate the first segment.
 	 */
-
-	/*
-	 * unlink is not enough to return disk space to the OS immediately, because
-	 * the file can be still opened by other process
-	 */
-	ret = do_truncate(path);
-
 	if (isRedo || forkNum != MAIN_FORKNUM || RelFileNodeBackendIsTemp(rnode))
 	{
+/*
+ * GPDB: Temp tables use shared buffers in Greenplum. As a result, simple unlink
+ * is not enough to return disk space to the OS immediately, because the files
+ * of a temp relation can still be opened by the bg writer process. To fix this
+ * problem, in GPDB we skip the check if the relation is temp or not, so files
+ * of the temp relation are also truncated.
+ */
+#if 0
+		if (!RelFileNodeBackendIsTemp(rnode))
+#else
+		if (true)
+#endif
+		{
+			/* Prevent other backends' fds from holding on to the disk space */
+			ret = do_truncate(path);
+		}
+		else
+			ret = 0;
+
 		/* Next unlink the file, unless it was already found to be missing */
 		if (ret == 0 || errno != ENOENT)
 		{
@@ -535,6 +547,9 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 	}
 	else
 	{
+		/* Prevent other backends' fds from holding on to the disk space */
+		ret = do_truncate(path);
+
 		/* Register request to unlink first segment later */
 		register_unlink(rnode);
 	}
@@ -561,13 +576,24 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo, char rel
 		for (segno = 1;; segno++)
 		{
 			sprintf(segpath, "%s.%u", path, segno);
-
-			/*
-			 * unlink is not enough to return disk space to the OS immediately,
-			 * because the file can be still opened by other process
-			 */
-			if (do_truncate(segpath) < 0 && errno == ENOENT)
-				break;
+/*
+ * GPDB: Temp tables use shared buffers in Greenplum. As a result, simple unlink
+ * is not enough to return disk space to the OS immediately, because the files
+ * of a temp relation can still be opened by the bg writer process. To fix this
+ * problem, in GPDB we skip the check if the relation is temp or not, so files
+ * of the temp relation are also truncated.
+ */
+#if 0
+			if (!RelFileNodeBackendIsTemp(rnode))
+#endif
+			{
+				/*
+				 * Prevent other backends' fds from holding on to the disk
+				 * space.
+				 */
+				if (do_truncate(segpath) < 0 && errno == ENOENT)
+					break;
+			}
 
 			if (unlink(segpath) < 0)
 			{
