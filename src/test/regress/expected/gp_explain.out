@@ -530,7 +530,7 @@ FROM gp_dist_random('gp_id');
 ERROR:  division by zero  (seg0 slice1 172.17.0.2:6002 pid=13088)
 DROP TABLE t1;
 -- Check optional table alias support. When optimizer_enable_table_alias is off,
---  table alias is not supported (this is default)
+-- table alias is not supported (this is default)
 reset optimizer_enable_table_alias;
 create table foo_alias (a int, b int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.

@@ -331,6 +331,8 @@ FROM gp_dist_random('gp_id');
 DROP TABLE t1;
 
 
+-- Check optional table alias support. When optimizer_enable_table_alias is off,
+-- table alias is not supported (this is default)
 -- start_ignore
 drop table if exists foo_alias;
 -- end_ignore
@@ -342,6 +344,8 @@ insert into foo_alias select generate_series(1,10);
 
 explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
 
+-- When optimizer_enable_table_alias is on, table alias is supported and it 
+-- can be easily seen with self joins
 set optimizer_enable_table_alias=on;
 explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
 
