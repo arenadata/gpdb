@@ -4734,7 +4734,7 @@ CTranslatorDXLToPlStmt::TranslateDXLTblDescrToRangeTblEntry(
 	*/
 	if (optimizer_enable_table_alias && NULL != table_descr->MdAlias())
 	{
-		rte->alias = (Alias *)copyObject(alias);
+		rte->alias = (Alias *) copyObject(alias);
 	}
 
 
