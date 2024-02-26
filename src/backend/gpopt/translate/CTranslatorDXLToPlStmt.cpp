@@ -4673,8 +4673,9 @@ CTranslatorDXLToPlStmt::TranslateDXLTblDescrToRangeTblEntry(
 
 	// get table alias
 	const CMDName *md_alias = table_descr->MdName();
-		
-	if (optimizer_enable_table_alias && NULL != table_descr->MdAlias()) {
+
+	if (optimizer_enable_table_alias && NULL != table_descr->MdAlias())
+	{
 		md_alias = table_descr->MdAlias();
 	}
 
