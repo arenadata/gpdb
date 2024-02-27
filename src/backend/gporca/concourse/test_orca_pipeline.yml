@@ -131,7 +131,7 @@ jobs:
         input_mapping:
           bin_gpdb: gpdb_artifacts
         params:
-          MAKE_TEST_COMMAND: PGOPTIONS='-c optimizer=on' installcheck-world
+          MAKE_TEST_COMMAND: PGOPTIONS='-c optimizer=on -c optimizer_enable_table_alias=off' installcheck-world
           TEST_OS: centos
           CONFIGURE_FLAGS: ((configure_flags))
         timeout: 5h
@@ -142,7 +142,7 @@ jobs:
         input_mapping:
           bin_gpdb: gpdb_artifacts
         params:
-          MAKE_TEST_COMMAND: PGOPTIONS='-c optimizer=on' installcheck-world
+          MAKE_TEST_COMMAND: PGOPTIONS='-c optimizer=on -c optimizer_enable_table_alias=off' installcheck-world
           TEST_OS: centos
           CONFIGURE_FLAGS: ((configure_flags))
           BLDWRAP_POSTGRES_CONF_ADDONS:

@@ -337,7 +337,8 @@ DROP TABLE t1;
 drop table if exists foo_alias;
 -- end_ignore
 
-reset optimizer_enable_table_alias;
+-- check that with optimizer_enable_table_alias=off plan doesn't have aliases
+set optimizer_enable_table_alias=off;
 
 create table foo_alias (a int, b int);
 insert into foo_alias select generate_series(1,10);
