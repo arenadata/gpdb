@@ -70,8 +70,9 @@ typedef struct ModifyTableMotionState
 	Bitmapset  *resultRtis; 			/* Indexes into rtable for relations to
 										 * be modified */
 	bool		needExplicitMotion;
-	int			nMotionsAbove;			/* Number of Redistribute/Broadcast
-										 * motions above the current node */
+	int			nMotionsAbove;			/* Number of Gather, Redistribute and
+										 * Broadcast motions above the current
+										 * node */
 	bool		isChecking;				/* True if we encountered ModifyTable
 										 * node with UPDATE/DELETE and we plan
 										 * to insert Explicit Motions */
