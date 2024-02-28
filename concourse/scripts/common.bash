@@ -90,6 +90,10 @@ function make_cluster() {
 	pushd gpdb_src/gpAux/gpdemo
 	su gpadmin -c "source /usr/local/greenplum-db-devel/greenplum_path.sh; make create-demo-cluster WITH_MIRRORS=${WITH_MIRRORS:-true}"
 
+    if [[ "$MAKE_TEST_COMMAND" =~ "optimizer=on" ]]; then
+        export OPTIMIZER_ENABLE_TABLE_ALIAS=off
+    fi
+
 	if [[ "$MAKE_TEST_COMMAND" =~ gp_interconnect_type=proxy ]]; then
 		# generate the addresses for proxy mode
 		su gpadmin -c bash -- -e <<EOF

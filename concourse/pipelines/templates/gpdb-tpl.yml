@@ -1333,7 +1333,7 @@ jobs:
     image: gpdb6-[[ os_type ]]-test
     timeout: 24h
     params:
-      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on -c optimizer_enable_table_alias=off' installcheck-world
+      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on' installcheck-world
       TEST_OS: [[ test_os ]]
       CONFIGURE_FLAGS: ((configure_flags))
 
@@ -1383,7 +1383,7 @@ jobs:
     image: gpdb6-[[ os_type ]]-test
     timeout: 24h
     params:
-      MAKE_TEST_COMMAND: -k PGOPTIONS='-c gp_interconnect_type=proxy -c optimizer=on -c optimizer_enable_table_alias=off' EXTRA_REGRESS_OPTS=--exclude-tests=external_table installcheck-world
+      MAKE_TEST_COMMAND: -k PGOPTIONS='-c gp_interconnect_type=proxy -c optimizer=on' EXTRA_REGRESS_OPTS=--exclude-tests=external_table installcheck-world
       TEST_OS: [[ test_os ]]
       CONFIGURE_FLAGS: ((configure_flags))
 
@@ -1432,7 +1432,7 @@ jobs:
     image: gpdb6-[[ os_type ]]-test
     timeout: 24h
     params:
-      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on -c optimizer_enable_table_alias=off' installcheck-mirrorless
+      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on' installcheck-mirrorless
       TEST_OS: [[ test_os ]]
       CONFIGURE_FLAGS: ((configure_flags))
       WITH_MIRRORS: false
@@ -1466,7 +1466,7 @@ jobs:
     image: gpdb6-[[ os_type ]]-test
     timeout: 24h
     params:
-      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on -c optimizer_enable_table_alias=off' installcheck-world
+      MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=on' installcheck-world
       TEST_OS: [[ test_os ]]
       CONFIGURE_FLAGS: ((configure_flags))
       BLDWRAP_POSTGRES_CONF_ADDONS:
@@ -1658,7 +1658,7 @@ jobs:
       file: gpdb_src/concourse/tasks/ic_gpdb.yml
       image: gpdb6-[[ os_type ]]-test
       params:
-        MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=off -c optimizer_enable_table_alias=off'
+        MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=off'
           BUILD_TYPE=((rc-build-type)) -C src/test/regress installcheck-icudp
         TEST_OS: [[ test_os ]]
 
