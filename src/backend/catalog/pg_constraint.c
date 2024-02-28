@@ -856,7 +856,9 @@ get_constraint_relation_columns(Oid constraint_oid)
 										  RelationGetDescr(pg_constraint),
 										  &is_null);
 
-		if (!is_null)
+		if (is_null)
+			elog(LOG, "null conkey for constraint %u", constraint_oid);
+		else
 		{
 			Datum	   *conkeys;
 			int			num_conkeys = 0;
@@ -872,8 +874,6 @@ get_constraint_relation_columns(Oid constraint_oid)
 				conkeys_list = lappend_int(conkeys_list, attnum);
 			}
 		}
-		else
-			elog(LOG, "null conkey for constraint %u", constraint_oid);
 
 		heap_close(pg_constraint, AccessShareLock);
 		ReleaseSysCache(tp);

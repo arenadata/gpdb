@@ -463,8 +463,8 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 						continue;
 					}
 
-					if (!CTranslatorUtils::IsGroupingColumn(
-							expr, query->groupClause, query->targetList))
+					if (!CTranslatorUtils::IsGroupingColumn(target_entry,
+															query->groupClause))
 					{
 						// add new SortGroupClause to groupClause
 						SortGroupClause *gc;
