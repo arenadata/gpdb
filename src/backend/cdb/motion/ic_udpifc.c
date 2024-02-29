@@ -1197,6 +1197,16 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
 	hints.ai_protocol = 0;		/* Any protocol */
 
+	/*
+	 * Use AI_ADDRCONFIG to avoid returning IPv6 addresses if IPv6 is disabled.
+	 * We cannot really detect IPv6 availability only with a bind(), because
+	 * bind() to an IPv6 wildcard (::) will result in a special behavior on
+	 * Linux, binding to both IPv6 and IPv4. In case IPv6 is disabled, only
+	 * IPv4 will be bound, but bind() will not fail. We may cache the address,
+	 * and any connect() or sendto() to this cached address will cause errors.
+	 */
+	hints.ai_flags = AI_ADDRCONFIG;
+
 #ifdef USE_ASSERT_CHECKING
 	if (gp_udpic_network_disable_ipv6)
 		hints.ai_family = AF_INET;
