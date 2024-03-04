@@ -50,15 +50,15 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 											   List *grouping_list,
 											   List *conkeys, Oid conrelid)
 {
-	bool result = false;
-	uint32 found_col_cnt = 0;
+	BOOL result = false;
+	ULONG found_col_cnt = 0;
 	ListCell *lc_conkey;
 
 	// go over every conkey of constraint
 	ForEach(lc_conkey, conkeys)
 	{
 		AttrNumber attnum = lfirst_int(lc_conkey);
-		bool found_col = false;
+		BOOL found_col = false;
 		ListCell *lgc;
 
 		// search for conkey in grouping list
@@ -252,8 +252,8 @@ CQueryMutators::GroupingFuncRewriteWalker(
 		// For each argument in gf->args, find its new position
 		ForEach(arg_lc, gf->args)
 		{
-			int arg = intVal(lfirst(arg_lc));
-			int new_arg =
+			ULONG arg = intVal(lfirst(arg_lc));
+			ULONG new_arg =
 				gpdb::ListNthInt(context->m_grouping_tle_refs_mapping, arg);
 			newargs = gpdb::LAppend(newargs, gpdb::MakeIntegerValue(new_arg));
 		}
@@ -296,7 +296,7 @@ CQueryMutators::GetVarsWithoutTleWalker(
 	// resjunk targetlist entries for such vars to m_tlist_addition
 	if (IsA(node, Var))
 	{
-		bool found = false;
+		BOOL found = false;
 		Var *var = (Var *) gpdb::CopyObject(node);
 		if (var->varlevelsup == context->m_current_query_level)
 		{
@@ -318,7 +318,8 @@ CQueryMutators::GetVarsWithoutTleWalker(
 			}
 			if (!found)
 			{
-				int ressno = gpdb::ListLength(context->m_query->targetList) + 1;
+				ULONG ressno =
+					gpdb::ListLength(context->m_query->targetList) + 1;
 				TargetEntry *newTargetEntry =
 					gpdb::MakeTargetEntry((Expr *) var, ressno, NULL, true);
 
@@ -393,166 +394,158 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 	// constraintDeps list contains only Primary Key OIDs, we skip checks of
 	// constraint type in all code below.
 	// Refer to function check_functional_grouping for more details.
-	if (0 != gpdb::ListLength(query->constraintDeps))
+	if (0 == gpdb::ListLength(query->constraintDeps))
 	{
-		// 1. Extract such columns from targetlist expressions, and if they do
-		// not have a relevant target entry, add resjunk target list entries for
-		// them.
-		// 2. Store current unique TargetEntry references in groupClause -
-		// they will be needed at step 4.
-		// 3. Update all grouping sets that contain Primary Key
-		// 4. Update arguments of GROUPING functions, because they could be
-		// shifted after step 3.
-
-		// Step 1.
-		// If there is an expression with a functionally dependent var, at this
-		// point it may not have a relevant target list entry (as it was not
-		// explicitly listed in groupClause).
-		// For all such vars we add resjunk target list entries into targetList.
-		SContextFixGroupDependentTargets ctx_fix_dependent_targets(query);
-		GetVarsWithoutTleWalker((Node *) query->targetList,
-								&ctx_fix_dependent_targets);
-		query->targetList = gpdb::ListConcat(
-			query->targetList, ctx_fix_dependent_targets.m_tlist_addition);
-
-		// Step 2.
-		// Store current unique TargetEntry references in groupClause.
-		// After modifying groupClause, they will be required to update
-		// arguments inside grouping functions.
-		SContexGetGroupUniqueTleWalker ctx_old_grouping_tle_refs;
-		GetGroupUniqueTleReferencesWalker((Node *) query->groupClause,
-										  &ctx_old_grouping_tle_refs);
-
-		// Step 3.
-		// Update groupClause - add all functionally dependent entries explicitly.
-		ListCell *lc_constraint;
-		ForEach(lc_constraint, query->constraintDeps)
-		{
-			Oid constraint_oid = lfirst_oid(lc_constraint);
-			Oid conrelid = 0;
-			Oid confrelid =
-				0;	// not used, but function get_constraint_relation_oids requires it..
-			gpdb::GetConstraintRelationOids(constraint_oid, &conrelid,
-											&confrelid);
-
-			ctx_fix_dependent_targets.m_conrelid = conrelid;
-			ctx_fix_dependent_targets.m_conkeys =
-				gpdb::GetConstraintRelationColumns(constraint_oid);
-
-			ListCell *lc_tle;
-			ForEach(lc_tle, query->targetList)
-			{
-				TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
-				Node *expr = (Node *) target_entry->expr;
-
-				if (IsA(expr, Var))
-				{
-					Var *var = (Var *) expr;
-
-					if (var->varlevelsup != 0)
-					{
-						continue;
-					}
-
-					RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
-						query->rtable, var->varno - 1);
-					GPOS_ASSERT(NULL != rte);
-
-					// skip relations that are not constrained by primary key, that is
-					// currently being checked
-					if (conrelid != rte->relid)
-					{
-						continue;
-					}
-
-					if (!CTranslatorUtils::IsGroupingColumn(target_entry,
-															query->groupClause))
-					{
-						// add new SortGroupClause to groupClause
-						SortGroupClause *gc;
-						Oid sortop;
-						Oid eqop;
-						bool hashable;
-
-						gpdb::GetSortGroupOperators(exprType(expr), true, true,
-													false, &sortop, &eqop, NULL,
-													&hashable);
-
-						gc = makeNode(SortGroupClause);
-						gc->tleSortGroupRef = gpdb::AssignSortGroupRef(
-							target_entry, query->targetList);
-						gc->eqop = eqop;
-						gc->sortop = sortop;
-						gc->nulls_first = false;
-						gc->hashable = hashable;
-
-						ctx_fix_dependent_targets.m_gc = gc;
-						ctx_fix_dependent_targets.m_parent_is_grouping_clause =
-							false;
-
-						List *old_group_clause = query->groupClause;
-
-						query->groupClause =
-							(List *) AddMissingGroupClauseMutator(
-								(Node *) query->groupClause,
-								&ctx_fix_dependent_targets);
-
-						gpdb::ListFreeDeep(old_group_clause);
-						gpdb::GPDBFree(gc);
-					}
-				}
-			}
-			gpdb::ListFree(ctx_fix_dependent_targets.m_conkeys);
-		}
-		// remove constraintDeps
-		gpdb::ListFree(query->constraintDeps);
-		query->constraintDeps = NIL;
-		// End of update groupClause.
-
-		// Step 4.
-		// Get updated unique TargetEntry references in groupClause.
-		SContexGetGroupUniqueTleWalker ctx_new_grouping_tle_refs;
-		GetGroupUniqueTleReferencesWalker((Node *) query->groupClause,
-										  &ctx_new_grouping_tle_refs);
-
-		// Find new positions of the tle references after the update of groupClause.
-		// Store new positions in the grouping_tle_refs_mapping.
-		List *grouping_tle_refs_old =
-			ctx_old_grouping_tle_refs.m_grouping_tle_refs;
-		List *grouping_tle_refs_new =
-			ctx_new_grouping_tle_refs.m_grouping_tle_refs;
-		List *grouping_tle_refs_mapping = NIL;
-		ListCell *lc_tle_ref_old;
-		ForEach(lc_tle_ref_old, grouping_tle_refs_old)
-		{
-			int tle_ref_old = lfirst_int(lc_tle_ref_old);
-			ListCell *lc_tle_ref_new;
-			uint32 i = 0;
-
-			ForEach(lc_tle_ref_new, grouping_tle_refs_new)
-			{
-				if (tle_ref_old == lfirst_int(lc_tle_ref_new))
-				{
-					break;
-				}
-				i++;
-			}
-
-			GPOS_ASSERT(i < gpdb::ListLength(grouping_tle_refs_new));
-
-			grouping_tle_refs_mapping =
-				gpdb::LAppendInt(grouping_tle_refs_mapping, i);
-		}
-
-		// Finally fix arguments of grouping functions.
-		SContexGroupingFuncRewriteWalker ctx_grouping_func_rewrite(
-			grouping_tle_refs_mapping, gpdb::ListLength(grouping_tle_refs_new));
-
-		GroupingFuncRewriteWalker((Node *) query->targetList,
-								  &ctx_grouping_func_rewrite);
-
-		gpdb::ListFree(grouping_tle_refs_mapping);
+		return;
 	}
+	// 1. Extract such columns from targetlist expressions, and if they do
+	// not have a relevant target entry, add resjunk target list entries for
+	// them.
+	// 2. Store current unique TargetEntry references in groupClause -
+	// they will be needed at step 4.
+	// 3. Update all grouping sets that contain Primary Key
+	// 4. Update arguments of GROUPING functions, because they could be
+	// shifted after step 3.
+
+	// Step 1.
+	// If there is an expression with a functionally dependent var, at this
+	// point it may not have a relevant target list entry (as it was not
+	// explicitly listed in groupClause).
+	// For all such vars we add resjunk target list entries into targetList.
+	SContextFixGroupDependentTargets ctx_fix_dependent_targets(query);
+	GetVarsWithoutTleWalker((Node *) query->targetList,
+							&ctx_fix_dependent_targets);
+	query->targetList = gpdb::ListConcat(
+		query->targetList, ctx_fix_dependent_targets.m_tlist_addition);
+
+	// Step 2.
+	// Store current unique TargetEntry references in groupClause.
+	// After modifying groupClause, they will be required to update
+	// arguments inside grouping functions.
+	SContexGetGroupUniqueTleWalker ctx_old_grouping_tle_refs;
+	GetGroupUniqueTleReferencesWalker((Node *) query->groupClause,
+									  &ctx_old_grouping_tle_refs);
+
+	// Step 3.
+	// Update groupClause - add all functionally dependent entries explicitly.
+	ListCell *lc_constraint;
+	ForEach(lc_constraint, query->constraintDeps)
+	{
+		Oid constraint_oid = lfirst_oid(lc_constraint);
+		Oid conrelid = 0;
+		Oid confrelid =
+			0;	// not used, but function get_constraint_relation_oids requires it..
+		gpdb::GetConstraintRelationOids(constraint_oid, &conrelid, &confrelid);
+
+		ctx_fix_dependent_targets.m_conrelid = conrelid;
+		ctx_fix_dependent_targets.m_conkeys =
+			gpdb::GetConstraintRelationColumns(constraint_oid);
+
+		ListCell *lc_tle;
+		ForEach(lc_tle, query->targetList)
+		{
+			TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
+			Node *expr = (Node *) target_entry->expr;
+
+			if (!IsA(expr, Var))
+			{
+				continue;
+			}
+
+			Var *var = (Var *) expr;
+
+			if (var->varlevelsup != 0)
+			{
+				continue;
+			}
+
+			RangeTblEntry *rte =
+				(RangeTblEntry *) gpdb::ListNth(query->rtable, var->varno - 1);
+			GPOS_ASSERT(NULL != rte);
+
+			// Skip relations that are not constrained by primary key, that is
+			// currently being checked, and skip target list entries that are
+			// already used for grouping.
+			if (conrelid != rte->relid || CTranslatorUtils::IsGroupingColumn(
+											  target_entry, query->groupClause))
+			{
+				continue;
+			}
+
+			// add new SortGroupClause to groupClause
+			SortGroupClause *gc;
+			Oid sortop;
+			Oid eqop;
+			BOOL hashable;
+
+			gpdb::GetSortGroupOperators(exprType(expr), true, true, false,
+										&sortop, &eqop, NULL, &hashable);
+
+			gc = makeNode(SortGroupClause);
+			gc->tleSortGroupRef =
+				gpdb::AssignSortGroupRef(target_entry, query->targetList);
+			gc->eqop = eqop;
+			gc->sortop = sortop;
+			gc->nulls_first = false;
+			gc->hashable = hashable;
+
+			ctx_fix_dependent_targets.m_gc = gc;
+			ctx_fix_dependent_targets.m_parent_is_grouping_clause = false;
+
+			List *old_group_clause = query->groupClause;
+
+			query->groupClause = (List *) AddMissingGroupClauseMutator(
+				(Node *) query->groupClause, &ctx_fix_dependent_targets);
+
+			gpdb::ListFreeDeep(old_group_clause);
+			gpdb::GPDBFree(gc);
+		}
+		gpdb::ListFree(ctx_fix_dependent_targets.m_conkeys);
+	}
+	// remove constraintDeps
+	gpdb::ListFree(query->constraintDeps);
+	query->constraintDeps = NIL;
+	// End of update groupClause.
+
+	// Step 4.
+	// Get updated unique TargetEntry references in groupClause.
+	SContexGetGroupUniqueTleWalker ctx_new_grouping_tle_refs;
+	GetGroupUniqueTleReferencesWalker((Node *) query->groupClause,
+									  &ctx_new_grouping_tle_refs);
+
+	// Find new positions of the tle references after the update of groupClause.
+	// Store new positions in the grouping_tle_refs_mapping.
+	List *grouping_tle_refs_old = ctx_old_grouping_tle_refs.m_grouping_tle_refs;
+	List *grouping_tle_refs_new = ctx_new_grouping_tle_refs.m_grouping_tle_refs;
+	List *grouping_tle_refs_mapping = NIL;
+	ListCell *lc_tle_ref_old;
+	ForEach(lc_tle_ref_old, grouping_tle_refs_old)
+	{
+		int tle_ref_old = lfirst_int(lc_tle_ref_old);
+		ListCell *lc_tle_ref_new;
+		ULONG i = 0;
+		ForEachWithCount(lc_tle_ref_new, grouping_tle_refs_new, i)
+		{
+			if (tle_ref_old == lfirst_int(lc_tle_ref_new))
+			{
+				break;
+			}
+		}
+
+		GPOS_ASSERT(i < gpdb::ListLength(grouping_tle_refs_new));
+
+		grouping_tle_refs_mapping =
+			gpdb::LAppendInt(grouping_tle_refs_mapping, i);
+	}
+
+	// Finally fix arguments of grouping functions.
+	SContexGroupingFuncRewriteWalker ctx_grouping_func_rewrite(
+		grouping_tle_refs_mapping, gpdb::ListLength(grouping_tle_refs_new));
+
+	GroupingFuncRewriteWalker((Node *) query->targetList,
+							  &ctx_grouping_func_rewrite);
+
+	gpdb::ListFree(grouping_tle_refs_mapping);
 }
 
 //---------------------------------------------------------------------------
