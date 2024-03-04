@@ -52,14 +52,14 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 {
 	bool result = false;
 	uint32 found_col_cnt = 0;
-	ListCell *lc_conkey = NULL;
+	ListCell *lc_conkey;
 
 	// go over every conkey of constraint
 	ForEach(lc_conkey, conkeys)
 	{
 		AttrNumber attnum = lfirst_int(lc_conkey);
 		bool found_col = false;
-		ListCell *lgc = NULL;
+		ListCell *lgc;
 
 		// search for conkey in grouping list
 		ForEach(lgc, grouping_list)
@@ -155,7 +155,7 @@ CQueryMutators::AddMissingGroupClauseMutator(
 		GroupingClause *new_grouping_clause = makeNode(GroupingClause);
 		new_grouping_clause->groupType = original_grouping_clause->groupType;
 		new_grouping_clause->groupsets = NIL;
-		ListCell *l = NULL;
+		ListCell *l;
 		ForEach(l, original_grouping_clause->groupsets)
 		{
 			Node *n = (Node *) lfirst(l);
@@ -174,7 +174,7 @@ CQueryMutators::AddMissingGroupClauseMutator(
 		// construct new list
 		List *original_list = (List *) node;
 		List *new_list = NIL;
-		ListCell *l = NULL;
+		ListCell *l;
 		context->m_parent_is_grouping_clause = false;
 		ForEach(l, original_list)
 		{
@@ -311,6 +311,7 @@ CQueryMutators::GetVarsWithoutTleWalker(
 					if (gpdb::Equals(target_entry->expr, var))
 					{
 						found = true;
+						gpdb::GPDBFree(var);
 						break;
 					}
 				}
@@ -521,11 +522,11 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 		List *grouping_tle_refs_new =
 			ctx_new_grouping_tle_refs.m_grouping_tle_refs;
 		List *grouping_tle_refs_mapping = NIL;
-		ListCell *lc_tle_ref_old = NULL;
+		ListCell *lc_tle_ref_old;
 		ForEach(lc_tle_ref_old, grouping_tle_refs_old)
 		{
 			int tle_ref_old = lfirst_int(lc_tle_ref_old);
-			ListCell *lc_tle_ref_new = NULL;
+			ListCell *lc_tle_ref_new;
 			uint32 i = 0;
 
 			ForEach(lc_tle_ref_new, grouping_tle_refs_new)
