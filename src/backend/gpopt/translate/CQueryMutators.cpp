@@ -66,33 +66,29 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 		{
 			Node *grpcl = (Node *) lfirst(lgc);
 
-			if (NULL == grpcl)
+			if (NULL == grpcl || !IsA(grpcl, SortGroupClause))
 			{
 				continue;
 			}
 
-			if (IsA(grpcl, SortGroupClause))
+			SortGroupClause *sgc = (SortGroupClause *) grpcl;
+			Node *expr = gpdb::GetSortGroupClauseExpr(sgc, query->targetList);
+
+			GPOS_ASSERT(IsA(expr, Var));
+
+			Var *var = (Var *) expr;
+
+			RangeTblEntry *rte =
+				(RangeTblEntry *) gpdb::ListNth(query->rtable, var->varno - 1);
+
+			GPOS_ASSERT(NULL != rte);
+
+			if (var->varattno == attnum && var->varlevelsup == 0 &&
+				rte->relid == conrelid)
 			{
-				SortGroupClause *sgc = (SortGroupClause *) grpcl;
-				Node *expr =
-					gpdb::GetSortGroupClauseExpr(sgc, query->targetList);
-
-				GPOS_ASSERT(IsA(expr, Var));
-
-				Var *var = (Var *) expr;
-
-				RangeTblEntry *rte = (RangeTblEntry *) gpdb::ListNth(
-					query->rtable, var->varno - 1);
-
-				GPOS_ASSERT(NULL != rte);
-
-				if (var->varattno == attnum && var->varlevelsup == 0 &&
-					rte->relid == conrelid)
-				{
-					found_col = true;
-					found_col_cnt++;
-					break;
-				}
+				found_col = true;
+				found_col_cnt++;
+				break;
 			}
 		}
 		if (!found_col)
