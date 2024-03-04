@@ -277,7 +277,7 @@ DROP TABLE IF EXISTS test_table3;
 -- end_ignore
 
 CREATE TABLE test_table1 (a int PRIMARY KEY, b text, c int);
-INSERT INTO test_table1 VALUES 
+INSERT INTO test_table1 VALUES
 (1, 'text1', 0),
 (2, 'text2', 1),
 (3, 'text3', 0),
@@ -304,8 +304,8 @@ INSERT INTO test_table1 VALUES
 (24, 'text4', 1),
 (25, 'text0', 0);
 
-CREATE TABLE test_table2 (a int, b text, c int, CONSTRAINT id_t2 PRIMARY KEY(a,c) );
-INSERT INTO test_table2 VALUES 
+CREATE TABLE test_table2 (a int, b text, c int, CONSTRAINT id_t2 PRIMARY KEY(a,c));
+INSERT INTO test_table2 VALUES
 (1, 'text|1|-1|', -1),
 (1, 'text|1|1|',   1),
 (2, 'text|2|-1|', -1),
@@ -318,7 +318,7 @@ INSERT INTO test_table2 VALUES
 (5, 'text|5|1|',   1);
 
 CREATE TABLE test_table3 (a int PRIMARY KEY, b text, c int);
-INSERT INTO test_table3 VALUES 
+INSERT INTO test_table3 VALUES
 (1, 't3-text1', 0),
 (2, 't3-text2', 1),
 (3, 't3-text3', 0),
