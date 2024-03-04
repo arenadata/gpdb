@@ -86,8 +86,8 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 
 				GPOS_ASSERT(NULL != rte);
 
-				if (IsA(var, Var) && (var->varattno == attnum) &&
-					(var->varlevelsup == 0) && (rte->relid == conrelid))
+				if (var->varattno == attnum && var->varlevelsup == 0 &&
+					rte->relid == conrelid)
 				{
 					found_col = true;
 					found_col_cnt++;
@@ -301,7 +301,7 @@ CQueryMutators::GetVarsWithoutTleWalker(
 		if (var->varlevelsup == context->m_current_query_level)
 		{
 			var->varlevelsup = 0;
-			ListCell *lc_tle = NULL;
+			ListCell *lc_tle;
 			ForEach(lc_tle, context->m_query->targetList)
 			{
 				TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
@@ -350,13 +350,14 @@ CQueryMutators::GetVarsWithoutTleWalker(
 		Query *query = (Query *) node;
 		GetVarsWithoutTleWalker((Node *) query->targetList, context);
 
-		List *rtable = query->rtable;
-		ListCell *lc = NULL;
-		ForEach(lc, rtable)
+		ListCell *lc;
+		ForEach(lc, query->rtable)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
-			if (rte != NULL && RTE_SUBQUERY == rte->rtekind)
+			GPOS_ASSERT(rte != NULL);
+
+			if (RTE_SUBQUERY == rte->rtekind)
 			{
 				Query *subquery = rte->subquery;
 				context->m_current_query_level++;
@@ -406,7 +407,7 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 		// If there is an expression with a functionally dependent var, at this
 		// point it may not have a relevant target list entry (as it was not
 		// explicitly listed in groupClause).
-		// For all such vars we add resjunc target list entries into targetList.
+		// For all such vars we add resjunk target list entries into targetList.
 		SContextFixGroupDependentTargets ctx_fix_dependent_targets(query);
 		GetVarsWithoutTleWalker((Node *) query->targetList,
 								&ctx_fix_dependent_targets);
@@ -423,7 +424,7 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 
 		// Step 3.
 		// Update groupClause - add all functionally dependent entries explicitly.
-		ListCell *lc_constraint = NULL;
+		ListCell *lc_constraint;
 		ForEach(lc_constraint, query->constraintDeps)
 		{
 			Oid constraint_oid = lfirst_oid(lc_constraint);
@@ -437,7 +438,7 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 			ctx_fix_dependent_targets.m_conkeys =
 				gpdb::GetConstraintRelationColumns(constraint_oid);
 
-			ListCell *lc_tle = NULL;
+			ListCell *lc_tle;
 			ForEach(lc_tle, query->targetList)
 			{
 				TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);

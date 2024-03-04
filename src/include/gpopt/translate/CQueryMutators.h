@@ -180,7 +180,7 @@ class CQueryMutators
 		}
 	} CContexGroupingFuncRewriteWalker;
 
-	// context for walker and mutator to add missing grouping colums to the
+	// context for walker and mutator to add missing grouping columns to the
 	// groupClause that have functional dependency on the groupClause
 	typedef struct SContextFixGroupDependentTargets
 	{
