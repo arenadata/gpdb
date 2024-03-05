@@ -302,14 +302,12 @@ CQueryMutators::GetVarsWithoutTleWalker(
 			{
 				TargetEntry *target_entry = (TargetEntry *) lfirst(lc_tle);
 
-				if (IsA(target_entry->expr, Var))
+				if (IsA(target_entry->expr, Var) &&
+					gpdb::Equals(target_entry->expr, var))
 				{
-					if (gpdb::Equals(target_entry->expr, var))
-					{
-						found = true;
-						gpdb::GPDBFree(var);
-						break;
-					}
+					found = true;
+					gpdb::GPDBFree(var);
+					break;
 				}
 			}
 			if (!found)
