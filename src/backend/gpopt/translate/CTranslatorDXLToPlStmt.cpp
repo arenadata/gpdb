@@ -4177,7 +4177,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 							 NULL,	// translate context for the base table
 							 child_contexts, output_context);
 
-	// Create target list with nulls if rel has dropped cols. DELETE may has
+	// Create target list with nulls if rel has dropped cols. DELETE may have
 	// empty target list if there no after trigger present. Skip creating in
 	// such case.
 	if (md_rel->HasDroppedColumns() &&

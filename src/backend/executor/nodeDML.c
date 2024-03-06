@@ -281,13 +281,12 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 			dmlstate->cleanedUpSlot);
 
 	/*
-	 * The comment below is related to ExecInsert() and ExecUpdate(). The code
-	 * works correctly, because insert and update operations always translate
-	 * full set of attrs to targetlist. So, resulting tupledesc has the same
-	 * number of attrs after replacing. ExecDelete() doesn't have such
-	 * machinery, and more, can work with subset of table attrs. So, the code
-	 * below can add attrs, which doesn't exist in original targetlist. This
-	 * may cause execution errors.
+	 * The comment below is related to ExecInsert(). The code works correctly,
+	 * because insert operations always translate full set of attrs to
+	 * targetlist. So, tupledesc below has the same number of attrs after
+	 * replacing. ExecDelete() doesn't reconstruct a slot, and more, can work
+	 * with subset of table attrs. In order to avoid unnecessary job and
+	 * execution error, the code below is not executed for DELETE.
 	 */
 	if (estate->es_plannedstmt->commandType != CMD_DELETE)
 	{
