@@ -1650,3 +1650,112 @@ select * from t2 join lateral
 
 drop table t1;
 drop table t2;
+create table t1 (a int, b text, c int) distributed by (a);
+insert into t1 values (1, '', 1);
+-- Test lateral join with sub-query having grouping at the same level 
+-- as the lateral var
+explain (costs off) select from (values ('')) tmp(b) join lateral
+(
+  select avg(avg_c) from
+  (
+    select avg(c) as avg_c from t1 where t1.b = tmp.b group by b
+  ) s2
+) s1 on true;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Materialize
+         ->  Aggregate
+               ->  GroupAggregate
+                     Group Key: t1.b
+                     ->  Result
+                           Filter: (t1.b = "*VALUES*".column1)
+                           ->  Materialize
+                                 ->  Gather Motion 3:1  (slice1; segments: 3)
+                                       ->  Seq Scan on t1
+ Optimizer: Postgres query optimizer
+(12 rows)
+
+select from (values ('')) tmp(b) join lateral
+(
+  select avg(avg_c) from
+  (
+    select avg(c) as avg_c from t1 where t1.b = tmp.b group by b
+  ) s2
+) s1 on true;
+--
+(1 row)
+
+-- Test lateral joins with sub-query having grouping at different level
+-- comparing with the lateral var
+explain (costs off) select from (values ('')) tmp(b) join lateral
+(
+  select avg(avg_c) + length(tmp.b) from
+  (
+    select avg(c) as avg_c from t1 where t1.b = '' group by b
+  ) s2
+) s1 on true;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Materialize
+         ->  Aggregate
+               ->  Gather Motion 3:1  (slice2; segments: 3)
+                     ->  Aggregate
+                           ->  Subquery Scan on s2
+                                 ->  GroupAggregate
+                                       Group Key: t1.b
+                                       ->  Sort
+                                             Sort Key: t1.b
+                                             ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                                   Hash Key: t1.b
+                                                   ->  GroupAggregate
+                                                         Group Key: t1.b
+                                                         ->  Seq Scan on t1
+                                                               Filter: (b = ''::text)
+ Optimizer: Postgres query optimizer
+(18 rows)
+
+select from (values ('')) tmp(b) join lateral
+(
+  select avg(avg_c) + length(tmp.b) from
+  (
+    select avg(c) as avg_c from t1 where t1.b = '' group by b
+  ) s2
+) s1 on true;
+--
+(1 row)
+
+explain (costs off) select from (values ('')) tmp(b) join lateral
+(
+  select avg(c) from
+  (
+	select a, c from t1 where t1.b = tmp.b
+  ) s2 group by a
+) s1 on true;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Nested Loop
+         ->  Values Scan on "*VALUES*"
+         ->  Materialize
+               ->  HashAggregate
+                     Group Key: t1.a
+                     ->  Seq Scan on t1
+                           Filter: (b = "*VALUES*".column1)
+ Optimizer: Postgres query optimizer
+(9 rows)
+
+select from (values ('')) tmp(b) join lateral
+(
+  select avg(c) from
+  (
+    select a, c from t1 where t1.b = tmp.b
+  ) s2 group by a
+) s1 on true;
+--
+(1 row)
+
+drop table t1;
