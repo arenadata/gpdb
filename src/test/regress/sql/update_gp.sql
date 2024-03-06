@@ -137,8 +137,7 @@ UPDATE t1 SET j = t_strewn.i FROM t_strewn WHERE t_strewn.i = t1.i;
 
 EXPLAIN (costs off)
 WITH CTE AS (DELETE FROM t1 RETURNING *)
-SELECT count(*) AS a FROM t_strewn JOIN t2 USING (i)
-WHERE 0 < ALL (SELECT i FROM cte);
+SELECT count(*) AS a FROM t_strewn JOIN cte USING (i);
 
 EXPLAIN (costs off, verbose)
 DELETE FROM t_strewn WHERE t_strewn.i = (SELECT t2.i FROM t2 WHERE t_strewn.i = t2.i);
@@ -157,9 +156,10 @@ DROP TABLE t_strewn2;
 CREATE TABLE t1 (a int, b int) DISTRIBUTED RANDOMLY;
 CREATE TABLE t2 (a int, b int) DISTRIBUTED RANDOMLY;
 
-EXPLAIN (costs off) WITH cte AS (
+EXPLAIN (costs off)
+WITH cte AS (
     SELECT count(*) AS c FROM t1, t2 WHERE t1.b = t2.b
-) UPDATE t2 SET b = 10 WHERE a = (SELECT * FROM cte);
+) DELETE FROM t2 WHERE a = (SELECT * FROM cte);
 
 DROP TABLE t1;
 DROP TABLE t2;
@@ -174,15 +174,13 @@ DROP TABLE IF EXISTS foo;
 
 CREATE TABLE i (i int, j int) DISTRIBUTED BY (i);
 INSERT INTO i SELECT
-  generate_series(1, 100), generate_series(1, 100) * 3;
+  generate_series(1, 16), generate_series(1, 16) * 3;
 
 CREATE TABLE foo (f1 serial, f2 text, f3 int) DISTRIBUTED RANDOMLY;
-
 INSERT INTO foo (f2, f3)
   VALUES ('first', 1), ('second', 2), ('third', 3);
 
 CREATE TABLE foochild (fc int) INHERITS (foo);
-
 INSERT INTO foochild
   VALUES(123, 'child', 999, -123);
 
@@ -193,7 +191,8 @@ DELETE FROM foo
 
 DELETE FROM foo
   USING i
-  WHERE foo.f1 = i.j;
+  WHERE foo.f1 = i.j
+  RETURNING *;
 
 DROP TABLE i;
 DROP TABLE foochild;
@@ -203,52 +202,67 @@ DROP TABLE foo;
 -- tables. (test case not applicable to ORCA)
 CREATE TABLE t1 (a int, b int) DISTRIBUTED BY (a)
 PARTITION BY
-  range(b) (start(1) end(101) every(50));
+  range(b) (start(1) end(16) every(5));
 
 CREATE TABLE t2 (a int, b int) DISTRIBUTED BY (b)
 PARTITION BY
-  range(a) (start(1) end(101) every(25), default partition def);
+  range(a) (start(1) end(16) every(10), default partition def);
 
 INSERT INTO t1 SELECT
-  generate_series(1, 100) * 3, generate_series(1, 100);
+  generate_series(1, 4) * 3, generate_series(1, 4);
 INSERT INTO t2 SELECT
-  generate_series(1, 100), generate_series(1, 100) * 3;
+  generate_series(1, 4), generate_series(1, 4) * 3;
 INSERT INTO t2 VALUES
-  (generate_series(101, 111), NULL);
+  (generate_series(7, 11), NULL);
 
 EXPLAIN (costs off, verbose)
-DELETE FROM t1 USING t2 WHERE t1.a = t2.a;
+DELETE FROM t2 USING t1 WHERE t1.a = t2.a;
 
-DELETE FROM t1 USING t2 WHERE t1.a = t2.a;
+DELETE FROM t2 USING t1 WHERE t1.a = t2.a
+RETURNING *;
 
 DROP TABLE t1;
 DROP TABLE t2;
 
 -- Explicit Redistribute Motion should not be elided if we encounter a scan on
 -- the same table that we are going to modify, but with different range table
--- index.
+-- index. (test case not applicable to ORCA)
 CREATE TABLE t1 (a int, b int);
 CREATE TABLE t2 (a int, b int);
 
-INSERT INTO t1 SELECT a, a FROM generate_series(1, 100) a;
-INSERT INTO t2 SELECT a, a FROM generate_series(1, 100) a;
+INSERT INTO t1 SELECT a, a FROM generate_series(1, 4) a;
+INSERT INTO t2 SELECT a, a FROM generate_series(1, 16) a;
 
-EXPLAIN (costs off) update t2 trg
+EXPLAIN (costs off) UPDATE t2 trg
 SET b = src.b1
 FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
 WHERE trg.a = src.a1
-    AND trg.a = 2;
+  AND trg.a = 2;
+
+UPDATE t2 trg
+SET b = src.b1
+FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
+WHERE trg.a = src.a1
+  AND trg.a = 2
+RETURNING *;
 
 -- Use Nested Loop to change left tree with the right tree, to swap the extra
 -- scan we don't indend to detect with the real one. 
 SET enable_hashjoin = off;
 SET enable_nestloop = on;
 
-EXPLAIN (costs off) update t2 trg
+EXPLAIN (costs off) UPDATE t2 trg
 SET b = src.b1
 FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
 WHERE trg.a = src.a1
     AND trg.a = 2;
+
+UPDATE t2 trg
+SET b = src.b1
+FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
+WHERE trg.a = src.a1
+    AND trg.a = 2
+RETURNING *;
 
 RESET enable_hashjoin;
 RESET enable_nestloop;
@@ -258,14 +272,14 @@ DROP TABLE t2;
 
 -- Explicit Redistribute Motion should be elided for every partition that does
 -- not have any motions above the scan on the table/partition we are going to
--- update.
+-- update. (test case not applicable to ORCA)
 CREATE TABLE t1 (a int, b int, c int) DISTRIBUTED BY (b)
     PARTITION BY RANGE(b) (start (1) end(5) every(1));
 
 CREATE TABLE t2 (a int, b int, c int) DISTRIBUTED BY (a);
 
-INSERT INTO t1 SELECT i * 2, i, i * 3 FROM generate_series(1,4) i;
-INSERT INTO t2 SELECT i, i * 2, i * 3 FROM generate_series(1,4) i;
+INSERT INTO t1 SELECT i * 2, i, i * 3 FROM generate_series(1, 4) i;
+INSERT INTO t2 SELECT i, i * 2, i * 3 FROM generate_series(1, 4) i;
 
 -- These partitions will need to have Explicit Redistribute above them.
 TRUNCATE t1_1_prt_1;
@@ -276,6 +290,9 @@ ANALYZE t1_1_prt_3;
 EXPLAIN (costs off)
     UPDATE t1 SET c = t2.b FROM t2;
 
+UPDATE t1 SET c = t2.b FROM t2
+RETURNING *;
+
 DROP TABLE t1;
 DROP TABLE t2;
 
@@ -283,7 +300,7 @@ DROP TABLE t2;
 -- beneath the ModifyTable. (test case not applicable to ORCA)
 CREATE TABLE t1 (a int) DISTRIBUTED BY (a);
 
-INSERT INTO t1 SELECT i FROM generate_series(1,4) i;
+INSERT INTO t1 SELECT i FROM generate_series(1, 4) i;
 
 -- "USING pg_class" forces a Gather Motion.
 EXPLAIN (costs off)
@@ -291,7 +308,8 @@ DELETE FROM t1
 USING pg_class;
 
 DELETE FROM t1
-USING pg_class;
+USING pg_class
+RETURNING t1.*;
 
 DROP TABLE t1;
 
