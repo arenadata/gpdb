@@ -900,7 +900,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 							 * subtree anymore.
 							 */
 							context->mt.isChecking = false;
-							break;
 						}
 					}
 					break;
