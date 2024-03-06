@@ -3105,10 +3105,7 @@ is_query_contain_limit_groupby(Query *parse, List *lateral_vars, int levelsup)
 												   levelsup + 1))
 					return true;
 				break;
-			case RTE_RELATION:
-			case RTE_JOIN:
-			case RTE_CTE:
-			case RTE_VOID:
+			default:
 				break;
 		}
 	}
