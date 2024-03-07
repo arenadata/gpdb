@@ -148,9 +148,8 @@ CQueryMutators::AddMissingGroupClauseMutator(
 	if (IsA(node, GroupingClause))
 	{
 		GroupingClause *original_grouping_clause = (GroupingClause *) node;
-		GroupingClause *new_grouping_clause = makeNode(GroupingClause);
+		GroupingClause *new_grouping_clause = MakeNode(GroupingClause);
 		new_grouping_clause->groupType = original_grouping_clause->groupType;
-		new_grouping_clause->groupsets = NIL;
 		ListCell *l;
 		ForEach(l, original_grouping_clause->groupsets)
 		{
@@ -292,11 +291,14 @@ CQueryMutators::GetVarsWithoutTleWalker(
 	// resjunk targetlist entries for such vars to m_tlist_addition
 	if (IsA(node, Var))
 	{
-		BOOL found = false;
-		Var *var = (Var *) gpdb::CopyObject(node);
+		Var *var = (Var *) node;
 		if (var->varlevelsup == context->m_current_query_level)
 		{
+			BOOL found = false;
+
+			var = (Var *) gpdb::CopyObject(node);
 			var->varlevelsup = 0;
+
 			ListCell *lc_tle;
 			ForEach(lc_tle, context->m_query->targetList)
 			{
@@ -320,10 +322,6 @@ CQueryMutators::GetVarsWithoutTleWalker(
 				context->m_tlist_addition =
 					gpdb::LAppend(context->m_tlist_addition, newTargetEntry);
 			}
-		}
-		else
-		{
-			gpdb::GPDBFree(var);
 		}
 
 		return false;
@@ -475,7 +473,7 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 			gpdb::GetSortGroupOperators(exprType(expr), true, true, false,
 										&sortop, &eqop, NULL, &hashable);
 
-			gc = makeNode(SortGroupClause);
+			gc = MakeNode(SortGroupClause);
 			gc->tleSortGroupRef =
 				gpdb::AssignSortGroupRef(target_entry, query->targetList);
 			gc->eqop = eqop;
