@@ -740,7 +740,22 @@ void GetConstraintRelationOids(Oid constraint_oid, Oid *conrelid,
 							   Oid *confrelid);
 
 // find the columns of the relations to which a constraint refers
-List *GetConstraintRelationColumns(Oid constraint_oid);
+Bitmapset *GetConstraintRelationColumns(Oid constraint_oid);
+
+// create a copy of Bitmapset
+Bitmapset *BmsCopy(Bitmapset *a);
+
+// free a Bitmapset
+void BmsFree(Bitmapset *a);
+
+// check if x is a member of a Bitmapset
+bool BmsIsMember(int x, const Bitmapset *a);
+
+// check if Bitmapset is empty
+bool BmsIsEmpty(const Bitmapset *a);
+
+// remove a specified member from a Bitmapset
+Bitmapset *BmsDelMember(Bitmapset *a, int x);
 
 }  //namespace gpdb
 

@@ -2845,7 +2845,7 @@ gpdb::GetConstraintRelationOids(Oid constraint_oid, Oid *conrelid,
 	GP_WRAP_END;
 }
 
-List *
+Bitmapset *
 gpdb::GetConstraintRelationColumns(Oid constraint_oid)
 {
 	GP_WRAP_START;
@@ -2853,7 +2853,61 @@ gpdb::GetConstraintRelationColumns(Oid constraint_oid)
 		return get_constraint_relation_columns(constraint_oid);
 	}
 	GP_WRAP_END;
-	return NIL;
+	return NULL;
+}
+
+Bitmapset *
+gpdb::BmsCopy(Bitmapset *a)
+{
+	GP_WRAP_START;
+	{
+		return bms_copy(a);
+	}
+	GP_WRAP_END;
+	return NULL;
+}
+
+void
+gpdb::BmsFree(Bitmapset *a)
+{
+	GP_WRAP_START;
+	{
+		bms_free(a);
+	}
+	GP_WRAP_END;
+}
+
+bool
+gpdb::BmsIsMember(int x, const Bitmapset *a)
+{
+	GP_WRAP_START;
+	{
+		return bms_is_member(x, a);
+	}
+	GP_WRAP_END;
+	return false;
+}
+
+bool
+gpdb::BmsIsEmpty(const Bitmapset *a)
+{
+	GP_WRAP_START;
+	{
+		return bms_is_empty(a);
+	}
+	GP_WRAP_END;
+	return true;
+}
+
+Bitmapset *
+gpdb::BmsDelMember(Bitmapset *a, int x)
+{
+	GP_WRAP_START;
+	{
+		return bms_del_member(a, x);
+	}
+	GP_WRAP_END;
+	return NULL;
 }
 
 // EOF

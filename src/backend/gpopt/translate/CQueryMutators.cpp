@@ -48,60 +48,47 @@ using namespace gpmd;
 BOOL
 CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 											   List *grouping_list,
-											   List *conkeys, Oid conrelid)
+											   Bitmapset *conkeys, Oid conrelid)
 {
 	BOOL result = false;
-	ULONG found_col_cnt = 0;
-	ListCell *lc_conkey;
+	Bitmapset *conkeys_copy = gpdb::BmsCopy(conkeys);
+	ListCell *lgc;
 
-	// go over every conkey of constraint
-	ForEach(lc_conkey, conkeys)
+	// Search for conkey in grouping list.
+	// Once a conkey is found, remove it from a copy of Bitmapset conkeys.
+	// If conkeys_copy set is empty at the end, then grouping_list contains
+	// full set of columns, that define the primary key.
+	ForEach(lgc, grouping_list)
 	{
-		AttrNumber attnum = lfirst_int(lc_conkey);
-		BOOL found_col = false;
-		ListCell *lgc;
+		Node *grpcl = (Node *) lfirst(lgc);
 
-		// search for conkey in grouping list
-		ForEach(lgc, grouping_list)
+		if (NULL == grpcl || !IsA(grpcl, SortGroupClause))
 		{
-			Node *grpcl = (Node *) lfirst(lgc);
-
-			if (NULL == grpcl || !IsA(grpcl, SortGroupClause))
-			{
-				continue;
-			}
-
-			SortGroupClause *sgc = (SortGroupClause *) grpcl;
-			Node *expr = gpdb::GetSortGroupClauseExpr(sgc, query->targetList);
-
-			GPOS_ASSERT(IsA(expr, Var));
-
-			Var *var = (Var *) expr;
-
-			RangeTblEntry *rte =
-				(RangeTblEntry *) gpdb::ListNth(query->rtable, var->varno - 1);
-
-			GPOS_ASSERT(NULL != rte);
-
-			if (var->varattno == attnum && var->varlevelsup == 0 &&
-				rte->relid == conrelid)
-			{
-				found_col = true;
-				found_col_cnt++;
-				break;
-			}
+			continue;
 		}
-		if (!found_col)
+
+		SortGroupClause *sgc = (SortGroupClause *) grpcl;
+		Node *expr = gpdb::GetSortGroupClauseExpr(sgc, query->targetList);
+
+		GPOS_ASSERT(IsA(expr, Var));
+
+		Var *var = (Var *) expr;
+
+		RangeTblEntry *rte =
+			(RangeTblEntry *) gpdb::ListNth(query->rtable, var->varno - 1);
+
+		GPOS_ASSERT(NULL != rte);
+
+		if (gpdb::BmsIsMember(var->varattno, conkeys_copy) &&
+			var->varlevelsup == 0 && rte->relid == conrelid)
 		{
-			break;
+			conkeys_copy = gpdb::BmsDelMember(conkeys_copy, var->varattno);
 		}
 	}
 
-	// check that all conkeys were found
-	if (gpdb::ListLength(conkeys) == found_col_cnt)
-	{
-		result = true;
-	}
+	result = gpdb::BmsIsEmpty(conkeys_copy);
+
+	gpdb::BmsFree(conkeys_copy);
 
 	return result;
 }
@@ -492,7 +479,7 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 			gpdb::ListFreeDeep(old_group_clause);
 			gpdb::GPDBFree(gc);
 		}
-		gpdb::ListFree(ctx_fix_dependent_targets.m_conkeys);
+		gpdb::BmsFree(ctx_fix_dependent_targets.m_conkeys);
 	}
 	// remove constraintDeps
 	gpdb::ListFree(query->constraintDeps);
