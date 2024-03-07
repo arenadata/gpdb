@@ -3029,13 +3029,13 @@ When setting `temp_tablespaces` interactively, avoid specifying a nonexistent ta
 
 The default value is an empty string, which results in all temporary objects being created in the default tablespace of the current database.
 
-See also [temp\_file\_tablespaces](#temp_file_tablespaces), [default\_tablespace](#default_tablespace).
+See also [temp\_spill\_files\_tablespaces](#temp_spill_files_tablespaces), [default\_tablespace](#default_tablespace).
 
 |Value Range|Default|Set Classifications|
 |-----------|-------|-------------------|
 |one or more tablespace names|unset|master, session, reload|
 
-## <a id="temp_file_tablespaces"></a>temp\_file\_tablespaces
+## <a id="temp_spill_files_tablespaces"></a>temp\_spill\_files\_tablespaces
 
 Specifies tablespaces in which to create temporary files for purposes such as large data set sorting. This setting takes precedence over `temp_tablespaces` for temporary files.
 

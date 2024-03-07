@@ -1029,7 +1029,7 @@
               </p><p>
                 <xref href="guc-list.xml#statement_timeout" type="section">statement_timeout</xref>
               </p><p><xref href="guc-list.xml#topic_k52_fqm_f3b"/>
-              </p><p><xref href="guc-list.xml#temp_file_tablespaces"/></xref>
+              </p><p><xref href="guc-list.xml#temp_spill_files_tablespaces"/></xref>
               </p>
               <p>
                 <xref href="guc-list.xml#vacuum_freeze_min_age" type="section"
