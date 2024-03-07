@@ -870,6 +870,12 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		 */
 		else
 		{
+			/*
+			 * These are scan nodes that can be used to perform parallel
+			 * UPDATE/DELETE on the relation they scan, possibly with motions
+			 * above them. This list needs to be updated for other nodes if they
+			 * are changed to support DML execution on segments.
+			 */
 			switch (nodeTag(node))
 			{
 				case T_SeqScan:
