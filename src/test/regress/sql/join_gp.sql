@@ -764,8 +764,8 @@ drop table t2;
 create table t1 (a int, b text, c int) distributed by (a);
 insert into t1 values (1, '', 1);
 
--- Test lateral join with sub-query having grouping at the same level 
--- as the lateral var
+-- Test lateral join with sub-query having grouping/aggregate/limit
+-- at the same nesting level as the lateral var (with nesting > 1)
 explain (costs off) select from (values ('')) tmp(b) join lateral
 (
   select avg(avg_c) from
@@ -782,38 +782,36 @@ select from (values ('')) tmp(b) join lateral
   ) s2
 ) s1 on true;
 
--- Test lateral joins with sub-query having grouping at different level
--- comparing with the lateral var
 explain (costs off) select from (values ('')) tmp(b) join lateral
 (
-  select avg(avg_c) + length(tmp.b) from
+  select avg(cnt) from
   (
-    select avg(c) as avg_c from t1 where t1.b = '' group by b
+    select count(*) as cnt from t1 where t1.b = tmp.b
   ) s2
 ) s1 on true;
 
 select from (values ('')) tmp(b) join lateral
 (
-  select avg(avg_c) + length(tmp.b) from
+  select avg(cnt) from
   (
-    select avg(c) as avg_c from t1 where t1.b = '' group by b
+    select count(*) as cnt from t1 where t1.b = tmp.b
   ) s2
 ) s1 on true;
 
 explain (costs off) select from (values ('')) tmp(b) join lateral
 (
-  select avg(c) from
+  select avg(avg_c) from
   (
-	select a, c from t1 where t1.b = tmp.b
-  ) s2 group by a
+	select c as avg_c from t1 where t1.b = tmp.b limit 1
+  ) s2
 ) s1 on true;
 
 select from (values ('')) tmp(b) join lateral
 (
-  select avg(c) from
+  select avg(avg_c) from
   (
-    select a, c from t1 where t1.b = tmp.b
-  ) s2 group by a
+	select c as avg_c from t1 where t1.b = tmp.b limit 1
+  ) s2
 ) s1 on true;
 
 drop table t1;

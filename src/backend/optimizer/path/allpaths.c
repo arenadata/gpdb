@@ -3069,7 +3069,8 @@ is_query_contain_limit_groupby(Query *parse, List *lateral_vars, int levelsup)
 		return false;
 
 	if (parse->limitCount || parse->limitOffset ||
-		parse->groupClause || parse->distinctClause)
+		parse->groupClause || parse->distinctClause ||
+		contain_aggs_of_level((Node *)parse->targetList, 0))
 	{
 		if (query_contains_lateral_vars(parse, lateral_vars, levelsup))
 			return true;
