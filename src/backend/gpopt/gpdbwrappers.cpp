@@ -2856,17 +2856,6 @@ gpdb::GetConstraintRelationColumns(Oid constraint_oid)
 	return NULL;
 }
 
-Bitmapset *
-gpdb::BmsCopy(Bitmapset *a)
-{
-	GP_WRAP_START;
-	{
-		return bms_copy(a);
-	}
-	GP_WRAP_END;
-	return NULL;
-}
-
 void
 gpdb::BmsFree(Bitmapset *a)
 {
@@ -2889,25 +2878,14 @@ gpdb::BmsIsMember(int x, const Bitmapset *a)
 }
 
 bool
-gpdb::BmsIsEmpty(const Bitmapset *a)
+gpdb::BmsIsSubset(const Bitmapset *a, const Bitmapset *b)
 {
 	GP_WRAP_START;
 	{
-		return bms_is_empty(a);
+		return bms_is_subset(a, b);
 	}
 	GP_WRAP_END;
-	return true;
-}
-
-Bitmapset *
-gpdb::BmsDelMember(Bitmapset *a, int x)
-{
-	GP_WRAP_START;
-	{
-		return bms_del_member(a, x);
-	}
-	GP_WRAP_END;
-	return NULL;
+	return false;
 }
 
 // EOF

@@ -51,13 +51,10 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 											   Bitmapset *conkeys, Oid conrelid)
 {
 	BOOL result = false;
-	Bitmapset *conkeys_copy = gpdb::BmsCopy(conkeys);
+	Bitmapset *grouping_set = NULL;
 	ListCell *lgc;
 
-	// Search for conkey in grouping list.
-	// Once a conkey is found, remove it from a copy of Bitmapset conkeys.
-	// If conkeys_copy set is empty at the end, then grouping_list contains
-	// full set of columns, that define the primary key.
+	// Check if conkeys set is a subset of grouping columns set.
 	ForEach(lgc, grouping_list)
 	{
 		Node *grpcl = (Node *) lfirst(lgc);
@@ -79,16 +76,16 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 
 		GPOS_ASSERT(NULL != rte);
 
-		if (gpdb::BmsIsMember(var->varattno, conkeys_copy) &&
+		if (gpdb::BmsIsMember(var->varattno, conkeys) &&
 			var->varlevelsup == 0 && rte->relid == conrelid)
 		{
-			conkeys_copy = gpdb::BmsDelMember(conkeys_copy, var->varattno);
+			grouping_set = gpdb::BmsAddMember(grouping_set, var->varattno);
 		}
 	}
 
-	result = gpdb::BmsIsEmpty(conkeys_copy);
+	result = gpdb::BmsIsSubset(conkeys, grouping_set);
 
-	gpdb::BmsFree(conkeys_copy);
+	gpdb::BmsFree(grouping_set);
 
 	return result;
 }
