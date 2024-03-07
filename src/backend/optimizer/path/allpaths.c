@@ -3046,13 +3046,15 @@ query_contains_lateral_vars(Query *parse, List *lateral_vars, int levelsup)
 		if (NULL == node || !IsA(node, Var))
 			continue;
 
-		Var		   *lateral_var = (Var *) copyObject(node);
+		Var		   *lateral_var = (Var *) node;
+		Index		varlevelsup_backup = lateral_var->varlevelsup;
 
 		lateral_var->varlevelsup = levelsup;
 
-		result = query_tree_walker(parse, query_contains_var_walker, (void *) lateral_var, 0);
+		result = query_tree_walker(parse, query_contains_var_walker,
+								   (void *) lateral_var, 0);
 
-		pfree(lateral_var);
+		lateral_var->varlevelsup = varlevelsup_backup;
 
 		if (result)
 			break;
@@ -3063,7 +3065,7 @@ query_contains_lateral_vars(Query *parse, List *lateral_vars, int levelsup)
 static bool
 is_query_contain_limit_groupby(Query *parse, List *lateral_vars, int levelsup)
 {
-	if (NULL == parse || NULL == lateral_vars)
+	if (NULL == parse || 0 == list_length(lateral_vars))
 		return false;
 
 	if (parse->limitCount || parse->limitOffset ||
@@ -3073,41 +3075,17 @@ is_query_contain_limit_groupby(Query *parse, List *lateral_vars, int levelsup)
 			return true;
 	}
 
-	if (parse->setOperations)
-	{
-		SetOperationStmt *sop_stmt = (SetOperationStmt *) (parse->setOperations);
-		RangeTblRef   *larg = (RangeTblRef *) sop_stmt->larg;
-		RangeTblRef   *rarg = (RangeTblRef *) sop_stmt->rarg;
-		RangeTblEntry *lrte = list_nth(parse->rtable, larg->rtindex-1);
-		RangeTblEntry *rrte = list_nth(parse->rtable, rarg->rtindex-1);
-
-		if ((lrte->rtekind == RTE_SUBQUERY &&
-			 is_query_contain_limit_groupby(lrte->subquery, lateral_vars, levelsup + 1)) ||
-			(rrte->rtekind == RTE_SUBQUERY &&
-			 is_query_contain_limit_groupby(rrte->subquery, lateral_vars, levelsup + 1)))
-			return true;
-	}
-
 	ListCell   *lc;
 
 	foreach(lc, parse->rtable)
 	{
-		RangeTblEntry *child_rte = (RangeTblEntry *) lfirst(lc);
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
-		switch (child_rte->rtekind)
-		{
-			case RTE_SUBQUERY:
-			case RTE_FUNCTION:
-			case RTE_TABLEFUNCTION:
-			case RTE_VALUES:
-				if (is_query_contain_limit_groupby(child_rte->subquery,
-												   lateral_vars,
-												   levelsup + 1))
-					return true;
-				break;
-			default:
-				break;
-		}
+		if (RTE_SUBQUERY == rte->rtekind &&
+			is_query_contain_limit_groupby(rte->subquery,
+										   lateral_vars,
+										   levelsup + 1))
+			return true;
 	}
 
 	return false;
