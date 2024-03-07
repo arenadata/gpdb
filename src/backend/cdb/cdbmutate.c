@@ -70,8 +70,7 @@ typedef struct ModifyTableMotionState
 	Bitmapset  *resultRtis; 			/* Indexes into rtable for relations to
 										 * be modified */
 	bool		needExplicitMotion;
-	int			nMotionsAbove;			/* Number of Gather, Redistribute and
-										 * Broadcast motions above the current
+	int			nMotionsAbove;			/* Number of motions above the current
 										 * node */
 	bool		isChecking;				/* True if we encountered ModifyTable
 										 * node with UPDATE/DELETE and we plan
@@ -811,10 +810,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	}
 
 	/*
-	 * For UPDATE/DELETE, we check if there's any Redistribute, Broadcast
-	 * or Gather Motions before scan in the same subtree for the table we're
-	 * going to modify. If we encounter the scan before any motions, then we can
-	 * elide unneccessary Explicit Redistribute Motion.
+	 * For UPDATE/DELETE, we check if there's any motions before scan in the
+	 * same subtree for the table we're going to modify. If we encounter the
+	 * scan before any motions, then we can elide unneccessary Explicit
+	 * Redistribute Motion.
 	 */
 	if (IsA(node, ModifyTable))
 	{
@@ -857,10 +856,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	if (context->mt.isChecking)
 	{
 
-		/*
-		 * Remember if we are descending into a Redistribute, Broadcast or
-		 * Gather Motion node.
-		 */
+		/* Remember if we are descending into a motion node. */
 		if (IsA(node, Motion))
 			context->mt.nMotionsAbove += 1;
 
