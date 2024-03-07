@@ -1244,7 +1244,7 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
  * a file, and another process reads it.
  *
  * NOTE: this always uses the session temp tablespace from
- * `temp_file_tablespaces` or `temp_tablespaces`, if first is not set.
+ * `temp_spill_files_tablespaces` or `temp_tablespaces`, if first is not set.
  * Otherwise picking randomly from list would be hard for the reader process to
  * find the file created by the writer process.
  */
@@ -2785,7 +2785,9 @@ GetNextTempFileTableSpace(void)
 	if (OidIsValid(tablespace))
 		return tablespace;
 
-	/* Fall back to temp_tablespaces if temp_file_tablespaces is not set. */
+	/*
+	 * Fall back to temp_tablespaces if temp_spill_files_tablespaces is not set.
+	 */
 	return GetNextTempTableSpace();
 }
 

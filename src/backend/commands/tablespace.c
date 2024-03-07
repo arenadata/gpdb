@@ -106,7 +106,7 @@
 /* GUC variables */
 char	   *default_tablespace = NULL;
 char	   *temp_tablespaces = NULL;
-char	   *temp_file_tablespaces = NULL;
+char	   *temp_spill_files_tablespaces = NULL;
 
 
 static void create_tablespace_directories(const char *location,
@@ -1650,7 +1650,7 @@ assign_temp_tablespaces(const char *newval, void *extra)
 
 /* assign_hook: do extra actions as needed */
 void
-assign_temp_file_tablespaces(const char *newval, void *extra)
+assign_temp_spill_files_tablespaces(const char *newval, void *extra)
 {
 	temp_tablespaces_extra *myextra = (temp_tablespaces_extra *) extra;
 
@@ -1754,7 +1754,8 @@ PrepareTempTablespacesImpl(char *gucstr, void (*setTablespacesFunc)(Oid *, int))
 
 /*
  * PrepareTempTablespaces -- prepare to use tablespaces set in temp_tablespaces
- * and temp_file_tablespaces.  No work if already done in current transaction.
+ * and temp_spill_files_tablespaces.  No work if already done in current
+ * transaction.
  */
 void
 PrepareTempTablespaces(void)
@@ -1763,7 +1764,7 @@ PrepareTempTablespaces(void)
 		PrepareTempTablespacesImpl(temp_tablespaces, SetTempTablespaces);
 
 	if (!TempFileTablespacesAreSet())
-		PrepareTempTablespacesImpl(temp_file_tablespaces, SetTempFileTablespaces);
+		PrepareTempTablespacesImpl(temp_spill_files_tablespaces, SetTempFileTablespaces);
 }
 
 /*
