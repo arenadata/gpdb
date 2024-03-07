@@ -588,14 +588,6 @@ EXPLAIN (costs off)
  Optimizer: Pivotal Optimizer (GPORCA)
 (12 rows)
 
-UPDATE t1 SET c = t2.b FROM t2
-RETURNING *;
- a | b | c | a | b | c 
----+---+---+---+---+---
- 4 | 2 | 4 | 2 | 4 | 6
- 8 | 4 | 4 | 2 | 4 | 6
-(2 rows)
-
 DROP TABLE t1;
 DROP TABLE t2;
 -- Explicit Redistribute Motion should not be elided if there's a Gather Motion

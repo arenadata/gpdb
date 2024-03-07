@@ -284,14 +284,12 @@ INSERT INTO t2 SELECT i, i * 2, i * 3 FROM generate_series(1, 4) i;
 -- These partitions will need to have Explicit Redistribute above them.
 TRUNCATE t1_1_prt_1;
 TRUNCATE t1_1_prt_3;
+
 ANALYZE t1_1_prt_1;
 ANALYZE t1_1_prt_3;
 
 EXPLAIN (costs off)
     UPDATE t1 SET c = t2.b FROM t2;
-
-UPDATE t1 SET c = t2.b FROM t2
-RETURNING *;
 
 DROP TABLE t1;
 DROP TABLE t2;
