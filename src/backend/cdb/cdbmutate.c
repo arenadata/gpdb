@@ -1132,11 +1132,9 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
+	/* We're going out of this motion node. */
 	if (context->mt.isChecking && IsA(node, Motion))
-	{
-		/* We're going out of this motion node. */
 		context->mt.nMotionsAbove -= 1;
-	}
 
 	return newnode;
 }								/* apply_motion_mutator */
