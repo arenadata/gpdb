@@ -844,7 +844,7 @@ get_constraint_relation_oids(Oid constraint_oid, Oid *conrelid, Oid *confrelid)
 Bitmapset *
 get_constraint_relation_columns(Oid constraint_oid)
 {
-	Bitmapset	*conkeys_set = NULL;
+	Bitmapset  *conkeys_set = NULL;
 	HeapTuple	tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
 
 	if (HeapTupleIsValid(tp))
