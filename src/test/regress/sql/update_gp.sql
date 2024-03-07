@@ -132,19 +132,38 @@ CREATE TABLE t2 (i int) DISTRIBUTED BY (i);
 CREATE TABLE t_strewn (i int) DISTRIBUTED RANDOMLY;
 CREATE TABLE t_strewn2 (i int) DISTRIBUTED RANDOMLY;
 
+INSERT INTO t1 SELECT
+  generate_series(1, 4) * 3, generate_series(1, 4);
+INSERT INTO t2 SELECT generate_series(1, 4) * 3;
+INSERT INTO t_strewn SELECT generate_series(1, 16);
+INSERT INTO t_strewn2 SELECT generate_series(2, 17);
+
 EXPLAIN (costs off)
 UPDATE t1 SET j = t_strewn.i FROM t_strewn WHERE t_strewn.i = t1.i;
+
+UPDATE t1 SET j = t_strewn.i FROM t_strewn WHERE t_strewn.i = t1.i
+RETURNING *;
 
 EXPLAIN (costs off)
 WITH CTE AS (DELETE FROM t1 RETURNING *)
 SELECT count(*) AS a FROM t_strewn JOIN cte USING (i);
 
-EXPLAIN (costs off, verbose)
+WITH CTE AS (DELETE FROM t1 RETURNING *)
+SELECT count(*) AS a FROM t_strewn JOIN cte USING (i);
+
+EXPLAIN (costs off)
 DELETE FROM t_strewn WHERE t_strewn.i = (SELECT t2.i FROM t2 WHERE t_strewn.i = t2.i);
+
+DELETE FROM t_strewn WHERE t_strewn.i = (SELECT t2.i FROM t2 WHERE t_strewn.i = t2.i)
+RETURNING *;
 
 EXPLAIN (costs off)
 UPDATE t_strewn SET i = t_strewn2.i
 FROM t_strewn2 WHERE t_strewn.i = t_strewn2.i;
+
+UPDATE t_strewn SET i = t_strewn2.i
+FROM t_strewn2 WHERE t_strewn.i = t_strewn2.i
+RETURNING *;
 
 DROP TABLE t1;
 DROP TABLE t2;
@@ -156,10 +175,23 @@ DROP TABLE t_strewn2;
 CREATE TABLE t1 (a int, b int) DISTRIBUTED RANDOMLY;
 CREATE TABLE t2 (a int, b int) DISTRIBUTED RANDOMLY;
 
+INSERT INTO t1 SELECT
+  generate_series(1, 4) * 3, generate_series(1, 4);
+INSERT INTO t2 SELECT
+  generate_series(1, 32), generate_series(1, 32) * 3;
+
+ANALYZE t1;
+ANALYZE t2;
+
 EXPLAIN (costs off)
 WITH cte AS (
     SELECT count(*) AS c FROM t1, t2 WHERE t1.b = t2.b
 ) DELETE FROM t2 WHERE a = (SELECT * FROM cte);
+
+WITH cte AS (
+    SELECT count(*) AS c FROM t1, t2 WHERE t1.b = t2.b
+) DELETE FROM t2 WHERE a = (SELECT * FROM cte)
+RETURNING *;
 
 DROP TABLE t1;
 DROP TABLE t2;
@@ -184,15 +216,10 @@ CREATE TABLE foochild (fc int) INHERITS (foo);
 INSERT INTO foochild
   VALUES(123, 'child', 999, -123);
 
-EXPLAIN (costs off, verbose)
+EXPLAIN (costs off)
 DELETE FROM foo
   USING i
   WHERE foo.f1 = i.j;
-
-DELETE FROM foo
-  USING i
-  WHERE foo.f1 = i.j
-  RETURNING *;
 
 DROP TABLE i;
 DROP TABLE foochild;
@@ -215,11 +242,8 @@ INSERT INTO t2 SELECT
 INSERT INTO t2 VALUES
   (generate_series(7, 11), NULL);
 
-EXPLAIN (costs off, verbose)
+EXPLAIN (costs off)
 DELETE FROM t2 USING t1 WHERE t1.a = t2.a;
-
-DELETE FROM t2 USING t1 WHERE t1.a = t2.a
-RETURNING *;
 
 DROP TABLE t1;
 DROP TABLE t2;
@@ -239,13 +263,6 @@ FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USIN
 WHERE trg.a = src.a1
   AND trg.a = 2;
 
-UPDATE t2 trg
-SET b = src.b1
-FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
-WHERE trg.a = src.a1
-  AND trg.a = 2
-RETURNING *;
-
 -- Use Nested Loop to change left tree with the right tree, to swap the extra
 -- scan we don't indend to detect with the real one. 
 SET enable_hashjoin = off;
@@ -255,14 +272,7 @@ EXPLAIN (costs off) UPDATE t2 trg
 SET b = src.b1
 FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
 WHERE trg.a = src.a1
-    AND trg.a = 2;
-
-UPDATE t2 trg
-SET b = src.b1
-FROM (SELECT t1.a AS a1, t1.b AS b1, t2.a AS a2, t2.b AS b2 FROM t1 JOIN t2 USING (b)) src
-WHERE trg.a = src.a1
-    AND trg.a = 2
-RETURNING *;
+  AND trg.a = 2;
 
 RESET enable_hashjoin;
 RESET enable_nestloop;
@@ -289,7 +299,7 @@ ANALYZE t1_1_prt_1;
 ANALYZE t1_1_prt_3;
 
 EXPLAIN (costs off)
-    UPDATE t1 SET c = t2.b FROM t2;
+  UPDATE t1 SET c = t2.b FROM t2;
 
 DROP TABLE t1;
 DROP TABLE t2;
@@ -304,10 +314,6 @@ INSERT INTO t1 SELECT i FROM generate_series(1, 4) i;
 EXPLAIN (costs off)
 DELETE FROM t1
 USING pg_class;
-
-DELETE FROM t1
-USING pg_class
-RETURNING t1.*;
 
 DROP TABLE t1;
 
