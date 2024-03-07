@@ -874,7 +874,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			{
 				case T_SeqScan:
 				case T_DynamicSeqScan:
-				case T_ExternalScan:
 				case T_IndexScan:
 				case T_DynamicIndexScan:
 				case T_IndexOnlyScan:
@@ -883,7 +882,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_BitmapHeapScan:
 				case T_DynamicBitmapHeapScan:
 				case T_TidScan:
-				case T_ForeignScan:
 					{
 						Scan	   *scan = (Scan *) node;
 
