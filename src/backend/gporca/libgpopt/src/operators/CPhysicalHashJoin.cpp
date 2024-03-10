@@ -373,8 +373,22 @@ CPhysicalHashJoin::PdshashedMatching(
 			}
 		}
 	}
+	// nulls colocated for inner hash joins, but not colocated in outer hash joins
+	BOOL fNullsColocated = true;
+
+	if (!m_is_null_aware &&
+		(COperator::EopPhysicalLeftOuterHashJoin == Eopid() ||
+		 COperator::EopPhysicalRightOuterHashJoin == Eopid()))
+	{
+		fNullsColocated = false;
+	}
+
 	// check if we failed to compute required distribution
-	if (pdrgpexpr->Size() != ulDlvrdSize)
+	// We could fail to find enough key expressions matching the source
+	// distribution, or we need the matching distribution have colocated nulls
+	// but input distribution's nulls are not colocated.
+	if (pdrgpexpr->Size() != ulDlvrdSize ||
+		(fNullsColocated && fNullsColocated != pdshashed->FNullsColocated()))
 	{
 		pdrgpexpr->Release();
 		if (NULL != pdshashed->PdshashedEquiv())
@@ -385,22 +399,13 @@ CPhysicalHashJoin::PdshashedMatching(
 									 ulSourceChild);
 		}
 	}
-	if (pdrgpexpr->Size() != ulDlvrdSize)
+	if (pdrgpexpr->Size() != ulDlvrdSize ||
+		(fNullsColocated && fNullsColocated != pdshashed->FNullsColocated()))
 	{
 		// it should never happen, but instead of creating wrong spec, raise an exception
 		GPOS_RAISE(
 			CException::ExmaInvalid, CException::ExmiInvalid,
 			GPOS_WSZ_LIT("Unable to create matching hashed distribution."));
-	}
-
-	// nulls colocated for inner hash joins, but not colocated in outer hash joins
-	BOOL fNullsColocated = true;
-
-	if (!m_is_null_aware &&
-		(COperator::EopPhysicalLeftOuterHashJoin == Eopid() ||
-		 COperator::EopPhysicalRightOuterHashJoin == Eopid()))
-	{
-		fNullsColocated = false;
 	}
 
 	return GPOS_NEW(mp)
