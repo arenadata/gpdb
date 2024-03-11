@@ -523,8 +523,12 @@ CREATE TABLESPACE temp_files2 LOCATION '@testtablespace@_temp_files2';
 CREATE TABLESPACE temp_files3 LOCATION '@testtablespace@_temp_files3';
 RESET temp_tablespaces;
 RESET temp_spill_files_tablespaces;
-SET optimizer = off;
-SET statement_mem = '2MB';
+CREATE OR REPLACE FUNCTION gp_tablespace_set_mem() RETURNS void AS $$
+BEGIN
+    SET optimizer = off;
+    SET statement_mem = '2MB';
+END;
+$$ LANGUAGE plpgsql;
 -- Multiple tablespaces in 'temp_spill_files_tablespaces' and 'g_temp_spill_files_tablespaces'
 -- need to be specified in increasing order.
 CREATE OR REPLACE FUNCTION gp_tablespace_set_gucs(
@@ -677,6 +681,7 @@ SELECT gp_temptablespace_path((SELECT oid FROM pg_tablespace WHERE spcname = 'te
 -- end_ignore
 --
 -- Global GUC value tests:
+-- FIXME: We shouldn't be forced to use \c to update GUCs on segments.
 --
 -- Both files and the table should be in the default tablespace.
 -- start_ignore
@@ -862,6 +867,19 @@ SELECT * FROM gp_tablespace_file_report(4);
  default       | f                | f                    | t
 (3 rows)
 
+-- Files should be in the default tablespace, table should be in temp_tables.
+SET temp_tablespaces = 'temp_tables';
+SET temp_spill_files_tablespaces = '';
+SELECT * FROM gp_tablespace_file_report(1);
+ temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
+---------------+------------------+----------------------+-----------------------
+ temp_tables   | t                | f                    | f
+ temp_tables   | t                | f                    | f
+ temp_tables   | t                | f                    | f
+(3 rows)
+
+RESET temp_tablespaces;
+RESET temp_spill_files_tablespaces;
 DROP TABLE tts_foo;
 DROP TABLE tts_bar;
 DROP TABLE tts_jazz;
