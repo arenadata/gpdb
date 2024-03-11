@@ -260,20 +260,13 @@ static AllocateDesc *allocatedDescs = NULL;
 static long tempFileCounter = 0;
 
 /*
- * Array of OIDs of temp tablespaces.  When numTempTableSpaces is -1,
- * this has not been set in the current transaction.
+ * Structures containing tablespace info from temp_tablespaces and
+ * temp_spill_files_tablespaces.
+ *
+ * When count is -1, this has not been set in the current transaction.
  */
-static Oid *tempTableSpaces = NULL;
-static int	numTempTableSpaces = -1;
-static int	nextTempTableSpace = 0;
-
-/*
- * Array of OIDs of temp file tablespaces.  When fileNumTempTableSpaces is -1,
- * this has not been set in the current transaction.
- */
-static Oid *tempFileTableSpaces = NULL;
-static int	numTempFileTableSpaces = -1;
-static int	nextTempFileTableSpace = 0;
+static BackendTempTableSpaces tempTableSpaces = { NULL, -1, 0 };
+static BackendTempTableSpaces tempSpillFilesTableSpaces = { NULL, -1, 0 };
 
 /*--------------------
  *
@@ -2620,6 +2613,28 @@ closeAllVfds(void)
 	}
 }
 
+static void
+set_tablespaces(Oid *tableSpaces, int numSpaces, BackendTempTableSpaces *tableSpaceVar)
+{
+	AssertImply(tableSpaces == NULL, numSpaces == -1 || numSpaces == 0);
+	AssertImply(tableSpaces != NULL, numSpaces >= 0);
+
+	tableSpaceVar->tempTableSpaces = tableSpaces;
+	tableSpaceVar->numTempTableSpaces = numSpaces;
+
+	/*
+	 * Select a random starting point in the list.  This is to minimize
+	 * conflicts between backends that are most likely sharing the same list
+	 * of temp tablespaces.  Note that if we create multiple temp files in the
+	 * same transaction, we'll advance circularly through the list --- this
+	 * ensures that large temporary sort files are nicely spread across all
+	 * available tablespaces.
+	 */
+	if (numSpaces > 1)
+		tableSpaceVar->nextTempTableSpace = random() % numSpaces;
+	else
+		tableSpaceVar->nextTempTableSpace = 0;
+}
 
 /*
  * SetTempTablespaces
@@ -2633,31 +2648,14 @@ closeAllVfds(void)
 void
 SetTempTablespaces(Oid *tableSpaces, int numSpaces)
 {
-	AssertImply(tableSpaces == NULL, numSpaces == -1 || numSpaces == 0);
-	AssertImply(tableSpaces != NULL, numSpaces >= 0);
-
-	tempTableSpaces = tableSpaces;
-	numTempTableSpaces = numSpaces;
-
-	/*
-	 * Select a random starting point in the list.  This is to minimize
-	 * conflicts between backends that are most likely sharing the same list
-	 * of temp tablespaces.  Note that if we create multiple temp files in the
-	 * same transaction, we'll advance circularly through the list --- this
-	 * ensures that large temporary sort files are nicely spread across all
-	 * available tablespaces.
-	 */
-	if (numSpaces > 1)
-		nextTempTableSpace = random() % numSpaces;
-	else
-		nextTempTableSpace = 0;
+	set_tablespaces(tableSpaces, numSpaces, &tempTableSpaces);
 }
 
 /*
  * SetTempFileTablespaces
  *
  * Define a list (actually an array) of OIDs of tablespaces to use for
- * temporary files.  This list will be used until end of transaction,
+ * temporary files and tables.  This list will be used until end of transaction,
  * unless this function is called again before then.  It is caller's
  * responsibility that the passed-in array has adequate lifespan (typically
  * it'd be allocated in TopTransactionContext).
@@ -2665,24 +2663,7 @@ SetTempTablespaces(Oid *tableSpaces, int numSpaces)
 void
 SetTempFileTablespaces(Oid *tableSpaces, int numSpaces)
 {
-	AssertImply(tableSpaces == NULL, numSpaces == -1 || numSpaces == 0);
-	AssertImply(tableSpaces != NULL, numSpaces >= 0);
-
-	tempFileTableSpaces = tableSpaces;
-	numTempFileTableSpaces = numSpaces;
-
-	/*
-	 * Select a random starting point in the list.  This is to minimize
-	 * conflicts between backends that are most likely sharing the same list
-	 * of temp tablespaces.  Note that if we create multiple temp files in the
-	 * same transaction, we'll advance circularly through the list --- this
-	 * ensures that large temporary sort files are nicely spread across all
-	 * available tablespaces.
-	 */
-	if (numSpaces > 1)
-		nextTempFileTableSpace = random() % numSpaces;
-	else
-		nextTempFileTableSpace = 0;
+	set_tablespaces(tableSpaces, numSpaces, &tempSpillFilesTableSpaces);
 }
 
 /*
@@ -2695,7 +2676,7 @@ SetTempFileTablespaces(Oid *tableSpaces, int numSpaces)
 bool
 TempTablespacesAreSet(void)
 {
-	return (numTempTableSpaces >= 0);
+	return (tempTableSpaces.numTempTableSpaces >= 0);
 }
 
 /*
@@ -2708,7 +2689,23 @@ TempTablespacesAreSet(void)
 bool
 TempFileTablespacesAreSet(void)
 {
-	return (numTempFileTableSpaces >= 0);
+	return (tempSpillFilesTableSpaces.numTempTableSpaces >= 0);
+}
+
+static Oid
+get_session_temp_tablespace(BackendTempTableSpaces *tableSpaceVar)
+{
+	if (tableSpaceVar->numTempTableSpaces <= 0)
+		return InvalidOid;
+
+	if (gp_session_id >= 0)
+		return tableSpaceVar->tempTableSpaces[gp_session_id % tableSpaceVar->numTempTableSpaces];
+
+	/* If this session is not MPP, uses the implementation from upstream */
+	if (++tableSpaceVar->nextTempTableSpace >= tableSpaceVar->numTempTableSpaces)
+		tableSpaceVar->nextTempTableSpace = 0;
+
+	return tableSpaceVar->tempTableSpaces[tableSpaceVar->nextTempTableSpace];
 }
 
 /*
@@ -2723,16 +2720,7 @@ TempFileTablespacesAreSet(void)
 static inline Oid
 GetSessionTempTableSpace(void)
 {
-	if (numTempTableSpaces <= 0)
-		return InvalidOid;
-
-	if (gp_session_id >= 0)
-		return tempTableSpaces[gp_session_id % numTempTableSpaces];
-
-	/* If this session is not MPP, uses the implementation from upstream */
-	if (++nextTempTableSpace >= numTempTableSpaces)
-		nextTempTableSpace = 0;
-	return tempTableSpaces[nextTempTableSpace];
+	return get_session_temp_tablespace(&tempTableSpaces);
 }
 
 /*
@@ -2747,16 +2735,7 @@ GetSessionTempTableSpace(void)
 static inline Oid
 GetSessionTempFileTableSpace(void)
 {
-	if (numTempFileTableSpaces <= 0)
-		return InvalidOid;
-
-	if (gp_session_id >= 0)
-		return tempFileTableSpaces[gp_session_id % numTempFileTableSpaces];
-
-	/* If this session is not MPP, uses the implementation from upstream */
-	if (++nextTempFileTableSpace >= numTempFileTableSpaces)
-		nextTempFileTableSpace = 0;
-	return tempFileTableSpaces[nextTempFileTableSpace];
+	return get_session_temp_tablespace(&tempSpillFilesTableSpaces);
 }
 
 /*
@@ -2782,7 +2761,12 @@ GetNextTempFileTableSpace(void)
 {
 	Oid		tablespace = GetSessionTempFileTableSpace();
 
-	if (OidIsValid(tablespace))
+	/*
+	 * We may retrieve an invalid Oid, and if count is > 0, we got an empty
+	 * string. In that case, we shouln't fall back to temp_tablespaces, but use
+	 * the default tablespace.
+	 */
+	if (OidIsValid(tablespace) || tempSpillFilesTableSpaces.numTempTableSpaces > 0)
 		return tablespace;
 
 	/*
@@ -2827,14 +2811,19 @@ AtEOSubXact_Files(bool isCommit, SubTransactionId mySubid,
  * VFDs are closed, which also causes the underlying files to be deleted
  * (although they should've been closed already by the ResourceOwner
  * cleanup). Furthermore, all "allocated" stdio files are closed. We also
- * forget any transaction-local temp tablespace list.
+ * forget any transaction-local temp_tablespace and temp_spill_files_tablespaces
+ * lists.
  */
 void
 AtEOXact_Files(void)
 {
 	CleanupTempFiles(false);
-	tempTableSpaces = NULL;
-	numTempTableSpaces = -1;
+
+	tempTableSpaces.tempTableSpaces = NULL;
+	tempTableSpaces.numTempTableSpaces = -1;
+
+	tempSpillFilesTableSpaces.tempTableSpaces = NULL;
+	tempSpillFilesTableSpaces.numTempTableSpaces = -1;
 }
 
 /*
