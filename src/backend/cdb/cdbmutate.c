@@ -1128,12 +1128,14 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
-	/* We're going out of this motion node. */
-	if (context->mt.isChecking && IsA(node, Motion))
-		context->mt.nMotionsAbove -= 1;
-
-	if (context->mt.isChecking && IsA(node, ModifyTable))
-		context->mt.isChecking = false;
+	if (context->mt.isChecking)
+	{
+		/* We're going out of this motion node. */
+		if (IsA(node, Motion))
+			context->mt.nMotionsAbove -= 1;
+		else if (IsA(node, ModifyTable))
+			context->mt.isChecking = false;
+	}
 
 	return newnode;
 }								/* apply_motion_mutator */
