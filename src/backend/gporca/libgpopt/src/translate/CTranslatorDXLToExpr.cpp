@@ -574,8 +574,13 @@ CTranslatorDXLToExpr::PexprLogicalGet(const CDXLNode *dxlnode)
 
 	CTableDescriptor *ptabdesc = Ptabdesc(table_descr);
 
+	const gpmd::CMDName *ptabalias = table_descr->MdName();
+	if (NULL != table_descr->MdAlias()) {
+		ptabalias = table_descr->MdAlias();
+	}
+
 	CWStringConst strAlias(m_mp,
-						   table_descr->MdName()->GetMDName()->GetBuffer());
+				ptabalias->GetMDName()->GetBuffer());
 
 	// create a logical get or dynamic get operator
 	CName *pname = GPOS_NEW(m_mp) CName(m_mp, CName(&strAlias));

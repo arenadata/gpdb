@@ -1,6 +1,12 @@
 create schema gpexplain;
 set search_path = gpexplain;
 
+-- Ignore LOG entries with timestamp.
+-- start_matchignore
+-- m/^LOG:  \d{4}-\d{2}-\d{2}.*/
+-- end_matchignore
+
+
 -- Helper function, to return the EXPLAIN output of a query as a normal
 -- result set, so that you can manipulate it further.
 create or replace function get_explain_output(explain_query text) returns setof text as
@@ -350,5 +356,15 @@ explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
 set optimizer_enable_table_alias=on;
 explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
 
+-- Check that debug print of physical plan also contains alias
+set optimizer_print_plan=on;
+set client_min_messages=log;
+explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+
+-- start_ignore
 drop table foo_alias;
-reset optimizer_enable_table_alias;
+set optimizer_print_plan to default;
+set client_min_messages to default;
+-- end_ignore
+
+set optimizer_enable_table_alias to default;

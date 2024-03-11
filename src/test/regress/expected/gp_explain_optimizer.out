@@ -1,5 +1,9 @@
 create schema gpexplain;
 set search_path = gpexplain;
+-- Ignore LOG entries with timestamp.
+-- start_matchignore
+-- m/^LOG:  \d{4}-\d{2}-\d{2}.*/
+-- end_matchignore
 -- Helper function, to return the EXPLAIN output of a query as a normal
 -- result set, so that you can manipulate it further.
 create or replace function get_explain_output(explain_query text) returns setof text as
@@ -597,5 +601,34 @@ explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
  Optimizer: Pivotal Optimizer (GPORCA)
 (8 rows)
 
-drop table foo_alias;
-reset optimizer_enable_table_alias;
+-- Check that debug print of physical plan also contains alias
+set optimizer_print_plan=on;
+set client_min_messages=log;
+explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+LOG:  statement: explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+Physical plan: 
++--CPhysicalDML (Delete, "foo_alias"), Source Columns: ["a" (0), "b" (1)], Action: ("ColRef_0018" (18)), "ctid" (2), "gp_segment_id" (8)   rows:10   width:72  rebinds:1   cost:862.288269   origin: [Grp:6, GrpExpr:2]
+   +--CPhysicalComputeScalar   rows:10   width:1  rebinds:1   cost:862.001811   origin: [Grp:10, GrpExpr:1]
+      |--CPhysicalInnerHashJoin   rows:10   width:72  rebinds:1   cost:862.001738   origin: [Grp:5, GrpExpr:4]
+      |  |--CPhysicalTableScan "bbb" ("foo_alias")   rows:10   width:38  rebinds:1   cost:431.000070   origin: [Grp:0, GrpExpr:1]
+      |  |--CPhysicalTableScan "aaa" ("foo_alias")   rows:10   width:34  rebinds:1   cost:431.000070   origin: [Grp:1, GrpExpr:1]
+      |  +--CScalarCmp (=)   origin: [Grp:4, GrpExpr:0]
+      |     |--CScalarIdent "a" (9)   origin: [Grp:2, GrpExpr:0]
+      |     +--CScalarIdent "a" (0)   origin: [Grp:3, GrpExpr:0]
+      +--CScalarProjectList   origin: [Grp:9, GrpExpr:0]
+         +--CScalarProjectElement "ColRef_0018" (18)   origin: [Grp:8, GrpExpr:0]
+            +--CScalarConst (0)   origin: [Grp:7, GrpExpr:0]
+",
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Delete  (cost=0.00..862.29 rows=4 width=1)
+   ->  Result  (cost=0.00..862.00 rows=4 width=22)
+         ->  Hash Join  (cost=0.00..862.00 rows=4 width=18)
+               Hash Cond: (bbb.a = aaa.a)
+               ->  Seq Scan on foo_alias bbb  (cost=0.00..431.00 rows=4 width=18)
+               ->  Hash  (cost=431.00..431.00 rows=4 width=4)
+                     ->  Seq Scan on foo_alias aaa  (cost=0.00..431.00 rows=4 width=4)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(8 rows)
+
+set optimizer_enable_table_alias to default;
