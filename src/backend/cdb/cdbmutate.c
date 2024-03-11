@@ -812,7 +812,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	/*
 	 * For UPDATE/DELETE, we check if there's any motions before scan in the
 	 * same subtree for the table we're going to modify. If we encounter the
-	 * scan before any motions, then we can elide unneccessary Explicit
+	 * scan before any motions, then we can elide unnecessary Explicit
 	 * Redistribute Motion.
 	 */
 	if (IsA(node, ModifyTable))
@@ -849,10 +849,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 		}
 	}
 
-	/*
-	 * Elide Explicit Redistribute Motion if there's no motions between the
-	 * scan and the ModifyTable.
-	 */
 	if (context->mt.isChecking)
 	{
 
@@ -862,12 +858,12 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 		/*
 		 * If this is a scan and it's scanrelid matches ModifyTable's relid,
-		 * we encountered a scan before any Motions.
+		 * we need to check if there were any motions above.
 		 */
 		else
 		{
 			/*
-			 * These are scan nodes that can be used to perform parallel
+			 * These are scan nodes that can be used to perform distributed
 			 * UPDATE/DELETE on the relation they scan, possibly with motions
 			 * above them. This list needs to be updated for other nodes if they
 			 * are changed to support DML execution on segments.
