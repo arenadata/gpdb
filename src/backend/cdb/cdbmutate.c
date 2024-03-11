@@ -1132,6 +1132,9 @@ done:
 	if (context->mt.isChecking && IsA(node, Motion))
 		context->mt.nMotionsAbove -= 1;
 
+	if (context->mt.isChecking && IsA(node, ModifyTable))
+		context->mt.isChecking = false;
+
 	return newnode;
 }								/* apply_motion_mutator */
 
