@@ -337,13 +337,14 @@ FROM gp_dist_random('gp_id');
 DROP TABLE t1;
 
 
--- Check optional table alias support. When optimizer_enable_table_alias is off,
--- table alias is not supported (this is default)
+-- Check optional table alias support.
+
 -- start_ignore
 drop table if exists foo_alias;
 -- end_ignore
 
--- check that with optimizer_enable_table_alias=off plan doesn't have aliases
+-- Check that with optimizer_enable_table_alias=off plan doesn't have aliases.
+-- When optimizer_enable_table_alias is off, table alias is not supported.
 set optimizer_enable_table_alias=off;
 
 create table foo_alias (a int, b int);
