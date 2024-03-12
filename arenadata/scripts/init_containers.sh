@@ -11,15 +11,9 @@ fi
 
 shift
 
-#up services specified in argument or all if service list is not specified
-docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env up -d $@
+docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env up -d
+services=$(docker-compose -p $project -f arenadata/docker-compose.yaml config --services | tr '\n' ' ')
 
-
-if [[ $# -eq 0 ]]; then
-  services=$(docker-compose -p $project -f arenadata/docker-compose.yaml config --services | tr '\n' ' ')
-else
-  services="$@"
-fi
 # Prepare ALL containers first
 for service in $services
 do

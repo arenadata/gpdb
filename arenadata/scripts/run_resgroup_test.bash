@@ -3,20 +3,17 @@
 project="resgroup"
 
 #install gpdb and setup gpadmin user
-bash arenadata/scripts/init_containers.sh $project cdw sdw1
+bash arenadata/scripts/init_containers.sh $project
 
-#grant access rights to group controllers
-docker-compose -p $project -f arenadata/docker-compose.yaml exec cdw bash -c "
-  chmod -R 777 /sys/fs/cgroup/{memory,cpu,cpuset} &&
-	mkdir /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb &&
-	chmod -R 777 /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb &&
-	chown -R gpadmin:gpadmin /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb"
-
-docker-compose -p $project -f arenadata/docker-compose.yaml exec sdw1 bash -c "
-  chmod -R 777 /sys/fs/cgroup/{memory,cpu,cpuset} &&
-	mkdir /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb &&
-	chmod -R 777 /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb &&
-	chown -R gpadmin:gpadmin /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb"
+for service in 'cdw' 'sdw1'
+do
+  #grant access rights to group controllers
+  docker-compose -p $project -f arenadata/docker-compose.yaml exec $service bash -c "
+    chmod -R 777 /sys/fs/cgroup/{memory,cpu,cpuset} &&
+    mkdir /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb &&
+    chmod -R 777 /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb &&
+    chown -R gpadmin:gpadmin /sys/fs/cgroup/{memory,cpu,cpuset}/gpdb"
+done
 
 #create cluster
 docker-compose -p $project -f arenadata/docker-compose.yaml exec cdw \
