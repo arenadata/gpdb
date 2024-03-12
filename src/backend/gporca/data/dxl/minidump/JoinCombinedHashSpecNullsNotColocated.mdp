@@ -8,6 +8,7 @@
   (t1_1.i). Otherwise, there could be an extra Redistribute Motion on the
   outer child, what lead to the inconsistent join result.
 
+  drop table if exists t1, t2;
   create table t1 (i int) distributed randomly;
   create table t2 (j int) distributed randomly;
 

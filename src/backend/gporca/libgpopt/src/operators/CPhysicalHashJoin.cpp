@@ -388,7 +388,7 @@ CPhysicalHashJoin::PdshashedMatching(
 	// distribution, or we need the matching distribution have colocated nulls
 	// but input distribution's nulls are not colocated.
 	if (pdrgpexpr->Size() != ulDlvrdSize ||
-		(fNullsColocated && fNullsColocated != pdshashed->FNullsColocated()))
+		(fNullsColocated && !pdshashed->FNullsColocated()))
 	{
 		pdrgpexpr->Release();
 		if (NULL != pdshashed->PdshashedEquiv())
@@ -398,10 +398,6 @@ CPhysicalHashJoin::PdshashedMatching(
 			return PdshashedMatching(mp, pdshashed->PdshashedEquiv(),
 									 ulSourceChild);
 		}
-	}
-	if (pdrgpexpr->Size() != ulDlvrdSize ||
-		(fNullsColocated && fNullsColocated != pdshashed->FNullsColocated()))
-	{
 		// it should never happen, but instead of creating wrong spec, raise an exception
 		GPOS_RAISE(
 			CException::ExmaInvalid, CException::ExmiInvalid,
