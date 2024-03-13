@@ -1432,9 +1432,16 @@ CTranslatorDXLToExpr::PexprLogicalDelete(const CDXLNode *dxlnode)
 
 	ULONG ctid_colid = pdxlopDelete->GetCtIdColId();
 	ULONG segid_colid = pdxlopDelete->GetSegmentIdColId();
+	ULONG tableoid_colid = pdxlopDelete->GeTableOidColId();
 
 	CColRef *pcrCtid = LookupColRef(m_phmulcr, ctid_colid);
 	CColRef *pcrSegmentId = LookupColRef(m_phmulcr, segid_colid);
+	CColRef *pcrTableOid = NULL;
+
+	if (0 != tableoid_colid)
+	{
+		pcrTableOid = LookupColRef(m_phmulcr, tableoid_colid);
+	}
 
 	ULongPtrArray *pdrgpulCols = pdxlopDelete->GetDeletionColIdArray();
 	CColRefArray *colref_array =
@@ -1442,8 +1449,8 @@ CTranslatorDXLToExpr::PexprLogicalDelete(const CDXLNode *dxlnode)
 
 	return GPOS_NEW(m_mp) CExpression(
 		m_mp,
-		GPOS_NEW(m_mp)
-			CLogicalDelete(m_mp, ptabdesc, colref_array, pcrCtid, pcrSegmentId),
+		GPOS_NEW(m_mp) CLogicalDelete(m_mp, ptabdesc, colref_array, pcrCtid,
+									  pcrSegmentId, pcrTableOid),
 		pexprChild);
 }
 
@@ -1476,9 +1483,16 @@ CTranslatorDXLToExpr::PexprLogicalUpdate(const CDXLNode *dxlnode)
 
 	ULONG ctid_colid = pdxlopUpdate->GetCtIdColId();
 	ULONG segid_colid = pdxlopUpdate->GetSegmentIdColId();
+	ULONG tableoid_colid = pdxlopUpdate->GetTableOidColId();
 
 	CColRef *pcrCtid = LookupColRef(m_phmulcr, ctid_colid);
 	CColRef *pcrSegmentId = LookupColRef(m_phmulcr, segid_colid);
+	CColRef *pcrTableOid = NULL;
+
+	if (0 != tableoid_colid)
+	{
+		pcrTableOid = LookupColRef(m_phmulcr, tableoid_colid);
+	}
 
 	ULongPtrArray *pdrgpulInsertCols = pdxlopUpdate->GetInsertionColIdArray();
 	CColRefArray *pdrgpcrInsert =
@@ -1495,12 +1509,12 @@ CTranslatorDXLToExpr::PexprLogicalUpdate(const CDXLNode *dxlnode)
 		pcrTupleOid = LookupColRef(m_phmulcr, tuple_oid);
 	}
 
-	return GPOS_NEW(m_mp)
-		CExpression(m_mp,
-					GPOS_NEW(m_mp) CLogicalUpdate(m_mp, ptabdesc, pdrgpcrDelete,
-												  pdrgpcrInsert, pcrCtid,
-												  pcrSegmentId, pcrTupleOid),
-					pexprChild);
+	return GPOS_NEW(m_mp) CExpression(
+		m_mp,
+		GPOS_NEW(m_mp)
+			CLogicalUpdate(m_mp, ptabdesc, pdrgpcrDelete, pdrgpcrInsert,
+						   pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid),
+		pexprChild);
 }
 
 //---------------------------------------------------------------------------
