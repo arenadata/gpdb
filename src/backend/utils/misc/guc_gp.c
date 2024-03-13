@@ -309,7 +309,6 @@ int			optimizer_mdcache_size;
 bool		optimizer_use_gpdb_allocators;
 bool		optimizer_enable_table_alias;
 
-
 /* Optimizer debugging GUCs */
 bool		optimizer_print_query;
 bool		optimizer_print_plan;

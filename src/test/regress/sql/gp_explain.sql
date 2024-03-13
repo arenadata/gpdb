@@ -344,28 +344,28 @@ drop table if exists foo_alias;
 -- end_ignore
 
 -- Check that with optimizer_enable_table_alias=off plan doesn't have aliases.
--- When optimizer_enable_table_alias is off, table alias is not supported.
+-- When optimizer_enable_table_alias is off, table aliases are not supported.
 set optimizer_enable_table_alias=off;
 
 create table foo_alias (a int, b int);
 insert into foo_alias select generate_series(1,10);
 
-explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
 
 -- When optimizer_enable_table_alias is on, table alias is supported and it 
 -- can be easily seen with self joins
 set optimizer_enable_table_alias=on;
-explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
 
 -- Check that debug print of physical plan also contains alias
 set optimizer_print_plan=on;
 set client_min_messages=log;
-explain delete from foo_alias bbb using foo_alias aaa  where aaa.a=bbb.a;
+explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
 
 -- start_ignore
 drop table foo_alias;
-set optimizer_print_plan to default;
+reset optimizer_print_plan;
 set client_min_messages to default;
 -- end_ignore
 
-set optimizer_enable_table_alias to default;
+reset optimizer_enable_table_alias;
