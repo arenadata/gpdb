@@ -349,9 +349,6 @@ $$ LANGUAGE plpgsql;
 -- temporary files that will be used for current session, and checks if any
 -- files were created in that tablespace.
 --
--- We set GUCs and perform the report in two separate function calls
--- (transactions). Otherwise, global configuration will not be reloaded.
---
 -- 'n_temp_spill_files_tablespaces' is the count of tablespaces specified in
 -- 'temp_spill_files_tablespaces', either global or session-wide.
 CREATE OR REPLACE FUNCTION gp_tablespace_file_report(
@@ -364,7 +361,6 @@ CREATE OR REPLACE FUNCTION gp_tablespace_file_report(
     ) AS $$
 DECLARE
     owo int;
-    session_file_ts_n int;
     session_file_ts_name text;
     temp_table_ts_name text;
 BEGIN
@@ -382,10 +378,8 @@ BEGIN
 
     -- Find out the tablespace that will be used for files.
     -- N = gp_session_id % number of tablespaces in GUC.
-    SELECT id.setting::int % n_temp_spill_files_tablespaces
-        FROM (SELECT setting FROM pg_settings WHERE name = 'gp_session_id') id
-        INTO session_file_ts_n;
-    SELECT 'temp_files' || session_file_ts_n INTO session_file_ts_name;
+    SELECT 'temp_files' || (current_setting('gp_session_id')::int % n_temp_spill_files_tablespaces)
+        INTO session_file_ts_name;
 
     -- Create the temporary directory.
     WITH out11 AS (
@@ -425,16 +419,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Show directories of the tablespaces that will be used.
--- start_ignore
-SELECT gp_temptablespace_path((SELECT dattablespace FROM pg_database WHERE datname = current_database() LIMIT 1));
-SELECT gp_temptablespace_path((SELECT oid FROM pg_tablespace WHERE spcname = 'temp_tables' LIMIT 1));
-SELECT gp_temptablespace_path((SELECT oid FROM pg_tablespace WHERE spcname = 'temp_files0' LIMIT 1));
-SELECT gp_temptablespace_path((SELECT oid FROM pg_tablespace WHERE spcname = 'temp_files1' LIMIT 1));
-SELECT gp_temptablespace_path((SELECT oid FROM pg_tablespace WHERE spcname = 'temp_files2' LIMIT 1));
-SELECT gp_temptablespace_path((SELECT oid FROM pg_tablespace WHERE spcname = 'temp_files3' LIMIT 1));
--- end_ignore
-
 --
 -- Global GUC value tests:
 -- FIXME: We shouldn't be forced to use \c to update GUCs on segments.
@@ -461,9 +445,7 @@ SELECT gp_tablespace_set_mem();
 SELECT * FROM gp_tablespace_file_report(1);
 
 -- Files should be in temp_files0, table should be in the default tablespace.
---start_ignore
-SELECT setting as gp_session_id, setting::int % 1 as n FROM pg_settings WHERE name = 'gp_session_id';
-
+-- start_ignore
 \! gpconfig -r temp_tablespaces
 \! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0'
 \! gpstop -u
@@ -484,9 +466,7 @@ SELECT * FROM gp_tablespace_file_report(1);
 
 -- Files should be in temp_filesN, where N = gp_session_id % 4, table should be
 -- in the default tablespace.
---start_ignore
-SELECT setting as gp_session_id, setting::int % 4 as n FROM pg_settings WHERE name = 'gp_session_id';
-
+-- start_ignore
 \! gpconfig -r 'temp_tablespaces'
 \! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0','temp_files1','temp_files2','temp_files3'
 \! gpstop -u
@@ -539,9 +519,6 @@ RESET temp_spill_files_tablespaces;
 SELECT * FROM gp_tablespace_file_report(1);
 
 -- Files should be in temp_files0, table should be in the default tablespace.
---start_ignore
-SELECT setting as gp_session_id, setting::int % 1 as n FROM pg_settings WHERE name = 'gp_session_id';
---end_ignore
 RESET temp_tablespaces;
 SET temp_spill_files_tablespaces = 'temp_files0';
 SELECT * FROM gp_tablespace_file_report(1);
@@ -553,9 +530,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 
 -- Files should be in temp_filesN, where N = gp_session_id % 4, table should be
 -- in the default tablespace.
---start_ignore
-SELECT setting as gp_session_id, setting::int % 4 as n FROM pg_settings WHERE name = 'gp_session_id';
---end_ignore
 RESET temp_tablespaces;
 SET temp_spill_files_tablespaces = 'temp_files0','temp_files1','temp_files2','temp_files3';
 SELECT * FROM gp_tablespace_file_report(4);
