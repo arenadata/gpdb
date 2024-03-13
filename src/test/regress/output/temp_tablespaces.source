@@ -497,16 +497,6 @@ drop tablespace space_12871;
 --
 -- temp_spill_files_tablespaces:
 --
--- start_ignore
-DROP TABLE IF EXISTS tts_foo;
-DROP TABLE IF EXISTS tts_bar;
-DROP TABLE IF EXISTS tts_jazz;
-DROP TABLESPACE IF EXISTS temp_tables;
-DROP TABLESPACE IF EXISTS temp_files0;
-DROP TABLESPACE IF EXISTS temp_files1;
-DROP TABLESPACE IF EXISTS temp_files2;
-DROP TABLESPACE IF EXISTS temp_files3;
--- end_ignore
 CREATE TABLE tts_foo (a int, b int) DISTRIBUTED BY (a);
 CREATE TABLE tts_bar (c int, d int) DISTRIBUTED BY (d);
 CREATE TABLE tts_jazz (e int, f int) DISTRIBUTED BY (e);
