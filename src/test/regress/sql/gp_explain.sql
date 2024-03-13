@@ -362,10 +362,7 @@ set optimizer_print_plan=on;
 set client_min_messages=log;
 explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
 
--- start_ignore
+reset client_min_messages;
 drop table foo_alias;
 reset optimizer_print_plan;
-set client_min_messages to default;
--- end_ignore
-
 reset optimizer_enable_table_alias;

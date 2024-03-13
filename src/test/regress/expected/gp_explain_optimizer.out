@@ -631,4 +631,9 @@ Physical plan:
  Optimizer: Pivotal Optimizer (GPORCA)
 (8 rows)
 
+reset client_min_messages;
+LOG:  statement: reset client_min_messages;
+LOG:  statement: RESET client_min_messages  (entry db 127.0.1.1:6000 pid=2070437)
+drop table foo_alias;
+reset optimizer_print_plan;
 reset optimizer_enable_table_alias;
