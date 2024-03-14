@@ -513,12 +513,6 @@ CREATE TABLESPACE temp_files2 LOCATION '@testtablespace@_temp_files2';
 CREATE TABLESPACE temp_files3 LOCATION '@testtablespace@_temp_files3';
 RESET temp_tablespaces;
 RESET temp_spill_files_tablespaces;
-CREATE OR REPLACE FUNCTION gp_tablespace_set_mem() RETURNS void AS $$
-BEGIN
-    SET optimizer = off;
-    SET statement_mem = '1MB';
-END;
-$$ LANGUAGE plpgsql;
 -- Creates a temporary table and remembers the tablespace it was created in.
 -- Runs a query that creates some temporary files, calculates the tablespace for
 -- temporary files that will be used for current session, and checks if any
@@ -539,6 +533,9 @@ DECLARE
     session_file_ts_name text;
     temp_table_ts_name text;
 BEGIN
+    SET optimizer = off;
+    SET statement_mem = '1MB';
+
     CREATE TEMPORARY TABLE tts_baz (a int) DISTRIBUTED BY (a);
 
     -- See the tablespace where temporary table was created. If there is no

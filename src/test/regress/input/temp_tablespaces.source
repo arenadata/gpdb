@@ -337,13 +337,6 @@ CREATE TABLESPACE temp_files3 LOCATION '@testtablespace@_temp_files3';
 RESET temp_tablespaces;
 RESET temp_spill_files_tablespaces;
 
-CREATE OR REPLACE FUNCTION gp_tablespace_set_mem() RETURNS void AS $$
-BEGIN
-    SET optimizer = off;
-    SET statement_mem = '1MB';
-END;
-$$ LANGUAGE plpgsql;
-
 -- Creates a temporary table and remembers the tablespace it was created in.
 -- Runs a query that creates some temporary files, calculates the tablespace for
 -- temporary files that will be used for current session, and checks if any
@@ -364,6 +357,9 @@ DECLARE
     session_file_ts_name text;
     temp_table_ts_name text;
 BEGIN
+    SET optimizer = off;
+    SET statement_mem = '1MB';
+
     CREATE TEMPORARY TABLE tts_baz (a int) DISTRIBUTED BY (a);
 
     -- See the tablespace where temporary table was created. If there is no
@@ -430,7 +426,6 @@ $$ LANGUAGE plpgsql;
 \! gpconfig -r temp_spill_files_tablespaces
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
 
@@ -440,7 +435,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpconfig -r temp_spill_files_tablespaces
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
 
@@ -450,7 +444,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0'
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
 
@@ -460,7 +453,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0'
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
 
@@ -471,7 +463,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0','temp_files1','temp_files2','temp_files3'
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(4);
 
@@ -481,7 +472,6 @@ SELECT * FROM gp_tablespace_file_report(4);
 \! gpconfig -c temp_spill_files_tablespaces -v '""'
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
 
@@ -491,7 +481,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpconfig -c temp_spill_files_tablespaces -v 'pg_default'
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
 
@@ -501,7 +490,6 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpconfig -r temp_spill_files_tablespaces
 \! gpstop -u
 \c
-SELECT gp_tablespace_set_mem();
 -- end_ignore
 
 --
