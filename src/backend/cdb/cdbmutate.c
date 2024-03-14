@@ -65,18 +65,6 @@
 #include "executor/executor.h"
 
 
-typedef struct ModifyTableMotionState
-{
-	Bitmapset  *resultRtis; 			/* Indexes into rtable for relations to
-										 * be modified */
-	bool		needExplicitMotion;
-	int			nMotionsAbove;			/* Number of motions above the current
-										 * node */
-	bool		isChecking;				/* True if we encountered ModifyTable
-										 * node with UPDATE/DELETE and we plan
-										 * to insert Explicit Motions */
-} ModifyTableMotionState;
-
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
@@ -91,7 +79,15 @@ typedef struct ApplyMotionState
 	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
 
 	/* Context for ModifyTable to elide Explicit Redistribute Motion */
-	ModifyTableMotionState mt;
+	Bitmapset  *mtResultRtis; 		/* Indexes into rtable for relations to
+									 * be modified. Only valid if isMtAbove is
+									 * true. */
+	bool		needExplicitMotion;
+	int			nMotionsAbove;		/* Number of motions above the current
+									 * node */
+	bool		isMtAbove;			/* True if we encountered ModifyTable
+									 * node with UPDATE/DELETE and we plan
+									 * to insert Explicit Motions. */
 } ApplyMotionState;
 
 typedef struct InitPlanItem
@@ -419,11 +415,10 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 													 * plan */
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
-
-	state.mt.resultRtis = NULL;
-	state.mt.needExplicitMotion = false;
-	state.mt.nMotionsAbove = 0;
-	state.mt.isChecking = false;
+	state.mtResultRtis = NULL;
+	state.needExplicitMotion = false;
+	state.nMotionsAbove = 0;
+	state.isMtAbove = false;
 
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(int);
@@ -775,14 +770,14 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	if (!is_plan_node(node))
 	{
 		/*
-		 * mt.isChecking is true whether we are checking for motions underneath
+		 * isChecking is true whether we are checking for motions underneath
 		 * to add Explicit Reditribute Motion, ignoring any in InitPlans. So if
 		 * we recurse into an InitPlan, save it and temporarily set it to false.
 		 */
 		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
 		{
 			bool		found;
-			bool		saveMtIsChecking = context->mt.isChecking;
+			bool		saveMtIsChecking = context->isMtAbove;
 			int			saveSliceDepth = context->sliceDepth;
 			SubPlan		*subplan = (SubPlan *) node;
 			/*
@@ -797,10 +792,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 			/* reset sliceDepth for each init plan */
 			context->sliceDepth = 0;
-			context->mt.isChecking = false;
+			context->isMtAbove = false;
 			node = plan_tree_mutator(node, apply_motion_mutator, context);
 
-			context->mt.isChecking = saveMtIsChecking;
+			context->isMtAbove = saveMtIsChecking;
 			context->sliceDepth = saveSliceDepth;
 
 			return node;
@@ -826,10 +821,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			/*
 			 * Sanity check, since we don't allow multiple ModifyTable nodes.
 			 */
-			Assert(context->mt.resultRtis == NULL);
-			Assert(context->mt.nMotionsAbove == 0);
-			Assert(!context->mt.needExplicitMotion);
-			Assert(!context->mt.isChecking);
+			Assert(context->mtResultRtis == NULL);
+			Assert(context->nMotionsAbove == 0);
+			Assert(!context->needExplicitMotion);
+			Assert(!context->isMtAbove);
 
 			/*
 			 * When UPDATE/DELETE occurs on a partitioned table, or a table that
@@ -841,20 +836,20 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 */
 			foreach(lcr, mt->resultRelations)
 			{
-				context->mt.resultRtis = bms_add_member(context->mt.resultRtis,
-														lfirst_int(lcr));
+				context->mtResultRtis = bms_add_member(context->mtResultRtis,
+													   lfirst_int(lcr));
 			}
 
-			context->mt.isChecking = true;
+			context->isMtAbove = true;
 		}
 	}
 
-	if (context->mt.isChecking)
+	if (context->isMtAbove)
 	{
 
 		/* Remember if we are descending into a motion node. */
 		if (IsA(node, Motion))
-			context->mt.nMotionsAbove += 1;
+			context->nMotionsAbove += 1;
 
 		/*
 		 * If this is a scan and it's scanrelid matches ModifyTable's relid,
@@ -883,19 +878,19 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 					{
 						Scan	   *scan = (Scan *) node;
 
-						if (bms_is_member(scan->scanrelid, context->mt.resultRtis))
+						if (bms_is_member(scan->scanrelid, context->mtResultRtis))
 						{
 							/*
 							 * We need Explicit Redistribute Motion only if
 							 * there were any motions above.
 							 */
-							context->mt.needExplicitMotion = context->mt.nMotionsAbove > 0;
+							context->needExplicitMotion = context->nMotionsAbove > 0;
 
 							/*
 							 * We don't need to check other nodes in this
 							 * subtree anymore.
 							 */
-							context->mt.isChecking = false;
+							context->isMtAbove = false;
 						}
 					}
 					break;
@@ -1056,7 +1051,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			/*
 			 * Were there any motions above the scan?
 			 */
-			if (context->mt.needExplicitMotion)
+			if (context->needExplicitMotion)
 			{
 				newnode = (Node *) make_explicit_motion(plan,
 														flow->segidColIdx,
@@ -1078,9 +1073,9 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * other subtree. So reset the state and continue checking in case
 			 * of another Explicit Redistribute Motion is needed.
 			 */
-			context->mt.isChecking = true;
-			context->mt.needExplicitMotion = false;
-			context->mt.nMotionsAbove = 0;
+			context->isMtAbove = true;
+			context->needExplicitMotion = false;
+			context->nMotionsAbove = 0;
 			break;
 
 		case MOVEMENT_NONE:
@@ -1128,13 +1123,13 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
-	if (context->mt.isChecking)
+	if (context->isMtAbove)
 	{
 		/* We're going out of this motion node. */
 		if (IsA(node, Motion))
-			context->mt.nMotionsAbove -= 1;
+			context->nMotionsAbove -= 1;
 		else if (IsA(node, ModifyTable))
-			context->mt.isChecking = false;
+			context->isMtAbove = false;
 	}
 
 	return newnode;
