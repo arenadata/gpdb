@@ -124,7 +124,7 @@ static void subquery_push_qual(Query *subquery,
 static void recurse_push_qual(Node *setOp, Query *topquery,
 				  RangeTblEntry *rte, Index rti, Node *qual);
 static void bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel,  List *outer_quals);
-static bool is_query_contain_limit_groupby(Query *parse, List *lateral_vars, int levelsup);
+static bool is_query_contain_limit_groupby(Query *parse);
 static void handle_gen_seggen_volatile_path(PlannerInfo *root, RelOptInfo *rel);
 
 /*
@@ -1700,7 +1700,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * cannot pass params across motion.
 		 */
 		if ((!bms_is_empty(required_outer)) &&
-			is_query_contain_limit_groupby(subquery, rel->lateral_vars, 1))
+			is_query_contain_limit_groupby(subquery))
 			config->force_singleQE = true;
 
 		rel->subplan = subquery_planner(root->glob, subquery,
@@ -3003,89 +3003,26 @@ recurse_push_qual(Node *setOp, Query *topquery,
 	}
 }
 
-/*
- * query_contains_var_walker
- *		Checks if a query contains an equal variable as the one passed via
- *		the context. Check is done without recursing into subqueries.
- */
 static bool
-query_contains_var_walker(Node *node, void *context)
+is_query_contain_limit_groupby(Query *parse)
 {
-	if (node == NULL)
-		return false;
-
-	if (IsA(node, Var))
-	{
-		Var		   *var = (Var *) node;
-		Var		   *target_var = (Var *) context;
-
-		if (equal(var, target_var))
-			return true;
-
-		return false;
-	}
-
-	return expression_tree_walker(node, query_contains_var_walker, context);
-}
-
-/*
- * query_contains_lateral_vars
- *		Checks if a query contains any lateral var from outer level specified by
- *		levelsup. Check is done without recursing into subqueries.
- */
-static bool
-query_contains_lateral_vars(Query *parse, List *lateral_vars, int levelsup)
-{
-	bool		result = false;
-	ListCell   *lc;
-
-	foreach(lc, lateral_vars)
-	{
-		Node	   *node = (Node *) lfirst(lc);
-
-		if (NULL == node || !IsA(node, Var))
-			continue;
-
-		Var		   *lateral_var = (Var *) node;
-		Index		varlevelsup_backup = lateral_var->varlevelsup;
-
-		lateral_var->varlevelsup = levelsup;
-
-		result = query_tree_walker(parse, query_contains_var_walker,
-								   (void *) lateral_var, 0);
-
-		lateral_var->varlevelsup = varlevelsup_backup;
-
-		if (result)
-			break;
-	}
-	return result;
-}
-
-static bool
-is_query_contain_limit_groupby(Query *parse, List *lateral_vars, int levelsup)
-{
-	if (NULL == parse || 0 == list_length(lateral_vars))
-		return false;
-
 	if (parse->limitCount || parse->limitOffset ||
 		parse->groupClause || parse->distinctClause ||
-		contain_aggs_of_level((Node *)parse->targetList, 0))
+		parse->hasAggs)
+		return true;
+
+	if (parse->setOperations)
 	{
-		if (query_contains_lateral_vars(parse, lateral_vars, levelsup))
-			return true;
-	}
+		SetOperationStmt *sop_stmt = (SetOperationStmt *) (parse->setOperations);
+		RangeTblRef   *larg = (RangeTblRef *) sop_stmt->larg;
+		RangeTblRef   *rarg = (RangeTblRef *) sop_stmt->rarg;
+		RangeTblEntry *lrte = list_nth(parse->rtable, larg->rtindex-1);
+		RangeTblEntry *rrte = list_nth(parse->rtable, rarg->rtindex-1);
 
-	ListCell   *lc;
-
-	foreach(lc, parse->rtable)
-	{
-		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
-
-		if (RTE_SUBQUERY == rte->rtekind &&
-			is_query_contain_limit_groupby(rte->subquery,
-										   lateral_vars,
-										   levelsup + 1))
+		if ((lrte->rtekind == RTE_SUBQUERY &&
+			 is_query_contain_limit_groupby(lrte->subquery)) ||
+			(rrte->rtekind == RTE_SUBQUERY &&
+			 is_query_contain_limit_groupby(rrte->subquery)))
 			return true;
 	}
 

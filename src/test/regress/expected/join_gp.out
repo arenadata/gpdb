@@ -1642,102 +1642,29 @@ drop table t1;
 drop table t2;
 create table t1 (a int, b text, c int) distributed by (a);
 insert into t1 values (1, '', 1);
--- Test lateral join with sub-query having grouping/aggregate/limit
--- at the same nesting level as the lateral var (with nesting > 1)
+-- Test lateral join with sub-query having an aggregate function
 explain (costs off) select from (values ('')) tmp(b) join lateral
 (
-  select avg(avg_c) from
-  (
-    select avg(c) as avg_c from t1 where t1.b = tmp.b group by b
-  ) s2
-) s1 on true;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+  select avg(c) from t1 where t1.b = tmp.b
+) s on true;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Nested Loop
    ->  Values Scan on "*VALUES*"
    ->  Materialize
          ->  Aggregate
-               ->  GroupAggregate
-                     Group Key: t1.b
-                     ->  Result
-                           Filter: (t1.b = "*VALUES*".column1)
-                           ->  Materialize
-                                 ->  Gather Motion 3:1  (slice1; segments: 3)
-                                       ->  Seq Scan on t1
+               ->  Result
+                     Filter: (t1.b = "*VALUES*".column1)
+                     ->  Materialize
+                           ->  Gather Motion 3:1  (slice1; segments: 3)
+                                 ->  Seq Scan on t1
  Optimizer: Postgres query optimizer
-(12 rows)
+(10 rows)
 
 select from (values ('')) tmp(b) join lateral
 (
-  select avg(avg_c) from
-  (
-    select avg(c) as avg_c from t1 where t1.b = tmp.b group by b
-  ) s2
-) s1 on true;
---
-(1 row)
-
-explain (costs off) select from (values ('')) tmp(b) join lateral
-(
-  select avg(cnt) from
-  (
-    select count(*) as cnt from t1 where t1.b = tmp.b
-  ) s2
-) s1 on true;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Nested Loop
-   ->  Values Scan on "*VALUES*"
-   ->  Materialize
-         ->  Aggregate
-               ->  Aggregate
-                     ->  Result
-                           Filter: (t1.b = "*VALUES*".column1)
-                           ->  Materialize
-                                 ->  Gather Motion 3:1  (slice1; segments: 3)
-                                       ->  Seq Scan on t1
- Optimizer: Postgres query optimizer
-(11 rows)
-
-select from (values ('')) tmp(b) join lateral
-(
-  select avg(cnt) from
-  (
-    select count(*) as cnt from t1 where t1.b = tmp.b
-  ) s2
-) s1 on true;
---
-(1 row)
-
-explain (costs off) select from (values ('')) tmp(b) join lateral
-(
-  select avg(avg_c) from
-  (
-	select c as avg_c from t1 where t1.b = tmp.b limit 1
-  ) s2
-) s1 on true;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Nested Loop
-   ->  Values Scan on "*VALUES*"
-   ->  Materialize
-         ->  Aggregate
-               ->  Limit
-                     ->  Result
-                           Filter: (t1.b = "*VALUES*".column1)
-                           ->  Materialize
-                                 ->  Gather Motion 3:1  (slice1; segments: 3)
-                                       ->  Seq Scan on t1
- Optimizer: Postgres query optimizer
-(11 rows)
-
-select from (values ('')) tmp(b) join lateral
-(
-  select avg(avg_c) from
-  (
-	select c as avg_c from t1 where t1.b = tmp.b limit 1
-  ) s2
-) s1 on true;
+  select avg(c) from t1 where t1.b = tmp.b
+) s on true;
 --
 (1 row)
 
