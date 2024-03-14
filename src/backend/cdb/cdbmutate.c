@@ -79,15 +79,15 @@ typedef struct ApplyMotionState
 	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
 
 	/* Context for ModifyTable to elide Explicit Redistribute Motion */
+	bool		mtIsChecking;		/* True if we encountered ModifyTable
+									 * node with UPDATE/DELETE and we plan
+									 * to insert Explicit Motions. */
 	Bitmapset  *mtResultRtis; 		/* Indexes into rtable for relations to
-									 * be modified. Only valid if isMtAbove is
-									 * true. */
+									 * be modified. Only valid if mtIsChecking
+									 * is true. */
 	bool		needExplicitMotion;
 	int			nMotionsAbove;		/* Number of motions above the current
 									 * node */
-	bool		isMtAbove;			/* True if we encountered ModifyTable
-									 * node with UPDATE/DELETE and we plan
-									 * to insert Explicit Motions. */
 } ApplyMotionState;
 
 typedef struct InitPlanItem
@@ -418,7 +418,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.mtResultRtis = NULL;
 	state.needExplicitMotion = false;
 	state.nMotionsAbove = 0;
-	state.isMtAbove = false;
+	state.mtIsChecking = false;
 
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(int);
@@ -770,14 +770,14 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	if (!is_plan_node(node))
 	{
 		/*
-		 * isChecking is true whether we are checking for motions underneath
+		 * mtIsChecking is true whether we are checking for motions underneath
 		 * to add Explicit Reditribute Motion, ignoring any in InitPlans. So if
 		 * we recurse into an InitPlan, save it and temporarily set it to false.
 		 */
 		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
 		{
 			bool		found;
-			bool		saveMtIsChecking = context->isMtAbove;
+			bool		saveMtIsChecking = context->mtIsChecking;
 			int			saveSliceDepth = context->sliceDepth;
 			SubPlan		*subplan = (SubPlan *) node;
 			/*
@@ -792,10 +792,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 			/* reset sliceDepth for each init plan */
 			context->sliceDepth = 0;
-			context->isMtAbove = false;
+			context->mtIsChecking = false;
 			node = plan_tree_mutator(node, apply_motion_mutator, context);
 
-			context->isMtAbove = saveMtIsChecking;
+			context->mtIsChecking = saveMtIsChecking;
 			context->sliceDepth = saveSliceDepth;
 
 			return node;
@@ -824,7 +824,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			Assert(context->mtResultRtis == NULL);
 			Assert(context->nMotionsAbove == 0);
 			Assert(!context->needExplicitMotion);
-			Assert(!context->isMtAbove);
+			Assert(!context->mtIsChecking);
 
 			/*
 			 * When UPDATE/DELETE occurs on a partitioned table, or a table that
@@ -840,11 +840,11 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 													   lfirst_int(lcr));
 			}
 
-			context->isMtAbove = true;
+			context->mtIsChecking = true;
 		}
 	}
 
-	if (context->isMtAbove)
+	if (context->mtIsChecking)
 	{
 
 		/* Remember if we are descending into a motion node. */
@@ -890,7 +890,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 							 * We don't need to check other nodes in this
 							 * subtree anymore.
 							 */
-							context->isMtAbove = false;
+							context->mtIsChecking = false;
 						}
 					}
 					break;
@@ -1073,7 +1073,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * other subtree. So reset the state and continue checking in case
 			 * of another Explicit Redistribute Motion is needed.
 			 */
-			context->isMtAbove = true;
+			context->mtIsChecking = true;
 			context->needExplicitMotion = false;
 			context->nMotionsAbove = 0;
 			break;
@@ -1123,13 +1123,13 @@ done:
 	plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
 	plan->nInitPlans = hash_get_num_entries(context->planid_subplans) - saveNumInitPlans;
 
-	if (context->isMtAbove)
+	if (context->mtIsChecking)
 	{
 		/* We're going out of this motion node. */
 		if (IsA(node, Motion))
 			context->nMotionsAbove -= 1;
 		else if (IsA(node, ModifyTable))
-			context->isMtAbove = false;
+			context->mtIsChecking = false;
 	}
 
 	return newnode;
