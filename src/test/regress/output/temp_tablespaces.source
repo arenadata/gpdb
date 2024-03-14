@@ -516,7 +516,7 @@ RESET temp_spill_files_tablespaces;
 CREATE OR REPLACE FUNCTION gp_tablespace_set_mem() RETURNS void AS $$
 BEGIN
     SET optimizer = off;
-    SET statement_mem = '2MB';
+    SET statement_mem = '1MB';
 END;
 $$ LANGUAGE plpgsql;
 -- Creates a temporary table and remembers the tablespace it was created in.
