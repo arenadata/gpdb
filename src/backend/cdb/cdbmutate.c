@@ -64,7 +64,6 @@
 
 #include "executor/executor.h"
 
-
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
