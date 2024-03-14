@@ -3006,23 +3006,19 @@ recurse_push_qual(Node *setOp, Query *topquery,
 static bool
 is_query_contain_limit_groupby(Query *parse)
 {
+	ListCell   *lc;
+
 	if (parse->limitCount || parse->limitOffset ||
 		parse->groupClause || parse->distinctClause ||
 		parse->hasAggs)
 		return true;
 
-	if (parse->setOperations)
+	foreach(lc, parse->rtable)
 	{
-		SetOperationStmt *sop_stmt = (SetOperationStmt *) (parse->setOperations);
-		RangeTblRef   *larg = (RangeTblRef *) sop_stmt->larg;
-		RangeTblRef   *rarg = (RangeTblRef *) sop_stmt->rarg;
-		RangeTblEntry *lrte = list_nth(parse->rtable, larg->rtindex-1);
-		RangeTblEntry *rrte = list_nth(parse->rtable, rarg->rtindex-1);
+		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
-		if ((lrte->rtekind == RTE_SUBQUERY &&
-			 is_query_contain_limit_groupby(lrte->subquery)) ||
-			(rrte->rtekind == RTE_SUBQUERY &&
-			 is_query_contain_limit_groupby(rrte->subquery)))
+		if (rte->rtekind == RTE_SUBQUERY &&
+			is_query_contain_limit_groupby(rte->subquery))
 			return true;
 	}
 
