@@ -4687,11 +4687,10 @@ CTranslatorDXLToPlStmt::TranslateDXLTblDescrToRangeTblEntry(
 	alias->colnames = NIL;
 
 	// get table alias
-	const CMDName *md_alias = table_descr->MdName();
-
-	if (optimizer_enable_table_alias && NULL != table_descr->MdAlias())
+	const CMDName *md_alias = table_descr->MdAlias();
+	if (!optimizer_enable_table_alias || NULL == md_alias)
 	{
-		md_alias = table_descr->MdAlias();
+		md_alias = table_descr->MdName();
 	}
 
 	alias->aliasname = CTranslatorUtils::CreateMultiByteCharStringFromWCString(
