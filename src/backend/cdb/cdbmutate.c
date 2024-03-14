@@ -848,7 +848,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 		/* Remember if we are descending into a motion node. */
 		if (IsA(node, Motion))
-			context->nMotionsAbove += 1;
+			context->nMotionsAbove++;
 
 		/*
 		 * If this is a scan and it's scanrelid matches ModifyTable's relid,
@@ -1126,7 +1126,7 @@ done:
 	{
 		/* We're going out of this motion node. */
 		if (IsA(node, Motion))
-			context->nMotionsAbove -= 1;
+			context->nMotionsAbove--;
 		else if (IsA(node, ModifyTable))
 			context->mtIsChecking = false;
 	}
