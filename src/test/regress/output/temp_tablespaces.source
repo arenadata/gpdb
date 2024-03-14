@@ -524,9 +524,7 @@ CREATE OR REPLACE FUNCTION gp_tablespace_file_report(
     n_temp_spill_files_tablespaces int
 ) RETURNS TABLE (
         temp_table_in text,
-        files_in_default boolean,
-        files_in_temp_tables boolean,
-        files_in_temp_files_n boolean
+        temp_files_in text
     ) AS $$
 DECLARE
     owo int;
@@ -585,9 +583,11 @@ BEGIN
     -- Check the existence of temporary hashjoin files.
     RETURN QUERY SELECT
         coalesce(temp_table_ts_name, 'default'),
-        gp_tablespace_watch_match(gp_execution_dbid(), 'default', '_HashJoin') > 0,
-        gp_tablespace_watch_match(gp_execution_dbid(), 'temp_tables', '_HashJoin') > 0,
-        gp_tablespace_watch_match(gp_execution_dbid(), session_file_ts_name, '_HashJoin') > 0;
+        CASE
+            WHEN gp_tablespace_watch_match(gp_execution_dbid(), 'default', '_HashJoin') > 0 THEN 'default'
+            WHEN gp_tablespace_watch_match(gp_execution_dbid(), 'temp_tables', '_HashJoin') > 0 THEN 'temp_tables'
+            WHEN gp_tablespace_watch_match(gp_execution_dbid(), session_file_ts_name, '_HashJoin') > 0 THEN 'temp_filesN'
+        END;
 END;
 $$ LANGUAGE plpgsql;
 --
@@ -601,11 +601,11 @@ $$ LANGUAGE plpgsql;
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- default       | t                | f                    | f
- default       | t                | f                    | f
- default       | t                | f                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ default       | default
+ default       | default
+ default       | default
 (3 rows)
 
 -- Both files and the table should be in temp_tables.
@@ -615,11 +615,11 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | f                | t                    | f
- temp_tables   | f                | t                    | f
- temp_tables   | f                | t                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | temp_tables
+ temp_tables   | temp_tables
+ temp_tables   | temp_tables
 (3 rows)
 
 -- Files should be in temp_files0, table should be in the default tablespace.
@@ -629,11 +629,11 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- default       | f                | f                    | t
- default       | f                | f                    | t
- default       | f                | f                    | t
+ temp_table_in | temp_files_in 
+---------------+---------------
+ default       | temp_filesN
+ default       | temp_filesN
+ default       | temp_filesN
 (3 rows)
 
 -- Files should be in temp_files0, table should be in temp_tables.
@@ -643,11 +643,11 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | f                | f                    | t
- temp_tables   | f                | f                    | t
- temp_tables   | f                | f                    | t
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | temp_filesN
+ temp_tables   | temp_filesN
+ temp_tables   | temp_filesN
 (3 rows)
 
 -- Files should be in temp_filesN, where N = gp_session_id % 4, table should be
@@ -658,11 +658,11 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(4);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- default       | f                | f                    | t
- default       | f                | f                    | t
- default       | f                | f                    | t
+ temp_table_in | temp_files_in 
+---------------+---------------
+ default       | temp_filesN
+ default       | temp_filesN
+ default       | temp_filesN
 (3 rows)
 
 -- Files should be in the default tablespace, table should be in temp_tables.
@@ -672,11 +672,11 @@ SELECT * FROM gp_tablespace_file_report(4);
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | default
+ temp_tables   | default
+ temp_tables   | default
 (3 rows)
 
 -- Files should be in the default tablespace, table should be in temp_tables.
@@ -686,11 +686,11 @@ SELECT * FROM gp_tablespace_file_report(1);
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | default
+ temp_tables   | default
+ temp_tables   | default
 (3 rows)
 
 -- Reset the global config before testing session-only values.
@@ -706,44 +706,44 @@ SELECT * FROM gp_tablespace_file_report(1);
 RESET temp_tablespaces;
 RESET temp_spill_files_tablespaces;
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- default       | t                | f                    | f
- default       | t                | f                    | f
- default       | t                | f                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ default       | default
+ default       | default
+ default       | default
 (3 rows)
 
 -- Both files and the table should be in temp_tables.
 SET temp_tablespaces = 'temp_tables';
 RESET temp_spill_files_tablespaces;
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | f                | t                    | f
- temp_tables   | f                | t                    | f
- temp_tables   | f                | t                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | temp_tables
+ temp_tables   | temp_tables
+ temp_tables   | temp_tables
 (3 rows)
 
 -- Files should be in temp_files0, table should be in the default tablespace.
 RESET temp_tablespaces;
 SET temp_spill_files_tablespaces = 'temp_files0';
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- default       | f                | f                    | t
- default       | f                | f                    | t
- default       | f                | f                    | t
+ temp_table_in | temp_files_in 
+---------------+---------------
+ default       | temp_filesN
+ default       | temp_filesN
+ default       | temp_filesN
 (3 rows)
 
 -- Files should be in temp_files0, table should be in temp_tables.
 SET temp_tablespaces = 'temp_tables';
 SET temp_spill_files_tablespaces = 'temp_files0';
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | f                | f                    | t
- temp_tables   | f                | f                    | t
- temp_tables   | f                | f                    | t
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | temp_filesN
+ temp_tables   | temp_filesN
+ temp_tables   | temp_filesN
 (3 rows)
 
 -- Files should be in temp_filesN, where N = gp_session_id % 4, table should be
@@ -751,33 +751,33 @@ SELECT * FROM gp_tablespace_file_report(1);
 RESET temp_tablespaces;
 SET temp_spill_files_tablespaces = 'temp_files0','temp_files1','temp_files2','temp_files3';
 SELECT * FROM gp_tablespace_file_report(4);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- default       | f                | f                    | t
- default       | f                | f                    | t
- default       | f                | f                    | t
+ temp_table_in | temp_files_in 
+---------------+---------------
+ default       | temp_filesN
+ default       | temp_filesN
+ default       | temp_filesN
 (3 rows)
 
 -- Files should be in the default tablespace, table should be in temp_tables.
 SET temp_tablespaces = 'temp_tables';
 SET temp_spill_files_tablespaces = '';
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | default
+ temp_tables   | default
+ temp_tables   | default
 (3 rows)
 
 -- Files should be in the default tablespace, table should be in temp_tables.
 SET temp_tablespaces = 'temp_tables';
 SET temp_spill_files_tablespaces = 'pg_default';
 SELECT * FROM gp_tablespace_file_report(1);
- temp_table_in | files_in_default | files_in_temp_tables | files_in_temp_files_n 
----------------+------------------+----------------------+-----------------------
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
- temp_tables   | t                | f                    | f
+ temp_table_in | temp_files_in 
+---------------+---------------
+ temp_tables   | default
+ temp_tables   | default
+ temp_tables   | default
 (3 rows)
 
 RESET temp_tablespaces;

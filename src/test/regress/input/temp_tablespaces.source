@@ -348,9 +348,7 @@ CREATE OR REPLACE FUNCTION gp_tablespace_file_report(
     n_temp_spill_files_tablespaces int
 ) RETURNS TABLE (
         temp_table_in text,
-        files_in_default boolean,
-        files_in_temp_tables boolean,
-        files_in_temp_files_n boolean
+        temp_files_in text
     ) AS $$
 DECLARE
     owo int;
@@ -409,9 +407,11 @@ BEGIN
     -- Check the existence of temporary hashjoin files.
     RETURN QUERY SELECT
         coalesce(temp_table_ts_name, 'default'),
-        gp_tablespace_watch_match(gp_execution_dbid(), 'default', '_HashJoin') > 0,
-        gp_tablespace_watch_match(gp_execution_dbid(), 'temp_tables', '_HashJoin') > 0,
-        gp_tablespace_watch_match(gp_execution_dbid(), session_file_ts_name, '_HashJoin') > 0;
+        CASE
+            WHEN gp_tablespace_watch_match(gp_execution_dbid(), 'default', '_HashJoin') > 0 THEN 'default'
+            WHEN gp_tablespace_watch_match(gp_execution_dbid(), 'temp_tables', '_HashJoin') > 0 THEN 'temp_tables'
+            WHEN gp_tablespace_watch_match(gp_execution_dbid(), session_file_ts_name, '_HashJoin') > 0 THEN 'temp_filesN'
+        END;
 END;
 $$ LANGUAGE plpgsql;
 
