@@ -176,7 +176,7 @@ CREATE TABLE t1 (a int, b int) DISTRIBUTED RANDOMLY;
 CREATE TABLE t2 (a int, b int) DISTRIBUTED RANDOMLY;
 
 INSERT INTO t1 SELECT
-  generate_series(1, 4) * 3, generate_series(1, 4);
+  generate_series(1, 16) * 3, generate_series(1, 4);
 INSERT INTO t2 SELECT
   generate_series(1, 32), generate_series(1, 32) * 3;
 
