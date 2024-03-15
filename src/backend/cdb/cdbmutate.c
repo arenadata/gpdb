@@ -78,15 +78,14 @@ typedef struct ApplyMotionState
 	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
 
 	/* Context for ModifyTable to elide Explicit Redistribute Motion */
-	bool		mtIsChecking;		/* True if we encountered ModifyTable
-									 * node with UPDATE/DELETE and we plan
-									 * to insert Explicit Motions. */
-	Bitmapset  *mtResultRtis; 		/* Indexes into rtable for relations to
-									 * be modified. Only valid if mtIsChecking
-									 * is true. */
-	bool		needExplicitMotion;
-	int			nMotionsAbove;		/* Number of motions above the current
-									 * node */
+	bool		mtIsChecking;	/* True if we encountered ModifyTable
+								 * node with UPDATE/DELETE and we plan
+								 * to insert Explicit Motions. */
+	List		*mtResultRtis;	/* Indexes into rtable for relations to
+								 * be modified. Only valid if mtIsChecking
+								 * is true. */
+	int			nMotionsAbove;	/* Number of motions above the current
+								 * node */
 } ApplyMotionState;
 
 typedef struct InitPlanItem
@@ -414,10 +413,9 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 													 * plan */
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
-	state.mtResultRtis = NULL;
-	state.needExplicitMotion = false;
-	state.nMotionsAbove = 0;
 	state.mtIsChecking = false;
+	state.mtResultRtis = NIL;
+	state.nMotionsAbove = 0;
 
 	memset(&ctl, 0, sizeof(ctl));
 	ctl.keysize = sizeof(int);
@@ -815,48 +813,38 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 		if (mt->operation == CMD_UPDATE || mt->operation == CMD_DELETE)
 		{
-			ListCell   *lcr;
-
 			/*
 			 * Sanity check, since we don't allow multiple ModifyTable nodes.
 			 */
-			Assert(context->mtResultRtis == NULL);
-			Assert(context->nMotionsAbove == 0);
-			Assert(!context->needExplicitMotion);
 			Assert(!context->mtIsChecking);
+			Assert(context->mtResultRtis == NIL);
+			Assert(context->nMotionsAbove == 0);
 
 			/*
 			 * When UPDATE/DELETE occurs on a partitioned table, or a table that
 			 * is a part of inheritance tree, ModifyTable node will have more
 			 * than one relation in resultRelations.
 			 *
-			 * We make a set of resulting relations' indexes to compare them
-			 * later.
+			 * Remember resulting relations' indexes to compare them later.
 			 */
-			foreach(lcr, mt->resultRelations)
-			{
-				context->mtResultRtis = bms_add_member(context->mtResultRtis,
-													   lfirst_int(lcr));
-			}
-
 			context->mtIsChecking = true;
+			context->mtResultRtis = mt->resultRelations;
 		}
 	}
 
 	if (context->mtIsChecking)
 	{
-
-		/* Remember if we are descending into a motion node. */
+		/* 
+		 * Remember if we are descending into a motion node.
+		 */
 		if (IsA(node, Motion))
 			context->nMotionsAbove++;
-
-		/*
-		 * If this is a scan and it's scanrelid matches ModifyTable's relid,
-		 * we need to check if there were any motions above.
-		 */
 		else
 		{
 			/*
+			 * If this is a scan and it's scanrelid matches ModifyTable's relid,
+			 * we need to check if there were any motions above.
+			 *
 			 * These are scan nodes that can be used to perform distributed
 			 * UPDATE/DELETE on the relation they scan, possibly with motions
 			 * above them. This list needs to be updated for other nodes if they
@@ -875,24 +863,23 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_DynamicBitmapHeapScan:
 				case T_TidScan:
 					{
+						ListCell   *lcr;
 						Scan	   *scan = (Scan *) node;
 
-						if (bms_is_member(scan->scanrelid, context->mtResultRtis))
+						foreach(lcr, context->mtResultRtis)
 						{
-							/*
-							 * We need Explicit Redistribute Motion only if
-							 * there were any motions above.
-							 */
-							context->needExplicitMotion = context->nMotionsAbove > 0;
-
-							/*
-							 * We don't need to check other nodes in this
-							 * subtree anymore.
-							 */
-							context->mtIsChecking = false;
+							if (scan->scanrelid == (Index) lfirst_int(lcr))
+							{
+								/*
+								 * Freeze the motion counter. Also, we don't
+								 * need to check other nodes in this subtree
+								 * anymore.
+								 */
+								context->mtIsChecking = false;
+								break;
+							}
 						}
 					}
-					break;
 				default:
 					break;
 			}
@@ -1050,7 +1037,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			/*
 			 * Were there any motions above the scan?
 			 */
-			if (context->needExplicitMotion)
+			if (context->nMotionsAbove > 0)
 			{
 				newnode = (Node *) make_explicit_motion(plan,
 														flow->segidColIdx,
@@ -1073,7 +1060,6 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * of another Explicit Redistribute Motion is needed.
 			 */
 			context->mtIsChecking = true;
-			context->needExplicitMotion = false;
 			context->nMotionsAbove = 0;
 			break;
 
