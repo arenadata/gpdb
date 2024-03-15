@@ -831,8 +831,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			context->mtResultRtis = mt->resultRelations;
 		}
 	}
-
-	if (context->mtIsChecking)
+	else if (context->mtIsChecking)
 	{
 		/* 
 		 * Remember if we are descending into a motion node.
