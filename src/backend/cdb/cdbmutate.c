@@ -78,14 +78,14 @@ typedef struct ApplyMotionState
 	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
 
 	/* Context for ModifyTable to elide Explicit Redistribute Motion */
-	bool		mtIsChecking;	/* True if we encountered ModifyTable
-								 * node with UPDATE/DELETE and we plan
-								 * to insert Explicit Motions. */
-	List	   *mtResultRtis;	/* Indexes into rtable for relations to
-								 * be modified. Only valid if mtIsChecking
-								 * is true. */
-	int			nMotionsAbove;	/* Number of motions above the current
-								 * node */
+	bool		mtIsChecking;		/* True if we encountered ModifyTable
+									 * node with UPDATE/DELETE and we plan
+									 * to insert Explicit Motions. */
+	List	   *mtResultRelations;	/* Indexes into rtable for relations to
+									 * be modified. Only valid if mtIsChecking
+									 * is true. */
+	int			nMotionsAbove;		/* Number of motions above the current
+									 * node */
 } ApplyMotionState;
 
 typedef struct InitPlanItem
@@ -414,7 +414,7 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
 	state.mtIsChecking = false;
-	state.mtResultRtis = NIL;
+	state.mtResultRelations = NIL;
 	state.nMotionsAbove = 0;
 
 	memset(&ctl, 0, sizeof(ctl));
@@ -817,7 +817,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * Sanity check, since we don't allow multiple ModifyTable nodes.
 			 */
 			Assert(!context->mtIsChecking);
-			Assert(context->mtResultRtis == NIL);
+			Assert(context->mtResultRelations == NIL);
 			Assert(context->nMotionsAbove == 0);
 
 			/*
@@ -828,7 +828,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 			 * Remember resulting relations' indexes to compare them later.
 			 */
 			context->mtIsChecking = true;
-			context->mtResultRtis = mt->resultRelations;
+			context->mtResultRelations = mt->resultRelations;
 		}
 	}
 	else if (context->mtIsChecking)
@@ -861,7 +861,7 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_BitmapHeapScan:
 				case T_DynamicBitmapHeapScan:
 				case T_TidScan:
-					if (list_member_int(context->mtResultRtis,
+					if (list_member_int(context->mtResultRelations,
 										((Scan *) node)->scanrelid))
 					{
 						/*
