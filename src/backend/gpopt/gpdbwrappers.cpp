@@ -2867,17 +2867,6 @@ gpdb::BmsFree(Bitmapset *a)
 }
 
 bool
-gpdb::BmsIsMember(int x, const Bitmapset *a)
-{
-	GP_WRAP_START;
-	{
-		return bms_is_member(x, a);
-	}
-	GP_WRAP_END;
-	return false;
-}
-
-bool
 gpdb::BmsIsSubset(const Bitmapset *a, const Bitmapset *b)
 {
 	GP_WRAP_START;

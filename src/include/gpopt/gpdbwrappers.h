@@ -745,9 +745,6 @@ Bitmapset *GetConstraintRelationColumns(Oid constraint_oid);
 // free a Bitmapset
 void BmsFree(Bitmapset *a);
 
-// check if x is a member of a Bitmapset
-bool BmsIsMember(int x, const Bitmapset *a);
-
 // check if A is a subset of B
 bool BmsIsSubset(const Bitmapset *a, const Bitmapset *b);
 

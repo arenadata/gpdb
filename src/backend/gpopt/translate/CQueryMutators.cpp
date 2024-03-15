@@ -76,8 +76,7 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 
 		GPOS_ASSERT(NULL != rte);
 
-		if (gpdb::BmsIsMember(var->varattno, conkeys) &&
-			var->varlevelsup == 0 && rte->relid == conrelid)
+		if (0 == var->varlevelsup && rte->relid == conrelid)
 		{
 			grouping_set = gpdb::BmsAddMember(grouping_set, var->varattno);
 		}
