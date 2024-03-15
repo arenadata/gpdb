@@ -863,9 +863,8 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_DynamicBitmapHeapScan:
 				case T_TidScan:
 					{
-						Scan	   *scan = (Scan *) node;
-
-						if (list_member_int(context->mtResultRtis, scan->scanrelid))
+						if (list_member_int(context->mtResultRtis,
+											((Scan *) node)->scanrelid))
 						{
 							/*
 							 * Freeze the motion counter. Also, we don't
