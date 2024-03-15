@@ -75,8 +75,6 @@ typedef struct ApplyMotionState
 								 * plan_tree_walker/mutator */
 	int			nextMotionID;
 	int			sliceDepth;
-	bool		containMotionNodes;	/* Obsolete and unused, see below. Kept for
-									 * ABI compatability. */
 	HTAB	   *planid_subplans; /* hash table for InitPlanItem */
 
 	/* Context for ModifyTable to elide Explicit Redistribute Motion */
@@ -415,7 +413,6 @@ apply_motion(PlannerInfo *root, Plan *plan, Query *query)
 													 * plan */
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
 	state.sliceDepth = 0;
-	state.containMotionNodes = false;
 	state.mtIsChecking = false;
 	state.mtResultRtis = NIL;
 	state.nMotionsAbove = 0;
