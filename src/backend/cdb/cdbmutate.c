@@ -81,7 +81,7 @@ typedef struct ApplyMotionState
 	bool		mtIsChecking;	/* True if we encountered ModifyTable
 								 * node with UPDATE/DELETE and we plan
 								 * to insert Explicit Motions. */
-	List		*mtResultRtis;	/* Indexes into rtable for relations to
+	List	   *mtResultRtis;	/* Indexes into rtable for relations to
 								 * be modified. Only valid if mtIsChecking
 								 * is true. */
 	int			nMotionsAbove;	/* Number of motions above the current
