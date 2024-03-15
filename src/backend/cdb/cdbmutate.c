@@ -863,21 +863,16 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 				case T_DynamicBitmapHeapScan:
 				case T_TidScan:
 					{
-						ListCell   *lcr;
 						Scan	   *scan = (Scan *) node;
 
-						foreach(lcr, context->mtResultRtis)
+						if (list_member_int(context->mtResultRtis, scan->scanrelid))
 						{
-							if (scan->scanrelid == (Index) lfirst_int(lcr))
-							{
-								/*
-								 * Freeze the motion counter. Also, we don't
-								 * need to check other nodes in this subtree
-								 * anymore.
-								 */
-								context->mtIsChecking = false;
-								break;
-							}
+							/*
+							 * Freeze the motion counter. Also, we don't
+							 * need to check other nodes in this subtree
+							 * anymore.
+							 */
+							context->mtIsChecking = false;
 						}
 					}
 				default:
