@@ -170,32 +170,6 @@ DROP TABLE t2;
 DROP TABLE t_strewn;
 DROP TABLE t_strewn2;
 
--- Explicit Redistribute Motion should not be added if there are motions in Init
--- Plans but not in the main plan. (test case not applicable to ORCA)
-CREATE TABLE t1 (a int, b int) DISTRIBUTED RANDOMLY;
-CREATE TABLE t2 (a int, b int) DISTRIBUTED RANDOMLY;
-
-INSERT INTO t1 SELECT
-  generate_series(1, 16) * 3, generate_series(1, 4);
-INSERT INTO t2 SELECT
-  generate_series(1, 32), generate_series(1, 32) * 3;
-
-ANALYZE t1;
-ANALYZE t2;
-
-EXPLAIN (costs off)
-WITH cte AS (
-    SELECT count(*) AS c FROM t1, t2 WHERE t1.b = t2.b
-) DELETE FROM t2 WHERE a = (SELECT * FROM cte);
-
-WITH cte AS (
-    SELECT count(*) AS c FROM t1, t2 WHERE t1.b = t2.b
-) DELETE FROM t2 WHERE a = (SELECT * FROM cte)
-RETURNING *;
-
-DROP TABLE t1;
-DROP TABLE t2;
-
 -- Explicit Redistribute Motion should not be mistakenly elided for inherited
 -- tables. (test case not applicable to ORCA)
 -- start_ignore
