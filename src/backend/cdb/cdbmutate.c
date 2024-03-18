@@ -85,7 +85,8 @@ typedef struct ApplyMotionState
 									 * be modified. Only valid if mtIsChecking
 									 * is true. */
 	int			nMotionsAbove;		/* Number of motions above the current
-									 * node */
+									 * node. Only valid if mtIsChecking is
+									 * true. */
 } ApplyMotionState;
 
 typedef struct InitPlanItem
