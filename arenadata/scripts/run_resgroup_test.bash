@@ -3,7 +3,7 @@
 project="resgroup"
 
 #install gpdb and setup gpadmin user
-bash arenadata/scripts/init_containers.sh $project
+bash arenadata/scripts/init_containers.sh $project cdw sdw1
 
 for service in 'cdw' 'sdw1'
 do
@@ -35,8 +35,7 @@ docker-compose -p $project -f arenadata/docker-compose.yaml exec -Tu gpadmin cdw
             ${CONFIGURE_FLAGS}
 
         make -C /home/gpadmin/gpdb_src/src/test/regress
-        ssh sdw1 mkdir -p /home/gpadmin/gpdb_src/src/test/regress </dev/null
-        ssh sdw1 mkdir -p /home/gpadmin/gpdb_src/src/test/isolation2 </dev/null
+        ssh sdw1 mkdir -p /home/gpadmin/gpdb_src/src/test/{regress,isolation2} </dev/null
         scp /home/gpadmin/gpdb_src/src/test/regress/regress.so \
             gpadmin@sdw1:/home/gpadmin/gpdb_src/src/test/regress/
 

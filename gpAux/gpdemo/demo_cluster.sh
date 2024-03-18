@@ -132,10 +132,8 @@ cleanDemo(){
     ##
 
     if [ "${GPDEMO_DESTRUCTIVE_CLEAN}" != "false" ]; then
-        if gpssh -f hostfile [ -d ${DATADIRS} ]; then
-            echo "Deleting ${DATADIRS} on hosts"
-            gpssh -f hostfile rm -rf ${DATADIRS}
-        fi
+        echo "Deleting ${DATADIRS} on hosts"
+        gpssh -f hostfile rm -rf ${DATADIRS}
 
         if [ -f hostfile ];  then
             echo "Deleting hostfile"
@@ -258,14 +256,12 @@ fi
 
 LOCALHOST=`hostname`
 
-HOSTS_OPTS=""
-TRUSTED_SHELL="`pwd`/lalshell"
-rm -f hostfile
-if [[ -v HOSTS_LIST  ]]; then
+if [ -n HOSTS_LIST  ]; then
+  rm -f hostfile
   for host in $HOSTS_LIST; do
     if ! ssh $host /bin/true; then
       echo "can't access to the host $host, exiting"
-      exit 0
+      exit 1
     fi
 
     echo $host >> hostfile
@@ -274,10 +270,13 @@ if [[ -v HOSTS_LIST  ]]; then
   TRUSTED_SHELL="ssh"
 else
   echo $LOCALHOST > hostfile
+  HOSTS_OPTS=""
+  TRUSTED_SHELL="`pwd`/lalshell"
 fi
 
 if [ -d $DATADIRS ]; then
   rm -rf $DATADIRS
+  gpssh -f hostfile rm -rf $DATADIRS
 fi
 mkdir $DATADIRS
 mkdir $QDDIR
@@ -286,12 +285,10 @@ mkdir $DATADIRS/gpAdminLogs
 for (( i=1; i<=$NUM_PRIMARY_MIRROR_PAIRS; i++ ))
 do
   PRIMARY_DIR=$DATADIRS/dbfast$i
-  gpssh -f hostfile rm -rf $PRIMARY_DIR
   gpssh -f hostfile mkdir -p $PRIMARY_DIR
   PRIMARY_DIRS_LIST="$PRIMARY_DIRS_LIST $PRIMARY_DIR"
 
   MIRROR_DIR=$DATADIRS/dbfast_mirror$i
-  gpssh -f hostfile rm -rf $MIRROR_DIR
   gpssh -f hostfile mkdir -p $MIRROR_DIR
   MIRROR_DIRS_LIST="$MIRROR_DIRS_LIST $MIRROR_DIR"
 done
