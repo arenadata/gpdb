@@ -928,6 +928,37 @@ SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a, b), (a), ()) ORDER B
     |       |  
 (51 rows)
 
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a, a), ()) ORDER BY a, b, c;
+ a  |   b   | c 
+----+-------+---
+  1 | text1 | 0
+  2 | text2 | 1
+  3 | text3 | 0
+  4 | text4 | 1
+  5 | text0 | 0
+  6 | text1 | 1
+  7 | text2 | 0
+  8 | text3 | 1
+  9 | text4 | 0
+ 10 | text0 | 1
+ 11 | text1 | 0
+ 12 | text2 | 1
+ 13 | text3 | 0
+ 14 | text4 | 1
+ 15 | text0 | 0
+ 16 | text1 | 1
+ 17 | text2 | 0
+ 18 | text3 | 1
+ 19 | text4 | 0
+ 20 | text0 | 1
+ 21 | text1 | 0
+ 22 | text2 | 1
+ 23 | text3 | 0
+ 24 | text4 | 1
+ 25 | text0 | 0
+    |       |  
+(26 rows)
+
 -- Check rollup
 SELECT a, b, c FROM test_table1 GROUP BY ROLLUP (a) ORDER BY a, b, c;
  a  |   b   | c 

@@ -342,6 +342,7 @@ SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), ()) ORDER BY a, b, 
 SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (b)) ORDER BY a, b;
 SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a, b)) ORDER BY a, b;
 SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a, b), (a), ()) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a, a), ()) ORDER BY a, b, c;
 -- Check rollup
 SELECT a, b, c FROM test_table1 GROUP BY ROLLUP (a) ORDER BY a, b, c;
 SELECT a, b, c FROM test_table1 GROUP BY ROLLUP (a, b) ORDER BY a, b, c;
