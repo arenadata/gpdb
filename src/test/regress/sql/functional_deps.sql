@@ -332,7 +332,7 @@ INSERT INTO test_table3 VALUES
 
 -- Check simple group by clause
 SELECT a, b FROM test_table1 GROUP BY a ORDER BY a;
-SELECT a, b, c FROM test_table1 GROUP BY a ORDER BY a;
+SELECT a, b, c FROM test_table1 GROUP BY a, a > 1 ORDER BY a;
 SELECT a, b, c FROM test_table1 GROUP BY a, b ORDER BY a;
 -- Check grouping sets
 SELECT a, b FROM test_table1 GROUP BY GROUPING SETS ((a)) ORDER BY a;

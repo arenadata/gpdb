@@ -600,7 +600,7 @@ SELECT a, b FROM test_table1 GROUP BY a ORDER BY a;
  25 | text0
 (25 rows)
 
-SELECT a, b, c FROM test_table1 GROUP BY a ORDER BY a;
+SELECT a, b, c FROM test_table1 GROUP BY a, a > 1 ORDER BY a;
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0
