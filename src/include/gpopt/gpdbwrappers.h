@@ -727,6 +727,12 @@ Node *GetSortGroupClauseExpr(SortGroupClause *sgclause, List *targetlist);
 // append an integer to a list, if it was not in the list before
 List *LAppendUniqueInt(List *list, int datum);
 
+// append a datum to a list, if it was not in the list before
+List *LAppendUnique(List *list, void *datum);
+
+// return true if the integer 'datum' is a member of the list
+bool ListMemberInt(List *list, int datum);
+
 // get default sorting/grouping operators for type
 void GetSortGroupOperators(Oid argtype, bool need_lt, bool need_eq,
 						   bool need_gt, Oid *lt_opr, Oid *eq_opr, Oid *gt_opr,
@@ -740,13 +746,7 @@ void GetConstraintRelationOids(Oid constraint_oid, Oid *conrelid,
 							   Oid *confrelid);
 
 // find the columns of the relations to which a constraint refers
-Bitmapset *GetConstraintRelationColumns(Oid constraint_oid);
-
-// free a Bitmapset
-void BmsFree(Bitmapset *a);
-
-// check if A is a subset of B
-bool BmsIsSubset(const Bitmapset *a, const Bitmapset *b);
+List *GetConstraintRelationColumns(Oid constraint_oid);
 
 }  //namespace gpdb
 

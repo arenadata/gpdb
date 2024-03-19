@@ -2810,6 +2810,28 @@ gpdb::LAppendUniqueInt(List *list, int datum)
 	return NIL;
 }
 
+List *
+gpdb::LAppendUnique(List *list, void *datum)
+{
+	GP_WRAP_START;
+	{
+		return list_append_unique(list, datum);
+	}
+	GP_WRAP_END;
+	return NIL;
+}
+
+bool
+gpdb::ListMemberInt(List *list, int datum)
+{
+	GP_WRAP_START;
+	{
+		return list_member_int(list, datum);
+	}
+	GP_WRAP_END;
+	return NIL;
+}
+
 void
 gpdb::GetSortGroupOperators(Oid argtype, bool need_lt, bool need_eq,
 							bool need_gt, Oid *lt_opr, Oid *eq_opr, Oid *gt_opr,
@@ -2845,7 +2867,7 @@ gpdb::GetConstraintRelationOids(Oid constraint_oid, Oid *conrelid,
 	GP_WRAP_END;
 }
 
-Bitmapset *
+List *
 gpdb::GetConstraintRelationColumns(Oid constraint_oid)
 {
 	GP_WRAP_START;
@@ -2853,28 +2875,7 @@ gpdb::GetConstraintRelationColumns(Oid constraint_oid)
 		return get_constraint_relation_columns(constraint_oid);
 	}
 	GP_WRAP_END;
-	return NULL;
-}
-
-void
-gpdb::BmsFree(Bitmapset *a)
-{
-	GP_WRAP_START;
-	{
-		bms_free(a);
-	}
-	GP_WRAP_END;
-}
-
-bool
-gpdb::BmsIsSubset(const Bitmapset *a, const Bitmapset *b)
-{
-	GP_WRAP_START;
-	{
-		return bms_is_subset(a, b);
-	}
-	GP_WRAP_END;
-	return false;
+	return NIL;
 }
 
 // EOF

@@ -188,8 +188,8 @@ class CQueryMutators
 		Query *m_query;
 		// primary key relation id
 		Oid m_conrelid;
-		// set of columns that define primary key in relation with m_conrelid
-		Bitmapset *m_conkeys;
+		// list of columns that define primary key in relation with m_conrelid
+		List *m_conkeys;
 		// the current query level
 		ULONG m_current_query_level;
 		// new SortGroupClause to be added into groupClause
@@ -205,7 +205,7 @@ class CQueryMutators
 		SContextFixGroupDependentTargets(Query *query)
 			: m_query(query),
 			  m_conrelid(0),
-			  m_conkeys(NULL),
+			  m_conkeys(NIL),
 			  m_current_query_level(0),
 			  m_gc(NULL),
 			  m_parent_is_grouping_clause(false),
@@ -217,8 +217,7 @@ class CQueryMutators
 private:
 	static BOOL GroupingListContainsPrimaryKey(Query *query,
 											   List *grouping_list,
-											   Bitmapset *conkeys,
-											   Oid conrelid);
+											   List *conkeys, Oid conrelid);
 
 	static BOOL GetGroupUniqueTleReferencesWalker(
 		Node *node, SContexGetGroupUniqueTleWalker *context);

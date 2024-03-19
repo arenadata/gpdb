@@ -839,12 +839,12 @@ get_constraint_relation_oids(Oid constraint_oid, Oid *conrelid, Oid *confrelid)
 /*
  * get_constraint_relation_columns
  *		Find the columns of the relations to which a constraint refers.
- *		Returns the Bitmapset of found columns.
+ *		Returns the list of found columns.
  */
-Bitmapset *
+List *
 get_constraint_relation_columns(Oid constraint_oid)
 {
-	Bitmapset  *conkeys_set = NULL;
+	List	   *conkeys_list = NIL;
 	HeapTuple	tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
 
 	if (HeapTupleIsValid(tp))
@@ -871,7 +871,7 @@ get_constraint_relation_columns(Oid constraint_oid)
 			{
 				AttrNumber	attnum = DatumGetInt16(conkeys[i]);
 
-				conkeys_set = bms_add_member(conkeys_set, attnum);
+				conkeys_list = list_append_unique_int(conkeys_list, attnum);
 			}
 		}
 
@@ -879,7 +879,7 @@ get_constraint_relation_columns(Oid constraint_oid)
 		ReleaseSysCache(tp);
 	}
 
-	return conkeys_set;
+	return conkeys_list;
 }
 
 /*

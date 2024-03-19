@@ -44,15 +44,15 @@ using namespace gpmd;
 //		Checks if list grouping_list contains all columns from conkeys of
 //		Primary Key in relation conrelid. grouping_list is treated as flat
 //		list of SortGroupClauses, other nodes are ignored.
+//		Important note: grouping_list should not have duplicate values.
 //---------------------------------------------------------------------------
 BOOL
 CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 											   List *grouping_list,
-											   Bitmapset *conkeys, Oid conrelid)
+											   List *conkeys, Oid conrelid)
 {
-	BOOL result = false;
-	Bitmapset *grouping_set = NULL;
 	ListCell *lgc;
+	ULONG found_col_cnt = 0;
 
 	// Check if conkeys set is a subset of grouping columns set.
 	ForEach(lgc, grouping_list)
@@ -74,19 +74,15 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 		RangeTblEntry *rte =
 			(RangeTblEntry *) gpdb::ListNth(query->rtable, var->varno - 1);
 
-		GPOS_ASSERT(NULL != rte);
-
-		if (0 == var->varlevelsup && rte->relid == conrelid)
+		if (0 == var->varlevelsup && rte->relid == conrelid &&
+			gpdb::ListMemberInt(conkeys, var->varattno))
 		{
-			grouping_set = gpdb::BmsAddMember(grouping_set, var->varattno);
+			found_col_cnt++;
 		}
 	}
 
-	result = gpdb::BmsIsSubset(conkeys, grouping_set);
-
-	gpdb::BmsFree(grouping_set);
-
-	return result;
+	// check that all conkeys were found
+	return (gpdb::ListLength(conkeys) == found_col_cnt);
 }
 
 //---------------------------------------------------------------------------
@@ -112,18 +108,12 @@ CQueryMutators::AddMissingGroupClauseMutator(
 		if (context->m_parent_is_grouping_clause)
 		{
 			// In case the SortGroupClause is direct element of groupsets list
-			// of GroupingClause, we should treat it in a special way - consider
+			// of GroupingClause, we treat it in a special way - consider
 			// it like a 1-element list.
-			List *new_list = ListMake1((Node *) gpdb::CopyObject(node));
-			if (GroupingListContainsPrimaryKey(context->m_query, new_list,
-											   context->m_conkeys,
-											   context->m_conrelid))
-			{
-				new_list = gpdb::LAppend(
-					new_list, gpdb::CopyObject((Node *) context->m_gc));
-				return (Node *) new_list;
-			}
-			gpdb::ListFreeDeep(new_list);
+			List *ls = ListMake1(node);
+			Node *new_node = AddMissingGroupClauseMutator((Node *) ls, context);
+			gpdb::ListFree(ls);
+			return new_node;
 		}
 		return (Node *) gpdb::CopyObject(node);
 	}
@@ -157,8 +147,8 @@ CQueryMutators::AddMissingGroupClauseMutator(
 		ForEach(l, original_list)
 		{
 			Node *n = (Node *) lfirst(l);
-			new_list = gpdb::LAppend(new_list,
-									 AddMissingGroupClauseMutator(n, context));
+			new_list = gpdb::LAppendUnique(
+				new_list, AddMissingGroupClauseMutator(n, context));
 		}
 
 		if (GroupingListContainsPrimaryKey(context->m_query, new_list,
@@ -475,7 +465,7 @@ CQueryMutators::FixGroupDependentTargets(Query *query)
 			gpdb::ListFreeDeep(old_group_clause);
 			gpdb::GPDBFree(gc);
 		}
-		gpdb::BmsFree(ctx_fix_dependent_targets.m_conkeys);
+		gpdb::ListFree(ctx_fix_dependent_targets.m_conkeys);
 	}
 	// remove constraintDeps
 	gpdb::ListFree(query->constraintDeps);
