@@ -583,7 +583,6 @@ drop table l_table;
 drop table r_table1;
 drop table r_table2;
 
--- error when use motion deliver a lateral param
 create table ttt(tc1 varchar(10)) distributed randomly;
 create table ttt1(tc2 varchar(10)) distributed randomly;
 insert into ttt values('sdfs');
@@ -604,6 +603,10 @@ from
       ttt.tc1=ttt1.tc2
 ) t on true;
 
+drop table ttt;
+drop table ttt1;
+
+-- error when use motion deliver a lateral param
 -- issue: https://github.com/greenplum-db/gpdb/issues/10013
 drop table if exists t1;
 drop table if exists t2;

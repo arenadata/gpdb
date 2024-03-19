@@ -4134,7 +4134,6 @@ reset enable_seqscan;
 drop table l_table;
 drop table r_table1;
 drop table r_table2;
--- error when use motion deliver a lateral param
 create table ttt(tc1 varchar(10)) distributed randomly;
 create table ttt1(tc2 varchar(10)) distributed randomly;
 insert into ttt values('sdfs');
@@ -4153,7 +4152,24 @@ from
     where
       ttt.tc1=ttt1.tc2
 ) t on true;
-ERROR:  Passing parameters across motion is not supported. (cdbmutate.c:3701)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Nested Loop Left Join
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Seq Scan on ttt
+   ->  Materialize
+         ->  Aggregate
+               ->  Result
+                     Filter: ((ttt.tc1)::text = (ttt1.tc2)::text)
+                     ->  Materialize
+                           ->  Gather Motion 3:1  (slice2; segments: 3)
+                                 ->  Seq Scan on ttt1
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+drop table ttt;
+drop table ttt1;
+-- error when use motion deliver a lateral param
 -- issue: https://github.com/greenplum-db/gpdb/issues/10013
 drop table if exists t1;
 drop table if exists t2;
