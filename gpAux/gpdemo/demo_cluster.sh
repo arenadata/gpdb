@@ -256,7 +256,7 @@ fi
 
 LOCALHOST=`hostname`
 
-if [ -n HOSTS_LIST  ]; then
+if [ -n "$HOSTS_LIST" ]; then
   rm -f hostfile
   for host in $HOSTS_LIST; do
     if ! ssh $host /bin/true; then
