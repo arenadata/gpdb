@@ -1639,8 +1639,10 @@ assign_temp_tablespaces(const char *newval, void *extra)
 
 	/*
 	 * If check_temp_tablespaces was executed inside a transaction, then pass
-	 * the list it made to fd.c.  Otherwise, just let the next
-	 * PrepareTempTablespaces call make things sane.
+	 * the list it made to fd.c.  Otherwise, clear fd.c's list; we must be
+	 * still outside a transaction, or else restoring during transaction exit,
+	 * and in either case we can just let the next PrepareTempTablespaces call
+	 * make things sane.
 	 */
 	if (myextra)
 		SetTempTablespaces(myextra->tblSpcs, myextra->numSpcs);
@@ -1656,8 +1658,10 @@ assign_temp_spill_files_tablespaces(const char *newval, void *extra)
 
 	/*
 	 * If check_temp_tablespaces was executed inside a transaction, then pass
-	 * the list it made to fd.c.  Otherwise, just let the next
-	 * PrepareTempTablespaces call make things sane.
+	 * the list it made to fd.c.  Otherwise, clear fd.c's list; we must be
+	 * still outside a transaction, or else restoring during transaction exit,
+	 * and in either case we can just let the next PrepareTempTablespaces call
+	 * make things sane.
 	 */
 	if (myextra)
 		SetTempFileTablespaces(myextra->tblSpcs, myextra->numSpcs);
