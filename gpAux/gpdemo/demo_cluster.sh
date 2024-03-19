@@ -276,8 +276,9 @@ fi
 
 if [ -d $DATADIRS ]; then
   rm -rf $DATADIRS
-  gpssh -f hostfile rm -rf $DATADIRS
 fi
+gpssh -f hostfile rm -rf $DATADIRS
+
 mkdir $DATADIRS
 mkdir $QDDIR
 mkdir $DATADIRS/gpAdminLogs
