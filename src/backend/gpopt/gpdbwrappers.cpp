@@ -2829,7 +2829,7 @@ gpdb::ListMemberInt(List *list, int datum)
 		return list_member_int(list, datum);
 	}
 	GP_WRAP_END;
-	return NIL;
+	return false;
 }
 
 void
