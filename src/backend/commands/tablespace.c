@@ -1645,7 +1645,7 @@ assign_temp_tablespaces(const char *newval, void *extra)
 	if (myextra)
 		SetTempTablespaces(myextra->tblSpcs, myextra->numSpcs);
 	else
-		SetTempTablespaces(NULL, -1);
+		SetTempTablespaces(NULL, 0);
 }
 
 /* assign_hook: do extra actions as needed */
@@ -1662,7 +1662,7 @@ assign_temp_spill_files_tablespaces(const char *newval, void *extra)
 	if (myextra)
 		SetTempFileTablespaces(myextra->tblSpcs, myextra->numSpcs);
 	else
-		SetTempFileTablespaces(NULL, -1);
+		SetTempFileTablespaces(NULL, 0);
 }
 
 /*
