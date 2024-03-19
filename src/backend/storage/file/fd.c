@@ -2616,7 +2616,7 @@ closeAllVfds(void)
 static void
 set_tablespaces(Oid *tableSpaces, int numSpaces, BackendTempTableSpaces *tableSpaceVar)
 {
-	AssertImply(tableSpaces == NULL, numSpaces == -1 || numSpaces == 0);
+	AssertImply(tableSpaces == NULL, numSpaces == -1);
 	AssertImply(tableSpaces != NULL, numSpaces >= 0);
 
 	tableSpaceVar->tempTableSpaces = tableSpaces;
