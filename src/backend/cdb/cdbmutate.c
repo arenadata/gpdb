@@ -767,9 +767,16 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 	/* An expression node might have subtrees containing plans to be mutated. */
 	if (!is_plan_node(node))
 	{
+		/*
+		 * If we expect to elide the Explicit Redistribute Motion, we can
+		 * disable mtIsChecking while we're in an InitPlan, since there will not
+		 * be any scan nodes that perform a scan on the same range table entry
+		 * as ModifyTable under InitPlans.
+		 */
 		if (IsA(node, SubPlan) &&((SubPlan *) node)->is_initplan)
 		{
 			bool		found;
+			bool		saveMtIsChecking = context->mtIsChecking;
 			int			saveSliceDepth = context->sliceDepth;
 			SubPlan		*subplan = (SubPlan *) node;
 			/*
@@ -784,8 +791,10 @@ apply_motion_mutator(Node *node, ApplyMotionState *context)
 
 			/* reset sliceDepth for each init plan */
 			context->sliceDepth = 0;
+			context->mtIsChecking = false;
 			node = plan_tree_mutator(node, apply_motion_mutator, context);
 
+			context->mtIsChecking = saveMtIsChecking;
 			context->sliceDepth = saveSliceDepth;
 
 			return node;
