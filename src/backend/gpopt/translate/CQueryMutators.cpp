@@ -67,7 +67,10 @@ CQueryMutators::GroupingListContainsPrimaryKey(Query *query,
 		SortGroupClause *sgc = (SortGroupClause *) grpcl;
 		Node *expr = gpdb::GetSortGroupClauseExpr(sgc, query->targetList);
 
-		GPOS_ASSERT(IsA(expr, Var));
+		if (!IsA(expr, Var))
+		{
+			continue;
+		}
 
 		Var *var = (Var *) expr;
 
