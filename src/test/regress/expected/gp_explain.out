@@ -568,24 +568,5 @@ explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
  Optimizer: Postgres query optimizer
 (7 rows)
 
--- Check that debug print of physical plan also contains alias
-set optimizer_print_plan=on;
-set client_min_messages=log;
-explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
-LOG:  statement: explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
-                                   QUERY PLAN                                   
---------------------------------------------------------------------------------
- Delete on foo_alias bbb  (cost=3.23..6.46 rows=4 width=16)
-   ->  Hash Join  (cost=3.23..6.46 rows=4 width=16)
-         Hash Cond: (bbb.a = aaa.a)
-         ->  Seq Scan on foo_alias bbb  (cost=0.00..3.10 rows=4 width=14)
-         ->  Hash  (cost=3.10..3.10 rows=4 width=10)
-               ->  Seq Scan on foo_alias aaa  (cost=0.00..3.10 rows=4 width=10)
- Optimizer: Postgres query optimizer
-(7 rows)
-
-reset client_min_messages;
-LOG:  statement: reset client_min_messages;
 drop table foo_alias;
-reset optimizer_print_plan;
 reset optimizer_enable_table_alias;

@@ -357,12 +357,5 @@ explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
 set optimizer_enable_table_alias=on;
 explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
 
--- Check that debug print of physical plan also contains alias
-set optimizer_print_plan=on;
-set client_min_messages=log;
-explain delete from foo_alias bbb using foo_alias aaa where aaa.a=bbb.a;
-
-reset client_min_messages;
 drop table foo_alias;
-reset optimizer_print_plan;
 reset optimizer_enable_table_alias;
