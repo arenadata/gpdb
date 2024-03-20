@@ -228,6 +228,11 @@ CREATE
 CREATE OR REPLACE FUNCTION insert_bm_lov_res() RETURNS void AS $$ DECLARE lov_table text; /* in func */ sql text; /* in func */ BEGIN /* in func */ drop table if exists bm_lov_res; /* in func */ create temp table bm_lov_res(b int); /* in func */ SELECT c.relname INTO lov_table /* in func */ FROM bm_metap('tab_fi_idx') b /* in func */ JOIN pg_class c ON b.auxrelid = c.oid; /* in func */ sql := format('INSERT INTO bm_lov_res SELECT b FROM pg_bitmapindex.%I', lov_table); /* in func */ EXECUTE sql; /* in func */ END; /* in func */ $$ LANGUAGE plpgsql;
 CREATE
 
+-- Save session_id to a replicated table to later add panic only for this session.
+2: create table target_session_id_t(target_session_id int) DISTRIBUTED REPLICATED;
+CREATE
+2: insert into target_session_id_t values(current_setting('gp_session_id')::int);
+INSERT 1
 1: create table tab_fi(a int, b int) with (appendoptimized=true) distributed replicated;
 CREATE
 1: create index tab_fi_idx on tab_fi using bitmap(b);
@@ -270,7 +275,8 @@ INSERT 1
 --------------------------
  Success:                 
 (1 row)
-1: select gp_inject_fault('qe_exec_finished', 'panic', dbid) from gp_segment_configuration where role = 'p' and content = 0;
+-- Add panic only for a previously saved session.
+1: select gp_inject_fault('qe_exec_finished', 'panic', dbid, target_session_id) from gp_segment_configuration join target_session_id_t on true where role = 'p' and content = 0;
  gp_inject_fault 
 -----------------
  Success:        
@@ -321,9 +327,16 @@ SET
 0Uq: ... <quitting>
 1: drop table tab_fi;
 DROP
+1: drop table target_session_id_t;
+DROP
 
 -- case 2: suspend and flush WAL after freezing the tuple
 
+-- Save session_id to a replicated table to later add panic only for this session.
+2: create table target_session_id_t(target_session_id int) DISTRIBUTED REPLICATED;
+CREATE
+2: insert into target_session_id_t values(current_setting('gp_session_id')::int);
+INSERT 1
 1: create table tab_fi(a int, b int) with (appendoptimized=true) distributed replicated;
 CREATE
 1: create index tab_fi_idx on tab_fi using bitmap(b);
@@ -365,7 +378,8 @@ rmgr: Heap2       len (rec/tot):     36/    68, tx: ##, lsn: #/########, prev #/
 --------------------------
  Success:                 
 (1 row)
-1: select gp_inject_fault('qe_exec_finished', 'panic', dbid) from gp_segment_configuration where role = 'p' and content = 0;
+-- Add panic only for a previously saved session.
+1: select gp_inject_fault('qe_exec_finished', 'panic', dbid, target_session_id) from gp_segment_configuration join target_session_id_t on true where role = 'p' and content = 0;
  gp_inject_fault 
 -----------------
  Success:        
@@ -415,6 +429,10 @@ SET
  1 
  2 
 (2 rows)
+1: drop table tab_fi;
+DROP
+1: drop table target_session_id_t;
+DROP
 
 1: drop extension pageinspect;
 DROP
