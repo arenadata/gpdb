@@ -3,12 +3,6 @@ set -eo pipefail
 
 project="$1"
 
-mkdir ssh_keys -p
-if [ ! -e "ssh_keys/id_rsa" ]
-then
-  ssh-keygen -P "" -f ssh_keys/id_rsa
-fi
-
 shift
 
 docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env up -d $@

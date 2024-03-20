@@ -28,6 +28,11 @@ processes=3
 
 rm -rf allure-results
 mkdir allure-results -pm 777
+mkdir ssh_keys -p
+if [ ! -e "ssh_keys/id_rsa" ]
+then
+  ssh-keygen -P "" -f ssh_keys/id_rsa
+fi
 
 run_feature() {
   local feature=$1

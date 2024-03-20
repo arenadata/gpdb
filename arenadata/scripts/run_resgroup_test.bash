@@ -2,6 +2,12 @@
 
 project="resgroup"
 
+mkdir ssh_keys -p
+if [ ! -e "ssh_keys/id_rsa" ]
+then
+  ssh-keygen -P "" -f ssh_keys/id_rsa
+fi
+
 #install gpdb and setup gpadmin user
 bash arenadata/scripts/init_containers.sh $project cdw sdw1
 
