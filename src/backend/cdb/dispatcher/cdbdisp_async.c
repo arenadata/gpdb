@@ -37,6 +37,7 @@
 #include "cdb/cdbpq.h"
 #include "miscadmin.h"
 #include "commands/sequence.h"
+#include "utils/vmem_tracker.h"
 #include "access/xact.h"
 #include "utils/timestamp.h"
 #define DISPATCH_WAIT_TIMEOUT_MSEC 2000
@@ -456,6 +457,11 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 
 	db_count = pParms->dispatchCount;
 	fds = (struct pollfd *) palloc(db_count * sizeof(struct pollfd));
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("alloc_chunk_during_dispatch") == FaultInjectorTypeSkip)
+		palloc(1 << VmemTracker_GetChunkSizeInBits());
+#endif
 
 	/*
 	 * OK, we are finished submitting the command to the segdbs. Now, we have
@@ -1232,8 +1238,7 @@ processResults(CdbDispatchResult *dispatchResult)
 		else
 		{
 			/* Got an unknown PGnotify, just record it in log */
-			if (qnotifies->relname)
-				elog(LOG, "got an unknown notify message : %s", qnotifies->relname);
+			elog(LOG, "got an unknown notify message : %s", qnotifies->relname);
 		}
 
 		if (qnotifies)
