@@ -42,18 +42,6 @@
 #define FD_H
 
 #include <dirent.h>
-#include "postgres_ext.h"
-
-/*
- * Structure that is used for temp_tablespaces and temp_spill_files_tablespaces.
- * When count is -1, this has not been set in the current transaction.
- */
-typedef struct BackendTempTableSpaces
-{
-	Oid *tempTableSpaces;
-	int numTempTableSpaces;
-	int nextTempTableSpace;
-} BackendTempTableSpaces;
 
 /*
  * FileSeek uses the standard UNIX lseek(2) flags.

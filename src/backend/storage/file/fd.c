@@ -259,11 +259,19 @@ static AllocateDesc *allocatedDescs = NULL;
  */
 static long tempFileCounter = 0;
 
+typedef struct
+{
+	Oid		   *tempTableSpaces;
+	int			numTempTableSpaces;
+	int			nextTempTableSpace;
+} BackendTempTableSpaces;
+
 /*
  * Structures containing tablespace info from temp_tablespaces and
  * temp_spill_files_tablespaces.
  *
- * When count is -1, this has not been set in the current transaction.
+ * When numTempTableSpaces is -1, this has not been set in the current
+ * transaction.
  */
 static BackendTempTableSpaces tempTableSpaces = { NULL, -1, 0 };
 static BackendTempTableSpaces tempSpillFilesTableSpaces = { NULL, -1, 0 };
