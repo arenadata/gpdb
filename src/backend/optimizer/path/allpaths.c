@@ -124,7 +124,7 @@ static void subquery_push_qual(Query *subquery,
 static void recurse_push_qual(Node *setOp, Query *topquery,
 				  RangeTblEntry *rte, Index rti, Node *qual);
 static void bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel,  List *outer_quals);
-static bool is_query_contain_limit_groupby(Query *parse);
+static bool check_query_for_possible_motion(Query *parse);
 static void handle_gen_seggen_volatile_path(PlannerInfo *root, RelOptInfo *rel);
 
 /*
@@ -1695,12 +1695,13 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		config->honor_order_by = false;		/* partial order is enough */
 		/*
 		 * CDB: if this subquery is the inner plan of a lateral
-		 * join and if it contains a limit, we can only gather
-		 * it to singleQE and materialize the data because we
+		 * join and if it contains a limit or group by or some other clause
+		 * from a bunch of conditions that can cause motion in the plan,
+		 * we can only gather it to singleQE and materialize the data because we
 		 * cannot pass params across motion.
 		 */
 		if ((!bms_is_empty(required_outer)) &&
-			is_query_contain_limit_groupby(subquery))
+			check_query_for_possible_motion(subquery))
 			config->force_singleQE = true;
 
 		rel->subplan = subquery_planner(root->glob, subquery,
@@ -3004,7 +3005,7 @@ recurse_push_qual(Node *setOp, Query *topquery,
 }
 
 static bool
-is_query_contain_limit_groupby(Query *parse)
+check_query_for_possible_motion(Query *parse)
 {
 	ListCell   *lc;
 
@@ -3031,7 +3032,7 @@ is_query_contain_limit_groupby(Query *parse)
 	{
 		CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
 
-		if (is_query_contain_limit_groupby((Query *) cte->ctequery))
+		if (check_query_for_possible_motion((Query *) cte->ctequery))
 			return true;
 	}
 
@@ -3040,7 +3041,7 @@ is_query_contain_limit_groupby(Query *parse)
 		RangeTblEntry *rte = (RangeTblEntry *) lfirst(lc);
 
 		if (rte->rtekind == RTE_SUBQUERY &&
-			is_query_contain_limit_groupby(rte->subquery))
+			check_query_for_possible_motion(rte->subquery))
 			return true;
 	}
 

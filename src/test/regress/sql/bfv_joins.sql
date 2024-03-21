@@ -685,6 +685,42 @@ cross join lateral
   except all
   select a+1, b from t1 where a+1 < 10) x;
 
+drop table t1;
+drop table t2;
+
+create table t1 (a int, b text, c int) distributed by (a);
+insert into t1 values (1, '', 1);
+
+-- Test lateral join with a sub-query having an aggregate function
+explain (costs off) select from (values ('')) tmp(b) join lateral
+(
+  select avg(c) from t1 where t1.b = tmp.b
+) s on true;
+
+select from (values ('')) tmp(b) join lateral
+(
+  select avg(c) from t1 where t1.b = tmp.b
+) s on true;
+
+-- Test lateral join with a nested sub-query having an aggregate function
+explain (costs off) select from (values ('')) tmp(b) join lateral
+(
+  select avg_c from
+  (
+	select avg(c) as avg_c from t1 where t1.b = tmp.b
+  ) s2 order by avg_c
+) s1 on true;
+
+select from (values ('')) tmp(b) join lateral
+(
+  select avg_c from
+  (
+	select avg(c) as avg_c from t1 where t1.b = tmp.b
+  ) s2 order by avg_c
+) s1 on true;
+
+drop table t1;
+
 -- Clean up. None of the objects we create are very interesting to keep around.
 reset search_path;
 set client_min_messages='warning';
