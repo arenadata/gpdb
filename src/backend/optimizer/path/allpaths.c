@@ -3008,10 +3008,32 @@ is_query_contain_limit_groupby(Query *parse)
 {
 	ListCell   *lc;
 
+	// LIMIT, DISTINCT, GROUP BY, aggregate functions or recursive CTEs
+	// can cause motions in a plan, so return true if they are presented
 	if (parse->limitCount || parse->limitOffset ||
 		parse->groupClause || parse->distinctClause ||
-		parse->hasAggs)
+		parse->hasAggs || parse->hasRecursive)
 		return true;
+
+	// INTERSECT, EXCEPT or UNION without ALL set operations also can
+	// cause motions in a plan, so return true for them as well
+	if (parse->setOperations)
+	{
+		SetOperationStmt *stmt = (SetOperationStmt *) parse->setOperations;
+
+		if (!stmt->all ||
+			stmt->op == SETOP_INTERSECT ||
+			stmt->op == SETOP_EXCEPT)
+			return true;
+	}
+
+	foreach(lc, parse->cteList)
+	{
+		CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
+
+		if (is_query_contain_limit_groupby((Query *) cte->ctequery))
+			return true;
+	}
 
 	foreach(lc, parse->rtable)
 	{

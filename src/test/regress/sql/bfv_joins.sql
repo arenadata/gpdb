@@ -606,8 +606,6 @@ from
 drop table ttt;
 drop table ttt1;
 
--- error when use motion deliver a lateral param
--- issue: https://github.com/greenplum-db/gpdb/issues/10013
 drop table if exists t1;
 drop table if exists t2;
 drop type if exists mt;
@@ -636,16 +634,55 @@ cross join lateral
   select a+1, b from s where a+1 < 10)
  select * from s) x;
 
+select * from t1
+cross join lateral
+(with s as
+ (select * from t2 where (t1.b).x = (t2.b).y
+  union
+  select a, b from t2 where a < 10)
+ select * from s) x;
+
 drop table t1;
 drop table t2;
 create table t1 (a int, b mt) distributed replicated;
 create table t2 (a int, b mt) distributed replicated;
 insert into t1 select i, '(1,1)' from generate_series(1, 1)i;
 insert into t2 select i, '(1,1)' from generate_series(1, 1)i;
+
 select * from t1
 cross join lateral
  (select * from t2 where (t1.b).x = (t2.b).y
   union
+  select a+1, b from t1 where a+1 < 10) x;
+
+select * from t1
+cross join lateral
+ (select * from t2 where (t1.b).x = (t2.b).y
+  union all
+  select a+1, b from t1 where a+1 < 10) x;
+
+select * from t1
+cross join lateral
+ (select * from t2 where (t1.b).x = (t2.b).y
+  intersect 
+  select a+1, b from t1 where a+1 < 10) x;
+
+select * from t1
+cross join lateral
+ (select * from t2 where (t1.b).x = (t2.b).y
+  intersect all
+  select a+1, b from t1 where a+1 < 10) x;
+
+select * from t1
+cross join lateral
+ (select * from t2 where (t1.b).x = (t2.b).y
+  except 
+  select a+1, b from t1 where a+1 < 10) x;
+
+select * from t1
+cross join lateral
+ (select * from t2 where (t1.b).x = (t2.b).y
+  except all
   select a+1, b from t1 where a+1 < 10) x;
 
 -- Clean up. None of the objects we create are very interesting to keep around.
