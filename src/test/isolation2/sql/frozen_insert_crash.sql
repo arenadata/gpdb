@@ -128,9 +128,6 @@ BEGIN /* in func */
 END; /* in func */
 $$ LANGUAGE plpgsql;
 
--- Save session_id to a replicated table to later add panic only for this session.
-2: create table target_session_id_t(target_session_id int) DISTRIBUTED REPLICATED;
-2: insert into target_session_id_t values(current_setting('gp_session_id')::int);
 1: create table tab_fi(a int, b int) with (appendoptimized=true) distributed replicated;
 1: create index tab_fi_idx on tab_fi using bitmap(b);
 1: insert into tab_fi values(1, 1);
@@ -151,7 +148,7 @@ $$ LANGUAGE plpgsql;
 -- skip FTS probe to prevent unexpected mirror promotion
 1: select gp_inject_fault_infinite('fts_probe', 'skip', dbid) from gp_segment_configuration where role='p' and content=-1;
 -- Add panic only for a previously saved session.
-1: select gp_inject_fault('qe_exec_finished', 'panic', dbid, target_session_id) from gp_segment_configuration join target_session_id_t on true where role = 'p' and content = 0;
+1: select gp_inject_fault('qe_exec_finished', 'panic', dbid, sess_id) from gp_segment_configuration join pg_stat_activity on query = 'insert into tab_fi values(2, 2);' where role = 'p' and content = 0;
 1: select gp_inject_fault('insert_bmlov_before_freeze', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = 0;
 1: select gp_inject_fault('fts_probe', 'reset', dbid) from gp_segment_configuration where role='p' and content=-1;
 2<:
@@ -168,13 +165,9 @@ $$ LANGUAGE plpgsql;
 0U: select * from bm_lov_res;
 0Uq:
 1: drop table tab_fi;
-1: drop table target_session_id_t;
 
 -- case 2: suspend and flush WAL after freezing the tuple
 
--- Save session_id to a replicated table to later add panic only for this session.
-2: create table target_session_id_t(target_session_id int) DISTRIBUTED REPLICATED;
-2: insert into target_session_id_t values(current_setting('gp_session_id')::int);
 1: create table tab_fi(a int, b int) with (appendoptimized=true) distributed replicated;
 1: create index tab_fi_idx on tab_fi using bitmap(b);
 1: insert into tab_fi values(1, 1);
@@ -192,7 +185,7 @@ $$ LANGUAGE plpgsql;
 -- skip FTS probe to prevent unexpected mirror promotion
 1: select gp_inject_fault_infinite('fts_probe', 'skip', dbid) from gp_segment_configuration where role='p' and content=-1;
 -- Add panic only for a previously saved session.
-1: select gp_inject_fault('qe_exec_finished', 'panic', dbid, target_session_id) from gp_segment_configuration join target_session_id_t on true where role = 'p' and content = 0;
+1: select gp_inject_fault('qe_exec_finished', 'panic', dbid, sess_id) from gp_segment_configuration join pg_stat_activity on query = 'insert into tab_fi values(2, 2);' where role = 'p' and content = 0;
 1: select gp_inject_fault('insert_bmlov_after_freeze', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = 0;
 1: select gp_inject_fault('fts_probe', 'reset', dbid) from gp_segment_configuration where role='p' and content=-1;
 2<:
@@ -207,8 +200,6 @@ $$ LANGUAGE plpgsql;
 0U: set enable_seqscan = on;
 0U: select insert_bm_lov_res();
 0U: select * from bm_lov_res;
-1: drop table tab_fi;
-1: drop table target_session_id_t;
 
 1: drop extension pageinspect;
 
