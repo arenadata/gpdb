@@ -649,6 +649,7 @@ create table t2 (a int, b mt) distributed replicated;
 insert into t1 select i, '(1,1)' from generate_series(1, 1)i;
 insert into t2 select i, '(1,1)' from generate_series(1, 1)i;
 
+-- Test lateral join with a sub-query having all variants of set operations
 select * from t1
 cross join lateral
  (select * from t2 where (t1.b).x = (t2.b).y
