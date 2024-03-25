@@ -2554,6 +2554,7 @@ static int
 InitializeLDAPConnection(Port *port, LDAP **ldap)
 {
 	int			ldapversion = LDAP_VERSION3;
+	int			ldaprestart = LDAP_OPT_ON;
 	int			r;
 
 	if (strncmp(port->hba->ldapserver, "ldaps://", 8) == 0 ||
@@ -2591,6 +2592,14 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 		ldap_unbind(*ldap);
 		ereport(LOG,
 				(errmsg("could not set LDAP protocol version: %s", ldap_err2string(r))));
+		return STATUS_ERROR;
+	}
+
+	if ((r = ldap_set_option(*ldap, LDAP_OPT_RESTART, &ldaprestart)) != LDAP_SUCCESS)
+	{
+		ldap_unbind(*ldap);
+		ereport(LOG,
+				(errmsg("could not set LDAP restart: %s", ldap_err2string(r))));
 		return STATUS_ERROR;
 	}
 
