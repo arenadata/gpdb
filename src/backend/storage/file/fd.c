@@ -2647,8 +2647,8 @@ set_tablespaces(Oid *tableSpaces, int numSpaces, BackendTempTableSpaces *tableSp
 /*
  * SetTempTablespaces
  *
- * Define a list (actually an array) of OIDs of tablespaces to use for
- * temporary files and tables.  This list will be used until end of transaction,
+ * Define a list (actually an array) of OIDs of tablespaces to use for temporary
+ * tables (and possibly files).  This list will be used until end of transaction,
  * unless this function is called again before then.  It is caller's
  * responsibility that the passed-in array has adequate lifespan (typically
  * it'd be allocated in TopTransactionContext).
@@ -2662,8 +2662,8 @@ SetTempTablespaces(Oid *tableSpaces, int numSpaces)
 /*
  * SetTempFileTablespaces
  *
- * Define a list (actually an array) of OIDs of tablespaces to use for
- * temporary files and tables.  This list will be used until end of transaction,
+ * Define a list (actually an array) of OIDs of tablespaces to use for temporary
+ * files.  This list will be used until end of transaction,
  * unless this function is called again before then.  It is caller's
  * responsibility that the passed-in array has adequate lifespan (typically
  * it'd be allocated in TopTransactionContext).
