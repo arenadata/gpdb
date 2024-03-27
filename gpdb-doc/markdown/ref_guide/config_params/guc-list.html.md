@@ -1070,7 +1070,7 @@ The amount of shared memory, in kilobytes, allocated for query metrics. The defa
 |-----------|-------|-------------------|
 |integer `0 - 131072`|5120|master, system, restart|
 
-## <a id="gp_max_scan_on_shmem"></a>gp\_max\_scan\_on\_shmem 
+## <a id="gp_max_scan_on_shmem"></a>gp\_max\_scan\_on\_shmem
 
 Specifies the limit of maximum scan node's instrumentations per query in shmem. If table has many partitions, Postgres planner will generate a plan with many SCAN nodes under a APPEND node. If the number of partitions are too many, this plan will occupy too many slots. Here is a limitation on number of shmem slots used by scan nodes for each backend. Instruments exceeding the limitation are allocated in local memory.
 
@@ -2365,6 +2365,18 @@ For information about GPORCA, see [About GPORCA](../../admin_guide/query/topics/
 |Value Range|Default|Set Classifications|
 |-----------|-------|-------------------|
 |Boolean|off|master, session, reload|
+
+## <a id="optimizer_enable_table_alias"></a>optimizer\_enable\_table\_alias 
+
+When GPORCA is enabled \(the default\) and this parameter is `true` \(the default\), 
+GPORCA uses table alias to prepare a query plan. This is consistent with Postgres optimizer.
+When set to `false`, GPORCA doesn't use table alias.
+
+For information about GPORCA, see [About GPORCA](../../admin_guide/query/topics/query-piv-optimizer.html) in the *Greenplum Database Administrator Guide*.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|Boolean|true|master, session, reload|
 
 ## <a id="optimizer_force_agg_skew_avoidance"></a>optimizer\_force\_agg\_skew\_avoidance 
 
