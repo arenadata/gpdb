@@ -4177,7 +4177,11 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 							 NULL,	// translate context for the base table
 							 child_contexts, output_context);
 
-	if (md_rel->HasDroppedColumns())
+	// Create target list with nulls if rel has dropped cols. DELETE may have
+	// empty target list if there no after trigger present. Skip creating in
+	// such case.
+	if (md_rel->HasDroppedColumns() &&
+		(m_cmd_type != CMD_DELETE || dml_target_list != NIL))
 	{
 		// pad DML target list with NULLs for dropped columns for all DML operator types
 		List *target_list_with_dropped_cols =
@@ -4194,6 +4198,21 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 	dml->ctidColIdx = AddTargetEntryForColId(&dml_target_list, &child_context,
 											 phy_dml_dxlop->GetCtIdColId(),
 											 true /*is_resjunk*/);
+
+	if (phy_dml_dxlop->GetTableOidColId() != 0)
+	{
+		dml->tableoidColIdx = AddTargetEntryForColId(
+			&dml_target_list, &child_context, phy_dml_dxlop->GetTableOidColId(),
+			true /*is_resjunk*/);
+	}
+	else if (md_rel->IsPartitioned() &&
+			 (CMD_UPDATE == m_cmd_type || CMD_DELETE == m_cmd_type))
+	{
+		GPOS_RAISE(
+			gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,
+			GPOS_WSZ_LIT("TableOid coulumn missed for partitioned table"));
+	}
+
 	if (phy_dml_dxlop->IsOidsPreserved())
 	{
 		dml->tupleoidColIdx = AddTargetEntryForColId(
@@ -4672,8 +4691,14 @@ CTranslatorDXLToPlStmt::TranslateDXLTblDescrToRangeTblEntry(
 	alias->colnames = NIL;
 
 	// get table alias
+	const CMDName *md_alias = table_descr->MdAlias();
+	if (!optimizer_enable_table_alias || NULL == md_alias)
+	{
+		md_alias = table_descr->MdName();
+	}
+
 	alias->aliasname = CTranslatorUtils::CreateMultiByteCharStringFromWCString(
-		table_descr->MdName()->GetMDName()->GetBuffer());
+		md_alias->GetMDName()->GetBuffer());
 
 	// get column names
 	const ULONG arity = table_descr->Arity();
@@ -4723,6 +4748,16 @@ CTranslatorDXLToPlStmt::TranslateDXLTblDescrToRangeTblEntry(
 	}
 
 	rte->eref = alias;
+
+	/*
+		Store the alias information only when table alias is used to allow 
+		EXPLAIN find it
+	*/
+	if (optimizer_enable_table_alias && NULL != table_descr->MdAlias())
+	{
+		rte->alias = (Alias *) copyObject(alias);
+	}
+
 
 	return rte;
 }

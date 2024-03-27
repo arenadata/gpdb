@@ -315,12 +315,18 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 
 		cdbdisp_dispatchToGang(ds, rg, -1);
 	}
-	addToGxactDtxSegments(primaryGang);
 
 	/*
-	 * No need for two-phase commit, so no need to call
-	 * addToGxactDtxSegments.
+	 * If there is an explicit BEGIN, we'll begin transaction and setup DTX 
+	 * context on QEs at the time of the first SET command. So we need to
+	 * add dtxSegments to make sure we end the transaction at the time of END/COMMIT.
+	 *
+	 * We shouldn't do this when there's no explicit BEGIN, though, because
+	 * if QEs do not have DTX context being setup, they would not recognize
+	 * the DTX protocol command that is going to be sent to the dtxSegments.
 	 */
+	if (isDtxExplicitBegin())
+		addToGxactDtxSegments(primaryGang);
 
 	cdbdisp_waitDispatchFinish(ds);
 
@@ -1388,11 +1394,11 @@ deserializeParamListInfo(const char *str, int slen)
 	int			iparam;
 
 	sparams = (List *) readNodeFromBinaryString(str, slen);
+	if (!sparams)
+		return NULL;
+
 	if (!IsA(sparams, List))
 		elog(ERROR, "could not deserialize query parameters");
-
-	if (!sparams)
-		return NULL;;
 
 	/*
 	 * If a transient record type cache was included, load it into

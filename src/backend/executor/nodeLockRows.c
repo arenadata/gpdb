@@ -25,6 +25,7 @@
 #include "access/xact.h"
 #include "executor/executor.h"
 #include "executor/nodeLockRows.h"
+#include "miscadmin.h"
 #include "storage/bufmgr.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
@@ -42,6 +43,8 @@ ExecLockRows(LockRowsState *node)
 	PlanState  *outerPlan;
 	bool		epq_started;
 	ListCell   *lc;
+
+	CHECK_FOR_INTERRUPTS();
 
 	/*
 	 * get information from the node
@@ -82,8 +85,11 @@ lnext:
 			continue;
 
 		/* clear any leftover test tuple for this rel */
-		if (node->lr_epqstate.estate != NULL)
+		if (epq_started)
+		{
+			Assert(node->lr_epqstate.estate != NULL);
 			EvalPlanQualSetTuple(&node->lr_epqstate, erm->rti, NULL);
+		}
 
 		/* if child rel, must check whether it produced this row */
 		if (erm->rti != erm->prti)
