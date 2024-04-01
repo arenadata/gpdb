@@ -7286,14 +7286,34 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			}
 
 			SIMPLE_FAULT_INJECTOR("set_variable_fault");
-			(void) set_config_option(stmt->name,
-									 ExtractSetVariableArgs(stmt),
-									 (superuser() ? PGC_SUSET : PGC_USERSET),
-									 PGC_S_SESSION,
-									 action,
-									 true,
-									 0);
-			DispatchSetPGVariable(stmt->name, stmt->args, stmt->is_local);
+
+			/*
+			 * If this is a synchronization SET, previous values from the
+			 * startup packet should be overwritten. We can only get here if we
+			 * are a QE.
+			 */
+			if (isMppTxOptions_SynchronizationSet(QEDtxContextInfo.distributedTxnOptions))
+			{
+				(void) set_config_option(stmt->name,
+										 ExtractSetVariableArgs(stmt),
+										 PGC_SIGHUP,
+										 PGC_S_CLIENT,
+										 action,
+										 true,
+										 0);
+			}
+			else
+			{
+				(void) set_config_option(stmt->name,
+										 ExtractSetVariableArgs(stmt),
+										 (superuser() ? PGC_SUSET : PGC_USERSET),
+										 PGC_S_SESSION,
+										 action,
+										 true,
+										 0);
+
+				DispatchSetPGVariable(stmt->name, stmt->args, stmt->is_local);
+			}
 			break;
 		case VAR_SET_MULTI:
 
@@ -7409,7 +7429,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			else
 				appendStringInfo(&buffer, "RESET %s", stmt->name);
 
-			CdbDispatchSetCommand(buffer.data, false);
+			CdbDispatchSetCommand(buffer.data, false, false);
 		}
 	}
 }
@@ -7559,7 +7579,7 @@ DispatchSetPGVariable(const char *name, List *args, bool is_local)
 		}
 	}
 
-	CdbDispatchSetCommand(buffer.data, false);
+	CdbDispatchSetCommand(buffer.data, false, false);
 }
 
 /*
@@ -7626,7 +7646,7 @@ set_config_by_name(PG_FUNCTION_ARGS)
 			pfree(quoted_value);
 		pfree(quoted_name);
 
-		CdbDispatchSetCommand(buffer.data, false /* cancelOnError */ );
+		CdbDispatchSetCommand(buffer.data, false /* cancelOnError */, false);
 	}
 
 	/* get the new current value */

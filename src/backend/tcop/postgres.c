@@ -1583,7 +1583,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 
 		PG_TRY();
 		{
-			DispatchSyncPGVariable(gconfig);
+			DispatchSyncPGVariable(gconfig, !is_restore);
 		}
 		PG_CATCH();
 		{
@@ -5510,6 +5510,9 @@ PostgresMain(int argc, char *argv[],
 
 					if (cuid > 0)
 						SetUserIdAndContext(cuid, false); /* Set current userid */
+
+					if (isMppTxOptions_SynchronizationSet(TempDtxContextInfo.distributedTxnOptions))
+						elogif(Debug_print_full_dtm, LOG, "Received a synchronization SET from QD");
 
 					if (serializedQuerytreelen==0 && serializedPlantreelen==0)
 					{

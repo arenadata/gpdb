@@ -280,7 +280,7 @@ cdbdisp_markNamedPortalGangsDestroyed(void)
  * Cursors only allocate reader gangs, so primary writer and idle reader gangs can be dispatched to.
  */
 void
-CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
+CdbDispatchSetCommand(const char *strCommand, bool cancelOnError, bool isSync)
 {
 	CdbDispatcherState *ds;
 	DispatchCommandQueryParms *pQueryParms;
@@ -289,11 +289,20 @@ CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
 	int		queryTextLength;
 	ListCell   *le;
 	ErrorData *qeError = NULL;
+	int flags = DF_NONE;
 
 	elogif(Debug_print_full_dtm, LOG,
 		   "CdbDispatchSetCommand for command = '%s'", strCommand);
 
-	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, DF_NONE);
+	/*
+	 * Dispatch a command with DF_SYNC_SET flag if we are performing a config
+	 * reload. This will allow us to distinguish between user-invoked SET and QD
+	 * to QE synchronization.
+	 */
+	if (isSync)
+		flags |= DF_SYNC_SET;
+
+	pQueryParms = cdbdisp_buildCommandQueryParms(strCommand, flags);
 
 	ds = cdbdisp_makeDispatcherState(false);
 
@@ -490,6 +499,7 @@ cdbdisp_buildCommandQueryParms(const char *strCommand, int flags)
 {
 	bool needTwoPhase = flags & DF_NEED_TWO_PHASE;
 	bool withSnapshot = flags & DF_WITH_SNAPSHOT;
+	bool syncSet = flags & DF_SYNC_SET;
 	DispatchCommandQueryParms *pQueryParms;
 
 	pQueryParms = palloc0(sizeof(*pQueryParms));
@@ -505,7 +515,7 @@ cdbdisp_buildCommandQueryParms(const char *strCommand, int flags)
 	pQueryParms->serializedDtxContextInfo =
 		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
 								  withSnapshot, false,
-								  mppTxnOptions(needTwoPhase),
+								  mppTxnOptions(needTwoPhase, syncSet),
 								  "cdbdisp_dispatchCommandInternal");
 
 	return pQueryParms;
@@ -578,7 +588,7 @@ cdbdisp_buildUtilityQueryParms(struct Node *stmt,
 	pQueryParms->serializedDtxContextInfo =
 		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
 								  withSnapshot, false,
-								  mppTxnOptions(needTwoPhase),
+								  mppTxnOptions(needTwoPhase, false),
 								  "cdbdisp_dispatchCommandInternal");
 
 	return pQueryParms;
@@ -668,7 +678,7 @@ cdbdisp_buildPlanQueryParms(struct QueryDesc *queryDesc,
 		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
 								  true /* wantSnapshot */ ,
 								  queryDesc->extended_query,
-								  mppTxnOptions(planRequiresTxn),
+								  mppTxnOptions(planRequiresTxn, false),
 								  "cdbdisp_buildPlanQueryParms");
 
 	return pQueryParms;

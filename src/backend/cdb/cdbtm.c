@@ -113,6 +113,12 @@ int	max_tm_gxacts = 100;
 
 #define GP_OPT_EXPLICT_BEGIN      						0x0020
 
+/*
+ * Some context to distinguish between user-invoked SET commands and explicit
+ * QD to QE config synchronization.
+ */
+#define GP_OPT_SYNCHRONIZATION_SET						0x0040
+
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
@@ -388,7 +394,7 @@ doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType)
 	serializedDtxContextInfo = qdSerializeDtxContextInfo(&serializedDtxContextInfoLen,
 														 false /* wantSnapshot */ ,
 														 false /* inCursor */ ,
-														 mppTxnOptions(true),
+														 mppTxnOptions(true, false),
 														 "doDispatchSubtransactionInternalCmd");
 
 	dtxFormGID(gid, getDistributedTransactionTimestamp(), getDistributedTransactionId());
@@ -1179,7 +1185,7 @@ tmShmemInit(void)
  * after the statement.
  */
 int
-mppTxnOptions(bool needDtx)
+mppTxnOptions(bool needDtx, bool syncSet)
 {
 	int			options = 0;
 
@@ -1190,6 +1196,9 @@ mppTxnOptions(bool needDtx)
 
 	if (needDtx)
 		options |= GP_OPT_NEED_DTX;
+
+	if (syncSet)
+		options |= GP_OPT_SYNCHRONIZATION_SET;
 
 	if (XactIsoLevel == XACT_READ_COMMITTED)
 		options |= GP_OPT_READ_COMMITTED;
@@ -1250,6 +1259,12 @@ bool
 isMppTxOptions_ExplicitBegin(int txnOptions)
 {
 	return ((txnOptions & GP_OPT_EXPLICT_BEGIN) != 0);
+}
+
+bool
+isMppTxOptions_SynchronizationSet(int txnOptions)
+{
+	return ((txnOptions & GP_OPT_SYNCHRONIZATION_SET) != 0);
 }
 
 /*=========================================================================
