@@ -1248,12 +1248,10 @@ make_partition_rules(CreateStmtContext *cxt, CreateStmt *stmt,
 		StringInfoData ANDBuf;
 		StringInfoData ORBuf;
 		int			range_idx;
-		PartitionBoundSpec *pBSpec = NULL;
+		PartitionBoundSpec *pBSpec = (PartitionBoundSpec *) pElem->boundSpec;
 
 		ListCell   *lc_every_val = NULL;
 		List	   *allNewCols = NIL;
-
-		pBSpec = (PartitionBoundSpec *) pElem->boundSpec;
 
 		initStringInfo(&ANDBuf);
 		initStringInfo(&ORBuf);
