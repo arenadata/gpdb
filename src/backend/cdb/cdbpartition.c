@@ -5410,10 +5410,12 @@ atpxPart_validate_spec(PartitionBy *pBy,
 			pbykeys = NIL;
 			pbyopclass = NIL;
 
-			Assert(pNode2->part != NULL && pNode2->part->paratts != NULL);
+			Assert(pNode2->part != NULL);
 
 			for (ii = 0; ii < pNode2->part->parnatts; ii++)
 			{
+				Assert(pNode2->part->paratts != NULL);
+
 				AttrNumber	attno =
 				pNode2->part->paratts[ii];
 				Form_pg_attribute attribute =
