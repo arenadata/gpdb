@@ -1,12 +1,19 @@
 #!/bin/bash
+set -eox pipefail
 
 project="resgroup"
+
+function cleanup {
+  docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env down
+}
 
 mkdir ssh_keys -p
 if [ ! -e "ssh_keys/id_rsa" ]
 then
   ssh-keygen -P "" -f ssh_keys/id_rsa
 fi
+
+trap cleanup EXIT
 
 #install gpdb and setup gpadmin user
 bash arenadata/scripts/init_containers.sh $project cdw sdw1
@@ -61,6 +68,3 @@ EOF1
             exit \$errcode
         )
 EOF
-
-#clear
-docker-compose -p $project -f arenadata/docker-compose.yaml --env-file arenadata/.env down
