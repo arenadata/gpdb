@@ -4472,17 +4472,6 @@ InitializeOneGUCOption(struct config_generic * gconf)
 	gconf->sourcefile = NULL;
 	gconf->sourceline = 0;
 
-	/*
-	 * TODO: We can't sync GUCs with SIGHUP if they require context to be
-	 * PGC_SIGHUP. GUCs with context higher than PGC_SIHGUP cannot be changed
-	 * without restart, so they are fine.
-	 */
-	if (gconf->context == PGC_SIGHUP &&
-		gconf->flags & GUC_GPDB_NEED_SYNC)
-	{
-		elog(FATAL, "%s cannot be synced with SIGHUP", gconf->name);
-	}
-
 	switch (gconf->vartype)
 	{
 		case PGC_BOOL:
