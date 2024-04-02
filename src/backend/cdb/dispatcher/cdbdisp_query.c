@@ -278,6 +278,9 @@ cdbdisp_markNamedPortalGangsDestroyed(void)
  * Can not dispatch SET commands to busy reader gangs (allocated by cursors) directly because another
  * command is already in progress.
  * Cursors only allocate reader gangs, so primary writer and idle reader gangs can be dispatched to.
+ *
+ * isSync is true if we are QD synchronizing GUCs with QEs to bypass context
+ * constraints. See ProcessStartupPacket()
  */
 void
 CdbDispatchSetCommand(const char *strCommand, bool cancelOnError, bool isSync)

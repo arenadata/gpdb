@@ -5318,14 +5318,12 @@ PostgresMain(int argc, char *argv[],
 			ConfigReloadPending = false;
 
 			/*
-			 * On QE backends, GUC options are not actually read from the file,
-			 * but rather sent to us by QD. It means that default settings on
-			 * segments have source of PGC_S_CLIENT instead of PGC_S_FILE, which
-			 * is higher.
+			 * On QE backends, some GUC options are not actually read from the
+			 * file, but rather sent to them by QD. It means that default
+			 * settings on segments have source of PGC_S_CLIENT instead of
+			 * PGC_S_FILE, which is higher, so we can't just process the config.
 			 *
-			 * We repeat the process and send the GUCs to the QEs again.
-			 * NOTE: This will will increase changed GUCs' source from
-			 * PGC_S_CLIENT all the way up to PGC_S_SESSION.
+			 * Repeat the process and send GUCs to the QEs again.
 			 */
 			if (Gp_role != GP_ROLE_DISPATCH)
 				ProcessConfigFile(PGC_SIGHUP);

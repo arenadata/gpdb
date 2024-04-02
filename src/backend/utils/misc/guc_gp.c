@@ -5683,7 +5683,7 @@ check_gp_workfile_compression(bool *newval, void **extra, GucSource source)
 }
 
 void
-DispatchSyncPGVariable(struct config_generic * gconfig, bool issync)
+DispatchSyncPGVariable(struct config_generic * gconfig, bool is_sync)
 {
 	StringInfoData buffer;
 
@@ -5785,5 +5785,5 @@ DispatchSyncPGVariable(struct config_generic * gconfig, bool issync)
 
 	}
 
-	CdbDispatchSetCommand(buffer.data, false, issync);
+	CdbDispatchSetCommand(buffer.data, false, is_sync);
 }
