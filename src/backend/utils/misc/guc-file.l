@@ -121,7 +121,7 @@ STRING			\'([^'\\\n]|\\.|\'\')*\'
 
 
 static List *
-ProcessConfigFileImpl(GucContext context, bool return_changed)
+ProcessConfigFileInternal(GucContext context, bool return_changed)
 {
 	bool		error = false;
 	bool		apply = false;
@@ -493,7 +493,7 @@ ProcessConfigFileImpl(GucContext context, bool return_changed)
 void
 ProcessConfigFile(GucContext context)
 {
-	(void) ProcessConfigFileImpl(context, false);
+	(void) ProcessConfigFileInternal(context, false);
 }
 
 /*
@@ -503,7 +503,7 @@ ProcessConfigFile(GucContext context)
 List *
 ProcessConfigFileForSync(GucContext context)
 {
-	return ProcessConfigFileImpl(context, true);
+	return ProcessConfigFileInternal(context, true);
 }
 
 /*

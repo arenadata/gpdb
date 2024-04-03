@@ -1585,7 +1585,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 			if (is_restore)
 				DispatchSyncPGVariable(gconfig);
 			else
-				DispatchSyncPGVariableForSync(gconfig);
+				DispatchSyncPGVariableExplicit(gconfig);
 		}
 		PG_CATCH();
 		{

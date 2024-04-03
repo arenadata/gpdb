@@ -5741,7 +5741,7 @@ check_gp_workfile_compression(bool *newval, void **extra, GucSource source)
 }
 
 static void
-dispatch_sync_pg_variable(struct config_generic * gconfig, bool is_sync)
+dispatch_sync_pg_variable_internal(struct config_generic * gconfig, bool is_sync)
 {
 	StringInfoData buffer;
 
@@ -5849,14 +5849,22 @@ dispatch_sync_pg_variable(struct config_generic * gconfig, bool is_sync)
 		CdbDispatchSetCommand(buffer.data, false);
 }
 
+/*
+ * Dispatches a regular SET command to all reader and writer gangs.
+ */
 void
 DispatchSyncPGVariable(struct config_generic * gconfig)
 {
-	return dispatch_sync_pg_variable(gconfig, false);
+	return dispatch_sync_pg_variable_internal(gconfig, false);
 }
 
+/*
+ * This function behaves like DispatchSyncPGVariable(), but also sets the GUC
+ * source to PGC_CLIENT, just like we do in ProcessStartupPacket(), and
+ * bypasses GUC contexts up to PGC_SIGHUP.
+ */
 void
-DispatchSyncPGVariableForSync(struct config_generic *gconfig)
+DispatchSyncPGVariableExplicit(struct config_generic * gconfig)
 {
-	return dispatch_sync_pg_variable(gconfig, true);
+	return dispatch_sync_pg_variable_internal(gconfig, true);
 }
