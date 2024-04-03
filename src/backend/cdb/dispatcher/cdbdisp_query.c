@@ -114,6 +114,10 @@ static void cdbdisp_dispatchCommandInternal(DispatchCommandQueryParms *pQueryPar
 											CdbPgResults *cdb_pgresults);
 
 static void
+cdbdisp_dispatchSetCommandInternal(const char *strCommand, bool cancelOnError,
+								   bool isSync);
+
+static void
 cdbdisp_dispatchX(QueryDesc *queryDesc,
 			bool planRequiresTxn,
 			bool cancelOnError);
@@ -283,7 +287,19 @@ cdbdisp_markNamedPortalGangsDestroyed(void)
  * constraints. See ProcessStartupPacket()
  */
 void
-CdbDispatchSetCommand(const char *strCommand, bool cancelOnError, bool isSync)
+CdbDispatchSetCommand(const char *strCommand, bool cancelOnError)
+{
+	return cdbdisp_dispatchSetCommandInternal(strCommand, cancelOnError, false);
+}
+
+void
+CdbDispatchSetCommandForSync(const char *strCommand)
+{
+	return cdbdisp_dispatchSetCommandInternal(strCommand, false, true);
+}
+
+static void
+cdbdisp_dispatchSetCommandInternal(const char *strCommand, bool cancelOnError, bool isSync)
 {
 	CdbDispatcherState *ds;
 	DispatchCommandQueryParms *pQueryParms;
@@ -524,7 +540,7 @@ cdbdisp_buildCommandQueryParms(const char *strCommand, int flags)
 	pQueryParms->serializedDtxContextInfo =
 		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
 								  withSnapshot, false,
-								  mppTxnOptions(needTwoPhase, syncSet),
+								  mppTxnOptionsForSync(needTwoPhase, syncSet),
 								  "cdbdisp_dispatchCommandInternal");
 
 	return pQueryParms;
@@ -597,7 +613,7 @@ cdbdisp_buildUtilityQueryParms(struct Node *stmt,
 	pQueryParms->serializedDtxContextInfo =
 		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
 								  withSnapshot, false,
-								  mppTxnOptions(needTwoPhase, false),
+								  mppTxnOptions(needTwoPhase),
 								  "cdbdisp_dispatchCommandInternal");
 
 	return pQueryParms;
@@ -687,7 +703,7 @@ cdbdisp_buildPlanQueryParms(struct QueryDesc *queryDesc,
 		qdSerializeDtxContextInfo(&pQueryParms->serializedDtxContextInfolen,
 								  true /* wantSnapshot */ ,
 								  queryDesc->extended_query,
-								  mppTxnOptions(planRequiresTxn, false),
+								  mppTxnOptions(planRequiresTxn),
 								  "cdbdisp_buildPlanQueryParms");
 
 	return pQueryParms;

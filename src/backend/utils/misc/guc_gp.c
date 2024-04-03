@@ -44,6 +44,7 @@
 #include "storage/proc.h"
 #include "tcop/idle_resource_cleaner.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
 #include "utils/guc_tables.h"
 #include "utils/inval.h"
 #include "utils/resscheduler.h"
@@ -95,6 +96,9 @@ static bool check_gp_resource_group_bypass(bool *newval, void **extra, GucSource
 static int guc_array_compare(const void *a, const void *b);
 
 extern struct config_generic *find_option(const char *name, bool create_placeholders, int elevel);
+
+static void dispatch_sync_pg_variable(struct config_generic *gconfig,
+									  bool is_sync);
 
 extern int listenerBacklog;
 
@@ -5739,8 +5743,8 @@ check_gp_workfile_compression(bool *newval, void **extra, GucSource source)
 	return true;
 }
 
-void
-DispatchSyncPGVariable(struct config_generic * gconfig, bool is_sync)
+static void
+dispatch_sync_pg_variable(struct config_generic * gconfig, bool is_sync)
 {
 	StringInfoData buffer;
 
@@ -5842,5 +5846,20 @@ DispatchSyncPGVariable(struct config_generic * gconfig, bool is_sync)
 
 	}
 
-	CdbDispatchSetCommand(buffer.data, false, is_sync);
+	if (is_sync)
+		CdbDispatchSetCommandForSync(buffer.data);
+	else
+		CdbDispatchSetCommand(buffer.data, false);
+}
+
+void
+DispatchSyncPGVariable(struct config_generic * gconfig)
+{
+	return dispatch_sync_pg_variable(gconfig, false);
+}
+
+void
+DispatchSyncPGVariableForSync(struct config_generic *gconfig)
+{
+	return dispatch_sync_pg_variable(gconfig, true);
 }

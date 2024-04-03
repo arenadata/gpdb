@@ -809,7 +809,8 @@ extern bool gpvars_check_statement_mem(int *newval, void **extra, GucSource sour
 extern bool gpvars_check_gp_enable_gpperfmon(bool *newval, void **extra, GucSource source);
 extern bool gpvars_check_gp_gpperfmon_send_interval(int *newval, void **extra, GucSource source);
 extern int guc_name_compare(const char *namea, const char *nameb);
-extern void DispatchSyncPGVariable(struct config_generic * gconfig, bool is_sync);
+extern void DispatchSyncPGVariable(struct config_generic * gconfig);
+extern void DispatchSyncPGVariableForSync(struct config_generic * gconfig);
 
 
 extern StdRdOptions *defaultStdRdOptions(char relkind);

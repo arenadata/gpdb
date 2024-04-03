@@ -70,7 +70,14 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
  * gangs, both reader and writer
  */
 void
-CdbDispatchSetCommand(const char *strCommand, bool cancelOnError, bool isSync);
+CdbDispatchSetCommand(const char *strCommand, bool cancelOnError);
+
+/*
+ * The same as CdbDispatchSetCommand(), but bypasses priveleges and always uses
+ * PGC_S_CLIENT context.
+ */
+void
+CdbDispatchSetCommandForSync(const char *strCommand);
 
 /*
  * CdbDispatchCommand

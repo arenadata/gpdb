@@ -394,7 +394,7 @@ doDispatchSubtransactionInternalCmd(DtxProtocolCommand cmdType)
 	serializedDtxContextInfo = qdSerializeDtxContextInfo(&serializedDtxContextInfoLen,
 														 false /* wantSnapshot */ ,
 														 false /* inCursor */ ,
-														 mppTxnOptions(true, false),
+														 mppTxnOptions(true),
 														 "doDispatchSubtransactionInternalCmd");
 
 	dtxFormGID(gid, getDistributedTransactionTimestamp(), getDistributedTransactionId());
@@ -1185,7 +1185,7 @@ tmShmemInit(void)
  * after the statement.
  */
 int
-mppTxnOptions(bool needDtx, bool syncSet)
+mppTxnOptions(bool needDtx)
 {
 	int			options = 0;
 
@@ -1196,9 +1196,6 @@ mppTxnOptions(bool needDtx, bool syncSet)
 
 	if (needDtx)
 		options |= GP_OPT_NEED_DTX;
-
-	if (syncSet)
-		options |= GP_OPT_SYNCHRONIZATION_SET;
 
 	if (XactIsoLevel == XACT_READ_COMMITTED)
 		options |= GP_OPT_READ_COMMITTED;
@@ -1223,6 +1220,17 @@ mppTxnOptions(bool needDtx, bool syncSet)
 
 	return options;
 
+}
+
+int
+mppTxnOptionsForSync(bool needDtx, bool isSync)
+{
+	int flags = mppTxnOptions(needDtx);
+
+	if (isSync)
+		flags |= GP_OPT_SYNCHRONIZATION_SET;
+
+	return flags;
 }
 
 int
