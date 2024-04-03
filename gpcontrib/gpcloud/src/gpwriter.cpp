@@ -82,6 +82,9 @@ GPWriter* writer_init(const char* url_with_options, const char* format) {
 
         string extName = params.isAutoCompress() ? string(format) + ".gz" : format;
         writer = new GPWriter(params, extName);
+        if (writer == NULL) {
+            return NULL;
+        }
 
         writer->open(params);
         return writer;

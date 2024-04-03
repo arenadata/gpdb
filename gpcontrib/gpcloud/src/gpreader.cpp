@@ -33,6 +33,9 @@ unsigned long gpcloud_id_function(void) {
 
 int thread_setup(void) {
     mutex_buf = new pthread_mutex_t[CRYPTO_num_locks()];
+    if (mutex_buf == NULL) {
+        return 0;
+    }
     for (int i = 0; i < CRYPTO_num_locks(); i++) {
         MUTEX_SETUP(mutex_buf[i]);
     }
@@ -99,6 +102,9 @@ GPReader* reader_init(const char* url_with_options) {
         PrepareS3MemContext(params);
 
         reader = new GPReader(params);
+        if (reader == NULL) {
+            return NULL;
+        }
 
         reader->open(params);
         return reader;
