@@ -307,6 +307,7 @@ int			optimizer_cost_model;
 bool		optimizer_metadata_caching;
 int			optimizer_mdcache_size;
 bool		optimizer_use_gpdb_allocators;
+bool		optimizer_enable_table_alias;
 
 /* Optimizer debugging GUCs */
 bool		optimizer_print_query;
@@ -368,6 +369,7 @@ bool		optimizer_prune_unused_columns;
 bool		optimizer_enable_redistribute_nestloop_loj_inner_child;
 bool		optimizer_force_comprehensive_join_implementation;
 bool		optimizer_enable_replicated_table;
+bool		optimizer_enable_right_outer_join;
 
 /* Optimizer plan enumeration related GUCs */
 bool		optimizer_enumerate_plans;
@@ -432,6 +434,7 @@ bool		optimizer_replicated_table_insert;
 
 /* GUCs for slice table*/
 int			gp_max_slices;
+int			gp_max_system_slices;
 
 /* System Information */
 static int	gp_server_version_num;
@@ -914,6 +917,16 @@ struct config_bool ConfigureNamesBool_gp[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"gp_gang_creation_retry_non_recovery", PGC_USERSET, QUERY_TUNING_METHOD,
+		 gettext_noop("Retry gang creation if non-recovery failures are encountered during dispatch."),
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_gang_creation_retry_non_recovery,
+		true,
+		NULL, NULL, NULL
+	},
 
 #ifdef USE_ASSERT_CHECKING
 	{
@@ -2975,6 +2988,17 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
+		{"optimizer_enable_table_alias", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable using table aliases to make plan explain more descriptive"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_table_alias,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"vmem_process_interrupt", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Checks for interrupts before reserving VMEM"),
 			NULL,
@@ -3276,6 +3300,29 @@ struct config_bool ConfigureNamesBool_gp[] =
 		 &gp_log_resqueue_priority_sleep_time,
 		 false,
 		 NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_right_outer_join", PGC_USERSET, QUERY_TUNING_METHOD,
+		 gettext_noop("Enable Orca to generate plans containing right outer joins."),
+		 gettext_noop("Right outer join can be re-written from left outer join. "
+					  "However, there are scenarios due to cardinality and cost "
+					  "misestimation, right outer join plan may be sub-optimal and "
+					  "can either be slower than the left outer join plan alternative "
+					  "or hit out-of-memory (OOM). The root cause can be identified "
+					  "by viewing the explain analyze plan and observing that the "
+					  "right outer join plan node is consuming all resources "
+					  "(CPU/memory) or the explain analyze itself hits OOM. By "
+					  "setting this GUC value to \"false\" users can force GPORCA to "
+					  "generate an equivalent left outer join plan. We recommend that "
+					  "the GUC be set at the query level as there can be several use "
+					  "cases where right outer join is the best plan alternative to "
+					  "choose."),
+		 GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_right_outer_join,
+		true,
+		NULL, NULL, NULL
 	},
 
 	{
@@ -4646,6 +4693,16 @@ struct config_int ConfigureNamesInt_gp[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_max_slices,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
+		{"gp_max_system_slices", PGC_SUSET, PRESET_OPTIONS,
+			gettext_noop("Maximum slices for a single query (superuser guc)"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_max_system_slices,
 		0, 0, INT_MAX, NULL, NULL
 	},
 

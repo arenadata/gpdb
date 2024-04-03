@@ -4490,9 +4490,10 @@ CTranslatorExprToDXL::PdxlnMotion(CExpression *pexprMotion,
 		{
 			CPhysicalMotionRoutedDistribute *popMotion =
 				CPhysicalMotionRoutedDistribute::PopConvert(pexprMotion->Pop());
-			CColRef *pcrSegmentId =
-				dynamic_cast<const CDistributionSpecRouted *>(popMotion->Pds())
-					->Pcr();
+			const CDistributionSpecRouted *spec =
+				dynamic_cast<const CDistributionSpecRouted *>(popMotion->Pds());
+			GPOS_ASSERT(NULL != spec);
+			CColRef *pcrSegmentId = spec->Pcr();
 
 			motion = GPOS_NEW(m_mp)
 				CDXLPhysicalRoutedDistributeMotion(m_mp, pcrSegmentId->Id());
@@ -7564,6 +7565,13 @@ CTranslatorExprToDXL::MakeDXLTableDescr(const CTableDescriptor *ptabdesc,
 
 	CDXLTableDescr *table_descr = GPOS_NEW(m_mp)
 		CDXLTableDescr(m_mp, mdid, pmdnameTbl, ptabdesc->GetExecuteAsUserId());
+
+	if (NULL != ptabdesc->Alias())
+	{
+		CMDName *pmdaliasTbl =
+			GPOS_NEW(m_mp) CMDName(m_mp, ptabdesc->Alias()->Pstr());
+		table_descr->SetMdAlias(pmdaliasTbl);
+	}
 
 	const ULONG ulColumns = ptabdesc->ColumnCount();
 	// translate col descriptors

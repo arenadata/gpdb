@@ -498,6 +498,7 @@ extern bool optimizer_prune_unused_columns;
 extern bool optimizer_enable_redistribute_nestloop_loj_inner_child;
 extern bool optimizer_force_comprehensive_join_implementation;
 extern bool optimizer_enable_replicated_table;
+extern bool optimizer_enable_right_outer_join;
 
 /* Optimizer plan enumeration related GUCs */
 extern bool optimizer_enumerate_plans;
@@ -556,12 +557,14 @@ extern bool optimizer_analyze_midlevel_partition;
 extern bool optimizer_analyze_enable_merge_of_leaf_stats;
 
 extern bool optimizer_use_gpdb_allocators;
+extern bool optimizer_enable_table_alias;
 
 /* optimizer GUCs for replicated table */
 extern bool optimizer_replicated_table_insert;
 
 /* GUCs for slice table*/
 extern int	gp_max_slices;
+extern int	gp_max_system_slices;
 
 /**
  * Enable logging of DPE match in optimizer.
@@ -779,6 +782,7 @@ extern void GUC_check_errcode(int sqlerrcode);
 extern bool check_default_tablespace(char **newval, void **extra, GucSource source);
 extern bool check_temp_tablespaces(char **newval, void **extra, GucSource source);
 extern void assign_temp_tablespaces(const char *newval, void *extra);
+extern void assign_temp_spill_files_tablespaces(const char *newval, void *extra);
 
 /* in catalog/namespace.c */
 extern bool check_search_path(char **newval, void **extra, GucSource source);
