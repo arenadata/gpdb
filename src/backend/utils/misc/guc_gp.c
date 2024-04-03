@@ -5741,7 +5741,7 @@ check_gp_workfile_compression(bool *newval, void **extra, GucSource source)
 }
 
 static void
-dispatch_sync_pg_variable_internal(struct config_generic * gconfig, bool is_sync)
+dispatch_sync_pg_variable_internal(struct config_generic * gconfig, bool is_explicit)
 {
 	StringInfoData buffer;
 
@@ -5843,7 +5843,7 @@ dispatch_sync_pg_variable_internal(struct config_generic * gconfig, bool is_sync
 
 	}
 
-	if (is_sync)
+	if (is_explicit)
 		CdbDispatchSetCommandForSync(buffer.data);
 	else
 		CdbDispatchSetCommand(buffer.data, false);
