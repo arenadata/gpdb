@@ -7287,7 +7287,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 										 ExtractSetVariableArgs(stmt),
 										 PGC_SIGHUP,
 										 PGC_S_CLIENT,
-										 action,
+										 GUC_ACTION_SET,
 										 true,
 										 0);
 			}
