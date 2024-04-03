@@ -7648,7 +7648,7 @@ set_config_by_name(PG_FUNCTION_ARGS)
 			pfree(quoted_value);
 		pfree(quoted_name);
 
-		CdbDispatchSetCommand(buffer.data, false /* cancelOnError */);
+		CdbDispatchSetCommand(buffer.data, false /* cancelOnError */ );
 	}
 
 	/* get the new current value */

@@ -120,31 +120,6 @@ STRING			\'([^'\\\n]|\\.|\'\')*\'
 %%
 
 
-static List *ProcessConfigFileImpl(GucContext context, bool return_changed);
-
-/*
- * Exported function to read and process the configuration file. The
- * parameter indicates in what context the file is being read --- either
- * postmaster startup (including standalone-backend startup) or SIGHUP.
- * All options mentioned in the configuration file are set to new values.
- * If an error occurs, no values will be changed.
- */
-void
-ProcessConfigFile(GucContext context)
-{
-	(void) ProcessConfigFileImpl(context, false);
-}
-
-/*
- * This works the same way as the ProcessConfigFile(), except that it returns a
- * list of options (config_generic *) that were changed.
- */
-List *
-ProcessConfigFileForSync(GucContext context)
-{
-	return ProcessConfigFileImpl(context, true);
-}
-
 static List *
 ProcessConfigFileImpl(GucContext context, bool return_changed)
 {
@@ -506,6 +481,29 @@ ProcessConfigFileImpl(GucContext context, bool return_changed)
 	AssertImply(!return_changed, changed_gucs == NIL);
 
 	return changed_gucs;
+}
+
+/*
+ * Exported function to read and process the configuration file. The
+ * parameter indicates in what context the file is being read --- either
+ * postmaster startup (including standalone-backend startup) or SIGHUP.
+ * All options mentioned in the configuration file are set to new values.
+ * If an error occurs, no values will be changed.
+ */
+void
+ProcessConfigFile(GucContext context)
+{
+	(void) ProcessConfigFileImpl(context, false);
+}
+
+/*
+ * This works the same way as the ProcessConfigFile(), except that it returns a
+ * list of options (config_generic *) that were changed.
+ */
+List *
+ProcessConfigFileForSync(GucContext context)
+{
+	return ProcessConfigFileImpl(context, true);
 }
 
 /*

@@ -97,9 +97,6 @@ static int guc_array_compare(const void *a, const void *b);
 
 extern struct config_generic *find_option(const char *name, bool create_placeholders, int elevel);
 
-static void dispatch_sync_pg_variable(struct config_generic *gconfig,
-									  bool is_sync);
-
 extern int listenerBacklog;
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
