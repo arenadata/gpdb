@@ -1100,6 +1100,11 @@ $$ LANGUAGE plpgsql;
 --
 -- backslash_quote is not synchronized, so it should remain unchanged on
 -- segments.
+-- PGC_SUSET, we don't have enough priveleges.
+RESET log_min_messages;
+ERROR:  permission denied to set parameter "log_min_messages"
+-- Successfully reset.
+RESET backslash_quote;
 SHOW log_min_messages;
  log_min_messages 
 ------------------

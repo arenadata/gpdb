@@ -670,6 +670,11 @@ $$ LANGUAGE plpgsql;
 \!gpstop -u
 --end_ignore
 
+-- PGC_SUSET, we don't have enough priveleges.
+RESET log_min_messages;
+-- Successfully reset.
+RESET backslash_quote;
+
 SHOW log_min_messages;
 SELECT * from show_on_segments('log_min_messages');
 
