@@ -97,6 +97,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+#include "catalog/aocatalog.h"
 #include "catalog/oid_dispatch.h"
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_stat_last_operation.h"
@@ -1783,9 +1784,7 @@ heap_create_with_catalog(const char *relname,
 	 */
 	if (relkind != RELKIND_COMPOSITE_TYPE &&
 		relkind != RELKIND_TOASTVALUE &&
-		relkind != RELKIND_AOSEGMENTS &&
-		relkind != RELKIND_AOBLOCKDIR &&
-		relkind != RELKIND_AOVISIMAP &&
+		!IsAppendonlyMetadataRelkind(relkind) &&
 		!IsBootstrapProcessingMode())
 	{
 		ObjectAddress myself,
