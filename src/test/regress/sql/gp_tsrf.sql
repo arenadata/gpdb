@@ -84,8 +84,7 @@ insert into ao2_srf_test select a from generate_series(1, 10000)a;
 
 create table srf_test_t1(a oid primary key);
 
-insert into srf_test_t1 values ('ao1_srf_test'::regclass::oid);
-insert into srf_test_t1 values ('ao2_srf_test'::regclass::oid);
+insert into srf_test_t1 values ('ao1_srf_test'::regclass::oid), ('ao2_srf_test'::regclass::oid);
 
 select * from srf_test_t1 where a in 
        (select (gp_toolkit.__gp_aoblkdir(srf_test_t1.a)).row_count 
