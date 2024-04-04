@@ -36,10 +36,10 @@ Feature: expand the cluster by adding more segments
         And the user runs gpinitstandby with options " "
         And database "gptest" exists
         And there are no gpexpand_inputfiles
-        And the cluster is setup for an expansion on hosts "cdw,sdw1"
-        When the user runs gpexpand interview to add 2 new segment and 0 new host "ignored.host"
+        And the cluster is setup for an expansion on hosts "cdw,sdw2"
+        When the user runs gpexpand interview to add 3 new segment and 1 new host "ignored.host"
         Then user has created expansiontest tables
-        And 4000000 rows are inserted into table "expansiontest1" in schema "public" with column type list "int"
+        And 5000000 rows are inserted into table "expansiontest1" in schema "public" with column type list "int"
         When the user runs gpexpand with the latest gpexpand_inputfile with additional parameters "--silent"
         And add 5 seconds sleep after first table expand
         When the user runs gpexpand to redistribute with duration "00:00:02"
