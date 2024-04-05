@@ -2832,6 +2832,16 @@ gpdb::GPDBLockRelationOid(Oid reloid, LOCKMODE lockmode)
 	GP_WRAP_END;
 }
 
+void
+gpdb::GPDBUnlockRelationOid(Oid reloid, LOCKMODE lockmode)
+{
+	GP_WRAP_START;
+	{
+		UnlockRelationOid(reloid, lockmode);
+	}
+	GP_WRAP_END;
+}
+
 Node *
 gpdb::GetSortGroupClauseExpr(SortGroupClause *sgclause, List *targetlist)
 {

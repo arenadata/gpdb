@@ -161,7 +161,7 @@ bool		gp_log_suboverflow_statement = false;
 bool        gp_use_synchronize_seqscans_catalog_vacuum_full = false;
 
 bool		log_dispatch_stats = false;
-bool		gp_keep_partition_children_locks = false;
+bool		gp_keep_partition_children_locks = true;
 
 int			explain_memory_verbosity = 0;
 char	   *memory_profiler_run_id = "none";
@@ -3363,7 +3363,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 		 NULL
 		},
 		&gp_keep_partition_children_locks,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 

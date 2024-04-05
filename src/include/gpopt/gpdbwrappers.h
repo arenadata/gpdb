@@ -731,6 +731,8 @@ gpos::BOOL WalkQueryTree(Query *query, bool (*walker)(), void *context,
 
 void GPDBLockRelationOid(Oid reloid, LOCKMODE lockmode);
 
+void GPDBUnlockRelationOid(Oid reloid, LOCKMODE lockmode);
+
 // find the targetlist entry matching the given SortGroupClause
 Node *GetSortGroupClauseExpr(SortGroupClause *sgclause, List *targetlist);
 
