@@ -631,7 +631,7 @@ drop table t_create_gang_time;
 -- coordinator upon receiving a new connection.
 --
 -- GUCs that were changed in the configuration file of the QD should be re-sent
--- to segments on gpstop -u, if GUC_GPDB_NEED_SYNC is present if the flags.
+-- to segments on gpstop -u, if GUC_GPDB_NEED_SYNC is present in the flags.
 --
 
 -- start_ignore
