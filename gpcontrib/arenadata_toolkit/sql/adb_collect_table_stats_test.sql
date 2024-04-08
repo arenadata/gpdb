@@ -86,8 +86,21 @@ FROM arenadata_toolkit.db_files_current
 where table_name LIKE 'part_table%'
 ORDER BY oid;
 
+-- create a table with partitioning not by a column of the timestamp type
+CREATE TABLE part_table_2 (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION part_table_2_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION part_table_2_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
+
+-- check that adb_collect_table_stats is executed without an error
+select arenadata_toolkit.adb_collect_table_stats();
+
 -- Cleanup
 DROP TABLE part_table;
+DROP TABLE part_table_2;
 DROP FUNCTION remove_partition_from_db_files_history();
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit CASCADE;

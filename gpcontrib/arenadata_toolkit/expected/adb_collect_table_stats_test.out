@@ -313,8 +313,24 @@ ORDER BY oid;
  part_table_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_sub_prt2 | arenadata_toolkit | part_table         | arenadata_toolkit   |     32768
 (190 rows)
 
+-- create a table with partitioning not by a column of the timestamp type
+CREATE TABLE part_table_2 (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION part_table_2_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION part_table_2_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
+-- check that adb_collect_table_stats is executed without an error
+select arenadata_toolkit.adb_collect_table_stats();
+ adb_collect_table_stats 
+-------------------------
+ 
+(1 row)
+
 -- Cleanup
 DROP TABLE part_table;
+DROP TABLE part_table_2;
 DROP FUNCTION remove_partition_from_db_files_history();
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit CASCADE;
