@@ -11,10 +11,10 @@ BEGIN
 	IF NOT EXISTS (
 		SELECT now() BETWEEN
 			CAST(substring(pg_get_expr(pr_filtered.parrangestart, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#')
-					AS TIMESTAMP WITHOUT TIME ZONE)
+				AS TIMESTAMP WITHOUT TIME ZONE)
 			AND
 			CAST(substring(pg_get_expr(pr_filtered.parrangeend, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#')
-					AS TIMESTAMP WITHOUT TIME ZONE)
+				AS TIMESTAMP WITHOUT TIME ZONE)
 		FROM (
 			SELECT pr.parrangestart, pr.parrangeend, pr.parchildrelid
 			FROM pg_partition pp
