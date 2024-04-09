@@ -7296,6 +7296,8 @@ ExecSetVariableStmt(VariableSetStmt *stmt, bool isTopLevel)
 			 */
 			if (isMppTxOptions_SynchronizationSet(QEDtxContextInfo.distributedTxnOptions))
 			{
+				SIMPLE_FAULT_INJECTOR("exec_set_variable_stmt_sync");
+
 				(void) set_config_option(stmt->name,
 										 ExtractSetVariableArgs(stmt),
 										 PGC_SIGHUP,

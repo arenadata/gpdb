@@ -1205,13 +1205,52 @@ SELECT * from show_on_segments('backslash_quote');
 
 RESET SESSION AUTHORIZATION;
 -- Our session should not have been reset, and this table should still be
--- present. If it's not, something is terribly wrong and we were silently
--- disconnected.
+-- present.
 SELECT * FROM dispatch_test_session_not_dead;
  a 
 ---
 (0 rows)
 
-DROP TABLE dispatch_test_session_not_dead;
+-- Now try to simulate an error while synchronizing GUCs.
+--start_ignore
+\!gpconfig -c log_min_messages -v 'warning' -m 'notice'
+--end_ignore
+SELECT gp_inject_fault('exec_set_variable_stmt_sync', 'error', dbid)
+FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
+--start_ignore
+\!gpstop -u
+--end_ignore
+-- Current session should perish and be replaced by a new one.
+SELECT * FROM dispatch_test_session_not_dead;
+WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 271)
+ERROR:  fault triggered, fault name:'exec_set_variable_stmt_sync' fault type:'error'  (seg0 127.0.1.1:6002 pid=78693)
+-- New session should receive log_min_messages value via startup packet, and
+-- log_min_messages should still be synchronized and equal to 'notice'.
+SHOW log_min_messages;
+ log_min_messages 
+------------------
+ notice
+(1 row)
+
+SELECT * from show_on_segments('log_min_messages');
+     guc_name     | guc_setting 
+------------------+-------------
+ log_min_messages | notice
+ log_min_messages | notice
+ log_min_messages | notice
+(3 rows)
+
+SELECT gp_inject_fault('exec_set_variable_stmt_sync', 'reset', dbid)
+FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 DROP FUNCTION show_on_segments(show_name text);
 DROP ROLE dispatch_test_user2;
