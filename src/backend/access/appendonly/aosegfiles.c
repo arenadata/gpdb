@@ -53,7 +53,7 @@
 	if (Gp_role != GP_ROLE_DISPATCH) \
 		ereport(ERROR,\
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),\
-				 errmsg("Function '%s' can run only on dispatcher.",\
+				 errmsg("function '%s' must be executed on the dispatcher",\
 						PG_FUNCNAME_MACRO)));
 
 static float8 aorow_compression_ratio_internal(Relation parentrel);
