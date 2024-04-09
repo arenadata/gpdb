@@ -104,33 +104,32 @@ RETURNS VOID
 AS $$
 BEGIN
 	IF NOT EXISTS (
-		SELECT now() BETWEEN
-			CAST(substring(pg_get_expr(pr_filtered.parrangestart, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#')
-					AS TIMESTAMP WITHOUT TIME ZONE)
+		SELECT
+		FROM pg_partition pp
+		JOIN pg_class cl1 ON pp.parrelid = cl1.oid
+		JOIN pg_partition_rule pr ON pr.paroid = pp.oid
+		JOIN pg_class cl2 ON cl2.oid = pr.parchildrelid
+		JOIN pg_namespace n1 ON cl1.relnamespace = n1.oid
+		JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid
+		WHERE
+			pp.paristemplate = false
 			AND
-			CAST(substring(pg_get_expr(pr_filtered.parrangeend, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#')
-					AS TIMESTAMP WITHOUT TIME ZONE)
-		FROM (
-			SELECT pr.parrangestart, pr.parrangeend, pr.parchildrelid
-			FROM pg_partition pp
-			JOIN pg_class cl1 ON pp.parrelid = cl1.oid
-			JOIN pg_partition_rule pr ON pr.paroid = pp.oid
-			JOIN pg_class cl2 ON cl2.oid = pr.parchildrelid
-			JOIN pg_namespace n1 ON cl1.relnamespace = n1.oid
-			JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid
-			WHERE
-				pp.paristemplate = false
-				AND
-				n1.nspname = 'arenadata_toolkit'
-				AND
-				n2.nspname = 'arenadata_toolkit'
-				AND
-				cl1.relname = 'db_files_history'
-				AND
-				pp.parkind = 'r'  --range
-				AND
-				pr.parrangestartincl = 't'
-		) pr_filtered )
+			n1.nspname = 'arenadata_toolkit'
+			AND
+			n2.nspname = 'arenadata_toolkit'
+			AND
+			cl1.relname = 'db_files_history'
+			AND
+			now() BETWEEN CAST(
+				substring(pg_get_expr(pr.parrangestart, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
+				AS TIMESTAMP WITHOUT TIME ZONE)
+			AND
+			CAST(substring(pg_get_expr(pr.parrangeend, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
+				AS TIMESTAMP WITHOUT TIME ZONE)
+			AND
+			pp.parkind = 'r'  --range
+			AND
+			pr.parrangestartincl = 't')
 	THEN
 		EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
 			START (date %1$L) INCLUSIVE
