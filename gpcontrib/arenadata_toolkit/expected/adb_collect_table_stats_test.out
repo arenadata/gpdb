@@ -11,6 +11,20 @@ BEGIN
 END$$
 LANGUAGE plpgsql VOLATILE
 EXECUTE ON MASTER;
+CREATE FUNCTION add_extra_partition_to_db_files_history()
+RETURNS VOID
+AS $$
+BEGIN
+	EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
+		START (date %1$L) INCLUSIVE
+		END (date %2$L) EXCLUSIVE
+		INTO (PARTITION %3$I, default partition);$fmt$,
+			to_char(now() - interval '1 month', 'YYYY-MM-01'),
+			to_char(now(), 'YYYY-MM-01'),
+			'p'||to_char(now() - interval '1 month', 'YYYYMM'));
+END$$
+LANGUAGE plpgsql VOLATILE
+EXECUTE ON MASTER;
 -- There are not "db_files_history" and partitions
 SELECT count(inhrelid)
 FROM pg_inherits
@@ -84,6 +98,58 @@ WHERE relname = 'db_files_history';
  count 
 -------
      2
+(1 row)
+
+-- Create a partition for the month before the current one
+SELECT add_extra_partition_to_db_files_history();
+ add_extra_partition_to_db_files_history 
+-----------------------------------------
+ 
+(1 row)
+
+-- There are "db_files_history" and three partitions
+-- (default, for the current month and for the month before the current one)
+SELECT count(inhrelid)
+FROM pg_inherits
+LEFT JOIN pg_class ON oid = inhparent
+WHERE relname = 'db_files_history';
+ count 
+-------
+     3
+(1 row)
+
+-- Remove the partition from "db_files_history" for the current month
+SELECT remove_partition_from_db_files_history();
+ remove_partition_from_db_files_history 
+----------------------------------------
+ 
+(1 row)
+
+-- There are "db_files_history" and two partitions (default and for the month before the current one)
+SELECT count(inhrelid)
+FROM pg_inherits
+LEFT JOIN pg_class ON oid = inhparent
+WHERE relname = 'db_files_history';
+ count 
+-------
+     2
+(1 row)
+
+SELECT adb_collect_table_stats();
+ adb_collect_table_stats 
+-------------------------
+ 
+(1 row)
+
+-- There are "db_files_history" and three partitions
+-- (default, for the current month and for the month before the current one)
+SELECT count(inhrelid)
+FROM pg_inherits
+LEFT JOIN pg_class ON oid = inhparent
+WHERE relname = 'db_files_history';
+ count 
+-------
+     3
 (1 row)
 
 -- Create table with partitions for test "INSERT INTO arenadata_toolkit.db_files_current"

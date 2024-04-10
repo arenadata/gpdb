@@ -14,6 +14,21 @@ END$$
 LANGUAGE plpgsql VOLATILE
 EXECUTE ON MASTER;
 
+CREATE FUNCTION add_extra_partition_to_db_files_history()
+RETURNS VOID
+AS $$
+BEGIN
+	EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
+		START (date %1$L) INCLUSIVE
+		END (date %2$L) EXCLUSIVE
+		INTO (PARTITION %3$I, default partition);$fmt$,
+			to_char(now() - interval '1 month', 'YYYY-MM-01'),
+			to_char(now(), 'YYYY-MM-01'),
+			'p'||to_char(now() - interval '1 month', 'YYYYMM'));
+END$$
+LANGUAGE plpgsql VOLATILE
+EXECUTE ON MASTER;
+
 -- There are not "db_files_history" and partitions
 SELECT count(inhrelid)
 FROM pg_inherits
@@ -48,6 +63,34 @@ WHERE relname = 'db_files_history';
 SELECT adb_collect_table_stats();
 
 -- There is not any new partitions for "db_files_history"
+SELECT count(inhrelid)
+FROM pg_inherits
+LEFT JOIN pg_class ON oid = inhparent
+WHERE relname = 'db_files_history';
+
+-- Create a partition for the month before the current one
+SELECT add_extra_partition_to_db_files_history();
+
+-- There are "db_files_history" and three partitions
+-- (default, for the current month and for the month before the current one)
+SELECT count(inhrelid)
+FROM pg_inherits
+LEFT JOIN pg_class ON oid = inhparent
+WHERE relname = 'db_files_history';
+
+-- Remove the partition from "db_files_history" for the current month
+SELECT remove_partition_from_db_files_history();
+
+-- There are "db_files_history" and two partitions (default and for the month before the current one)
+SELECT count(inhrelid)
+FROM pg_inherits
+LEFT JOIN pg_class ON oid = inhparent
+WHERE relname = 'db_files_history';
+
+SELECT adb_collect_table_stats();
+
+-- There are "db_files_history" and three partitions
+-- (default, for the current month and for the month before the current one)
 SELECT count(inhrelid)
 FROM pg_inherits
 LEFT JOIN pg_class ON oid = inhparent

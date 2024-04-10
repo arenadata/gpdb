@@ -8,34 +8,36 @@ CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
 BEGIN
-	IF NOT EXISTS (
-		SELECT now() BETWEEN
-			CAST(substring(pg_get_expr(pr_filtered.parrangestart, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#')
-				AS TIMESTAMP WITHOUT TIME ZONE)
-			AND
-			CAST(substring(pg_get_expr(pr_filtered.parrangeend, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#')
-				AS TIMESTAMP WITHOUT TIME ZONE)
-		FROM (
-			SELECT pr.parrangestart, pr.parrangeend, pr.parchildrelid
-			FROM pg_partition pp
-			JOIN pg_class cl1 ON pp.parrelid = cl1.oid
-			JOIN pg_partition_rule pr ON pr.paroid = pp.oid
-			JOIN pg_class cl2 ON cl2.oid = pr.parchildrelid
-			JOIN pg_namespace n1 ON cl1.relnamespace = n1.oid
-			JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid
-			WHERE
-				pp.paristemplate = false
-				AND
-				n1.nspname = 'arenadata_toolkit'
-				AND
-				n2.nspname = 'arenadata_toolkit'
-				AND
-				cl1.relname = 'db_files_history'
-				AND
-				pp.parkind = 'r'  --range
-				AND
-				pr.parrangestartincl = 't'
-		) pr_filtered )
+	IF (
+		SELECT NOT bool_or(val) FROM (
+			(SELECT (now() BETWEEN 
+				CAST(substring(pg_get_expr(pr_filtered.parrangestart, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#') 
+					AS TIMESTAMP WITHOUT TIME ZONE) 
+				AND 
+				CAST(substring(pg_get_expr(pr_filtered.parrangeend, pr_filtered.parchildrelid) FROM '#"%#"::%' FOR '#') 
+					AS TIMESTAMP WITHOUT TIME ZONE)) val
+			FROM ( 
+				SELECT pr.parrangestart, pr.parrangeend, pr.parchildrelid 
+				FROM pg_partition pp 
+				JOIN pg_class cl1 ON pp.parrelid = cl1.oid 
+				JOIN pg_partition_rule pr ON pr.paroid = pp.oid 
+				JOIN pg_class cl2 ON cl2.oid = pr.parchildrelid 
+				JOIN pg_namespace n1 ON cl1.relnamespace = n1.oid 
+				JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid 
+				WHERE 
+					pp.paristemplate = false 
+					AND 
+					n1.nspname = 'arenadata_toolkit' 
+					AND 
+					n2.nspname = 'arenadata_toolkit' 
+					AND 
+					cl1.relname = 'db_files_history' 
+					AND 
+					pp.parkind = 'r'  --range 
+					AND 
+					pr.parrangestartincl = 't' ) pr_filtered)
+			UNION
+			(SELECT FALSE val)) dummy_alias)
 	THEN
 		EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
 			START (date %1$L) INCLUSIVE
