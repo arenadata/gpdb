@@ -224,4 +224,11 @@ commit;
 
 drop table t_inner_to_join;
 drop table t_list_multi;
+
+-- Test SELECT FOR UPDATE for acquiring RowShareLock lock on QD
+begin;
+select * from t_part_multi_heap where c=2 for update;
+select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+commit;
+
 drop table t_part_multi_heap;

@@ -741,4 +741,31 @@ select * from locktest_master where coalesce not like 'gp_%' and coalesce not li
 commit;
 drop table t_inner_to_join;
 drop table t_list_multi;
+-- Test SELECT FOR UPDATE for acquiring RowShareLock lock on QD
+begin;
+select * from t_part_multi_heap where c=2 for update;
+ a | b | c 
+---+---+---
+(0 rows)
+
+select * from locktest_master where coalesce not like 'gp_%' and coalesce not like 'pg_%';
+             coalesce              |      mode       | locktype |  node  
+-----------------------------------+-----------------+----------+--------
+ t_part_multi_heap                 | AccessShareLock | relation | master
+ t_part_multi_heap                 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_1_2_prt_1 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_1_2_prt_1 | RowShareLock    | relation | master
+ t_part_multi_heap_1_prt_1_2_prt_2 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_1_2_prt_2 | RowShareLock    | relation | master
+ t_part_multi_heap_1_prt_1_2_prt_3 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_1_2_prt_3 | RowShareLock    | relation | master
+ t_part_multi_heap_1_prt_2_2_prt_1 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_2_2_prt_1 | RowShareLock    | relation | master
+ t_part_multi_heap_1_prt_2_2_prt_2 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_2_2_prt_2 | RowShareLock    | relation | master
+ t_part_multi_heap_1_prt_2_2_prt_3 | ExclusiveLock   | relation | master
+ t_part_multi_heap_1_prt_2_2_prt_3 | RowShareLock    | relation | master
+(14 rows)
+
+commit;
 drop table t_part_multi_heap;

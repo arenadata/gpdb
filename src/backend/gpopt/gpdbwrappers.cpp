@@ -2794,7 +2794,7 @@ gpdb::GetParseRowmark(Query *query, Index rtindex)
 {
 	GP_WRAP_START;
 	{
-		get_parse_rowmark(query, rtindex);
+		return get_parse_rowmark(query, rtindex);
 	}
 	GP_WRAP_END;
 	return nullptr;
@@ -2828,16 +2828,6 @@ gpdb::GPDBLockRelationOid(Oid reloid, LOCKMODE lockmode)
 	GP_WRAP_START;
 	{
 		LockRelationOid(reloid, lockmode);
-	}
-	GP_WRAP_END;
-}
-
-void
-gpdb::GPDBUnlockRelationOid(Oid reloid, LOCKMODE lockmode)
-{
-	GP_WRAP_START;
-	{
-		UnlockRelationOid(reloid, lockmode);
 	}
 	GP_WRAP_END;
 }
