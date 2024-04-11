@@ -18,10 +18,8 @@ BEGIN
 		JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid
 		WHERE
 			CASE
-				WHEN cl1.relname = 'db_files_history' AND
-					n1.nspname = 'arenadata_toolkit' AND
-					n2.nspname = 'arenadata_toolkit'
-				THEN now() BETWEEN 
+				WHEN pp.parclass[0] IN (SELECT oid FROM pg_opclass WHERE opcname = 'timestamp_ops')
+				THEN now() BETWEEN
 					CAST(substring(pg_get_expr(pr.parrangestart, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
 						AS TIMESTAMP WITHOUT TIME ZONE)
 					AND
@@ -29,6 +27,12 @@ BEGIN
 						AS TIMESTAMP WITHOUT TIME ZONE)
 				ELSE FALSE
 			END
+			AND
+			cl1.relname = 'db_files_history'
+			AND
+			n1.nspname = 'arenadata_toolkit'
+			AND
+			n2.nspname = 'arenadata_toolkit'
 			AND
 			pp.paristemplate = false
 			AND

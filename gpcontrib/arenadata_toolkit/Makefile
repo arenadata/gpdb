@@ -10,7 +10,7 @@ DATA = \
        arenadata_toolkit--1.1--1.2.sql \
        arenadata_toolkit--1.2--1.3.sql \
        arenadata_toolkit--1.3--1.4.sql \
-       arenadata_toolkit--1.4--1.5.sql
+       arenadata_toolkit--1.4--1.5.sql \
 
 DATA_built = $(EXTENSION)--$(EXTENSION_VERSION).sql
 
