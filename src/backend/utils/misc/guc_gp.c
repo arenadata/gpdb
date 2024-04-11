@@ -3360,7 +3360,8 @@ struct config_bool ConfigureNamesBool_gp[] =
 	{
 		{"gp_keep_partition_children_locks", PGC_USERSET, QUERY_TUNING_METHOD,
 		 gettext_noop("Keep locks on partition children during planning"),
-		 NULL
+		 NULL,
+		 GUC_NOT_IN_SAMPLE
 		},
 		&gp_keep_partition_children_locks,
 		true,
