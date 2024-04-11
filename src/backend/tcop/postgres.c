@@ -1589,21 +1589,6 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		}
 		PG_CATCH();
 		{
-			/*
-			 * Keep the old behavior for restore list, but abort xact if we are
-			 * synchronizing.
-			 */
-			if (!is_restore)
-			{
-				/*
-				 * Some GUC exploded on us.
-				 * Reset the session, because for current session the GUCs are
-				 * desynchronized. For the new session, GUCs will be sent by
-				 * the startup packet.
-				 */
-				DisconnectAndDestroyAllGangs(true);
-				PG_RE_THROW();
-			}
 			/* if some guc can not restore successful
 			 * we can not keep alive gang anymore.
 			 */
