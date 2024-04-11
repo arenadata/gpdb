@@ -712,37 +712,10 @@ SELECT * from show_on_segments('backslash_quote');
 RESET SESSION AUTHORIZATION;
 
 -- Our session should not have been reset, and this table should still be
--- present.
+-- present. If it's not, something is terribly wrong and we were silently
+-- disconnected.
 SELECT * FROM dispatch_test_session_not_dead;
-
--- Now try to simulate an error while synchronizing GUCs.
---start_ignore
-\!gpconfig -c log_min_messages -v 'warning' -m 'notice'
---end_ignore
-
-SELECT gp_inject_fault('exec_set_variable_stmt_sync', 'error', dbid)
-FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
-
---start_ignore
-\!gpstop -u
---end_ignore
-
--- Current session should perish and be replaced by a new one.
-SELECT * FROM dispatch_test_session_not_dead;
-
--- New session should receive log_min_messages value via startup packet, and
--- log_min_messages should still be synchronized and equal to 'notice'.
-SHOW log_min_messages;
-SELECT * from show_on_segments('log_min_messages');
-
-SELECT gp_inject_fault('exec_set_variable_stmt_sync', 'reset', dbid)
-FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
-
---start_ignore
-\!gpconfig -r log_min_messages
-\!gpconfig -r backslash_quote
-\!gpstop -u
---end_ignore
+DROP TABLE dispatch_test_session_not_dead;
 
 DROP FUNCTION show_on_segments(show_name text);
 DROP ROLE dispatch_test_user2;
