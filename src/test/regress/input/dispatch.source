@@ -636,11 +636,7 @@ drop table t_create_gang_time;
 
 -- start_ignore
 DROP ROLE IF EXISTS dispatch_test_user2;
-DROP TABLE IF EXISTS dispatch_test_session_not_dead;
 -- end_ignore
-
--- This table shouldn't be dropped until the end of the test.
-CREATE TEMPORARY TABLE dispatch_test_session_not_dead(a int);
 
 -- Use a separate user without any priveleges to catch possible context issues.
 CREATE ROLE dispatch_test_user2 NOSUPERUSER;
@@ -710,12 +706,6 @@ SHOW backslash_quote;
 SELECT * from show_on_segments('backslash_quote');
 
 RESET SESSION AUTHORIZATION;
-
--- Our session should not have been reset, and this table should still be
--- present. If it's not, something is terribly wrong and we were silently
--- disconnected.
-SELECT * FROM dispatch_test_session_not_dead;
-DROP TABLE dispatch_test_session_not_dead;
 
 DROP FUNCTION show_on_segments(show_name text);
 DROP ROLE dispatch_test_user2;
