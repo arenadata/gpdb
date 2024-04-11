@@ -102,6 +102,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  adb_vacuum_strategy_newest_first                           | proc    | -          | {owner=X/owner}
  adb_vacuum_strategy_newest_last                            | proc    | -          | {owner=X/owner}
  arenadata_toolkit                                          | schema  | -          | {owner=UC/owner,=U/owner}
+ collect_db_files_current                                   | proc    | -          | 
  daily_operation                                            | table   | a          | 
  db_files_current                                           | table   | h          | {owner=arwdDxt/owner,=r/owner}
  db_files_history                                           | table   | a          | {owner=arwdDxt/owner}
@@ -111,7 +112,9 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_history_backup_YYYYMMDDtHHMMSS_1_prt_default_part | table   | a          | 
  db_files_history_backup_YYYYMMDDtHHMMSS_1_prt_pYYYYMM      | table   | a          | 
  operation_exclude                                          | table   | a          | 
-(22 rows)
+ prepare_partitions_db_files_history                        | proc    | -          | 
+ prepare_temp_db_files_current                              | proc    | -          | 
+(25 rows)
 
 -- check that toolkit objects now depends on extension
 SELECT objname, objtype, extname, deptype FROM pg_depend d JOIN
@@ -132,7 +135,10 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_vacuum_strategy                   | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_first      | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_last       | proc    | arenadata_toolkit | e
-(12 rows)
+ collect_db_files_current              | proc    | arenadata_toolkit | e
+ prepare_partitions_db_files_history   | proc    | arenadata_toolkit | e
+ prepare_temp_db_files_current         | proc    | arenadata_toolkit | e
+(15 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
@@ -164,13 +170,16 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  adb_vacuum_strategy_newest_first      | proc    | -          | {owner=X/owner}
  adb_vacuum_strategy_newest_last       | proc    | -          | {owner=X/owner}
  arenadata_toolkit                     | schema  | -          | {owner=UC/owner,=U/owner}
+ collect_db_files_current              | proc    | -          | 
  daily_operation                       | table   | a          | {owner=arwdDxt/owner}
  db_files_current                      | table   | h          | {owner=arwdDxt/owner,=r/owner}
  db_files_history                      | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_default_part   | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_pYYYYMM        | table   | a          | {owner=arwdDxt/owner}
  operation_exclude                     | table   | a          | {owner=arwdDxt/owner}
-(19 rows)
+ prepare_partitions_db_files_history   | proc    | -          | 
+ prepare_temp_db_files_current         | proc    | -          | 
+(22 rows)
 
 -- check that toolkit objects now depends on extension
 SELECT objname, objtype, extname, deptype FROM pg_depend d JOIN
@@ -191,7 +200,10 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
  adb_vacuum_strategy                   | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_first      | proc    | arenadata_toolkit | e
  adb_vacuum_strategy_newest_last       | proc    | arenadata_toolkit | e
-(12 rows)
+ collect_db_files_current              | proc    | arenadata_toolkit | e
+ prepare_partitions_db_files_history   | proc    | arenadata_toolkit | e
+ prepare_temp_db_files_current         | proc    | arenadata_toolkit | e
+(15 rows)
 
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit cascade;
