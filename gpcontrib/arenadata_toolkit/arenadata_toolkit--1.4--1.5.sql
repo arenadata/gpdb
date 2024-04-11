@@ -1,9 +1,10 @@
 /* gpcontrib/arenadata_toolkit/arenadata_toolkit--1.4--1.5.sql */
 
 /*
- This function adds a new partition to db_files_history tables if necessary.
+ This is part of arenadata_toolkit API for ADB Bundle.
+ This function collects information in db_files_current and db_files_history tables.
  */
-CREATE OR REPLACE FUNCTION arenadata_toolkit.prepare_partitions_db_files_history()
+CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
 BEGIN
@@ -47,18 +48,7 @@ BEGIN
 				to_char(now() + interval '1 month','YYYY-MM-01'),
 				'p'||to_char(now(), 'YYYYMM'));
 	END IF;
-END$$
-LANGUAGE plpgsql VOLATILE
-EXECUTE ON MASTER;
 
-/*
- This function creates a temp table, that is used later to insert data
- into arenadata_toolkit.db_files_current.
- */
-CREATE OR REPLACE FUNCTION arenadata_toolkit.prepare_temp_db_files_current()
-RETURNS VOID
-AS $$
-BEGIN
 	CREATE TEMPORARY TABLE IF NOT EXISTS pg_temp.db_files_current
 	(
 		oid BIGINT,
@@ -117,18 +107,7 @@ BEGIN
 	LEFT JOIN pg_partition pp ON pr.paroid = pp.oid
 	LEFT JOIN pg_class cl ON cl.oid = pp.parrelid
 	LEFT JOIN pg_namespace n ON cl.relnamespace = n.oid;
-END$$
-LANGUAGE plpgsql VOLATILE
-EXECUTE ON MASTER;
 
-/*
- This function collects data to arenadata_toolkit.db_files_current and
- arenadata_toolkit.db_files_history.
- */
-CREATE OR REPLACE FUNCTION arenadata_toolkit.collect_db_files_current()
-RETURNS VOID
-AS $$
-BEGIN
 	/*
 	 Here we may truncate it, it's relfilenodes aren't in db_files_current temporary table.
 	 */
@@ -141,21 +120,6 @@ BEGIN
 	INSERT INTO arenadata_toolkit.db_files_history
 	SELECT *, now() AS collecttime
 	FROM arenadata_toolkit.db_files_current;
-END$$
-LANGUAGE plpgsql VOLATILE
-EXECUTE ON MASTER;
-
-/*
- This is part of arenadata_toolkit API for ADB Bundle.
- This function collects information in db_files_current and db_files_history tables.
- */
-CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_collect_table_stats()
-RETURNS VOID
-AS $$
-BEGIN
-	PERFORM arenadata_toolkit.prepare_partitions_db_files_history();
-	PERFORM arenadata_toolkit.prepare_temp_db_files_current();
-	PERFORM arenadata_toolkit.collect_db_files_current();
 END$$
 LANGUAGE plpgsql VOLATILE
 EXECUTE ON MASTER;
