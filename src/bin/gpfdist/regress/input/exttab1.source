@@ -650,6 +650,44 @@ SELECT * FROM readable_external_table_with_user_type_and_default_value;
 select * from exttab1_gpfdist_stop;
 -- end_ignore
 
+--
+-- Test default transformation
+--
+
+-- The server runs with default transformation of catfile_double which doubles
+-- file content
+CREATE EXTERNAL WEB TABLE gpfdist_transform_start (x text)
+execute E'((@bindir@/gpfdist -p 7070 -d @abs_srcdir@/data/ -c @abs_srcdir@/data/catfile.yml -X catfile_double </dev/null >/dev/null 2>&1 &); for i in `seq 1 30`; do curl 127.0.0.1:7070 >/dev/null 2>&1 && break; sleep 1; done; echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+
+-- This table will use default transformation as there no given in url
+CREATE EXTERNAL TABLE ext_transform1 (a text)
+location('gpfdist://@hostname@:7070/transform/data1.txt') format 'text';
+
+-- This table will use catfile transformation, which overrides default one
+CREATE EXTERNAL TABLE ext_transform2 (a text)
+location('gpfdist://@hostname@:7070/transform/data1.txt#transform=catfile') format 'text';
+
+-- start_ignore
+select * from gpfdist_transform_start;
+-- end_ignore
+
+-- First select should double file content
+select count(*) from ext_transform1;
+-- Second select should use original file content as default transformation is
+-- overridden
+select count(*) from ext_transform2;
+
+-- start_ignore
+select * from exttab1_gpfdist_stop;
+-- end_ignore
+
+-- drop tables
+DROP EXTERNAL TABLE ext_transform1;
+DROP EXTERNAL TABLE ext_transform2;
+DROP EXTERNAL WEB TABLE gpfdist_transform_start;
+
 drop external table ext_whois;
 drop external table exttab1_gpfdist_start;
 drop external table gpfdist_csv_start;
