@@ -193,8 +193,8 @@ drop schema issue6716 cascade;
 create extension test_ext_ao;
 -- Detach tables from extension.
 alter extension test_ext_ao drop table test_ext_ao_table;
--- The following select should give 0 rows, as there no extension related
--- tables left.
+-- The following select should give 0 rows, as there are no extension related
+-- tables left
 select count(*) cnt
 from pg_depend
 where refobjid = (select oid from pg_extension where extname='test_ext_ao')
