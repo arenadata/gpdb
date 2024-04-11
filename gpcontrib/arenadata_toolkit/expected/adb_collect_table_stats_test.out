@@ -387,6 +387,15 @@ PARTITION BY RANGE(b)
 	PARTITION part_table_2_t1 START ('10'::bigint) END ('1000000'::bigint),
 	PARTITION part_table_2_t2 START ('1000001'::bigint) END ('2000000'::bigint)
 );
+-- create a table with partitioning not by a column of the timestamp type
+-- and with the same name as 'db_files_history', but in a different schema
+CREATE TABLE public.db_files_history (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION part_table_2_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION part_table_2_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
 -- check that adb_collect_table_stats is executed without an error
 select arenadata_toolkit.adb_collect_table_stats();
  adb_collect_table_stats 
@@ -397,6 +406,7 @@ select arenadata_toolkit.adb_collect_table_stats();
 -- Cleanup
 DROP TABLE part_table;
 DROP TABLE part_table_2;
+DROP TABLE public.db_files_history;
 DROP FUNCTION remove_partition_from_db_files_history();
 DROP EXTENSION arenadata_toolkit;
 DROP SCHEMA arenadata_toolkit CASCADE;
