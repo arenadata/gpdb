@@ -6133,7 +6133,7 @@ CTranslatorDXLToPlStmt::AcquireLocksOnChildRelations(OID oidParentRel,
 {
 	ListCell *lc;
 
-	if (NoLock == lockmode)
+	if (NoLock >= lockmode)
 		return;
 
 	// If static partition selection didn't take place, just acquire locks on
@@ -6144,15 +6144,15 @@ CTranslatorDXLToPlStmt::AcquireLocksOnChildRelations(OID oidParentRel,
 		// given rel plus all relations that inherit from it, directly or
 		// indirectly. The specified lock type is acquired on all child
 		// relations (but not on the given rel).
-		List *inhOids = gpdb::FindAllInheritors(oidParentRel, lockmode, NULL);
+		List *inhOids = gpdb::FindAllInheritors(oidParentRel, NoLock, NULL);
 
 		ForEach(lc, inhOids)
 		{
 			Oid childOid = lfirst_oid(lc);
 
-			if (childOid != oidParentRel && !gpdb::IsLeafPartition(childOid))
+			if (childOid != oidParentRel && gpdb::IsLeafPartition(childOid))
 			{
-				gpdb::GPDBUnlockRelationOid(childOid, lockmode);
+				gpdb::GPDBLockRelationOid(childOid, lockmode);
 			}
 		}
 		gpdb::ListFree(inhOids);
