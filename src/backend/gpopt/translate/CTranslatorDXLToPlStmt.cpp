@@ -6219,11 +6219,13 @@ CTranslatorDXLToPlStmt::EvalLockModeForChildRelations(Query *parsetree,
 
 			case RTE_SUBQUERY:
 				// Recurse into subquery-in-FROM
-				lockmode =
-					EvalLockModeForChildRelations(rte->subquery, oidParentRel);
+				{
+					LOCKMODE lockmode = EvalLockModeForChildRelations(
+						rte->subquery, oidParentRel);
 
-				if (NoLock <= lockmode)
-					return lockmode;
+					if (NoLock <= lockmode)
+						return lockmode;
+				}
 				break;
 
 			default:
