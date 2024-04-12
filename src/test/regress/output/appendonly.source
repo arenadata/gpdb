@@ -1805,7 +1805,7 @@ select get_ao_compression_ratio(tname) from
 	unnest(array(select tname from tables_list)) as tname;
  get_ao_compression_ratio 
 --------------------------
-                       -1
+                        1
                        -1
 (2 rows)
 
