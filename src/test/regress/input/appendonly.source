@@ -856,8 +856,6 @@ drop table if exists tables_list;
 create table t1 (a int) with (appendoptimized=true, orientation=row);
 create table t2 (a int) with (appendoptimized=true, orientation=column);
 create table tables_list (tname text);
-insert into t1 values (0);
-insert into t2 values (0);
 insert into tables_list values ('t1'), ('t2');
 
 -- Queries below should fail with a proper error message.

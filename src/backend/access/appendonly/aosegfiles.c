@@ -1830,7 +1830,11 @@ aorow_compression_ratio_internal(Relation parentrel)
 			char	   *attr1 = SPI_getvalue(tuple, tupdesc, 1);
 			char	   *attr2 = SPI_getvalue(tuple, tupdesc, 2);
 
-			if (NULL == attr1 || NULL == attr2)
+			if (NULL == attr1 && NULL == attr2)
+			{
+				compress_ratio = -1; /* the default, meaning "not available" */
+			}
+			else if (NULL == attr1 || NULL == attr2)
 			{
 				compress_ratio = 1;
 			}

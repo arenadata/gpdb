@@ -1780,8 +1780,6 @@ drop table test_reporting_c;
 create table t1 (a int) with (appendoptimized=true, orientation=row);
 create table t2 (a int) with (appendoptimized=true, orientation=column);
 create table tables_list (tname text);
-insert into t1 values (0);
-insert into t2 values (0);
 insert into tables_list values ('t1'), ('t2');
 -- Queries below should fail with a proper error message.
 select get_ao_compression_ratio(tname) from tables_list;
@@ -1807,8 +1805,8 @@ select get_ao_compression_ratio(tname) from
 	unnest(array(select tname from tables_list)) as tname;
  get_ao_compression_ratio 
 --------------------------
-                        1
-                        1
+                       -1
+                       -1
 (2 rows)
 
 drop table t1;
