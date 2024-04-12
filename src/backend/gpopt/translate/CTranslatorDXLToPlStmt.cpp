@@ -6181,7 +6181,6 @@ CTranslatorDXLToPlStmt::EvalLockModeForChildRelations(Query *parsetree,
 {
 	ListCell *lc;
 	int rt_index;
-	LOCKMODE lockmode;
 
 	// First, process RTEs of the current query level.
 	ForEachWithCount(lc, parsetree->rtable, rt_index)
@@ -6236,8 +6235,8 @@ CTranslatorDXLToPlStmt::EvalLockModeForChildRelations(Query *parsetree,
 	ForEach(lc, parsetree->cteList)
 	{
 		CommonTableExpr *cte = (CommonTableExpr *) lfirst(lc);
-		lockmode = EvalLockModeForChildRelations((Query *) cte->ctequery,
-												 oidParentRel);
+		LOCKMODE lockmode = EvalLockModeForChildRelations(
+			(Query *) cte->ctequery, oidParentRel);
 
 		if (NoLock <= lockmode)
 		{
