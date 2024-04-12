@@ -50,11 +50,14 @@
 #include "utils/visibility_summary.h"
 
 #define VALIDATE_GP_ROLE() \
-	if (Gp_role != GP_ROLE_DISPATCH) \
-		ereport(ERROR,\
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),\
-				 errmsg("function '%s' must be executed on the dispatcher",\
-						PG_FUNCNAME_MACRO)));
+	do \
+	{ \
+		if (Gp_role != GP_ROLE_DISPATCH) \
+			ereport(ERROR,\
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),\
+				 	errmsg("function '%s' must be executed on the dispatcher",\
+							PG_FUNCNAME_MACRO))); \
+	} while (0)
 
 static float8 aorow_compression_ratio_internal(Relation parentrel);
 static void UpdateFileSegInfo_internal(Relation parentrel,
