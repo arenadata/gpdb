@@ -7,6 +7,8 @@
 CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
+DECLARE
+	ops oid[] DEFAULT (SELECT array_agg(oid) FROM pg_opclass WHERE opcname = 'timestamp_ops');
 BEGIN
 	IF NOT EXISTS (
 		SELECT
@@ -18,7 +20,7 @@ BEGIN
 		JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid
 		WHERE
 			CASE
-				WHEN pp.parclass[0] IN (SELECT oid FROM pg_opclass WHERE opcname = 'timestamp_ops')
+				WHEN pp.parclass[0] = ANY (ops)
 				THEN now() BETWEEN
 					CAST(substring(pg_get_expr(pr.parrangestart, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
 						AS TIMESTAMP WITHOUT TIME ZONE)
