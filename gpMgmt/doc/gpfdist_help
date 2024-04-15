@@ -147,6 +147,13 @@ OPTIONS
  The root directory (/) cannot be specified as certificate_path. 
 
 
+-X <transformation_name> 
+
+ Sets the default transformation, which will be applied to all files. 
+ Not used if transformation is set at table level. No transformation is 
+ applied by default. 
+
+
 -v (verbose) 
 
  Verbose mode shows progress and status messages. 

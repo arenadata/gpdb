@@ -177,7 +177,7 @@ static struct
 	int			w; /* The time waiting when used for session timeout in seconds */
 	int 		k; /* The time used to clean up sessions in seconds */
 	const char* X; /* default transformation */
-} opt = { 8080, 8080, 0, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 0 , 300};
+} opt = { 8080, 8080, 0, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 0 , 300, 0};
 
 #define START_BUFFER_SIZE (1 << 20) /* 1M as start size */
 #define MAXIMUM_BUFFER_SIZE (1 << 30) /* 1G as Maximum size */
