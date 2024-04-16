@@ -53,9 +53,9 @@
 	do \
 	{ \
 		if (Gp_role != GP_ROLE_DISPATCH) \
-			ereport(ERROR,\
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),\
-				 	errmsg("function '%s' must be executed on the dispatcher",\
+			ereport(ERROR, \
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED), \
+				 	 errmsg("function '%s' must be executed on the dispatcher", \
 							PG_FUNCNAME_MACRO))); \
 	} while (0)
 
