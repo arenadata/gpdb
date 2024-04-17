@@ -75,7 +75,7 @@ SELECT add_extra_partition_to_db_files_history();
 -- (default, for the current month and for the month before the current one)
 SELECT count(1)
 FROM pg_inherits
-WHERE inhparent='arenadata_toolkit.db_files_history'::regclass;
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 -- Remove the partition from "db_files_history" for the current month
 SELECT remove_partition_from_db_files_history();
@@ -83,7 +83,7 @@ SELECT remove_partition_from_db_files_history();
 -- There are "db_files_history" and two partitions (default and for the month before the current one)
 SELECT count(1)
 FROM pg_inherits
-WHERE inhparent='arenadata_toolkit.db_files_history'::regclass;
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 SELECT adb_collect_table_stats();
 
@@ -91,7 +91,7 @@ SELECT adb_collect_table_stats();
 -- (default, for the current month and for the month before the current one)
 SELECT count(1)
 FROM pg_inherits
-WHERE inhparent='arenadata_toolkit.db_files_history'::regclass;
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 -- Create table with partitions for test "INSERT INTO arenadata_toolkit.db_files_current"
 CREATE TABLE part_table (id INT, a INT, b INT, c INT, d INT, str TEXT)
