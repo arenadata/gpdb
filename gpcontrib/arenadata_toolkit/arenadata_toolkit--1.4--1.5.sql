@@ -13,6 +13,8 @@ BEGIN
 		FROM pg_partition pp
 		JOIN pg_partition_rule pr ON pr.paroid = pp.oid
 		WHERE
+			pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
+			AND
 			CASE
 				WHEN pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
 				THEN now() BETWEEN
