@@ -7,8 +7,6 @@
 CREATE OR REPLACE FUNCTION arenadata_toolkit.adb_collect_table_stats()
 RETURNS VOID
 AS $$
-DECLARE
-	ops oid[] DEFAULT (SELECT array_agg(oid) FROM pg_opclass WHERE opcname = 'timestamp_ops');
 BEGIN
 	IF NOT EXISTS (
 		SELECT
@@ -16,7 +14,7 @@ BEGIN
 		JOIN pg_partition_rule pr ON pr.paroid = pp.oid
 		WHERE
 			CASE
-				WHEN pp.parclass[0] = ANY (ops)
+				WHEN pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
 				THEN now() BETWEEN
 					CAST(substring(pg_get_expr(pr.parrangestart, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
 						AS TIMESTAMP WITHOUT TIME ZONE)
@@ -24,15 +22,7 @@ BEGIN
 					CAST(substring(pg_get_expr(pr.parrangeend, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
 						AS TIMESTAMP WITHOUT TIME ZONE)
 				ELSE FALSE
-			END
-			AND
-			pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
-			AND
-			NOT pp.paristemplate
-			AND
-			pp.parkind = 'r'  --range
-			AND
-			pr.parrangestartincl = 't')
+			END)
 	THEN
 		EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
 			START (date %1$L) INCLUSIVE
