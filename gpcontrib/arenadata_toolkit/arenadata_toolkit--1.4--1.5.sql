@@ -13,11 +13,7 @@ BEGIN
 	IF NOT EXISTS (
 		SELECT
 		FROM pg_partition pp
-		JOIN pg_class cl1 ON pp.parrelid = cl1.oid
 		JOIN pg_partition_rule pr ON pr.paroid = pp.oid
-		JOIN pg_class cl2 ON cl2.oid = pr.parchildrelid
-		JOIN pg_namespace n1 ON cl1.relnamespace = n1.oid
-		JOIN pg_namespace n2 ON cl2.relnamespace = n2.oid
 		WHERE
 			CASE
 				WHEN pp.parclass[0] = ANY (ops)
@@ -30,13 +26,9 @@ BEGIN
 				ELSE FALSE
 			END
 			AND
-			cl1.relname = 'db_files_history'
+			pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
 			AND
-			n1.nspname = 'arenadata_toolkit'
-			AND
-			n2.nspname = 'arenadata_toolkit'
-			AND
-			pp.paristemplate = false
+			NOT pp.paristemplate
 			AND
 			pp.parkind = 'r'  --range
 			AND
