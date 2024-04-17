@@ -865,6 +865,8 @@ static void parse_command_line(int argc, const char* const argv[],
 		if (p_len < 1 || p_len > MAX_KEYLEN)
 			usage_error("Error: -X default transformation name length must be"
 				" between 1 and 256 characters (space, tabs, and newline characters are trimmed)", 0);
+
+		opt.X = p;
 	}
 #endif
 
