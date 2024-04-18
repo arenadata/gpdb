@@ -2455,3 +2455,46 @@ select * from with_test;
 (1 row)
 
 drop table with_test;
+-- Make sure we create a correct tuple descriptor for SubqueryScan above
+-- ShareInputScan with ModifyTable below.
+CREATE TABLE with_test (i int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+EXPLAIN (SLICETABLE, VERBOSE, COSTS OFF) WITH cte AS (
+	INSERT INTO with_test SELECT 1 RETURNING *
+)
+SELECT * FROM cte UNION ALL SELECT * FROM cte;
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)
+   Output: cte.i
+   ->  Append
+         ->  Subquery Scan on cte
+               Output: cte.i
+               ->  Shared Scan (share slice:id 1:0)
+                     Output: with_test.i
+                     ->  Insert on public.with_test
+                           Output: with_test.i
+                           ->  Result
+                                 Output: 1
+         ->  Subquery Scan on cte_1
+               Output: cte_1.i
+               ->  Shared Scan (share slice:id 1:0)
+                     Output: with_test.i
+ Optimizer: Postgres-based planner
+ Settings: gp_cte_sharing = 'on'
+ Slice 0: Dispatcher; root 0; parent -1; gang size 0
+ Slice 1: Primary Writer; root 0; parent 0; gang size 1
+(19 rows)
+
+WITH cte AS (
+	INSERT INTO with_test SELECT 1 RETURNING *
+)
+SELECT * FROM cte UNION ALL SELECT * FROM cte;
+ i 
+---
+ 1
+ 1
+(2 rows)
+
+DROP TABLE with_test;
