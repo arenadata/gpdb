@@ -448,13 +448,6 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignExprContext(estate, &sisstate->ss.ps);
 
-	/* 
-	 * Initialize result slot and type.
-	 */
-	ExecInitResultTupleSlotTL(&sisstate->ss.ps, &TTSOpsMinimalTuple);
-
-	sisstate->ss.ps.ps_ProjInfo = NULL;
-
 	/*
 	 * When doing EXPLAIN only, we won't actually execute anything, so don't
 	 * bother initializing the state. This isn't merely an optimization:
@@ -464,9 +457,20 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	 * We could also exit here immediately if this is an "alien" node, i.e.
 	 * a node that doesn't execute in this slice, but we can't easily
 	 * detect that here.
+	 *
+	 * GPDB: ShareInputScan may contain an empty targetlist if it's above
+	 * ModifyTable. If this is the case, we can't take the short path, due to
+	 * EXPLAIN VERBOSE, which needs to look into the targetlist.
 	 */
-	if ((eflags & EXEC_FLAG_EXPLAIN_ONLY) != 0)
+	if ((eflags & EXEC_FLAG_EXPLAIN_ONLY) != 0 &&
+		node->scan.plan.targetlist != NULL)
+	{
+		ExecInitResultTupleSlotTL(&sisstate->ss.ps, &TTSOpsMinimalTuple);
+
+		sisstate->ss.ps.ps_ProjInfo = NULL;
+
 		return sisstate;
+	}
 
 	shareinput_local_state *local_state;
 
@@ -487,9 +491,12 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	 * in current slice, to wake the corresponding CTE producer up for
 	 * cleaning the materialized tuplestore, during squelching.
 	 */
-	if (currentSliceId == node->this_slice_id &&
+	if ((eflags & EXEC_FLAG_EXPLAIN_ONLY) == 0 &&
+		currentSliceId == node->this_slice_id &&
 		currentSliceId != node->producer_slice_id)
+	{
 		local_state->nsharers++;
+	}
 
 	if (childState)
 		local_state->childState = childState;
@@ -511,6 +518,23 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	}
 	else
 		sisstate->ref = NULL;
+
+	/*
+	 * ModifyTable with RETURNING clause didn't have a valid targetlist at the
+	 * optimizing stage.
+	 */
+	if (local_state->childState &&
+		IsA(local_state->childState->plan, ModifyTable))
+	{
+		node->scan.plan.targetlist = copyObject(local_state->childState->plan->targetlist);
+	}
+
+	/*
+	 * Initialize result slot and type.
+	 */
+	ExecInitResultTupleSlotTL(&sisstate->ss.ps, &TTSOpsMinimalTuple);
+
+	sisstate->ss.ps.ps_ProjInfo = NULL;
 
 	return sisstate;
 }
