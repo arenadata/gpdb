@@ -9,7 +9,7 @@ SYNOPSIS
 
 gpfdist [-d <directory>] [-p <http_port>] [-l <log_file>] [-t <timeout>] 
 [-S] [-w <time>] [-v | -V] [-m <max_length>] [--ssl <certificate_path>]
-[-k <seconds>] [-X <transformation_name>]
+[-k <seconds>] [-I <input_transformation_name>] [-O <output_transformation_name>]
 
 gpfdist [-? | --help] | --version
 
@@ -147,11 +147,16 @@ OPTIONS
  The root directory (/) cannot be specified as certificate_path. 
 
 
--X <transformation_name> 
+-I <input_transformation_name> 
 
- Sets the default transformation, which will be applied to all files. 
- Not used if transformation is set at table level. No transformation is 
- applied by default. 
+ Sets the default input transformation, which will be applied to all files 
+ to read. Not used if transformation is set at table level. 
+ No transformation is applied by default. 
+
+
+-O <output_transformation_name> 
+
+ Same as -I, but for output transformation. 
 
 
 -v (verbose) 

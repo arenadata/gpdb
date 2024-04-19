@@ -656,37 +656,77 @@ select * from exttab1_gpfdist_stop;
 
 -- The server runs with default transformation of catfile_double which doubles
 -- file content
-CREATE EXTERNAL WEB TABLE gpfdist_transform_start (x text)
-execute E'((@bindir@/gpfdist -p 7070 -d @abs_srcdir@/data/ -c @abs_srcdir@/data/catfile.yml -X catfile_double </dev/null >/dev/null 2>&1 &); for i in `seq 1 30`; do curl 127.0.0.1:7070 >/dev/null 2>&1 && break; sleep 1; done; echo "starting...") '
+CREATE EXTERNAL WEB TABLE gpfdist_transform_start1 (x text)
+execute E'((@bindir@/gpfdist -p 7070 -d @abs_srcdir@/data/ -c @abs_srcdir@/data/catfile.yml -I catfile_double </dev/null >/dev/null 2>&1 &); for i in `seq 1 30`; do curl 127.0.0.1:7070 >/dev/null 2>&1 && break; sleep 1; done; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
--- This table will use default transformation as there no given in url
-CREATE EXTERNAL TABLE ext_transform1 (a text)
-location('gpfdist://@hostname@:7070/transform/data1.txt') format 'text';
+CREATE EXTERNAL WEB TABLE gpfdist_transform_start2 (x text)
+execute E'((@bindir@/gpfdist -p 7080 -d @abs_srcdir@/data/ -c @abs_srcdir@/data/catfile.yml -O catfile_double </dev/null >/dev/null 2>&1 &); for i in `seq 1 30`; do curl 127.0.0.1:7070 >/dev/null 2>&1 && break; sleep 1; done; echo "starting...") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
 
--- This table will use catfile transformation, which overrides default one
-CREATE EXTERNAL TABLE ext_transform2 (a text)
-location('gpfdist://@hostname@:7070/transform/data1.txt#transform=catfile') format 'text';
+-- These tables will use default transformation as there no given in url
+CREATE EXTERNAL TABLE ext_transform_implicit (a text)
+location('gpfdist://@hostname@:7070/transform_data.tbl') format 'text';
+
+CREATE WRITABLE EXTERNAL TABLE ext_w_transform_implicit (a text)
+location('gpfdist://@hostname@:7080/transform_data.tbl') format 'text';
+
+-- These tables will use catfile transformation, which overrides default one
+CREATE EXTERNAL TABLE ext_transform_explicit (a text)
+location('gpfdist://@hostname@:7070/transform_data.tbl#transform=catfile') format 'text';
+
+CREATE WRITABLE EXTERNAL TABLE ext_w_transform_explicit (a text)
+location('gpfdist://@hostname@:7080/transform_data.tbl#transform=catfile') format 'text';
+
+-- These tables will not use any transformation as there no flag given
+CREATE EXTERNAL TABLE ext_transform_free (a text)
+location('gpfdist://@hostname@:7080/transform_data.tbl') format 'text';
+
+CREATE WRITABLE EXTERNAL TABLE ext_w_transform_free (a text)
+location('gpfdist://@hostname@:7070/transform_data.tbl') format 'text';
 
 -- start_ignore
-select * from gpfdist_transform_start;
+select * from gpfdist_transform_start1;
+select * from gpfdist_transform_start2;
 -- end_ignore
 
--- First select should double file content
-select count(*) from ext_transform1;
--- Second select should use original file content as default transformation is
--- overridden
-select count(*) from ext_transform2;
+-- gpfdist still works if only one default transformation is given (input or output)
+insert into ext_w_transform_free values(1);
+select count(*) from ext_transform_free;
+
+-- writing data to gpfdist with default transformation doubles values
+insert into ext_w_transform_implicit values(2);
+select count(*) from ext_transform_free;
+
+-- writing data with #transform overrides default transformation
+insert into ext_w_transform_explicit values(3);
+select count(*) from ext_transform_free;
+
+-- reading from gpfdist with default transformation doubles values
+select count(*) from ext_transform_implicit;
+
+-- reading data with #transform overrides default transformation
+select count(*) from ext_transform_explicit;
+
+-- integrity check
+select a from ext_transform_free order by a;
 
 -- start_ignore
 select * from exttab1_gpfdist_stop;
 -- end_ignore
 
--- drop tables
-DROP EXTERNAL TABLE ext_transform1;
-DROP EXTERNAL TABLE ext_transform2;
-DROP EXTERNAL WEB TABLE gpfdist_transform_start;
+-- cleanup
+DROP EXTERNAL TABLE ext_transform_implicit;
+DROP EXTERNAL TABLE ext_w_transform_implicit;
+DROP EXTERNAL TABLE ext_transform_explicit;
+DROP EXTERNAL TABLE ext_w_transform_explicit;
+DROP EXTERNAL TABLE ext_transform_free;
+DROP EXTERNAL TABLE ext_w_transform_free;
+DROP EXTERNAL WEB TABLE gpfdist_transform_start1;
+DROP EXTERNAL WEB TABLE gpfdist_transform_start2;
+\! rm @abs_srcdir@/data/transform_data.tbl
 
 drop external table ext_whois;
 drop external table exttab1_gpfdist_start;

@@ -24,7 +24,6 @@
 #ifdef GPFXDIST
 #include <regex.h>
 #include <gpfxdist.h>
-#include <transform.h>
 #endif
 #include <fstream/fstream.h>
 
@@ -176,8 +175,9 @@ static struct
 	const char* ssl; /* path to certificates in case we use gpfdist with ssl */
 	int			w; /* The time waiting when used for session timeout in seconds */
 	int 		k; /* The time used to clean up sessions in seconds */
-	const char* X; /* default transformation */
-} opt = { 8080, 8080, 0, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 0 , 300, 0};
+	const char* I; /* default input transformation */
+	const char* O; /* default output transformation */
+} opt = { 8080, 8080, 0, 0, 0, ".", 0, 0, -1, 5, 0, 32768, 0, 256, 0, 0, 0, 0 , 300, 0, 0};
 
 #define START_BUFFER_SIZE (1 << 20) /* 1M as start size */
 #define MAXIMUM_BUFFER_SIZE (1 << 30) /* 1G as Maximum size */
@@ -535,7 +535,8 @@ static void usage_error(const char* msg, int print_usage)
 #endif
 #ifdef GPFXDIST
 					    "        -c file    : configuration file for transformations\n"
-					    "        -X name    : name of default transformation\n"
+						"        -I name    : name of default input transformation\n"
+						"        -O name    : name of default output transformation\n"
 #endif
 						"        --version  : print version information\n"
 						"        -w timeout : timeout in seconds before close target file\n"
@@ -599,7 +600,8 @@ static void parse_command_line(int argc, const char* const argv[],
 	{ "ssl", 257, 1, "ssl - certificates files under this directory" },
 #ifdef GPFXDIST
 	{ NULL, 'c', 1, "transform configuration file" },
-	{ NULL, 'X', 1, "default transformation" },
+	{ NULL, 'I', 1, "default input transformation" },
+	{ NULL, 'O', 1, "default output transformation" },
 #endif
 	{ "version", 256, 0, "print version number" },
 	{ NULL, 'w', 1, "wait for session timeout in seconds" },
@@ -691,9 +693,12 @@ static void parse_command_line(int argc, const char* const argv[],
 		case 'k':
 			opt.k = atoi(arg);
 			break;
-		case 'X':
-			opt.X = arg;
-			break; 
+		case 'I':
+			opt.I = arg;
+			break;
+		case 'O':
+			opt.O = arg;
+			break;
 		}
 	}
 
@@ -844,29 +849,35 @@ static void parse_command_line(int argc, const char* const argv[],
         }
     }
 
-	/* validate opt.X */
-	if (opt.X)
+	/* validate opt.I and opt.O */
+	if (opt.I || opt.O)
 	{
-		char* p;
-		size_t p_len;
+		extern const char* validate_transform_opt(struct transform* trlist, const char* name);
 
-		if (!opt.trlist)
-			usage_error("Error: default transformation is set,"
-				" but TRANSFORMATIONS are not specified", 0);
+		char *p;
+		const char *err;
 
-		p = gstring_trim(apr_pstrdup(pool, opt.X));
-		p_len = strlen(p);
+		if (opt.I)
+		{
+			p = gstring_trim(apr_pstrdup(pool, opt.I));
+			err = validate_transform_opt(opt.trlist, p);
 
-		/*
-		 * Transformation names are parsed from config file and stored as map
-		 * keys. Validate the same key len here. Correspondence of default
-		 * transformation to all transformations is checked at runtime.
-		 */
-		if (p_len < 1 || p_len > MAX_KEYLEN)
-			usage_error("Error: -X default transformation name length must be"
-				" between 1 and 256 characters (space, tabs, and newline characters are trimmed)", 0);
+			if (err)
+				usage_error(err, 0);
 
-		opt.X = p;
+			opt.I = p;
+		}
+
+		if (opt.O)
+		{
+			p = gstring_trim(apr_pstrdup(pool, opt.O));
+			err = validate_transform_opt(opt.trlist, p);
+
+			if (err)
+				usage_error(err, 0);
+
+			opt.O = p;
+		}
 	}
 #endif
 
@@ -1166,8 +1177,8 @@ static void request_end(request_t* r, int error, const char* errmsg)
 		/*
 		 * remove the temp file
 		 */
-		apr_file_remove(r->trans.errfilename, r->pool);
-		gprintln(r, "request removed stderr file %s", r->trans.errfilename);
+		//apr_file_remove(r->trans.errfilename, r->pool);
+		//gprintln(r, "request removed stderr file %s", r->trans.errfilename);
 
 		r->trans.errfile = NULL;
 	}
@@ -3567,8 +3578,13 @@ static int request_set_transform(request_t *r)
 			r->trans.name = start + strlen(param);
 	}
 
-	if (! r->trans.name && opt.X)
-		r->trans.name = opt.X;
+	if (! r->trans.name)
+	{
+		if (r->is_get)
+			r->trans.name = opt.I;
+		else
+			r->trans.name = opt.O;
+	}
 
 	if (! r->trans.name)
 		return 0;

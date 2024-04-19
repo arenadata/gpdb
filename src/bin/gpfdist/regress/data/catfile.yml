@@ -7,3 +7,10 @@ TRANSFORMATIONS:
   catfile_double:
     TYPE:     input
     COMMAND:  /usr/bin/env cat  %filename% %filename%
+  catfile:
+    TYPE:     output
+    COMMAND:  /usr/bin/env bash -c "(cat - >> $0)" %filename%
+  catfile_double:
+    TYPE:     output
+    COMMAND:  /usr/bin/env bash -c "(cat - | tee -a $0 $0)" %filename%
+    STDERR: console
