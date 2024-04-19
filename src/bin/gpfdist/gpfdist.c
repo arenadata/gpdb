@@ -1177,8 +1177,8 @@ static void request_end(request_t* r, int error, const char* errmsg)
 		/*
 		 * remove the temp file
 		 */
-		//apr_file_remove(r->trans.errfilename, r->pool);
-		//gprintln(r, "request removed stderr file %s", r->trans.errfilename);
+		apr_file_remove(r->trans.errfilename, r->pool);
+		gprintln(r, "request removed stderr file %s", r->trans.errfilename);
 
 		r->trans.errfile = NULL;
 	}
