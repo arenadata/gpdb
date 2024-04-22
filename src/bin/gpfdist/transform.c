@@ -802,7 +802,7 @@ validate_transform_opt(struct transform* trlist, const char* name)
 	 * transformation to all transformations is checked at runtime.
 	 */
 	if (name_len < 1 || name_len > MAX_KEYLEN)
-		return "Error: -X default transformation name length must be"
+		return "Error: default transformation name length must be"
 			" between 1 and 256 characters (space, tabs, and newline characters are trimmed)";
 
 	return NULL;
