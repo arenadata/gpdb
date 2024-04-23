@@ -29,44 +29,67 @@ END$$
 LANGUAGE plpgsql VOLATILE
 EXECUTE ON MASTER;
 
+-- Create a table with partitioning not by a column of the timestamp type.
+-- It is required to verify that adb_collect_table_stats() doesn't fail
+-- when there are tables with pertitioning not by timestamp presented.
+CREATE TABLE part_table_bigint (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION part_table_bigint_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION part_table_bigint_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
+
+-- Create a table with partitioning not by a column of the timestamp type
+-- and with the same name as 'db_files_history', but in a different schema.
+-- It is required to verify that adb_collect_table_stats() doesn't fail
+-- when there are tables with pertitioning not by timestamp presented.
+CREATE TABLE public.db_files_history (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION pub_db_files_history_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION pub_db_files_history_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
+
 -- There are not "db_files_history" and partitions
-SELECT count(inhrelid)
-FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+-- Note: we can't use 'arenadata_toolkit.db_files_history'::regclass at this
+-- moment as it doesn't exist yet (before call to adb_create_tables())
+-- and will cause an error.
+SELECT count(1)
+FROM pg_inherits pi
+JOIN pg_class pc ON pc.oid = pi.inhparent
+JOIN pg_namespace pn ON pc.relnamespace = pn.oid
+WHERE pc.relname = 'db_files_history' AND pn.nspname = 'arenadata_toolkit';
 
 SELECT adb_create_tables();
 
 -- There are "db_files_history" and two partitions (default and for current month)
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 -- Remove partition from "db_files_history" for current month
 SELECT remove_partition_from_db_files_history();
 
 -- There is only default partition for "db_files_history"
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 SELECT adb_collect_table_stats();
 
 -- There are "db_files_history" and two partitions (default and for current month)
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 SELECT adb_collect_table_stats();
 
 -- There is not any new partitions for "db_files_history"
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 -- Create a partition for the month before the current one
 SELECT add_extra_partition_to_db_files_history();
@@ -126,31 +149,9 @@ FROM arenadata_toolkit.db_files_current
 where table_name LIKE 'part_table%'
 ORDER BY oid;
 
--- create a table with partitioning not by a column of the timestamp type
-CREATE TABLE part_table_2 (a int, b bigint)
-DISTRIBUTED BY (a)
-PARTITION BY RANGE(b)
-(
-	PARTITION part_table_2_t1 START ('10'::bigint) END ('1000000'::bigint),
-	PARTITION part_table_2_t2 START ('1000001'::bigint) END ('2000000'::bigint)
-);
-
--- create a table with partitioning not by a column of the timestamp type
--- and with the same name as 'db_files_history', but in a different schema
-CREATE TABLE public.db_files_history (a int, b bigint)
-DISTRIBUTED BY (a)
-PARTITION BY RANGE(b)
-(
-	PARTITION part_table_2_t1 START ('10'::bigint) END ('1000000'::bigint),
-	PARTITION part_table_2_t2 START ('1000001'::bigint) END ('2000000'::bigint)
-);
-
--- check that adb_collect_table_stats is executed without an error
-select arenadata_toolkit.adb_collect_table_stats();
-
 -- Cleanup
 DROP TABLE part_table;
-DROP TABLE part_table_2;
+DROP TABLE part_table_bigint;
 DROP TABLE public.db_files_history;
 DROP FUNCTION remove_partition_from_db_files_history();
 DROP EXTENSION arenadata_toolkit;
