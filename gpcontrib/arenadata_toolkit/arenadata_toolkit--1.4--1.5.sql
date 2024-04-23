@@ -13,6 +13,8 @@ BEGIN
 		FROM pg_partition pp
 		JOIN pg_partition_rule pr ON pr.paroid = pp.oid
 		WHERE
+			-- The filter on the line below, which duplicates condition in the 'case',
+			-- is an optimization to fetch less tuples from the pg_partition.
 			pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
 			AND
 			CASE
