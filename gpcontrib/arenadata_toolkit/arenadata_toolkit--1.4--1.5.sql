@@ -17,11 +17,11 @@ BEGIN
 			AND
 			CASE
 				WHEN pp.parrelid = 'arenadata_toolkit.db_files_history'::regclass
-				THEN now() BETWEEN
-					CAST(substring(pg_get_expr(pr.parrangestart, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
+				THEN
+					now() >= CAST(substring(pg_get_expr(pr.parrangestart, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
 						AS TIMESTAMP WITHOUT TIME ZONE)
 					AND
-					CAST(substring(pg_get_expr(pr.parrangeend, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
+					now() < CAST(substring(pg_get_expr(pr.parrangeend, pr.parchildrelid) FROM '#"%#"::%' FOR '#')
 						AS TIMESTAMP WITHOUT TIME ZONE)
 				ELSE FALSE
 			END)
