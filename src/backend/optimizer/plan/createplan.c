@@ -4417,6 +4417,12 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 		}
 		/* Wrap the common Plan tree in a ShareInputScan node */
 		subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
+
+		/*
+		 * SISC's targetlist will be overwritten later for EXPLAIN VERBOSE
+		 * (see cdbmutate.c)
+		 */
+		subplan->targetlist = copyObject(tlist);
 	}
 
 	scan_plan = (Plan *) make_subqueryscan(tlist,

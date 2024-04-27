@@ -552,12 +552,21 @@ create_shareinput_producer_rte(ApplyShareInputContext *ctxt, int share_id,
 	List	   *coltypes = NIL;
 	List	   *coltypmods = NIL;
 	List	   *colcollations = NIL;
+	List	   *targetlist = NIL;
 
 	Assert(ctxt->shared_plans);
 	Assert(ctxt->shared_input_count > share_id);
 	subplan = ctxt->shared_plans[share_id];
 
-	foreach(lc, subplan->targetlist)
+	/*
+	 * ModifyTable with RETURNING clause does not have a valid targetlist yet.
+	 */
+	if (IsA(subplan, ModifyTable))
+		targetlist = linitial(((ModifyTable *) subplan)->returningLists);
+	else
+		targetlist = subplan->targetlist;
+
+	foreach(lc, targetlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 		Oid			vartype;
