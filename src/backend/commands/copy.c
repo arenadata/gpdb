@@ -7955,18 +7955,21 @@ GetTargetSeg(GpDistributionData *distData, Datum *baseValues, bool *baseNulls)
 	return target_seg;
 }
 
-static void close_program_pipes_on_reset(void *arg) {
+static void
+close_program_pipes_on_reset(void *arg)
+{
 	if (!IsAbortInProgress())
 		return;
 
-	CopyState cstate = arg;
+	CopyState	cstate = arg;
+
 	close_program_pipes(cstate, false);
 }
 
 static ProgramPipes*
 open_program_pipes(CopyState cstate, bool forwrite)
 {
-	char *command = cstate->filename;
+	char	   *command = cstate->filename;
 	int save_errno;
 	pqsigfunc save_SIGPIPE;
 	/* set up extvar */
@@ -8005,6 +8008,7 @@ open_program_pipes(CopyState cstate, bool forwrite)
 	}
 
 	MemoryContextCallback *callback = MemoryContextAlloc(cstate->copycontext, sizeof(MemoryContextCallback));
+
 	callback->arg = cstate;
 	callback->func = close_program_pipes_on_reset;
 	MemoryContextRegisterResetCallback(cstate->copycontext, callback);
@@ -8031,7 +8035,7 @@ close_program_pipes(CopyState cstate, bool ifThrow)
 	{
 		return;
 	}
-	
+
 	if (ifThrow)
 		initStringInfo(&sinfo);
 	ret = pclose_with_stderr(cstate->program_pipes->pid, cstate->program_pipes->pipes, &sinfo);
