@@ -7956,8 +7956,11 @@ GetTargetSeg(GpDistributionData *distData, Datum *baseValues, bool *baseNulls)
 }
 
 static void close_program_pipes_on_reset(void *arg) {
-	CopyState cstate = arg;
-	close_program_pipes(cstate, !IsAbortInProgress());
+	if (IsAbortInProgress())
+	{
+		CopyState cstate = arg;
+		close_program_pipes(cstate, false);
+	}
 }
 
 static ProgramPipes*
@@ -8016,7 +8019,6 @@ close_program_pipes(CopyState cstate, bool ifThrow)
 
 	int ret = 0;
 	StringInfoData sinfo;
-	initStringInfo(&sinfo);
 
 	if (cstate->copy_file)
 	{
@@ -8030,6 +8032,7 @@ close_program_pipes(CopyState cstate, bool ifThrow)
 		return;
 	}
 	
+	initStringInfo(&sinfo);
 	ret = pclose_with_stderr(cstate->program_pipes->pid, cstate->program_pipes->pipes, &sinfo);
 	cstate->program_pipes = NULL;
 
