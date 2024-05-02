@@ -7956,11 +7956,27 @@ GetTargetSeg(GpDistributionData *distData, Datum *baseValues, bool *baseNulls)
 }
 
 static void close_program_pipes_on_reset(void *arg) {
-	if (IsAbortInProgress())
+	if (!IsAbortInProgress())
+		return;
+
+	int savedInterruptHoldoffCount = InterruptHoldoffCount;
+
+	PG_TRY();
 	{
 		CopyState cstate = arg;
 		close_program_pipes(cstate, false);
 	}
+	PG_CATCH();
+	{
+		InterruptHoldoffCount = savedInterruptHoldoffCount;
+
+		if (!elog_dismiss(WARNING))
+		{
+			FlushErrorState();
+			elog(WARNING, "unable to dismiss error");
+		}
+	}
+	PG_END_TRY();
 }
 
 static ProgramPipes*
