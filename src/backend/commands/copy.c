@@ -7959,24 +7959,8 @@ static void close_program_pipes_on_reset(void *arg) {
 	if (!IsAbortInProgress())
 		return;
 
-	int savedInterruptHoldoffCount = InterruptHoldoffCount;
-
-	PG_TRY();
-	{
-		CopyState cstate = arg;
-		close_program_pipes(cstate, false);
-	}
-	PG_CATCH();
-	{
-		InterruptHoldoffCount = savedInterruptHoldoffCount;
-
-		if (!elog_dismiss(WARNING))
-		{
-			FlushErrorState();
-			elog(WARNING, "unable to dismiss error");
-		}
-	}
-	PG_END_TRY();
+	CopyState cstate = arg;
+	close_program_pipes(cstate, false);
 }
 
 static ProgramPipes*
@@ -8034,7 +8018,7 @@ close_program_pipes(CopyState cstate, bool ifThrow)
 	Assert(cstate->is_program);
 
 	int ret = 0;
-	StringInfoData sinfo;
+	StringInfoData sinfo = {0};
 
 	if (cstate->copy_file)
 	{
@@ -8048,7 +8032,8 @@ close_program_pipes(CopyState cstate, bool ifThrow)
 		return;
 	}
 	
-	initStringInfo(&sinfo);
+	if (ifThrow)
+		initStringInfo(&sinfo);
 	ret = pclose_with_stderr(cstate->program_pipes->pid, cstate->program_pipes->pipes, &sinfo);
 	cstate->program_pipes = NULL;
 
