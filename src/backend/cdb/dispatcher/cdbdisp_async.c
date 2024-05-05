@@ -944,6 +944,7 @@ signalQEs(CdbDispatchCmdAsync *pParms)
 			elog(LOG, "Unable to cancel: %s",
 				 strlen(errbuf) == 0 ? "cannot allocate PGCancel" : errbuf);
 	}
+	PQbypassConnCloseAtCancel(false);
 }
 
 /*

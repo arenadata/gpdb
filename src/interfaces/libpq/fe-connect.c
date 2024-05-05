@@ -391,6 +391,8 @@ static const PQEnvironmentOption EnvironmentOptions[] =
 static const char uri_designator[] = "postgresql://";
 static const char short_uri_designator[] = "postgres://";
 
+static bool bypass_conn_close_at_cancel = false;
+
 static bool connectOptions1(PGconn *conn, const char *conninfo);
 static bool connectOptions2(PGconn *conn);
 static int	connectDBStart(PGconn *conn);
@@ -3429,6 +3431,10 @@ PQfreeCancel(PGcancel *cancel)
 		free(cancel);
 }
 
+void PQbypassConnCloseAtCancel(pqbool bypass)
+{
+	bypass_conn_close_at_cancel = bypass;
+}
 
 /*
  * PQcancel and PQrequestCancel: attempt to request cancellation of the
@@ -3523,6 +3529,10 @@ retry4:
 	 */
 #ifndef WIN32
 retry5:
+
+	if (bypass_conn_close_at_cancel)
+		goto cancel_errReturn;
+
 	pollFds[0].fd = tmpsock;
 	pollFds[0].events = POLLIN;
 	pollFds[0].revents = 0;
