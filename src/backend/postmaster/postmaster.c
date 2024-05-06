@@ -5692,6 +5692,9 @@ sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckPostmasterSignal(PMSIGNAL_FTS_PROMOTED_MIRROR))
 	{
+		/*
+		 * Notify all child coordinator backends that FTS has promoted a mirror.
+		 */
 		if (pmState == PM_RUN &&
 			GpIdentity.segindex == MASTER_CONTENT_ID)
 		{
@@ -5703,7 +5706,9 @@ sigusr1_handler(SIGNAL_ARGS)
 				if (bp->dead_end || !(BACKEND_TYPE_NORMAL & bp->bkend_type))
 					continue;
 
-				SendProcSignal(bp->pid, PROCSIG_FTS_PROMOTED_MIRROR, InvalidBackendId);
+				SendProcSignal(bp->pid,
+							   PROCSIG_FTS_PROMOTED_MIRROR,
+							   InvalidBackendId);
 			}
 		}
 	}
