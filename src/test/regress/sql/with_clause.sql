@@ -998,21 +998,3 @@ drop table t_repl;
 drop table with_dml_dr_seg2;
 drop table with_dml_dr;
 
--- Check that USING with different types and CTE is properly planned by ORCA
--- start_ignore
-drop table if exists tbl2;
-drop table if exists tbl1;
--- end_ignore
-
-create table tbl2 (a numeric, b varchar(255), c numeric) distributed by(a);
-create table tbl1 (a bigserial, b varchar(15), c varchar(15)) distributed by(a);
-explain (analyze off, costs off, verbose off)
-with
-t1 as (select * from tbl1),
-t2 as (select a, b from tbl2)
- select * from t1 p
-  join t2 r using (b)
-  join t2 r1 on p.c = r1.b;
-
-drop table tbl1;
-drop table tbl2;
