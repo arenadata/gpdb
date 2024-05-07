@@ -869,7 +869,7 @@ drop table t1;
 drop table t2;
 
 
--- Check that USING with different types and CTE is properly planned by ORCA
+-- Check that USING with different types is properly planned by ORCA
 -- start_ignore
 drop table if exists tbl2;
 drop table if exists tbl1;
