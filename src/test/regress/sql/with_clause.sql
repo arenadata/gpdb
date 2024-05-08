@@ -997,4 +997,3 @@ drop table t_repl_seg2;
 drop table t_repl;
 drop table with_dml_dr_seg2;
 drop table with_dml_dr;
-
