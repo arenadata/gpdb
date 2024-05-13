@@ -879,7 +879,7 @@ create table tbl1 (b varchar(15)) distributed by(b);
 create table tbl2 (b varchar(255)) distributed by(b);
 
 explain (costs off)
-select * from tbl1 join tbl2  using (b); 
+select * from tbl1 join tbl2 using (b);
 
 drop table tbl1;
 drop table tbl2;
