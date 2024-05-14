@@ -18,9 +18,10 @@ RUN yum makecache && yum update -y ca-certificates && \
                    krb5-server krb5-workstation xerces-c-devel && \
     yum clean all
 
+COPY arenadata/rpms/ arenadata/rpms/
 # install all software we need
 RUN yum makecache && \
-    yum -y install python-devel python-psutil python-setuptools && \
+    yum -y install python-devel python-psutil && \
     yum -y install apr-devel apr-util-devel bzip2-devel expat-devel libcurl-devel && \
     yum -y install libevent-devel libuuid-devel libxml2-devel libyaml-devel libzstd-devel && \
     yum -y install openssl-devel pam-devel readline-devel snappy-devel libuv-devel && \
@@ -30,9 +31,13 @@ RUN yum makecache && \
     # Installing the latest version of pip available for python 2.7 (20.3.4).
     # The installation goes through a bootstrap script since pip from the
     # repository can no longer update itself.
-    curl https://bootstrap.pypa.io/pip/2.7/get-pip.py | python && \
-    pip install psi pytest==3.10.1 && \
-    pip install allure-behave==2.4.0 && \
+    #curl https://bootstrap.pypa.io/pip/2.7/get-pip.py | python && \
+    #pip install psi pytest==3.10.1 && \
+    #pip install allure-behave==2.4.0 && \
+    yum -y install arenadata/rpms/python-setuptools-40.9.0-7.el7.noarch.rpm && \
+    yum -y install arenadata/rpms/python2-setuptools_scm-5.0.2-1.el7.noarch.rpm && \
+    yum -y install arenadata/rpms/pytest-3.10.1-2.el7.noarch.rpm && \
+    yum -y install arenadata/rpms/python-psi-0.3b3-1.el7.x86_64.rpm && \
     yum clean all
 
 # setup ssh configuration
@@ -52,7 +57,6 @@ RUN ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa && \
 # newer version of gcc and run environment for gpdb
 RUN yum -y install centos-release-scl && \
     yum -y install --nogpgcheck devtoolset-7-gcc devtoolset-7-gcc-c++ && yum clean all && \
-    pip --no-cache-dir install psi && \
     ln -s /usr/bin/cmake3 /usr/bin/cmake && \
     ln -s /usr/bin/ctest3 /usr/bin/ctest && \
     echo -e 'source /opt/rh/devtoolset-7/enable' >> /opt/gcc_env.sh && \
