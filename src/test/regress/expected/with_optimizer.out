@@ -2476,7 +2476,7 @@ drop table with_test;
 CREATE TABLE with_test (i int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-EXPLAIN (SLICETABLE, VERBOSE, COSTS OFF) WITH cte AS (
+EXPLAIN (VERBOSE, COSTS OFF) WITH cte AS (
 	INSERT INTO with_test SELECT 1 RETURNING *
 )
 SELECT * FROM cte UNION ALL SELECT * FROM cte;
@@ -2495,9 +2495,7 @@ SELECT * FROM cte UNION ALL SELECT * FROM cte;
                Output: share0_ref2.i
  Optimizer: Postgres-based planner
  Settings: gp_cte_sharing = 'on'
- Slice 0: Dispatcher; root 0; parent -1; gang size 0
- Slice 1: Primary Writer; root 0; parent 0; gang size 1
-(15 rows)
+(13 rows)
 
 WITH cte AS (
 	INSERT INTO with_test SELECT 1 RETURNING *

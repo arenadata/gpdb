@@ -1192,7 +1192,7 @@ drop table with_test;
 -- ShareInputScan with ModifyTable below.
 CREATE TABLE with_test (i int);
 
-EXPLAIN (SLICETABLE, VERBOSE, COSTS OFF) WITH cte AS (
+EXPLAIN (VERBOSE, COSTS OFF) WITH cte AS (
 	INSERT INTO with_test SELECT 1 RETURNING *
 )
 SELECT * FROM cte UNION ALL SELECT * FROM cte;
