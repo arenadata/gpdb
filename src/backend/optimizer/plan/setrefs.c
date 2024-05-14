@@ -1186,7 +1186,10 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			{
 				ModifyTable *splan = (ModifyTable *) plan;
 
-				Assert(splan->plan.targetlist == NIL);
+				/* Get rid of the dummy targetlist about to be replaced. */
+				if (splan->plan.targetlist != NIL)
+					list_free(splan->plan.targetlist);
+
 				Assert(splan->plan.qual == NIL);
 
 				splan->withCheckOptionLists =

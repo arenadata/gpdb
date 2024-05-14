@@ -31,7 +31,7 @@ make_shareinputscan(PlannerInfo *root, Plan *inputplan)
 
 	sisc = makeNode(ShareInputScan);
 
-	sisc->scan.plan.targetlist = NIL;  /* Will be set up later. */
+	sisc->scan.plan.targetlist = copyObject(inputplan->targetlist);
 	sisc->scan.plan.lefttree = inputplan;
 	sisc->scan.plan.flow = copyObject(inputplan->flow);
 

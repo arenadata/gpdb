@@ -4417,12 +4417,6 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 		}
 		/* Wrap the common Plan tree in a ShareInputScan node */
 		subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
-
-		/*
-		 * SISC's targetlist will be overwritten later for EXPLAIN VERBOSE
-		 * (see cdbmutate.c)
-		 */
-		subplan->targetlist = copyObject(tlist);
 	}
 
 	scan_plan = (Plan *) make_subqueryscan(tlist,
@@ -7237,21 +7231,7 @@ make_motion(PlannerInfo *root, Plan *lefttree,
 	plan->total_cost = lefttree->total_cost;
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
-
-	if (IsA(lefttree, ModifyTable))
-	{
-		ModifyTable *mtplan = (ModifyTable *) lefttree;
-
-		/* See setrefs.c. A ModifyTable doesn't have a valid targetlist */
-		if (mtplan->returningLists)
-			plan->targetlist = linitial(mtplan->returningLists);
-		else
-			plan->targetlist = NIL;
-	}
-	else
-	{
-		plan->targetlist = lefttree->targetlist;
-	}
+	plan->targetlist = lefttree->targetlist;
 
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
@@ -7804,8 +7784,6 @@ make_modifytable(PlannerInfo *root,
 	node->plan.lefttree = NULL;
 	node->plan.righttree = NULL;
 	node->plan.qual = NIL;
-	/* setrefs.c will fill in the targetlist, if needed */
-	node->plan.targetlist = NIL;
 
 	node->operation = operation;
 	node->canSetTag = canSetTag;
@@ -7844,6 +7822,16 @@ make_modifytable(PlannerInfo *root,
 	}
 	node->withCheckOptionLists = withCheckOptionLists;
 	node->returningLists = returningLists;
+
+	/*
+	 * Set up a dummy targetlist for parent nodes which will require it. We'll
+	 * overwrite it later (see setrefs.c)
+	 */
+	if (returningLists != NIL)
+		node->plan.targetlist = copyObject(linitial(returningLists));
+	else
+		node->plan.targetlist = NIL;
+
 	node->rowMarks = rowMarks;
 	node->epqParam = epqParam;
 
