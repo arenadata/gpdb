@@ -27,11 +27,12 @@ SELECT gp_request_fts_probe_scan();
 -- 1. Stop the backends from processing requests by injecting a fault.
 -- 2. Stop segment postmaster process. This can't be done by the fault injection,
 -- as we wouldn't be able to recover the postmaster back to life in this case.
-
+-- Thus do it by sending a STOP signal. We need to do it on all segments (not on
+-- the coordinator), as the segment process may be running on a separate machine.
 SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid)
 FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
-!\retcode ps aux | grep 'dbfast1/demoDataDir0' | awk 'FNR == 1 {print $2; exit}' | xargs kill -STOP;
+SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
 
 -- Launch the query again, now it will hang.
 1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
@@ -52,7 +53,7 @@ FROM gp_segment_configuration WHERE content = 0;
 SELECT * FROM pg_locks WHERE mode = 'ExclusiveLock' AND locktype = 'relation';
 
 -- Recover back the segment
-!\retcode ps aux | grep 'dbfast1/demoDataDir0' | awk 'FNR == 1 {print $2; exit}' | xargs kill -CONT;
+SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -CONT');
 
 SELECT gp_inject_fault('exec_simple_query_start', 'resume', dbid)
 FROM gp_segment_configuration WHERE role = 'm' AND content = 0;
@@ -80,7 +81,7 @@ SELECT count(*) FROM gp_segment_configuration WHERE status = 'd';
 
 1<:
 
--- Case 1: check the scenario with 'pg_terminate_backend'.
+-- Case 2: check the scenario with 'pg_terminate_backend'.
 
 -- Reset FTS probe interval.
 SELECT gp_request_fts_probe_scan();
@@ -92,11 +93,12 @@ SELECT gp_request_fts_probe_scan();
 -- 1. Stop the backends from processing requests by injecting a fault.
 -- 2. Stop segment postmaster process. This can't be done by the fault injection,
 -- as we wouldn't be able to recover the postmaster back to life in this case.
-
+-- Thus do it by sending a STOP signal. We need to do it on all segments (not on
+-- the coordinator), as the segment process may be running on a separate machine.
 SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid)
 FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
-!\retcode ps aux | grep 'dbfast1/demoDataDir0' | awk 'FNR == 1 {print $2; exit}' | xargs kill -STOP;
+SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
 
 -- Launch the query again, now it will hang.
 1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
@@ -117,7 +119,7 @@ FROM gp_segment_configuration WHERE content = 0;
 SELECT * FROM pg_locks WHERE mode = 'ExclusiveLock' AND locktype = 'relation';
 
 -- Recover back the segment
-!\retcode ps aux | grep 'dbfast1/demoDataDir0' | awk 'FNR == 1 {print $2; exit}' | xargs kill -CONT;
+SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -CONT');
 
 SELECT gp_inject_fault('exec_simple_query_start', 'resume', dbid)
 FROM gp_segment_configuration WHERE role = 'm' AND content = 0;
