@@ -1190,7 +1190,7 @@ drop table with_test;
 
 -- Make sure we create a correct tuple descriptor for SubqueryScan above
 -- ShareInputScan with ModifyTable below.
-CREATE TABLE with_test (i int);
+CREATE TABLE with_test (i int) DISTRIBUTED BY (i);
 
 EXPLAIN (VERBOSE, COSTS OFF) WITH cte AS (
 	INSERT INTO with_test SELECT 1 RETURNING *
