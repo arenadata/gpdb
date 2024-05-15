@@ -7824,8 +7824,9 @@ make_modifytable(PlannerInfo *root,
 	node->returningLists = returningLists;
 
 	/*
-	 * Set up a dummy targetlist for parent nodes which will require it. We'll
-	 * overwrite it later (see setrefs.c)
+	 * Set up a temporary targetlist for parent nodes which may copy it for
+	 * their tuple descriptor. I'll become invalid at the execution phase,
+	 * so we'll fix it later. (see setrefs.c)
 	 */
 	if (returningLists != NIL)
 		node->plan.targetlist = copyObject(linitial(returningLists));
