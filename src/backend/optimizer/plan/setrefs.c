@@ -1186,9 +1186,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			{
 				ModifyTable *splan = (ModifyTable *) plan;
 
-				/* Get rid of the dummy targetlist about to be replaced. */
-				if (splan->plan.targetlist != NIL)
-					list_free(splan->plan.targetlist);
 
 				Assert(splan->plan.qual == NIL);
 
@@ -1203,6 +1200,8 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 							   *lcrr,
 							   *lcp;
 
+					/* Get rid of the previous targetlist. */
+					list_free(splan->plan.targetlist);
 
 					/*
 					 * Pass each per-subplan returningList through
