@@ -1186,7 +1186,6 @@ set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset)
 			{
 				ModifyTable *splan = (ModifyTable *) plan;
 
-
 				Assert(splan->plan.qual == NIL);
 
 				splan->withCheckOptionLists =
