@@ -24,15 +24,18 @@ SELECT gp_request_fts_probe_scan();
 1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
 
 -- Emulate hanged segment condition:
+-- 0. Store the name of datadir for seg0 - we will need it on step 2.
 -- 1. Stop the backends from processing requests by injecting a fault.
 -- 2. Stop segment postmaster process. This can't be done by the fault injection,
 -- as we wouldn't be able to recover the postmaster back to life in this case.
 -- Thus do it by sending a STOP signal. We need to do it on all segments (not on
 -- the coordinator), as the segment process may be running on a separate machine.
+2: @post_run 'get_tuple_cell DATADIR 1 1': SELECT datadir FROM gp_segment_configuration WHERE role='p' AND content=0;
+
 SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid)
 FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
-SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
+2: @pre_run ' echo "${RAW_STR}" | sed "s#@DATADIR#${DATADIR}#" ': SELECT exec_cmd_on_segments('ps aux | grep ''@DATADIR'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
 
 -- Launch the query again, now it will hang.
 1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
@@ -53,7 +56,7 @@ FROM gp_segment_configuration WHERE content = 0;
 SELECT * FROM pg_locks WHERE mode = 'ExclusiveLock' AND locktype = 'relation';
 
 -- Recover back the segment
-SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -CONT');
+2: @pre_run ' echo "${RAW_STR}" | sed "s#@DATADIR#${DATADIR}#" ': SELECT exec_cmd_on_segments('ps aux | grep ''@DATADIR'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -CONT');
 
 SELECT gp_inject_fault('exec_simple_query_start', 'resume', dbid)
 FROM gp_segment_configuration WHERE role = 'm' AND content = 0;
@@ -98,7 +101,7 @@ SELECT gp_request_fts_probe_scan();
 SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid)
 FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
-SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
+2: @pre_run ' echo "${RAW_STR}" | sed "s#@DATADIR#${DATADIR}#" ': SELECT exec_cmd_on_segments('ps aux | grep ''@DATADIR'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
 
 -- Launch the query again, now it will hang.
 1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
@@ -119,7 +122,7 @@ FROM gp_segment_configuration WHERE content = 0;
 SELECT * FROM pg_locks WHERE mode = 'ExclusiveLock' AND locktype = 'relation';
 
 -- Recover back the segment
-SELECT exec_cmd_on_segments('ps aux | grep ''dbfast1/demoDataDir0'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -CONT');
+2: @pre_run ' echo "${RAW_STR}" | sed "s#@DATADIR#${DATADIR}#" ': SELECT exec_cmd_on_segments('ps aux | grep ''@DATADIR'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -CONT');
 
 SELECT gp_inject_fault('exec_simple_query_start', 'resume', dbid)
 FROM gp_segment_configuration WHERE role = 'm' AND content = 0;
