@@ -80,8 +80,8 @@ BEGIN
 
 	IF 4 = (SELECT count(1)
 			FROM pg_class c
-			LEFT JOIN pg_attribute a ON a.attrelid = c.oid AND
-			                            a.attname = 'tablespace_location'
+			JOIN pg_attribute a ON a.attrelid = c.oid AND
+			                       a.attname = 'tablespace_location'
 			WHERE c.oid IN ('arenadata_toolkit.db_files_current'::regclass,
 			                'arenadata_toolkit.__db_files_current'::regclass,
 			                'arenadata_toolkit.__db_files_current_unmapped'::regclass,
