@@ -84,8 +84,7 @@ BEGIN
 			WHERE c.oid IN ('arenadata_toolkit.db_files_current'::regclass,
 			                'arenadata_toolkit.__db_files_current'::regclass,
 			                'arenadata_toolkit.__db_files_current_unmapped'::regclass,
-			                'arenadata_toolkit.db_files_history'::regclass) AND
-			      a.attrelid IS NOT NULL)
+			                'arenadata_toolkit.db_files_history'::regclass))
 	THEN
 		RETURN NEXT from_version || ': column tablespace_location check';
 	END IF;
