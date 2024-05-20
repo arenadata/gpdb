@@ -21,7 +21,7 @@ include: helpers/server_helpers.sql;
 SELECT gp_request_fts_probe_scan();
 
 -- Make a successfull query to allocate query executer backends on the segments.
-1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
+1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';
 
 -- Emulate hanged segment condition:
 -- 0. Store the name of datadir for seg0 - we will need it on step 2.
@@ -30,7 +30,7 @@ SELECT gp_request_fts_probe_scan();
 -- as we wouldn't be able to recover the postmaster back to life in this case.
 -- Thus do it by sending a STOP signal. We need to do it on all segments (not on
 -- the coordinator), as the segment process may be running on a separate machine.
-2: @post_run 'get_tuple_cell DATADIR 1 1': SELECT datadir FROM gp_segment_configuration WHERE role='p' AND content=0;
+2: @post_run 'get_tuple_cell DATADIR 1 1': SELECT datadir FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
 SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid)
 FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
@@ -38,11 +38,11 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 2: @pre_run ' echo "${RAW_STR}" | sed "s#@DATADIR#${DATADIR}#" ': SELECT exec_cmd_on_segments('ps aux | grep ''@DATADIR'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
 
 -- Launch the query again, now it will hang.
-1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
+1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';
 
 -- Cancel the hanging query.
 SELECT pg_cancel_backend(pid) FROM pg_stat_activity
-WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname=''default_group'';';
+WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = ''default_group'';';
 
 -- Trigger FTS scan.
 SELECT gp_request_fts_probe_scan();
@@ -90,7 +90,7 @@ SELECT count(*) FROM gp_segment_configuration WHERE status = 'd';
 SELECT gp_request_fts_probe_scan();
 
 -- Make a successfull query to allocate query executer backends on the segments.
-1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
+1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';
 
 -- Emulate hanged segment condition:
 -- 1. Stop the backends from processing requests by injecting a fault.
@@ -104,11 +104,11 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 2: @pre_run ' echo "${RAW_STR}" | sed "s#@DATADIR#${DATADIR}#" ': SELECT exec_cmd_on_segments('ps aux | grep ''@DATADIR'' | awk ''FNR == 1 {print $2; exit}'' | xargs kill -STOP');
 
 -- Launch the query again, now it will hang.
-1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
+1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';
 
 -- Terminate the hanging query.
 SELECT pg_terminate_backend(pid) FROM pg_stat_activity
-WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname=''default_group'';';
+WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = ''default_group'';';
 
 -- Trigger FTS scan.
 SELECT gp_request_fts_probe_scan();

@@ -30,7 +30,7 @@ SELECT gp_request_fts_probe_scan();
 (1 row)
 
 -- Make a successfull query to allocate query executer backends on the segments.
-1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
+1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';
  count 
 -------
  4     
@@ -43,7 +43,7 @@ SELECT gp_request_fts_probe_scan();
 -- as we wouldn't be able to recover the postmaster back to life in this case.
 -- Thus do it by sending a STOP signal. We need to do it on all segments (not on
 -- the coordinator), as the segment process may be running on a separate machine.
-2: @post_run 'get_tuple_cell DATADIR 1 1': SELECT datadir FROM gp_segment_configuration WHERE role='p' AND content=0;
+2: @post_run 'get_tuple_cell DATADIR 1 1': SELECT datadir FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
 SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
  gp_inject_fault 
@@ -60,10 +60,10 @@ SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid) FROM gp_segme
 (3 rows)
 
 -- Launch the query again, now it will hang.
-1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';  <waiting ...>
+1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';  <waiting ...>
 
 -- Cancel the hanging query.
-SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname=''default_group'';';
+SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = ''default_group'';';
  pg_cancel_backend 
 -------------------
  t                 
@@ -161,7 +161,7 @@ SELECT gp_request_fts_probe_scan();
 (1 row)
 
 -- Make a successfull query to allocate query executer backends on the segments.
-1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';
+1:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';
  count 
 -------
  4     
@@ -188,10 +188,10 @@ SELECT gp_inject_fault('exec_simple_query_start', 'suspend', dbid) FROM gp_segme
 (3 rows)
 
 -- Launch the query again, now it will hang.
-1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname='default_group';  <waiting ...>
+1&:SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = 'default_group';  <waiting ...>
 
 -- Terminate the hanging query.
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname=''default_group'';';
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query = 'SELECT count(1) FROM gp_toolkit.gp_resgroup_status_per_segment WHERE rsgname = ''default_group'';';
  pg_terminate_backend 
 ----------------------
  t                    
