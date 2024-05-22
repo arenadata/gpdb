@@ -7825,7 +7825,7 @@ make_modifytable(PlannerInfo *root,
 
 	/*
 	 * Set up a temporary targetlist for parent nodes which may copy it for
-	 * their tuple descriptor. I'll become invalid at the execution phase,
+	 * their tuple descriptor. It'll become invalid at the execution phase,
 	 * so we'll fix it later. (see setrefs.c)
 	 */
 	if (returningLists != NIL)
