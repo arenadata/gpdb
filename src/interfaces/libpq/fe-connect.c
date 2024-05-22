@@ -3431,6 +3431,11 @@ PQfreeCancel(PGcancel *cancel)
 		free(cancel);
 }
 
+/*
+ * PQbypassConnCloseAtCancel:
+ * set a flag, that allows to fix an issue with internal hanging in
+ * 'internal_cancel'. For details refer to comments in 'internal_cancel'.
+ */
 void PQbypassConnCloseAtCancel(pqbool bypass)
 {
 	bypass_conn_close_at_cancel = bypass;
@@ -3530,6 +3535,22 @@ retry4:
 #ifndef WIN32
 retry5:
 
+	/*
+	 * GPDB: in case this function is called by the coordinator process to
+	 * communicate with the segments (when performing cancel/terminate of a 
+	 * backend) and one of the segments has hanged keeping the listening socket
+	 * open, we will be stuck in this function for infinite amount of time
+	 * (hanging on the 'poll' in a loop). The check below helps to avoid this
+	 * situation:
+	 *  1. The flag 'bypass_conn_close_at_cancel' is set from a signal handler.
+	 *  2. The signal is originally initiated by the FTS, which detects that a
+	 *  segment went down. 
+	 *  3. If the signal comes before the 'poll' is called, it will be just
+	 *  skipped and this function will return an error.
+	 *  4. If the signal comes after the 'poll' is called, the 'poll' will be
+	 *  interrupted with EINTR, and the next iteration will be skipped and this
+	 *  function will return an error.
+	 */
 	if (bypass_conn_close_at_cancel)
 		goto cancel_errReturn;
 
