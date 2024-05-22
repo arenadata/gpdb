@@ -7826,7 +7826,7 @@ make_modifytable(PlannerInfo *root,
 	/*
 	 * GPDB: Set up a temporary targetlist for parent nodes which may copy
 	 * it for their tuple descriptor, e.g . ShareInputScans or Motions. The
-	 * targetlist will become invalid at the execution phase, so we'll fix
+	 * targetlist will become invalid at the execution phase, so we'll recreate
 	 * it later. (see setrefs.c)
 	 */
 	node->plan.targetlist =
