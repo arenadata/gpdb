@@ -7825,9 +7825,8 @@ make_modifytable(PlannerInfo *root,
 
 	/*
 	 * GPDB: Set up a temporary targetlist for parent nodes which may copy
-	 * it for their tuple descriptor, e.g . ShareInputScans or Motions. The
-	 * targetlist will become invalid at the execution phase, so we'll recreate
-	 * it later. (see setrefs.c)
+	 * it for their tuple descriptor, e.g. ShareInputScans or Motions. We'll
+	 * recreate the targetlist later. (see setrefs.c)
 	 */
 	node->plan.targetlist =
 		(returningLists == NIL) ? NIL : copyObject(linitial(returningLists));
