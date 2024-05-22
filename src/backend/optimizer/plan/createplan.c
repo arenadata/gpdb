@@ -7824,14 +7824,13 @@ make_modifytable(PlannerInfo *root,
 	node->returningLists = returningLists;
 
 	/*
-	 * Set up a temporary targetlist for parent nodes which may copy it for
-	 * their tuple descriptor. It'll become invalid at the execution phase,
-	 * so we'll fix it later. (see setrefs.c)
+	 * GPDB: Set up a temporary targetlist for parent nodes which may copy
+	 * it for their tuple descriptor, e.g . ShareInputScans or Motions. The
+	 * targetlist will become invalid at the execution phase, so we'll fix
+	 * it later. (see setrefs.c)
 	 */
-	if (returningLists != NIL)
-		node->plan.targetlist = copyObject(linitial(returningLists));
-	else
-		node->plan.targetlist = NIL;
+	node->plan.targetlist =
+		(returningLists == NIL) ? NIL : copyObject(linitial(returningLists));
 
 	node->rowMarks = rowMarks;
 	node->epqParam = epqParam;
