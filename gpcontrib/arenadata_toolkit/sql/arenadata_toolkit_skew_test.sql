@@ -21,7 +21,7 @@ SET search_path = arenadata_toolkit;
 -- s/(.*)size=\d+/$1size/
 -- end_matchsubs
 
--- function compares behavior of pg_relation_size and adb_relation_storage_size functions for
+-- function compares behaviour of pg_relation_size and adb_relation_storage_size functions for
 -- table and it's forks in case of AO/CO tables (and also external) there are no other forks except main
 CREATE FUNCTION compare_table_and_forks_size_calculation(tbl_oid OID)
 RETURNS TABLE(fork TEXT, result_equals BOOLEAN, is_empty BOOLEAN, tbl_size TEXT) AS $$
@@ -51,12 +51,12 @@ $$ LANGUAGE plpgsql;
 ----------------------------------------------------------------------------------------------------------
 
 ----------------------------------------------------------------------
--- test case 1: check that behavior for not existing table the same
+-- test case 1: check that behaviour for not existing table the same
 ----------------------------------------------------------------------
 SELECT (pg_relation_size(100000::OID) IS NULL) = (adb_relation_storage_size(100000::OID) IS NULL) AS equals;
 
 ----------------------------------------------------------------------
--- test case 2: check behavior equality for heap tables
+-- test case 2: check behaviour equality for heap tables
 ----------------------------------------------------------------------
 CREATE TABLE heap(i INT, j INT) WITH (appendonly = false) DISTRIBUTED BY (i);
 
@@ -72,7 +72,7 @@ SELECT * FROM compare_table_and_forks_size_calculation('heap'::regclass::OID);
 DROP TABLE heap;
 
 ----------------------------------------------------------------------
--- test case 3: check behavior equality for AO tables
+-- test case 3: check behaviour equality for AO tables
 ----------------------------------------------------------------------
 CREATE TABLE empty_ao(i INT, j INT) WITH (appendonly=true) DISTRIBUTED BY (i);
 
@@ -90,7 +90,7 @@ SELECT * FROM compare_table_and_forks_size_calculation('ao'::regclass::OID);
 DROP TABLE empty_ao, ao;
 
 ----------------------------------------------------------------------
--- test case 4: check behavior equality for CO tables
+-- test case 4: check behaviour equality for CO tables
 ----------------------------------------------------------------------
 CREATE TABLE empty_co(i INT, j INT) WITH (appendonly=true, orientation=column) DISTRIBUTED BY (i);
 
@@ -109,7 +109,7 @@ SELECT * FROM compare_table_and_forks_size_calculation('co'::regclass::OID);
 DROP TABLE empty_co, co;
 
 ------------------------------------------------ ----------------------
--- test case 4: check behavior equality for external tables
+-- test case 4: check behaviour equality for external tables
 -----------------------------------------------------------------------
 CREATE EXTERNAL WEB TABLE external_tbl(field TEXT) EXECUTE 'echo 1' FORMAT 'TEXT';
 
@@ -119,7 +119,7 @@ SELECT * FROM compare_table_and_forks_size_calculation('external_tbl'::regclass:
 DROP EXTERNAL TABLE external_tbl;
 
 ------------------------------------------------ ----------------------
--- test case 5: check behavior difference (pg_relation_size and
+-- test case 5: check behaviour difference (pg_relation_size and
 -- adb_relation_storage_size) for AO/CO table size (when insert transaction
 -- failed the physical size of table is returned by adb_relation_storage_size
 -- unlike 'virtual' size (as it's done at pg_relation_size)

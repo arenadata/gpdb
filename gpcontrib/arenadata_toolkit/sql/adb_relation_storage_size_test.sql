@@ -39,7 +39,7 @@ SELECT relname, gp_segment_id, size
 FROM (VALUES ('ao_table_with_toast'), ('ao_table_without_toast'),
              ('heap_table_with_toast'), ('heap_table_without_toast')) AS tables(relname),
      arenadata_toolkit.adb_relation_storage_size_on_segments(tables.relname::regclass)
-ORDER BY 1,2;
+ORDER BY 1, 2;
 
 -- Add random large data to get non-zero toast table's size
 UPDATE heap_table_with_toast SET b = (
@@ -55,7 +55,7 @@ WHERE a = 1;
 SELECT relname, gp_segment_id, size
 FROM (VALUES ('ao_table_with_toast'), ('heap_table_with_toast')) AS tables(relname),
      arenadata_toolkit.adb_relation_storage_size_on_segments(tables.relname::regclass)
-ORDER BY 1,2;
+ORDER BY 1, 2;
 
 -- Check summary size of tables
 SELECT relname,
