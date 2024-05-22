@@ -1,3 +1,6 @@
+-- Prepare DB for the test
+-- start_ignore
+-- end_ignore
 ----------------------------------------------------------------------------------------------------------
 -- test helpers
 ----------------------------------------------------------------------------------------------------------
@@ -135,7 +138,7 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
 (12 rows)
 
 DROP EXTENSION arenadata_toolkit;
-DROP SCHEMA arenadata_toolkit cascade;
+DROP SCHEMA arenadata_toolkit CASCADE;
 ----------------------------------------------------------------------------------------------------------
 -- test case 2: arenadata_toolkit wasn't installed
 ----------------------------------------------------------------------------------------------------------
@@ -194,7 +197,7 @@ WHERE d.deptype = 'e' AND e.extname = 'arenadata_toolkit' ORDER BY objname;
 (12 rows)
 
 DROP EXTENSION arenadata_toolkit;
-DROP SCHEMA arenadata_toolkit cascade;
+DROP SCHEMA arenadata_toolkit CASCADE;
 DROP FUNCTION mock_manual_installation();
 DROP VIEW toolkit_objects_info;
 RESET client_min_messages;

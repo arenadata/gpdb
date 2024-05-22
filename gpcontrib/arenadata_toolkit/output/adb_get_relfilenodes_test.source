@@ -1,3 +1,6 @@
+-- Prepare DB for the test
+-- start_ignore
+-- end_ignore
 SET client_min_messages=WARNING;
 \! rm -rf @testtablespace@ && mkdir @testtablespace@;
 CREATE TABLESPACE arenadata_test location '@testtablespace@';
@@ -123,5 +126,5 @@ EXPLAIN SELECT * from arenadata_toolkit.adb_get_relfilenodes(1);
 DROP TABLESPACE arenadata_test;
 \! rm -rf @testtablespace@
 DROP EXTENSION arenadata_toolkit;
-DROP SCHEMA arenadata_toolkit cascade;
+DROP SCHEMA arenadata_toolkit CASCADE;
 RESET client_min_messages;

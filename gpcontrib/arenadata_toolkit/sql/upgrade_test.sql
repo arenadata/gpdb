@@ -1,3 +1,11 @@
+-- Prepare DB for the test
+-- start_ignore
+DROP FUNCTION IF EXISTS do_upgrade_test_for_arenadata_toolkit(TEXT);
+DROP EXTERNAL TABLE IF EXISTS toolkit_versions;
+DROP EXTENSION IF EXISTS arenadata_toolkit;
+DROP SCHEMA IF EXISTS arenadata_toolkit CASCADE;
+-- end_ignore
+
 -- Change log level to disable notice messages from PL/pgSQL and dropped objects
 -- from "DROP SCHEMA arenadata_toolkit CASCADE;"
 SET client_min_messages=WARNING;
@@ -79,13 +87,12 @@ BEGIN
 	PERFORM arenadata_toolkit.adb_create_tables();
 
 	IF 4 = (SELECT count(1)
-			FROM pg_class c
-			JOIN pg_attribute a ON a.attrelid = c.oid AND
-			                       a.attname = 'tablespace_location'
-			WHERE c.oid IN ('arenadata_toolkit.db_files_current'::regclass,
-			                'arenadata_toolkit.__db_files_current'::regclass,
-			                'arenadata_toolkit.__db_files_current_unmapped'::regclass,
-			                'arenadata_toolkit.db_files_history'::regclass))
+			FROM (VALUES ('arenadata_toolkit.db_files_current'),
+			             ('arenadata_toolkit.__db_files_current'),
+			             ('arenadata_toolkit.__db_files_current_unmapped'),
+			             ('arenadata_toolkit.db_files_history')) AS tables(relname)
+			JOIN pg_attribute a ON a.attrelid = relname::regclass AND
+			                       a.attname = 'tablespace_location')
 	THEN
 		RETURN NEXT from_version || ': column tablespace_location check';
 	END IF;
