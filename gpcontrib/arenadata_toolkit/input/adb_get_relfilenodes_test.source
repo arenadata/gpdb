@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP TABLESPACE IF EXISTS arenadata_test;
 DROP TABLE IF EXISTS arenadata_toolkit_table;
 DROP EXTENSION IF EXISTS arenadata_toolkit;

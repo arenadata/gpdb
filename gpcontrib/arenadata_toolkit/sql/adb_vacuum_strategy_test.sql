@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP SCHEMA IF EXISTS test_vacuum CASCADE;
 DROP EXTENSION IF EXISTS arenadata_toolkit;
 DROP SCHEMA IF EXISTS arenadata_toolkit CASCADE;

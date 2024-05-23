@@ -1,6 +1,3 @@
--- Prepare DB for the test
--- start_ignore
--- end_ignore
 -- Change log level to disable notice messages from PL/pgSQL and dropped objects
 -- from "DROP SCHEMA arenadata_toolkit CASCADE;"
 SET client_min_messages=WARNING;

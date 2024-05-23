@@ -1,6 +1,3 @@
--- Prepare DB for the test
--- start_ignore
--- end_ignore
 CREATE EXTENSION arenadata_toolkit;
 CREATE TABLE heap_table_with_toast(a INT, b TEXT)
 DISTRIBUTED BY (a);

@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP TABLE IF EXISTS table_at_pg_default, table_at_custom_tblspc;
 DROP TABLESPACE IF EXISTS test_tblspc;
 DROP EXTENSION IF EXISTS arenadata_toolkit;

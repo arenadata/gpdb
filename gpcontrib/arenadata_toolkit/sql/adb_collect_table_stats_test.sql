@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP TABLE IF EXISTS part_table, part_table_bigint, public.db_files_history;
 DROP FUNCTION IF EXISTS remove_partition_from_db_files_history();
 DROP EXTENSION IF EXISTS arenadata_toolkit;

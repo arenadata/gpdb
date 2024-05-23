@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP TABLE IF EXISTS heap, empty_ao, ao, empty_co, co, part_table;
 DROP EXTERNAL TABLE IF EXISTS external_tbl;
 DROP FUNCTION IF EXISTS compare_table_and_forks_size_calculation(OID);

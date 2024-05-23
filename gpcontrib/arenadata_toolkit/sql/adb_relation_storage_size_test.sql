@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP TABLE IF EXISTS heap_table_with_toast, heap_table_without_toast,
                      ao_table_with_toast, ao_table_without_toast;
 DROP EXTENSION IF EXISTS arenadata_toolkit;

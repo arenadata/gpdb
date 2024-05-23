@@ -1,5 +1,5 @@
--- Prepare DB for the test
 -- start_ignore
+-- Prepare DB for the test
 DROP FUNCTION IF EXISTS do_upgrade_test_for_arenadata_toolkit(TEXT);
 DROP EXTERNAL TABLE IF EXISTS toolkit_versions;
 DROP EXTENSION IF EXISTS arenadata_toolkit;
