@@ -26,7 +26,8 @@ DISTRIBUTED BY (a);
 SELECT relname, reltoastrelid != 0 with_toast
 FROM pg_class
 WHERE relname IN ('ao_table_with_toast', 'ao_table_without_toast',
-                  'heap_table_with_toast', 'heap_table_without_toast');
+                  'heap_table_with_toast', 'heap_table_without_toast')
+ORDER BY 1;
 
 -- Insert initial data to tables
 INSERT INTO heap_table_with_toast SELECT i, 'short_text' FROM generate_series(1,15) AS i;
@@ -61,7 +62,8 @@ ORDER BY 1, 2;
 SELECT relname,
        arenadata_toolkit.adb_relation_storage_size(tables.relname::regclass) AS size
 FROM (VALUES ('ao_table_with_toast'), ('ao_table_without_toast'),
-             ('heap_table_with_toast'), ('heap_table_without_toast')) AS tables(relname);
+             ('heap_table_with_toast'), ('heap_table_without_toast')) AS tables(relname)
+ORDER BY 1;
 
 -- Cleanup
 DROP TABLE heap_table_with_toast, heap_table_without_toast,
