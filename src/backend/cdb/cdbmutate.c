@@ -995,6 +995,23 @@ shareinput_mutator_xslice_2(Node *node, PlannerInfo *root, bool fPop)
 		sisc->nconsumers = bms_num_members(pershare->participant_slices) - 1;
 
 		/*
+		 * The SISC's plan contains modifying operation, which
+		 * creates a writer gang. Due to specific tree traverse order
+		 * during apply_shareinput_dag_to_tree, the producer could get
+		 * to the reader slice, while the consumer could get to the
+		 * writer slice (gangType is chosen before shareinput fixing).
+		 * Therefore, in order to prevent this, we set up the correct
+		 * gangType back.
+		 */
+		if (sisc->rootSliceIsWriter)
+		{
+			if (plan->lefttree)
+				currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
+			else if (sisc->this_slice_id != sisc->producer_slice_id)
+				currentSlice->gangType = GANGTYPE_PRIMARY_READER;
+		}
+
+		/*
 		 * If this share needs to run in the QD, mark the slice accordingly.
 		 */
 		if (bms_is_member(sisc->share_id, ctxt->qdShares))
@@ -1013,23 +1030,6 @@ shareinput_mutator_xslice_2(Node *node, PlannerInfo *root, bool fPop)
 					elog(ERROR, "cannot share ShareInputScan between QD and primary reader/write gang");
 					break;
 			}
-		}
-
-		/*
-		 * The SISC's plan contains modifying operation, which
-		 * creates a writer gang. Due to specific tree traverse order
-		 * during apply_shareinput_dag_to_tree, the producer could get
-		 * to the reader slice, while the consumer could get to the
-		 * writer slice (gangType is chosen before shareinput fixing).
-		 * Therefore, in order to prevent this, we set up the correct
-		 * gangType back.
-		 */
-		if (sisc->rootSliceIsWriter)
-		{
-			if (plan->lefttree)
-				currentSlice->gangType = GANGTYPE_PRIMARY_WRITER;
-			else if (sisc->this_slice_id != sisc->producer_slice_id)
-				currentSlice->gangType = GANGTYPE_PRIMARY_READER;
 		}
 	}
 	return true;
