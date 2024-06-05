@@ -169,7 +169,7 @@ static int executor_run_nesting_level = 0;
 static void InitPlan(QueryDesc *queryDesc, int eflags);
 static void CheckValidRowMarkRel(Relation rel, RowMarkType markType);
 static void ExecPostprocessPlan(EState *estate);
-static void ExecEndPlan(PlanState *planstate, EState *estate);
+static void ExecEndPlan(PlanState *planstate, EState *estate, CmdType operation);
 static void ExecutePlan(EState *estate, PlanState *planstate,
 			CmdType operation,
 			bool sendTuples,
@@ -1429,7 +1429,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
      * Otherwise don't risk it... an error might have left some
      * structures in an inconsistent state.
      */
-	ExecEndPlan(queryDesc->planstate, estate);
+	ExecEndPlan(queryDesc->planstate, estate, queryDesc->operation);
 
 	/*
 	 * Remove our own query's motion layer.
@@ -3056,7 +3056,7 @@ ExecPostprocessPlan(EState *estate)
  * ----------------------------------------------------------------
  */
 void
-ExecEndPlan(PlanState *planstate, EState *estate)
+ExecEndPlan(PlanState *planstate, EState *estate, CmdType operation)
 {
 	ResultRelInfo *resultRelInfo;
 	int			i;
@@ -3092,7 +3092,10 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	SendAOTupCounts(estate);
 
 	/* Adjust INSERT/UPDATE/DELETE count for replicated table ON QD */
-	AdjustReplicatedTableCounts(estate);
+	if (operation == CMD_INSERT ||
+	    operation == CMD_UPDATE ||
+	    operation == CMD_DELETE)
+		AdjustReplicatedTableCounts(estate);
 
 	/*
 	 * close the result relation(s) if any, but hold locks until xact commit.
