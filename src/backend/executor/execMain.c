@@ -169,7 +169,7 @@ static int executor_run_nesting_level = 0;
 static void InitPlan(QueryDesc *queryDesc, int eflags);
 static void CheckValidRowMarkRel(Relation rel, RowMarkType markType);
 static void ExecPostprocessPlan(EState *estate);
-static void ExecEndPlan(PlanState *planstate, EState *estate, CmdType operation);
+static void ExecEndPlan(QueryDesc *queryDesc);
 static void ExecutePlan(EState *estate, PlanState *planstate,
 			CmdType operation,
 			bool sendTuples,
@@ -1429,7 +1429,7 @@ standard_ExecutorEnd(QueryDesc *queryDesc)
      * Otherwise don't risk it... an error might have left some
      * structures in an inconsistent state.
      */
-	ExecEndPlan(queryDesc->planstate, estate, queryDesc->operation);
+	ExecEndPlan(queryDesc);
 
 	/*
 	 * Remove our own query's motion layer.
@@ -3056,8 +3056,10 @@ ExecPostprocessPlan(EState *estate)
  * ----------------------------------------------------------------
  */
 void
-ExecEndPlan(PlanState *planstate, EState *estate, CmdType operation)
+ExecEndPlan(QueryDesc *queryDesc)
 {
+	PlanState *planstate = queryDesc->planstate;
+	EState *estate = queryDesc->estate;
 	ResultRelInfo *resultRelInfo;
 	int			i;
 	ListCell   *l;
@@ -3092,9 +3094,9 @@ ExecEndPlan(PlanState *planstate, EState *estate, CmdType operation)
 	SendAOTupCounts(estate);
 
 	/* Adjust INSERT/UPDATE/DELETE count for replicated table ON QD */
-	if (operation == CMD_INSERT ||
-	    operation == CMD_UPDATE ||
-	    operation == CMD_DELETE)
+	if (queryDesc->operation == CMD_INSERT ||
+	    queryDesc->operation == CMD_UPDATE ||
+	    queryDesc->operation == CMD_DELETE)
 		AdjustReplicatedTableCounts(estate);
 
 	/*
