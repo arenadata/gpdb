@@ -2163,8 +2163,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		int primaryWriterSliceIndex = PrimaryWriterSliceIndex(estate);
 		//if (sliceRunsOnQE(currentSlice))
 		{
-			estate->es_processed +=
-				cdbdisp_sumCmdTuples(pr, primaryWriterSliceIndex);
+			if (0 == estate->es_processed)
+				estate->es_processed =
+					cdbdisp_sumCmdTuples(pr, primaryWriterSliceIndex);
 			estate->es_lastoid =
 				cdbdisp_maxLastOid(pr, primaryWriterSliceIndex);
 

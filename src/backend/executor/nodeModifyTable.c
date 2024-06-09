@@ -632,7 +632,17 @@ ExecInsert(TupleTableSlot *parentslot,
 	}
 	if (canSetTag)
 	{
-		(estate->es_processed)++;
+		/*
+		 * If table is replicated, update es_processed only at one segment.
+		 * It allows not to adjust es_processed at QD after all executors send
+		 * the same value of es_processed.
+		 */
+		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
+		if (!GpPolicyIsReplicated(cdbpolicy) ||
+		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
+		{
+			(estate->es_processed)++;
+		}
 		estate->es_lastoid = newId;
 		setLastTid(&lastTid);
 	}
@@ -1039,7 +1049,19 @@ ldelete:;
 	}
 
 	if (canSetTag)
-		(estate->es_processed)++;
+	{
+		/*
+		 * If table is replicated, update es_processed only at one segment.
+		 * It allows not to adjust es_processed at QD after all executors send
+		 * the same value of es_processed.
+		 */
+		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
+		if (!GpPolicyIsReplicated(cdbpolicy) ||
+		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
+		{
+			(estate->es_processed)++;
+		}
+	}
 
 	if (!isUpdate)
 	{
@@ -1588,7 +1610,19 @@ lreplace:;
 	}
 
 	if (canSetTag)
-		(estate->es_processed)++;
+	{
+		/*
+		 * If table is replicated, update es_processed only at one segment.
+		 * It allows not to adjust es_processed at QD after all executors send
+		 * the same value of es_processed.
+		 */
+		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
+		if (!GpPolicyIsReplicated(cdbpolicy) ||
+		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
+		{
+			(estate->es_processed)++;
+		}
+	}
 
 	/* AFTER ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
