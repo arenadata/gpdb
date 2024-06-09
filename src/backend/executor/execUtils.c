@@ -2163,6 +2163,11 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		int primaryWriterSliceIndex = PrimaryWriterSliceIndex(estate);
 		//if (sliceRunsOnQE(currentSlice))
 		{
+			/*
+			 * Do not modify es_processed if it is not zero. Because
+			 * es_processed save info about tuples, which were really processed,
+			 * and limit was used (not to process tuples more than limit).
+			 */
 			if (0 == estate->es_processed)
 				estate->es_processed =
 					cdbdisp_sumCmdTuples(pr, primaryWriterSliceIndex);
