@@ -164,6 +164,7 @@ static void bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel);
 static bool is_query_contain_limit_groupby(Query *parse);
 static void handle_gen_seggen_volatile_path(PlannerInfo *root, RelOptInfo *rel);
 
+
 /*
  * make_one_rel
  *	  Finds all possible access paths for executing a query, returning a
