@@ -3267,6 +3267,72 @@ XLogNeedsFlush(XLogRecPtr record)
 	return true;
 }
 
+static void
+XLogFileZero(FileName fileName, int fileFlags)
+{
+	PGAlignedXLogBlock zbuffer;
+	int			fd;
+	int			nbytes;
+
+	fd = BasicOpenFile(fileName, fileFlags, S_IRUSR | S_IWUSR);
+	if (fd < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", fileName)));
+
+	/*
+	 * Zero-fill the file.  We have to do this the hard way to ensure that all
+	 * the file space has really been allocated --- on platforms that allow
+	 * "holes" in files, just seeking to the end doesn't allocate intermediate
+	 * space.  This way, we know that we have all the space and (after the
+	 * fsync below) that all the indirect blocks are down on disk.  Therefore,
+	 * fdatasync(2) or O_DSYNC will be sufficient to sync future writes to the
+	 * log file.
+	 */
+	memset(zbuffer.data, 0, XLOG_BLCKSZ);
+	for (nbytes = 0; nbytes < XLogSegSize; nbytes += XLOG_BLCKSZ)
+	{
+		errno = 0;
+		if ((int) write(fd, zbuffer.data, XLOG_BLCKSZ) != (int) XLOG_BLCKSZ)
+		{
+			int			save_errno = errno;
+
+			if (fileFlags & O_CREAT)
+			{
+				/*
+				* If we fail to make the file, delete it to release disk space
+				*/
+				unlink(fileName);
+			}
+
+			close(fd);
+
+			/* if write didn't set errno, assume problem is no disk space */
+			errno = save_errno ? save_errno : ENOSPC;
+
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write to file \"%s\": %m", fileName)));
+		}
+	}
+
+	if (pg_fsync(fd) != 0)
+	{
+		int			save_errno = errno;
+
+		close(fd);
+		errno = save_errno;
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not fsync file \"%s\": %m", fileName)));
+	}
+
+	if (close(fd))
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m", fileName)));
+}
+
 /*
  * Create a new XLOG file segment, or open a pre-existing one.
  *
@@ -3292,11 +3358,9 @@ XLogFileInit(XLogSegNo logsegno, bool *use_existent, bool use_lock)
 {
 	char		path[MAXPGPATH];
 	char		tmppath[MAXPGPATH];
-	PGAlignedXLogBlock zbuffer;
 	XLogSegNo	installed_segno;
 	int			max_advance;
 	int			fd;
-	int			nbytes;
 
 	XLogFilePath(path, ThisTimeLineID, logsegno);
 
@@ -3331,61 +3395,7 @@ XLogFileInit(XLogSegNo logsegno, bool *use_existent, bool use_lock)
 	unlink(tmppath);
 
 	/* do not use get_sync_bit() here --- want to fsync only at end of fill */
-	fd = BasicOpenFile(tmppath, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
-					   S_IRUSR | S_IWUSR);
-	if (fd < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not create file \"%s\": %m", tmppath)));
-
-	/*
-	 * Zero-fill the file.  We have to do this the hard way to ensure that all
-	 * the file space has really been allocated --- on platforms that allow
-	 * "holes" in files, just seeking to the end doesn't allocate intermediate
-	 * space.  This way, we know that we have all the space and (after the
-	 * fsync below) that all the indirect blocks are down on disk.  Therefore,
-	 * fdatasync(2) or O_DSYNC will be sufficient to sync future writes to the
-	 * log file.
-	 */
-	memset(zbuffer.data, 0, XLOG_BLCKSZ);
-	for (nbytes = 0; nbytes < XLogSegSize; nbytes += XLOG_BLCKSZ)
-	{
-		errno = 0;
-		if ((int) write(fd, zbuffer.data, XLOG_BLCKSZ) != (int) XLOG_BLCKSZ)
-		{
-			int			save_errno = errno;
-
-			/*
-			 * If we fail to make the file, delete it to release disk space
-			 */
-			unlink(tmppath);
-
-			close(fd);
-
-			/* if write didn't set errno, assume problem is no disk space */
-			errno = save_errno ? save_errno : ENOSPC;
-
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not write to file \"%s\": %m", tmppath)));
-		}
-	}
-
-	if (pg_fsync(fd) != 0)
-	{
-		int			save_errno = errno;
-
-		close(fd);
-		errno = save_errno;
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not fsync file \"%s\": %m", tmppath)));
-	}
-
-	if (close(fd))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not close file \"%s\": %m", tmppath)));
+	XLogFileZero(tmppath, O_RDWR | O_CREAT | O_EXCL | PG_BINARY);
 
 	/*
 	 * Now move the segment into place with its final name.
@@ -4093,6 +4103,9 @@ RemoveXlogFile(const char *segname, XLogRecPtr endptr)
 		InstallXLogFileSegment(&endlogSegNo, path,
 							   true, &max_advance, true))
 	{
+		XLogFilePath(path, ThisTimeLineID, endlogSegNo);
+		/* do not use get_sync_bit() here --- want to fsync only at end of fill */
+		XLogFileZero(path, O_RDWR | O_EXCL | PG_BINARY);
 		ereport(DEBUG2,
 				(errmsg("recycled transaction log file \"%s\"", segname)));
 		CheckpointStats.ckpt_segs_recycled++;
