@@ -638,7 +638,7 @@ ExecInsert(TupleTableSlot *parentslot,
 		 * the same value of es_processed.
 		 */
 		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
-		if (!GpPolicyIsReplicated(cdbpolicy) ||
+		if (Gp_role != GP_ROLE_EXECUTE || !GpPolicyIsReplicated(cdbpolicy) ||
 		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
 		{
 			(estate->es_processed)++;
@@ -1056,7 +1056,7 @@ ldelete:;
 		 * the same value of es_processed.
 		 */
 		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
-		if (!GpPolicyIsReplicated(cdbpolicy) ||
+		if (Gp_role != GP_ROLE_EXECUTE || !GpPolicyIsReplicated(cdbpolicy) ||
 		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
 		{
 			(estate->es_processed)++;
@@ -1617,7 +1617,7 @@ lreplace:;
 		 * the same value of es_processed.
 		 */
 		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
-		if (!GpPolicyIsReplicated(cdbpolicy) ||
+		if (Gp_role != GP_ROLE_EXECUTE || !GpPolicyIsReplicated(cdbpolicy) ||
 		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
 		{
 			(estate->es_processed)++;
