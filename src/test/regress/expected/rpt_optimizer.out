@@ -1640,17 +1640,21 @@ t2 as (select a, b from tbl2)
                          QUERY PLAN                         
 ------------------------------------------------------------
  Gather Motion 1:1  (slice1; segments: 1)
-   ->  Hash Join
-         Hash Cond: ((tbl1.c)::text = (tbl2_1.b)::text)
-         ->  Hash Join
-               Hash Cond: ((tbl1.b)::text = (tbl2.b)::text)
-               ->  Seq Scan on tbl1
-               ->  Hash
+   ->  Sequence
+         ->  Shared Scan (share slice:id 1:1)
+               ->  Materialize
                      ->  Seq Scan on tbl2
-         ->  Hash
-               ->  Seq Scan on tbl2 tbl2_1
- Optimizer: Postgres query optimizer
-(11 rows)
+         ->  Hash Join
+               Hash Cond: ((tbl1.b)::text = (share1_ref2.b)::text)
+               ->  Hash Join
+                     Hash Cond: ((tbl1.c)::text = (share1_ref3.b)::text)
+                     ->  Seq Scan on tbl1
+                     ->  Hash
+                           ->  Shared Scan (share slice:id 1:1)
+               ->  Hash
+                     ->  Shared Scan (share slice:id 1:1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(15 rows)
 
 -- start_ignore
 drop schema rpt cascade;
