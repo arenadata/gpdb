@@ -634,5 +634,22 @@ drop table if exists t2;
 drop function if exists f(i int);
 
 -- start_ignore
+drop table if exists tbl2;
+drop table if exists tbl1;
+-- end_ignore
+
+create table tbl2 (a numeric, b varchar(255), c numeric) distributed replicated;
+create table tbl1 (a bigserial, b varchar(15), c varchar(15)) distributed replicated;
+
+explain (analyze off, costs off, verbose off)
+with
+t1 as (select * from tbl1),
+t2 as (select a, b from tbl2)
+ select * from t1 p
+  join t2 r on p.b = r.b
+  join t2 r1 on p.c = r1.b;
+
+-- start_ignore
 drop schema rpt cascade;
 -- end_ignore
+
