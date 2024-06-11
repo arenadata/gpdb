@@ -1413,12 +1413,61 @@ with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 wher
 set allow_system_table_mods=true;
 delete from pg_statistic where starelid='foo_missing_stats'::regclass;
 delete from pg_statistic where starelid='bar_missing_stats'::regclass;
+set allow_system_table_mods=false;
 
 select count(*) from foo_missing_stats where a = 10;
 with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.a;
 with x as (select * from foo_missing_stats) select count(*) from x x1, x x2 where x1.a = x2.b;
 
 set optimizer_print_missing_stats = off;
+
+DROP TABLE IF EXISTS orca.table_with_small_statistic_precision_diff;
+CREATE TABLE orca.table_with_small_statistic_precision_diff (
+    col1 double precision
+);
+
+SET allow_system_table_mods=true;
+DELETE FROM pg_statistic WHERE starelid='table_with_small_statistic_precision_diff'::regclass;
+
+INSERT INTO pg_statistic VALUES (
+'table_with_small_statistic_precision_diff'::regclass,
+1::smallint,
+True::boolean,
+0::real,
+8::integer,
+0::real,
+1::smallint,
+2::smallint,
+0::smallint,
+0::smallint,
+0::smallint,
+670::oid,
+672::oid,
+0::oid,
+0::oid,
+0::oid,
+E'{0.002}'::real[],
+NULL::real[],
+NULL::real[],
+NULL::real[],
+NULL::real[],
+E'{-0.25475}'::float8[],
+E'{-0.3,-0.2547399}'::float8[],
+NULL::float8[],
+NULL::float8[],
+NULL::float8[]);
+SET allow_system_table_mods=false;
+
+SELECT *
+FROM (
+    SELECT
+        *
+    FROM orca.table_with_small_statistic_precision_diff
+    UNION ALL
+    SELECT
+        *
+    FROM orca.table_with_small_statistic_precision_diff
+) x;
 
 -- Push components of disjunctive predicates
 create table cust(cid integer, firstname text, lastname text) distributed by (cid);
@@ -1468,7 +1517,7 @@ alter table orca.bm_dyn_test drop column to_be_dropped;
 alter table orca.bm_dyn_test add partition part5 values(5);
 insert into orca.bm_dyn_test values(2, 5, '2');
 
-set optimizer_enable_bitmapscan=on;
+set optimizer_enable_dynamicbitmapscan=on;
 -- start_ignore
 analyze orca.bm_dyn_test;
 -- end_ignore
@@ -2822,6 +2871,12 @@ analyze roj2;
 set optimizer_enable_motion_redistribute=off;
 select count(*), t2.c from roj1 t1 left join roj2 t2 on t1.a = t2.c group by t2.c;
 explain (costs off) select count(*), t2.c from roj1 t1 left join roj2 t2 on t1.a = t2.c group by t2.c;
+
+-- check that ROJ can be disabled via GUC
+set optimizer_enable_right_outer_join=off;
+explain (costs off) select count(*), t2.c from roj1 t1 left join roj2 t2 on t1.a = t2.c group by t2.c;
+reset optimizer_enable_right_outer_join;
+
 reset optimizer_enable_motion_redistribute;
 
 reset optimizer_trace_fallback;
@@ -3392,6 +3447,85 @@ EXPLAIN (VERBOSE, COSTS OFF)
   SELECT * FROM t_outer_srf WHERE t_outer_srf.b IN (SELECT generate_series(1, t_outer_srf.b)  FROM t_inner_srf);
 DROP TABLE t_outer_srf, t_inner_srf;
 
+-------------------------------------------------------
+-- Test case to check over writing of worker in ORCA.
+
+-- In the query, during optimzation of the main query, another instance of ORCA led optimization is triggered to
+-- optimize the 'select' statement inside any_func.
+------------------------------------------------------
+CREATE OR REPLACE FUNCTION any_func(p_dt date)
+RETURNS date
+LANGUAGE sql
+IMMUTABLE AS
+$$
+    select (date_trunc('month', p_dt) + interval '1 month')::date;
+$$
+EXECUTE ON ANY;
+
+create TABLE test_partitioned_2024 ( nagreementid int4 NULL, dtrepdate date NULL) DISTRIBUTED BY (nagreementid)
+PARTITION BY RANGE(dtrepdate) ( START ('2024-01-01'::date) END ('2024-12-31'::date) EVERY ('1 mon'::interval));
+
+CREATE OR REPLACE FUNCTION ret_date()
+RETURNS DATE AS
+$$
+DECLARE
+    fix_date DATE := '2024-02-10';
+BEGIN
+    RETURN fix_date;
+END;
+$$
+LANGUAGE plpgsql
+STABLE;
+
+explain select (select min(dtRepDate) from test_partitioned_2024 where dtRepDate = any_func(ret_date()));
+
+
+-- Testcases to validate the behavior of the GUC gp_max_system_slices
+
+-- start_ignore
+drop table if exists foo;
+drop table if exists bar;
+-- end_ignore
+
+create table foo (a int, b int) distributed by(a);
+create table bar (a int, b int) distributed by(a);
+
+-- gp_max_slices : 0 (unlimited) and gp_max_system_slices : 0 (unlimited)
+explain (costs off) select foo.a, foo.b from foo, bar where foo.b=bar.b;
+
+-- gp_max_slices : 1 and gp_max_system_slices : 0 (unlimited)
+-- Query should generate an error because the number of slices in the query exceeds the gp_max_slices
+set gp_max_slices=1;
+explain (costs off) select foo.a, foo.b from foo, bar where foo.b=bar.b;
+
+-- gp_max_slices : 0 (unlimited) and gp_max_system_slices : 1
+-- Query should generate an error because the number of slices in the query exceeds the gp_max_system_slices
+set gp_max_system_slices=1;
+reset gp_max_slices;
+explain (costs off) select foo.a, foo.b from foo, bar where foo.b=bar.b;
+reset gp_max_system_slices;
+
+-- Ensure that a regular user cannot set the GUC gp_max_system_slices
+create user ruser;
+set session authorization ruser;
+set gp_max_system_slices=10;
+reset session authorization;
+
+drop user ruser;
+drop table foo, bar;
+
+-- Ensure subplans only generate necessary number of slices
+set gp_max_slices=3;
+create table subplan_test_1(a int, b int);
+create table subplan_test_2(a int, b int);
+insert into subplan_test_1 values (1,1);
+insert into subplan_test_2 select i,i from generate_series(1,5)i;
+analyze subplan_test_1;
+analyze subplan_test_2;
+explain (costs off) select (select b from subplan_test_1 where subplan_test_1.b=subplan_test_2.b) from subplan_test_2;
+select (select b from subplan_test_1 where subplan_test_1.b=subplan_test_2.b) from subplan_test_2;
+reset gp_max_slices;
+
 -- check that ORCA plan, of the next query (the valid plan is generated after https://github.com/greenplum-db/gpdb/pull/14896 (1)),
 -- doesn't fallback to postgres like it was (due to https://github.com/arenadata/gpdb/pull/302 (2) which is applied above (1)).
 -- Previously there was a false-positive decision that plan contains an unpaired CTE consumer under the hazzard CPhysicalMotionRandom
@@ -3554,6 +3688,8 @@ DROP TABLE d, r;
 --                                                          Hash Key: share1_ref2.b
 --                                                          ->  Shared Scan (share slice:id 2:1)
 --  Optimizer: Pivotal Optimizer (GPORCA)
+--
+-- ORCA produces valid plan since 24a54a7
 
 CREATE TABLE d (a int, b int, c int) DISTRIBUTED BY (a);
 CREATE TABLE r (a int, b int, c char(255)) DISTRIBUTED REPLICATED;

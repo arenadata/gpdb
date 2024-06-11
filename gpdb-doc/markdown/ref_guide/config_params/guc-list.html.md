@@ -938,6 +938,16 @@ Specifies the executing interval \(in seconds\) of the global deadlock detector 
 |-----------|-------|-------------------|
 |5 - `INT_MAX` secs|120 secs|master, system, reload|
 
+## <a id="gp_keep_partition_children_locks"></a>gp_keep_partition_children_locks
+
+If turned on, maintains the relation locks on all append-optimized leaf partitions involved in a query until the end of a transaction. Turning this parameter on can help avoid relatively rare visibility issues in queries, such as `read beyond eof` when running concurrently with lazy `VACUUM`(s) directly on the leaves.
+
+> **Note** Turning `gp_keep_partition_children_locks` on implies that an additional lock will be held for each append-optimized child in each partition hierarchy involved in a query, until the end of transaction. You may require to increase the value of `max_locks_per_transaction`.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|Boolean|false|master, session, reload|
+
 ## <a id="gp_log_endpoints"></a>gp\_log\_endpoints
 
 Controls the amount of parallel retrieve cursor endpoint detail that Greenplum Database writes to the server log file.
@@ -1070,7 +1080,7 @@ The amount of shared memory, in kilobytes, allocated for query metrics. The defa
 |-----------|-------|-------------------|
 |integer `0 - 131072`|5120|master, system, restart|
 
-## <a id="gp_max_scan_on_shmem"></a>gp\_max\_scan\_on\_shmem 
+## <a id="gp_max_scan_on_shmem"></a>gp\_max\_scan\_on\_shmem
 
 Specifies the limit of maximum scan node's instrumentations per query in shmem. If table has many partitions, Postgres planner will generate a plan with many SCAN nodes under a APPEND node. If the number of partitions are too many, this plan will occupy too many slots. Here is a limitation on number of shmem slots used by scan nodes for each backend. Instruments exceeding the limitation are allocated in local memory.
 
@@ -1876,6 +1886,14 @@ This outputs a line to the server log detailing each successful connection. Some
 |-----------|-------|-------------------|
 |Boolean|off|local, system, reload|
 
+## <a id="log_checkpoints"></a>log\_checkpoints
+
+Causes checkpoints and restartpoints to be logged in the server log. Some statistics are included in the log messages, including the number of buffers written and the time spent writing them.
+
+|Value Range| Default | Set Classifications    |
+|-----------|---------|------------------------|
+|Boolean| on| local, system, reload  |
+
 ## <a id="log_disconnections"></a>log\_disconnections 
 
 This outputs a line in the server log at termination of a client session, and includes the duration of the session.
@@ -2365,6 +2383,18 @@ For information about GPORCA, see [About GPORCA](../../admin_guide/query/topics/
 |Value Range|Default|Set Classifications|
 |-----------|-------|-------------------|
 |Boolean|off|master, session, reload|
+
+## <a id="optimizer_enable_table_alias"></a>optimizer\_enable\_table\_alias 
+
+When GPORCA is enabled \(the default\) and this parameter is `true` \(the default\), 
+GPORCA uses table alias to prepare a query plan. This is consistent with Postgres optimizer.
+When set to `false`, GPORCA doesn't use table alias.
+
+For information about GPORCA, see [About GPORCA](../../admin_guide/query/topics/query-piv-optimizer.html) in the *Greenplum Database Administrator Guide*.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|Boolean|true|master, session, reload|
 
 ## <a id="optimizer_force_agg_skew_avoidance"></a>optimizer\_force\_agg\_skew\_avoidance 
 
@@ -3029,7 +3059,17 @@ When setting `temp_tablespaces` interactively, avoid specifying a nonexistent ta
 
 The default value is an empty string, which results in all temporary objects being created in the default tablespace of the current database.
 
-See also [default\_tablespace](#default_tablespace).
+See also [temp\_spill\_files\_tablespaces](#temp_spill_files_tablespaces), [default\_tablespace](#default_tablespace).
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|one or more tablespace names|unset|master, session, reload|
+
+## <a id="temp_spill_files_tablespaces"></a>temp\_spill\_files\_tablespaces
+
+Specifies tablespaces in which to create temporary files for purposes such as large data set sorting. This setting takes precedence over `temp_tablespaces` for temporary files.
+
+The value is a comma-separated list of tablespace names. When the list contains more than one tablespace name, Greenplum chooses a random list member each time it creates a temporary file. An exception applies within a transaction, where successively created temporary files are placed in successive tablespaces from the list. If the selected element of the list is an empty string, Greenplum automatically falls back to tablespaces specified in `temp_tablespaces`. If `temp_tablespaces` is empty, Greenplum uses the default tablespace of the current database instead.</p>
 
 |Value Range|Default|Set Classifications|
 |-----------|-------|-------------------|
@@ -3266,6 +3306,16 @@ The value of [wal\_sender\_timeout](#replication_timeout) controls the time that
 |Value Range|Default|Set Classifications|
 |-----------|-------|-------------------|
 |integer 0- INT\_MAX/1000|10 sec|master, system, reload, superuser|
+
+## <a id="wal_sender_archiving_status_interval"></a>wal\_sender\_archiving\_status\_interval
+
+When Greenplum Database segment mirroring and archiving is enabled, specifies the interval in milliseconds at which the `walsender` process on the primary segment sends archival status messages to the `walreceiver` process of its corresponding mirror segment.
+
+A value of 0 deactivates this feature.
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|0 - `INT_MAX`|10000 ms \(10 seconds\)|local, system, reload|
 
 ## <a id="work_mem"></a>work_mem
 

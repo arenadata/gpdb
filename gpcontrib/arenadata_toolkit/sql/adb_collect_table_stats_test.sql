@@ -1,3 +1,11 @@
+-- start_ignore
+-- Prepare DB for the test
+DROP TABLE IF EXISTS part_table, part_table_bigint, public.db_files_history;
+DROP FUNCTION IF EXISTS remove_partition_from_db_files_history();
+DROP EXTENSION IF EXISTS arenadata_toolkit;
+DROP SCHEMA IF EXISTS arenadata_toolkit CASCADE;
+--end_ignore
+
 CREATE EXTENSION arenadata_toolkit;
 SET search_path = arenadata_toolkit;
 
@@ -14,44 +22,97 @@ END$$
 LANGUAGE plpgsql VOLATILE
 EXECUTE ON MASTER;
 
--- There are not "db_files_history" and partitions
-SELECT count(inhrelid)
-FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+CREATE FUNCTION add_extra_partition_to_db_files_history()
+RETURNS VOID
+AS $$
+BEGIN
+	EXECUTE FORMAT($fmt$ALTER TABLE arenadata_toolkit.db_files_history SPLIT DEFAULT PARTITION
+		START (date %1$L) INCLUSIVE
+		END (date %2$L) EXCLUSIVE
+		INTO (PARTITION %3$I, default partition);$fmt$,
+			to_char(now() - interval '1 month', 'YYYY-MM-01'),
+			to_char(now(), 'YYYY-MM-01'),
+			'p'||to_char(now() - interval '1 month', 'YYYYMM'));
+END$$
+LANGUAGE plpgsql VOLATILE
+EXECUTE ON MASTER;
+
+-- Create a table with partitioning not by a column of the timestamp type.
+-- It is required to verify that adb_collect_table_stats() doesn't fail
+-- when there are tables with pertitioning not by timestamp presented.
+CREATE TABLE part_table_bigint (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION part_table_bigint_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION part_table_bigint_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
+
+-- Create a table with partitioning not by a column of the timestamp type
+-- and with the same name as 'db_files_history', but in a different schema.
+-- It is required to verify that adb_collect_table_stats() doesn't fail
+-- when there are tables with pertitioning not by timestamp presented.
+CREATE TABLE public.db_files_history (a int, b bigint)
+DISTRIBUTED BY (a)
+PARTITION BY RANGE(b)
+(
+	PARTITION pub_db_files_history_t1 START ('10'::bigint) END ('1000000'::bigint),
+	PARTITION pub_db_files_history_t2 START ('1000001'::bigint) END ('2000000'::bigint)
+);
 
 SELECT adb_create_tables();
 
 -- There are "db_files_history" and two partitions (default and for current month)
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 -- Remove partition from "db_files_history" for current month
 SELECT remove_partition_from_db_files_history();
 
 -- There is only default partition for "db_files_history"
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 SELECT adb_collect_table_stats();
 
 -- There are "db_files_history" and two partitions (default and for current month)
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 SELECT adb_collect_table_stats();
 
 -- There is not any new partitions for "db_files_history"
-SELECT count(inhrelid)
+SELECT count(1)
 FROM pg_inherits
-LEFT JOIN pg_class ON oid = inhparent
-WHERE relname = 'db_files_history';
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
+
+-- Create a partition for the month before the current one
+SELECT add_extra_partition_to_db_files_history();
+
+-- There are "db_files_history" and three partitions
+-- (default, for the current month and for the month before the current one)
+SELECT count(1)
+FROM pg_inherits
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
+
+-- Remove the partition from "db_files_history" for the current month
+SELECT remove_partition_from_db_files_history();
+
+-- There are "db_files_history" and two partitions (default and for the month before the current one)
+SELECT count(1)
+FROM pg_inherits
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
+
+SELECT adb_collect_table_stats();
+
+-- There are "db_files_history" and three partitions
+-- (default, for the current month and for the month before the current one)
+SELECT count(1)
+FROM pg_inherits
+WHERE inhparent = 'arenadata_toolkit.db_files_history'::regclass;
 
 -- Create table with partitions for test "INSERT INTO arenadata_toolkit.db_files_current"
 CREATE TABLE part_table (id INT, a INT, b INT, c INT, d INT, str TEXT)
@@ -87,6 +148,8 @@ where table_name LIKE 'part_table%'
 ORDER BY oid;
 
 -- Cleanup
-DROP TABLE part_table;
+DROP TABLE part_table, part_table_bigint, public.db_files_history;
 DROP FUNCTION remove_partition_from_db_files_history();
 DROP EXTENSION arenadata_toolkit;
+DROP SCHEMA arenadata_toolkit CASCADE;
+RESET client_min_messages;

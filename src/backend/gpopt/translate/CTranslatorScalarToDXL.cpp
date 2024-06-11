@@ -1029,6 +1029,7 @@ CTranslatorScalarToDXL::CreateScalarIfStmtFromCaseExpr(
 		CDXLNode *default_result_node =
 			TranslateScalarToDXL(case_expr->defresult, var_colid_mapping);
 		GPOS_ASSERT(NULL != default_result_node);
+		GPOS_ASSERT(NULL != cur_node);
 		cur_node->AddChild(default_result_node);
 	}
 
@@ -1568,13 +1569,6 @@ CTranslatorScalarToDXL::TranslateWindowFuncToDXL(
 				   GPOS_WSZ_LIT("Aggregate functions with FILTER"));
 	}
 
-	// FIXME: DISTINCT-qualified window aggregates are currently broken in ORCA.
-	if (window_func->windistinct)
-	{
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
-				   GPOS_WSZ_LIT("DISTINCT-qualified Window Aggregate"));
-	}
-
 	if (!m_context)
 		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
 				   GPOS_WSZ_LIT("Window function in a stand-alone expression"));
@@ -1756,6 +1750,7 @@ CTranslatorScalarToDXL::CreateQuantifiedSubqueryFromSublink(
 		dynamic_cast<CDXLScalarIdent *>(dxl_sc_ident->GetOperator());
 
 	// get the dxl column reference
+	GPOS_ASSERT(NULL != scalar_ident);
 	const CDXLColRef *dxl_colref = scalar_ident->GetDXLColRef();
 	const ULONG colid = dxl_colref->Id();
 
@@ -2433,8 +2428,10 @@ CTranslatorScalarToDXL::CreateIDatumFromGpdbDatum(CMemoryPool *mp,
 	ULONG length = md_type->Length();
 	if (!md_type->IsPassedByValue() && !is_null)
 	{
-		INT len =
-			dynamic_cast<const CMDTypeGenericGPDB *>(md_type)->GetGPDBLength();
+		const CMDTypeGenericGPDB *md_gpdb_type =
+			dynamic_cast<const CMDTypeGenericGPDB *>(md_type);
+		GPOS_ASSERT(NULL != md_gpdb_type);
+		INT len = md_gpdb_type->GetGPDBLength();
 		length = (ULONG) gpdb::DatumSize(gpdb_datum, md_type->IsPassedByValue(),
 										 len);
 	}

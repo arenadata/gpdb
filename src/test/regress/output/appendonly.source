@@ -1714,3 +1714,101 @@ select count(*) from fix_ao_truncate_last_sequence;
 (1 row)
 
 abort;
+-- check reporting of missing attributes for AO table
+-- start_ignore
+-- end_ignore
+create table test_reporting (id int) with (appendonly=true) distributed by (id);
+explain select xmin, * from test_reporting;
+ERROR:  AO-table has no "xmin" column
+LINE 1: explain select xmin, * from test_reporting;
+                       ^
+explain select xmax, * from test_reporting;
+ERROR:  AO-table has no "xmax" column
+LINE 1: explain select xmax, * from test_reporting;
+                       ^
+explain select cmin, * from test_reporting;
+ERROR:  AO-table has no "cmin" column
+LINE 1: explain select cmin, * from test_reporting;
+                       ^
+explain select cmax, * from test_reporting;
+ERROR:  AO-table has no "cmax" column
+LINE 1: explain select cmax, * from test_reporting;
+                       ^
+-- Check column oriented tables as well
+create table test_reporting_c (id int) 
+    with (appendonly=true, orientation=column) 
+    distributed by (id);
+explain select xmin, * from test_reporting_c;
+ERROR:  AO-table has no "xmin" column
+LINE 1: explain select xmin, * from test_reporting_c;
+                       ^
+explain select xmax, * from test_reporting_c;
+ERROR:  AO-table has no "xmax" column
+LINE 1: explain select xmax, * from test_reporting_c;
+                       ^
+explain select cmin, * from test_reporting_c;
+ERROR:  AO-table has no "cmin" column
+LINE 1: explain select cmin, * from test_reporting_c;
+                       ^
+explain select cmax, * from test_reporting_c;
+ERROR:  AO-table has no "cmax" column
+LINE 1: explain select cmax, * from test_reporting_c;
+                       ^
+-- Replicated tables using different code pathes and we want to be sure than 
+-- all code pathes are covered by tests.
+create table test_reporting_r (id int) with (appendonly=true) distributed replicated;
+explain select xmin, * from test_reporting_r;
+ERROR:  AO-table has no "xmin" column
+LINE 1: explain select xmin, * from test_reporting_r;
+                       ^
+explain select xmax, * from test_reporting_r;
+ERROR:  AO-table has no "xmax" column
+LINE 1: explain select xmax, * from test_reporting_r;
+                       ^
+explain select cmin, * from test_reporting_r;
+ERROR:  AO-table has no "cmin" column
+LINE 1: explain select cmin, * from test_reporting_r;
+                       ^
+explain select cmax, * from test_reporting_r;
+ERROR:  AO-table has no "cmax" column
+LINE 1: explain select cmax, * from test_reporting_r;
+                       ^
+drop table test_reporting;
+drop table test_reporting_r;
+drop table test_reporting_c;
+-- Test AO functions with execution location on dispatcher.
+create table t1 (a int) with (appendoptimized=true, orientation=row);
+create table t2 (a int) with (appendoptimized=true, orientation=column);
+create table tables_list (tname text);
+insert into tables_list values ('t1'), ('t2');
+-- Queries below should fail with a proper error message.
+select get_ao_compression_ratio(tname) from tables_list;
+ERROR:  function 'get_ao_compression_ratio' must be executed on the dispatcher
+select get_ao_distribution(tname) from tables_list;
+ERROR:  function 'get_ao_distribution' must be executed on the dispatcher
+select gp_update_ao_master_stats(tname) from tables_list;
+ERROR:  function 'gp_update_ao_master_stats' must be executed on the dispatcher
+-- Query below is an example how to get the result
+-- intended by the failing query above.
+explain (costs off) select get_ao_compression_ratio(tname) from
+	unnest(array(select tname from tables_list)) as tname;
+                    QUERY PLAN                    
+--------------------------------------------------
+ Function Scan on unnest tname
+   InitPlan 1 (returns $0)  (slice2)
+     ->  Gather Motion 3:1  (slice1; segments: 3)
+           ->  Seq Scan on tables_list
+ Optimizer: Postgres query optimizer
+(5 rows)
+
+select get_ao_compression_ratio(tname) from
+	unnest(array(select tname from tables_list)) as tname;
+ get_ao_compression_ratio 
+--------------------------
+                        1
+                       -1
+(2 rows)
+
+drop table t1;
+drop table t2;
+drop table tables_list;

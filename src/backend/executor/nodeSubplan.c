@@ -26,6 +26,7 @@
 #include "access/htup_details.h"
 #include "executor/executor.h"
 #include "executor/nodeSubplan.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "utils/array.h"
@@ -71,6 +72,8 @@ ExecSubPlan(SubPlanState *node,
 	EState	   *estate = node->planstate->state;
 	ScanDirection dir = estate->es_direction;
 	Datum		retval;
+
+	CHECK_FOR_INTERRUPTS();
 
 	/* Set default values for result flags: non-null, not a set result */
 	*isNull = false;
@@ -619,6 +622,8 @@ findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot,
 	InitTupleHashIterator(hashtable, &hashiter);
 	while ((entry = ScanTupleHashTable(&hashiter)) != NULL)
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		ExecStoreMinimalTuple(entry->firstTuple, hashtable->tableslot, false);
 		if (!execTuplesUnequal(slot, hashtable->tableslot,
 							   numCols, keyColIdx,
@@ -967,7 +972,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *queryDesc
 	SubLinkType subLinkType = subplan->subLinkType;
 	EState	   *estate = planstate->state;
 	ScanDirection dir = estate->es_direction;
-	MemoryContext oldcontext = NULL;;
+	volatile MemoryContext oldcontext = NULL;
 	TupleTableSlot *slot;
 	ListCell   *l;
 	bool		found = false;
@@ -979,7 +984,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *queryDesc
 	volatile bool explainRecvStats = false;
 
 	if (Gp_role == GP_ROLE_DISPATCH &&
-		planstate != NULL &&
 		planstate->plan != NULL &&
 		subplan->initPlanParallel)
 		shouldDispatch = true;

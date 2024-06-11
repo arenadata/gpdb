@@ -80,6 +80,14 @@ m/^NOTICE:  resource group required -- using .* resource group ".*"$/
 # be raised, and it is expected.  This could happen normally on the
 # random_numsegments pipeline job, so ignore this WARNING.
 m/^WARNING:  table ".*" contains rows in segment .*, which is outside the # of segments for the table's policy \(\d+ segments\)$/
+
+# Ignore "terminating connection due to administrator command" as the output is
+# not always echoed to the client.
+m/FATAL:  terminating connection due to administrator command/
+
+# Ignore creating zero-column table warning
+m/^WARNING:  creating a table with no columns./
+
 -- end_matchignore
 
 -- start_matchsubs
@@ -140,10 +148,16 @@ s/ERROR:  could not find hash function for hash operator.*/ERROR:  could not fin
 m/ERROR:  could not devise a plan.*/
 s/ERROR:  could not devise a plan.*/ERROR:  could not devise a plan/
 
+m/\(cdbmutate\.c\:\d+\)/
+s/\(cdbmutate\.c:\d+\)/\(cdbmutate\.c:XXX\)/
+
 # ignore establish time and segindex num
 m/ The shortest establish conn time: \d+\.\d+ ms, segindex: \d+,/
 s/ The shortest establish conn time: \d+\.\d+ ms, segindex: \d+,/ The shortest establish conn time: xx\.xx ms, segindex: xx,/
 m/ The longest  establish conn time: \d+\.\d+ ms, segindex: \d+/
 s/ The longest  establish conn time: \d+\.\d+ ms, segindex: \d+/ The longest  establish conn time: xx\.xx ms, segindex: xx/
 
+# ignore resource queue ids
+m/resource queue id: \d+/
+s/resource queue id: \d+/resource queue id: XXXX/
 -- end_matchsubs

@@ -1,5 +1,6 @@
 create schema qp_subquery;
 set search_path to qp_subquery;
+set optimizer_trace_fallback to on;
 begin;
 CREATE TABLE SUBSELECT_TBL1 (f1 integer, f2 integer, f3 float);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
@@ -1073,32 +1074,30 @@ create table TabDel4(a int not null, b int not null);
 insert into TabDel4 values(1,2);
 commit;
 explain delete from TabDel1 where TabDel1.a not in (select a from TabDel3); -- do not support this because we produce NLASJ
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
- Delete on tabdel1  (cost=1.09..3.17 rows=2 width=16)
-   ->  Explicit Redistribute Motion 3:3  (slice2; segments: 3)  (cost=1.09..3.17 rows=2 width=10)
-         ->  Hash Left Anti Semi (Not-In) Join  (cost=1.09..3.17 rows=2 width=10)
-               Hash Cond: tabdel1.a = tabdel3.a
-               ->  Seq Scan on tabdel1  (cost=0.00..2.03 rows=1 width=14)
-               ->  Hash  (cost=1.05..1.05 rows=1 width=4)
-                     ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..1.05 rows=1 width=4)
-                           ->  Seq Scan on tabdel3  (cost=0.00..1.01 rows=1 width=4)
- Optimizer status: Postgres query optimizer
-(9 rows)
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
+ Delete on tabdel1  (cost=1.09..4.17 rows=2 width=16)
+   ->  Hash Left Anti Semi (Not-In) Join  (cost=1.09..4.17 rows=2 width=16)
+         Hash Cond: (tabdel1.a = tabdel3.a)
+         ->  Seq Scan on tabdel1  (cost=0.00..3.03 rows=1 width=14)
+         ->  Hash  (cost=1.05..1.05 rows=1 width=10)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..1.05 rows=1 width=10)
+                     ->  Seq Scan on tabdel3  (cost=0.00..1.01 rows=1 width=10)
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 explain delete from TabDel2 where TabDel2.a not in (select a from TabDel4); -- support this
-                                               QUERY PLAN                                               
---------------------------------------------------------------------------------------------------------
+                                            QUERY PLAN                                            
+--------------------------------------------------------------------------------------------------
  Delete on tabdel2  (cost=1.09..4.17 rows=2 width=16)
-   ->  Explicit Redistribute Motion 3:3  (slice2; segments: 3)  (cost=1.09..4.17 rows=2 width=16)
-         ->  Hash Left Anti Semi (Not-In) Join  (cost=1.09..4.17 rows=2 width=16)
-               Hash Cond: (tabdel2.a = tabdel4.a)
-               ->  Seq Scan on tabdel2  (cost=0.00..3.03 rows=1 width=14)
-               ->  Hash  (cost=1.05..1.05 rows=1 width=10)
-                     ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..1.05 rows=1 width=10)
-                           ->  Seq Scan on tabdel4  (cost=0.00..1.01 rows=1 width=10)
+   ->  Hash Left Anti Semi (Not-In) Join  (cost=1.09..4.17 rows=2 width=16)
+         Hash Cond: (tabdel2.a = tabdel4.a)
+         ->  Seq Scan on tabdel2  (cost=0.00..3.03 rows=1 width=14)
+         ->  Hash  (cost=1.05..1.05 rows=1 width=10)
+               ->  Broadcast Motion 3:3  (slice1; segments: 3)  (cost=0.00..1.05 rows=1 width=10)
+                     ->  Seq Scan on tabdel4  (cost=0.00..1.01 rows=1 width=10)
  Optimizer: Postgres query optimizer
-(9 rows)
+(8 rows)
 
 delete from TabDel2 where TabDel2.a not in (select a from TabDel4); 
 select * from TabDel2;
@@ -1434,5 +1433,114 @@ where xx='dd';
 ----+---
 (0 rows)
 
+-- check various [NOT] EXISTS subqueries on materialized views
+create table t (a int, b int) distributed by (a);
+insert into t values (1, 1), (2, NULL), (NULL, 3);
+create materialized view v as select a, b from t distributed randomly;
+select * from v where exists (select a from v);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where exists (select a from v limit 0);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where exists (select a from v where a=2);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where exists (select a from v where a<>2);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where not exists (select a from v);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where not exists (select a from v limit 0);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where not exists (select a from v where a=2);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where not exists (select a from v where a<>2);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where exists (select b from v);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where exists (select b from v limit 0);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where exists (select b from v where b=2);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where exists (select b from v where b<>2);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where not exists (select b from v);
+ a | b 
+---+---
+(0 rows)
+
+select * from v where not exists (select b from v limit 0);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where not exists (select b from v where b=2);
+ a | b 
+---+---
+ 2 |  
+   | 3
+ 1 | 1
+(3 rows)
+
+select * from v where not exists (select b from v where b<>2);
+ a | b 
+---+---
+(0 rows)
+
 set client_min_messages='warning';
 drop schema qp_subquery cascade;
+reset optimizer_trace_fallback;

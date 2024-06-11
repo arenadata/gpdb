@@ -774,6 +774,17 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 	else
 		policy = getPolicyForDistributedBy(stmt->distributedBy, descriptor);
 
+	/* Greenplum specific code */
+	if (list_length(schema) == 0)
+	{
+		elogif(Gp_role == GP_ROLE_DISPATCH, WARNING,
+			   "creating a table with no columns.");
+
+		/* Guard code: see Github Issue 17271. */
+		if (GpPolicyIsHashPartitioned(policy))
+			policy = createRandomPartitionedPolicy(policy->numsegments);
+	}
+
 	/*
 	 * Find columns with default values and prepare for insertion of the
 	 * defaults.  Pre-cooked (that is, inherited) defaults go into a list of
@@ -1426,25 +1437,26 @@ CheckExclusiveAccess(Relation rel)
 }
 #endif
 
+/*
+ * Simple wrapper over RelationSetNewRelfilenode and called during TRUNCATE to
+ * assign a new relfilenode to auxiliary relations (toast and AO aux tables).
+ */
 static void
-relid_set_new_relfilenode(Oid relid, TransactionId recentXmin)
+relid_set_new_relfilenode(Oid relid, MultiXactId minmulti)
 {
 	if (OidIsValid(relid))
 	{
-		MultiXactId minmulti;
 		Relation rel;
-
 		rel = relation_open(relid, AccessExclusiveLock);
-
-		minmulti = GetOldestMultiXactId();
-
-		RelationSetNewRelfilenode(rel, recentXmin, minmulti);
+		RelationSetNewRelfilenode(rel, RecentXmin, minmulti);
+		if (rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
+			heap_create_init_fork(rel);
 		heap_close(rel, NoLock);
 	}
 }
 
 static void
-ao_aux_tables_safe_truncate(Relation rel)
+ao_aux_tables_safe_truncate(Relation rel, MultiXactId minmulti)
 {
 	if (!RelationIsAppendOptimized(rel))
 		return;
@@ -1459,9 +1471,9 @@ ao_aux_tables_safe_truncate(Relation rel)
 							  &aoblkdir_relid, NULL, &aovisimap_relid,
 							  NULL);
 
-	relid_set_new_relfilenode(aoseg_relid, RecentXmin);
-	relid_set_new_relfilenode(aoblkdir_relid, RecentXmin);
-	relid_set_new_relfilenode(aovisimap_relid, RecentXmin);
+	relid_set_new_relfilenode(aoseg_relid, minmulti);
+	relid_set_new_relfilenode(aoblkdir_relid, minmulti);
+	relid_set_new_relfilenode(aovisimap_relid, minmulti);
 
 	/*
 	 * Reset existing gp_fastsequence entries for the segrel to an initial entry.
@@ -1867,19 +1879,12 @@ ExecuteTruncate(TruncateStmt *stmt)
 			/*
 			 * The same for the toast table, if any.
 			 */
-			if (OidIsValid(toast_relid))
-			{
-				Relation toast_rel = relation_open(toast_relid, AccessExclusiveLock);
-				RelationSetNewRelfilenode(toast_rel, RecentXmin, minmulti);
-				if (toast_rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
-					heap_create_init_fork(toast_rel);
-				heap_close(toast_rel, NoLock);
-			}
+			relid_set_new_relfilenode(toast_relid, minmulti);
 
 			/*
 			 * The same for the ao auxiliary tables, if any.
 			 */
-			ao_aux_tables_safe_truncate(rel);
+			ao_aux_tables_safe_truncate(rel, minmulti);
 
 			/*
 			 * Reconstruct the indexes to match, and we're done.
@@ -3316,7 +3321,7 @@ RenameRelation(RenameStmt *stmt)
 	oldrelname = RelationGetRelationName(targetrelation);
 
 	/* if this is a child table of a partitioning configuration, complain */
-	if (stmt && rel_is_child_partition(relid) && !stmt->bAllowPartn)
+	if (rel_is_child_partition(relid) && !stmt->bAllowPartn)
 	{
 		Oid		 master = rel_partition_get_master(relid);
 		char	*pretty	= rel_get_part_path_pretty(relid,
@@ -3341,7 +3346,7 @@ RenameRelation(RenameStmt *stmt)
 	 * the rename of each partition is allowed, but this block doesn't
 	 * get invoked recursively.
 	 */
-	if (stmt && !rel_is_child_partition(relid) && !stmt->bAllowPartn &&
+	if (!rel_is_child_partition(relid) && !stmt->bAllowPartn &&
 		(Gp_role == GP_ROLE_DISPATCH))
 	{
 		PartitionNode *pNode;
@@ -6504,6 +6509,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 		econtext = GetPerTupleExprContext(estate);
 
+		Assert(newTupDesc && oldTupDesc);
+
 		/*
 		 * Make tuple slots for old and new tuples.  Note that even when the
 		 * tuples are the same, the tupDescs might not be (consider ADD COLUMN
@@ -6798,13 +6805,9 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 			 * We use the old tuple descriptor instead of oldrel's tuple descriptor,
 			 * which may already contain altered column.
 			 */
-			if (oldTupDesc)
-			{
-				Assert(oldTupDesc->natts <= nvp);
-				memset(proj, true, oldTupDesc->natts);
-			}
-			else
-				memset(proj, true, nvp);
+			
+			Assert(oldTupDesc->natts <= nvp);
+			memset(proj, true, oldTupDesc->natts);
 
 			if(newrel)
 				idesc = aocs_insert_init(newrel, segno, false);
@@ -7810,7 +7813,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * If we are adding an OID column, we have to tell Phase 3 to rewrite the
 	 * table to fix that.
 	 */
-	if (isOid)
+	if (tab && isOid)
 		tab->rewrite = true;
 
 	/*
@@ -7886,7 +7889,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * We have to do it while processing the root partition because that's the
 	 * only level where the `ADD COLUMN` subcommands are populated.
 	 */
-	if (!recursing && tab->relkind == RELKIND_RELATION)
+	if (!recursing && tab && tab->relkind == RELKIND_RELATION)
 	{
 		bool	aocs_write_new_columns_only;
 		/*
@@ -16057,10 +16060,11 @@ wack_pid_relname(AlterPartitionId 		 *pid,
 		*ppar_prule = (PgPartRule*) lfirst(lc);
 
 		par_prule = *ppar_prule;
+		Assert(par_prule);
 
 		*plrelname = par_prule->relname;
 
-		if (par_prule && par_prule->topRule && par_prule->topRule->children)
+		if (par_prule->topRule && par_prule->topRule->children)
 			*ppNode = par_prule->topRule->children;
 
 		lc = lnext(lc);
@@ -16612,6 +16616,7 @@ ATPExecPartDrop(Relation rel,
 								 "final partition ")));
 
 		}
+		Assert(prule->topRule != NULL);
 		rel2 = heap_open(prule->topRule->parchildrelid, NoLock);
 
 		elog(DEBUG5, "dropping partition oid %u", prule->topRule->parchildrelid);
@@ -16647,7 +16652,7 @@ ATPExecPartDrop(Relation rel,
 					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
-		if (prule->topRule && prule->topRule->children
+		if (prule->topRule->children
 			&& (ds->behavior != DROP_CASCADE ))
 		{
 			ereport(NOTICE,
@@ -16758,10 +16763,10 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 
 		prule = get_part_rule(rel, pid, true, true, NULL, false);
 
-		if (!prule)
+		if (!prule || prule->topRule == NULL)
 			return;
 
-		if (prule && prule->topRule && prule->topRule->children)
+		if (prule->topRule->children)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot EXCHANGE PARTITION for "
@@ -17126,6 +17131,7 @@ ATPExecPartRename(Relation rel,
 								lrelname,
 								NULL);
 
+		Assert(prule->topRule != NULL);
 		targetrelation = relation_open(prule->topRule->parchildrelid,
 									   AccessExclusiveLock);
 
@@ -17180,7 +17186,7 @@ ATPExecPartRename(Relation rel,
 		renStmt->newname = relname;
 		renStmt->bAllowPartn = true; /* allow rename of partitions */
 
-		if (prule && prule->topRule && prule->topRule->children)
+		if (prule->topRule->children)
 				pNode = prule->topRule->children;
 		else
 				pNode = NULL;
@@ -17921,6 +17927,7 @@ ATPExecPartSplit(Relation *rel,
 		prule = get_part_rule(*rel, pid, true, true, NULL, false);
 
 		/* Error out on external partition */
+		Assert(prule->topRule != NULL);
 		existrel = heap_open(prule->topRule->parchildrelid, NoLock);
 		if (RelationIsExternal(existrel))
 		{
@@ -18384,8 +18391,7 @@ ATPExecPartSplit(Relation *rel,
 						/* MPP-6589: if the partition has an "open"
 						 * START, pass a NULL partStart
 						 */
-						if (prule->topRule &&
-							prule->topRule->parrangestart)
+						if (prule->topRule->parrangestart)
 						{
 							ri = makeNode(PartitionRangeItem);
 							ri->location = -1;
@@ -18423,8 +18429,7 @@ ATPExecPartSplit(Relation *rel,
 						/* MPP-6589: if the partition has an "open"
 						 * END, pass a NULL partEnd
 						 */
-						if (prule->topRule &&
-							prule->topRule->parrangeend)
+						if (prule->topRule->parrangeend)
 						{
 							ri = makeNode(PartitionRangeItem);
 							ri->location = -1;
@@ -19356,6 +19361,7 @@ ATPExecPartTruncate(Relation rel,
 		DestReceiver 	*dest = None_Receiver;
 		Relation	  	 rel2;
 
+		Assert(prule->topRule != NULL);
 		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 		if (RelationIsExternal(rel2))
 			ereport(ERROR,
@@ -19386,7 +19392,7 @@ ATPExecPartTruncate(Relation rel,
 					   NULL);
 
 		/* Notify of name if did not use name for partition id spec */
-		if (prule && prule->topRule && prule->topRule->children
+		if (prule->topRule->children
 			&& (ts->behavior != DROP_CASCADE ))
 		{
 			ereport(NOTICE,

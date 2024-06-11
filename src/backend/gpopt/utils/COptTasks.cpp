@@ -301,7 +301,7 @@ COptTasks::ConvertToPlanStmtFromDXL(
 
 	CContextDXLToPlStmt dxl_to_plan_stmt_ctxt(
 		mp, &plan_id_generator, &motion_id_generator, &param_id_generator,
-		distribution_hashops, &table_list, &subplans_list);
+		distribution_hashops, &table_list, &subplans_list, orig_query);
 
 	// translate DXL -> PlannedStmt
 	CTranslatorDXLToPlStmt dxl_to_plan_stmt_translator(
@@ -498,11 +498,13 @@ COptTasks::OptimizeTask(void *ptr)
 	{
 		CMDCache::Init();
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
+		gpdb::MDCacheResetTransientState();
 	}
 	else if (reset_mdcache)
 	{
 		CMDCache::Reset();
 		CMDCache::SetCacheQuota(optimizer_mdcache_size * 1024L);
+		gpdb::MDCacheResetTransientState();
 	}
 	else if (CMDCache::ULLGetCacheQuota() !=
 			 (ULLONG) optimizer_mdcache_size * 1024L)
@@ -636,12 +638,15 @@ COptTasks::OptimizeTask(void *ptr)
 		CRefCount::SafeRelease(plan_dxl);
 		CMDCache::Shutdown();
 
-		IErrorContext *errctxt = CTask::Self()->GetErrCtxt();
+		CTask *task = CTask::Self();
+		IErrorContext *errctxt = (NULL != task) ? task->GetErrCtxt() : NULL;
 
 		opt_ctxt->m_should_error_out = ShouldErrorOut(ex);
 		opt_ctxt->m_is_unexpected_failure = IsLoggableFailure(ex);
 		opt_ctxt->m_error_msg =
-			CreateMultiByteCharStringFromWCString(errctxt->GetErrorMsg());
+			(NULL != errctxt)
+				? CreateMultiByteCharStringFromWCString(errctxt->GetErrorMsg())
+				: NULL;
 
 		GPOS_RETHROW(ex);
 	}

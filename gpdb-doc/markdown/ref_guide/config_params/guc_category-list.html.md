@@ -125,6 +125,7 @@ These parameters control the usage of GPORCA by Greenplum Database. For informat
 - [optimizer_enable_multiple_distinct_aggs](guc-list.html#optimizer_enable_multiple_distinct_aggs)
 - [optimizer_enable_orderedagg](guc-list.html#optimizer_enable_orderedagg)
 - [optimizer_enable_replicated_table](guc-list.html#optimizer_enable_replicated_table)
+- [optimizer_enable_table_alias](guc-list.html#optimizer_enable_table_alias)
 - [optimizer_force_agg_skew_avoidance](guc-list.html#optimizer_force_agg_skew_avoidance)
 - [optimizer_force_comprehensive_join_implementation](guc-list.html#optimizer_force_comprehensive_join_implementation)
 - [optimizer_force_multistage_agg](guc-list.html#optimizer_force_multistage_agg)
@@ -175,6 +176,7 @@ The following parameters control the types of plan operations the Postgres Plann
 - [gp_enable_relsize_collection](guc-list.html#gp_enable_relsize_collection)
 - [gp_enable_sort_distinct](guc-list.html#gp_enable_sort_distinct)
 - [gp_enable_sort_limit](guc-list.html#gp_enable_sort_limit)
+- [gp_keep_partition_children_locks](#gp_keep_partition_children_locks)
 
 ### <a id="topic23"></a>Postgres Planner Costing Parameters 
 
@@ -340,6 +342,7 @@ These configuration parameters set defaults that are used for client connections
 - [search_path](guc-list.html#search_path)
 - [statement_timeout](guc-list.html#statement_timeout)
 - [temp_tablespaces](guc-list.html#temp_tablespaces)
+- [temp_spill_files_tablespaces](guc-list.html#temp_spill_files_tablespaces)
 - [vacuum_freeze_min_age](guc-list.html#vacuum_freeze_min_age)
 
 ### <a id="topic41"></a>Locale and Formatting Parameters 
@@ -531,6 +534,7 @@ These parameters control the configuration of the replication between Greenplum 
 - [wait_for_replication_threshold](guc-list.html#wait_for_replication_threshold)
 - [wal_keep_segments](guc-list.html#wal_keep_segments)
 - [wal_receiver_status_interval](guc-list.html#wal_receiver_status_interval)
+- [wal_sender_archiving_status_interval](guc-list.html#wal_sender_archiving_status_interval)
 
 ## <a id="topic56"></a>Greenplum PL/Java Parameters 
 

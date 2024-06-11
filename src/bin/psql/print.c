@@ -639,7 +639,7 @@ print_aligned_text(const printTableContent *cont, FILE *fout)
 	if (opt_border == 0)
 		width_total = col_count;
 	else if (opt_border == 1)
-		width_total = col_count * 3 - 1;
+		width_total = col_count * 3 - ((col_count > 0) ? 1 : 0);
 	else
 		width_total = col_count * 3 + 1;
 	total_header_width = width_total;
@@ -874,7 +874,7 @@ print_aligned_text(const printTableContent *cont, FILE *fout)
 						fputs(!header_done[i] ? format->header_nl_right : " ",
 							  fout);
 
-					if (opt_border != 0 && i < col_count - 1)
+					if (opt_border != 0 && col_count > 0 && i < col_count - 1)
 						fputs(dformat->midvrule, fout);
 				}
 				curr_nl_line++;
@@ -929,7 +929,8 @@ print_aligned_text(const printTableContent *cont, FILE *fout)
 				struct lineptr *this_line = &col_lineptrs[j][curr_nl_line[j]];
 				int			bytes_to_output;
 				int			chars_to_output = width_wrap[j];
-				bool		finalspaces = (opt_border == 2 || j < col_count - 1);
+				bool		finalspaces = (opt_border == 2 ||
+								(col_count > 0 && j < col_count - 1));
 
 				/* Print left-hand wrap or newline mark */
 				if (opt_border != 0)
@@ -1023,11 +1024,11 @@ print_aligned_text(const printTableContent *cont, FILE *fout)
 					fputs(format->wrap_right, fout);
 				else if (wrap[j] == PRINT_LINE_WRAP_NEWLINE)
 					fputs(format->nl_right, fout);
-				else if (opt_border == 2 || j < col_count - 1)
+				else if (opt_border == 2 || (col_count > 0 && j < col_count - 1))
 					fputc(' ', fout);
 
 				/* Print column divider, if not the last column */
-				if (opt_border != 0 && j < col_count - 1)
+				if (opt_border != 0 && (col_count > 0 && j < col_count - 1))
 				{
 					if (wrap[j + 1] == PRINT_LINE_WRAP_WRAP)
 						fputs(format->midvrule_wrap, fout);
@@ -1179,8 +1180,18 @@ print_aligned_vertical(const printTableContent *cont, FILE *fout)
 	if (cont->cells[0] == NULL && cont->opt->start_table &&
 		cont->opt->stop_table)
 	{
-		if (!opt_tuples_only && cont->opt->default_footer)
-			fprintf(fout, _("(No rows)\n"));
+		printTableFooter *footers = footers_with_default(cont);
+		
+		if (!opt_tuples_only && !cancel_pressed && footers)
+		{
+			printTableFooter *f;
+
+			for (f = footers; f; f = f->next)
+				fprintf(fout, "%s\n", f->data);
+		}
+
+		fputc('\n', fout);
+
 		return;
 	}
 
@@ -2301,6 +2312,8 @@ void
 printTableInit(printTableContent *const content, const printTableOpt *opt,
 			   const char *title, const int ncolumns, const int nrows)
 {
+	long total_cells;
+
 	content->opt = opt;
 	content->title = title;
 	content->ncolumns = ncolumns;
@@ -2308,7 +2321,8 @@ printTableInit(printTableContent *const content, const printTableOpt *opt,
 
 	content->headers = pg_malloc0((ncolumns + 1) * sizeof(*content->headers));
 
-	content->cells = pg_malloc0((ncolumns * nrows + 1) * sizeof(*content->cells));
+	total_cells = (long)ncolumns * (long)nrows;
+	content->cells = pg_malloc0((total_cells + 1) * sizeof(*content->cells));
 
 	content->cellmustfree = NULL;
 	content->footers = NULL;
@@ -2378,15 +2392,18 @@ void
 printTableAddCell(printTableContent *const content, char *cell,
 				  const bool translate, const bool mustfree)
 {
+	long total_cells;
 #ifndef ENABLE_NLS
 	(void) translate;			/* unused parameter */
 #endif
 
-	if (content->cellsadded >= content->ncolumns * content->nrows)
+	/* product of cols and rows, using long type to prevent the int overflow */
+	total_cells = (long)content->ncolumns * (long)content->nrows;
+	if (content->cellsadded >= total_cells)
 	{
 		fprintf(stderr, _("Cannot add cell to table content: "
-						  "total cell count of %d exceeded.\n"),
-				content->ncolumns * content->nrows);
+						  "total cell count of %ld exceeded, cells added: %ld.\n"),
+				total_cells, content->cellsadded);
 		exit(EXIT_FAILURE);
 	}
 
@@ -2402,7 +2419,7 @@ printTableAddCell(printTableContent *const content, char *cell,
 	{
 		if (content->cellmustfree == NULL)
 			content->cellmustfree =
-				pg_malloc0((content->ncolumns * content->nrows + 1) * sizeof(bool));
+				pg_malloc0((total_cells + 1) * sizeof(bool));
 
 		content->cellmustfree[content->cellsadded] = true;
 	}
@@ -2470,9 +2487,10 @@ printTableCleanup(printTableContent *const content)
 {
 	if (content->cellmustfree)
 	{
-		int			i;
-
-		for (i = 0; i < content->nrows * content->ncolumns; i++)
+		long		i;
+		long		total_cells;
+		total_cells = (long)content->ncolumns * (long)content->nrows;
+		for (i = 0; i < total_cells; i++)
 		{
 			if (content->cellmustfree[i])
 				free((char *) content->cells[i]);

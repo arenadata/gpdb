@@ -22,6 +22,8 @@
 #include "postgres.h"
 
 #include <signal.h>
+#include <unistd.h>
+
 #include "access/xact.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
@@ -496,6 +498,17 @@ FaultInjector_InjectFaultIfSet_out_of_line(
 			break;
 		}
 
+		case FaultInjectorTypeExitNoCallbacks:
+		{
+			ereport(LOG,
+					(errcode(ERRCODE_FAULT_INJECT),
+						errmsg("fault triggered, fault name:'%s' fault type:'%s' ",
+							   entryLocal->faultName,
+							   FaultInjectorTypeEnumToString[entryLocal->faultInjectorType])));
+			_exit(entryLocal->extraArg);
+			break;
+		}
+
 		default:
 			
 			ereport(LOG, 
@@ -918,7 +931,7 @@ HandleFaultMessage(const char* msg)
 	char *result;
 	int len;
 
-	if (sscanf(msg, "faultname=%s type=%s ddl=%s db=%s table=%s "
+	if (sscanf(msg, "faultname=%63s type=%63s ddl=%63s db=%63s table=%63s "
 			   "start=%d end=%d extra=%d sid=%d",
 			   name, type, ddl, db, table, &start, &end, &extra, &sid) != 9)
 		elog(ERROR, "invalid fault message: %s", msg);

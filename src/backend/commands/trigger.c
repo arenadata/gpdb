@@ -2517,6 +2517,10 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 	 */
 	if (newSlot != NULL)
 	{
+		/*
+		 * estate->es_junkFilter is used for SELECT,
+		 * Here we should use relinfo->ri_junkFilter instead of estate->es_junkFilter.
+		 */
 		slot = ExecFilterJunk(relinfo->ri_junkFilter, newSlot);
 		slottuple = ExecFetchSlotHeapTuple(slot);
 		newtuple = slottuple;
@@ -3466,7 +3470,7 @@ afterTriggerAddEvent(AfterTriggerEventList *events,
 
 		if (events->head == NULL)
 			events->head = chunk;
-		else
+		else if (events->tail != NULL)
 			events->tail->next = chunk;
 		events->tail = chunk;
 		/* events->tailfree is now out of sync, but we'll fix it below */

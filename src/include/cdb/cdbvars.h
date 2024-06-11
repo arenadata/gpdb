@@ -318,6 +318,7 @@ extern int	gp_dtx_recovery_interval;
 extern int	gp_dtx_recovery_prepared_period;
 
 extern int gp_gang_creation_retry_count; /* How many retries ? */
+extern bool gp_gang_creation_retry_non_recovery; /* Retry non-recovery related failures ? */
 extern int gp_gang_creation_retry_timer; /* How long between retries */
 
 /* GUCs to control TCP keepalive settings for dispatch libpq connections */
@@ -796,6 +797,8 @@ extern bool gp_dynamic_partition_pruning;
 extern bool gp_cte_sharing;
 /* Enable RECURSIVE clauses in common table expressions */
 extern bool gp_recursive_cte;
+/* Enable shared scan in three stage agg */
+extern bool gp_enable_mdqa_shared_scan;
 
 /* Enable check for compatibility of encoding and locale in createdb */
 extern bool gp_encoding_check_locale_compatibility;

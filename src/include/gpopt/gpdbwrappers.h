@@ -21,6 +21,7 @@ extern "C" {
 #include "access/attnum.h"
 #include "nodes/plannodes.h"
 #include "parser/parse_coerce.h"
+#include "storage/lmgr.h"
 #include "utils/faultinjector.h"
 #include "utils/lsyscache.h"
 }
@@ -683,8 +684,19 @@ FaultInjectorType_e InjectFaultInOptTasks(const char *fault_name);
 gpos::ULONG CountLeafPartTables(Oid oidRelation);
 
 // Does the metadata cache need to be reset (because of a catalog
-// table has been changed?)
+// table has been changed or TransactionXmin changed from that we saved)?
 bool MDCacheNeedsReset(void);
+
+// Check that the index is usable in the current snapshot and if not, save the
+// xmin of the current snapshot. Returns true if the index is not usable and
+// should be skipped.
+bool MDCacheSetTransientState(Relation index_rel);
+
+// reset TransactionXmin value that we saved
+void MDCacheResetTransientState(void);
+
+// returns true if cache is in transient state
+bool MDCacheInTransientState(void);
 
 // returns true if a query cancel is requested in GPDB
 bool IsAbortRequested(void);
@@ -709,6 +721,42 @@ MemoryContext GPDBAllocSetContextCreate();
 void GPDBMemoryContextDelete(MemoryContext context);
 
 bool IsTypeRange(Oid typid);
+
+RowMarkClause *GetParseRowmark(Query *query, Index rtindex);
+
+List *FindAllInheritors(Oid parentrelId, LOCKMODE lockmode, List **numparents);
+
+gpos::BOOL WalkQueryTree(Query *query, bool (*walker)(), void *context,
+						 int flags);
+
+void GPDBLockRelationOid(Oid reloid, LOCKMODE lockmode);
+
+// find the targetlist entry matching the given SortGroupClause
+Node *GetSortGroupClauseExpr(SortGroupClause *sgclause, List *targetlist);
+
+// append an integer to a list, if it was not in the list before
+List *LAppendUniqueInt(List *list, int datum);
+
+// append a datum to a list, if it was not in the list before
+List *LAppendUnique(List *list, void *datum);
+
+// return true if the integer 'datum' is a member of the list
+bool ListMemberInt(List *list, int datum);
+
+// get default sorting/grouping operators for type
+void GetSortGroupOperators(Oid argtype, bool need_lt, bool need_eq,
+						   bool need_gt, Oid *lt_opr, Oid *eq_opr, Oid *gt_opr,
+						   bool *hashable);
+
+// assign the targetentry an unused ressortgroupref, if it doesn't already have one.
+Index AssignSortGroupRef(TargetEntry *tle, List *tlist);
+
+// find the IDs of the relations to which a constraint refers
+void GetConstraintRelationOids(Oid constraint_oid, Oid *conrelid,
+							   Oid *confrelid);
+
+// find the columns of the relations to which a constraint refers
+List *GetConstraintRelationColumns(Oid constraint_oid);
 
 }  //namespace gpdb
 

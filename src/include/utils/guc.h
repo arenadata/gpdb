@@ -354,6 +354,9 @@ extern int gp_max_partition_level;
 extern bool gp_perfmon_print_packet_info;
 
 extern bool gp_enable_relsize_collection;
+extern bool gp_keep_partition_children_locks;
+
+extern int wal_sender_archiving_status_interval;
 
 /* Debug DTM Action */
 typedef enum
@@ -485,6 +488,8 @@ extern bool optimizer_enable_direct_dispatch;
 extern bool optimizer_enable_master_only_queries;
 extern bool optimizer_enable_hashjoin;
 extern bool optimizer_enable_dynamictablescan;
+extern bool optimizer_enable_dynamicindexscan;
+extern bool optimizer_enable_dynamicbitmapscan;
 extern bool optimizer_enable_indexscan;
 extern bool optimizer_enable_indexonlyscan;
 extern bool optimizer_enable_tablescan;
@@ -498,6 +503,7 @@ extern bool optimizer_prune_unused_columns;
 extern bool optimizer_enable_redistribute_nestloop_loj_inner_child;
 extern bool optimizer_force_comprehensive_join_implementation;
 extern bool optimizer_enable_replicated_table;
+extern bool optimizer_enable_right_outer_join;
 
 /* Optimizer plan enumeration related GUCs */
 extern bool optimizer_enumerate_plans;
@@ -556,12 +562,14 @@ extern bool optimizer_analyze_midlevel_partition;
 extern bool optimizer_analyze_enable_merge_of_leaf_stats;
 
 extern bool optimizer_use_gpdb_allocators;
+extern bool optimizer_enable_table_alias;
 
 /* optimizer GUCs for replicated table */
 extern bool optimizer_replicated_table_insert;
 
 /* GUCs for slice table*/
 extern int	gp_max_slices;
+extern int	gp_max_system_slices;
 
 /**
  * Enable logging of DPE match in optimizer.
@@ -696,6 +704,7 @@ extern const char *GetConfigOption(const char *name, bool missing_ok,
 extern const char *GetConfigOptionResetString(const char *name);
 extern int	GetConfigOptionFlags(const char *name, bool missing_ok);
 extern void ProcessConfigFile(GucContext context);
+extern List *ProcessConfigFileForSync(GucContext context);
 extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions(void);
@@ -778,6 +787,7 @@ extern void GUC_check_errcode(int sqlerrcode);
 extern bool check_default_tablespace(char **newval, void **extra, GucSource source);
 extern bool check_temp_tablespaces(char **newval, void **extra, GucSource source);
 extern void assign_temp_tablespaces(const char *newval, void *extra);
+extern void assign_temp_spill_files_tablespaces(const char *newval, void *extra);
 
 /* in catalog/namespace.c */
 extern bool check_search_path(char **newval, void **extra, GucSource source);
@@ -805,6 +815,7 @@ extern bool gpvars_check_gp_enable_gpperfmon(bool *newval, void **extra, GucSour
 extern bool gpvars_check_gp_gpperfmon_send_interval(int *newval, void **extra, GucSource source);
 extern int guc_name_compare(const char *namea, const char *nameb);
 extern void DispatchSyncPGVariable(struct config_generic * gconfig);
+extern void DispatchSyncPGVariableExplicit(struct config_generic * gconfig);
 
 
 extern StdRdOptions *defaultStdRdOptions(char relkind);

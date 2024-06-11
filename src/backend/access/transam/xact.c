@@ -2739,6 +2739,7 @@ CommitTransaction(void)
 
 	if (notifyCommittedDtxTransactionIsNeeded())
 	{
+		SIMPLE_FAULT_INJECTOR("before_notify_commited_dtx_transaction");
 		/*
 		 * Do 2nd phase of commit to all QE. NOTE: we can't process
 		 * signals (which may attempt to abort our now partially-completed
@@ -5043,6 +5044,7 @@ void
 BeginInternalSubTransaction(char *name)
 {
 	TransactionState s = CurrentTransactionState;
+	SIMPLE_FAULT_INJECTOR("begin_internal_sub_transaction");
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{

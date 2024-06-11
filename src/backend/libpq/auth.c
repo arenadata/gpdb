@@ -261,7 +261,7 @@ static void
 auth_failed(Port *port, int status, char *logdetail)
 {
 	const char *errstr;
-	char	   *cdetail;
+	char	   *cdetail = NULL;
 	int			errcode_return = ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION;
 
 	/*
@@ -329,8 +329,8 @@ auth_failed(Port *port, int status, char *logdetail)
 			errstr = gettext_noop("authentication failed for user \"%s\": invalid authentication method");
 			break;
 	  }
-	}
 
+	/* FIXME: indent this */
 	cdetail = psprintf(_("Connection matched pg_hba.conf line %d: \"%s\""),
 					   port->hba->linenumber, port->hba->rawline);
 
@@ -344,6 +344,7 @@ auth_failed(Port *port, int status, char *logdetail)
         cdetail = NULL;
         logdetail = NULL;
     }
+	}
 
 	if (logdetail)
 		logdetail = psprintf("%s\n%s", logdetail, cdetail);
@@ -526,10 +527,10 @@ internal_client_authentication(Port *port)
 		 *
 		 * The goal here is to block network connection from out of
 		 * master to master db with magic bit packet.
-		 * So, only when it comes from the same host, the connection
-		 * is authenticated, if this connection is TCP/UDP.
 		 *
-		 * If unix domain socket comes, just authenticate it.
+		 * Internal connections originating from the same host (be it TCP/IP or
+		 * Unix domain socket) are considered already authenticated, and receive
+		 * a free pass.
 		 */
 		if (port->raddr.addr.ss_family == AF_INET
 #ifdef HAVE_IPV6
@@ -539,18 +540,18 @@ internal_client_authentication(Port *port)
 		{
 			if (check_same_host_or_net(&port->raddr, ipCmpSameHost))
 			{
-				if (gp_reject_internal_tcp_conn)
-				{
-					elog(DEBUG1, "rejecting TCP connection to master using internal"
-						 "connection protocol, because the GUC gp_reject_internal_tcp_conn is true");
-					return false;
-				}
-				else
-				{
-					elog(DEBUG1, "received same host internal TCP connection");
-					FakeClientAuthentication(port);
-					return true;
-				}
+				/*
+				 * Note: We do take steps to prevent TCP/IP connections from the
+				 * coordinator to entry DB QEs (see cdbconn_doConnectStart()),
+				 * in favor of Unix domain socket communication. However, if
+				 * PGHOST is set in the coordinator's environment to a hostname,
+				 * then the connection will still be TCP/IP.
+				 */
+				ereport(DEBUG1,
+						(errmsg("received same host internal connection over TCP/IP"),
+						 errdetail("check if PGHOST or PGHOSTADDR is set in the coordinator environment")));
+				FakeClientAuthentication(port);
+				return true;
 			}
 
 			/* Security violation? */
@@ -2593,6 +2594,14 @@ InitializeLDAPConnection(Port *port, LDAP **ldap)
 		return STATUS_ERROR;
 	}
 
+	if ((r = ldap_set_option(*ldap, LDAP_OPT_RESTART, LDAP_OPT_ON)) != LDAP_SUCCESS)
+	{
+		ldap_unbind(*ldap);
+		ereport(LOG,
+				(errmsg("could not set LDAP restart: %s", ldap_err2string(r))));
+		return STATUS_ERROR;
+	}
+
 	if (port->hba->ldaptls)
 	{
 #ifndef WIN32
@@ -3070,13 +3079,17 @@ CheckRADIUSAuth(Port *port)
 
 	passwd = recv_password_packet(port);
 	if (passwd == NULL)
+	{
+		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
 		return STATUS_EOF;		/* client wouldn't send password */
+	}
 
 	if (strlen(passwd) > RADIUS_VECTOR_LENGTH)
 	{
 		ereport(LOG,
 				(errmsg("RADIUS authentication does not support passwords longer than 16 characters")));
 		pfree(passwd);
+		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
 		return STATUS_ERROR;
 	}
 
@@ -3089,6 +3102,7 @@ CheckRADIUSAuth(Port *port)
 		ereport(LOG,
 				(errmsg("could not generate random encryption vector")));
 		pfree(passwd);
+		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
 		return STATUS_ERROR;
 	}
 #else
@@ -3114,6 +3128,7 @@ CheckRADIUSAuth(Port *port)
 				(errmsg("could not perform MD5 encryption of password")));
 		pfree(passwd);
 		pfree(cryptvector);
+		pg_freeaddrinfo_all(hint.ai_family, serveraddrs);
 		return STATUS_ERROR;
 	}
 	pfree(cryptvector);

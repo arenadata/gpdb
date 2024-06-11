@@ -113,6 +113,12 @@ int	max_tm_gxacts = 100;
 
 #define GP_OPT_EXPLICT_BEGIN      						0x0020
 
+/*
+ * Some context to distinguish between user-invoked SET commands and explicit
+ * QD to QE config synchronization.
+ */
+#define GP_OPT_SYNCHRONIZATION_SET						0x0040
+
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
@@ -1217,6 +1223,17 @@ mppTxnOptions(bool needDtx)
 }
 
 int
+mppTxnOptionsForSync(bool needDtx, bool isSync)
+{
+	int flags = mppTxnOptions(needDtx);
+
+	if (isSync)
+		flags |= GP_OPT_SYNCHRONIZATION_SET;
+
+	return flags;
+}
+
+int
 mppTxOptions_IsoLevel(int txnOptions)
 {
 	if ((txnOptions & GP_OPT_ISOLATION_LEVEL_MASK) == GP_OPT_SERIALIZABLE)
@@ -1250,6 +1267,12 @@ bool
 isMppTxOptions_ExplicitBegin(int txnOptions)
 {
 	return ((txnOptions & GP_OPT_EXPLICT_BEGIN) != 0);
+}
+
+bool
+isMppTxOptions_SynchronizationSet(int txnOptions)
+{
+	return ((txnOptions & GP_OPT_SYNCHRONIZATION_SET) != 0);
 }
 
 /*=========================================================================
@@ -1286,7 +1309,7 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 							 int serializedDtxContextInfoLen)
 {
 	int			i,
-				resultCount,
+				resultCount = 0,
 				numOfFailed = 0;
 
 	char	   *dtxProtocolCommandStr = 0;
@@ -1320,24 +1343,29 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 
 	if (qeError)
 	{
-		if (!raiseError)
+		/*
+		 * Report the ERROR under Debug_print_full_dtm, as it can be lost as we
+		 * flush below and the caller may forget to CopyErrorData(). Also, in
+		 * some cases caller may not be able to act on the copy (e.g. due to
+		 * another error).
+		 */
+		ereportif(Debug_print_full_dtm, LOG,
+				  (errmsg("error on dispatch of dtx protocol command '%s' for gid '%s'",
+						  dtxProtocolCommandStr, gid),
+				   errdetail("QE reported error: %s", qeError->message)));
+
+		if (raiseError)
 		{
-			ereport(LOG,
-					(errmsg("DTM error (gathered results from cmd '%s')", dtxProtocolCommandStr),
-					 errdetail("QE reported error: %s", qeError->message)));
-		}
-		else
-		{
+			/* flush then rethrow, to avoid overflowing the error stack */
 			FlushErrorState();
 			ThrowErrorData(qeError);
 		}
-		return false;
 	}
 
 	if (results == NULL)
 	{
-		numOfFailed++;			/* If we got no results, we need to treat it
-								 * as an error! */
+		/* If we got no results, we need to treat it as an error! */
+		return false;
 	}
 
 	for (i = 0; i < resultCount; i++)
@@ -1420,8 +1448,7 @@ doDispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	if (waitGxids)
 		pfree(waitGxids);
 
-	if (results)
-		pfree(results);
+	pfree(results);
 
 	return (numOfFailed == 0);
 }

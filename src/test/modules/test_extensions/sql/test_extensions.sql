@@ -1,6 +1,7 @@
 -- CVE-2022-2625
 -- https://github.com/postgres/postgres/commit/5919bb5a5989cda232ac3d1f8b9d90f337be2077
 --
+CREATE SCHEMA has$dollar;
 -- It's generally bad style to use CREATE OR REPLACE unnecessarily.
 -- Test what happens if an extension does it anyway.
 -- Replacing a shell type or operator is sort of like CREATE OR REPLACE;
@@ -185,3 +186,29 @@ show search_path;
 
 reset search_path;
 drop schema issue6716 cascade;
+
+--
+-- Test @extschema@ syntax.
+--
+CREATE SCHEMA "has space";
+CREATE EXTENSION test_ext_extschema SCHEMA has$dollar;
+CREATE EXTENSION test_ext_extschema SCHEMA "has space";
+
+--
+-- Test that extension not depends on AO aux tables
+--
+
+create extension test_ext_ao;
+-- Detach tables from extension.
+alter extension test_ext_ao drop table test_ext_ao_table;
+-- The following select should give 0 rows, as there are no extension related
+-- tables left
+select count(*) cnt
+from pg_depend
+where refobjid = (select oid from pg_extension where extname='test_ext_ao')
+and (pg_identify_object(classid, objid, objsubid)).identity like '%pg_ao%';
+-- Drop should be finished successfully, as extension not depends on AO aux
+-- tables
+drop table test_ext_ao_table;
+-- Cleanup
+drop extension test_ext_ao;
