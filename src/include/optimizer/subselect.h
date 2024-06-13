@@ -57,7 +57,5 @@ extern bool QueryHasDistributedRelation(Query *q, bool recursive);
 extern bool contain_outer_selfref(Node *node);
 extern bool testexpr_is_hashable(Node *testexpr, List *param_ids);
 
-extern bool cte_contains_dml(Node *ctequery, PlannerInfo *root, bool ignoreMaterialized);
-
 
 #endif							/* SUBSELECT_H */
