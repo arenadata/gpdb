@@ -637,9 +637,9 @@ ExecInsert(TupleTableSlot *parentslot,
 		 * It allows not to adjust es_processed at QD after all executors send
 		 * the same value of es_processed.
 		 */
-		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
-		if (Gp_role != GP_ROLE_EXECUTE || !GpPolicyIsReplicated(cdbpolicy) ||
-		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
+		if (Gp_role != GP_ROLE_EXECUTE ||
+		    !GpPolicyIsReplicated(resultRelationDesc->rd_cdbpolicy) ||
+		    GpIdentity.segindex == (gp_session_id % resultRelationDesc->rd_cdbpolicy->numsegments))
 		{
 			(estate->es_processed)++;
 		}
@@ -1055,9 +1055,9 @@ ldelete:;
 		 * It allows not to adjust es_processed at QD after all executors send
 		 * the same value of es_processed.
 		 */
-		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
-		if (Gp_role != GP_ROLE_EXECUTE || !GpPolicyIsReplicated(cdbpolicy) ||
-		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
+		if (Gp_role != GP_ROLE_EXECUTE ||
+		    !GpPolicyIsReplicated(resultRelationDesc->rd_cdbpolicy) ||
+		    GpIdentity.segindex == (gp_session_id % resultRelationDesc->rd_cdbpolicy->numsegments))
 		{
 			(estate->es_processed)++;
 		}
@@ -1616,9 +1616,9 @@ lreplace:;
 		 * It allows not to adjust es_processed at QD after all executors send
 		 * the same value of es_processed.
 		 */
-		struct GpPolicy * cdbpolicy = resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
-		if (Gp_role != GP_ROLE_EXECUTE || !GpPolicyIsReplicated(cdbpolicy) ||
-		    GpIdentity.segindex == (gp_session_id % cdbpolicy->numsegments))
+		if (Gp_role != GP_ROLE_EXECUTE ||
+		    !GpPolicyIsReplicated(resultRelationDesc->rd_cdbpolicy) ||
+		    GpIdentity.segindex == (gp_session_id % resultRelationDesc->rd_cdbpolicy->numsegments))
 		{
 			(estate->es_processed)++;
 		}
