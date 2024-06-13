@@ -620,4 +620,3 @@ t2 as (select a, b from tbl2)
 -- start_ignore
 drop schema rpt cascade;
 -- end_ignore
-
