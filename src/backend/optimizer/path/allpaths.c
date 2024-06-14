@@ -2962,12 +2962,11 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	if (subquery->commandType != CMD_SELECT)
 		is_shared = true;
-
 	/*
 	 * since shareinputscan with outer refs is not supported by GPDB, if
 	 * contain outer self references, the cte need to be inlined.
 	 */
-	if (is_shared && contain_outer_selfref(cte->ctequery))
+	else if (is_shared && contain_outer_selfref(cte->ctequery))
 		is_shared = false;
 
 	if (!is_shared)
