@@ -162,6 +162,9 @@ CLogicalUnionAll::PstatsDeriveUnionAll(CMemoryPool *mp,
 	GPOS_ASSERT(NULL != pdrgpcrOutput);
 	GPOS_ASSERT(NULL != pdrgpdrgpcrInput);
 
+	CReqdPropRelational *prprel = dynamic_cast<CReqdPropRelational *>(exprhdl.Prp());
+	GPOS_ASSERT(NULL != prprel);
+
 	IStatistics *result_stats = exprhdl.Pstats(0);
 	result_stats->AddRef();
 	const ULONG arity = exprhdl.Arity();
@@ -178,7 +181,8 @@ CLogicalUnionAll::PstatsDeriveUnionAll(CMemoryPool *mp,
 			mp, cresult_stats, cchild_stats,
 			CColRef::Pdrgpul(mp, pdrgpcrOutput),
 			CColRef::Pdrgpul(mp, (*pdrgpdrgpcrInput)[0]),
-			CColRef::Pdrgpul(mp, (*pdrgpdrgpcrInput)[ul]));
+			CColRef::Pdrgpul(mp, (*pdrgpdrgpcrInput)[ul]),
+			prprel->PcrsStat());
 		result_stats->Release();
 		result_stats = stats;
 	}
@@ -202,6 +206,37 @@ CLogicalUnionAll::PstatsDerive(CMemoryPool *mp, CExpressionHandle &exprhdl,
 	GPOS_ASSERT(EspNone < Esp(exprhdl));
 
 	return PstatsDeriveUnionAll(mp, exprhdl);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalUnionAll::PcrsStat
+//
+//	@doc:
+//		Compute required stats columns
+//
+//---------------------------------------------------------------------------
+CColRefSet *
+CLogicalUnionAll::PcrsStat(CMemoryPool *mp,
+						   CExpressionHandle &,  //exprhdl,
+						   CColRefSet *pcrsInput,
+						   ULONG child_index) const
+{
+	CColRefSet *pcrs = GPOS_NEW(mp) CColRefSet(mp);
+	const ULONG length = m_pdrgpcrOutput->Size();
+
+	for (ULONG ul = 0; ul < length; ul++)
+	{
+		CColRef *outputColref = (*m_pdrgpcrOutput)[ul];
+
+		if (!pcrsInput->FMember(outputColref))
+			continue;
+
+		CColRef *childColref = (*(*m_pdrgpdrgpcrInput)[child_index])[ul];
+		pcrs->Include(childColref);
+	}
+
+	return pcrs;
 }
 
 // EOF

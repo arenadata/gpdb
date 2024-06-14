@@ -22,7 +22,8 @@ public:
 	static CStatistics *CreateStatsForUnionAll(
 		CMemoryPool *mp, const CStatistics *stats_first_child,
 		const CStatistics *stats_second_child, ULongPtrArray *output_colids,
-		ULongPtrArray *first_child_colids, ULongPtrArray *second_child_colids);
+		ULongPtrArray *first_child_colids, ULongPtrArray *second_child_colids,
+		CColRefSet *output_pcrsStat);
 };
 }  // namespace gpnaucrates
 

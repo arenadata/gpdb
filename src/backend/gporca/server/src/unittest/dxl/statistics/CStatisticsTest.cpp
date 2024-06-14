@@ -147,7 +147,7 @@ CStatisticsTest::EresUnittest_UnionAll()
 		CStatistics *pstatsOutput =
 			CUnionAllStatsProcessor::CreateStatsForUnionAll(
 				mp, pstats1, pstats2, pdrgpulColIdOutput, pdrgpulColIdInput1,
-				pdrgpulColIdInput2);
+				pdrgpulColIdInput2, GPOS_NEW(mp) CColRefSet(mp));
 
 		GPOS_ASSERT(NULL != pstatsOutput);
 
@@ -522,7 +522,7 @@ CStatisticsTest::EresUnittest_CStatisticsBasic()
 	colids->AddRef();
 
 	CStatistics *pstats6 = CUnionAllStatsProcessor::CreateStatsForUnionAll(
-		mp, stats, stats, colids, colids, colids);
+		mp, stats, stats, colids, colids, colids, GPOS_NEW(mp) CColRefSet(mp));
 
 	GPOS_TRACE(GPOS_WSZ_LIT("pstats6 = pstats1 union all pstats1"));
 	CCardinalityTestUtils::PrintStats(mp, pstats6);

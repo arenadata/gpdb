@@ -91,6 +91,13 @@ public:
 	// Derived Relational Properties
 	//-------------------------------------------------------------------------------------
 
+	// compute required stat columns of the n-th child
+	virtual CColRefSet *PcrsStat(CMemoryPool *mp,
+								 CExpressionHandle &,  // exprhdl
+								 CColRefSet *pcrsInput,
+								 ULONG child_index
+	) const;
+
 	// derive max card
 	virtual CMaxCard DeriveMaxCard(CMemoryPool *mp,
 								   CExpressionHandle &exprhdl) const;

@@ -20,7 +20,8 @@ CStatistics *
 CUnionAllStatsProcessor::CreateStatsForUnionAll(
 	CMemoryPool *mp, const CStatistics *stats_first_child,
 	const CStatistics *stats_second_child, ULongPtrArray *output_colids,
-	ULongPtrArray *first_child_colids, ULongPtrArray *second_child_colids)
+	ULongPtrArray *first_child_colids, ULongPtrArray *second_child_colids,
+	CColRefSet *output_pcrsStat)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != stats_second_child);
@@ -53,6 +54,9 @@ CUnionAllStatsProcessor::CreateStatsForUnionAll(
 			ULONG output_colid = *(*output_colids)[ul];
 			ULONG first_child_colid = *(*first_child_colids)[ul];
 			ULONG second_child_colid = *(*second_child_colids)[ul];
+
+			if (!output_pcrsStat->CBitSet::Get(output_colid))
+				continue;
 
 			const CHistogram *first_child_histogram =
 				stats_first_child->GetHistogram(first_child_colid);
