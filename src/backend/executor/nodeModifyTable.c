@@ -632,17 +632,7 @@ ExecInsert(TupleTableSlot *parentslot,
 	}
 	if (canSetTag)
 	{
-		/*
-		 * If table is replicated, update es_processed only at one segment.
-		 * It allows not to adjust es_processed at QD after all executors send
-		 * the same value of es_processed.
-		 */
-		if (Gp_role != GP_ROLE_EXECUTE ||
-		    !GpPolicyIsReplicated(resultRelationDesc->rd_cdbpolicy) ||
-		    GpIdentity.segindex == (gp_session_id % resultRelationDesc->rd_cdbpolicy->numsegments))
-		{
-			(estate->es_processed)++;
-		}
+		(estate->es_processed)++;
 		estate->es_lastoid = newId;
 		setLastTid(&lastTid);
 	}
@@ -1049,19 +1039,7 @@ ldelete:;
 	}
 
 	if (canSetTag)
-	{
-		/*
-		 * If table is replicated, update es_processed only at one segment.
-		 * It allows not to adjust es_processed at QD after all executors send
-		 * the same value of es_processed.
-		 */
-		if (Gp_role != GP_ROLE_EXECUTE ||
-		    !GpPolicyIsReplicated(resultRelationDesc->rd_cdbpolicy) ||
-		    GpIdentity.segindex == (gp_session_id % resultRelationDesc->rd_cdbpolicy->numsegments))
-		{
-			(estate->es_processed)++;
-		}
-	}
+		(estate->es_processed)++;
 
 	if (!isUpdate)
 	{
@@ -1610,19 +1588,7 @@ lreplace:;
 	}
 
 	if (canSetTag)
-	{
-		/*
-		 * If table is replicated, update es_processed only at one segment.
-		 * It allows not to adjust es_processed at QD after all executors send
-		 * the same value of es_processed.
-		 */
-		if (Gp_role != GP_ROLE_EXECUTE ||
-		    !GpPolicyIsReplicated(resultRelationDesc->rd_cdbpolicy) ||
-		    GpIdentity.segindex == (gp_session_id % resultRelationDesc->rd_cdbpolicy->numsegments))
-		{
-			(estate->es_processed)++;
-		}
-	}
+		(estate->es_processed)++;
 
 	/* AFTER ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
@@ -1774,6 +1740,18 @@ ExecModifyTable(ModifyTableState *node)
 	saved_resultRelInfo = estate->es_result_relation_info;
 
 	estate->es_result_relation_info = resultRelInfo;
+
+	/*
+	 * If table is replicated, update es_processed only at one segment.
+	 * It allows not to adjust es_processed at QD after all executors send
+	 * the same value of es_processed.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE &&
+	    GpPolicyIsReplicated(resultRelInfo->ri_RelationDesc->rd_cdbpolicy) &&
+	    GpIdentity.segindex != (gp_session_id % resultRelInfo->ri_RelationDesc->rd_cdbpolicy->numsegments))
+	{
+		node->canSetTag = false;
+	}
 
 	/*
 	 * Fetch rows from subplan(s), and execute the required table modification
