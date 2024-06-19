@@ -3148,6 +3148,7 @@ ExecutePlan(EState *estate,
 	TupleTableSlot *slot;
 	long		current_tuple_count;
 	ListCell *lc;
+	uint64		saved_es_processed;
 
 	/*
 	 * For holdable cursor, the plan is executed without rewinding on gpdb. We
@@ -3198,6 +3199,8 @@ ExecutePlan(EState *estate,
 		/* Reset the per-output-tuple exprcontext */
 		ResetPerTupleExprContext(estate);
 
+		saved_es_processed = estate->es_processed;
+
 		/*
 		 * Execute the plan and obtain a tuple
 		 */
@@ -3246,8 +3249,10 @@ ExecutePlan(EState *estate,
 		 * Count tuples processed, if this is a SELECT.  (For other operation
 		 * types, the ModifyTable plan node must count the appropriate
 		 * events.)
+		 * Do not increment es_processed if it was changed at ExecProcNode.
 		 */
-		if (operation == CMD_SELECT)
+		if ((operation == CMD_SELECT || estate->es_plannedstmt->hasReturning) &&
+			saved_es_processed == estate->es_processed)
 		{
 			(estate->es_processed)++;
 
@@ -3280,15 +3285,7 @@ ExecutePlan(EState *estate,
 		 */
 		current_tuple_count++;
 		if (numberTuples && numberTuples == current_tuple_count)
-		{
-			/*
-			 * Save current_tuple_count to es_processed is needed for correctly
-			 * check at _SPI_checktuples(), because here we break processing
-			 * the tuples.
-			 */
-			estate->es_processed = current_tuple_count;
 			break;
-		}
 	}
 }
 

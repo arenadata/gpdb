@@ -47,3 +47,10 @@ BEGIN
     DROP TABLE t_test;
 END;
 $$;
+
+-- Check correct work at the utility mode
+CREATE TABLE t_test(a int) DISTRIBUTED REPLICATED;
+INSERT INTO t_test(a) VALUES (1), (2), (3);
+\! PGOPTIONS='-c gp_session_role=utility' psql -p 6002 -d regression -c 'UPDATE t_test SET a = 1 WHERE a = 2;'
+\! PGOPTIONS='-c gp_session_role=utility' psql -p 6002 -d regression -c 'SELECT * FROM t_test ORDER BY 1;'
+DROP TABLE t_test;

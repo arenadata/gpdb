@@ -1742,18 +1742,6 @@ ExecModifyTable(ModifyTableState *node)
 	estate->es_result_relation_info = resultRelInfo;
 
 	/*
-	 * If table is replicated, update es_processed only at one segment.
-	 * It allows not to adjust es_processed at QD after all executors send
-	 * the same value of es_processed.
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE &&
-	    GpPolicyIsReplicated(resultRelInfo->ri_RelationDesc->rd_cdbpolicy) &&
-	    GpIdentity.segindex != (gp_session_id % resultRelInfo->ri_RelationDesc->rd_cdbpolicy->numsegments))
-	{
-		node->canSetTag = false;
-	}
-
-	/*
 	 * Fetch rows from subplan(s), and execute the required table modification
 	 * for each row.
 	 */
@@ -2405,6 +2393,21 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			estate->es_auxmodifytables = lcons(mtstate,
 											   estate->es_auxmodifytables);
 	}
+
+	/*
+	 * If table is replicated, update es_processed only at one segment.
+	 * It allows not to adjust es_processed at QD after all executors send
+	 * the same value of es_processed.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		if (GpPolicyIsReplicated(mtstate->resultRelInfo->ri_RelationDesc->rd_cdbpolicy) &&
+			GpIdentity.segindex != (gp_session_id % mtstate->resultRelInfo->ri_RelationDesc->rd_cdbpolicy->numsegments))
+		{
+			mtstate->canSetTag = false;
+		}
+	}
+
 
 	return mtstate;
 }
