@@ -327,3 +327,25 @@ end;
 $func$ language plpgsql;
 
 select workset_cleanup_test();
+
+------------ Ensure that tuplestore is destroyed correctly in a case of error -------------------
+
+create table testdata as
+(select
+  md5(random()::text) as textdata,
+  random() * i as numdata,
+  timestamp '2000-01-01 00:00:00' + random() *
+    (timestamp '2024-01-01 00:00:00' - timestamp '2000-01-01 00:00:00') as datedata
+from generate_series(1, 1000000) i);
+
+set statement_mem = 200;
+set gp_workfile_limit_per_query = 100;
+
+begin;
+declare testdata_cursor cursor without hold for select * from testdata;
+fetch forward all from testdata_cursor;
+rollback;
+
+reset statement_mem;
+reset gp_workfile_limit_per_query;
+drop table testdata;
