@@ -601,6 +601,9 @@ drop table if exists t1;
 drop table if exists t2;
 drop function if exists f(i int);
 
+-- Check that query containing 2 CTEs and replicated table can be optimized by ORCA
+-- and it's execution does not produce problems like unconsumed producers or starved consumers
+
 -- start_ignore
 drop table if exists tbl2;
 drop table if exists tbl1;

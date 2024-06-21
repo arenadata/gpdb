@@ -1628,6 +1628,8 @@ drop table if exists t;
 drop table if exists t1;
 drop table if exists t2;
 drop function if exists f(i int);
+-- Check that query containing 2 CTEs and replicated table can be optimized by ORCA
+-- and it's execution does not produce problems like unconsumed producers or starved consumers
 create table tbl2 (a numeric, b varchar(255), c numeric) distributed replicated;
 create table tbl1 (a bigserial, b varchar(15), c varchar(15)) distributed replicated;
 explain (analyze off, costs off, verbose off)
@@ -1637,8 +1639,8 @@ t2 as (select a, b from tbl2)
  select * from t1 p
   join t2 r on p.b = r.b
   join t2 r1 on p.c = r1.b;
-                         QUERY PLAN                         
-------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Gather Motion 1:1  (slice1; segments: 1)
    ->  Sequence
          ->  Shared Scan (share slice:id 1:1)
