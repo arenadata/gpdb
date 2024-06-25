@@ -3148,7 +3148,6 @@ ExecutePlan(EState *estate,
 	TupleTableSlot *slot;
 	long		current_tuple_count;
 	ListCell *lc;
-	uint64		saved_es_processed;
 
 	/*
 	 * For holdable cursor, the plan is executed without rewinding on gpdb. We
@@ -3196,10 +3195,10 @@ ExecutePlan(EState *estate,
 	 */
 	for (;;)
 	{
+		uint64 saved_es_processed = estate->es_processed;
+
 		/* Reset the per-output-tuple exprcontext */
 		ResetPerTupleExprContext(estate);
-
-		saved_es_processed = estate->es_processed;
 
 		/*
 		 * Execute the plan and obtain a tuple
