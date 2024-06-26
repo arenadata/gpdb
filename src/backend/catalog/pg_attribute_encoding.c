@@ -561,6 +561,9 @@ AddOrUpdateCOAttributeEncodings(Oid relid, List *attr_encodings)
 	List *filenums = NIL;
 	bool attnumsWithEntries[MaxHeapAttributeNumber];
 
+	/* Set false for all elements in attnumsWithEntries */
+	MemSet(attnumsWithEntries, false, sizeof(attnumsWithEntries));
+
 	check_attribute_encoding_entry_exist(relid, attnumsWithEntries);
 
 	if (attr_encodings)
@@ -866,8 +869,6 @@ check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present)
 	bool 			isnull;
 
 	Assert(OidIsValid(relid));
-
-	MemSet(attnum_entry_present, false, sizeof(attnum_entry_present));
 
 	rel = heap_open(AttributeEncodingRelationId, AccessShareLock);
 
