@@ -3570,6 +3570,12 @@ CopyFrom(CopyState cstate)
 							RelationGetRelationName(cstate->rel))));
 	}
 
+	PartStatus ps = rel_part_status(cstate->rel->rd_id);
+	if (ps == PART_STATUS_INTERIOR)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot copy to a mid-level partition.")));
+
 	if (Gp_role == GP_ROLE_UTILITY && rel_is_parent(cstate->rel->rd_id))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
