@@ -1405,7 +1405,8 @@ INSERT INTO tmp_table SELECT a, 1, a, 'b' FROM generate_series(1, 100)a;
 COPY tmp_table TO '/tmp/table_data';
 -- Copy to the mid-level partition should fail
 COPY part_table_1_prt_2 FROM '/tmp/table_data';
-ERROR:  cannot copy to a mid-level partition.
+ERROR:  cannot copy to intermediate part of a partitioned table
+HINT:  consider using COPY to either the root or a leaf partition instead.
 -- Copy to the leaf partition should use check constraint and fail
 COPY part_table_1_prt_2_2_prt_part_a FROM '/tmp/table_data';
 ERROR:  new row for relation "part_table_1_prt_2_2_prt_part_a" violates check constraint "part_table_1_prt_2_2_prt_part_a_check"
@@ -1429,7 +1430,8 @@ INSERT INTO tmp_table SELECT a, 1, a, 'a' FROM generate_series(1, 100)a;
 COPY tmp_table TO '/tmp/table_data';
 -- Copy to a mid-level partition should fail
 COPY part_table_1_prt_2 FROM '/tmp/table_data';
-ERROR:  cannot copy to a mid-level partition.
+ERROR:  cannot copy to intermediate part of a partitioned table
+HINT:  consider using COPY to either the root or a leaf partition instead.
 -- Copy to a leaf partition should use check constraint and be success
 COPY part_table_1_prt_2_2_prt_part_a FROM '/tmp/table_data';
 analyze part_table;
