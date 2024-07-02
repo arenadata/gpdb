@@ -54,7 +54,7 @@ explain (costs off) with updated AS (update table_for_initplan set k = 33 where 
                                    ->  Seq Scan on table_for_initplan table_for_initplan_1
                                          Filter: (i = 3)
    ->  Seq Scan on table_for_initplan
- Optimizer: Postgres-based planner
+ Optimizer: Postgres query optimizer
 (11 rows)
 
 with updated AS (update table_for_initplan set k = 33 where i = 3 returning k) select table_for_initplan.*, (select sum(k) from updated) from table_for_initplan;

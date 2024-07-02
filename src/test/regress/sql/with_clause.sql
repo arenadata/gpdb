@@ -633,7 +633,7 @@ drop table t_repl;
 -- Control tuple count in with_dml relation
 select count(*) from with_dml;
 
--- Test multi refernce cases
+-- Test multi reference cases
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i

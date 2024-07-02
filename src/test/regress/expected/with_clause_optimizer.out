@@ -2729,7 +2729,7 @@ select count(*) from with_dml;
     38
 (1 row)
 
--- Test multi refernce cases
+-- Test multi reference cases
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
