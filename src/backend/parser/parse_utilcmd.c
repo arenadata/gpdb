@@ -596,6 +596,16 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 		List	   *attnamelist;
 
 		/*
+		 * Check for serial type inside external tables
+		 */
+		if (strcmp(cxt->stmtType, "CREATE EXTERNAL TABLE") == 0) {
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+					 errmsg("serial column type (column \"%s\") should not be used for external tables (\"%s\")", 
+					 column->colname, cxt->relation->relname)));
+		}
+
+		/*
 		 * Determine namespace and name to use for the sequence.
 		 *
 		 * Although we use ChooseRelationName, it's not guaranteed that the
