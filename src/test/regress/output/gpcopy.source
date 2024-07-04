@@ -1378,7 +1378,7 @@ ERROR:  value of distribution key doesn't belong to segment with ID 0, it belong
 CONTEXT:  COPY copy_on_segment_check_distkey_subpartition, line 2: "0,0"
 -- COPY TO root, leaf and mid-level partitions
 -- Create test table
-CREATE TABLE part_table (id int, a int, b int , c text)
+CREATE TABLE part_table (id INT, a INT, b INT , c TEXT)
 DISTRIBUTED BY (id)
 PARTITION BY RANGE (a)
 SUBPARTITION BY LIST (c)
@@ -1415,7 +1415,7 @@ CONTEXT:  COPY part_table_1_prt_2_2_prt_part_a, line 115: "2	1	2	b"
 -- Copy to the root partition should be success
 COPY part_table FROM '/tmp/table_data';
 -- Check the result
-select count() from part_table;
+SELECT count() FROM part_table;
  count 
 -------
    200
@@ -1434,9 +1434,9 @@ ERROR:  cannot copy to intermediate part of a partitioned table
 HINT:  consider using COPY to either the root or a leaf partition instead.
 -- Copy to a leaf partition should use check constraint and be success
 COPY part_table_1_prt_2_2_prt_part_a FROM '/tmp/table_data';
-analyze part_table;
+ANALYZE part_table;
 -- Check the result
-select count() from part_table;
+SELECT count() FROM part_table;
  count 
 -------
    100
@@ -1447,7 +1447,7 @@ TRUNCATE TABLE part_table;
 -- Copy to a root partition should be success
 COPY part_table FROM '/tmp/table_data';
 -- Check the result
-select count() from part_table;
+SELECT count() FROM part_table;
  count 
 -------
    100
