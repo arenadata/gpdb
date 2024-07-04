@@ -338,7 +338,7 @@ create table testdata as
     (timestamp '2024-01-01 00:00:00' - timestamp '2000-01-01 00:00:00') as datedata
 from generate_series(1, 1000000) i);
 
-set statement_mem = 200;
+set statement_mem = 1000;
 set gp_workfile_limit_per_query = 100;
 
 begin;
