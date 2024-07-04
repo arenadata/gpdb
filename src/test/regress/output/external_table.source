@@ -2893,7 +2893,8 @@ DROP PROTOCOL if exists demoprot2;
 CREATE EXTERNAL TABLE SERIAL (a serial, x text)
 LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
 FORMAT 'csv';
-ERROR:  serial column type (column "a") should not be used for external tables ("serial")
+ERROR:  default values (column "a") are not supported on external tables
+HINT:  perhaps you used a serial type or a user-defined type with a default value?
 -- drop temp external table
 DROP EXTERNAL TABLE IF EXISTS serial;
 -- External table query within plpgSQL function get error

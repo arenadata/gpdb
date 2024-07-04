@@ -1855,6 +1855,9 @@ typedef struct CreateStmt
 
 	Node       *intoQuery;      /* CDB: only set for matview with no data */
 	GpPolicy   *intoPolicy;     /* CDB: only set for matview with no data */
+
+	bool 		is_readable_external; /* set if the table is external and not writeable.
+									   * Only used for additional checks */
 } CreateStmt;
 
 /* ----------------------

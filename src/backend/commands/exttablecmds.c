@@ -97,6 +97,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	createStmt->oncommit = ONCOMMIT_NOOP;
 	createStmt->tablespacename = NULL;
 	createStmt->distributedBy = createExtStmt->distributedBy; /* policy was set in transform */
+	createStmt->is_readable_external = !iswritable; /* set so that DefineRelation can check for serial */
 
 	switch (exttypeDesc->exttabletype)
 	{

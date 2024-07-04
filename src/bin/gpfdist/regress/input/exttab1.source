@@ -607,7 +607,7 @@ CREATE WRITABLE EXTERNAL TABLE writable_external_table_with_serial_column_type (
     LOCATION ('gpfdist://@hostname@:7070/external_table_with_serial_column_type.csv')
     FORMAT 'CSV' (DELIMITER ',' NULL '' ESCAPE '"' QUOTE '"') ENCODING 'UTF8' DISTRIBUTED RANDOMLY;
 
-CREATE READABLE EXTERNAL TABLE readable_external_table_with_serial_column_type(LIKE writable_external_table_with_serial_column_type)
+CREATE READABLE EXTERNAL TABLE readable_external_table_with_serial_column_type(a INT, b BIGINT)
     LOCATION ('gpfdist://@hostname@:7070/external_table_with_serial_column_type.csv')
     FORMAT 'CSV' (DELIMITER ',' NULL '' ESCAPE '"' QUOTE '"') ENCODING 'UTF8';
 
