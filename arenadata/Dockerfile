@@ -11,13 +11,13 @@ RUN dnf -y install 'dnf-command(config-manager)' && dnf config-manager --set-ena
 
 # install all software we need
 RUN dnf makecache && \
-    dnf -y install python39-devel && \
+    dnf -y install python3.11-devel && \
     dnf -y install apr-devel bzip2 bzip2-devel expat-devel libcurl-devel && \
     dnf -y install libevent-devel libuuid-devel libxml2-devel libyaml-devel libzstd-devel && \
     dnf -y install openssl-devel pam-devel readline-devel snappy-devel libuv-devel && \
     dnf -y install libicu perl-ExtUtils-Embed perl-Env perl-JSON && \
     dnf -y install perl-IPC-Run perl-Test-Base libxslt-devel openldap-devel && \
-    dnf -y install python39-psycopg2 python39-psutil python39-pyyaml python39-lxml && \
+    dnf -y install python3.11-psycopg2 python3.11-pyyaml python3.11-lxml python3.11-pip python3-psutil && \
     dnf -y install llvm-devel clang && \
     dnf clean all && \
     #we install pytest from pypi since the version from the repository does not contain an executable file
