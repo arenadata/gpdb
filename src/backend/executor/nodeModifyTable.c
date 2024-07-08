@@ -2401,8 +2401,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		if (GpPolicyIsReplicated(mtstate->resultRelInfo->ri_RelationDesc->rd_cdbpolicy) &&
-			GpIdentity.segindex != (gp_session_id % mtstate->resultRelInfo->ri_RelationDesc->rd_cdbpolicy->numsegments))
+		struct GpPolicy *cdbpolicy = mtstate->resultRelInfo->ri_RelationDesc->rd_cdbpolicy;
+		if (GpPolicyIsReplicated(cdbpolicy) &&
+			GpIdentity.segindex != (gp_session_id % cdbpolicy->numsegments))
 		{
 			mtstate->canSetTag = false;
 		}
