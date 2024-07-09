@@ -9,18 +9,20 @@
 -- end_ignore
 (exited with code 0)
 
-0: CREATE TABLE t(a int);
+0: CREATE TABLE copy_interrupt_table(a int);
 CREATE
-0&: COPY t FROM PROGRAM 'while true; do echo 1; sleep 1; done | cat -';  <waiting ...>
+0&: COPY copy_interrupt_table FROM PROGRAM 'while true; do echo 1; sleep 1; done | cat -';  <waiting ...>
+! sleep 10;
+
 
 0t: ... <terminating>
 ! sleep 40;
 
 
-SELECT pg_terminate_backend(pid) FROM pg_stat_activity where query LIKE 'COPY t FROM PROGRAM%';
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity where query LIKE 'COPY copy_interrupt_table FROM PROGRAM%';
  pg_terminate_backend 
 ----------------------
 (0 rows)
 
-DROP TABLE t;
+DROP TABLE copy_interrupt_table;
 DROP
