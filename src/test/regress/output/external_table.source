@@ -2914,9 +2914,9 @@ External location: file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl
 Execute on: all segments
 
 -- drop temp external table
-DROP EXTERNAL TABLE IF EXISTS serial;
-DROP TABLE IF EXISTS serial_normal;
-DROP EXTERNAL TABLE IF EXISTS serial_like;
+DROP EXTERNAL TABLE IF EXISTS SERIAL;
+DROP TABLE SERIAL_NORMAL;
+DROP EXTERNAL TABLE SERIAL_LIKE;
 -- External table query within plpgSQL function get error
 CREATE EXTERNAL TABLE exttab_error_context_callback(c1 int, c2 int)
 LOCATION ('file://@hostname@@abs_srcdir@/data/exttab.data') FORMAT 'TEXT';
