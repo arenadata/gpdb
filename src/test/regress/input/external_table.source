@@ -1577,8 +1577,18 @@ CREATE EXTERNAL TABLE SERIAL (a serial, x text)
 LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
 FORMAT 'csv';
 
+CREATE TABLE SERIAL_NORMAL (a serial, x text);
+
+CREATE EXTERNAL TABLE SERIAL_LIKE (LIKE SERIAL_NORMAL)
+LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
+FORMAT 'csv';
+
+\d SERIAL_LIKE
+
 -- drop temp external table
 DROP EXTERNAL TABLE IF EXISTS serial;
+DROP TABLE IF EXISTS serial_normal;
+DROP EXTERNAL TABLE IF EXISTS serial_like;
 
 -- External table query within plpgSQL function get error
 CREATE EXTERNAL TABLE exttab_error_context_callback(c1 int, c2 int)

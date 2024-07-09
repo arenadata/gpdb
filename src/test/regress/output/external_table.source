@@ -2895,8 +2895,28 @@ LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
 FORMAT 'csv';
 ERROR:  default values (column "a") are not supported on external tables
 HINT:  perhaps you used a serial type or a user-defined type with a default value?
+CREATE TABLE SERIAL_NORMAL (a serial, x text);
+CREATE EXTERNAL TABLE SERIAL_LIKE (LIKE SERIAL_NORMAL)
+LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
+FORMAT 'csv';
+\d SERIAL_LIKE
+External table "public.serial_like"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ a      | integer | 
+ x      | text    | 
+Type: readable
+Encoding: UTF8
+Format type: csv
+Format options: delimiter ',' null '' escape '"' quote '"'
+External options: {}
+External location: file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl
+Execute on: all segments
+
 -- drop temp external table
 DROP EXTERNAL TABLE IF EXISTS serial;
+DROP TABLE IF EXISTS serial_normal;
+DROP EXTERNAL TABLE IF EXISTS serial_like;
 -- External table query within plpgSQL function get error
 CREATE EXTERNAL TABLE exttab_error_context_callback(c1 int, c2 int)
 LOCATION ('file://@hostname@@abs_srcdir@/data/exttab.data') FORMAT 'TEXT';
