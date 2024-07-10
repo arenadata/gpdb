@@ -833,7 +833,7 @@ ERROR:  relation "writable_external_table_with_serial_column_type_b_seq" does no
 LINE 1: SELECT setval('writable_external_table_with_serial_column_ty...
                       ^
 ALTER EXTERNAL TABLE writable_external_table_with_serial_column_type ALTER COLUMN b SET DEFAULT nextval('writable_external_table_with_serial_column_type_b_seq'::regclass);
-ERROR:  relation "writable_external_table_with_serial_column_type_b_seq" does not exist
+ERROR:  unsupported ALTER command for external table
 INSERT INTO writable_external_table_with_serial_column_type VALUES (1);
 SELECT * FROM readable_external_table_with_serial_column_type;
  a | b 
