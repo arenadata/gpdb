@@ -757,6 +757,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 		foreach(listptr, schema)
 		{
 			ColumnDef  *colDef = lfirst(listptr);
+
 			if (colDef->is_not_null)
 			{
 				ereport(WARNING,
@@ -836,7 +837,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 			{
 				ereport(WARNING,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-							errmsg("default values (column \"%s\") are not supported on external tables, default value ignored",
+						 errmsg("default values (column \"%s\") are not supported on external tables, default value ignored",
 								colDef->colname)));
 			}
 			continue;

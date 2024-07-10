@@ -581,7 +581,7 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 	if (column->typeName)
 		transformColumnType(cxt, column);
 
-	/* Ignore serial fields for external tables*/
+	/* Ignore serial fields for external tables */
 	if (is_serial && strcmp(cxt->stmtType, "CREATE EXTERNAL TABLE") == 0)
 	{
 		ereport(WARNING,
