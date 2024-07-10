@@ -581,6 +581,15 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 	if (column->typeName)
 		transformColumnType(cxt, column);
 
+	/* Ignore serial fields for external tables*/
+	if (is_serial && strcmp(cxt->stmtType, "CREATE EXTERNAL TABLE") == 0)
+	{
+		ereport(WARNING,
+				(errmsg("serial columns (\"%s\") are not supported for external tables, replaced with regular column",
+						column->colname)));
+		is_serial = false;
+	}
+
 	/* Special actions for SERIAL pseudo-types */
 	if (is_serial)
 	{

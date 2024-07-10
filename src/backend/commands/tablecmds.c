@@ -750,31 +750,20 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 	}
 
 	/*
-	 * Check for default values and constraints on columns of readable
-	 * external tables.
+	 * Ignore NOT NULL constraints on external tables.
 	 */
-	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL &&
-		stmt->is_readable_external)
+	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL)
 	{
 		foreach(listptr, schema)
 		{
 			ColumnDef  *colDef = lfirst(listptr);
-
-			if (colDef->raw_default != NULL || colDef->cooked_default != NULL)
+			if (colDef->is_not_null)
 			{
-				ereport(ERROR,
+				ereport(WARNING,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("default values (column \"%s\") are not supported on external tables",
-								colDef->colname),
-						 errhint("perhaps you used a serial type or a user-defined type with a default value?")));
-			}
-			if (colDef->is_not_null || colDef->constraints != NIL)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("constraints (column \"%s\") are not supported on external tables",
-								colDef->colname),
-						 errhint("perhaps you used a serial type or a user-defined type with a constraint?")));
+						 errmsg("constraints (column \"%s\") are not supported on external tables, constraint ignored",
+								colDef->colname)));
+				colDef->is_not_null = false;
 			}
 		}
 	}
@@ -836,6 +825,22 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 		ColumnDef  *colDef = lfirst(listptr);
 
 		attnum++;
+
+		/*
+		 * Ignore default values on external tables.
+		 */
+		if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL &&
+			(colDef->raw_default != NULL || colDef->cooked_default != NULL))
+		{
+			if (Gp_role != GP_ROLE_EXECUTE)
+			{
+				ereport(WARNING,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							errmsg("default values (column \"%s\") are not supported on external tables, default value ignored",
+								colDef->colname)));
+			}
+			continue;
+		}
 
 		if (colDef->raw_default != NULL)
 		{

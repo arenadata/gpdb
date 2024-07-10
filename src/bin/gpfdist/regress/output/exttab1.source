@@ -823,23 +823,23 @@ select * from exttab1_gpfdist_start;
 CREATE WRITABLE EXTERNAL TABLE writable_external_table_with_serial_column_type (a INT, b BIGSERIAL)
     LOCATION ('gpfdist://@hostname@:7070/external_table_with_serial_column_type.csv')
     FORMAT 'CSV' (DELIMITER ',' NULL '' ESCAPE '"' QUOTE '"') ENCODING 'UTF8' DISTRIBUTED RANDOMLY;
+WARNING:  serial columns ("b") are not supported for external tables, replaced with regular column
 CREATE READABLE EXTERNAL TABLE readable_external_table_with_serial_column_type(LIKE writable_external_table_with_serial_column_type)
     LOCATION ('gpfdist://@hostname@:7070/external_table_with_serial_column_type.csv')
     FORMAT 'CSV' (DELIMITER ',' NULL '' ESCAPE '"' QUOTE '"') ENCODING 'UTF8';
 INSERT INTO writable_external_table_with_serial_column_type VALUES (1);
 SELECT setval('writable_external_table_with_serial_column_type_b_seq'::regclass, 99);
- setval 
---------
-     99
-(1 row)
-
+ERROR:  relation "writable_external_table_with_serial_column_type_b_seq" does not exist
+LINE 1: SELECT setval('writable_external_table_with_serial_column_ty...
+                      ^
 ALTER EXTERNAL TABLE writable_external_table_with_serial_column_type ALTER COLUMN b SET DEFAULT nextval('writable_external_table_with_serial_column_type_b_seq'::regclass);
+ERROR:  relation "writable_external_table_with_serial_column_type_b_seq" does not exist
 INSERT INTO writable_external_table_with_serial_column_type VALUES (1);
 SELECT * FROM readable_external_table_with_serial_column_type;
- a |  b  
----+-----
- 1 |   1
- 1 | 100
+ a | b 
+---+---
+ 1 |  
+ 1 |  
 (2 rows)
 
 -- Scenario 2: can create external table with user defined type containing default value
