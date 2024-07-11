@@ -32,7 +32,7 @@ done
 docker-compose -p $project -f arenadata/docker-compose.yaml exec -T cdw \
  bash -c "source gpdb_src/concourse/scripts/common.bash && HOSTS_LIST='sdw1' make_cluster"
 
-#disable exit on error
+#disable exit on error to allow log collection regardless of return code
 set +e
 #run tests
 docker-compose -p $project -f arenadata/docker-compose.yaml exec -Tu gpadmin cdw bash -ex <<EOF
