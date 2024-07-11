@@ -1571,8 +1571,9 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		pgstat_combine_from_qe(pr, primaryWriterSliceIndex);
 
 		/* get num of rows processed from writer QEs. */
-		estate->es_processed +=
-			cdbdisp_sumCmdTuples(pr, primaryWriterSliceIndex);
+		if (0 == estate->es_processed)
+			estate->es_processed =
+				cdbdisp_sumCmdTuples(pr, primaryWriterSliceIndex);
 
 		/* sum up rejected rows if any (single row error handling only) */
 		cdbdisp_sumRejectedRows(pr);
