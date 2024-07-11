@@ -750,26 +750,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 	}
 
 	/*
-	 * Ignore NOT NULL constraints on external tables.
-	 */
-	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL)
-	{
-		foreach(listptr, schema)
-		{
-			ColumnDef  *colDef = lfirst(listptr);
-
-			if (colDef->is_not_null)
-			{
-				ereport(WARNING,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("constraints (column \"%s\") are not supported on external tables, constraint ignored",
-								colDef->colname)));
-				colDef->is_not_null = false;
-			}
-		}
-	}
-
-	/*
 	 * Create a tuple descriptor from the relation schema.  Note that this
 	 * deals with column names, types, and NOT NULL constraints, but not
 	 * default values or CHECK constraints; we handle those below.
@@ -826,22 +806,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 		ColumnDef  *colDef = lfirst(listptr);
 
 		attnum++;
-
-		/*
-		 * Ignore default values on external tables.
-		 */
-		if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL &&
-			(colDef->raw_default != NULL || colDef->cooked_default != NULL))
-		{
-			if (Gp_role != GP_ROLE_EXECUTE)
-			{
-				ereport(WARNING,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("default values (column \"%s\") are not supported on external tables, default value ignored",
-								colDef->colname)));
-			}
-			continue;
-		}
 
 		if (colDef->raw_default != NULL)
 		{
@@ -3683,10 +3647,7 @@ ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 			switch(cmd->subtype)
 			{
 				/* EXTERNAL tables don't support the following AT */
-				case AT_ColumnDefault:
 				case AT_ColumnDefaultRecurse:
-				case AT_DropNotNull:
-				case AT_SetNotNull:
 				case AT_SetStatistics:
 				case AT_SetStorage:
 				case AT_AddIndex:
@@ -3726,9 +3687,7 @@ ATVerifyObject(AlterTableStmt *stmt, Relation rel)
 					break;
 
 				case AT_AddColumn: /* check no constraint is added too */
-					if (((ColumnDef *) cmd->def)->constraints != NIL ||
-						((ColumnDef *) cmd->def)->is_not_null ||
-						((ColumnDef *) cmd->def)->raw_default)
+					if (((ColumnDef *) cmd->def)->constraints != NIL)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
 								 errmsg("unsupported ALTER command for external table"),

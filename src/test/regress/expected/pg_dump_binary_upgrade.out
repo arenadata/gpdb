@@ -22,7 +22,6 @@ ALTER EXTERNAL TABLE dump_this_schema.external_table_with_dropped_columns_does_n
 CREATE WRITABLE EXTERNAL TABLE dump_this_schema.writable_external_table_with_serial_column_type (a INT, b BIGSERIAL)
     LOCATION ('gpfdist://localhost:8081/xxx.csv')
     FORMAT 'CSV' (DELIMITER ',' NULL '' ESCAPE '"' QUOTE '"') ENCODING 'UTF8' DISTRIBUTED RANDOMLY;
-WARNING:  serial columns ("b") are not supported for external tables, replaced with regular column
 -- Scenario 2a: Create homogeneous partition table where the root
 -- partition and ALL of its child partitions have the dropped column
 -- reference.
@@ -137,6 +136,7 @@ WHERE a.attisdropped = true AND relname LIKE 'dropped_column_special_homogeneous
 -- because we do not preserve drop columns for external tables.
 \! pg_dump --binary-upgrade --schema dump_this_schema regression | grep ' DROP COLUMN \| SET DEFAULT '
 ALTER TABLE dump_this_schema.dropped_column_homogeneous_partition_table DROP COLUMN "........pg.dropped.3........";
+ALTER TABLE ONLY dump_this_schema.writable_external_table_with_serial_column_type ALTER COLUMN b SET DEFAULT nextval('dump_this_schema.writable_external_table_with_serial_column_type_b_seq'::regclass);
 DROP SCHEMA dump_this_schema CASCADE;
 NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to external table dump_this_schema.external_table_with_dropped_columns_does_not_print_alter_ddl
