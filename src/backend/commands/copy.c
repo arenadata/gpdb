@@ -723,86 +723,92 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 	switch (cstate->copy_dest)
 	{
 		case COPY_FILE:
-			if (cstate->is_program)
 			{
 				struct pollfd pollfd;
 				int			rc;
-				ssize_t		result = 0;
 
-				/* Check if data is available */
+				/* Initialize pollfd */
 				pollfd.fd = fileno(cstate->copy_file);
 				pollfd.events = POLLIN;
-				pollfd.revents = 0;
-				rc = poll(&pollfd, 1, 0);
 
 				/*
-				 * Continue waiting until we get data, even if interrupted by
-				 * a signal
+				 * Wait until we get data, even if interrupted by a signal,
+				 * while also checking for interrupts
 				 */
-				while (rc == 0 || (rc < 0 && (errno == EINTR || errno == EAGAIN)))
+				do
 				{
-					/*
-					 * It's not available, we have time to check for
-					 * interrupts
-					 */
 					CHECK_FOR_INTERRUPTS();
 
-					/* Wait until data arrives (with 10 second timeout) */
+					/* Wait until data arrives or 500 ms passes */
+#define COPY_POLL_TIMEOUT 500
 					pollfd.revents = 0;
-					rc = poll(&pollfd, 1, 10000);
-				}
+					rc = poll(&pollfd, 1, COPY_POLL_TIMEOUT);
+					/* Check if error occured */
+					if (rc < 0)
+					{
+						/* EINTR and EAGAIN are not errors, just retry */
+						if (errno == EINTR || errno == EAGAIN)
+							continue;
+
+						if (cstate->is_program)
+						{
+							int olderrno = errno;
+
+							close_program_pipes(cstate, true);
+
+							/*
+							* If close_program_pipes() didn't throw an error,
+							* the program terminated normally, but closed the
+							* pipe first. Restore errno, and throw an error.
+							*/
+							errno = olderrno;
+							ereport(ERROR,
+									(errcode_for_socket_access(),
+									 errmsg("could not poll COPY program: %m")));
+						}
+						else
+							ereport(ERROR,
+									(errcode_for_file_access(),
+									 errmsg("could not poll COPY file: %m")));
+					}
+				} while (rc <= 0);
 
 				/* If data is available */
 				if (rc == 1 && (pollfd.revents & POLLIN))
 				{
-					result = read(pollfd.fd, databuf, datasize);
+					ssize_t result = read(pollfd.fd, databuf, datasize);
+
 					if (result == 0)
 						cstate->fe_eof = true;
 					else if (result > 0)
 						bytesread = result;
-				}
-
-				/* If error occured during poll or read */
-				if (rc < 0 || result < 0)
-				{
-					int			olderrno = errno;
-
-					close_program_pipes(cstate, true);
-
-					/*
-					 * If close_program_pipes() didn't throw an error, the
-					 * program terminated normally, but closed the pipe first.
-					 * Restore errno, and throw an error.
-					 */
-					errno = olderrno;
-
-					if (rc < 0)
-					{
-						ereport(ERROR,
-								(errcode_for_socket_access(),
-							errmsg("could not poll from COPY program: %m")));
-					}
 					else
 					{
-						ereport(ERROR,
-								(errcode_for_file_access(),
-							errmsg("could not read from COPY program: %m")));
+						if (cstate->is_program)
+						{
+							int olderrno = errno;
+
+							close_program_pipes(cstate, true);
+
+							/*
+							* If close_program_pipes() didn't throw an error,
+							* the program terminated normally, but closed the
+							* pipe first. Restore errno, and throw an error.
+							*/
+							errno = olderrno;
+
+							ereport(ERROR,
+									(errcode_for_file_access(),
+									 errmsg("could not read from COPY program: %m")));
+						}
+						else
+							ereport(ERROR,
+									(errcode_for_file_access(),
+									 errmsg("could not read from COPY file: %m")));
 					}
 				}
+				break;
 			}
-			else
-			{
-				bytesread = fread(databuf, 1, datasize, cstate->copy_file);
-				if (feof(cstate->copy_file))
-					cstate->fe_eof = true;
-				if (ferror(cstate->copy_file))
-				{
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not read from COPY file: %m")));
-				}
-			}
-			break;
 		case COPY_OLD_FE:
 			if (pq_getbytes((char *) databuf, datasize))
 			{
