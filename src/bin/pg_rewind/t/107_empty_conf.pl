@@ -28,7 +28,6 @@ sub run_test
 		"$tmp_folder/master-postgresql-full.conf.tmp");
 
 	open my $file, '>', "$master_pgdata/postgresql.conf";
-	print $file "";
 
 	RewindTest::run_pg_rewind($test_mode, do_not_start_master => 1);
 
@@ -40,7 +39,6 @@ sub run_test
 	RewindTest::promote_master();
 
 	RewindTest::clean_rewind_test();
-	return;
 }
 
 # Run the test in both modes
