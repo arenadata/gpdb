@@ -475,7 +475,7 @@ extern Datum ExecMakeFunctionResultSet(SetExprState *fcache,
 									   ExprDoneCond *isDone);
 extern void ExecSquelchFunctionResultSet(SetExprState *fcache,
 										 ExprContext *econtext,
-										 MemoryContext *argcontext);
+										 MemoryContext argcontext);
 
 /*
  * prototypes from functions in execScan.c

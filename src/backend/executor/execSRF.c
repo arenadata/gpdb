@@ -984,7 +984,7 @@ tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc)
 void
 ExecSquelchFunctionResultSet(SetExprState *fcache,
 							 ExprContext *econtext,
-							 MemoryContext *argcontext)
+							 MemoryContext argcontext)
 {
 	FunctionCallInfo fcinfo = fcache->fcinfo;
 

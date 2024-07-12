@@ -33,7 +33,9 @@ static void check_for_jsonb_9_4_usage(ClusterInfo *cluster);
 static void check_for_pg_role_prefix(ClusterInfo *cluster);
 static void check_for_new_tablespace_dir(ClusterInfo *new_cluster);
 static char *get_canonical_locale_name(int category, const char *locale);
+#if 0 // function was disabled, because it has never used.
 static void check_for_appendonly_materialized_view_with_relfrozenxid(ClusterInfo *cluster);
+#endif
 
 /*
  * fix_path_separator
@@ -1355,6 +1357,7 @@ get_canonical_locale_name(int category, const char *locale)
 	return res;
 }
 
+#if 0 // function was disabled, because it has never used.
 /* Check for any materialized view of append only mode with relfrozenxid != 0
  *
  * A materialized view of append only mode must have invalid relfrozenxid (0).
@@ -1467,3 +1470,4 @@ check_for_appendonly_materialized_view_with_relfrozenxid(ClusterInfo *cluster)
 		check_ok();
 	}
 }
+#endif
