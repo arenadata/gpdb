@@ -737,18 +737,8 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 
 					/* Wait until data arrives or 500 ms passes */
 #define COPY_POLL_TIMEOUT 500
-					PG_TRY();
-					{
-						rc = WaitLatchOrSocket(NULL, WL_SOCKET_READABLE | WL_TIMEOUT, 
-											   sock, COPY_POLL_TIMEOUT);
-					}
-					PG_CATCH();
-					{
-						if (cstate->is_program)
-							close_program_pipes(cstate, true);
-						PG_RE_THROW();
-					}
-					PG_END_TRY();
+					rc = WaitLatchOrSocket(NULL, WL_SOCKET_READABLE | WL_TIMEOUT, 
+										   sock, COPY_POLL_TIMEOUT);
 				} while (!(rc & WL_SOCKET_READABLE));
 
 				/* Data should be available by this point */
