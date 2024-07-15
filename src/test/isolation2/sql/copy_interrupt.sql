@@ -12,4 +12,4 @@ SELECT pg_terminate_backend(pid)
     FROM pg_stat_activity where query LIKE 'COPY copy_interrupt_table FROM PROGRAM%';
 
 DROP TABLE copy_interrupt_table;
-!\retcode gpconfig -c client_connection_check_interval -v 0;
+!\retcode gpconfig -r client_connection_check_interval;
