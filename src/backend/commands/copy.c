@@ -724,12 +724,8 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 	{
 		case COPY_FILE:
 			{
-				struct pollfd pollfd;
+				pgsocket 	sock = fileno(cstate->copy_file);
 				int			rc;
-
-				/* Initialize pollfd */
-				pollfd.fd = fileno(cstate->copy_file);
-				pollfd.events = POLLIN;
 
 				/*
 				 * Wait until we get data, even if interrupted by a signal,
@@ -741,71 +737,50 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 
 					/* Wait until data arrives or 500 ms passes */
 #define COPY_POLL_TIMEOUT 500
-					pollfd.revents = 0;
-					rc = poll(&pollfd, 1, COPY_POLL_TIMEOUT);
-					/* Check if error occured */
-					if (rc < 0)
+					PG_TRY();
 					{
-						/* EINTR and EAGAIN are not errors, just retry */
-						if (errno == EINTR || errno == EAGAIN)
-							continue;
-
-						if (cstate->is_program)
-						{
-							int olderrno = errno;
-
-							close_program_pipes(cstate, true);
-
-							/*
-							* If close_program_pipes() didn't throw an error,
-							* the program terminated normally, but closed the
-							* pipe first. Restore errno, and throw an error.
-							*/
-							errno = olderrno;
-							ereport(ERROR,
-									(errcode_for_socket_access(),
-									 errmsg("could not poll COPY program: %m")));
-						}
-						else
-							ereport(ERROR,
-									(errcode_for_file_access(),
-									 errmsg("could not poll COPY file: %m")));
+						rc = WaitLatchOrSocket(NULL, WL_SOCKET_READABLE | WL_TIMEOUT, 
+											   sock, COPY_POLL_TIMEOUT);
 					}
-				} while (rc <= 0);
+					PG_CATCH();
+					{
+						if (cstate->is_program)
+							close_program_pipes(cstate, true);
+						PG_RE_THROW();
+					}
+					PG_END_TRY();
+				} while (!(rc & WL_SOCKET_READABLE));
 
-				/* If data is available */
-				if (rc == 1 && (pollfd.revents & POLLIN))
+				/* Data should be available by this point */
+				ssize_t result = read(sock, databuf, datasize);
+
+				if (result == 0)
+					cstate->fe_eof = true;
+				else if (result > 0)
+					bytesread = result;
+				else
 				{
-					ssize_t result = read(pollfd.fd, databuf, datasize);
-
-					if (result == 0)
-						cstate->fe_eof = true;
-					else if (result > 0)
-						bytesread = result;
-					else
+					if (cstate->is_program)
 					{
-						if (cstate->is_program)
-						{
-							int olderrno = errno;
+						int olderrno = errno;
 
-							close_program_pipes(cstate, true);
+						close_program_pipes(cstate, true);
 
-							/*
-							* If close_program_pipes() didn't throw an error,
-							* the program terminated normally, but closed the
-							* pipe first. Restore errno, and throw an error.
-							*/
-							errno = olderrno;
+						/*
+						* If close_program_pipes() didn't throw an error,
+						* the program terminated normally, but closed the
+						* pipe first. Restore errno, and throw an error.
+						*/
+						errno = olderrno;
 
-							ereport(ERROR,
-									(errcode_for_file_access(),
-									 errmsg("could not read from COPY program: %m")));
-						}
-						else
-							ereport(ERROR,
-									(errcode_for_file_access(),
-									 errmsg("could not read from COPY file: %m")));
+						ereport(ERROR,
+								(errcode_for_file_access(),
+								 errmsg("could not read from COPY program: %m")));
 					}
+					else
+						ereport(ERROR,
+								(errcode_for_file_access(),
+								 errmsg("could not read from COPY file: %m")));
 				}
 				break;
 			}
