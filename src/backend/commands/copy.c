@@ -20,7 +20,6 @@
 
 #include <ctype.h>
 #include <unistd.h>
-#include <poll.h>
 #include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
