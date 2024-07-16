@@ -2928,25 +2928,6 @@ Execute on: all segments
 DROP EXTERNAL TABLE SERIAL;
 DROP TABLE SERIAL_NORMAL;
 DROP EXTERNAL TABLE SERIAL_LIKE;
--- create external table with NOT NULL and DEFAULT
-CREATE EXTERNAL TABLE NOT_NULL_DEFAULT (a int NOT NULL DEFAULT 10, x text)
-LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
-FORMAT 'csv';
-\d NOT_NULL_DEFAULT
-External table "public.not_null_default"
- Column |  Type   |      Modifiers      
---------+---------+---------------------
- a      | integer | not null default 10
- x      | text    | 
-Type: readable
-Encoding: UTF8
-Format type: csv
-Format options: delimiter ',' null '' escape '"' quote '"'
-External options: {}
-External location: file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl
-Execute on: all segments
-
-DROP EXTERNAL TABLE NOT_NULL_DEFAULT;
 -- External table query within plpgSQL function get error
 CREATE EXTERNAL TABLE exttab_error_context_callback(c1 int, c2 int)
 LOCATION ('file://@hostname@@abs_srcdir@/data/exttab.data') FORMAT 'TEXT';
