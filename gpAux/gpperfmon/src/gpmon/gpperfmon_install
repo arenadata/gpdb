@@ -142,13 +142,12 @@ if __name__ == '__main__':
             logger.error("$HOME must be set")
             sys.exit(1)
 
-        if not options.password:
-            if options.pgpass:
-                pg_pass = options.pgpass
-            else:
-                pg_pass = "%s/.pgpass" % home_dir
+        if options.pgpass:
+            pg_pass = options.pgpass
+        else:
+            pg_pass = "%s/.pgpass" % home_dir
 
-            old_pg_pass = "%s.%d" % (pg_pass, time.time())
+        old_pg_pass = "%s.%d" % (pg_pass, time.time())
 
         pg_ident_conf = "%s/pg_ident.conf" % master_data_dir
         old_pg_ident_conf = "%s.%d" % (pg_ident_conf, time.time())
