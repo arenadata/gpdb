@@ -702,6 +702,12 @@ CopyToDispatchFlush(CopyState cstate)
 	resetStringInfo(fe_msgbuf);
 }
 
+/* 
+ * Timeout for waiting inside CopyGetData (in milliseconds).
+ * Interrupts will be checked once timeout expires.
+ */
+#define COPY_WAIT_TIMEOUT 500
+
 /*
  * CopyGetData reads data from the source (file or frontend)
  *
@@ -735,9 +741,8 @@ CopyGetData(CopyState cstate, void *databuf, int datasize)
 					CHECK_FOR_INTERRUPTS();
 
 					/* Wait until data arrives or 500 ms passes */
-#define COPY_POLL_TIMEOUT 500
 					rc = WaitLatchOrSocket(NULL, WL_SOCKET_READABLE | WL_TIMEOUT, 
-										   sock, COPY_POLL_TIMEOUT);
+										   sock, COPY_WAIT_TIMEOUT);
 				} while (!(rc & WL_SOCKET_READABLE));
 
 				/* Data should be available by this point */
