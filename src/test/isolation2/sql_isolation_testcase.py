@@ -591,7 +591,7 @@ class SQLIsolationExecutor(object):
             raise Exception("Session name should be smaller than 1024 unless it is utility mode number")
 
         if not (name, mode) in self.processes:
-            raise Exception("Sessions not started cannot be quit")
+            raise Exception("Sessions not started cannot be terminated")
 
         self.processes[(name, mode)].terminate()
         del self.processes[(name, mode)]
