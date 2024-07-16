@@ -581,7 +581,7 @@ class SQLIsolationExecutor(object):
         self.processes[(name, mode)].quit()
         del self.processes[(name, mode)]
 
-    def terminate_process(self, out_file, name, mode="", dbname=""):
+    def terminate_process(self, out_file, name, mode=""):
         """
         Terminates a process with the given name
         """
@@ -750,7 +750,7 @@ class SQLIsolationExecutor(object):
         elif flag == "t":
             if len(sql) > 0:
                 raise Exception("No query should be given on termination")
-            self.terminate_process(output_file, process_name, con_mode, dbname=dbname)
+            self.terminate_process(output_file, process_name, con_mode)
         elif flag == "U":
             if process_name == '*':
                 process_names = [str(content) for content in self.get_all_primary_contentids(dbname)]
