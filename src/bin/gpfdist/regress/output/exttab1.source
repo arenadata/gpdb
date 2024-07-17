@@ -1047,8 +1047,6 @@ select a from ext_transform_free order by a;
 -- truncate output files from any previous runs
 \! > @abs_srcdir@/data/wet_writable_not_null.data
 \! > @abs_srcdir@/data/wet_writable_default.data
--- start_ignore
--- end_ignore
 -- Test NOT NULL for writable
 CREATE WRITABLE EXTERNAL TABLE writable_not_null (a int, b int NOT NULL, c int NULL)
 LOCATION ('gpfdist://@hostname@:7070/wet_writable_not_null.data')
