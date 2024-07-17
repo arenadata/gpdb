@@ -181,7 +181,7 @@ if __name__ == '__main__':
             cmd = Command("""echo "host     all         gpmon         ::1/128    md5" >> %s""" % pg_hba, showOutput=True)
             commands.append(cmd)
         else:
-            cmd = Command("""echo "local    gpperfmon         gpmon                         ident        map=perfmon" >> %s""" % pg_hba, showOutput=True)
+            cmd = Command("""echo "local    gpperfmon         gpmon                         peer         map=perfmon" >> %s""" % pg_hba, showOutput=True)
             commands.append(cmd)
 
             cmd = Command("""echo "host     gpperfmon         gpmon         127.0.0.1/28    ident        map=perfmon" >> %s""" % pg_hba, showOutput=True)
@@ -211,7 +211,7 @@ if __name__ == '__main__':
             ################################################
         else:
             ################################################
-            # these commands add a new line to the top of pg_ident.conf and save a copy of old pg_ident.conf
+            # these commands add a new line to the bottom of pg_ident.conf and save a copy of old pg_ident.conf
             cmd = Command("""touch %s""" % (pg_ident_conf))
             commands.append(cmd)
 
