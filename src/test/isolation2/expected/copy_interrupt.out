@@ -3,16 +3,28 @@
 !\retcode gpstop -u;
 (exited with code 0)
 
+1: SELECT gp_inject_fault('proc_kill', 'suspend', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
 0: CREATE TABLE copy_interrupt_table(a int);
 CREATE
 0&: COPY copy_interrupt_table FROM PROGRAM 'while true; do echo 1; sleep 1; done | cat -';  <waiting ...>
-! sleep 10;
-
 
 0t: ... <terminating>
-! sleep 40;
 
-
+1: SELECT gp_wait_until_triggered_fault('proc_kill', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_wait_until_triggered_fault 
+-------------------------------
+ Success:                      
+(1 row)
+1: SELECT gp_inject_fault('proc_kill', 'resume', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
 -- There shouldn't be any backend to terminate by this point
 -- Still, terminate it to not leave hanging processes even in case test fails
 -- For the test to pass, query should return zero rows
