@@ -330,6 +330,9 @@ select workset_cleanup_test();
 
 ------------ Ensure that tuplestore is destroyed correctly in a case of error -------------------
 
+
+-- start_ignore
+drop table if exists testdata;
 create table testdata as
 (select
   md5(random()::text) as textdata,
@@ -337,6 +340,7 @@ create table testdata as
   timestamp '2000-01-01 00:00:00' + random() *
     (timestamp '2024-01-01 00:00:00' - timestamp '2000-01-01 00:00:00') as datedata
 from generate_series(1, 1000000) i);
+-- end_ignore
 
 set statement_mem = 1000;
 set gp_workfile_limit_per_query = 100;
@@ -346,6 +350,8 @@ declare testdata_cursor cursor without hold for select * from testdata;
 fetch forward all from testdata_cursor;
 rollback;
 
+-- start_ignore
 reset statement_mem;
 reset gp_workfile_limit_per_query;
 drop table testdata;
+-- end_ignore
