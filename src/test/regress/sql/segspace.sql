@@ -348,4 +348,6 @@ rollback;
 
 reset statement_mem;
 reset gp_workfile_limit_per_query;
+--start_ignore
 drop table testdata;
+--end_ignore
