@@ -332,6 +332,9 @@ select workset_cleanup_test();
 
 -- This test can be reproduced only when gp is forced to spill. In order to
 -- make it spill we limit the amount of available memory by setting statement_mem
+--start_ignore
+drop table if exists testdata;
+--end_ignore
 create table testdata as
 (select
   md5(random()::text) as textdata,
@@ -350,6 +353,5 @@ rollback;
 
 reset statement_mem;
 reset gp_workfile_limit_per_query;
---start_ignore
+
 drop table testdata;
---end_ignore
