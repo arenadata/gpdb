@@ -342,7 +342,7 @@ create table testdata as
 from generate_series(1, 400000) i);
 
 -- The default statement_mem value is 125Mb which is enough to force gp to spill.
--- However, if statement_mem is bigger then gp doesn't need to spill and this test
+-- However, if statement_mem is bigger, then gp doesn't need to spill and this test
 -- can't be reproduced.
 set gp_workfile_limit_per_query = 100;
 
@@ -351,7 +351,6 @@ declare testdata_cursor cursor without hold for select * from testdata;
 fetch forward all from testdata_cursor;
 rollback;
 
-reset statement_mem;
 reset gp_workfile_limit_per_query;
 
 drop table testdata;
