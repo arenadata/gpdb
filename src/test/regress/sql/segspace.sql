@@ -330,8 +330,6 @@ select workset_cleanup_test();
 
 ------------ Ensure that tuplestore is destroyed correctly in a case of error -------------------
 
--- This test can be reproduced only when gp is forced to spill. In order to
--- make it spill we limit the amount of available memory by setting statement_mem
 --start_ignore
 drop table if exists testdata;
 --end_ignore
@@ -343,7 +341,9 @@ create table testdata as
     (timestamp '2024-01-01 00:00:00' - timestamp '2000-01-01 00:00:00') as datedata
 from generate_series(1, 400000) i);
 
-set statement_mem = 1000;
+-- The default statement_mem value is 125Mb which is enough to force gp to spill.
+-- However, if statement_mem is bigger then gp doesn't need to spill and this test
+-- can't be reproduced.
 set gp_workfile_limit_per_query = 100;
 
 begin;
