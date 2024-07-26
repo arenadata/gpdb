@@ -1100,6 +1100,7 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 	ListCell   *lc;
 	int			sliceIndex;
 	bool		all_root_slices;
+	int			writer_slice_cnt = 0;
 
 	/*
 	 * This can modify nodes, so the nodes we memorized earlier are no longer
@@ -1200,7 +1201,9 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 	}
 
 	/*
-	 * If none of the slices require dispatching, we can run everything in one slice.
+	 * If none of the slices require dispatching, we can run everything in one
+	 * slice. Also check in the same loop if we have more than one writing
+	 * gang, which is not yet supported.
 	 */
 	all_root_slices = true;
 	foreach (lc, cxt.slices)
@@ -1208,10 +1211,15 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 		PlanSlice *slice = (PlanSlice *) lfirst(lc);
 
 		if (slice->gangType != GANGTYPE_UNALLOCATED)
-		{
 			all_root_slices = false;
-			break;
-		}
+
+		if (slice->gangType == GANGTYPE_PRIMARY_WRITER)
+			writer_slice_cnt++;
+
+		if (writer_slice_cnt > 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				   errmsg("cannot create plan with several writing gangs")));
 	}
 	if (all_root_slices)
 	{
