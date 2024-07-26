@@ -680,4 +680,118 @@ with cte as (
 ), cte2 as (select * from cte)
 select count(*) from cte2 a join cte2 b on a.i=b.i;
 
+-- Test SELECT INTO and CTAS with modifying CTE
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1, 5) i
+    returning *
+) select into t_new from cte;
+
+explain (costs off)
+with cte as
+(
+    update with_dml set j = j + 1
+    returning *
+) select into t_new from cte;
+
+explain (costs off)
+with cte as
+(
+    delete from with_dml where i > 0
+    returning *
+) select into t_new from cte;
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        insert into with_dml select i, i * 100 from generate_series(1, 5) i
+        returning *
+    ) select * from cte
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        update with_dml set j = j + 1
+        returning *
+    ) select * from cte
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        delete from with_dml where i > 0
+        returning *
+    ) select * from cte
+);
+
+-- A bit more complex case with nested CTEs and LIMIT to test a plan
+-- with different types of gangs (reader, singleton reader and writers)
+explain (costs off)
+with cte as
+(
+    with inner_cte as
+    (
+        select j from with_dml limit 1
+    ) delete from with_dml where with_dml.i in (select * from inner_cte)
+    returning *
+) select * into t_new from cte;
+
+-- Test queries with modifying CTE not referenced from the query
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1, 5) i
+    returning *
+) select into t_new from (select i, i * 100 from generate_series(1, 5) i) t;
+
+explain (costs off)
+with cte as
+(
+    update with_dml set j = j + 1
+    returning *
+) select into t_new from (select i, i * 100 from generate_series(1, 5) i) t;
+
+explain (costs off)
+with cte as
+(
+    delete from with_dml where i > 0
+    returning *
+) select into t_new from (select i, i * 100 from generate_series(1, 5) i) t;
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        insert into with_dml select i, i * 100 from generate_series(1, 5) i
+        returning *
+    ) select * from (select i, i * 100 from generate_series(1, 5) i) t
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        update with_dml set j = j + 1
+        returning *
+    ) select * from (select i, i * 100 from generate_series(1, 5) i) t
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        delete from with_dml where i > 0
+        returning *
+    ) select * from (select i, i * 100 from generate_series(1, 5) i) t
+);
+
 drop table with_dml;
