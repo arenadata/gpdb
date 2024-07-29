@@ -901,6 +901,33 @@ DETAIL:  Feature not supported: LATERAL
  2
 (2 rows)
 
+-- check MIN/MAX is still enabled for normal joins
+explain (costs off)
+  select x from (values (1), (2)) as v(v_col)
+    join (select max(unique1) x from tenk1 where unique1 = 1) as r
+    on true;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Nested Loop
+   Join Filter: true
+   ->  Aggregate
+         ->  Gather Motion 1:1  (slice1; segments: 1)
+               ->  Aggregate
+                     ->  Index Only Scan using tenk1_unique1 on tenk1
+                           Index Cond: (unique1 = 1)
+   ->  Values Scan on "Values"
+ Optimizer: Pivotal Optimizer (GPORCA)
+(9 rows)
+
+select x from (values (1), (2)) as v(v_col)
+  join (select max(unique1) x from tenk1 where unique1 = 1) as r
+  on true;
+ x 
+---
+ 1
+ 1
+(2 rows)
+
 -- try it on an inheritance tree
 create table minmaxtest(f1 int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
