@@ -255,7 +255,6 @@ mdunlink_ao(RelFileNodeBackend rnode, ForkNumber forkNumber, bool isRedo)
 	 */
 	if (forkNumber == INIT_FORKNUM)
 	{
-		path = relpath(rnode, forkNumber);
 		if (unlink(path) < 0 && errno != ENOENT)
 			ereport(WARNING,
 					(errcode_for_file_access(),
@@ -266,18 +265,16 @@ mdunlink_ao(RelFileNodeBackend rnode, ForkNumber forkNumber, bool isRedo)
 	{
 		int pathSize = strlen(path);
 		char *segPath = (char *) palloc(pathSize + SEGNO_SUFFIX_LENGTH);
-		char *segPathSuffixPosition = segPath + pathSize;
-		struct mdunlink_ao_callback_ctx unlinkFiles;
-		unlinkFiles.isRedo = isRedo;
-		unlinkFiles.rnode = rnode.node;
+		strcpy(segPath, path);
 
-		strncpy(segPath, path, pathSize);
-
-		unlinkFiles.segPath = segPath;
-		unlinkFiles.segpathSuffixPosition = segPathSuffixPosition;
+		struct mdunlink_ao_callback_ctx unlinkFiles = {
+			.isRedo = isRedo,
+			.rnode = rnode.node,
+			.segPath = segPath,
+			.segpathSuffixPosition = segPath + pathSize
+		};
 
 		mdunlink_ao_base_relfile(&unlinkFiles);
-
 		ao_foreach_extent_file(mdunlink_ao_perFile, &unlinkFiles);
 
 		pfree(segPath);
