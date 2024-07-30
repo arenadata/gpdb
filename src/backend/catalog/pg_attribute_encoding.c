@@ -36,7 +36,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
-static void check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present);
+static void check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present, Size attnum_entry_present_size);
 
 /*
  * Transform the lastrownums int64 array into datum 
@@ -612,7 +612,7 @@ AddOrUpdateCOAttributeEncodings(Oid relid, List *attr_encodings)
 	List *filenums = NIL;
 	bool attnumsWithEntries[MaxHeapAttributeNumber];
 
-	check_attribute_encoding_entry_exist(relid, attnumsWithEntries);
+	check_attribute_encoding_entry_exist(relid, attnumsWithEntries, sizeof(attnumsWithEntries));
 
 	if (attr_encodings)
 	{
@@ -962,7 +962,7 @@ ExistValidLastrownums(Oid relid, int natts)
  * Determine which attnums have an entry present in pg_attribute_encoding
  */
 void
-check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present)
+check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present, Size attnum_entry_present_size)
 {
 	Relation    	rel;
 	SysScanDesc 	scan;
@@ -972,7 +972,7 @@ check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present)
 
 	Assert(OidIsValid(relid));
 
-	MemSet(attnum_entry_present, false, sizeof(attnum_entry_present));
+	MemSet(attnum_entry_present, false, attnum_entry_present_size);
 
 	rel = heap_open(AttributeEncodingRelationId, AccessShareLock);
 
