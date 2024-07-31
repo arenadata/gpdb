@@ -515,7 +515,7 @@ fi
 # but has its own.  Also check other compiler-specific flags here.
 
 if test "$GCC" = yes -a "$ICC" = no; then
-  CFLAGS="-Wall -Wmissing-prototypes -Wpointer-arith"
+  CFLAGS="-Wall -Wmissing-prototypes -Wpointer-arith -Wimplicit-fallthrough=3 -Wvla"
   CXXFLAGS="-Wall -Wpointer-arith"
   # These work in some but not all gcc versions
   save_CFLAGS=$CFLAGS
@@ -2786,8 +2786,7 @@ fi
 # error should be last step after all autoconf checks are performed, otherwise
 # false side-effects happens.
 if test "$GCC" = yes -a "$ICC" = no; then
-   PGAC_PROG_CC_CFLAGS_OPT([-Wall])
-   PGAC_PROG_CC_CFLAGS_OPT([-Werror])
+  PGAC_PROG_CC_CFLAGS_OPT([-Werror])
 fi
 
 [BLD_ARCH=`echo $BLD_ARCH`]
