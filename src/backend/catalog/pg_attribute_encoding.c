@@ -610,7 +610,7 @@ AddOrUpdateCOAttributeEncodings(Oid relid, List *attr_encodings)
 	ListCell *lc;
 	ListCell *lc_filenum;
 	List *filenums = NIL;
-	bool attnumsWithEntries[MaxHeapAttributeNumber];
+	bool attnumsWithEntries[MaxHeapAttributeNumber] = {0};
 
 	check_attribute_encoding_entry_exist(relid, attnumsWithEntries);
 
@@ -960,7 +960,7 @@ ExistValidLastrownums(Oid relid, int natts)
 
 /*
  * Determine which attnums have an entry present in pg_attribute_encoding
- * Note: only use with attnum_entry_present of size MaxHeapAttributeNumber
+ * attnum_entry_present must be zero-initialized
  */
 void
 check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present)
@@ -972,8 +972,6 @@ check_attribute_encoding_entry_exist(Oid relid, bool *attnum_entry_present)
 	bool 			isnull;
 
 	Assert(OidIsValid(relid));
-
-	MemSet(attnum_entry_present, false, sizeof(*attnum_entry_present) * MaxHeapAttributeNumber);
 
 	rel = heap_open(AttributeEncodingRelationId, AccessShareLock);
 
