@@ -794,4 +794,16 @@ create table t_new as
     ) select * from (select i, i * 100 from generate_series(1, 5) i) t
 );
 
+-- Test if second writer slice is in the InitPlan
+explain (costs off)
+create table t_new as
+with cte1 as
+(
+	insert into with_dml values(1, 1) returning *
+),
+cte2 as
+(
+	select * from unnest(array(select cte1.i from cte1))
+) select * from cte2;
+
 drop table with_dml;
