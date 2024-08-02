@@ -1205,9 +1205,7 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 	}
 
 	/*
-	 * If none of the slices require dispatching, we can run everything in one
-	 * slice. Also check in the same loop if we have more than one writing
-	 * gang, which is not yet supported.
+	 * If none of the slices require dispatching, we can run everything in one slice.
 	 */
 	all_root_slices = true;
 	foreach (lc, cxt.slices)
