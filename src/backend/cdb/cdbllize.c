@@ -130,6 +130,9 @@ typedef struct
 	/* Current slice in the traversal. */
 	int			currentSliceIndex;
 
+	/* Count of writing slices in the current plan */
+	int			writingSliceCount;
+
 	/*
 	 * Subplan IDs that we have seen. Used to prevent scanning the
 	 * same subplan more than once, even if there are multiple SubPlan
@@ -1100,7 +1103,6 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 	ListCell   *lc;
 	int			sliceIndex;
 	bool		all_root_slices;
-	int			writer_slice_cnt = 0;
 
 	/*
 	 * This can modify nodes, so the nodes we memorized earlier are no longer
@@ -1153,6 +1155,8 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 	cxt.slices = list_make1(top_slice);
 
 	cxt.currentSliceIndex = 0;
+	cxt.writingSliceCount =
+		top_slice->gangType == GANGTYPE_PRIMARY_WRITER ? 1 : 0;
 
 	/*
 	 * Walk through the main plan tree, and recursively all SubPlans.
@@ -1211,15 +1215,10 @@ cdbllize_build_slice_table(PlannerInfo *root, Plan *top_plan,
 		PlanSlice *slice = (PlanSlice *) lfirst(lc);
 
 		if (slice->gangType != GANGTYPE_UNALLOCATED)
+		{
 			all_root_slices = false;
-
-		if (slice->gangType == GANGTYPE_PRIMARY_WRITER)
-			writer_slice_cnt++;
-
-		if (writer_slice_cnt > 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-				   errmsg("cannot create plan with several writing gangs")));
+			break;
+		}
 	}
 	if (all_root_slices)
 	{
@@ -1279,6 +1278,7 @@ build_slice_table_walker(Node *node, build_slice_table_context *context)
 		{
 			bool		result;
 			int			save_currentSliceIndex;
+			int			save_writingSliceCount;
 
 			context->seen_subplans = bms_add_member(context->seen_subplans, plan_id);
 
@@ -1296,6 +1296,9 @@ build_slice_table_walker(Node *node, build_slice_table_context *context)
 				context->slices = lappend(context->slices, initTopSlice);
 
 				context->currentSliceIndex = initTopSlice->sliceIndex;
+
+				save_writingSliceCount = context->writingSliceCount;
+				context->writingSliceCount = 0;
 			}
 			root->glob->subplan_sliceIds[plan_id - 1] = context->currentSliceIndex;
 
@@ -1305,6 +1308,9 @@ build_slice_table_walker(Node *node, build_slice_table_context *context)
 									  true);
 
 			context->currentSliceIndex = save_currentSliceIndex;
+
+			if (spexpr->is_initplan)
+				context->writingSliceCount = save_writingSliceCount;
 
 			return result;
 		}
@@ -1327,6 +1333,16 @@ build_slice_table_walker(Node *node, build_slice_table_context *context)
 		motion->motionID = sendSlice->sliceIndex;
 		motion->senderSliceInfo = NULL;
 		context->slices = lappend(context->slices, sendSlice);
+
+		if (sendSlice->gangType == GANGTYPE_PRIMARY_WRITER)
+		{
+			context->writingSliceCount++;
+
+			if (context->writingSliceCount > 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					   errmsg("cannot create plan with several writing gangs")));
+		}
 
 		save_currentSliceIndex = context->currentSliceIndex;
 		context->currentSliceIndex = sendSlice->sliceIndex;
