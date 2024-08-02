@@ -1276,7 +1276,7 @@ build_slice_table_walker(Node *node, build_slice_table_context *context)
 		{
 			bool		result;
 			int			save_currentSliceIndex;
-			int			save_writingSliceCount;
+			int			save_writingSliceCount = 0;
 
 			context->seen_subplans = bms_add_member(context->seen_subplans, plan_id);
 
