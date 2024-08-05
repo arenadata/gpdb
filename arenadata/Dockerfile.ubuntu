@@ -5,8 +5,6 @@ ARG sigar_headers=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/
 ARG libxerces=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/libxerces-c31_3.1.2-3304_amd64.deb
 ARG libxerces_dev=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/libxerces-c31-dev_3.1.2-3304_amd64.deb
 
-WORKDIR /home/gpadmin
-
 COPY README.ubuntu.bash ./
 RUN set -eux; \
     ./README.ubuntu.bash; \
@@ -15,6 +13,8 @@ RUN set -eux; \
     apt install -y ./*.deb; \
     rm ./*.deb; \
     ln -s python2 /usr/bin/python
+
+WORKDIR /home/gpadmin
 
 FROM base as build
 
