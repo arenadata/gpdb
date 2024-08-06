@@ -1788,7 +1788,7 @@ destroyConnHashTable(ConnHashTable *ht)
 static inline void
 sendControlMessage(icpkthdr *pkt, int fd, struct sockaddr *addr, socklen_t peerLen)
 {
-	int			n;
+	int			n = 0;
 
 #ifdef USE_ASSERT_CHECKING
 	if (testmode_inject_fault(gp_udpic_dropacks_percent))

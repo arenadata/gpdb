@@ -2145,8 +2145,7 @@ insertsetbit(Relation rel, BlockNumber lovBlock, OffsetNumber lovOffset,
 		MemSet(buf->cwords, 0,
 				buf->num_cwords * sizeof(BM_HRL_WORD));
 	}
-	MemSet(buf->hwords, 0,
-		   BM_CALC_H_WORDS(buf->num_cwords) * sizeof(BM_HRL_WORD));
+	MemSet(buf->hwords, 0, sizeof(buf->hwords));
 	if (buf->last_tids)
 		MemSet(buf->last_tids, 0,
 				buf->num_cwords * sizeof(uint64));
