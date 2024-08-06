@@ -12,7 +12,17 @@ RUN set -eux; \
     wget $sigar $sigar_headers $libxerces $libxerces_dev; \
     apt install -y ./*.deb; \
     rm ./*.deb; \
-    ln -s python2 /usr/bin/python
+    ln -s python2 /usr/bin/python; \
+# Install pg_bsd_indent used by pgindent utility
+    wget https://ftp.postgresql.org/pub/dev/pg_bsd_indent-1.3.tar.gz -O - | tar -xzf -; \
+    make install -C pg_bsd_indent; \
+    rm -r pg_bsd_indent; \
+# The en_US.UTF-8 locale is needed to run GPDB
+    locale-gen en_US.UTF-8; \
+# To run sshd directly, but not using `/etc/init.d/ssh start`
+    mkdir /run/sshd; \
+# Alter precedence in favor of IPv4 during resolving
+    echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
 
 WORKDIR /home/gpadmin
 
@@ -38,22 +48,9 @@ FROM base as test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
 
-# Install entab and pg_bsd_indent used by pgindent utility.
+# Install entab used by pgindent utility.
 # This should be done using gpdb sources.
-RUN set -eux; \
-    make -C gpdb_src/src/tools/entab install clean; \
-    wget https://ftp.postgresql.org/pub/dev/pg_bsd_indent-1.3.tar.gz -O - | tar -xzf -; \
-    make install -C pg_bsd_indent; \
-    rm -r pg_bsd_indent; \
-# libipc-run-perl and rsync are needed to run regression tests
-# iproute2 is needed to run GPDB
-    apt install -y libipc-run-perl rsync iproute2; \
-# The en_US.UTF-8 locale is needed to run GPDB
-    locale-gen en_US.UTF-8; \
-# To run sshd directly, but not using `/etc/init.d/ssh start`
-    mkdir /run/sshd; \
-# Alter precedence in favor of IPv4 during resolving
-    echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+RUN make -C gpdb_src/src/tools/entab install clean
 
 # Volume for tests output
 VOLUME /home/gpadmin/gpdb_src/src/test
