@@ -14,7 +14,11 @@
 1: SELECT oid, relname, relnamespace FROM pg_class where relname = 'test_temp_table_cleanup';
 -- we should not see the temp namespace on the coordinator
 1: SELECT count(*) FROM pg_namespace where (nspname like '%pg_temp_%' or nspname like '%pg_toast_temp_%') and oid > 16386;
-
+1: SELECT * FROM pg_namespace where nspname like 'pg_temp_%' and oid > 16386;
+1: SELECT * FROM pg_class where relnamespace = (SELECT oid FROM pg_namespace where nspname like 'pg_temp_%' and oid > 16386);
+1: CREATE OR REPLACE FUNCTION show_all_on_segments() RETURNS table (guc_name text, guc_setting text) EXECUTE ON ALL SEGMENTS AS $$ BEGIN RETURN QUERY SELECT name, setting FROM pg_settings ORDER BY name; END; $$ LANGUAGE plpgsql;
+1: SELECT name, setting FROM pg_settings ORDER BY name;
+1: SELECT * FROM show_all_on_segments();
 
 -- the temp table is left on segment 0, it should be dropped by autovacuum later
 0U: SELECT relname FROM pg_class where relname = 'test_temp_table_cleanup';
