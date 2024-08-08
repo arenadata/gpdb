@@ -2140,16 +2140,6 @@ insertsetbit(Relation rel, BlockNumber lovBlock, OffsetNumber lovOffset,
 	buf->last_word = lovItem->bm_last_word;
 	buf->is_last_compword_fill = (lovItem->lov_words_header >= 2);
 	buf->last_tid = lovItem->bm_last_setbit;
-	if (buf->cwords)
-	{
-		MemSet(buf->cwords, 0,
-				buf->num_cwords * sizeof(BM_HRL_WORD));
-	}
-	MemSet(buf->hwords, 0, sizeof(buf->hwords));
-	if (buf->last_tids)
-		MemSet(buf->last_tids, 0,
-				buf->num_cwords * sizeof(uint64));
-	buf->curword = 0;
 
 	/*
 	 * Usually, tidnum is greater than lovItem->bm_last_setbit.
