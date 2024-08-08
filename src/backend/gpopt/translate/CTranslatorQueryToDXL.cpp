@@ -4489,6 +4489,7 @@ CTranslatorQueryToDXL::CreateDXLProjectNullsForGroupingSets(
 
 		GPOS_ASSERT_IMP(
 			nullptr == sort_grouping_col_mapping,
+			sort_grouping_col_mapping &&
 			nullptr != sort_grouping_col_mapping->Find(&sort_group_ref) &&
 				"Grouping column with no mapping");
 
