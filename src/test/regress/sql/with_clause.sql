@@ -462,6 +462,27 @@ UNION ALL
 UNION ALL
   SELECT 'c', j FROM cte;
 
+--start_ignore
+DROP TABLE IF EXISTS es1;
+DROP TABLE IF EXISTS es2;
+--end_ignore
+
+CREATE TABLE es1 (i INT) DISTRIBUTED BY(i);
+CREATE TABLE es2 (i INT) DISTRIBUTED BY(i);
+SET gp_cte_sharing = ON;
+WITH cte AS (
+	UPDATE es1 SET i = es1.i FROM es2 WHERE es2.i = es1.i RETURNING *
+)
+SELECT * FROM cte UNION ALL SELECT * FROM cte;
+
+EXPLAIN (VERBOSE ON, COSTS OFF) WITH cte AS (
+	UPDATE es1 SET i = es1.i FROM es2 WHERE es2.i = es1.i RETURNING *
+)
+SELECT * FROM cte UNION ALL SELECT * FROM cte;
+
+DROP TABLE es1;
+DROP TABLE es2;
+
 -- Test forced materialization (sharing) of CTEs with non-SELECT DML inside.
 --start_ignore
 drop table if exists with_dml;
@@ -679,5 +700,131 @@ with cte as (
     returning i, j
 ), cte2 as (select * from cte)
 select count(*) from cte2 a join cte2 b on a.i=b.i;
+
+-- Test SELECT INTO and CTAS with modifying CTE
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1, 5) i
+    returning *
+) select into t_new from cte;
+
+explain (costs off)
+with cte as
+(
+    update with_dml set j = j + 1
+    returning *
+) select into t_new from cte;
+
+explain (costs off)
+with cte as
+(
+    delete from with_dml where i > 0
+    returning *
+) select into t_new from cte;
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        insert into with_dml select i, i * 100 from generate_series(1, 5) i
+        returning *
+    ) select * from cte
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        update with_dml set j = j + 1
+        returning *
+    ) select * from cte
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        delete from with_dml where i > 0
+        returning *
+    ) select * from cte
+);
+
+-- A bit more complex case with nested CTEs and LIMIT to test a plan
+-- with different types of gangs (reader, singleton reader and writers)
+explain (costs off)
+with cte as
+(
+    with inner_cte as
+    (
+        select j from with_dml limit 1
+    ) delete from with_dml where with_dml.i in (select * from inner_cte)
+    returning *
+) select * into t_new from cte;
+
+-- Test queries with modifying CTE not referenced from the query
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1, 5) i
+    returning *
+) select into t_new from (select i, i * 100 from generate_series(1, 5) i) t;
+
+explain (costs off)
+with cte as
+(
+    update with_dml set j = j + 1
+    returning *
+) select into t_new from (select i, i * 100 from generate_series(1, 5) i) t;
+
+explain (costs off)
+with cte as
+(
+    delete from with_dml where i > 0
+    returning *
+) select into t_new from (select i, i * 100 from generate_series(1, 5) i) t;
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        insert into with_dml select i, i * 100 from generate_series(1, 5) i
+        returning *
+    ) select * from (select i, i * 100 from generate_series(1, 5) i) t
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        update with_dml set j = j + 1
+        returning *
+    ) select * from (select i, i * 100 from generate_series(1, 5) i) t
+);
+
+explain (costs off)
+create table t_new as
+(
+    with cte as
+    (
+        delete from with_dml where i > 0
+        returning *
+    ) select * from (select i, i * 100 from generate_series(1, 5) i) t
+);
+
+-- Test if second writer slice is in the InitPlan
+explain (costs off)
+create table t_new as
+with cte1 as
+(
+	insert into with_dml values(1, 1) returning *
+),
+cte2 as
+(
+	select * from unnest(array(select cte1.i from cte1))
+) select * from cte2;
 
 drop table with_dml;
