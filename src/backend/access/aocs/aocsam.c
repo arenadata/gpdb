@@ -1268,7 +1268,7 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 				/* continue next block */
 			}
 			else
-				pg_unreachable(); /* unreachable code */
+				Assert(0); /* unreachable code */
 		}
 	}
 

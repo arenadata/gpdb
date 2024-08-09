@@ -3612,7 +3612,8 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 		if (!(gp_reraise_signal &&
 			  (postgres_signal_arg == SIGSEGV ||
 			   postgres_signal_arg == SIGILL ||
-			   postgres_signal_arg == SIGBUS)))
+			   postgres_signal_arg == SIGBUS ||
+			   postgres_signal_arg == SIGABRT)))
 		{
 			pthread_exit(NULL);
 		}
@@ -4848,6 +4849,9 @@ PostgresMain(int argc, char *argv[],
 #endif
 #ifdef SIGSEGV
 		pqsignal(SIGSEGV, CdbProgramErrorHandler);
+#endif
+#ifdef SIGSEGV
+		pqsignal(SIGABRT, CdbProgramErrorHandler);
 #endif
 #ifdef SIGBUS
 		pqsignal(SIGBUS, CdbProgramErrorHandler);

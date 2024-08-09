@@ -4930,7 +4930,7 @@ uint32 gp_backtrace(void **stackAddresses, uint32 maxStackDepth)
 	void **pFramePtr = (void**) GET_PTR_FROM_VALUE(framePtrValue);
 
 	/* check if the frame pointer is valid */
-	if (pFramePtr != NULL && (void *) &depth < (void *) pFramePtr)
+	if (0 /*pFramePtr != NULL && (void *) &depth < (void *) pFramePtr*/)
 	{
 		/* consider the first maxStackDepth frames only, below the stack base pointer */
 		for (depth = 0; depth < maxStackDepth; depth++)
@@ -5001,13 +5001,18 @@ SegvBusIllName(int signal)
 {
 	Assert(signal == SIGILL ||
 		   signal == SIGSEGV ||
-		   signal == SIGBUS);
+		   signal == SIGBUS ||
+		   signal == SIGABRT);
 	
 	switch (signal)
 	{
 #ifdef SIGILL
 		case SIGILL:
 			return "SIGILL";
+#endif
+#ifdef SIGABRT
+		case SIGABRT:
+			return "SIGABRT";
 #endif
 #ifdef SIGSEGV
 		case SIGSEGV:
@@ -5039,6 +5044,9 @@ StandardHandlerForSigillSigsegvSigbus_OnMainThread(char *processName, SIGNAL_ARG
 #endif
 #ifdef SIGSEGV
 	pqsignal(SIGSEGV, SIG_DFL);
+#endif
+#ifdef SIGABRT
+	pqsignal(SIGABRT, SIG_DFL);
 #endif
 #ifdef SIGBUS
 	pqsignal(SIGBUS, SIG_DFL);
