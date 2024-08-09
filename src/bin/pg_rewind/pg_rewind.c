@@ -375,16 +375,9 @@ main(int argc, char **argv)
 		 * in the target that needs rewinding.
 		 */
 		if (target_wal_endrec > divergerec)
-		{
 			rewind_needed = true;
-		}
 		else
-		{
-			/* the last common checkpoint record must be part of target WAL */
-			Assert(target_wal_endrec == divergerec);
-
 			rewind_needed = false;
-		}
 	}
 
 	if (!rewind_needed)
