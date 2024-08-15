@@ -1202,7 +1202,7 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 			}
 		}
 
-		if (ds->blockRowCount <= 0)
+		if (scan->segrowsprocessed == 0)
 			; /* haven't read block */
 		else
 		{
