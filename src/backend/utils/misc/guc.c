@@ -5266,8 +5266,7 @@ add_placeholder_variable(const char *name, int elevel)
 struct config_generic *
 find_option(const char *name, bool create_placeholders, int elevel)
 {
-	struct config_generic confa = {.name = name};
-	struct config_generic *ptr= &confa;
+	struct config_generic *key = &(struct config_generic){.name = name};
 	struct config_generic **res;
 	int			i;
 
@@ -5277,7 +5276,7 @@ find_option(const char *name, bool create_placeholders, int elevel)
 	 * By equating const char ** with struct config_generic *, we are assuming
 	 * the name field is first in config_generic.
 	 */
-	res = (struct config_generic **) bsearch((void *) &ptr,
+	res = (struct config_generic **) bsearch((void *) &key,
 											 (void *) guc_variables,
 											 num_guc_variables,
 											 sizeof(struct config_generic *),
