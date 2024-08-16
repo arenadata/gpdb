@@ -1180,7 +1180,7 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 		DatumStreamRead *ds = scan->columnScanInfo.ds[attno];
 		int64 startrow = scan->segfirstrow + scan->segrowsprocessed;
 		bool chkvisimap = true;
-		bool isanchor = attno == scan->columnScanInfo.proj_atts[ANCHOR_COL_IN_PROJ];
+		bool isanchor = i == ANCHOR_COL_IN_PROJ;
 
 		/*
 		 * After scanning the anchor column, we check if the value is 
@@ -1210,15 +1210,18 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 			rowcount = aocs_block_remaining_rows(ds);
 			Assert(rowcount >= 0);
 
-			if (isanchor ?
-				startrow + rowcount - 1 >= targrow :
-				ds->blockFirstRowNum + ds->blockRowCount - 1 >= phyrow)
+			int64 current_start_row = isanchor ? startrow : ds->blockFirstRowNum;
+			int64 current_remaining_rows = isanchor ? rowcount : ds->blockRowCount;
+			int64 current_target_row = isanchor ? targrow : phyrow;
+
+			if (current_start_row + current_remaining_rows - 1 >= current_target_row)
 			{
+				current_start_row += (isanchor ? 0 : ds->blockRowsProcessed);
 				/* read the value, visimap check only needed for the anchor column */
 				phyrow = aocs_gettuple_column(scan,
 											  attno,
-											  isanchor ? startrow : ds->blockFirstRowNum + ds->blockRowsProcessed,
-											  isanchor ? targrow : phyrow,
+											  current_start_row,
+											  current_target_row,
 											  isanchor ? &chkvisimap : NULL,
 											  slot);
 				if (!chkvisimap)
@@ -1245,9 +1248,11 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 				/* new block, reset blockRowsProcessed */
 				ds->blockRowsProcessed = 0;
 
-				if (isanchor ?
-					startrow + rowcount - 1 >= targrow :
-					ds->blockFirstRowNum + ds->blockRowCount - 1 >= phyrow)
+				int64 current_start_row = isanchor ? startrow : ds->blockFirstRowNum;
+				int64 current_remaining_rows = isanchor ? rowcount : ds->blockRowCount;
+				int64 current_target_row = isanchor ? targrow : phyrow;
+
+				if (current_start_row + current_remaining_rows - 1 >= current_target_row)
 				{
 					int64 blocksRead;
 
@@ -1260,11 +1265,13 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 					pgstat_count_buffer_read_ao(scan->rs_base.rs_rd,
 												blocksRead);
 
+					current_start_row += (isanchor ? 0 : ds->blockRowsProcessed);
+
 					/* read the value, visimap check only needed for the anchor column */
 					phyrow = aocs_gettuple_column(scan,
 												  attno,
-												  isanchor ? startrow : ds->blockFirstRowNum + ds->blockRowsProcessed,
-												  isanchor ? targrow : phyrow,
+												  current_start_row,
+												  current_target_row,
 												  isanchor ? &chkvisimap : NULL,
 												  slot);
 					if (!chkvisimap)
