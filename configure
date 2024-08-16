@@ -5418,8 +5418,8 @@ fi
 # but has its own.  Also check other compiler-specific flags here.
 
 if test "$GCC" = yes -a "$ICC" = no; then
-  CFLAGS="-Wall -Wmissing-prototypes -Wpointer-arith -Wimplicit-fallthrough -Wvla"
-  CXXFLAGS="-Wall -Wpointer-arith"
+  CFLAGS="-Wall -Wmissing-prototypes -Wpointer-arith -Wimplicit-fallthrough -Wvla -Wno-deprecated-declarations"
+  CXXFLAGS="-Wall -Wpointer-arith -Wno-deprecated-declarations"
   # These work in some but not all gcc versions
   save_CFLAGS=$CFLAGS
   # GPDB code is full of declarations after statement.
