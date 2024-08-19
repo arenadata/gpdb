@@ -1183,6 +1183,15 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 		bool isanchor = i == ANCHOR_COL_IN_PROJ;
 
 		/*
+		 * We should only use targrow for the initial anchor column scan.
+		 * phyrow should be used for all other columns, since it uniquely
+		 * identifies the row in all column files, unlike the sequential
+		 * number that can be different for different columns.
+		 */
+		int64 current_target_row = isanchor ? targrow : phyrow;
+		int64 current_start_row;
+
+		/*
 		 * After scanning the anchor column, we check if the value is 
 		 * missing in this column, if so, we skip the scanning.
 		 */
@@ -1210,13 +1219,15 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 			rowcount = aocs_block_remaining_rows(ds);
 			Assert(rowcount >= 0);
 
-			int64 current_start_row = isanchor ? startrow : ds->blockFirstRowNum;
-			int64 current_remaining_rows = isanchor ? rowcount : ds->blockRowCount;
-			int64 current_target_row = isanchor ? targrow : phyrow;
+			/*
+			 * For sequential number scan (targrow) the starting number is
+			 * startrow. For physical number scan (phyrow) the starting number
+			 * can be calculated from block header.
+			 */
+			current_start_row = isanchor ? startrow : ds->blockFirstRowNum + ds->blockRowsProcessed;
 
-			if (current_start_row + current_remaining_rows - 1 >= current_target_row)
+			if (current_start_row + rowcount - 1 >= current_target_row)
 			{
-				current_start_row += (isanchor ? 0 : ds->blockRowsProcessed);
 				/* read the value, visimap check only needed for the anchor column */
 				phyrow = aocs_gettuple_column(scan,
 											  attno,
@@ -1248,11 +1259,14 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 				/* new block, reset blockRowsProcessed */
 				ds->blockRowsProcessed = 0;
 
-				int64 current_start_row = isanchor ? startrow : ds->blockFirstRowNum;
-				int64 current_remaining_rows = isanchor ? rowcount : ds->blockRowCount;
-				int64 current_target_row = isanchor ? targrow : phyrow;
+				/*
+				 * For sequential number scan (targrow) the starting number is
+				 * startrow. For physical number scan (phyrow) the starting
+				 * number is first row number in block.
+				 */
+				current_start_row = isanchor ? startrow : ds->blockFirstRowNum;
 
-				if (current_start_row + current_remaining_rows - 1 >= current_target_row)
+				if (current_start_row + rowcount - 1 >= current_target_row)
 				{
 					int64 blocksRead;
 
@@ -1264,8 +1278,6 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 						RelationGuessNumberOfBlocksFromSize(scan->totalBytesRead);
 					pgstat_count_buffer_read_ao(scan->rs_base.rs_rd,
 												blocksRead);
-
-					current_start_row += (isanchor ? 0 : ds->blockRowsProcessed);
 
 					/* read the value, visimap check only needed for the anchor column */
 					phyrow = aocs_gettuple_column(scan,
