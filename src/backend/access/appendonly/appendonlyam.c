@@ -1322,7 +1322,7 @@ appendonly_getblock(AppendOnlyScanDesc scan, int64 targrow, int64 *startrow)
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Unexpected EOF during analysis of AO table \'%s\'",
+						errmsg("Unexpected EOF during analysis of AO table '%s'",
 							scan->storageRead.relationName)));
 	}
 }
