@@ -1300,7 +1300,7 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Unexpected EOF during analysis of AOCO table \'%s\' for column \'%s\'",
+						 errmsg("Unexpected EOF during analysis of AOCO table '%s' for column '%s'",
 								ds->ao_read.relationName,
 								scan->columnScanInfo.relationTupleDesc->attrs[attno].attname.data)));
 		}
