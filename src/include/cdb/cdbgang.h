@@ -77,6 +77,8 @@ extern void RecycleGang(Gang *gp, bool forceDestroy);
 extern void DisconnectAndDestroyAllGangs(bool resetSession);
 extern void DisconnectAndDestroyUnusedQEs(void);
 
+extern bool GpHasTempNamespaceForDeletion(void);
+extern void GpResetSessionIfNeeded(void);
 extern void GpDropTempTables(void);
 extern void ResetAllGangs(void);
 
