@@ -24,16 +24,6 @@ RUN set -eux; \
 # Alter precedence in favor of IPv4 during resolving
     echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
 
-RUN wget https://www.python.org/ftp/python/3.6.15/Python-3.6.15.tgz -O - | tar zxf - && \
-    cd Python-3.6.15 && \
-    ./configure --prefix=/usr/local --enable-optimizations && \
-    make -j6 && \
-    make install && \    
-    cd .. && \
-    rm -rf Python-3.6.15.tgz Python-3.6.15
-    
-ENV PYTHON=/usr/local/bin/python3.6
-
 WORKDIR /home/gpadmin
 
 FROM base as build
@@ -43,6 +33,7 @@ COPY . gpdb_src
 RUN mkdir /home/gpadmin/bin_gpdb
 
 ENV TARGET_OS=ubuntu
+ENV PYTHON=/usr/bin/python3
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
 
