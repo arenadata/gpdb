@@ -71,6 +71,7 @@
 
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbgang.h"
 #include "cdb/cdbvars.h"
 #include "tcop/utility.h"
 
@@ -4359,13 +4360,6 @@ ResetTempNamespace(void)
 
 	result = myTempNamespace;
 
-	/*
-	 * MPP-19973: The shmem exit callback to remove a temp
-	 * namespace is registered. We need to remove it here as the
-	 * namespace has already been reseted. 
-	 */
-	cancel_before_shmem_exit(RemoveTempRelationsCallback, 0);
-
 	myTempNamespace = InvalidOid;
 	myTempToastNamespace = InvalidOid;
 	myTempNamespaceSubID = InvalidSubTransactionId;
@@ -4553,32 +4547,17 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		 */
 		return;
 	}
+	
+	if (OidIsValid(myTempNamespace)) {
+		/* This moves myTempNamespace to OldTempNamespace in preparation*/
+		resetSessionForPrimaryGangLoss();
+	}
 
-	if (OidIsValid(myTempNamespace))
-	{
-		/* Need to ensure we have a usable transaction. */
+	if (GpHasTempNamespaceForDeletion()) {
+		/* Need to ensure we are not in a transaction. */
 		AbortOutOfAnyTransaction();
-		StartTransactionCommand();
-		PushActiveSnapshot(GetTransactionSnapshot());
 
-		/* 
-		 * Make sure that the schema hasn't been removed. We must do this after
-		 * we start a new transaction (see previous two lines), otherwise we
-		 * wont have a valid CurrentResourceOwner.
-		 */
-		if (TempNamespaceValid(false))
-		{
-			RemoveTempRelations(myTempNamespace);
-
-			/* MPP-3390: drop pg_temp_N schema entry from pg_namespace */
-			RemoveSchemaById(myTempNamespace);
-			RemoveSchemaById(myTempToastNamespace);
-			elog(DEBUG1, "Remove schema entry %u from pg_namespace", 
-				 myTempNamespace); 
-		}
-
-		PopActiveSnapshot();
-		CommitTransactionCommand();
+		GpDropTempTables();
 	}
 }
 

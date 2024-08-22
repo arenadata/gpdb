@@ -779,20 +779,23 @@ void DisconnectAndDestroyUnusedQEs(void)
 }
 
 /*
- * Drop any temporary tables associated with the current session and
- * use a new session id since we have effectively reset the session.
+ * Check if there is a temporary namespace awaiting deletion.
+ */
+bool
+GpHasTempNamespaceForDeletion(void)
+{
+	return OidIsValid(OldTempNamespace);
+}
+
+/*
+ * Resets a session and starts a new one if the reset is needed.
+ * To be called before GpDropTempTables.
  */
 void
-GpDropTempTables(void)
+GpResetSessionIfNeeded(void)
 {
 	int			oldSessionId = 0;
 	int			newSessionId = 0;
-	Oid			dropTempNamespaceOid;
-	Oid			dropTempToastNamespaceOid;
-
-	/* No need to reset session or drop temp tables */
-	if (!NeedResetSession && OldTempNamespace == InvalidOid)
-		return;
 
 	/* Do the session id change early. */
 	if (NeedResetSession)
@@ -818,6 +821,18 @@ GpDropTempTables(void)
 		elog(LOG, "The previous session was reset because its gang was disconnected (session id = %d). "
 			 "The new session id = %d", oldSessionId, newSessionId);
 	}
+}
+
+/*
+ * Drop temporary tables if any are awaiting deletion.
+ * If called from within a transaction, does nothing and
+ * defers the deletion to the call from PostgresMain.
+ */
+void
+GpDropTempTables(void)
+{
+	Oid			dropTempNamespaceOid;
+	Oid			dropTempToastNamespaceOid;
 
 	/*
 	 * When it's in transaction block, need to bump the session id, e.g. retry COMMIT PREPARED,
@@ -825,7 +840,6 @@ GpDropTempTables(void)
 	 */
 	if (IsTransactionOrTransactionBlock())
 	{
-		NeedResetSession = false;
 		return;
 	}
 
@@ -864,6 +878,12 @@ GpDropTempTables(void)
 	}
 }
 
+/*
+ * Register this session for reset and prepares temporary tables for deletion.
+ * Doesn't actually reset or delete anything by itself,
+ * the session will be reset on the next GpResetSessionIfNeeded call,
+ * and the temporary tables will be dropped by GpDropTempTables.
+ */
 void
 resetSessionForPrimaryGangLoss(void)
 {
@@ -1001,6 +1021,7 @@ void
 ResetAllGangs(void)
 {
 	DisconnectAndDestroyAllGangs(true);
+	GpResetSessionIfNeeded();
 	GpDropTempTables();
 }
 
