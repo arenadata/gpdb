@@ -4550,7 +4550,7 @@ RemoveTempRelationsCallback(int code, Datum arg)
 	
 	if (OidIsValid(myTempNamespace)) {
 		/* This moves myTempNamespace to OldTempNamespace in preparation*/
-		GpScheduleSessionReset(false);
+		GpScheduleSessionReset();
 	}
 
 	if (GpHasTempNamespaceForDeletion()) {

@@ -748,7 +748,7 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	cdbcomponent_destroyCdbComponents();
 
 	if (resetSession)
-		GpScheduleSessionReset(true);
+		resetSessionForPrimaryGangLoss();
 
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs done");
 }
@@ -885,8 +885,8 @@ GpDropTempTables(void)
  * the session will be reset on the next GpResetSessionIfNeeded call,
  * and the temporary tables will be dropped by GpDropTempTables.
  */
-void
-GpScheduleSessionReset(bool primaryGangLoss)
+static void
+GpScheduleSessionResetInternal(bool primaryGangLoss)
 {
 	/*
  	 * GpScheduleSessionReset could be called twice in a transacion,
@@ -933,6 +933,32 @@ GpScheduleSessionReset(bool primaryGangLoss)
 			OldTempToastNamespace = InvalidOid;
 		}
 	}
+}
+
+/*
+ * Schedule this session for reset and register temporary tables for deletion.
+ * This function doesn't actually reset or delete anything by itself,
+ * the session will be reset on the next GpResetSessionIfNeeded call,
+ * and the temporary tables will be dropped by GpDropTempTables.
+ * Outputs a warning about dropping temporary tables.
+ */
+void
+resetSessionForPrimaryGangLoss(void)
+{
+	GpScheduleSessionResetInternal(true);
+}
+
+/*
+ * Schedule this session for reset and register temporary tables for deletion.
+ * This function doesn't actually reset or delete anything by itself,
+ * the session will be reset on the next GpResetSessionIfNeeded call,
+ * and the temporary tables will be dropped by GpDropTempTables.
+ * Does not output a warning about dropping temporary tables.
+ */
+void
+GpScheduleSessionReset(void)
+{
+	GpScheduleSessionResetInternal(false);
 }
 
 /*
