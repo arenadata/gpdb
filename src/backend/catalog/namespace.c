@@ -4547,13 +4547,15 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		 */
 		return;
 	}
-	
-	if (OidIsValid(myTempNamespace)) {
-		/* This moves myTempNamespace to OldTempNamespace in preparation*/
+
+	if (OidIsValid(myTempNamespace))
+	{
+		/* This moves myTempNamespace to OldTempNamespace in preparation */
 		GpScheduleSessionReset();
 	}
 
-	if (GpHasTempNamespaceForDeletion()) {
+	if (GpHasTempNamespaceForDeletion())
+	{
 		/* Need to ensure we are not in a transaction. */
 		AbortOutOfAnyTransaction();
 
