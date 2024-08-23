@@ -889,11 +889,11 @@ static void
 GpScheduleSessionResetInternal(bool primaryGangLoss)
 {
 	/*
- 	 * GpScheduleSessionReset could be called twice in a transacion,
- 	 * we need to use NeedResetSession to double check if we should do the
- 	 * real work to avoid that OldTempToastNamespace be makred invalid before
- 	 * cleaning up the temp namespace.
- 	 */
+	 * GpScheduleSessionReset could be called twice in a transacion, we need
+	 * to use NeedResetSession to double check if we should do the real work
+	 * to avoid that OldTempToastNamespace be makred invalid before cleaning
+	 * up the temp namespace.
+	 */
 	if (ProcCanSetMppSessionId() && !NeedResetSession)
 	{
 		/*
