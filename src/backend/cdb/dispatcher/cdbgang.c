@@ -840,6 +840,7 @@ GpDropTempTables(void)
 	 */
 	if (IsTransactionOrTransactionBlock())
 	{
+		NeedResetSession = false;
 		return;
 	}
 
