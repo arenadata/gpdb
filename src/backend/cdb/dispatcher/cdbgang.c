@@ -748,7 +748,7 @@ DisconnectAndDestroyAllGangs(bool resetSession)
 	cdbcomponent_destroyCdbComponents();
 
 	if (resetSession)
-		resetSessionForPrimaryGangLoss();
+		GpScheduleSessionReset(true);
 
 	ELOG_DISPATCHER_DEBUG("DisconnectAndDestroyAllGangs done");
 }
@@ -874,20 +874,22 @@ GpDropTempTables(void)
 			FlushErrorState();
 			AbortCurrentTransaction();
 		} PG_END_TRY();
+
+		CancelRemoveTempRelationsCallback();
 	}
 }
 
 /*
- * Register this session for reset and prepares temporary tables for deletion.
- * Doesn't actually reset or delete anything by itself,
+ * Schedule this session for reset and register temporary tables for deletion.
+ * This function doesn't actually reset or delete anything by itself,
  * the session will be reset on the next GpResetSessionIfNeeded call,
  * and the temporary tables will be dropped by GpDropTempTables.
  */
 void
-resetSessionForPrimaryGangLoss(void)
+GpScheduleSessionReset(bool primaryGangLoss)
 {
 	/*
- 	 * resetSessionForPrimaryGangLoss could be called twice in a transacion,
+ 	 * GpScheduleSessionReset could be called twice in a transacion,
  	 * we need to use NeedResetSession to double check if we should do the
  	 * real work to avoid that OldTempToastNamespace be makred invalid before
  	 * cleaning up the temp namespace.
@@ -919,10 +921,11 @@ resetSessionForPrimaryGangLoss(void)
 			 */
 			OldTempNamespace = ResetTempNamespace();
 
-			elog(WARNING,
-				 "Any temporary tables for this session have been dropped "
-				 "because the gang was disconnected (session id = %d)",
-				 gp_session_id);
+			if (primaryGangLoss)
+				elog(WARNING,
+					 "Any temporary tables for this session have been dropped "
+					 "because the gang was disconnected (session id = %d)",
+					 gp_session_id);
 		}
 		else
 		{

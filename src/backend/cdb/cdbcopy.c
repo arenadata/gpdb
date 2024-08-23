@@ -735,7 +735,7 @@ cdbCopyEndInternal(CdbCopy *c, char *abort_msg,
 		 * when next transaction start, since it will find FTS version bump and
 		 * call cdbcomponent_updateCdbComponents().
 		 */
-		resetSessionForPrimaryGangLoss();
+		GpScheduleSessionReset(true);
 
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),

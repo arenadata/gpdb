@@ -106,7 +106,7 @@ extern bool segment_failure_due_to_fault_injector(const char *error_message);
  */
 extern void cdbgang_parse_gpqeid_params(struct Port *port, const char *gpqeid_value);
 
-extern void resetSessionForPrimaryGangLoss(void);
+extern void GpScheduleSessionReset(bool primaryGangLoss);
 
 /*
  * MPP Worker Process information

@@ -94,10 +94,10 @@ makeTestCdb(int entryCnt, int segCnt)
 }
 
 /*
- * Make sure resetSessionForPrimaryGangLoss doesn't access catalog.
+ * Make sure GpScheduleSessionReset doesn't access catalog.
  */
 static void
-test__resetSessionForPrimaryGangLoss(void **state)
+test__GpScheduleSessionReset(void **state)
 {
 	will_be_called(RedZoneHandler_DetectRunawaySession);
 	will_return(ProcCanSetMppSessionId, true);
@@ -109,7 +109,7 @@ test__resetSessionForPrimaryGangLoss(void **state)
 	OldTempNamespace = InvalidOid;
 	OldTempToastNamespace = InvalidOid;
 
-	resetSessionForPrimaryGangLoss();
+	GpScheduleSessionReset(true);
 	assert_int_equal(OldTempToastNamespace, 9998);
 	assert_int_equal(OldTempNamespace, 9999);
 }
@@ -121,7 +121,7 @@ main(int argc, char *argv[])
 
 	const		UnitTest tests[] =
 	{
-		unit_test(test__resetSessionForPrimaryGangLoss),
+		unit_test(test__GpScheduleSessionReset),
 	};
 
 	MemoryContextInit();
