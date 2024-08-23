@@ -4548,11 +4548,9 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		return;
 	}
 
+	/* If there is a temporary namespace, schedule its deletion */
 	if (OidIsValid(myTempNamespace))
-	{
-		/* This moves myTempNamespace to OldTempNamespace in preparation */
 		GpScheduleSessionReset();
-	}
 
 	if (GpHasTempNamespaceForDeletion())
 	{
