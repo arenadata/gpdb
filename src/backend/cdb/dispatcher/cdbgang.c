@@ -821,6 +821,8 @@ GpResetSessionIfNeeded(void)
 		elog(LOG, "The previous session was reset because its gang was disconnected (session id = %d). "
 			 "The new session id = %d", oldSessionId, newSessionId);
 	}
+
+	NeedResetSession = false;
 }
 
 /*
@@ -839,16 +841,12 @@ GpDropTempTables(void)
 	 * but defer drop temp table to the main loop in PostgresMain().
 	 */
 	if (IsTransactionOrTransactionBlock())
-	{
-		NeedResetSession = false;
 		return;
-	}
 
 	dropTempNamespaceOid = OldTempNamespace;
 	dropTempToastNamespaceOid = OldTempToastNamespace;
 	OldTempNamespace = InvalidOid;
 	OldTempToastNamespace = InvalidOid;
-	NeedResetSession = false;
 
 	if (dropTempNamespaceOid != InvalidOid)
 	{
