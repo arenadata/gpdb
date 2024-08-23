@@ -4550,7 +4550,7 @@ RemoveTempRelationsCallback(int code, Datum arg)
 	
 	if (OidIsValid(myTempNamespace)) {
 		/* This moves myTempNamespace to OldTempNamespace in preparation*/
-		resetSessionForPrimaryGangLoss();
+		GpScheduleSessionReset(false);
 	}
 
 	if (GpHasTempNamespaceForDeletion()) {
@@ -4569,6 +4569,15 @@ ResetTempTableNamespace(void)
 {
 	if (OidIsValid(myTempNamespace))
 		RemoveTempRelations(myTempNamespace);
+}
+
+/*
+ * Cancels the call to RemoveTempRelationsCallback at backend exit.
+ */
+void
+CancelRemoveTempRelationsCallback(void)
+{
+	cancel_before_shmem_exit(RemoveTempRelationsCallback, 0);
 }
 
 
