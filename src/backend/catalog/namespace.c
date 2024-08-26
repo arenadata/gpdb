@@ -4548,7 +4548,12 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		return;
 	}
 
-	/* If there is a temporary namespace, schedule its deletion */
+	/*
+	 * If there is a temporary namespace, schedule its deletion.
+	 * This is done with GpScheduleSessionReset (which also
+	 * schedules deletion of temporary tables) even though a full
+	 * session reset is not necessary in this case.
+	 */
 	if (OidIsValid(myTempNamespace))
 		GpScheduleSessionReset();
 
@@ -4556,7 +4561,10 @@ RemoveTempRelationsCallback(int code, Datum arg)
 	{
 		/* Need to ensure we are not in a transaction. */
 		AbortOutOfAnyTransaction();
-
+		/*
+		 * Perform the actual table deletion for the tables
+		 * prepared with GpScheduleSessionReset.
+		 */
 		GpDropTempTables();
 	}
 }

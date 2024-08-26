@@ -879,25 +879,20 @@ GpDropTempTables(void)
 	}
 }
 
-/*
- * Schedule this session for reset and register temporary tables for deletion.
- * This function doesn't actually reset or delete anything by itself,
- * the session will be reset on the next GpResetSessionIfNeeded call,
- * and the temporary tables will be dropped by GpDropTempTables.
- */
 static void
 GpScheduleSessionResetInternal(bool primaryGangLoss)
 {
 	/*
-	 * GpScheduleSessionReset could be called twice in a transacion, we need
-	 * to use NeedResetSession to double check if we should do the real work
-	 * to avoid that OldTempToastNamespace be makred invalid before cleaning
-	 * up the temp namespace.
-	 */
+ 	 * GpScheduleSessionResetInternal could be called twice in a transacion,
+ 	 * we need to use NeedResetSession to double check if we should do the
+ 	 * real work to avoid that OldTempToastNamespace be makred invalid before
+ 	 * cleaning up the temp namespace.
+ 	 */
 	if (ProcCanSetMppSessionId() && !NeedResetSession)
 	{
 		/*
-		 * Not too early.
+		 * Schedule this session for reset.
+		 * Reset will happen on the next GpResetSessionIfNeeded call.
 		 */
 		NeedResetSession = true;
 
@@ -918,14 +913,17 @@ GpScheduleSessionResetInternal(bool primaryGangLoss)
 			 * inaccessible.  Later, when we can start a new transaction, we
 			 * will attempt to actually drop the old session tables to release
 			 * the disk space.
+			 * This will happen on the next GpDropTempTables call that isn't
+			 * inside a transaction.
 			 */
 			OldTempNamespace = ResetTempNamespace();
 
-			if (primaryGangLoss)
-				elog(WARNING,
-					 "Any temporary tables for this session have been dropped "
-					 "because the gang was disconnected (session id = %d)",
-					 gp_session_id);
+			if (!primaryGangLoss)
+				return;
+			elog(WARNING,
+				 "Any temporary tables for this session have been dropped "
+				 "because the gang was disconnected (session id = %d)",
+				 gp_session_id);
 		}
 		else
 		{
