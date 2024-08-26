@@ -133,8 +133,8 @@ EXPLAIN (FORMAT JSON, COSTS OFF) SELECT * FROM jsonexplaintest WHERE i = 2;
 -- s/ "Average": \d+/ "Average": #####/
 -- m/ "Maximum Memory Used": \d+/
 -- s/ "Maximum Memory Used": \d+/ "Maximum Memory Used": #####/
--- m/ "Memory Used": \d+/
--- s/ "Memory Used": \d+/ "Memory Used": #####/
+-- m/ "Memory used": \d+/
+-- s/ "Memory used": \d+/ "Memory used": #####/
 -- m/ "Execution Time": \d+.\d+/
 -- s/ "Execution Time": \d+.\d+/ "Execution Time": ##.###/
 -- end_matchsubs
