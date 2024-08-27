@@ -834,3 +834,4 @@ select *
     from pg_catalog.gp_acquire_sample_rows('t_addcol_aoco6'::regclass, 1, 'f')
     as t(a1 float8, a2 float8, a3 float8[], id int, a int, b int)
     where a <> b;
+drop table t_addcol_aoco6;

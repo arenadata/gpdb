@@ -1761,3 +1761,4 @@ select *
 ----+----+----+----+---+---
 (0 rows)
 
+drop table t_addcol_aoco6;
