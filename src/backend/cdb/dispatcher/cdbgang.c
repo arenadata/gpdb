@@ -920,6 +920,7 @@ GpScheduleSessionResetInternal(bool primaryGangLoss)
 
 			if (!primaryGangLoss)
 				return;
+
 			elog(WARNING,
 				 "Any temporary tables for this session have been dropped "
 				 "because the gang was disconnected (session id = %d)",

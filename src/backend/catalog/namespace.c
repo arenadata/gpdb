@@ -4556,7 +4556,7 @@ RemoveTempRelationsCallback(int code, Datum arg)
 	 */
 	if (OidIsValid(myTempNamespace))
 		GpScheduleSessionReset();
-
+	/* If we have a temporary namespace, delete it */
 	if (GpHasTempNamespaceForDeletion())
 	{
 		/* Need to ensure we are not in a transaction. */
