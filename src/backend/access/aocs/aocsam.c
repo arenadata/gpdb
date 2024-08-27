@@ -1189,7 +1189,7 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 		 * number that can be different for different columns.
 		 */
 		int64 current_target_row = isanchor ? targrow : phyrow;
-		int64 current_start_row;
+		int64 current_start_row = InvalidAORowNum;
 
 		/*
 		 * After scanning the anchor column, we check if the value is 
