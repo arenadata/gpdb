@@ -15439,26 +15439,13 @@ WITH e AS (
 
 DROP TABLE d, r;
 -- Test disable optimizer_enable_dml_triggers GUC 
-CREATE TABLE d (t1 int, t2 int, t3 int) DISTRIBUTED BY (t1);
+CREATE TABLE d (с1 int, с2 int) DISTRIBUTED BY (с1);
 -- The next query should be processed by Orca
-EXPLAIN (ANALYZE on, COSTS off, VERBOSE off) INSERT INTO d VALUES (1, 1, 1);
-QUERY PLAN
-___________
- Insert (actual time=##.###..##.### rows=# loops=#)
-   ->  Result (actual time=##.###..##.### rows=# loops=#)
-         ->  Result (actual time=##.###..##.### rows=# loops=#)
-               ->  Result (actual time=##.###..##.### rows=# loops=#)
-                     ->  Result (actual time=##.###..##.### rows=# loops=#)
- Planning time: ##.### ms
-   (slice0)    Executor Memory: 
- Memory used:
- Execution time: ##.### ms
-GP_IGNORE:(10 rows)
-
+INSERT INTO d VALUES (1, 1);
 CREATE OR REPLACE FUNCTION trig_proc() RETURNS TRIGGER
 AS $$
 BEGIN
-  RAISE NOTICE 'Values: (%, %, %)', OLD.t1, OLD.t2, OLD.t3;
+  RAISE NOTICE 'Values: (%, %)', OLD.с1, OLD.с2;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -15468,21 +15455,10 @@ SET optimizer_enable_dml_triggers = TRUE;
 WARNING:  "optimizer_enable_dml_triggers": setting is ignored because it is defunct
 -- The next query should be processed by the Postgres planner
 -- because trigger execution in Orca was disabled.
-EXPLAIN (ANALYZE on, COSTS off, VERBOSE off) UPDATE d SET t2 = 2 WHERE t1 = 1;
+UPDATE d SET с2 = 2 WHERE с1 = 1;
 INFO:  GPORCA failed to produce a plan, falling back to planner
 DETAIL:  Feature not supported: UPDATE with triggers
-NOTICE:  Values: (1, 1, 1)
-QUERY PLAN
-___________
- Update on d (actual time=##.###..##.### rows=# loops=#)
-   ->  Seq Scan on d (actual time=##.###..##.### rows=# loops=#)
-         Filter: (t1 = 1)
- Planning time: ##.### ms
-   (slice0)    Executor Memory: 
- Memory used:
- Execution time: ##.### ms
-GP_IGNORE:(8 rows)
-
+NOTICE:  Values: (1, 1)
 RESET optimizer_enable_dml_triggers;
 WARNING:  "optimizer_enable_dml_triggers": setting is ignored because it is defunct
 DROP TABLE d;
