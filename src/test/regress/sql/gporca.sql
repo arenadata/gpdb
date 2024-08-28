@@ -3706,6 +3706,27 @@ WITH e AS (
 
 DROP TABLE d, r;
 
+-- Test disable optimizer_enable_dml_triggers GUC 
+CREATE TABLE d (t1 int, t2 int, t3 int) DISTRIBUTED BY (t1);
+-- The next query should be processed by Orca
+EXPLAIN (ANALYZE on, COSTS off, VERBOSE off) INSERT INTO d VALUES (1, 1, 1);
+CREATE OR REPLACE FUNCTION trig_proc() RETURNS TRIGGER
+AS $$
+BEGIN
+  RAISE NOTICE 'Values: (%, %, %)', OLD.t1, OLD.t2, OLD.t3;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER d_upd AFTER UPDATE ON d
+FOR EACH ROW EXECUTE PROCEDURE trig_proc();
+
+SET optimizer_enable_dml_triggers = TRUE;
+-- The next query should be processed by the Postgres planner
+-- because trigger execution in Orca was disabled.
+EXPLAIN (ANALYZE on, COSTS off, VERBOSE off) UPDATE d SET t2 = 2 WHERE t1 = 1;
+RESET optimizer_enable_dml_triggers;
+DROP TABLE d;
+
 reset optimizer_trace_fallback;
 
 -- start_ignore
