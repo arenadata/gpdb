@@ -15235,8 +15235,6 @@ WARNING:  "optimizer_enable_dml_triggers": setting is ignored because it is defu
 -- The next query should be processed by the Postgres planner
 -- because trigger execution in Orca was disabled.
 UPDATE d SET с2 = 2 WHERE с1 = 1;
-INFO:  GPORCA failed to produce a plan, falling back to planner
-DETAIL:  Feature not supported: UPDATE with triggers
 NOTICE:  Values: (1, 1)
 RESET optimizer_enable_dml_triggers;
 WARNING:  "optimizer_enable_dml_triggers": setting is ignored because it is defunct
