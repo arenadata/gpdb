@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 as base
+FROM ubuntu:22.04 AS base
 
 ARG sigar=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/sigar_1.6.5-3304%2Bgite8961a6_all.deb
 ARG sigar_headers=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/sigar-headers_1.6.5-3304%2Bgite8961a6_all.deb
@@ -23,29 +23,42 @@ RUN set -eux; \
     mkdir /run/sshd; \
 # Alter precedence in favor of IPv4 during resolving
     echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+    
+RUN wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O - | tar zxf - && \
+    cd Python-3.9.19 && \
+    ./configure --prefix=/usr/local --enable-shared --enable-optimizations && \
+    make -j6 && \
+    make install && \    
+    echo "/usr/local/lib" >>/etc/ld.so.conf.d/gpdb.conf && \
+	ldconfig && \
+    cd .. && \
+    rm -rf Python-3.9.19.tgz Python-3.9.19
 
 WORKDIR /home/gpadmin
 
-FROM base as build
+FROM base AS build
 
 COPY . gpdb_src
 
 RUN mkdir /home/gpadmin/bin_gpdb
 
 ENV TARGET_OS=ubuntu
-ENV PYTHON=/usr/bin/python3
+ENV PYTHON=/usr/bin/python2
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
 
 # Compile with running mocking tests
+RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash && \
+    cd gpdb_src/src/pl/plpython && ls -l && make clean && ls -l /home/gpadmin/bin_gpdb
+ENV PYTHON=/usr/local/bin/python3
 RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
 
-FROM base as code
+FROM base AS code
 # Use --exclude, when it will be available in stable syntax.
 COPY . gpdb_src
 RUN rm -rf gpdb_src/.git/
 
-FROM base as test
+FROM base AS test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
 
