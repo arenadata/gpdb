@@ -15231,7 +15231,6 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER d_upd AFTER UPDATE ON d
 FOR EACH ROW EXECUTE PROCEDURE trig_proc();
 -- GUC should be disabled by default and cannot be enabled
-RESET optimizer_enable_dml_triggers;
 SHOW optimizer_enable_dml_triggers;
  optimizer_enable_dml_triggers 
 -------------------------------
@@ -15240,6 +15239,12 @@ SHOW optimizer_enable_dml_triggers;
 
 SET optimizer_enable_dml_triggers = TRUE;
 WARNING:  "optimizer_enable_dml_triggers": setting is ignored because it is defunct
+SHOW optimizer_enable_dml_triggers;
+ optimizer_enable_dml_triggers 
+-------------------------------
+ off
+(1 row)
+
 -- The next query should be processed by the Postgres planner
 -- because trigger planning in Orca has been disabled.
 UPDATE d SET с2 = 2 WHERE с1 = 1;
