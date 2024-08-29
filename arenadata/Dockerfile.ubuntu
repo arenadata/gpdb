@@ -39,7 +39,7 @@ RUN mkdir /home/gpadmin/bin_gpdb
 
 ENV TARGET_OS=ubuntu
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
-ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
+ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend CFLAGS=-DPy_UNICODE_WIDE"
 
 # Compile with running mocking tests
 RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
