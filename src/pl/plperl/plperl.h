@@ -82,7 +82,10 @@
  */
 #define PERL_NO_GET_CONTEXT
 #include "EXTERN.h"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
 #include "perl.h"
+#pragma clang diagnostic pop
 
 /*
  * We want to include XSUB.h only within .xs files, because on some platforms

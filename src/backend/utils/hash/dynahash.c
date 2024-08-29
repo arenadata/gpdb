@@ -1039,7 +1039,7 @@ hash_search_with_hash_value(HTAB *hashp,
 			return NULL;
 
 		case HASH_ENTER_NULL:
-			/* FALL THRU */
+			FALL_THROUGH
 
 		case HASH_ENTER:
 			/* Return existing element if found, else create one */
