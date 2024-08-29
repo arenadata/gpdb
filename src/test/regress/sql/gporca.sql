@@ -3729,7 +3729,9 @@ SHOW optimizer_enable_dml_triggers;
 -- The next query should be processed by the Postgres planner
 -- because trigger planning in Orca has been disabled.
 UPDATE d SET с2 = 2 WHERE с1 = 1;
+
 DROP TABLE d;
+DROP FUNCTION trig_proc();
 
 reset optimizer_trace_fallback;
 

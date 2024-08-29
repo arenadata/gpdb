@@ -15472,4 +15472,5 @@ INFO:  GPORCA failed to produce a plan, falling back to planner
 DETAIL:  Feature not supported: UPDATE with triggers
 NOTICE:  Values: (1, 1)
 DROP TABLE d;
+DROP FUNCTION trig_proc();
 reset optimizer_trace_fallback;

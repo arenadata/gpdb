@@ -15249,4 +15249,5 @@ SHOW optimizer_enable_dml_triggers;
 UPDATE d SET с2 = 2 WHERE с1 = 1;
 NOTICE:  Values: (1, 1)
 DROP TABLE d;
+DROP FUNCTION trig_proc();
 reset optimizer_trace_fallback;
