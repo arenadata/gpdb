@@ -382,8 +382,6 @@ PlannerConfig *DefaultPlannerConfig(void)
 	c1->is_under_subplan = false;
 
 	c1->force_singleQE = false;
-	
-	c1->is_under_lateral = false;
 
 	return c1;
 }

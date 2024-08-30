@@ -634,12 +634,9 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	 * correlated, disable some optimizations that assume the subplan doesn't
 	 * have any dependencies on other parts of the plan.
 	 */
-	bool is_parent_correlated = parent_root && parent_root->is_correlated_subplan;
-	bool can_have_dependencies = root->config->is_under_subplan || root->config->is_under_lateral; 
-
-	if (is_parent_correlated ||
+	if ((parent_root && parent_root->is_correlated_subplan) ||
 		((Gp_role == GP_ROLE_DISPATCH) &&
-		can_have_dependencies &&
+		root->config->is_under_subplan &&
 		IsSubqueryCorrelated(parse)))
 	{
 		root->is_correlated_subplan = true;
