@@ -28,6 +28,7 @@ apt-get install -y \
   libxslt-dev \
   libyaml-dev \
   libzstd-dev \
+  libffi-dev \
   locales \
   net-tools \
   openssh-client \
