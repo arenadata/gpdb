@@ -29,18 +29,18 @@ RUN set -eux; \
     pip2 install allure-behave==2.4.0; \
     pip2 cache purge
 
-RUN wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O - | tar zxf - && \
-    cd Python-3.9.19 && \
-    ./configure --prefix=/usr/local --enable-shared --enable-optimizations && \
-    make -j6 && \
-    make install && \    
-    echo "/usr/local/lib" >>/etc/ld.so.conf.d/gpdb.conf && \
-	ldconfig && \
-    cd .. && \
+RUN set -eux; wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O - | tar zxf -; \
+    cd Python-3.9.19; \
+    ./configure --prefix=/usr/local --enable-shared --enable-optimizations; \
+    make -j6; \
+    make install; \
+    echo "/usr/local/lib" >>/etc/ld.so.conf.d/gpdb.conf; \
+    ldconfig; \
+    cd ..; \
     rm -rf Python-3.9.19.tgz Python-3.9.19
 
-
 WORKDIR /home/gpadmin
+
 
 FROM base AS build
 
@@ -55,7 +55,8 @@ ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --
 
 # Compile with running mocking tests
 RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash && \
-    cd gpdb_src/src/pl/plpython && ls -l && make clean && ls -l /home/gpadmin/bin_gpdb
+    cd gpdb_src/src/pl/plpython && \
+    make clean
 ENV PYTHON=/usr/local/bin/python3
 RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
 
