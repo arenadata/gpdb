@@ -41,7 +41,6 @@ RUN set -eux; wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O
 
 WORKDIR /home/gpadmin
 
-
 FROM base AS build
 
 COPY . gpdb_src
