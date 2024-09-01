@@ -39,7 +39,8 @@ RUN mkdir /home/gpadmin/bin_gpdb
 
 ENV TARGET_OS=ubuntu
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
-ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend CFLAGS=-DPy_UNICODE_WIDE"
+# When there are both of python2 and python3 we should set UNICODE size for python2
+ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend CFLAGS=-DPy_UNICODE_SIZE=4"
 
 # Compile with running mocking tests
 RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
