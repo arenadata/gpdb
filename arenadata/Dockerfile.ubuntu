@@ -29,7 +29,8 @@ RUN set -eux; \
     pip2 install allure-behave==2.4.0; \
     pip2 cache purge
 
-RUN set -eux; wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O - | tar zxf -; \
+RUN set -eux; \
+    wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O - | tar zxf -; \
     cd Python-3.9.19; \
     ./configure --prefix=/usr/local --enable-shared --enable-optimizations; \
     make -j6; \
