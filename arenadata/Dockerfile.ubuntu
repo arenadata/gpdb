@@ -4,12 +4,13 @@ ARG sigar=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/communit
 ARG sigar_headers=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/sigar-headers_1.6.5-3304%2Bgite8961a6_all.deb
 ARG libxerces=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/libxerces-c31_3.1.2-3304_amd64.deb
 ARG libxerces_dev=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/libxerces-c31-dev_3.1.2-3304_amd64.deb
+ARG adb_python3=https://downloads.adsw.io/ADB/6.27.1_arenadata56/ubuntu/22.04/community/x86_64/packages/adb6-python_3.9.18-3304_all.deb
 
 COPY README.ubuntu.bash ./
 RUN set -eux; \
     ./README.ubuntu.bash; \
     rm README.ubuntu.bash; \
-    wget $sigar $sigar_headers $libxerces $libxerces_dev; \
+    wget $sigar $sigar_headers $libxerces $libxerces_dev $adb_python3; \
     apt install -y ./*.deb; \
     rm ./*.deb; \
     ln -s python2 /usr/bin/python; \
@@ -29,17 +30,6 @@ RUN set -eux; \
     pip2 install allure-behave==2.4.0; \
     pip2 cache purge
 
-RUN set -eux; \
-    wget https://www.python.org/ftp/python/3.9.19/Python-3.9.19.tgz -O - | tar zxf -; \
-    cd Python-3.9.19; \
-    ./configure --prefix=/usr/local --enable-shared --enable-optimizations; \
-    make -j6; \
-    make install; \
-    echo "/usr/local/lib" >>/etc/ld.so.conf.d/gpdb.conf; \
-    ldconfig; \
-    cd ..; \
-    rm -rf Python-3.9.19.tgz Python-3.9.19
-
 WORKDIR /home/gpadmin
 
 FROM base AS build
@@ -54,11 +44,13 @@ ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
 
 # Compile with running mocking tests
-RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash && \
-    cd gpdb_src/src/pl/plpython && \
+RUN set -eux; \
+    bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash; \
+    cd gpdb_src/src/pl/plpython; \
     make clean
-ENV PYTHON=/usr/local/bin/python3
-RUN bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
+ENV PYTHON=/opt/adb6-python3.9/bin/python3
+RUN set -eux; \
+    bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
 
 FROM base AS code
 # Use --exclude, when it will be available in stable syntax.
