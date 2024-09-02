@@ -39,12 +39,12 @@ COPY . gpdb_src
 RUN mkdir /home/gpadmin/bin_gpdb
 
 ENV TARGET_OS=ubuntu
-ENV PYTHON=/usr/bin/python2
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
 
 # Compile with running mocking tests
 RUN set -eux; \
+    export PYTHON=/usr/bin/python2; \
     bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash; \
     cd gpdb_src/src/pl/plpython; \
     make clean
