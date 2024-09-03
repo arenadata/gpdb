@@ -11,7 +11,7 @@ setup_ssh_for_user() {
   mkdir -p "${home_dir}/.ssh"
   touch "${home_dir}/.ssh/authorized_keys" "${home_dir}/.ssh/known_hosts" "${home_dir}/.ssh/config"
   if [ ! -f "${home_dir}/.ssh/id_rsa" ]; then
-    ssh-keygen -t rsa -N "" -f "${home_dir}/.ssh/id_rsa"
+    ssh-keygen -t rsa -N "" -m pem -f "${home_dir}/.ssh/id_rsa"
   fi
   cat "${home_dir}/.ssh/id_rsa.pub" >> "${home_dir}/.ssh/authorized_keys"
   chmod 0600 "${home_dir}/.ssh/authorized_keys"
@@ -85,8 +85,8 @@ setup_gpadmin_user() {
 
 setup_sshd() {
 
-  test -e /etc/ssh/ssh_host_rsa_key || ssh-keygen -f /etc/ssh/ssh_host_rsa_key -N '' -t rsa
-  test -e /etc/ssh/ssh_host_dsa_key || ssh-keygen -f /etc/ssh/ssh_host_dsa_key -N '' -t dsa
+  test -e /etc/ssh/ssh_host_rsa_key || ssh-keygen -m pem -f /etc/ssh/ssh_host_rsa_key -N '' -t rsa
+  test -e /etc/ssh/ssh_host_dsa_key || ssh-keygen -m pem -f /etc/ssh/ssh_host_dsa_key -N '' -t dsa
   # See https://gist.github.com/gasi/5691565
   sed -ri 's/UsePAM yes/UsePAM no/g' /etc/ssh/sshd_config
   # Disable password authentication so builds never hang given bad keys
@@ -95,14 +95,14 @@ setup_sshd() {
 
   case "$TEST_OS" in
     centos6 | sles*)
-      test -e /etc/ssh/ssh_host_key || ssh-keygen -f /etc/ssh/ssh_host_key -N '' -t rsa1
+      test -e /etc/ssh/ssh_host_key || ssh-keygen -m pem -f /etc/ssh/ssh_host_key -N '' -t rsa1
       ;;
     photon*)
-      test -e /etc/ssh/ssh_host_ecdsa_key || ssh-keygen -f /etc/ssh/ssh_host_ecdsa_key -N '' -t ecdsa
-      test -e /etc/ssh/ssh_host_ed25519_key || ssh-keygen -f /etc/ssh/ssh_host_ed25519_key -N '' -t ed25519
+      test -e /etc/ssh/ssh_host_ecdsa_key || ssh-keygen -m pem -f /etc/ssh/ssh_host_ecdsa_key -N '' -t ecdsa
+      test -e /etc/ssh/ssh_host_ed25519_key || ssh-keygen -m pem -f /etc/ssh/ssh_host_ed25519_key -N '' -t ed25519
       ;;
     centos7)
-      test -e /etc/ssh/ssh_host_key || ssh-keygen -f /etc/ssh/ssh_host_key -N '' -t rsa1
+      test -e /etc/ssh/ssh_host_key || ssh-keygen -m pem -f /etc/ssh/ssh_host_key -N '' -t rsa1
       # For Centos 7, disable looking for host key types that older Centos versions don't support.
       sed -ri 's@^HostKey /etc/ssh/ssh_host_ecdsa_key$@#&@' /etc/ssh/sshd_config
       sed -ri 's@^HostKey /etc/ssh/ssh_host_ed25519_key$@#&@' /etc/ssh/sshd_config
