@@ -48,6 +48,7 @@ RUN set -eux; \
     bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash; \
     make -C gpdb_src/src/pl/plpython clean; \
     export PYTHON=/opt/adb6-python3.9/bin/python3; \
+    export SKIP_UNITTESTS=1;\
     bash /home/gpadmin/gpdb_src/concourse/scripts/compile_gpdb.bash
 
 FROM base AS code
