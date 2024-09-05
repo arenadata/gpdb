@@ -41,7 +41,6 @@ RUN mkdir /home/gpadmin/bin_gpdb
 ENV TARGET_OS=ubuntu
 ENV OUTPUT_ARTIFACT_DIR=bin_gpdb
 ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend" 
-ENV PYTHON=/usr/bin/python2
 ENV PYTHON3=/opt/adb6-python3.9/bin/python3
 
 # Compile with running mocking tests
