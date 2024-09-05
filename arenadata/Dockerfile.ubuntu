@@ -28,7 +28,9 @@ RUN set -eux; \
 # Install allure-behave for behave tests
     pip2 install allure-behave==2.4.0; \
     pip2 cache purge; \
-    echo '#!/bin/sh\nexport JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64\nexport PATH=$JAVA_HOME/bin:$PATH' > /etc/profile.d/jdk_home.sh
+    echo '#!/bin/sh' >> /etc/profile.d/jdk_home.sh; \
+    echo 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64' >> /etc/profile.d/jdk_home.sh; \
+    echo 'export PATH=$JAVA_HOME/bin:$PATH' >> /etc/profile.d/jdk_home.sh
 
 WORKDIR /home/gpadmin
 
