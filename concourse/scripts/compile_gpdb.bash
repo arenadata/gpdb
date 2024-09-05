@@ -62,7 +62,6 @@ function build_gpdb() {
 
 	if [ -n "${PYTHON3}" ]; then		
 		export PYTHON=${PYTHON3}
-		pwd
 		make -C ${GPDB_SRC_PATH}/src/pl/plpython clean
 		pushd ${GPDB_SRC_PATH}
 		./config.status --recheck
