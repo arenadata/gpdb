@@ -95,7 +95,7 @@ jobs:
 
       - name: Build libxerces 3.1.2
         run: |
-          wget https://archive.apache.org/dist/xerces/c/3/sources/xerces-c-3.1.2.tar.gz
+          wget https://github.com/arenadata/gp-xerces/archive/refs/tags/v3.1.2-p1.tar.gz
           tar -xzf xerces-c-3.1.2.tar.gz
           pushd xerces-c-3.1.2
           ./configure
