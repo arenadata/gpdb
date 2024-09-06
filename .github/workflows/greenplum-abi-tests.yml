@@ -96,8 +96,8 @@ jobs:
       - name: Build libxerces 3.1.2
         run: |
           wget https://github.com/arenadata/gp-xerces/archive/refs/tags/v3.1.2-p1.tar.gz
-          tar -xzf xerces-c-3.1.2.tar.gz
-          pushd xerces-c-3.1.2
+          tar -xzf v3.1.2-p1.tar.gz
+          pushd v3.1.2-p1
           ./configure
           make -j`nproc` && sudo make install
           popd
