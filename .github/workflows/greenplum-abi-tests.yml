@@ -97,7 +97,7 @@ jobs:
         run: |
           wget https://github.com/arenadata/gp-xerces/archive/refs/tags/v3.1.2-p1.tar.gz
           tar -xzf v3.1.2-p1.tar.gz
-          pushd v3.1.2-p1
+          pushd gp-xerces-3.1.2-p1
           ./configure
           make -j`nproc` && sudo make install
           popd
