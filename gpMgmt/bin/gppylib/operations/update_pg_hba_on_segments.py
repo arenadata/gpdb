@@ -83,12 +83,16 @@ def update_pg_hba_on_segments_for_standby(gpArray, standby_host, hba_hostnames,
     for segmentPair in gpArray.getSegmentList():
         # We cannot update the pg_hba.conf which uses ssh for hosts that are unreachable.
         primary_hostname = segmentPair.primaryDB.getSegmentHostName()
+        mirror_hostname = segmentPair.mirrorDB.getSegmentHostName()
         if segmentPair.primaryDB.unreachable:
             unreachable_seg_hosts.append(primary_hostname)
-            continue
+        else:
+            update_cmds.append(SegUpdateHba(standby_pg_hba_entries, segmentPair.primaryDB.datadir,
+                                            remoteHost=primary_hostname))
 
-        update_cmds.append(SegUpdateHba(standby_pg_hba_entries, segmentPair.primaryDB.datadir,
-                                        remoteHost=primary_hostname))
+        if not segmentPair.mirrorDB.unreachable:
+            update_cmds.append(SegUpdateHba(standby_pg_hba_entries, segmentPair.mirrorDB.datadir,
+                                            remoteHost=mirror_hostname))
 
     if unreachable_seg_hosts:
         logger.warning("Not updating pg_hba.conf for segments on unreachable hosts: %s."

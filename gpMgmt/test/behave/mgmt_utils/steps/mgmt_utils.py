@@ -1437,6 +1437,14 @@ def stop_all_primary_or_mirror_segments(context, segment_type, content):
     role = ROLE_PRIMARY if segment_type == 'primary' else ROLE_MIRROR
     stop_segments_immediate(context, lambda seg: seg.getSegmentRole() == role and seg.content in content_ids)
 
+@given('user restarts from standby all {segment_type} processes for content {content}')
+@then('user restarts from standby all {segment_type} processes for content {content}')
+def restart_all_primary_or_mirror_segments_from_standby(context, segment_type, content):
+    if segment_type not in ("primary", "mirror"):
+        raise Exception("Expected segment_type to be 'primary' or 'mirror', but found '%s'." % segment_type)
+    content_ids = [int(i) for i in content.split(',')]
+    role = ROLE_PRIMARY if segment_type == 'primary' else ROLE_MIRROR
+    restart_segments(context, lambda seg: seg.getSegmentRole() == role and seg.content in content_ids, True)
 
 @given('user immediately stops all {segment_type} processes')
 @when('user immediately stops all {segment_type} processes')
@@ -1458,6 +1466,21 @@ def stop_segments_immediate(context, where_clause):
         # Thus, need to add pg_ctl to the path when ssh'ing to a demo cluster.
         subprocess.check_call(['ssh', seg.getSegmentHostName(),
                                'source %s/greenplum_path.sh && pg_ctl stop -m immediate -D %s -w' % (
+                                   pipes.quote(os.environ.get("GPHOME")), pipes.quote(seg.getSegmentDataDirectory()))
+                               ])
+
+def restart_segments(context, where_clause, is_standby=False):
+    if is_standby:
+        gparray = GpArray.initFromCatalog(dbconn.DbURL(hostname=context.standby_hostname, dbname='postgres', port=context.standby_port))
+    else:
+        gparray = GpArray.initFromCatalog(dbconn.DbURL())
+
+    segments = filter(where_clause, gparray.getDbList())
+    for seg in segments:
+        # For demo_cluster tests that run on the CI gives the error 'bash: pg_ctl: command not found'
+        # Thus, need to add pg_ctl to the path when ssh'ing to a demo cluster.
+        subprocess.check_call(['ssh', seg.getSegmentHostName(),
+                               'source %s/greenplum_path.sh && pg_ctl restart -m immediate -D %s -w' % (
                                    pipes.quote(os.environ.get("GPHOME")), pipes.quote(seg.getSegmentDataDirectory()))
                                ])
 

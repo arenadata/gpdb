@@ -76,6 +76,25 @@ Feature: gpactivatestandby
           And the tablespace is valid on the standby coordinator
           And clean up and revert back to original coordinator
 
+    Scenario: gprecoverseg recoveries failed segment when standby works instead of coordinator
+        Given the database is running
+          And all the segments are running
+          And the segments are synchronized
+          And the standby is not initialized
+          And the user runs gpinitstandby with options " "
+         Then gpinitstandby should return a return code of 0
+          And verify the standby coordinator entries in catalog
+          And the coordinator goes down
+          And the user runs gpactivatestandby with options "-f"
+         Then gpactivatestandby should return a return code of 0
+          And verify the standby coordinator is now acting as coordinator
+          And user restarts from standby all primary processes for content 0
+         When the user runs command "gprecoverseg -aF" from standby coordinator
+         Then gprecoverseg should return a return code of 0
+         When the user runs command "gprecoverseg -r" from standby coordinator
+         Then gprecoverseg should return a return code of 0
+          And clean up and revert back to original coordinator
+
 ########################### @concourse_cluster tests ###########################
 # The @concourse_cluster tag denotes the scenario that requires a remote cluster
 
