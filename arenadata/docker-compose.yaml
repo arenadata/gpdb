@@ -12,11 +12,15 @@ services:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
       - "$PWD/allure-results:/tmp/allure-results"
+      - "$PWD/logs_cdw:/logs"
     privileged: true
     sysctls:
       kernel.sem: 500 1024000 200 4096
+    init: true
+    ulimits:
+      nofile: 65535
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      sleep infinity
   sdw1:
     image: "${IMAGE}"
     privileged: true
@@ -24,10 +28,14 @@ services:
     volumes:
       - "$PWD/ssh_keys/id_rsa:/home/gpadmin/.ssh/id_rsa"
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
+      - "$PWD/logs_sdw1:/logs"
     sysctls:
       kernel.sem: 500 1024000 200 4096
+    init: true
+    ulimits:
+      nofile: 65535
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      sleep infinity
   sdw2:
     image: "${IMAGE}"
     privileged: true
@@ -37,8 +45,11 @@ services:
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
     sysctls:
       kernel.sem: 500 1024000 200 4096
+    init: true
+    ulimits:
+      nofile: 65535
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      sleep infinity
   sdw3:
     image: "${IMAGE}"
     privileged: true
@@ -48,5 +59,8 @@ services:
       - "$PWD/ssh_keys/id_rsa.pub:/home/gpadmin/.ssh/id_rsa.pub"
     sysctls:
       kernel.sem: 500 1024000 200 4096
+    init: true
+    ulimits:
+      nofile: 65535
     entrypoint: >
-      bash -c "set -e && tail -f /home/gpadmin/gpdb_src/README.md"
+      sleep infinity
