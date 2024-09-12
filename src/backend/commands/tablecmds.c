@@ -750,6 +750,24 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 	}
 
 	/*
+	 * Ignore NOT NULL constraints on external tables.
+	 */
+	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL)
+	{
+		foreach(listptr, schema)
+		{
+			ColumnDef *colDef = lfirst(listptr);
+			if (colDef->is_not_null)
+			{
+				colDef->is_not_null = false;
+				ereport(WARNING,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("NOT NULL constraints on external tables are ignored")));
+			}
+		}
+	}
+
+	/*
 	 * Create a tuple descriptor from the relation schema.  Note that this
 	 * deals with column names, types, and NOT NULL constraints, but not
 	 * default values or CHECK constraints; we handle those below.
@@ -8170,6 +8188,14 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 	HeapTuple	tuple;
 	AttrNumber	attnum;
 	Relation	attr_rel;
+
+	if (RelationIsExternal(rel))
+	{
+		ereport(WARNING,
+			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+			 errmsg("NOT NULL constraints on external tables are ignored")));
+		return;
+	}
 
 	/*
 	 * lookup the attribute
