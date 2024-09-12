@@ -81,9 +81,10 @@ Feature: gpactivatestandby
           And all the segments are running
           And the segments are synchronized
           And the standby is not initialized
-          And the user runs gpinitstandby with options " "
+         When the user initializes a standby on the host "sdw3" and port 7001
          Then gpinitstandby should return a return code of 0
           And verify the standby coordinator entries in catalog
+          And verify that pg_hba.conf file has "standby" entries in each segment (primary and mirror) data directories
           And the coordinator goes down
           And the user runs gpactivatestandby with options "-f"
          Then gpactivatestandby should return a return code of 0
