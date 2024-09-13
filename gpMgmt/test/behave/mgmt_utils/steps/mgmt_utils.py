@@ -1288,6 +1288,7 @@ def impl(context):
     coordinator.run()
 
 @when('the standby coordinator goes down')
+@then('the standby coordinator goes down')
 def impl(context):
     coordinator = CoordinatorStop("Stopping Coordinator Standby", context.standby_data_dir, mode='immediate', ctxt=REMOTE,
                         remoteHost=context.standby_hostname)
@@ -1317,6 +1318,11 @@ def impl(context):
     coordinator.run()
 
     cmd = "gpactivatestandby -a -d %s" % coordinator_data_dir
+    run_gpcommand(context, cmd)
+
+@then('revert back to original coordinator')
+def impl(context):
+    cmd = "gpactivatestandby -a -f -d %s" % coordinator_data_dir
     run_gpcommand(context, cmd)
 
 # from https://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python/2838309#2838309

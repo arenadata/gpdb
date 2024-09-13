@@ -94,7 +94,8 @@ Feature: gpactivatestandby
          Then gprecoverseg should return a return code of 0
          When the user runs command "gprecoverseg -r" from standby coordinator
          Then gprecoverseg should return a return code of 0
-          And clean up and revert back to original coordinator
+          And the standby coordinator goes down
+          And revert back to original coordinator
 
 ########################### @concourse_cluster tests ###########################
 # The @concourse_cluster tag denotes the scenario that requires a remote cluster
