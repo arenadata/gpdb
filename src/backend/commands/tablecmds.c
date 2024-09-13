@@ -750,9 +750,9 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 	}
 
 	/*
-	 * Ignore NOT NULL constraints on external tables.
+	 * Ignore NOT NULL constraints on readable external tables.
 	 */
-	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL)
+	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL && stmt->is_readable_external)
 	{
 		foreach(listptr, schema)
 		{
@@ -762,7 +762,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 				colDef->is_not_null = false;
 				ereport(WARNING,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("NOT NULL constraints on external tables are ignored")));
+					 errmsg("NOT NULL constraints on readable external tables are ignored")));
 			}
 		}
 	}
@@ -8191,10 +8191,14 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 
 	if (RelationIsExternal(rel))
 	{
-		ereport(WARNING,
+		ExtTableEntry *ext_table_entry = GetExtTableEntry(RelationGetRelid(rel));
+		if (!ext_table_entry->iswritable)
+		{
+			ereport(WARNING,
 			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-			 errmsg("NOT NULL constraints on external tables are ignored")));
-		return;
+			 errmsg("NOT NULL constraints on readable external tables are ignored")));
+			return;
+		}
 	}
 
 	/*

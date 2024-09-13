@@ -98,6 +98,8 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	createStmt->tablespacename = NULL;
 	createStmt->distributedBy = createExtStmt->distributedBy; /* policy was set in transform */
 
+	createStmt->is_readable_external = !iswritable; /* set so that DefineRelation can ignore NOT NULL constraints */
+
 	switch (exttypeDesc->exttabletype)
 	{
 		case EXTTBL_TYPE_LOCATION:

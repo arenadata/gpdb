@@ -771,15 +771,15 @@ select * from exttab1_gpfdist_stop;
 select * from exttab1_gpfdist_start;
 -- end_ignore
 
--- Test NOT NULL for writable (constraint is ignored)
+-- Test NOT NULL for writable
 CREATE WRITABLE EXTERNAL TABLE writable_not_null (a int, b int NOT NULL, c int NULL)
 LOCATION ('gpfdist://@hostname@:7070/wet_writable_not_null.data')
 FORMAT 'text' (DELIMITER '|' NULL AS 'null');
 
 INSERT INTO writable_not_null(a, b, c) VALUES (1, 10, 100); -- should pass
-INSERT INTO writable_not_null(a, b, c) VALUES (2, NULL, 200); -- should pass
+INSERT INTO writable_not_null(a, b, c) VALUES (2, NULL, 200); -- should fail
 INSERT INTO writable_not_null(a, b, c) VALUES (3, 30, NULL); -- should pass
-INSERT INTO writable_not_null(a, c) VALUES (4, 400); -- should pass
+INSERT INTO writable_not_null(a, c) VALUES (4, 400); -- should fail
 INSERT INTO writable_not_null(a, b) VALUES (5, 50); -- should pass
 
 CREATE READABLE EXTERNAL TABLE readable_not_null (LIKE writable_not_null)
@@ -791,9 +791,9 @@ SELECT a, b, c FROM readable_not_null;
 -- ALTER EXTERNAL TABLE can disable NOT NULL
 ALTER EXTERNAL TABLE writable_not_null ALTER COLUMN b DROP NOT NULL;
 INSERT INTO writable_not_null(a, b, c) VALUES (6, NULL, 600); -- should pass
--- and put it back (ignored)
+-- and put it back
 ALTER EXTERNAL TABLE writable_not_null ALTER COLUMN b SET NOT NULL;
-INSERT INTO writable_not_null(a, b, c) VALUES (7, NULL, 700); -- should pass
+INSERT INTO writable_not_null(a, b, c) VALUES (7, NULL, 700); -- should fail
 SELECT a, b, c FROM readable_not_null;
 
 
@@ -804,7 +804,7 @@ LOCATION ('gpfdist://@hostname@:7070/wet_writable_default.data')
 FORMAT 'text' (DELIMITER '|');
 
 INSERT INTO writable_default(a, b, c) VALUES (1, 10, 100); -- should pass
-INSERT INTO writable_default(a, b, c) VALUES (2, NULL, 200); -- should add NULL
+INSERT INTO writable_default(a, b, c) VALUES (2, NULL, 200); -- should fail
 INSERT INTO writable_default(a, b, c) VALUES (3, 30, NULL); -- should add NULL
 INSERT INTO writable_default(a, c) VALUES (4, 400); -- should replace with 1234
 INSERT INTO writable_default(a, b) VALUES (5, 50); -- should replace with 5678

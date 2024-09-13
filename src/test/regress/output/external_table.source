@@ -2892,7 +2892,7 @@ DROP PROTOCOL if exists demoprot2;
 CREATE EXTERNAL TABLE SERIAL (a serial, x text)
 LOCATION ('file://@hostname@@abs_srcdir@/data/no/such/place/serial.tbl')
 FORMAT 'csv';
-WARNING:  NOT NULL constraints on external tables are ignored
+WARNING:  NOT NULL constraints on readable external tables are ignored
 \d SERIAL
                 External table "public.serial"
  Column |  Type   |                 Modifiers                 
