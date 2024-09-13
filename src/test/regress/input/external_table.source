@@ -194,7 +194,7 @@ format 'text';
 alter table ext drop column a; -- should pass with warning
 alter external table ext add column a int; -- pass
 alter external table ext drop column a; -- pass
-alter external table ext add column extnewcol int not null; -- should pass
+alter external table ext add column extnewcol int not null; -- should output a warning
 alter external table ext drop column extnewcol; -- pass
 alter external table ext add column extnewcol int; -- pass
 alter external table ext alter column extnewcol set default 1; -- should pass

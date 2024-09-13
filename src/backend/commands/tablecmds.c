@@ -7518,6 +7518,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	FormData_pg_attribute attribute;
 	int			newattnum;
 	char		relkind;
+	char		relstorage;
 	HeapTuple	typeTuple;
 	Oid			typeOid;
 	int32		typmod;
@@ -7600,6 +7601,21 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	if (!HeapTupleIsValid(reltup))
 		elog(ERROR, "cache lookup failed for relation %u", myrelid);
 	relkind = ((Form_pg_class) GETSTRUCT(reltup))->relkind;
+	relstorage = ((Form_pg_class) GETSTRUCT(reltup))->relstorage;
+
+	/* Check for NOT NULL constraints in external readable tables */
+	if (colDef->is_not_null && relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL)
+	{
+		ExtTableEntry *ext_table_entry = GetExtTableEntry(myrelid);
+
+		if (!ext_table_entry->iswritable)
+		{
+			colDef->is_not_null = false;
+			ereport(WARNING,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("NOT NULL constraints on readable external tables are ignored")));
+		}
+	}
 
 	/* new name should not already exist */
 	check_for_column_name_collision(rel, colDef->colname);
@@ -8174,11 +8190,12 @@ ATExecSetNotNull(AlteredTableInfo *tab, Relation rel,
 	if (RelationIsExternal(rel))
 	{
 		ExtTableEntry *ext_table_entry = GetExtTableEntry(RelationGetRelid(rel));
+
 		if (!ext_table_entry->iswritable)
 		{
 			ereport(WARNING,
-			(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-			 errmsg("NOT NULL constraints on readable external tables are ignored")));
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("NOT NULL constraints on readable external tables are ignored")));
 			return;
 		}
 	}

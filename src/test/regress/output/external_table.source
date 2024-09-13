@@ -256,7 +256,8 @@ WARNING:  "ext" is an external table. ALTER TABLE for external tables is depreca
 HINT:  Use ALTER EXTERNAL TABLE instead
 alter external table ext add column a int; -- pass
 alter external table ext drop column a; -- pass
-alter external table ext add column extnewcol int not null; -- should pass
+alter external table ext add column extnewcol int not null; -- should output a warning
+WARNING:  NOT NULL constraints on readable external tables are ignored
 alter external table ext drop column extnewcol; -- pass
 alter external table ext add column extnewcol int; -- pass
 alter external table ext alter column extnewcol set default 1; -- should pass
