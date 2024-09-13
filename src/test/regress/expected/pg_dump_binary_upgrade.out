@@ -22,7 +22,6 @@ ALTER EXTERNAL TABLE dump_this_schema.external_table_with_dropped_columns_does_n
 CREATE WRITABLE EXTERNAL TABLE dump_this_schema.writable_external_table_with_serial_column_type (a INT, b BIGSERIAL)
     LOCATION ('gpfdist://localhost:8081/xxx.csv')
     FORMAT 'CSV' (DELIMITER ',' NULL '' ESCAPE '"' QUOTE '"') ENCODING 'UTF8' DISTRIBUTED RANDOMLY;
-WARNING:  NOT NULL constraints on external tables are ignored
 -- Scenario 2a: Create homogeneous partition table where the root
 -- partition and ALL of its child partitions have the dropped column
 -- reference.

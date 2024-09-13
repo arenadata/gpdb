@@ -750,24 +750,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 	}
 
 	/*
-	 * Ignore NOT NULL constraints on readable external tables.
-	 */
-	if (relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL && stmt->is_readable_external)
-	{
-		foreach(listptr, schema)
-		{
-			ColumnDef *colDef = lfirst(listptr);
-			if (colDef->is_not_null)
-			{
-				colDef->is_not_null = false;
-				ereport(WARNING,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("NOT NULL constraints on readable external tables are ignored")));
-			}
-		}
-	}
-
-	/*
 	 * Create a tuple descriptor from the relation schema.  Note that this
 	 * deals with column names, types, and NOT NULL constraints, but not
 	 * default values or CHECK constraints; we handle those below.

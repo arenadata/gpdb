@@ -98,8 +98,6 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	createStmt->tablespacename = NULL;
 	createStmt->distributedBy = createExtStmt->distributedBy; /* policy was set in transform */
 
-	createStmt->is_readable_external = !iswritable; /* set so that DefineRelation can ignore NOT NULL constraints */
-
 	switch (exttypeDesc->exttabletype)
 	{
 		case EXTTBL_TYPE_LOCATION:
@@ -363,6 +361,29 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 									list_length(exttypeDesc->location_list),
 									getgpsegmentCount()),
 							 errhint("The table cannot be queried until cluster is expanded so that there are at least as many segments as locations.")));
+			}
+		}
+	}
+
+	/*
+	 * Check for NOT NULL column constraints in readable tables.
+	 * Since external tables don't have inheritance it is enough to check just tableElts.
+	 */
+	if (!iswritable)
+	{
+		ListCell *listptr;
+		foreach(listptr, createStmt->tableElts)
+		{
+			if (IsA(lfirst(listptr), ColumnDef))
+			{
+				ColumnDef *colDef = lfirst(listptr);
+				if (colDef->is_not_null)
+				{
+					colDef->is_not_null = false;
+					ereport(WARNING,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("NOT NULL constraints on readable external tables are ignored")));
+				}
 			}
 		}
 	}
