@@ -1289,7 +1289,6 @@ def impl(context):
     coordinator.run()
 
 @when('the standby coordinator goes down')
-@then('the standby coordinator goes down')
 def impl(context):
     coordinator = CoordinatorStop("Stopping Coordinator Standby", context.standby_data_dir, mode='immediate', ctxt=REMOTE,
                         remoteHost=context.standby_hostname)
@@ -1446,6 +1445,7 @@ def stop_all_primary_or_mirror_segments(context, segment_type, content):
     content_ids = [int(i) for i in content.split(',')]
     role = ROLE_PRIMARY if segment_type == 'primary' else ROLE_MIRROR
     stop_segments_immediate(context, lambda seg: seg.getSegmentRole() == role and seg.content in content_ids)
+
 
 @given('user immediately stops all {segment_type} processes')
 @when('user immediately stops all {segment_type} processes')
