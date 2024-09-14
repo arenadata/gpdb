@@ -1098,7 +1098,7 @@ def run_gpinitstandby(context, hostname, port, standby_data_dir, options='', rem
         # create the data dir on $hostname
         create_dir(hostname, os.path.dirname(standby_data_dir))
         # We do not set port nor data dir here to test gpinitstandby's ability to autogather that info
-        cmd = "gpinitstandby -a -s %s -P %s -S %s" % (hostname, port, standby_data_dir)
+        cmd = "gpinitstandby -a -s %s" % hostname
     else:
         cmd = "gpinitstandby -a -s %s -P %s -S %s" % (hostname, port, standby_data_dir)
 
@@ -1114,10 +1114,11 @@ def impl(context):
 @when('the user initializes a standby on the host "{host}" and port {port}')
 def impl(context, host, port):
     temp_data_dir = tempfile.mkdtemp() + "/standby_datadir"
-    run_gpinitstandby(context, host, port, temp_data_dir, "", True)
     context.standby_hostname = host
     context.standby_port = port
     context.standby_data_dir = temp_data_dir
+    options = "-P %s -S %s" % (port, temp_data_dir)
+    run_gpinitstandby(context, host, port, temp_data_dir, options, True)
 
 @when('the user initializes a standby on the same host as coordinator and the same data directory')
 def impl(context):
@@ -1320,11 +1321,6 @@ def impl(context):
     cmd = "gpactivatestandby -a -d %s" % coordinator_data_dir
     run_gpcommand(context, cmd)
 
-@then('revert back to original coordinator')
-def impl(context):
-    cmd = "gpactivatestandby -a -f -d %s" % coordinator_data_dir
-    run_gpcommand(context, cmd)
-
 # from https://stackoverflow.com/questions/2838244/get-open-tcp-port-in-python/2838309#2838309
 def get_open_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1451,15 +1447,6 @@ def stop_all_primary_or_mirror_segments(context, segment_type, content):
     role = ROLE_PRIMARY if segment_type == 'primary' else ROLE_MIRROR
     stop_segments_immediate(context, lambda seg: seg.getSegmentRole() == role and seg.content in content_ids)
 
-@given('user restarts from standby all {segment_type} processes for content {content}')
-@then('user restarts from standby all {segment_type} processes for content {content}')
-def restart_all_primary_or_mirror_segments_from_standby(context, segment_type, content):
-    if segment_type not in ("primary", "mirror"):
-        raise Exception("Expected segment_type to be 'primary' or 'mirror', but found '%s'." % segment_type)
-    content_ids = [int(i) for i in content.split(',')]
-    role = ROLE_PRIMARY if segment_type == 'primary' else ROLE_MIRROR
-    restart_segments(context, lambda seg: seg.getSegmentRole() == role and seg.content in content_ids, True)
-
 @given('user immediately stops all {segment_type} processes')
 @when('user immediately stops all {segment_type} processes')
 @then('user immediately stops all {segment_type} processes')
@@ -1480,21 +1467,6 @@ def stop_segments_immediate(context, where_clause):
         # Thus, need to add pg_ctl to the path when ssh'ing to a demo cluster.
         subprocess.check_call(['ssh', seg.getSegmentHostName(),
                                'source %s/greenplum_path.sh && pg_ctl stop -m immediate -D %s -w' % (
-                                   pipes.quote(os.environ.get("GPHOME")), pipes.quote(seg.getSegmentDataDirectory()))
-                               ])
-
-def restart_segments(context, where_clause, is_standby=False):
-    if is_standby:
-        gparray = GpArray.initFromCatalog(dbconn.DbURL(hostname=context.standby_hostname, dbname='postgres', port=context.standby_port))
-    else:
-        gparray = GpArray.initFromCatalog(dbconn.DbURL())
-
-    segments = filter(where_clause, gparray.getDbList())
-    for seg in segments:
-        # For demo_cluster tests that run on the CI gives the error 'bash: pg_ctl: command not found'
-        # Thus, need to add pg_ctl to the path when ssh'ing to a demo cluster.
-        subprocess.check_call(['ssh', seg.getSegmentHostName(),
-                               'source %s/greenplum_path.sh && pg_ctl restart -m immediate -D %s -w' % (
                                    pipes.quote(os.environ.get("GPHOME")), pipes.quote(seg.getSegmentDataDirectory()))
                                ])
 

@@ -76,27 +76,6 @@ Feature: gpactivatestandby
           And the tablespace is valid on the standby coordinator
           And clean up and revert back to original coordinator
 
-    Scenario: gprecoverseg recoveries failed segment when standby works instead of coordinator
-        Given the database is running
-          And all the segments are running
-          And the segments are synchronized
-          And the standby is not initialized
-         When the user initializes a standby on the host "sdw3" and port 7001
-         Then gpinitstandby should return a return code of 0
-          And verify the standby coordinator entries in catalog
-          And verify that pg_hba.conf file has "standby" entries in each segment (primary and mirror) data directories
-          And the coordinator goes down
-          And the user runs gpactivatestandby with options "-f"
-         Then gpactivatestandby should return a return code of 0
-          And verify the standby coordinator is now acting as coordinator
-          And user restarts from standby all primary processes for content 0
-         When the user runs command "gprecoverseg -aF" from standby coordinator
-         Then gprecoverseg should return a return code of 0
-         When the user runs command "gprecoverseg -r" from standby coordinator
-         Then gprecoverseg should return a return code of 0
-          And the standby coordinator goes down
-          And revert back to original coordinator
-
 ########################### @concourse_cluster tests ###########################
 # The @concourse_cluster tag denotes the scenario that requires a remote cluster
 
