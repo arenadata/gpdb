@@ -74,7 +74,7 @@ def update_on_segments(update_cmds, batch_size):
 
 def update_pg_hba_on_segments_for_standby(gpArray, standby_host, hba_hostnames,
                                           batch_size):
-    logger.info("Starting to create new pg_hba.conf on primary segments")
+    logger.info("Starting to create new pg_hba.conf on primary and mirror segments")
     update_cmds = []
     unreachable_seg_primary_hosts = []
     unreachable_seg_mirror_hosts = []
