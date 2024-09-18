@@ -1230,7 +1230,7 @@ typedef union PGAlignedXLogBlock
 #elif defined(__GNUC__)
 	#define SUPPRESS_COMPILER_WARNING(expr, warning) do { \
 		_Pragma("GCC diagnostic push") \
-		_Pragma("clang diagnostic ignored \"" warning "\"") \
+		DO_PRAGMA(GCC diagnostic ignored warning) \
 		expr; \
 		_Pragma("GCC diagnostic pop") \
 	} while(0)
