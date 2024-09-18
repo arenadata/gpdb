@@ -831,6 +831,7 @@ load_dh_file(char *filename, bool isServerStart)
 	FILE	   *fp;
 	DH		   *dh = NULL;
 	int			codes;
+	int			result;
 
 	/* attempt to open file.  It's not an error if it doesn't exist. */
 	if ((fp = AllocateFile(filename, "r")) == NULL)
@@ -842,7 +843,7 @@ load_dh_file(char *filename, bool isServerStart)
 		return NULL;
 	}
 
-	dh = PEM_read_DHparams(fp, NULL, NULL, NULL);
+	SUPPRESS_COMPILER_WARNING(dh = PEM_read_DHparams(fp, NULL, NULL, NULL), "-Wdeprecated-declarations");
 	FreeFile(fp);
 
 	if (dh == NULL)
@@ -855,13 +856,14 @@ load_dh_file(char *filename, bool isServerStart)
 	}
 
 	/* make sure the DH parameters are usable */
-	if (DH_check(dh, &codes) == 0)
+	SUPPRESS_COMPILER_WARNING(result = DH_check(dh, &codes), "-Wdeprecated-declarations");
+	if (result == 0)
 	{
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("invalid DH parameters: %s",
 						SSLerrmessage(ERR_get_error()))));
-		DH_free(dh);
+		SUPPRESS_COMPILER_WARNING(DH_free(dh), "-Wdeprecated-declarations");
 		return NULL;
 	}
 	if (codes & DH_CHECK_P_NOT_PRIME)
@@ -869,7 +871,7 @@ load_dh_file(char *filename, bool isServerStart)
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("invalid DH parameters: p is not prime")));
-		DH_free(dh);
+		SUPPRESS_COMPILER_WARNING(DH_free(dh), "-Wdeprecated-declarations");
 		return NULL;
 	}
 	if ((codes & DH_NOT_SUITABLE_GENERATOR) &&
@@ -878,7 +880,7 @@ load_dh_file(char *filename, bool isServerStart)
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("invalid DH parameters: neither suitable generator or safe prime")));
-		DH_free(dh);
+		SUPPRESS_COMPILER_WARNING(DH_free(dh), "-Wdeprecated-declarations");
 		return NULL;
 	}
 
@@ -900,7 +902,7 @@ load_dh_buffer(const char *buffer, size_t len)
 	bio = BIO_new_mem_buf(unconstify(char *, buffer), len);
 	if (bio == NULL)
 		return NULL;
-	dh = PEM_read_bio_DHparams(bio, NULL, NULL, NULL);
+	SUPPRESS_COMPILER_WARNING(dh = PEM_read_bio_DHparams(bio, NULL, NULL, NULL), "-Wdeprecated-declarations");
 	if (dh == NULL)
 		ereport(DEBUG2,
 				(errmsg_internal("DH load buffer: %s",
@@ -1043,11 +1045,11 @@ initialize_dh(SSL_CTX *context, bool isServerStart)
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 (errmsg("DH: could not set DH parameters: %s",
 						 SSLerrmessage(ERR_get_error())))));
-		DH_free(dh);
+		SUPPRESS_COMPILER_WARNING(DH_free(dh), "-Wdeprecated-declarations");
 		return false;
 	}
 
-	DH_free(dh);
+	SUPPRESS_COMPILER_WARNING(DH_free(dh), "-Wdeprecated-declarations");
 	return true;
 }
 
@@ -1072,7 +1074,7 @@ initialize_ecdh(SSL_CTX *context, bool isServerStart)
 		return false;
 	}
 
-	ecdh = EC_KEY_new_by_curve_name(nid);
+	SUPPRESS_COMPILER_WARNING(ecdh = EC_KEY_new_by_curve_name(nid), "-Wdeprecated-declarations");
 	if (!ecdh)
 	{
 		ereport(isServerStart ? FATAL : LOG,
@@ -1083,7 +1085,7 @@ initialize_ecdh(SSL_CTX *context, bool isServerStart)
 
 	SSL_CTX_set_options(context, SSL_OP_SINGLE_ECDH_USE);
 	SSL_CTX_set_tmp_ecdh(context, ecdh);
-	EC_KEY_free(ecdh);
+	SUPPRESS_COMPILER_WARNING(EC_KEY_free(ecdh), "-Wdeprecated-declarations");
 #endif
 
 	return true;

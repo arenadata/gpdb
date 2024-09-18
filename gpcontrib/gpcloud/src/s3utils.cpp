@@ -105,16 +105,16 @@ size_t find_Nth(const string &str,  // where to work
 
 MD5Calc::MD5Calc() {
     memset(this->md5, 0, MD5_DIGEST_STRING_LENGTH);
-    MD5_Init(&this->c);
+    SUPPRESS_COMPILER_WARNING(MD5_Init(&this->c), "-Wdeprecated-declarations");
 }
 
 bool MD5Calc::Update(const char *data, int len) {
-    MD5_Update(&this->c, data, len);
+    SUPPRESS_COMPILER_WARNING(MD5_Update(&this->c, data, len), "-Wdeprecated-declarations");
     return true;
 }
 
 const char *MD5Calc::Get() {
-    MD5_Final(this->md5, &c);
+    SUPPRESS_COMPILER_WARNING(MD5_Final(this->md5, &c), "-Wdeprecated-declarations");
     std::stringstream ss;
     for (int i = 0; i < MD5_DIGEST_LENGTH; i++)
         ss << std::hex << std::setw(2) << std::setfill('0') << (int)this->md5[i];
@@ -122,7 +122,7 @@ const char *MD5Calc::Get() {
 
     // Reset MD5 context
     memset(this->md5, 0, MD5_DIGEST_STRING_LENGTH);
-    MD5_Init(&this->c);
+    SUPPRESS_COMPILER_WARNING(MD5_Init(&this->c), "-Wdeprecated-declarations");
     return this->result.c_str();
 }
 

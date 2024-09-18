@@ -1025,6 +1025,7 @@ initialize_SSL(PGconn *conn)
 			/* Colon, but not in second character, treat as engine:key */
 			char	   *engine_str = strdup(conn->sslkey);
 			char	   *engine_colon;
+			int		   init_result;
 
 			if (engine_str == NULL)
 			{
@@ -1039,7 +1040,7 @@ initialize_SSL(PGconn *conn)
 			*engine_colon = '\0';	/* engine_str now has engine name */
 			engine_colon++;		/* engine_colon now has key name */
 
-			conn->engine = ENGINE_by_id(engine_str);
+			SUPPRESS_COMPILER_WARNING(conn->engine = ENGINE_by_id(engine_str), "-Wdeprecated-declarations");
 			if (conn->engine == NULL)
 			{
 				char	   *err = SSLerrmessage(ERR_get_error());
@@ -1052,7 +1053,8 @@ initialize_SSL(PGconn *conn)
 				return -1;
 			}
 
-			if (ENGINE_init(conn->engine) == 0)
+			SUPPRESS_COMPILER_WARNING(init_result = ENGINE_init(conn->engine), "-Wdeprecated-declarations");
+			if (init_result == 0)
 			{
 				char	   *err = SSLerrmessage(ERR_get_error());
 
@@ -1060,14 +1062,17 @@ initialize_SSL(PGconn *conn)
 								  libpq_gettext("could not initialize SSL engine \"%s\": %s\n"),
 								  engine_str, err);
 				SSLerrfree(err);
-				ENGINE_free(conn->engine);
+				SUPPRESS_COMPILER_WARNING(ENGINE_free(conn->engine), "-Wdeprecated-declarations");
 				conn->engine = NULL;
 				free(engine_str);
 				return -1;
 			}
 
-			pkey = ENGINE_load_private_key(conn->engine, engine_colon,
-										   NULL, NULL);
+			SUPPRESS_COMPILER_WARNING(
+				pkey = ENGINE_load_private_key(conn->engine, engine_colon,
+										   	   NULL, NULL),
+				"-Wdeprecated-declarations"
+			);
 			if (pkey == NULL)
 			{
 				char	   *err = SSLerrmessage(ERR_get_error());
@@ -1076,8 +1081,8 @@ initialize_SSL(PGconn *conn)
 								  libpq_gettext("could not read private SSL key \"%s\" from engine \"%s\": %s\n"),
 								  engine_colon, engine_str, err);
 				SSLerrfree(err);
-				ENGINE_finish(conn->engine);
-				ENGINE_free(conn->engine);
+				SUPPRESS_COMPILER_WARNING(ENGINE_finish(conn->engine), "-Wdeprecated-declarations");
+				SUPPRESS_COMPILER_WARNING(ENGINE_free(conn->engine), "-Wdeprecated-declarations");
 				conn->engine = NULL;
 				free(engine_str);
 				return -1;
@@ -1090,8 +1095,8 @@ initialize_SSL(PGconn *conn)
 								  libpq_gettext("could not load private SSL key \"%s\" from engine \"%s\": %s\n"),
 								  engine_colon, engine_str, err);
 				SSLerrfree(err);
-				ENGINE_finish(conn->engine);
-				ENGINE_free(conn->engine);
+				SUPPRESS_COMPILER_WARNING(ENGINE_finish(conn->engine), "-Wdeprecated-declarations");
+				SUPPRESS_COMPILER_WARNING(ENGINE_free(conn->engine), "-Wdeprecated-declarations");
 				conn->engine = NULL;
 				free(engine_str);
 				return -1;
@@ -1346,8 +1351,8 @@ pgtls_close(PGconn *conn)
 #ifdef USE_SSL_ENGINE
 	if (conn->engine)
 	{
-		ENGINE_finish(conn->engine);
-		ENGINE_free(conn->engine);
+		SUPPRESS_COMPILER_WARNING(ENGINE_finish(conn->engine), "-Wdeprecated-declarations");
+		SUPPRESS_COMPILER_WARNING(ENGINE_free(conn->engine), "-Wdeprecated-declarations");
 		conn->engine = NULL;
 	}
 #endif
