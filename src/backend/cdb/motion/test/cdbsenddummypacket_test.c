@@ -163,6 +163,7 @@ test_send_dummy_packet_ipv4_to_ipv4(void **state)
 	int txFamily;
 
 	interconnect_address = "0.0.0.0";
+	Gp_interconnect_address_type = INTERCONNECT_ADDRESS_TYPE_UNICAST;
 	setupUDPListeningSocket(&listenerSocketFd, &listenerPort, &txFamily, &udp_dummy_packet_sockaddr);
 
 	Gp_listener_port = (listenerPort << 16);
@@ -195,6 +196,7 @@ test_send_dummy_packet_ipv4_to_ipv6_should_fail(void **state)
 	int txFamily;
 
 	interconnect_address = "::";
+	Gp_interconnect_address_type = INTERCONNECT_ADDRESS_TYPE_UNICAST;
 	setupUDPListeningSocket(&listenerSocketFd, &listenerPort, &txFamily, &udp_dummy_packet_sockaddr);
 
 	Gp_listener_port = (listenerPort << 16);
@@ -222,6 +224,7 @@ test_send_dummy_packet_ipv6_to_ipv6(void **state)
 	int txFamily;
 
 	interconnect_address = "::1";
+	Gp_interconnect_address_type = INTERCONNECT_ADDRESS_TYPE_UNICAST;
 	setupUDPListeningSocket(&listenerSocketFd, &listenerPort, &txFamily, &udp_dummy_packet_sockaddr);
 
 	Gp_listener_port = (listenerPort << 16);
@@ -249,6 +252,7 @@ test_send_dummy_packet_ipv6_to_ipv4(void **state)
 	int txFamily;
 
 	interconnect_address = "0.0.0.0";
+	Gp_interconnect_address_type = INTERCONNECT_ADDRESS_TYPE_UNICAST;
 	setupUDPListeningSocket(&listenerSocketFd, &listenerPort, &txFamily, &udp_dummy_packet_sockaddr);
 
 	Gp_listener_port = (listenerPort << 16);
@@ -256,6 +260,36 @@ test_send_dummy_packet_ipv6_to_ipv4(void **state)
 
 	ICSenderSocket = create_sender_socket(AF_INET6);
 	ICSenderFamily = AF_INET6;
+
+	SendDummyPacket();
+
+	const struct sockaddr_in *in = (const struct sockaddr_in *) &udp_dummy_packet_sockaddr;
+	assert_true(txFamily == AF_INET);
+	assert_true(in->sin_family == AF_INET);
+	assert_true(listenerPort == ntohs(in->sin_port));
+	assert_true(strcmp("0.0.0.0", inet_ntoa(in->sin_addr)) == 0);
+
+	wait_for_receiver(false);
+}
+
+
+static void
+test_send_dummy_packet_ipv4_to_ipv4_wildcard(void **state)
+{
+	break_loop = false;
+	int listenerSocketFd;
+	uint16 listenerPort;
+	int txFamily;
+
+	interconnect_address = NULL;
+	Gp_interconnect_address_type = INTERCONNECT_ADDRESS_TYPE_WILDCARD;
+	setupUDPListeningSocket(&listenerSocketFd, &listenerPort, &txFamily, &udp_dummy_packet_sockaddr);
+
+	Gp_listener_port = (listenerPort << 16);
+	UDP_listenerFd = listenerSocketFd;
+
+	ICSenderSocket = create_sender_socket(AF_INET);
+	ICSenderFamily = AF_INET;
 
 	SendDummyPacket();
 
@@ -278,6 +312,7 @@ test_send_dummy_packet_ipv6_to_ipv6_wildcard(void **state)
 	int txFamily;
 
 	interconnect_address = "::";
+	Gp_interconnect_address_type = INTERCONNECT_ADDRESS_TYPE_UNICAST;
 	setupUDPListeningSocket(&listenerSocketFd, &listenerPort, &txFamily, &udp_dummy_packet_sockaddr);
 
 	Gp_listener_port = (listenerPort << 16);
@@ -317,6 +352,7 @@ main(int argc, char* argv[])
 			unit_test(test_send_dummy_packet_ipv4_to_ipv6_should_fail),
 			unit_test(test_send_dummy_packet_ipv6_to_ipv6),
 			unit_test(test_send_dummy_packet_ipv6_to_ipv4),
+			unit_test(test_send_dummy_packet_ipv4_to_ipv4_wildcard),
 			unit_test(test_send_dummy_packet_ipv6_to_ipv6_wildcard),
 		};
 		return run_tests(tests);
