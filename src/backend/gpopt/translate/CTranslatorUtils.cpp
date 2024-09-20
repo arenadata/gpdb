@@ -410,8 +410,8 @@ CTranslatorUtils::ResolvePolymorphicTypes(CMemoryPool *mp,
 		arg_modes[arg_index++] = PROARGMODE_TABLE;
 	}
 
-	if (!gpdb::ResolvePolymorphicArgType(total_args, arg_types.data(), arg_modes.data(),
-										 funcexpr))
+	if (!gpdb::ResolvePolymorphicArgType(total_args, arg_types.data(),
+										 arg_modes.data(), funcexpr))
 	{
 		GPOS_RAISE(
 			gpdxl::ExmaDXL, gpdxl::ExmiDXLUnrecognizedType,
