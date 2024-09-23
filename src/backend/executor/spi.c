@@ -1294,6 +1294,19 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	_SPI_current->processed = 0;
 	_SPI_current->tuptable = NULL;
 
+	bool orig_gp_enable_gpperfmon = gp_enable_gpperfmon;
+
+PG_TRY();
+{
+	/*
+	* Temporarily disable gpperfmon since we don't send information for internal queries in
+	* most cases, except when the debugging level is set to DEBUG4 or DEBUG5.
+	*/
+	if (log_min_messages > DEBUG4)
+	{
+		gp_enable_gpperfmon = false;
+	}
+
 	/* Create the portal */
 	if (name == NULL || name[0] == '\0')
 	{
@@ -1454,6 +1467,15 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	PortalStart(portal, paramLI, 0, snapshot, NULL);
 
 	Assert(portal->strategy != PORTAL_MULTI_QUERY);
+
+	gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+}
+PG_CATCH();
+{
+	gp_enable_gpperfmon = orig_gp_enable_gpperfmon;
+	PG_RE_THROW();
+}
+PG_END_TRY();
 
 	/* Pop the SPI stack */
 	_SPI_end_call(true);
