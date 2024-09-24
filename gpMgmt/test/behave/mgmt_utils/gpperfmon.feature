@@ -101,6 +101,21 @@ Feature: gpperfmon
         """
         Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text = 'SELECT pg_sleep(80)'" is "true"
 
+    @gpperfmon_query_history
+    Scenario: gpperfmon does not log PL/pgSQL statements with log_min_messages < debug4
+        Given gpperfmon is configured and running in qamode
+        When the user truncates "queries_history" tables in "gpperfmon"
+        When below sql is executed in "gptest" db
+        """
+        SET log_min_messages = "warning";
+        CREATE OR REPLACE FUNCTION test_sleep() RETURNS SETOF INT AS $$BEGIN
+            RETURN QUERY SELECT 1 FROM pg_sleep(80);
+        END$$ LANGUAGE plpgsql;
+        SELECT test_sleep();
+        """
+        Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_sleep()%'" is "true"
+        And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%pg_sleep(80)%'" is "false"
+
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table
         Given gpperfmon is configured and running in qamode
