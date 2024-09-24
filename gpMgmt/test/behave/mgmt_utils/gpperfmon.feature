@@ -111,6 +111,9 @@ Feature: gpperfmon
         CREATE OR REPLACE FUNCTION test_sleep() RETURNS SETOF INT AS $$BEGIN
             RETURN QUERY SELECT 1 FROM pg_sleep(80);
         END$$ LANGUAGE plpgsql;
+        """
+        When below sql is executed in "gptest" db
+        """
         SELECT test_sleep();
         """
         Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_sleep()%'" is "true"
