@@ -20,8 +20,7 @@
 2: select count(*) from gp_toolkit.gp_workfile_entries group by segid;
 
 -- interrupt the query
-2: select gp_inject_fault('create_function_fail', 'panic', dbid) from gp_segment_configuration where role='p' and content = 0;
-2: create function my_function() returns void as $$ begin end; $$ language plpgsql;
+2: select pg_cancel_backend(pid) from pg_stat_activity where query like '%workfile_test%' and pid != pg_backend_pid();
 1<:
 1q:
 
