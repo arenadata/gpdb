@@ -20,7 +20,9 @@
 2: select count(*) from gp_toolkit.gp_workfile_entries group by segid;
 
 -- interrupt the query
+-- start_ignore
 2: select pg_cancel_backend(pid) from pg_stat_activity where query like '%workfile_test%' and pid != pg_backend_pid();
+-- end_ignore
 1<:
 1q:
 
