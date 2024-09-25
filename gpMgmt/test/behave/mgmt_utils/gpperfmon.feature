@@ -117,7 +117,7 @@ Feature: gpperfmon
         SELECT test_sleep();
         """
         Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_sleep()%'" is "true"
-        And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%pg_sleep(80)%'" is "false"
+        And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%pg_sleep(80)%' AND query_text NOT LIKE '%queries_history%'" is "false"
 
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table
