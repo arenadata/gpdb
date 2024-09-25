@@ -56,6 +56,6 @@ SELECT S.datname,
        C.numfiles,
        C.prefix
 FROM all_entries C LEFT OUTER JOIN gp_stat_activity S
-ON C.pid = S.pid and C.segid=S.gp_segment_id;
+ON C.sessionid = S.sess_id and C.pid = S.pid and C.segid=S.gp_segment_id;
 
 GRANT SELECT ON gp_toolkit.gp_workfile_entries TO public;
