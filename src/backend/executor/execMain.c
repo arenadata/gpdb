@@ -121,6 +121,13 @@
 										queryDesc->ddesc->parallelCursorName &&	\
 										strlen(queryDesc->ddesc->parallelCursorName) > 0)
 
+#define QUERY_ID_LOG_EXEC(label, queryDesc)	elog(NOTICE, \
+										"%s %s | Q: %s | QUERY ID: %d", \
+										label, \
+										__FUNCTION__, \
+										queryDesc->sourceText, \
+										MyProc->queryCommandId)
+
 /* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
 ExecutorStart_hook_type ExecutorStart_hook = NULL;
 ExecutorRun_hook_type ExecutorRun_hook = NULL;
@@ -296,10 +303,26 @@ CopyDirectDispatchFromPlanToSliceTable(PlannedStmt *stmt, EState *estate)
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
+	int saved_command_id = MyProc->queryCommandId;
+	MyProc->queryCommandId = queryDesc->command_id;
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip ||
+		SIMPLE_FAULT_INJECTOR("track_query_command_id_at_start") == FaultInjectorTypeSkip)
+		QUERY_ID_LOG_EXEC("START", queryDesc);
+#endif
+
 	if (ExecutorStart_hook)
 		(*ExecutorStart_hook) (queryDesc, eflags);
 	else
 		standard_ExecutorStart(queryDesc, eflags);
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+		QUERY_ID_LOG_EXEC("END", queryDesc);
+#endif
+
+	MyProc->queryCommandId = saved_command_id;
 }
 
 void
@@ -985,11 +1008,26 @@ ExecutorRun(QueryDesc *queryDesc,
 	executor_run_nesting_level++;
 	PG_TRY();
 	{
+		int saved_command_id = MyProc->queryCommandId;
+		MyProc->queryCommandId = queryDesc->command_id;
+
+#ifdef FAULT_INJECTOR
+		if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+			QUERY_ID_LOG_EXEC("START", queryDesc);
+#endif
+
 		if (ExecutorRun_hook)
 			(*ExecutorRun_hook) (queryDesc, direction, count);
 		else
 			standard_ExecutorRun(queryDesc, direction, count);
 		executor_run_nesting_level--;
+
+#ifdef FAULT_INJECTOR
+		if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+			QUERY_ID_LOG_EXEC("END", queryDesc);
+#endif
+
+		MyProc->queryCommandId = saved_command_id;
 	}
 	PG_CATCH();
 	{
@@ -1250,10 +1288,25 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 void
 ExecutorFinish(QueryDesc *queryDesc)
 {
+	int saved_command_id = MyProc->queryCommandId;
+	MyProc->queryCommandId = queryDesc->command_id;
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+		QUERY_ID_LOG_EXEC("START", queryDesc);
+#endif
+
 	if (ExecutorFinish_hook)
 		(*ExecutorFinish_hook) (queryDesc);
 	else
 		standard_ExecutorFinish(queryDesc);
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+		QUERY_ID_LOG_EXEC("END", queryDesc);
+#endif
+
+	MyProc->queryCommandId = saved_command_id;
 }
 
 void
@@ -1329,10 +1382,25 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 void
 ExecutorEnd(QueryDesc *queryDesc)
 {
+	int saved_command_id = MyProc->queryCommandId;
+	MyProc->queryCommandId = queryDesc->command_id;
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+		QUERY_ID_LOG_EXEC("START", queryDesc);
+#endif
+
 	if (ExecutorEnd_hook)
 		(*ExecutorEnd_hook) (queryDesc);
 	else
 		standard_ExecutorEnd(queryDesc);
+
+#ifdef FAULT_INJECTOR
+	if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+		QUERY_ID_LOG_EXEC("END", queryDesc);
+#endif
+
+	MyProc->queryCommandId = saved_command_id;
 }
 
 void

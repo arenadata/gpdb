@@ -164,7 +164,7 @@ generate_endpoint_name(char *name, const char *cursorName)
 	 * dropped/rollbacked and then recreated) and retrieve the endpoints would
 	 * be confusing for users that in the same retrieve connection.
 	 */
-	snprintf(name + len, ENDPOINT_NAME_COMMANDID_LEN + 1, "%08x", gp_command_count);
+	snprintf(name + len, ENDPOINT_NAME_COMMANDID_LEN + 1, "%08x", MyProc->queryCommandId);
 	len += ENDPOINT_NAME_COMMANDID_LEN;
 
 	name[len] = '\0';

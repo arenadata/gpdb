@@ -23,6 +23,7 @@
 #include "executor/tstoreReceiver.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
+#include "storage/proc.h"
 #include "tcop/pquery.h"
 #include "tcop/utility.h"
 #include "utils/memutils.h"
@@ -116,9 +117,14 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->ddesc = NULL;
 	qd->gpmon_pkt = NULL;
 	qd->memoryAccountId = MEMORY_OWNER_TYPE_Undefined;
+
+	int saved_command_id = MyProc->queryCommandId;
 	
 	if (Gp_role != GP_ROLE_EXECUTE)
 		increment_command_count();
+
+	qd->command_id = MyProc->queryCommandId;
+	MyProc->queryCommandId = saved_command_id;
 
 	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -337,9 +343,14 @@ ProcessQuery(Portal portal,
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		int saved_command_id = MyProc->queryCommandId;
+		MyProc->queryCommandId = queryDesc->command_id;
+
 		/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
 		bool inFunction = false;
 		auto_stats(cmdType, relationOid, queryDesc->es_processed, inFunction);
+
+		MyProc->queryCommandId = saved_command_id;
 	}
 
 	FreeQueryDesc(queryDesc);
@@ -1954,6 +1965,6 @@ PortalBackoffEntryInit(Portal portal)
 		gp_session_id > -1)
 	{
 		/* Initialize the SHM backend entry */
-		BackoffBackendEntryInit(gp_session_id, gp_command_count, portal->queueId);
+		BackoffBackendEntryInit(gp_session_id, MyProc != NULL ? MyProc->queryCommandId : 0, portal->queueId);
 	}
 }
