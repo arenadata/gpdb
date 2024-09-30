@@ -5423,7 +5423,10 @@ PostgresMain(int argc, char *argv[],
 					/* Set statement_timestamp() */
  					SetCurrentStatementStartTimestamp();
 
-					/* get the client command serial# */
+					/*
+					 * Get the command id from the QD. gp_command_count on QE
+					 * is set to be the same as queryCommandId.
+					 */
 					MyProc->queryCommandId = pq_getmsgint(&input_message, 4);
 					gp_command_count = MyProc->queryCommandId;
 
