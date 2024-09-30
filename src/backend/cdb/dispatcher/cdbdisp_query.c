@@ -233,7 +233,7 @@ CdbDispatchPlan(struct QueryDesc *queryDesc,
 	 */
 	if (queryDesc->extended_query)
 	{
-		verify_shared_snapshot_ready(gp_command_count);
+		verify_shared_snapshot_ready(MyProc->queryCommandId);
 	}
 
 	/* In the final stage, add the resource information needed for QE by the resource group */

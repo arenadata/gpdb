@@ -68,7 +68,7 @@ DtxContextInfo_CreateOnMaster(DtxContextInfo *dtxContextInfo, bool inCursor,
 
 	AssertImply(inCursor,
 				dtxContextInfo->distributedXid != InvalidDistributedTransactionId &&
-				gp_command_count == MySessionState->latestCursorCommandId);
+				MyProc->queryCommandId == MySessionState->latestCursorCommandId);
 
 	dtxContextInfo->cursorContext = inCursor;
 	dtxContextInfo->nestingLevel = GetCurrentTransactionNestLevel();
