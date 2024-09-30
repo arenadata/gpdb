@@ -76,7 +76,7 @@ typedef struct DispatchCommandQueryParms
 	 */
 	const char *strCommand;
 	int			strCommandlen;
-	int			commandId;
+	int			queryCommandId;
 	char	   *serializedQuerytree;
 	int			serializedQuerytreelen;
 	char	   *serializedPlantree;
@@ -528,7 +528,7 @@ cdbdisp_buildCommandQueryParms(const char *strCommand, int flags)
 
 	pQueryParms = palloc0(sizeof(*pQueryParms));
 	pQueryParms->strCommand = strCommand;
-	pQueryParms->commandId = MyProc->queryCommandId;
+	pQueryParms->queryCommandId = MyProc->queryCommandId;
 	pQueryParms->serializedQuerytree = NULL;
 	pQueryParms->serializedQuerytreelen = 0;
 	pQueryParms->serializedQueryDispatchDesc = NULL;
@@ -602,7 +602,7 @@ cdbdisp_buildUtilityQueryParms(struct Node *stmt,
 
 	pQueryParms = palloc0(sizeof(*pQueryParms));
 	pQueryParms->strCommand = PointerIsValid(debug_query_string) ? debug_query_string : "";
-	pQueryParms->commandId = MyProc->queryCommandId;
+	pQueryParms->queryCommandId = MyProc->queryCommandId;
 	pQueryParms->serializedQuerytree = serializedQuerytree;
 	pQueryParms->serializedQuerytreelen = serializedQuerytree_len;
 	pQueryParms->serializedQueryDispatchDesc = serializedQueryDispatchDesc;
@@ -685,7 +685,7 @@ cdbdisp_buildPlanQueryParms(struct QueryDesc *queryDesc,
 	sddesc = serializeNode((Node *) queryDesc->ddesc, &sddesc_len, NULL /* uncompressed_size */ );
 
 	pQueryParms->strCommand = queryDesc->sourceText;
-	pQueryParms->commandId = MyProc->queryCommandId;
+	pQueryParms->queryCommandId = MyProc->queryCommandId;
 	pQueryParms->serializedQuerytree = NULL;
 	pQueryParms->serializedQuerytreelen = 0;
 	pQueryParms->serializedPlantree = splan;
@@ -895,7 +895,7 @@ buildGpQueryString(DispatchCommandQueryParms *pQueryParms,
 	const char *dtxContextInfo = pQueryParms->serializedDtxContextInfo;
 	int			dtxContextInfo_len = pQueryParms->serializedDtxContextInfolen;
 	int64		currentStatementStartTimestamp = GetCurrentStatementStartTimestamp();
-	int			queryCommandId = pQueryParms->commandId;
+	int			queryCommandId = pQueryParms->queryCommandId;
 	Oid			sessionUserId = GetSessionUserId();
 	Oid			outerUserId = GetOuterUserId();
 	Oid			currentUserId = GetUserId();
