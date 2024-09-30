@@ -204,6 +204,42 @@ void gpmon_send(gpmon_packet_t* p)
 		Assert(gpmonPacket->version == GPMON_PACKET_VERSION); \
 		Assert(gpmonPacket->pkttype == GPMON_PKTTYPE_QLOG)
 
+#define GPMON_NO_TOP_LEVEL 0
+/* Stores key of top-level QLOG packet if any */
+static int32 gpmon_top_level_ssid = GPMON_NO_TOP_LEVEL;
+static int32 gpmon_top_level_ccnt = GPMON_NO_TOP_LEVEL;
+
+static bool gpmon_qlog_matches_top_level(gpmon_packet_t *gpmonPacket)
+{
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	return gpmon_top_level_ssid != GPMON_NO_TOP_LEVEL &&
+		   gpmon_top_level_ssid == gpmonPacket->u.qlog.key.ssid &&
+		   gpmon_top_level_ccnt == gpmonPacket->u.qlog.key.ccnt;
+}
+
+static void gpmon_qlog_set_top_level(gpmon_packet_t *gpmonPacket)
+{
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	gpmon_top_level_ssid = gpmonPacket->u.qlog.key.ssid;
+	gpmon_top_level_ccnt = gpmonPacket->u.qlog.key.ccnt;
+}
+
+static void gpmon_qlog_unset_top_level(gpmon_packet_t *gpmonPacket)
+{
+	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	if (gpmon_qlog_matches_top_level(gpmonPacket)) {
+		gpmon_top_level_ssid = GPMON_NO_TOP_LEVEL;
+		gpmon_top_level_ccnt = GPMON_NO_TOP_LEVEL;
+	}
+}
+
+static bool gpmon_qlog_should_send(gpmon_packet_t *gpmonPacket)
+{
+	bool top_level = gpmon_qlog_matches_top_level(gpmonPacket);
+	bool debug = log_min_messages <= DEBUG4;
+	return top_level || debug;
+}
+
 /**
  * To be used when gpmon packet has not been inited already.
  */
@@ -239,6 +275,11 @@ void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket)
 
 	/* Fix up command count */
 	gpmonPacket->u.qlog.key.ccnt = gp_command_count;
+
+	if (gpmon_top_level_ssid == GPMON_NO_TOP_LEVEL)
+	{
+		gpmon_qlog_set_top_level(gpmonPacket);
+	}
 }
 
 /**
@@ -246,6 +287,9 @@ void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket)
  */
 void gpmon_qlog_query_submit(gpmon_packet_t *gpmonPacket)
 {
+	if (!gpmon_qlog_should_send(gpmonPacket))
+		return;
+
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
@@ -328,6 +372,9 @@ void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
  */
 void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket)
 {
+	if (!gpmon_qlog_should_send(gpmonPacket))
+		return;
+
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
@@ -350,6 +397,9 @@ void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket)
  */
 void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket)
 {
+	if (!gpmon_qlog_should_send(gpmonPacket))
+		return;
+
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
@@ -365,6 +415,7 @@ void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket)
 			gpmonPacket->u.qlog.status);
 	
 	gpmon_send(gpmonPacket);
+	gpmon_qlog_unset_top_level(gpmonPacket);
 }
 
 /**
@@ -372,6 +423,9 @@ void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket)
  */
 void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 {
+	if (!gpmon_qlog_should_send(gpmonPacket))
+		return;
+
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
@@ -390,6 +444,7 @@ void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 			gpmonPacket->u.qlog.status);
 	
 	gpmon_send(gpmonPacket);
+	gpmon_qlog_unset_top_level(gpmonPacket);
 }
 
 /*
@@ -399,6 +454,9 @@ void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 void
 gpmon_qlog_query_canceling(gpmon_packet_t *gpmonPacket)
 {
+	if (!gpmon_qlog_should_send(gpmonPacket))
+		return;
+
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
 	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START ||
 		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT);
