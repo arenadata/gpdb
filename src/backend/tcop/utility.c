@@ -398,7 +398,9 @@ ProcessUtility(Node *parsetree,
 										MyProc->queryCommandId);
 #endif
 
-	MyProc->queryCommandId = saved_command_id;
+	/* restore queryCommandId, which was updated in increment_command_count() */
+	if (Gp_role != GP_ROLE_EXECUTE)
+		MyProc->queryCommandId = saved_command_id;
 }
 
 /*
