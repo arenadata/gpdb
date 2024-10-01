@@ -102,22 +102,30 @@ Feature: gpperfmon
         Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text = 'SELECT pg_sleep(80)'" is "true"
 
     @gpperfmon_query_history
-    Scenario: gpperfmon does not log PL/pgSQL statements with log_min_messages < debug4
+    Scenario Outline: gpperfmon does not log nested statements with log_min_messages < debug4
         Given gpperfmon is configured and running in qamode
         When the user truncates "queries_history" tables in "gpperfmon"
         When below sql is executed in "gptest" db
         """
-        SET log_min_messages = "warning";
         CREATE OR REPLACE FUNCTION test_sleep() RETURNS SETOF INT AS $$BEGIN
-            RETURN QUERY SELECT 1 FROM pg_sleep(80);
+            RETURN QUERY SELECT 1 FROM pg_sleep(30);
         END$$ LANGUAGE plpgsql;
         """
-        When below sql is executed in "gptest" db
+        When below sql is executed in "gptest" db line by line as a transaction
         """
+        SET log_min_messages = "<log_level>";
+        DECLARE test_cursor CURSOR FOR SELECT * FROM generate_series(1,100);
+        FETCH FORWARD 10 FROM test_cursor;
         SELECT test_sleep();
         """
-        Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_sleep()%'" is "true"
-        And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%pg_sleep(80)%' AND query_text NOT LIKE '%queries_history%'" is "false"
+        Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_sleep()%' AND query_text NOT LIKE '%queries_history%'" is "true"
+        And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_cursor%' AND query_text NOT LIKE '%queries_history%'" is "true"
+        And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%pg_sleep(30)%' AND query_text NOT LIKE '%queries_history%'" is "<inner_query_present>"
+
+    Examples:
+        | log_level | inner_query_present |
+        | debug4    | true                |
+        | warning   | false               |
 
     @gpperfmon_system_history
     Scenario: gpperfmon adds to system_history table

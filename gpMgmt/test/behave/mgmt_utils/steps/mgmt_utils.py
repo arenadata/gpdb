@@ -1481,6 +1481,14 @@ def impl(context, dbname):
 def impl(context, sql, dbname):
     execute_sql(dbname, sql)
 
+@given('below sql is executed in "{dbname}" db line by line as a transaction')
+@when('below sql is executed in "{dbname}" db line by line as a transaction')
+def impl(context, dbname):
+    sql = context.text
+    with dbconn.connect(dbconn.DbURL(dbname=dbname), unsetSearchPath=False) as conn:
+        for line in sql.splitlines():
+            dbconn.execSQL(conn, line)
+        conn.commit()
 
 @when('execute following sql in db "{dbname}" and store result in the context')
 def impl(context, dbname):
