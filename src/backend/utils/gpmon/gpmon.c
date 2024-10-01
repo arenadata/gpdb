@@ -20,6 +20,7 @@
 #include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
+#include "storage/proc.h"
 
 /* Extern stuff */
 extern char *get_database_name(Oid dbid);

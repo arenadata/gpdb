@@ -15,6 +15,7 @@
 
 #include "cdb/cdbvars.h"
 #include "nodes/execnodes.h"
+#include "storage/proc.h"
 
 void CheckSendPlanStateGpmonPkt(PlanState *ps)
 {
