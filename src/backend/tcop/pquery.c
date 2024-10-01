@@ -124,13 +124,14 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 		increment_command_count();
 
 	qd->command_id = MyProc->queryCommandId;
-	MyProc->queryCommandId = saved_command_id;
 
 	if(gp_enable_gpperfmon && Gp_role == GP_ROLE_DISPATCH)
 	{
 		qd->gpmon_pkt = (gpmon_packet_t *) palloc0(sizeof(gpmon_packet_t));
 		gpmon_qlog_packet_init(qd->gpmon_pkt);
 	}
+
+	MyProc->queryCommandId = saved_command_id;
 
 	return qd;
 }

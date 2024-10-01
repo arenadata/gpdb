@@ -238,7 +238,7 @@ void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket)
 	}
 
 	/* Fix up command count */
-	gpmonPacket->u.qlog.key.ccnt = gp_command_count;
+	gpmonPacket->u.qlog.key.ccnt = MyProc->queryCommandId;
 }
 
 /**
