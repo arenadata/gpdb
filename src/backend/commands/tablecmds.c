@@ -7518,7 +7518,6 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	FormData_pg_attribute attribute;
 	int			newattnum;
 	char		relkind;
-	char		relstorage;
 	HeapTuple	typeTuple;
 	Oid			typeOid;
 	int32		typmod;
@@ -7601,10 +7600,9 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	if (!HeapTupleIsValid(reltup))
 		elog(ERROR, "cache lookup failed for relation %u", myrelid);
 	relkind = ((Form_pg_class) GETSTRUCT(reltup))->relkind;
-	relstorage = ((Form_pg_class) GETSTRUCT(reltup))->relstorage;
 
 	/* Check for NOT NULL constraints in external readable tables */
-	if (colDef->is_not_null && relkind == RELKIND_RELATION && relstorage == RELSTORAGE_EXTERNAL)
+	if (colDef->is_not_null && RelationIsExternal(rel))
 	{
 		ExtTableEntry *ext_table_entry = GetExtTableEntry(myrelid);
 

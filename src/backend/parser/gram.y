@@ -5703,8 +5703,7 @@ ExtcolumnDef:	ColId Typename ExtColQualList
 			n->is_not_null = false;
 			n->raw_default = NULL;
 			n->cooked_default = NULL;
-			SplitColQualList($3, &n->constraints, &n->collClause,
-								yyscanner);
+			n->constraints = $3;
 			n->location = @1;
 			$$ = (Node *)n;
 		}
