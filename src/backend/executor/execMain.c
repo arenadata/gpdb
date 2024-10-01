@@ -339,7 +339,7 @@ RestoreCommandId(QueryDesc *queryDesc, int prevCommandId, const char *functionNa
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	int saved_command_id;
+	int saved_command_id = 0;
 	UPDATE_COMMAND_ID_AT_START(queryDesc, &saved_command_id);
 
 	if (ExecutorStart_hook)
@@ -1033,7 +1033,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	executor_run_nesting_level++;
 	PG_TRY();
 	{
-		int saved_command_id;
+		int saved_command_id = 0;
 		UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
 
 		if (ExecutorRun_hook)
@@ -1303,7 +1303,7 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 void
 ExecutorFinish(QueryDesc *queryDesc)
 {
-	int saved_command_id;
+	int saved_command_id = 0;
 	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
 
 	if (ExecutorFinish_hook)
@@ -1387,7 +1387,7 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 void
 ExecutorEnd(QueryDesc *queryDesc)
 {
-	int saved_command_id;
+	int saved_command_id = 0;
 	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
 
 	if (ExecutorEnd_hook)
