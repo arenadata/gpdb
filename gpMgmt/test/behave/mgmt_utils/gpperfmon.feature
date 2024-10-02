@@ -102,7 +102,7 @@ Feature: gpperfmon
         Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text = 'SELECT pg_sleep(80)'" is "true"
 
     @gpperfmon_query_history
-    Scenario Outline: gpperfmon does not log nested statements with log_min_messages < debug4
+    Scenario Outline: gpperfmon only logs nested statements if log_min_messages is set to debug4 or debug5
         Given gpperfmon is configured and running in qamode
         When the user truncates "queries_history" tables in "gpperfmon"
         When below sql is executed in "gptest" db
