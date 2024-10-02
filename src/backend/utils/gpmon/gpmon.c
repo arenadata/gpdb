@@ -210,12 +210,9 @@ void gpmon_qlog_set_top_level(gpmon_packet_t *gpmonPacket, bool isTopLevel)
 	gpmonPacket->u.qlog.istoplevel = isTopLevel;
 }
 
-static bool gpmon_qlog_should_send(gpmon_packet_t *gpmonPacket)
-{
-	bool top_level = gpmonPacket->u.qlog.istoplevel;
-	bool debug = log_min_messages <= DEBUG4;
-	return top_level || debug;
-}
+#define GPMON_QLOG_SHOULD_SEND(gpmonPacket) \
+	if (!gpmonPacket->u.qlog.istoplevel && log_min_messages > DEBUG4) \
+		return
 
 /**
  * To be used when gpmon packet has not been inited already.
@@ -259,12 +256,10 @@ void gpmon_qlog_packet_init(gpmon_packet_t *gpmonPacket)
  */
 void gpmon_qlog_query_submit(gpmon_packet_t *gpmonPacket)
 {
-	if (!gpmon_qlog_should_send(gpmonPacket))
-		return;
-
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	GPMON_QLOG_SHOULD_SEND(gpmonPacket);
 
 	gettimeofday(&tv, 0);
 	
@@ -300,10 +295,8 @@ void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
 		const char *resqName,
 		const char *resqPriority)
 {
-	if (!gpmon_qlog_should_send(gpmonPacket))
-		return;
-
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	GPMON_QLOG_SHOULD_SEND(gpmonPacket);
 
 	queryText = gpmon_null_subst(queryText);
 	appName = gpmon_null_subst(appName);
@@ -347,12 +340,10 @@ void gpmon_qlog_query_text(const gpmon_packet_t *gpmonPacket,
  */
 void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket)
 {
-	if (!gpmon_qlog_should_send(gpmonPacket))
-		return;
-
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	GPMON_QLOG_SHOULD_SEND(gpmonPacket);
 
 	gettimeofday(&tv, 0);
 	
@@ -372,12 +363,10 @@ void gpmon_qlog_query_start(gpmon_packet_t *gpmonPacket)
  */
 void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket)
 {
-	if (!gpmon_qlog_should_send(gpmonPacket))
-		return;
-
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	GPMON_QLOG_SHOULD_SEND(gpmonPacket);
 	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START);
 	gettimeofday(&tv, 0);
 	
@@ -397,12 +386,10 @@ void gpmon_qlog_query_end(gpmon_packet_t *gpmonPacket)
  */
 void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 {
-	if (!gpmon_qlog_should_send(gpmonPacket))
-		return;
-
 	struct timeval tv;
 
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	GPMON_QLOG_SHOULD_SEND(gpmonPacket);
 	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START ||
 		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT ||
 		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_CANCELING);
@@ -427,10 +414,8 @@ void gpmon_qlog_query_error(gpmon_packet_t *gpmonPacket)
 void
 gpmon_qlog_query_canceling(gpmon_packet_t *gpmonPacket)
 {
-	if (!gpmon_qlog_should_send(gpmonPacket))
-		return;
-
 	GPMON_QLOG_PACKET_ASSERTS(gpmonPacket);
+	GPMON_QLOG_SHOULD_SEND(gpmonPacket);
 	Assert(gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_START ||
 		   gpmonPacket->u.qlog.status == GPMON_QLOG_STATUS_SUBMIT);
 
