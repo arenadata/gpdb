@@ -170,6 +170,18 @@ def impl(context, dbname, psql_cmd):
     if context.ret_code != 0:
         raise Exception('%s' % context.error_message)
 
+@given('the user runs psql with following arguments against database "{dbname}"')
+@when('the user runs psql with following arguments against database "{dbname}"')
+@then('the user runs psql with following arguments against database "{dbname}"')
+def impl(context, dbname):
+    psql_cmd = context.text
+    cmd = "psql -d %s %s" % (dbname, psql_cmd)
+
+    run_command(context, cmd)
+
+    if context.ret_code != 0:
+        raise Exception('%s' % context.error_message)
+
 @given('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
 @when('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
 @then('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
@@ -1480,15 +1492,6 @@ def impl(context, dbname):
 @then('sql "{sql}" is executed in "{dbname}" db')
 def impl(context, sql, dbname):
     execute_sql(dbname, sql)
-
-@given('below sql is executed in "{dbname}" db line by line as a transaction')
-@when('below sql is executed in "{dbname}" db line by line as a transaction')
-def impl(context, dbname):
-    sql = context.text
-    with dbconn.connect(dbconn.DbURL(dbname=dbname), unsetSearchPath=False) as conn:
-        for line in sql.splitlines():
-            dbconn.execSQL(conn, line)
-        conn.commit()
 
 @when('execute following sql in db "{dbname}" and store result in the context')
 def impl(context, dbname):
