@@ -1481,6 +1481,7 @@ def impl(context, dbname):
 def impl(context, sql, dbname):
     execute_sql(dbname, sql)
 
+
 @when('execute following sql in db "{dbname}" and store result in the context')
 def impl(context, dbname):
     context.stored_rows = []
