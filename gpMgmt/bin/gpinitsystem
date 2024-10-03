@@ -620,7 +620,10 @@ END_PYTHON_CODE
 	done
 	. $CLUSTER_CONFIG
 	NUM_DATADIR=${#DATA_DIRECTORY[@]}
-	if [ `$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$AWK -F"~" '{print $2}'|$SORT -u|$WC -l` -ne $MCOUNT ];then
+  COUNT_MHOST_NODES=`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$AWK -F"~" '{print $2}'|$UNIQ -c|$AWK '{print $1}'|$SORT -u`
+  if [ `$ECHO ${COUNT_MHOST_NODES}|$WC -w` -ne 1 ];then
+	  ERROR_EXIT "[FATAL]:-Uneven distribution of network interfaces by hosts" 2
+	elif [ $COUNT_MHOST_NODES -ne $MCOUNT ];then
 		LOG_MSG "[INFO]:-Configuring build for multi-home array" 1
 		MULTI_HOME=1
 		# Now make sure that we have same number of unique hostnames as there are data directories declared

@@ -100,6 +100,7 @@ TAIL=`findCmdInPath tail`
 TEE=`findCmdInPath tee`
 TOUCH=`findCmdInPath touch`
 TR=`findCmdInPath tr`
+UNIQ=`findCmdInPath uniq`
 WC=`findCmdInPath wc`
 WHICH=`findCmdInPath which`
 ZCAT=`findCmdInPath zcat`
