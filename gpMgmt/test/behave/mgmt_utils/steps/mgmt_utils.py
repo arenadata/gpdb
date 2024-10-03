@@ -183,7 +183,6 @@ def impl(context, query, db, contentids):
             db, host, port, query)
         Command(name='Running Remote command: %s' % psql_cmd, cmdStr=psql_cmd).run(validateAfter=True)
 
-
 @given('the user connects to "{dbname}" with named connection "{cname}"')
 def impl(context, dbname, cname):
     if not hasattr(context, 'named_conns'):
