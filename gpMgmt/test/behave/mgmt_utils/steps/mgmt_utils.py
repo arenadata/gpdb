@@ -170,17 +170,6 @@ def impl(context, dbname, psql_cmd):
     if context.ret_code != 0:
         raise Exception('%s' % context.error_message)
 
-@given('the user runs psql with following arguments against database "{dbname}"')
-@when('the user runs psql with following arguments against database "{dbname}"')
-@then('the user runs psql with following arguments against database "{dbname}"')
-def impl(context, dbname):
-    psql_cmd = context.text
-    cmd = "psql -d %s %s" % (dbname, psql_cmd)
-
-    run_command(context, cmd)
-
-    if context.ret_code != 0:
-        raise Exception('%s' % context.error_message)
 
 @given('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
 @when('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')

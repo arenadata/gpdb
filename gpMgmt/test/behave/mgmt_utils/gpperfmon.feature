@@ -111,15 +111,7 @@ Feature: gpperfmon
             RETURN QUERY SELECT 1 FROM pg_sleep(30);
         END$$ LANGUAGE plpgsql;
         """
-        When the user runs psql with following arguments against database "gptest"
-        """
-        -1 <<EOF
-        SET log_min_messages = "<log_level>";
-        DECLARE test_cursor CURSOR FOR SELECT * FROM generate_series(1,100);
-        FETCH FORWARD 10 FROM test_cursor;
-        SELECT test_sleep();
-        EOF
-        """
+        When the user runs psql with "-1c 'SET log_min_messages = "<log_level>"; DECLARE test_cursor CURSOR FOR SELECT * FROM generate_series(1,100); FETCH FORWARD 10 FROM test_cursor; SELECT test_sleep();'" against database "gptest"
         Then wait until the results from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_sleep()%' AND query_text NOT LIKE '%queries_history%'" is "true"
         And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%test_cursor%' AND query_text NOT LIKE '%queries_history%'" is "true"
         And check that the result from boolean sql "SELECT count(*) > 0 FROM queries_history WHERE query_text LIKE '%pg_sleep(30)%' AND query_text NOT LIKE '%queries_history%'" is "<inner_query_present>"
