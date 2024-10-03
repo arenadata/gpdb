@@ -196,8 +196,8 @@ static PartitionNode *BuildPartitionNodeFromRoot(Oid relid);
 static void InitializeQueryPartsMetadata(PlannedStmt *plannedstmt, EState *estate);
 static void check_epq_safe_on_qes(Plan *plan);
 
-static void UpdateCommandId(QueryDesc *queryDesc, int *prevCommandId, const char *functionName, bool trackStart);
-static void RestoreCommandId(QueryDesc *queryDesc, int prevCommandId, const char *functionName);
+static inline void UpdateCommandId(QueryDesc *queryDesc, int *prevCommandId, const char *functionName, bool trackStart);
+static inline void RestoreCommandId(QueryDesc *queryDesc, int prevCommandId, const char *functionName);
 
 /* end of local decls */
 
@@ -273,7 +273,7 @@ CopyDirectDispatchFromPlanToSliceTable(PlannedStmt *stmt, EState *estate)
 	CopyDirectDispatchFromPlanToSliceTableWalker((Node *) stmt->planTree, &context);
 }
 
-static void
+static inline void
 UpdateCommandId(QueryDesc *queryDesc, int *prevCommandId, const char *functionName, bool trackStart)
 {
 	if (Gp_role != GP_ROLE_EXECUTE)
@@ -293,7 +293,7 @@ UpdateCommandId(QueryDesc *queryDesc, int *prevCommandId, const char *functionNa
 #endif
 }
 
-static void
+static inline void
 RestoreCommandId(QueryDesc *queryDesc, int prevCommandId, const char *functionName)
 {
 #ifdef FAULT_INJECTOR
