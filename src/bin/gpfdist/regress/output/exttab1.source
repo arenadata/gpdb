@@ -688,7 +688,7 @@ External options: {}
 External location: gpfdist://@hostname@:7070/exttab1/missing_fields1.data
 Execute on: all segments
 
--- Since constraint is ignored, we should be able to find the row where b is NULL
+-- Since constraint is ignored, we should be able to find the row despite b is NULL in the query
 SELECT a FROM readable_not_null_fill WHERE b IS NULL; -- should work
  a 
 ---

@@ -473,7 +473,7 @@ CREATE EXTERNAL TABLE readable_not_null_fill (a int, b int NOT NULL, c int NULL)
 LOCATION ('gpfdist://@hostname@:7070/exttab1/missing_fields1.data')
 FORMAT 'text' (DELIMITER '|' FILL MISSING FIELDS);
 \d readable_not_null_fill
--- Since constraint is ignored, we should be able to find the row where b is NULL
+-- Since constraint is ignored, we should be able to find the row despite b is NULL in the query
 SELECT a FROM readable_not_null_fill WHERE b IS NULL; -- should work
 SELECT a FROM readable_not_null_fill WHERE c IS NULL; -- should work
 
