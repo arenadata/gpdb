@@ -22,8 +22,8 @@ declare
     result2 text;
     result3 text;
 begin
-    create table test_data1 (x int, y int) distributed by (x);
-    create table test_data2 (x int, y varchar) distributed by(x);
+    create table test_data1 (x int, y int) with (appendonly=true) distributed by (x);
+    create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x);
 
     execute 'insert into test_data1 values (1,1)';
     execute 'insert into test_data1 values (1,2)';
@@ -119,6 +119,24 @@ vacuum analyze t;
 drop table t;
 
 select gp_inject_fault_infinite('track_query_command_id_at_start', 'reset', dbid) from gp_segment_configuration;
+
+-- Test the query command id after an error has happened
+select gp_inject_fault('appendonly_insert', 'panic', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p';
+
+select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1;
+
+-- First query will fail with an error due to insert inside the function
+select sirv_function();
+
+select sirv_function();
+
+select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1;
+
+select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p';
 
 drop function sirv_function();
 drop function not_inlineable_sql_func(i int);

@@ -22,8 +22,8 @@ declare
     result2 text;
     result3 text;
 begin
-    create table test_data1 (x int, y int) distributed by (x);
-    create table test_data2 (x int, y varchar) distributed by(x);
+    create table test_data1 (x int, y int) with (appendonly=true) distributed by (x);
+    create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x);
 
     execute 'insert into test_data1 values (1,1)';
     execute 'insert into test_data1 values (1,2)';
@@ -66,17 +66,17 @@ select sirv_function();
 NOTICE:  START ExecutorStart | Q: select sirv_function(); | QUERY ID: 4
 NOTICE:  END ExecutorStart | Q: select sirv_function(); | QUERY ID: 4
 NOTICE:  START ExecutorRun | Q: select sirv_function(); | QUERY ID: 4
-NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 5
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 5
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 5
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 5
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 6
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 6
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 6
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 6
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 7
 CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
@@ -464,17 +464,17 @@ NOTICE:  END ExecutorEnd | Q: select sirv_function(); | QUERY ID: 4
 create table t as select (select sirv_function()) as res distributed by (res);
 NOTICE:  START ProcessUtility | Q: create table t as select (select sirv_function()) as res distributed by (res); | QUERY ID: 25
 NOTICE:  START ExecutorStart | Q: create table t as select (select sirv_function()) as res distributed by (res); | QUERY ID: 26
-NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 27
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 27
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 27
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 27
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 28
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 28
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 28
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 28
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 29
 CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
@@ -886,17 +886,17 @@ NOTICE:  END ProcessUtility | Q: declare cur1 cursor for select sirv_function() 
 fetch 1 from cur1;
 NOTICE:  START ProcessUtility | Q: fetch 1 from cur1; | QUERY ID: 56
 NOTICE:  START ExecutorRun | Q: declare cur1 cursor for select sirv_function() as res; | QUERY ID: 54
-NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 57
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 57
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 57
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 57
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 58
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 58
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 58
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 58
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 59
 CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
@@ -1305,17 +1305,17 @@ NOTICE:  END ProcessUtility | Q: declare cur1_a cursor for select sirv_function(
 fetch 1 from cur1_a;
 NOTICE:  START ProcessUtility | Q: fetch 1 from cur1_a; | QUERY ID: 86
 NOTICE:  START ExecutorRun | Q: declare cur1_a cursor for select sirv_function() as res; | QUERY ID: 84
-NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 87
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 87
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 87
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 87
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 88
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 88
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 88
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 88
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 89
 CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
@@ -1704,17 +1704,17 @@ NOTICE:  END ProcessUtility | Q: declare cur2_b cursor for select sirv_function(
 fetch 2 from cur2_b;
 NOTICE:  START ProcessUtility | Q: fetch 2 from cur2_b; | QUERY ID: 110
 NOTICE:  START ExecutorRun | Q: declare cur2_b cursor for select sirv_function() as res; | QUERY ID: 108
-NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 111
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 111
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) distributed by (x) | QUERY ID: 111
-CONTEXT:  SQL statement "create table test_data1 (x int, y int) distributed by (x)"
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 111
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 112
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 112
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) distributed by(x) | QUERY ID: 112
-CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) distributed by(x)"
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 112
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 113
 CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
@@ -2717,6 +2717,514 @@ NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_c
  Success:
  Success:
 (8 rows)
+
+-- Test the query command id after an error has happened
+select gp_inject_fault('appendonly_insert', 'panic', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p';
+ gp_inject_fault 
+-----------------
+ Success:
+ Success:
+ Success:
+ Success:
+(4 rows)
+
+select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1;
+NOTICE:  END ExecutorRun | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 210
+NOTICE:  START ExecutorFinish | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 210
+NOTICE:  END ExecutorFinish | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 210
+NOTICE:  START ExecutorEnd | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 210
+NOTICE:  END ExecutorEnd | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 210
+ gp_inject_fault_infinite 
+--------------------------
+ Success:
+(1 row)
+
+-- First query will fail with an error due to insert inside the function
+select sirv_function();
+NOTICE:  START ExecutorStart | Q: select sirv_function(); | QUERY ID: 212
+NOTICE:  END ExecutorStart | Q: select sirv_function(); | QUERY ID: 212
+NOTICE:  START ExecutorRun | Q: select sirv_function(); | QUERY ID: 212
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 213
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
+PL/pgSQL function sirv_function() line 7 at SQL statement
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 213
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
+PL/pgSQL function sirv_function() line 7 at SQL statement
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 214
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
+PL/pgSQL function sirv_function() line 8 at SQL statement
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 214
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
+PL/pgSQL function sirv_function() line 8 at SQL statement
+NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 215
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: insert into test_data1 values (1,1) | QUERY ID: 216
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: insert into test_data1 values (1,1) | QUERY ID: 216
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: insert into test_data1 values (1,1) | QUERY ID: 216
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: insert into test_data1 values (1,1) | QUERY ID: 216
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: insert into test_data1 values (1,1) | QUERY ID: 216
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+ERROR:  fault triggered, fault name:'appendonly_insert' fault type:'panic'  (seg1 127.0.1.1:6003 pid=23756)
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+select sirv_function();
+NOTICE:  START ExecutorStart | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  END ExecutorStart | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  START ExecutorRun | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 3
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
+PL/pgSQL function sirv_function() line 7 at SQL statement
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 3
+CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
+PL/pgSQL function sirv_function() line 7 at SQL statement
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 4
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
+PL/pgSQL function sirv_function() line 8 at SQL statement
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 4
+CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
+PL/pgSQL function sirv_function() line 8 at SQL statement
+NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'insert into test_data1 values (1,1)' | QUERY ID: 5
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,1)'"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: insert into test_data1 values (1,1) | QUERY ID: 6
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'insert into test_data1 values (1,2)' | QUERY ID: 7
+CONTEXT:  SQL statement "SELECT 'insert into test_data1 values (1,2)'"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: insert into test_data1 values (1,2) | QUERY ID: 8
+CONTEXT:  SQL statement "insert into test_data1 values (1,2)"
+PL/pgSQL function sirv_function() line 11 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'insert into test_data2 values (1, ''one'')' | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''one'')'"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: insert into test_data2 values (1, 'one') | QUERY ID: 10
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'one')"
+PL/pgSQL function sirv_function() line 13 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'insert into test_data2 values (1, ''ONE'')' | QUERY ID: 11
+CONTEXT:  SQL statement "SELECT 'insert into test_data2 values (1, ''ONE'')'"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: insert into test_data2 values (1, 'ONE') | QUERY ID: 12
+CONTEXT:  SQL statement "insert into test_data2 values (1, 'ONE')"
+PL/pgSQL function sirv_function() line 14 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' | QUERY ID: 13
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1'"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1 | QUERY ID: 14
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data1"
+PL/pgSQL function sirv_function() line 16 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' | QUERY ID: 15
+CONTEXT:  SQL statement "SELECT 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2'"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2 | QUERY ID: 16
+CONTEXT:  SQL statement "select case when count(*)>0 then 'PASS' else 'FAIL' end from test_data2"
+PL/pgSQL function sirv_function() line 17 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'drop table test_data1' | QUERY ID: 17
+CONTEXT:  SQL statement "SELECT 'drop table test_data1'"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  START ProcessUtility | Q: drop table test_data1 | QUERY ID: 18
+CONTEXT:  SQL statement "drop table test_data1"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  END ProcessUtility | Q: drop table test_data1 | QUERY ID: 18
+CONTEXT:  SQL statement "drop table test_data1"
+PL/pgSQL function sirv_function() line 19 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  END ExecutorStart | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  START ExecutorRun | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  END ExecutorRun | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  START ExecutorFinish | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  END ExecutorFinish | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  START ExecutorEnd | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  END ExecutorEnd | Q: SELECT 'drop table test_data2' | QUERY ID: 19
+CONTEXT:  SQL statement "SELECT 'drop table test_data2'"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  START ProcessUtility | Q: drop table test_data2 | QUERY ID: 20
+CONTEXT:  SQL statement "drop table test_data2"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  END ProcessUtility | Q: drop table test_data2 | QUERY ID: 20
+CONTEXT:  SQL statement "drop table test_data2"
+PL/pgSQL function sirv_function() line 20 at EXECUTE statement
+NOTICE:  START ExecutorStart | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  END ExecutorStart | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  START ExecutorRun | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  END ExecutorRun | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  START ExecutorFinish | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  END ExecutorFinish | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  START ExecutorEnd | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  END ExecutorEnd | Q: SELECT 'PASS' | QUERY ID: 21
+CONTEXT:  SQL statement "SELECT 'PASS'"
+PL/pgSQL function sirv_function() line 23 at assignment
+NOTICE:  END ExecutorRun | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  START ExecutorFinish | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  END ExecutorFinish | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  START ExecutorEnd | Q: select sirv_function(); | QUERY ID: 2
+NOTICE:  END ExecutorEnd | Q: select sirv_function(); | QUERY ID: 2
+ sirv_function 
+---------------
+ PASS
+(1 row)
+
+select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1;
+NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 23
+NOTICE:  END ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 23
+NOTICE:  START ExecutorRun | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 23
+ gp_inject_fault_infinite 
+--------------------------
+ Success:
+(1 row)
+
+select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p';
+ gp_inject_fault 
+-----------------
+ Success:
+ Success:
+ Success:
+ Success:
+(4 rows)
 
 drop function sirv_function();
 drop function not_inlineable_sql_func(i int);
