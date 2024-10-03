@@ -170,7 +170,6 @@ def impl(context, dbname, psql_cmd):
     if context.ret_code != 0:
         raise Exception('%s' % context.error_message)
 
-
 @given('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
 @when('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
 @then('the user runs sql "{query}" in "{db}" on primary segment with content {contentids}')
@@ -182,6 +181,7 @@ def impl(context, query, db, contentids):
         psql_cmd = "PGDATABASE=\'%s\' PGOPTIONS=\'-c gp_session_role=utility\' psql -h %s -p %s -c \"%s\"; " % (
             db, host, port, query)
         Command(name='Running Remote command: %s' % psql_cmd, cmdStr=psql_cmd).run(validateAfter=True)
+
 
 @given('the user connects to "{dbname}" with named connection "{cname}"')
 def impl(context, dbname, cname):
