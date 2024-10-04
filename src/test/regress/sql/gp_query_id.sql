@@ -25,17 +25,17 @@ begin
     create table test_data1 (x int, y int) with (appendonly=true) distributed by (x);
     create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x);
 
-    execute 'insert into test_data1 values (1,1)';
-    execute 'insert into test_data1 values (1,2)';
+    insert into test_data1 values (1,1);
+    insert into test_data1 values (1,2);
 
-    execute 'insert into test_data2 values (1, ''one'')';
-    execute 'insert into test_data2 values (1, ''ONE'')';
+    insert into test_data2 values (1, 'one');
+    insert into test_data2 values (1, 'ONE');
 
-    execute 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data1' into result1;
-    execute 'select case when count(*)>0 then ''PASS'' else ''FAIL'' end from test_data2' into result2;
+    select case when count(*)>0 then 'PASS' else 'FAIL' end into result1 from test_data1;
+    select case when count(*)>0 then 'PASS' else 'FAIL' end into result2 from test_data2;
 
-    execute 'drop table test_data1';
-    execute 'drop table test_data2';
+    drop table test_data1;
+    drop table test_data2;
 
     if (result1 = 'PASS')  and  (result2 = 'PASS') then
         result3 = 'PASS';
