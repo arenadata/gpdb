@@ -1031,25 +1031,27 @@ ExecutorRun(QueryDesc *queryDesc,
 	 * at the definition of the static variable executor_run_nesting_level.
 	 */
 	executor_run_nesting_level++;
+
+	int saved_command_id = 0;
+	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
+
 	PG_TRY();
 	{
-		int saved_command_id = 0;
-		UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
-
 		if (ExecutorRun_hook)
 			(*ExecutorRun_hook) (queryDesc, direction, count);
 		else
 			standard_ExecutorRun(queryDesc, direction, count);
 		executor_run_nesting_level--;
-
-		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
 	}
 	PG_CATCH();
 	{
 		executor_run_nesting_level--;
+		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
 }
 
 void
