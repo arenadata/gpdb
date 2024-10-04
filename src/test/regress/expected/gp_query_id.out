@@ -1698,7 +1698,10 @@ PL/pgSQL function sirv_function() line 10 at SQL statement
 NOTICE:  START ExecutorFinish | Q: insert into test_data1 values (1,1) | QUERY ID: 170
 CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
 PL/pgSQL function sirv_function() line 10 at SQL statement
-NOTICE:  END ExecutorRun | Q: select sirv_function(); | QUERY ID: 170
+NOTICE:  END ExecutorFinish | Q: insert into test_data1 values (1,1) | QUERY ID: 170
+CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
+PL/pgSQL function sirv_function() line 10 at SQL statement
+NOTICE:  END ExecutorRun | Q: select sirv_function(); | QUERY ID: 167
 ERROR:  fault triggered, fault name:'appendonly_insert' fault type:'panic'  (seg1 127.0.1.1:6003 pid=22632)
 CONTEXT:  SQL statement "insert into test_data1 values (1,1)"
 PL/pgSQL function sirv_function() line 10 at SQL statement

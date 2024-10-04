@@ -342,10 +342,19 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	int saved_command_id = 0;
 	UPDATE_COMMAND_ID_AT_START(queryDesc, &saved_command_id);
 
-	if (ExecutorStart_hook)
-		(*ExecutorStart_hook) (queryDesc, eflags);
-	else
-		standard_ExecutorStart(queryDesc, eflags);
+	PG_TRY();
+	{
+		if (ExecutorStart_hook)
+			(*ExecutorStart_hook) (queryDesc, eflags);
+		else
+			standard_ExecutorStart(queryDesc, eflags);
+	}
+	PG_CATCH();
+	{
+		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
 }
@@ -1308,10 +1317,19 @@ ExecutorFinish(QueryDesc *queryDesc)
 	int saved_command_id = 0;
 	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
 
-	if (ExecutorFinish_hook)
-		(*ExecutorFinish_hook) (queryDesc);
-	else
-		standard_ExecutorFinish(queryDesc);
+	PG_TRY();
+	{
+		if (ExecutorFinish_hook)
+			(*ExecutorFinish_hook) (queryDesc);
+		else
+			standard_ExecutorFinish(queryDesc);
+	}
+	PG_CATCH();
+	{
+		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
 }
@@ -1392,10 +1410,19 @@ ExecutorEnd(QueryDesc *queryDesc)
 	int saved_command_id = 0;
 	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
 
-	if (ExecutorEnd_hook)
-		(*ExecutorEnd_hook) (queryDesc);
-	else
-		standard_ExecutorEnd(queryDesc);
+	PG_TRY();
+	{
+		if (ExecutorEnd_hook)
+			(*ExecutorEnd_hook) (queryDesc);
+		else
+			standard_ExecutorEnd(queryDesc);
+	}
+	PG_CATCH();
+	{
+		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
 }
