@@ -394,6 +394,13 @@ ProcessUtility(Node *parsetree,
 	}
 	PG_CATCH();
 	{
+#ifdef FAULT_INJECTOR
+		if (SIMPLE_FAULT_INJECTOR("track_query_command_id") == FaultInjectorTypeSkip)
+				elog(NOTICE, "END %s | Q: %s | QUERY ID: %d",
+											__FUNCTION__,
+											queryString,
+											MyProc->queryCommandId);
+#endif
 		/* restore queryCommandId, which was updated in increment_command_count() */
 		if (Gp_role != GP_ROLE_EXECUTE)
 			MyProc->queryCommandId = saved_command_id;
