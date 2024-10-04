@@ -2028,21 +2028,24 @@ NOTICE:  END ExecutorEnd | Q: select sirv_function(); | QUERY ID: 2
  PASS
 (1 row)
 
-select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1;
-NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 15
-NOTICE:  END ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 15
-NOTICE:  START ExecutorRun | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 15
- gp_inject_fault_infinite 
---------------------------
- Success:
-(1 row)
-
 select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p';
+NOTICE:  START ExecutorStart | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  END ExecutorStart | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  START ExecutorRun | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  END ExecutorRun | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  START ExecutorFinish | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  END ExecutorFinish | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  START ExecutorEnd | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
+NOTICE:  END ExecutorEnd | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+where role = 'p'; | QUERY ID: 15
  gp_inject_fault 
 -----------------
  Success:
@@ -2050,6 +2053,128 @@ where role = 'p';
  Success:
  Success:
 (4 rows)
+
+-- Test an exception caught inside the function
+\c
+create table t (i int);
+NOTICE:  START ProcessUtility | Q: create table t (i int); | QUERY ID: 2
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  END ProcessUtility | Q: create table t (i int); | QUERY ID: 2
+insert into t values(0);
+NOTICE:  START ExecutorStart | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  END ExecutorStart | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  START ExecutorRun | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  END ExecutorRun | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  START ExecutorFinish | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  END ExecutorFinish | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  START ExecutorEnd | Q: insert into t values(0); | QUERY ID: 4
+NOTICE:  END ExecutorEnd | Q: insert into t values(0); | QUERY ID: 4
+do $$
+declare
+j int;
+begin
+    select 1 / i from t into strict j;
+    raise warning '%', j;
+    exception when others then raise warning '%', sqlerrm;
+    raise warning '%', 2;
+    raise warning '%', 3;
+end$$;
+NOTICE:  START ProcessUtility | Q: do $$
+declare
+j int;
+begin
+    select 1 / i from t into strict j;
+    raise warning '%', j;
+    exception when others then raise warning '%', sqlerrm;
+    raise warning '%', 2;
+    raise warning '%', 3;
+end$$; | QUERY ID: 6
+NOTICE:  START ExecutorStart | Q: select 1 / i from t | QUERY ID: 7
+CONTEXT:  SQL statement "select 1 / i from t"
+PL/pgSQL function inline_code_block line 5 at SQL statement
+NOTICE:  END ExecutorStart | Q: select 1 / i from t | QUERY ID: 7
+CONTEXT:  SQL statement "select 1 / i from t"
+PL/pgSQL function inline_code_block line 5 at SQL statement
+NOTICE:  START ExecutorRun | Q: select 1 / i from t | QUERY ID: 7
+CONTEXT:  SQL statement "select 1 / i from t"
+PL/pgSQL function inline_code_block line 5 at SQL statement
+NOTICE:  END ExecutorRun | Q: select 1 / i from t | QUERY ID: 7
+CONTEXT:  SQL statement "select 1 / i from t"
+PL/pgSQL function inline_code_block line 5 at SQL statement
+WARNING:  division by zero  (seg1 slice1 127.0.1.1:6003 pid=274562)
+NOTICE:  START ExecutorStart | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  END ExecutorStart | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  START ExecutorRun | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  END ExecutorRun | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  START ExecutorFinish | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  END ExecutorFinish | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  START ExecutorEnd | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+NOTICE:  END ExecutorEnd | Q: SELECT 2 | QUERY ID: 8
+CONTEXT:  SQL statement "SELECT 2"
+PL/pgSQL function inline_code_block line 8 at RAISE
+WARNING:  2
+NOTICE:  START ExecutorStart | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  END ExecutorStart | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  START ExecutorRun | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  END ExecutorRun | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  START ExecutorFinish | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  END ExecutorFinish | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  START ExecutorEnd | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+NOTICE:  END ExecutorEnd | Q: SELECT 3 | QUERY ID: 9
+CONTEXT:  SQL statement "SELECT 3"
+PL/pgSQL function inline_code_block line 9 at RAISE
+WARNING:  3
+NOTICE:  END ProcessUtility | Q: do $$
+declare
+j int;
+begin
+    select 1 / i from t into strict j;
+    raise warning '%', j;
+    exception when others then raise warning '%', sqlerrm;
+    raise warning '%', 2;
+    raise warning '%', 3;
+end$$; | QUERY ID: 6
+select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1;
+NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 11
+NOTICE:  END ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 11
+NOTICE:  START ExecutorRun | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1; | QUERY ID: 11
+ gp_inject_fault_infinite 
+--------------------------
+ Success:
+(1 row)
 
 drop function sirv_function();
 drop function not_inlineable_sql_func(i int);

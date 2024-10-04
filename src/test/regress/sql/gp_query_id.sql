@@ -132,11 +132,27 @@ select sirv_function();
 
 select sirv_function();
 
-select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1;
-
 select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p';
+
+-- Test an exception caught inside the function
+\c
+create table t (i int);
+insert into t values(0);
+
+do $$
+declare
+j int;
+begin
+    select 1 / i from t into strict j;
+    raise warning '%', j;
+    exception when others then raise warning '%', sqlerrm;
+    raise warning '%', 2;
+    raise warning '%', 3;
+end$$;
+
+select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
+where role = 'p' and content = -1;
 
 drop function sirv_function();
 drop function not_inlineable_sql_func(i int);
