@@ -129,8 +129,8 @@
  * avoid merge conflicts. See documentation in create_toast_table() for a
  * longer discussion on this.
  */
-extern Oid binary_upgrade_next_toast_pg_class_oid;
-extern Oid binary_upgrade_next_toast_pg_type_oid;
+extern Oid			binary_upgrade_next_toast_pg_class_oid;
+extern Oid			binary_upgrade_next_toast_pg_type_oid;
 
 /*
  * These were received from the QD, and should be consumed by the current
@@ -150,8 +150,8 @@ static List *dispatch_oids = NIL;
  */
 typedef struct
 {
-	RBNode rbnode;
-	Oid oid;
+	RBNode		rbnode;
+	Oid			oid;
 } OidPreassignment;
 
 static RBTree *binary_upgrade_preassigned_oids;
@@ -182,306 +182,306 @@ CreateKeyFromCatalogTuple(Relation catalogrel, HeapTuple tuple,
 	key.type = T_OidAssignment;
 	key.catalog = catalogrel->rd_id;
 
-	switch (catalogrel->rd_id)
+	switch(catalogrel->rd_id)
 	{
-	case AccessMethodOperatorRelationId:
-	{
-		Form_pg_amop amopForm = (Form_pg_amop)GETSTRUCT(tuple);
+		case AccessMethodOperatorRelationId:
+			{
+				Form_pg_amop amopForm = (Form_pg_amop) GETSTRUCT(tuple);
 
-		key.keyOid1 = amopForm->amopmethod;
-		break;
-	}
-	case AttrDefaultRelationId:
-	{
-		Form_pg_attrdef adForm = (Form_pg_attrdef)GETSTRUCT(tuple);
+				key.keyOid1 = amopForm->amopmethod;
+				break;
+			}
+		case AttrDefaultRelationId:
+			{
+				Form_pg_attrdef adForm = (Form_pg_attrdef) GETSTRUCT(tuple);
 
-		key.keyOid1 = adForm->adrelid;
-		key.keyOid2 = (Oid)adForm->adnum;
-		break;
-	}
-	case AuthIdRelationId:
-	{
-		Form_pg_authid rolForm = (Form_pg_authid)GETSTRUCT(tuple);
+				key.keyOid1 = adForm->adrelid;
+				key.keyOid2 = (Oid) adForm->adnum;
+				break;
+			}
+		case AuthIdRelationId:
+			{
+				Form_pg_authid rolForm = (Form_pg_authid) GETSTRUCT(tuple);
 
-		key.objname = (char *)NameStr(rolForm->rolname);
-		break;
-	}
-	case CastRelationId:
-	{
-		Form_pg_cast castForm = (Form_pg_cast)GETSTRUCT(tuple);
+				key.objname = (char *) NameStr(rolForm->rolname);
+				break;
+			}
+		case CastRelationId:
+			{
+				Form_pg_cast castForm = (Form_pg_cast) GETSTRUCT(tuple);
 
-		key.keyOid1 = castForm->castsource;
-		key.keyOid2 = castForm->casttarget;
-		break;
-	}
-	case CollationRelationId:
-	{
-		Form_pg_collation collationForm = (Form_pg_collation)GETSTRUCT(tuple);
+				key.keyOid1 = castForm->castsource;
+				key.keyOid2 = castForm->casttarget;
+				break;
+			}
+		case CollationRelationId:
+			{
+				Form_pg_collation collationForm = (Form_pg_collation) GETSTRUCT(tuple);
 
-		key.namespaceOid = collationForm->collnamespace;
-		key.objname = NameStr(collationForm->collname);
-		break;
-	}
-	case ConstraintRelationId:
-	{
-		Form_pg_constraint conForm = (Form_pg_constraint)GETSTRUCT(tuple);
+				key.namespaceOid = collationForm->collnamespace;
+				key.objname = NameStr(collationForm->collname);
+				break;
+			}
+		case ConstraintRelationId:
+			{
+				Form_pg_constraint conForm = (Form_pg_constraint) GETSTRUCT(tuple);
 
-		key.namespaceOid = conForm->connamespace;
-		key.objname = NameStr(conForm->conname);
-		key.keyOid1 = conForm->conrelid;
-		key.keyOid2 = conForm->contypid;
-		break;
-	}
-	case ConversionRelationId:
-	{
-		Form_pg_conversion conForm = (Form_pg_conversion)GETSTRUCT(tuple);
+				key.namespaceOid = conForm->connamespace;
+				key.objname = NameStr(conForm->conname);
+				key.keyOid1 = conForm->conrelid;
+				key.keyOid2 = conForm->contypid;
+				break;
+			}
+		case ConversionRelationId:
+			{
+				Form_pg_conversion conForm = (Form_pg_conversion) GETSTRUCT(tuple);
 
-		key.namespaceOid = conForm->connamespace;
-		key.objname = NameStr(conForm->conname);
-		break;
-	}
-	case DatabaseRelationId:
-	{
-		Form_pg_database datForm = (Form_pg_database)GETSTRUCT(tuple);
+				key.namespaceOid = conForm->connamespace;
+				key.objname = NameStr(conForm->conname);
+				break;
+			}
+		case DatabaseRelationId:
+			{
+				Form_pg_database datForm = (Form_pg_database) GETSTRUCT(tuple);
 
-		key.objname = (char *)NameStr(datForm->datname);
-		break;
-	}
-	case DefaultAclRelationId:
-	{
-		Form_pg_default_acl daclForm = (Form_pg_default_acl)GETSTRUCT(tuple);
+				key.objname = (char *) NameStr(datForm->datname);
+				break;
+			}
+		case DefaultAclRelationId:
+			{
+				Form_pg_default_acl daclForm = (Form_pg_default_acl) GETSTRUCT(tuple);
 
-		key.keyOid1 = daclForm->defaclrole;
-		key.namespaceOid = daclForm->defaclnamespace;
-		key.keyOid2 = (Oid)daclForm->defaclobjtype;
-		break;
-	}
-	case EnumRelationId:
-	{
-		Form_pg_enum enumForm = (Form_pg_enum)GETSTRUCT(tuple);
+				key.keyOid1 = daclForm->defaclrole;
+				key.namespaceOid = daclForm->defaclnamespace;
+				key.keyOid2 = (Oid) daclForm->defaclobjtype;
+				break;
+			}
+		case EnumRelationId:
+			{
+				Form_pg_enum enumForm = (Form_pg_enum) GETSTRUCT(tuple);
 
-		key.keyOid1 = enumForm->enumtypid;
-		key.objname = NameStr(enumForm->enumlabel);
-		break;
-	}
-	case ExtensionRelationId:
-	{
-		Form_pg_extension extForm = (Form_pg_extension)GETSTRUCT(tuple);
+				key.keyOid1 = enumForm->enumtypid;
+				key.objname = NameStr(enumForm->enumlabel);
+				break;
+			}
+		case ExtensionRelationId:
+			{
+				Form_pg_extension extForm = (Form_pg_extension) GETSTRUCT(tuple);
+
+				/*
+				 * Note that unlike most catalogs with a "namespace" column,
+				 * extnamespace is not meant to imply that the extension
+				 * belongs to that schema.
+				 */
+				key.objname = NameStr(extForm->extname);
+				break;
+			}
+		case ExtprotocolRelationId:
+			{
+				Form_pg_extprotocol protForm = (Form_pg_extprotocol) GETSTRUCT(tuple);
+
+				key.objname = NameStr(protForm->ptcname);
+				break;
+			}
+		case ForeignDataWrapperRelationId:
+			{
+				Form_pg_foreign_data_wrapper fdwForm = (Form_pg_foreign_data_wrapper) GETSTRUCT(tuple);
+
+				key.keyOid1 = fdwForm->fdwowner;
+				key.objname = NameStr(fdwForm->fdwname);
+				break;
+			}
+		case ForeignServerRelationId:
+			{
+				Form_pg_foreign_server fsrvForm = (Form_pg_foreign_server) GETSTRUCT(tuple);
+
+				key.keyOid1 = fsrvForm->srvfdw;
+				key.objname = NameStr(fsrvForm->srvname);
+				break;
+			}
+		case LanguageRelationId:
+			{
+				Form_pg_language lanForm = (Form_pg_language) GETSTRUCT(tuple);
+
+				key.objname = NameStr(lanForm->lanname);
+				break;
+			}
+		case NamespaceRelationId:
+			{
+				Form_pg_namespace nspForm = (Form_pg_namespace) GETSTRUCT(tuple);
+
+				key.objname = NameStr(nspForm->nspname);
+				break;
+			}
+
+		case OperatorRelationId:
+			{
+				Form_pg_operator oprForm = (Form_pg_operator) GETSTRUCT(tuple);
+
+				key.namespaceOid = oprForm->oprnamespace;
+				key.objname = NameStr(oprForm->oprname);
+				break;
+			}
+		case OperatorClassRelationId:
+			{
+				Form_pg_opclass opcForm = (Form_pg_opclass) GETSTRUCT(tuple);
+
+				key.namespaceOid = opcForm->opcnamespace;
+				key.objname = NameStr(opcForm->opcname);
+				break;
+			}
+		case OperatorFamilyRelationId:
+			{
+				Form_pg_opfamily opfForm = (Form_pg_opfamily) GETSTRUCT(tuple);
+
+				key.namespaceOid = opfForm->opfnamespace;
+				key.objname = NameStr(opfForm->opfname);
+				break;
+			}
+		case ProcedureRelationId:
+			{
+				Form_pg_proc proForm = (Form_pg_proc) GETSTRUCT(tuple);
+
+				key.namespaceOid = proForm->pronamespace;
+				key.objname = NameStr(proForm->proname);
+				break;
+			}
+		case RelationRelationId:
+			{
+				Form_pg_class relForm = (Form_pg_class) GETSTRUCT(tuple);
+
+				key.namespaceOid = relForm->relnamespace;
+				key.objname = NameStr(relForm->relname);
+				break;
+			}
+		case ResQueueRelationId:
+			{
+				Form_pg_resqueue rsqForm = (Form_pg_resqueue) GETSTRUCT(tuple);
+
+				key.objname = NameStr(rsqForm->rsqname);
+				break;
+			}
+		case ResQueueCapabilityRelationId:
+			{
+				Form_pg_resqueuecapability rqcForm = (Form_pg_resqueuecapability) GETSTRUCT(tuple);
+
+				key.keyOid1 = rqcForm->resqueueid;
+				key.keyOid2 = (Oid) rqcForm->restypid;
+				break;
+			}
+		case RewriteRelationId:
+			{
+				Form_pg_rewrite rewriteForm = (Form_pg_rewrite) GETSTRUCT(tuple);
+
+				key.keyOid1 = rewriteForm->ev_class;
+				key.objname = NameStr(rewriteForm->rulename);
+				break;
+			}
+		case TableSpaceRelationId:
+			{
+				Form_pg_tablespace spcForm = (Form_pg_tablespace) GETSTRUCT(tuple);
+
+				key.objname = NameStr(spcForm->spcname);
+				break;
+			}
+		case TSParserRelationId:
+			{
+				Form_pg_ts_parser prsForm = (Form_pg_ts_parser) GETSTRUCT(tuple);
+
+				key.namespaceOid = prsForm->prsnamespace;
+				key.objname = NameStr(prsForm->prsname);
+				break;
+			}
+		case TSDictionaryRelationId:
+			{
+				Form_pg_ts_dict dictForm = (Form_pg_ts_dict) GETSTRUCT(tuple);
+
+				key.namespaceOid = dictForm->dictnamespace;
+				key.objname = NameStr(dictForm->dictname);
+				break;
+			}
+		case TSTemplateRelationId:
+			{
+				Form_pg_ts_template tmplForm = (Form_pg_ts_template) GETSTRUCT(tuple);
+
+				key.namespaceOid = tmplForm->tmplnamespace;
+				key.objname = NameStr(tmplForm->tmplname);
+				break;
+			}
+		case TSConfigRelationId:
+			{
+				Form_pg_ts_config cfgForm = (Form_pg_ts_config) GETSTRUCT(tuple);
+
+				key.namespaceOid = cfgForm->cfgnamespace;
+				key.objname = NameStr(cfgForm->cfgname);
+				break;
+			}
+		case TypeRelationId:
+			{
+				Form_pg_type typForm = (Form_pg_type) GETSTRUCT(tuple);
+
+				key.namespaceOid = typForm->typnamespace;
+				key.objname = NameStr(typForm->typname);
+				break;
+			}
+
+		case ResGroupRelationId:
+			{
+				Form_pg_resgroup rsgForm = (Form_pg_resgroup) GETSTRUCT(tuple);
+
+				key.objname = NameStr(rsgForm->rsgname);
+				break;
+			}
+		case ResGroupCapabilityRelationId:
+			{
+				Form_pg_resgroupcapability rsgCapForm = (Form_pg_resgroupcapability) GETSTRUCT(tuple);
+
+				key.keyOid1 = rsgCapForm->resgroupid;
+				key.keyOid2 = (Oid) rsgCapForm->reslimittype;
+				break;
+			}
+		case UserMappingRelationId:
+			{
+				Form_pg_user_mapping usermapForm = (Form_pg_user_mapping) GETSTRUCT(tuple);
+
+				key.keyOid1 = usermapForm->umuser;
+				key.keyOid2 = usermapForm->umserver;
+				break;
+			}
+
+		/* These tables don't need to have their OIDs synchronized. */
+		case AccessMethodProcedureRelationId:
+		case PartitionRelationId:
+		case PartitionRuleRelationId:
+			*exempt = true;
+			 break;
+
+		/* Event triggers are only stored and fired in the QD. */
+		case EventTriggerRelationId:
+			*exempt = true;
+			break;
 
 		/*
-		 * Note that unlike most catalogs with a "namespace" column,
-		 * extnamespace is not meant to imply that the extension
-		 * belongs to that schema.
+		 * Large objects don't work very consistently in GPDB. They are not
+		 * distributed in the segments, but rather stored in the master node.
+		 * Or actually, it depends on which node the lo_create() function
+		 * happens to run, which isn't very deterministic.
 		 */
-		key.objname = NameStr(extForm->extname);
-		break;
-	}
-	case ExtprotocolRelationId:
-	{
-		Form_pg_extprotocol protForm = (Form_pg_extprotocol)GETSTRUCT(tuple);
+		case LargeObjectMetadataRelationId:
+			*exempt = true;
+			break;
 
-		key.objname = NameStr(protForm->ptcname);
-		break;
-	}
-	case ForeignDataWrapperRelationId:
-	{
-		Form_pg_foreign_data_wrapper fdwForm = (Form_pg_foreign_data_wrapper)GETSTRUCT(tuple);
+		 /*
+		  * These objects need to have their OIDs synchronized, but there is
+		  * bespoken code to deal with it.
+		  */
+		case TriggerRelationId:
+			*exempt = true;
+			break;
 
-		key.keyOid1 = fdwForm->fdwowner;
-		key.objname = NameStr(fdwForm->fdwname);
-		break;
-	}
-	case ForeignServerRelationId:
-	{
-		Form_pg_foreign_server fsrvForm = (Form_pg_foreign_server)GETSTRUCT(tuple);
-
-		key.keyOid1 = fsrvForm->srvfdw;
-		key.objname = NameStr(fsrvForm->srvname);
-		break;
-	}
-	case LanguageRelationId:
-	{
-		Form_pg_language lanForm = (Form_pg_language)GETSTRUCT(tuple);
-
-		key.objname = NameStr(lanForm->lanname);
-		break;
-	}
-	case NamespaceRelationId:
-	{
-		Form_pg_namespace nspForm = (Form_pg_namespace)GETSTRUCT(tuple);
-
-		key.objname = NameStr(nspForm->nspname);
-		break;
-	}
-
-	case OperatorRelationId:
-	{
-		Form_pg_operator oprForm = (Form_pg_operator)GETSTRUCT(tuple);
-
-		key.namespaceOid = oprForm->oprnamespace;
-		key.objname = NameStr(oprForm->oprname);
-		break;
-	}
-	case OperatorClassRelationId:
-	{
-		Form_pg_opclass opcForm = (Form_pg_opclass)GETSTRUCT(tuple);
-
-		key.namespaceOid = opcForm->opcnamespace;
-		key.objname = NameStr(opcForm->opcname);
-		break;
-	}
-	case OperatorFamilyRelationId:
-	{
-		Form_pg_opfamily opfForm = (Form_pg_opfamily)GETSTRUCT(tuple);
-
-		key.namespaceOid = opfForm->opfnamespace;
-		key.objname = NameStr(opfForm->opfname);
-		break;
-	}
-	case ProcedureRelationId:
-	{
-		Form_pg_proc proForm = (Form_pg_proc)GETSTRUCT(tuple);
-
-		key.namespaceOid = proForm->pronamespace;
-		key.objname = NameStr(proForm->proname);
-		break;
-	}
-	case RelationRelationId:
-	{
-		Form_pg_class relForm = (Form_pg_class)GETSTRUCT(tuple);
-
-		key.namespaceOid = relForm->relnamespace;
-		key.objname = NameStr(relForm->relname);
-		break;
-	}
-	case ResQueueRelationId:
-	{
-		Form_pg_resqueue rsqForm = (Form_pg_resqueue)GETSTRUCT(tuple);
-
-		key.objname = NameStr(rsqForm->rsqname);
-		break;
-	}
-	case ResQueueCapabilityRelationId:
-	{
-		Form_pg_resqueuecapability rqcForm = (Form_pg_resqueuecapability)GETSTRUCT(tuple);
-
-		key.keyOid1 = rqcForm->resqueueid;
-		key.keyOid2 = (Oid)rqcForm->restypid;
-		break;
-	}
-	case RewriteRelationId:
-	{
-		Form_pg_rewrite rewriteForm = (Form_pg_rewrite)GETSTRUCT(tuple);
-
-		key.keyOid1 = rewriteForm->ev_class;
-		key.objname = NameStr(rewriteForm->rulename);
-		break;
-	}
-	case TableSpaceRelationId:
-	{
-		Form_pg_tablespace spcForm = (Form_pg_tablespace)GETSTRUCT(tuple);
-
-		key.objname = NameStr(spcForm->spcname);
-		break;
-	}
-	case TSParserRelationId:
-	{
-		Form_pg_ts_parser prsForm = (Form_pg_ts_parser)GETSTRUCT(tuple);
-
-		key.namespaceOid = prsForm->prsnamespace;
-		key.objname = NameStr(prsForm->prsname);
-		break;
-	}
-	case TSDictionaryRelationId:
-	{
-		Form_pg_ts_dict dictForm = (Form_pg_ts_dict)GETSTRUCT(tuple);
-
-		key.namespaceOid = dictForm->dictnamespace;
-		key.objname = NameStr(dictForm->dictname);
-		break;
-	}
-	case TSTemplateRelationId:
-	{
-		Form_pg_ts_template tmplForm = (Form_pg_ts_template)GETSTRUCT(tuple);
-
-		key.namespaceOid = tmplForm->tmplnamespace;
-		key.objname = NameStr(tmplForm->tmplname);
-		break;
-	}
-	case TSConfigRelationId:
-	{
-		Form_pg_ts_config cfgForm = (Form_pg_ts_config)GETSTRUCT(tuple);
-
-		key.namespaceOid = cfgForm->cfgnamespace;
-		key.objname = NameStr(cfgForm->cfgname);
-		break;
-	}
-	case TypeRelationId:
-	{
-		Form_pg_type typForm = (Form_pg_type)GETSTRUCT(tuple);
-
-		key.namespaceOid = typForm->typnamespace;
-		key.objname = NameStr(typForm->typname);
-		break;
-	}
-
-	case ResGroupRelationId:
-	{
-		Form_pg_resgroup rsgForm = (Form_pg_resgroup)GETSTRUCT(tuple);
-
-		key.objname = NameStr(rsgForm->rsgname);
-		break;
-	}
-	case ResGroupCapabilityRelationId:
-	{
-		Form_pg_resgroupcapability rsgCapForm = (Form_pg_resgroupcapability)GETSTRUCT(tuple);
-
-		key.keyOid1 = rsgCapForm->resgroupid;
-		key.keyOid2 = (Oid)rsgCapForm->reslimittype;
-		break;
-	}
-	case UserMappingRelationId:
-	{
-		Form_pg_user_mapping usermapForm = (Form_pg_user_mapping)GETSTRUCT(tuple);
-
-		key.keyOid1 = usermapForm->umuser;
-		key.keyOid2 = usermapForm->umserver;
-		break;
-	}
-
-	/* These tables don't need to have their OIDs synchronized. */
-	case AccessMethodProcedureRelationId:
-	case PartitionRelationId:
-	case PartitionRuleRelationId:
-		*exempt = true;
-		break;
-
-	/* Event triggers are only stored and fired in the QD. */
-	case EventTriggerRelationId:
-		*exempt = true;
-		break;
-
-	/*
-	 * Large objects don't work very consistently in GPDB. They are not
-	 * distributed in the segments, but rather stored in the master node.
-	 * Or actually, it depends on which node the lo_create() function
-	 * happens to run, which isn't very deterministic.
-	 */
-	case LargeObjectMetadataRelationId:
-		*exempt = true;
-		break;
-
-		/*
-		 * These objects need to have their OIDs synchronized, but there is
-		 * bespoken code to deal with it.
-		 */
-	case TriggerRelationId:
-		*exempt = true;
-		break;
-
-	default:
-		*recognized = false;
-		break;
+		default:
+			*recognized = false;
+			break;
 	}
 	return key;
 }
@@ -508,10 +508,10 @@ CreateKeyFromCatalogTuple(Relation catalogrel, HeapTuple tuple,
  * during plannign stage to touch oid assignments.
  *
  */
-List *
+List*
 SaveOidAssignments()
 {
-	List *src = NIL;
+	List     *src = NIL;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -532,7 +532,7 @@ SaveOidAssignments()
 void
 RestoreOidAssignments(List *oid_assignments)
 {
-	List **target;
+	List          **target;
 
 	if (oid_assignments == NIL)
 		return;
@@ -556,7 +556,8 @@ RestoreOidAssignments(List *oid_assignments)
  * Remember a list of pre-assigned OIDs, to be consumed later in the
  * transaction, when those system objects are created.
  */
-void AddPreassignedOids(List *l)
+void
+AddPreassignedOids(List *l)
 {
 	ListCell *lc;
 	MemoryContext old_context;
@@ -576,9 +577,9 @@ void AddPreassignedOids(List *l)
 	 */
 	old_context = MemoryContextSwitchTo(TopTransactionContext);
 
-	foreach (lc, l)
+	foreach(lc, l)
 	{
-		OidAssignment *p = (OidAssignment *)lfirst(lc);
+		OidAssignment *p = (OidAssignment *) lfirst(lc);
 
 		p = copyObject(p);
 		preassigned_oids = lappend(preassigned_oids, p);
@@ -589,6 +590,7 @@ void AddPreassignedOids(List *l)
 #endif
 	}
 	MemoryContextSwitchTo(old_context);
+
 }
 
 /*
@@ -603,7 +605,7 @@ static Oid NextBinaryUpgradeReservedOid = FirstBinaryUpgradeReservedObjectId + 1
 static Oid
 AssignBinaryUpgradeReservedOid()
 {
-	Oid result = NextBinaryUpgradeReservedOid;
+	Oid		result = NextBinaryUpgradeReservedOid;
 
 	if (result > LastBinaryUpgradeReservedObjectId)
 		elog(ERROR, "out of OIDs reserved for binary-upgrade");
@@ -623,9 +625,9 @@ AssignBinaryUpgradeReservedOid()
 static Oid
 GetPreassignedOid(OidAssignment *searchkey)
 {
-	ListCell *cur_item;
-	ListCell *prev_item;
-	Oid oid;
+	ListCell   *cur_item;
+	ListCell   *prev_item;
+	Oid			oid;
 
 	/*
 	 * For binary_upgrade schema, and any functions in it, use OIDs
@@ -646,7 +648,7 @@ GetPreassignedOid(OidAssignment *searchkey)
 
 	while (cur_item != NULL)
 	{
-		OidAssignment *p = (OidAssignment *)lfirst(cur_item);
+		OidAssignment *p = (OidAssignment *) lfirst(cur_item);
 
 		if (searchkey->catalog == p->catalog &&
 			(searchkey->objname == NULL ||
@@ -680,12 +682,13 @@ GetPreassignedOid(OidAssignment *searchkey)
  * case). If the table requires synchronized OIDs, but no pre-assigned OID for
  * the given object is found, throws an error.
  */
-Oid GetPreassignedOidForTuple(Relation catalogrel, HeapTuple tuple)
+Oid
+GetPreassignedOidForTuple(Relation catalogrel, HeapTuple tuple)
 {
 	OidAssignment searchkey;
-	bool found;
-	bool exempt;
-	Oid oid;
+	bool		found;
+	bool		exempt;
+	Oid			oid;
 
 	searchkey = CreateKeyFromCatalogTuple(catalogrel, tuple, &found, &exempt);
 	if (exempt)
@@ -715,14 +718,15 @@ Oid GetPreassignedOidForTuple(Relation catalogrel, HeapTuple tuple)
  * A specialized version of GetPreassignedOidForTuple(). To be used when we don't
  * have a whole pg_database tuple yet.
  */
-Oid GetPreassignedOidForDatabase(const char *datname)
+Oid
+GetPreassignedOidForDatabase(const char *datname)
 {
 	OidAssignment searchkey;
-	Oid oid;
+	Oid			oid;
 
 	memset(&searchkey, 0, sizeof(OidAssignment));
 	searchkey.catalog = DatabaseRelationId;
-	searchkey.objname = (char *)datname;
+	searchkey.objname = (char *) datname;
 
 	if ((oid = GetPreassignedOid(&searchkey)) == InvalidOid)
 		elog(ERROR, "no pre-assigned OID for database \"%s\"", datname);
@@ -733,15 +737,16 @@ Oid GetPreassignedOidForDatabase(const char *datname)
  * A specialized version of GetPreassignedOidForTuple(). To be used when we don't
  * have a whole pg_class tuple yet.
  */
-Oid GetPreassignedOidForRelation(Oid namespaceOid, const char *relname)
+Oid
+GetPreassignedOidForRelation(Oid namespaceOid, const char *relname)
 {
 	OidAssignment searchkey;
-	Oid oid;
+	Oid			oid;
 
 	memset(&searchkey, 0, sizeof(OidAssignment));
 	searchkey.catalog = RelationRelationId;
 	searchkey.namespaceOid = namespaceOid;
-	searchkey.objname = (char *)relname;
+	searchkey.objname = (char *) relname;
 
 	if ((oid = GetPreassignedOid(&searchkey)) == InvalidOid)
 	{
@@ -771,16 +776,17 @@ Oid GetPreassignedOidForRelation(Oid namespaceOid, const char *relname)
  * The caller should set allowMissing if it can handle a missing preassignment
  * for the type. This is useful in upgrade scenarios as new types are added.
  */
-Oid GetPreassignedOidForType(Oid namespaceOid, const char *typname,
-							 bool allowMissing)
+Oid
+GetPreassignedOidForType(Oid namespaceOid, const char *typname,
+						 bool allowMissing)
 {
 	OidAssignment searchkey;
-	Oid oid;
+	Oid			oid;
 
 	memset(&searchkey, 0, sizeof(OidAssignment));
 	searchkey.catalog = TypeRelationId;
 	searchkey.namespaceOid = namespaceOid;
-	searchkey.objname = (char *)typname;
+	searchkey.objname = (char *) typname;
 
 	if ((oid = GetPreassignedOid(&searchkey)) == InvalidOid && !allowMissing)
 		elog(ERROR, "no pre-assigned OID for type \"%s\"", typname);
@@ -804,8 +810,8 @@ Oid GetPreassignedOidForType(Oid namespaceOid, const char *typname,
 static int
 rbtree_cmp(const RBNode *a, const RBNode *b, void *arg)
 {
-	const OidPreassignment *prea = (const OidPreassignment *)a;
-	const OidPreassignment *preb = (const OidPreassignment *)b;
+	const OidPreassignment *prea = (const OidPreassignment *) a;
+	const OidPreassignment *preb = (const OidPreassignment *) b;
 
 	return prea->oid - preb->oid;
 }
@@ -813,7 +819,7 @@ rbtree_cmp(const RBNode *a, const RBNode *b, void *arg)
 static RBNode *
 rbtree_alloc(void *arg)
 {
-	return (RBNode *)palloc(sizeof(OidPreassignment));
+	return (RBNode *) palloc(sizeof(OidPreassignment));
 }
 
 static void
@@ -838,11 +844,12 @@ rbtree_combine(RBNode *existing __attribute__((unused)), const RBNode *new __att
  * upgrade, such that we can prohibit any new object to consume Oids which
  * will lead to collision.
  */
-void MarkOidPreassignedFromBinaryUpgrade(Oid oid)
+void
+MarkOidPreassignedFromBinaryUpgrade(Oid oid)
 {
-	MemoryContext oldcontext;
-	OidPreassignment node;
-	bool isnew;
+	MemoryContext		oldcontext;
+	OidPreassignment	node;
+	bool				isnew;
 
 	if (!IsBinaryUpgrade)
 		elog(ERROR, "MarkOidPreassignedFromBinaryUpgrade called, but not in binary upgrade mode");
@@ -863,17 +870,19 @@ void MarkOidPreassignedFromBinaryUpgrade(Oid oid)
 	}
 
 	node.oid = oid;
-	rb_insert(binary_upgrade_preassigned_oids, (RBNode *)&node, &isnew);
+	rb_insert(binary_upgrade_preassigned_oids, (RBNode *) &node, &isnew);
 
 	MemoryContextSwitchTo(oldcontext);
 }
+
 
 /*
  * Remember an OID which is set from loading a database dump performed
  * using the binary-upgrade flag.
  */
-void AddPreassignedOidFromBinaryUpgrade(Oid oid, Oid catalog, char *objname,
-										Oid namespaceOid, Oid keyOid1, Oid keyOid2)
+void
+AddPreassignedOidFromBinaryUpgrade(Oid oid, Oid catalog, char *objname,
+								   Oid namespaceOid, Oid keyOid1, Oid keyOid2)
 {
 	OidAssignment assignment;
 	MemoryContext oldcontext;
@@ -937,12 +946,13 @@ void AddPreassignedOidFromBinaryUpgrade(Oid oid, Oid catalog, char *objname,
  * Remember a newly assigned OID, to be included in the next command
  * that's dispatched to QEs.
  */
-void AddDispatchOidFromTuple(Relation catalogrel, HeapTuple tuple)
+void
+AddDispatchOidFromTuple(Relation catalogrel, HeapTuple tuple)
 {
 	OidAssignment assignment;
 	MemoryContext oldcontext;
-	bool found;
-	bool exempt;
+	bool		found;
+	bool		exempt;
 
 	if (Gp_role == GP_ROLE_EXECUTE || IsBootstrapProcessingMode())
 		return;
@@ -979,7 +989,7 @@ void AddDispatchOidFromTuple(Relation catalogrel, HeapTuple tuple)
 List *
 GetAssignedOidsForDispatch(void)
 {
-	List *l;
+	List	   *l;
 
 	l = dispatch_oids;
 	dispatch_oids = NIL;
@@ -990,7 +1000,8 @@ GetAssignedOidsForDispatch(void)
  * Called at end-of-transaction. There is normally nothing to do,
  * but we perform some sanity checks.
  */
-void AtEOXact_DispatchOids(bool isCommit)
+void
+AtEOXact_DispatchOids(bool isCommit)
 {
 	/*
 	 * Reset the list of to-be-dispatched OIDs. (in QD)
@@ -1002,7 +1013,7 @@ void AtEOXact_DispatchOids(bool isCommit)
 	{
 		while (dispatch_oids)
 		{
-			OidAssignment *p = (OidAssignment *)linitial(dispatch_oids);
+			OidAssignment *p = (OidAssignment *) linitial(dispatch_oids);
 
 			elog(WARNING, "OID assignment not dispatched: catalog %u, namespace: %u, name: \"%s\"",
 				 p->catalog, p->namespaceOid, p->objname ? p->objname : "");
@@ -1035,7 +1046,7 @@ void AtEOXact_DispatchOids(bool isCommit)
 #ifdef OID_DISPATCH_DEBUG
 		while (preassigned_oids)
 		{
-			OidAssignment *p = (OidAssignment *)linitial(preassigned_oids);
+			OidAssignment *p = (OidAssignment *) linitial(preassigned_oids);
 
 			elog(NOTICE, "unused pre-assigned OID: catalog %u, namespace: %u, name: \"%s\"",
 				 p->catalog, p->namespaceOid, p->objname);
@@ -1046,6 +1057,7 @@ void AtEOXact_DispatchOids(bool isCommit)
 	}
 }
 
+
 /*
  * Is the given OID reserved for some other object?
  *
@@ -1053,14 +1065,15 @@ void AtEOXact_DispatchOids(bool isCommit)
  * all the OIDs at the beginning of a restore. During normal operation,
  * there should be no clashes anyway.
  */
-bool IsOidAcceptable(Oid oid)
+bool
+IsOidAcceptable(Oid oid)
 {
 	ListCell *lc;
 	OidPreassignment pre;
 
-	foreach (lc, preassigned_oids)
+	foreach(lc, preassigned_oids)
 	{
-		OidAssignment *p = (OidAssignment *)lfirst(lc);
+		OidAssignment *p = (OidAssignment *) lfirst(lc);
 
 		if (p->oid == oid)
 			return false;
@@ -1070,5 +1083,5 @@ bool IsOidAcceptable(Oid oid)
 		return true;
 
 	pre.oid = oid;
-	return (rb_find(binary_upgrade_preassigned_oids, (RBNode *)&pre) == NULL);
+	return (rb_find(binary_upgrade_preassigned_oids, (RBNode *) &pre) == NULL);
 }
