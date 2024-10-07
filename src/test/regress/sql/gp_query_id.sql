@@ -70,9 +70,8 @@ create table t(i int) distributed by (i)
 partition by range (i) (start (1) end (10) every (1), default partition extra);
 
 alter table t rename to t1;
-alter table t1 rename to t2;
 
-drop table t2;
+drop table t1;
 
 -- Test a function written in sql language, that optimizers cannot inline
 create or replace function not_inlineable_sql_func(i int) returns int 

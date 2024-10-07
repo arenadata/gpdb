@@ -1112,32 +1112,9 @@ NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 
 NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 114
 NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 114
 NOTICE:  END ProcessUtility | Q: alter table t rename to t1; | QUERY ID: 104
-alter table t1 rename to t2;
-NOTICE:  START ProcessUtility | Q: alter table t1 rename to t2; | QUERY ID: 116
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 117
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 117
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 118
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 118
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 119
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 119
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 120
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 120
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 121
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 121
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 122
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 122
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 123
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 123
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 124
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 124
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 125
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 125
-NOTICE:  START ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 126
-NOTICE:  END ProcessUtility | Q: (internally generated SQL command) | QUERY ID: 126
-NOTICE:  END ProcessUtility | Q: alter table t1 rename to t2; | QUERY ID: 116
-drop table t2;
-NOTICE:  START ProcessUtility | Q: drop table t2; | QUERY ID: 128
-NOTICE:  END ProcessUtility | Q: drop table t2; | QUERY ID: 128
+drop table t1;
+NOTICE:  START ProcessUtility | Q: drop table t1; | QUERY ID: 116
+NOTICE:  END ProcessUtility | Q: drop table t1; | QUERY ID: 116
 -- Test a function written in sql language, that optimizers cannot inline
 create or replace function not_inlineable_sql_func(i int) returns int 
 immutable
@@ -1150,342 +1127,342 @@ immutable
 security definer
 as $$
 select case when i > 5 then 1 else 0 end;
-$$ language sql; | QUERY ID: 130
+$$ language sql; | QUERY ID: 118
 NOTICE:  END ProcessUtility | Q: create or replace function not_inlineable_sql_func(i int) returns int 
 immutable
 security definer
 as $$
 select case when i > 5 then 1 else 0 end;
-$$ language sql; | QUERY ID: 130
+$$ language sql; | QUERY ID: 118
 select not_inlineable_sql_func(i) from generate_series(1, 10)i;
-NOTICE:  START ExecutorStart | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
-NOTICE:  END ExecutorStart | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
-NOTICE:  START ExecutorRun | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
+NOTICE:  START ExecutorStart | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
+NOTICE:  END ExecutorStart | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
+NOTICE:  START ExecutorRun | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 133
+ | QUERY ID: 121
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 134
+ | QUERY ID: 122
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 135
+ | QUERY ID: 123
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 136
+ | QUERY ID: 124
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 137
+ | QUERY ID: 125
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 138
+ | QUERY ID: 126
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 139
+ | QUERY ID: 127
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 140
+ | QUERY ID: 128
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 141
+ | QUERY ID: 129
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorStart | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorRun | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorFinish | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  START ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
 NOTICE:  END ExecutorEnd | Q: 
 select case when i > 5 then 1 else 0 end;
- | QUERY ID: 142
+ | QUERY ID: 130
 CONTEXT:  SQL function "not_inlineable_sql_func" statement 1
-NOTICE:  END ExecutorRun | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
-NOTICE:  START ExecutorFinish | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
-NOTICE:  END ExecutorFinish | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
-NOTICE:  START ExecutorEnd | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
-NOTICE:  END ExecutorEnd | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 132
+NOTICE:  END ExecutorRun | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
+NOTICE:  START ExecutorFinish | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
+NOTICE:  END ExecutorFinish | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
+NOTICE:  START ExecutorEnd | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
+NOTICE:  END ExecutorEnd | Q: select not_inlineable_sql_func(i) from generate_series(1, 10)i; | QUERY ID: 120
  not_inlineable_sql_func 
 -------------------------
                        0
@@ -1503,11 +1480,11 @@ NOTICE:  END ExecutorEnd | Q: select not_inlineable_sql_func(i) from generate_se
 select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
 where role = 'p' and content = -1;
 NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 144
+where role = 'p' and content = -1; | QUERY ID: 132
 NOTICE:  END ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 144
+where role = 'p' and content = -1; | QUERY ID: 132
 NOTICE:  START ExecutorRun | Q: select gp_inject_fault_infinite('track_query_command_id', 'reset', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 144
+where role = 'p' and content = -1; | QUERY ID: 132
  gp_inject_fault_infinite 
 --------------------------
  Success:
@@ -1536,84 +1513,84 @@ select gp_inject_fault_infinite('track_query_command_id_at_start', 'skip', dbid)
 (8 rows)
 
 create table t as select 1;
-NOTICE:  START ProcessUtility | Q: create table t as select 1; | QUERY ID: 148
+NOTICE:  START ProcessUtility | Q: create table t as select 1; | QUERY ID: 136
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named '?column?' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 149
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_highest_oid() | QUERY ID: 149  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_highest_oid() | QUERY ID: 149  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_highest_oid() | QUERY ID: 149  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 149  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 149  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 149  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 149  (seg1 slice1 127.0.1.1:6003 pid=818842)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17204, 'main') | QUERY ID: 148  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17204, 'main') | QUERY ID: 148  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17204, 'main') | QUERY ID: 148  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17204, 10000, 'f'); | QUERY ID: 148  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17204, 10000, 'f'); | QUERY ID: 148  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17204, 10000, 'f'); | QUERY ID: 148  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 137
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_highest_oid() | QUERY ID: 137  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_highest_oid() | QUERY ID: 137  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_highest_oid() | QUERY ID: 137  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 137  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 137  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 137  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: create table t as select 1; | QUERY ID: 137  (seg1 slice1 127.0.1.1:6003 pid=818842)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17204, 'main') | QUERY ID: 136  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17204, 'main') | QUERY ID: 136  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17204, 'main') | QUERY ID: 136  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17204, 10000, 'f'); | QUERY ID: 136  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17204, 10000, 'f'); | QUERY ID: 136  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17204, 10000, 'f'); | QUERY ID: 136  (seg2 127.0.1.1:6004 pid=818838)
 drop table t;
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 151
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 151  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 151  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 151  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 139
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 139  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 139  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 139  (seg0 127.0.1.1:6002 pid=818836)
 create table t (i int, j text) with (appendonly = true) distributed by (i);
-NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 153
-NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 153  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 153  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 153  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 141
+NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 141  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 141  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: create table t (i int, j text) with (appendonly = true) distributed by (i); | QUERY ID: 141  (seg2 127.0.1.1:6004 pid=818838)
 insert into t select i, (i + 1)::text from generate_series(1, 100) i;
-NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 155
-NOTICE:  START ExecutorStart | Q: SELECT state, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 155  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: SELECT state, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 155  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: SELECT state, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 155  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 155  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 155  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 155  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 155  (seg1 slice1 127.0.1.1:6003 pid=818842)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 155  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 155  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 155  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 155  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 155  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 155  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 143
+NOTICE:  START ExecutorStart | Q: SELECT state, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 143  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: SELECT state, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 143  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: SELECT state, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 143  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 143  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 143  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 143  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: insert into t select i, (i + 1)::text from generate_series(1, 100) i; | QUERY ID: 143  (seg1 slice1 127.0.1.1:6003 pid=818842)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 143  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 143  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 143  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 143  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 143  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 143  (seg2 127.0.1.1:6004 pid=818838)
 vacuum analyze t;
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 WHERE segno = 0 | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 WHERE segno = 0 | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 WHERE segno = 0 | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno, state FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno, state FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno, state FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 157  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 157  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 157  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 WHERE segno = 0 | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 WHERE segno = 0 | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 WHERE segno = 0 | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno, state FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno, state FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno, state FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: SELECT tupcount, segno FROM pg_aoseg.pg_aoseg_17207 | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: vacuum analyze t; | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.pg_relation_size(17207, 'main') | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 145  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 145  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ExecutorStart | Q: select pg_catalog.gp_acquire_sample_rows(17207, 10000, 'f'); | QUERY ID: 145  (seg2 127.0.1.1:6004 pid=818838)
 drop table t;
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 159
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 159  (seg0 127.0.1.1:6002 pid=818836)
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 159  (seg1 127.0.1.1:6003 pid=818837)
-NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 159  (seg2 127.0.1.1:6004 pid=818838)
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 147
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 147  (seg0 127.0.1.1:6002 pid=818836)
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 147  (seg1 127.0.1.1:6003 pid=818837)
+NOTICE:  START ProcessUtility | Q: drop table t; | QUERY ID: 147  (seg2 127.0.1.1:6004 pid=818838)
 select gp_inject_fault_infinite('track_query_command_id_at_start', 'reset', dbid) from gp_segment_configuration;
-NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id_at_start', 'reset', dbid) from gp_segment_configuration; | QUERY ID: 161
+NOTICE:  START ExecutorStart | Q: select gp_inject_fault_infinite('track_query_command_id_at_start', 'reset', dbid) from gp_segment_configuration; | QUERY ID: 149
  gp_inject_fault_infinite 
 --------------------------
  Success:
@@ -1640,15 +1617,15 @@ where role = 'p';
 select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
 where role = 'p' and content = -1;
 NOTICE:  END ExecutorRun | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 165
+where role = 'p' and content = -1; | QUERY ID: 153
 NOTICE:  START ExecutorFinish | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 165
+where role = 'p' and content = -1; | QUERY ID: 153
 NOTICE:  END ExecutorFinish | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 165
+where role = 'p' and content = -1; | QUERY ID: 153
 NOTICE:  START ExecutorEnd | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 165
+where role = 'p' and content = -1; | QUERY ID: 153
 NOTICE:  END ExecutorEnd | Q: select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
-where role = 'p' and content = -1; | QUERY ID: 165
+where role = 'p' and content = -1; | QUERY ID: 153
  gp_inject_fault_infinite 
 --------------------------
  Success:
@@ -1656,40 +1633,40 @@ where role = 'p' and content = -1; | QUERY ID: 165
 
 -- First query will fail with an error due to insert inside the function
 select sirv_function();
-NOTICE:  START ExecutorStart | Q: select sirv_function(); | QUERY ID: 167
-NOTICE:  END ExecutorStart | Q: select sirv_function(); | QUERY ID: 167
-NOTICE:  START ExecutorRun | Q: select sirv_function(); | QUERY ID: 167
-NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 168
+NOTICE:  START ExecutorStart | Q: select sirv_function(); | QUERY ID: 155
+NOTICE:  END ExecutorStart | Q: select sirv_function(); | QUERY ID: 155
+NOTICE:  START ExecutorRun | Q: select sirv_function(); | QUERY ID: 155
+NOTICE:  START ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 156
 CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 168
+NOTICE:  END ProcessUtility | Q: create table test_data1 (x int, y int) with (appendonly=true) distributed by (x) | QUERY ID: 156
 CONTEXT:  SQL statement "create table test_data1 (x int, y int) with (appendonly=true) distributed by (x)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 169
+NOTICE:  START ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 157
 CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 169
+NOTICE:  END ProcessUtility | Q: create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x) | QUERY ID: 157
 CONTEXT:  SQL statement "create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x)"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorStart | Q: insert into test_data1 values (1, 1) | QUERY ID: 170
+NOTICE:  START ExecutorStart | Q: insert into test_data1 values (1, 1) | QUERY ID: 158
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ExecutorStart | Q: insert into test_data1 values (1, 1) | QUERY ID: 170
+NOTICE:  END ExecutorStart | Q: insert into test_data1 values (1, 1) | QUERY ID: 158
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  START ExecutorRun | Q: insert into test_data1 values (1, 1) | QUERY ID: 170
+NOTICE:  START ExecutorRun | Q: insert into test_data1 values (1, 1) | QUERY ID: 158
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ExecutorRun | Q: insert into test_data1 values (1, 1) | QUERY ID: 170
+NOTICE:  END ExecutorRun | Q: insert into test_data1 values (1, 1) | QUERY ID: 158
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  START ExecutorFinish | Q: insert into test_data1 values (1, 1) | QUERY ID: 170
+NOTICE:  START ExecutorFinish | Q: insert into test_data1 values (1, 1) | QUERY ID: 158
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ExecutorFinish | Q: insert into test_data1 values (1, 1) | QUERY ID: 170
+NOTICE:  END ExecutorFinish | Q: insert into test_data1 values (1, 1) | QUERY ID: 158
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
-NOTICE:  END ExecutorRun | Q: select sirv_function(); | QUERY ID: 167
+NOTICE:  END ExecutorRun | Q: select sirv_function(); | QUERY ID: 155
 ERROR:  fault triggered, fault name:'appendonly_insert' fault type:'panic'  (seg1 127.0.1.1:6003 pid=22632)
 CONTEXT:  SQL statement "insert into test_data1 values (1, 1)"
 PL/pgSQL function sirv_function() line 8 at SQL statement
