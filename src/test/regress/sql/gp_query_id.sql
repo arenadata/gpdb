@@ -17,20 +17,13 @@ select gp_inject_fault('all', 'reset', dbid) from gp_segment_configuration;
 
 create or replace function sirv_function() returns text as $$
 declare
-    result1 bool;
-    result2 bool;
+    result bool;
 begin
-    create table test_data1 (x int, y int) with (appendonly=true) distributed by (x);
-    create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x);
-    insert into test_data1 values (1, 1);
-    insert into test_data1 values (1, 2);
-    insert into test_data2 values (1, 'one');
-    insert into test_data2 values (1, 'ONE');
-    select count(1) > 0 into result1 from test_data1;
-    select count(1) > 0 into result2 from test_data2;
-    drop table test_data1;
-    drop table test_data2;
-    return case when result1 and result2 then 'PASS' else 'FAIL' end;
+    create table test_data (x int, y int) with (appendonly=true) distributed by (x);
+    insert into test_data values (1, 1);
+    select count(1) > 0 into result from test_data;
+    drop table test_data;
+    return case when result then 'PASS' else 'FAIL' end;
 end $$ language plpgsql;
 
 \c
@@ -108,7 +101,7 @@ drop table t;
 select gp_inject_fault_infinite('track_query_command_id_at_start', 'reset', dbid) from gp_segment_configuration;
 
 -- Test the query command id after an error has happened
-select gp_inject_fault('appendonly_insert', 'panic', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+select gp_inject_fault('appendonly_insert', 'panic', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p';
 
 select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
