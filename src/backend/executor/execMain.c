@@ -339,8 +339,8 @@ RestoreCommandId(QueryDesc *queryDesc, int prevCommandId, const char *functionNa
 void
 ExecutorStart(QueryDesc *queryDesc, int eflags)
 {
-	int saved_command_id = 0;
-	UPDATE_COMMAND_ID_AT_START(queryDesc, &saved_command_id);
+	int prevCommandId = 0;
+	UPDATE_COMMAND_ID_AT_START(queryDesc, &prevCommandId);
 
 	PG_TRY();
 	{
@@ -351,12 +351,12 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 	}
 	PG_CATCH();
 	{
-		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+	RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 }
 
 void
@@ -1041,8 +1041,8 @@ ExecutorRun(QueryDesc *queryDesc,
 	 */
 	executor_run_nesting_level++;
 
-	int saved_command_id = 0;
-	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
+	int prevCommandId = 0;
+	UPDATE_COMMAND_ID(queryDesc, &prevCommandId);
 
 	PG_TRY();
 	{
@@ -1055,12 +1055,12 @@ ExecutorRun(QueryDesc *queryDesc,
 	PG_CATCH();
 	{
 		executor_run_nesting_level--;
-		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+	RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 }
 
 void
@@ -1314,8 +1314,8 @@ standard_ExecutorRun(QueryDesc *queryDesc,
 void
 ExecutorFinish(QueryDesc *queryDesc)
 {
-	int saved_command_id = 0;
-	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
+	int prevCommandId = 0;
+	UPDATE_COMMAND_ID(queryDesc, &prevCommandId);
 
 	PG_TRY();
 	{
@@ -1326,12 +1326,12 @@ ExecutorFinish(QueryDesc *queryDesc)
 	}
 	PG_CATCH();
 	{
-		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+	RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 }
 
 void
@@ -1407,8 +1407,8 @@ standard_ExecutorFinish(QueryDesc *queryDesc)
 void
 ExecutorEnd(QueryDesc *queryDesc)
 {
-	int saved_command_id = 0;
-	UPDATE_COMMAND_ID(queryDesc, &saved_command_id);
+	int prevCommandId = 0;
+	UPDATE_COMMAND_ID(queryDesc, &prevCommandId);
 
 	PG_TRY();
 	{
@@ -1419,12 +1419,12 @@ ExecutorEnd(QueryDesc *queryDesc)
 	}
 	PG_CATCH();
 	{
-		RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+		RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	RESTORE_COMMAND_ID(queryDesc, saved_command_id);
+	RESTORE_COMMAND_ID(queryDesc, prevCommandId);
 }
 
 void

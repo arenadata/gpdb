@@ -118,7 +118,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->gpmon_pkt = NULL;
 	qd->memoryAccountId = MEMORY_OWNER_TYPE_Undefined;
 
-	int saved_command_id = MyProc->queryCommandId;
+	int prevCommandId = MyProc->queryCommandId;
 	
 	if (Gp_role != GP_ROLE_EXECUTE)
 		increment_command_count();
@@ -131,7 +131,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 		gpmon_qlog_packet_init(qd->gpmon_pkt);
 	}
 
-	MyProc->queryCommandId = saved_command_id;
+	MyProc->queryCommandId = prevCommandId;
 
 	return qd;
 }
@@ -344,14 +344,14 @@ ProcessQuery(Portal portal,
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		int saved_command_id = MyProc->queryCommandId;
+		int prevCommandId = MyProc->queryCommandId;
 		MyProc->queryCommandId = queryDesc->command_id;
 
 		/* MPP-4082. Issue automatic ANALYZE if conditions are satisfied. */
 		bool inFunction = false;
 		auto_stats(cmdType, relationOid, queryDesc->es_processed, inFunction);
 
-		MyProc->queryCommandId = saved_command_id;
+		MyProc->queryCommandId = prevCommandId;
 	}
 
 	FreeQueryDesc(queryDesc);

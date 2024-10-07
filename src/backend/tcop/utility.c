@@ -362,7 +362,7 @@ ProcessUtility(Node *parsetree,
 {
 	Assert(queryString != NULL);	/* required as of 8.4 */
 
-	int saved_command_id = MyProc->queryCommandId;
+	int prevCommandId = MyProc->queryCommandId;
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 		increment_command_count();
@@ -403,7 +403,7 @@ ProcessUtility(Node *parsetree,
 #endif
 		/* restore queryCommandId, which was updated in increment_command_count() */
 		if (Gp_role != GP_ROLE_EXECUTE)
-			MyProc->queryCommandId = saved_command_id;
+			MyProc->queryCommandId = prevCommandId;
 
 		PG_RE_THROW();
 	}
@@ -419,7 +419,7 @@ ProcessUtility(Node *parsetree,
 
 	/* restore queryCommandId, which was updated in increment_command_count() */
 	if (Gp_role != GP_ROLE_EXECUTE)
-		MyProc->queryCommandId = saved_command_id;
+		MyProc->queryCommandId = prevCommandId;
 }
 
 /*
