@@ -1,9 +1,8 @@
 --
 -- Test the query command identification
 --
-create extension if not exists gp_inject_fault;
-
 -- start_ignore
+create extension if not exists gp_inject_fault;
 drop function if exists sirv_function();
 drop function if exists not_inlineable_sql_func(i int);
 drop table if exists test_data1;

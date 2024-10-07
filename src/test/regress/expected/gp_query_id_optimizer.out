@@ -1,7 +1,6 @@
 --
 -- Test the query command identification
 --
-create extension if not exists gp_inject_fault;
 set client_min_messages = notice;
 select gp_inject_fault('all', 'reset', dbid) from gp_segment_configuration;
  gp_inject_fault 
