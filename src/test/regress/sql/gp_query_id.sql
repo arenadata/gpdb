@@ -18,31 +18,20 @@ select gp_inject_fault('all', 'reset', dbid) from gp_segment_configuration;
 
 create or replace function sirv_function() returns text as $$
 declare
-    result1 text;
-    result2 text;
-    result3 text;
+    result1 bool;
+    result2 bool;
 begin
     create table test_data1 (x int, y int) with (appendonly=true) distributed by (x);
     create table test_data2 (x int, y varchar) with (appendonly=true) distributed by(x);
-
-    insert into test_data1 values (1,1);
-    insert into test_data1 values (1,2);
-
+    insert into test_data1 values (1, 1);
+    insert into test_data1 values (1, 2);
     insert into test_data2 values (1, 'one');
     insert into test_data2 values (1, 'ONE');
-
-    select case when count(*)>0 then 'PASS' else 'FAIL' end into result1 from test_data1;
-    select case when count(*)>0 then 'PASS' else 'FAIL' end into result2 from test_data2;
-
+    select count(1) > 0 into result1 from test_data1;
+    select count(1) > 0 into result2 from test_data2;
     drop table test_data1;
     drop table test_data2;
-
-    if (result1 = 'PASS')  and  (result2 = 'PASS') then
-        result3 = 'PASS';
-    else
-        result3 = 'FAIL';
-    end if;
-    return result3;
+    return case when result1 and result2 then 'PASS' else 'FAIL' end;
 end $$ language plpgsql volatile;
 
 \c
