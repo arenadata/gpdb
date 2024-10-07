@@ -32,7 +32,7 @@ begin
     drop table test_data1;
     drop table test_data2;
     return case when result1 and result2 then 'PASS' else 'FAIL' end;
-end $$ language plpgsql volatile;
+end $$ language plpgsql;
 
 \c
 
