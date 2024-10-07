@@ -1191,23 +1191,23 @@ NOTICE:  END ExecutorEnd | Q: select sirv_function(); | QUERY ID: 2
  PASS
 (1 row)
 
-select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p';
-NOTICE:  START ExecutorStart | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  START ExecutorStart | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  END ExecutorStart | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  END ExecutorStart | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  START ExecutorRun | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  START ExecutorRun | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  END ExecutorRun | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  END ExecutorRun | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  START ExecutorFinish | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  START ExecutorFinish | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  END ExecutorFinish | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  END ExecutorFinish | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  START ExecutorEnd | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  START ExecutorEnd | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
-NOTICE:  END ExecutorEnd | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data1', 1, -1, 0, dbid) from gp_segment_configuration
+NOTICE:  END ExecutorEnd | Q: select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration
 where role = 'p'; | QUERY ID: 8
  gp_inject_fault 
 -----------------
