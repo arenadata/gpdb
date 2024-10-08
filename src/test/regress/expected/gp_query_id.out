@@ -15,15 +15,15 @@ select gp_inject_fault('all', 'reset', dbid) from gp_segment_configuration;
  Success:
 (8 rows)
 
-create or replace function sirv_function() returns text as $$
+create or replace function sirv_function() returns int as $$
 declare
-    result bool;
+    result int;
 begin
     create table test_data (x int, y int) with (appendonly=true) distributed by (x);
     insert into test_data values (1, 1);
-    select count(1) > 0 into result from test_data;
+    select count(1) into result from test_data;
     drop table test_data;
-    return case when result then 'PASS' else 'FAIL' end;
+    return result;
 end $$ language plpgsql;
 \c
 select gp_inject_fault_infinite('track_query_command_id', 'skip', dbid) from gp_segment_configuration
@@ -77,29 +77,29 @@ PL/pgSQL function sirv_function() line 6 at SQL statement
 NOTICE:  END ExecutorEnd | Q: insert into test_data values (1, 1) | QUERY ID: 6
 CONTEXT:  SQL statement "insert into test_data values (1, 1)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 7
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 7
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
 NOTICE:  START ProcessUtility | Q: drop table test_data | QUERY ID: 8
 CONTEXT:  SQL statement "drop table test_data"
@@ -114,7 +114,7 @@ NOTICE:  START ExecutorEnd | Q: select sirv_function(); | QUERY ID: 4
 NOTICE:  END ExecutorEnd | Q: select sirv_function(); | QUERY ID: 4
  sirv_function 
 ---------------
- PASS
+             1
 (1 row)
 
 -- Test that the query command id is correct after execution of queries in the InitPlan
@@ -151,29 +151,29 @@ PL/pgSQL function sirv_function() line 6 at SQL statement
 NOTICE:  END ExecutorEnd | Q: insert into test_data values (1, 1) | QUERY ID: 13
 CONTEXT:  SQL statement "insert into test_data values (1, 1)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 14
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 14
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
 NOTICE:  START ProcessUtility | Q: drop table test_data | QUERY ID: 15
 CONTEXT:  SQL statement "drop table test_data"
@@ -199,9 +199,9 @@ NOTICE:  START ExecutorFinish | Q: select * from t; | QUERY ID: 17
 NOTICE:  END ExecutorFinish | Q: select * from t; | QUERY ID: 17
 NOTICE:  START ExecutorEnd | Q: select * from t; | QUERY ID: 17
 NOTICE:  END ExecutorEnd | Q: select * from t; | QUERY ID: 17
- res  
-------
- PASS
+ res 
+-----
+   1
 (1 row)
 
 drop table t;
@@ -249,29 +249,29 @@ PL/pgSQL function sirv_function() line 6 at SQL statement
 NOTICE:  END ExecutorEnd | Q: insert into test_data values (1, 1) | QUERY ID: 28
 CONTEXT:  SQL statement "insert into test_data values (1, 1)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 29
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 29
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
 NOTICE:  START ProcessUtility | Q: drop table test_data | QUERY ID: 30
 CONTEXT:  SQL statement "drop table test_data"
@@ -281,9 +281,9 @@ CONTEXT:  SQL statement "drop table test_data"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  END ExecutorRun | Q: declare cur1 cursor for select sirv_function() as res; | QUERY ID: 24
 NOTICE:  END ProcessUtility | Q: fetch 1 from cur1; | QUERY ID: 26
- res  
-------
- PASS
+ res 
+-----
+   1
 (1 row)
 
 fetch all from cur1;
@@ -344,29 +344,29 @@ PL/pgSQL function sirv_function() line 6 at SQL statement
 NOTICE:  END ExecutorEnd | Q: insert into test_data values (1, 1) | QUERY ID: 43
 CONTEXT:  SQL statement "insert into test_data values (1, 1)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 44
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 44
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
 NOTICE:  START ProcessUtility | Q: drop table test_data | QUERY ID: 45
 CONTEXT:  SQL statement "drop table test_data"
@@ -376,9 +376,9 @@ CONTEXT:  SQL statement "drop table test_data"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  END ExecutorRun | Q: declare cur1_a cursor for select sirv_function() as res; | QUERY ID: 39
 NOTICE:  END ProcessUtility | Q: fetch 1 from cur1_a; | QUERY ID: 41
- res  
-------
- PASS
+ res 
+-----
+   1
 (1 row)
 
 declare cur2_b cursor for select sirv_function() as res;
@@ -419,29 +419,29 @@ PL/pgSQL function sirv_function() line 6 at SQL statement
 NOTICE:  END ExecutorEnd | Q: insert into test_data values (1, 1) | QUERY ID: 52
 CONTEXT:  SQL statement "insert into test_data values (1, 1)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 53
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 53
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
 NOTICE:  START ProcessUtility | Q: drop table test_data | QUERY ID: 54
 CONTEXT:  SQL statement "drop table test_data"
@@ -451,9 +451,9 @@ CONTEXT:  SQL statement "drop table test_data"
 PL/pgSQL function sirv_function() line 8 at SQL statement
 NOTICE:  END ExecutorRun | Q: declare cur2_b cursor for select sirv_function() as res; | QUERY ID: 48
 NOTICE:  END ProcessUtility | Q: fetch 2 from cur2_b; | QUERY ID: 50
- res  
-------
- PASS
+ res 
+-----
+   1
 (1 row)
 
 fetch all from cur2_b;
@@ -1151,29 +1151,29 @@ PL/pgSQL function sirv_function() line 6 at SQL statement
 NOTICE:  END ExecutorEnd | Q: insert into test_data values (1, 1) | QUERY ID: 4
 CONTEXT:  SQL statement "insert into test_data values (1, 1)"
 PL/pgSQL function sirv_function() line 6 at SQL statement
-NOTICE:  START ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorStart | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorStart | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorRun | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorRun | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorFinish | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorFinish | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  START ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  START ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
-NOTICE:  END ExecutorEnd | Q: select count(1) > 0             from test_data | QUERY ID: 5
-CONTEXT:  SQL statement "select count(1) > 0             from test_data"
+NOTICE:  END ExecutorEnd | Q: select count(1)             from test_data | QUERY ID: 5
+CONTEXT:  SQL statement "select count(1)             from test_data"
 PL/pgSQL function sirv_function() line 7 at SQL statement
 NOTICE:  START ProcessUtility | Q: drop table test_data | QUERY ID: 6
 CONTEXT:  SQL statement "drop table test_data"
@@ -1188,7 +1188,7 @@ NOTICE:  START ExecutorEnd | Q: select sirv_function(); | QUERY ID: 2
 NOTICE:  END ExecutorEnd | Q: select sirv_function(); | QUERY ID: 2
  sirv_function 
 ---------------
- PASS
+             1
 (1 row)
 
 select gp_inject_fault('appendonly_insert', 'reset', '', '', 'test_data', 1, -1, 0, dbid) from gp_segment_configuration

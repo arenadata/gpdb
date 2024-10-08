@@ -13,15 +13,15 @@ drop table if exists t1;
 set client_min_messages = notice;
 select gp_inject_fault('all', 'reset', dbid) from gp_segment_configuration;
 
-create or replace function sirv_function() returns text as $$
+create or replace function sirv_function() returns int as $$
 declare
-    result bool;
+    result int;
 begin
     create table test_data (x int, y int) with (appendonly=true) distributed by (x);
     insert into test_data values (1, 1);
-    select count(1) > 0 into result from test_data;
+    select count(1) into result from test_data;
     drop table test_data;
-    return case when result then 'PASS' else 'FAIL' end;
+    return result;
 end $$ language plpgsql;
 
 \c
