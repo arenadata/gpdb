@@ -1,0 +1,150 @@
+-- enable resource group and restart cluster.
+-- start_ignore
+! gpconfig -c gp_resource_manager -v group;
+! gpconfig -c runaway_detector_activation_percent -v 100;
+! gpstop -rai;
+-- end_ignore
+
+SHOW gp_resource_manager;
+ gp_resource_manager 
+---------------------
+ group               
+(1 row)
+
+CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS '/home/kds/gpdb/src/test/isolation2/../regress/regress.so', 'resGroupPalloc' LANGUAGE C READS SQL DATA;
+CREATE
+
+select * from gp_toolkit.gp_resgroup_config;
+ groupid | groupname     | concurrency | cpu_rate_limit | memory_limit | memory_shared_quota | memory_spill_ratio | memory_auditor | cpuset 
+---------+---------------+-------------+----------------+--------------+---------------------+--------------------+----------------+--------
+ 6437    | default_group | 20          | 30             | 30           | 80                  | 10                 | vmtracker      | -1     
+ 6438    | admin_group   | 2           | 10             | 10           | 80                  | 10                 | vmtracker      | -1     
+(2 rows)
+
+alter resource group default_group set memory_limit 10;
+ALTER
+alter resource group admin_group set memory_limit 70;
+ALTER
+
+-- set concurrency=1 to make calculations trivial
+create resource group test_group with (concurrency=1, memory_limit=20, memory_spill_ratio=100, cpu_rate_limit=20);
+CREATE
+create role test_role resource group test_group;
+CREATE
+
+0: set role test_role;
+SET
+-- first allocation consumes all group memory, resGroupPalloc considers
+-- startup memory when this function is used for the first time and
+-- subs it from requested memory
+0: select resGroupPalloc(1.0) from gp_dist_random('gp_id') where gp_segment_id = 1;
+ resgrouppalloc 
+----------------
+ 0              
+(1 row)
+
+-- second allocation fails
+0: select resGroupPalloc(0.01) from gp_dist_random('gp_id') where gp_segment_id = 1;
+ERROR:  Out of memory  (seg1 slice1 10.92.43.77:6003 pid=2586)
+DETAIL:  Resource group memory limit reached
+0q: ... <quitting>
+
+create table t1 (a int, b int) distributed by(a);
+CREATE
+grant select on t1 to test_role;
+GRANT
+
+alter resource group test_group set concurrency 20;
+ALTER
+
+1: set role test_role;
+SET
+1: begin;
+BEGIN
+1: select count(*) from t1;
+ count 
+-------
+ 0     
+(1 row)
+
+2: set role test_role;
+SET
+2: begin;
+BEGIN
+2: select count(*) from t1;
+ count 
+-------
+ 0     
+(1 row)
+
+3: set role test_role;
+SET
+3: begin;
+BEGIN
+3: select count(*) from t1;
+ count 
+-------
+ 0     
+(1 row)
+
+4: set role test_role;
+SET
+4: begin;
+BEGIN
+4: select count(*) from t1;
+ count 
+-------
+ 0     
+(1 row)
+
+5: set role test_role;
+SET
+5: begin;
+BEGIN
+5: select count(*) from t1;
+ count 
+-------
+ 0     
+(1 row)
+
+6: set role test_role;
+SET
+6: begin;
+BEGIN
+6: select count(*) from t1;
+ count 
+-------
+ 0     
+(1 row)
+
+7: set role test_role;
+SET
+7: begin;
+BEGIN
+7: select count(*) from t1;
+ERROR:  Out of memory
+DETAIL:  Resource group memory limit reached
+
+1q: ... <quitting>
+2q: ... <quitting>
+3q: ... <quitting>
+4q: ... <quitting>
+5q: ... <quitting>
+6q: ... <quitting>
+7q: ... <quitting>
+
+alter resource group admin_group set memory_limit 10;
+ALTER
+
+set role none;
+SET
+drop table t1;
+DROP
+drop role test_role;
+DROP
+drop resource group test_group;
+DROP
+
+-- start_ignore
+! gpstop -rai;
+-- end_ignore
