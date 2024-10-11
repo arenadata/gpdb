@@ -69,6 +69,8 @@
 #include "fe_utils/connect.h"
 #include "parallel.h"
 
+#include "pg_dump_segment_helper.h"
+
 typedef struct
 {
 	Oid			roleoid;		/* role's OID */
@@ -106,6 +108,8 @@ static const char *lockWaitTimeout;
 /* START MPP ADDITION */
 bool		dumpPolicy;
 bool		isGPbackend;
+static int dump_on_segment = 0;
+static const char* on_segment_dump_directory = "<SEG_DATA_DIR>";
 
 /* END MPP ADDITION */
 
@@ -148,6 +152,9 @@ static const CatalogId nilCatalogId = {0, 0};
 static RoleNameItem *rolenames = NULL;
 static int	nrolenames = 0;
 
+/* timestamp used to identify dump */
+static unsigned long long g_timestamp = 0;
+
 /* flags for various command-line long options */
 static int	binary_upgrade = 0;
 static int	disable_dollar_quoting = 0;
@@ -173,6 +180,7 @@ static void help(const char *progname);
 static void setup_connection(Archive *AH, const char *dumpencoding,
 				 char *use_role);
 static ArchiveFormat parseArchiveFormat(const char *format, ArchiveMode *mode);
+static char fromArchiveFormat(ArchiveFormat format);
 static void expand_schema_name_patterns(Archive *fout,
 							SimpleStringList *patterns,
 							SimpleOidList *oids);
@@ -334,6 +342,10 @@ static char *nextToken(register char **stringp, register const char *delim);
 static void addDistributedBy(Archive *fout, PQExpBuffer q, TableInfo *tbinfo, int actual_atts);
 static void addDistributedByOld(Archive *fout, PQExpBuffer q, TableInfo *tbinfo, int actual_atts);
 
+/* Append filename to query */
+static void appendSegmentDumpFilename(PQExpBuffer q, const char *dumpableName);
+
+
 /* END MPP ADDITION */
 
 int
@@ -382,6 +394,9 @@ main(int argc, char **argv)
 	{
 		GPS_NOT_SPECIFIED, GPS_DISABLED, GPS_ENABLED
 	}			gp_syntax_option = GPS_NOT_SPECIFIED;
+
+	static int on_segment_internal_dump_mode = 0;
+	static int on_segment_internal_restore_mode = 0;
 
 	static struct option long_options[] = {
 		{"binary-upgrade", no_argument, &binary_upgrade, 1},	/* not documented */
@@ -447,6 +462,11 @@ main(int argc, char **argv)
 		{"no-gp-syntax", no_argument, NULL, 1001},
 		{"function-oids", required_argument, NULL, 1002},
 		{"relation-oids", required_argument, NULL, 1003},
+        {"on-segment", no_argument, &dump_on_segment, 1},
+        {"on-segment-directory", required_argument, NULL, 1004},
+        {"on-segment-internal-dump-mode", no_argument, &on_segment_internal_dump_mode, 1},
+        {"on-segment-internal-restore-mode", no_argument, &on_segment_internal_restore_mode, 1},
+
 		/* END MPP ADDITION */
 		{NULL, 0, NULL, 0}
 	};
@@ -468,6 +488,7 @@ main(int argc, char **argv)
 	dataOnly = schemaOnly = false;
 	dumpSections = DUMP_UNSECTIONED;
 	lockWaitTimeout = NULL;
+	g_timestamp = (unsigned long long) time(NULL);
 
 	progname = get_progname(argv[0]);
 
@@ -662,6 +683,10 @@ main(int argc, char **argv)
 				include_everything = false;
 				break;
 
+			case 1004:
+				on_segment_dump_directory = pg_strdup(optarg);
+				break;
+
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit_nicely(1);
@@ -708,6 +733,12 @@ main(int argc, char **argv)
 		exit_nicely(1);
 	}
 
+	if (dump_on_segment && dump_inserts)
+	{
+		write_msg(NULL, "options --on-segment and --inserts/--column-inserts cannot be used together\n");
+		exit_nicely(1);
+	}
+
 	if (if_exists && !outputClean)
 		exit_horribly(NULL, "option --if-exists requires option -c/--clean\n");
 
@@ -751,6 +782,14 @@ main(int argc, char **argv)
 	/* Parallel backup only in the directory archive format so far */
 	if (archiveFormat != archDirectory && numWorkers > 1)
 		exit_horribly(NULL, "parallel backup only supported by the directory format\n");
+
+	/*
+	 * GPDB: Run on segment internal functions early if needed and return
+	*/
+	if (on_segment_internal_dump_mode)
+		return onSegmentHelper_RunDump(dbname, compressLevel, archiveFormat);
+	if (on_segment_internal_restore_mode)
+		return onSegmentHelper_RunRestore(dbname, compressLevel, archiveFormat);
 
 	/* Open the output file */
 	fout = CreateArchive(filename, archiveFormat, compressLevel, archiveMode,
@@ -1079,6 +1118,11 @@ help(const char *progname)
 	printf(_("  --no-gp-syntax               dump without Greenplum Database syntax (default if postgresql)\n"));
 	printf(_("  --function-oids              dump only function(s) of given list of oids\n"));
 	printf(_("  --relation-oids              dump only relation(s) of given list of oids\n"));
+	printf(_("  --on-segment                 dump data locally on segment using COPY ... ON SEGMENT\n"));
+	printf(_("  --on-segment-directory       specify directory to pass to COPY ... ON SEGMENT query\n"));
+	printf(_("\nInternal functions for generated queries, shouldn't be used\n"));
+	printf(_("  --on-segment-internal-dump-mode     save data from STDIN in archive\n"));
+	printf(_("  --on-segment-internal-restore-mode  print data from archive to STDOUT\n"));
 	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));
@@ -1300,6 +1344,20 @@ parseArchiveFormat(const char *format, ArchiveMode *mode)
 	else
 		exit_horribly(NULL, "invalid output format \"%s\" specified\n", format);
 	return archiveFormat;
+}
+
+static char
+fromArchiveFormat(ArchiveFormat format)
+{
+	switch (format)
+	{
+		case archCustom: return 'c';
+		case archDirectory: return 'd';
+		case archNull: return 'p';
+		case archTar: return 't';
+		default:
+			exit_horribly(NULL, "Unreachable case in fromArchiveFormat switch%d\n", format);
+	}
 }
 
 /*
@@ -1795,7 +1853,7 @@ dumpTableData_copy(Archive *fout, void *dcontext)
 
 	if (oids && hasoids)
 	{
-		appendPQExpBuffer(q, "COPY %s %s WITH OIDS TO stdout;",
+		appendPQExpBuffer(q, "COPY %s %s WITH OIDS TO ",
 						  fmtQualifiedDumpable(tbinfo),
 						  column_list);
 	}
@@ -1810,20 +1868,46 @@ dumpTableData_copy(Archive *fout, void *dcontext)
 		}
 		else
 			appendPQExpBufferStr(q, "* ");
-		appendPQExpBuffer(q, "FROM %s %s) TO stdout;",
+		appendPQExpBuffer(q, "FROM %s %s) TO ",
 						  fmtQualifiedDumpable(tbinfo),
 						  tdinfo->filtercond);
 	}
 	else
 	{
-		appendPQExpBuffer(q, "COPY %s %s TO stdout;",
+		appendPQExpBuffer(q, "COPY %s %s TO ",
 						  fmtQualifiedDumpable(tbinfo),
 						  column_list);
 	}
-	res = ExecuteSqlQuery(fout, q->data, PGRES_COPY_OUT);
+
+	/*
+	 * GPDB: End statement according to on_segment option
+	 */
+	if (dump_on_segment)
+	{
+		appendPQExpBuffer(q, "PROGRAM '%s --on-segment-internal-dump-mode -F %c ",
+						  progname, fromArchiveFormat(((ArchiveHandle*)fout)->format));
+		if (((ArchiveHandle*)fout)->compression != Z_DEFAULT_COMPRESSION)
+			appendPQExpBuffer(q, "-Z %d ", ((ArchiveHandle*)fout)->compression);
+		appendSegmentDumpFilename(q, fmtQualifiedDumpable(tbinfo));
+		appendPQExpBufferStr(q, "' ON SEGMENT;");
+	}
+	else
+	{
+		appendPQExpBufferStr(q, "stdout;");
+	}
+
+	res = ExecuteSqlQuery(fout, q->data,
+						  dump_on_segment ? PGRES_COMMAND_OK : PGRES_COPY_OUT);
 	PQclear(res);
 	destroyPQExpBuffer(clistBuf);
 
+	/* GPDB: If dumping on segments then dont read COPY output */
+	if (dump_on_segment)
+	{
+		destroyPQExpBuffer(q);
+		return 1;
+	}
+	
 	for (;;)
 	{
 		ret = PQgetCopyData(conn, &copybuf, 0);
@@ -2104,9 +2188,27 @@ dumpTableData(Archive *fout, TableDataInfo *tdinfo)
 		/* must use 2 steps here 'cause fmtId is nonreentrant */
 		appendPQExpBuffer(copyBuf, "COPY %s ",
 						  fmtQualifiedDumpable(tbinfo));
-		appendPQExpBuffer(copyBuf, "%s %sFROM stdin;\n",
+		appendPQExpBuffer(copyBuf, "%s %sFROM ",
 						  fmtCopyColumnList(tbinfo, clistBuf),
 					  (tdinfo->oids && tbinfo->hasoids) ? "WITH OIDS " : "");
+
+		/*
+		* GPDB: Extend with file for restoring when dumping on segments
+		*/
+		if (dump_on_segment)
+		{
+			appendPQExpBuffer(copyBuf, "PROGRAM '%s --on-segment-internal-restore-mode -F %c ",
+							progname, fromArchiveFormat(((ArchiveHandle*)fout)->format));
+			if (((ArchiveHandle*)fout)->compression != Z_DEFAULT_COMPRESSION)
+				appendPQExpBuffer(copyBuf, "-Z %d ", ((ArchiveHandle*)fout)->compression);
+			appendSegmentDumpFilename(copyBuf, fmtQualifiedDumpable(tbinfo));
+			appendPQExpBufferStr(copyBuf, "' ON SEGMENT;\n");
+		}
+		else
+		{
+			appendPQExpBufferStr(copyBuf, "stdin;\n");
+		}
+						  
 		copyStmt = copyBuf->data;
 	}
 	else
@@ -16661,6 +16763,12 @@ nextToken(register char **stringp, register const char *delim)
 		} while (sc != 0);
 	}
 	/* NOTREACHED */
+}
+
+static void
+appendSegmentDumpFilename(PQExpBuffer q, const char *dumpableName)
+{
+	appendPQExpBuffer(q, "%s/%s_dump_<SEGID>_%llu", on_segment_dump_directory, dumpableName, g_timestamp);
 }
 
 /* END MPP ADDITION */
