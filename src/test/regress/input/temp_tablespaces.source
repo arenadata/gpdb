@@ -330,8 +330,8 @@ ANALYZE tts_jazz;
 
 CREATE TABLESPACE temp_tables LOCATION '@testtablespace@_temp_tables';
 CREATE TABLESPACE temp_files0 LOCATION '@testtablespace@_temp_files0';
-CREATE TABLESPACE temp_files1 LOCATION '@testtablespace@_temp_files1';
-CREATE TABLESPACE temp_files2 LOCATION '@testtablespace@_temp_files2';
+CREATE TABLESPACE "temp_files1'" LOCATION '@testtablespace@_temp_files1';
+CREATE TABLESPACE "temp_files2""" LOCATION '@testtablespace@_temp_files2';
 CREATE TABLESPACE temp_files3 LOCATION '@testtablespace@_temp_files3';
 
 RESET temp_tablespaces;
@@ -455,7 +455,7 @@ SELECT * FROM gp_tablespace_file_report(1);
 -- in the default tablespace.
 -- start_ignore
 \! gpconfig -r 'temp_tablespaces'
-\! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0','temp_files1','temp_files2','temp_files3'
+\! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0','temp_files1\'','temp_files2"','temp_files3'
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(4);
@@ -510,7 +510,7 @@ SELECT * FROM gp_tablespace_file_report(1);
 -- Files should be in temp_filesN, where N = gp_session_id % 4, table should be
 -- in the default tablespace.
 RESET temp_tablespaces;
-SET temp_spill_files_tablespaces = 'temp_files0','temp_files1','temp_files2','temp_files3';
+SET temp_spill_files_tablespaces = 'temp_files0','temp_files1''','temp_files2"','temp_files3';
 SELECT * FROM gp_tablespace_file_report(4);
 
 -- Files should be in the default tablespace, table should be in temp_tables.
@@ -532,6 +532,6 @@ DROP TABLE tts_jazz;
 
 DROP TABLESPACE temp_tables;
 DROP TABLESPACE temp_files0;
-DROP TABLESPACE temp_files1;
-DROP TABLESPACE temp_files2;
+DROP TABLESPACE "temp_files1'";
+DROP TABLESPACE "temp_files2""";
 DROP TABLESPACE temp_files3;
