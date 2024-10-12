@@ -200,18 +200,20 @@ DROP TABLE ao_table;
 CREATE OR REPLACE FUNCTION get_total_tupcount(table_oid oid)
 RETURNS bigint AS $$
 DECLARE
+    aoseg_table_schema text;
     aoseg_table_name text;
     tupcount_result bigint;
 BEGIN
     -- Get the AO segment table name for the given partition
-    SELECT (n.nspname || '.' || c.relname) INTO aoseg_table_name
+    SELECT n.nspname, c.relname INTO aoseg_table_schema, aoseg_table_name
     FROM pg_appendonly AS a
         JOIN pg_class AS c ON c.oid = a.segrelid
         JOIN pg_namespace AS n ON c.relnamespace = n.oid
     WHERE a.relid = table_oid;
 
     -- Sum tupcount from all segments
-    EXECUTE format('SELECT SUM(tupcount) FROM %s', aoseg_table_name)
+    EXECUTE format('SELECT SUM(tupcount) FROM %I.%I',
+                    aoseg_table_schema, aoseg_table_name)
         INTO tupcount_result;
 
     RETURN tupcount_result;
