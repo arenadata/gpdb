@@ -245,7 +245,7 @@ CREATE OR REPLACE FUNCTION get_tupcounts_for_partitions(input_name text)
 RETURNS TABLE (table_name name, tupcount bigint)
 AS $$
 DECLARE
-	main_table_oid oid;
+    main_table_oid oid;
     main_table_name name;
     schema_name name;
 BEGIN
