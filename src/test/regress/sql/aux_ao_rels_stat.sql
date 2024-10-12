@@ -220,31 +220,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION get_tupcounts_for_partitions(main_table_name text)
-RETURNS TABLE (table_name text, tupcount bigint)
+CREATE OR REPLACE FUNCTION get_tupcounts_for_partitions(input_name text)
+RETURNS TABLE (table_name name, tupcount bigint)
 AS $$
+DECLARE
+	main_table_oid oid;
+    main_table_name name;
+    schema_name name;
 BEGIN
-    -- Return main table tupcount first
-    RETURN QUERY
-    SELECT
-        c.relname::text AS table_name,
-        get_total_tupcount(c.oid) AS tupcount
-    FROM pg_class AS c
-    JOIN pg_namespace AS n ON c.relnamespace = n.oid
-    WHERE c.oid = main_table_name::regclass;
+    -- Determine oid, schema and name of input table
+	SELECT c.oid, c.relname, n.nspname INTO main_table_oid, main_table_name, schema_name
+    FROM pg_class AS c JOIN pg_namespace AS n ON c.relnamespace = n.oid
+    WHERE c.oid = input_name::regclass;
+	
+	-- Return main table name and tupcount
+    RETURN QUERY SELECT main_table_name, get_total_tupcount(main_table_oid);
 
-    -- Return partition name and tupcount for each partition
+    -- Return partition name and tupcount
     RETURN QUERY
-    SELECT
-        cl2.relname::text AS table_name,
-        get_total_tupcount(cl2.oid) AS tupcount
-    FROM pg_partition AS pp
-    JOIN pg_class AS cl1 ON pp.parrelid = cl1.oid
-    JOIN pg_partition_rule AS pr ON pr.paroid = pp.oid
-    JOIN pg_class AS cl2 ON cl2.oid = pr.parchildrelid
-    JOIN pg_namespace AS n1 ON cl1.relnamespace = n1.oid
-    WHERE cl1.oid = main_table_name::regclass
-    ORDER BY cl2.relname;
+    SELECT p.partitiontablename, get_total_tupcount(c.oid)
+    FROM pg_partitions AS p
+    JOIN pg_class AS c ON c.relname = p.partitiontablename
+    JOIN pg_namespace AS n ON c.relnamespace = n.oid
+    WHERE p.tablename = main_table_name
+		  AND p.schemaname = schema_name
+		  AND n.nspname = schema_name
+    ORDER BY p.partitiontablename;
 END;
 $$ LANGUAGE plpgsql;
 
