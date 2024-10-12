@@ -83,6 +83,7 @@
 #include "utils/metrics_utils.h"
 
 #include "cdb/memquota.h"
+#include "libpq-fe.h"
 
 static bool get_last_attnums(Node *node, ProjectionInfo *projInfo);
 static bool index_recheck_constraint(Relation index, Oid *constr_procs,
@@ -2191,16 +2192,12 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 			foreach(lc, estate->es_result_aosegnos)
 			{
 				SegfileMapNode *map = lfirst(lc);
-				struct {
-					Oid relid;
-			   		int64 tupcount;
-				} *entry;
 				bool found;
 
-				entry = hash_search(aopartcounts,
-									&(map->relid),
-									HASH_FIND,
-									&found);
+				PQaoRelTupCount *entry = hash_search(aopartcounts,
+													&(map->relid),
+													HASH_FIND,
+													&found);
 
 				/*
 				 * Must update the mod count only for segfiles where actual tuples were touched 
