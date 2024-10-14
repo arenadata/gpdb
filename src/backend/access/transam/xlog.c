@@ -6688,8 +6688,6 @@ StartupXLOG(void)
 		 */
 		if (access(BACKUP_LABEL_FILE, F_OK) != 0)
 				SyncAllXLogFiles();
-				
-
 	}
 
 	/*
