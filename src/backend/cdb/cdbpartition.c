@@ -6784,7 +6784,7 @@ atpxPartAddList(Relation rel,
 	if (pelem->storeAttr)
 		ct->options = (List *) ((AlterPartitionCmd *) pelem->storeAttr)->arg1;
 
-	if (gp_add_partition_inherits_table_setting)
+	if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
 	{
 		ListCell *lc;
 
