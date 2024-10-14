@@ -6689,8 +6689,6 @@ StartupXLOG(void)
 		if (access(BACKUP_LABEL_FILE, F_OK) != 0)
 				SyncAllXLogFiles();
 				
-		Assert(shmCleanupBackends != NULL);
-		*shmCleanupBackends = true;
 
 	}
 
