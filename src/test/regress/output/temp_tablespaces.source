@@ -653,7 +653,7 @@ SELECT * FROM gp_tablespace_file_report(1);
 -- in the default tablespace.
 -- start_ignore
 \! gpconfig -r 'temp_tablespaces'
-\! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0','temp_files1\'','temp_files2"','temp_files3'
+\! gpconfig -c temp_spill_files_tablespaces -v 'temp_files0','temp_files1'\''','temp_files2"','temp_files3'
 \! gpstop -u
 -- end_ignore
 SELECT * FROM gp_tablespace_file_report(4);
