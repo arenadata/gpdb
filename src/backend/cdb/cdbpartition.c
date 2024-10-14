@@ -6787,17 +6787,14 @@ atpxPartAddList(Relation rel,
 	if (gp_add_partition_inherits_table_setting)
 	{
 		ListCell *lc;
-		List	 *res = ct->options;
 
 		foreach(lc, reloptions_list(RelationGetRelid(rel)))
 		{
 			DefElem *de = lfirst(lc);
 
 			if (!reloptions_has_opt(ct->options, de->defname))
-				res = lappend(res, de);
+				ct->options = lappend(ct->options, de);
 		}
-
-		ct->options = res;
 	}
 
 	ct->tableElts = list_concat(ct->tableElts, list_copy(colencs));
