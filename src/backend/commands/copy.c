@@ -4494,6 +4494,7 @@ static void CopyFromUpdateAOInsertCountInPartitions(HTAB *partition_hash,
 	HASH_SEQ_STATUS hash_seq_status;
 	ResultPartHashEntry *entry;
 
+	hash_freeze(partition_hash);
 	hash_seq_init(&hash_seq_status, partition_hash);
 	while ((entry = hash_seq_search(&hash_seq_status)) != NULL)
 	{
@@ -4512,6 +4513,7 @@ static void CopyFromUpdateAOInsertCountInPartitions(HTAB *partition_hash,
 			}
 		}
 	}
+	/* No need for hash_seq_term() since we iterated to end. */
 }
 
 /*
