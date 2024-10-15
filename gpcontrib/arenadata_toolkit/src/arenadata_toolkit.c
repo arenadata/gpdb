@@ -1,0 +1,43 @@
+#include "postgres.h"
+
+#include "access/xlog.h"
+#include "cdb/cdbvars.h"
+#include "miscadmin.h"
+#include "postmaster/bgworker.h"
+#include "storage/shmem.h"
+
+#include "arenadata_toolkit_guc.h"
+#include "arenadata_toolkit_worker.h"
+#include "drops_track.h"
+#include "file_hook.h"
+#include "tf_shmem.h"
+
+void		_PG_init(void);
+void		_PG_fini(void);
+
+void
+_PG_init(void)
+{
+	if (!process_shared_preload_libraries_in_progress)
+		return;
+
+	tf_guc_define();
+	tf_shmem_init();
+	file_hook_init();
+
+	drops_track_init();
+
+	if (IS_QUERY_DISPATCHER())
+	{
+		arenadata_toolkit_worker_register();
+	}
+}
+
+void
+_PG_fini(void)
+{
+	tf_shmem_deinit();
+	file_hook_deinit();
+	file_hook_deinit();
+	drops_track_deinit();
+}

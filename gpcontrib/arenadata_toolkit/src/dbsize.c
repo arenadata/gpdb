@@ -1,30 +1,27 @@
-#include <dirent.h>
 #include <sys/stat.h>
-#include <ctype.h>
-#include <stdlib.h>
 
 #include "postgres.h"
 
 #include "access/aomd.h"
 #include "access/heapam.h"
+#include "catalog/pg_tablespace.h"
 #include "cdb/cdbvars.h"
 #include "common/relpath.h"
 #include "fmgr.h"
 #include "funcapi.h"
-#include "miscadmin.h"
-#include "storage/fd.h"
-#include "nodes/execnodes.h"
-#include "cdb/cdbvars.h"
 #include "libpq/hba.h"
+#include "miscadmin.h"
+#include "nodes/execnodes.h"
+#include "storage/fd.h"
+#include "storage/lock.h"
 #include "utils/builtins.h"
 #include "utils/relfilenodemap.h"
 #include "utils/timestamp.h"
 #include "utils/elog.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
-#include "catalog/pg_tablespace.h"
-#include "storage/lock.h"
 
+#include "dbsize.h"
 PG_MODULE_MAGIC;
 
 /*
@@ -35,11 +32,11 @@ PG_MODULE_MAGIC;
 
 static int64 calculate_relation_size(Relation rel, ForkNumber forknum);
 static int64 get_heap_storage_total_bytes(Relation rel,
-							 ForkNumber forknum, char *relpath);
+										  ForkNumber forknum, char *relpath);
 static int64 get_ao_storage_total_bytes(Relation rel, char *relpath);
 static bool calculate_ao_storage_perSegFile(const int segno, void *ctx);
 static void fill_relation_seg_path(char *buf, int bufLen,
-					   const char *relpath, int segNo);
+								   const char *relpath, int segNo);
 static int64 calculate_toast_table_size(Oid toastrelid, ForkNumber forknum);
 
 /*
@@ -162,8 +159,8 @@ calculate_ao_storage_perSegFile(const int segno, void *ctx)
 static int64
 calculate_toast_table_size(Oid toastrelid, ForkNumber forknum)
 {
-	Relation toastRel = relation_open(toastrelid, AccessShareLock);
-	int64    size = calculate_relation_size(toastRel, forknum);
+	Relation	toastRel = relation_open(toastrelid, AccessShareLock);
+	int64		size = calculate_relation_size(toastRel, forknum);
 
 	relation_close(toastRel, AccessShareLock);
 	return size;
@@ -223,7 +220,7 @@ get_ao_storage_total_bytes(Relation rel, char *relpath)
 	 * operations (for ex: CTAS) zero segment will store tuples). Thus
 	 * calculate segno=0 manually.
 	 */
-	(void) calculate_ao_storage_perSegFile(0, &ctx);
+	(void)calculate_ao_storage_perSegFile(0, &ctx);
 
 	ao_foreach_extent_file(calculate_ao_storage_perSegFile, &ctx);
 	return ctx.total_size;
@@ -231,37 +228,41 @@ get_ao_storage_total_bytes(Relation rel, char *relpath)
 
 typedef struct
 {
-	char     *datpath;
-	DIR      *dirdesc;
-	TupleDesc tupdesc;
-} user_fctx_data;
+	char	   *datpath;
+	DIR		   *dirdesc;
+	TupleDesc	tupdesc;
+}	user_fctx_data;
 
 /*
  * Name of file must be "XXX.X" or "XXX"
  * where XXX is Oid. OID must be not more than OID_MAX.
  */
-static Oid get_oid_from_filename(const char *filename)
+static Oid
+get_oid_from_filename(const char *filename)
 {
-	unsigned long int oid, segment;
-	char trailer;
+	unsigned long int oid,
+				segment;
+	char		trailer;
 
-	int count = sscanf(filename, "%lu.%lu%c", &oid, &segment, &trailer);
+	int			count = sscanf(filename, "%lu.%lu%c", &oid, &segment, &trailer);
+
 	if (count < 1 || count > 2)
 		return InvalidOid;
 	if (oid > OID_MAX)
 		return InvalidOid;
 
-	return (Oid) oid;
+	return (Oid)oid;
 }
 
 PG_FUNCTION_INFO_V1(adb_get_relfilenodes);
-Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
+Datum
+adb_get_relfilenodes(PG_FUNCTION_ARGS)
 {
-	Oid              datoid = MyDatabaseId;
-	Oid              tablespace_oid = PG_GETARG_OID(0);
+	Oid			datoid = MyDatabaseId;
+	Oid			tablespace_oid = PG_GETARG_OID(0);
 
-	struct dirent   *direntry;
-	user_fctx_data  *fctx_data;
+	struct dirent *direntry;
+	user_fctx_data *fctx_data;
 	FuncCallContext *funcctx;
 
 	if (tablespace_oid == GLOBALTABLESPACE_OID)
@@ -280,13 +281,14 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 
 		if (!fctx_data->dirdesc)
 		{
-			/* Nothing to do: empty tablespace (maybe it has been just created)*/
+			/* Nothing to do: empty tablespace (maybe it has been just
+			 * created) */
 			MemoryContextSwitchTo(oldcontext);
 			SRF_RETURN_DONE(funcctx);
 		}
 
 		if (get_call_result_type(fcinfo, NULL, &fctx_data->tupdesc)
-				!= TYPEFUNC_COMPOSITE)
+			!= TYPEFUNC_COMPOSITE)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("return type must be a row type")));
@@ -303,12 +305,12 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 	while ((direntry = ReadDir(fctx_data->dirdesc, fctx_data->datpath)) != NULL)
 	{
 		struct stat fst;
-		Datum       values[10];
-		bool        nulls[10];
-		char       *filename;
-		Oid         reloid;
-		Oid         relfilenode_oid;
-		HeapTuple   tuple;
+		Datum		values[10];
+		bool		nulls[10];
+		char	   *filename;
+		Oid			reloid;
+		Oid			relfilenode_oid;
+		HeapTuple	tuple;
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -366,7 +368,33 @@ Datum adb_get_relfilenodes(PG_FUNCTION_ARGS)
 }
 
 PG_FUNCTION_INFO_V1(adb_hba_file_rules);
-Datum adb_hba_file_rules(PG_FUNCTION_ARGS)
+Datum
+adb_hba_file_rules(PG_FUNCTION_ARGS)
 {
 	return pg_hba_file_rules(fcinfo);
+}
+
+/*	*/
+int64
+dbsize_calc_size(Oid relid)
+{
+	Relation	rel;
+	int64		size = 0;
+
+	rel = try_relation_open(relid, AccessShareLock, false);
+
+	if (rel == NULL)
+		return size;
+
+	if (rel->rd_node.relNode == 0)
+		return size;
+
+	size += calculate_relation_size(rel, MAIN_FORKNUM);
+	size += calculate_relation_size(rel, FSM_FORKNUM);
+	size += calculate_relation_size(rel, VISIBILITYMAP_FORKNUM);
+	size += calculate_relation_size(rel, INIT_FORKNUM);
+
+	relation_close(rel, AccessShareLock);
+
+	return size;
 }
