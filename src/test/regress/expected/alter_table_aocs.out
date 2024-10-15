@@ -863,94 +863,17 @@ ALTER TABLE aocs_alter_add_part ADD PARTITION "40" START (30) INCLUSIVE END (40)
 RESET gp_default_storage_options;
 ALTER TABLE aocs_alter_add_part ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 RESET gp_default_storage_options;
-\d+ aocs_alter_add_part*
-                                 Append-Only Columnar Table "public.aocs_alter_add_part"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
- b      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
-Checksum: t
-Child tables: aocs_alter_add_part_1_prt_10,
-              aocs_alter_add_part_1_prt_20,
-              aocs_alter_add_part_1_prt_30,
-              aocs_alter_add_part_1_prt_40,
-              aocs_alter_add_part_1_prt_50,
-              aocs_alter_add_part_1_prt_60
-Distributed by: (a)
-Partition by: (b)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=4, blocksize=65536
-
-                            Append-Only Columnar Table "public.aocs_alter_add_part_1_prt_10"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
- b      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_1_prt_10_check" CHECK (b >= 0 AND b < 10)
-Inherits: aocs_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=4, blocksize=65536
-
-                            Append-Only Columnar Table "public.aocs_alter_add_part_1_prt_20"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
- b      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_1_prt_20_check" CHECK (b >= 10 AND b < 20)
-Inherits: aocs_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=4, blocksize=65536
-
-                            Append-Only Columnar Table "public.aocs_alter_add_part_1_prt_30"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | zlib             | 3                 | 16384      | 
- b      | integer |           | plain   |              | zlib             | 3                 | 16384      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_1_prt_30_check" CHECK (b >= 20 AND b < 30)
-Inherits: aocs_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=zlib, compresslevel=3, blocksize=16384
-
-                            Append-Only Columnar Table "public.aocs_alter_add_part_1_prt_40"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
- b      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_1_prt_40_check" CHECK (b >= 30 AND b < 40)
-Inherits: aocs_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=4, blocksize=65536
-
-                            Append-Only Columnar Table "public.aocs_alter_add_part_1_prt_50"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
- b      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_1_prt_50_check" CHECK (b >= 40 AND b < 50)
-Inherits: aocs_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=4, blocksize=65536
-
-                            Append-Only Columnar Table "public.aocs_alter_add_part_1_prt_60"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
- b      | integer |           | plain   |              | rle_type         | 4                 | 65536      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_1_prt_60_check" CHECK (b >= 50 AND b < 60)
-Inherits: aocs_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=4, blocksize=65536
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'aocs_alter_add_part%' ORDER BY 1;
+           relname            |                                         reloptions                                         
+------------------------------+--------------------------------------------------------------------------------------------
+ aocs_alter_add_part          | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=4,blocksize=65536}
+ aocs_alter_add_part_1_prt_10 | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=4,blocksize=65536}
+ aocs_alter_add_part_1_prt_20 | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=4,blocksize=65536}
+ aocs_alter_add_part_1_prt_30 | {appendonly=true,orientation=column,compresstype=zlib,compresslevel=3,blocksize=16384}
+ aocs_alter_add_part_1_prt_40 | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=4,blocksize=65536}
+ aocs_alter_add_part_1_prt_50 | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=4,blocksize=65536}
+ aocs_alter_add_part_1_prt_60 | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=4,blocksize=65536}
+(7 rows)
 
 DROP TABLE aocs_alter_add_part;
 CREATE TABLE aocs_alter_add_part_no_compress(a int, b int) WITH (appendonly=true, orientation=column) DISTRIBUTED BY (a) PARTITION BY RANGE (b)
@@ -965,94 +888,17 @@ ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "40" START (30) INCLUS
 RESET gp_default_storage_options;
 ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 RESET gp_default_storage_options;
-\d+ aocs_alter_add_part_no_compress*
-                           Append-Only Columnar Table "public.aocs_alter_add_part_no_compress"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | none             | 0                 | 32768      | 
- b      | integer |           | plain   |              | none             | 0                 | 32768      | 
-Checksum: t
-Child tables: aocs_alter_add_part_no_compress_1_prt_10,
-              aocs_alter_add_part_no_compress_1_prt_20,
-              aocs_alter_add_part_no_compress_1_prt_30,
-              aocs_alter_add_part_no_compress_1_prt_40,
-              aocs_alter_add_part_no_compress_1_prt_50,
-              aocs_alter_add_part_no_compress_1_prt_60
-Distributed by: (a)
-Partition by: (b)
-Options: appendonly=true, orientation=column
-
-                      Append-Only Columnar Table "public.aocs_alter_add_part_no_compress_1_prt_10"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | none             | 0                 | 32768      | 
- b      | integer |           | plain   |              | none             | 0                 | 32768      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_no_compress_1_prt_10_check" CHECK (b >= 0 AND b < 10)
-Inherits: aocs_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=column, blocksize=8192, compresslevel=2
-
-                      Append-Only Columnar Table "public.aocs_alter_add_part_no_compress_1_prt_20"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | none             | 0                 | 32768      | 
- b      | integer |           | plain   |              | none             | 0                 | 32768      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_no_compress_1_prt_20_check" CHECK (b >= 10 AND b < 20)
-Inherits: aocs_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=column, blocksize=8192, compresslevel=2
-
-                      Append-Only Columnar Table "public.aocs_alter_add_part_no_compress_1_prt_30"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | rle_type         | 3                 | 16384      | 
- b      | integer |           | plain   |              | rle_type         | 3                 | 16384      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_no_compress_1_prt_30_check" CHECK (b >= 20 AND b < 30)
-Inherits: aocs_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=column, compresstype=rle_type, compresslevel=3, blocksize=16384
-
-                      Append-Only Columnar Table "public.aocs_alter_add_part_no_compress_1_prt_40"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | zlib             | 2                 | 8192       | 
- b      | integer |           | plain   |              | zlib             | 2                 | 8192       | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_no_compress_1_prt_40_check" CHECK (b >= 30 AND b < 40)
-Inherits: aocs_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=column, blocksize=8192, compresslevel=2
-
-                      Append-Only Columnar Table "public.aocs_alter_add_part_no_compress_1_prt_50"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | none             | 0                 | 32768      | 
- b      | integer |           | plain   |              | none             | 0                 | 32768      | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_no_compress_1_prt_50_check" CHECK (b >= 40 AND b < 50)
-Inherits: aocs_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=column
-
-                      Append-Only Columnar Table "public.aocs_alter_add_part_no_compress_1_prt_60"
- Column |  Type   | Modifiers | Storage | Stats target | Compression Type | Compression Level | Block Size | Description 
---------+---------+-----------+---------+--------------+------------------+-------------------+------------+-------------
- a      | integer |           | plain   |              | zlib             | 2                 | 8192       | 
- b      | integer |           | plain   |              | zlib             | 2                 | 8192       | 
-Checksum: t
-Check constraints:
-    "aocs_alter_add_part_no_compress_1_prt_60_check" CHECK (b >= 50 AND b < 60)
-Inherits: aocs_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=column, blocksize=8192, compresslevel=2
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'aocs_alter_add_part_no_compress%' ORDER BY 1;
+                 relname                  |                                         reloptions                                         
+------------------------------------------+--------------------------------------------------------------------------------------------
+ aocs_alter_add_part_no_compress          | {appendonly=true,orientation=column}
+ aocs_alter_add_part_no_compress_1_prt_10 | {appendonly=true,orientation=column,blocksize=8192,compresslevel=2}
+ aocs_alter_add_part_no_compress_1_prt_20 | {appendonly=true,orientation=column,blocksize=8192,compresslevel=2}
+ aocs_alter_add_part_no_compress_1_prt_30 | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=3,blocksize=16384}
+ aocs_alter_add_part_no_compress_1_prt_40 | {appendonly=true,orientation=column,blocksize=8192,compresslevel=2}
+ aocs_alter_add_part_no_compress_1_prt_50 | {appendonly=true,orientation=column}
+ aocs_alter_add_part_no_compress_1_prt_60 | {appendonly=true,orientation=column,blocksize=8192,compresslevel=2}
+(7 rows)
 
 DROP TABLE aocs_alter_add_part_no_compress;
 RESET gp_add_partition_inherits_table_setting;

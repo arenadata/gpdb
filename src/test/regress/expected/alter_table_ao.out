@@ -757,115 +757,17 @@ RESET gp_default_storage_options;
 ALTER TABLE ao_alter_add_part ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_1_prt_50" for table "ao_alter_add_part"
 RESET gp_default_storage_options;
-\d+ ao_alter_add_part*
-            Append-Only Table "public.ao_alter_add_part"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 4
-Block Size: 65536
-Checksum: t
-Child tables: ao_alter_add_part_1_prt_10,
-              ao_alter_add_part_1_prt_20,
-              ao_alter_add_part_1_prt_30,
-              ao_alter_add_part_1_prt_40,
-              ao_alter_add_part_1_prt_50,
-              ao_alter_add_part_1_prt_60
-Distributed by: (a)
-Partition by: (b)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=4, blocksize=65536
-
-        Append-Only Table "public.ao_alter_add_part_1_prt_10"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 4
-Block Size: 65536
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_1_prt_10_check" CHECK (b >= 0 AND b < 10)
-Inherits: ao_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=4, blocksize=65536
-
-        Append-Only Table "public.ao_alter_add_part_1_prt_20"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 4
-Block Size: 65536
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_1_prt_20_check" CHECK (b >= 10 AND b < 20)
-Inherits: ao_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=4, blocksize=65536
-
-        Append-Only Table "public.ao_alter_add_part_1_prt_30"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zlib
-Compression Level: 3
-Block Size: 16384
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_1_prt_30_check" CHECK (b >= 20 AND b < 30)
-Inherits: ao_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zlib, compresslevel=3, blocksize=16384
-
-        Append-Only Table "public.ao_alter_add_part_1_prt_40"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 4
-Block Size: 65536
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_1_prt_40_check" CHECK (b >= 30 AND b < 40)
-Inherits: ao_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=4, blocksize=65536
-
-        Append-Only Table "public.ao_alter_add_part_1_prt_50"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 4
-Block Size: 65536
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_1_prt_50_check" CHECK (b >= 40 AND b < 50)
-Inherits: ao_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=4, blocksize=65536
-
-        Append-Only Table "public.ao_alter_add_part_1_prt_60"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 4
-Block Size: 65536
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_1_prt_60_check" CHECK (b >= 50 AND b < 60)
-Inherits: ao_alter_add_part
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=4, blocksize=65536
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'ao_alter_add_part%' ORDER BY 1;
+          relname           |                                     reloptions                                      
+----------------------------+-------------------------------------------------------------------------------------
+ ao_alter_add_part          | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=4,blocksize=65536}
+ ao_alter_add_part_1_prt_10 | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=4,blocksize=65536}
+ ao_alter_add_part_1_prt_20 | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=4,blocksize=65536}
+ ao_alter_add_part_1_prt_30 | {appendonly=true,orientation=row,compresstype=zlib,compresslevel=3,blocksize=16384}
+ ao_alter_add_part_1_prt_40 | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=4,blocksize=65536}
+ ao_alter_add_part_1_prt_50 | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=4,blocksize=65536}
+ ao_alter_add_part_1_prt_60 | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=4,blocksize=65536}
+(7 rows)
 
 DROP TABLE ao_alter_add_part;
 CREATE TABLE ao_alter_add_part_no_compress(a int, b int) WITH (appendonly=true, orientation=row) DISTRIBUTED BY (a) PARTITION BY RANGE (b)
@@ -889,115 +791,17 @@ RESET gp_default_storage_options;
 ALTER TABLE ao_alter_add_part_no_compress ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_no_compress_1_prt_50" for table "ao_alter_add_part_no_compress"
 RESET gp_default_storage_options;
-\d+ ao_alter_add_part_no_compress*
-      Append-Only Table "public.ao_alter_add_part_no_compress"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: None
-Compression Level: 0
-Block Size: 32768
-Checksum: t
-Child tables: ao_alter_add_part_no_compress_1_prt_10,
-              ao_alter_add_part_no_compress_1_prt_20,
-              ao_alter_add_part_no_compress_1_prt_30,
-              ao_alter_add_part_no_compress_1_prt_40,
-              ao_alter_add_part_no_compress_1_prt_50,
-              ao_alter_add_part_no_compress_1_prt_60
-Distributed by: (a)
-Partition by: (b)
-Options: appendonly=true, orientation=row
-
-  Append-Only Table "public.ao_alter_add_part_no_compress_1_prt_10"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zlib
-Compression Level: 2
-Block Size: 8192
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_no_compress_1_prt_10_check" CHECK (b >= 0 AND b < 10)
-Inherits: ao_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=row, blocksize=8192, compresslevel=2
-
-  Append-Only Table "public.ao_alter_add_part_no_compress_1_prt_20"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zlib
-Compression Level: 2
-Block Size: 8192
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_no_compress_1_prt_20_check" CHECK (b >= 10 AND b < 20)
-Inherits: ao_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=row, blocksize=8192, compresslevel=2
-
-  Append-Only Table "public.ao_alter_add_part_no_compress_1_prt_30"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zstd
-Compression Level: 3
-Block Size: 16384
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_no_compress_1_prt_30_check" CHECK (b >= 20 AND b < 30)
-Inherits: ao_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=row, compresstype=zstd, compresslevel=3, blocksize=16384
-
-  Append-Only Table "public.ao_alter_add_part_no_compress_1_prt_40"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zlib
-Compression Level: 2
-Block Size: 8192
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_no_compress_1_prt_40_check" CHECK (b >= 30 AND b < 40)
-Inherits: ao_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=row, blocksize=8192, compresslevel=2
-
-  Append-Only Table "public.ao_alter_add_part_no_compress_1_prt_50"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: None
-Compression Level: 0
-Block Size: 32768
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_no_compress_1_prt_50_check" CHECK (b >= 40 AND b < 50)
-Inherits: ao_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=row
-
-  Append-Only Table "public.ao_alter_add_part_no_compress_1_prt_60"
- Column |  Type   | Modifiers | Storage | Stats target | Description 
---------+---------+-----------+---------+--------------+-------------
- a      | integer |           | plain   |              | 
- b      | integer |           | plain   |              | 
-Compression Type: zlib
-Compression Level: 2
-Block Size: 8192
-Checksum: t
-Check constraints:
-    "ao_alter_add_part_no_compress_1_prt_60_check" CHECK (b >= 50 AND b < 60)
-Inherits: ao_alter_add_part_no_compress
-Distributed by: (a)
-Options: appendonly=true, orientation=row, blocksize=8192, compresslevel=2
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'ao_alter_add_part_no_compress%' ORDER BY 1;
+                relname                 |                                     reloptions                                      
+----------------------------------------+-------------------------------------------------------------------------------------
+ ao_alter_add_part_no_compress          | {appendonly=true,orientation=row}
+ ao_alter_add_part_no_compress_1_prt_10 | {appendonly=true,orientation=row,blocksize=8192,compresslevel=2}
+ ao_alter_add_part_no_compress_1_prt_20 | {appendonly=true,orientation=row,blocksize=8192,compresslevel=2}
+ ao_alter_add_part_no_compress_1_prt_30 | {appendonly=true,orientation=row,compresstype=zstd,compresslevel=3,blocksize=16384}
+ ao_alter_add_part_no_compress_1_prt_40 | {appendonly=true,orientation=row,blocksize=8192,compresslevel=2}
+ ao_alter_add_part_no_compress_1_prt_50 | {appendonly=true,orientation=row}
+ ao_alter_add_part_no_compress_1_prt_60 | {appendonly=true,orientation=row,blocksize=8192,compresslevel=2}
+(7 rows)
 
 DROP TABLE ao_alter_add_part_no_compress;
 RESET gp_add_partition_inherits_table_setting;

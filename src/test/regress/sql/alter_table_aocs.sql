@@ -501,7 +501,7 @@ ALTER TABLE aocs_alter_add_part ADD PARTITION "40" START (30) INCLUSIVE END (40)
 RESET gp_default_storage_options;
 ALTER TABLE aocs_alter_add_part ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 RESET gp_default_storage_options;
-\d+ aocs_alter_add_part*
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'aocs_alter_add_part%' ORDER BY 1;
 DROP TABLE aocs_alter_add_part;
 
 CREATE TABLE aocs_alter_add_part_no_compress(a int, b int) WITH (appendonly=true, orientation=column) DISTRIBUTED BY (a) PARTITION BY RANGE (b)
@@ -516,7 +516,7 @@ ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "40" START (30) INCLUS
 RESET gp_default_storage_options;
 ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 RESET gp_default_storage_options;
-\d+ aocs_alter_add_part_no_compress*
+SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'aocs_alter_add_part_no_compress%' ORDER BY 1;
 DROP TABLE aocs_alter_add_part_no_compress;
 
 RESET gp_add_partition_inherits_table_setting;
