@@ -754,7 +754,6 @@ NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_1_prt_20" for tab
 ALTER TABLE ao_alter_add_part ADD PARTITION "40" START (30) INCLUSIVE END (40) EXCLUSIVE;
 NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_1_prt_40" for table "ao_alter_add_part"
 RESET gp_default_storage_options;
--- use table setting
 ALTER TABLE ao_alter_add_part ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_1_prt_50" for table "ao_alter_add_part"
 RESET gp_default_storage_options;
@@ -887,7 +886,6 @@ NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_no_compress_1_prt
 ALTER TABLE ao_alter_add_part_no_compress ADD PARTITION "40" START (30) INCLUSIVE END (40) EXCLUSIVE;
 NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_no_compress_1_prt_40" for table "ao_alter_add_part_no_compress"
 RESET gp_default_storage_options;
--- use table setting
 ALTER TABLE ao_alter_add_part_no_compress ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 NOTICE:  CREATE TABLE will create partition "ao_alter_add_part_no_compress_1_prt_50" for table "ao_alter_add_part_no_compress"
 RESET gp_default_storage_options;

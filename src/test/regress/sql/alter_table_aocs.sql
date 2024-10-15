@@ -499,7 +499,6 @@ ALTER TABLE aocs_alter_add_part ADD PARTITION "60" START (50) INCLUSIVE END (60)
 ALTER TABLE aocs_alter_add_part SPLIT PARTITION "10" AT (10) INTO (PARTITION "10", PARTITION "20");
 ALTER TABLE aocs_alter_add_part ADD PARTITION "40" START (30) INCLUSIVE END (40) EXCLUSIVE;
 RESET gp_default_storage_options;
--- use table setting
 ALTER TABLE aocs_alter_add_part ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 RESET gp_default_storage_options;
 \d+ aocs_alter_add_part*
@@ -515,7 +514,6 @@ ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "60" START (50) INCLUS
 ALTER TABLE aocs_alter_add_part_no_compress SPLIT PARTITION "10" AT (10) INTO (PARTITION "10", PARTITION "20");
 ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "40" START (30) INCLUSIVE END (40) EXCLUSIVE;
 RESET gp_default_storage_options;
--- use table setting
 ALTER TABLE aocs_alter_add_part_no_compress ADD PARTITION "50" START (40) INCLUSIVE END (50) EXCLUSIVE;
 RESET gp_default_storage_options;
 \d+ aocs_alter_add_part_no_compress*
