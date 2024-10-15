@@ -1,4 +1,11 @@
 -- Tests for size tracking logic introduced in version 1.7
+-- start_ignore
+\! gpconfig -c shared_preload_libraries -v 'arenadata_toolkit'
+\! gpstop -raq -M fast
+\! gpconfig -c arenadata_toolkit.tracking_worker_naptime_sec -v '5'
+\! gpstop -raq -M fast
+\c
+-- end_ignore
 -- start_matchsubs
 -- m/ERROR:  database \d+ is not tracked \(track_files\.c:\d+\)/
 -- s/\d+/XXX/g
@@ -11,6 +18,7 @@ CREATE DATABASE tracking_db1;
 CREATE EXTENSION arenadata_toolkit;
 
 -- 1. Test getting track on not registered database;
+SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int);
 SELECT * FROM arenadata_toolkit.tracking_get_track();
 
 SELECT arenadata_toolkit.tracking_register_db();
@@ -101,3 +109,8 @@ SELECT arenadata_toolkit.tracking_unregister_db();
 
 \c contrib_regression;
 DROP DATABASE tracking_db1;
+-- start_ignore
+\! gpconfig -r shared_preload_libraries
+\! gpconfig -r arenadata_toolkit.tracking_worker_naptime_sec
+\! gpstop -raq -M fast
+-- end_ignore

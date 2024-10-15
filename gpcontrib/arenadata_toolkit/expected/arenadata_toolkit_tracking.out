@@ -7,6 +7,12 @@ CREATE DATABASE tracking_db1;
 \c tracking_db1;
 CREATE EXTENSION arenadata_toolkit;
 -- 1. Test getting track on not registered database;
+SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int);
+ pg_sleep 
+----------
+ 
+(1 row)
+
 SELECT * FROM arenadata_toolkit.tracking_get_track();
 ERROR:  database 44817 is not tracked (track_files.c:347)
 CONTEXT:  SQL statement "SELECT * FROM arenadata_toolkit.tracking_get_track_main()"

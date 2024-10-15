@@ -1,3 +1,8 @@
+-- start_ignore
+\! gpconfig -c shared_preload_libraries -v 'arenadata_toolkit'
+\! gpstop -raq -M fast
+\c
+-- end_ignore
 -- start_matchsubs
 --
 -- m/ERROR:  \[arenadata_toolkit\] exceeded maximum number of tracked databases \(track_files\.c:\d+\)/
@@ -142,3 +147,7 @@ ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_schemas =  "pg_catalog, 
 \c contrib_regression;
 
 DROP DATABASE tracking1;
+-- start_ignore
+\! gpconfig -r shared_preload_libraries;
+\! gpstop -raq -M fast
+-- end_ignore
