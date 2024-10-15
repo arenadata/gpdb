@@ -551,14 +551,12 @@ BEGIN
     -- N = gp_session_id % number of tablespaces in GUC.
     SELECT 'temp_files' || (current_setting('gp_session_id')::int % n_temp_spill_files_tablespaces)
         INTO session_file_ts_filename;
-    SELECT CASE
-        WHEN i = 0 THEN 'temp_files0'
-        WHEN i = 1 THEN 'temp_files1'''
-        WHEN i = 2 THEN 'temp_files2"'
-        WHEN i = 3 THEN 'temp_files3'
-    END FROM (
-        SELECT current_setting('gp_session_id')::int % n_temp_spill_files_tablespaces AS i
-    ) t INTO session_file_ts_name;
+    SELECT CASE current_setting('gp_session_id')::int % n_temp_spill_files_tablespaces
+        WHEN 0 THEN 'temp_files0'
+        WHEN 1 THEN 'temp_files1'''
+        WHEN 2 THEN 'temp_files2"'
+        WHEN 3 THEN 'temp_files3'
+    END INTO session_file_ts_name;
 
     -- Create the temporary directory.
     WITH out11 AS (
