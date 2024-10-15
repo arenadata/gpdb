@@ -34,7 +34,7 @@ PG_CFLAGS = -I$(libpq_srcdir) -I$(CURDIR)/src/include
 REGRESS = arenadata_toolkit_test arenadata_toolkit_skew_test adb_get_relfilenodes_test \
           adb_collect_table_stats_test adb_vacuum_strategy_test adb_relation_storage_size_test \
           tablespace_location upgrade_test adb_hba_file_rules_view_test \
-          arenadata_toolkit_guc arenadata_toolkit_tracking
+          setup_shared arenadata_toolkit_guc arenadata_toolkit_tracking
 REGRESS_OPTS += --init-file=$(top_srcdir)/src/test/regress/init_file
 
 ifdef USE_PGXS
