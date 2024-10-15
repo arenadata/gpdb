@@ -3412,7 +3412,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 
 	{
 		{"gp_add_partition_inherits_table_setting", PGC_USERSET, CUSTOM_OPTIONS,
-			gettext_noop("Alter table add partition inherits storage setting from the table."),
+			gettext_noop("ALTER TABLE ADD PARTITION inherits storage setting from the AO table."),
 			NULL,
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
