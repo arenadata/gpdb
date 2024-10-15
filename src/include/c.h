@@ -1222,18 +1222,26 @@ typedef union PGAlignedXLogBlock
 #define DO_PRAGMA(x) _Pragma (#x)
 #if defined(__clang__)
 	#define SUPPRESS_COMPILER_WARNING(expr, warning) do { \
-		_Pragma("clang diagnostic push") \
+		DO_PRAGMA(clang diagnostic push) \
 		DO_PRAGMA(clang diagnostic ignored warning) \
 		expr; \
-		_Pragma("clang diagnostic pop") \
+		DO_PRAGMA(clang diagnostic pop) \
 	} while(0)
 #elif defined(__GNUC__)
 	#define SUPPRESS_COMPILER_WARNING(expr, warning) do { \
-		_Pragma("GCC diagnostic push") \
+		DO_PRAGMA(GCC diagnostic push) \
 		DO_PRAGMA(GCC diagnostic ignored warning) \
 		expr; \
-		_Pragma("GCC diagnostic pop") \
+		DO_PRAGMA(GCC diagnostic pop) \
 	} while(0)
+#else
+	/*
+	 * We can't support all compilers because the semantics of pragma
+	 * differs across them as well as error codes. It's easy to add
+	 * clang support because it supports GNU-style flags, but the others
+	 * may not. For such cases, we need a fallback option
+	*/
+	expr;
 #endif
 
 /* ----------------------------------------------------------------
