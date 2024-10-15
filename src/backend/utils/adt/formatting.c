@@ -2973,7 +2973,6 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				s += strlen(s);
 				break;
 			case DCH_RM:
-				FALL_THROUGH
 			case DCH_rm:
 
 				/*

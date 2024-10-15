@@ -10563,7 +10563,6 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 				break;
 			case RTE_TABLEFUNCTION:
 				/* Table Function RTE */
-				FALL_THROUGH
 			case RTE_FUNCTION:
 				/* Function RTE */
 				rtfunc1 = (RangeTblFunction *) linitial(rte->functions);

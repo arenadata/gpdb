@@ -1396,7 +1396,6 @@ build_function_result_tupdesc_d(char prokind,
 
 			/* input and output */
 			case PROARGMODE_INOUT:
-				FALL_THROUGH
 
 			/* output modes */
 			case PROARGMODE_OUT:
