@@ -13,8 +13,6 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
-CFLAGS=$(CFLAGS) -Wno-implicit-fallthrough
-
 OBJS = resgroup.o resgroup_helper.o
 
 ifeq ($(PORTNAME),linux)
