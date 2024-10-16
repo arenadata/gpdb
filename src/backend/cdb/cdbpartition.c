@@ -7151,6 +7151,9 @@ atpxPartAddList(Relation rel,
 				SetConfigOption("gp_default_storage_options", "", PGC_USERSET, PGC_S_SESSION);
 			}
 
+			PG_TRY();
+			{
+
 			/*
 			 * normal case - add partitions using CREATE statements that get
 			 * dispatched to the segments
@@ -7223,6 +7226,18 @@ atpxPartAddList(Relation rel,
 				}
 			}					/* end else setting subpartition templates
 								 * only */
+			}
+			PG_CATCH();
+			{
+				if (gp_default_storage_options_save != NULL)
+				{
+					SetConfigOption("gp_default_storage_options", gp_default_storage_options_save, PGC_USERSET, PGC_S_SESSION);
+					pfree(gp_default_storage_options_save);
+				}
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 
 			if (gp_default_storage_options_save != NULL)
 			{
