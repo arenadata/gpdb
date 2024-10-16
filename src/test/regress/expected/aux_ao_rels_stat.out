@@ -250,11 +250,11 @@ DECLARE
     schema_name name;
 BEGIN
     -- Determine oid, schema and name of input table
-	SELECT c.oid, c.relname, n.nspname INTO main_table_oid, main_table_name, schema_name
+    SELECT c.oid, c.relname, n.nspname INTO main_table_oid, main_table_name, schema_name
     FROM pg_class AS c JOIN pg_namespace AS n ON c.relnamespace = n.oid
     WHERE c.oid = input_name::regclass;
-	
-	-- Return main table name and tupcount
+
+    -- Return main table name and tupcount
     RETURN QUERY SELECT main_table_name, get_total_tupcount(main_table_oid);
 
     -- Return partition name and tupcount
@@ -264,8 +264,8 @@ BEGIN
     JOIN pg_class AS c ON c.relname = p.partitiontablename
     JOIN pg_namespace AS n ON c.relnamespace = n.oid
     WHERE p.tablename = main_table_name
-		  AND p.schemaname = schema_name
-		  AND n.nspname = schema_name
+        AND p.schemaname = schema_name
+        AND n.nspname = schema_name
     ORDER BY p.partitiontablename;
 END;
 $$ LANGUAGE plpgsql;
