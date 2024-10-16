@@ -7143,12 +7143,12 @@ atpxPartAddList(Relation rel,
 				((CreateStmt *) q)->ownerid = ownerid;
 			}
 
-			char *gp_default_storage_options_save = NULL;
+			StdRdOptions ao_opts;
 
 			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
 			{
-				gp_default_storage_options_save = pstrdup(GetConfigOption("gp_default_storage_options", false, false));
-				SetConfigOption("gp_default_storage_options", "", PGC_USERSET, PGC_S_SESSION);
+				ao_opts = *currentAOStorageOptions();
+				resetDefaultAOStorageOpts();
 			}
 
 			PG_TRY();
@@ -7229,21 +7229,15 @@ atpxPartAddList(Relation rel,
 			}
 			PG_CATCH();
 			{
-				if (gp_default_storage_options_save != NULL)
-				{
-					SetConfigOption("gp_default_storage_options", gp_default_storage_options_save, PGC_USERSET, PGC_S_SESSION);
-					pfree(gp_default_storage_options_save);
-				}
+				if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+					setDefaultAOStorageOpts(&ao_opts);
 
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
 
-			if (gp_default_storage_options_save != NULL)
-			{
-				SetConfigOption("gp_default_storage_options", gp_default_storage_options_save, PGC_USERSET, PGC_S_SESSION);
-				pfree(gp_default_storage_options_save);
-			}
+			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+				setDefaultAOStorageOpts(&ao_opts);
 
 			ii++;
 		}						/* end for each cell */
