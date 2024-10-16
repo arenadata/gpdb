@@ -7143,6 +7143,14 @@ atpxPartAddList(Relation rel,
 				((CreateStmt *) q)->ownerid = ownerid;
 			}
 
+			char *gp_default_storage_options_save = NULL;
+
+			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+			{
+				gp_default_storage_options_save = pstrdup(GetConfigOption("gp_default_storage_options", false, false));
+				SetConfigOption("gp_default_storage_options", "", PGC_USERSET, PGC_S_SESSION);
+			}
+
 			/*
 			 * normal case - add partitions using CREATE statements that get
 			 * dispatched to the segments
@@ -7215,6 +7223,12 @@ atpxPartAddList(Relation rel,
 				}
 			}					/* end else setting subpartition templates
 								 * only */
+
+			if (gp_default_storage_options_save != NULL)
+			{
+				SetConfigOption("gp_default_storage_options", gp_default_storage_options_save, PGC_USERSET, PGC_S_SESSION);
+				pfree(gp_default_storage_options_save);
+			}
 
 			ii++;
 		}						/* end for each cell */

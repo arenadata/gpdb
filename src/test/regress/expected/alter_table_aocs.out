@@ -900,11 +900,11 @@ SELECT relname, reloptions FROM pg_class WHERE relname LIKE 'aocs_alter_add_part
  aocs_alter_add_part_no_compress_1_prt_10_2_prt_11 | {appendonly=true,orientation=column,compresstype=zstd,compresslevel=5,blocksize=32768}
  aocs_alter_add_part_no_compress_1_prt_30          | {appendonly=true,orientation=column,compresstype=rle_type,compresslevel=3,blocksize=16384}
  aocs_alter_add_part_no_compress_1_prt_30_2_prt_11 | {appendonly=true,orientation=column,compresstype=zstd,compresslevel=5,blocksize=32768}
- aocs_alter_add_part_no_compress_1_prt_40          | {appendonly=true,orientation=column,blocksize=8192,compresslevel=2}
+ aocs_alter_add_part_no_compress_1_prt_40          | {appendonly=true,orientation=column}
  aocs_alter_add_part_no_compress_1_prt_40_2_prt_11 | {appendonly=true,orientation=column,compresstype=zstd,compresslevel=5,blocksize=32768}
  aocs_alter_add_part_no_compress_1_prt_50          | {appendonly=true,orientation=column}
  aocs_alter_add_part_no_compress_1_prt_50_2_prt_11 | {appendonly=true,orientation=column,compresstype=zstd,compresslevel=5,blocksize=32768}
- aocs_alter_add_part_no_compress_1_prt_60          | {appendonly=true,orientation=column,blocksize=8192,compresslevel=2}
+ aocs_alter_add_part_no_compress_1_prt_60          | {appendonly=true,orientation=column}
  aocs_alter_add_part_no_compress_1_prt_60_2_prt_11 | {appendonly=true,orientation=column,compresstype=zstd,compresslevel=5,blocksize=32768}
 (11 rows)
 
