@@ -4526,8 +4526,6 @@ static void CopyFromUpdateAOInsertCount(ResultRelInfo *resultRelInfo,
 	if (resultRelInfo->ri_aocsInsertDesc)
 		resultRelInfo->ri_aocsInsertDesc->insertCount += tupcount;
 }
-
-
 /*
  * A subroutine of CopyFrom, to write the current batch of buffered heap
  * tuples to the heap. Also updates indexes and runs AFTER ROW INSERT
