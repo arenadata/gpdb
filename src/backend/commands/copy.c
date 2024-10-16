@@ -161,7 +161,6 @@ static uint64 CopyTo(CopyState cstate);
 static uint64 CopyFrom(CopyState cstate);
 static uint64 CopyDispatchOnSegment(CopyState cstate, const CopyStmt *stmt);
 static uint64 CopyToQueryOnSegment(CopyState cstate);
-
 static void CopyFromUpdateAOInsertCountInPartitions(HTAB *partition_hash,
 									HTAB *tupcounts_ht, List *ao_segnos);
 static void CopyFromUpdateAOInsertCount(ResultRelInfo *resultRelInfo, int64 tupcount);
@@ -4526,6 +4525,7 @@ static void CopyFromUpdateAOInsertCount(ResultRelInfo *resultRelInfo,
 	if (resultRelInfo->ri_aocsInsertDesc)
 		resultRelInfo->ri_aocsInsertDesc->insertCount += tupcount;
 }
+
 /*
  * A subroutine of CopyFrom, to write the current batch of buffered heap
  * tuples to the heap. Also updates indexes and runs AFTER ROW INSERT
