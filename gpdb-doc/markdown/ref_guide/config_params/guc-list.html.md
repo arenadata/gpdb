@@ -437,6 +437,28 @@ For information about the data storage compression parameters, see [CREATE TABLE
 |-----------|-------|-------------------|
 |Boolean|off|master, session, reload|
 
+## <a id="gp_add_partition_inherits_table_setting"></a>gp\_add\_partition\_inherits\_table\_setting 
+
+When adding a partition to an append-optimized, row-oriented or column-oriented table with the [ALTER TABLE](../sql_commands/ALTER_TABLE.html) command, this parameter controls whether the table's parameters \(`appendonly`, `orientation`, `compresstype`, `compresslevel`, `checksum` and `blocksize`\) can be inherited from the table. The default is `off`, the table's settings are not considered when adding a partition to the table. If the value is `on`, the table's settings are considered.
+
+When you create an append-optimized row-oriented or column-oriented table, you can set the table's parameters `appendonly`, `orientation`, `compresstype`, `compresslevel`, `checksum` and `blocksize` for the table in the `WITH` clause. When you add a partition, Greenplum Database sets each parameter based on one of the following settings, in order of preference.
+
+1.  The setting specified in the `ALTER TABLE` command `WITH` clause.
+2.  If this server configuration parameter is set to `on`, the table's setting specified in the `WITH` clause when the table was created. Otherwise, the table's setting is ignored.
+3.  The setting specified in the server configuration parameter [gp\_default\_storage\_options](#gp_default_storage_options).
+
+You must specify `--skipvalidation` when modifying this parameter as it is a restricted configuration parameter. Use extreme caution when setting configuration parameters with this option. For example:
+
+```
+gpconfig --skipvalidation -c gp_add_partition_inherits_table_setting -v on
+```
+
+For information about the storage parameters, see [CREATE TABLE](../sql_commands/CREATE_TABLE.html).
+
+|Value Range|Default|Set Classifications|
+|-----------|-------|-------------------|
+|Boolean|off|master, session, reload|
+
 ## <a id="gp_adjust_selectivity_for_outerjoins"></a>gp\_adjust\_selectivity\_for\_outerjoins 
 
 Enables the selectivity of NULL tests over outer joins.
