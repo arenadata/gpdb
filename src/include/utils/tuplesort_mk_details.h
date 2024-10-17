@@ -132,7 +132,7 @@ static inline int32 mke_get_lv(MKEntry *e)
 }
 static inline void mke_set_lv(MKEntry *e, int32 lv)
 {
-    Assert(lv >= 0 && lv <= MKE_MAX_LV);
+    Assert(lv >= 0);
     /* If statement_mem is too small, we might end up generating 
        too many runs. */ 
     if (lv > MKE_MAX_LV) 
