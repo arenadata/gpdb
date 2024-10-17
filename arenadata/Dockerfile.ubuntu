@@ -18,7 +18,6 @@ RUN set -eux; \
     pip3 install pytest gsutil behave~=1.2.6 coverage~=4.5 'mock<=5.0.0' allure-behave==2.4.0 psutil; \
     pip3 cache purge
 
-
 WORKDIR /home/gpadmin
 
 FROM base AS build
