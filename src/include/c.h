@@ -1211,6 +1211,12 @@ typedef union PGAlignedXLogBlock
 	((underlying_type) (expr))
 #endif
 
+#if defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 7)
+	#define FALL_THROUGH __attribute__((fallthrough));
+#elif
+	#define FALL_THROUGH /* fall through */
+#endif
+
 /* ----------------------------------------------------------------
  *				Section 9: system-specific hacks
  *

@@ -6426,19 +6426,21 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 				return true;
 			if (start_time == BgWorkerStart_RecoveryFinished)
 				return true;
-			/* fall through */
+			FALL_THROUGH
 
 		case PM_HOT_STANDBY:
 			if (start_time == BgWorkerStart_ConsistentState)
 				return true;
-			/* fall through */
+			FALL_THROUGH
 
 		case PM_RECOVERY:
 		case PM_STARTUP:
 		case PM_INIT:
 			if (start_time == BgWorkerStart_PostmasterStart)
 				return true;
-			/* fall through */
+			FALL_THROUGH
+		default:
+			break;
 
 	}
 

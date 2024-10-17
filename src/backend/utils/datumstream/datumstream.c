@@ -178,7 +178,7 @@ datumstreamread_getlarge(DatumStreamRead * acc, Datum *datum, bool *null)
 			acc->largeObjectState = DatumStreamLargeObjectState_Consumed;
 
 			/* Fall below to ~_Consumed. */
-			/* fallthrough */
+			FALL_THROUGH
 
 		case DatumStreamLargeObjectState_Consumed:
 			{
