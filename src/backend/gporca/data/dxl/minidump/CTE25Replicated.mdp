@@ -666,7 +666,7 @@
               <dxl:SortingColumnList/>
               <dxl:HashJoin JoinType="Inner">
                 <dxl:Properties>
-                  <dxl:Cost StartupCost="0" TotalCost="1293.002829" Rows="3.000000" Width="267"/>
+                  <dxl:Cost StartupCost="0" TotalCost="1293.002829" Rows="1.000000" Width="267"/>
                 </dxl:Properties>
                 <dxl:ProjList>
                   <dxl:ProjElem ColId="110" Alias="a">
@@ -693,7 +693,7 @@
                 </dxl:HashCondList>
                 <dxl:TableScan>
                   <dxl:Properties>
-                    <dxl:Cost StartupCost="0" TotalCost="431.000163" Rows="3.000000" Width="267"/>
+                    <dxl:Cost StartupCost="0" TotalCost="431.000163" Rows="1.000000" Width="267"/>
                   </dxl:Properties>
                   <dxl:ProjList>
                     <dxl:ProjElem ColId="110" Alias="a">

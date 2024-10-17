@@ -428,6 +428,16 @@ CTranslatorExprToDXL::CreateDXLNode(CExpression *pexpr,
 {
 	GPOS_ASSERT(NULL != pexpr);
 	ULONG ulOpId = (ULONG) pexpr->Pop()->Eopid();
+
+	if (CUtils::FPhysicalMotion(pexpr->Pop()))
+	{
+		gpos::IntPtrArray *inputSegmentInfo = GetInputSegIdsArray(pexpr);
+
+		pexpr->SetMotionInputSegmentsNumber(inputSegmentInfo->Size());
+		inputSegmentInfo->Release();
+	}
+	pexpr->SetMotionInputSegmentsNumberForChildren();
+
 	if (COperator::EopPhysicalTableScan == ulOpId ||
 		COperator::EopPhysicalExternalScan == ulOpId)
 	{
@@ -7654,7 +7664,10 @@ CTranslatorExprToDXL::GetProperties(const CExpression *pexpr)
 			pexpr->GetDrvdPropPlan()->Pds()->Edt())
 	{
 		// if distribution is replicated, multiply number of rows by number of segments
-		ULONG ulSegments = COptCtxt::PoctxtFromTLS()->GetCostModel()->UlHosts();
+		ULONG ulSegments =
+			pexpr->GetMotionInputSegmentsNumber() > 0
+				? pexpr->GetMotionInputSegmentsNumber()
+				: COptCtxt::PoctxtFromTLS()->GetCostModel()->UlHosts();
 		rows = rows * ulSegments;
 	}
 

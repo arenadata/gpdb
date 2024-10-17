@@ -439,7 +439,7 @@
             </dxl:AssertConstraintList>
             <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="431.000923" Rows="2.000000" Width="12"/>
+                <dxl:Cost StartupCost="0" TotalCost="431.000923" Rows="1.000000" Width="12"/>
               </dxl:Properties>
               <dxl:ProjList>
                 <dxl:ProjElem ColId="10" Alias="b">

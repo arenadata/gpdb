@@ -625,7 +625,7 @@ ON a = c
                   <dxl:OneTimeFilter/>
                   <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1,2">
                     <dxl:Properties>
-                      <dxl:Cost StartupCost="0" TotalCost="431.000065" Rows="3.000000" Width="1"/>
+                      <dxl:Cost StartupCost="0" TotalCost="431.000065" Rows="1.000000" Width="1"/>
                     </dxl:Properties>
                     <dxl:ProjList/>
                     <dxl:Filter/>
@@ -708,7 +708,7 @@ ON a = c
               <dxl:Filter/>
               <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1,2">
                 <dxl:Properties>
-                  <dxl:Cost StartupCost="0" TotalCost="431.000514" Rows="3.000000" Width="8"/>
+                  <dxl:Cost StartupCost="0" TotalCost="431.000514" Rows="1.000000" Width="8"/>
                 </dxl:Properties>
                 <dxl:ProjList>
                   <dxl:ProjElem ColId="39" Alias="ColRef_0039">

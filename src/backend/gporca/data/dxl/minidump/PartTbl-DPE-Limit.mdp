@@ -643,7 +643,7 @@
             </dxl:PrintableFilter>
             <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="431.001895" Rows="2.000000" Width="32"/>
+                <dxl:Cost StartupCost="0" TotalCost="431.001895" Rows="1.000000" Width="32"/>
               </dxl:Properties>
               <dxl:ProjList>
                 <dxl:ProjElem ColId="12" Alias="dist">
