@@ -115,6 +115,7 @@ static inline int32 mke_get_run(MKEntry *e)
 }
 static inline void mke_set_run(MKEntry *e, int32 run)
 {
+    Assert(run >= 0);
     /* If statement_mem is too small, we might end up generating 
        too many runs. */ 
     if (run > MKE_MAX_RUN)
