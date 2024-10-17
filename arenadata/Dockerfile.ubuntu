@@ -1,9 +1,9 @@
 FROM ubuntu:22.04 AS base
 
 COPY README.Ubuntu.bash ./
-ENV DEBIAN_FRONTEND=noninteractive
 
 RUN set -eux; \
+    export DEBIAN_FRONTEND=noninteractive; \
     ./README.Ubuntu.bash; \
     rm README.Ubuntu.bash; \
 # The en_US.UTF-8 locale is needed to run GPDB
@@ -14,24 +14,10 @@ RUN set -eux; \
     echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf; \
 # Packages for tests
     apt install -y rsync iproute2 fakeroot lsof sudo python3.11 python3.11-dev python3-pip openjdk-11-jdk libipc-run-perl;\
-    pip install --upgrade pip; \
 # Install allure-behave for behave tests
     pip3 install pytest gsutil behave~=1.2.6 coverage~=4.5 'mock<=5.0.0' allure-behave==2.4.0 psutil; \
     pip3 cache purge
 
-# setup ssh configuration
-RUN set -eux; \
-    # ssh-keygen -f /etc/ssh/ssh_host_rsa_key -N '' -t rsa; \
-    ssh-keygen -f /etc/ssh/ssh_host_dsa_key -N '' -t dsa; \
-    sed -i -e 's|Defaults    requiretty|#Defaults    requiretty|' /etc/sudoers; \
-    sed -ri 's/UsePAM yes/UsePAM no/g;s/PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config; \
-    sed -ri 's@^HostKey /etc/ssh/ssh_host_ecdsa_key$@#&@;s@^HostKey /etc/ssh/ssh_host_ed25519_key$@#&@' /etc/ssh/sshd_config
-
-# run environment for gpdb
-RUN set -eux; \
-    echo '#!/bin/sh' >> /etc/profile.d/jdk_home.sh; \
-    echo 'export JAVA_HOME=/etc/alternatives/java_sdk' >> /etc/profile.d/jdk_home.sh; \
-    echo 'export PATH=$JAVA_HOME/bin:$PATH' >> /etc/profile.d/jdk_home.sh
 
 WORKDIR /home/gpadmin
 
