@@ -7,7 +7,7 @@ for Ubuntu:
 ```bash
 docker build -t gpdb7_u22:latest -f arenadata/Dockerfile.ubuntu .
 ```
-For Rocky Linux:
+for Rocky Linux:
 ```bash
 docker build -t gpdb7_regress:latest -f arenadata/Dockerfile .
 ```
@@ -23,14 +23,14 @@ CI pushes docker images to the internal registry for each branch. We can pull it
 ## Full regression tests suite run
 
 We need to execute [../concourse/scripts/ic_gpdb.bash](../concourse/scripts/ic_gpdb.bash) in container to create demo cluster and run different test suites against it.
-for Ubuntu:
+For Ubuntu:
 ```bash
  docker run --name gpdb7_opt_on --rm -it -e TEST_OS=ubuntu \
   -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c optimizer=on' installcheck-world" \
   --sysctl "kernel.sem=500 1024000 200 4096" gpdb7_u22:latest \
   /home/gpadmin/gpdb_src/concourse/scripts/ic_gpdb.bash
 ```
-for Rocky Linux
+For Rocky Linux
 ```bash
  docker run --name gpdb7_opt_on --rm -it -e TEST_OS=centos \
   -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c optimizer=on' installcheck-world" \
