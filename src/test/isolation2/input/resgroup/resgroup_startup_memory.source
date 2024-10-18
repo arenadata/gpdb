@@ -1,135 +1,51 @@
--- enable resource group and restart cluster.
 -- start_ignore
-! gpconfig -c gp_resource_manager -v group;
+
 ! gpconfig -c runaway_detector_activation_percent -v 100;
 ! gpstop -rai;
--- end_ignore
 
-SHOW gp_resource_manager;
+-- end_ignore
 
 CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS
 '@abs_builddir@/../regress/regress@DLSUFFIX@', 'resGroupPalloc'
 LANGUAGE C READS SQL DATA;
 
-alter resource group default_group set memory_limit 10;
-alter resource group admin_group set memory_limit 80;
+ALTER RESOURCE GROUP default_group SET memory_limit 10;
+ALTER RESOURCE GROUP admin_group SET memory_limit 30;
 
--- set concurrency=1 to make calculations trivial
-create resource group test_group with (concurrency=1, memory_limit=10, memory_spill_ratio=100, cpu_rate_limit=20);
-create role test_role resource group test_group;
+CREATE RESOURCE GROUP test_group with (concurrency=1, memory_limit=59, memory_spill_ratio=100, cpu_rate_limit=20);
+CREATE ROLE test_role RESOURCE GROUP test_group;
+CREATE ROLE default_role RESOURCE GROUP default_group;
 
-select * from gp_toolkit.gp_resgroup_config;
+-- 1. Occupy all memory on a segment and fail with vmem tracker error
+ALTER RESOURCE GROUP admin_group SET concurrency 1;
+ALTER RESOURCE GROUP default_group SET concurrency 1;
 
-0: set role test_role;
--- first allocation consumes all group memory, resGroupPalloc considers
--- startup memory when this function is used for the first time and 
--- subs it from requested memory
-0: select resGroupPalloc(1.0) from gp_dist_random('gp_id') where gp_segment_id = 1;
-select * from memory_result;
+-- Start a session which will be detached from a group when the query is done
+-- resource groups can't see startup chunks occupied by a detached session but
+-- the vmem tracker can
+0: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != (SELECT pg_backend_pid());
+0: CREATE TABLE test (a int);
 
--- second allocation fails
-0: select resGroupPalloc(0.01) from gp_dist_random('gp_id') where gp_segment_id = 1;
-select * from memory_result;
-0q:
+-- Now we need to occupy all memory in all resgroups
+1: SET ROLE test_role;
+1: BEGIN;
+1: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
 
-create table t1 (a int, b int) distributed by(a);
-grant select on t1 to test_role;
+2: SET ROLE default_role;
+2: BEGIN;
+2: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
 
-alter resource group test_group set concurrency 20;
-
-1: set role test_role;
-1: begin;
-1: select count(*) from t1;
-select * from memory_result;
-
-2: set role test_role;
-2: begin;
-2: select count(*) from t1;
-select * from memory_result;
-
-3: set role test_role;
-3: begin;
-3: select count(*) from t1;
-select * from memory_result;
-
-4: set role test_role;
-4: begin;
-4: select count(*) from t1;
-select * from memory_result;
-
-5: set role test_role;
-5: begin;
-5: select count(*) from t1;
-select * from memory_result;
-
-6: set role test_role;
-6: begin;
-6: select count(*) from t1;
-select * from memory_result;
-
-7: set role test_role;
-7: begin;
-7: select count(*) from t1;
-select * from memory_result;
-
-8: set role test_role;
-8: begin;
-8: select count(*) from t1;
-select * from memory_result;
-
-9: set role test_role;
-9: begin;
-9: select count(*) from t1;
-select * from memory_result;
-
-10: set role test_role;
-10: begin;
-10: select count(*) from t1;
-select * from memory_result;
-
-11: set role test_role;
-11: begin;
-11: select count(*) from t1;
-select * from memory_result;
-
-12: set role test_role;
-12: begin;
-12: select count(*) from t1;
-select * from memory_result;
-
-13: set role test_role;
-13: begin;
-13: select count(*) from t1;
-select * from memory_result;
-
-14: set role test_role;
-14: begin;
-14: select count(*) from t1;
-select * from memory_result;
+-- The sum of all resource groups' memory is 99% and 1% is global shared memory aka
+-- freeChunks. On this test cluster each segment has 682mb of memory, so 1% is ~7mb.
+-- The minimum number of startup chunks a process can have is 8mb. 
+3: BEGIN;
+3: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
 
 1q:
 2q:
 3q:
-4q:
-5q:
-6q:
-7q:
-8q:
-9q:
-10q:
-11q:
-12q:
-13q:
-14q:
 
-alter resource group admin_group reset memory_limit;
-alter resource group default_group reset memory_limit;
-
-set role none;
-drop table t1;
-drop role test_role;
-drop resource group test_group;
-
--- start_ignore
-! gpstop -rai;
--- end_ignore
+0: DROP TABLE test;
+0: DROP ROLE test_role;
+0: DROP ROLE default_role;
+0: DROP RESOURCE GROUP test_group;

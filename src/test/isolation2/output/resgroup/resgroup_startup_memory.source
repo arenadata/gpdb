@@ -1,150 +1,79 @@
--- enable resource group and restart cluster.
 -- start_ignore
-! gpconfig -c gp_resource_manager -v group;
 ! gpconfig -c runaway_detector_activation_percent -v 100;
-! gpstop -rai;
+! gpstop -rai
 -- end_ignore
-
-SHOW gp_resource_manager;
- gp_resource_manager 
----------------------
- group               
-(1 row)
 
 CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS '/home/kds/gpdb/src/test/isolation2/../regress/regress.so', 'resGroupPalloc' LANGUAGE C READS SQL DATA;
 CREATE
 
-select * from gp_toolkit.gp_resgroup_config;
- groupid | groupname     | concurrency | cpu_rate_limit | memory_limit | memory_shared_quota | memory_spill_ratio | memory_auditor | cpuset 
----------+---------------+-------------+----------------+--------------+---------------------+--------------------+----------------+--------
- 6437    | default_group | 20          | 30             | 30           | 80                  | 10                 | vmtracker      | -1     
- 6438    | admin_group   | 2           | 10             | 10           | 80                  | 10                 | vmtracker      | -1     
-(2 rows)
-
-alter resource group default_group set memory_limit 10;
+ALTER RESOURCE GROUP default_group SET memory_limit 10;
 ALTER
-alter resource group admin_group set memory_limit 70;
+ALTER RESOURCE GROUP admin_group SET memory_limit 30;
 ALTER
 
--- set concurrency=1 to make calculations trivial
-create resource group test_group with (concurrency=1, memory_limit=20, memory_spill_ratio=100, cpu_rate_limit=20);
+CREATE RESOURCE GROUP test_group with (concurrency=1, memory_limit=59, memory_spill_ratio=100, cpu_rate_limit=20);
 CREATE
-create role test_role resource group test_group;
+CREATE ROLE test_role RESOURCE GROUP test_group;
+CREATE
+CREATE ROLE default_role RESOURCE GROUP default_group;
 CREATE
 
-0: set role test_role;
+-- 1. Occupy all memory on a segment and fail with vmem tracker error
+ALTER RESOURCE GROUP admin_group SET concurrency 1;
+ALTER
+ALTER RESOURCE GROUP default_group SET concurrency 1;
+ALTER
+
+-- Start a session which will be detached from a group when the query is done
+-- resource groups can't see startup chunks occupied by a detached session but
+-- the vmem tracker can
+0: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != (SELECT pg_backend_pid());
+ pg_terminate_backend 
+----------------------
+ t                    
+(1 row)
+0: CREATE TABLE test (a int);
+CREATE
+
+-- Now we need to occupy all memory in all resgroups
+1: SET ROLE test_role;
 SET
--- first allocation consumes all group memory, resGroupPalloc considers
--- startup memory when this function is used for the first time and
--- subs it from requested memory
-0: select resGroupPalloc(1.0) from gp_dist_random('gp_id') where gp_segment_id = 1;
+1: BEGIN;
+BEGIN
+1: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
  resgrouppalloc 
 ----------------
  0              
 (1 row)
 
--- second allocation fails
-0: select resGroupPalloc(0.01) from gp_dist_random('gp_id') where gp_segment_id = 1;
-ERROR:  Out of memory  (seg1 slice1 10.92.43.77:6003 pid=2586)
-DETAIL:  Resource group memory limit reached
-0q: ... <quitting>
-
-create table t1 (a int, b int) distributed by(a);
-CREATE
-grant select on t1 to test_role;
-GRANT
-
-alter resource group test_group set concurrency 20;
-ALTER
-
-1: set role test_role;
+2: SET ROLE default_role;
 SET
-1: begin;
+2: BEGIN;
 BEGIN
-1: select count(*) from t1;
- count 
--------
- 0     
+2: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
+ resgrouppalloc 
+----------------
+ 0              
 (1 row)
 
-2: set role test_role;
-SET
-2: begin;
+-- The sum of all resource groups' memory is 99% and 1% is global shared memory aka
+-- freeChunks. On this test cluster each segment has 682mb of memory, so 1% is ~7mb.
+-- The minimum number of startup chunks a process can have is 8mb.
+3: BEGIN;
 BEGIN
-2: select count(*) from t1;
- count 
--------
- 0     
-(1 row)
-
-3: set role test_role;
-SET
-3: begin;
-BEGIN
-3: select count(*) from t1;
- count 
--------
- 0     
-(1 row)
-
-4: set role test_role;
-SET
-4: begin;
-BEGIN
-4: select count(*) from t1;
- count 
--------
- 0     
-(1 row)
-
-5: set role test_role;
-SET
-5: begin;
-BEGIN
-5: select count(*) from t1;
- count 
--------
- 0     
-(1 row)
-
-6: set role test_role;
-SET
-6: begin;
-BEGIN
-6: select count(*) from t1;
- count 
--------
- 0     
-(1 row)
-
-7: set role test_role;
-SET
-7: begin;
-BEGIN
-7: select count(*) from t1;
-ERROR:  Out of memory
-DETAIL:  Resource group memory limit reached
+3: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
+ERROR:  Out of memory  (seg1 slice1 10.92.43.77:6003 pid=5309)
+DETAIL:  Vmem limit reached, failed to allocate 201326672 bytes from tracker, which has 188 MB available
 
 1q: ... <quitting>
 2q: ... <quitting>
 3q: ... <quitting>
-4q: ... <quitting>
-5q: ... <quitting>
-6q: ... <quitting>
-7q: ... <quitting>
 
-alter resource group admin_group set memory_limit 10;
-ALTER
-
-set role none;
-SET
-drop table t1;
+0: DROP TABLE test;
 DROP
-drop role test_role;
+0: DROP ROLE test_role;
 DROP
-drop resource group test_group;
+0: DROP ROLE default_role;
 DROP
-
--- start_ignore
-! gpstop -rai;
--- end_ignore
+0: DROP RESOURCE GROUP test_group;
+DROP
