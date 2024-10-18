@@ -1594,6 +1594,26 @@ selfDetachResGroup(ResGroupData *group, ResGroupSlotData *slot)
 	selfUnsetGroup();
 }
 
+/* 
+ * Add startup memory before a resgroup is assigned. This memory
+ * will later be added to resgroup via selfAttachResGroup
+ */
+void
+ResGroupProcAddStartupChunks(int32 chunks)
+{
+	self->memUsage += chunks;
+}
+
+/* 
+ * Sub startup memory at cleanup. This memory should already been
+ * subtracted from a resource group via selfDetachResGroup
+ */
+void
+ResGroupProcSubStartupChunks(int32 chunks)
+{
+	self->memUsage -= chunks;
+}
+
 /*
  * Initialize the members of a slot
  */
