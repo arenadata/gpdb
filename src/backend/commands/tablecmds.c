@@ -14419,7 +14419,7 @@ drop_parent_dependency(Oid relid, Oid refclassid, Oid refobjid, bool is_partitio
 /*
  * deparse pg_class.reloptions into a list.
  */
-static List *
+List *
 reloptions_list(Oid relid)
 {
 	Datum		reloptions;

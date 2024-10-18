@@ -6784,6 +6784,19 @@ atpxPartAddList(Relation rel,
 	if (pelem->storeAttr)
 		ct->options = (List *) ((AlterPartitionCmd *) pelem->storeAttr)->arg1;
 
+	if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+	{
+		ListCell *lc;
+
+		foreach(lc, reloptions_list(RelationGetRelid(rel)))
+		{
+			DefElem *de = lfirst(lc);
+
+			if (!reloptions_has_opt(ct->options, de->defname))
+				ct->options = lappend(ct->options, de);
+		}
+	}
+
 	ct->tableElts = list_concat(ct->tableElts, list_copy(colencs));
 
 	ct->oncommit = ONCOMMIT_NOOP;
@@ -7130,6 +7143,17 @@ atpxPartAddList(Relation rel,
 				((CreateStmt *) q)->ownerid = ownerid;
 			}
 
+			StdRdOptions ao_opts;
+
+			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+			{
+				ao_opts = *currentAOStorageOptions();
+				resetDefaultAOStorageOpts();
+			}
+
+			PG_TRY();
+			{
+
 			/*
 			 * normal case - add partitions using CREATE statements that get
 			 * dispatched to the segments
@@ -7202,6 +7226,18 @@ atpxPartAddList(Relation rel,
 				}
 			}					/* end else setting subpartition templates
 								 * only */
+			}
+			PG_CATCH();
+			{
+				if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+					setDefaultAOStorageOpts(&ao_opts);
+
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+
+			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+				setDefaultAOStorageOpts(&ao_opts);
 
 			ii++;
 		}						/* end for each cell */
