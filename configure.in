@@ -586,7 +586,7 @@ fi
 # but has its own.  Also check other compiler-specific flags here.
 
 if test "$GCC" = yes -a "$ICC" = no; then
-  CFLAGS="-Wall -Wmissing-prototypes -Wpointer-arith"
+  CFLAGS="-Wall -Wpointer-arith"
   # These work in some but not all gcc versions
   # GPDB code is full of declarations after statement.
   #PGAC_PROG_CC_CFLAGS_OPT([-Wdeclaration-after-statement])
@@ -1700,6 +1700,7 @@ fi
 
 # Check for zstd.h and zstd_errors.h
 if test "$with_zstd" = yes; then
+  AC_DEFINE([HAVE_LIBZSTD], 1, [Define to 1 if you have zstd support.])
   AC_CHECK_HEADER(zstd.h, [], [AC_MSG_ERROR([header file <zstd.h> is required for zstd support])])
   AC_CHECK_HEADER(zstd_errors.h, [], [AC_MSG_ERROR([header file <zstd_errors.h> is required for zstd support])])
 fi
@@ -2672,6 +2673,7 @@ fi
 if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CC_CFLAGS_OPT([-Werror=uninitialized])
   PGAC_PROG_CC_CFLAGS_OPT([-Werror=implicit-function-declaration])
+  PGAC_PROG_CC_CFLAGS_OPT([-Werror=missing-prototypes])
 fi
 
 # Begin output steps
