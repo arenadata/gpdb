@@ -467,7 +467,7 @@
               <dxl:Filter/>
               <dxl:BroadcastMotion InputSegments="0" OutputSegments="0,1,2">
                 <dxl:Properties>
-                  <dxl:Cost StartupCost="0" TotalCost="1765376.387082" Rows="3.000000" Width="1"/>
+                  <dxl:Cost StartupCost="0" TotalCost="1765376.387082" Rows="1.000000" Width="1"/>
                 </dxl:Properties>
                 <dxl:ProjList/>
                 <dxl:Filter/>

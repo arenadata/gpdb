@@ -833,7 +833,7 @@ SELECT (SELECT 1 + count(*) FROM x) FROM y;
                   <dxl:Filter/>
                   <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
                     <dxl:Properties>
-                      <dxl:Cost StartupCost="0" TotalCost="431.103001" Rows="2.000000" Width="8"/>
+                      <dxl:Cost StartupCost="0" TotalCost="431.103001" Rows="1.000000" Width="8"/>
                     </dxl:Properties>
                     <dxl:ProjList>
                       <dxl:ProjElem ColId="18" Alias="count">

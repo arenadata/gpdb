@@ -223,7 +223,7 @@
         <dxl:SortingColumnList/>
         <dxl:Result>
           <dxl:Properties>
-            <dxl:Cost StartupCost="0" TotalCost="882724.329455" Rows="3.000000" Width="8"/>
+            <dxl:Cost StartupCost="0" TotalCost="882724.329455" Rows="1.000000" Width="8"/>
           </dxl:Properties>
           <dxl:ProjList>
             <dxl:ProjElem ColId="1" Alias="j">
@@ -266,7 +266,7 @@
           <dxl:OneTimeFilter/>
           <dxl:TableScan>
             <dxl:Properties>
-              <dxl:Cost StartupCost="0" TotalCost="882724.329447" Rows="3000.000000" Width="8"/>
+              <dxl:Cost StartupCost="0" TotalCost="882724.329447" Rows="1000.000000" Width="8"/>
             </dxl:Properties>
             <dxl:ProjList>
               <dxl:ProjElem ColId="1" Alias="j">

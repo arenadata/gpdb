@@ -1901,7 +1901,7 @@
             </dxl:PrintableFilter>
             <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="497.662223" Rows="60.823481" Width="107"/>
+                <dxl:Cost StartupCost="0" TotalCost="497.662223" Rows="30.411740" Width="107"/>
               </dxl:Properties>
               <dxl:ProjList>
                 <dxl:ProjElem ColId="30" Alias="d_date_sk">

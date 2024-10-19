@@ -374,7 +374,7 @@ EXPLAIN SELECT (SELECT COUNT(*) FROM bar GROUP BY c LIMIT 1) FROM foo;
                 <dxl:Filter/>
                 <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1,2">
                   <dxl:Properties>
-                    <dxl:Cost StartupCost="0" TotalCost="431.000501" Rows="3.000000" Width="8"/>
+                    <dxl:Cost StartupCost="0" TotalCost="431.000501" Rows="1.000000" Width="8"/>
                   </dxl:Properties>
                   <dxl:ProjList>
                     <dxl:ProjElem ColId="18" Alias="count">

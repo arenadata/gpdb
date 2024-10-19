@@ -67,7 +67,8 @@ CExpression::CExpression(CMemoryPool *mp, COperator *pop,
 	  m_pgexpr(pgexpr),
 	  m_cost(GPOPT_INVALID_COST),
 	  m_ulOriginGrpId(gpos::ulong_max),
-	  m_ulOriginGrpExprId(gpos::ulong_max)
+	  m_ulOriginGrpExprId(gpos::ulong_max),
+	  m_motionInputSegmentsNumber(0)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pop);
@@ -102,7 +103,8 @@ CExpression::CExpression(CMemoryPool *mp, COperator *pop, CExpression *pexpr)
 	  m_pgexpr(NULL),
 	  m_cost(GPOPT_INVALID_COST),
 	  m_ulOriginGrpId(gpos::ulong_max),
-	  m_ulOriginGrpExprId(gpos::ulong_max)
+	  m_ulOriginGrpExprId(gpos::ulong_max),
+	  m_motionInputSegmentsNumber(0)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pop);
@@ -139,7 +141,8 @@ CExpression::CExpression(CMemoryPool *mp, COperator *pop,
 	  m_pgexpr(NULL),
 	  m_cost(GPOPT_INVALID_COST),
 	  m_ulOriginGrpId(gpos::ulong_max),
-	  m_ulOriginGrpExprId(gpos::ulong_max)
+	  m_ulOriginGrpExprId(gpos::ulong_max),
+	  m_motionInputSegmentsNumber(0)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pop);
@@ -180,7 +183,8 @@ CExpression::CExpression(CMemoryPool *mp, COperator *pop,
 	  m_pgexpr(NULL),
 	  m_cost(GPOPT_INVALID_COST),
 	  m_ulOriginGrpId(gpos::ulong_max),
-	  m_ulOriginGrpExprId(gpos::ulong_max)
+	  m_ulOriginGrpExprId(gpos::ulong_max),
+	  m_motionInputSegmentsNumber(0)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pop);
@@ -221,7 +225,8 @@ CExpression::CExpression(CMemoryPool *mp, COperator *pop,
 	  m_pgexpr(NULL),
 	  m_cost(GPOPT_INVALID_COST),
 	  m_ulOriginGrpId(gpos::ulong_max),
-	  m_ulOriginGrpExprId(gpos::ulong_max)
+	  m_ulOriginGrpExprId(gpos::ulong_max),
+	  m_motionInputSegmentsNumber(0)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pop);
@@ -254,7 +259,8 @@ CExpression::CExpression(CMemoryPool *mp, COperator *pop,
 	  m_pgexpr(pgexpr),
 	  m_cost(cost),
 	  m_ulOriginGrpId(gpos::ulong_max),
-	  m_ulOriginGrpExprId(gpos::ulong_max)
+	  m_ulOriginGrpExprId(gpos::ulong_max),
+	  m_motionInputSegmentsNumber(0)
 {
 	GPOS_ASSERT(NULL != mp);
 	GPOS_ASSERT(NULL != pop);
@@ -425,6 +431,19 @@ CExpression::AssertValidPropDerivation(const CDrvdProp::EPropType ept)
 
 #endif	// GPOS_DEBUG
 
+void
+CExpression::SetMotionInputSegmentsNumberForChildren() const
+{
+	for (ULONG ul = 0; ul < Arity(); ul++)
+	{
+		CExpression *pexprChild = (*m_pdrgpexpr)[ul];
+		if (!CUtils::FPhysicalMotion(pexprChild->Pop()))
+		{
+			pexprChild->SetMotionInputSegmentsNumber(
+				m_motionInputSegmentsNumber);
+		}
+	}
+}
 
 //---------------------------------------------------------------------------
 //	@function:

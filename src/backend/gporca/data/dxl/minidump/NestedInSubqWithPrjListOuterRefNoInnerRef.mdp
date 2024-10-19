@@ -776,7 +776,7 @@ EXPLAIN SELECT * FROM foo WHERE foo.a IN (SELECT foo.b + 1 FROM (SELECT * FROM b
             <dxl:Filter/>
             <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1,2">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="1293.002031" Rows="3.000000" Width="1"/>
+                <dxl:Cost StartupCost="0" TotalCost="1293.002031" Rows="1.000000" Width="1"/>
               </dxl:Properties>
               <dxl:ProjList/>
               <dxl:Filter/>
@@ -842,7 +842,7 @@ EXPLAIN SELECT * FROM foo WHERE foo.a IN (SELECT foo.b + 1 FROM (SELECT * FROM b
                         <dxl:Filter/>
                         <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1,2">
                           <dxl:Properties>
-                            <dxl:Cost StartupCost="0" TotalCost="431.000065" Rows="3.000000" Width="1"/>
+                            <dxl:Cost StartupCost="0" TotalCost="431.000065" Rows="1.000000" Width="1"/>
                           </dxl:Properties>
                           <dxl:ProjList/>
                           <dxl:Filter/>
