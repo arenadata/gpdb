@@ -47,136 +47,127 @@ static bool is_relstorages_unlocked = false;
 void
 tf_guc_unlock_tracked_once(void)
 {
-	if (!is_tracked_unlocked)
-		is_tracked_unlocked = true;
+	is_tracked_unlocked = true;
 }
 
 void
 tf_guc_unlock_full_snapshot_on_recovery_once(void)
 {
-	if (!is_get_full_snapshot_on_recovery_unlocked)
-		is_get_full_snapshot_on_recovery_unlocked = true;
+	is_get_full_snapshot_on_recovery_unlocked = true;
 }
 
 void
 tf_guc_unlock_schemas_once(void)
 {
-	if (!is_schemas_unlocked)
-		is_schemas_unlocked = true;
+	is_schemas_unlocked = true;
 }
 
 void
 tf_guc_unlock_relkinds_once(void)
 {
-	if (!is_relkinds_unlocked)
-		is_relkinds_unlocked = true;
+	is_relkinds_unlocked = true;
 }
 
 void
 tf_guc_unlock_relstorages_once(void)
 {
-	if (!is_relstorages_unlocked)
-		is_relstorages_unlocked = true;
+	is_relstorages_unlocked = true;
 }
 
-/* Prohibit changing the GUC value manually except several cases.
+/*
+ * Prohibit changing the GUC value manually except several cases.
  * This is not called for RESET, so RESET is not guarded
+ */
+static bool
+check_guc(bool *toolkit_guc, GucSource source, bool *manual)
+{
+	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
+		(Gp_role == GP_ROLE_DISPATCH && *toolkit_guc))
+	{
+		*toolkit_guc = false;
+
+		if (source != PGC_S_DATABASE && source != PGC_S_DEFAULT && source != PGC_S_TEST)
+			return false;
+
+		return true;
+	}
+
+	*manual = true;
+	return false;
+}
+
+/*
+ * Prohibit changing the arenadata_toolkit.tracking_is_db_tracked value manually
  */
 static bool
 check_tracked(bool *newval, void **extra, GucSource source)
 {
-	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
-		(Gp_role == GP_ROLE_DISPATCH && is_tracked_unlocked))
-	{
-		if (is_tracked_unlocked)
-			is_tracked_unlocked = false;
-
-		if (source != PGC_S_DATABASE && source != PGC_S_DEFAULT && source != PGC_S_TEST)
-			return false;
-
+	bool manual = false;
+	if (check_guc(&is_tracked_unlocked, source, &manual))
 		return true;
-	}
 
-	GUC_check_errmsg("cannot change tracking status outside the tracking_register_db function");
+	if (manual)
+		GUC_check_errmsg("cannot change tracking status outside the tracking_register_db function");
 	return false;
 }
 
-/* Prohibit changing the GUC value manually except several cases.
- * This is not called for RESET, so RESET is not guarded
+/*
+ * Prohibit changing the arenadata_toolkit.tracking_snapshot_on_recovery value manually
  */
 static bool
 check_get_full_snapshot_on_recovery(bool *newval, void **extra, GucSource source)
 {
-	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
-		(Gp_role == GP_ROLE_DISPATCH && is_get_full_snapshot_on_recovery_unlocked))
-	{
-		if (is_get_full_snapshot_on_recovery_unlocked)
-			is_get_full_snapshot_on_recovery_unlocked = false;
-
-		if (source != PGC_S_DATABASE && source != PGC_S_DEFAULT && source != PGC_S_TEST)
-			return false;
-
+	bool manual = false;
+	if (check_guc(&is_get_full_snapshot_on_recovery_unlocked, source, &manual))
 		return true;
-	}
 
-	GUC_check_errmsg("cannot change tracking status outside the tracking_set_snapshot_on_recovery function");
+	if (manual)
+		GUC_check_errmsg("cannot change tracking status outside the tracking_set_snapshot_on_recovery function");
 	return false;
 }
 
+/*
+ * Prohibit changing the arenadata_toolkit.tracking_relkinds value manually
+ */
 static bool
 check_relkinds(char **newval, void **extra, GucSource source)
 {
-	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
-		(Gp_role == GP_ROLE_DISPATCH && is_relkinds_unlocked))
-	{
-		if (is_relkinds_unlocked)
-			is_relkinds_unlocked = false;
-
-		if (source != PGC_S_DATABASE && source != PGC_S_DEFAULT && source != PGC_S_TEST)
-			return false;
-
+	bool manual = false;
+	if (check_guc(&is_relkinds_unlocked, source, &manual))
 		return true;
-	}
 
-	GUC_check_errmsg("cannot change tracking status outside the tracking_register_relkinds function");
+	if (manual)
+		GUC_check_errmsg("cannot change tracking status outside the tracking_register_relkinds function");
 	return false;
 }
 
+/*
+ * Prohibit changing the arenadata_toolkit.tracking_schemas value manually
+ */
 static bool
 check_schemas(char **newval, void **extra, GucSource source)
 {
-	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
-		(Gp_role == GP_ROLE_DISPATCH && is_schemas_unlocked))
-	{
-		if (is_schemas_unlocked)
-			is_schemas_unlocked = false;
-
-		if (source != PGC_S_DATABASE && source != PGC_S_DEFAULT && source != PGC_S_TEST)
-			return false;
-
+	bool manual = false;
+	if (check_guc(&is_schemas_unlocked, source, &manual))
 		return true;
-	}
 
-	GUC_check_errmsg("cannot change tracking status outside the tracking_register_schema function");
+	if (manual)
+		GUC_check_errmsg("cannot change tracking status outside the tracking_register_schema function");
 	return false;
 }
 
+/*
+ * Prohibit changing the arenadata_toolkit.tracking_relstorages value manually
+ */
 static bool
 check_relstorages(char **newval, void **extra, GucSource source)
 {
-	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
-		(Gp_role == GP_ROLE_DISPATCH && is_relstorages_unlocked))
-	{
-		if (is_relstorages_unlocked)
-			is_relstorages_unlocked = false;
-
-		if (source != PGC_S_DATABASE && source != PGC_S_DEFAULT && source != PGC_S_TEST)
-			return false;
-
+	bool manual = false;
+	if (check_guc(&is_relstorages_unlocked, source, &manual))
 		return true;
-	}
 
-	GUC_check_errmsg("cannot change tracking status outside the tracking_register_relstorages function");
+	if (manual)
+		GUC_check_errmsg("cannot change tracking status outside the tracking_register_relstorages function");
 	return false;
 }
 
