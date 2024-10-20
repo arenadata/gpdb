@@ -1882,9 +1882,6 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 						case DTK_DAY:
 							if (tzp == NULL)
 								return DTERR_BAD_FORMAT;
-							FALL_THROUGH
-						default:
-							break;
 					}
 
 					errno = 0;

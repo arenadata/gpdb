@@ -446,9 +446,6 @@ alignStringInfoInt(StringInfo buf)
 			FALL_THROUGH
 		case 1:
 			appendStringInfoCharMacro(buf, 0);
-			FALL_THROUGH
-		default:
-			break;
 	}
 }
 
