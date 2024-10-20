@@ -1266,7 +1266,7 @@ tracking_is_segment_initialized(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	HeapTuple	tuple;
 	Datum		values[2];
-	bool		nulls[2];
+	bool nulls[2] = {false, false};
 	Datum		result;
 
 	tf_check_shmem_error();
@@ -1279,7 +1279,7 @@ tracking_is_segment_initialized(PG_FUNCTION_ARGS)
 	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
 	values[1] = BoolGetDatum(tf_shared_state->is_initialized);
 	LWLockRelease(tf_shared_state->state_lock);
-	nulls[0] = nulls[1] = false;
+
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);
 
