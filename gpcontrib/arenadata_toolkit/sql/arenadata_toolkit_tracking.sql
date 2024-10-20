@@ -7,7 +7,7 @@
 \c
 -- end_ignore
 -- start_matchsubs
--- m/ERROR:  database \d+ is not tracked \(track_files\.c:\d+\)/
+-- m/ERROR:  database \d+ is not tracked/
 -- s/\d+/XXX/g
 -- end_matchsubs
 --start_ignore
@@ -73,7 +73,7 @@ SELECT relname, size, state, segid, relkind, relstorage
 FROM arenadata_toolkit.tracking_get_track();
 
 -- 9. Test repetitive track call within the same transaction. In case of
--- rollback only first changes shoul be present.
+-- rollback only first changes should be present.
 INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,10000);
 BEGIN;
 SELECT relname, size, state, segid, relkind, relstorage

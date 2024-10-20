@@ -8,7 +8,7 @@
 #include "utils/guc.h"
 #include "tf_shmem.h"
 
-#define DEFAULT_BLOOM_SIZE 1000000
+#define DEFAULT_BLOOM_SIZE_BYTES 1000000
 #define DEFAULT_DB_TRACK_COUNT 5
 #define DEFAULT_IS_TRACKED false
 #define DEFAULT_DROPS_COUNT 100000
@@ -16,7 +16,7 @@
 #define DEFAULT_GET_FULL_SNAPSHOT_ON_RECOVERY true
 #define DEFAULT_TRACKED_REL_STORAGES "h,a,c"
 #define DEFAULT_TRACKED_REL_KINDS "r,i,t,m,o,b,M"
-#define DEFAULT_NAPTIME 60
+#define DEFAULT_NAPTIME_SEC 60
 
 #define MIN_BLOOM_SIZE 1
 #define MIN_DB_TRACK_COUNT 1
@@ -28,7 +28,7 @@
 #define MAX_DROPS_COUNT 1000000
 #define MAX_NAPTIME OID_MAX & 0x7FFFFFFF
 
-int			bloom_size = DEFAULT_BLOOM_SIZE;
+int			bloom_size = DEFAULT_BLOOM_SIZE_BYTES;
 int			db_track_count = DEFAULT_DB_TRACK_COUNT;
 bool		is_tracked = DEFAULT_IS_TRACKED;
 bool		get_full_snapshot_on_recovery = DEFAULT_GET_FULL_SNAPSHOT_ON_RECOVERY;
@@ -36,7 +36,7 @@ int			drops_count = DEFAULT_DROPS_COUNT;
 char	   *tracked_schemas = DEFAULT_TRACKED_SCHEMAS;
 char	   *tracked_rel_storages = DEFAULT_TRACKED_REL_STORAGES;
 char	   *tracked_rel_kinds = DEFAULT_TRACKED_REL_KINDS;
-int			tracking_worker_naptime_sec = DEFAULT_NAPTIME;
+int			tracking_worker_naptime_sec = DEFAULT_NAPTIME_SEC;
 
 static bool is_tracked_unlocked = false;
 static bool is_get_full_snapshot_on_recovery_unlocked = false;
@@ -187,7 +187,7 @@ tf_guc_define(void)
 				   "Size of bloom filter in bytes for each tracked database",
 							NULL,
 							&bloom_size,
-							DEFAULT_BLOOM_SIZE,
+							DEFAULT_BLOOM_SIZE_BYTES,
 							MIN_BLOOM_SIZE,
 							MAX_BLOOM_SIZE,
 							PGC_POSTMASTER,
@@ -284,7 +284,7 @@ tf_guc_define(void)
 							"Toolkit background worker nap time",
 							NULL,
 							&tracking_worker_naptime_sec,
-							DEFAULT_NAPTIME,
+							DEFAULT_NAPTIME_SEC,
 							1,
 							MAX_NAPTIME,
 							PGC_SIGHUP,

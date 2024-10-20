@@ -32,7 +32,7 @@ PG_MODULE_MAGIC;
 
 static int64 calculate_relation_size(Relation rel, ForkNumber forknum);
 static int64 get_heap_storage_total_bytes(Relation rel,
-										  ForkNumber forknum, char *relpath);
+							 ForkNumber forknum, char *relpath);
 static int64 get_ao_storage_total_bytes(Relation rel, char *relpath);
 static bool calculate_ao_storage_perSegFile(const int segno, void *ctx);
 static void fill_relation_seg_path(char *buf, int bufLen,
@@ -374,7 +374,9 @@ adb_hba_file_rules(PG_FUNCTION_ARGS)
 	return pg_hba_file_rules(fcinfo);
 }
 
-/*	*/
+/*
+ * Calculates relation size among all the forks.
+ */
 int64
 dbsize_calc_size(Oid relid)
 {

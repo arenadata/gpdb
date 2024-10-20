@@ -1,6 +1,6 @@
 -- Tests for size tracking logic introduced in version 1.7
 -- start_matchsubs
--- m/ERROR:  database \d+ is not tracked \(track_files\.c:\d+\)/
+-- m/ERROR:  database \d+ is not tracked/
 -- s/\d+/XXX/g
 -- end_matchsubs
 CREATE DATABASE tracking_db1;
@@ -8,7 +8,8 @@ CREATE DATABASE tracking_db1;
 CREATE EXTENSION arenadata_toolkit;
 -- 1. Test getting track on not registered database;
 SELECT * FROM arenadata_toolkit.tracking_get_track();
-ERROR:  database 56212 is not tracked (track_files.c:368)
+ERROR:  database 102559 is not tracked
+HINT:  Call 'arenadata_toolkit.tracking_register_db()'to enable tracking
 CONTEXT:  SQL statement "SELECT * FROM arenadata_toolkit.tracking_get_track_main()"
 SELECT arenadata_toolkit.tracking_register_db();
  tracking_register_db 
@@ -137,7 +138,7 @@ FROM arenadata_toolkit.tracking_get_track();
 (0 rows)
 
 -- 9. Test repetitive track call within the same transaction. In case of
--- rollback only first changes shoul be present.
+-- rollback only first changes should be present.
 INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,10000);
 BEGIN;
 SELECT relname, size, state, segid, relkind, relstorage

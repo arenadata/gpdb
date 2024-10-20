@@ -348,7 +348,8 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 
 	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
 	if (tf_shared_state->has_error)
-		elog(ERROR, "Can't perform tracking properly due to internal error");
+		ereport(ERROR,
+				(errmsg("Can't perform tracking for database %u properly due to internal error", MyDatabaseId)));
 	LWLockRelease(tf_shared_state->state_lock);
 
 	if (SRF_IS_FIRSTCALL())
@@ -365,7 +366,11 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 		{
 			tf_get_global_state.bloom = palloc(FULL_BLOOM_SIZE(bloom_size));
 			if (!bloom_set_move(&tf_shared_state->bloom_set, MyDatabaseId, tf_get_global_state.bloom))
-				elog(ERROR, "database %u is not tracked", MyDatabaseId);
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_COMMAND_ERROR),
+						 errmsg("database %u is not tracked", MyDatabaseId),
+						 errhint("Call 'arenadata_toolkit.tracking_register_db()'"
+							 "to enable tracking")));
 		}
 		else
 		{
@@ -382,7 +387,11 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 			}
 			bloom_clear(tf_get_global_state.bloom);
 			if (!bloom_set_move(&tf_shared_state->bloom_set, MyDatabaseId, tf_get_global_state.bloom))
-				elog(ERROR, "database %u is not tracked", MyDatabaseId);
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_COMMAND_ERROR),
+						 errmsg("database %u is not tracked", MyDatabaseId),
+						 errhint("Call 'arenadata_toolkit.tracking_register_db()'"
+							 "to enable tracking")));
 		}
 		/* initial snapshot shouldn't return drops */
 		if (tf_get_global_state.bloom && !tf_get_global_state.bloom->is_set_all)
@@ -400,7 +409,8 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 		if (tf_get_global_state.relstorages == NIL ||
 			tf_get_global_state.relkinds == NIL ||
 			tf_get_global_state.schema_oids == NIL)
-			elog(ERROR, "cannot get tracking configuration (schemas, relkinds, reltorage) for database %u", MyDatabaseId);
+			ereport(ERROR,
+					(errmsg("Cannot get tracking configuration (schemas, relkinds, reltorage) for database %u", MyDatabaseId)));
 
 		MemoryContextSwitchTo(oldcontext);
 
@@ -476,13 +486,13 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 			continue;
 
 		datums[7] = heap_getattr(pg_class_tuple, Anum_pg_class_relkind, RelationGetDescr(state->pg_class_rel), &nulls[7]);
-		relkind = CharGetDatum(datums[7]);
+		relkind = DatumGetChar(datums[7]);
 
 		if (!relkind_is_tracked(relkind))
 			continue;
 
 		datums[8] = heap_getattr(pg_class_tuple, Anum_pg_class_relstorage, RelationGetDescr(state->pg_class_rel), &nulls[8]);
-		relstorage = CharGetDatum(datums[8]);
+		relstorage = DatumGetChar(datums[8]);
 
 		if (!relstorage_is_tracked(relstorage))
 			continue;
@@ -699,7 +709,8 @@ track_db(Oid dbid, bool reg)
 		stmt.dbname = get_database_name(dbid);
 
 		if (stmt.dbname == NULL)
-			elog(ERROR, "[arenadata_toolkit] database %u does not exist", dbid);
+			ereport(ERROR,
+					(errmsg("[arenadata_toolkit] database %u does not exist", dbid)));
 
 		stmt.setstmt = &v_stmt;
 
@@ -717,7 +728,8 @@ track_db(Oid dbid, bool reg)
 	if (!reg)
 		bloom_set_unbind(&tf_shared_state->bloom_set, dbid);
 	else if (!bloom_set_bind(&tf_shared_state->bloom_set, dbid))
-		elog(ERROR, "[arenadata_toolkit] exceeded maximum number of tracked databases");
+		ereport(ERROR,
+				(errmsg("[arenadata_toolkit] exceeded maximum number of tracked databases")));
 }
 
 /*
@@ -796,7 +808,8 @@ tracking_set_snapshot_on_recovery(PG_FUNCTION_ARGS)
 		stmt.setstmt = &v_stmt;
 
 		if (stmt.dbname == NULL)
-			elog(ERROR, "[arenadata_toolkit] database %u does not exist", dbid);
+			ereport(ERROR,
+					(errmsg("[arenadata_toolkit] database %u does not exist", dbid)));
 
 		v_stmt.type = T_VariableSetStmt;
 		v_stmt.kind = VAR_SET_VALUE;
@@ -942,7 +955,8 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 	stmt.dbname = get_database_name(dbid);
 
 	if (stmt.dbname == NULL)
-		elog(ERROR, "[arenadata_toolkit] database %u does not exist", dbid);
+		ereport(ERROR,
+				(errmsg("[arenadata_toolkit] database %u does not exist", dbid)));
 
 	stmt.setstmt = &v_stmt;
 
@@ -1076,7 +1090,8 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 	stmt.setstmt = &v_stmt;
 
 	if (stmt.dbname == NULL)
-		elog(ERROR, "[arenadata_toolkit] database %u does not exist", dbid);
+		ereport(ERROR,
+				(errmsg("[arenadata_toolkit] database %u does not exist", dbid)));
 
 	v_stmt.type = T_VariableSetStmt;
 	v_stmt.name = "arenadata_toolkit.tracking_relkinds";
@@ -1162,7 +1177,8 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 	stmt.dbname = get_database_name(dbid);
 
 	if (stmt.dbname == NULL)
-		elog(ERROR, "[arenadata_toolkit] database %u does not exist", dbid);
+		ereport(ERROR,
+				(errmsg("[arenadata_toolkit] database %u does not exist", dbid)));
 
 	stmt.setstmt = &v_stmt;
 
@@ -1210,14 +1226,15 @@ tracking_trigger_initial_snapshot(PG_FUNCTION_ARGS)
 	tf_check_shmem_error();
 
 	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
-	elog(LOG, "[arenadata_toolkit] tracking_trigger_initial_snapshot dbid: %d", dbid);
+	elog(LOG, "[arenadata_toolkit] tracking_trigger_initial_snapshot dbid: %u", dbid);
 
 	if (!bloom_set_trigger_bits(&tf_shared_state->bloom_set, dbid, true))
-		elog(ERROR, "Failed to find corresponding filter to database %u", dbid);
+		ereport(ERROR,
+				(errmsg("Failed to find corresponding filter to database %u", dbid)));
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		char	   *cmd = psprintf("select arenadata_toolkit.tracking_trigger_initial_snapshot(%d)", dbid);
+		char	   *cmd = psprintf("select arenadata_toolkit.tracking_trigger_initial_snapshot(%u)", dbid);
 
 		CdbDispatchCommand(cmd, 0, NULL);
 	}
@@ -1237,7 +1254,7 @@ tracking_is_initial_snapshot_triggered(PG_FUNCTION_ARGS)
 
 	is_triggered = bloom_set_is_all_bits_triggered(&tf_shared_state->bloom_set, dbid);
 
-	elog(LOG, "[arenadata_toolkit] is_initial_snapshot_triggered:%d dbid: %d", is_triggered, dbid);
+	elog(LOG, "[arenadata_toolkit] is_initial_snapshot_triggered:%d dbid: %u", is_triggered, dbid);
 
 	PG_RETURN_BOOL(is_triggered);
 }
