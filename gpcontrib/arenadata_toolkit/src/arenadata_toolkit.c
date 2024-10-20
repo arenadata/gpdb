@@ -33,8 +33,7 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
-	tf_shmem_deinit();
-	file_hook_deinit();
-	file_hook_deinit();
 	drops_track_deinit();
+	file_hook_deinit();
+	tf_shmem_deinit();
 }
