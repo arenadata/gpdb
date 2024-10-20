@@ -743,7 +743,7 @@ tracking_register_db(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 	elog(LOG, "[arenadata_toolkit] registering database %u for tracking", dbid);
 
 	track_db(dbid, true);
@@ -769,7 +769,7 @@ tracking_unregister_db(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 	elog(LOG, "[arenadata_toolkit] unregistering database %u from tracking", dbid);
 
 	track_db(dbid, false);
@@ -793,7 +793,7 @@ tracking_set_snapshot_on_recovery(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 
 	A_Const		aconst =
 	{.type = T_A_Const,.val = {.type = T_String,.val.str = set ? "t" : "f"}};
@@ -1002,7 +1002,7 @@ tracking_register_schema(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 
 	if (!SearchSysCacheExists1(NAMESPACENAME, CStringGetDatum(schema_name)))
 		ereport(ERROR,
@@ -1024,7 +1024,7 @@ tracking_unregister_schema(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 
 	if (!SearchSysCacheExists1(NAMESPACENAME, CStringGetDatum(schema_name)))
 		ereport(ERROR,
@@ -1062,7 +1062,7 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 
 	initStringInfo(&buf);
 	str_copy = pstrdup(relkinds_str);
@@ -1150,7 +1150,7 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 
 	initStringInfo(&buf);
 	str_copy = pstrdup(relstorages_str);
@@ -1225,7 +1225,7 @@ tracking_trigger_initial_snapshot(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 	elog(LOG, "[arenadata_toolkit] tracking_trigger_initial_snapshot dbid: %u", dbid);
 
 	if (!bloom_set_trigger_bits(&tf_shared_state->bloom_set, dbid, true))
@@ -1250,7 +1250,7 @@ tracking_is_initial_snapshot_triggered(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	dbid = dbid == InvalidOid ? MyDatabaseId : dbid;
+	dbid = (dbid == InvalidOid) ? MyDatabaseId : dbid;
 
 	is_triggered = bloom_set_is_all_bits_triggered(&tf_shared_state->bloom_set, dbid);
 
