@@ -30,7 +30,9 @@ tf_shmem_hook(void)
 
 	if (!found)
 	{
-		tf_shared_state->bgworker_ready = false;
+		tf_shared_state->is_initialized = false;
+		tf_shared_state->has_error = false;
+		tf_shared_state->state_lock = LWLockAssign();
 		bloom_set_init(db_track_count, bloom_size, &tf_shared_state->bloom_set);
 	}
 
@@ -42,7 +44,7 @@ void
 tf_shmem_init()
 {
 	/* don't forget to add additional locks */
-	RequestAddinLWLocks(1 + db_track_count);
+	RequestAddinLWLocks(2 + db_track_count);
 	RequestAddinShmemSpace(tf_shmem_calc_size());
 
 	next_shmem_startup_hook = shmem_startup_hook;

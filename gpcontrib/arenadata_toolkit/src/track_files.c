@@ -83,7 +83,7 @@ tf_check_shmem_error(void)
 	if (tf_shared_state == NULL)
 		ereport(ERROR,
 				(errmsg("Failed to access shared memory due to wrong extension initialization"),
-				 errhint("Load extension's code through shared_preload_library mechanism")));
+				 errhint("Load extension's code through shared_preload_library configuration")));
 }
 
 /*
@@ -346,13 +346,10 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	LWLockAcquire(tf_shared_state->bloom_set.lock, LW_EXCLUSIVE);
-	if (!tf_shared_state->bgworker_ready && Gp_role == GP_ROLE_DISPATCH)
-	{
-		LWLockRelease(tf_shared_state->bloom_set.lock);
-		elog(ERROR, "Can't get track before bgworker updates the tracking status.");
-	}
-	LWLockRelease(tf_shared_state->bloom_set.lock);
+	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
+	if (tf_shared_state->has_error)
+		elog(ERROR, "Can't perform tracking properly due to internal error");
+	LWLockRelease(tf_shared_state->state_lock);
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -435,6 +432,19 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 
 	funcctx = SRF_PERCALL_SETUP();
 	state = funcctx->user_fctx;
+
+	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
+	if (!tf_shared_state->is_initialized)
+	{
+		LWLockRelease(tf_shared_state->state_lock);
+		systable_endscan(state->scan);
+		heap_close(state->pg_class_rel, AccessShareLock);
+		state->scan = NULL;
+		state->pg_class_rel = NULL;
+		elog(WARNING, "Nothing to return from segment %d due to uninitialized status of Bloom filter", GpIdentity.segindex);
+		SRF_RETURN_DONE(funcctx);
+	}
+	LWLockRelease(tf_shared_state->state_lock);
 
 	while (true)
 	{
@@ -725,10 +735,6 @@ tracking_register_db(PG_FUNCTION_ARGS)
 	elog(LOG, "[arenadata_toolkit] registering database %u for tracking", dbid);
 
 	track_db(dbid, true);
-
-	LWLockAcquire(tf_shared_state->bloom_set.lock, LW_EXCLUSIVE);
-	tf_shared_state->is_initialized = true;
-	LWLockRelease(tf_shared_state->bloom_set.lock);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -1253,9 +1259,9 @@ tracking_is_segment_initialized(PG_FUNCTION_ARGS)
 
 	/* Populate an output tuple. */
 	values[0] = Int32GetDatum(GpIdentity.segindex);
-	LWLockAcquire(tf_shared_state->bloom_set.lock, LW_EXCLUSIVE);
+	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
 	values[1] = BoolGetDatum(tf_shared_state->is_initialized);
-	LWLockRelease(tf_shared_state->bloom_set.lock);
+	LWLockRelease(tf_shared_state->state_lock);
 	nulls[0] = nulls[1] = false;
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);

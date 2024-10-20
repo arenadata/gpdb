@@ -8,6 +8,7 @@
 #include "catalog/indexing.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbdispatchresult.h"
+#include "cdb/cdbvars.h"
 #include "libpq-fe.h"
 #include "postmaster/bgworker.h"
 #include "storage/proc.h"
@@ -18,22 +19,23 @@
 
 #include "arenadata_toolkit_worker.h"
 #include "arenadata_toolkit_guc.h"
+#include "bloom_set.h"
 #include "tf_shmem.h"
 
-#define EXTENSIONNAME "arenadata_toolkit"
+#define TOOLKIT_BINARY_NAME "arenadata_toolkit"
 
 typedef struct
 {
 	Oid			dbid;
+	Name		dbname;
 	bool		get_full_snapshot_on_recovery;
 }	tracked_db_t;
-
-static BackgroundWorker worker;
 
 /* flags set by signal handlers */
 static volatile sig_atomic_t got_sighup = false;
 static volatile sig_atomic_t got_sigterm = false;
-static volatile sig_atomic_t got_sigusr1 = false;
+
+void arenadata_toolkit_main(Datum);
 
 /* parse array of GUCs, find desired and analyze it */
 static bool
@@ -130,45 +132,6 @@ full_snapshot_on_recovery(ArrayType *array)
 	return take_snapshot;
 }
 
-static List *
-get_uninitialized_segments()
-{
-	int			i;
-	CdbPgResults cdb_pgresults = {NULL, 0};
-	List	   *list = NIL;
-
-	CdbDispatchCommand("select * from arenadata_toolkit.tracking_is_segment_initialized()", 0, &cdb_pgresults);
-
-	for (i = 0; i < cdb_pgresults.numResults; i++)
-	{
-		struct pg_result *pgresult = cdb_pgresults.pg_results[i];
-
-		if (PQresultStatus(pgresult) != PGRES_TUPLES_OK)
-		{
-			cdbdisp_clearCdbPgResults(&cdb_pgresults);
-			elog(ERROR, "is_initialized: resultStatus not tuples_Ok: %s %s",
-				 PQresStatus(PQresultStatus(pgresult)), PQresultErrorMessage(pgresult));
-		}
-		else
-		{
-			int32		segindex = 0;
-			bool		is_initialized = false;
-
-			segindex = atoi(PQgetvalue(pgresult, 0, 0));
-			is_initialized = strcmp(PQgetvalue(pgresult, 0, 1), "t") == 0;
-
-			elog(LOG, "get_uninitialized_segments, segindex: %d, is_initialized: %d", segindex, is_initialized);
-
-			if (!is_initialized)
-				list = lappend_int(list, segindex);
-		}
-	}
-
-	cdbdisp_clearCdbPgResults(&cdb_pgresults);
-
-	return list;
-}
-
 /*
  * Signal handler for SIGTERM
  * Set a flag to let the main loop to terminate, and set our latch to wake
@@ -203,114 +166,16 @@ tracking_sighup(SIGNAL_ARGS)
 	errno = save_errno;
 }
 
-/*
- * Signal handler for SIGUSR1
- * Set a flag to tell the launcher to handle extension ddl message
- */
-static void
-tracking_sigusr1(SIGNAL_ARGS)
-{
-	int			save_errno = errno;
-
-	got_sigusr1 = true;
-	if (MyProc)
-		SetLatch(&MyProc->procLatch);
-
-	errno = save_errno;
-}
-
-static bool
-extension_created()
-{
-	bool		exists = false;
-	Relation	rel;
-	SysScanDesc scandesc;
-	HeapTuple	tuple;
-	ScanKeyData entry[1];
-
-	rel = heap_open(ExtensionRelationId, AccessShareLock);
-
-	ScanKeyInit(&entry[0],
-				Anum_pg_extension_extname,
-				BTEqualStrategyNumber, F_NAMEEQ,
-				CStringGetDatum(EXTENSIONNAME));
-
-	scandesc = systable_beginscan(rel, ExtensionNameIndexId, true,
-								  NULL, 1, entry);
-
-	tuple = systable_getnext(scandesc);
-
-	exists = HeapTupleIsValid(tuple);
-
-	systable_endscan(scandesc);
-	heap_close(rel, AccessShareLock);
-
-	return exists;
-}
-
-static void
-dispatch_register_to_master(List *dbids)
-{
-	ListCell   *cell;
-	tracked_db_t *trackedDb;
-
-	foreach(cell, dbids)
-	{
-		trackedDb = (tracked_db_t *) lfirst(cell);
-
-		bloom_set_bind(&tf_shared_state->bloom_set, trackedDb->dbid);
-		bloom_set_trigger_bits(&tf_shared_state->bloom_set, trackedDb->dbid,
-							   trackedDb->get_full_snapshot_on_recovery);
-	}
-
-	LWLockAcquire(tf_shared_state->bloom_set.lock, LW_EXCLUSIVE);
-	tf_shared_state->is_initialized = true;
-	LWLockRelease(tf_shared_state->bloom_set.lock);
-}
-
-static void
-dispatch_register_to_segments(List *dbids, List *uninitialized_segments)
-{
-	ListCell   *cell;
-	tracked_db_t *trackedDb;
-	CdbPgResults cdb_pgresults = {NULL, 0};
-
-	if (uninitialized_segments == NIL)
-		return;
-
-	foreach(cell, dbids)
-	{
-		trackedDb = (tracked_db_t *) lfirst(cell);
-
-		char	   *cmd = psprintf("select arenadata_toolkit.tracking_register_db(%u)", trackedDb->dbid);
-
-		CdbDispatchCommandToSegments(cmd,
-									 0,
-									 uninitialized_segments,
-									 &cdb_pgresults);
-
-		if (trackedDb->get_full_snapshot_on_recovery)
-		{
-			cmd = psprintf("select arenadata_toolkit.tracking_trigger_initial_snapshot(%u)", trackedDb->dbid);
-
-			CdbDispatchCommandToSegments(cmd,
-										 0,
-										 uninitialized_segments,
-										 &cdb_pgresults);
-		}
-	}
-}
-
-static void
-dispatch_register(bool dispatch_to_master, List *uninitialized_segments)
+static List*
+get_tracked_dbs()
 {
 	Relation	rel;
 	SysScanDesc scan;
 	HeapTuple	tup;
-	List	   *dbids = NIL;
+	List		*tracked_dbs = NIL;
 	tracked_db_t *trackedDb;
 
-	rel = heap_open(DbRoleSettingRelationId, RowExclusiveLock);
+	rel = heap_open(DbRoleSettingRelationId, AccessShareLock);
 	scan = systable_beginscan(rel, InvalidOid, false, NULL, 0, NULL);
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
@@ -342,46 +207,58 @@ dispatch_register(bool dispatch_to_master, List *uninitialized_segments)
 
 			trackedDb->dbid = DatumGetObjectId(oid_datum);
 			trackedDb->get_full_snapshot_on_recovery = full_snapshot_on_recovery(a);
-			dbids = lappend(dbids, trackedDb);
+			tracked_dbs = lappend(tracked_dbs, trackedDb);
 		}
 	}
 
 	systable_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
+	heap_close(rel, AccessShareLock);
 
-	if (dbids != NIL)
+	return tracked_dbs;
+}
+
+static void
+track_dbs(List *tracked_dbs)
+{
+	ListCell   *cell;
+	tracked_db_t *trackedDb;
+
+	foreach(cell, tracked_dbs)
 	{
-		ListCell   *cell;
+		trackedDb = (tracked_db_t *) lfirst(cell);
 
-		if (dispatch_to_master)
-			dispatch_register_to_master(dbids);
-
-		dispatch_register_to_segments(dbids, uninitialized_segments);
-
-		foreach(cell, dbids)
-		{
-			pfree(lfirst(cell));
-		}
-
-		list_free(dbids);
+		bloom_set_bind(&tf_shared_state->bloom_set, trackedDb->dbid);
+		bloom_set_trigger_bits(&tf_shared_state->bloom_set, trackedDb->dbid,
+							   trackedDb->get_full_snapshot_on_recovery);
 	}
-
-	LWLockAcquire(tf_shared_state->bloom_set.lock, LW_EXCLUSIVE);
-	tf_shared_state->bgworker_ready = true;
-	LWLockRelease(tf_shared_state->bloom_set.lock);
 }
 
 /* scan pg_db_role_setting, find all databases, bind blooms if necessary */
-static void
-arenadata_toolkit_worker(Datum main_arg)
+void
+arenadata_toolkit_main(Datum main_arg)
 {
 	elog(LOG, "[arenadata toolkit] Starting background worker");
 
-	bool		master_initialized = false;
+	/*
+	 * The worker shouldn't exist when the master boots in utility mode.
+	 * Otherwise BackgroundWorkerInitializeConnection will explode with FATAL.
+	 */
+	if(IS_QUERY_DISPATCHER() && Gp_role != GP_ROLE_DISPATCH)
+	{
+		proc_exit(0);
+	}
+
+	/*
+	 * Kludge for scanning pg_db_role_setting on segments.
+	 */
+	if (!IS_QUERY_DISPATCHER() && Gp_role == GP_ROLE_DISPATCH)
+	{
+		Gp_role = GP_ROLE_UTILITY;
+		Gp_session_role = GP_ROLE_UTILITY;
+	}
 
 	pqsignal(SIGHUP, tracking_sighup);
 	pqsignal(SIGTERM, tracking_sigterm);
-	pqsignal(SIGUSR1, tracking_sigusr1);
 
 	BackgroundWorkerUnblockSignals();
 
@@ -390,31 +267,43 @@ arenadata_toolkit_worker(Datum main_arg)
 	while (!got_sigterm)
 	{
 		int			rc;
-		List	   *uninitialized_segments = NIL;
-
-		CHECK_FOR_INTERRUPTS();
+		List	   *tracked_dbs = NIL;
 
 		StartTransactionCommand();
+		tracked_dbs = get_tracked_dbs();
 
-		if (extension_created())
+		if (!tf_shared_state->is_initialized && list_length(tracked_dbs) > 0)
 		{
-			elog(LOG, "[arenadata toolkit] Getting uninitialized segments");
-			uninitialized_segments = get_uninitialized_segments(uninitialized_segments);
-
-			if (!master_initialized || list_length(uninitialized_segments) > 0)
-			{
-				elog(LOG, "Dispatching register to segments");
-				dispatch_register(!master_initialized, uninitialized_segments);
-				list_free(uninitialized_segments);
-				uninitialized_segments = NIL;
-				master_initialized = true;
-			}
+			track_dbs(tracked_dbs);
+			LWLockAcquire(tf_shared_state->state_lock, LW_EXCLUSIVE);
+			tf_shared_state->is_initialized = true;
+			LWLockRelease(tf_shared_state->state_lock);
 		}
+
+		/*
+		 * Here is quite a dump check, which imitates consistency validation.
+		 * Written as an example of segment erroneous tracking status.
+		 */
+		if (list_length(tracked_dbs) != bloom_set_count(&tf_shared_state->bloom_set))
+		{
+			LWLockAcquire(tf_shared_state->state_lock, LW_EXCLUSIVE);
+			tf_shared_state->has_error = true;
+			LWLockRelease(tf_shared_state->state_lock);
+		}
+
+		if (tracked_dbs)
+			list_free_deep(tracked_dbs);
+
 		CommitTransactionCommand();
 
 		rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
 					   tracking_worker_naptime_sec * 1000);
-		ResetLatch(&MyProc->procLatch);
+
+		if (rc & WL_LATCH_SET)
+		{
+			ResetLatch(&MyProc->procLatch);
+			CHECK_FOR_INTERRUPTS();
+		}
 
 		/* Emergency bailout if postmaster has died */
 		if (rc & WL_POSTMASTER_DEATH)
@@ -425,8 +314,11 @@ arenadata_toolkit_worker(Datum main_arg)
 
 		if (got_sighup)
 		{
+			elog(DEBUG1, "[arenadata_tookit] got sighup");
 			got_sighup = false;
+			ProcessConfigFile(PGC_SIGHUP);
 		}
+
 	}
 
 	if (got_sigterm)
@@ -436,15 +328,19 @@ arenadata_toolkit_worker(Datum main_arg)
 }
 
 void
-arenadata_toolkit_worker_register(void)
+arenadata_toolkit_worker_register()
 {
+	BackgroundWorker worker;
+
+	memset(&worker, 0, sizeof(BackgroundWorker));
+
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
-	worker.bgw_start_time = BgWorkerStart_ConsistentState;
+	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
 	worker.bgw_restart_time = BGW_DEFAULT_RESTART_INTERVAL;
-	worker.bgw_main = arenadata_toolkit_worker;
+	snprintf(worker.bgw_library_name, BGW_MAXLEN, TOOLKIT_BINARY_NAME);
+	snprintf(worker.bgw_function_name, BGW_MAXLEN, "arenadata_toolkit_main");
 	worker.bgw_notify_pid = 0;
-	worker.bgw_start_rule = NULL;
-	sprintf(worker.bgw_name, "arenadata_toolkit");
+	snprintf(worker.bgw_name, BGW_MAXLEN, "arenadata_toolkit");
 
 	RegisterBackgroundWorker(&worker);
 }

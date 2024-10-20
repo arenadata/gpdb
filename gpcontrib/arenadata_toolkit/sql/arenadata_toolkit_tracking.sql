@@ -2,8 +2,8 @@
 -- start_ignore
 \! gpconfig -c shared_preload_libraries -v 'arenadata_toolkit'
 \! gpstop -raq -M fast
-\! gpconfig -c arenadata_toolkit.tracking_worker_naptime_sec -v '5'
-\! gpstop -raq -M fast
+\! gpconfig -c arenadata_toolkit.tracking_worker_naptime_sec -v '1'
+\! gpstop -u
 \c
 -- end_ignore
 -- start_matchsubs
@@ -18,10 +18,10 @@ CREATE DATABASE tracking_db1;
 CREATE EXTENSION arenadata_toolkit;
 
 -- 1. Test getting track on not registered database;
-SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int);
 SELECT * FROM arenadata_toolkit.tracking_get_track();
 
 SELECT arenadata_toolkit.tracking_register_db();
+SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int * 2);
 
 -- 2. Test initial snapshot behaviour. Triggering initial snapshot leads to
 -- setting up the bloom filter such that all relfilenodes are considered.
@@ -112,5 +112,5 @@ DROP DATABASE tracking_db1;
 -- start_ignore
 \! gpconfig -r shared_preload_libraries
 \! gpconfig -r arenadata_toolkit.tracking_worker_naptime_sec
-\! gpstop -raq -M fast
+\! gpstop -u
 -- end_ignore

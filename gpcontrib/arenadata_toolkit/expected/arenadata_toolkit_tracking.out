@@ -7,19 +7,19 @@ CREATE DATABASE tracking_db1;
 \c tracking_db1;
 CREATE EXTENSION arenadata_toolkit;
 -- 1. Test getting track on not registered database;
-SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int);
- pg_sleep 
-----------
- 
-(1 row)
-
 SELECT * FROM arenadata_toolkit.tracking_get_track();
-ERROR:  database 44817 is not tracked (track_files.c:347)
+ERROR:  database 56212 is not tracked (track_files.c:368)
 CONTEXT:  SQL statement "SELECT * FROM arenadata_toolkit.tracking_get_track_main()"
 SELECT arenadata_toolkit.tracking_register_db();
  tracking_register_db 
 ----------------------
  t
+(1 row)
+
+SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int * 2);
+ pg_sleep 
+----------
+ 
 (1 row)
 
 -- 2. Test initial snapshot behaviour. Triggering initial snapshot leads to

@@ -287,7 +287,7 @@ tf_guc_define(void)
 							DEFAULT_NAPTIME,
 							1,
 							MAX_NAPTIME,
-							PGC_POSTMASTER,
+							PGC_SIGHUP,
 							0,
 							NULL,
 							NULL,

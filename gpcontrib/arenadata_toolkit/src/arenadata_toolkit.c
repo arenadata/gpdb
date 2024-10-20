@@ -27,10 +27,7 @@ _PG_init(void)
 
 	drops_track_init();
 
-	if (IS_QUERY_DISPATCHER())
-	{
-		arenadata_toolkit_worker_register();
-	}
+	arenadata_toolkit_worker_register();
 }
 
 void

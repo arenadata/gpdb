@@ -5,7 +5,8 @@
 
 typedef struct
 {
-	bool		bgworker_ready; /* is bgworker complete with its job */
+	LWLock		*state_lock;
+	bool		has_error;
 	bool		is_initialized;
 	bloom_set_t bloom_set;
 }	tf_shared_state_t;

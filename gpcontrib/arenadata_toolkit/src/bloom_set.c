@@ -278,3 +278,22 @@ bloom_set_is_all_bits_triggered(bloom_set_t * bloom_set, Oid dbid)
 
 	return is_triggered;
 }
+
+int
+bloom_set_count(bloom_set_t * bloom_set)
+{
+	int count = 0;
+	bloom_entry_t *bloom_entry;
+
+	LWLockAcquire(bloom_set->lock, LW_SHARED);
+	for (int i = 0; i < bloom_set->bloom_count; ++i)
+	{
+		bloom_entry = BLOOM_ENTRY_GET(bloom_set, i);
+		LWLockAcquire(bloom_entry->lock, LW_SHARED);
+		if (bloom_entry->dbid != InvalidOid)
+			++count;
+		LWLockRelease(bloom_entry->lock);
+	}
+	LWLockRelease(bloom_set->lock);
+	return count;
+}

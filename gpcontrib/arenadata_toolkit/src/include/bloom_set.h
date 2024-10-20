@@ -37,5 +37,6 @@ bloom_t    *bloom_set_move(bloom_set_t * bloom_set, Oid dbid, void *mem);
 bool		bloom_set_merge(bloom_set_t * bloom_set, Oid dbid, bloom_t * m_bloom);
 bool		bloom_set_trigger_bits(bloom_set_t * bloom_set, Oid dbid, bool on);
 bool		bloom_set_is_all_bits_triggered(bloom_set_t * bloom_set, Oid dbid);
+int			bloom_set_count(bloom_set_t * bloom_set);
 
 #endif   /* BLOOM_SET_H */
