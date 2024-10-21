@@ -897,6 +897,17 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 					 errhint("Use OIDS=FALSE.")));
 	}
 
+	if (gp_add_partition_inherits_table_setting && stmt->is_add_part)
+	{
+		ListCell *lc;
+		foreach(lc, stmt->options)
+		{
+			DefElem *de = lfirst(lc);
+			if (pg_strcasecmp(de->defname, "appendonly") == 0 && pg_strcasecmp(defGetString(de), "none") != 0)
+				useChangedOpts = false;
+		}
+	}
+
 	bool valid_opts = (relstorage == RELSTORAGE_EXTERNAL || !useChangedOpts);
 
 	/*
@@ -14419,7 +14430,7 @@ drop_parent_dependency(Oid relid, Oid refclassid, Oid refobjid, bool is_partitio
 /*
  * deparse pg_class.reloptions into a list.
  */
-static List *
+List *
 reloptions_list(Oid relid)
 {
 	Datum		reloptions;

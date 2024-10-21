@@ -1363,6 +1363,8 @@
                   >max_appendonly_tables</xref>
               </p><xref href="guc-list.xml#gp_add_column_inherits_table_setting"
                 >gp_add_column_inherits_table_setting</xref>
+              <xref href="guc-list.xml#gp_add_partition_inherits_table_setting"
+                >gp_add_partition_inherits_table_setting</xref>
               <p>
                 <xref href="guc-list.xml#gp_appendonly_compaction" type="section"
                   >gp_appendonly_compaction</xref>

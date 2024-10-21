@@ -137,4 +137,6 @@ extern void RangeVarCallbackOwnsRelation(const RangeVar *relation,
 							 Oid relId, Oid oldRelId, void *noCatalogs);
 
 extern List * rel_get_column_encodings(Relation rel);
+
+extern List * reloptions_list(Oid relid);
 #endif   /* TABLECMDS_H */
