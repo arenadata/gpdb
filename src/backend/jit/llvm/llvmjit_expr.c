@@ -664,7 +664,7 @@ llvm_compile_expr(ExprState *state)
 
 					LLVMPositionBuilderAtEnd(b, b_nonull);
 				}
-				/* FALLTHROUGH */
+				FALL_THROUGH
 
 			case EEOP_FUNCEXPR:
 				{
@@ -703,7 +703,7 @@ llvm_compile_expr(ExprState *state)
 					LLVMBuildStore(b, l_sbool_const(0), v_boolanynullp);
 
 				}
-				/* FALLTHROUGH */
+				FALL_THROUGH
 
 				/*
 				 * Treat them the same for now, optimizer can remove
@@ -804,7 +804,7 @@ llvm_compile_expr(ExprState *state)
 												 l_ptr(TypeStorageBool));
 					LLVMBuildStore(b, l_sbool_const(0), v_boolanynullp);
 				}
-				/* FALLTHROUGH */
+				FALL_THROUGH
 
 				/*
 				 * Treat them the same for now, optimizer can remove
@@ -2111,7 +2111,7 @@ llvm_compile_expr(ExprState *state)
 									b_deserialize);
 					LLVMPositionBuilderAtEnd(b, b_deserialize);
 				}
-				/* FALLTHROUGH */
+				FALL_THROUGH
 
 			case EEOP_AGG_DESERIALIZE:
 				{

@@ -579,7 +579,7 @@ ResLockPortal(Portal portal, QueryDesc *qDesc)
 					break;
 				}
 			}
-			/* fallthrough */
+			FALL_THROUGH
 
 
 			case T_SelectStmt:

@@ -908,17 +908,17 @@ GpMurmurHash64A (const void * key, int len, unsigned int seed)
 
     switch(len & 7) {
         case 7: h ^= (uint64_t)data[6] << 48;
-		/* fallthrough */
+		FALL_THROUGH
         case 6: h ^= (uint64_t)data[5] << 40;
-		/* fallthrough */
+		FALL_THROUGH
         case 5: h ^= (uint64_t)data[4] << 32;
-		/* fallthrough */
+		FALL_THROUGH
         case 4: h ^= (uint64_t)data[3] << 24;
-		/* fallthrough */
+		FALL_THROUGH
         case 3: h ^= (uint64_t)data[2] << 16;
-		/* fallthrough */
+		FALL_THROUGH
         case 2: h ^= (uint64_t)data[1] << 8;
-		/* fallthrough */
+		FALL_THROUGH
         case 1: h ^= (uint64_t)data[0];
         h *= m;
     };
