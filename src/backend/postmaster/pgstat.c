@@ -4825,6 +4825,11 @@ pgstat_combine_one_qe_result(List **oidList, struct pg_result *pgresult,
 
 	if (!pgresult || pgresult->extraslen < 1 || pgresult->extraType != PGExtraTypeTableStats)
 		return;
+	/*
+	* If this is the first rel to be modified at the current nest level,
+	* we first have to push a transaction stack entry.
+	*/
+	get_tabstat_stack_level(nest_level);
 
 	arrayLen = pgresult->extraslen / sizeof(PgStatTabRecordFromQE);
 	records = (PgStatTabRecordFromQE *) pgresult->extras;
