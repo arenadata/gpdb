@@ -1,9 +1,9 @@
 -- start_ignore
 ! gpconfig -c runaway_detector_activation_percent -v 100;
-! gpstop -rai
+! gpstop -rai;
 -- end_ignore
 
-CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS '/home/kds/gpdb/src/test/isolation2/../regress/regress.so', 'resGroupPalloc' LANGUAGE C READS SQL DATA;
+CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS '/home/gpadmin/gpdb_src/src/test/isolation2/../regress/regress.so', 'resGroupPalloc' LANGUAGE C READS SQL DATA;
 CREATE
 
 ALTER RESOURCE GROUP default_group SET memory_limit 10;

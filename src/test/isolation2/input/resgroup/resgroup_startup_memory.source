@@ -1,8 +1,6 @@
 -- start_ignore
-
 ! gpconfig -c runaway_detector_activation_percent -v 100;
 ! gpstop -rai;
-
 -- end_ignore
 
 CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS
