@@ -1211,10 +1211,14 @@ typedef union PGAlignedXLogBlock
 	((underlying_type) (expr))
 #endif
 
-#if defined(__clang__) || (defined(__GNUC__) && __GNUC__ >= 7)
+#if __has_attribute(fallthrough)
 	#define FALL_THROUGH __attribute__((fallthrough));
 #elif
-	#define FALL_THROUGH /* fall through */
+	/*
+	 * This is a fallback option for those compilers which don't support
+	 * "fallthrough" attribute. If that's the case, then do nothing.
+	 */
+	#define FALL_THROUGH
 #endif
 
 /* ----------------------------------------------------------------
