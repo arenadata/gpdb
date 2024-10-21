@@ -7143,17 +7143,6 @@ atpxPartAddList(Relation rel,
 				((CreateStmt *) q)->ownerid = ownerid;
 			}
 
-			StdRdOptions ao_opts;
-
-			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
-			{
-				ao_opts = *currentAOStorageOptions();
-				resetDefaultAOStorageOpts();
-			}
-
-			PG_TRY();
-			{
-
 			/*
 			 * normal case - add partitions using CREATE statements that get
 			 * dispatched to the segments
@@ -7226,18 +7215,6 @@ atpxPartAddList(Relation rel,
 				}
 			}					/* end else setting subpartition templates
 								 * only */
-			}
-			PG_CATCH();
-			{
-				if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
-					setDefaultAOStorageOpts(&ao_opts);
-
-				PG_RE_THROW();
-			}
-			PG_END_TRY();
-
-			if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
-				setDefaultAOStorageOpts(&ao_opts);
 
 			ii++;
 		}						/* end for each cell */

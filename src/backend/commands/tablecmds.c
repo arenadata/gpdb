@@ -897,6 +897,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId, char relstorage, boo
 					 errhint("Use OIDS=FALSE.")));
 	}
 
+	if (gp_add_partition_inherits_table_setting && stmt->is_add_part)
+		useChangedOpts = false;
 	bool valid_opts = (relstorage == RELSTORAGE_EXTERNAL || !useChangedOpts);
 
 	/*
