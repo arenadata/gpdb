@@ -23,7 +23,7 @@ CI pushes docker images to the internal registry for each branch. We can pull it
 ## Full regression tests suite run
 
 We need to execute [../concourse/scripts/ic_gpdb.bash](../concourse/scripts/ic_gpdb.bash) in container to create demo cluster and run different test suites against it.
-For Ubuntu:
+for Ubuntu:
 ```bash
  docker run --name gpdb7_opt_on --rm -it -e TEST_OS=ubuntu \
   -e MAKE_TEST_COMMAND="-k PGOPTIONS='-c optimizer=on' installcheck-world" \
