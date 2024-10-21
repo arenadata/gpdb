@@ -346,11 +346,11 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
+	LWLockAcquire(tf_state_lock, LW_SHARED);
 	if (tf_shared_state->has_error)
 		ereport(ERROR,
 				(errmsg("Can't perform tracking for database %u properly due to internal error", MyDatabaseId)));
-	LWLockRelease(tf_shared_state->state_lock);
+	LWLockRelease(tf_state_lock);
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -443,10 +443,10 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 	funcctx = SRF_PERCALL_SETUP();
 	state = funcctx->user_fctx;
 
-	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
+	LWLockAcquire(tf_state_lock, LW_SHARED);
 	if (!tf_shared_state->is_initialized)
 	{
-		LWLockRelease(tf_shared_state->state_lock);
+		LWLockRelease(tf_state_lock);
 		systable_endscan(state->scan);
 		heap_close(state->pg_class_rel, AccessShareLock);
 		state->scan = NULL;
@@ -454,7 +454,7 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 		elog(WARNING, "Nothing to return from segment %d due to uninitialized status of Bloom filter", GpIdentity.segindex);
 		SRF_RETURN_DONE(funcctx);
 	}
-	LWLockRelease(tf_shared_state->state_lock);
+	LWLockRelease(tf_state_lock);
 
 	while (true)
 	{
@@ -1276,9 +1276,9 @@ tracking_is_segment_initialized(PG_FUNCTION_ARGS)
 
 	/* Populate an output tuple. */
 	values[0] = Int32GetDatum(GpIdentity.segindex);
-	LWLockAcquire(tf_shared_state->state_lock, LW_SHARED);
+	LWLockAcquire(tf_state_lock, LW_SHARED);
 	values[1] = BoolGetDatum(tf_shared_state->is_initialized);
-	LWLockRelease(tf_shared_state->state_lock);
+	LWLockRelease(tf_state_lock);
 
 	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);

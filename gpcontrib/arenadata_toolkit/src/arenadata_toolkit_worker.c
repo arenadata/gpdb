@@ -275,9 +275,9 @@ arenadata_toolkit_main(Datum main_arg)
 		if (!tf_shared_state->is_initialized && list_length(tracked_dbs) > 0)
 		{
 			track_dbs(tracked_dbs);
-			LWLockAcquire(tf_shared_state->state_lock, LW_EXCLUSIVE);
+			LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
 			tf_shared_state->is_initialized = true;
-			LWLockRelease(tf_shared_state->state_lock);
+			LWLockRelease(tf_state_lock);
 		}
 
 		/*
@@ -286,9 +286,9 @@ arenadata_toolkit_main(Datum main_arg)
 		 */
 		if (list_length(tracked_dbs) != bloom_set_count(&tf_shared_state->bloom_set))
 		{
-			LWLockAcquire(tf_shared_state->state_lock, LW_EXCLUSIVE);
+			LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
 			tf_shared_state->has_error = true;
-			LWLockRelease(tf_shared_state->state_lock);
+			LWLockRelease(tf_state_lock);
 		}
 
 		if (tracked_dbs)

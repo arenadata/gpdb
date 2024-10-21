@@ -12,12 +12,12 @@ typedef struct
 	char		map[] /* filter itself, array of bytes */ ;
 }	bloom_t;
 
-bloom_t    *bloom_init(const uint32_t bloom_size, void *mem);
+void		bloom_init(const uint32_t bloom_size, bloom_t *bloom);
 int			bloom_isset(bloom_t * bloom, uint64_t hash);
 void		bloom_set(bloom_t * bloom, uint64_t hash);
 void		bloom_set_all(bloom_t * bloom);
 void		bloom_clear(bloom_t * bloom);
 void		bloom_merge(bloom_t * dst, bloom_t * src);
-bloom_t    *bloom_copy(bloom_t * bloom, void *mem);
+void		bloom_copy(bloom_t * src, bloom_t *dest);
 
 #endif   /* BLOOM_H */

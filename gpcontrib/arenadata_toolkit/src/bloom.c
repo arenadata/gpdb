@@ -5,15 +5,11 @@
 
 #include <string.h>
 
-bloom_t *
-bloom_init(const uint32_t bloom_size, void *mem)
+void
+bloom_init(const uint32_t bloom_size, bloom_t *bloom)
 {
-	bloom_t    *bloom = mem;
-
 	bloom->size = bloom_size;
 	bloom_clear(bloom);
-
-	return bloom;
 }
 
 static uint32_t
@@ -67,14 +63,10 @@ bloom_merge(bloom_t * dst, bloom_t * src)
 		dst->is_set_all = src->is_set_all;
 }
 
-bloom_t *
-bloom_copy(bloom_t * bloom, void *mem)
+void
+bloom_copy(bloom_t * src, bloom_t *dest)
 {
-	bloom_t    *copy;
-
-	copy = bloom_init(bloom->size, mem);
-	memcpy(copy->map, bloom->map, bloom->size);
-	copy->is_set_all = bloom->is_set_all;
-
-	return copy;
+	dest->size = src->size;
+	memcpy(dest->map, src->map, src->size);
+	dest->is_set_all = src->is_set_all;
 }

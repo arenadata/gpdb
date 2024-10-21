@@ -8,26 +8,6 @@
 #include "utils/guc.h"
 #include "tf_shmem.h"
 
-#define DEFAULT_BLOOM_SIZE_BYTES 1000000
-#define DEFAULT_DB_TRACK_COUNT 5
-#define DEFAULT_IS_TRACKED false
-#define DEFAULT_DROPS_COUNT 100000
-#define DEFAULT_TRACKED_SCHEMAS "public,arenadata_toolkit,pg_catalog,pg_toast,pg_aoseg,information_schema"
-#define DEFAULT_GET_FULL_SNAPSHOT_ON_RECOVERY true
-#define DEFAULT_TRACKED_REL_STORAGES "h,a,c"
-#define DEFAULT_TRACKED_REL_KINDS "r,i,t,m,o,b,M"
-#define DEFAULT_NAPTIME_SEC 60
-
-#define MIN_BLOOM_SIZE 1
-#define MIN_DB_TRACK_COUNT 1
-#define MIN_DROPS_COUNT 1
-#define MIN_NAPTIME 1
-
-#define MAX_BLOOM_SIZE 128000000
-#define MAX_DB_TRACK_COUNT 1000
-#define MAX_DROPS_COUNT 1000000
-#define MAX_NAPTIME OID_MAX & 0x7FFFFFFF
-
 int			bloom_size = DEFAULT_BLOOM_SIZE_BYTES;
 int			db_track_count = DEFAULT_DB_TRACK_COUNT;
 bool		is_tracked = DEFAULT_IS_TRACKED;
