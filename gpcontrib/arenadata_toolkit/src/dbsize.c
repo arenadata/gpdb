@@ -25,6 +25,8 @@
 #include "catalog/pg_tablespace.h"
 #include "storage/lock.h"
 
+#include "dbsize.h"
+
 PG_MODULE_MAGIC;
 
 /*
@@ -369,4 +371,30 @@ PG_FUNCTION_INFO_V1(adb_hba_file_rules);
 Datum adb_hba_file_rules(PG_FUNCTION_ARGS)
 {
 	return pg_hba_file_rules(fcinfo);
+}
+/*
+ * Calculates relation size among all the forks.
+ */
+int64
+dbsize_calc_size(Oid relid)
+{
+	Relation	rel;
+	int64		size = 0;
+
+	rel = try_relation_open(relid, AccessShareLock, false);
+
+	if (rel == NULL)
+		return size;
+
+	if (rel->rd_node.relNode == 0)
+		return size;
+
+	size += calculate_relation_size(rel, MAIN_FORKNUM);
+	size += calculate_relation_size(rel, FSM_FORKNUM);
+	size += calculate_relation_size(rel, VISIBILITYMAP_FORKNUM);
+	size += calculate_relation_size(rel, INIT_FORKNUM);
+
+	relation_close(rel, AccessShareLock);
+
+	return size;
 }

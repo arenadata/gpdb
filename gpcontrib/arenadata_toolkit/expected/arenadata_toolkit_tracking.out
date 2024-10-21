@@ -1,0 +1,224 @@
+-- Tests for size tracking logic introduced in version 1.7
+-- start_matchsubs
+-- m/ERROR:  database \d+ is not tracked/
+-- s/\d+/XXX/g
+-- end_matchsubs
+CREATE DATABASE tracking_db1;
+\c tracking_db1;
+CREATE EXTENSION arenadata_toolkit;
+-- 1. Test getting track on not registered database;
+SELECT * FROM arenadata_toolkit.tracking_get_track();
+ERROR:  database 102559 is not tracked
+HINT:  Call 'arenadata_toolkit.tracking_register_db()'to enable tracking
+CONTEXT:  SQL statement "SELECT * FROM arenadata_toolkit.tracking_get_track_main()"
+SELECT arenadata_toolkit.tracking_register_db();
+ tracking_register_db 
+----------------------
+ t
+(1 row)
+
+SELECT pg_sleep(current_setting('arenadata_toolkit.tracking_worker_naptime_sec')::int * 2);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+-- 2. Test initial snapshot behaviour. Triggering initial snapshot leads to
+-- setting up the bloom filter such that all relfilenodes are considered.
+SELECT arenadata_toolkit.tracking_trigger_initial_snapshot();
+ tracking_trigger_initial_snapshot 
+-----------------------------------
+ t
+(1 row)
+
+SELECT is_triggered FROM arenadata_toolkit.is_initial_snapshot_triggered;
+ is_triggered 
+--------------
+            1
+(1 row)
+
+-- 3. If user hasn't registered any schema, the default schemas are used.
+-- See arenadata_toolkit_guc.c. At commit the bloom filter is cleared. The next
+-- call of tracking_get_track() will return nothing if database is not modified in between. 
+SELECT count(*) FROM arenadata_toolkit.tracking_get_track();
+ count 
+-------
+  1056
+(1 row)
+
+-- 4. Create table in specific schema and register that schema.
+CREATE TABLE arenadata_toolkit.tracking_t1 (i INT)
+WITH (appendonly=true, orientation=column) DISTRIBUTED BY (i);
+SELECT arenadata_toolkit.tracking_register_schema('arenadata_toolkit');
+ tracking_register_schema 
+--------------------------
+ t
+(1 row)
+
+-- Getting the track. Only created table with size 0 is expected;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   | size | state | segid | relkind | relstorage 
+-------------+------+-------+-------+---------+------------
+ tracking_t1 |    0 | a     |    -1 | r       | c
+ tracking_t1 |    0 | a     |     0 | r       | c
+ tracking_t1 |    0 | a     |     1 | r       | c
+ tracking_t1 |    0 | a     |     2 | r       | c
+(4 rows)
+
+-- 5. Test data extending event. Bloom should capture it.
+INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,100000);
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   |  size  | state | segid | relkind | relstorage 
+-------------+--------+-------+-------+---------+------------
+ tracking_t1 | 134064 | a     |     0 | r       | c
+ tracking_t1 | 133528 | a     |     1 | r       | c
+ tracking_t1 | 133064 | a     |     2 | r       | c
+(3 rows)
+
+-- 6. Dropping table. The track shows only relfilenodes without names and other additional info with status 'd'.
+DROP TABLE arenadata_toolkit.tracking_t1;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+ relname | size | state | segid | relkind | relstorage 
+---------+------+-------+-------+---------+------------
+         |    0 | d     |    -1 |         | 
+         |    0 | d     |    -1 |         | 
+         |    0 | d     |    -1 |         | 
+         |    0 | d     |    -1 |         | 
+         |    0 | d     |     0 |         | 
+         |    0 | d     |     0 |         | 
+         |    0 | d     |     0 |         | 
+         |    0 | d     |     0 |         | 
+         |    0 | d     |     1 |         | 
+         |    0 | d     |     1 |         | 
+         |    0 | d     |     1 |         | 
+         |    0 | d     |     1 |         | 
+         |    0 | d     |     2 |         | 
+         |    0 | d     |     2 |         | 
+         |    0 | d     |     2 |         | 
+         |    0 | d     |     2 |         | 
+(16 rows)
+
+-- 8. Test actions on commit and rollback
+CREATE TABLE arenadata_toolkit.tracking_t1 (i INT)
+WITH (appendonly=true, orientation=column) DISTRIBUTED BY (i);
+INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,100000);
+-- If the wrapping transaction rollbacks, the Bloom filter is not cleared up.
+BEGIN;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   |  size  | state | segid | relkind | relstorage 
+-------------+--------+-------+-------+---------+------------
+ tracking_t1 |      0 | a     |    -1 | r       | c
+ tracking_t1 | 134064 | a     |     0 | r       | c
+ tracking_t1 | 133528 | a     |     1 | r       | c
+ tracking_t1 | 133064 | a     |     2 | r       | c
+(4 rows)
+
+ROLLBACK;
+-- If commits, filter is cleared.
+BEGIN;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   |  size  | state | segid | relkind | relstorage 
+-------------+--------+-------+-------+---------+------------
+ tracking_t1 |      0 | a     |    -1 | r       | c
+ tracking_t1 | 134064 | a     |     0 | r       | c
+ tracking_t1 | 133528 | a     |     1 | r       | c
+ tracking_t1 | 133064 | a     |     2 | r       | c
+(4 rows)
+
+COMMIT;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+ relname | size | state | segid | relkind | relstorage 
+---------+------+-------+-------+---------+------------
+(0 rows)
+
+-- 9. Test repetitive track call within the same transaction. In case of
+-- rollback only first changes should be present.
+INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,10000);
+BEGIN;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   |  size  | state | segid | relkind | relstorage 
+-------------+--------+-------+-------+---------+------------
+ tracking_t1 | 147576 | a     |     0 | r       | c
+ tracking_t1 | 147112 | a     |     1 | r       | c
+ tracking_t1 | 146096 | a     |     2 | r       | c
+(3 rows)
+
+CREATE TABLE arenadata_toolkit.tracking_t2 (j BIGINT) DISTRIBUTED BY (j);
+INSERT INTO arenadata_toolkit.tracking_t2 SELECT generate_series(1,10000);
+INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,10000);
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   |  size  | state | segid | relkind | relstorage 
+-------------+--------+-------+-------+---------+------------
+ tracking_t1 | 161088 | a     |     0 | r       | c
+ tracking_t2 | 229376 | a     |     0 | r       | h
+ tracking_t1 | 160696 | a     |     1 | r       | c
+ tracking_t2 | 229376 | a     |     1 | r       | h
+ tracking_t1 | 159128 | a     |     2 | r       | c
+ tracking_t2 | 229376 | a     |     2 | r       | h
+(6 rows)
+
+ROLLBACK;
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+   relname   |  size  | state | segid | relkind | relstorage 
+-------------+--------+-------+-------+---------+------------
+             |      0 | d     |    -1 |         | 
+ tracking_t1 | 161088 | a     |     0 | r       | c
+             |      0 | d     |     0 |         | 
+ tracking_t1 | 160696 | a     |     1 | r       | c
+             |      0 | d     |     1 |         | 
+ tracking_t1 | 159128 | a     |     2 | r       | c
+             |      0 | d     |     2 |         | 
+(7 rows)
+
+-- 10. Test relkind filtering.
+CREATE TABLE arenadata_toolkit.tracking_t1 (i INT)
+WITH (appendonly=true, orientation=column) DISTRIBUTED BY (i);
+ERROR:  relation "tracking_t1" already exists
+INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,100000);
+CREATE INDEX ON arenadata_toolkit.tracking_t1(i);
+-- Want to see index and block dir relation.
+SELECT arenadata_toolkit.tracking_register_schema('pg_aoseg');
+ tracking_register_schema 
+--------------------------
+ t
+(1 row)
+
+SELECT arenadata_toolkit.tracking_set_relkinds('o,i');
+ tracking_set_relkinds 
+-----------------------
+ t
+(1 row)
+
+SELECT  size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tracking_get_track();
+  size   | state | segid | relkind | relstorage 
+---------+-------+-------+---------+------------
+   32768 | a     |    -1 | i       | h
+   32768 | a     |    -1 | i       | h
+ 1638400 | a     |     0 | i       | h
+   65536 | a     |     0 | i       | h
+ 1638400 | a     |     1 | i       | h
+   65536 | a     |     1 | i       | h
+ 1638400 | a     |     2 | i       | h
+   65536 | a     |     2 | i       | h
+(8 rows)
+
+DROP TABLE arenadata_toolkit.tracking_t1;
+-- Clean up
+SELECT arenadata_toolkit.tracking_unregister_db();
+ tracking_unregister_db 
+------------------------
+ t
+(1 row)
+
+\c contrib_regression;
+DROP DATABASE tracking_db1;
