@@ -1,0 +1,49 @@
+-- start_ignore
+! gpconfig -c runaway_detector_activation_percent -v 100;
+! gpstop -rai;
+-- end_ignore
+
+CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS
+'@abs_builddir@/../regress/regress@DLSUFFIX@', 'resGroupPalloc'
+LANGUAGE C READS SQL DATA;
+
+ALTER RESOURCE GROUP default_group SET memory_limit 10;
+ALTER RESOURCE GROUP admin_group SET memory_limit 30;
+
+CREATE RESOURCE GROUP test_group with (concurrency=1, memory_limit=59, memory_spill_ratio=100, cpu_rate_limit=20);
+CREATE ROLE test_role RESOURCE GROUP test_group;
+CREATE ROLE default_role RESOURCE GROUP default_group;
+
+-- 1. Occupy all memory on a segment and fail with vmem tracker error
+ALTER RESOURCE GROUP admin_group SET concurrency 1;
+ALTER RESOURCE GROUP default_group SET concurrency 1;
+
+-- Start a session which will be detached from a group when the query is done
+-- resource groups can't see startup chunks occupied by a detached session but
+-- the vmem tracker can
+0: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != (SELECT pg_backend_pid());
+0: CREATE TABLE test (a int);
+
+-- Now we need to occupy all memory in all resgroups
+1: SET ROLE test_role;
+1: BEGIN;
+1: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
+
+2: SET ROLE default_role;
+2: BEGIN;
+2: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
+
+-- The sum of all resource groups' memory is 99% and 1% is global shared memory aka
+-- freeChunks. On this test cluster each segment has 682mb of memory, so 1% is ~7mb.
+-- The minimum number of startup chunks a process can have is 8mb. 
+3: BEGIN;
+3: SELECT resGroupPalloc(1.0) FROM gp_dist_random('gp_id') WHERE gp_segment_id = 1;
+
+1q:
+2q:
+3q:
+
+0: DROP TABLE test;
+0: DROP ROLE test_role;
+0: DROP ROLE default_role;
+0: DROP RESOURCE GROUP test_group;
