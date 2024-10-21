@@ -986,17 +986,17 @@ COptTasks::PrintMissingStatsWarning(CMemoryPool *mp, CMDAccessor *md_accessor,
 
 	if (0 < rel_stats->Size())
 	{
-		int length = NAMEDATALEN * rel_stats->Size() + 200;
-		std::vector<char> msgbuf(length);
-		snprintf(
-			msgbuf.data(), msgbuf.size() * sizeof(char),
-			"One or more columns in the following table(s) do not have statistics: %s",
+		CWStringDynamic *msgbuf = GPOS_NEW(mp) CWStringDynamic(mp);
+		msgbuf->AppendFormat(GPOS_WSZ_LIT("One or more columns in the following table(s) do not have statistics: %s"),
 			CreateMultiByteCharStringFromWCString(wcstr.GetBuffer()));
+
 		GpdbEreport(
-			ERRCODE_SUCCESSFUL_COMPLETION, NOTICE, msgbuf.data(),
+			ERRCODE_SUCCESSFUL_COMPLETION, NOTICE, CreateMultiByteCharStringFromWCString(msgbuf->GetBuffer()),
 			"For non-partitioned tables, run analyze <table_name>(<column_list>)."
 			" For partitioned tables, run analyze rootpartition <table_name>(<column_list>)."
 			" See log for columns missing statistics.");
+
+		GPOS_DELETE(msgbuf);
 	}
 }
 
