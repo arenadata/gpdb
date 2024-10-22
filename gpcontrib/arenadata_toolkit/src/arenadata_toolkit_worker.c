@@ -233,10 +233,47 @@ track_dbs(List *tracked_dbs)
 	}
 }
 
+static void
+worker_tracking_status_check()
+{
+	List	   *tracked_dbs = NIL;
+
+	StartTransactionCommand();
+	tracked_dbs = get_tracked_dbs();
+
+	if (!tf_shared_state->is_initialized && list_length(tracked_dbs) > 0)
+	{
+		track_dbs(tracked_dbs);
+		LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
+		tf_shared_state->is_initialized = true;
+		LWLockRelease(tf_state_lock);
+	}
+
+	/*
+	 * Here is quite a dump check, which imitates consistency validation.
+	 * Written as an example of segment erroneous tracking status.
+	 */
+	if (list_length(tracked_dbs) != bloom_set_count(&tf_shared_state->bloom_set))
+	{
+		LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
+		tf_shared_state->has_error = true;
+		LWLockRelease(tf_state_lock);
+	}
+
+	if (tracked_dbs)
+		list_free_deep(tracked_dbs);
+
+	CommitTransactionCommand();
+}
+
 /* scan pg_db_role_setting, find all databases, bind blooms if necessary */
 void
 arenadata_toolkit_main(Datum main_arg)
 {
+	instr_time current_time_timeout;
+	instr_time start_time_timeout;
+	long current_timeout = -1;
+
 	elog(LOG, "[arenadata toolkit] Starting background worker");
 
 	/*
@@ -267,37 +304,13 @@ arenadata_toolkit_main(Datum main_arg)
 	while (!got_sigterm)
 	{
 		int			rc;
-		List	   *tracked_dbs = NIL;
+		long timeout = tracking_worker_naptime_sec * 1000;
 
-		StartTransactionCommand();
-		tracked_dbs = get_tracked_dbs();
-
-		if (!tf_shared_state->is_initialized && list_length(tracked_dbs) > 0)
-		{
-			track_dbs(tracked_dbs);
-			LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
-			tf_shared_state->is_initialized = true;
-			LWLockRelease(tf_state_lock);
-		}
-
-		/*
-		 * Here is quite a dump check, which imitates consistency validation.
-		 * Written as an example of segment erroneous tracking status.
-		 */
-		if (list_length(tracked_dbs) != bloom_set_count(&tf_shared_state->bloom_set))
-		{
-			LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
-			tf_shared_state->has_error = true;
-			LWLockRelease(tf_state_lock);
-		}
-
-		if (tracked_dbs)
-			list_free_deep(tracked_dbs);
-
-		CommitTransactionCommand();
+		if (current_timeout <= 0)
+			INSTR_TIME_SET_CURRENT(start_time_timeout);
 
 		rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   tracking_worker_naptime_sec * 1000);
+					   timeout);
 
 		if (rc & WL_LATCH_SET)
 		{
@@ -319,6 +332,10 @@ arenadata_toolkit_main(Datum main_arg)
 			ProcessConfigFile(PGC_SIGHUP);
 		}
 
+		INSTR_TIME_SET_CURRENT(current_time_timeout);
+		INSTR_TIME_SUBTRACT(current_time_timeout, start_time_timeout);
+		current_timeout = timeout - (long) INSTR_TIME_GET_MILLISEC(current_time_timeout);
+		if (current_timeout <= 0) worker_tracking_status_check();
 	}
 
 	if (got_sigterm)
