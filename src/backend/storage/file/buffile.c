@@ -1033,13 +1033,13 @@ BufFilePledgeSequential(BufFile *buffile)
 
 #define BUFFILE_ZSTD_COMPRESSION_LEVEL 1
 
-void *
+static void *
 customAlloc(void *opaque, size_t size)
 {
 	return MemoryContextAlloc(TopMemoryContext, size);
 }
 
-void
+static void
 customFree(void *opaque, void *address)
 {
 	pfree(address);
