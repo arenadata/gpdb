@@ -164,6 +164,11 @@ static void BufFileDumpCompressedBuffer(BufFile *file, const void *buffer, Size 
 static void BufFileEndCompression(BufFile *file);
 static int BufFileLoadCompressedBuffer(BufFile *file, void *buffer, size_t bufsize);
 
+#ifdef HAVE_LIBZSTD
+static void *customAlloc(void *opaque, size_t size);
+static void customFree(void *opaque, void *address);
+#endif
+
 
 /*
  * Create a BufFile given the first underlying physical file.
