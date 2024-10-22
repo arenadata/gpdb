@@ -250,8 +250,11 @@ FTSReplicationStatusUpdateForWalState(const char *app_name, WalSndState state)
 	LWLockAcquire(FTSReplicationStatusLock, LW_SHARED);
 
 	replication_status = RetrieveFTSReplicationStatus(app_name, false /*skip_warn*/);
-	/* replication_status must exist */
-	Assert(replication_status);
+
+	if (replication_status == NULL) {
+		LWLockRelease(FTSReplicationStatusLock);
+		return;
+	}
 
 	bool is_up;
 	SpinLockAcquire(&MyWalSnd->mutex);
