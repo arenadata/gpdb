@@ -48,8 +48,8 @@ tf_shmem_hook(void)
 
 	if (!found)
 	{
-		tf_shared_state->is_initialized = false;
-		tf_shared_state->has_error = false;
+		pg_atomic_init_flag(&tf_shared_state->tracking_is_initialized);
+		pg_atomic_init_flag(&tf_shared_state->tracking_error);
 		bloom_set_init(db_track_count, bloom_size, &tf_shared_state->bloom_set);
 	}
 
@@ -111,8 +111,8 @@ LWLockBindEntry(Oid dbid)
 		}
 	}
 
-	if (i == db_track_count)
-		tf_shared_state->has_error = true;
+	if (i == db_track_count && pg_atomic_unlocked_test_flag(&tf_shared_state->tracking_error))
+		pg_atomic_test_set_flag(&tf_shared_state->tracking_error);
 	LWLockRelease(tf_state_lock);
 }
 
@@ -130,8 +130,8 @@ LWLockUnbindEntry(Oid dbid)
 		}
 	}
 
-	if (i == db_track_count)
-		tf_shared_state->has_error = true;
+	if (i == db_track_count && pg_atomic_unlocked_test_flag(&tf_shared_state->tracking_error))
+		pg_atomic_test_set_flag(&tf_shared_state->tracking_error);
 
 	LWLockRelease(tf_state_lock);
 }

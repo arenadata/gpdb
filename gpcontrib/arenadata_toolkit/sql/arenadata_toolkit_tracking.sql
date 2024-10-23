@@ -2,7 +2,7 @@
 -- start_ignore
 \! gpconfig -c shared_preload_libraries -v 'arenadata_toolkit'
 \! gpstop -raq -M fast
-\! gpconfig -c arenadata_toolkit.tracking_worker_naptime_sec -v '1'
+\! gpconfig -c arenadata_toolkit.tracking_worker_naptime_sec -v '5'
 \! gpstop -u
 \c
 -- end_ignore

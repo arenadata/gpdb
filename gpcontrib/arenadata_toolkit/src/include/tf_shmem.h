@@ -2,13 +2,14 @@
 #define TF_SHMEM_H
 
 #include "storage/lwlock.h"
+#include "port/atomics.h"
 
 #include "bloom_set.h"
 
 typedef struct
 {
-	bool		has_error;
-	bool		is_initialized;
+	pg_atomic_flag tracking_is_initialized;
+	pg_atomic_flag tracking_error;
 	bloom_set_t bloom_set;
 }	tf_shared_state_t;
 
@@ -22,6 +23,8 @@ extern tf_shared_state_t * tf_shared_state;
 extern LWLock *tf_state_lock;
 extern LWLock *bloom_set_lock;
 extern tf_entry_lock_t bloom_locks[];
+extern volatile pg_atomic_flag tracking_is_initialized;
+extern volatile pg_atomic_flag tracking_error;
 
 void		tf_shmem_init(void);
 void		tf_shmem_deinit(void);

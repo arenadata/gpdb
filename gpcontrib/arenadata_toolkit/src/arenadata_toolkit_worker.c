@@ -241,12 +241,11 @@ worker_tracking_status_check()
 	StartTransactionCommand();
 	tracked_dbs = get_tracked_dbs();
 
-	if (!tf_shared_state->is_initialized && list_length(tracked_dbs) > 0)
+	if (pg_atomic_unlocked_test_flag(&tf_shared_state->tracking_is_initialized) && list_length(tracked_dbs) > 0)
 	{
 		track_dbs(tracked_dbs);
-		LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
-		tf_shared_state->is_initialized = true;
-		LWLockRelease(tf_state_lock);
+
+		pg_atomic_test_set_flag(&tf_shared_state->tracking_is_initialized);
 	}
 
 	/*
@@ -255,9 +254,8 @@ worker_tracking_status_check()
 	 */
 	if (list_length(tracked_dbs) != bloom_set_count(&tf_shared_state->bloom_set))
 	{
-		LWLockAcquire(tf_state_lock, LW_EXCLUSIVE);
-		tf_shared_state->has_error = true;
-		LWLockRelease(tf_state_lock);
+		if (pg_atomic_unlocked_test_flag(&tf_shared_state->tracking_error))
+			pg_atomic_test_set_flag(&tf_shared_state->tracking_error);
 	}
 
 	if (tracked_dbs)
