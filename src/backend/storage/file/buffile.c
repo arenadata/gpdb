@@ -1286,7 +1286,7 @@ BufFileLoadCompressedBuffer(BufFile *file, void *buffer, size_t bufsize)
 
 	return output.pos;
 }
-#else		/* HAVE_ZSTD */
+#else		/* HAVE_LIBZSTD */
 
 /*
  * Dummy versions of the compression functions, when the server is built
