@@ -633,6 +633,12 @@ VmemTracker_ReleaseVmem(int64 toBeFreedRequested)
 	}
 }
 
+int32
+VmemTracker_GetStartupChunks(void)
+{
+	return startupChunks;
+}
+
 /*
  * Register the startup memory to vmem tracker.
  *
