@@ -786,7 +786,34 @@ where <varname>action</varname> is one of:
                                                 If the partitioned table was originally defined
                                                 using a subpartition template, then the template
                                                 will be used to generate the subpartitions
-                                                automatically.</pd>
+                                                automatically.
+                                                <p>When you add a partition to an
+                                                append-optimized, row-oriented or column-oriented table, Greenplum
+                                                Database sets each parameter (<codeph>appendonly</codeph>, <codeph>orientation</codeph>,
+                                                  <codeph>compresstype</codeph>,
+                                                  <codeph>compresslevel</codeph>, <codeph>checksum</codeph> and
+                                                  <codeph>blocksize</codeph>) based on the following
+                                                setting, in order of preference.<ol
+                                                  id="ol_hqk_l4w_kmc">
+                                                  <li>The parameter setting specified in
+                                                  the <codeph>ALTER TABLE</codeph> command
+                                                  <codeph>WITH</codeph> clause.</li>
+                                                  <li>If the server configuration parameter
+                                                  <codeph><xref
+                                                  href="../config_params/guc-list.xml#gp_add_partition_inherits_table_setting"
+                                                  >gp_add_partition_inherits_table_setting</xref></codeph>
+                                                  is <codeph>on</codeph>, use the table's
+                                                  parameters specified in the
+                                                  <codeph>WITH</codeph> clause when the table was
+                                                  created. The default server configuration
+                                                  parameter default is <codeph>off</codeph>, the
+                                                  <codeph>WITH</codeph> clause parameters are
+                                                  ignored.</li>
+                                                  <li>The parameter setting specified in
+                                                  the server configuration parameter <codeph><xref
+                                                  href="../config_params/guc-list.xml#gp_default_storage_options"
+                                                  >gp_default_storage_option</xref></codeph>.</li>
+                                                </ol></p></pd>
                                 </plentry>
                                 <plentry>
                                         <pt>EXCHANGE [DEFAULT] PARTITION</pt>

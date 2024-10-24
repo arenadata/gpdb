@@ -463,6 +463,8 @@ char	   *gp_default_storage_options = NULL;
 
 bool		gp_add_column_inherits_table_setting = false;
 
+bool		gp_add_partition_inherits_table_setting = false;
+
 int			writable_external_table_bufsize = 1024;
 
 bool		gp_external_enable_filter_pushdown = true;
@@ -3405,6 +3407,17 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&gp_keep_partition_children_locks,
 		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_add_partition_inherits_table_setting", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("ALTER TABLE ADD PARTITION inherits storage setting from the AO table."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_add_partition_inherits_table_setting,
+		false,
 		NULL, NULL, NULL
 	},
 

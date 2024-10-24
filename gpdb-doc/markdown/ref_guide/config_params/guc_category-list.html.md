@@ -450,6 +450,7 @@ The following parameters configure the append-optimized tables feature of Greenp
 
 - [max_appendonly_tables](guc-list.html#max_appendonly_tables)
 - [gp_add_column_inherits_table_setting](guc-list.html) [gp_appendonly_compaction](guc-list.html#gp_add_column_inherits_table_setting](guc-list.html) [gp_appendonly_compaction)
+- [gp_add_partition_inherits_table_setting](guc-list.html) [gp_appendonly_compaction](guc-list.html#gp_add_partition_inherits_table_setting](guc-list.html) [gp_appendonly_compaction)
 - [gp_appendonly_compaction_threshold](guc-list.html#gp_appendonly_compaction_threshold)
 - [validate_previous_free_tid](guc-list.html#validate_previous_free_tid)
 

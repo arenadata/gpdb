@@ -77,6 +77,7 @@
             <topicref href="guc-list.xml#extra_float_digits"/>
             <topicref href="guc-list.xml#from_collapse_limit"/>
             <topicref href="guc-list.xml#gp_add_column_inherits_table_setting"/>
+            <topicref href="guc-list.xml#gp_add_partition_inherits_table_setting"/>
             <topicref href="guc-list.xml#gp_adjust_selectivity_for_outerjoins"/>
             <topicref href="guc-list.xml#gp_appendonly_compaction"/>
             <topicref href="guc-list.xml#gp_appendonly_compaction_threshold"/>

@@ -6784,6 +6784,19 @@ atpxPartAddList(Relation rel,
 	if (pelem->storeAttr)
 		ct->options = (List *) ((AlterPartitionCmd *) pelem->storeAttr)->arg1;
 
+	if (gp_add_partition_inherits_table_setting && RelationIsAppendOptimized(rel))
+	{
+		ListCell *lc;
+
+		foreach(lc, reloptions_list(RelationGetRelid(rel)))
+		{
+			DefElem *de = lfirst(lc);
+
+			if (!reloptions_has_opt(ct->options, de->defname))
+				ct->options = lappend(ct->options, de);
+		}
+	}
+
 	ct->tableElts = list_concat(ct->tableElts, list_copy(colencs));
 
 	ct->oncommit = ONCOMMIT_NOOP;
