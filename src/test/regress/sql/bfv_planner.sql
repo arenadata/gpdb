@@ -428,18 +428,22 @@ explain select count(*)
 from
 (
   (
-  -- t1 left join t3 to build broadcast t3 plan
-  -- so that the join's locus is t1's locus:
-  -- strewn on 2segs
+  -- though t1_12146 is distributed over 2
+  -- segments only, Hash Left Join is actually
+  -- executed on all segments, just returning
+  -- empty set on one of them. That's why
+  -- Broadcast Motion is 3:3
   select
   *
   from t1_12146 left join t3_12146 on t1_12146.b = t3_12146.b
   )
   union all
   (
-  -- t2 left join t4 to build broadcast t4 plan
-  -- so that the join's locus is t2's locus:
-  -- strewn on 2segs
+  -- though t2_12146 is distributed over 2
+  -- segments only, Hash Left Join is actually
+  -- executed on all segments, just returning
+  -- empty set on one of them. That's why
+  -- Broadcast Motion is 3:3
   select
   *
   from t2_12146 left join t4_12146 on t2_12146.b = t4_12146.b
@@ -458,18 +462,22 @@ select count(*)
 from
 (
   (
-  -- t1 left join t3 to build broadcast t3 plan
-  -- so that the join's locus is t1's locus:
-  -- strewn on 2segs
+  -- though t1_12146 is distributed over 2
+  -- segments only, Hash Left Join is actually
+  -- executed on all segments, just returning
+  -- empty set on one of them. That's why
+  -- Broadcast Motion is 3:3
   select
   *
   from t1_12146 left join t3_12146 on t1_12146.b = t3_12146.b
   )
   union all
   (
-  -- t2 left join t4 to build broadcast t4 plan
-  -- so that the join's locus is t2's locus:
-  -- strewn on 2segs
+  -- though t2_12146 is distributed over 2
+  -- segments only, Hash Left Join is actually
+  -- executed on all segments, just returning
+  -- empty set on one of them. That's why
+  -- Broadcast Motion is 3:3
   select
   *
   from t2_12146 left join t4_12146 on t2_12146.b = t4_12146.b

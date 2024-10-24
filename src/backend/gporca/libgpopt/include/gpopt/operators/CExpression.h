@@ -98,6 +98,9 @@ private:
 	// get expression's derived property given its type
 	CDrvdProp *Pdp(const CDrvdProp::EPropType ept) const;
 
+	// parent motion's input segments
+	ULONG m_motionInputSegmentsNumber;
+
 #ifdef GPOS_DEBUG
 
 	// assert valid property derivation
@@ -214,6 +217,20 @@ public:
 	Cost() const
 	{
 		return m_cost;
+	}
+
+	void SetMotionInputSegmentsNumberForChildren() const;
+
+	void
+	SetMotionInputSegmentsNumber(ULONG motionInputSegmentsNumber)
+	{
+		m_motionInputSegmentsNumber = motionInputSegmentsNumber;
+	}
+
+	ULONG
+	GetMotionInputSegmentsNumber() const
+	{
+		return m_motionInputSegmentsNumber;
 	}
 
 	// get the suitable derived property type based on operator

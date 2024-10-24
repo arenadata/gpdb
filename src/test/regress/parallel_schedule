@@ -152,6 +152,7 @@ test: select_views portals_p2 cluster dependency guc bitmapops tsearch tsdicts f
 # ----------
 test: plancache limit plpgsql copy2 temp domain rangefuncs prepare without_oid conversion truncate truncate_gp alter_table alter_extension sequence polymorphism rowtypes returning with xml gp_foreign_data
 
+test: scale_factor
 # large objects are not supported by GPDB
 # test: largeobject
 

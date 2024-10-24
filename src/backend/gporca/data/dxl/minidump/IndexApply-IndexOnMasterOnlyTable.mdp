@@ -2092,7 +2092,7 @@
           </dxl:JoinFilter>
           <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
             <dxl:Properties>
-              <dxl:Cost StartupCost="0" TotalCost="434.326561" Rows="674.000000" Width="180"/>
+              <dxl:Cost StartupCost="0" TotalCost="434.326561" Rows="337.000000" Width="180"/>
             </dxl:Properties>
             <dxl:ProjList>
               <dxl:ProjElem ColId="0" Alias="relname">

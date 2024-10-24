@@ -602,7 +602,7 @@
         <dxl:SortingColumnList/>
         <dxl:TableScan>
           <dxl:Properties>
-            <dxl:Cost StartupCost="0" TotalCost="431.005816" Rows="87.878700" Width="8"/>
+            <dxl:Cost StartupCost="0" TotalCost="431.005816" Rows="29.292900" Width="8"/>
           </dxl:Properties>
           <dxl:ProjList>
             <dxl:ProjElem ColId="0" Alias="a">

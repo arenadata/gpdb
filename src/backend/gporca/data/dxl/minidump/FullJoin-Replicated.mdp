@@ -342,7 +342,7 @@
               </dxl:HashExprList>
               <dxl:TableScan>
                 <dxl:Properties>
-                  <dxl:Cost StartupCost="0" TotalCost="431.000021" Rows="3.000000" Width="8"/>
+                  <dxl:Cost StartupCost="0" TotalCost="431.000021" Rows="1.000000" Width="8"/>
                 </dxl:Properties>
                 <dxl:ProjList>
                   <dxl:ProjElem ColId="0" Alias="a">
@@ -408,7 +408,7 @@
               </dxl:HashExprList>
               <dxl:TableScan>
                 <dxl:Properties>
-                  <dxl:Cost StartupCost="0" TotalCost="431.000021" Rows="3.000000" Width="8"/>
+                  <dxl:Cost StartupCost="0" TotalCost="431.000021" Rows="1.000000" Width="8"/>
                 </dxl:Properties>
                 <dxl:ProjList>
                   <dxl:ProjElem ColId="9" Alias="c">

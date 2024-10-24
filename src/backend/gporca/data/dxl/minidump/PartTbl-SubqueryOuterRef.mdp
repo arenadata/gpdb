@@ -540,7 +540,7 @@ explain select * from t1 where a = 1 and b in (select b from t2);
             <dxl:Filter/>
             <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="431.000117" Rows="2.000000" Width="1"/>
+                <dxl:Cost StartupCost="0" TotalCost="431.000117" Rows="1.000000" Width="1"/>
               </dxl:Properties>
               <dxl:ProjList/>
               <dxl:Filter/>

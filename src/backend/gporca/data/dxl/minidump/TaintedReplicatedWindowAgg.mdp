@@ -309,7 +309,7 @@
           <dxl:OneTimeFilter/>
           <dxl:BroadcastMotion InputSegments="0" OutputSegments="0,1,2">
             <dxl:Properties>
-              <dxl:Cost StartupCost="0" TotalCost="431.000241" Rows="3.000000" Width="4"/>
+              <dxl:Cost StartupCost="0" TotalCost="431.000241" Rows="1.000000" Width="4"/>
             </dxl:Properties>
             <dxl:ProjList>
               <dxl:ProjElem ColId="8" Alias="sum">
@@ -320,7 +320,7 @@
             <dxl:SortingColumnList/>
             <dxl:Window PartitionColumns="">
               <dxl:Properties>
-                <dxl:Cost StartupCost="0" TotalCost="431.000026" Rows="3.000000" Width="4"/>
+                <dxl:Cost StartupCost="0" TotalCost="431.000026" Rows="1.000000" Width="4"/>
               </dxl:Properties>
               <dxl:ProjList>
                 <dxl:ProjElem ColId="8" Alias="sum">
@@ -332,7 +332,7 @@
               <dxl:Filter/>
               <dxl:TableScan>
                 <dxl:Properties>
-                  <dxl:Cost StartupCost="0" TotalCost="431.000019" Rows="3.000000" Width="4"/>
+                  <dxl:Cost StartupCost="0" TotalCost="431.000019" Rows="1.000000" Width="4"/>
                 </dxl:Properties>
                 <dxl:ProjList>
                   <dxl:ProjElem ColId="0" Alias="c">

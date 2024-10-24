@@ -822,7 +822,7 @@ WHERE tt.event_ts &gt;= tq.ets AND
                 </dxl:JoinFilter>
                 <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
                   <dxl:Properties>
-                    <dxl:Cost StartupCost="0" TotalCost="431.000438" Rows="2.000000" Width="8"/>
+                    <dxl:Cost StartupCost="0" TotalCost="431.000438" Rows="1.000000" Width="8"/>
                   </dxl:Properties>
                   <dxl:ProjList>
                     <dxl:ProjElem ColId="1" Alias="event_ts">
@@ -926,7 +926,7 @@ WHERE tt.event_ts &gt;= tq.ets AND
                 </dxl:JoinFilter>
                 <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
                   <dxl:Properties>
-                    <dxl:Cost StartupCost="0" TotalCost="431.000438" Rows="2.000000" Width="8"/>
+                    <dxl:Cost StartupCost="0" TotalCost="431.000438" Rows="1.000000" Width="8"/>
                   </dxl:Properties>
                   <dxl:ProjList>
                     <dxl:ProjElem ColId="37" Alias="event_ts">
@@ -1086,7 +1086,7 @@ WHERE tt.event_ts &gt;= tq.ets AND
                   <dxl:Filter/>
                   <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1">
                     <dxl:Properties>
-                      <dxl:Cost StartupCost="0" TotalCost="431.000438" Rows="2.000000" Width="8"/>
+                      <dxl:Cost StartupCost="0" TotalCost="431.000438" Rows="1.000000" Width="8"/>
                     </dxl:Properties>
                     <dxl:ProjList>
                       <dxl:ProjElem ColId="60" Alias="event_ts">

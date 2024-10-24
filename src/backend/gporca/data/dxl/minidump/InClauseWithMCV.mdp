@@ -710,7 +710,7 @@ explain select * from bar where a in (1, (select count(*) from bar));
           </dxl:JoinFilter>
           <dxl:BroadcastMotion InputSegments="-1" OutputSegments="0,1,2">
             <dxl:Properties>
-              <dxl:Cost StartupCost="0" TotalCost="431.137527" Rows="3.000000" Width="8"/>
+              <dxl:Cost StartupCost="0" TotalCost="431.137527" Rows="1.000000" Width="8"/>
             </dxl:Properties>
             <dxl:ProjList>
               <dxl:ProjElem ColId="16" Alias="count">

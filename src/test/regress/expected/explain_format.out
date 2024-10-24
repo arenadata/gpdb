@@ -579,7 +579,7 @@ QUERY PLAN
           "Join Type": "Inner",
           "Startup Cost": 8994.54,
           "Total Cost": 10427.66,
-          "Plan Rows": 35550,
+          "Plan Rows": 11850,
           "Plan Width": 4,
           "Hash Cond": "(subselect_tbl.f1 = subselect_tbl_1.f2)",
           "Plans": [
@@ -593,7 +593,7 @@ QUERY PLAN
               "Alias": "subselect_tbl",
               "Startup Cost": 0.00,
               "Total Cost": 811.00,
-              "Plan Rows": 71100,
+              "Plan Rows": 23700,
               "Plan Width": 4
             },
             {
@@ -604,7 +604,7 @@ QUERY PLAN
               "Gang Type": "primary reader",
               "Startup Cost": 8982.04,
               "Total Cost": 8982.04,
-              "Plan Rows": 1000,
+              "Plan Rows": 334,
               "Plan Width": 8,
               "Plans": [
                 {
@@ -616,7 +616,7 @@ QUERY PLAN
                   "Gang Type": "primary reader",
                   "Startup Cost": 8972.04,
                   "Total Cost": 8982.04,
-                  "Plan Rows": 1000,
+                  "Plan Rows": 334,
                   "Plan Width": 8,
                   "Group Key": ["subselect_tbl_1.f2"],
                   "Plans": [
@@ -629,7 +629,7 @@ QUERY PLAN
                       "Join Type": "Semi",
                       "Startup Cost": 1699.75,
                       "Total Cost": 8883.16,
-                      "Plan Rows": 35550,
+                      "Plan Rows": 11850,
                       "Plan Width": 8,
                       "Hash Cond": "(subselect_tbl_1.f2 = subselect_tbl_2.f1)",
                       "Plans": [
@@ -643,7 +643,7 @@ QUERY PLAN
                           "Gang Type": "primary reader",
                           "Startup Cost": 0.00,
                           "Total Cost": 2233.00,
-                          "Plan Rows": 71100,
+                          "Plan Rows": 23700,
                           "Plan Width": 4,
                           "Hash Key": "subselect_tbl_1.f2",
                           "Plans": [
@@ -657,7 +657,7 @@ QUERY PLAN
                               "Alias": "subselect_tbl_1",
                               "Startup Cost": 0.00,
                               "Total Cost": 811.00,
-                              "Plan Rows": 71100,
+                              "Plan Rows": 23700,
                               "Plan Width": 4
                             }
                           ]
@@ -670,7 +670,7 @@ QUERY PLAN
                           "Gang Type": "primary reader",
                           "Startup Cost": 811.00,
                           "Total Cost": 811.00,
-                          "Plan Rows": 71100,
+                          "Plan Rows": 23700,
                           "Plan Width": 4,
                           "Plans": [
                             {
@@ -683,7 +683,7 @@ QUERY PLAN
                               "Alias": "subselect_tbl_2",
                               "Startup Cost": 0.00,
                               "Total Cost": 811.00,
-                              "Plan Rows": 71100,
+                              "Plan Rows": 23700,
                               "Plan Width": 4
                             }
                           ]
@@ -782,7 +782,7 @@ QUERY PLAN
           "Join Type": "Inner",
           "Startup Cost": 2118.50,
           "Total Cost": 4984.75,
-          "Plan Rows": 71100,
+          "Plan Rows": 23700,
           "Plan Width": 16,
           "Output": ["subselect_tbl.f1", "subselect_tbl.f2", "subselect_tbl.f3"],
           "Hash Cond": "(subselect_tbl.f1 = subselect_tbl_1.f1)",
@@ -795,7 +795,7 @@ QUERY PLAN
               "Gang Type": "primary reader",
               "Startup Cost": 0.00,
               "Total Cost": 1622.00,
-              "Plan Rows": 142200,
+              "Plan Rows": 47400,
               "Plan Width": 16,
               "Plans": [
                 {
@@ -809,7 +809,7 @@ QUERY PLAN
                   "Alias": "subselect_tbl",
                   "Startup Cost": 0.00,
                   "Total Cost": 811.00,
-                  "Plan Rows": 71100,
+                  "Plan Rows": 23700,
                   "Plan Width": 16,
                   "Output": ["subselect_tbl.f1", "subselect_tbl.f2", "subselect_tbl.f3"]
                 },
@@ -824,7 +824,7 @@ QUERY PLAN
                   "Alias": "subselect_tbl_child",
                   "Startup Cost": 0.00,
                   "Total Cost": 811.00,
-                  "Plan Rows": 71100,
+                  "Plan Rows": 23700,
                   "Plan Width": 16,
                   "Output": ["subselect_tbl_child.f1", "subselect_tbl_child.f2", "subselect_tbl_child.f3"]
                 }
@@ -838,7 +838,7 @@ QUERY PLAN
               "Gang Type": "primary reader",
               "Startup Cost": 2106.00,
               "Total Cost": 2106.00,
-              "Plan Rows": 1000,
+              "Plan Rows": 334,
               "Plan Width": 4,
               "Output": ["subselect_tbl_1.f1"],
               "Plans": [
@@ -851,7 +851,7 @@ QUERY PLAN
                   "Gang Type": "primary reader",
                   "Startup Cost": 2096.00,
                   "Total Cost": 2106.00,
-                  "Plan Rows": 1000,
+                  "Plan Rows": 334,
                   "Plan Width": 4,
                   "Output": ["subselect_tbl_1.f1"],
                   "Group Key": ["subselect_tbl_1.f1"],
@@ -864,7 +864,7 @@ QUERY PLAN
                       "Gang Type": "primary reader",
                       "Startup Cost": 0.00,
                       "Total Cost": 1977.50,
-                      "Plan Rows": 47400,
+                      "Plan Rows": 15800,
                       "Plan Width": 4,
                       "Plans": [
                         {
@@ -878,7 +878,7 @@ QUERY PLAN
                           "Alias": "subselect_tbl_1",
                           "Startup Cost": 0.00,
                           "Total Cost": 988.75,
-                          "Plan Rows": 23700,
+                          "Plan Rows": 7900,
                           "Plan Width": 4,
                           "Output": ["subselect_tbl_1.f1"],
                           "Filter": "(subselect_tbl_1.f2 >= 19)"
@@ -894,7 +894,7 @@ QUERY PLAN
                           "Alias": "subselect_tbl_child_1",
                           "Startup Cost": 0.00,
                           "Total Cost": 988.75,
-                          "Plan Rows": 23700,
+                          "Plan Rows": 7900,
                           "Plan Width": 4,
                           "Output": ["subselect_tbl_child_1.f1"],
                           "Filter": "(subselect_tbl_child_1.f2 >= 19)"
