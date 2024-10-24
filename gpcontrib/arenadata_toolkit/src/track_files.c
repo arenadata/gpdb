@@ -459,6 +459,8 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 		char		relstorage;
 		HeapTuple	pg_class_tuple;
 		uint64_t	hash;
+		Form_pg_class relp;
+		int64 size;
 
 		if (!state->scan)
 			break;
@@ -507,13 +509,8 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 		if (!bloom_isset(tf_get_global_state.bloom, hash))
 			continue;
 
-		/*
-		 * Taking a lock and calling relation_open in dbsize_calc_size is
-		 * quite suboptimal. The size calculation strategy should be revised
-		 * in future.
-		 */
-		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
-		int64 size = dbsize_calc_size(relp);
+		relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
+		size = dbsize_calc_size(relp);
 		datums[3] = Int64GetDatum(size);
 		datums[4] = CharGetDatum(tf_get_global_state.bloom->is_set_all ? 'i' : 'a');
 		datums[5] = Int32GetDatum(GpIdentity.segindex);
