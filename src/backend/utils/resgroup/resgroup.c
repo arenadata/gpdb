@@ -4614,28 +4614,33 @@ IsGroupInRedZone(void)
 	/*
 	 * IsGroupInRedZone is called frequently, we should put the
 	 * condition which returns with higher probability in front.
-	 * 
-	 * safe: global shared memory is not in redzone
+	 *
+	 * We're in RedZone if number of remained chunks on segment host
+	 * is less than totalChunks * (100 - runaway_detector_activation_percent)
 	 */
 	remainGlobalSharedMem = (uint32) pg_atomic_read_u32(&pResGroupControl->freeChunks);
 	safeChunksThreshold100 = (uint32) pg_atomic_read_u32(&pResGroupControl->safeChunksThreshold100);
-	if (remainGlobalSharedMem * 100 >= safeChunksThreshold100)
-		return false;
+	if (remainGlobalSharedMem * 100 < safeChunksThreshold100)
+		return true;
 
 	AssertImply(slot != NULL, group != NULL);
 	if (!slot)
 		return false;
 
-	/* safe: slot memory is not used up */
-	if (slot->memQuota > slot->memUsage)
-		return false;
+	/* We're in RedZone if group's shared memory is exceeded */
+	if (group->memSharedGranted < group->memSharedUsage)
+		return true;
 
-	/* safe: group shared memory is not in redzone */
-	if (group->memSharedGranted > group->memSharedUsage)
-		return false;
+	/*
+	 * This check is here for the cases when a single process
+	 * solely consumes the entire group quota. Not sure if it's
+	 * a common case, so let's put it in the end
+	 */
+	if (slot->memUsage > group->memQuotaGranted + group->memSharedGranted)
+		return true;
 
-	/* memory usage in this group is in RedZone */
-	return true;
+	/* All checks are passed, we're not in RedZone */
+	return false;
 }
 
 /*
