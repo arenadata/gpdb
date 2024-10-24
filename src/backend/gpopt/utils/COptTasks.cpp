@@ -989,8 +989,8 @@ COptTasks::PrintMissingStatsWarning(CMemoryPool *mp, CMDAccessor *md_accessor,
 		CWStringDynamic msgbuf(mp);
 		msgbuf.AppendFormat(
 			GPOS_WSZ_LIT(
-				"One or more columns in the following table(s) do not have statistics: %s"),
-			CreateMultiByteCharStringFromWCString(wcstr.GetBuffer()));
+				"One or more columns in the following table(s) do not have statistics: %ls"),
+			wcstr.GetBuffer());
 
 		GpdbEreport(
 			ERRCODE_SUCCESSFUL_COMPLETION, NOTICE,
