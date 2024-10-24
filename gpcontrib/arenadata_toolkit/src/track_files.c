@@ -512,7 +512,9 @@ tracking_get_track_main(PG_FUNCTION_ARGS)
 		 * quite suboptimal. The size calculation strategy should be revised
 		 * in future.
 		 */
-		datums[3] = Int64GetDatum(dbsize_calc_size(HeapTupleGetOid(pg_class_tuple)));
+		Form_pg_class relp = (Form_pg_class) GETSTRUCT(pg_class_tuple);
+		int64 size = dbsize_calc_size(relp);
+		datums[3] = Int64GetDatum(size);
 		datums[4] = CharGetDatum(tf_get_global_state.bloom->is_set_all ? 'i' : 'a');
 		datums[5] = Int32GetDatum(GpIdentity.segindex);
 
