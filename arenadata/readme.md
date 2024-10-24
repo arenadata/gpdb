@@ -1,3 +1,7 @@
+# Prerequisities
+
+docker-compose v2 or newer is required
+
 # How to run tests
 
 ## Build docker gpdb image with developer options
@@ -22,6 +26,11 @@ CI pushes docker images to the internal registry for each branch. We can pull it
   ```bash
   docker pull hub.adsw.io/library/gpdb6_regress:1353d81 
   ```
+
+After the assembly of your image is done, you need to set IMAGE env variable in order to use this image in your tests.
+You can use either image's name or its IMAGE ID. If you want to use IMAGE ID you need to specify it this way:
+
+* export IMAGE=sha256:YOUR_IMAGE_ID
 
 ## Full regression tests suite run
 
