@@ -1,6 +1,5 @@
 #include "arenadata_toolkit_guc.h"
 
-
 #include "cdb/cdbvars.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_db_role_setting.h"
@@ -159,8 +158,8 @@ tf_guc_define(void)
 							NULL,
 							&bloom_size,
 							DEFAULT_BLOOM_SIZE_BYTES,
-							MIN_BLOOM_SIZE,
-							MAX_BLOOM_SIZE,
+							MIN_BLOOM_SIZE_BYTES,
+							MAX_BLOOM_SIZE_BYTES,
 							PGC_POSTMASTER,
 							0,
 							NULL,
@@ -189,7 +188,7 @@ tf_guc_define(void)
 							 DEFAULT_IS_TRACKED,
 							 PGC_SUSET,
 							 0,
-							 &check_tracked,
+							 check_tracked,
 							 NULL,
 							 NULL);
 
@@ -200,7 +199,7 @@ tf_guc_define(void)
 							 DEFAULT_GET_FULL_SNAPSHOT_ON_RECOVERY,
 							 PGC_SUSET,
 							 0,
-							 &check_get_full_snapshot_on_recovery,
+							 check_get_full_snapshot_on_recovery,
 							 NULL,
 							 NULL);
 
@@ -224,7 +223,7 @@ tf_guc_define(void)
 							   DEFAULT_TRACKED_SCHEMAS,
 							   PGC_SUSET,
 							   0,
-							   &check_schemas,
+							   check_schemas,
 							   NULL,
 							   NULL);
 
@@ -235,7 +234,7 @@ tf_guc_define(void)
 							   DEFAULT_TRACKED_REL_STORAGES,
 							   PGC_SUSET,
 							   0,
-							   &check_relstorages,
+							   check_relstorages,
 							   NULL,
 							   NULL);
 
@@ -246,7 +245,7 @@ tf_guc_define(void)
 							   DEFAULT_TRACKED_REL_KINDS,
 							   PGC_SUSET,
 							   0,
-							   &check_relkinds,
+							   check_relkinds,
 							   NULL,
 							   NULL);
 
@@ -256,8 +255,8 @@ tf_guc_define(void)
 							NULL,
 							&tracking_worker_naptime_sec,
 							DEFAULT_NAPTIME_SEC,
-							1,
-							MAX_NAPTIME,
+							MIN_NAPTIME_SEC,
+							MAX_NAPTIME_SEC,
 							PGC_SIGHUP,
 							0,
 							NULL,

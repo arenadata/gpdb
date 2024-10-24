@@ -13,15 +13,15 @@
 #define DEFAULT_TRACKED_REL_KINDS "r,i,t,m,o,b,M"
 #define DEFAULT_NAPTIME_SEC 60
 
-#define MIN_BLOOM_SIZE 1
+#define MIN_BLOOM_SIZE_BYTES 1
 #define MIN_DB_TRACK_COUNT 1
 #define MIN_DROPS_COUNT 1
-#define MIN_NAPTIME 1
+#define MIN_NAPTIME_SEC 1
 
-#define MAX_BLOOM_SIZE 128000000
+#define MAX_BLOOM_SIZE_BYTES 128000000
 #define MAX_DB_TRACK_COUNT 1000
 #define MAX_DROPS_COUNT 1000000
-#define MAX_NAPTIME OID_MAX & 0x7FFFFFFF
+#define MAX_NAPTIME_SEC OID_MAX & 0x7FFFFFFF
 
 extern int	bloom_size;
 extern int	db_track_count;
