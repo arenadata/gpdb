@@ -50,10 +50,12 @@
 #include "libpq/hba.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
+#include "utils/gp_alloc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/resource_manager.h"
 #include "utils/timestamp.h"
+#include "utils/vmem_tracker.h"
 
 /* table_functions test */
 extern Datum multiset_example(PG_FUNCTION_ARGS);
@@ -78,6 +80,7 @@ extern Datum userdata_project(PG_FUNCTION_ARGS);
 extern Datum checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS);
 extern Datum repeatPalloc(PG_FUNCTION_ARGS);
 extern Datum resGroupPalloc(PG_FUNCTION_ARGS);
+extern Datum gp_occupy_resgroup_memory(PG_FUNCTION_ARGS);
 
 /* Gang management test support */
 extern Datum gangRaiseInfo(PG_FUNCTION_ARGS);
@@ -628,6 +631,7 @@ repeatPalloc(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(0);
 }
 
+static bool startupConsidered = false;
 PG_FUNCTION_INFO_V1(resGroupPalloc);
 Datum
 resGroupPalloc(PG_FUNCTION_ARGS)
@@ -642,7 +646,16 @@ resGroupPalloc(PG_FUNCTION_ARGS)
 		PG_RETURN_INT32(0);
 
 	ResGroupGetMemInfo(&memLimit, &slotQuota, &sharedQuota);
-	size = ceilf(memLimit * ratio);
+	if (!startupConsidered)
+	{
+		size = ceilf(memLimit * ratio) - VmemTracker_GetStartupChunks();
+		startupConsidered = true;
+	}
+	else
+	{
+		size = ceilf(memLimit * ratio);
+	}
+
 	count = size / 512;
 	for (i = 0; i < count; i++)
 		MemoryContextAlloc(TopMemoryContext, 512 * 1024 * 1024);

@@ -633,6 +633,12 @@ VmemTracker_ReleaseVmem(int64 toBeFreedRequested)
 	}
 }
 
+int32
+VmemTracker_GetStartupChunks(void)
+{
+	return startupChunks;
+}
+
 /*
  * Register the startup memory to vmem tracker.
  *
@@ -670,6 +676,8 @@ VmemTracker_RegisterStartupMemory(int64 bytes)
 	pg_atomic_add_fetch_u32((pg_atomic_uint32 *) segmentVmemChunks,
 							startupChunks);
 
+	ResGroupProcAddStartupChunks(startupChunks);
+
 	/*
 	 * Step 2, check if an OOM error should be raised by allocating 0 chunk.
 	 */
@@ -691,6 +699,8 @@ VmemTracker_UnregisterStartupMemory(void)
 	if (MySessionState)
 		pg_atomic_sub_fetch_u32((pg_atomic_uint32 *) &MySessionState->sessionVmem,
 								startupChunks);
+
+	ResGroupProcSubStartupChunks(startupChunks);
 
 	trackedBytes -= startupBytes;
 	trackedVmemChunks -= startupChunks;
