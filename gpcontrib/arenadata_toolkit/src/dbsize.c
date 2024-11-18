@@ -44,7 +44,7 @@ static bool calculate_ao_storage_perSegFile(const int segno, void *ctx);
 static void fill_relation_seg_path(char *buf, int bufLen,
 					   const char *relpath, int segNo);
 static int64 calculate_toast_table_size(Oid toastrelid, ForkNumber forknum);
-static int64 get_heap_storage_total_bytes_soft(Relation rel, ForkNumber forknum, char *relpath);
+static int64 get_heap_storage_total_bytes_soft(char *relpath);
 static bool calculate_ao_storage_perSegFile_soft(const int segno, void *ctx);
 
 /*
@@ -124,7 +124,7 @@ calculate_relation_size(Relation rel, ForkNumber forknum, bool softCalc)
 	char	   *relpath = relpathbackend(rel->rd_node, rel->rd_backend, forknum);
 
 	if (RelationIsHeap(rel))
-		return softCalc ? get_heap_storage_total_bytes_soft(rel, forknum, relpath) : get_heap_storage_total_bytes(rel, forknum, relpath);
+		return softCalc ? get_heap_storage_total_bytes_soft(relpath) : get_heap_storage_total_bytes(rel, forknum, relpath);
 
 	return get_ao_storage_total_bytes(rel, relpath, softCalc);
 }
@@ -401,10 +401,9 @@ Datum adb_hba_file_rules(PG_FUNCTION_ARGS)
 int64
 dbsize_calc_size(Form_pg_class pg_class_data)
 {
-	RelationData	rel;
+	RelationData	rel = {0};
 	int64		size = 0;
 
-	memset(&rel, 0, sizeof(RelationData));
 	/*
 	 * Initialize Relfilenode field of RelationData.
 	 */
@@ -467,7 +466,7 @@ dbsize_calc_size(Form_pg_class pg_class_data)
  * The errors of stat() call are ignored
  */
 static int64
-get_heap_storage_total_bytes_soft(Relation rel, ForkNumber forknum, char *relpath)
+get_heap_storage_total_bytes_soft(char *relpath)
 {
 	int64		totalsize = 0;
 	char		segPath[MAXPATHLEN_WITHSEGNO];
