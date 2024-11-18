@@ -12,6 +12,7 @@
 #include "cdb/cdbutil.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
+#include "executor/executor.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "libpq-fe.h"
@@ -85,11 +86,11 @@ typedef struct
 static tf_get_global_state_t tf_get_global_state = {0};
 
 static bool callbackRegistered = false;
-static bool controlVersionUsed = false;
-static TransactionId local_xid = InvalidTransactionId;
+static uint32 current_version = InvalidVersion;
 
 static bool isExecutorExplainMode = false;
 ProcessUtility_hook_type next_ProcessUtility_hook = NULL;
+ExecutorEnd_hook_type next_ExecutorEnd_hook = NULL;
 
 static inline void
 tf_check_shmem_error(void)
@@ -137,9 +138,8 @@ xact_end_version_callback(XactEvent event, void *arg)
 
 	bloom_set_release(&ctx);
 
-	local_xid = InvalidTransactionId;
 	callbackRegistered = false;
-	controlVersionUsed = false;
+	current_version = InvalidVersion;
 	isExecutorExplainMode = false;
 }
 
@@ -1351,17 +1351,37 @@ explain_detector_ProcessUtility(Node *parsetree,
 	isExecutorExplainMode = false;
 }
 
-void
-track_setup_ProcessUtility_hook(void)
+/*
+ * When any query execution ends, current_version is set to control.
+ * If the tracking_track_version registered transaction callback
+ * and its transaction is still going, then subsequent tracking_track_version
+ * calls within the transaction will return ControlVerion.
+ */
+static void
+track_ExecutorEnd(QueryDesc *queryDesc)
 {
-	next_ProcessUtility_hook = ProcessUtility_hook ? ProcessUtility_hook : standard_ProcessUtility;
-	ProcessUtility_hook = explain_detector_ProcessUtility;
+	current_version = ControlVersion;
+
+	if (next_ExecutorEnd_hook)
+		next_ExecutorEnd_hook(queryDesc);
 }
 
 void
-track_uninstall_ProcessUtility_hook(void)
+track_setup_executor_hooks(void)
+{
+	next_ProcessUtility_hook = ProcessUtility_hook ? ProcessUtility_hook : standard_ProcessUtility;
+	ProcessUtility_hook = explain_detector_ProcessUtility;
+
+	next_ExecutorEnd_hook = ExecutorEnd_hook ? ExecutorEnd_hook : standard_ExecutorEnd;
+	ExecutorEnd_hook = track_ExecutorEnd;
+
+}
+
+void
+track_uninstall_executor_hooks(void)
 {
 	ProcessUtility_hook = next_ProcessUtility_hook == standard_ProcessUtility ? NULL : next_ProcessUtility_hook;
+	ExecutorEnd_hook = next_ExecutorEnd_hook == standard_ExecutorEnd ? NULL : next_ExecutorEnd_hook;
 }
 
 /*
@@ -1373,9 +1393,6 @@ track_uninstall_ProcessUtility_hook(void)
 Datum
 tracking_track_version(PG_FUNCTION_ARGS)
 {
-	int64		version = (int64) InvalidVersion;
-	TransactionId current_xid = GetCurrentTransactionIdIfAny();
-
 	if (Gp_role != GP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errmsg("Cannot acquire track using such query")));
@@ -1385,49 +1402,34 @@ tracking_track_version(PG_FUNCTION_ARGS)
 
 	tf_check_shmem_error();
 
-	bloom_op_ctx_t ctx = bloom_set_get_entry(MyDatabaseId, LW_SHARED, LW_EXCLUSIVE);
-
-	if (!ctx.entry)
-	{
-		bloom_set_release(&ctx);
-
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_COMMAND_ERROR),
-				 errmsg("database %u is not tracked", MyDatabaseId),
-				 errhint("Call 'arenadata_toolkit.tracking_register_db()'"
-						 "to enable tracking")));
-	}
-	else if (!callbackRegistered && !pg_atomic_test_set_flag(&ctx.entry->capture_in_progress))
-	{
-		bloom_set_release(&ctx);
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_COMMAND_ERROR),
-				 errmsg("Track for database %u is being acquired in other transaction", MyDatabaseId)));
-	}
-
-	version = (int64) ctx.entry->master_version;
-	bloom_set_release(&ctx);
-
 	if (!callbackRegistered)
 	{
 		RegisterXactCallbackOnce(xact_end_version_callback, NULL);
 		callbackRegistered = true;
 
-		if (current_xid != local_xid)
+		bloom_op_ctx_t ctx = bloom_set_get_entry(MyDatabaseId, LW_SHARED, LW_EXCLUSIVE);
+
+		if (!ctx.entry)
 		{
-			local_xid = current_xid;
-			controlVersionUsed = false;
+			bloom_set_release(&ctx);
+
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+							errmsg("database %u is not tracked", MyDatabaseId),
+							errhint("Call 'arenadata_toolkit.tracking_register_db()'"
+									"to enable tracking")));
 		}
-		else if (current_xid != InvalidTransactionId)
+		else if (!pg_atomic_test_set_flag(&ctx.entry->capture_in_progress))
 		{
-			controlVersionUsed = true;
+			bloom_set_release(&ctx);
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_COMMAND_ERROR),
+					errmsg("Track for database %u is being acquired in other transaction", MyDatabaseId)));
 		}
+
+		current_version = (int64) ctx.entry->master_version;
+		bloom_set_release(&ctx);
 	}
 
-	if (controlVersionUsed)
-	{
-		version = (int64) ControlVersion;
-	}
-
-	PG_RETURN_INT64(version);
+	PG_RETURN_INT64((int64) current_version);
 }

@@ -25,9 +25,10 @@ _PG_init(void)
 	tf_guc_define();
 	tf_shmem_init();
 	file_hook_init();
-	track_setup_ProcessUtility_hook();
-
 	drops_track_init();
+
+	if (IS_QUERY_DISPATCHER())
+		track_setup_executor_hooks();
 
 	arenadata_toolkit_worker_register();
 }
@@ -35,8 +36,10 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
+	if (IS_QUERY_DISPATCHER())
+		track_uninstall_executor_hooks();
+
 	drops_track_deinit();
-	track_uninstall_ProcessUtility_hook();
 	file_hook_deinit();
 	tf_shmem_deinit();
 }
