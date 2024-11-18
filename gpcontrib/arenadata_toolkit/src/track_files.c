@@ -61,7 +61,14 @@ PG_FUNCTION_INFO_V1(tracking_track_version);
 #define Anum_track_gp_segment_relkind ((AttrNumber) 7)
 #define Anum_track_gp_segment_relstorage ((AttrNumber) 8)
 
-/* Preserved state among the calls of tracking_get_track_main */
+/*
+ * Macros for string constants, which are used during work with GUCs
+ */
+#define TRACKING_SCHEMAS_PREFIX "arenadata_toolkit.tracking_schemas="
+#define TRACKING_RELSTORAGES_PREFIX "arenadata_toolkit.tracking_relstorages="
+#define TRACKING_RELKINDS_PREFIX "arenadata_toolkit.tracking_relkinds="
+
+/* Preserved state among the calls of tracking_get_track */
 typedef struct
 {
 	Relation	pg_class_rel;	/* pg_class relation */
@@ -253,8 +260,8 @@ get_filters_from_guc()
 		if (!isnull)
 		{
 			ArrayType  *array;
-			Datum	   *elems;
-			bool	   *nulls;
+			Datum	   *elems = NULL;
+			bool	   *nulls = NULL;
 			int			nelems;
 
 			array = DatumGetArrayTypeP(str_datum);
@@ -264,16 +271,35 @@ get_filters_from_guc()
 			{
 				if (nulls[i])
 					continue;
+
 				char	   *str = TextDatumGetCString(elems[i]);
 
-				if (strncmp(str, "arenadata_toolkit.tracking_schemas=", 35) == 0)
-					current_schemas = pstrdup(str + 35);
-				else if (strncmp(str, "arenadata_toolkit.tracking_relstorages=", 39) == 0)
-					current_relstorages = pstrdup(str + 39);
-				else if (strncmp(str, "arenadata_toolkit.tracking_relkinds=", 36) == 0)
-					current_relkinds = pstrdup(str + 36);
+				if (strncmp(str,
+							TRACKING_SCHEMAS_PREFIX,
+							sizeof(TRACKING_SCHEMAS_PREFIX) - 1) == 0)
+				{
+					current_schemas = pstrdup(str + sizeof(TRACKING_SCHEMAS_PREFIX) - 1);
+				}
+				else if (strncmp(str,
+								 TRACKING_RELSTORAGES_PREFIX,
+								 sizeof(TRACKING_RELSTORAGES_PREFIX) - 1) == 0)
+				{
+					current_relstorages = pstrdup(str + sizeof(TRACKING_RELSTORAGES_PREFIX) - 1);
+				}
+				else if (strncmp(str,
+								 TRACKING_RELKINDS_PREFIX,
+								 sizeof(TRACKING_RELKINDS_PREFIX) - 1) == 0)
+				{
+					current_relkinds = pstrdup(str + sizeof(TRACKING_RELKINDS_PREFIX) - 1);
+				}
+
 				pfree(str);
 			}
+
+			if (elems)
+				pfree(elems);
+			if (nulls)
+				pfree(nulls);
 		}
 	}
 	systable_endscan(scan);
@@ -409,7 +435,7 @@ tracking_get_track(PG_FUNCTION_ARGS)
 		 */
 		if (tf_get_global_state.bloom == NULL)
 		{
-			tf_get_global_state.bloom = palloc0(full_bloom_size(bloom_size));
+			tf_get_global_state.bloom = palloc(full_bloom_size(bloom_size));
 			bloom_init(bloom_size, tf_get_global_state.bloom);
 
 			if (version == ControlVersion)
@@ -500,19 +526,28 @@ tracking_get_track(PG_FUNCTION_ARGS)
 			break;
 		}
 
-		datums[Anum_track_gp_segment_relkind] = heap_getattr(pg_class_tuple, Anum_pg_class_relkind, RelationGetDescr(state->pg_class_rel), &nulls[7]);
+		datums[Anum_track_gp_segment_relkind] = heap_getattr(pg_class_tuple,
+															 Anum_pg_class_relkind,
+															 RelationGetDescr(state->pg_class_rel),
+															 &nulls[Anum_track_gp_segment_relkind]);
 		relkind = DatumGetChar(datums[Anum_track_gp_segment_relkind]);
 
 		if (!kind_is_tracked(relkind, tf_get_global_state.relkinds))
 			continue;
 
-		datums[Anum_track_gp_segment_relstorage] = heap_getattr(pg_class_tuple, Anum_pg_class_relstorage, RelationGetDescr(state->pg_class_rel), &nulls[8]);
+		datums[Anum_track_gp_segment_relstorage] = heap_getattr(pg_class_tuple,
+																Anum_pg_class_relstorage,
+																RelationGetDescr(state->pg_class_rel),
+																&nulls[Anum_track_gp_segment_relstorage]);
 		relstorage = DatumGetChar(datums[Anum_track_gp_segment_relstorage]);
 
 		if (!kind_is_tracked(relstorage, tf_get_global_state.relstorages))
 			continue;
 
-		datums[Anum_track_gp_segment_relnamespace] = heap_getattr(pg_class_tuple, Anum_pg_class_relnamespace, RelationGetDescr(state->pg_class_rel), &nulls[6]);
+		datums[Anum_track_gp_segment_relnamespace] = heap_getattr(pg_class_tuple,
+																  Anum_pg_class_relnamespace,
+																  RelationGetDescr(state->pg_class_rel),
+																  &nulls[Anum_track_gp_segment_relnamespace]);
 		relnamespace = DatumGetObjectId(datums[Anum_track_gp_segment_relnamespace]);
 
 		if (!schema_is_tracked(relnamespace))
@@ -520,9 +555,15 @@ tracking_get_track(PG_FUNCTION_ARGS)
 
 		datums[Anum_track_relid] = ObjectIdGetDatum(HeapTupleGetOid(pg_class_tuple));
 
-		datums[Anum_track_name] = heap_getattr(pg_class_tuple, Anum_pg_class_relname, RelationGetDescr(state->pg_class_rel), &nulls[1]);
+		datums[Anum_track_name] = heap_getattr(pg_class_tuple,
+											   Anum_pg_class_relname,
+											   RelationGetDescr(state->pg_class_rel),
+											   &nulls[Anum_track_name]);
 
-		datums[Anum_track_relfilenode] = heap_getattr(pg_class_tuple, Anum_pg_class_relfilenode, RelationGetDescr(state->pg_class_rel), &nulls[2]);
+		datums[Anum_track_relfilenode] = heap_getattr(pg_class_tuple,
+													  Anum_pg_class_relfilenode,
+													  RelationGetDescr(state->pg_class_rel),
+													  &nulls[Anum_track_relfilenode]);
 		filenode = DatumGetObjectId(datums[Anum_track_relfilenode]);
 
 		if (nulls[Anum_track_relfilenode])
@@ -615,7 +656,7 @@ track_db(Oid dbid, bool reg)
 		tf_guc_unlock();
 		/* Will set the GUC in caller session only on coordinator */
 		SetConfigOption("arenadata_toolkit.tracking_is_db_tracked", reg ? "t" : "f",
-						PGC_S_DATABASE, PGC_S_DATABASE);
+						PGC_SUSET, PGC_S_DATABASE);
 	}
 
 	if (!reg)
@@ -787,7 +828,7 @@ tracking_set_snapshot_on_recovery(PG_FUNCTION_ARGS)
 	/* Will set the GUC in caller session only on coordinator */
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_snapshot_on_recovery", set ? "t" : "f",
-					PGC_S_DATABASE, PGC_S_DATABASE);
+					PGC_SUSET, PGC_S_DATABASE);
 
 	PG_RETURN_BOOL(true);
 }
@@ -885,7 +926,7 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 		if (!isnull)
 		{
 			ArrayType  *array;
-			Datum	   *elems;
+			Datum	   *elems = NULL;
 			int			nelems;
 
 			array = DatumGetArrayTypeP(str_datum);
@@ -895,13 +936,17 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 			{
 				char	   *str = TextDatumGetCString(elems[i]);
 
-				if (strncmp(str, "arenadata_toolkit.tracking_schemas=", 35) == 0)
+				if (strncmp(str, TRACKING_SCHEMAS_PREFIX,
+					sizeof(TRACKING_SCHEMAS_PREFIX) - 1) == 0)
 				{
-					current_schemas = pstrdup(str + 35);
+					current_schemas = pstrdup(str + sizeof(TRACKING_SCHEMAS_PREFIX) - 1);
 					break;
 				}
 				pfree(str);
 			}
+
+			if (elems)
+				pfree(elems);
 		}
 	}
 	systable_endscan(scan);
@@ -950,7 +995,7 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_schemas",
 					new_schemas ? new_schemas : DEFAULT_TRACKED_SCHEMAS,
-					PGC_S_DATABASE, PGC_S_DATABASE);
+					PGC_SUSET, PGC_S_DATABASE);
 
 	if (current_schemas)
 		pfree(current_schemas);
@@ -1011,18 +1056,18 @@ is_valid_relkind(char relkind)
 {
 	switch (relkind)
 	{
-		case 'r':
-		case 'i':
-		case 'S':
-		case 't':
-		case 'v':
-		case 'c':
-		case 'f':
-		case 'u':
-		case 'm':
-		case 'o':
-		case 'b':
-		case 'M':
+		case RELKIND_RELATION:
+		case RELKIND_INDEX:
+		case RELKIND_SEQUENCE:
+		case RELKIND_TOASTVALUE:
+		case RELKIND_VIEW:
+		case RELKIND_COMPOSITE_TYPE:
+		case RELKIND_FOREIGN_TABLE:
+		case RELKIND_UNCATALOGED:
+		case RELKIND_MATVIEW:
+		case RELKIND_AOSEGMENTS:
+		case RELKIND_AOBLOCKDIR:
+		case RELKIND_AOVISIMAP:
 			return true;
 		default:
 			return false;
@@ -1112,7 +1157,7 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_relkinds",
 					buf.len ? buf.data : DEFAULT_TRACKED_REL_KINDS,
-					PGC_S_DATABASE, PGC_S_DATABASE);
+					PGC_SUSET, PGC_S_DATABASE);
 
 	pfree(buf.data);
 
@@ -1124,12 +1169,12 @@ is_valid_relstorage(char relstorage)
 {
 	switch (relstorage)
 	{
-		case 'h':
-		case 'a':
-		case 'c':
-		case 'x':
-		case 'v':
-		case 'f':
+		case RELSTORAGE_HEAP:
+		case RELSTORAGE_AOROWS:
+		case RELSTORAGE_AOCOLS:
+		case RELSTORAGE_EXTERNAL:
+		case RELSTORAGE_VIRTUAL:
+		case RELSTORAGE_FOREIGN:
 			return true;
 		default:
 			return false;
@@ -1220,7 +1265,7 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_relstorages",
 					buf.len ? buf.data : DEFAULT_TRACKED_REL_STORAGES,
-					PGC_S_DATABASE, PGC_S_DATABASE);
+					PGC_SUSET, PGC_S_DATABASE);
 
 	pfree(buf.data);
 
