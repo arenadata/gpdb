@@ -149,21 +149,24 @@ worker_tracking_status_check()
 {
 	List	   *tracked_dbs = NIL;
 
-	StartTransactionCommand();
-
-	tracked_dbs = get_tracked_dbs();
-
 	if (pg_atomic_unlocked_test_flag(&tf_shared_state->tracking_is_initialized))
 	{
+		StartTransactionCommand();
+
+		tracked_dbs = get_tracked_dbs();
+
 		if (list_length(tracked_dbs) > 0)
 			track_dbs(tracked_dbs);
+
+		CommitTransactionCommand();
+
+		if (tracked_dbs)
+			list_free_deep(tracked_dbs);
 
 		pg_atomic_test_set_flag(&tf_shared_state->tracking_is_initialized);
 	}
 
-	if (tracked_dbs)
-		list_free_deep(tracked_dbs);
-	CommitTransactionCommand();
+
 }
 
 /* Main worker cycle. Scans pg_db_role_setting and binds tracked dbids to
