@@ -608,11 +608,11 @@ track_db(Oid dbid, bool reg)
 		v_stmt.args = lappend(NIL, &aconst);
 		v_stmt.is_local = false;
 
-		tf_guc_unlock_tracked_once();
+		tf_guc_unlock();
 
 		AlterDatabaseSet(&stmt);
 
-		tf_guc_unlock_tracked_once();
+		tf_guc_unlock();
 		/* Will set the GUC in caller session only on coordinator */
 		SetConfigOption("arenadata_toolkit.tracking_is_db_tracked", reg ? "t" : "f",
 						PGC_S_DATABASE, PGC_S_DATABASE);
@@ -780,12 +780,12 @@ tracking_set_snapshot_on_recovery(PG_FUNCTION_ARGS)
 	v_stmt.args = lappend(NIL, &aconst);
 	v_stmt.is_local = false;
 
-	tf_guc_unlock_full_snapshot_on_recovery_once();
+	tf_guc_unlock();
 
 	AlterDatabaseSet(&stmt);
 
 	/* Will set the GUC in caller session only on coordinator */
-	tf_guc_unlock_full_snapshot_on_recovery_once();
+	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_snapshot_on_recovery", set ? "t" : "f",
 					PGC_S_DATABASE, PGC_S_DATABASE);
 
@@ -942,12 +942,12 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 		v_stmt.args = list_make1(&arg);
 	}
 
-	tf_guc_unlock_schemas_once();
+	tf_guc_unlock();
 
 	AlterDatabaseSet(&stmt);
 
 	/* Will set the GUC in caller session only on coordinator */
-	tf_guc_unlock_schemas_once();
+	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_schemas",
 					new_schemas ? new_schemas : DEFAULT_TRACKED_SCHEMAS,
 					PGC_S_DATABASE, PGC_S_DATABASE);
@@ -1104,12 +1104,12 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 		elog(LOG, "[arenadata_toolkit] setting relkinds %s in database %u for tracking", buf.data, dbid);
 	}
 
-	tf_guc_unlock_relkinds_once();
+	tf_guc_unlock();
 
 	AlterDatabaseSet(&stmt);
 
 	/* Will set the GUC in caller session only on coordinator */
-	tf_guc_unlock_relkinds_once();
+	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_relkinds",
 					buf.len ? buf.data : DEFAULT_TRACKED_REL_KINDS,
 					PGC_S_DATABASE, PGC_S_DATABASE);
@@ -1212,12 +1212,12 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 		elog(LOG, "[arenadata_toolkit] setting relstorages %s in database %u for tracking", buf.data, dbid);
 	}
 
-	tf_guc_unlock_relstorages_once();
+	tf_guc_unlock();
 
 	AlterDatabaseSet(&stmt);
 
 	/* Will set the GUC in caller session only on coordinator */
-	tf_guc_unlock_relstorages_once();
+	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_relstorages",
 					buf.len ? buf.data : DEFAULT_TRACKED_REL_STORAGES,
 					PGC_S_DATABASE, PGC_S_DATABASE);
