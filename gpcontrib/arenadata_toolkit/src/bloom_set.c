@@ -16,7 +16,7 @@ bloom_entry_size(uint32 size)
 }
 
 static inline void *
-bloom_entry_get(bloom_set_t * set, int idx)
+bloom_entry_get(bloom_set_t *set, int idx)
 {
 	return (void *) ((uint8 *) set->bloom_entries + idx * bloom_entry_size(set->bloom_size));
 }
@@ -37,12 +37,12 @@ bloom_set_check_state(void)
 }
 
 static void
-bloom_entry_init(const uint32_t bloom_size, bloom_entry_t * bloom_entry)
+bloom_entry_init(const uint32_t size, bloom_entry_t *bloom_entry)
 {
 	bloom_entry->dbid = InvalidOid;
 	bloom_entry->master_version = InvalidVersion;
 	bloom_entry->work_version = InvalidVersion;
-	bloom_init(bloom_size, &bloom_entry->bloom);
+	bloom_init(size, &bloom_entry->bloom);
 }
 
 
@@ -186,28 +186,9 @@ bloom_set_set(Oid dbid, Oid relNode)
 
 }
 
-/* Find bloom by dbid, copy all bytes to new filter */
-bool
-bloom_set_move(Oid dbid, bloom_t * dest)
-{
-	bloom_op_ctx_t ctx = bloom_set_get_entry(dbid, LW_SHARED, LW_EXCLUSIVE);
-
-	if (ctx.entry)
-	{
-		bloom_copy(dest, &ctx.entry->bloom);
-		bloom_clear(&ctx.entry->bloom);
-		bloom_set_release(&ctx);
-		return true;
-	}
-
-	bloom_set_release(&ctx);
-
-	return false;
-}
-
 /* Find bloom by dbid, merge bytes from another bloom to it */
 bool
-bloom_set_merge(Oid dbid, bloom_t * from)
+bloom_set_merge(Oid dbid, bloom_t *from)
 {
 	if (!from)
 		return false;
@@ -256,7 +237,7 @@ bloom_set_get_entry(Oid dbid, LWLockMode s_mode, LWLockMode e_mode)
 	return ctx;
 }
 void
-bloom_set_release(bloom_op_ctx_t * ctx)
+bloom_set_release(bloom_op_ctx_t *ctx)
 {
 	if (ctx->entry_lock)
 		LWLockRelease(ctx->entry_lock);

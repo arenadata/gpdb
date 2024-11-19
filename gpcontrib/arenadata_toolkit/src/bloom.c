@@ -81,7 +81,7 @@ tracking_hashes(Oid node, uint32 bloom_size, uint32 *out_hashes)
 * Returns true if element might be in set, false if definitely not in set.
 */
 bool
-bloom_isset(bloom_t * bloom, Oid relnode)
+bloom_isset(bloom_t *bloom, Oid relnode)
 {
 	uint32		hashes[MAX_BLOOM_HASH_FUNCS];
 
@@ -110,7 +110,7 @@ bloom_isset(bloom_t * bloom, Oid relnode)
  * relnode	- relation file node OID to insert
  */
 void
-bloom_set_bits(bloom_t * bloom, Oid relnode)
+bloom_set_bits(bloom_t *bloom, Oid relnode)
 {
 	uint32		hashes[MAX_BLOOM_HASH_FUNCS];
 
@@ -122,7 +122,7 @@ bloom_set_bits(bloom_t * bloom, Oid relnode)
 }
 
 void
-bloom_init(const uint32 bloom_size, bloom_t * bloom)
+bloom_init(const uint32 bloom_size, bloom_t *bloom)
 {
 	bloom->size = bloom_size;
 	bloom->current_bloom = bloom->map;
@@ -155,21 +155,21 @@ init_bloom_invariants(void)
 }
 
 void
-bloom_set_all(bloom_t * bloom)
+bloom_set_all(bloom_t *bloom)
 {
 	memset(bloom->current_bloom, 0xFF, bloom->size);
 	bloom->is_set_all = 1;
 }
 
 void
-bloom_clear(bloom_t * bloom)
+bloom_clear(bloom_t *bloom)
 {
 	memset(bloom->current_bloom, 0, bloom->size);
 	bloom->is_set_all = 0;
 }
 
 void
-bloom_merge(bloom_t * dst, bloom_t * src)
+bloom_merge(bloom_t *dst, bloom_t *src)
 {
 	if (src->is_set_all)
 	{
@@ -183,7 +183,7 @@ bloom_merge(bloom_t * dst, bloom_t * src)
 }
 
 void
-bloom_copy(bloom_t * dest, bloom_t * src)
+bloom_copy(bloom_t *dest, bloom_t *src)
 {
 	dest->size = src->size;
 	memcpy(dest->current_bloom, src->current_bloom, src->size);
@@ -191,7 +191,7 @@ bloom_copy(bloom_t * dest, bloom_t * src)
 }
 
 void
-bloom_switch_current(bloom_t * bloom)
+bloom_switch_current(bloom_t *bloom)
 {
 	uint8	   *map_base = bloom->map;
 	uint8	   *map_off = bloom->map + bloom->size;
@@ -201,7 +201,7 @@ bloom_switch_current(bloom_t * bloom)
 }
 
 uint8 *
-bloom_get_other(bloom_t * bloom)
+bloom_get_other(bloom_t *bloom)
 {
 	uint8	   *map_base = bloom->map;
 	uint8	   *map_off = bloom->map + bloom->size;
@@ -210,7 +210,7 @@ bloom_get_other(bloom_t * bloom)
 }
 
 void
-bloom_merge_internal(bloom_t * bloom)
+bloom_merge_internal(bloom_t *bloom)
 {
 	if (bloom->is_set_all)
 		return;

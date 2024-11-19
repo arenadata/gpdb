@@ -108,10 +108,10 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_current                                           | table   | h          | {owner=arwdDxt/owner,=r/owner}
  db_files_history                                           | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_default_part                        | table   | a          | {owner=arwdDxt/owner}
- db_files_history_1_prt_p202411                             | table   | a          | {owner=arwdDxt/owner}
- db_files_history_backup_20241117t005023                    | table   | a          | 
- db_files_history_backup_20241117t005023_1_prt_default_part | table   | a          | 
- db_files_history_backup_20241117t005023_1_prt_p202411      | table   | a          | 
+ db_files_history_1_prt_pYYYYMM                             | table   | a          | {owner=arwdDxt/owner}
+ db_files_history_backup_YYYYMMDDtHHMMSS                    | table   | a          | 
+ db_files_history_backup_YYYYMMDDtHHMMSS_1_prt_default_part | table   | a          | 
+ db_files_history_backup_YYYYMMDDtHHMMSS_1_prt_pYYYYMM      | table   | a          | 
  is_initial_snapshot_triggered                              | table   | v          | {owner=arwdDxt/owner,=r/owner}
  operation_exclude                                          | table   | a          | 
  tables_track                                               | table   | v          | {owner=arwdDxt/owner,=r/owner}
@@ -206,7 +206,7 @@ SELECT objname, objtype, objstorage, objacl FROM toolkit_objects_info ORDER BY o
  db_files_current                                | table   | h          | {owner=arwdDxt/owner,=r/owner}
  db_files_history                                | table   | a          | {owner=arwdDxt/owner}
  db_files_history_1_prt_default_part             | table   | a          | {owner=arwdDxt/owner}
- db_files_history_1_prt_p202411                  | table   | a          | {owner=arwdDxt/owner}
+ db_files_history_1_prt_p202410                  | table   | a          | {owner=arwdDxt/owner}
  is_initial_snapshot_triggered                   | table   | v          | {owner=arwdDxt/owner,=r/owner}
  operation_exclude                               | table   | a          | {owner=arwdDxt/owner}
  tables_track                                    | table   | v          | {owner=arwdDxt/owner,=r/owner}

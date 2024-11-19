@@ -158,10 +158,10 @@ worker_tracking_status_check()
 		if (list_length(tracked_dbs) > 0)
 			track_dbs(tracked_dbs);
 
-		CommitTransactionCommand();
-
 		if (tracked_dbs)
 			list_free_deep(tracked_dbs);
+
+		CommitTransactionCommand();
 
 		pg_atomic_test_set_flag(&tf_shared_state->tracking_is_initialized);
 	}
@@ -258,9 +258,7 @@ arenadata_toolkit_main(Datum main_arg)
 void
 arenadata_toolkit_worker_register()
 {
-	BackgroundWorker worker;
-
-	memset(&worker, 0, sizeof(BackgroundWorker));
+	BackgroundWorker worker = {0};
 
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS | BGWORKER_BACKEND_DATABASE_CONNECTION;
 	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;

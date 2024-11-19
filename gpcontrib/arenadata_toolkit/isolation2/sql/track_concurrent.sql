@@ -39,6 +39,28 @@ pg_class_count AS (
 SELECT bool_and(sc.cnt = pc.cnt)
 FROM segment_counts sc, pg_class_count pc;
 
+-- Test uncommited file creation is not seen from other transaction until the
+-- first one is commited.
+1: BEGIN;
+1: CREATE TABLE tracking_t1 AS SELECT generate_series (1, 100) i DISTRIBUTED BY (i);
+
+2: SELECT relname, size, state, segid, relkind, relstorage FROM arenadata_toolkit.tables_track;
+
+1: COMMIT;
+
+2: SELECT relname, size, state, segid, relkind, relstorage FROM arenadata_toolkit.tables_track;
+
+-- Test file creation is seen from other transaction after the first transaction
+-- has taken the track.
+1: BEGIN;
+1: CREATE TABLE tracking_t2 AS SELECT generate_series (1, 100) i DISTRIBUTED BY (i);
+1: SELECT relname, size, state, segid, relkind, relstorage FROM arenadata_toolkit.tables_track;
+1: COMMIT;
+
+2: SELECT relname, size, state, segid, relkind, relstorage FROM arenadata_toolkit.tables_track;
+
+1: DROP TABLE tracking_t1;
+1: DROP TABLE tracking_t2;
 1: SELECT arenadata_toolkit.tracking_unregister_db();
 1: DROP EXTENSION arenadata_toolkit;
 

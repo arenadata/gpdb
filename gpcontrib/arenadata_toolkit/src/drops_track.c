@@ -42,7 +42,7 @@ static drops_track_t *drops_track;
 LWLock	   *drops_track_lock;
 
 static inline drops_track_node_t *
-track_node_get(drops_track_t * track, int i)
+track_node_get(drops_track_t *track, int i)
 {
 	return (drops_track_node_t *) (track->nodes + i * sizeof(drops_track_node_t));
 }

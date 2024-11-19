@@ -57,12 +57,11 @@ void		bloom_set_init(const uint32 bloom_count, const uint32 bloom_size);
 bool		bloom_set_bind(Oid dbid);
 void		bloom_set_unbind(Oid dbid);
 void		bloom_set_set(Oid dbid, Oid relNode);
-bool		bloom_set_move(Oid dbid, bloom_t * dest);
-bool		bloom_set_merge(Oid dbid, bloom_t * from);
+bool		bloom_set_merge(Oid dbid, bloom_t *from);
 bool		bloom_set_trigger_bits(Oid dbid, bool on);
 bool		bloom_set_is_all_bits_triggered(Oid dbid);
 bloom_op_ctx_t bloom_set_get_entry(Oid dbid, LWLockMode s_mode, LWLockMode e_mode);
-void		bloom_set_release(bloom_op_ctx_t * ctx);
+void		bloom_set_release(bloom_op_ctx_t *ctx);
 LWLock	   *LWLockAcquireEntry(Oid dbid, LWLockMode mode);
 
 #endif   /* BLOOM_SET_H */

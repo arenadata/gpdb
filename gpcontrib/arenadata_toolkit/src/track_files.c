@@ -463,10 +463,9 @@ tracking_get_track(PG_FUNCTION_ARGS)
 		}
 
 		/*
-		 * Let's retrieve tracking information only once for the transaction.
+		 * Let's retrieve tracking information.
 		 */
-		if (tf_get_global_state.schema_oids == NIL)
-			get_filters_from_guc();
+		get_filters_from_guc();
 
 		if (tf_get_global_state.relstorages == 0 ||
 			tf_get_global_state.relkinds == 0 ||

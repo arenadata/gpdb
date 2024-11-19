@@ -21,7 +21,7 @@
 #define MAX_BLOOM_SIZE_BYTES 128000000
 #define MAX_DB_TRACK_COUNT 1000
 #define MAX_DROPS_COUNT 1000000
-#define MAX_NAPTIME_SEC OID_MAX & 0x7FFFFFFF
+#define MAX_NAPTIME_SEC (OID_MAX & 0x7FFFFFFF)
 
 extern int	bloom_size;
 extern int	db_track_count;

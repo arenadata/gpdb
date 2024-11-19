@@ -34,12 +34,12 @@ tf_guc_unlock(void)
  * This is not called for RESET, so RESET is not guarded
  */
 static bool
-check_guc(bool *guc_unlocked, GucSource source, bool *manual)
+check_guc(GucSource source, bool *manual)
 {
 	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
-		(Gp_role == GP_ROLE_DISPATCH && *guc_unlocked))
+		(Gp_role == GP_ROLE_DISPATCH && guc_is_unlocked))
 	{
-		*guc_unlocked = false;
+		guc_is_unlocked = false;
 
 		if (source != PGC_S_DATABASE &&
 			source != PGC_S_DEFAULT &&
@@ -61,7 +61,7 @@ check_tracked(bool *newval, void **extra, GucSource source)
 {
 	bool		manual = false;
 
-	if (check_guc(&guc_is_unlocked, source, &manual))
+	if (check_guc(source, &manual))
 		return true;
 
 	if (manual)
@@ -77,7 +77,7 @@ check_get_full_snapshot_on_recovery(bool *newval, void **extra, GucSource source
 {
 	bool		manual = false;
 
-	if (check_guc(&guc_is_unlocked, source, &manual))
+	if (check_guc(source, &manual))
 		return true;
 
 	if (manual)
@@ -93,7 +93,7 @@ check_relkinds(char **newval, void **extra, GucSource source)
 {
 	bool		manual = false;
 
-	if (check_guc(&guc_is_unlocked, source, &manual))
+	if (check_guc(source, &manual))
 		return true;
 
 	if (manual)
@@ -109,7 +109,7 @@ check_schemas(char **newval, void **extra, GucSource source)
 {
 	bool		manual = false;
 
-	if (check_guc(&guc_is_unlocked, source, &manual))
+	if (check_guc(source, &manual))
 		return true;
 
 	if (manual)
@@ -125,7 +125,7 @@ check_relstorages(char **newval, void **extra, GucSource source)
 {
 	bool		manual = false;
 
-	if (check_guc(&guc_is_unlocked, source, &manual))
+	if (check_guc(source, &manual))
 		return true;
 
 	if (manual)
