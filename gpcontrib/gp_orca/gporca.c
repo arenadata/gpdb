@@ -235,10 +235,8 @@ gp_orca_explain(Query *query, int cursorOptions, IntoClause *into,
 			gp_orca_init();
 
 		gp_orca_explain_dxl(query, es, params);
-		return;
 	}
-
-	if (prev_explain)
+	else if (prev_explain)
 		(*prev_explain)(query, cursorOptions, into, es, queryString, params,
 						queryEnv);
 	else
