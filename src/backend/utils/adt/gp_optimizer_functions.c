@@ -19,9 +19,18 @@
 typedef Datum (*gp_opt_version_func) (void);
 
 /*
+ * A stub function to call if no optimizer function is found.
+ */
+static Datum
+gp_optimizer_function_stub(PG_FUNCTION_ARGS)
+{
+	return CStringGetTextDatum("Server has been compiled without ORCA");
+}
+
+/*
  * Loads optimizer function from a shared library. If library is not presented
  * or doesn't contain the requested function or any of its dependencies,
- * returns NULL.
+ * returns the stub function.
  */
 static PGFunction
 gp_optimizer_load_function(char *funcname)
@@ -43,16 +52,10 @@ gp_optimizer_load_function(char *funcname)
 	}
 	PG_END_TRY();
 
-	return func;
-}
+	if (NULL == func)
+		func = gp_optimizer_function_stub;
 
-/*
- * A stub function to call if no optimizer function is found.
- */
-static Datum
-gp_optimizer_function_stub()
-{
-	return CStringGetTextDatum("Server has been compiled without ORCA");
+	return func;
 }
 
 /*
@@ -63,10 +66,7 @@ enable_xform(PG_FUNCTION_ARGS)
 {
 	PGFunction	func = gp_optimizer_load_function("EnableXform");
 
-	if (func)
-		return func(fcinfo);
-	else
-		return gp_optimizer_function_stub();
+	return func(fcinfo);
 }
 
 /*
@@ -77,10 +77,7 @@ disable_xform(PG_FUNCTION_ARGS)
 {
 	PGFunction	func = gp_optimizer_load_function("DisableXform");
 
-	if (func)
-		return func(fcinfo);
-	else
-		return gp_optimizer_function_stub();
+	return func(fcinfo);
 }
 
 /*
@@ -92,8 +89,5 @@ gp_opt_version(PG_FUNCTION_ARGS pg_attribute_unused())
 	gp_opt_version_func func =
 		(gp_opt_version_func) gp_optimizer_load_function("LibraryVersion");
 
-	if (func)
-		return func();
-	else
-		return gp_optimizer_function_stub();
+	return func();
 }
