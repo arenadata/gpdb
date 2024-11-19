@@ -143,8 +143,7 @@ gp_orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
  *	  this function implicitly uses optimizer
  */
 static void
-gp_orca_explain_dxl(Query *query, ExplainState *es, const char *queryString,
-					ParamListInfo params)
+gp_orca_explain_dxl(Query *query, ExplainState *es, ParamListInfo params)
 {
 	MemoryContext oldcxt = CurrentMemoryContext;
 	bool save_enumerate;
@@ -212,7 +211,7 @@ gp_orca_explain_dxl(Query *query, ExplainState *es, const char *queryString,
 	/* restore old value of enumerate plans GUC */
 	optimizer_enumerate_plans = save_enumerate;
 
-	if (dxl == NULL)
+	if (NULL == dxl)
 		elog(NOTICE, "Optimizer failed to produce plan");
 	else
 	{
@@ -232,7 +231,10 @@ gp_orca_explain(Query *query, int cursorOptions, IntoClause *into,
 {
 	if (es->dxl)
 	{
-		gp_orca_explain_dxl(query, es, queryString, params);
+		if (NULL == OptimizerMemoryContext)
+			gp_orca_init();
+
+		gp_orca_explain_dxl(query, es, params);
 		return;
 	}
 
