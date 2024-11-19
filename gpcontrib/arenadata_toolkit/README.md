@@ -11,11 +11,15 @@ Since extension uses shared memory, configuration on all GPDB segments must be c
 gpconfig -c shared_preload_libraries -v 'arenadata_toolkit'
 ```
 Extension may track restricted number of databases. The maximum number of them is defined by GUC
+||||
+--|--|--
 | arenadata_toolkit.tracking_db_track_count | Need restart |Possible values [1, 1000]; Default 5|
-|--|--|--|
+
 For each tracked database there allocated a Bloom filter in shared memory. The size of each filter is controlled via
+||||
+--|--|--
 | arenadata_toolkit.tracking_bloom_size | Need restart |Possible values (bytes) [64, 128000000] Default 1048576|
-|--|--|--|
+
 The specific database can be bound to unoccupied filter with function
 ```shell script
 psql -d my_db -c select arenadata_toolkit.tracking_register_db()
