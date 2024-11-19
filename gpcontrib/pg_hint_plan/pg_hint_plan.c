@@ -30,7 +30,6 @@
 #include "optimizer/geqo.h"
 #endif
 #include "optimizer/joininfo.h"
-#include "optimizer/orca.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
@@ -412,9 +411,9 @@ static void pg_hint_plan_ProcessUtility(PlannedStmt *pstmt,
 					ProcessUtilityContext context,
 					ParamListInfo params, QueryEnvironment *queryEnv,
 					DestReceiver *dest, char *completionTag);
-#ifdef USE_ORCA
-static void *external_plan_hint_hook(Query *parse);
-#endif
+
+static HintState *external_plan_hint_hook(Query *parse);
+
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 										 ParamListInfo boundParams);
 static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
@@ -575,9 +574,7 @@ static join_search_hook_type prev_join_search = NULL;
 static set_rel_pathlist_hook_type prev_set_rel_pathlist = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility_hook = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
-#ifdef USE_ORCA
 static plan_hint_hook_type prev_plan_hint_hook = NULL;
-#endif
 
 /* Hold reference to currently active hint */
 static HintState *current_hint_state = NULL;
@@ -733,10 +730,8 @@ _PG_init(void)
 	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
 	prev_ExecutorEnd = ExecutorEnd_hook;
 	ExecutorEnd_hook = pg_hint_ExecutorEnd;
-#ifdef USE_ORCA
 	prev_plan_hint_hook = plan_hint_hook;
 	plan_hint_hook = external_plan_hint_hook;
-#endif
 
 	/* setup PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -761,9 +756,7 @@ _PG_fini(void)
 	set_rel_pathlist_hook = prev_set_rel_pathlist;
 	ProcessUtility_hook = prev_ProcessUtility_hook;
 	ExecutorEnd_hook = prev_ExecutorEnd;
-#ifdef USE_ORCA
 	plan_hint_hook = prev_plan_hint_hook;
-#endif
 
 	/* uninstall PL/pgSQL plugin hook */
 	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
@@ -5038,12 +5031,11 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 #include "pg_stat_statements.c"
 
 
-#ifdef USE_ORCA
 /*
  * This function hook allows external code (i.e. backend) to parse a query into
  * hint structures.
  */
-static void *
+static HintState *
 external_plan_hint_hook(Query *parse)
 {
 	HintState *hstate;
@@ -5060,4 +5052,3 @@ external_plan_hint_hook(Query *parse)
 	hstate = create_hintstate(parse, pstrdup(current_hint_str));
 	return hstate;
 }
-#endif

@@ -29,6 +29,13 @@ typedef PlannedStmt *(*planner_hook_type) (Query *parse,
 										   ParamListInfo boundParams);
 extern PGDLLIMPORT planner_hook_type planner_hook;
 
+typedef struct HintState HintState;
+
+/* plan_hint_hook generates HintState by parsing a Query. */
+typedef HintState *(*plan_hint_hook_type) (Query *parse);
+extern PGDLLIMPORT plan_hint_hook_type plan_hint_hook;
+
+
 /* Hook for plugins to get control when grouping_planner() plans upper rels */
 typedef void (*create_upper_paths_hook_type) (PlannerInfo *root,
 											  UpperRelationKind stage,
