@@ -219,7 +219,7 @@ CTranslatorDXLToPlStmt::GetPlannedStmtFromDXL(const CDXLNode *dxlnode,
 
 	// assemble planned stmt
 	PlannedStmt *planned_stmt = MakeNode(PlannedStmt);
-	planned_stmt->plannerName = const_cast<char*>("GPORCA");
+	planned_stmt->plannerName = "GPORCA";
 
 	planned_stmt->rtable = m_dxl_to_plstmt_context->GetRTableEntriesList();
 	planned_stmt->subplans = m_dxl_to_plstmt_context->GetSubplanEntriesList();

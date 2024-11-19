@@ -75,7 +75,7 @@ typedef struct PlannedStmt
 	 * the name of the extension planner. Should be NULL if planning is done
 	 * by Postgres planner.
 	 */
-	char		*plannerName;
+	const char	*plannerName;
 
 	uint64		queryId;		/* query identifier (copied from Query) */
 
