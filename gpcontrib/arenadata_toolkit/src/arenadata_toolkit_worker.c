@@ -250,8 +250,7 @@ arenadata_toolkit_main(Datum main_arg)
 		current_timeout = timeout - (long) INSTR_TIME_GET_MILLISEC(current_time_timeout);
 	}
 
-	if (got_sigterm)
-		ereport(LOG, (errmsg("[arenadata toolkit] stop worker process")));
+	ereport(LOG, (errmsg("[arenadata toolkit] stop worker process")));
 
 	proc_exit(0);
 }
