@@ -74,9 +74,6 @@ static void ExplainOneQuery(Query *query, int cursorOptions,
 							QueryEnvironment *queryEnv);
 static void report_triggers(ResultRelInfo *rInfo, bool show_relname,
 							ExplainState *es);
-
-
-
 static double elapsed_time(instr_time *starttime);
 static bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 static void ExplainNode(PlanState *planstate, List *ancestors,
