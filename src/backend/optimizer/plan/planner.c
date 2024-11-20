@@ -96,6 +96,7 @@ bool		parallel_leader_participation = true;
 planner_hook_type planner_hook = NULL;
 plan_hint_hook_type plan_hint_hook = NULL;
 
+
 /* Hook for plugins to get control when grouping_planner() plans upper rels */
 create_upper_paths_hook_type create_upper_paths_hook = NULL;
 
