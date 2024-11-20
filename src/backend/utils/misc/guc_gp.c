@@ -5155,6 +5155,10 @@ check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source)
 static bool
 check_optimizer(bool *newval, void **extra, GucSource source)
 {
+	/*
+	 * Assume that, if no planner_hook is registered, we can use only standard
+	 * Postgres planner. Thus, forbid setting the GUC.
+	 */
 	if ((GP_ROLE_DISPATCH == Gp_role) &&
 		(NULL == planner_hook) &&
 		*newval)
