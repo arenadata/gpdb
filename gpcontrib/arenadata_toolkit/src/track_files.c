@@ -1471,7 +1471,7 @@ tracking_track_version(PG_FUNCTION_ARGS)
 					errmsg("Track for database %u is being acquired in other transaction", MyDatabaseId)));
 		}
 
-		current_version = (int64) ctx.entry->master_version;
+		current_version = ctx.entry->master_version;
 		bloom_set_release(&ctx);
 	}
 
