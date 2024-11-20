@@ -140,8 +140,10 @@ setdatabase=oid WHERE datname=current_database();
 (1 row)
 
 -- Prohibit manual GUC setting.
-SET arenadata_toolkit.tracking_set_snapshot_on_recovery = false;
-ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_set_snapshot_on_recovery = false;
+SET arenadata_toolkit.tracking_snapshot_on_recovery = false;
+ERROR:  cannot change tracking status outside the tracking_set_snapshot_on_recovery function
+ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_snapshot_on_recovery = false;
+ERROR:  cannot change tracking status outside the tracking_set_snapshot_on_recovery function
 -- Test arenadata_toolkit.tracking_relstorages GUC
 SELECT arenadata_toolkit.tracking_set_relstorages('f,a,x');
  tracking_set_relstorages 
@@ -151,9 +153,9 @@ SELECT arenadata_toolkit.tracking_set_relstorages('f,a,x');
 
 SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
-  datname  |                                                                                                setconfig                                                                                                
------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_set_snapshot_on_recovery=false,"arenadata_toolkit.tracking_relstorages=f,a,x"}
+  datname  |                                                                   setconfig                                                                   
+-----------+-----------------------------------------------------------------------------------------------------------------------------------------------
+ tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,"arenadata_toolkit.tracking_relstorages=f,a,x"}
 (1 row)
 
 SELECT arenadata_toolkit.tracking_set_relstorages('v,v,v,,,');
@@ -164,9 +166,9 @@ SELECT arenadata_toolkit.tracking_set_relstorages('v,v,v,,,');
 
 SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
-  datname  |                                                                                             setconfig                                                                                             
------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_set_snapshot_on_recovery=false,arenadata_toolkit.tracking_relstorages=v}
+  datname  |                                                                setconfig                                                                
+-----------+-----------------------------------------------------------------------------------------------------------------------------------------
+ tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_relstorages=v}
 (1 row)
 
 SELECT arenadata_toolkit.tracking_set_relstorages('d,b,c');
@@ -186,9 +188,9 @@ SELECT arenadata_toolkit.tracking_set_relkinds('r,t,o,S');
 
 SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
-  datname  |                                                                                                                    setconfig                                                                                                                    
------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_set_snapshot_on_recovery=false,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=r,t,o,S"}
+  datname  |                                                                                       setconfig                                                                                       
+-----------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=r,t,o,S"}
 (1 row)
 
 SELECT arenadata_toolkit.tracking_set_relkinds('m,M,o,,,');
@@ -199,9 +201,9 @@ SELECT arenadata_toolkit.tracking_set_relkinds('m,M,o,,,');
 
 SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
-  datname  |                                                                                                                   setconfig                                                                                                                   
------------+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_set_snapshot_on_recovery=false,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=m,M,o"}
+  datname  |                                                                                      setconfig                                                                                      
+-----------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=m,M,o"}
 (1 row)
 
 SELECT arenadata_toolkit.tracking_set_relkinds('d,b,c');
@@ -227,9 +229,9 @@ SELECT arenadata_toolkit.tracking_register_schema('public');
 
 SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
-  datname  |                                                                                                                                                  setconfig                                                                                                                                                  
------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_set_snapshot_on_recovery=false,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=m,M,o","arenadata_toolkit.tracking_schemas=arenadata_toolkit,public"}
+  datname  |                                                                                                                     setconfig                                                                                                                     
+-----------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=m,M,o","arenadata_toolkit.tracking_schemas=arenadata_toolkit,public"}
 (1 row)
 
 SELECT arenadata_toolkit.tracking_unregister_schema('public');
@@ -240,9 +242,9 @@ SELECT arenadata_toolkit.tracking_unregister_schema('public');
 
 SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
-  datname  |                                                                                                                                             setconfig                                                                                                                                              
------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_set_snapshot_on_recovery=false,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=m,M,o",arenadata_toolkit.tracking_schemas=arenadata_toolkit}
+  datname  |                                                                                                                setconfig                                                                                                                 
+-----------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ tracking1 | {arenadata_toolkit.tracking_is_db_tracked=f,arenadata_toolkit.tracking_snapshot_on_recovery=t,arenadata_toolkit.tracking_relstorages=v,"arenadata_toolkit.tracking_relkinds=m,M,o",arenadata_toolkit.tracking_schemas=arenadata_toolkit}
 (1 row)
 
 SELECT arenadata_toolkit.tracking_register_schema('pg_pg');

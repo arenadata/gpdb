@@ -102,8 +102,6 @@ SELECT relname, size, state, segid, relkind, relstorage
 FROM arenadata_toolkit.tables_track;
 
 -- 10. Test relkind filtering.
-CREATE TABLE arenadata_toolkit.tracking_t1 (i INT)
-WITH (appendonly=true, orientation=column) DISTRIBUTED BY (i);
 INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,100000);
 CREATE INDEX ON arenadata_toolkit.tracking_t1(i);
 

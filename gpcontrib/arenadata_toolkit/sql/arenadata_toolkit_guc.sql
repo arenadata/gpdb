@@ -100,9 +100,9 @@ SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
 setdatabase=oid WHERE datname=current_database();
 
 -- Prohibit manual GUC setting.
-SET arenadata_toolkit.tracking_set_snapshot_on_recovery = false;
+SET arenadata_toolkit.tracking_snapshot_on_recovery = false;
 
-ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_set_snapshot_on_recovery = false;
+ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_snapshot_on_recovery = false;
 
 -- Test arenadata_toolkit.tracking_relstorages GUC
 SELECT arenadata_toolkit.tracking_set_relstorages('f,a,x');
