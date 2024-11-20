@@ -125,7 +125,7 @@ insert into funcdep1 values(3,1,1,1);
 insert into funcdep2 values(1,1,1,1);
 
 explain (costs off) select sum(t2.a), t1.a, t1.b, t1.c from funcdep1 t1 join funcdep2 t2 on t1.b = t2.b group by t1.a;
-select sum(t2.a), t1.a, t1.b, t1.c from funcdep1 t1 join funcdep2 t2 on t1.b = t2.b group by t1.a;
+select sum(t2.a), t1.a, t1.b, t1.c from funcdep1 t1 join funcdep2 t2 on t1.b = t2.b group by t1.a order by t1.a;
 
 -- modified for ungrouped columns
 explain (costs off) select sum(b), c, d, grouping(a) from funcdep1 group by grouping sets((a), (a,b));
@@ -133,7 +133,7 @@ select sum(b), c, d, grouping(a) from funcdep1 group by grouping sets((a), (a,b)
 explain (costs off) select sum(b), sum(c), sum(d), grouping(a) from funcdep1 group by rollup(a);
 select sum(b), sum(c), sum(d), grouping(a) from funcdep1 group by rollup(a);
 explain (costs off) select sum(d), a, b, c, grouping(a) from funcdep1 group by cube(a,b,c);
-select sum(d), a, b, c, grouping(a) from funcdep1 group by cube(a,b,c);
+select sum(d), a, b, c, grouping(a) from funcdep1 group by cube(a,b,c) order by a, b, c;
 
 explain (costs off) select count(distinct b), c, d from funcdep1 group by a;
 select count(distinct b), c, d from funcdep1 group by a;
@@ -397,31 +397,41 @@ SELECT l.a, l.b, r.a, r.b FROM test_table1 AS l JOIN test_table3 AS r ON l.a=r.a
 SELECT grouping(l.a) AS g_l_a, grouping(r.a) AS g_r_a, grouping(r.c) AS g_r_c, l.a, r.a, r.c
 	FROM test_table1 AS l JOIN test_table3 AS r ON l.a=r.a GROUP BY GROUPING SETS ((l.a, r.a), (r.c), ()) ORDER BY l.a, r.c;
 
--- Checking for ungrouped columns in TL
+-- Checking for ungrouped columns in TargetList
 
 -- grouping expression and GROUP BY
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b),()), a ORDER BY a, b, c;
-SELECT a,b,c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b),()) ORDER BY a, b, c;
-SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b),()); -- fail
-SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),()); -- fail
-SELECT a,b,c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c;
-SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), ROLLUP (a)); -- fail
-SELECT a,b,c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c;
-SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), CUBE (a)); -- fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b),()), a ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b),()) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b),()); -- fail
+SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),()); -- fail
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), ROLLUP (a)); -- fail
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), CUBE (a)); -- fail
 
 -- only grouping expression
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b),()); -- fail
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b), GROUPING SETS ((a),(c))) ORDER BY a, b, c;
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b), GROUPING SETS ((a),())); --fail
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b), GROUPING SETS ((a),(b)), GROUPING SETS ((a),())); --fail
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b), ROLLUP(a)); -- fail
-SELECT
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b),()); -- fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (a), GROUPING SETS (a,()) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (a), GROUPING SETS (b,()) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (b), GROUPING SETS (a,()) ORDER BY a, b, c; -- fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (a,()), GROUPING SETS (a,()) ORDER BY a, b, c; -- fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (a,()), GROUPING SETS (a,()) ORDER BY a, b, c; -- fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (GROUPING SETS (GROUPING SETS (a),a)),
+		                                 GROUPING SETS (b,()) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS (GROUPING SETS (GROUPING SETS (b),a)),
+		                                 GROUPING SETS (b,()); -- fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b), GROUPING SETS ((a),(c))) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b), GROUPING SETS ((a),())); --fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b), GROUPING SETS ((a),(b)), GROUPING SETS ((a),())); --fail
+SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b), ROLLUP(a)); -- fail
+
 -- composite Primary Key
-SELECT a,b,c FROM test_table2 GROUP BY GROUPING SETS((a,c),()), a; -- fail
-SELECT a,b,c FROM test_table2 GROUP BY GROUPING SETS((a,c),()), a, c ORDER BY a, b, c;
-SELECT a,b,c FROM test_table2 GROUP BY ROLLUP(a,c), a; -- fail
-SELECT a,b,c FROM test_table2 GROUP BY ROLLUP(a,c), a, c ORDER BY a, b, c;
-SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a,c), GROUPING SETS (a,c)); -- fail
+SELECT a, b, c FROM test_table2 GROUP BY GROUPING SETS ((a,c),()), a; -- fail
+SELECT a, b, c FROM test_table2 GROUP BY GROUPING SETS ((a,c),()), a, c ORDER BY a, b, c;
+SELECT a, b, c FROM test_table2 GROUP BY GROUPING SETS ((a,c), GROUPING SETS (a,c)); -- fail
+SELECT a, b, c FROM test_table2 GROUP BY GROUPING SETS (a,c), GROUPING SETS (a,()) ORDER BY a, b, c; -- fail
+SELECT a, b, c FROM test_table2 GROUP BY ROLLUP (a,c), a; -- fail
+SELECT a, b, c FROM test_table2 GROUP BY ROLLUP (a,c), a, c ORDER BY a, b, c;
 
 DROP TABLE test_table1;
 DROP TABLE test_table2;

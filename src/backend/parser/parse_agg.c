@@ -71,8 +71,7 @@ static void check_ungrouped_columns(Node *node, ParseState *pstate, Query *qry,
 static bool check_ungrouped_columns_walker(Node *node,
 							   check_ungrouped_columns_context *context);
 static List* get_groupclause_tles(Node *grpcl, List *targetList);
-static List* get_com_grouping_ressortgroupref(Query *qry, bool *hasGrouping,
-						List *grp_tles);
+static List* get_com_grouping_ressortgroupref(Query *qry, List *grp_tles);
 static Node *make_agg_arg(Oid argtype, Oid argcollation);
 
 
@@ -826,7 +825,6 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	bool		hasSelfRefRTEs;
 	PlannerInfo *root;
 	Node	   *clause;
-	bool		hasGrouping = false;
 
 	/* This should only be called if we found aggregates or grouping */
 	Assert(pstate->p_hasAggs || qry->groupClause || qry->havingQual);
@@ -886,7 +884,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	 * after flatten_joinalias_vars. We also find out if there are grouping
 	 * expressions.
 	 */
-	comGroupingRessortgrouprefs = get_com_grouping_ressortgroupref(qry, &hasGrouping, groupClauses);
+	comGroupingRessortgrouprefs = get_com_grouping_ressortgroupref(qry, groupClauses);
 
 	/*
 	 * If there are join alias vars involved, we have to flatten them to the
@@ -926,8 +924,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 		{
 			have_non_var_grouping = true;
 		}
-		else if (!hasGrouping ||
-				 list_member_int(comGroupingRessortgrouprefs, tle->ressortgroupref))
+		else if (list_member_int(comGroupingRessortgrouprefs, tle->ressortgroupref))
 		{
 			groupClauseCommonVars = lappend(groupClauseCommonVars, tle->expr);
 		}
@@ -1586,7 +1583,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 			if(!grouping_refs)
 				return NIL;
 
-			/*Exclude refs that did not appear in this group*/
+			/*Exclude refs that did not appear in this grouping*/
 			ListCell *lc;
 			lc = list_head(com_refs);
 			while(lc){
@@ -1625,36 +1622,19 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
  * get_com_grouping_tles -
  *     Return a list of common ressortgroupref expressions appeared in group
  * 	   clauses.
- * 	   Also check for a grouping expressions.
  */
 List*
-get_com_grouping_ressortgroupref(Query *qry, bool *hasGrouping, List *grp_tles){
-	if(!qry || !hasGrouping || !grp_tles)
+get_com_grouping_ressortgroupref(Query *qry, List *grp_tles){
+	if(!qry || !grp_tles)
 		return NIL;
 
-	/*
-	 *The first list is for common attributes in grouping expressions.
-	 *We assume that attributes are present in all grouping expressions.
-     *The second is for attributes in group by.
-	*/
-	List *com_grouping_expr_ressortgroupref = NIL;
-	List *group_expr_ressortgroupref = NIL;
-	ListCell *l;
+	List *com_grouping_ressortgroupref = NIL;
+	ListCell *gc;
 
-	foreach(l, grp_tles){
-		TargetEntry* te = (TargetEntry*) lfirst(l);
-		com_grouping_expr_ressortgroupref = list_append_unique_int(com_grouping_expr_ressortgroupref, te->ressortgroupref);
-	}
-	foreach(l, qry->groupClause)
+	foreach(gc, qry->groupClause)
 	{
-		/*
-		 * If there are no common attributes, there is no need to scan the
-		 * groupings. The attributes from group by are scanned first.
-		 */
-		if(!com_grouping_expr_ressortgroupref)
-			break;
-
-		Node *grp = lfirst(l);
+		List *com_group_expr_ressortgroupref = NIL;
+		Node *grp = lfirst(gc);
 
 		if (grp == NULL)
 			continue;
@@ -1662,21 +1642,29 @@ get_com_grouping_ressortgroupref(Query *qry, bool *hasGrouping, List *grp_tles){
 		/* Scan in grouping expression*/
 		if(IsA(grp, GroupingClause))
 		{
-			*hasGrouping = true;
-			com_grouping_expr_ressortgroupref =
-				get_com_grouping_ressortgroupref_routine(grp, qry->targetList,com_grouping_expr_ressortgroupref);
+			/* We assume that attributes are present in current grouping expression. */
+			ListCell *lc;
+			foreach(lc, grp_tles)
+			{
+				TargetEntry* te = (TargetEntry*) lfirst(lc);
+				com_group_expr_ressortgroupref =
+					list_append_unique_int(com_group_expr_ressortgroupref, te->ressortgroupref);
+			}
+			com_group_expr_ressortgroupref =
+				get_com_grouping_ressortgroupref_routine(grp, qry->targetList,com_group_expr_ressortgroupref);
 		}
 		/* Scan in group by*/
 		if (IsA(grp, SortGroupClause))
 		{
 			TargetEntry *tle = get_sortgroupclause_tle((SortGroupClause *) grp, qry->targetList);
-			group_expr_ressortgroupref = lappend_int(group_expr_ressortgroupref, tle->ressortgroupref);
+			com_group_expr_ressortgroupref = lappend_int(com_group_expr_ressortgroupref, tle->ressortgroupref);
 		}
+		/* Form a list of common refs for all clauses */
+		com_grouping_ressortgroupref = list_concat_unique_int(com_grouping_ressortgroupref, com_group_expr_ressortgroupref);
+		list_free(com_group_expr_ressortgroupref);
 	}
-	/* Form a list of common ressortgroupref for all clauses */
-	com_grouping_expr_ressortgroupref = list_concat_unique_int(com_grouping_expr_ressortgroupref, group_expr_ressortgroupref);
 
-	return com_grouping_expr_ressortgroupref;
+	return com_grouping_ressortgroupref;
 }
 
 static bool
