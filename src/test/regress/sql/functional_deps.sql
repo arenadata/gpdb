@@ -399,7 +399,7 @@ SELECT grouping(l.a) AS g_l_a, grouping(r.a) AS g_r_a, grouping(r.c) AS g_r_c, l
 
 -- Checking for ungrouped columns in TL
 
--- grouping extension and GROUP BY
+-- grouping expression and GROUP BY
 SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b),()), a ORDER BY a, b, c;
 SELECT a,b,c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b),()) ORDER BY a, b, c;
 SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b),()); -- fail
@@ -409,7 +409,7 @@ SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), ROLLUP (a)); -
 SELECT a,b,c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c;
 SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), CUBE (a)); -- fail
 
--- only grouping extension
+-- only grouping expression
 SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b),()); -- fail
 SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b), GROUPING SETS ((a),(c))) ORDER BY a, b, c;
 SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b), GROUPING SETS ((a),())); --fail

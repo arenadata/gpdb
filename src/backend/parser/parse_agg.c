@@ -819,7 +819,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	List	   *groupClauses = NIL;
 	bool		have_non_var_grouping;
 	List	   *groupClauseCommonVars = NIL;
-	List 	   *com_grouping_ressortgroupref = NIL;
+	List 	   *comGroupingRessortgrouprefs = NIL;
 	List	   *func_grouped_rels = NIL;
 	ListCell   *l;
 	bool		hasJoinRTEs;
@@ -847,7 +847,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	}
 
 	/*
-	 * Build a list of the acceptable unique GROUP BY expressions for use by
+	 * Build a list of the acceptable GROUP BY expressions for use by
 	 * check_ungrouped_columns().
 	 *
 	 * We get the TLE, not just the expr, because GROUPING wants to know the
@@ -884,9 +884,9 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	 * in case of ungrouped attributes in target list. In fact we get a list
 	 * of tle->ressortgroupref because we need to check for matching expressions
 	 * after flatten_joinalias_vars. We also find out if there are grouping
-	 * extensions.
+	 * expressions.
 	 */
-	com_grouping_ressortgroupref = get_com_grouping_ressortgroupref(qry, &hasGrouping, groupClauses);
+	comGroupingRessortgrouprefs = get_com_grouping_ressortgroupref(qry, &hasGrouping, groupClauses);
 
 	/*
 	 * If there are join alias vars involved, we have to flatten them to the
@@ -920,15 +920,14 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	have_non_var_grouping = false;
 	foreach(l, groupClauses)
 	{
-
 		TargetEntry *tle = lfirst(l);
 
 		if (!IsA(tle->expr, Var))
 		{
 			have_non_var_grouping = true;
 		}
-			else if (!hasGrouping ||
-				 list_member_int(com_grouping_ressortgroupref, tle->ressortgroupref))
+		else if (!hasGrouping ||
+				 list_member_int(comGroupingRessortgrouprefs, tle->ressortgroupref))
 		{
 			groupClauseCommonVars = lappend(groupClauseCommonVars, tle->expr);
 		}
@@ -1064,12 +1063,11 @@ check_ungrouped_columns_walker(Node *node,
 	 */
 	if (context->have_non_var_grouping && context->sublevels_up == 0)
 	{
-
 		foreach(gl, context->groupClauses)
 		{
 			TargetEntry *tle = lfirst(gl);
 
-			  if (equal(node, tle->expr))
+			if (equal(node, tle->expr))
 				return false;	/* acceptable, do not descend more */
 		}
 	}
@@ -1523,7 +1521,6 @@ get_groupclause_tles(Node *grpcl, List *targetList)
 		TargetEntry *te = get_sortgroupclause_tle((SortGroupClause *) grpcl, targetList);
 		result = lappend(result, te);
 	}
-
 	else if (IsA(grpcl, GroupingClause))
 	{
 		ListCell* l;
@@ -1555,10 +1552,9 @@ get_groupclause_tles(Node *grpcl, List *targetList)
 static List*
 get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *com_refs)
 {
-
 	List *result = NIL;
 
-	if ( !grpcl)
+	if (!grpcl)
 		return result;
 
 	Assert(IsA(grpcl, SortGroupClause) ||
@@ -1570,14 +1566,14 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 		TargetEntry *tle = get_sortgroupclause_tle((SortGroupClause *) grpcl, targetList);
 		result = lappend_int(result, tle->ressortgroupref);
 	}
-
 	else if (IsA(grpcl, GroupingClause))
 	{
 		ListCell *l;
 		GroupingClause *gc = (GroupingClause*)grpcl;
 
 		/* Cube and Rollup do not contain common attributes */
-		if(gc->groupType == GROUPINGTYPE_CUBE || gc->groupType == GROUPINGTYPE_ROLLUP){
+		if(gc->groupType == GROUPINGTYPE_CUBE || gc->groupType == GROUPINGTYPE_ROLLUP)
+		{
 			list_free(com_refs);
 			return NIL;
 		}
@@ -1590,17 +1586,18 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 			if(!grouping_refs)
 				return NIL;
 
-			/*Exclude tle that did not appear in this group*/
+			/*Exclude refs that did not appear in this group*/
 			ListCell *lc;
 			lc = list_head(com_refs);
 			while(lc){
-				if(!list_member_int(grouping_refs, lfirst_int(lc))){
+				if(list_member_int(grouping_refs, lfirst_int(lc)))
+					lc = lc->next;
+				else
+				{
 					ListCell *lc_del = lc;
 					lc = lc->next;
-					com_refs = list_delete_int(com_refs, lfirst_int(lc_del));
+					com_refs = list_delete_int(com_refs, lfirst_int(lc_del));					
 				}
-				else
-					lc = lc->next;
 			}
 		}
 
@@ -1628,17 +1625,16 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
  * get_com_grouping_tles -
  *     Return a list of common ressortgroupref expressions appeared in group
  * 	   clauses.
- * 	   Also check for a group extensions.
+ * 	   Also check for a grouping expressions.
  */
 List*
 get_com_grouping_ressortgroupref(Query *qry, bool *hasGrouping, List *grp_tles){
-
 	if(!qry || !hasGrouping || !grp_tles)
 		return NIL;
 
 	/*
-	 *The first list is for common attributes in group extensions.
-	 *We assume that attributes are present in all grouping extensions.
+	 *The first list is for common attributes in grouping expressions.
+	 *We assume that attributes are present in all grouping expressions.
      *The second is for attributes in group by.
 	*/
 	List *com_grouping_expr_ressortgroupref = NIL;
@@ -1649,10 +1645,8 @@ get_com_grouping_ressortgroupref(Query *qry, bool *hasGrouping, List *grp_tles){
 		TargetEntry* te = (TargetEntry*) lfirst(l);
 		com_grouping_expr_ressortgroupref = list_append_unique_int(com_grouping_expr_ressortgroupref, te->ressortgroupref);
 	}
-
 	foreach(l, qry->groupClause)
 	{
-
 		/*
 		 * If there are no common attributes, there is no need to scan the
 		 * groupings. The attributes from group by are scanned first.
@@ -1665,14 +1659,16 @@ get_com_grouping_ressortgroupref(Query *qry, bool *hasGrouping, List *grp_tles){
 		if (grp == NULL)
 			continue;
 
-		/* Scan in grouping extensions*/
-		if(IsA(grp, GroupingClause)){
+		/* Scan in grouping expression*/
+		if(IsA(grp, GroupingClause))
+		{
 			*hasGrouping = true;
 			com_grouping_expr_ressortgroupref =
 				get_com_grouping_ressortgroupref_routine(grp, qry->targetList,com_grouping_expr_ressortgroupref);
 		}
 		/* Scan in group by*/
-		if (IsA(grp, SortGroupClause)){
+		if (IsA(grp, SortGroupClause))
+		{
 			TargetEntry *tle = get_sortgroupclause_tle((SortGroupClause *) grp, qry->targetList);
 			group_expr_ressortgroupref = lappend_int(group_expr_ressortgroupref, tle->ressortgroupref);
 		}

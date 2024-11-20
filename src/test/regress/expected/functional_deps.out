@@ -1818,7 +1818,7 @@ SELECT grouping(l.a) AS g_l_a, grouping(r.a) AS g_r_a, grouping(r.c) AS g_r_c, l
 (13 rows)
 
 -- Checking for ungrouped columns in TL
--- grouping extension and GROUP BY
+-- grouping expression and GROUP BY
 SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b),()), a ORDER BY a, b, c;
 INFO:  GPORCA failed to produce a plan, falling back to planner
 DETAIL:  Feature not supported: Mixing grouping sets with simple group by lists
@@ -2213,7 +2213,7 @@ SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), CUBE (a)); -- 
 ERROR:  column "test_table1.c" must appear in the GROUP BY clause or be used in an aggregate function
 LINE 1: SELECT a,b,c FROM test_table1 GROUP BY b, GROUPING SETS ((a)...
                    ^
--- only grouping extension
+-- only grouping expression
 SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b),()); -- fail
 ERROR:  column "test_table1.c" must appear in the GROUP BY clause or be used in an aggregate function
 LINE 1: SELECT a,b,c FROM test_table1 GROUP BY GROUPING SETS((a),(b)...
