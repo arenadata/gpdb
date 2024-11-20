@@ -139,6 +139,8 @@ _PG_init(void)
 
 	prev_planner = planner_hook;
 	planner_hook = gp_orca_planner;
+
+	SetConfigOption("optimizer", "on", PGC_POSTMASTER, PGC_S_DYNAMIC_DEFAULT);
 }
 
 void

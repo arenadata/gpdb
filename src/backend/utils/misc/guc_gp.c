@@ -37,6 +37,7 @@
 #include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "optimizer/planmain.h"
+#include "optimizer/planner.h"
 #include "pgstat.h"
 #include "parser/scansup.h"
 #include "postmaster/autovacuum.h"
@@ -1865,15 +1866,11 @@ struct config_bool ConfigureNamesBool_gp[] =
 
 	{
 		{"optimizer", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable GPORCA."),
+			gettext_noop("Enable external planner."),
 			NULL
 		},
 		&optimizer,
-#ifdef USE_ORCA
-		true,
-#else
 		false,
-#endif
 		check_optimizer, NULL, NULL
 	},
 
@@ -5158,13 +5155,13 @@ check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source)
 static bool
 check_optimizer(bool *newval, void **extra, GucSource source)
 {
-#ifndef USE_ORCA
-	if (*newval)
+	if ((GP_ROLE_DISPATCH == Gp_role) &&
+		(NULL == planner_hook) &&
+		*newval)
 	{
-		GUC_check_errmsg("ORCA is not supported by this build");
+		GUC_check_errmsg("External planner is not registered");
 		return false;
 	}
-#endif
 
 	if (!optimizer_control)
 	{
