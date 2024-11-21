@@ -82,7 +82,6 @@
 #include "cdb/cdbtargeteddispatch.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
-#include "optimizer/orca.h"
 #include "storage/lmgr.h"
 #include "utils/guc.h"
 
@@ -296,7 +295,7 @@ static split_rollup_data *make_new_rollups_for_hash_grouping_set(PlannerInfo *ro
 																 Path *path,
 																 grouping_sets_data *gd);
 
-void compute_jit_flags(PlannedStmt* pstmt);
+static void standard_planner_compute_jit_flags(PlannedStmt* pstmt);
 
 /*****************************************************************************
  *
@@ -707,7 +706,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->stmt_len = parse->stmt_len;
 
 	/* GPDB: JIT flags are set in wrapper function */
-	compute_jit_flags(result);
+	standard_planner_compute_jit_flags(result);
 
 	if (glob->partition_directory != NULL)
 		DestroyPartitionDirectory(glob->partition_directory);
@@ -8695,52 +8694,15 @@ make_new_rollups_for_hash_grouping_set(PlannerInfo        *root,
 
 /*
  * GPDB: This is moved from standard_planner(), so that it can be used by both
- * planner and ORCA. Please move any future code added to standard_planner() too.
+ * Postgres planner and an external planner. Please move any future code added to
+ * standard_planner() too.
  *
  * Decide JIT settings for the given plan and record them in PlannedStmt.jitFlags.
- *
- * Since the costing model of ORCA and Planner are different
- * (Planner cost usually higher), setting the JIT flags based on the
- * common JIT costing GUCs could lead to false triggering of JIT.
- *
- * To prevent this situation, separate  costing GUCs are created
- * for Optimizer and used here for setting the JIT flags.
- *
  */
-void compute_jit_flags(PlannedStmt* pstmt)
+void compute_jit_flags(PlannedStmt* pstmt, double above_cost, double inline_above_cost, double optimize_above_cost)
 {
 	Plan* top_plan = pstmt->planTree;
 	pstmt->jitFlags = PGJIT_NONE;
-
-	/*
-	 * Common variables to hold values for optimizer or planner
-	 * based on function call.
-	 */
-	double above_cost;
-	double inline_above_cost;
-	double optimize_above_cost;
-
-	if (pstmt->planGen == PLANGEN_OPTIMIZER)
-	{
-
-		/*
-		 * Setting values for ORCA.
-		 */
-		above_cost = optimizer_jit_above_cost;
-		inline_above_cost = optimizer_jit_inline_above_cost;
-		optimize_above_cost = optimizer_jit_optimize_above_cost;
-	}
-	else
-	{
-
-		/*
-		 * Setting values for Planner.
-		 */
-		above_cost = jit_above_cost;
-		inline_above_cost = jit_inline_above_cost;
-		optimize_above_cost = jit_optimize_above_cost;
-
-	}
 
 	if (jit_enabled && above_cost >= 0 &&
 		top_plan->total_cost > above_cost)
@@ -8766,3 +8728,9 @@ void compute_jit_flags(PlannedStmt* pstmt)
 			pstmt->jitFlags |= PGJIT_DEFORM;
 	}
 }
+
+static void standard_planner_compute_jit_flags(PlannedStmt* pstmt)
+{
+	compute_jit_flags(pstmt, jit_above_cost, jit_inline_above_cost, jit_optimize_above_cost);
+}
+

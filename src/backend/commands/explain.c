@@ -53,11 +53,6 @@
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
 #include "optimizer/optimizer.h"
-#include "optimizer/orca.h"
-
-#ifdef USE_ORCA
-extern char *SerializeDXLPlan(Query *parse);
-#endif
 
 
 /* Hook for plugins to get control in ExplainOneQuery() */
@@ -79,13 +74,6 @@ static void ExplainOneQuery(Query *query, int cursorOptions,
 							QueryEnvironment *queryEnv);
 static void report_triggers(ResultRelInfo *rInfo, bool show_relname,
 							ExplainState *es);
-
-#ifdef USE_ORCA
-static void ExplainDXL(Query *query, ExplainState *es,
-							const char *queryString,
-							ParamListInfo params);
-#endif
-
 static double elapsed_time(instr_time *starttime);
 static bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 static void ExplainNode(PlanState *planstate, List *ancestors,
@@ -375,94 +363,7 @@ ExplainResultDesc(ExplainStmt *stmt)
 	return tupdesc;
 }
 
-#ifdef USE_ORCA
-/*
- * ExplainDXL -
- *	  print out the execution plan for one Query in DXL format
- *	  this function implicitly uses optimizer
- */
-static void
-ExplainDXL(Query *query, ExplainState *es, const char *queryString,
-				ParamListInfo params)
-{
-	MemoryContext oldcxt = CurrentMemoryContext;
-	bool		save_enumerate;
-	char	   *dxl = NULL;
-	PlannerInfo		*root;
-	PlannerGlobal	*glob;
-	Query			*pqueryCopy;
 
-	save_enumerate = optimizer_enumerate_plans;
-
-	/* Do the EXPLAIN. */
-
-	/* enable plan enumeration before calling optimizer */
-	optimizer_enumerate_plans = true;
-
-	/*
-	 * Initialize a dummy PlannerGlobal struct. ORCA doesn't use it, but the
-	 * pre- and post-processing steps do.
-	 */
-	glob = makeNode(PlannerGlobal);
-	glob->subplans = NIL;
-	glob->subroots = NIL;
-	glob->rewindPlanIDs = NULL;
-	glob->transientPlan = false;
-	glob->oneoffPlan = false;
-	glob->share.shared_inputs = NULL;
-	glob->share.shared_input_count = 0;
-	glob->share.motStack = NIL;
-	glob->share.qdShares = NULL;
-	/* these will be filled in below, in the pre- and post-processing steps */
-	glob->finalrtable = NIL;
-	glob->relationOids = NIL;
-	glob->invalItems = NIL;
-
-	root = makeNode(PlannerInfo);
-	root->parse = query;
-	root->glob = glob;
-	root->query_level = 1;
-	root->planner_cxt = CurrentMemoryContext;
-	root->wt_param_id = -1;
-
-	/* create a local copy to hand to the optimizer */
-	pqueryCopy = (Query *) copyObject(query);
-
-	/*
-	 * Pre-process the Query tree before calling optimizer.
-	 *
-	 * Constant folding will add dependencies to functions or relations in
-	 * glob->invalItems, for any functions that are inlined or eliminated
-	 * away. (We will find dependencies to other objects later, after planning).
-	 */
-	pqueryCopy = fold_constants(root, pqueryCopy, params, GPOPT_MAX_FOLDED_CONSTANT_SIZE);
-
-	/*
-	 * If any Query in the tree mixes window functions and aggregates, we need to
-	 * transform it such that the grouped query appears as a subquery
-	 */
-	pqueryCopy = (Query *) transformGroupedWindows((Node *) pqueryCopy, NULL);
-
-
-	/* optimize query using optimizer and get generated plan in DXL format */
-	dxl = SerializeDXLPlan(pqueryCopy);
-
-	/* restore old value of enumerate plans GUC */
-	optimizer_enumerate_plans = save_enumerate;
-
-	if (dxl == NULL)
-		elog(NOTICE, "Optimizer failed to produce plan");
-	else
-	{
-		appendStringInfoString(es->str, dxl);
-		appendStringInfoChar(es->str, '\n'); /* separator line */
-		pfree(dxl);
-	}
-
-	/* Free the memory we used. */
-	MemoryContextSwitchTo(oldcxt);
-}
-#endif
 
 /*
  * ExplainOneQuery -
@@ -476,14 +377,6 @@ ExplainOneQuery(Query *query, int cursorOptions,
 				const char *queryString, ParamListInfo params,
 				QueryEnvironment *queryEnv)
 {
-#ifdef USE_ORCA
-	if (es->dxl)
-	{
-		ExplainDXL(query, es, queryString, params);
-		return;
-	}
-#endif
-
 	/* planner will not cope with utility statements */
 	if (query->commandType == CMD_UTILITY)
 	{
@@ -497,30 +390,42 @@ ExplainOneQuery(Query *query, int cursorOptions,
 		(*ExplainOneQuery_hook) (query, cursorOptions, into, es,
 								 queryString, params, queryEnv);
 	else
-	{
-		PlannedStmt *plan;
-		instr_time	planstart,
-					planduration;
+		standard_ExplainOneQuery(query, cursorOptions, into, es,
+								 queryString, params, queryEnv);
+}
 
-		INSTR_TIME_SET_CURRENT(planstart);
+/*
+ * standard_ExplainOneQuery -
+ *	  print out the execution plan for one Query, without calling a hook.
+ */
+void
+standard_ExplainOneQuery(Query *query, int cursorOptions,
+				IntoClause *into, ExplainState *es,
+				const char *queryString, ParamListInfo params,
+				QueryEnvironment *queryEnv)
+{
+	PlannedStmt *plan;
+	instr_time	planstart,
+				planduration;
 
-		/* plan the query */
-		plan = pg_plan_query(query, cursorOptions, params);
+	INSTR_TIME_SET_CURRENT(planstart);
 
-		INSTR_TIME_SET_CURRENT(planduration);
-		INSTR_TIME_SUBTRACT(planduration, planstart);
+	/* plan the query */
+	plan = pg_plan_query(query, cursorOptions, params);
 
-		/*
-		 * GPDB_92_MERGE_FIXME: it really should be an optimizer's responsibility
-		 * to correctly set the into-clause and into-policy of the PlannedStmt.
-		 */
-		if (into != NULL)
-			plan->intoClause = copyObject(into);
+	INSTR_TIME_SET_CURRENT(planduration);
+	INSTR_TIME_SUBTRACT(planduration, planstart);
 
-		/* run it (if needed) and produce output */
-		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
-					   &planduration, cursorOptions);
-	}
+	/*
+	 * GPDB_92_MERGE_FIXME: it really should be an optimizer's responsibility
+	 * to correctly set the into-clause and into-policy of the PlannedStmt.
+	 */
+	if (into != NULL)
+		plan->intoClause = copyObject(into);
+
+	/* run it (if needed) and produce output */
+	ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
+				   &planduration, cursorOptions);
 }
 
 /*
@@ -981,12 +886,10 @@ ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc)
 	 * If requested, include information about GUC parameters with values that
 	 * don't match the built-in defaults.
 	 */
-	if (queryDesc->plannedstmt->planGen == PLANGEN_PLANNER)
+	if (queryDesc->plannedstmt->plannerName == NULL)
 		ExplainPropertyStringInfo("Optimizer", es, "Postgres-based planner");
-#ifdef USE_ORCA
 	else
-		ExplainPropertyStringInfo("Optimizer", es, "GPORCA");
-#endif
+		ExplainPropertyStringInfo("Optimizer", es, "%s", queryDesc->plannedstmt->plannerName);
 
 	ExplainPrintSettings(es);
 }

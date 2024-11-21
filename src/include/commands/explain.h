@@ -76,6 +76,10 @@ extern PGDLLIMPORT explain_get_index_name_hook_type explain_get_index_name_hook;
 extern void ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 						 ParamListInfo params, QueryEnvironment *queryEnv, DestReceiver *dest);
 
+extern void standard_ExplainOneQuery(Query *query, int cursorOptions,
+				IntoClause *into, ExplainState *es, const char *queryString,
+				ParamListInfo params, QueryEnvironment *queryEnv);
+
 extern ExplainState *NewExplainState(void);
 
 extern TupleDesc ExplainResultDesc(ExplainStmt *stmt);
