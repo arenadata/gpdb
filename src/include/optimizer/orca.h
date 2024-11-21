@@ -28,6 +28,11 @@ extern Node *transformGroupedWindows(Node *node, void *context);
 typedef void *(*plan_hint_hook_type) (Query *parse);
 extern PGDLLIMPORT plan_hint_hook_type plan_hint_hook;
 
+extern void InitGPOPT();
+extern void TerminateGPOPT();
+
+extern char *SerializeDXLPlan(Query *parse);
+
 #endif
 
 #endif /* ORCA_H */

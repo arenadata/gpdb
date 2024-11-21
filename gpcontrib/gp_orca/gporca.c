@@ -15,11 +15,6 @@
 
 PG_MODULE_MAGIC;
 
-extern void InitGPOPT();
-extern void TerminateGPOPT();
-
-extern char *SerializeDXLPlan(Query *parse);
-
 void _PG_init(void);
 void _PG_fini(void);
 
