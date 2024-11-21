@@ -40,12 +40,6 @@ typedef struct DirectDispatchInfo
 	bool		haveProcessedAnyCalculations;
 } DirectDispatchInfo;
 
-typedef enum PlanGenerator
-{
-	PLANGEN_PLANNER,			/* plan produced by the planner*/
-	PLANGEN_OPTIMIZER,			/* plan produced by the optimizer*/
-} PlanGenerator;
-
 /* DML Actions */
 typedef enum DMLAction
 {
@@ -75,8 +69,6 @@ typedef struct PlannedStmt
 	NodeTag		type;
 
 	CmdType		commandType;	/* select|insert|update|delete|utility */
-
-	PlanGenerator	planGen;		/* optimizer generation */
 
 	uint64		queryId;		/* query identifier (copied from Query) */
 
@@ -156,6 +148,13 @@ typedef struct PlannedStmt
  	 * GPDB: whether a query is a SPI inner query for extension usage 
  	 */
 	int8		metricsQueryType;
+
+	/*
+	 * If the plan is done by an extension, the field below should contain
+	 * the name of the extension planner. Should be NULL if planning is done
+	 * by Postgres planner.
+	 */
+	const char	*plannerName;
 } PlannedStmt;
 
 /*
