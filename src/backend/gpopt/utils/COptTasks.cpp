@@ -570,7 +570,7 @@ COptTasks::GetPlanHints(CMemoryPool *mp, Query *query)
 	{
 		// Calling plan_hint_hook creates pg_hint_plan hint structures
 		// (see optimizer/hints.h).
-		hintstate = (HintState *) plan_hint_hook(query);
+		hintstate = plan_hint_hook(query);
 	}
 
 	if (nullptr == hintstate)
