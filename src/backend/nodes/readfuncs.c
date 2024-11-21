@@ -2408,7 +2408,6 @@ _readPlannedStmt(void)
 	READ_LOCALS(PlannedStmt);
 
 	READ_ENUM_FIELD(commandType, CmdType);
-	READ_STRING_FIELD(plannerName);
 	READ_UINT64_FIELD(queryId);
 	READ_BOOL_FIELD(hasReturning);
 	READ_BOOL_FIELD(hasModifyingCTE);
@@ -2461,6 +2460,7 @@ _readPlannedStmt(void)
 	READ_NODE_FIELD(copyIntoClause);
 	READ_NODE_FIELD(refreshClause);
 	READ_INT_FIELD(metricsQueryType);
+	READ_STRING_FIELD(plannerName);
 
 	READ_DONE();
 }

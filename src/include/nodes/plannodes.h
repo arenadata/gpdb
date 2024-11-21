@@ -70,13 +70,6 @@ typedef struct PlannedStmt
 
 	CmdType		commandType;	/* select|insert|update|delete|utility */
 
-	/*
-	 * If the plan is done by an extension, the field below should contain
-	 * the name of the extension planner. Should be NULL if planning is done
-	 * by Postgres planner.
-	 */
-	const char	*plannerName;
-
 	uint64		queryId;		/* query identifier (copied from Query) */
 
 	bool		hasReturning;	/* is it insert|update|delete RETURNING? */
@@ -155,6 +148,13 @@ typedef struct PlannedStmt
  	 * GPDB: whether a query is a SPI inner query for extension usage 
  	 */
 	int8		metricsQueryType;
+
+	/*
+	 * If the plan is done by an extension, the field below should contain
+	 * the name of the extension planner. Should be NULL if planning is done
+	 * by Postgres planner.
+	 */
+	const char	*plannerName;
 } PlannedStmt;
 
 /*
