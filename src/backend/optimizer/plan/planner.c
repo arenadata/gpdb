@@ -297,11 +297,6 @@ static split_rollup_data *make_new_rollups_for_hash_grouping_set(PlannerInfo *ro
 
 static void standard_planner_compute_jit_flags(PlannedStmt* pstmt);
 
-void compute_jit_flags(PlannedStmt* pstmt,
-							double above_cost,
-							double inline_above_cost,
-							double optimize_above_cost);
-
 /*****************************************************************************
  *
  *	   Query optimizer entry point

@@ -18,10 +18,6 @@ PG_MODULE_MAGIC;
 extern void InitGPOPT();
 extern void TerminateGPOPT();
 
-extern void compute_jit_flags(PlannedStmt *pstmt, double above_cost,
-							  double inline_above_cost,
-							  double optimize_above_cost);
-
 extern char *SerializeDXLPlan(Query *parse);
 
 void _PG_init(void);

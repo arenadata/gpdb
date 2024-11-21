@@ -58,4 +58,9 @@ extern Path *get_cheapest_fractional_path(RelOptInfo *rel,
 
 extern Expr *preprocess_phv_expression(PlannerInfo *root, Expr *expr);
 
+extern void compute_jit_flags(PlannedStmt* pstmt,
+							double above_cost,
+							double inline_above_cost,
+							double optimize_above_cost);
+
 #endif							/* PLANNER_H */
