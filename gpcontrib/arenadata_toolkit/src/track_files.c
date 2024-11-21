@@ -93,7 +93,7 @@ typedef struct
 static tf_get_global_state_t tf_get_global_state = {0};
 
 static bool callbackRegistered = false;
-static uint32 current_version = InvalidVersion;
+static uint32 CurrentVersion = InvalidVersion;
 
 static bool isExecutorExplainMode = false;
 ProcessUtility_hook_type next_ProcessUtility_hook = NULL;
@@ -146,7 +146,7 @@ xact_end_version_callback(XactEvent event, void *arg)
 	bloom_set_release(&ctx);
 
 	callbackRegistered = false;
-	current_version = InvalidVersion;
+	CurrentVersion = InvalidVersion;
 	isExecutorExplainMode = false;
 }
 
@@ -1404,7 +1404,7 @@ explain_detector_ProcessUtility(Node *parsetree,
 static void
 track_ExecutorEnd(QueryDesc *queryDesc)
 {
-	current_version = ControlVersion;
+	CurrentVersion = ControlVersion;
 
 	if (next_ExecutorEnd_hook)
 		next_ExecutorEnd_hook(queryDesc);
@@ -1424,8 +1424,8 @@ track_setup_executor_hooks(void)
 void
 track_uninstall_executor_hooks(void)
 {
-	ProcessUtility_hook = next_ProcessUtility_hook == standard_ProcessUtility ? NULL : next_ProcessUtility_hook;
-	ExecutorEnd_hook = next_ExecutorEnd_hook == standard_ExecutorEnd ? NULL : next_ExecutorEnd_hook;
+	ProcessUtility_hook = (next_ProcessUtility_hook == standard_ProcessUtility) ? NULL : next_ProcessUtility_hook;
+	ExecutorEnd_hook = (next_ExecutorEnd_hook == standard_ExecutorEnd) ? NULL : next_ExecutorEnd_hook;
 }
 
 /*
@@ -1471,9 +1471,9 @@ tracking_track_version(PG_FUNCTION_ARGS)
 					errmsg("Track for database %u is being acquired in other transaction", MyDatabaseId)));
 		}
 
-		current_version = ctx.entry->master_version;
+		CurrentVersion = ctx.entry->master_version;
 		bloom_set_release(&ctx);
 	}
 
-	PG_RETURN_INT64((int64) current_version);
+	PG_RETURN_INT64((int64) CurrentVersion);
 }

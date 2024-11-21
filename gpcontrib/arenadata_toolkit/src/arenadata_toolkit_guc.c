@@ -34,7 +34,7 @@ tf_guc_unlock(void)
  * This is not called for RESET, so RESET is not guarded
  */
 static bool
-check_guc(GucSource source, bool *manual)
+check_guc(GucSource source, const char *handle)
 {
 	if (IsInitProcessingMode() || Gp_role == GP_ROLE_EXECUTE ||
 		(Gp_role == GP_ROLE_DISPATCH && guc_is_unlocked))
@@ -49,7 +49,7 @@ check_guc(GucSource source, bool *manual)
 		return true;
 	}
 
-	*manual = true;
+	GUC_check_errmsg("cannot change tracking status outside the %s function", handle);
 	return false;
 }
 
@@ -59,14 +59,7 @@ check_guc(GucSource source, bool *manual)
 static bool
 check_tracked(bool *newval, void **extra, GucSource source)
 {
-	bool		manual = false;
-
-	if (check_guc(source, &manual))
-		return true;
-
-	if (manual)
-		GUC_check_errmsg("cannot change tracking status outside the tracking_register_db function");
-	return false;
+	return check_guc(source, "tracking_register_db");
 }
 
 /*
@@ -75,14 +68,7 @@ check_tracked(bool *newval, void **extra, GucSource source)
 static bool
 check_get_full_snapshot_on_recovery(bool *newval, void **extra, GucSource source)
 {
-	bool		manual = false;
-
-	if (check_guc(source, &manual))
-		return true;
-
-	if (manual)
-		GUC_check_errmsg("cannot change tracking status outside the tracking_set_snapshot_on_recovery function");
-	return false;
+	return check_guc(source, "tracking_set_snapshot_on_recovery");
 }
 
 /*
@@ -91,14 +77,7 @@ check_get_full_snapshot_on_recovery(bool *newval, void **extra, GucSource source
 static bool
 check_relkinds(char **newval, void **extra, GucSource source)
 {
-	bool		manual = false;
-
-	if (check_guc(source, &manual))
-		return true;
-
-	if (manual)
-		GUC_check_errmsg("cannot change tracking status outside the tracking_register_relkinds function");
-	return false;
+	return check_guc(source, "tracking_register_relkinds");
 }
 
 /*
@@ -107,14 +86,7 @@ check_relkinds(char **newval, void **extra, GucSource source)
 static bool
 check_schemas(char **newval, void **extra, GucSource source)
 {
-	bool		manual = false;
-
-	if (check_guc(source, &manual))
-		return true;
-
-	if (manual)
-		GUC_check_errmsg("cannot change tracking status outside the tracking_register_schema function");
-	return false;
+	return check_guc(source, "tracking_register_schema");
 }
 
 /*
@@ -123,14 +95,7 @@ check_schemas(char **newval, void **extra, GucSource source)
 static bool
 check_relstorages(char **newval, void **extra, GucSource source)
 {
-	bool		manual = false;
-
-	if (check_guc(source, &manual))
-		return true;
-
-	if (manual)
-		GUC_check_errmsg("cannot change tracking status outside the tracking_register_relstorages function");
-	return false;
+	return check_guc(source, "tracking_register_relstorages");
 }
 
 void
