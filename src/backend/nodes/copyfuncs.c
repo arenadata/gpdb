@@ -103,7 +103,6 @@ _copyPlannedStmt(const PlannedStmt *from)
 	PlannedStmt *newnode = makeNode(PlannedStmt);
 
 	COPY_SCALAR_FIELD(commandType);
-	COPY_SCALAR_FIELD(planGen);
 	COPY_SCALAR_FIELD(queryId);
 	COPY_SCALAR_FIELD(hasReturning);
 	COPY_SCALAR_FIELD(hasModifyingCTE);
@@ -151,6 +150,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_NODE_FIELD(copyIntoClause);
 	COPY_NODE_FIELD(refreshClause);
 	COPY_SCALAR_FIELD(metricsQueryType);
+	COPY_STRING_FIELD(plannerName);
 
 	return newnode;
 }
