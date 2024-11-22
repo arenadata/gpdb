@@ -48,7 +48,6 @@ gp_optimizer_load_function(char *funcname)
 		MemoryContextSwitchTo(oldcontext);
 		InterruptHoldoffCount = savedInterruptHoldoffCount;
 		FlushErrorState();
-		func = NULL;
 	}
 	PG_END_TRY();
 
