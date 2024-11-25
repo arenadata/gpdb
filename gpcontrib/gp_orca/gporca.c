@@ -265,6 +265,8 @@ _PG_init(void)
 
 	prev_explain = ExplainOneQuery_hook;
 	ExplainOneQuery_hook = gp_orca_explain;
+
+	SetConfigOption("optimizer", "on", PGC_POSTMASTER, PGC_S_DYNAMIC_DEFAULT);
 }
 
 void

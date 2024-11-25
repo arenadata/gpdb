@@ -37,6 +37,7 @@
 #include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "optimizer/planmain.h"
+#include "optimizer/planner.h"
 #include "pgstat.h"
 #include "parser/scansup.h"
 #include "postmaster/autovacuum.h"
@@ -1865,15 +1866,11 @@ struct config_bool ConfigureNamesBool_gp[] =
 
 	{
 		{"optimizer", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable GPORCA."),
+			gettext_noop("Enable external planner."),
 			NULL
 		},
 		&optimizer,
-#ifdef USE_ORCA
-		true,
-#else
 		false,
-#endif
 		check_optimizer, NULL, NULL
 	},
 
@@ -5158,13 +5155,29 @@ check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source)
 static bool
 check_optimizer(bool *newval, void **extra, GucSource source)
 {
-#ifndef USE_ORCA
 	if (*newval)
 	{
-		GUC_check_errmsg("ORCA is not supported by this build");
-		return false;
+		/*
+		 * Use external planner only on dispatcher.
+		 * Others do not have information if external planner is used or not,
+		 * so always disable 'optimizer' if we are not at dispatcher.
+		 * We can't return false here, as it will break SET command, when it is
+		 * dispatched across segments, if external planner is registered for
+		 * the dispatcher.
+		 */
+		if (GP_ROLE_DISPATCH != Gp_role)
+			*newval = false;
+		else if (NULL == planner_hook)
+		{
+			/*
+			 * Assume that, if no planner_hook is registered for the
+			 * coordinator, we can use only standard Postgres planner.
+			 * Thus, forbid setting the GUC.
+			 */
+			GUC_check_errmsg("External planner is not registered");
+			return false;
+		}
 	}
-#endif
 
 	if (!optimizer_control)
 	{
