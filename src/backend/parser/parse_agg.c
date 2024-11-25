@@ -1536,7 +1536,7 @@ get_groupclause_tles(Node *grpcl, List *targetList)
 		List *exprs = (List *)grpcl;
 		ListCell *lc;
 
-		foreach (lc, exprs)
+		foreach(lc, exprs)
 		{
 			result = list_concat(result, get_groupclause_tles((Node *)lfirst(lc),
 															   targetList));
@@ -1551,7 +1551,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 {
 	List *result = NIL;
 
-	if (!grpcl)
+	if ( !grpcl )
 		return result;
 
 	Assert(IsA(grpcl, SortGroupClause) ||
@@ -1569,7 +1569,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 		GroupingClause *gc = (GroupingClause*)grpcl;
 
 		/* Cube and Rollup do not contain common attributes */
-		if(gc->groupType == GROUPINGTYPE_CUBE || gc->groupType == GROUPINGTYPE_ROLLUP)
+		if (gc->groupType == GROUPINGTYPE_CUBE || gc->groupType == GROUPINGTYPE_ROLLUP)
 		{
 			list_free(com_refs);
 			return NIL;
@@ -1580,19 +1580,20 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 			List *grouping_refs = get_com_grouping_ressortgroupref_routine((Node*)lfirst(l), targetList, com_refs);
 			
 			/* An empty grouping has no common attributes */
-			if(!grouping_refs)
+			if (!grouping_refs)
 				return NIL;
 
 			/*Exclude refs that did not appear in this grouping*/
-			ListCell *lc;
-			lc = list_head(com_refs);
-			while(lc){
-				if(list_member_int(grouping_refs, lfirst_int(lc)))
-					lc = lc->next;
+			ListCell *lc = list_head(com_refs);
+			while (lc) {
+				if (list_member_int(grouping_refs, lfirst_int(lc)))
+				{
+					lc = lnext(lc);
+				}
 				else
 				{
 					ListCell *lc_del = lc;
-					lc = lc->next;
+					lc = lnext(lc);
 					com_refs = list_delete_int(com_refs, lfirst_int(lc_del));					
 				}
 			}
@@ -1605,7 +1606,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 		List *tles = (List *)grpcl;
 		ListCell *lc;
 
-		foreach (lc, tles)
+		foreach(lc, tles)
 		{
 			List *chunk = get_com_grouping_ressortgroupref_routine((Node *)lfirst(lc), targetList, com_refs);
 			if(!chunk)
@@ -1625,7 +1626,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
  */
 List*
 get_com_grouping_ressortgroupref(Query *qry, List *grp_tles){
-	if(!qry || !grp_tles)
+	if (!qry || !grp_tles)
 		return NIL;
 
 	List *com_grouping_ressortgroupref = NIL;
@@ -1640,7 +1641,7 @@ get_com_grouping_ressortgroupref(Query *qry, List *grp_tles){
 			continue;
 
 		/* Scan in grouping expression*/
-		if(IsA(grp, GroupingClause))
+		if (IsA(grp, GroupingClause))
 		{
 			/* We assume that attributes are present in current grouping expression. */
 			ListCell *lc;
