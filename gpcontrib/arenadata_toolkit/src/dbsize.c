@@ -514,11 +514,9 @@ calculate_ao_storage_perSegFile_soft(const int segno, void *ctx)
 
 	if (stat(segPath, &fst) < 0)
 	{
-		if (errno == ENOENT)
-			return false;
-
 		ereport(DEBUG1, (errcode_for_file_access(),
 						errmsg("[arenadata_toolkit] could not access file %s: %m", segPath)));
+		return false;
 	}
 	else
 		calcCtx->total_size += fst.st_size;
