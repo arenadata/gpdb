@@ -1546,6 +1546,13 @@ get_groupclause_tles(Node *grpcl, List *targetList)
 	return result;
 }
 
+/*
+ * get_com_grouping_ressortgroupref_routine -
+ *     Return a list of common ressortgrouprefs of the current grouping
+ *     expression recursively. It is assumed that attributes used in all
+ *     groupings are already present in the current grouping. Otherwise,
+ *     missing references are removed from the com_refs list.
+ */
 static List*
 get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *com_refs)
 {
@@ -1585,7 +1592,8 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 
 			/*Exclude refs that did not appear in this grouping*/
 			ListCell *lc = list_head(com_refs);
-			while (lc) {
+			while (lc)
+			{
 				if (list_member_int(grouping_refs, lfirst_int(lc)))
 				{
 					lc = lnext(lc);
@@ -1594,7 +1602,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 				{
 					ListCell *lc_del = lc;
 					lc = lnext(lc);
-					com_refs = list_delete_int(com_refs, lfirst_int(lc_del));					
+					com_refs = list_delete_int(com_refs, lfirst_int(lc_del));
 				}
 			}
 		}
@@ -1625,26 +1633,27 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
  * 	   clauses.
  */
 List*
-get_com_grouping_ressortgroupref(Query *qry, List *grp_tles){
-	if (!qry || !grp_tles)
-		return NIL;
-
+get_com_grouping_ressortgroupref(Query *qry, List *grp_tles)
+{
 	List *com_grouping_ressortgroupref = NIL;
 	ListCell *gc;
 
+	if (!qry || !grp_tles)
+		return NIL;
+
 	foreach(gc, qry->groupClause)
 	{
-		List *com_group_expr_ressortgroupref = NIL;
 		Node *grp = lfirst(gc);
 
 		if (grp == NULL)
 			continue;
 
-		/* Scan in grouping expression*/
+		/* Scan in grouping expression. */
 		if (IsA(grp, GroupingClause))
 		{
-			/* We assume that attributes are present in current grouping expression. */
+			List *com_group_expr_ressortgroupref = NIL;
 			ListCell *lc;
+			/* We assume that attributes are present in current grouping expression. */
 			foreach(lc, grp_tles)
 			{
 				TargetEntry* te = (TargetEntry*) lfirst(lc);
@@ -1653,16 +1662,22 @@ get_com_grouping_ressortgroupref(Query *qry, List *grp_tles){
 			}
 			com_group_expr_ressortgroupref =
 				get_com_grouping_ressortgroupref_routine(grp, qry->targetList,com_group_expr_ressortgroupref);
+
+			/* Form a list of common refs for grouping clauses. */
+			com_grouping_ressortgroupref =
+				list_concat_unique_int(com_grouping_ressortgroupref, com_group_expr_ressortgroupref);
+			list_free(com_group_expr_ressortgroupref);
 		}
-		/* Scan in group by*/
+
+		/*
+		 * Scan in GROUP BY.
+		 * In this case the attribute is also common.
+		 */
 		if (IsA(grp, SortGroupClause))
 		{
 			TargetEntry *tle = get_sortgroupclause_tle((SortGroupClause *) grp, qry->targetList);
-			com_group_expr_ressortgroupref = lappend_int(com_group_expr_ressortgroupref, tle->ressortgroupref);
+			com_grouping_ressortgroupref = list_append_unique_int(com_grouping_ressortgroupref, tle->ressortgroupref);
 		}
-		/* Form a list of common refs for all clauses */
-		com_grouping_ressortgroupref = list_concat_unique_int(com_grouping_ressortgroupref, com_group_expr_ressortgroupref);
-		list_free(com_group_expr_ressortgroupref);
 	}
 
 	return com_grouping_ressortgroupref;
