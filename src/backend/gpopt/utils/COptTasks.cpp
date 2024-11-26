@@ -65,6 +65,8 @@
 #include "naucrates/md/IMDRelStats.h"
 #include "naucrates/traceflags/traceflags.h"
 
+#include "optimizer/planner.h"
+
 using namespace gpos;
 using namespace gpopt;
 using namespace gpdxl;
@@ -78,8 +80,6 @@ using namespace gpdbcost;
 
 // default id for the source system
 const CSystemId default_sysid(IMDId::EmdidGeneral, GPOS_WSZ_STR_LENGTH("GPDB"));
-
-plan_hint_hook_type plan_hint_hook = nullptr;
 
 // Check one-to-one mapping of row hint types
 GPOS_CPL_ASSERT(CRowHint::RVT_ABSOLUTE ==
@@ -570,7 +570,7 @@ COptTasks::GetPlanHints(CMemoryPool *mp, Query *query)
 	{
 		// Calling plan_hint_hook creates pg_hint_plan hint structures
 		// (see optimizer/hints.h).
-		hintstate = (HintState *) plan_hint_hook(query);
+		hintstate = plan_hint_hook(query);
 	}
 
 	if (nullptr == hintstate)

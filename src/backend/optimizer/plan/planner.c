@@ -91,8 +91,10 @@ double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;
 bool		parallel_leader_participation = true;
 
-/* Hook for plugins to get control in planner() */
+/* Hooks for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
+plan_hint_hook_type plan_hint_hook = NULL;
+
 
 /* Hook for plugins to get control when grouping_planner() plans upper rels */
 create_upper_paths_hook_type create_upper_paths_hook = NULL;
