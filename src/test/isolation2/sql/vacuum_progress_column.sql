@@ -142,7 +142,6 @@ select relid::regclass as relname, phase, heap_blks_total, heap_blks_scanned, he
 -- Resume walsender to detect mirror down and suspend at the beginning
 -- of post-cleanup taken over by a new vacuum worker.
 2: SELECT gp_inject_fault('vacuum_worker_changed', 'suspend', dbid) FROM gp_segment_configuration WHERE content > -1 AND role = 'p';
-
 -- resume walsender and let it exit so that mirror stop can be detected
 2: SELECT gp_inject_fault_infinite('wal_sender_loop', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' and content = 1;
 -- wait for the mirror stop to be detected (timeout 2 minutes)
