@@ -878,11 +878,12 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	}
 
 	/*
-	 * Getting adjacent TargetEntrys in groupings. Common tle will be needed
-	 * in case of ungrouped attributes in target list. In fact we get a list
-	 * of tle->ressortgroupref because we need to check for matching expressions
-	 * after flatten_joinalias_vars. We also find out if there are grouping
-	 * expressions.
+	 * Getting ressortgrouprefs of common TargetEntrys in groupings.
+	 * TargetEntry is common if it appears in several grouping expressions
+	 * (including nesting) and in a regular GROUP BY (general case). They
+	 * will be needed in case of ungrouped attributes in target list. We get
+	 * a list of tle->ressortgroupref instead of tle because we need to check
+	 * for matching expressions after flatten_joinalias_vars.
 	 */
 	comGroupingRessortgrouprefs = get_com_grouping_ressortgroupref(qry, groupClauses);
 
@@ -1591,20 +1592,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 				return NIL;
 
 			/*Exclude refs that did not appear in this grouping*/
-			ListCell *lc = list_head(com_refs);
-			while (lc)
-			{
-				if (list_member_int(grouping_refs, lfirst_int(lc)))
-				{
-					lc = lnext(lc);
-				}
-				else
-				{
-					ListCell *lc_del = lc;
-					lc = lnext(lc);
-					com_refs = list_delete_int(com_refs, lfirst_int(lc_del));
-				}
-			}
+			com_refs = list_intersection_int(com_refs, grouping_refs);
 		}
 
 		return com_refs;
@@ -1661,7 +1649,7 @@ get_com_grouping_ressortgroupref(Query *qry, List *grp_tles)
 					list_append_unique_int(com_group_expr_ressortgroupref, te->ressortgroupref);
 			}
 			com_group_expr_ressortgroupref =
-				get_com_grouping_ressortgroupref_routine(grp, qry->targetList,com_group_expr_ressortgroupref);
+				get_com_grouping_ressortgroupref_routine(grp, qry->targetList, com_group_expr_ressortgroupref);
 
 			/* Form a list of common refs for grouping clauses. */
 			com_grouping_ressortgroupref =
