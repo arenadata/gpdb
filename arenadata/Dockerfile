@@ -3,7 +3,7 @@ FROM rockylinux:8.8 as base
 # Allow usage of custom compilers, however, gcc is the default
 ARG CC=gcc
 ARG CXX=g++
-ARG SKIP_UNITTESTS=false
+ARG SKIP_UNITTESTS
 
 # Install some basic utilities and build tools
 RUN dnf -y install 'dnf-command(config-manager)' && dnf config-manager --set-enabled devel && dnf makecache && dnf update -y ca-certificates && \

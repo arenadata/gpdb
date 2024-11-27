@@ -146,7 +146,7 @@ function _main() {
 	build_gpdb "${BLD_TARGET_OPTION[@]}"
 	git_info
 
-	if [ "${SKIP_UNITTESTS}" = false ]; then
+	if [[ -z "${SKIP_UNITTESTS}" ]]; then
 		unittest_check_gpdb
 	fi
 

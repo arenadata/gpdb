@@ -14,7 +14,7 @@ function build_xerces
 
 function test_orca
 {
-    if [ "${SKIP_UNITTESTS}" = true ]; then
+    if [ -n "${SKIP_UNITTESTS}" ]; then
         return
     fi
     OUTPUT_DIR="../../../../gpAux/ext/${BLD_ARCH}"
