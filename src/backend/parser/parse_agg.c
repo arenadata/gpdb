@@ -879,11 +879,12 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 
 	/*
 	 * Getting ressortgrouprefs of common TargetEntrys in groupings.
-	 * TargetEntry is common if it appears in several grouping expressions
-	 * (including nesting) and in a regular GROUP BY (general case). They
-	 * will be needed in case of ungrouped attributes in target list. We get
-	 * a list of tle->ressortgroupref instead of tle because we need to check
-	 * for matching expressions after flatten_joinalias_vars.
+	 * TargetEntry is common if it appears in all grouping expressions
+	 * (including nesting) or in a regular GROUP BY (a simple GROUPING SETS
+	 * with one attribute can be considered as a GROUP BY). They will be
+	 * needed in case of ungrouped attributes in target list. We get a list of
+	 * tle->ressortgroupref instead of tle because we need to check for
+	 * matching expressions after flatten_joinalias_vars.
 	 */
 	comGroupingRessortgrouprefs = get_com_grouping_ressortgroupref(qry, groupClauses);
 
@@ -1559,8 +1560,8 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 {
 	List *result = NIL;
 
-	if ( !grpcl )
-		return result;
+	if (!grpcl)
+		return NIL;
 
 	Assert(IsA(grpcl, SortGroupClause) ||
 		   IsA(grpcl, GroupingClause) ||
@@ -1605,7 +1606,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 		foreach(lc, tles)
 		{
 			List *chunk = get_com_grouping_ressortgroupref_routine((Node *)lfirst(lc), targetList, com_refs);
-			if(!chunk)
+			if (!chunk)
 				return NIL;
 
 			result = list_concat(result, chunk);

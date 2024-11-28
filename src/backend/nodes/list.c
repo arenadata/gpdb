@@ -843,7 +843,7 @@ list_intersection(const List *list1, const List *list2)
 List *
 list_intersection_int(const List *list1, const List *list2)
 {
-	List	   *result;
+	List	   *result = NIL;
 	const ListCell *cell;
 
 	if (list1 == NIL || list2 == NIL)
@@ -852,7 +852,6 @@ list_intersection_int(const List *list1, const List *list2)
 	Assert(IsIntegerList(list1));
 	Assert(IsIntegerList(list2));
 
-	result = NIL;
 	foreach(cell, list1)
 	{
 		if (list_member_int(list2, lfirst_int(cell)))
