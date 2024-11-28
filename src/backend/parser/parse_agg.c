@@ -1571,6 +1571,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 	{
 		TargetEntry *tle = get_sortgroupclause_tle((SortGroupClause *) grpcl, targetList);
 		result = lappend_int(result, tle->ressortgroupref);
+		return result;
 	}
 	else if (IsA(grpcl, GroupingClause))
 	{
@@ -1598,19 +1599,14 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 
 		return com_refs;
 	}
-	else
+	List *tles = (List *)grpcl;
+	ListCell *lc;
+	foreach(lc, tles)
 	{
-		List *tles = (List *)grpcl;
-		ListCell *lc;
-
-		foreach(lc, tles)
-		{
-			List *chunk = get_com_grouping_ressortgroupref_routine((Node *)lfirst(lc), targetList, com_refs);
-			if (!chunk)
-				return NIL;
-
-			result = list_concat(result, chunk);
-		}
+		List *chunk = get_com_grouping_ressortgroupref_routine((Node *)lfirst(lc), targetList, com_refs);
+		if (!chunk)
+			return NIL;
+		result = list_concat(result, chunk);
 	}
 
 	return result;
