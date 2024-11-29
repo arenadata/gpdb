@@ -308,15 +308,15 @@ get_filters_from_guc()
 	if (current_schemas)
 		schema_names = split_string_to_list(current_schemas);
 	else
-		schema_names = split_string_to_list(tracked_schemas);
+		schema_names = split_string_to_list(DEFAULT_TRACKED_SCHEMAS);
 	if (current_relstorages)
 		tf_get_global_state.relstorages = list_to_bits(current_relstorages);
 	else
-		tf_get_global_state.relstorages = list_to_bits(tracked_rel_storages);
+		tf_get_global_state.relstorages = list_to_bits(DEFAULT_TRACKED_REL_STORAGES);
 	if (current_relkinds)
 		tf_get_global_state.relkinds = list_to_bits(current_relkinds);
 	else
-		tf_get_global_state.relkinds = list_to_bits(tracked_rel_kinds);
+		tf_get_global_state.relkinds = list_to_bits(DEFAULT_TRACKED_REL_KINDS);
 
 	foreach(lc, schema_names)
 	{
@@ -998,7 +998,8 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 		 * If new_schemas is NULL, we're removing the last schema, that should
 		 * lead to empty result set during track acquisition. But we anyway
 		 * need to store an empty string to distinguish state when the GUC has
-		 * default value and when the get_track() filers out all schemas.
+		 * default value and when the get_track() is supposed to
+		 * filter out all schemas.
 		 */
 		arg.val.val.str = pstrdup("");
 	}
