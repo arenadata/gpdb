@@ -37,10 +37,18 @@ In order to get the snapshot of all database relations you should call in the da
 arenadata_toolkit.tracking_trigger_initial_snapshot();
 ```
 
-
 ***Attention***:  Acquiring size track from parallel sessions is not recommended, since there is the only
 instance of Bloom filter for a database. I.e. track acquisition can return whole accumulated relation set
 in one session, and empty set for acquisition from the second session (the first session acquired data earlier). 
+
+The result of track acquisiton can be filtered via following GUC
+|GUC|Setter|Default value|
+--|--|--
+| arenadata_toolkit.tracking_schemas | arenadata_toolkit.tracking_register_schema(schema name) |public,arenadata_toolkit,pg_catalog,pg_toast,pg_aoseg,information_schema
+| arenadata_toolkit.tracking_relkinds | arenadata_toolkit.tracking_set_relkinds(relkinds name) |r,i,t,m,o,b,M|
+| arenadata_toolkit.tracking_relstorages | arenadata_toolkit.tracking_set_relstorages(relstorages name) |h,a,c|
+
+If one of that params is empty, the track acquisition will return an empty track as well.
 
 #### Choosing optimal Bloom size
 

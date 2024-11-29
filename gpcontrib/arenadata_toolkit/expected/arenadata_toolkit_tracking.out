@@ -2,6 +2,8 @@
 -- start_matchsubs
 -- m/ERROR:  database \d+ is not tracked/
 -- s/\d+/XXX/g
+-- m/for database \d+ is empty/
+-- s/\d+/XXX/g
 -- end_matchsubs
 CREATE DATABASE tracking_db1;
 \c tracking_db1;
@@ -119,6 +121,7 @@ SELECT arenadata_toolkit.tracking_trigger_initial_snapshot();
 --Empty track is expected
 SELECT relname, size, state, segid, relkind, relstorage
 FROM arenadata_toolkit.tables_track;
+WARNING:  One of the tracking parameters (schemas,relkinds, relstorages) for database 167165 is empty.
  relname | size | state | segid | relkind | relstorage 
 ---------+------+-------+-------+---------+------------
 (0 rows)
@@ -285,6 +288,7 @@ SELECT arenadata_toolkit.tracking_trigger_initial_snapshot();
 
 SELECT  size, state, segid, relkind, relstorage
 FROM arenadata_toolkit.tables_track;
+WARNING:  One of the tracking parameters (schemas,relkinds, relstorages) for database 167165 is empty.
  size | state | segid | relkind | relstorage 
 ------+-------+-------+---------+------------
 (0 rows)

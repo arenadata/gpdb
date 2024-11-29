@@ -467,12 +467,14 @@ tracking_get_track(PG_FUNCTION_ARGS)
 		 */
 		get_filters_from_guc();
 
-		if (tf_get_global_state.relstorages == 0 ||
+		/* emit warning only at coordinator */
+		if ((tf_get_global_state.relstorages == 0 ||
 			tf_get_global_state.relkinds == 0 ||
-			tf_get_global_state.schema_oids == NIL)
-			ereport(LOG,
-					(errmsg("One of the tracking parameters (schemas, relkinds,"
-							"reltorage) for database %u is empty", MyDatabaseId)));
+			tf_get_global_state.schema_oids == NIL) &&
+			IS_QUERY_DISPATCHER())
+			ereport(WARNING,
+					(errmsg("One of the tracking parameters (schemas,"
+							"relkinds, relstorages) for database %u is empty.", MyDatabaseId)));
 
 		MemoryContextSwitchTo(oldcontext);
 
@@ -848,7 +850,8 @@ add_or_remove_schema(const char *schema_string, const char *schemaName, bool add
 	 * consider NULL value as a need for applying operation
 	 * to default schema set
 	 */
-	if (schema_string == NULL){
+	if (schema_string == NULL)
+	{
 		schema_string = DEFAULT_TRACKED_SCHEMAS;
 	}
 
@@ -1026,10 +1029,13 @@ tracking_register_schema(PG_FUNCTION_ARGS)
 	Oid			dbid = get_dbid(PG_GETARG_OID(1));
 
 	if (Gp_role != GP_ROLE_DISPATCH)
-	{
 		ereport(ERROR,
 				(errmsg("Cannot execute tracking_register_schema outside query dispatcher")));
-	}
+
+	if (schema_name == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 errmsg("schema does not exist")));
 
 	if (!SearchSysCacheExists1(NAMESPACENAME, CStringGetDatum(schema_name)))
 		ereport(ERROR,
@@ -1054,6 +1060,11 @@ tracking_unregister_schema(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errmsg("Cannot execute tracking_unregister_schema outside query dispatcher")));
 	}
+
+	if (schema_name == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 errmsg("schema does not exist")));
 
 	if (!SearchSysCacheExists1(NAMESPACENAME, CStringGetDatum(schema_name)))
 		ereport(ERROR,
@@ -1108,6 +1119,12 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errmsg("Cannot execute tracking_set_relkinds outside query dispatcher")));
 	}
+
+	if (relkinds_str == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid relkind set"),
+				 errhint("Valid relkinds are: 'r', 'i', 'S', 't', 'v', 'c', 'f', 'u', 'm', 'o', 'b', 'M'")));
 
 	initStringInfo(&buf);
 	str_copy = pstrdup(relkinds_str);
@@ -1207,6 +1224,12 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errmsg("Cannot execute tracking_set_relstorages outside query dispatcher")));
 	}
+
+	if (relstorages_str == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("Invalid relstorage set"),
+				 errhint("Valid relstorages are: 'h', 'x', 'a', 'v', 'c', 'f'")));
 
 	initStringInfo(&buf);
 	str_copy = pstrdup(relstorages_str);

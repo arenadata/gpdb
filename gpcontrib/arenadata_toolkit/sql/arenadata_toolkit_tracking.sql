@@ -7,6 +7,8 @@
 -- start_matchsubs
 -- m/ERROR:  database \d+ is not tracked/
 -- s/\d+/XXX/g
+-- m/for database \d+ is empty/
+-- s/\d+/XXX/g
 -- end_matchsubs
 --start_ignore
 DROP DATABASE IF EXISTS tracking_db1;
