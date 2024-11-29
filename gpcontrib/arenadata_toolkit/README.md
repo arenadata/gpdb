@@ -41,7 +41,7 @@ arenadata_toolkit.tracking_trigger_initial_snapshot();
 instance of Bloom filter for a database. I.e. track acquisition can return whole accumulated relation set
 in one session, and empty set for acquisition from the second session (the first session acquired data earlier). 
 
-The result of track acquisiton can be filtered via following GUC
+The result of track acquisition can be filtered via following GUC
 |GUC|Setter|Default value|
 --|--|--
 | arenadata_toolkit.tracking_schemas | arenadata_toolkit.tracking_register_schema(schema name) |public,arenadata_toolkit,pg_catalog,pg_toast,pg_aoseg,information_schema

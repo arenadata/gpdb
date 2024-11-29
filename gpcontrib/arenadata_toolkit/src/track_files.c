@@ -1123,8 +1123,7 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 	if (relkinds_str == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Invalid relkind set"),
-				 errhint("Valid relkinds are: 'r', 'i', 'S', 't', 'v', 'c', 'f', 'u', 'm', 'o', 'b', 'M'")));
+				 errmsg("relkinds argument cannot be NULL")));
 
 	initStringInfo(&buf);
 	str_copy = pstrdup(relkinds_str);
@@ -1228,8 +1227,7 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 	if (relstorages_str == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Invalid relstorage set"),
-				 errhint("Valid relstorages are: 'h', 'x', 'a', 'v', 'c', 'f'")));
+				 errmsg("relstorages argument cannot be NULL")));
 
 	initStringInfo(&buf);
 	str_copy = pstrdup(relstorages_str);
