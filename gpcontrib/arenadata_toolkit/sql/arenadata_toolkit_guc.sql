@@ -117,10 +117,18 @@ setdatabase=oid WHERE datname=current_database();
 
 SELECT arenadata_toolkit.tracking_set_relstorages('d,b,c');
 
+SELECT arenadata_toolkit.tracking_set_relstorages('');
+
+SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
+setdatabase=oid WHERE datname=current_database();
+
 -- Prohibit manual GUC setting.
 SET arenadata_toolkit.tracking_relstorages = "h, a, x";
 
 ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_relstorages = "h, a, x";
+
+-- Resetting case is allowed.
+ALTER DATABASE tracking1 RESET arenadata_toolkit.tracking_relstorages;
 
 -- Test arenadata_toolkit.tracking_relkinds GUC
 SELECT arenadata_toolkit.tracking_set_relkinds('r,t,o,S');
@@ -135,12 +143,25 @@ setdatabase=oid WHERE datname=current_database();
 
 SELECT arenadata_toolkit.tracking_set_relkinds('d,b,c');
 
+SELECT arenadata_toolkit.tracking_set_relkinds('');
+
+SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
+setdatabase=oid WHERE datname=current_database();
+
 -- Prohibit manual GUC setting.
 SET arenadata_toolkit.tracking_relkinds = "h, a, x";
 
 ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_relkinds = "h, a, x";
 
+-- Resetting case is allowed.
+ALTER DATABASE tracking1 RESET arenadata_toolkit.tracking_relkinds;
+
 -- Test arenadata_toolkit.tracking_schemas GUC
+SELECT arenadata_toolkit.tracking_unregister_schema('public');
+
+SELECT datname, setconfig FROM pg_db_role_setting JOIN pg_database ON
+setdatabase=oid WHERE datname=current_database();
+
 SELECT arenadata_toolkit.tracking_register_schema('arenadata_toolkit');
 
 SELECT arenadata_toolkit.tracking_register_schema('public');
@@ -159,6 +180,9 @@ SELECT arenadata_toolkit.tracking_register_schema('pg_pg');
 SET arenadata_toolkit.tracking_schemas = "pg_catalog, mychema";
 
 ALTER DATABASE tracking1 SET arenadata_toolkit.tracking_schemas =  "pg_catalog, mychema";
+
+-- Resetting case is allowed.
+ALTER DATABASE tracking1 RESET arenadata_toolkit.tracking_schemas;
 
 -- Test GUCs are set in the caller's session.
 SELECT arenadata_toolkit.tracking_register_db();

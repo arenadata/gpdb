@@ -470,8 +470,9 @@ tracking_get_track(PG_FUNCTION_ARGS)
 		if (tf_get_global_state.relstorages == 0 ||
 			tf_get_global_state.relkinds == 0 ||
 			tf_get_global_state.schema_oids == NIL)
-			ereport(ERROR,
-					(errmsg("Cannot get tracking configuration (schemas, relkinds, reltorage) for database %u", MyDatabaseId)));
+			ereport(LOG,
+					(errmsg("One of the tracking parameters (schemas, relkinds,"
+							"reltorage) for database %u is empty", MyDatabaseId)));
 
 		MemoryContextSwitchTo(oldcontext);
 
@@ -843,6 +844,23 @@ add_or_remove_schema(const char *schema_string, const char *schemaName, bool add
 
 	initStringInfo(&buf);
 
+	/*
+	 * consider NULL value as a need for applying operation
+	 * to default schema set
+	 */
+	if (schema_string == NULL){
+		schema_string = DEFAULT_TRACKED_SCHEMAS;
+	}
+
+	/*
+	 * If string is empty, we can only add
+	 */
+	if (schema_string[0] == '\0' && !add)
+	{
+		pfree(buf.data);
+		return NULL;
+	}
+
 	if (schema_string && schema_string[0] != '\0')
 	{
 		str = pstrdup(schema_string);
@@ -974,17 +992,16 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 	if (new_schemas == NULL)
 	{
 		/*
-		 * If new_schemas is NULL, we're removing the last schema, so let's
-		 * just RESET the variable
+		 * If new_schemas is NULL, we're removing the last schema, that should
+		 * lead to empty result set during track acquisition. But we anyway
+		 * need to store an empty string to distinguish state when the GUC has
+		 * default value and when the get_track() filers out all schemas.
 		 */
-		v_stmt.kind = VAR_RESET;
-		v_stmt.args = NIL;
+		arg.val.val.str = pstrdup("");
 	}
-	else
-	{
-		v_stmt.kind = VAR_SET_VALUE;
-		v_stmt.args = list_make1(&arg);
-	}
+
+	v_stmt.kind = VAR_SET_VALUE;
+	v_stmt.args = list_make1(&arg);
 
 	tf_guc_unlock();
 
@@ -993,7 +1010,7 @@ track_schema(const char *schemaName, Oid dbid, bool reg)
 	/* Will set the GUC in caller session only on coordinator */
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_schemas",
-					new_schemas ? new_schemas : DEFAULT_TRACKED_SCHEMAS,
+					new_schemas ? new_schemas : "",
 					PGC_SUSET, PGC_S_DATABASE);
 
 	if (current_schemas)
@@ -1136,17 +1153,9 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 		buf.len--;
 	}
 
-	if (buf.len == 0)
-	{
-		v_stmt.kind = VAR_RESET;
-		v_stmt.args = NIL;
-	}
-	else
-	{
-		v_stmt.kind = VAR_SET_VALUE;
-		v_stmt.args = list_make1(&arg);
-		elog(LOG, "[arenadata_toolkit] setting relkinds %s in database %u for tracking", buf.data, dbid);
-	}
+	v_stmt.kind = VAR_SET_VALUE;
+	v_stmt.args = list_make1(&arg);
+	elog(LOG, "[arenadata_toolkit] setting relkinds %s in database %u for tracking", buf.data, dbid);
 
 	tf_guc_unlock();
 
@@ -1155,7 +1164,7 @@ tracking_set_relkinds(PG_FUNCTION_ARGS)
 	/* Will set the GUC in caller session only on coordinator */
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_relkinds",
-					buf.len ? buf.data : DEFAULT_TRACKED_REL_KINDS,
+					buf.data,
 					PGC_SUSET, PGC_S_DATABASE);
 
 	pfree(buf.data);
@@ -1244,17 +1253,9 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 		buf.len--;
 	}
 
-	if (buf.len == 0)
-	{
-		v_stmt.kind = VAR_RESET;
-		v_stmt.args = NIL;
-	}
-	else
-	{
-		v_stmt.kind = VAR_SET_VALUE;
-		v_stmt.args = list_make1(&arg);
-		elog(LOG, "[arenadata_toolkit] setting relstorages %s in database %u for tracking", buf.data, dbid);
-	}
+	v_stmt.kind = VAR_SET_VALUE;
+	v_stmt.args = list_make1(&arg);
+	elog(LOG, "[arenadata_toolkit] setting relstorages %s in database %u for tracking", buf.data, dbid);
 
 	tf_guc_unlock();
 
@@ -1263,7 +1264,7 @@ tracking_set_relstorages(PG_FUNCTION_ARGS)
 	/* Will set the GUC in caller session only on coordinator */
 	tf_guc_unlock();
 	SetConfigOption("arenadata_toolkit.tracking_relstorages",
-					buf.len ? buf.data : DEFAULT_TRACKED_REL_STORAGES,
+					buf.data,
 					PGC_SUSET, PGC_S_DATABASE);
 
 	pfree(buf.data);

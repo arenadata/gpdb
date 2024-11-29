@@ -9,7 +9,7 @@
 -- s/\d+/XXX/g
 -- end_matchsubs
 --start_ignore
-DROP DATABASE IF EXISTS tracking1;
+DROP DATABASE IF EXISTS tracking_db1;
 --end_ignore
 CREATE DATABASE tracking_db1;
 \c tracking_db1;
@@ -45,15 +45,29 @@ pg_class_count AS (
 SELECT bool_and(sc.cnt = pc.cnt)
 FROM segment_counts sc, pg_class_count pc;
 
--- 4. Create table in specific schema and register that schema.
+-- 4. Create table in one of default schemas. Then unregister all
+-- default schemas except this one.
 CREATE TABLE arenadata_toolkit.tracking_t1 (i INT)
 WITH (appendonly=true, orientation=column) DISTRIBUTED BY (i);
 
-SELECT arenadata_toolkit.tracking_register_schema('arenadata_toolkit');
+SELECT arenadata_toolkit.tracking_unregister_schema('information_schema');
+SELECT arenadata_toolkit.tracking_unregister_schema('pg_aoseg');
+SELECT arenadata_toolkit.tracking_unregister_schema('pg_toast');
+SELECT arenadata_toolkit.tracking_unregister_schema('pg_catalog');
+SELECT arenadata_toolkit.tracking_unregister_schema('public');
 
 -- Getting the track. Only created table with size 0 is expected;
 SELECT relname, size, state, segid, relkind, relstorage
 FROM arenadata_toolkit.tables_track;
+
+SELECT arenadata_toolkit.tracking_unregister_schema('arenadata_toolkit');
+SELECT arenadata_toolkit.tracking_trigger_initial_snapshot();
+
+--Empty track is expected
+SELECT relname, size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tables_track;
+
+SELECT arenadata_toolkit.tracking_register_schema('arenadata_toolkit');
 
 -- 5. Test data extending event. Bloom should capture it.
 INSERT INTO arenadata_toolkit.tracking_t1 SELECT generate_series(1,100000);
@@ -113,6 +127,14 @@ SELECT  size, state, segid, relkind, relstorage
 FROM arenadata_toolkit.tables_track;
 
 DROP TABLE arenadata_toolkit.tracking_t1;
+
+-- Set empty relkinds. The track result set should be empty.
+SELECT arenadata_toolkit.tracking_set_relkinds('');
+
+SELECT arenadata_toolkit.tracking_trigger_initial_snapshot();
+
+SELECT  size, state, segid, relkind, relstorage
+FROM arenadata_toolkit.tables_track;
 
 -- Clean up
 SELECT arenadata_toolkit.tracking_unregister_db();
