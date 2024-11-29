@@ -84,40 +84,48 @@ orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 *
 	 * PARALLEL RETRIEVE CURSOR is not supported by ORCA yet.
 	 */
-	if (optimizer && GP_ROLE_DISPATCH == Gp_role && IS_QUERY_DISPATCHER() &&
-		(cursorOptions & CURSOR_OPT_SKIP_FOREIGN_PARTITIONS) == 0 &&
-		(cursorOptions & CURSOR_OPT_PARALLEL_RETRIEVE) == 0)
+	if (GP_ROLE_DISPATCH == Gp_role && IS_QUERY_DISPATCHER())
 	{
-		instr_time starttime;
-		instr_time endtime;
-
+		/*
+		 * Init Orca even if GUC is disabled, as the query might involve
+		 * functions that update internal Orca's state (for example affecting
+		 * available transformations).
+		 */
 		if (NULL == OptimizerMemoryContext)
 			orca_init();
 
-		if (gp_log_optimization_time)
-			INSTR_TIME_SET_CURRENT(starttime);
-
-		result = optimize_query(parse, cursorOptions, boundParams);
-
-		/* decide jit state */
-		if (result)
+		if (optimizer &&
+			(cursorOptions & CURSOR_OPT_SKIP_FOREIGN_PARTITIONS) == 0 &&
+			(cursorOptions & CURSOR_OPT_PARALLEL_RETRIEVE) == 0)
 		{
-			/*
-			 * Setting Jit flags for Optimizer
-			 */
-			orca_compute_jit_flags(result);
-		}
+			instr_time starttime;
+			instr_time endtime;
 
-		if (gp_log_optimization_time)
-		{
-			INSTR_TIME_SET_CURRENT(endtime);
-			INSTR_TIME_SUBTRACT(endtime, starttime);
-			elog(LOG, "Optimizer Time: %.3f ms",
-				 INSTR_TIME_GET_MILLISEC(endtime));
-		}
+			if (gp_log_optimization_time)
+				INSTR_TIME_SET_CURRENT(starttime);
 
-		if (result)
-			return result;
+			result = optimize_query(parse, cursorOptions, boundParams);
+
+			/* decide jit state */
+			if (result)
+			{
+				/*
+				 * Setting Jit flags for Optimizer
+				 */
+				orca_compute_jit_flags(result);
+			}
+
+			if (gp_log_optimization_time)
+			{
+				INSTR_TIME_SET_CURRENT(endtime);
+				INSTR_TIME_SUBTRACT(endtime, starttime);
+				elog(LOG, "Optimizer Time: %.3f ms",
+					 INSTR_TIME_GET_MILLISEC(endtime));
+			}
+
+			if (result)
+				return result;
+		}
 	}
 
 	if (prev_planner)
