@@ -1,6 +1,6 @@
 MODULE_big = orca
 
-OBJS = gporca.o \
+OBJS = orca.o \
 	funcs.o \
 
 PG_CPPFLAGS = \

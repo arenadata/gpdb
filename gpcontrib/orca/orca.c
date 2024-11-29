@@ -217,8 +217,8 @@ orca_explain_dxl(Query *query, ExplainState *es, ParamListInfo params)
 
 static void
 orca_explain(Query *query, int cursorOptions, IntoClause *into,
-				ExplainState *es, const char *queryString, ParamListInfo params,
-				QueryEnvironment *queryEnv)
+			 ExplainState *es, const char *queryString, ParamListInfo params,
+			 QueryEnvironment *queryEnv)
 {
 	if (es->dxl)
 	{
