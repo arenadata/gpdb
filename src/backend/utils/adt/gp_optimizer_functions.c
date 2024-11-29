@@ -24,7 +24,7 @@ typedef Datum (*gp_opt_version_func) (void);
 static Datum
 gp_optimizer_function_stub(PG_FUNCTION_ARGS)
 {
-	return CStringGetTextDatum("gp_orca is not added to 'shared_preload_libraries'");
+	return CStringGetTextDatum("orca is not added to 'shared_preload_libraries'");
 }
 
 /*
@@ -41,7 +41,7 @@ gp_optimizer_load_function(char *funcname)
 
 	PG_TRY();
 	{
-		func = load_external_function("$libdir/gp_orca", funcname, false, NULL);
+		func = load_external_function("$libdir/orca", funcname, false, NULL);
 	}
 	PG_CATCH();
 	{
