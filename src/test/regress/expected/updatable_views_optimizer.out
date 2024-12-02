@@ -913,12 +913,15 @@ UPDATE rw_view1 v SET bb='Updated row 2' WHERE rw_view1_aa(v)=2
   RETURNING rw_view1_aa(v), v.bb;
                 QUERY PLAN                
 ------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   ->  Update on base_tbl
-         ->  Seq Scan on base_tbl
-               Filter: (a = 2)
- Optimizer: Postgres query optimizer
-(5 rows)
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Result
+         ->  Update
+               ->  Split
+                     ->  Result
+                           ->  Index Scan using base_tbl_pkey on base_tbl
+                                 Index Cond: (a = 2)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(8 rows)
 
 DROP TABLE base_tbl CASCADE;
 NOTICE:  drop cascades to 2 other objects
@@ -1113,13 +1116,18 @@ EXPLAIN (verbose, costs off) UPDATE rw_view1 SET b = b + 1 RETURNING *;
 -------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    Output: base_tbl.a, base_tbl.b
-   ->  Update on public.base_tbl
+   ->  Result
          Output: base_tbl.a, base_tbl.b
-         ->  Seq Scan on public.base_tbl
-               Output: base_tbl.a, (base_tbl.b + 1), base_tbl.ctid, base_tbl.gp_segment_id
- Optimizer: Postgres query optimizer
- Settings: optimizer=off
-(8 rows)
+         ->  Update
+               Output: base_tbl.a, base_tbl.b, (DMLAction), base_tbl.ctid
+               ->  Split
+                     Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id, DMLAction
+                     ->  Result
+                           Output: base_tbl.a, base_tbl.b, (base_tbl.b + 1), base_tbl.ctid, base_tbl.gp_segment_id
+                           ->  Seq Scan on public.base_tbl
+                                 Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id
+ Optimizer: Pivotal Optimizer (GPORCA)
+(14 rows)
 
 UPDATE rw_view1 SET b = b + 1 RETURNING *;
  a | b  
@@ -2054,11 +2062,11 @@ EXPLAIN (costs off) INSERT INTO rw_view1 VALUES (2, 'New row 2');
          Hash Key: "outer".id
          ->  Result
                ->  GroupAggregate
-                     Group Key: "outer"., "outer".ColRef_0015
+                     Group Key: "outer"., "outer".ColRef_0025
                      ->  Sort
-                           Sort Key: "outer"., "outer".ColRef_0015
+                           Sort Key: "outer"., "outer".ColRef_0025
                            ->  Result
-                                 Filter: (CASE WHEN (NOT ("outer".ColRef_0015 IS NULL)) THEN true ELSE false END IS NOT TRUE)
+                                 Filter: (CASE WHEN (NOT ("outer".ColRef_0025 IS NULL)) THEN true ELSE false END IS NOT TRUE)
                                  ->  Nested Loop Left Join
                                        Join Filter: true
                                        ->  Result

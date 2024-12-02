@@ -16290,7 +16290,7 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped VALUES (1, 2, 4);
                     QUERY PLAN                    
 --------------------------------------------------
  Insert
-   Output: c1, NULL::integer, c3, c4, ColRef_0004
+   Output: c1, NULL::integer, c3, c4, ColRef_0014
    ->  Result
          Output: c1, c3, c4, 1
          ->  Result
@@ -16307,7 +16307,7 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4
                QUERY PLAN               
 ----------------------------------------
  Insert
-   Output: c1, c3, c4, ColRef_0004
+   Output: c1, c3, c4, ColRef_0014
    ->  Result
          Output: c1, c3, c4, 1
          ->  Result
@@ -16415,7 +16415,7 @@ EXPLAIN (COSTS OFF, VERBOSE) DELETE FROM t_part_dropped_1_prt_p2;
                                                                                   QUERY PLAN                                                                                   
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0010, t_part_dropped_1_prt_p2.ctid
+   Output: "outer".ColRef_0020, t_part_dropped_1_prt_p2.ctid
    ->  Result
          Output: t_part_dropped_1_prt_p2.ctid, t_part_dropped_1_prt_p2.gp_segment_id, 0
          ->  Seq Scan on public.t_part_dropped_1_prt_p2
@@ -16442,7 +16442,7 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part VALUES (1, 5, 2, 5);
                QUERY PLAN               
 ----------------------------------------
  Insert
-   Output: c1, c2, c3, c4, ColRef_0005
+   Output: c1, c2, c3, c4, ColRef_0016
    ->  Result
          Output: c1, c2, c3, c4, 1
          ->  Result
@@ -16459,7 +16459,7 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
                       QUERY PLAN                      
 ------------------------------------------------------
  Insert
-   Output: c1, NULL::integer, c2, c3, c4, ColRef_0005
+   Output: c1, NULL::integer, c2, c3, c4, ColRef_0016
    ->  Result
          Output: c1, c2, c3, c4, 1
          ->  Result
@@ -16529,7 +16529,7 @@ EXPLAIN (COSTS OFF, VERBOSE) DELETE FROM t_part_1_prt_p2;
                                                                         QUERY PLAN                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0011, t_part_1_prt_p2.ctid
+   Output: "outer".ColRef_0022, t_part_1_prt_p2.ctid
    ->  Result
          Output: t_part_1_prt_p2.ctid, t_part_1_prt_p2.gp_segment_id, 0
          ->  Seq Scan on public.t_part_1_prt_p2

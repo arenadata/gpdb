@@ -10,6 +10,7 @@
 //---------------------------------------------------------------------------
 #include "gpopt/base/CUtils.h"
 
+#include "gpos/common/CDynamicPtrArray.h"
 #include "gpos/common/clibwrapper.h"
 #include "gpos/common/syslibwrapper.h"
 #include "gpos/io/CFileDescriptor.h"
@@ -3274,6 +3275,39 @@ CUtils::FLogicalDML(COperator *pop)
 		   COperator::EopLogicalInsert == op_id ||
 		   COperator::EopLogicalDelete == op_id ||
 		   COperator::EopLogicalUpdate == op_id;
+}
+
+// recursively checks if the given expression has logical DML operator
+BOOL
+CUtils::FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr)
+{
+	GPOS_ASSERT(NULL != mp);
+	GPOS_ASSERT(NULL != pexpr);
+
+	CDynamicPtrArray<CExpression, CleanupNULL> *exprsToCheck =
+		GPOS_NEW(mp) CDynamicPtrArray<CExpression, CleanupNULL>(mp);
+	exprsToCheck->Append(pexpr);
+
+	while (exprsToCheck->Size() > 0)
+	{
+		CExpression *pexprCurrent = (*exprsToCheck)[exprsToCheck->Size() - 1];
+		exprsToCheck->RemoveLast();
+
+		if (FLogicalDML(pexprCurrent->Pop()))
+		{
+			exprsToCheck->Release();
+			return true;
+		}
+
+		const ULONG arity = pexprCurrent->Arity();
+		for (ULONG ul = 0; ul < arity; ++ul)
+		{
+			exprsToCheck->Append((*pexprCurrent)[ul]);
+		}
+	}
+
+	exprsToCheck->Release();
+	return false;
 }
 
 // return regular string from wide-character string

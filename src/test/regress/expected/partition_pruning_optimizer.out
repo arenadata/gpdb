@@ -3492,7 +3492,7 @@ explain (verbose, costs off) delete from test_1_prt_extra where j = 2;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0009, test_1_prt_extra.ctid
+   Output: "outer".ColRef_0018, test_1_prt_extra.ctid
    ->  Result
          Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, 0
          ->  Seq Scan on partition_pruning.test_1_prt_extra
@@ -3558,7 +3558,7 @@ HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For 
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0025, test.ctid, test.tableoid
+   Output: "outer".ColRef_0034, test.ctid, test.tableoid
    ->  Result
          Output: test.ctid, test.tableoid, test.gp_segment_id, 0
          ->  Hash Anti Join

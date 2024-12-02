@@ -45,9 +45,11 @@ CCTEListEntry::CCTEListEntry(CMemoryPool *mp, ULONG query_level,
 #ifdef GPOS_DEBUG
 	BOOL result =
 #endif
-		m_cte_info->Insert(
-			cte->ctename,
-			GPOS_NEW(mp) SCTEProducerInfo(cte_producer, cte_query->targetList));
+		m_cte_info->Insert(cte->ctename,
+						   GPOS_NEW(mp) SCTEProducerInfo(
+							   cte_producer, cte_query->returningList != NULL
+												 ? cte_query->returningList
+												 : cte_query->targetList));
 
 	GPOS_ASSERT(result);
 }

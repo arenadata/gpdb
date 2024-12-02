@@ -776,6 +776,9 @@ public:
 	// check if the given operator is a logical DML operator
 	static BOOL FLogicalDML(COperator *pop);
 
+	// recursively checks if the given expression has logical DML operator
+	static BOOL FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr);
+
 	// return regular string from wide-character string
 	static CHAR *CreateMultiByteCharStringFromWCString(CMemoryPool *mp,
 													   WCHAR *wsz);

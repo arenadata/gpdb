@@ -31,7 +31,7 @@ returning distkey, partkey, t;
 update returning_parttab set partkey = 9 where partkey = 3 returning *;
 update returning_parttab set partkey = 19 where partkey = 13 returning *;
 
--- update that moves the tuple across partitions (not supported)
+-- update that moves the tuple across partitions
 update returning_parttab set partkey = 18 where partkey = 4 returning *;
 
 -- delete

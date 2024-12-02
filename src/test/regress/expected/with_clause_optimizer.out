@@ -3062,15 +3062,16 @@ order by 1;
    Merge Key: t1.i
    ->  Sort
          Sort Key: t1.i
-         ->  Seq Scan on t1
-               Filter: (hashed SubPlan 1)
-               SubPlan 1  (slice1; segments: 3)
-                 ->  Materialize
-                       ->  Subquery Scan on cte
-                             ->  Insert on with_dml_dr
-                                   ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(12 rows)
+         ->  Hash Semi Join
+               Hash Cond: (t1.i = generate_series.generate_series)
+               ->  Seq Scan on t1
+               ->  Hash
+                     ->  Result
+                           ->  Insert
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(13 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -3103,17 +3104,20 @@ order by 1;
    Merge Key: t1.i
    ->  Sort
          Sort Key: t1.i
-         ->  Seq Scan on t1
-               Filter: (SubPlan 1)
-               SubPlan 1  (slice1; segments: 3)
-                 ->  Result
-                       Filter: (cte.i = t1.j)
-                       ->  Materialize
-                             ->  Subquery Scan on cte
-                                   ->  Insert on with_dml_dr
-                                         ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(14 rows)
+         ->  Hash Join
+               Hash Cond: ((generate_series.generate_series = t1.j) AND (generate_series.generate_series = t1.i))
+               ->  Result
+                     ->  HashAggregate
+                           Group Key: generate_series.generate_series
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+               ->  Hash
+                     ->  Seq Scan on t1
+                           Filter: (NOT (j IS NULL))
+ Optimizer: Pivotal Optimizer (GPORCA)
+(17 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -3202,15 +3206,17 @@ order by 1;
                     QUERY PLAN                     
 ---------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: with_dml_dr.i
+   Merge Key: "outer".i
    ->  Sort
-         Sort Key: with_dml_dr.i
+         Sort Key: "outer".i
          ->  Append
-               ->  Insert on with_dml_dr
-                     ->  Result
+               ->  Result
+                     ->  Insert
+                           ->  Result
+                                 ->  Result
                ->  Seq Scan on t_repl
- Optimizer: Postgres query optimizer
-(9 rows)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(11 rows)
 
 with cte as (
     insert into with_dml_dr

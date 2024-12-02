@@ -64,9 +64,13 @@ update returning_parttab set partkey = 19 where partkey = 13 returning *;
        2 |      19 | multi2 3
 (1 row)
 
--- update that moves the tuple across partitions (not supported)
+-- update that moves the tuple across partitions
 update returning_parttab set partkey = 18 where partkey = 4 returning *;
-ERROR:  moving tuple from partition "returning_parttab_1_prt_1" to partition "returning_parttab_1_prt_newpart" not supported  (seg0 slice1 127.0.0.1:40000 pid=5753)
+ distkey | partkey |    t    
+---------+---------+---------
+       1 |      18 | multi 4
+(1 row)
+
 -- delete
 delete from returning_parttab where partkey = 14 returning *;
  distkey | partkey |    t     
@@ -81,10 +85,10 @@ select * from returning_parttab;
        1 |       1 | single insert
        1 |       1 | multi 1
        1 |       2 | multi 2
-       1 |       4 | multi 4
        1 |       5 | multi 5
        1 |       9 | multi 3
        1 |      10 | single2 insert
+       1 |      18 | multi 4
        2 |      11 | multi2 1
        2 |      12 | multi2 2
        2 |      15 | multi2 5

@@ -211,12 +211,11 @@ CQueryContext::PqcGenerate(CMemoryPool *mp, CExpression *pexpr,
 
 	CDistributionSpec *pds = NULL;
 
-	BOOL fDML = CUtils::FLogicalDML(pexpr->Pop());
-	poptctxt->MarkDMLQuery(fDML);
+	poptctxt->MarkDMLQuery(CUtils::FHasLogicalDML(mp, pexpr));
 
 	// DML commands do not have distribution requirement. Otherwise the
 	// distribution requirement is Singleton.
-	if (fDML)
+	if (CUtils::FLogicalDML(pexpr->Pop()))
 	{
 		pds = GPOS_NEW(mp) CDistributionSpecAny(COperator::EopSentinel);
 	}

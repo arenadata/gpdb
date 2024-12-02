@@ -2835,6 +2835,7 @@ typedef struct DMLState
 	TupleTableSlot *cleanedUpSlot;	/* holds 'final' tuple which matches the target relation schema */
 	AttrNumber	segid_attno;		/* attribute number of "gp_segment_id" */
 	bool		canSetTag;			/* calculate processed tuples */
+	TupleTableSlot *resultTupleSlot;/* slot for temporary storing projection result tuples */
 } DMLState;
 
 /*

@@ -80,6 +80,8 @@ CTranslatorDXLToPlStmt::CTranslatorDXLToPlStmt(
 	  m_md_accessor(md_accessor),
 	  m_dxl_to_plstmt_context(dxl_to_plstmt_context),
 	  m_cmd_type(CMD_SELECT),
+	  m_has_returning(false),
+	  m_returning_dml_on_replicated(false),
 	  m_is_tgt_tbl_distributed(false),
 	  m_result_rel_list(NULL),
 	  m_num_of_segments(num_of_segments),
@@ -263,6 +265,7 @@ CTranslatorDXLToPlStmt::GetPlannedStmtFromDXL(const CDXLNode *dxlnode,
 		m_dxl_to_plstmt_context->GetCurrentMotionId() - 1;
 
 	planned_stmt->commandType = m_cmd_type;
+	planned_stmt->hasReturning = m_has_returning;
 
 	GPOS_ASSERT(plan->nMotionNodes >= 0);
 	if (0 == plan->nMotionNodes && !m_is_tgt_tbl_distributed)
@@ -2282,6 +2285,14 @@ CTranslatorDXLToPlStmt::TranslateDXLMotion(
 		flow->flotype = FLOW_UNDEFINED;
 	}
 
+	if (m_returning_dml_on_replicated && input_segids_array->Size() == 1)
+	{
+		// we set locus type in child node in this case
+		// to filter doubling output on executor side
+		flow->locustype = CdbLocusType_Replicated;
+	}
+	m_returning_dml_on_replicated = false;
+
 	child_plan->flow = flow;
 
 	motion->motionID = m_dxl_to_plstmt_context->GetNextMotionId();
@@ -4171,7 +4182,8 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 	m_dxl_to_plstmt_context->AddRTE(rte);
 
 	CDXLNode *project_list_dxlnode = (*dml_dxlnode)[0];
-	CDXLNode *child_dxlnode = (*dml_dxlnode)[1];
+	CDXLNode *project_list_output_dxlnode = (*dml_dxlnode)[1];
+	CDXLNode *child_dxlnode = (*dml_dxlnode)[2];
 
 	CDXLTranslateContext child_context(m_mp, false,
 									   output_context->GetColIdToParamIdMap());
@@ -4188,6 +4200,18 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 		TranslateDXLProjList(project_list_dxlnode,
 							 NULL,	// translate context for the base table
 							 child_contexts, output_context);
+
+	dml->returningList =
+		TranslateDXLProjList(project_list_output_dxlnode, &base_table_context,
+							 child_contexts, output_context);
+
+	m_has_returning = m_has_returning || dml->returningList != NIL;
+
+	if (dml->returningList != NIL &&
+		md_rel->GetRelDistribution() == IMDRelation::EreldistrReplicated)
+	{
+		m_returning_dml_on_replicated = true;
+	}
 
 	// Create target list with nulls if rel has dropped cols. DELETE may have
 	// empty target list if there no after trigger present. Skip creating in

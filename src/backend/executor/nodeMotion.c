@@ -279,7 +279,7 @@ execMotionSender(MotionState *node)
 	/* need refactor */
 	if (node->isExplictGatherMotion)
 	{
-		numsegments = motion->plan.flow->numsegments;
+		numsegments = motion->plan.flow != NULL ? motion->plan.flow->numsegments : node->numInputSegs;
 	}
 
 
