@@ -1599,6 +1599,7 @@ get_com_grouping_ressortgroupref_routine(Node *grpcl, List *targetList, List *co
 
 		return com_refs;
 	}
+	
 	List *tles = (List *)grpcl;
 	ListCell *lc;
 	foreach(lc, tles)
