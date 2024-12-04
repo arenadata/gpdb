@@ -61,9 +61,6 @@ FROM base as test
 COPY --from=code /home/gpadmin/gpdb_src gpdb_src
 COPY --from=build /home/gpadmin/bin_gpdb /home/gpadmin/bin_gpdb
 
-# Make sure python3.9 persists as $PYTHON3 for ADCC tests
-ENV PYTHON3=$adb_python3_bin
-
 # Install entab used by pgindent utility.
 # This should be done using gpdb sources.
 RUN make -C gpdb_src/src/tools/entab install clean
