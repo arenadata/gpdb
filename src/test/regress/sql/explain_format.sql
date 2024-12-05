@@ -1,6 +1,6 @@
 -- Tests EXPLAIN format output
 
--- ignore the variable JIT gucs and "optimizer = 'on'" in Settings (unaligned mode + text format)
+-- ignore the variable JIT gucs in Settings (unaligned mode + text format)
 -- start_matchsubs
 -- m/^Settings:.*/
 -- s/,?\s*optimizer_jit\w*\s*=\s*[^,\n]+//g
@@ -8,14 +8,11 @@
 -- s/,?\s*jit\w*\s*=\s*[^,\n]+//g
 -- m/^Settings:.*/
 -- s/^Settings:[,\s]*/Settings: /
--- m/^Settings:.*/
--- s/,?\s*optimizer\w*\s*=\s*'on'//g
 -- end_matchsubs
 
 -- ignore variable JIT gucs which can be shown when SETTINGS=ON
 -- start_matchignore
 -- m/^\s+jit\w*:/
--- m/\s*optimizer:\s*"on"/
 -- m/^\s+optimizer_jit\w*:/
 -- end_matchignore
 

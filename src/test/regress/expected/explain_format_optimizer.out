@@ -1,5 +1,5 @@
 -- Tests EXPLAIN format output
--- ignore the variable JIT gucs and "optimizer = 'on'" in Settings (unaligned mode + text format)
+-- ignore the variable JIT gucs in Settings (unaligned mode + text format)
 -- start_matchsubs
 -- m/^Settings:.*/
 -- s/,?\s*optimizer_jit\w*\s*=\s*[^,\n]+//g
@@ -7,13 +7,10 @@
 -- s/,?\s*jit\w*\s*=\s*[^,\n]+//g
 -- m/^Settings:.*/
 -- s/^Settings:[,\s]*/Settings: /
--- m/^Settings:.*/
--- s/,?\s*optimizer\w*\s*=\s*'on'//g
 -- end_matchsubs
 -- ignore variable JIT gucs which can be shown when SETTINGS=ON
 -- start_matchignore
 -- m/^\s+jit\w*:/
--- m/\s*optimizer:\s*"on"/
 -- m/^\s+optimizer_jit\w*:/
 -- end_matchignore
 -- To produce stable regression test output, it's usually necessary to
@@ -281,6 +278,7 @@ explain_filter
   Optimizer: "GPORCA"
   Settings: 
     cpu_index_tuple_cost: "N.N"
+    optimizer: "on"
     random_page_cost: "N"
 (1 row)
 select explain_filter('EXPLAIN (FORMAT YAML, VERBOSE, SETTINGS ON) SELECT * from boxes;');
@@ -323,6 +321,7 @@ explain_filter
   Settings: 
     cpu_index_tuple_cost: "N.N"
     random_page_cost: "N"
+    optimizer: "on"
 (1 row)
 --- Check Explain Analyze YAML output that include the slices information
 select explain_filter('EXPLAIN (ANALYZE, FORMAT YAML) SELECT * from boxes LEFT JOIN apples ON apples.id = boxes.apple_id LEFT JOIN box_locations ON box_locations.id = boxes.location_id;');
@@ -514,7 +513,7 @@ Gather Motion N:N  (sliceN; segments: N)  (cost=N.N..N.N rows=N width=N) (actual
         ->  Seq Scan on public.boxes  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
               Output: id, apple_id, location_id
 Optimizer: GPORCA
-Settings: cpu_index_tuple_cost = 'N.N', random_page_cost = 'N'
+Settings: cpu_index_tuple_cost = 'N.N', optimizer = 'on', random_page_cost = 'N'
 Planning Time: N.N ms
   (sliceN)    Executor memory: NK bytes.
   (sliceN)    Executor memory: NK bytes avg x N workers, NK bytes max (segN).  Work_mem: NK bytes max.
