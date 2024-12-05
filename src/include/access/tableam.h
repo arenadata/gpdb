@@ -821,6 +821,7 @@ typedef struct TableAmRoutine
 											 TransactionId OldestXmin,
 											 double *num_tuples);
 									 
+	bool		(*use_physical_tlist_default) ();
 } TableAmRoutine;
 
 

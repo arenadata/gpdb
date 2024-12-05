@@ -107,6 +107,8 @@ GetTableAmRoutine(Oid amhandler)
 	Assert(routine->scan_sample_next_block != NULL);
 	Assert(routine->scan_sample_next_tuple != NULL);
 
+	Assert(routine->use_physical_tlist_default != NULL);
+
 	return routine;
 }
 

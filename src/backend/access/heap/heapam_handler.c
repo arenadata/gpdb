@@ -2729,6 +2729,13 @@ SampleHeapTupleVisible(TableScanDesc scan, Buffer buffer,
 	}
 }
 
+static bool
+heapam_use_physical_tlist_default()
+{
+	return true;
+}
+
+
 
 /* ------------------------------------------------------------------------
  * Definition of the heap table access method.
@@ -2794,7 +2801,9 @@ static const TableAmRoutine heapam_methods = {
 	.scan_bitmap_next_block = heapam_scan_bitmap_next_block,
 	.scan_bitmap_next_tuple = heapam_scan_bitmap_next_tuple,
 	.scan_sample_next_block = heapam_scan_sample_next_block,
-	.scan_sample_next_tuple = heapam_scan_sample_next_tuple
+	.scan_sample_next_tuple = heapam_scan_sample_next_tuple,
+
+	.use_physical_tlist_default = heapam_use_physical_tlist_default
 };
 
 

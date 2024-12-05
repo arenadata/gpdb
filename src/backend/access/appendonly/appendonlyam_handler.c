@@ -2400,6 +2400,19 @@ appendonly_scan_sample_next_tuple(TableScanDesc scan, SampleScanState *scanstate
 	Assert(0);
 }
 
+static bool
+appendonly_use_physical_tlist_default()
+{
+	/* 
+	 * When generating scan plan in create_scan_plan(),
+	 * the upstream code prefer to generate a tlist containing all Vars in
+	 * order. For the AO-type storage, it would result into unnecessary
+	 * overhead and impact performance, so in this case we let the tlist apply
+	 * to the projection to avoid unnecessory column fetches.
+	 */
+	return false;
+}
+
 /* ------------------------------------------------------------------------
  * Definition of the appendonly table access method.
  *
@@ -2472,7 +2485,9 @@ static const TableAmRoutine ao_row_methods = {
 	.scan_bitmap_next_block = appendonly_scan_bitmap_next_block,
 	.scan_bitmap_next_tuple = appendonly_scan_bitmap_next_tuple,
 	.scan_sample_next_block = appendonly_scan_sample_next_block,
-	.scan_sample_next_tuple = appendonly_scan_sample_next_tuple
+	.scan_sample_next_tuple = appendonly_scan_sample_next_tuple,
+
+	.use_physical_tlist_default = appendonly_use_physical_tlist_default
 };
 
 Datum

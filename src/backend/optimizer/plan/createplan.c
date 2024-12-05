@@ -23,6 +23,7 @@
 
 #include "access/relation.h"
 #include "access/sysattr.h"
+#include "access/tableam.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_proc.h"
 #include "foreign/fdwapi.h"
@@ -47,6 +48,7 @@
 #include "partitioning/partprune.h"
 #include "utils/lsyscache.h"
 #include "utils/uri.h"
+#include "utils/syscache.h"
 
 #include "cdb/cdbhash.h"
 #include "cdb/cdbllize.h"		/* cdbllize_adjust_init_plan_path() */
@@ -999,17 +1001,16 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 		}
 	}
 
-	/* 
-	 * Greenplum specific code: when generating scan plan in create_scan_plan(),
-	 * the upstream code prefer to generate a tlist containing all Vars in
-	 * order. For the AO-type storage, it would result into unnecessary
-	 * overhead and impact performance, so in this case we let the tlist apply
-	 * to the projection to avoid unnecessory column fetches.
-	 */
-	if (rel->relam == AO_ROW_TABLE_AM_OID || rel->relam == AO_COLUMN_TABLE_AM_OID)
-		return false;
+	if (rel->relam == InvalidOid)
+		return true;
 
-	return true;
+	HeapTuple	tuple = SearchSysCache1(AMOID, ObjectIdGetDatum(rel->relam));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for access method %u", rel->relam);
+	Form_pg_am aform = (Form_pg_am) GETSTRUCT(tuple);
+	regproc amhandler = aform->amhandler;
+	ReleaseSysCache(tuple);
+	return GetTableAmRoutine(amhandler)->use_physical_tlist_default();
 }
 
 /*
