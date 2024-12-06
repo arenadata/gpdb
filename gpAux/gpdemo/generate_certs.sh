@@ -5,13 +5,13 @@ key="server.key"
 cert="server.crt"
 
 # create the csr
-openssl req -new -passin pass:password -passout pass:password -text -out $csr 2>&1 <<-EOF
+openssl req -new -verify -passin pass:password -passout pass:password -text -out $csr 2>&1 <<-EOF
 US
 California
 Palo Alto
 Pivotal
 GPDB
-127.0.0.1
+localhost
 gpdb@127.0.0.1
 .
 .
@@ -29,10 +29,10 @@ chmod og-rwx ${key}
 
 mkdir -p certificate/gpfdists
 
-cp server.key certificate/gpfdists/server.key
-cp server.crt certificate/gpfdists/server.crt
-cp server.key certificate/gpfdists/client.key
-cp server.crt certificate/gpfdists/client.crt
-cp server.crt certificate/gpfdists/root.crt
+cp $key certificate/gpfdists/server.key
+cp $cert certificate/gpfdists/server.crt
+cp $key certificate/gpfdists/client.key
+cp $cert certificate/gpfdists/client.crt
+cp $cert certificate/gpfdists/root.crt
 
 rm -f server.* privkey.pem
