@@ -1354,7 +1354,7 @@ process_startup_options(Port *port, bool am_superuser)
 			char *name = NULL;
 			char *val = NULL;
 			ParseLongOption(av[i], &name, &val);
-			SetConfigOption(name, val, gucctx, PGC_S_SESSION);
+			SetConfigOption(name, val, gucctx, PGC_S_TEST);
 		}
 		pfree(av);
 	}
