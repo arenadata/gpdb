@@ -32,7 +32,7 @@ static ExplainOneQuery_hook_type prev_explain = NULL;
  * for Orca and used here for setting the JIT flags.
  */
 static void
-gp_orca_compute_jit_flags(PlannedStmt *pstmt)
+orca_compute_jit_flags(PlannedStmt *pstmt)
 {
 	compute_jit_flags(pstmt, optimizer_jit_above_cost,
 					  optimizer_jit_inline_above_cost,
@@ -40,7 +40,7 @@ gp_orca_compute_jit_flags(PlannedStmt *pstmt)
 }
 
 static void
-gp_orca_shutdown(int code, Datum arg)
+orca_shutdown(int code, Datum arg)
 {
 	(void) code;
 	(void) arg;
@@ -52,7 +52,7 @@ gp_orca_shutdown(int code, Datum arg)
 }
 
 static void
-gp_orca_init()
+orca_init()
 {
 	/* Initialize GPOPT */
 	OptimizerMemoryContext = AllocSetContextCreate(
@@ -62,11 +62,11 @@ gp_orca_init()
 
 	InitGPOPT();
 
-	before_shmem_exit(gp_orca_shutdown, 0);
+	before_shmem_exit(orca_shutdown, 0);
 }
 
 static PlannedStmt *
-gp_orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	PlannedStmt *result = NULL;
 
@@ -92,7 +92,7 @@ gp_orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		 * available transformations).
 		 */
 		if (NULL == OptimizerMemoryContext)
-			gp_orca_init();
+			orca_init();
 
 		if (optimizer &&
 			(cursorOptions & CURSOR_OPT_SKIP_FOREIGN_PARTITIONS) == 0 &&
@@ -112,7 +112,7 @@ gp_orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 				/*
 				 * Setting Jit flags for Optimizer
 				 */
-				gp_orca_compute_jit_flags(result);
+				orca_compute_jit_flags(result);
 			}
 
 			if (gp_log_optimization_time)
@@ -137,12 +137,12 @@ gp_orca_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 }
 
 /*
- * gp_orca_explain_dxl -
+ * orca_explain_dxl -
  *	  print out the execution plan for one Query in DXL format
  *	  this function implicitly uses optimizer
  */
 static void
-gp_orca_explain_dxl(Query *query, ExplainState *es, ParamListInfo params)
+orca_explain_dxl(Query *query, ExplainState *es, ParamListInfo params)
 {
 	MemoryContext oldcxt = CurrentMemoryContext;
 	bool save_enumerate;
@@ -224,16 +224,16 @@ gp_orca_explain_dxl(Query *query, ExplainState *es, ParamListInfo params)
 }
 
 static void
-gp_orca_explain(Query *query, int cursorOptions, IntoClause *into,
-				ExplainState *es, const char *queryString, ParamListInfo params,
-				QueryEnvironment *queryEnv)
+orca_explain(Query *query, int cursorOptions, IntoClause *into,
+			 ExplainState *es, const char *queryString, ParamListInfo params,
+			 QueryEnvironment *queryEnv)
 {
 	if (es->dxl)
 	{
 		if (NULL == OptimizerMemoryContext)
-			gp_orca_init();
+			orca_init();
 
-		gp_orca_explain_dxl(query, es, params);
+		orca_explain_dxl(query, es, params);
 	}
 	else if (prev_explain)
 		(*prev_explain)(query, cursorOptions, into, es, queryString, params,
@@ -269,10 +269,10 @@ _PG_init(void)
 	GPMemoryProtect_RequestAddinStartupMemory(orca_mem);
 
 	prev_planner = planner_hook;
-	planner_hook = gp_orca_planner;
+	planner_hook = orca_planner;
 
 	prev_explain = ExplainOneQuery_hook;
-	ExplainOneQuery_hook = gp_orca_explain;
+	ExplainOneQuery_hook = orca_explain;
 
 	SetConfigOption("optimizer", "on", PGC_POSTMASTER, PGC_S_DYNAMIC_DEFAULT);
 }
