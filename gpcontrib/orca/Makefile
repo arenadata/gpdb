@@ -7,7 +7,7 @@ GPORCA_OBJS = $(shell cat gporca/objfiles.list)
 OBJS = $(GPOPT_OBJS) $(GPORCA_OBJS) \
 	orca.o \
 	funcs.o \
-	orca_old.o \
+	orca_entry.o \
 
 PG_CPPFLAGS = \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpos/include \
