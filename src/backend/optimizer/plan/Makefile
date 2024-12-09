@@ -20,8 +20,4 @@ OBJS = analyzejoins.o createplan.o initsplan.o planagg.o planmain.o planner.o \
 	joinpartprune.o \
 	transform.o
 
-ifeq ($(enable_orca),yes)
-OBJS += orca.o
-endif
-
 include $(top_srcdir)/src/backend/common.mk

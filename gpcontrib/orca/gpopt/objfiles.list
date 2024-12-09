@@ -1,0 +1,5 @@
+gpopt/config/CConfigParamMapping.o
+gpopt/translate/CMappingColIdVar.o gpopt/translate/CMappingVarColId.o gpopt/translate/CPartPruneStepsBuilder.o gpopt/translate/CMappingElementColIdParamId.o gpopt/translate/CMappingColIdVarPlStmt.o gpopt/translate/CDXLTranslateContextBaseTable.o gpopt/translate/CCTEListEntry.o gpopt/translate/CContextDXLToPlStmt.o gpopt/translate/CDXLTranslateContext.o gpopt/translate/CQueryMutators.o gpopt/translate/CTranslatorScalarToDXL.o gpopt/translate/CTranslatorDXLToScalar.o gpopt/translate/CTranslatorUtils.o gpopt/translate/CTranslatorRelcacheToDXL.o gpopt/translate/CContextQueryToDXL.o gpopt/translate/CTranslatorQueryToDXL.o gpopt/translate/CTranslatorDXLToPlStmt.o
+gpopt/relcache/CMDProviderRelcache.o
+gpopt/utils/COptTasks.o gpopt/utils/CConstExprEvaluatorProxy.o gpopt/utils/CMemoryPoolPalloc.o gpopt/utils/CMemoryPoolPallocManager.o gpopt/utils/RelationWrapper.o
+gpopt/CGPOptimizer.o gpopt/gpdbwrappers.o

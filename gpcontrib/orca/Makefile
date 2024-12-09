@@ -1,13 +1,23 @@
 MODULE_big = orca
 
-OBJS = orca.o \
+GPOPT_OBJS = $(shell cat gpopt/objfiles.list)
+
+GPORCA_OBJS = $(shell cat gporca/objfiles.list)
+
+OBJS = $(GPOPT_OBJS) $(GPORCA_OBJS) \
+	orca.o \
 	funcs.o \
+	orca_old.o \
 
 PG_CPPFLAGS = \
-	-I$(top_srcdir)/src/backend/gporca/libgpos/include $(CPPFLAGS) \
-	-I$(top_srcdir)/src/backend/gporca/libgpopt/include $(CPPFLAGS) \
-	-I$(top_srcdir)/src/backend/gporca/libnaucrates/include $(CPPFLAGS) \
-	-I$(top_srcdir)/src/backend/gporca/libgpdbcost/include $(CPPFLAGS) \
+	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpos/include \
+	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpopt/include \
+	-I$(top_srcdir)/gpcontrib/orca/gporca/libnaucrates/include $(CPPFLAGS) \
+	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpdbcost/include $(CPPFLAGS) \
+
+PG_CXXFLAGS = -Werror -Wextra -Wpedantic -fno-omit-frame-pointer $(CXXFLAGS)
+
+SHLIB_LINK += -lxerces-c
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
