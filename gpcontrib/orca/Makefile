@@ -14,6 +14,7 @@ PG_CPPFLAGS = \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpopt/include \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libnaucrates/include $(CPPFLAGS) \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpdbcost/include $(CPPFLAGS) \
+	-I$(top_srcdir)/gpcontrib/orca/include \
 
 PG_CXXFLAGS = -Werror -Wextra -Wpedantic -fno-omit-frame-pointer $(CXXFLAGS)
 
