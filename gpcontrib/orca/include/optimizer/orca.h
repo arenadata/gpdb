@@ -19,6 +19,8 @@
 
 #include "pg_config.h"
 
+extern PGDLLIMPORT MemoryContext OptimizerMemoryContext;
+
 extern PlannedStmt * optimize_query(Query *parse, int cursorOptions, ParamListInfo boundParams);
 extern Node *transformGroupedWindows(Node *node, void *context);
 
