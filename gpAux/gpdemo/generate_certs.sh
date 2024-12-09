@@ -5,7 +5,7 @@ key="server.key"
 cert="server.crt"
 
 # create the csr
-openssl req -new -verify -passin pass:password -passout pass:password -text -out $csr 2>&1 <<-EOF
+openssl req -new -passin pass:password -passout pass:password -text -out $csr 2>&1 <<-EOF
 US
 California
 Palo Alto
