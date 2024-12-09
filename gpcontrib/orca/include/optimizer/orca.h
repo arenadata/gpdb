@@ -19,8 +19,6 @@
 
 #include "pg_config.h"
 
-#ifdef USE_ORCA
-
 extern PlannedStmt * optimize_query(Query *parse, int cursorOptions, ParamListInfo boundParams);
 extern Node *transformGroupedWindows(Node *node, void *context);
 
@@ -28,7 +26,5 @@ extern void InitGPOPT();
 extern void TerminateGPOPT();
 
 extern char *SerializeDXLPlan(Query *parse);
-
-#endif
 
 #endif /* ORCA_H */
