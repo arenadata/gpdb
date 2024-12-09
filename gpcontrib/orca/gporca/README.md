@@ -234,7 +234,7 @@ ORCA has a [style guide](StyleGuide.md), try to follow the existing style in you
 A set of [clang-format]-based rules are enforced in CI. Your editor or IDE may automatically support it. When in doubt, check formatting locally before submitting your PR:
 
 ```
-CLANG_FORMAT=clang-format src/tools/fmt chk
+CLANG_FORMAT=clang-format gpcontrib/orca/tools/fmt chk
 ```
 
 For more information, head over to the [formatting README](README.format.md).

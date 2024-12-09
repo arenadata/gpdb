@@ -18,10 +18,10 @@
 1. We should use an explicit, complete (locked down) specification for the [.clang-format](.clang-format) file.
 
 1. But our intent is better expressed as [well organized, commented yaml](clang-format.intent.yaml).
-   We use a [simple script](../../../src/tools/fmt) to generate the complete config file from the intent file. For example, on my Linux laptop, I run:
+   We use a [simple script](../../../gpcontrib/orca/tools/fmt) to generate the complete config file from the intent file. For example, on my Linux laptop, I run:
 
    ```shell
-   CLANG_FORMAT=clang-format-10 src/tools/fmt gen
+   CLANG_FORMAT=clang-format-10 gpcontrib/orca/tools/fmt gen
    ```
 
    If the correct version of `clang-format` is installed as `clang-format` (as is the case in macOS), you can omit the environment variable override.
@@ -29,7 +29,7 @@
 1. To check for formatting conformance, one can run
 
    ```shell
-   src/tools/fmt chk
+   gpcontrib/orca/tools/fmt chk
    ```
 
    It will succeed quietly (with return code 0) or point out the first few places that need to be formatted.
@@ -37,7 +37,7 @@
 1. To wholesale format all of ORCA and GPOPT
 
    ```shell
-   src/tools/fmt fmt
+   gpcontrib/orca/tools/fmt fmt
    ```
 
    On my laptop this takes about 2.5 seconds.
@@ -118,7 +118,7 @@ The following steps are used to convert in-flight branches to the new format.
    +++ /tmp/todo2	2020-11-12 16:48:07.291333698 -0800
    @@ -1,7 +1,8 @@
     pick 87fd0149caf8f052 Penultimate commit on main
-   +exec git checkout origin/main -- src/tools/fmt src/include/gpopt/.clang-format src/backend/gpopt/.clang-format src/backend/gporca/.clang-format; git commit -m 'this commit will disappear'
+   +exec git checkout origin/main -- gpcontrib/orca/tools/fmt gpcontrib/orca/include/gpopt/.clang-format gpcontrib/orca/gpopt/.clang-format gpcontrib/orca/gporca/.clang-format; git commit -m 'this commit will disappear'
     pick 93235faf306f4ecb 1st commit from PR
     pick 2b7ad8b9fd1f222c 2nd commit from PR
     pick 5bc7ac02c1c78b8b Last commit from PR
@@ -135,7 +135,7 @@ The following steps are used to convert in-flight branches to the new format.
 1. Use `git filter-branch` to rewrite the branch history
 
    ```sh
-   git filter-branch --force --tree-filter 'CLANG_FORMAT=clang-format-10 src/tools/fmt fmt; CLANG_FORMAT=clang-format-10 src/tools/fmt fmt' origin/main..
+   git filter-branch --force --tree-filter 'CLANG_FORMAT=clang-format-10 gpcontrib/orca/tools/fmt fmt; CLANG_FORMAT=clang-format-10 gpcontrib/orca/tools/fmt fmt' origin/main..
    ```
 
    Now we have reformatted every commit in this branch that's not in main (modulo the big bang commit).

@@ -157,9 +157,9 @@ matrix:
           before_script: ~
           after_script: ~
           script:
-            - env CLANG_FORMAT=clang-format-11 src/tools/fmt gen
+            - env CLANG_FORMAT=clang-format-11 gpcontrib/orca/tools/fmt gen
             - git diff --exit-code
-            - env CLANG_FORMAT=clang-format-11 src/tools/fmt chk
+            - env CLANG_FORMAT=clang-format-11 gpcontrib/orca/tools/fmt chk
 
 stages:
   - lint

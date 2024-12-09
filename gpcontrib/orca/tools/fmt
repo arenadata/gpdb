@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 
-# src/tools/fmt
+# gpcontrib/orca/tools/fmt
 
 set -e -u -o pipefail
 
 # This script formats (or checks) C++ code with clang-format in the following
 # locations:
 #
-# src/backend/gpopt
-# src/include/gpopt
-# src/backend/gporca
+# gpcontrib/orca/gpopt
+# gpcontrib/orca/include/gpopt
+# gpcontrib/orca/gporca
 #
 # To generate the expanded configuration file for a change in intent:
 # $ fmt gen
@@ -23,7 +23,7 @@ set -e -u -o pipefail
 # If the name of your clang-format executable isn't "clang-format", you can
 # override it in the CLANG_FORMAT environment variable.
 #
-# For more about ORCA's format, see src/backend/gporca/README.format.md
+# For more about ORCA's format, see gpcontrib/orca/gporca/README.format.md
 
 
 # we use mapfile from Bash 4.0, but it's sufficiently likely that *someone* on
@@ -31,7 +31,7 @@ set -e -u -o pipefail
 # against it.
 if ((BASH_VERSINFO[0] < 4)); then false; fi
 
-readonly INTENT=src/backend/gporca/clang-format.intent.yaml
+readonly INTENT=gpcontrib/orca/gporca/clang-format.intent.yaml
 : "${CLANG_FORMAT:=clang-format}"
 
 gen() {
@@ -43,7 +43,7 @@ gen() {
 	# do not squish the assignment into the declaration, as that will swallow
 	# errors in the subshell
 	local _find_result
-	_find_result=$(find src/backend/gporca -name .clang-format)
+	_find_result=$(find gpcontrib/orca/gporca -name .clang-format)
 	mapfile -t CLANG_FORMAT_CONFIG_FILES <<<$_find_result
 
 	(
@@ -64,7 +64,7 @@ files_to_format() {
 	# do not squish the assignment into the declaration, as that will swallow
 	# errors in the subshell
 	local _find_result
-	_find_result=$(find src/backend/gporca src/backend/gpopt src/include/gpopt -name .clang-format)
+	_find_result=$(find gpcontrib/orca/gporca gpcontrib/orca/gpopt gpcontrib/orca/include/gpopt -name .clang-format)
 	mapfile -t CLANG_FORMAT_CONFIG_FILES <<<$_find_result
 
 	local -a CF_DIRS PATTERNS

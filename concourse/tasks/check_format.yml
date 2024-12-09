@@ -9,7 +9,7 @@ inputs:
   - name: gpdb_src
     path: .
 run:
-  path: src/tools/fmt
+  path: gpcontrib/orca/tools/fmt
   args: [ chk ]
 params:
   CLANG_FORMAT: clang-format-11
