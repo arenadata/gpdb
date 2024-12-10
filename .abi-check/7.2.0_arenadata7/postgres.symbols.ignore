@@ -1,3 +1,5 @@
 OptimizerMemoryContext
 optimize_query
 transformGroupedWindows
+optopt
+OptimizerMemoryContext
