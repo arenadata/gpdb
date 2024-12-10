@@ -1,4 +1,5 @@
 OptimizerMemoryContext
 optimize_query
 transformGroupedWindows
-optopt@GLIBC_2.2.5
+optopt@@GLIBC_2.2.5
+optopt
