@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  src/backend/optimizer/plan/orca.c
+ *	  gpcontrib/orca/orca_entry.c
  *
  *-------------------------------------------------------------------------
  */

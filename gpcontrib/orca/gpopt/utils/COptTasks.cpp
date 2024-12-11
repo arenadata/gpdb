@@ -829,7 +829,7 @@ COptTasks::OptimizeTask(void *ptr)
 				!optimizer_enable_motions ||
 				(!optimizer_enable_motions_coordinatoronly_queries &&
 				 !query_to_dxl_translator->HasDistributedTables());
-			// See NoteDistributionPolicyOpclasses() in src/backend/gpopt/translate/CTranslatorQueryToDXL.cpp
+			// See NoteDistributionPolicyOpclasses() in gpcontrib/orca/gpopt/translate/CTranslatorQueryToDXL.cpp
 			BOOL use_legacy_opfamilies =
 				(query_to_dxl_translator->GetDistributionHashOpsKind() ==
 				 DistrUseLegacyHashOps);
