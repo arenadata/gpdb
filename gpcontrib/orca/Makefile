@@ -43,11 +43,11 @@ OBJS = $(GPOPT_OBJS) $(GPORCA_OBJS) \
 PG_CPPFLAGS = \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpos/include \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpopt/include \
-	-I$(top_srcdir)/gpcontrib/orca/gporca/libnaucrates/include $(CPPFLAGS) \
-	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpdbcost/include $(CPPFLAGS) \
+	-I$(top_srcdir)/gpcontrib/orca/gporca/libnaucrates/include \
+	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpdbcost/include \
 	-I$(top_srcdir)/gpcontrib/orca/include \
 
-PG_CXXFLAGS = -Werror -Wextra -Wpedantic -fno-omit-frame-pointer $(CXXFLAGS)
+PG_CXXFLAGS = -Werror -Wextra -Wpedantic -fno-omit-frame-pointer
 
 SHLIB_LINK += -lxerces-c
 
