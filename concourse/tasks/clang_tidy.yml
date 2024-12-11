@@ -21,7 +21,7 @@ run:
         --enable-orca \
         --without-python --without-readline --without-zlib --without-zstd --without-libbz2 --disable-gpfdist --disable-gpcloud --without-libcurl \
         CC="ccache clang-11" CXX="ccache clang++-11" CFLAGS=-O0 CXXFLAGS=-O0
-      bear --append make -s -C src/backend/gpopt
+      bear --append -- make -s -C gpcontrib/orca
     )
     (
       mkdir vpath.release
@@ -31,17 +31,17 @@ run:
         --enable-orca \
         --without-python --without-readline --without-zlib --without-zstd --without-libbz2 --disable-gpfdist --disable-gpcloud --without-libcurl \
         CC="ccache clang-11" CXX="ccache clang++-11" CFLAGS=-O0 CXXFLAGS=-O0
-      bear --append make -s -C src/backend/gpopt
+      bear --append -- make -s -C gpcontrib/orca
     )
     (
       cd gpdb_src
-      src/tools/tidy chk-gpopt ../vpath.debug
-      src/tools/tidy chk-gpopt ../vpath.release
+      gpcontrib/orca/tools/tidy chk-gpopt ../vpath.debug
+      gpcontrib/orca/tools/tidy chk-gpopt ../vpath.release
 
-      CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=Debug -Hsrc/backend/gporca -Bbuild.debug
-      src/tools/tidy chk-orca build.debug
-      CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -Hsrc/backend/gporca -Bbuild.relwithdebinfo
-      src/tools/tidy chk-orca build.relwithdebinfo
+      CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=Debug -Hgpcontrib/orca/gporca -Bbuild.debug
+      gpcontrib/orca/tools/tidy chk-orca build.debug
+      CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -Hgpcontrib/orca/gporca -Bbuild.relwithdebinfo
+      gpcontrib/orca/tools/tidy chk-orca build.relwithdebinfo
     )
 
 params:

@@ -244,7 +244,7 @@ For more information, head over to the [formatting README](README.format.md).
 A set of [clang-tidy]-based checks are enforced in CI. Your editor or IDE may support displaying ClangTidy diagnostics. When in doubt, check formatting locally before submitting your patches:
 
 ```
-CLANG_TIDY=clang-tidy-12 src/tools/tidy build.debug
+CLANG_TIDY=clang-tidy-12 gpcontrib/orca/tools/tidy build.debug
 ```
 
 See our [Clang-Tidy README](README.tidy.md) for details about how to invoke the tidy script.
