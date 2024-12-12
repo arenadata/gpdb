@@ -1354,6 +1354,12 @@ process_startup_options(Port *port, bool am_superuser)
 			char *name = NULL;
 			char *val = NULL;
 			ParseLongOption(av[i], &name, &val);
+			/*
+			 * The PGC_S_TEST source is used to allow some GUCs, such as
+			 * default_tablespace, temp_tablespaces, and
+			 * temp_spill_files_tablespaces, to issue a notice instead of an
+			 * error on invalid values ​​when starting a new slice.
+			 */
 			SetConfigOption(name, val, gucctx, PGC_S_TEST);
 		}
 		pfree(av);
