@@ -34,6 +34,8 @@ FORMAT 'text';
 
 SELECT * FROM clean_out_files;
 
+DROP EXTERNAL WEB TABLE clean_out_files;
+
 -- end_ignore
 
 --- test 1 using a little file
