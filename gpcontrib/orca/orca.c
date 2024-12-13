@@ -15,6 +15,8 @@
 
 PG_MODULE_MAGIC;
 
+MemoryContext OptimizerMemoryContext = NULL;
+
 void _PG_init(void);
 void _PG_fini(void);
 
