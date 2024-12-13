@@ -4409,6 +4409,7 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			RelOptInfo *sub_final_rel;
 			GangType	saved_gangType = root->curSlice->gangType;
 
+			best_path->parent->subroot->config->gp_enable_direct_dispatch = false;
 			sub_final_rel = fetch_upper_rel(best_path->parent->subroot, UPPERREL_FINAL, NULL);
 			subplan = create_plan(best_path->parent->subroot, sub_final_rel->cheapest_total_path, root->curSlice);
 			cteplaninfo->shared_plan = prepare_plan_for_sharing(cteroot, subplan);
