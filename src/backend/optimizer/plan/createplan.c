@@ -2028,8 +2028,8 @@ create_projection_plan(PlannerInfo *root, ProjectionPath *best_path, int flags)
 		 * Tell create_plan_recurse that we're going to ignore the tlist it
 		 * produces.
 		 */
-		int flags = is_function_scan_on_initplan(root, best_path->subpath) ? 0 : CP_IGNORE_TLIST;
-		subplan = create_plan_recurse(root, best_path->subpath, flags);
+		int subplan_flags = is_function_scan_on_initplan(root, best_path->subpath) ? 0 : CP_IGNORE_TLIST;
+		subplan = create_plan_recurse(root, best_path->subpath, subplan_flags);
 		Assert(is_projection_capable_plan(subplan));
 		tlist = build_path_tlist(root, &best_path->path);
 	}
