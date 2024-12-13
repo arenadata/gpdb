@@ -596,3 +596,4 @@ SELECT * FROM t8_function_scan ORDER BY a;
  335 | USA
 (6 rows)
 
+DROP TABLE t8_function_scan;

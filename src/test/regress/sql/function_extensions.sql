@@ -306,4 +306,5 @@ CREATE TABLE t8_function_scan AS SELECT country_id+1 AS a, country FROM get_coun
 INSERT INTO t8_function_scan SELECT country_id+2 AS a, country FROM get_country();
 -- should have 6 rows without any NULL entries
 SELECT * FROM t8_function_scan ORDER BY a;
+DROP TABLE t8_function_scan;
 
