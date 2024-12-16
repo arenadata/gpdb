@@ -24,9 +24,6 @@ SUBDIRS = access bootstrap catalog parser commands executor foreign lib libpq \
 	jit
 
 SUBDIRS += fts cdb
-ifeq ($(enable_orca),yes)
-SUBDIRS += gporca gpopt
-endif
 
 include $(srcdir)/common.mk
 
@@ -248,10 +245,6 @@ endif
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_hba.conf.sample '$(DESTDIR)$(datadir)/pg_hba.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample '$(DESTDIR)$(datadir)/pg_ident.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample '$(DESTDIR)$(datadir)/postgresql.conf.sample'
-ifeq ($(enable_orca), yes)
-	$(MAKE) -C gporca $@ INSTLOC=$(DESTDIR)$(libdir)
-	$(MAKE) -C gpopt $@ INSTLOC=$(DESTDIR)$(libdir)
-endif
 
 ifeq ($(with_llvm), yes)
 install-bin: install-postgres-bitcode
@@ -259,8 +252,7 @@ install-bin: install-postgres-bitcode
 # GPDB: Bitcode generation in certain subdir can be avoid when `with_llvm = no`
 # set there. But the install step is not aware of the setting and would fail if
 # we don't tell it the absence of *.bc files under those directory manually.
-# As we set ORCA to generate no bitcodes, ORCA directories is excluded here.
-bitcode_ignored_subdirs = $(top_builddir)/src/timezone gporca gpopt
+bitcode_ignored_subdirs = $(top_builddir)/src/timezone
 
 install-postgres-bitcode: $(OBJS) all
 	$(call install_llvm_module,postgres,$(call expand_subsys, $(filter-out $(bitcode_ignored_subdirs:%=%/objfiles.txt), $(SUBDIROBJS))))

@@ -121,9 +121,9 @@ matrix:
                 --enable-orca \
                 --without-zstd --disable-gpfdist \
                 CC="ccache clang-11" CXX="ccache clang++-11" CFLAGS=-O0 CXXFLAGS=-O0
-              bear --append make -s -C src/backend/gpopt
+              bear --append -- make -s -C gpcontrib/orca
               )
-              CLANG_TIDY=clang-tidy-11 src/tools/tidy chk-gpopt ../vpath.debug
+              CLANG_TIDY=clang-tidy-11 gpcontrib/orca/tools/tidy chk-gpopt ../vpath.debug
             - |
               (
               set -e
@@ -135,13 +135,13 @@ matrix:
                 --enable-orca \
                 --without-zstd --disable-gpfdist \
                 CC="ccache clang-11" CXX="ccache clang++-11" CFLAGS=-O0 CXXFLAGS=-O0
-              bear --append make -s -C src/backend/gpopt
+              bear --append -- make -s -C gpcontrib/orca
               )
-              CLANG_TIDY=clang-tidy-11 src/tools/tidy chk-gpopt ../vpath.release
-            - CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=Debug -Hsrc/backend/gporca -Bbuild.debug
-            - CLANG_TIDY=clang-tidy-11 src/tools/tidy chk-orca build.debug
-            - CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -Hsrc/backend/gporca -Bbuild.relwithdebinfo
-            - CLANG_TIDY=clang-tidy-11 src/tools/tidy chk-orca build.relwithdebinfo
+              CLANG_TIDY=clang-tidy-11 gpcontrib/orca/tools/tidy chk-gpopt ../vpath.release
+            - CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=Debug -Hgpcontrib/orca/gporca -Bbuild.debug
+            - CLANG_TIDY=clang-tidy-11 gpcontrib/orca/tools/tidy chk-orca build.debug
+            - CXX=clang++-11 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -Hgpcontrib/orca/gporca -Bbuild.relwithdebinfo
+            - CLANG_TIDY=clang-tidy-11 gpcontrib/orca/tools/tidy chk-orca build.relwithdebinfo
 
         - name: check-format
           stage: lint
@@ -157,9 +157,9 @@ matrix:
           before_script: ~
           after_script: ~
           script:
-            - env CLANG_FORMAT=clang-format-11 src/tools/fmt gen
+            - env CLANG_FORMAT=clang-format-11 gpcontrib/orca/tools/fmt gen
             - git diff --exit-code
-            - env CLANG_FORMAT=clang-format-11 src/tools/fmt chk
+            - env CLANG_FORMAT=clang-format-11 gpcontrib/orca/tools/fmt chk
 
 stages:
   - lint
