@@ -1290,3 +1290,26 @@ SELECT * FROM cte JOIN (SELECT * FROM d JOIN cte USING (a) LIMIT 1) d_join_cte U
 
 DROP TABLE d;
 DROP TABLE r;
+
+-- Test that planner doesn't use direct dispatch in case of shared CTE.
+CREATE TABLE with_test (i int) DISTRIBUTED BY (i);
+INSERT INTO with_test VALUES (1), (2), (3);
+
+EXPLAIN (slicetable, costs off)
+WITH cte AS (SELECT * FROM with_test WHERE i = 2)
+SELECT COUNT(*) FROM (SELECT cte.i, with_test.i as j FROM cte, with_test) AS a
+                JOIN (SELECT cte.i, with_test.i as k FROM cte, with_test) AS b USING (i);
+
+WITH cte AS (SELECT * FROM with_test WHERE i = 2)
+SELECT COUNT(*) FROM (SELECT cte.i, with_test.i as j FROM cte, with_test) AS a
+                JOIN (SELECT cte.i, with_test.i as k FROM cte, with_test) AS b USING (i);
+
+-- same but with modifying CTE
+EXPLAIN (slicetable, costs off)
+WITH cte AS (INSERT INTO with_test SELECT 4 RETURNING *)
+SELECT * FROM cte AS a JOIN cte AS b USING (i);
+
+WITH cte AS (INSERT INTO with_test SELECT 4 RETURNING *)
+SELECT * FROM cte AS a JOIN cte AS b USING (i);
+
+DROP TABLE with_test;
