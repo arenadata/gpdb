@@ -5169,13 +5169,26 @@ check_optimizer(bool *newval, void **extra, GucSource source)
 			*newval = false;
 		else if (NULL == planner_hook)
 		{
+			if (source > PGC_S_ARGV)
+			{
+				/*
+				 * Assume that, if no planner_hook is registered for the
+				 * coordinator, we can use only standard Postgres planner.
+				 * Thus, forbid setting the GUC.
+				 */
+				GUC_check_errmsg("External planner is not registered");
+				return false;
+			}
+
 			/*
-			 * Assume that, if no planner_hook is registered for the
-			 * coordinator, we can use only standard Postgres planner.
-			 * Thus, forbid setting the GUC.
+			 * But in case GUC source <= PGC_S_ARGV, this function may be called
+			 * before external planner is loaded from a shared lib. For ex.,
+			 * user may set the GUC in 'postgresql.conf', so system will try to
+			 * apply the GUC before the init of shared libs. We need to allow
+			 * such cases, assuming that the user knows what he is doing.
 			 */
-			GUC_check_errmsg("External planner is not registered");
-			return false;
+			elog(LOG, "'optimizer' is explicitly set to 'on'. "
+					  "Please ensure that an external planner is added to 'shared_preload_libraries'");
 		}
 	}
 
