@@ -4409,9 +4409,23 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			RelOptInfo *sub_final_rel;
 			GangType	saved_gangType = root->curSlice->gangType;
 
+			/*
+			 * Temporarily clear direct dispatch info to obtain a decision only for the subplan,
+			 * without the outer plan affecting it.
+			 */
+			DirectDispatchInfo savedDirectDispatch = root->curSlice->directDispatch;
+			InitDirectDispatchCalculationInfo(&root->curSlice->directDispatch);
+
 			sub_final_rel = fetch_upper_rel(best_path->parent->subroot, UPPERREL_FINAL, NULL);
 			subplan = create_plan(best_path->parent->subroot, sub_final_rel->cheapest_total_path, root->curSlice);
 			cteplaninfo->shared_plan = prepare_plan_for_sharing(cteroot, subplan);
+
+			/*
+			 * Save the obtained CTE's direct dispatch decision. We will merge this into the
+			 * actual direct dispatch info later.
+			 */
+			cteplaninfo->directDispatch = root->curSlice->directDispatch;
+			root->curSlice->directDispatch = savedDirectDispatch;
 
 			/*
 			 * If gangType has switched, it means that CTE's plan contains
@@ -4428,6 +4442,8 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 		}
 		/* Wrap the common Plan tree in a ShareInputScan node */
 		subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
+		/* Merge subplan's direct dispatch info into the current one */
+		MergeDirectDispatchCalculationInfo(&root->curSlice->directDispatch, &cteplaninfo->directDispatch);
 
 		if (cteplaninfo->rootSliceIsWriter)
 			((ShareInputScan *) subplan)->rootSliceIsWriter = true;

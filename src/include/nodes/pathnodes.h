@@ -121,6 +121,7 @@ typedef struct ApplyShareInputContextPerShare
 {
 	int			producer_slice_id;
 	Bitmapset  *participant_slices;
+	DirectDispatchInfo directDispatch;
 } ApplyShareInputContextPerShare;
 
 typedef struct ApplyShareInputContext
@@ -499,6 +500,13 @@ typedef struct CtePlanInfo
 	 * after consumer's plan is cut.
 	 */
 	bool rootSliceIsWriter;
+	/*
+	 * For shared xslice plans. Stores the information about direct dispatch
+	 * decision made inside the CTE's plan. This only stores the local decision
+	 * for the CTE and doesn't account for the surrounding plan, so it has to
+	 * be merged into the outer plan's direct dispatch info.
+	 */
+	DirectDispatchInfo directDispatch;
 } CtePlanInfo;
 
 /*

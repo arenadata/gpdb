@@ -68,7 +68,7 @@ typedef struct PartitionKeyInfo
 /**
  * Initialize a DirectDispatchCalculationInfo.
  */
-static void
+void
 InitDirectDispatchCalculationInfo(DirectDispatchInfo *data)
 {
 	data->isDirectDispatch = false;
@@ -363,6 +363,8 @@ MergeDirectDispatchCalculationInfo(DirectDispatchInfo *to, DirectDispatchInfo *f
 	{
 		/* to has no data, so just take from */
 		*to = *from;
+		/* have to copy the list because source list can be shared */
+		to->contentIds = list_copy(from->contentIds);
 	}
 	else if (!to->isDirectDispatch)
 	{
@@ -375,7 +377,7 @@ MergeDirectDispatchCalculationInfo(DirectDispatchInfo *to, DirectDispatchInfo *f
 	else if (to->contentIds == NULL)
 	{
 		/* to didn't even think it needed to run so accept from */
-		to->contentIds = from->contentIds;
+		to->contentIds = list_copy(from->contentIds);
 	}
 	else
 	{
