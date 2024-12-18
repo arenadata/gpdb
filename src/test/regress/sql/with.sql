@@ -1296,13 +1296,13 @@ CREATE TABLE with_test (i int) DISTRIBUTED BY (i);
 INSERT INTO with_test VALUES (1), (2), (3);
 
 EXPLAIN (slicetable, costs off)
-WITH cte AS (SELECT * FROM with_test WHERE i = 2)
-SELECT COUNT(*) FROM (SELECT cte.i, with_test.i as j FROM cte, with_test) AS a
-                JOIN (SELECT cte.i, with_test.i as k FROM cte, with_test) AS b USING (i);
+WITH cte AS (SELECT * FROM with_test WHERE i = 1)
+SELECT * FROM (SELECT a.i AS i, b.i AS j FROM cte a JOIN with_test b ON a.i + 1 = b.i) AS a
+         JOIN (SELECT a.i AS i, b.i AS k FROM cte a JOIN with_test b ON a.i + 2 = b.i) AS b USING (i);
 
-WITH cte AS (SELECT * FROM with_test WHERE i = 2)
-SELECT COUNT(*) FROM (SELECT cte.i, with_test.i as j FROM cte, with_test) AS a
-                JOIN (SELECT cte.i, with_test.i as k FROM cte, with_test) AS b USING (i);
+WITH cte AS (SELECT * FROM with_test WHERE i = 1)
+SELECT * FROM (SELECT a.i AS i, b.i AS j FROM cte a JOIN with_test b ON a.i + 1 = b.i) AS a
+         JOIN (SELECT a.i AS i, b.i AS k FROM cte a JOIN with_test b ON a.i + 2 = b.i) AS b USING (i);
 
 -- same but with modifying CTE
 EXPLAIN (slicetable, costs off)
