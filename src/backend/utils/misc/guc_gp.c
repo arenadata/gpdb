@@ -276,7 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 bool		optimizer_partition_selection_log;
-bool		optimizer_metadata_caching;
 int			optimizer_mdcache_size;
 bool		optimizer_use_gpdb_allocators;
 
@@ -1890,16 +1889,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&optimizer_print_xform,
 		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_metadata_caching", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("This guc enables the optimizer to cache and reuse metadata."),
-			NULL
-		},
-		&optimizer_metadata_caching,
-		true,
 		NULL, NULL, NULL
 	},
 

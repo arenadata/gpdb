@@ -6,6 +6,7 @@ extern int  optimizer_log_failure;
 extern bool	optimizer_trace_fallback;
 extern int	optimizer_minidump;
 extern int  optimizer_cost_model;
+extern bool optimizer_metadata_caching;
 
 void orca_guc_define(void);
 

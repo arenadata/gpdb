@@ -410,7 +410,6 @@
 		"optimizer_join_order",
 		"optimizer_join_order_threshold",
 		"optimizer_mdcache_size",
-		"optimizer_metadata_caching",
 		"optimizer_multilevel_partitioning",
 		"optimizer_nestloop_factor",
 		"optimizer_parallel_union",

@@ -9,6 +9,7 @@ int			optimizer_log_failure;
 bool		optimizer_trace_fallback;
 int			optimizer_minidump;
 int			optimizer_cost_model;
+bool		optimizer_metadata_caching;
 
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
@@ -88,6 +89,17 @@ orca_guc_define()
 							 optimizer_cost_model_options,
 							 PGC_USERSET,
 							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_metadata_caching",
+							 "This guc enables the optimizer to cache and reuse metadata.",
+							 NULL,
+							 &optimizer_metadata_caching,
+							 true,
+							 PGC_USERSET,
+							 GUC_GPDB_NO_SYNC,
 							 NULL,
 							 NULL,
 							 NULL);
