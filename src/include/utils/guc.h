@@ -425,21 +425,6 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 /* ORCA related definitions */
 #define OPTIMIZER_XFORMS_COUNT 400 /* number of transformation rules */
 
-/* types of optimizer failures */
-#define OPTIMIZER_ALL_FAIL 			0  /* all failures */
-#define OPTIMIZER_UNEXPECTED_FAIL 	1  /* unexpected failures */
-#define OPTIMIZER_EXPECTED_FAIL 	2 /* expected failures */
-
-/* optimizer minidump mode */
-#define OPTIMIZER_MINIDUMP_FAIL  	0  /* create optimizer minidump on failure */
-#define OPTIMIZER_MINIDUMP_ALWAYS 	1  /* always create optimizer minidump */
-
-/* optimizer cost model */
-#define OPTIMIZER_GPDB_LEGACY           0       /* GPDB's legacy cost model */
-#define OPTIMIZER_GPDB_CALIBRATED       1       /* GPDB's calibrated cost model */
-#define OPTIMIZER_GPDB_EXPERIMENTAL     2       /* GPDB's experimental cost model */
-
-
 /* Optimizer related gucs */
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
