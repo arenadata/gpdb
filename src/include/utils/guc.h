@@ -581,11 +581,6 @@ extern bool optimizer_replicated_table_insert;
 extern int	gp_max_slices;
 extern int	gp_max_system_slices;
 
-/**
- * Enable logging of DPE match in optimizer.
- */
-extern bool	optimizer_partition_selection_log;
-
 /* optimizer join heuristic models */
 #define JOIN_ORDER_IN_QUERY                 0
 #define JOIN_ORDER_GREEDY_SEARCH            1

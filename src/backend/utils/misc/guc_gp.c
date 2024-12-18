@@ -275,7 +275,6 @@ bool		gp_force_random_redistribution = false;
 /* Optimizer related gucs */
 bool		optimizer;
 bool		optimizer_control = true;
-bool		optimizer_partition_selection_log;
 bool		optimizer_use_gpdb_allocators;
 
 /* Optimizer debugging GUCs */
@@ -1845,17 +1844,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		&optimizer,
 		false,
 		check_optimizer, NULL, NULL
-	},
-
-	{
-		{"optimizer_partition_selection_log", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Log optimizer partition selection."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_partition_selection_log,
-		false,
-		NULL, NULL, NULL
 	},
 
 	{
