@@ -39,6 +39,7 @@ OBJS = $(GPOPT_OBJS) $(GPORCA_OBJS) \
 	orca.o \
 	funcs.o \
 	orca_entry.o \
+	orca_guc.o \
 
 PG_CPPFLAGS = \
 	-I$(top_srcdir)/gpcontrib/orca/gporca/libgpos/include \

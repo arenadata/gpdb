@@ -410,8 +410,6 @@
 		"optimizer_join_arity_for_associativity_commutativity",
 		"optimizer_join_order",
 		"optimizer_join_order_threshold",
-		"optimizer_log",
-		"optimizer_log_failure",
 		"optimizer_mdcache_size",
 		"optimizer_metadata_caching",
 		"optimizer_minidump",

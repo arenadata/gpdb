@@ -274,8 +274,6 @@ bool		gp_force_random_redistribution = false;
 
 /* Optimizer related gucs */
 bool		optimizer;
-bool		optimizer_log;
-int			optimizer_log_failure;
 bool		optimizer_control = true;
 bool		optimizer_trace_fallback;
 bool		optimizer_partition_selection_log;
@@ -477,13 +475,6 @@ static const struct config_enum_entry debug_dtm_action_protocol_options[] = {
 	{"subtransaction_begin", DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL},
 	{"subtransaction_release", DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL},
 	{"subtransaction_rollback", DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL},
-	{NULL, 0}
-};
-
-static const struct config_enum_entry optimizer_log_failure_options[] = {
-	{"all", OPTIMIZER_ALL_FAIL},
-	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
-	{"expected", OPTIMIZER_EXPECTED_FAIL},
 	{NULL, 0}
 };
 
@@ -1872,17 +1863,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		&optimizer,
 		false,
 		check_optimizer, NULL, NULL
-	},
-
-	{
-		{"optimizer_log", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Log optimizer messages."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_log,
-		true,
-		NULL, NULL, NULL
 	},
 
 	{
@@ -4813,17 +4793,6 @@ struct config_enum ConfigureNamesEnum_gp[] =
 		},
 		&Debug_dtm_action_protocol,
 		DTX_PROTOCOL_COMMAND_NONE, debug_dtm_action_protocol_options,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_log_failure", PGC_USERSET, LOGGING_WHEN,
-			gettext_noop("Sets which optimizer failures are logged."),
-			gettext_noop("Valid values are unexpected, expected, all"),
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_log_failure,
-		OPTIMIZER_UNEXPECTED_FAIL, optimizer_log_failure_options,
 		NULL, NULL, NULL
 	},
 
