@@ -502,9 +502,8 @@ typedef struct CtePlanInfo
 	bool rootSliceIsWriter;
 	/*
 	 * For shared xslice plans. Stores the information about direct dispatch
-	 * decision made inside the CTE's plan. This only stores the local decision
-	 * for the CTE and doesn't account for the surrounding plan, so it has to
-	 * be merged into the outer plan's direct dispatch info.
+	 * decision made inside the CTE's plan when it was first encountered.
+	 * This decision has to all other invocations of the CTE.
 	 */
 	DirectDispatchInfo directDispatch;
 } CtePlanInfo;

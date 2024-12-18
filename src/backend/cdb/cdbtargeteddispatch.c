@@ -68,7 +68,7 @@ typedef struct PartitionKeyInfo
 /**
  * Initialize a DirectDispatchCalculationInfo.
  */
-void
+static void
 InitDirectDispatchCalculationInfo(DirectDispatchInfo *data)
 {
 	data->isDirectDispatch = false;
