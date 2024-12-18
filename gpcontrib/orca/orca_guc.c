@@ -1,5 +1,7 @@
 #include "postgres.h"
 
+#include <limits.h>
+
 #include "optimizer/orca_guc.h"
 #include "utils/guc.h"
 
@@ -10,6 +12,7 @@ bool		optimizer_trace_fallback;
 int			optimizer_minidump;
 int			optimizer_cost_model;
 bool		optimizer_metadata_caching;
+int			optimizer_mdcache_size;
 
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
@@ -103,4 +106,17 @@ orca_guc_define()
 							 NULL,
 							 NULL,
 							 NULL);
+
+	DefineCustomIntVariable("optimizer_mdcache_size",
+							"Sets the size of MDCache.",
+							NULL,
+							&optimizer_mdcache_size,
+							16384,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							GUC_UNIT_KB | GUC_GPDB_NO_SYNC,
+							NULL,
+							NULL,
+							NULL);
 }

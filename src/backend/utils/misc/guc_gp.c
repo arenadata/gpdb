@@ -276,7 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 bool		optimizer_partition_selection_log;
-int			optimizer_mdcache_size;
 bool		optimizer_use_gpdb_allocators;
 
 /* Optimizer debugging GUCs */
@@ -4157,17 +4156,6 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&optimizer_penalize_broadcast_threshold,
 		100000, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_mdcache_size", PGC_USERSET, RESOURCES_MEM,
-			gettext_noop("Sets the size of MDCache."),
-			NULL,
-			GUC_UNIT_KB
-		},
-		&optimizer_mdcache_size,
-		16384, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
