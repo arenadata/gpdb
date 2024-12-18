@@ -276,20 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 
-/* Optimizer debugging GUCs */
-bool		optimizer_print_query;
-bool		optimizer_print_plan;
-bool		optimizer_print_xform;
-bool		optimizer_print_memo_after_exploration;
-bool		optimizer_print_memo_after_implementation;
-bool		optimizer_print_memo_after_optimization;
-bool		optimizer_print_job_scheduler;
-bool		optimizer_print_expression_properties;
-bool		optimizer_print_group_properties;
-bool		optimizer_print_optimization_context;
-bool		optimizer_print_optimization_stats;
-bool		optimizer_print_xform_results;
-
 /* array of xforms disable flags */
 bool		optimizer_xforms[OPTIMIZER_XFORMS_COUNT] = {[0 ... OPTIMIZER_XFORMS_COUNT - 1] = false};
 char	   *optimizer_search_strategy_path = NULL;
@@ -350,7 +336,6 @@ int			optimizer_samples_number;
 /* Cardinality estimation related GUCs used by the Optimizer */
 bool		optimizer_extract_dxl_stats;
 bool		optimizer_extract_dxl_stats_all_nodes;
-bool		optimizer_print_missing_stats;
 double		optimizer_damping_factor_filter;
 double		optimizer_damping_factor_join;
 double		optimizer_damping_factor_groupby;
@@ -1843,149 +1828,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		&optimizer,
 		false,
 		check_optimizer, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_query", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Prints the optimizer's input query expression tree."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_query,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_plan", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Prints the plan expression tree produced by the optimizer."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_plan,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_xform", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Prints optimizer transformation information."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_xform,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_missing_stats", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print columns with missing statistics."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_missing_stats,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_xform_results", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print the input and output of optimizer transformations."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_xform_results,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_memo_after_exploration", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print optimizer memo structure after the exploration phase."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_memo_after_exploration,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_memo_after_implementation", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print optimizer memo structure after the implementation phase."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_memo_after_implementation,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_memo_after_optimization", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print optimizer memo structure after optimization."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_memo_after_optimization,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_job_scheduler", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print the jobs in the scheduler on each job completion."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_job_scheduler,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_expression_properties", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print expression properties."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_expression_properties,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_group_properties", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print group properties."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_group_properties,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_optimization_context", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print the optimization context."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_optimization_context,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_print_optimization_stats", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print optimization stats."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_print_optimization_stats,
-		false,
-		NULL, NULL, NULL
 	},
 
 	{

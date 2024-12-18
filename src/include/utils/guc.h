@@ -429,20 +429,6 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 
-/* Optimizer debugging GUCs */
-extern bool optimizer_print_query;
-extern bool optimizer_print_plan;
-extern bool optimizer_print_xform;
-extern bool	optimizer_print_memo_after_exploration;
-extern bool	optimizer_print_memo_after_implementation;
-extern bool	optimizer_print_memo_after_optimization;
-extern bool	optimizer_print_job_scheduler;
-extern bool	optimizer_print_expression_properties;
-extern bool	optimizer_print_group_properties;
-extern bool	optimizer_print_optimization_context;
-extern bool optimizer_print_optimization_stats;
-extern bool optimizer_print_xform_results;
-
 /* array of xforms disable flags */
 extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
 extern char *optimizer_search_strategy_path;
@@ -510,7 +496,6 @@ extern  double  optimizer_jit_optimize_above_cost;
 /* Cardinality estimation related GUCs used by the Optimizer */
 extern bool optimizer_extract_dxl_stats;
 extern bool optimizer_extract_dxl_stats_all_nodes;
-extern bool optimizer_print_missing_stats;
 extern double optimizer_damping_factor_filter;
 extern double optimizer_damping_factor_join;
 extern double optimizer_damping_factor_groupby;

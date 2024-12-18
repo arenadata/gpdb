@@ -15,6 +15,21 @@ bool		optimizer_metadata_caching;
 int			optimizer_mdcache_size;
 bool		optimizer_use_gpdb_allocators;
 
+/* Optimizer debugging GUCs */
+bool		optimizer_print_query;
+bool		optimizer_print_plan;
+bool		optimizer_print_xform;
+bool		optimizer_print_memo_after_exploration;
+bool		optimizer_print_memo_after_implementation;
+bool		optimizer_print_memo_after_optimization;
+bool		optimizer_print_job_scheduler;
+bool		optimizer_print_expression_properties;
+bool		optimizer_print_group_properties;
+bool		optimizer_print_optimization_context;
+bool		optimizer_print_optimization_stats;
+bool		optimizer_print_xform_results;
+bool		optimizer_print_missing_stats;
+
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
@@ -131,4 +146,148 @@ orca_guc_define()
 							 NULL,
 							 NULL,
 							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_query",
+							 "Prints the optimizer's input query expression tree.",
+							 NULL,
+							 &optimizer_print_query,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_plan",
+							 "Prints the plan expression tree produced by the optimizer.",
+							 NULL,
+							 &optimizer_print_plan,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_xform",
+							 "Prints optimizer transformation information.",
+							 NULL,
+							 &optimizer_print_xform,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_missing_stats",
+							 "Print columns with missing statistics.",
+							 NULL,
+							 &optimizer_print_missing_stats,
+							 true,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_xform_results",
+							 "Print the input and output of optimizer transformations.",
+							 NULL,
+							 &optimizer_print_xform_results,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_memo_after_exploration",
+							 "Print optimizer memo structure after the exploration phase.",
+							 NULL,
+							 &optimizer_print_memo_after_exploration,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_memo_after_implementation",
+							 "Print optimizer memo structure after the implementation phase.",
+							 NULL,
+							 &optimizer_print_memo_after_implementation,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_memo_after_optimization",
+							 "Print optimizer memo structure after optimization.",
+							 NULL,
+							 &optimizer_print_memo_after_optimization,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_job_scheduler",
+							 "Print the jobs in the scheduler on each job completion.",
+							 NULL,
+							 &optimizer_print_job_scheduler,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_expression_properties",
+							 "Print expression properties.",
+							 NULL,
+							 &optimizer_print_expression_properties,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_group_properties",
+							 "Print group properties.",
+							 NULL,
+							 &optimizer_print_group_properties,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_optimization_context",
+							 "Print the optimization context.",
+							 NULL,
+							 &optimizer_print_optimization_context,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_print_optimization_stats",
+							 "Print optimization stats.",
+							 NULL,
+							 &optimizer_print_optimization_stats,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
 }

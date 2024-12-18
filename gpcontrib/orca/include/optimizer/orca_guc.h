@@ -24,6 +24,21 @@ extern bool optimizer_metadata_caching;
 extern int	optimizer_mdcache_size;
 extern bool optimizer_use_gpdb_allocators;
 
+/* Optimizer debugging GUCs */
+extern bool optimizer_print_query;
+extern bool optimizer_print_plan;
+extern bool optimizer_print_xform;
+extern bool	optimizer_print_memo_after_exploration;
+extern bool	optimizer_print_memo_after_implementation;
+extern bool	optimizer_print_memo_after_optimization;
+extern bool	optimizer_print_job_scheduler;
+extern bool	optimizer_print_expression_properties;
+extern bool	optimizer_print_group_properties;
+extern bool	optimizer_print_optimization_context;
+extern bool optimizer_print_optimization_stats;
+extern bool optimizer_print_xform_results;
+extern bool optimizer_print_missing_stats;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */
