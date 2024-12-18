@@ -6,6 +6,7 @@
 
 bool		optimizer_log;
 int			optimizer_log_failure;
+bool		optimizer_trace_fallback;
 
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
@@ -37,6 +38,17 @@ orca_guc_define()
 							 optimizer_log_failure_options,
 							 PGC_USERSET,
 							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_trace_fallback",
+							 "Print a message at INFO level, whenever GPORCA falls back.",
+							 NULL,
+							 &optimizer_trace_fallback,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
 							 NULL,
 							 NULL,
 							 NULL);

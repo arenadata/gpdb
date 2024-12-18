@@ -275,7 +275,6 @@ bool		gp_force_random_redistribution = false;
 /* Optimizer related gucs */
 bool		optimizer;
 bool		optimizer_control = true;
-bool		optimizer_trace_fallback;
 bool		optimizer_partition_selection_log;
 int			optimizer_minidump;
 int			optimizer_cost_model;
@@ -1863,17 +1862,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		&optimizer,
 		false,
 		check_optimizer, NULL, NULL
-	},
-
-	{
-		{"optimizer_trace_fallback", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Print a message at INFO level, whenever GPORCA falls back."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_trace_fallback,
-		false,
-		NULL, NULL, NULL
 	},
 
 	{

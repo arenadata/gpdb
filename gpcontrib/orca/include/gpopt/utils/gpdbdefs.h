@@ -34,6 +34,7 @@ extern "C" {
 #include "nodes/plannodes.h"
 #include "optimizer/hints.h"
 #include "optimizer/orca.h"
+#include "optimizer/orca_guc.h"
 #include "optimizer/plancat.h"
 #include "optimizer/walkers.h"
 #include "parser/parse_clause.h"
