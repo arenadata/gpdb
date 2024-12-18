@@ -942,10 +942,11 @@ shareinput_mutator_xslice_1(Node *node, PlannerInfo *root, bool fPop)
 		if (shared)
 			ctxt->shared_inputs[sisc->share_id].producer_slice_id = motId;
 		share_info->participant_slices = bms_add_member(share_info->participant_slices, motId);
-		MergeDirectDispatchCalculationInfo(
-			&ctxt->shared_inputs[sisc->share_id].directDispatch,
-			&currentSlice->directDispatch
-		);
+		if (currentSlice->directDispatch.haveProcessedAnyCalculations)
+			MergeDirectDispatchCalculationInfo(
+				&share_info->directDispatch,
+				&currentSlice->directDispatch
+			);
 
 		sisc->this_slice_id = motId;
 	}

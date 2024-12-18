@@ -500,12 +500,6 @@ typedef struct CtePlanInfo
 	 * after consumer's plan is cut.
 	 */
 	bool rootSliceIsWriter;
-	/*
-	 * For shared xslice plans. Stores the information about direct dispatch
-	 * decision made inside the CTE's plan when it was first encountered.
-	 * This decision has to be copied to all other invocations of the CTE.
-	 */
-	DirectDispatchInfo directDispatch;
 } CtePlanInfo;
 
 /*

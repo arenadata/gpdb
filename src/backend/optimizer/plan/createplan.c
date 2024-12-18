@@ -4414,12 +4414,6 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			cteplaninfo->shared_plan = prepare_plan_for_sharing(cteroot, subplan);
 
 			/*
-			 * Save the obtained CTE's direct dispatch decision. We will merge this into the
-			 * all other invocations of this CTE.
-			 */
-			cteplaninfo->directDispatch = root->curSlice->directDispatch;
-
-			/*
 			 * If gangType has switched, it means that CTE's plan contains
 			 * modifying operation without motion above (otherwise, the
 			 * gangType wouldn't switch). In this case we should mark each
@@ -4431,11 +4425,6 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			if (root->curSlice->gangType != saved_gangType &&
 				root->curSlice->gangType == GANGTYPE_PRIMARY_WRITER)
 				cteplaninfo->rootSliceIsWriter = true;
-		}
-		else
-		{
-			/* Merge subplan's direct dispatch info into the current one */
-			MergeDirectDispatchCalculationInfo(&root->curSlice->directDispatch, &cteplaninfo->directDispatch);
 		}
 		/* Wrap the common Plan tree in a ShareInputScan node */
 		subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
