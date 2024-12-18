@@ -7,12 +7,19 @@
 bool		optimizer_log;
 int			optimizer_log_failure;
 bool		optimizer_trace_fallback;
+int			optimizer_minidump;
 
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
 	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
 	{"expected", OPTIMIZER_EXPECTED_FAIL},
+	{NULL, 0}
+};
+
+static const struct config_enum_entry optimizer_minidump_options[] = {
+	{"onerror", OPTIMIZER_MINIDUMP_FAIL},
+	{"always", OPTIMIZER_MINIDUMP_ALWAYS},
 	{NULL, 0}
 };
 
@@ -49,6 +56,18 @@ orca_guc_define()
 							 false,
 							 PGC_USERSET,
 							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomEnumVariable("optimizer_minidump",
+							 "Generate optimizer minidump.",
+							 "Valid values are onerror, always",
+							 &optimizer_minidump,
+							 OPTIMIZER_MINIDUMP_FAIL,
+							 optimizer_minidump_options,
+							 PGC_USERSET,
+							 GUC_GPDB_NO_SYNC,
 							 NULL,
 							 NULL,
 							 NULL);
