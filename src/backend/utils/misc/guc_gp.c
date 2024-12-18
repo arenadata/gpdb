@@ -276,8 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 
-/* array of xforms disable flags */
-bool		optimizer_xforms[OPTIMIZER_XFORMS_COUNT] = {[0 ... OPTIMIZER_XFORMS_COUNT - 1] = false};
 char	   *optimizer_search_strategy_path = NULL;
 
 /* GUCs to tell Optimizer to enable a physical operator */

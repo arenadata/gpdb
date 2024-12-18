@@ -422,15 +422,11 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 #define EXPLAIN_MEMORY_VERBOSITY_SUMMARY	1 /* Summary of memory usage for each owner in explain analyze */
 #define EXPLAIN_MEMORY_VERBOSITY_DETAIL		2 /* Detail memory accounting tree for each slice in explain analyze */
 
-/* ORCA related definitions */
-#define OPTIMIZER_XFORMS_COUNT 400 /* number of transformation rules */
 
 /* Optimizer related gucs */
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 
-/* array of xforms disable flags */
-extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
 extern char *optimizer_search_strategy_path;
 
 /* GUCs to tell Optimizer to enable a physical operator */

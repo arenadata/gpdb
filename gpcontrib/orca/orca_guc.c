@@ -30,6 +30,9 @@ bool		optimizer_print_optimization_stats;
 bool		optimizer_print_xform_results;
 bool		optimizer_print_missing_stats;
 
+/* array of xforms disable flags */
+bool		optimizer_xforms[OPTIMIZER_XFORMS_COUNT] = {[0 ... OPTIMIZER_XFORMS_COUNT - 1] = false};
+
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},

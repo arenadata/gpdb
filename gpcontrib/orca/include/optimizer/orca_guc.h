@@ -1,6 +1,9 @@
 #ifndef ORCA_GUC_H
 #define ORCA_GUC_H
 
+/* ORCA related definitions */
+#define OPTIMIZER_XFORMS_COUNT 400 /* number of transformation rules */
+
 /* types of optimizer failures */
 #define OPTIMIZER_ALL_FAIL 			0  /* all failures */
 #define OPTIMIZER_UNEXPECTED_FAIL 	1  /* unexpected failures */
@@ -38,6 +41,9 @@ extern bool	optimizer_print_optimization_context;
 extern bool optimizer_print_optimization_stats;
 extern bool optimizer_print_xform_results;
 extern bool optimizer_print_missing_stats;
+
+/* array of xforms disable flags */
+extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
 
 void orca_guc_define(void);
 
