@@ -8,6 +8,7 @@ bool		optimizer_log;
 int			optimizer_log_failure;
 bool		optimizer_trace_fallback;
 int			optimizer_minidump;
+int			optimizer_cost_model;
 
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
@@ -20,6 +21,13 @@ static const struct config_enum_entry optimizer_log_failure_options[] = {
 static const struct config_enum_entry optimizer_minidump_options[] = {
 	{"onerror", OPTIMIZER_MINIDUMP_FAIL},
 	{"always", OPTIMIZER_MINIDUMP_ALWAYS},
+	{NULL, 0}
+};
+
+static const struct config_enum_entry optimizer_cost_model_options[] = {
+	{"legacy", OPTIMIZER_GPDB_LEGACY},
+	{"calibrated", OPTIMIZER_GPDB_CALIBRATED},
+	{"experimental", OPTIMIZER_GPDB_EXPERIMENTAL},
 	{NULL, 0}
 };
 
@@ -68,6 +76,18 @@ orca_guc_define()
 							 optimizer_minidump_options,
 							 PGC_USERSET,
 							 GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomEnumVariable("optimizer_cost_model",
+							 "Set optimizer cost model.",
+							 "Valid values are legacy, calibrated, experimental",
+							 &optimizer_cost_model,
+							 OPTIMIZER_GPDB_CALIBRATED,
+							 optimizer_cost_model_options,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
 							 NULL,
 							 NULL,
 							 NULL);

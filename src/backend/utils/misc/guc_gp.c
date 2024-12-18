@@ -276,7 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 bool		optimizer_partition_selection_log;
-int			optimizer_cost_model;
 bool		optimizer_metadata_caching;
 int			optimizer_mdcache_size;
 bool		optimizer_use_gpdb_allocators;
@@ -473,13 +472,6 @@ static const struct config_enum_entry debug_dtm_action_protocol_options[] = {
 	{"subtransaction_begin", DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL},
 	{"subtransaction_release", DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL},
 	{"subtransaction_rollback", DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL},
-	{NULL, 0}
-};
-
-static const struct config_enum_entry optimizer_cost_model_options[] = {
-	{"legacy", OPTIMIZER_GPDB_LEGACY},
-	{"calibrated", OPTIMIZER_GPDB_CALIBRATED},
-	{"experimental", OPTIMIZER_GPDB_EXPERIMENTAL},
 	{NULL, 0}
 };
 
@@ -4774,17 +4766,6 @@ struct config_enum ConfigureNamesEnum_gp[] =
 		},
 		&Debug_dtm_action_protocol,
 		DTX_PROTOCOL_COMMAND_NONE, debug_dtm_action_protocol_options,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_cost_model", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Set optimizer cost model."),
-			gettext_noop("Valid values are legacy, calibrated, experimental"),
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_cost_model,
-		OPTIMIZER_GPDB_CALIBRATED, optimizer_cost_model_options,
 		NULL, NULL, NULL
 	},
 

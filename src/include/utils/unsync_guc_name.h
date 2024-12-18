@@ -337,7 +337,6 @@
 		"optimizer_array_constraints",
 		"optimizer_array_expansion_threshold",
 		"optimizer_control",
-		"optimizer_cost_model",
 		"optimizer_cost_threshold",
 		"optimizer_cte_inlining",
 		"optimizer_cte_inlining_bound",

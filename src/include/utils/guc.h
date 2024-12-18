@@ -443,7 +443,6 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 /* Optimizer related gucs */
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
-extern int  optimizer_cost_model;
 extern bool optimizer_metadata_caching;
 extern int	optimizer_mdcache_size;
 
