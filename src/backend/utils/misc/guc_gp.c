@@ -275,7 +275,6 @@ bool		gp_force_random_redistribution = false;
 /* Optimizer related gucs */
 bool		optimizer;
 bool		optimizer_control = true;
-bool		optimizer_use_gpdb_allocators;
 
 /* Optimizer debugging GUCs */
 bool		optimizer_print_query;
@@ -2683,17 +2682,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_array_constraints,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_use_gpdb_allocators", PGC_POSTMASTER, RESOURCES_MEM,
-			gettext_noop("Enable ORCA to use GPDB Memory Contexts"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_use_gpdb_allocators,
 		true,
 		NULL, NULL, NULL
 	},

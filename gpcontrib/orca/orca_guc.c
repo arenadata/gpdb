@@ -13,6 +13,7 @@ int			optimizer_minidump;
 int			optimizer_cost_model;
 bool		optimizer_metadata_caching;
 int			optimizer_mdcache_size;
+bool		optimizer_use_gpdb_allocators;
 
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
@@ -119,4 +120,15 @@ orca_guc_define()
 							NULL,
 							NULL,
 							NULL);
+
+	DefineCustomBoolVariable("optimizer_use_gpdb_allocators",
+							 "Enable ORCA to use GPDB Memory Contexts",
+							 NULL,
+							 &optimizer_use_gpdb_allocators,
+							 true,
+							 PGC_POSTMASTER,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
 }

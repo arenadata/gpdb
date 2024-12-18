@@ -572,8 +572,6 @@ extern bool optimizer_enable_push_join_below_union_all;
 extern bool optimizer_analyze_root_partition;
 extern bool optimizer_analyze_midlevel_partition;
 
-extern bool optimizer_use_gpdb_allocators;
-
 /* optimizer GUCs for replicated table */
 extern bool optimizer_replicated_table_insert;
 

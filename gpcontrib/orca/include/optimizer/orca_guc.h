@@ -8,6 +8,7 @@ extern int	optimizer_minidump;
 extern int  optimizer_cost_model;
 extern bool optimizer_metadata_caching;
 extern int	optimizer_mdcache_size;
+extern bool optimizer_use_gpdb_allocators;
 
 void orca_guc_define(void);
 
