@@ -5,6 +5,10 @@
 
 #include "optimizer/orca_guc.h"
 #include "utils/guc.h"
+#include "utils/guc_tables.h"
+
+#define ORCA_GUC_PROCESS_NO_SYNC_FLAG(flags) \
+	((flags & GUC_GPDB_NEED_SYNC) ? flags : (flags | GUC_GPDB_NO_SYNC))
 
 
 bool		optimizer_log;
@@ -147,1061 +151,1144 @@ static const struct config_enum_entry optimizer_cost_model_options[] = {
 	{NULL, 0}
 };
 
+struct config_bool configure_names_bool_orca[] =
+{
+	{
+		{"optimizer_log", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Log optimizer messages."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_log,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_trace_fallback", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print a message at INFO level, whenever GPORCA falls back."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_trace_fallback,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_query", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the optimizer's input query expression tree."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_query,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_plan", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the plan expression tree produced by the optimizer."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_plan,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_xform", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints optimizer transformation information."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_xform,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_metadata_caching", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("This guc enables the optimizer to cache and reuse metadata."),
+			NULL
+		},
+		&optimizer_metadata_caching,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_missing_stats", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print columns with missing statistics."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_missing_stats,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_xform_results", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print the input and output of optimizer transformations."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_xform_results,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_memo_after_exploration", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimizer memo structure after the exploration phase."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_memo_after_exploration,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_memo_after_implementation", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimizer memo structure after the implementation phase."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_memo_after_implementation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_memo_after_optimization", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimizer memo structure after optimization."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_memo_after_optimization,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_job_scheduler", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print the jobs in the scheduler on each job completion."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_job_scheduler,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_expression_properties", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print expression properties."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_expression_properties,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_group_properties", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print group properties."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_group_properties,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_optimization_context", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print the optimization context."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_optimization_context,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_print_optimization_stats", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Print optimization stats."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_print_optimization_stats,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_extract_dxl_stats", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Extract plan stats in dxl."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_extract_dxl_stats,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_extract_dxl_stats_all_nodes", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Extract plan stats for all physical dxl nodes."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_extract_dxl_stats_all_nodes,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_dpe_stats", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable statistics derivation for partitioned tables with dynamic partition elimination."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_dpe_stats,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_nljoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable nested loops join plans in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_nljoin,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_indexjoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable index nested loops join plans in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_indexjoin,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_motions_masteronly_queries", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Motion operators in the optimizer for queries with no distributed tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_motions_coordinatoronly_queries,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_motions", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Motion operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_motions,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_motion_broadcast", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Motion Broadcast operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_motion_broadcast,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_motion_gather", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Motion Gather operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_motion_gather,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_motion_redistribute", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Motion Redistribute operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_motion_redistribute,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_sort", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Sort operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_sort,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_materialize", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Materialize operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_materialize,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_partition_propagation", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Partition Propagation operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_partition_propagation,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_partition_selection", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Partition Selection operators in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_partition_selection,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_outerjoin_rewrite", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable outer join to inner join rewrite in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_outerjoin_rewrite,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_direct_dispatch", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable direct dispatch in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_direct_dispatch,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_space_pruning", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable space pruning in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_space_pruning,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_master_only_queries", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Process coordinator only queries via the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_coordinator_only_queries,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_hashjoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's use of hash join plans."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_hashjoin,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_dynamictablescan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's use of plans with dynamic table scan."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_dynamictablescan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+			{"optimizer_enable_dynamicindexscan", PGC_USERSET, QUERY_TUNING_METHOD,
+					gettext_noop("Enables the optimizer's use of plans with dynamic index scan."),
+					NULL,
+					GUC_NOT_IN_SAMPLE
+			},
+			&optimizer_enable_dynamicindexscan,
+			true,
+			NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_dynamicindexonlyscan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's use of plans with dynamic index only scan."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_dynamicindexonlyscan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+			{"optimizer_enable_dynamicbitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
+					gettext_noop("Enables the optimizer's use of plans with dynamic bitmap scan."),
+					NULL,
+					GUC_NOT_IN_SAMPLE
+			},
+			&optimizer_enable_dynamicbitmapscan,
+			true,
+			NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_indexscan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's use of plans with index scan."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_indexscan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_indexonlyscan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's use of plans with index only scan."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_indexonlyscan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_tablescan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's use of plans with table scan."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_tablescan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_hashagg", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables GPORCA to use hash aggregates."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_hashagg,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_groupagg", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables GPORCA to use group aggregates."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_groupagg,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_force_agg_skew_avoidance", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Always pick a plan for aggregate distinct that minimizes skew."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_force_agg_skew_avoidance,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_penalize_skew", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Penalize operators with skewed hash redistribute below it."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_penalize_skew,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_multilevel_partitioning", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable optimization of queries on multilevel partitioned tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_multilevel_partitioning,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_derive_stats_all_groups", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable stats derivation for all groups after exploration."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_derive_stats_all_groups,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_force_multistage_agg", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Force optimizer to always pick multistage aggregates when such a plan alternative is generated."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_force_multistage_agg,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_multiple_distinct_aggs", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with multiple distinct aggregates in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_multiple_distinct_aggs,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_hashjoin_redistribute_broadcast_children", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable hash join plans with, Redistribute outer child and Broadcast inner child, in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_hashjoin_redistribute_broadcast_children,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_broadcast_nestloop_outer_child", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable nested loops join plans with replicated outer child in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_broadcast_nestloop_outer_child,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_discard_redistribute_hashjoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Discard hash join with redistribute motion in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_discard_redistribute_hashjoin,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_expand_fulljoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's support of expanding full outer joins using union all."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_expand_fulljoin,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_mergejoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the optimizer's support of merge joins."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_mergejoin,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_streaming_material", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with a streaming material node in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_streaming_material,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_gather_on_segment_for_dml", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable DML optimization by enforcing a non-coordinator gather in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_gather_on_segment_for_dml,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_assert_maxonerow", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable Assert MaxOneRow plans to check number of rows at runtime."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_assert_maxonerow,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Enable plan enumeration"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enumerate_plans,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_sample_plans", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable plan sampling"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_sample_plans,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_constant_expression_evaluation", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable constant expression evaluation in the optimizer"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_constant_expression_evaluation,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_bitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable bitmap plans in the optimizer"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_bitmapscan,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_outerjoin_to_unionall_rewrite", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable rewriting Left Outer Join to UnionAll"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_outerjoin_to_unionall_rewrite,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_ctas", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable CTAS plans in the optimizer"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_ctas,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_dml", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable DML plans in GPORCA."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_dml,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_dml_constraints", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Support DML with CHECK constraints and NOT NULL constraints."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_dml_constraints,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_use_gpdb_allocators", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Enable ORCA to use GPDB Memory Contexts"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_use_gpdb_allocators,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_orderedagg", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable ordered aggregate plans."),
+			NULL
+		},
+		&optimizer_enable_orderedagg,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_eageragg", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable Eager Agg transform for pushing aggregate below an innerjoin."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_eageragg,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_redistribute_nestloop_loj_inner_child", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable nested loops left join plans with redistributed inner child in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_redistribute_nestloop_loj_inner_child,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_force_comprehensive_join_implementation", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Explore a nested loop join even if a hash join is possible"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_force_comprehensive_join_implementation,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_replicated_table", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Enable replicated tables."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_replicated_table,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_foreign_table", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Enable foreign tables in Orca."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_foreign_table,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_right_outer_join", PGC_USERSET, QUERY_TUNING_METHOD,
+		 gettext_noop("Enable Orca to generate plans containing right outer joins."),
+		 gettext_noop("Right outer join can be re-written from left outer join. "
+					  "However, there are scenarios due to cardinality and cost "
+					  "misestimation, right outer join plan may be sub-optimal and "
+					  "can either be slower than the left outer join plan alternative "
+					  "or hit out-of-memory (OOM). The root cause can be identified "
+					  "by viewing the explain analyze plan and observing that the "
+					  "right outer join plan node is consuming all resources "
+					  "(CPU/memory) or the explain analyze itself hits OOM. By "
+					  "setting this GUC value to \"false\" users can force GPORCA to "
+					  "generate an equivalent left outer join plan. We recommend that "
+					  "the GUC be set at the query level as there can be several use "
+					  "cases where right outer join is the best plan alternative to "
+					  "choose."),
+		 GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_right_outer_join,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_coordinator_only_queries", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Process coordinator only queries via the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_coordinator_only_queries,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_enable_motions_coordinatoronly_queries", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable plans with Motion operators in the optimizer for queries with no distributed tables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_motions_coordinatoronly_queries,
+		false,
+		NULL, NULL, NULL
+	},
+
+	/* End-of-list marker */
+	{
+		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
+	}
+};
+
+struct config_int configure_names_int_orca[] =
+{
+	{
+		{"optimizer_plan_id", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Choose a plan alternative"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_plan_id,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_samples_number", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set the number of plan samples"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_samples_number,
+		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_segments", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Number of segments to be considered by the optimizer during costing, or 0 to take the actual number of segments."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_segments,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_penalize_broadcast_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Maximum number of rows of a relation that can be broadcasted without penalty. A value of 0 disables."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_penalize_broadcast_threshold,
+		100000, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_mdcache_size", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Sets the size of MDCache."),
+			NULL,
+			GUC_UNIT_KB
+		},
+		&optimizer_mdcache_size,
+		16384, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	/* End-of-list marker */
+	{
+		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL
+	}
+};
+
+struct config_real configure_names_real_orca[] =
+{
+	{
+		{"optimizer_damping_factor_filter", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("select predicate damping factor in optimizer, 1.0 means no damping"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_damping_factor_filter,
+		0.75, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_damping_factor_join", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("join predicate damping factor in optimizer, 1.0 means no damping, 0.0 means square root method"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_damping_factor_join,
+		0.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_damping_factor_groupby", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("groupby operator damping factor in optimizer, 1.0 means no damping"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_damping_factor_groupby,
+		0.75, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_cost_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set the threshold for plan sampling relative to the cost of best plan, 0.0 means unbounded"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_cost_threshold,
+		0.0, 0.0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_nestloop_factor", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Set the nestloop join cost factor in the optimizer"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_nestloop_factor,
+		1024.0, 1.0, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_sort_factor",PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Set the sort cost factor in the optimizer, 1.0 means same as default, > 1.0 means more costly than default, < 1.0 means means less costly than default"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_sort_factor,
+		1.0, 0.0, DBL_MAX,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_jit_above_cost",PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Perform JIT compilation if query is more expensive."),
+			gettext_noop("-1 disables JIT compilation."),
+			GUC_EXPLAIN | GUC_GPDB_NEED_SYNC
+		},
+		&optimizer_jit_above_cost,
+		7500, -1, DBL_MAX,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_jit_optimize_above_cost",PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Optimize JITed functions if query is more expensive."),
+			gettext_noop("-1 disables JIT optimization."),
+			GUC_EXPLAIN | GUC_GPDB_NEED_SYNC
+		},
+		&optimizer_jit_optimize_above_cost,
+		37500, -1, DBL_MAX,
+		NULL, NULL, NULL
+	},
+	{
+		{"optimizer_jit_inline_above_cost",PGC_USERSET, QUERY_TUNING_COST,
+			gettext_noop("Perform JIT inlining if query is more expensive."),
+			gettext_noop("-1 disables inlining."),
+			GUC_EXPLAIN | GUC_GPDB_NEED_SYNC
+		},
+		&optimizer_jit_inline_above_cost,
+		37500, -1, DBL_MAX,
+		NULL, NULL, NULL
+	},
+
+	/* End-of-list marker */
+	{
+		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL
+	}
+};
+
+struct config_string configure_names_string_orca[] =
+{
+	{
+		{"optimizer_search_strategy_path", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Sets the search strategy used by gp optimizer."),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_search_strategy_path,
+		"default",
+		NULL, NULL, NULL
+	},
+
+	/* End-of-list marker */
+	{
+		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL
+	}
+};
+
+struct config_enum configure_names_enum_orca[] =
+{
+	{
+		{"optimizer_log_failure", PGC_USERSET, LOGGING_WHEN,
+			gettext_noop("Sets which optimizer failures are logged."),
+			gettext_noop("Valid values are unexpected, expected, all"),
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_log_failure,
+		OPTIMIZER_UNEXPECTED_FAIL, optimizer_log_failure_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_minidump", PGC_USERSET, LOGGING_WHEN,
+			gettext_noop("Generate optimizer minidump."),
+			gettext_noop("Valid values are onerror, always"),
+		},
+		&optimizer_minidump,
+		OPTIMIZER_MINIDUMP_FAIL, optimizer_minidump_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_cost_model", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Set optimizer cost model."),
+			gettext_noop("Valid values are legacy, calibrated, experimental"),
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_cost_model,
+		OPTIMIZER_GPDB_CALIBRATED, optimizer_cost_model_options,
+		NULL, NULL, NULL
+	},
+
+
+	/* End-of-list marker */
+	{
+		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL
+	}
+};
+
 void
 orca_guc_define()
 {
-	DefineCustomBoolVariable("optimizer_log",
-							 "Log optimizer messages.",
-							 NULL,
-							 &optimizer_log,
-							 true,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomEnumVariable("optimizer_log_failure",
-							 "Sets which optimizer failures are logged.",
-							 "Valid values are unexpected, expected, all",
-							 &optimizer_log_failure,
-							 OPTIMIZER_UNEXPECTED_FAIL,
-							 optimizer_log_failure_options,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_trace_fallback",
-							 "Print a message at INFO level, whenever GPORCA falls back.",
-							 NULL,
-							 &optimizer_trace_fallback,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomEnumVariable("optimizer_minidump",
-							 "Generate optimizer minidump.",
-							 "Valid values are onerror, always",
-							 &optimizer_minidump,
-							 OPTIMIZER_MINIDUMP_FAIL,
-							 optimizer_minidump_options,
-							 PGC_USERSET,
-							 GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomEnumVariable("optimizer_cost_model",
-							 "Set optimizer cost model.",
-							 "Valid values are legacy, calibrated, experimental",
-							 &optimizer_cost_model,
-							 OPTIMIZER_GPDB_CALIBRATED,
-							 optimizer_cost_model_options,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_metadata_caching",
-							 "This guc enables the optimizer to cache and reuse metadata.",
-							 NULL,
-							 &optimizer_metadata_caching,
-							 true,
-							 PGC_USERSET,
-							 GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomIntVariable("optimizer_mdcache_size",
-							"Sets the size of MDCache.",
-							NULL,
-							&optimizer_mdcache_size,
-							16384,
-							0,
-							INT_MAX,
-							PGC_USERSET,
-							GUC_UNIT_KB | GUC_GPDB_NO_SYNC,
-							NULL,
-							NULL,
-							NULL);
-
-	DefineCustomBoolVariable("optimizer_use_gpdb_allocators",
-							 "Enable ORCA to use GPDB Memory Contexts",
-							 NULL,
-							 &optimizer_use_gpdb_allocators,
-							 true,
-							 PGC_POSTMASTER,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_query",
-							 "Prints the optimizer's input query expression tree.",
-							 NULL,
-							 &optimizer_print_query,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_plan",
-							 "Prints the plan expression tree produced by the optimizer.",
-							 NULL,
-							 &optimizer_print_plan,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_xform",
-							 "Prints optimizer transformation information.",
-							 NULL,
-							 &optimizer_print_xform,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_missing_stats",
-							 "Print columns with missing statistics.",
-							 NULL,
-							 &optimizer_print_missing_stats,
-							 true,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_xform_results",
-							 "Print the input and output of optimizer transformations.",
-							 NULL,
-							 &optimizer_print_xform_results,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_memo_after_exploration",
-							 "Print optimizer memo structure after the exploration phase.",
-							 NULL,
-							 &optimizer_print_memo_after_exploration,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_memo_after_implementation",
-							 "Print optimizer memo structure after the implementation phase.",
-							 NULL,
-							 &optimizer_print_memo_after_implementation,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_memo_after_optimization",
-							 "Print optimizer memo structure after optimization.",
-							 NULL,
-							 &optimizer_print_memo_after_optimization,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_job_scheduler",
-							 "Print the jobs in the scheduler on each job completion.",
-							 NULL,
-							 &optimizer_print_job_scheduler,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_expression_properties",
-							 "Print expression properties.",
-							 NULL,
-							 &optimizer_print_expression_properties,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_group_properties",
-							 "Print group properties.",
-							 NULL,
-							 &optimizer_print_group_properties,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_optimization_context",
-							 "Print the optimization context.",
-							 NULL,
-							 &optimizer_print_optimization_context,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_print_optimization_stats",
-							 "Print optimization stats.",
-							 NULL,
-							 &optimizer_print_optimization_stats,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomStringVariable("optimizer_search_strategy_path",
-							   "Sets the search strategy used by gp optimizer.",
-							   NULL,
-							   &optimizer_search_strategy_path,
-							   "default",
-							   PGC_USERSET,
-							   GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							   NULL,
-							   NULL,
-							   NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_nljoin",
-							 "Enable nested loops join plans in the optimizer.",
-							 NULL,
-							 &optimizer_enable_nljoin,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_indexjoin",
-							 "Enable index nested loops join plans in the optimizer.",
-							 NULL,
-							 &optimizer_enable_indexjoin,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_motions_masteronly_queries",
-							 "Enable plans with Motion operators in the optimizer for queries with no distributed tables.",
-							 NULL,
-							 &optimizer_enable_motions_coordinatoronly_queries,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_motions",
-							 "Enable plans with Motion operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_motions,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_motion_broadcast",
-							 "Enable plans with Motion Broadcast operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_motion_broadcast,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_motion_gather",
-							 "Enable plans with Motion Gather operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_motion_gather,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_motion_redistribute",
-							 "Enable plans with Motion Redistribute operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_motion_redistribute,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_sort",
-							 "Enable plans with Sort operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_sort,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_materialize",
-							 "Enable plans with Materialize operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_materialize,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
- 
-	DefineCustomBoolVariable("optimizer_enable_partition_propagation",
-							 "Enable plans with Partition Propagation operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_partition_propagation,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_partition_selection",
-							 "Enable plans with Partition Selection operators in the optimizer.",
-							 NULL,
-							 &optimizer_enable_partition_selection,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_outerjoin_rewrite",
-							 "Enable outer join to inner join rewrite in the optimizer.",
-							 NULL,
-							 &optimizer_enable_outerjoin_rewrite,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_direct_dispatch",
-							 "Enable direct dispatch in the optimizer.",
-							 NULL,
-							 &optimizer_enable_direct_dispatch,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_space_pruning",
-							 "Enable space pruning in the optimizer.",
-							 NULL,
-							 &optimizer_enable_space_pruning,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_master_only_queries",
-							 "Process coordinator only queries via the optimizer.",
-							 NULL,
-							 &optimizer_enable_coordinator_only_queries,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_hashjoin",
-							 "Enables the optimizer's use of hash join plans.",
-							 NULL,
-							 &optimizer_enable_hashjoin,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_dynamictablescan",
-							 "Enables the optimizer's use of plans with dynamic table scan.",
-							 NULL,
-							 &optimizer_enable_dynamictablescan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_dynamicindexscan",
-							 "Enables the optimizer's use of plans with dynamic index scan.",
-							 NULL,
-							 &optimizer_enable_dynamicindexscan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_dynamicindexonlyscan",
-							 "Enables the optimizer's use of plans with dynamic index only scan.",
-							 NULL,
-							 &optimizer_enable_dynamicindexonlyscan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_dynamicbitmapscan",
-							 "Enables the optimizer's use of plans with dynamic bitmap scan.",
-							 NULL,
-							 &optimizer_enable_dynamicbitmapscan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_indexscan",
-							 "Enables the optimizer's use of plans with index scan.",
-							 NULL,
-							 &optimizer_enable_indexscan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_indexonlyscan",
-							 "Enables the optimizer's use of plans with index only scan.",
-							 NULL,
-							 &optimizer_enable_indexonlyscan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_tablescan",
-							 "Enables the optimizer's use of plans with table scan.",
-							 NULL,
-							 &optimizer_enable_tablescan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_hashagg",
-							 "Enables GPORCA to use hash aggregates.",
-							 NULL,
-							 &optimizer_enable_hashagg,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_groupagg",
-							 "Enables GPORCA to use group aggregates.",
-							 NULL,
-							 &optimizer_enable_groupagg,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_force_agg_skew_avoidance",
-							 "Always pick a plan for aggregate distinct that minimizes skew.",
-							 NULL,
-							 &optimizer_force_agg_skew_avoidance,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_penalize_skew",
-							 "Penalize operators with skewed hash redistribute below it.",
-							 NULL,
-							 &optimizer_penalize_skew,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_multilevel_partitioning",
-							 "Enable optimization of queries on multilevel partitioned tables.",
-							 NULL,
-							 &optimizer_multilevel_partitioning,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_derive_stats_all_groups",
-							 "Enable stats derivation for all groups after exploration.",
-							 NULL,
-							 &optimizer_enable_derive_stats_all_groups,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_force_multistage_agg",
-							 "Force optimizer to always pick multistage aggregates when such a plan alternative is generated.",
-							 NULL,
-							 &optimizer_force_multistage_agg,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_multiple_distinct_aggs",
-							 "Enable plans with multiple distinct aggregates in the optimizer.",
-							 NULL,
-							 &optimizer_enable_multiple_distinct_aggs,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_hashjoin_redistribute_broadcast_children",
-							 "Enable hash join plans with, Redistribute outer child and Broadcast inner child, in the optimizer.",
-							 NULL,
-							 &optimizer_enable_hashjoin_redistribute_broadcast_children,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_broadcast_nestloop_outer_child",
-							 "Enable nested loops join plans with replicated outer child in the optimizer.",
-							 NULL,
-							 &optimizer_enable_broadcast_nestloop_outer_child,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_discard_redistribute_hashjoin",
-							 "Discard hash join with redistribute motion in the optimizer.",
-							 NULL,
-							 &optimizer_discard_redistribute_hashjoin,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_expand_fulljoin",
-							 "Enables the optimizer's support of expanding full outer joins using union all.",
-							 NULL,
-							 &optimizer_expand_fulljoin,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_mergejoin",
-							 "Enables the optimizer's support of merge joins.",
-							 NULL,
-							 &optimizer_enable_mergejoin,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_streaming_material",
-							 "Enable plans with a streaming material node in the optimizer.",
-							 NULL,
-							 &optimizer_enable_streaming_material,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_gather_on_segment_for_dml",
-							 "Enable DML optimization by enforcing a non-coordinator gather in the optimizer.",
-							 NULL,
-							 &optimizer_enable_gather_on_segment_for_dml,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_assert_maxonerow",
-							 "Enable Assert MaxOneRow plans to check number of rows at runtime.",
-							 NULL,
-							 &optimizer_enable_assert_maxonerow,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_constant_expression_evaluation",
-							 "Enable constant expression evaluation in the optimizer",
-							 NULL,
-							 &optimizer_enable_constant_expression_evaluation,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_bitmapscan",
-							 "Enable bitmap plans in the optimizer",
-							 NULL,
-							 &optimizer_enable_bitmapscan,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_outerjoin_to_unionall_rewrite",
-							 "Enable rewriting Left Outer Join to UnionAll",
-							 NULL,
-							 &optimizer_enable_outerjoin_to_unionall_rewrite,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_ctas",
-							 "Enable CTAS plans in the optimizer",
-							 NULL,
-							 &optimizer_enable_ctas,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_dml",
-							 "Enable DML plans in GPORCA.",
-							 NULL,
-							 &optimizer_enable_dml,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_dml_constraints",
-							 "Support DML with CHECK constraints and NOT NULL constraints.",
-							 NULL,
-							 &optimizer_enable_dml_constraints,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_orderedagg",
-							 "Enable ordered aggregate plans.",
-							 NULL,
-							 &optimizer_enable_orderedagg,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_eageragg",
-							 "Enable Eager Agg transform for pushing aggregate below an innerjoin.",
-							 NULL,
-							 &optimizer_enable_eageragg,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_redistribute_nestloop_loj_inner_child",
-							 "Enable nested loops left join plans with redistributed inner child in the optimizer.",
-							 NULL,
-							 &optimizer_enable_redistribute_nestloop_loj_inner_child,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_force_comprehensive_join_implementation",
-							 "Explore a nested loop join even if a hash join is possible",
-							 NULL,
-							 &optimizer_force_comprehensive_join_implementation,
-							 false,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_replicated_table",
-							 "Enable replicated tables.",
-							 NULL,
-							 &optimizer_enable_replicated_table,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_foreign_table",
-							 "Enable foreign tables in Orca.",
-							 NULL,
-							 &optimizer_enable_foreign_table,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enable_right_outer_join",
-							 "Enable Orca to generate plans containing right outer joins.",
-							 "Right outer join can be re-written from left outer join. "
-							 "However, there are scenarios due to cardinality and cost "
-							 "misestimation, right outer join plan may be sub-optimal and "
-							 "can either be slower than the left outer join plan alternative "
-							 "or hit out-of-memory (OOM). The root cause can be identified "
-							 "by viewing the explain analyze plan and observing that the "
-							 "right outer join plan node is consuming all resources "
-							 "(CPU/memory) or the explain analyze itself hits OOM. By "
-							 "setting this GUC value to \"false\" users can force GPORCA to "
-							 "generate an equivalent left outer join plan. We recommend that "
-							 "the GUC be set at the query level as there can be several use "
-							 "cases where right outer join is the best plan alternative to "
-							 "choose.",
-							 &optimizer_enable_right_outer_join,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_enumerate_plans",
-							 "Enable plan enumeration",
-							 NULL,
-							 &optimizer_enumerate_plans,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_sample_plans",
-							 "Enable plan sampling",
-							 NULL,
-							 &optimizer_sample_plans,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomIntVariable("optimizer_plan_id",
-							"Choose a plan alternative",
-							NULL,
-							&optimizer_plan_id,
-							0,
-							0,
-							INT_MAX,
-							PGC_USERSET,
-							GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							NULL,
-							NULL,
-							NULL);
-
-	DefineCustomIntVariable("optimizer_samples_number",
-							"Set the number of plan samples",
-							NULL,
-							&optimizer_samples_number,
-							1000,
-							1,
-							INT_MAX,
-							PGC_USERSET,
-							GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							NULL,
-							NULL,
-							NULL);
-
-	DefineCustomRealVariable("optimizer_jit_above_cost",
-							 "Perform JIT compilation if query is more expensive.",
-							 "-1 disables JIT compilation.",
-							 &optimizer_jit_above_cost,
-							 7500,
-							 -1,
-							 DBL_MAX,
-							 PGC_USERSET,
-							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_jit_optimize_above_cost",
-							 "Optimize JITed functions if query is more expensive.",
-							 "-1 disables JIT optimization.",
-							 &optimizer_jit_optimize_above_cost,
-							 37500,
-							 -1,
-							 DBL_MAX,
-							 PGC_USERSET,
-							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_jit_inline_above_cost",
-							 "Perform JIT inlining if query is more expensive.",
-							 "-1 disables inlining.",
-							 &optimizer_jit_inline_above_cost,
-							 37500,
-							 -1,
-							 DBL_MAX,
-							 PGC_USERSET,
-							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_extract_dxl_stats",
-							 "Extract plan stats in dxl.",
-							 NULL,
-							 &optimizer_extract_dxl_stats,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_extract_dxl_stats_all_nodes",
-							 "Extract plan stats for all physical dxl nodes.",
-							 NULL,
-							 &optimizer_extract_dxl_stats_all_nodes,
-							 false,
-							 PGC_USERSET,
-							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_damping_factor_filter",
-							 "select predicate damping factor in optimizer, 1.0 means no damping",
-							 NULL,
-							 &optimizer_damping_factor_filter,
-							 0.75,
-							 0.0,
-							 1.0,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_damping_factor_join",
-							 "join predicate damping factor in optimizer, 1.0 means no damping, 0.0 means square root method",
-							 NULL,
-							 &optimizer_damping_factor_join,
-							 0.0,
-							 0.0,
-							 1.0,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_damping_factor_groupby",
-							 "groupby operator damping factor in optimizer, 1.0 means no damping",
-							 NULL,
-							 &optimizer_damping_factor_groupby,
-							 0.75,
-							 0.0,
-							 1.0,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomBoolVariable("optimizer_dpe_stats",
-							 "Enable statistics derivation for partitioned tables with dynamic partition elimination.",
-							 NULL,
-							 &optimizer_dpe_stats,
-							 true,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomIntVariable("optimizer_segments",
-							"Number of segments to be considered by the optimizer during costing, or 0 to take the actual number of segments.",
-							NULL,
-							&optimizer_segments,
-							0,
-							0,
-							INT_MAX,
-							PGC_USERSET,
-							GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							NULL,
-							NULL,
-							NULL);
-
-	DefineCustomIntVariable("optimizer_penalize_broadcast_threshold",
-							"Maximum number of rows of a relation that can be broadcasted without penalty. A value of 0 disables.",
-							NULL,
-							&optimizer_penalize_broadcast_threshold,
-							100000,
-							0,
-							INT_MAX,
-							PGC_USERSET,
-							GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							NULL,
-							NULL,
-							NULL);
-
-	DefineCustomRealVariable("optimizer_cost_threshold",
-							 "Set the threshold for plan sampling relative to the cost of best plan, 0.0 means unbounded",
-							 NULL,
-							 &optimizer_cost_threshold,
-							 0.0,
-							 0.0,
-							 INT_MAX,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_nestloop_factor",
-							 "Set the nestloop join cost factor in the optimizer",
-							 NULL,
-							 &optimizer_nestloop_factor,
-							 1024.0,
-							 1.0,
-							 DBL_MAX,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
-
-	DefineCustomRealVariable("optimizer_sort_factor",
-							 "Set the sort cost factor in the optimizer, 1.0 means same as default, > 1.0 means more costly than default, < 1.0 means means less costly than default",
-							 NULL,
-							 &optimizer_sort_factor,
-							 1.0,
-							 0.0,
-							 DBL_MAX,
-							 PGC_USERSET,
-							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
-							 NULL,
-							 NULL,
-							 NULL);
+	int i;
+
+	for (i = 0; configure_names_bool_orca[i].gen.name; i++)
+	{
+		struct config_bool *conf = &configure_names_bool_orca[i];
+
+		DefineCustomBoolVariable(conf->gen.name,
+							 conf->gen.short_desc,
+							 conf->gen.long_desc,
+							 conf->variable,
+							 conf->boot_val,
+							 conf->gen.context,
+							 ORCA_GUC_PROCESS_NO_SYNC_FLAG(conf->gen.flags),
+							 conf->check_hook,
+							 conf->assign_hook,
+							 conf->show_hook);
+	}
+
+	for (i = 0; configure_names_int_orca[i].gen.name; i++)
+	{
+		struct config_int *conf = &configure_names_int_orca[i];
+
+		DefineCustomIntVariable(conf->gen.name,
+								conf->gen.short_desc,
+								conf->gen.long_desc,
+								conf->variable,
+								conf->boot_val,
+								conf->min,
+								conf->max,
+								conf->gen.context,
+								ORCA_GUC_PROCESS_NO_SYNC_FLAG(conf->gen.flags),
+								conf->check_hook,
+								conf->assign_hook,
+								conf->show_hook);
+	}
+
+	for (i = 0; configure_names_real_orca[i].gen.name; i++)
+	{
+		struct config_real *conf = &configure_names_real_orca[i];
+
+		DefineCustomRealVariable(conf->gen.name,
+								 conf->gen.short_desc,
+								 conf->gen.long_desc,
+								 conf->variable,
+								 conf->boot_val,
+								 conf->min,
+								 conf->max,
+								 conf->gen.context,
+								 ORCA_GUC_PROCESS_NO_SYNC_FLAG(conf->gen.flags),
+								 conf->check_hook,
+								 conf->assign_hook,
+								 conf->show_hook);
+	}
+
+	for (i = 0; configure_names_string_orca[i].gen.name; i++)
+	{
+		struct config_string *conf = &configure_names_string_orca[i];
+
+		DefineCustomStringVariable(conf->gen.name,
+								 conf->gen.short_desc,
+								 conf->gen.long_desc,
+								 conf->variable,
+								 conf->boot_val,
+								 conf->gen.context,
+								 ORCA_GUC_PROCESS_NO_SYNC_FLAG(conf->gen.flags),
+								 conf->check_hook,
+								 conf->assign_hook,
+								 conf->show_hook);
+	}
+
+	for (i = 0; configure_names_enum_orca[i].gen.name; i++)
+	{
+		struct config_enum *conf = &configure_names_enum_orca[i];
+
+		DefineCustomEnumVariable(conf->gen.name,
+								 conf->gen.short_desc,
+								 conf->gen.long_desc,
+								 conf->variable,
+								 conf->boot_val,
+								 conf->options,
+								 conf->gen.context,
+								 ORCA_GUC_PROCESS_NO_SYNC_FLAG(conf->gen.flags),
+								 conf->check_hook,
+								 conf->assign_hook,
+								 conf->show_hook);
+	}
 }
