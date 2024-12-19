@@ -1292,6 +1292,9 @@ DROP TABLE d;
 DROP TABLE r;
 
 -- Test if direct dispatch is correctly handled for the shared CTE
+--start_ignore
+DROP TABLE IF EXISTS with_test;
+--end_ignore
 CREATE TABLE with_test (i int) DISTRIBUTED BY (i);
 INSERT INTO with_test VALUES (1), (2), (3);
 
