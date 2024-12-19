@@ -141,6 +141,25 @@ int			optimizer_push_group_by_below_setop_threshold;
 int			optimizer_xform_bind_threshold;
 int			optimizer_skew_factor;
 
+bool		optimizer_force_three_stage_scalar_dqa;
+bool		optimizer_force_expanded_distinct_aggs;
+
+bool		optimizer_prune_computed_columns;
+bool		optimizer_push_requirements_from_consumer_to_producer;
+bool		optimizer_enforce_subplans;
+bool		optimizer_use_external_constant_expression_evaluation_for_ints;
+bool		optimizer_apply_left_outer_to_union_all_disregarding_stats;
+bool		optimizer_remove_order_below_dml;
+
+bool 		optimizer_parallel_union;
+bool		optimizer_array_constraints;
+bool		optimizer_cte_inlining;
+
+bool		optimizer_enable_associativity;
+
+bool		optimizer_enable_range_predicate_dpe;
+bool		optimizer_enable_push_join_below_union_all;
+
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
 	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
@@ -984,6 +1003,158 @@ struct config_bool configure_names_bool_orca[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_enable_motions_coordinatoronly_queries,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_force_three_stage_scalar_dqa", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Force optimizer to always pick 3 stage aggregate plan for scalar distinct qualified aggregate."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_force_three_stage_scalar_dqa,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_parallel_union", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable parallel execution for UNION/UNION ALL queries."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_parallel_union,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_array_constraints", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Allows the optimizer's constraint framework to derive array constraints."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_array_constraints,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_force_expanded_distinct_aggs", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Always pick plans that expand multiple distinct aggregates into join of single distinct aggregate in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_force_expanded_distinct_aggs,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_prune_computed_columns", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prune unused computed columns when pre-processing query"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_prune_computed_columns,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_push_requirements_from_consumer_to_producer", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Optimize CTE producer plan on requirements enforced on top of CTE consumer in the optimizer."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_push_requirements_from_consumer_to_producer,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enforce_subplans", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enforce correlated execution in the optimizer"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enforce_subplans,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_cte_inlining", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable CTE inlining"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_cte_inlining,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_use_external_constant_expression_evaluation_for_ints", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Use external constant expression evaluation in the optimizer for all integer types"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_use_external_constant_expression_evaluation_for_ints,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_apply_left_outer_to_union_all_disregarding_stats", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Always apply Left Outer Join to Inner Join UnionAll Left Anti Semi Join without looking at stats."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_apply_left_outer_to_union_all_disregarding_stats,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_remove_order_below_dml", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Remove OrderBy below a DML operation"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_remove_order_below_dml,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_associativity", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables Join Associativity in optimizer"),
+			NULL
+		},
+		&optimizer_enable_associativity,
+		false, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_range_predicate_dpe", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable range predicates for dynamic partition elimination."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_range_predicate_dpe,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"optimizer_enable_push_join_below_union_all", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable transform of join of union all to union all of joins. May improve the join performance."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&optimizer_enable_push_join_below_union_all,
 		false,
 		NULL, NULL, NULL
 	},

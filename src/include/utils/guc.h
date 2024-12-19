@@ -430,21 +430,6 @@ extern bool optimizer_control;	/* controls whether the user can change the setti
 extern bool optimizer_enable_query_parameter;
 
 
-extern bool optimizer_force_three_stage_scalar_dqa;
-extern bool optimizer_force_expanded_distinct_aggs;
-extern bool optimizer_prune_computed_columns;
-extern bool optimizer_push_requirements_from_consumer_to_producer;
-extern bool optimizer_enforce_subplans;
-extern bool optimizer_apply_left_outer_to_union_all_disregarding_stats;
-extern bool optimizer_use_external_constant_expression_evaluation_for_ints;
-extern bool optimizer_remove_order_below_dml;
-extern bool optimizer_parallel_union;
-extern bool optimizer_array_constraints;
-extern bool optimizer_cte_inlining;
-extern bool optimizer_enable_associativity;
-extern bool optimizer_enable_range_predicate_dpe;
-extern bool optimizer_enable_push_join_below_union_all;
-
 /* Analyze related GUCs for Optimizer */
 extern bool optimizer_analyze_root_partition;
 extern bool optimizer_analyze_midlevel_partition;
