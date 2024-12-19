@@ -429,7 +429,6 @@ extern bool optimizer_control;	/* controls whether the user can change the setti
 
 extern bool optimizer_enable_query_parameter;
 
-
 /* Analyze related GUCs for Optimizer */
 extern bool optimizer_analyze_root_partition;
 extern bool optimizer_analyze_midlevel_partition;
