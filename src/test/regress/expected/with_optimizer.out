@@ -2694,7 +2694,7 @@ SELECT * FROM cte JOIN (SELECT * FROM d JOIN cte USING (a) LIMIT 1) d_join_cte U
 
 DROP TABLE d;
 DROP TABLE r;
--- Test that planner doesn't use direct dispatch in case of shared CTE.
+-- Test if direct dispatch is correctly handled for the shared CTE
 CREATE TABLE with_test (i int) DISTRIBUTED BY (i);
 INSERT INTO with_test VALUES (1), (2), (3);
 EXPLAIN (slicetable, costs off)
