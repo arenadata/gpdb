@@ -47,6 +47,46 @@ extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
 
 extern char *optimizer_search_strategy_path;
 
+/* GUCs to tell Optimizer to enable a physical operator */
+extern bool optimizer_enable_nljoin;
+extern bool optimizer_enable_indexjoin;
+extern bool optimizer_enable_motions_coordinatoronly_queries;
+extern bool optimizer_enable_motions;
+extern bool optimizer_enable_motion_broadcast;
+extern bool optimizer_enable_motion_gather;
+extern bool optimizer_enable_motion_redistribute;
+extern bool optimizer_enable_sort;
+extern bool optimizer_enable_materialize;
+extern bool optimizer_enable_partition_propagation;
+extern bool optimizer_enable_partition_selection;
+extern bool optimizer_enable_outerjoin_rewrite;
+extern bool optimizer_enable_multiple_distinct_aggs;
+
+extern bool optimizer_enable_direct_dispatch;
+extern bool optimizer_enable_coordinator_only_queries;
+extern bool optimizer_enable_hashjoin;
+extern bool optimizer_enable_dynamictablescan;
+extern bool optimizer_enable_dynamicindexscan;
+extern bool optimizer_enable_dynamicindexonlyscan;
+extern bool optimizer_enable_dynamicbitmapscan;
+extern bool optimizer_enable_indexscan;
+extern bool optimizer_enable_indexonlyscan;
+extern bool optimizer_enable_tablescan;
+
+extern bool optimizer_enable_hashagg;
+extern bool optimizer_enable_groupagg;
+
+extern bool optimizer_enable_derive_stats_all_groups;
+
+extern bool optimizer_force_multistage_agg;
+
+extern bool optimizer_force_agg_skew_avoidance;
+extern bool optimizer_penalize_skew;
+
+extern bool optimizer_multilevel_partitioning;
+
+extern bool optimizer_enable_space_pruning;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */

@@ -35,6 +35,45 @@ bool		optimizer_xforms[OPTIMIZER_XFORMS_COUNT] = {[0 ... OPTIMIZER_XFORMS_COUNT 
 
 char	   *optimizer_search_strategy_path = NULL;
 
+/* GUCs to tell Optimizer to enable a physical operator */
+bool		optimizer_enable_nljoin;
+bool		optimizer_enable_indexjoin;
+bool		optimizer_enable_motions_coordinatoronly_queries;
+bool		optimizer_enable_motions;
+bool		optimizer_enable_motion_broadcast;
+bool		optimizer_enable_motion_gather;
+bool		optimizer_enable_motion_redistribute;
+bool		optimizer_enable_sort;
+bool		optimizer_enable_materialize;
+bool		optimizer_enable_partition_propagation;
+bool		optimizer_enable_partition_selection;
+bool		optimizer_enable_outerjoin_rewrite;
+bool		optimizer_enable_multiple_distinct_aggs;
+
+bool		optimizer_enable_direct_dispatch;
+
+bool		optimizer_enable_coordinator_only_queries;
+bool		optimizer_enable_hashjoin;
+bool		optimizer_enable_dynamictablescan;
+bool		optimizer_enable_dynamicindexscan;
+bool		optimizer_enable_dynamicindexonlyscan;
+bool		optimizer_enable_dynamicbitmapscan;
+bool		optimizer_enable_indexscan;
+bool		optimizer_enable_indexonlyscan;
+bool		optimizer_enable_tablescan;
+bool		optimizer_enable_hashagg;
+bool		optimizer_enable_groupagg;
+
+bool		optimizer_enable_derive_stats_all_groups;
+
+bool		optimizer_force_multistage_agg;
+
+bool		optimizer_force_agg_skew_avoidance;
+bool		optimizer_penalize_skew;
+
+bool		optimizer_multilevel_partitioning;
+
+bool		optimizer_enable_space_pruning;
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
@@ -305,5 +344,347 @@ orca_guc_define()
 							   NULL,
 							   NULL,
 							   NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_nljoin",
+							 "Enable nested loops join plans in the optimizer.",
+							 NULL,
+							 &optimizer_enable_nljoin,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_indexjoin",
+							 "Enable index nested loops join plans in the optimizer.",
+							 NULL,
+							 &optimizer_enable_indexjoin,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_motions_masteronly_queries",
+							 "Enable plans with Motion operators in the optimizer for queries with no distributed tables.",
+							 NULL,
+							 &optimizer_enable_motions_coordinatoronly_queries,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_motions",
+							 "Enable plans with Motion operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_motions,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_motion_broadcast",
+							 "Enable plans with Motion Broadcast operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_motion_broadcast,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_motion_gather",
+							 "Enable plans with Motion Gather operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_motion_gather,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_motion_redistribute",
+							 "Enable plans with Motion Redistribute operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_motion_redistribute,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_sort",
+							 "Enable plans with Sort operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_sort,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_materialize",
+							 "Enable plans with Materialize operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_materialize,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+ 
+	DefineCustomBoolVariable("optimizer_enable_partition_propagation",
+							 "Enable plans with Partition Propagation operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_partition_propagation,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_partition_selection",
+							 "Enable plans with Partition Selection operators in the optimizer.",
+							 NULL,
+							 &optimizer_enable_partition_selection,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_outerjoin_rewrite",
+							 "Enable outer join to inner join rewrite in the optimizer.",
+							 NULL,
+							 &optimizer_enable_outerjoin_rewrite,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_direct_dispatch",
+							 "Enable direct dispatch in the optimizer.",
+							 NULL,
+							 &optimizer_enable_direct_dispatch,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_space_pruning",
+							 "Enable space pruning in the optimizer.",
+							 NULL,
+							 &optimizer_enable_space_pruning,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_master_only_queries",
+							 "Process coordinator only queries via the optimizer.",
+							 NULL,
+							 &optimizer_enable_coordinator_only_queries,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_hashjoin",
+							 "Enables the optimizer's use of hash join plans.",
+							 NULL,
+							 &optimizer_enable_hashjoin,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_dynamictablescan",
+							 "Enables the optimizer's use of plans with dynamic table scan.",
+							 NULL,
+							 &optimizer_enable_dynamictablescan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_dynamicindexscan",
+							 "Enables the optimizer's use of plans with dynamic index scan.",
+							 NULL,
+							 &optimizer_enable_dynamicindexscan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_dynamicindexonlyscan",
+							 "Enables the optimizer's use of plans with dynamic index only scan.",
+							 NULL,
+							 &optimizer_enable_dynamicindexonlyscan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_dynamicbitmapscan",
+							 "Enables the optimizer's use of plans with dynamic bitmap scan.",
+							 NULL,
+							 &optimizer_enable_dynamicbitmapscan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_indexscan",
+							 "Enables the optimizer's use of plans with index scan.",
+							 NULL,
+							 &optimizer_enable_indexscan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_indexonlyscan",
+							 "Enables the optimizer's use of plans with index only scan.",
+							 NULL,
+							 &optimizer_enable_indexonlyscan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_tablescan",
+							 "Enables the optimizer's use of plans with table scan.",
+							 NULL,
+							 &optimizer_enable_tablescan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_hashagg",
+							 "Enables GPORCA to use hash aggregates.",
+							 NULL,
+							 &optimizer_enable_hashagg,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_groupagg",
+							 "Enables GPORCA to use group aggregates.",
+							 NULL,
+							 &optimizer_enable_groupagg,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_force_agg_skew_avoidance",
+							 "Always pick a plan for aggregate distinct that minimizes skew.",
+							 NULL,
+							 &optimizer_force_agg_skew_avoidance,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_penalize_skew",
+							 "Penalize operators with skewed hash redistribute below it.",
+							 NULL,
+							 &optimizer_penalize_skew,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_multilevel_partitioning",
+							 "Enable optimization of queries on multilevel partitioned tables.",
+							 NULL,
+							 &optimizer_multilevel_partitioning,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_derive_stats_all_groups",
+							 "Enable stats derivation for all groups after exploration.",
+							 NULL,
+							 &optimizer_enable_derive_stats_all_groups,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_force_multistage_agg",
+							 "Force optimizer to always pick multistage aggregates when such a plan alternative is generated.",
+							 NULL,
+							 &optimizer_force_multistage_agg,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_multiple_distinct_aggs",
+							 "Enable plans with multiple distinct aggregates in the optimizer.",
+							 NULL,
+							 &optimizer_enable_multiple_distinct_aggs,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
 
 }

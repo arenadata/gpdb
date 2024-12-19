@@ -276,21 +276,7 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 
-/* GUCs to tell Optimizer to enable a physical operator */
-bool		optimizer_enable_nljoin;
-bool		optimizer_enable_indexjoin;
-bool		optimizer_enable_motions_coordinatoronly_queries;
-bool		optimizer_enable_motions;
-bool		optimizer_enable_motion_broadcast;
-bool		optimizer_enable_motion_gather;
-bool		optimizer_enable_motion_redistribute;
-bool		optimizer_enable_sort;
-bool		optimizer_enable_materialize;
-bool		optimizer_enable_partition_propagation;
-bool		optimizer_enable_partition_selection;
-bool		optimizer_enable_outerjoin_rewrite;
-bool		optimizer_enable_multiple_distinct_aggs;
-bool		optimizer_enable_direct_dispatch;
+
 bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
 bool		optimizer_enable_broadcast_nestloop_outer_child;
 bool		optimizer_discard_redistribute_hashjoin;
@@ -303,17 +289,7 @@ bool		optimizer_enable_outerjoin_to_unionall_rewrite;
 bool		optimizer_enable_ctas;
 bool		optimizer_enable_dml;
 bool		optimizer_enable_dml_constraints;
-bool		optimizer_enable_coordinator_only_queries;
-bool		optimizer_enable_hashjoin;
-bool		optimizer_enable_dynamictablescan;
-bool		optimizer_enable_dynamicindexscan;
-bool		optimizer_enable_dynamicindexonlyscan;
-bool		optimizer_enable_dynamicbitmapscan;
-bool		optimizer_enable_indexscan;
-bool		optimizer_enable_indexonlyscan;
-bool		optimizer_enable_tablescan;
-bool		optimizer_enable_hashagg;
-bool		optimizer_enable_groupagg;
+
 bool		optimizer_expand_fulljoin;
 bool		optimizer_enable_mergejoin;
 bool		optimizer_enable_redistribute_nestloop_loj_inner_child;
@@ -336,7 +312,7 @@ double		optimizer_damping_factor_filter;
 double		optimizer_damping_factor_join;
 double		optimizer_damping_factor_groupby;
 bool		optimizer_dpe_stats;
-bool		optimizer_enable_derive_stats_all_groups;
+
 
 /* Costing related GUCs used by the Optimizer */
 int			optimizer_segments;
@@ -354,22 +330,20 @@ int			optimizer_cte_inlining_bound;
 int			optimizer_push_group_by_below_setop_threshold;
 int			optimizer_xform_bind_threshold;
 int			optimizer_skew_factor;
-bool		optimizer_force_multistage_agg;
 bool		optimizer_force_three_stage_scalar_dqa;
 bool		optimizer_force_expanded_distinct_aggs;
-bool		optimizer_force_agg_skew_avoidance;
-bool		optimizer_penalize_skew;
+
 bool		optimizer_prune_computed_columns;
 bool		optimizer_push_requirements_from_consumer_to_producer;
 bool		optimizer_enforce_subplans;
 bool		optimizer_use_external_constant_expression_evaluation_for_ints;
 bool		optimizer_apply_left_outer_to_union_all_disregarding_stats;
 bool		optimizer_remove_order_below_dml;
-bool		optimizer_multilevel_partitioning;
+
 bool 		optimizer_parallel_union;
 bool		optimizer_array_constraints;
 bool		optimizer_cte_inlining;
-bool		optimizer_enable_space_pruning;
+
 bool		optimizer_enable_associativity;
 bool		optimizer_enable_eageragg;
 bool		optimizer_enable_range_predicate_dpe;
@@ -1856,136 +1830,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 		true,
 		NULL, NULL, NULL
 	},
-	{
-		{"optimizer_enable_nljoin", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable nested loops join plans in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_nljoin,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_indexjoin", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable index nested loops join plans in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_indexjoin,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_motions_masteronly_queries", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Motion operators in the optimizer for queries with no distributed tables."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_motions_coordinatoronly_queries,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_motions", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Motion operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_motions,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_motion_broadcast", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Motion Broadcast operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_motion_broadcast,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_motion_gather", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Motion Gather operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_motion_gather,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_motion_redistribute", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Motion Redistribute operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_motion_redistribute,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_sort", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Sort operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_sort,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_materialize", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Materialize operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_materialize,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_partition_propagation", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Partition Propagation operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_partition_propagation,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_partition_selection", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Partition Selection operators in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_partition_selection,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_outerjoin_rewrite", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable outer join to inner join rewrite in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_outerjoin_rewrite,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_direct_dispatch", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable direct dispatch in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_direct_dispatch,
-		true,
-		NULL, NULL, NULL
-	},
+
 	{
 		{"optimizer_control", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Allow/disallow turning the optimizer on or off."),
@@ -1993,203 +1838,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&optimizer_control,
 		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_space_pruning", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable space pruning in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_space_pruning,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_master_only_queries", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Process coordinator only queries via the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_coordinator_only_queries,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_hashjoin", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's use of hash join plans."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_hashjoin,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_dynamictablescan", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's use of plans with dynamic table scan."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_dynamictablescan,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-			{"optimizer_enable_dynamicindexscan", PGC_USERSET, QUERY_TUNING_METHOD,
-					gettext_noop("Enables the optimizer's use of plans with dynamic index scan."),
-					NULL,
-					GUC_NOT_IN_SAMPLE
-			},
-			&optimizer_enable_dynamicindexscan,
-			true,
-			NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_dynamicindexonlyscan", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's use of plans with dynamic index only scan."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_dynamicindexonlyscan,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-			{"optimizer_enable_dynamicbitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
-					gettext_noop("Enables the optimizer's use of plans with dynamic bitmap scan."),
-					NULL,
-					GUC_NOT_IN_SAMPLE
-			},
-			&optimizer_enable_dynamicbitmapscan,
-			true,
-			NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_indexscan", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's use of plans with index scan."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_indexscan,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_indexonlyscan", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's use of plans with index only scan."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_indexonlyscan,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_tablescan", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's use of plans with table scan."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_tablescan,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_hashagg", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables GPORCA to use hash aggregates."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_hashagg,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_groupagg", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables GPORCA to use group aggregates."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_groupagg,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_force_agg_skew_avoidance", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Always pick a plan for aggregate distinct that minimizes skew."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_force_agg_skew_avoidance,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_penalize_skew", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Penalize operators with skewed hash redistribute below it."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_penalize_skew,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_multilevel_partitioning", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable optimization of queries on multilevel partitioned tables."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_multilevel_partitioning,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_derive_stats_all_groups", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable stats derivation for all groups after exploration."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_derive_stats_all_groups,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_force_multistage_agg", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Force optimizer to always pick multistage aggregates when such a plan alternative is generated."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_force_multistage_agg,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_multiple_distinct_aggs", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with multiple distinct aggregates in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_multiple_distinct_aggs,
-		false,
 		NULL, NULL, NULL
 	},
 
@@ -2814,26 +2462,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&optimizer_enable_query_parameter,
 		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_coordinator_only_queries", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Process coordinator only queries via the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_coordinator_only_queries,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_motions_coordinatoronly_queries", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with Motion operators in the optimizer for queries with no distributed tables."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_motions_coordinatoronly_queries,
-		false,
 		NULL, NULL, NULL
 	},
 	{
