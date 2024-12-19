@@ -120,6 +120,13 @@ double		optimizer_damping_factor_join;
 double		optimizer_damping_factor_groupby;
 bool		optimizer_dpe_stats;
 
+/* Costing related GUCs used by the Optimizer */
+int			optimizer_segments;
+int			optimizer_penalize_broadcast_threshold;
+double		optimizer_cost_threshold;
+double		optimizer_nestloop_factor;
+double		optimizer_sort_factor;
+
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
 	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
@@ -1127,6 +1134,71 @@ orca_guc_define()
 							 NULL,
 							 &optimizer_dpe_stats,
 							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomIntVariable("optimizer_segments",
+							"Number of segments to be considered by the optimizer during costing, or 0 to take the actual number of segments.",
+							NULL,
+							&optimizer_segments,
+							0,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomIntVariable("optimizer_penalize_broadcast_threshold",
+							"Maximum number of rows of a relation that can be broadcasted without penalty. A value of 0 disables.",
+							NULL,
+							&optimizer_penalize_broadcast_threshold,
+							100000,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomRealVariable("optimizer_cost_threshold",
+							 "Set the threshold for plan sampling relative to the cost of best plan, 0.0 means unbounded",
+							 NULL,
+							 &optimizer_cost_threshold,
+							 0.0,
+							 0.0,
+							 INT_MAX,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_nestloop_factor",
+							 "Set the nestloop join cost factor in the optimizer",
+							 NULL,
+							 &optimizer_nestloop_factor,
+							 1024.0,
+							 1.0,
+							 DBL_MAX,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_sort_factor",
+							 "Set the sort cost factor in the optimizer, 1.0 means same as default, > 1.0 means more costly than default, < 1.0 means means less costly than default",
+							 NULL,
+							 &optimizer_sort_factor,
+							 1.0,
+							 0.0,
+							 DBL_MAX,
 							 PGC_USERSET,
 							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
 							 NULL,

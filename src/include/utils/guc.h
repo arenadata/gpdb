@@ -429,12 +429,6 @@ extern bool optimizer_control;	/* controls whether the user can change the setti
 
 extern bool optimizer_enable_query_parameter;
 
-/* Costing or tuning related GUCs used by the Optimizer */
-extern int optimizer_segments;
-extern int optimizer_penalize_broadcast_threshold;
-extern double optimizer_cost_threshold;
-extern double optimizer_nestloop_factor;
-extern double optimizer_sort_factor;
 
 /* Optimizer hints */
 extern int optimizer_array_expansion_threshold;

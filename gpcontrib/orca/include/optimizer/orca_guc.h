@@ -128,6 +128,13 @@ extern double optimizer_damping_factor_join;
 extern double optimizer_damping_factor_groupby;
 extern bool optimizer_dpe_stats;
 
+/* Costing or tuning related GUCs used by the Optimizer */
+extern int optimizer_segments;
+extern int optimizer_penalize_broadcast_threshold;
+extern double optimizer_cost_threshold;
+extern double optimizer_nestloop_factor;
+extern double optimizer_sort_factor;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */

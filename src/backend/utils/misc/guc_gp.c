@@ -281,13 +281,6 @@ bool		optimizer_enable_query_parameter;
 
 
 
-/* Costing related GUCs used by the Optimizer */
-int			optimizer_segments;
-int			optimizer_penalize_broadcast_threshold;
-double		optimizer_cost_threshold;
-double		optimizer_nestloop_factor;
-double		optimizer_sort_factor;
-
 /* Optimizer hints */
 int			optimizer_join_arity_for_associativity_commutativity;
 int         optimizer_array_expansion_threshold;
@@ -3175,17 +3168,6 @@ struct config_int ConfigureNamesInt_gp[] =
 	},
 
 	{
-		{"optimizer_segments", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Number of segments to be considered by the optimizer during costing, or 0 to take the actual number of segments."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_segments,
-		0, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"optimizer_array_expansion_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Item limit for expansion of arrays in WHERE clause for constraint derivation."),
 			NULL,
@@ -3250,16 +3232,7 @@ struct config_int ConfigureNamesInt_gp[] =
 		NULL, NULL, NULL
 	},
 
-	{
-		{"optimizer_penalize_broadcast_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum number of rows of a relation that can be broadcasted without penalty. A value of 0 disables."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_penalize_broadcast_threshold,
-		100000, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
+
 
 	{
 		{"memory_profiler_dataset_size", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -3494,39 +3467,6 @@ struct config_real ConfigureNamesReal_gp[] =
 		},
 		&gp_resource_group_cpu_limit,
 		0.9, 0.1, 1.0,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_cost_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Set the threshold for plan sampling relative to the cost of best plan, 0.0 means unbounded"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_cost_threshold,
-		0.0, 0.0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_nestloop_factor", PGC_USERSET, QUERY_TUNING_OTHER,
-			gettext_noop("Set the nestloop join cost factor in the optimizer"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_nestloop_factor,
-		1024.0, 1.0, DBL_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_sort_factor",PGC_USERSET, QUERY_TUNING_OTHER,
-			gettext_noop("Set the sort cost factor in the optimizer, 1.0 means same as default, > 1.0 means more costly than default, < 1.0 means means less costly than default"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_sort_factor,
-		1.0, 0.0, DBL_MAX,
 		NULL, NULL, NULL
 	},
 
