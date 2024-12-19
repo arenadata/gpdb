@@ -33,6 +33,8 @@ bool		optimizer_print_missing_stats;
 /* array of xforms disable flags */
 bool		optimizer_xforms[OPTIMIZER_XFORMS_COUNT] = {[0 ... OPTIMIZER_XFORMS_COUNT - 1] = false};
 
+char	   *optimizer_search_strategy_path = NULL;
+
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
@@ -292,5 +294,16 @@ orca_guc_define()
 							 NULL,
 							 NULL,
 							 NULL);
+
+	DefineCustomStringVariable("optimizer_search_strategy_path",
+							   "Sets the search strategy used by gp optimizer.",
+							   NULL,
+							   &optimizer_search_strategy_path,
+							   "default",
+							   PGC_USERSET,
+							   GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							   NULL,
+							   NULL,
+							   NULL);
 
 }

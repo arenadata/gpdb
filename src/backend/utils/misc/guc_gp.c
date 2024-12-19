@@ -276,8 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 
-char	   *optimizer_search_strategy_path = NULL;
-
 /* GUCs to tell Optimizer to enable a physical operator */
 bool		optimizer_enable_nljoin;
 bool		optimizer_enable_indexjoin;
@@ -4444,17 +4442,6 @@ struct config_string ConfigureNamesString_gp[] =
 		},
 		&gp_auth_time_override_str,
 		"",
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_search_strategy_path", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Sets the search strategy used by gp optimizer."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_search_strategy_path,
-		"default",
 		NULL, NULL, NULL
 	},
 

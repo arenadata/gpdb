@@ -422,7 +422,6 @@
 		"optimizer_replicated_table_insert",
 		"optimizer_sample_plans",
 		"optimizer_samples_number",
-		"optimizer_search_strategy_path",
 		"optimizer_segments",
 		"optimizer_skew_factor",
 		"optimizer_sort_factor",

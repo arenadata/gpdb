@@ -427,8 +427,6 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 
-extern char *optimizer_search_strategy_path;
-
 /* GUCs to tell Optimizer to enable a physical operator */
 extern bool optimizer_enable_nljoin;
 extern bool optimizer_enable_indexjoin;

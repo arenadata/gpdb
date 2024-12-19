@@ -45,6 +45,8 @@ extern bool optimizer_print_missing_stats;
 /* array of xforms disable flags */
 extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
 
+extern char *optimizer_search_strategy_path;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */
