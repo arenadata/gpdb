@@ -429,11 +429,6 @@ extern bool optimizer_control;	/* controls whether the user can change the setti
 
 extern bool optimizer_enable_query_parameter;
 
-/* Optimizer Just In Time (JIT) compilation related GUCs*/
-extern  double  optimizer_jit_above_cost;
-extern  double  optimizer_jit_inline_above_cost;
-extern  double  optimizer_jit_optimize_above_cost;
-
 /* Cardinality estimation related GUCs used by the Optimizer */
 extern bool optimizer_extract_dxl_stats;
 extern bool optimizer_extract_dxl_stats_all_nodes;

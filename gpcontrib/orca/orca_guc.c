@@ -1,5 +1,6 @@
 #include "postgres.h"
 
+#include <float.h>
 #include <limits.h>
 
 #include "optimizer/orca_guc.h"
@@ -105,6 +106,11 @@ bool		optimizer_enumerate_plans;
 bool		optimizer_sample_plans;
 int			optimizer_plan_id;
 int			optimizer_samples_number;
+
+/* GUCs for Just In Time (JIT) compilation */
+double		optimizer_jit_above_cost;
+double		optimizer_jit_inline_above_cost;
+double		optimizer_jit_optimize_above_cost;
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
@@ -1007,4 +1013,43 @@ orca_guc_define()
 							NULL,
 							NULL,
 							NULL);
+
+	DefineCustomRealVariable("optimizer_jit_above_cost",
+							 "Perform JIT compilation if query is more expensive.",
+							 "-1 disables JIT compilation.",
+							 &optimizer_jit_above_cost,
+							 7500,
+							 -1,
+							 DBL_MAX,
+							 PGC_USERSET,
+							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_jit_optimize_above_cost",
+							 "Optimize JITed functions if query is more expensive.",
+							 "-1 disables JIT optimization.",
+							 &optimizer_jit_optimize_above_cost,
+							 37500,
+							 -1,
+							 DBL_MAX,
+							 PGC_USERSET,
+							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_jit_inline_above_cost",
+							 "Perform JIT inlining if query is more expensive.",
+							 "-1 disables inlining.",
+							 &optimizer_jit_inline_above_cost,
+							 37500,
+							 -1,
+							 DBL_MAX,
+							 PGC_USERSET,
+							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
 }
