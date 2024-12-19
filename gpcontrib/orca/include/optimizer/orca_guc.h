@@ -120,6 +120,14 @@ extern  double  optimizer_jit_above_cost;
 extern  double  optimizer_jit_inline_above_cost;
 extern  double  optimizer_jit_optimize_above_cost;
 
+/* Cardinality estimation related GUCs used by the Optimizer */
+extern bool optimizer_extract_dxl_stats;
+extern bool optimizer_extract_dxl_stats_all_nodes;
+extern double optimizer_damping_factor_filter;
+extern double optimizer_damping_factor_join;
+extern double optimizer_damping_factor_groupby;
+extern bool optimizer_dpe_stats;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */

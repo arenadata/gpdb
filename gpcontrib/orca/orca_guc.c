@@ -112,6 +112,14 @@ double		optimizer_jit_above_cost;
 double		optimizer_jit_inline_above_cost;
 double		optimizer_jit_optimize_above_cost;
 
+/* Cardinality estimation related GUCs used by the Optimizer */
+bool		optimizer_extract_dxl_stats;
+bool		optimizer_extract_dxl_stats_all_nodes;
+double		optimizer_damping_factor_filter;
+double		optimizer_damping_factor_join;
+double		optimizer_damping_factor_groupby;
+bool		optimizer_dpe_stats;
+
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
 	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
@@ -1049,6 +1057,78 @@ orca_guc_define()
 							 DBL_MAX,
 							 PGC_USERSET,
 							 GUC_EXPLAIN | GUC_GPDB_NEED_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_extract_dxl_stats",
+							 "Extract plan stats in dxl.",
+							 NULL,
+							 &optimizer_extract_dxl_stats,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_extract_dxl_stats_all_nodes",
+							 "Extract plan stats for all physical dxl nodes.",
+							 NULL,
+							 &optimizer_extract_dxl_stats_all_nodes,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_damping_factor_filter",
+							 "select predicate damping factor in optimizer, 1.0 means no damping",
+							 NULL,
+							 &optimizer_damping_factor_filter,
+							 0.75,
+							 0.0,
+							 1.0,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_damping_factor_join",
+							 "join predicate damping factor in optimizer, 1.0 means no damping, 0.0 means square root method",
+							 NULL,
+							 &optimizer_damping_factor_join,
+							 0.0,
+							 0.0,
+							 1.0,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomRealVariable("optimizer_damping_factor_groupby",
+							 "groupby operator damping factor in optimizer, 1.0 means no damping",
+							 NULL,
+							 &optimizer_damping_factor_groupby,
+							 0.75,
+							 0.0,
+							 1.0,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_dpe_stats",
+							 "Enable statistics derivation for partitioned tables with dynamic partition elimination.",
+							 NULL,
+							 &optimizer_dpe_stats,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
 							 NULL,
 							 NULL,
 							 NULL);

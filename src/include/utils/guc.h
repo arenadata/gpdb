@@ -429,14 +429,6 @@ extern bool optimizer_control;	/* controls whether the user can change the setti
 
 extern bool optimizer_enable_query_parameter;
 
-/* Cardinality estimation related GUCs used by the Optimizer */
-extern bool optimizer_extract_dxl_stats;
-extern bool optimizer_extract_dxl_stats_all_nodes;
-extern double optimizer_damping_factor_filter;
-extern double optimizer_damping_factor_join;
-extern double optimizer_damping_factor_groupby;
-extern bool optimizer_dpe_stats;
-
 /* Costing or tuning related GUCs used by the Optimizer */
 extern int optimizer_segments;
 extern int optimizer_penalize_broadcast_threshold;

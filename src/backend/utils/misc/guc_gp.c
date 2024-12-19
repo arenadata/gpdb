@@ -280,14 +280,6 @@ bool		optimizer_control = true;
 bool		optimizer_enable_query_parameter;
 
 
-/* Cardinality estimation related GUCs used by the Optimizer */
-bool		optimizer_extract_dxl_stats;
-bool		optimizer_extract_dxl_stats_all_nodes;
-double		optimizer_damping_factor_filter;
-double		optimizer_damping_factor_join;
-double		optimizer_damping_factor_groupby;
-bool		optimizer_dpe_stats;
-
 
 /* Costing related GUCs used by the Optimizer */
 int			optimizer_segments;
@@ -1768,37 +1760,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		&optimizer,
 		false,
 		check_optimizer, NULL, NULL
-	},
-
-	{
-		{"optimizer_extract_dxl_stats", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Extract plan stats in dxl."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_extract_dxl_stats,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_extract_dxl_stats_all_nodes", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Extract plan stats for all physical dxl nodes."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_extract_dxl_stats_all_nodes,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_dpe_stats", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable statistics derivation for partitioned tables with dynamic partition elimination."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_dpe_stats,
-		true,
-		NULL, NULL, NULL
 	},
 
 	{
@@ -3533,38 +3494,6 @@ struct config_real ConfigureNamesReal_gp[] =
 		},
 		&gp_resource_group_cpu_limit,
 		0.9, 0.1, 1.0,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_damping_factor_filter", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("select predicate damping factor in optimizer, 1.0 means no damping"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_damping_factor_filter,
-		0.75, 0.0, 1.0,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_damping_factor_join", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("join predicate damping factor in optimizer, 1.0 means no damping, 0.0 means square root method"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_damping_factor_join,
-		0.0, 0.0, 1.0,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_damping_factor_groupby", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("groupby operator damping factor in optimizer, 1.0 means no damping"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_damping_factor_groupby,
-		0.75, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
 
