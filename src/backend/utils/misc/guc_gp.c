@@ -277,26 +277,6 @@ bool		optimizer;
 bool		optimizer_control = true;
 
 
-bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
-bool		optimizer_enable_broadcast_nestloop_outer_child;
-bool		optimizer_discard_redistribute_hashjoin;
-bool		optimizer_enable_streaming_material;
-bool		optimizer_enable_gather_on_segment_for_dml;
-bool		optimizer_enable_assert_maxonerow;
-bool		optimizer_enable_constant_expression_evaluation;
-bool		optimizer_enable_bitmapscan;
-bool		optimizer_enable_outerjoin_to_unionall_rewrite;
-bool		optimizer_enable_ctas;
-bool		optimizer_enable_dml;
-bool		optimizer_enable_dml_constraints;
-
-bool		optimizer_expand_fulljoin;
-bool		optimizer_enable_mergejoin;
-bool		optimizer_enable_redistribute_nestloop_loj_inner_child;
-bool		optimizer_force_comprehensive_join_implementation;
-bool		optimizer_enable_replicated_table;
-bool		optimizer_enable_foreign_table;
-bool		optimizer_enable_right_outer_join;
 bool		optimizer_enable_query_parameter;
 
 /* Optimizer plan enumeration related GUCs */
@@ -345,10 +325,9 @@ bool		optimizer_array_constraints;
 bool		optimizer_cte_inlining;
 
 bool		optimizer_enable_associativity;
-bool		optimizer_enable_eageragg;
+
 bool		optimizer_enable_range_predicate_dpe;
 bool		optimizer_enable_push_join_below_union_all;
-bool		optimizer_enable_orderedagg;
 
 /* Analyze related GUCs for Optimizer */
 bool		optimizer_analyze_root_partition;
@@ -1875,76 +1854,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"optimizer_enable_hashjoin_redistribute_broadcast_children", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable hash join plans with, Redistribute outer child and Broadcast inner child, in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_hashjoin_redistribute_broadcast_children,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_broadcast_nestloop_outer_child", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable nested loops join plans with replicated outer child in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_broadcast_nestloop_outer_child,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_discard_redistribute_hashjoin", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Discard hash join with redistribute motion in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_discard_redistribute_hashjoin,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_expand_fulljoin", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's support of expanding full outer joins using union all."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_expand_fulljoin,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_mergejoin", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the optimizer's support of merge joins."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_mergejoin,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_streaming_material", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable plans with a streaming material node in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_streaming_material,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_gather_on_segment_for_dml", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable DML optimization by enforcing a non-coordinator gather in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_gather_on_segment_for_dml,
-		true,
-		NULL, NULL, NULL
-	},
-	{
 		{"optimizer_enforce_subplans", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enforce correlated execution in the optimizer"),
 			NULL,
@@ -1954,16 +1863,7 @@ struct config_bool ConfigureNamesBool_gp[] =
 		false,
 		NULL, NULL, NULL
 	},
-	{
-		{"optimizer_enable_assert_maxonerow", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable Assert MaxOneRow plans to check number of rows at runtime."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_assert_maxonerow,
-		true,
-		NULL, NULL, NULL
-	},
+
 	{
 		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Enable plan enumeration"),
@@ -2019,45 +1919,12 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"optimizer_enable_constant_expression_evaluation", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable constant expression evaluation in the optimizer"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_constant_expression_evaluation,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"optimizer_use_external_constant_expression_evaluation_for_ints", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Use external constant expression evaluation in the optimizer for all integer types"),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_use_external_constant_expression_evaluation_for_ints,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_bitmapscan", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable bitmap plans in the optimizer"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_bitmapscan,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_outerjoin_to_unionall_rewrite", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable rewriting Left Outer Join to UnionAll"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_outerjoin_to_unionall_rewrite,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2074,17 +1941,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"optimizer_enable_ctas", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable CTAS plans in the optimizer"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_ctas,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"optimizer_remove_order_below_dml", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Remove OrderBy below a DML operation"),
 			NULL,
@@ -2092,28 +1948,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&optimizer_remove_order_below_dml,
 		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_dml", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable DML plans in GPORCA."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_dml,
-		true,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_dml_constraints", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Support DML with CHECK constraints and NOT NULL constraints."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_dml_constraints,
-		true,
 		NULL, NULL, NULL
 	},
 
@@ -2341,25 +2175,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		false,
 		NULL, NULL, NULL
 	},
-	{
-		{"optimizer_enable_orderedagg", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable ordered aggregate plans."),
-			NULL
-		},
-		&optimizer_enable_orderedagg,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_eageragg", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable Eager Agg transform for pushing aggregate below an innerjoin."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_eageragg,
-		false,
-		NULL, NULL, NULL
-	},
 
 	{
 		{"optimizer_enable_range_predicate_dpe", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -2389,69 +2204,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&gp_autostats_allow_nonowner,
 		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_enable_redistribute_nestloop_loj_inner_child", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable nested loops left join plans with redistributed inner child in the optimizer."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_redistribute_nestloop_loj_inner_child,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_force_comprehensive_join_implementation", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Explore a nested loop join even if a hash join is possible"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_force_comprehensive_join_implementation,
-		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_replicated_table", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Enable replicated tables."),
-		 NULL,
-		 GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_replicated_table,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_foreign_table", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Enable foreign tables in Orca."),
-		 NULL,
-		 GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_foreign_table,
-		true,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_right_outer_join", PGC_USERSET, QUERY_TUNING_METHOD,
-		 gettext_noop("Enable Orca to generate plans containing right outer joins."),
-		 gettext_noop("Right outer join can be re-written from left outer join. "
-					  "However, there are scenarios due to cardinality and cost "
-					  "misestimation, right outer join plan may be sub-optimal and "
-					  "can either be slower than the left outer join plan alternative "
-					  "or hit out-of-memory (OOM). The root cause can be identified "
-					  "by viewing the explain analyze plan and observing that the "
-					  "right outer join plan node is consuming all resources "
-					  "(CPU/memory) or the explain analyze itself hits OOM. By "
-					  "setting this GUC value to \"false\" users can force GPORCA to "
-					  "generate an equivalent left outer join plan. We recommend that "
-					  "the GUC be set at the query level as there can be several use "
-					  "cases where right outer join is the best plan alternative to "
-					  "choose."),
-		 GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_right_outer_join,
-		true,
 		NULL, NULL, NULL
 	},
 	{

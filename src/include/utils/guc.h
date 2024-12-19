@@ -427,27 +427,6 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 
-extern bool optimizer_enable_hashjoin_redistribute_broadcast_children;
-extern bool optimizer_enable_broadcast_nestloop_outer_child;
-extern bool optimizer_discard_redistribute_hashjoin;
-extern bool optimizer_enable_streaming_material;
-extern bool optimizer_enable_gather_on_segment_for_dml;
-extern bool optimizer_enable_assert_maxonerow;
-extern bool optimizer_enable_constant_expression_evaluation;
-extern bool optimizer_enable_bitmapscan;
-extern bool optimizer_enable_outerjoin_to_unionall_rewrite;
-extern bool optimizer_enable_ctas;
-extern bool optimizer_enable_dml;
-extern bool	optimizer_enable_dml_constraints;
-extern bool optimizer_enable_eageragg;
-extern bool optimizer_enable_orderedagg;
-extern bool optimizer_expand_fulljoin;
-extern bool optimizer_enable_mergejoin;
-extern bool optimizer_enable_redistribute_nestloop_loj_inner_child;
-extern bool optimizer_force_comprehensive_join_implementation;
-extern bool optimizer_enable_replicated_table;
-extern bool optimizer_enable_foreign_table;
-extern bool optimizer_enable_right_outer_join;
 extern bool optimizer_enable_query_parameter;
 
 /* Optimizer plan enumeration related GUCs */

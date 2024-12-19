@@ -75,6 +75,31 @@ bool		optimizer_multilevel_partitioning;
 
 bool		optimizer_enable_space_pruning;
 
+bool		optimizer_enable_hashjoin_redistribute_broadcast_children;
+bool		optimizer_enable_broadcast_nestloop_outer_child;
+bool		optimizer_discard_redistribute_hashjoin;
+bool		optimizer_enable_streaming_material;
+bool		optimizer_enable_gather_on_segment_for_dml;
+bool		optimizer_enable_assert_maxonerow;
+bool		optimizer_enable_constant_expression_evaluation;
+bool		optimizer_enable_bitmapscan;
+bool		optimizer_enable_outerjoin_to_unionall_rewrite;
+bool		optimizer_enable_ctas;
+bool		optimizer_enable_dml;
+bool		optimizer_enable_dml_constraints;
+
+bool		optimizer_expand_fulljoin;
+bool		optimizer_enable_mergejoin;
+bool		optimizer_enable_redistribute_nestloop_loj_inner_child;
+bool		optimizer_force_comprehensive_join_implementation;
+bool		optimizer_enable_replicated_table;
+bool		optimizer_enable_foreign_table;
+bool		optimizer_enable_right_outer_join;
+
+bool		optimizer_enable_eageragg;
+
+bool		optimizer_enable_orderedagg;
+
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
 	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
@@ -686,5 +711,247 @@ orca_guc_define()
 							 NULL,
 							 NULL);
 
+	DefineCustomBoolVariable("optimizer_enable_hashjoin_redistribute_broadcast_children",
+							 "Enable hash join plans with, Redistribute outer child and Broadcast inner child, in the optimizer.",
+							 NULL,
+							 &optimizer_enable_hashjoin_redistribute_broadcast_children,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_broadcast_nestloop_outer_child",
+							 "Enable nested loops join plans with replicated outer child in the optimizer.",
+							 NULL,
+							 &optimizer_enable_broadcast_nestloop_outer_child,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_discard_redistribute_hashjoin",
+							 "Discard hash join with redistribute motion in the optimizer.",
+							 NULL,
+							 &optimizer_discard_redistribute_hashjoin,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_expand_fulljoin",
+							 "Enables the optimizer's support of expanding full outer joins using union all.",
+							 NULL,
+							 &optimizer_expand_fulljoin,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_mergejoin",
+							 "Enables the optimizer's support of merge joins.",
+							 NULL,
+							 &optimizer_enable_mergejoin,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_streaming_material",
+							 "Enable plans with a streaming material node in the optimizer.",
+							 NULL,
+							 &optimizer_enable_streaming_material,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_gather_on_segment_for_dml",
+							 "Enable DML optimization by enforcing a non-coordinator gather in the optimizer.",
+							 NULL,
+							 &optimizer_enable_gather_on_segment_for_dml,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_assert_maxonerow",
+							 "Enable Assert MaxOneRow plans to check number of rows at runtime.",
+							 NULL,
+							 &optimizer_enable_assert_maxonerow,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_constant_expression_evaluation",
+							 "Enable constant expression evaluation in the optimizer",
+							 NULL,
+							 &optimizer_enable_constant_expression_evaluation,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_bitmapscan",
+							 "Enable bitmap plans in the optimizer",
+							 NULL,
+							 &optimizer_enable_bitmapscan,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_outerjoin_to_unionall_rewrite",
+							 "Enable rewriting Left Outer Join to UnionAll",
+							 NULL,
+							 &optimizer_enable_outerjoin_to_unionall_rewrite,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_ctas",
+							 "Enable CTAS plans in the optimizer",
+							 NULL,
+							 &optimizer_enable_ctas,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_dml",
+							 "Enable DML plans in GPORCA.",
+							 NULL,
+							 &optimizer_enable_dml,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_dml_constraints",
+							 "Support DML with CHECK constraints and NOT NULL constraints.",
+							 NULL,
+							 &optimizer_enable_dml_constraints,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_orderedagg",
+							 "Enable ordered aggregate plans.",
+							 NULL,
+							 &optimizer_enable_orderedagg,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_eageragg",
+							 "Enable Eager Agg transform for pushing aggregate below an innerjoin.",
+							 NULL,
+							 &optimizer_enable_eageragg,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_redistribute_nestloop_loj_inner_child",
+							 "Enable nested loops left join plans with redistributed inner child in the optimizer.",
+							 NULL,
+							 &optimizer_enable_redistribute_nestloop_loj_inner_child,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_force_comprehensive_join_implementation",
+							 "Explore a nested loop join even if a hash join is possible",
+							 NULL,
+							 &optimizer_force_comprehensive_join_implementation,
+							 false,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_replicated_table",
+							 "Enable replicated tables.",
+							 NULL,
+							 &optimizer_enable_replicated_table,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_foreign_table",
+							 "Enable foreign tables in Orca.",
+							 NULL,
+							 &optimizer_enable_foreign_table,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_enable_right_outer_join",
+							 "Enable Orca to generate plans containing right outer joins.",
+							 "Right outer join can be re-written from left outer join. "
+							 "However, there are scenarios due to cardinality and cost "
+							 "misestimation, right outer join plan may be sub-optimal and "
+							 "can either be slower than the left outer join plan alternative "
+							 "or hit out-of-memory (OOM). The root cause can be identified "
+							 "by viewing the explain analyze plan and observing that the "
+							 "right outer join plan node is consuming all resources "
+							 "(CPU/memory) or the explain analyze itself hits OOM. By "
+							 "setting this GUC value to \"false\" users can force GPORCA to "
+							 "generate an equivalent left outer join plan. We recommend that "
+							 "the GUC be set at the query level as there can be several use "
+							 "cases where right outer join is the best plan alternative to "
+							 "choose.",
+							 &optimizer_enable_right_outer_join,
+							 true,
+							 PGC_USERSET,
+							 GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
 
 }
