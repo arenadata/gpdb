@@ -100,6 +100,12 @@ bool		optimizer_enable_eageragg;
 
 bool		optimizer_enable_orderedagg;
 
+/* Optimizer plan enumeration related GUCs */
+bool		optimizer_enumerate_plans;
+bool		optimizer_sample_plans;
+int			optimizer_plan_id;
+int			optimizer_samples_number;
+
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
 	{"unexpected", OPTIMIZER_UNEXPECTED_FAIL},
@@ -954,4 +960,51 @@ orca_guc_define()
 							 NULL,
 							 NULL);
 
+	DefineCustomBoolVariable("optimizer_enumerate_plans",
+							 "Enable plan enumeration",
+							 NULL,
+							 &optimizer_enumerate_plans,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("optimizer_sample_plans",
+							 "Enable plan sampling",
+							 NULL,
+							 &optimizer_sample_plans,
+							 false,
+							 PGC_USERSET,
+							 GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomIntVariable("optimizer_plan_id",
+							"Choose a plan alternative",
+							NULL,
+							&optimizer_plan_id,
+							0,
+							0,
+							INT_MAX,
+							PGC_USERSET,
+							GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							NULL,
+							NULL,
+							NULL);
+
+	DefineCustomIntVariable("optimizer_samples_number",
+							"Set the number of plan samples",
+							NULL,
+							&optimizer_samples_number,
+							1000,
+							1,
+							INT_MAX,
+							PGC_USERSET,
+							GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_NO_SYNC,
+							NULL,
+							NULL,
+							NULL);
 }

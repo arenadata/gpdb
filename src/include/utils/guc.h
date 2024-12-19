@@ -429,12 +429,6 @@ extern bool optimizer_control;	/* controls whether the user can change the setti
 
 extern bool optimizer_enable_query_parameter;
 
-/* Optimizer plan enumeration related GUCs */
-extern bool optimizer_enumerate_plans;
-extern bool optimizer_sample_plans;
-extern int	optimizer_plan_id;
-extern int	optimizer_samples_number;
-
 /* Optimizer Just In Time (JIT) compilation related GUCs*/
 extern  double  optimizer_jit_above_cost;
 extern  double  optimizer_jit_inline_above_cost;

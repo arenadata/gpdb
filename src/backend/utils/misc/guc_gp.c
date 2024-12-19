@@ -279,11 +279,6 @@ bool		optimizer_control = true;
 
 bool		optimizer_enable_query_parameter;
 
-/* Optimizer plan enumeration related GUCs */
-bool		optimizer_enumerate_plans;
-bool		optimizer_sample_plans;
-int			optimizer_plan_id;
-int			optimizer_samples_number;
 
 /* Cardinality estimation related GUCs used by the Optimizer */
 bool		optimizer_extract_dxl_stats;
@@ -1865,28 +1860,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 	},
 
 	{
-		{"optimizer_enumerate_plans", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Enable plan enumeration"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enumerate_plans,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_sample_plans", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable plan sampling"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_sample_plans,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
 		{"optimizer_cte_inlining", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable CTE inlining"),
 			NULL,
@@ -3231,28 +3204,6 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&gp_global_deadlock_detector_period,
 		120, 5, INT_MAX, NULL, NULL
-	},
-
-	{
-		{"optimizer_plan_id", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Choose a plan alternative"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_plan_id,
-		0, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_samples_number", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Set the number of plan samples"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_samples_number,
-		1000, 1, INT_MAX,
-		NULL, NULL, NULL
 	},
 
 	{

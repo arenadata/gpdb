@@ -109,6 +109,12 @@ extern bool optimizer_enable_replicated_table;
 extern bool optimizer_enable_foreign_table;
 extern bool optimizer_enable_right_outer_join;
 
+/* Optimizer plan enumeration related GUCs */
+extern bool optimizer_enumerate_plans;
+extern bool optimizer_sample_plans;
+extern int	optimizer_plan_id;
+extern int	optimizer_samples_number;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */
