@@ -135,6 +135,16 @@ extern double optimizer_cost_threshold;
 extern double optimizer_nestloop_factor;
 extern double optimizer_sort_factor;
 
+/* Optimizer hints */
+extern int optimizer_array_expansion_threshold;
+extern int optimizer_join_order_threshold;
+extern int optimizer_join_order;
+extern int optimizer_join_arity_for_associativity_commutativity;
+extern int optimizer_cte_inlining_bound;
+extern int optimizer_push_group_by_below_setop_threshold;
+extern int optimizer_xform_bind_threshold;
+extern int optimizer_skew_factor;
+
 void orca_guc_define(void);
 
 #endif /* ORCA_GUC_H */

@@ -281,15 +281,6 @@ bool		optimizer_enable_query_parameter;
 
 
 
-/* Optimizer hints */
-int			optimizer_join_arity_for_associativity_commutativity;
-int         optimizer_array_expansion_threshold;
-int         optimizer_join_order_threshold;
-int			optimizer_join_order;
-int			optimizer_cte_inlining_bound;
-int			optimizer_push_group_by_below_setop_threshold;
-int			optimizer_xform_bind_threshold;
-int			optimizer_skew_factor;
 bool		optimizer_force_three_stage_scalar_dqa;
 bool		optimizer_force_expanded_distinct_aggs;
 
@@ -445,14 +436,6 @@ static const struct config_enum_entry gp_resqueue_memory_policies[] = {
 	{"none", RESMANAGER_MEMORY_POLICY_NONE},
 	{"auto", RESMANAGER_MEMORY_POLICY_AUTO},
 	{"eager_free", RESMANAGER_MEMORY_POLICY_EAGER_FREE},
-	{NULL, 0}
-};
-
-static const struct config_enum_entry optimizer_join_order_options[] = {
-	{"query", JOIN_ORDER_IN_QUERY},
-	{"greedy", JOIN_ORDER_GREEDY_SEARCH},
-	{"exhaustive", JOIN_ORDER_EXHAUSTIVE_SEARCH},
-	{"exhaustive2", JOIN_ORDER_EXHAUSTIVE2_SEARCH},
 	{NULL, 0}
 };
 
@@ -3156,83 +3139,6 @@ struct config_int ConfigureNamesInt_gp[] =
 		120, 5, INT_MAX, NULL, NULL
 	},
 
-	{
-		{"optimizer_cte_inlining_bound", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Set the CTE inlining cutoff"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_cte_inlining_bound,
-		0, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_array_expansion_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Item limit for expansion of arrays in WHERE clause for constraint derivation."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_array_expansion_threshold,
-		20, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_push_group_by_below_setop_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum number of children setops have to consider pushing group bys below it"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_push_group_by_below_setop_threshold,
-		10, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_xform_bind_threshold", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Maximum number bindings per xform per group expression. A value of 0 disables."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_xform_bind_threshold,
-		0, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-    {
-            {"optimizer_skew_factor", PGC_USERSET, DEVELOPER_OPTIONS,
-             gettext_noop("Coefficient of skew ratio computed from sample stastics. Default 0: skew computation from sample statistics turned off. [1,100]: skew ratio computed from sample statistics. The skewness used for costing is the product of the optimizer_skew_factor and the skew ratio."),
-             NULL,
-			 GUC_NOT_IN_SAMPLE
-            },
-            &optimizer_skew_factor,
-            0, 0, 100,
-            NULL, NULL, NULL
-    },
-
-	{
-		{"optimizer_join_order_threshold", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum number of join children to use dynamic programming based join ordering algorithm."),
-			NULL
-		},
-		&optimizer_join_order_threshold,
-		10, 0, 12,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_join_arity_for_associativity_commutativity", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Maximum number of children n-ary-join have without disabling commutativity and associativity transform"),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_join_arity_for_associativity_commutativity,
-		18, 0, INT_MAX,
-		NULL, NULL, NULL
-	},
-
-
 
 	{
 		{"memory_profiler_dataset_size", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -3851,17 +3757,6 @@ struct config_enum ConfigureNamesEnum_gp[] =
 		},
 		&gp_resgroup_memory_policy,
 		RESMANAGER_MEMORY_POLICY_EAGER_FREE, gp_resqueue_memory_policies, NULL, NULL
-	},
-
-	{
-		{"optimizer_join_order", PGC_USERSET, QUERY_TUNING_OTHER,
-			gettext_noop("Set optimizer join heuristic model."),
-			gettext_noop("Valid values are query, greedy, exhaustive and exhaustive2"),
-			GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_join_order,
-		JOIN_ORDER_EXHAUSTIVE2_SEARCH, optimizer_join_order_options,
-		NULL, NULL, NULL
 	},
 
 	{
