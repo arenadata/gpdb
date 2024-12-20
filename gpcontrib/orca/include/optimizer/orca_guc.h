@@ -25,7 +25,6 @@ extern int optimizer_minidump;
 extern int optimizer_cost_model;
 extern bool optimizer_metadata_caching;
 extern int optimizer_mdcache_size;
-extern bool optimizer_use_gpdb_allocators;
 
 /* Optimizer debugging GUCs */
 extern bool optimizer_print_query;
@@ -40,11 +39,9 @@ extern bool optimizer_print_group_properties;
 extern bool optimizer_print_optimization_context;
 extern bool optimizer_print_optimization_stats;
 extern bool optimizer_print_xform_results;
-extern bool optimizer_print_missing_stats;
 
 /* array of xforms disable flags */
 extern bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT];
-
 extern char *optimizer_search_strategy_path;
 
 /* GUCs to tell Optimizer to enable a physical operator */
@@ -61,32 +58,6 @@ extern bool optimizer_enable_partition_propagation;
 extern bool optimizer_enable_partition_selection;
 extern bool optimizer_enable_outerjoin_rewrite;
 extern bool optimizer_enable_multiple_distinct_aggs;
-
-extern bool optimizer_enable_direct_dispatch;
-extern bool optimizer_enable_coordinator_only_queries;
-extern bool optimizer_enable_hashjoin;
-extern bool optimizer_enable_dynamictablescan;
-extern bool optimizer_enable_dynamicindexscan;
-extern bool optimizer_enable_dynamicindexonlyscan;
-extern bool optimizer_enable_dynamicbitmapscan;
-extern bool optimizer_enable_indexscan;
-extern bool optimizer_enable_indexonlyscan;
-extern bool optimizer_enable_tablescan;
-
-extern bool optimizer_enable_hashagg;
-extern bool optimizer_enable_groupagg;
-
-extern bool optimizer_enable_derive_stats_all_groups;
-
-extern bool optimizer_force_multistage_agg;
-
-extern bool optimizer_force_agg_skew_avoidance;
-extern bool optimizer_penalize_skew;
-
-extern bool optimizer_multilevel_partitioning;
-
-extern bool optimizer_enable_space_pruning;
-
 extern bool optimizer_enable_hashjoin_redistribute_broadcast_children;
 extern bool optimizer_enable_broadcast_nestloop_outer_child;
 extern bool optimizer_discard_redistribute_hashjoin;
@@ -99,9 +70,21 @@ extern bool optimizer_enable_outerjoin_to_unionall_rewrite;
 extern bool optimizer_enable_ctas;
 extern bool optimizer_enable_dml;
 extern bool optimizer_enable_dml_constraints;
+extern bool optimizer_enable_direct_dispatch;
+extern bool optimizer_enable_coordinator_only_queries;
+extern bool optimizer_enable_hashjoin;
+extern bool optimizer_enable_dynamictablescan;
+extern bool optimizer_enable_dynamicindexscan;
+extern bool optimizer_enable_dynamicindexonlyscan;
+extern bool optimizer_enable_dynamicbitmapscan;
+extern bool optimizer_enable_indexscan;
+extern bool optimizer_enable_indexonlyscan;
+extern bool optimizer_enable_tablescan;
 extern bool optimizer_enable_eageragg;
 extern bool optimizer_enable_orderedagg;
 extern bool optimizer_expand_fulljoin;
+extern bool optimizer_enable_hashagg;
+extern bool optimizer_enable_groupagg;
 extern bool optimizer_enable_mergejoin;
 extern bool optimizer_enable_redistribute_nestloop_loj_inner_child;
 extern bool optimizer_force_comprehensive_join_implementation;
@@ -123,10 +106,12 @@ extern double optimizer_jit_optimize_above_cost;
 /* Cardinality estimation related GUCs used by the Optimizer */
 extern bool optimizer_extract_dxl_stats;
 extern bool optimizer_extract_dxl_stats_all_nodes;
+extern bool optimizer_print_missing_stats;
 extern double optimizer_damping_factor_filter;
 extern double optimizer_damping_factor_join;
 extern double optimizer_damping_factor_groupby;
 extern bool optimizer_dpe_stats;
+extern bool optimizer_enable_derive_stats_all_groups;
 
 /* Costing or tuning related GUCs used by the Optimizer */
 extern int optimizer_segments;
@@ -144,21 +129,27 @@ extern int optimizer_cte_inlining_bound;
 extern int optimizer_push_group_by_below_setop_threshold;
 extern int optimizer_xform_bind_threshold;
 extern int optimizer_skew_factor;
-
+extern bool optimizer_force_multistage_agg;
 extern bool optimizer_force_three_stage_scalar_dqa;
 extern bool optimizer_force_expanded_distinct_aggs;
+extern bool optimizer_force_agg_skew_avoidance;
+extern bool optimizer_penalize_skew;
 extern bool optimizer_prune_computed_columns;
 extern bool optimizer_push_requirements_from_consumer_to_producer;
 extern bool optimizer_enforce_subplans;
 extern bool optimizer_apply_left_outer_to_union_all_disregarding_stats;
 extern bool optimizer_use_external_constant_expression_evaluation_for_ints;
 extern bool optimizer_remove_order_below_dml;
+extern bool optimizer_multilevel_partitioning;
 extern bool optimizer_parallel_union;
 extern bool optimizer_array_constraints;
 extern bool optimizer_cte_inlining;
+extern bool optimizer_enable_space_pruning;
 extern bool optimizer_enable_associativity;
 extern bool optimizer_enable_range_predicate_dpe;
 extern bool optimizer_enable_push_join_below_union_all;
+
+extern bool optimizer_use_gpdb_allocators;
 
 void orca_guc_define(void);
 

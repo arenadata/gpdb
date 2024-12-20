@@ -33,7 +33,6 @@ bool optimizer_print_group_properties;
 bool optimizer_print_optimization_context;
 bool optimizer_print_optimization_stats;
 bool optimizer_print_xform_results;
-bool optimizer_print_missing_stats;
 
 /* array of xforms disable flags */
 bool optimizer_xforms[OPTIMIZER_XFORMS_COUNT] = {
@@ -55,32 +54,7 @@ bool optimizer_enable_partition_propagation;
 bool optimizer_enable_partition_selection;
 bool optimizer_enable_outerjoin_rewrite;
 bool optimizer_enable_multiple_distinct_aggs;
-
 bool optimizer_enable_direct_dispatch;
-
-bool optimizer_enable_coordinator_only_queries;
-bool optimizer_enable_hashjoin;
-bool optimizer_enable_dynamictablescan;
-bool optimizer_enable_dynamicindexscan;
-bool optimizer_enable_dynamicindexonlyscan;
-bool optimizer_enable_dynamicbitmapscan;
-bool optimizer_enable_indexscan;
-bool optimizer_enable_indexonlyscan;
-bool optimizer_enable_tablescan;
-bool optimizer_enable_hashagg;
-bool optimizer_enable_groupagg;
-
-bool optimizer_enable_derive_stats_all_groups;
-
-bool optimizer_force_multistage_agg;
-
-bool optimizer_force_agg_skew_avoidance;
-bool optimizer_penalize_skew;
-
-bool optimizer_multilevel_partitioning;
-
-bool optimizer_enable_space_pruning;
-
 bool optimizer_enable_hashjoin_redistribute_broadcast_children;
 bool optimizer_enable_broadcast_nestloop_outer_child;
 bool optimizer_discard_redistribute_hashjoin;
@@ -93,7 +67,17 @@ bool optimizer_enable_outerjoin_to_unionall_rewrite;
 bool optimizer_enable_ctas;
 bool optimizer_enable_dml;
 bool optimizer_enable_dml_constraints;
-
+bool optimizer_enable_coordinator_only_queries;
+bool optimizer_enable_hashjoin;
+bool optimizer_enable_dynamictablescan;
+bool optimizer_enable_dynamicindexscan;
+bool optimizer_enable_dynamicindexonlyscan;
+bool optimizer_enable_dynamicbitmapscan;
+bool optimizer_enable_indexscan;
+bool optimizer_enable_indexonlyscan;
+bool optimizer_enable_tablescan;
+bool optimizer_enable_hashagg;
+bool optimizer_enable_groupagg;
 bool optimizer_expand_fulljoin;
 bool optimizer_enable_mergejoin;
 bool optimizer_enable_redistribute_nestloop_loj_inner_child;
@@ -102,28 +86,21 @@ bool optimizer_enable_replicated_table;
 bool optimizer_enable_foreign_table;
 bool optimizer_enable_right_outer_join;
 
-bool optimizer_enable_eageragg;
-
-bool optimizer_enable_orderedagg;
-
 /* Optimizer plan enumeration related GUCs */
 bool optimizer_enumerate_plans;
 bool optimizer_sample_plans;
 int optimizer_plan_id;
 int optimizer_samples_number;
 
-/* GUCs for Just In Time (JIT) compilation */
-double optimizer_jit_above_cost;
-double optimizer_jit_inline_above_cost;
-double optimizer_jit_optimize_above_cost;
-
 /* Cardinality estimation related GUCs used by the Optimizer */
 bool optimizer_extract_dxl_stats;
 bool optimizer_extract_dxl_stats_all_nodes;
+bool optimizer_print_missing_stats;
 double optimizer_damping_factor_filter;
 double optimizer_damping_factor_join;
 double optimizer_damping_factor_groupby;
 bool optimizer_dpe_stats;
+bool optimizer_enable_derive_stats_all_groups;
 
 /* Costing related GUCs used by the Optimizer */
 int optimizer_segments;
@@ -141,25 +118,32 @@ int optimizer_cte_inlining_bound;
 int optimizer_push_group_by_below_setop_threshold;
 int optimizer_xform_bind_threshold;
 int optimizer_skew_factor;
-
+bool optimizer_force_multistage_agg;
 bool optimizer_force_three_stage_scalar_dqa;
 bool optimizer_force_expanded_distinct_aggs;
-
+bool optimizer_force_agg_skew_avoidance;
+bool optimizer_penalize_skew;
 bool optimizer_prune_computed_columns;
 bool optimizer_push_requirements_from_consumer_to_producer;
 bool optimizer_enforce_subplans;
 bool optimizer_use_external_constant_expression_evaluation_for_ints;
 bool optimizer_apply_left_outer_to_union_all_disregarding_stats;
 bool optimizer_remove_order_below_dml;
-
+bool optimizer_multilevel_partitioning;
 bool optimizer_parallel_union;
 bool optimizer_array_constraints;
 bool optimizer_cte_inlining;
-
+bool optimizer_enable_space_pruning;
 bool optimizer_enable_associativity;
-
+bool optimizer_enable_eageragg;
 bool optimizer_enable_range_predicate_dpe;
 bool optimizer_enable_push_join_below_union_all;
+bool optimizer_enable_orderedagg;
+
+/* GUCs for Just In Time (JIT) compilation */
+double optimizer_jit_above_cost;
+double optimizer_jit_inline_above_cost;
+double optimizer_jit_optimize_above_cost;
 
 static const struct config_enum_entry optimizer_log_failure_options[] = {
 	{"all", OPTIMIZER_ALL_FAIL},
