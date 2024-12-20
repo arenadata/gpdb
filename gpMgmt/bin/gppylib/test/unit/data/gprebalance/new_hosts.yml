@@ -1,0 +1,22 @@
+hosts:
+- hostname: nh1
+  address: nh1
+  primary_datadirs:
+  - /data/primaries
+  mirror_datadirs:
+  - /data/mirrors
+  
+- hostname: nh2
+  address: nh2
+  primary_datadirs:
+  - /data/primaries
+  mirror_datadirs:
+  - /data/mirrors
+
+- hostname: nh3
+  address: nh3
+  primary_datadirs:
+  - /data/primaries
+  mirror_datadirs:
+  - /data/mirrors
+

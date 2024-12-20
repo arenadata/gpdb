@@ -1,0 +1,163 @@
+import os
+import imp
+
+from .gp_unittest import *
+from mock import *
+from gppylib.gparray import Segment, GpArray
+from gppylib.db.dbconn import DbURL
+from gppylib.db import catalog
+from gppylib.gplog import *
+from gppylib.system.configurationInterface import GpConfigurationProvider
+from gppylib.system.environment import GpCoordinatorEnvironment
+from gppylib.db import dbconn
+import io
+import sys
+
+
+def initGparrayFromFile(filename):
+    segdbs = []
+    with open(filename, 'r') as fp:
+        for line in fp:
+            if not line.lstrip().startswith('#'):
+                segdbs.append(Segment.initFromString(line))
+    return GpArray(segdbs, segdbs)
+
+
+class GpTestRebalance(GpTestCase):
+    def setUp(self):
+        gprebalance_file = os.path.abspath(
+            os.path.dirname(__file__) + "/../../../gprebalance")
+        self.subject = imp.load_source('gprebalance', gprebalance_file)
+        self.old_sys_argv = sys.argv
+        sys.argv = []
+        self.options, self.args, self.parser = self.subject.parseargs()
+
+        self.subject.logger = Mock(
+            spec=['log', 'warn', 'info', 'debug', 'error', 'warning', 'fatal', 'exception'])
+
+        self.subject.check_running_gputils = Mock(return_value=False)
+
+        self.apply_patches([
+            patch('builtins.open', mock_open(), create=True),
+            patch('builtins.input'),
+            patch('gprebalance.dbconn.DbURL', return_value=Mock(), spec=DbURL),
+            patch('gprebalance.dbconn.connect', return_value=Mock()),
+            patch('gprebalance.GpCoordinatorEnvironment',
+                  return_value=Mock(), spec=GpCoordinatorEnvironment),
+            patch('gprebalance.configurationInterface.getConfigurationProvider'),
+            patch('os.path.exists', return_value=Mock()),
+            patch('gprebalance.get_default_logger',
+                  return_value=self.subject.logger),
+        ])
+        self.input_mock = self.get_mock_from_apply_patch("input")
+        self.getConfigProviderFunctionMock = self.get_mock_from_apply_patch(
+            "getConfigurationProvider")
+        self.gpCoordinatorEnvironmentMock = self.get_mock_from_apply_patch(
+            "GpCoordinatorEnvironment")
+        self.previous_coordinator_data_directory = os.getenv(
+            'COORDINATOR_DATA_DIRECTORY', '')
+        self.previous_coordinator_data_directory = os.getenv(
+            'COORDINATOR_DATA_DIRECTORY', '')
+        os.environ["COORDINATOR_DATA_DIRECTORY"] = '/tmp/dirdoesnotexist'
+        configProviderMock = Mock(spec=GpConfigurationProvider)
+        self.getConfigProviderFunctionMock.return_value = configProviderMock
+        configProviderMock.initializeProvider.return_value = configProviderMock
+        self.gpCoordinatorEnvironmentMock.return_value.getCoordinatorPort.return_value = 123456
+
+    def tearDown(self):
+        os.environ['COORDINATOR_DATA_DIRECTORY'] = self.previous_coordinator_data_directory
+        sys.argv = self.old_sys_argv
+        super(GpTestRebalance, self).tearDown()
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/balanced_grouped.array"))
+    def test_already_balanced_grouped(self, mock1):
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Cluster is already balanced")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/balanced_spread.array"))
+    def test_already_balanced_spread(self, mock1):
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Cluster is already balanced")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/balanced_no_mirrors.array"))
+    def test_no_mirrors(self, mock1):
+        self.input_mock.return_value = "N"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "User Aborted. Exiting...")
+        self.input_mock.return_value = "Y"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Cluster is already balanced")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/segments_down.array"))
+    def test_segments_down(self, mock1):
+        self.input_mock.return_value = "N"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "User Aborted. Exiting...")
+        self.input_mock.return_value = "Y"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Cluster is already balanced")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_pos.array"))
+    def test_unbalanced_pos(self, mock1):
+        self.input_mock.return_value = "Y"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Validation passed. Preparing rebalance...")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_neg.array"))
+    def test_unbalanced_neg(self, mock1):
+        self.input_mock.return_value = "Y"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.error.assert_called_with("gpexpand failed: Cannot evenly distribute 5 segments across 2 hosts. "
+                                                     "\n\nExiting...")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_to_grouped_pos.array"))
+    def test_unbalanced_to_grouped_pos(self, mock1):
+        saved = self.options.mirroring
+        self.options.mirroring = 'grouped'
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Validation passed. Preparing rebalance...")
+        self.options = saved
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_to_spread_pos.array"))
+    def test_unbalanced_to_spread_pos(self, mock1):
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Validation passed. Preparing rebalance...")
+
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_to_spread_neg.array"))
+    def test_unbalanced_to_spread_neg(self, mock1):
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.error.assert_called_with("gpexpand failed: Cannot support spread mirroring strategy on given configuration. "
+                                                     "\n\nExiting...")
+
+
+if __name__ == '__main__':
+    run_tests()
