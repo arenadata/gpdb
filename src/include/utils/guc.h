@@ -423,17 +423,17 @@ extern bool create_restartpoint_on_ckpt_record_replay;
 #define EXPLAIN_MEMORY_VERBOSITY_DETAIL		2 /* Detail memory accounting tree for each slice in explain analyze */
 
 
-/* Optimizer related gucs */
+/* External planner related gucs */
 extern bool	optimizer;
 extern bool optimizer_control;	/* controls whether the user can change the setting of the "optimizer" guc */
 
 extern bool optimizer_enable_query_parameter;
 
-/* Analyze related GUCs for Optimizer */
+/* Analyze related GUCs for external planner */
 extern bool optimizer_analyze_root_partition;
 extern bool optimizer_analyze_midlevel_partition;
 
-/* optimizer GUCs for replicated table */
+/* External planner GUCs for replicated table */
 extern bool optimizer_replicated_table_insert;
 
 /* GUCs for slice table*/

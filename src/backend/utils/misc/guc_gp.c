@@ -272,15 +272,13 @@ bool		gp_recursive_cte = true;
 bool		gp_eager_two_phase_agg = false;
 bool		gp_force_random_redistribution = false;
 
-/* Optimizer related gucs */
+/* External planner related gucs */
 bool		optimizer;
 bool		optimizer_control = true;
 
-
 bool		optimizer_enable_query_parameter;
 
-
-/* Analyze related GUCs for Optimizer */
+/* Analyze related GUCs for external planner */
 bool		optimizer_analyze_root_partition;
 bool		optimizer_analyze_midlevel_partition;
 
