@@ -124,8 +124,10 @@ def validate_options(options, args, parser):
 
 
 def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
-    """Checks if there are any running instances of
-    gprebalance/gpbackup/gpexpand/gpshrink/gpresize"""
+    """
+    Checks if there are any running instances of
+    gprebalance/gpbackup/gpexpand/gpshrink/gpresize
+    """
 
     is_parallel = False
 
@@ -156,13 +158,17 @@ def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
 
 
 def create_pid_file(coordinator_data_directory: str):
-    """Creates gprebalance pid file"""
+    """
+    Creates gprebalance pid file
+    """
     with open(coordinator_data_directory + '/gprebalance.pid', 'w') as fp:
         fp.write(str(os.getpid()))
 
 
 def remove_pid_file(coordinator_data_directory: str):
-    """Removes gprebalance pid file"""
+    """
+    Removes gprebalance pid file
+    """
     try:
         os.unlink(coordinator_data_directory + '/gprebalance.pid')
     except:
@@ -172,9 +178,11 @@ def remove_pid_file(coordinator_data_directory: str):
 def dump_hosts_info(gparray: GpArray, coordinator_data_directory: str):
     """
       Converts info about hosts to YAML format
-      """
+    """
     def get_base_path(path):
-        """Extract base path from full path"""
+        """
+        Extract base path from full path
+        """
         return '/'.join(path.split('/')[:-1])
 
     hosts = {}

@@ -24,7 +24,9 @@ class MirrorStrategy(Enum):
 
 
 def get_base_path(path):
-    """Extract base path from full path"""
+    """
+    Extract base path from full path
+    """
     return '/'.join(path.split('/')[:-1])
 
 
