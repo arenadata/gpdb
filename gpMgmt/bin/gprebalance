@@ -18,7 +18,7 @@ try:
     from gppylib.programs.clsRecoverSegment_triples import get_segments_with_running_basebackup
     from gppylib.parseutils import line_reader, check_values, canonicalize_address
     from gppylib.operations.update_pg_hba_on_segments import update_pg_hba_on_segments
-    from gprebalance_modules.rebalance import GPRebalance
+    from gprebalance_modules.rebalance import GPRebalance, MirrorStrategy
     from gprebalance_modules.rebalance_validator import ClusterValidator, StateValidationError
 except ImportError as e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -37,20 +37,19 @@ cluster. Existing info can be generated from gp_segment_configuration through -g
 hosts:
 - hostname: <host_name>      # Machine hostname
   address: <address>         # Network address for connections
-  primary_datadirs:         # Directories for primary segments
+  primary_datadirs:          # Directories for primary segments
     - /datadir1
     - /datadir1
-  mirror_datadirs:          # Directories for mirror segments
+  mirror_datadirs:           # Directories for mirror segments
     - /mdatadir1
     - /mdatadir2
 You can include empty hosts in the configuration, that  is useful
 for planning future cluster balance and segment redistribution.
-         """
-         ]
+"""]
 
 _usage = """
  gprebalance -g
- gprebalance [-m <mode>] [-c] [-f <hosts_file>] [-s] [-v] 
+ gprebalance [-m <mode>] [-c] [-f <hosts_file>] [-s] [-v]
  gprebalance -c
  gprebalance -? | -h | --help | --verbose | -v
 """
@@ -66,7 +65,7 @@ def parseargs():
     parser.set_usage('%prog ' + _usage)
     parser.remove_option('-h')
 
-    parser.add_option('-m', '--mirror-mode', dest='mirroring', default='spread',
+    parser.add_option('-m', '--mirror-mode', dest='mirroring',
                       help='desirable mirroring strategy')
     parser.add_option('-c', '--clean', action='store_true',
                       help='remove the rebalance schema.')
@@ -96,7 +95,7 @@ def validate_options(options, args, parser):
         logger.error('Unknown argument %s' % args[0])
         parser.exit()
 
-    if options.mirroring and (options.mirroring != 'grouped' and options.mirroring != 'spread'):
+    if options.mirroring and options.mirroring not in ('grouped', 'spread'):
         logger.error('Mirroring strategy %s is not supported' %
                      options.mirroring)
         parser.print_help()
@@ -242,6 +241,19 @@ def possibility_checks(gpreb: GPRebalance):
         elif gpreb.options.silent:
             logger.info("Mirroring is disabled. Exiting...")
             sys.exit(0)
+
+    if gpreb.original_gparray.get_mirroring_enabled() and startup_validator.mirror_strategy == MirrorStrategy.MIRRORLESS:
+        mirror_type = ask_string(
+            "\nYou haven't specified desirable mirroring strategy.  Spread mirroring places\n"
+            "a given hosts mirrored segments each on a separate host.  You must be \n"
+            "using more hosts than the number of segments per host for spread mirroring. \n"
+            "Grouped mirroring places all of a given hosts segments on a single \n"
+            "mirrored host.  You must be using at least 2 hosts for grouped strategy.\n\n",
+            "What type of mirroring strategy would you like?",
+            'grouped', ['spread', 'grouped'])
+        strat = MirrorStrategy.SPREAD if mirror_type == 'spread' else MirrorStrategy.GROUPED
+        gpreb.setMirroringStrategy(strat)
+        startup_validator.mirror_strategy = strat
 
     already_bal, _ = startup_validator.validate_existing_configuration()
     if already_bal:

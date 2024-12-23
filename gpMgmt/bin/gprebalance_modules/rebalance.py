@@ -18,6 +18,7 @@ class Host:
 
 
 class MirrorStrategy(Enum):
+    MIRRORLESS = "none"
     GROUPED = "grouped"
     SPREAD = "spread"
 
@@ -75,4 +76,12 @@ class GPRebalance:
         self.conn = dbconn.connect(
             self.dburl, utility=True, encoding='UTF8', allowSystemTableMods=True)
         self.target_hosts = form_target_hosts(gparray, options.filename)
-        self.target_strategy = MirrorStrategy.SPREAD if options.mirroring == 'spread' else MirrorStrategy.GROUPED
+        if options.mirroring == 'spread':
+            self.target_strategy = MirrorStrategy.SPREAD
+        elif options.mirroring == 'grouped':
+            self.target_strategy = MirrorStrategy.GROUPED
+        else:
+            self.target_strategy = MirrorStrategy.MIRRORLESS
+
+    def setMirroringStrategy(self, type: MirrorStrategy):
+        self.target_strategy = type

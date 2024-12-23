@@ -31,6 +31,7 @@ class GpTestRebalance(GpTestCase):
         self.old_sys_argv = sys.argv
         sys.argv = []
         self.options, self.args, self.parser = self.subject.parseargs()
+        self.options.mirroring = 'grouped'
 
         self.subject.logger = Mock(
             spec=['log', 'warn', 'info', 'debug', 'error', 'warning', 'fatal', 'exception'])
@@ -140,23 +141,29 @@ class GpTestRebalance(GpTestCase):
             self.subject.main(self.options, self.args, self.parser)
         self.subject.logger.info.assert_any_call(
             "Validation passed. Preparing rebalance...")
-        self.options = saved
+        self.options.mirroring = saved
 
     @patch('gprebalance.GpArray.initFromCatalog',
            return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_to_spread_pos.array"))
     def test_unbalanced_to_spread_pos(self, mock1):
+        saved = self.options.mirroring
+        self.options.mirroring = 'spread'
         with self.assertRaises(SystemExit):
             self.subject.main(self.options, self.args, self.parser)
         self.subject.logger.info.assert_any_call(
             "Validation passed. Preparing rebalance...")
+        self.options.mirroring = saved
 
     @patch('gprebalance.GpArray.initFromCatalog',
            return_value=initGparrayFromFile(os.path.dirname(__file__) + "/data/gprebalance/unbalanced_to_spread_neg.array"))
     def test_unbalanced_to_spread_neg(self, mock1):
+        saved = self.options.mirroring
+        self.options.mirroring = 'spread'
         with self.assertRaises(SystemExit):
             self.subject.main(self.options, self.args, self.parser)
         self.subject.logger.error.assert_called_with("gpexpand failed: Cannot support spread mirroring strategy on given configuration. "
                                                      "\n\nExiting...")
+        self.options.mirroring = saved
 
 
 if __name__ == '__main__':
