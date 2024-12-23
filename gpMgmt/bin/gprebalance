@@ -92,7 +92,7 @@ def parseargs():
 
 def validate_options(options, args, parser):
     if len(args) > 0:
-        logger.error('Unknown argument %s' % args[0])
+        logger.error(f'Unknown argument {args[0]}')
         parser.exit()
 
     if options.mirroring and options.mirroring not in ('grouped', 'spread'):
@@ -116,7 +116,7 @@ def validate_options(options, args, parser):
     if options.genconf:
         for arg in sys.argv[1:]:
             if arg != '-g' and arg != '--gen-hosts':
-                logger.error("-g flag must be used alone")
+                logger.error('-g flag must be used alone')
                 parser.print_usage()
                 parser.exit()
 
@@ -131,12 +131,12 @@ def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
 
     is_parallel = False
 
-    for util in ['gprebalance', 'gpexpand', 'gpshrink', 'gpresize']:
+    for util in ('gprebalance', 'gpexpand', 'gpshrink', 'gpresize'):
         try:
-            with open(coordinator_data_directory + '/%s.pid' % util, 'r') as fp:
+            with open(f'{coordinator_data_directory}/{util}.pid', 'r') as fp:
                 pid = int(fp.readline().strip())
                 if check_pid(pid):
-                    logger.error('%s is already running.' % util)
+                    logger.error(f'{util} is already running.')
                     sys.exit(1)
         except IOError:
             pass
@@ -221,7 +221,7 @@ def dump_hosts_info(gparray: GpArray, coordinator_data_directory: str):
 
 
 def possibility_checks(gpreb: GPRebalance):
-    logger.info("Validation of rebalance possibility...")
+    logger.info('Validation of rebalance possibility...')
     startup_validator = ClusterValidator(
         gpreb.target_hosts,
         gpreb.original_gparray.getSegmentsAsLoadedFromDb(),
@@ -232,10 +232,10 @@ def possibility_checks(gpreb: GPRebalance):
     except StateValidationError as e:
         if not gpreb.options.silent and not ask_yesno('', ''' %s Are you sure you want
                                                       to continue with this gprebalance session?''' % str(e), "N"):
-            logger.info("User Aborted. Exiting...")
+            logger.info('User Aborted. Exiting...')
             sys.exit(0)
         elif gpreb.options.silent:
-            logger.info("%s Exiting..." % str(e))
+            logger.info(f'{str(e)} Exiting...')
             sys.exit(0)
     if not gpreb.original_gparray.get_mirroring_enabled():
         if not gpreb.options.silent and not ask_yesno('',
@@ -244,10 +244,10 @@ def possibility_checks(gpreb: GPRebalance):
                                                       be not available.
                                                       Are you sure you want
                                                       to continue with this gprebalance session?''', "N"):
-            logger.info("User Aborted. Exiting...")
+            logger.info('User Aborted. Exiting...')
             sys.exit(0)
         elif gpreb.options.silent:
-            logger.info("Mirroring is disabled. Exiting...")
+            logger.info('Mirroring is disabled. Exiting...')
             sys.exit(0)
 
     if gpreb.original_gparray.get_mirroring_enabled() and startup_validator.mirror_strategy == MirrorStrategy.MIRRORLESS:
@@ -265,7 +265,7 @@ def possibility_checks(gpreb: GPRebalance):
 
     already_bal, _ = startup_validator.validate_existing_configuration()
     if already_bal:
-        logger.info("Cluster is already balanced")
+        logger.info('Cluster is already balanced')
         sys.exit(0)
     startup_validator.prevalidate_segment_distribution()
     startup_validator.prevalidate_mirror_strategy()
@@ -323,14 +323,14 @@ def main(options, args, parser):
 
         gprebalance = GPRebalance(logger, gparray, dburl, options)
         possibility_checks(gprebalance)
-        logger.info("Validation passed. Preparing rebalance...")
-        logger.info("Exiting...")
+        logger.info('Validation passed. Preparing rebalance...')
+        logger.info('Exiting...')
         sys.exit(0)
     except Exception as e:
         if options and options.verbose:
-            logger.exception("gpexpand failed. exiting...")
+            logger.exception('gpexpand failed. exiting...')
         else:
-            logger.error("gpexpand failed: %s \n\nExiting..." % e)
+            logger.error(f'gpexpand failed: {e} \n\nExiting...')
         sys.exit(1)
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
