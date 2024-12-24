@@ -1017,9 +1017,6 @@
 /* Define to use OpenSSL for random number generation */
 #undef USE_OPENSSL_RANDOM
 
-/* Define to 1 to build with Greenplum ORCA optimizer. (--enable-orca) */
-#undef USE_ORCA
-
 /* Define to 1 to build with PAM support. (--with-pam) */
 #undef USE_PAM
 
