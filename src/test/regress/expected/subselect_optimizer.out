@@ -1235,3 +1235,65 @@ drop table tl1;
 drop table tl2;
 drop table tl3;
 drop table tl4;
+-- Check deep tree support in Test expression node when outer params are present with =ANY or IN queries
+CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
+INSERT INTO test_tbl_t VALUES ('0', 0), ('0', 1);
+CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
+INSERT INTO test_tbl_d VALUES ('0', 0), ('0', 1);
+CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
+INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Result
+   Output: test_tbl_t.text_t, test_tbl_t.int_t
+   Filter: (SubPlan 2)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Output: test_tbl_t.text_t, test_tbl_t.int_t
+         Merge Key: test_tbl_t.int_t
+         ->  Sort
+               Output: test_tbl_t.text_t, test_tbl_t.int_t
+               Sort Key: test_tbl_t.int_t
+               ->  Seq Scan on public.test_tbl_t
+                     Output: test_tbl_t.text_t, test_tbl_t.int_t
+   SubPlan 2  (slice0)
+     ->  Result
+           Output: true
+           ->  Result
+                 Output: ((test_tbl_p.int_p = 1))
+                 Filter: (((SubPlan 1)) = ((test_tbl_p.int_p = 1)))
+                 ->  Result
+                       Output: (test_tbl_p.int_p = 1), (SubPlan 1)
+                       ->  Materialize
+                             Output: test_tbl_p.int_p
+                             ->  Gather Motion 3:1  (slice2; segments: 3)
+                                   Output: test_tbl_p.int_p
+                                   ->  Seq Scan on public.test_tbl_p
+                                         Output: test_tbl_p.int_p
+                       SubPlan 1  (slice0)
+                         ->  Result
+                               Output: test_tbl_d.int_d
+                               ->  Result
+                                     Output: true, test_tbl_d.int_d
+                                     ->  Materialize
+                                           Output: test_tbl_d.int_d
+                                           ->  Gather Motion 3:1  (slice3; segments: 3)
+                                                 Output: test_tbl_d.int_d
+                                                 ->  Seq Scan on public.test_tbl_d
+                                                       Output: test_tbl_d.int_d
+ Optimizer: Pivotal Optimizer (GPORCA)
+ Settings: optimizer=on
+(38 rows)
+
+SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+ text_t | int_t 
+--------+-------
+ 0      |     0
+ 0      |     1
+(2 rows)
+
+DROP TABLE test_tbl_t;
+DROP TABLE test_tbl_d;
+DROP TABLE test_tbl_p;

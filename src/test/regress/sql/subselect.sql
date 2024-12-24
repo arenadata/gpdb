@@ -614,3 +614,22 @@ drop table tl1;
 drop table tl2;
 drop table tl3;
 drop table tl4;
+
+-- Check deep tree support in Test expression node when outer params are present with =ANY or IN queries
+CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
+INSERT INTO test_tbl_t VALUES ('0', 0), ('0', 1);
+
+CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
+INSERT INTO test_tbl_d VALUES ('0', 0), ('0', 1);
+
+CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
+INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
+
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+
+DROP TABLE test_tbl_t;
+DROP TABLE test_tbl_d;
+DROP TABLE test_tbl_p;
