@@ -84,6 +84,9 @@
 	((plansource)->raw_parse_tree && \
 	 IsA((plansource)->raw_parse_tree->stmt, TransactionStmt))
 
+/* hooks */
+choose_custom_plan_hook_type choose_custom_plan_hook = NULL;
+
 /*
  * This is the head of the backend's list of "saved" CachedPlanSources (i.e.,
  * those that are in long-lived storage and are examined for sinval events).
@@ -1061,6 +1064,16 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, Into
 {
 	double		avg_custom_cost;
 
+	if (choose_custom_plan_hook != NULL)
+	{
+		PlanCacheMode mode = choose_custom_plan_hook(plansource, boundParams, intoClause);
+
+		if (mode == PLAN_CACHE_MODE_FORCE_GENERIC_PLAN)
+			return false;
+		if (mode == PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN)
+			return true;
+	}
+
 	/* Force to replan for CTAS */
 	if (intoClause != NULL)
 		return true;
@@ -1086,10 +1099,6 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, Into
 	if (plansource->cursor_options & CURSOR_OPT_GENERIC_PLAN)
 		return false;
 	if (plansource->cursor_options & CURSOR_OPT_CUSTOM_PLAN)
-		return true;
-
-	/* Generate custom plans if optimizer_enable_query_parameter is disabled and Orca is enabled */
-	if (optimizer && !optimizer_enable_query_parameter)
 		return true;
 
 	/* Generate custom plans until we have done at least 5 (arbitrary) */

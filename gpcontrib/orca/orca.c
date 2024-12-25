@@ -22,6 +22,7 @@ void _PG_fini(void);
 
 static planner_hook_type prev_planner = NULL;
 static ExplainOneQuery_hook_type prev_explain = NULL;
+static choose_custom_plan_hook_type prev_choose_custom_plan_hook = NULL;
 
 /*
  * Decide JIT settings for the given plan and record them in PlannedStmt.jitFlags.
@@ -245,6 +246,21 @@ orca_explain(Query *query, int cursorOptions, IntoClause *into,
 								 params, queryEnv);
 }
 
+static PlanCacheMode
+orca_choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams,
+						IntoClause *intoClause)
+{
+	/* Generate custom plans if optimizer_enable_query_parameter is disabled and Orca is enabled */
+	if (optimizer && !optimizer_enable_query_parameter)
+		return PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN;
+
+	if (prev_choose_custom_plan_hook)
+		return prev_choose_custom_plan_hook(plansource, boundParams,
+											intoClause);
+
+	return PLAN_CACHE_MODE_AUTO;
+}
+
 void
 _PG_init(void)
 {
@@ -276,6 +292,9 @@ _PG_init(void)
 	prev_explain = ExplainOneQuery_hook;
 	ExplainOneQuery_hook = orca_explain;
 
+	prev_choose_custom_plan_hook = choose_custom_plan_hook;
+	choose_custom_plan_hook = orca_choose_custom_plan;
+
 	SetConfigOption("optimizer", "on", PGC_POSTMASTER, PGC_S_DYNAMIC_DEFAULT);
 }
 
@@ -284,4 +303,5 @@ _PG_fini(void)
 {
 	planner_hook = prev_planner;
 	ExplainOneQuery_hook = prev_explain;
+	choose_custom_plan_hook = prev_choose_custom_plan_hook;
 }

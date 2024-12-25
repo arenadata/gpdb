@@ -182,6 +182,19 @@ typedef struct CachedExpression
 	dlist_node	node;			/* link in global list of CachedExpressions */
 } CachedExpression;
 
+/*
+ * Choose custom plan hook.
+ *
+ * This hook can be set by an extension to control whether to use custom or
+ * generic plan.
+ */
+typedef
+PlanCacheMode(*choose_custom_plan_hook_type) (
+											  CachedPlanSource *plansource,
+											  ParamListInfo boundParams,
+											  IntoClause *intoClause);
+
+extern PGDLLIMPORT choose_custom_plan_hook_type choose_custom_plan_hook;
 
 extern void InitPlanCache(void);
 extern void ResetPlanCache(void);
