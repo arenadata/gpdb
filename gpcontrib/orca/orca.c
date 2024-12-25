@@ -6,6 +6,7 @@
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "optimizer/orca.h"
+#include "optimizer/orca_guc.h"
 #include "optimizer/planner.h"
 #include "storage/ipc.h"
 #include "utils/builtins.h"
@@ -254,6 +255,15 @@ _PG_init(void)
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg(
 				 "This module can only be loaded via shared_preload_libraries")));
+
+	/*
+	 * We need to define GUCs everywhere, including segments. Though
+	 * optimizer_* GUCs are used only on Coordinator, current GUC system will
+	 * dispatch setting of GUCs to the segments as well, when we try to SET any
+	 * GUC. And, if there is no defined GUC on a segment, we'll get an
+	 * error.
+	 */
+	orca_guc_define();
 
 	if (!(IS_QUERY_DISPATCHER() && (GP_ROLE_DISPATCH == Gp_role)))
 		return;
