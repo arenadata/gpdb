@@ -276,8 +276,6 @@ bool		gp_force_random_redistribution = false;
 bool		optimizer;
 bool		optimizer_control = true;
 
-bool		optimizer_enable_query_parameter;
-
 /* Analyze related GUCs for external planner */
 bool		optimizer_analyze_root_partition;
 bool		optimizer_analyze_midlevel_partition;
@@ -1941,16 +1939,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 		},
 		&gp_autostats_allow_nonowner,
 		false,
-		NULL, NULL, NULL
-	},
-	{
-		{"optimizer_enable_query_parameter", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Enable query parameters in Orca."),
-		 NULL,
-		 GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_enable_query_parameter,
-		true,
 		NULL, NULL, NULL
 	},
 	{

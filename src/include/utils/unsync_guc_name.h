@@ -336,7 +336,6 @@
 		"optimizer_control",
 		"optimizer_enable_master_only_queries",
 		"optimizer_enable_motions_masteronly_queries",
-		"optimizer_enable_query_parameter",
 		"optimizer_replicated_table_insert",
 		"parallel_leader_participation",
 		"parallel_setup_cost",
