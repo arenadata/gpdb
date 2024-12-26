@@ -334,8 +334,6 @@
 		"optimizer_analyze_midlevel_partition",
 		"optimizer_analyze_root_partition",
 		"optimizer_control",
-		"optimizer_enable_master_only_queries",
-		"optimizer_enable_motions_masteronly_queries",
 		"optimizer_replicated_table_insert",
 		"parallel_leader_participation",
 		"parallel_setup_cost",
