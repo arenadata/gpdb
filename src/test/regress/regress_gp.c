@@ -50,12 +50,10 @@
 #include "libpq/hba.h"
 #include "utils/builtins.h"
 #include "utils/geo_decls.h"
-#include "utils/gp_alloc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/resource_manager.h"
 #include "utils/timestamp.h"
-#include "utils/vmem_tracker.h"
 
 /* table_functions test */
 extern Datum multiset_example(PG_FUNCTION_ARGS);
@@ -80,7 +78,6 @@ extern Datum userdata_project(PG_FUNCTION_ARGS);
 extern Datum checkResourceQueueMemoryLimits(PG_FUNCTION_ARGS);
 extern Datum repeatPalloc(PG_FUNCTION_ARGS);
 extern Datum resGroupPalloc(PG_FUNCTION_ARGS);
-extern Datum resGroupPallocIgnoreStartup(PG_FUNCTION_ARGS);
 
 /* Gang management test support */
 extern Datum gangRaiseInfo(PG_FUNCTION_ARGS);
@@ -631,56 +628,27 @@ repeatPalloc(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(0);
 }
 
-static bool startupConsidered = false;
-static void
-resGroupPallocImpl(float ratio, bool considerStartup) {
+PG_FUNCTION_INFO_V1(resGroupPalloc);
+Datum
+resGroupPalloc(PG_FUNCTION_ARGS)
+{
+	float ratio = PG_GETARG_FLOAT8(0);
 	int memLimit, slotQuota, sharedQuota;
 	int size;
 	int count;
 	int i;
 
+	if (!IsResGroupEnabled())
+		PG_RETURN_INT32(0);
+
 	ResGroupGetMemInfo(&memLimit, &slotQuota, &sharedQuota);
-
-	if (considerStartup && !startupConsidered)
-		size = ceilf(memLimit * ratio) - VmemTracker_GetStartupChunks();
-	else
-		size = ceilf(memLimit * ratio);
-
+	size = ceilf(memLimit * ratio);
 	count = size / 512;
 	for (i = 0; i < count; i++)
 		MemoryContextAlloc(TopMemoryContext, 512 * 1024 * 1024);
 
 	size %= 512;
 	MemoryContextAlloc(TopMemoryContext, size * 1024 * 1024);
-
-	if (considerStartup && !startupConsidered)
-		startupConsidered = true;
-}
-
-/*
- * This function is a copy of resGroupPalloc that existed before startup chunks were considered
- * It's needed for the tests, but we can't use the old name because we need
- * to maintain compatibility with the old tests which don't expect resGroupPalloc
- * to allocate extra memory which is startupChunks
- */
-PG_FUNCTION_INFO_V1(resGroupPallocIgnoreStartup);
-Datum
-resGroupPallocIgnoreStartup(PG_FUNCTION_ARGS)
-{
-	float ratio = PG_GETARG_FLOAT8(0);
-
-	resGroupPallocImpl(ratio, false);
-
-	PG_RETURN_INT32(0);
-}
-
-PG_FUNCTION_INFO_V1(resGroupPalloc);
-Datum
-resGroupPalloc(PG_FUNCTION_ARGS)
-{
-	float ratio = PG_GETARG_FLOAT8(0);
-
-	resGroupPallocImpl(ratio, true);
 
 	PG_RETURN_INT32(0);
 }

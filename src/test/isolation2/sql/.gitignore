@@ -10,4 +10,3 @@ resgroup_bypass.sql
 resgroup_cpuset.sql
 gp_collation.sql
 distributed_snapshot.sql
-resgroup_startup_memory.sql
