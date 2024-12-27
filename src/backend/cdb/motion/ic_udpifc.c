@@ -1186,6 +1186,10 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 	uint32					socketSendBufferSize;
 	uint32					socketRecvBufferSize;
 
+	/*
+	 * we let the system pick the UDP port here so we don't have to manage
+	 * port resources ourselves.  So set the port to 0 (any port)
+	 */
 	snprintf(service, 32, "%d", 0);
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;	/* Allow IPv4 or IPv6 */

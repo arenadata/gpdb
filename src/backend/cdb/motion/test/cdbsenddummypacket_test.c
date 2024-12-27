@@ -273,8 +273,15 @@ test_send_dummy_packet_ipv6_to_ipv4(void **state)
 }
 
 
+/*
+ * These tests check possibility to send dummy packets in the wildcard mode
+ * Actual Linux distributions return addresses for both families on dual-stack
+ * machines when the exact family isn't requested, but the IPv6 address follows
+ * the IPv4 one. GPDB 7 uses first availble address in the current
+ * implementaton in opposite to GPDB 6 that reorders list in favor of IPv6
+ */
 static void
-test_send_dummy_packet_ipv4_to_ipv4_wildcard(void **state)
+test_send_dummy_packet_ipv4_to_wildcard(void **state)
 {
 	break_loop = false;
 	int listenerSocketFd;
@@ -304,7 +311,7 @@ test_send_dummy_packet_ipv4_to_ipv4_wildcard(void **state)
 
 
 static void
-test_send_dummy_packet_ipv6_to_ipv6_wildcard(void **state)
+test_send_dummy_packet_ipv6_to_wildcard(void **state)
 {
 	break_loop = false;
 	int listenerSocketFd;
@@ -353,8 +360,8 @@ main(int argc, char* argv[])
 			unit_test(test_send_dummy_packet_ipv4_to_ipv6_should_fail),
 			unit_test(test_send_dummy_packet_ipv6_to_ipv6),
 			unit_test(test_send_dummy_packet_ipv6_to_ipv4),
-			unit_test(test_send_dummy_packet_ipv4_to_ipv4_wildcard),
-			unit_test(test_send_dummy_packet_ipv6_to_ipv6_wildcard),
+			unit_test(test_send_dummy_packet_ipv4_to_wildcard),
+			unit_test(test_send_dummy_packet_ipv6_to_wildcard),
 		};
 		return run_tests(tests);
 	}
@@ -363,6 +370,7 @@ main(int argc, char* argv[])
 		printf("WARNING: IPv6 is not supported, skipping unittest\n");
 		const UnitTest tests[] = {
 			unit_test(test_send_dummy_packet_ipv4_to_ipv4),
+			unit_test(test_send_dummy_packet_ipv4_to_wildcard),
 		};
 		return run_tests(tests);
 	}
