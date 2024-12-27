@@ -32,6 +32,7 @@
 #include "postmaster/fts.h"
 #include "postmaster/ftsprobe.h"
 #include "postmaster/postmaster.h"
+#include "storage/pmsignal.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -283,6 +284,8 @@ checkIfFailedDueToNormalRestart(fts_segment_info *ftsInfo)
 				   ftsInfo->primary_cdbinfo->config->segindex,
 				   ftsInfo->primary_cdbinfo->config->dbid,
 				   ftsInfo->mirror_cdbinfo->config->dbid);
+
+		SIMPLE_FAULT_INJECTOR("fts_segment_in_reset_mode");
 	}
 }
 
@@ -1254,6 +1257,7 @@ processResponse(fts_context *context)
 					   primary->config->segindex, primary->config->dbid);
 				updateSegmentDownStatus(primary,true, context->has_mirrors);
 				ftsInfo->state = FTS_RESPONSE_PROCESSED;
+				SendPostmasterSignal(PMSIGNAL_FTS_PROMOTED_MIRROR);
 				break;
 			case FTS_SYNCREP_OFF_SUCCESS:
 				elogif(gp_log_fts >= GPVARS_VERBOSITY_VERBOSE, LOG,
