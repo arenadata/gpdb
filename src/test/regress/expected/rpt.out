@@ -749,6 +749,7 @@ explain (costs off) select * from t_replicate_volatile, t_hashdist where t_repli
                ->  Gather Motion 1:1  (slice2; segments: 1)
                      ->  Seq Scan on t_replicate_volatile
                            Filter: ((a)::double precision > random())
+ Optimizer: Postgres query optimizer
 (9 rows)
 
 -- join qual
@@ -1232,6 +1233,7 @@ explain (costs off) select * from t1_13532 x, t2_13532 y where y.a < random() an
                ->  Gather Motion 1:1  (slice2; segments: 1)
                      ->  Index Scan using idx_t2_13532 on t2_13532 y
                            Filter: ((a)::double precision < random())
+ Optimizer: Postgres query optimizer
 (10 rows)
 
 set enable_bitmapscan = off;
@@ -1247,6 +1249,7 @@ explain (costs off) select * from t1_13532 x, t2_13532 y where y.a < random() an
                ->  Gather Motion 1:1  (slice2; segments: 1)
                      ->  Index Scan using idx_t2_13532 on t2_13532 y
                            Filter: ((a)::double precision < random())
+ Optimizer: Postgres query optimizer
 (10 rows)
 
 -- test for optimizer_enable_replicated_table

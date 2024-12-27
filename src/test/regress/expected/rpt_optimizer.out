@@ -748,6 +748,7 @@ explain (costs off) select * from t_replicate_volatile, t_hashdist where t_repli
          ->  Materialize
                ->  Seq Scan on t_replicate_volatile
                      Filter: ((a)::double precision > random())
+ Optimizer: Pivotal Optimizer (GPORCA)
 (8 rows)
 
 -- join qual
