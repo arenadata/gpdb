@@ -1064,16 +1064,6 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, Into
 {
 	double		avg_custom_cost;
 
-	if (choose_custom_plan_hook != NULL)
-	{
-		PlanCacheMode mode = choose_custom_plan_hook(plansource, boundParams, intoClause);
-
-		if (mode == PLAN_CACHE_MODE_FORCE_GENERIC_PLAN)
-			return false;
-		if (mode == PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN)
-			return true;
-	}
-
 	/* Force to replan for CTAS */
 	if (intoClause != NULL)
 		return true;
@@ -1100,6 +1090,17 @@ choose_custom_plan(CachedPlanSource *plansource, ParamListInfo boundParams, Into
 		return false;
 	if (plansource->cursor_options & CURSOR_OPT_CUSTOM_PLAN)
 		return true;
+
+	/* See if extension wants to force the decision */
+	if (choose_custom_plan_hook != NULL)
+	{
+		PlanCacheMode mode = choose_custom_plan_hook(plansource, boundParams, intoClause);
+
+		if (mode == PLAN_CACHE_MODE_FORCE_GENERIC_PLAN)
+			return false;
+		if (mode == PLAN_CACHE_MODE_FORCE_CUSTOM_PLAN)
+			return true;
+	}
 
 	/* Generate custom plans until we have done at least 5 (arbitrary) */
 	if (plansource->num_custom_plans < 5)
