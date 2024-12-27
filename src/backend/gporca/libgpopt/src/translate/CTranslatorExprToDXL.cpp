@@ -3089,14 +3089,12 @@ CTranslatorExprToDXL::PdxlnRestrictResult(CDXLNode *dxlnode,
 //
 //	@doc:
 //		Helper to build a Result expression with project list
-//		restricted to required columns. Additionally fills the
-//		resulting projected columns
+//		restricted to required columns.
 //
 //---------------------------------------------------------------------------
 CDXLNode *
 CTranslatorExprToDXL::PdxlnRestrictResult(CDXLNode *dxlnode,
-										  const CColRefSet *colrefs,
-										  CDXLColRefArray *projectedColumns)
+										  const CColRefSet *colrefs)
 {
 	GPOS_ASSERT(NULL != dxlnode);
 	GPOS_ASSERT(NULL != colrefs);
@@ -3112,22 +3110,7 @@ CTranslatorExprToDXL::PdxlnRestrictResult(CDXLNode *dxlnode,
 	}
 
 	CDXLNode *pdxlnResult = dxlnode;
-	if (1 == ulPrjElems)
-	{
-		// Fills the resulting projected column
-		CColRef *colref = colrefs->PcrFirst();
-		if (NULL != projectedColumns)
-		{
-			CMDName *mdname =
-				GPOS_NEW(m_mp) CMDName(m_mp, colref->Name().Pstr());
-			IMDId *mdid = colref->RetrieveType()->MDId();
-			mdid->AddRef();
-			CDXLColRef *dxl_colref = GPOS_NEW(m_mp) CDXLColRef(
-				m_mp, mdname, colref->Id(), mdid, colref->TypeModifier());
-			projectedColumns->Append(dxl_colref);
-		}
-	}
-	else if (1 < ulPrjElems)
+	if (1 < ulPrjElems)
 	{
 		// restrict project list to required column
 		CDXLScalarProjList *pdxlopPrL = GPOS_NEW(m_mp) CDXLScalarProjList(m_mp);
@@ -3151,19 +3134,6 @@ CTranslatorExprToDXL::PdxlnRestrictResult(CDXLNode *dxlnode,
 				CDXLNode *pdxlnPrEl = CTranslatorExprToDXLUtils::PdxlnProjElem(
 					m_mp, m_phmcrdxln, colref);
 				pdxlnProjListNew->AddChild(pdxlnPrEl);
-
-				// Fills the resulting projected columns
-				if (NULL != projectedColumns)
-				{
-					CMDName *mdname =
-						GPOS_NEW(m_mp) CMDName(m_mp, colref->Name().Pstr());
-					IMDId *mdid = colref->RetrieveType()->MDId();
-					mdid->AddRef();
-					CDXLColRef *dxl_colref =
-						GPOS_NEW(m_mp) CDXLColRef(m_mp, mdname, colref->Id(),
-												  mdid, colref->TypeModifier());
-					projectedColumns->Append(dxl_colref);
-				}
 			}
 		}
 
@@ -3185,6 +3155,48 @@ CTranslatorExprToDXL::PdxlnRestrictResult(CDXLNode *dxlnode,
 	}
 
 	return pdxlnResult;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CTranslatorExprToDXL::GetResultProjectedColRefArray
+//
+//	@doc:
+//		Helper to build an CDXLColRefArray of projected columns of Result node
+//
+//---------------------------------------------------------------------------
+CDXLColRefArray *
+CTranslatorExprToDXL::GetResultProjectedColRefArray(CDXLNode *dxlProjectNode)
+{
+	if (NULL == dxlProjectNode)
+	{
+		return NULL;
+	}
+
+	CDXLNode *pdxlnProjList = (*dxlProjectNode)[0];
+	const ULONG ulPrjElems = pdxlnProjList->Arity();
+
+	if (0 == ulPrjElems)
+	{
+		return NULL;
+	}
+
+	CDXLColRefArray *dxlColRefArray = GPOS_NEW(m_mp) CDXLColRefArray(m_mp);
+	for (ULONG ul = 0; ul < ulPrjElems; ul++)
+	{
+		CDXLNode *child_dxlnode = (*pdxlnProjList)[ul];
+		CDXLScalarProjElem *pdxlPrjElem =
+			CDXLScalarProjElem::Cast(child_dxlnode->GetOperator());
+		CColRef *colref = m_pcf->LookupColRef(pdxlPrjElem->Id());
+
+		CMDName *mdname = GPOS_NEW(m_mp) CMDName(m_mp, colref->Name().Pstr());
+		IMDId *mdid = colref->RetrieveType()->MDId();
+		mdid->AddRef();
+		CDXLColRef *dxl_colref = GPOS_NEW(m_mp) CDXLColRef(
+			m_mp, mdname, colref->Id(), mdid, colref->TypeModifier());
+		dxlColRefArray->Append(dxl_colref);
+	}
+	return dxlColRefArray;
 }
 
 //---------------------------------------------------------------------------
@@ -3230,7 +3242,11 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 
 	if (fCorrelatedLOJ)
 	{
-		// overwrite required inner column based on scalar expression
+		// Overwrite required inner column based on scalar expression.
+		// The columns contained in the scalar and the inner
+		// (intersection) are params of TestExpr if Correlated. The
+		// remaining columns of scalar are treated as vars. The vars
+		// refer to the node external to subplan.
 
 		CColRefSet *pcrsInner = pexprInner->DeriveOutputColumns();
 		CColRefSet *pcrsUsed =
@@ -3238,9 +3254,6 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 		pcrsUsed->Intersection(pcrsInner);
 		if (0 < pcrsUsed->Size())
 		{
-			GPOS_ASSERT(1 == pcrsUsed->Size() || 2 == pcrsUsed->Size() ||
-						3 == pcrsUsed->Size());
-
 			// Both sides of the SubPlan test expression can come from the
 			// inner side. So we need to pass pcrsUsed instead of pcrInner into
 			// PdxlnRestrictResult()
@@ -3254,16 +3267,17 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 		}
 	}
 
-	// The params for the test expression are the output columns
-	// from the projection of the inner expression. The order of the
-	// params must match the order of the columns from the projection
-	// of the inner expression. For this obtain the necessary columns
-	// directly from the projection of result node.
-	CDXLColRefArray *test_expr_params = GPOS_NEW(m_mp) CDXLColRefArray(m_mp);
-
-	CDXLNode *inner_dxlnode =
-		PdxlnRestrictResult(pdxlnInnerChild, pcrInner, test_expr_params);
+	CDXLNode *inner_dxlnode = PdxlnRestrictResult(pdxlnInnerChild, pcrInner);
 	pcrInner->Release();
+
+	// Params for the test expression are the output columns from the
+	// projection of the inner expression. The order of the params must
+	// match the order of the columns from the projection of the inner
+	// expression. For this obtain the necessary columns directly from
+	// the projection of result node.
+	CDXLColRefArray *test_expr_params =
+		GetResultProjectedColRefArray(inner_dxlnode);
+
 	if (NULL == inner_dxlnode)
 	{
 		GPOS_RAISE(
