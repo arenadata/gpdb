@@ -741,14 +741,15 @@ create table t_replicate_volatile(a int, b int, c int) distributed replicated;
 explain (costs off) select * from t_replicate_volatile, t_hashdist where t_replicate_volatile.a > random();
                               QUERY PLAN                              
 ----------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   ->  Nested Loop
-         ->  Seq Scan on t_replicate_volatile
-               Filter: ((a)::double precision > random())
-         ->  Materialize
-               ->  Seq Scan on t_hashdist
- Optimizer: Postgres query optimizer
-(7 rows)
+ Nested Loop
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Seq Scan on t_hashdist
+   ->  Materialize
+         ->  Result
+               ->  Gather Motion 1:1  (slice2; segments: 1)
+                     ->  Seq Scan on t_replicate_volatile
+                           Filter: ((a)::double precision > random())
+(9 rows)
 
 -- join qual
 explain (costs off) select * from t_hashdist, t_replicate_volatile x, t_replicate_volatile y where x.a + y.a > random();
@@ -1008,27 +1009,13 @@ select distinct id from gp_dist_random('t_replicate_dst') order by id;
 
 -- update & delete
 explain (costs off) update t_replicate_volatile set a = 1 where b > random();
-                     QUERY PLAN                     
-----------------------------------------------------
- Update on t_replicate_volatile
-   ->  Seq Scan on t_replicate_volatile
-         Filter: ((b)::double precision > random())
- Optimizer: Postgres-based planner
-(4 rows)
-
+ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) update t_replicate_volatile set a = 1 from t_replicate_volatile x where x.a + random() = t_replicate_volatile.b;
 ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) update t_replicate_volatile set a = 1 from t_hashdist x where x.a + random() = t_replicate_volatile.b;
 ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) delete from t_replicate_volatile where a < random();
-                     QUERY PLAN                     
-----------------------------------------------------
- Delete on t_replicate_volatile
-   ->  Seq Scan on t_replicate_volatile
-         Filter: ((a)::double precision < random())
- Optimizer: Postgres-based planner
-(4 rows)
-
+ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) delete from t_replicate_volatile using t_replicate_volatile x where t_replicate_volatile.a + x.b < random();
 ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) update t_replicate_volatile set a = random();
@@ -1236,29 +1223,31 @@ create index idx_t2_13532 on t2_13532(b);
 explain (costs off) select * from t1_13532 x, t2_13532 y where y.a < random() and x.b = y.b;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   ->  Hash Join
-         Hash Cond: (x.b = y.b)
+ Hash Join
+   Hash Cond: (x.b = y.b)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          ->  Seq Scan on t1_13532 x
-         ->  Hash
-               ->  Index Scan using idx_t2_13532 on t2_13532 y
-                     Filter: ((a)::double precision < random())
- Optimizer: Postgres query optimizer
-(8 rows)
+   ->  Hash
+         ->  Result
+               ->  Gather Motion 1:1  (slice2; segments: 1)
+                     ->  Index Scan using idx_t2_13532 on t2_13532 y
+                           Filter: ((a)::double precision < random())
+(10 rows)
 
 set enable_bitmapscan = off;
 explain (costs off) select * from t1_13532 x, t2_13532 y where y.a < random() and x.b = y.b;
                               QUERY PLAN                              
 ----------------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   ->  Hash Join
-         Hash Cond: (x.b = y.b)
+ Hash Join
+   Hash Cond: (x.b = y.b)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          ->  Seq Scan on t1_13532 x
-         ->  Hash
-               ->  Index Scan using idx_t2_13532 on t2_13532 y
-                     Filter: ((a)::double precision < random())
- Optimizer: Postgres query optimizer
-(8 rows)
+   ->  Hash
+         ->  Result
+               ->  Gather Motion 1:1  (slice2; segments: 1)
+                     ->  Index Scan using idx_t2_13532 on t2_13532 y
+                           Filter: ((a)::double precision < random())
+(10 rows)
 
 -- test for optimizer_enable_replicated_table
 explain (costs off) select * from rep_tab;

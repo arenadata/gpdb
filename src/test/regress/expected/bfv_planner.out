@@ -407,12 +407,13 @@ where x.a > random();
 ----------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Nested Loop
-         ->  Function Scan on generate_series a
-               Filter: ((a)::double precision > random())
+         ->  Broadcast Motion 1:3  (slice2; segments: 1)
+               ->  Function Scan on generate_series a
+                     Filter: ((a)::double precision > random())
          ->  Materialize
                ->  Seq Scan on t_hashdist
  Optimizer: Postgres query optimizer
-(7 rows)
+(8 rows)
 
 ---- join qual
 explain (costs off) select * from

@@ -748,7 +748,6 @@ explain (costs off) select * from t_replicate_volatile, t_hashdist where t_repli
          ->  Materialize
                ->  Seq Scan on t_replicate_volatile
                      Filter: ((a)::double precision > random())
- Optimizer: Pivotal Optimizer (GPORCA)
 (8 rows)
 
 -- join qual
@@ -1007,27 +1006,13 @@ select distinct id from gp_dist_random('t_replicate_dst') order by id;
 
 -- update & delete
 explain (costs off) update t_replicate_volatile set a = 1 where b > random();
-                     QUERY PLAN                     
-----------------------------------------------------
- Update on t_replicate_volatile
-   ->  Seq Scan on t_replicate_volatile
-         Filter: ((b)::double precision > random())
- Optimizer: Postgres-based planner
-(4 rows)
-
+ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) update t_replicate_volatile set a = 1 from t_replicate_volatile x where x.a + random() = t_replicate_volatile.b;
 ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) update t_replicate_volatile set a = 1 from t_hashdist x where x.a + random() = t_replicate_volatile.b;
 ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) delete from t_replicate_volatile where a < random();
-                     QUERY PLAN                     
-----------------------------------------------------
- Delete on t_replicate_volatile
-   ->  Seq Scan on t_replicate_volatile
-         Filter: ((a)::double precision < random())
- Optimizer: Postgres-based planner
-(4 rows)
-
+ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) delete from t_replicate_volatile using t_replicate_volatile x where t_replicate_volatile.a + x.b < random();
 ERROR:  could not devise a plan (cdbpath.c:2578)
 explain (costs off) update t_replicate_volatile set a = random();
