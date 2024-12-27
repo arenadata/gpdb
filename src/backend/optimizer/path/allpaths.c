@@ -162,7 +162,6 @@ static void remove_unused_subquery_outputs(Query *subquery, RelOptInfo *rel);
 static void bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals);
 static void bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel);
 static bool is_query_contain_limit_groupby(Query *parse);
-static void handle_gen_seggen_volatile_path(PlannerInfo *root, RelOptInfo *rel);
 
 
 /*
@@ -646,40 +645,6 @@ bring_to_singleQE(PlannerInfo *root, RelOptInfo *rel)
 }
 
 /*
- * handle_gen_seggen_volatile_path
- *
- * Only use for base replicated rel.
- * Change the path in its pathlist if match the pattern
- * (segmentgeneral or general path contains volatile restrictions).
- */
-static void
-handle_gen_seggen_volatile_path(PlannerInfo *root, RelOptInfo *rel)
-{
-	List	   *origpathlist;
-	ListCell   *lc;
-
-	origpathlist = rel->pathlist;
-	rel->cheapest_startup_path = NULL;
-	rel->cheapest_total_path = NULL;
-	rel->cheapest_unique_path = NULL;
-	rel->cheapest_parameterized_paths = NIL;
-	rel->pathlist = NIL;
-
-	foreach(lc, origpathlist)
-	{
-		Path	     *origpath = (Path *) lfirst(lc);
-		Path	     *path;
-
-		path = turn_volatile_seggen_to_singleqe(root,
-												origpath,
-												(Node *) (rel->baserestrictinfo));
-		add_path(rel, path);
-	}
-
-	set_cheapest(rel);
-}
-
-/*
  * set_rel_pathlist
  *	  Build access paths for a base relation
  */
@@ -749,14 +714,6 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				break;
 		}
 	}
-
-	/*
-	 * Greenplum specific behavior:
-	 * Change the path in pathlist if it is a general or segmentgeneral
-	 * path that contains volatile restrictions.
-	 */
-	if (rel->reloptkind == RELOPT_BASEREL)
-		handle_gen_seggen_volatile_path(root, rel);
 
 	/*
 	 * Allow a plugin to editorialize on the set of Paths for this base
