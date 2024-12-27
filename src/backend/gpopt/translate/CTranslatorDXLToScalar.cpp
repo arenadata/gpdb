@@ -751,6 +751,8 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 	// Generate var mapping to handle test expression based on the required
 	// output context. Test expression may contain vars from external
 	// (relative to subplan) nodes, so add their context too.
+	// We create a copy of the external mapping because we don't want to
+	// add TestExpr params to the original.
 	CMappingColIdVarPlStmt test_expr_var_mapping = CMappingColIdVarPlStmt(
 		m_mp, m_base_table_context, outer_child_contexts,
 		&test_expr_output_ctxt, plstmt->GetDXLToPlStmtContext());
@@ -762,7 +764,6 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 		dxlop->GetDxlTestExpr(), slink, &test_expr_var_mapping);
 
 	const CDXLColRefArray *outer_refs = dxlop->GetDxlOuterColRefsArray();
-
 	const ULONG len = outer_refs->Size();
 
 	// Translate a copy of the translate context: the param mappings from the outer scope get copied in the constructor

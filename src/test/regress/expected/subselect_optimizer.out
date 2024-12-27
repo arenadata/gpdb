@@ -1237,11 +1237,73 @@ drop table tl3;
 drop table tl4;
 -- Check deep tree support in Test expression node when outer params are present with =ANY or IN queries
 CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
-INSERT INTO test_tbl_t VALUES ('0', 0), ('0', 1);
+INSERT INTO test_tbl_t VALUES ('0', 0);
 CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
-INSERT INTO test_tbl_d VALUES ('0', 0), ('0', 1);
+INSERT INTO test_tbl_d VALUES ('0', 0);
 CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
 INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
+EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+                                                                                                          QUERY PLAN                                                                                                           
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Result
+   Output: test_tbl_t.text_t, test_tbl_t.int_t
+   Filter: (SubPlan 1)
+   ->  Sort
+         Output: test_tbl_t.text_t, test_tbl_t.int_t
+         Sort Key: test_tbl_t.int_t
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               Output: test_tbl_t.text_t, test_tbl_t.int_t
+               ->  Seq Scan on public.test_tbl_t
+                     Output: test_tbl_t.text_t, test_tbl_t.int_t
+   SubPlan 1  (slice0)
+     ->  Result
+           Output: (count("outer".ColRef_0028)), (sum((CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END))), ((test_tbl_p.int_p = 1))
+           ->  GroupAggregate
+                 Output: count("outer".ColRef_0028), sum((CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END)), ((test_tbl_p.int_p = 1)), test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
+                 Group Key: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, ((test_tbl_p.int_p = 1))
+                 ->  Sort
+                       Output: ((test_tbl_p.int_p = 1)), (CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END), test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, "outer".ColRef_0028
+                       Sort Key: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, ((test_tbl_p.int_p = 1))
+                       ->  Result
+                             Output: (test_tbl_p.int_p = 1), CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END, test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, "outer".ColRef_0028
+                             ->  Nested Loop Left Join
+                                   Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, test_tbl_d.int_d, "outer".ColRef_0028
+                                   Join Filter: true
+                                   ->  Materialize
+                                         Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
+                                         ->  Gather Motion 3:1  (slice3; segments: 3)
+                                               Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
+                                               ->  Seq Scan on public.test_tbl_p
+                                                     Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
+                                   ->  Materialize
+                                         Output: "outer".ColRef_0028, test_tbl_d.int_d
+                                         ->  Result
+                                               Output: true, test_tbl_d.int_d
+                                               ->  Result
+                                                     Output: test_tbl_d.int_d
+                                                     Filter: ((test_tbl_t.int_t = test_tbl_d.int_d) IS NOT FALSE)
+                                                     ->  Materialize
+                                                           Output: test_tbl_d.int_d
+                                                           ->  Gather Motion 3:1  (slice2; segments: 3)
+                                                                 Output: test_tbl_d.int_d
+                                                                 ->  Seq Scan on public.test_tbl_d
+                                                                       Output: test_tbl_d.int_d
+ Optimizer: Pivotal Optimizer (GPORCA)
+ Settings: optimizer=on
+(45 rows)
+
+SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+ text_t | int_t 
+--------+-------
+ 0      |     0
+(1 row)
+
+INSERT INTO test_tbl_t VALUES ('0', 1);
+INSERT INTO test_tbl_d VALUES ('0', 1);
+INSERT INTO test_tbl_p VALUES ('0', 0);
+ANALYZE test_tbl_t;
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
   (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
                                        QUERY PLAN                                       
