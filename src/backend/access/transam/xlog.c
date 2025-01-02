@@ -8080,6 +8080,8 @@ StartupXLOG(void)
 	UpdateFullPageWrites();
 	LocalXLogInsertAllowed = -1;
 
+	SIMPLE_FAULT_INJECTOR("before_persisting_new_tli");
+
 	if (InRecovery)
 	{
 		/*

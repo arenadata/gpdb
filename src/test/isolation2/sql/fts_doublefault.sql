@@ -26,6 +26,10 @@ select gp_request_fts_probe_scan();
 -1U: create table last_timestamp as select time from gp_configuration_history order by time desc limit 1;
 
 -- stop primary in order to promote mirror for content 0
+-- start_ignore
+create EXTENSION if not exists gp_inject_fault;
+SELECT gp_inject_fault('before_persisting_new_tli', 'suspend', 5);
+-- end_ignore
 select pg_ctl((select datadir from gp_segment_configuration c
                where c.role='p' and c.content=0), 'stop');
 
@@ -34,6 +38,9 @@ select gp_request_fts_probe_scan();
 -- primary is down, and mirror has now been promoted to primary. Verify
 -1U: select wait_until_segments_are_down(1);
 -1U: select dbid, description from gp_configuration_history where time > (select time from last_timestamp) order by time;
+-- start_ignore
+select pg_sleep(5);
+-- end_ignore
 
 -- stop acting primary in order to trigger double fault for content 0
 select pg_ctl((select datadir from gp_segment_configuration c
