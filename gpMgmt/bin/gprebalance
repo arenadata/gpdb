@@ -32,6 +32,10 @@ optimal perfomance of whole cluster.
 """)
 
 _help = ["""
+[-m spread|grouped]
+Mode is the desirable mirroring strategy after rebalance. Makes sense only when mirrorring
+is enabled for the cluster. Default value is "grouped".
+[-f <hosts_file>]
 The hosts configuration file (YAML format) defines the hosts configuration across the
 cluster. Existing info can be generated from gp_segment_configuration through -g option.
 hosts:
@@ -71,6 +75,8 @@ def parseargs():
                       help='remove the rebalance schema.')
     parser.add_option('-f', '--hosts-file', metavar='<hosts_file>', dest='filename',
                       help='yaml containing target hosts configuration')
+    parser.add_option('--allow-mirrorless', dest='allow_mirrorless', action='store_true',
+                      help='Allow to rebalance a cluster without mirrors', default=False)
     parser.add_option('-g', '--gen-hosts', action='store_true', dest='genconf',
                       help='dump cluster hosts configuration in yaml format')
     parser.add_option('-s', '--silent', action='store_true', default=False,
@@ -171,7 +177,7 @@ def remove_pid_file(coordinator_data_directory: str):
     """
     try:
         os.unlink(coordinator_data_directory + '/gprebalance.pid')
-    except:
+    except IOError:
         pass
 
 
@@ -179,12 +185,6 @@ def dump_hosts_info(gparray: GpArray, coordinator_data_directory: str):
     """
       Converts info about hosts to YAML format
     """
-    def get_base_path(path):
-        """
-        Extract base path from full path
-        """
-        return '/'.join(path.split('/')[:-1])
-
     hosts = {}
     for pair in gparray.segmentPairs:
         primary = pair.primaryDB
@@ -193,7 +193,7 @@ def dump_hosts_info(gparray: GpArray, coordinator_data_directory: str):
         if key_pr not in hosts:
             hosts[key_pr] = {'segment_datadirs': set(),
                              'mirror_datadirs': set()}
-        hosts[key_pr]['segment_datadirs'].add(get_base_path(primary.datadir))
+        hosts[key_pr]['segment_datadirs'].add(os.path.dirname(primary.datadir))
 
         if mirror:
             key_mir = (mirror.hostname, mirror.address)
@@ -201,7 +201,7 @@ def dump_hosts_info(gparray: GpArray, coordinator_data_directory: str):
                 hosts[key_mir] = {'segment_datadirs': set(),
                                   'mirror_datadirs': set()}
             hosts[key_mir]['mirror_datadirs'].add(
-                get_base_path(mirror.datadir))
+                os.path.dirname(mirror.datadir))
 
     yaml_entries = []
     for (hostname, address), val in hosts.items():
@@ -237,7 +237,7 @@ def possibility_checks(gpreb: GPRebalance):
         elif gpreb.options.silent:
             logger.info(f'{str(e)} Exiting...')
             sys.exit(0)
-    if not gpreb.original_gparray.get_mirroring_enabled():
+    if not gpreb.original_gparray.get_mirroring_enabled() and not gpreb.options.allow_mirrorless:
         if not gpreb.options.silent and not ask_yesno('',
                                                       '''Mirroring is disabled.
                                                       During rebalance the whole cluster may
@@ -251,14 +251,17 @@ def possibility_checks(gpreb: GPRebalance):
             sys.exit(0)
 
     if gpreb.original_gparray.get_mirroring_enabled() and startup_validator.mirror_strategy == MirrorStrategy.MIRRORLESS:
-        mirror_type = ask_string(
-            "\nYou haven't specified desirable mirroring strategy.  Spread mirroring places\n"
-            "a given hosts mirrored segments each on a separate host.  You must be \n"
-            "using more hosts than the number of segments per host for spread mirroring. \n"
-            "Grouped mirroring places all of a given hosts segments on a single \n"
-            "mirrored host.  You must be using at least 2 hosts for grouped strategy.\n\n",
-            "What type of mirroring strategy would you like?",
-            'grouped', ['spread', 'grouped'])
+        if not gpreb.options.silent:
+            mirror_type = ask_string(
+                "\nYou haven't specified desirable mirroring strategy.  Spread mirroring places\n"
+                "a given hosts mirrored segments each on a separate host.  You must be \n"
+                "using more hosts than the number of segments per host for spread mirroring. \n"
+                "Grouped mirroring places all of a given hosts segments on a single \n"
+                "mirrored host.  You must be using at least 2 hosts for grouped strategy.\n\n",
+                "What type of mirroring strategy would you like?",
+                'grouped', ['spread', 'grouped'])
+        else:
+            mirror_type = 'grouped'
         strat = MirrorStrategy.SPREAD if mirror_type == 'spread' else MirrorStrategy.GROUPED
         gpreb.setMirroringStrategy(strat)
         startup_validator.mirror_strategy = strat

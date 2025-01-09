@@ -1,4 +1,5 @@
 import yaml
+import os
 from dataclasses import dataclass
 from typing import List, Set
 from enum import Enum
@@ -23,13 +24,6 @@ class MirrorStrategy(Enum):
     SPREAD = "spread"
 
 
-def get_base_path(path):
-    """
-    Extract base path from full path
-    """
-    return '/'.join(path.split('/')[:-1])
-
-
 def form_target_hosts(gparray: GpArray, filename: str) -> List[Host]:
     hosts = {}
     for seg in gparray.getSegmentsAsLoadedFromDb():
@@ -41,11 +35,11 @@ def form_target_hosts(gparray: GpArray, filename: str) -> List[Host]:
         primary = pair.primaryDB
         mirror = pair.mirrorDB
         key_pr = (primary.hostname, primary.address)
-        hosts[key_pr].primary_datadirs.add(get_base_path(primary.datadir))
+        hosts[key_pr].primary_datadirs.add(os.path.dirname(primary.datadir))
         hosts[key_pr].primary_segments.add(primary.content)
         if mirror:
             key_mr = (mirror.hostname, mirror.address)
-            hosts[key_mr].mirror_datadirs.add(get_base_path(mirror.datadir))
+            hosts[key_mr].mirror_datadirs.add(os.path.dirname(mirror.datadir))
             hosts[key_mr].mirror_segments.add(mirror.content)
     if filename:
         with open(filename, 'r') as fp:
@@ -85,5 +79,5 @@ class GPRebalance:
         else:
             self.target_strategy = MirrorStrategy.MIRRORLESS
 
-    def setMirroringStrategy(self, type: MirrorStrategy):
-        self.target_strategy = type
+    def setMirroringStrategy(self, strategy: MirrorStrategy):
+        self.target_strategy = strategy

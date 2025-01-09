@@ -31,13 +31,12 @@ class ClusterValidator:
         return l
 
     def validate_existing_configuration(self) -> tuple[bool, MirrorStrategy]:
-        total_primaries = sum(len(h.primary_segments)
-                              for h in self.existing_hosts)
+        arr = GpArray(self.segarray)
+        total_primaries = arr.get_primary_count()
         total_hosts = len(self.existing_hosts)
         expected_primaries = total_primaries // total_hosts
-
-        arr = GpArray(self.segarray)
         strat = None
+
         if arr.guessIsSpreadMirror():
             strat = MirrorStrategy.SPREAD
         elif arr.hasMirrors:
@@ -77,7 +76,8 @@ class ClusterValidator:
                                      for h in self.existing_hosts)
         if total_hosts < 2:
             raise StateValidationError(
-                f"Cannot support target mirroring strategy on given configuration."
+                """Cannot support target mirroring strategy on given configuration. All
+                primaries will be at single host."""
             )
         if total_primary_segments % total_hosts != 0:
             raise StateValidationError(
