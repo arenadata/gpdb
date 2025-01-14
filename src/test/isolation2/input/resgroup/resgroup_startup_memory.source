@@ -1,0 +1,108 @@
+-- start_ignore
+drop table if exists t1;
+drop role if exists test1;
+drop role if exists test2;
+drop resource group rg1;
+drop resource group rg2;
+-- end_ignore
+
+CREATE EXTENSION IF NOT EXISTS gp_inject_fault;
+
+CREATE OR REPLACE FUNCTION resGroupPalloc(float) RETURNS int AS '@abs_builddir@/../regress/regress@DLSUFFIX@', 'resGroupPalloc' LANGUAGE C READS SQL DATA;
+CREATE OR REPLACE FUNCTION hold_memory_by_percent_on_qe(float) RETURNS int AS $$
+SELECT resGroupPalloc($1) FROM gp_dist_random('gp_id')
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION repeatPalloc(int, int) RETURNS int AS
+'@abs_builddir@/../regress/regress@DLSUFFIX@', 'repeatPalloc'
+    LANGUAGE C READS SQL DATA;
+
+CREATE OR REPLACE FUNCTION hold_memory(int) RETURNS int AS $$
+SELECT * FROM repeatPalloc(1, $1)
+$$ LANGUAGE sql;
+
+ALTER RESOURCE GROUP admin_group SET memory_spill_ratio 0;
+ALTER RESOURCE GROUP default_group SET memory_spill_ratio 0;
+ALTER RESOURCE GROUP admin_group SET memory_limit 0;
+ALTER RESOURCE GROUP default_group SET memory_limit 0;
+ALTER RESOURCE GROUP admin_group SET memory_shared_quota 0;
+ALTER RESOURCE GROUP default_group SET memory_shared_quota 0;
+
+create resource group rg1 with (cpu_rate_limit=20, memory_limit=15, memory_shared_quota=100, memory_spill_ratio=0);
+create resource group rg2 with (cpu_rate_limit=20, memory_limit=85, memory_shared_quota=100, memory_spill_ratio=0);
+
+create role test1 with resource group rg1;
+create role test2 with resource group rg2;
+
+set role test1;
+create table t1 (a int) distributed randomly;
+-- Add exactly one line to each segment.
+0U: insert into t1 values (1);
+1U: insert into t1 values (2);
+2U: insert into t1 values (3);
+0Uq:
+1Uq:
+2Uq:
+reset role;
+
+1: set role test1;
+-- Force nested loop join to avoid unnecessary memory allocations.
+1: set enable_nestloop = on;
+1: set enable_hashjoin = off;
+
+1: create view alloc_view as select a, pg_sleep(60) is null from t1 where hold_memory(10) is not null;
+
+set role test2;
+begin;
+
+-- Allocate all the memory in the second resource group.
+select hold_memory_by_percent_on_qe(1);
+-- Wait for all backends to run before executing the query. This is necessary
+-- to avoid executing hold_memory before all backends are up.
+1: select gp_inject_fault_infinite('executor_pre_tuple_processed', 'suspend', dbid)
+    from gp_segment_configuration where role = 'p' and content > -1;
+-- The first resource group has 102 MB of memory available. 5 slices consume
+-- 12 * 5 = 60 MB, plus each slice explicitly allocates 10 MB of memory.
+-- It is expected that the query will also be canceled due to lack of memory in
+-- the resource group and not in the Vmem tracker.
+1&: select * from alloc_view a1
+                      join alloc_view a2 using(a)
+                      join alloc_view a3 using(a)
+                      join alloc_view a4 using(a)
+                      join alloc_view a5 using(a);
+select gp_wait_until_triggered_fault('executor_pre_tuple_processed', 1, dbid)
+    from gp_segment_configuration where role = 'p' and content > -1;
+select gp_inject_fault('executor_pre_tuple_processed', 'reset', dbid)
+    from gp_segment_configuration where role = 'p' and content > -1;
+1<:
+1q:
+rollback;
+reset role;
+drop view alloc_view;
+
+-- Free up some memory for the default resource group.
+ALTER RESOURCE GROUP rg2 SET memory_limit 75;
+-- Test that the starting memory is visible to the resource group.
+1: set role test1;
+1&: select count(*) from t1 where pg_sleep(1) is not null;
+
+select segment, mem.* from gp_toolkit.gp_resgroup_status, json_object_keys(memory_usage)
+    as segment, json_to_record(memory_usage -> segment) mem (used int) where rsgname = 'rg1';
+
+1<:
+1q:
+
+drop table t1;
+reset role;
+drop role test1;
+drop role test2;
+drop resource group rg1;
+drop resource group rg2;
+
+alter resource group default_group set memory_limit 30;
+alter resource group default_group set memory_shared_quota 80;
+alter resource group default_group set memory_spill_ratio 10;
+
+alter resource group default_group set memory_limit 10;
+alter resource group default_group set memory_shared_quota 80;
+alter resource group default_group set memory_spill_ratio 10;
