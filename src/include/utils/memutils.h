@@ -20,6 +20,7 @@
 #define MEMUTILS_H
 
 #include "nodes/memnodes.h"
+#include "utils/hsearch.h"
 
 
 /*
@@ -48,6 +49,9 @@
 #define AllocHugeSizeIsValid(size)	((Size) (size) <= MaxAllocHugeSize)
 
 /*
+ * FIXME: The comment below and the structure is obsolete. AllocChunkData may
+ * be used instead.
+ *
  * All chunks allocated by any memory context manager are required to be
  * preceded by a StandardChunkHeader at a spacing of STANDARDCHUNKHEADERSIZE.
  * A currently-allocated chunk must contain a backpointer to its owning
@@ -221,6 +225,11 @@ extern MemoryContext AllocSetContextCreateInternal(MemoryContext parent,
 #else
 #define AllocSetContextCreate \
 	AllocSetContextCreateInternal
+#endif
+
+#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
+extern HTAB *AllocSetTakeChunkTable(MemoryContext context);
+extern MemoryContextChunkInfo *AllocPointerGetChunkInfo(void *ptr);
 #endif
 
 extern bool AllocSetContains(MemoryContext context, void *pointer);

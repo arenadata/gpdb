@@ -29,6 +29,10 @@ extern void *pg_malloc_extended(size_t size, int flags);
 extern void *pg_realloc(void *pointer, size_t size);
 extern void pg_free(void *pointer);
 
+#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
+#include "utils/palloc_memory_debug_undef.h"
+#endif
+
 /* Equivalent functions, deliberately named the same as backend functions */
 extern char *pstrdup(const char *in);
 extern void *palloc(Size size);
