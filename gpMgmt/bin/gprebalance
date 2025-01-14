@@ -150,8 +150,8 @@ def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
     with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
         cursor = dbconn.query(conn, '''SELECT datid
                     FROM pg_stat_activity
-                    WHERE application_name LIKE \'gpbackup%\' OR
-                    application_name LIKE \'gprestore%\' ''')
+                    WHERE application_name LIKE 'gpbackup%' OR
+                    application_name LIKE 'gprestore%' ''')
         if cursor.rowcount > 0:
             logger.error(
                 '''gpbackup/gprestore utility is already running.''')
