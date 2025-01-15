@@ -25,7 +25,7 @@ env:
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 jobs:
   abi-dump-setup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       BASELINE_REF: ${{ steps.vars.outputs.BASELINE_REF }}
       BASELINE_VERSION: ${{ steps.vars.outputs.BASELINE_VERSION }}
@@ -63,7 +63,7 @@ jobs:
 
   abi-dump:
     needs: abi-dump-setup
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         name:
@@ -135,7 +135,7 @@ jobs:
     needs:
       - abi-dump-setup
       - abi-dump
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Download baseline
         uses: actions/download-artifact@v3
