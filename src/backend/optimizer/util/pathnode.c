@@ -1793,8 +1793,18 @@ set_append_path_locus(PlannerInfo *root, Path *pathnode, RelOptInfo *rel,
 				CdbPathLocus_IsSegmentGeneral(subpath->locus) ||
 				CdbPathLocus_IsReplicated(subpath->locus))
 			{
-				numsegments = Min(numsegments,
-								  CdbPathLocus_NumSegments(subpath->locus));
+				/*
+				 * If target locus type is Replicated, we can allow to align
+				 * numsegments only to subpath with locus Replicated, because
+				 * locus Replicated is executed strictly on its number of
+				 * segments.
+				 */
+				if (targetlocustype != CdbLocusType_Replicated ||
+					CdbPathLocus_IsReplicated(subpath->locus))
+				{
+					numsegments = Min(numsegments,
+									  CdbPathLocus_NumSegments(subpath->locus));
+				}
 			}
 		}
 		CdbPathLocus_MakeSimple(&targetlocus, targetlocustype, numsegments);

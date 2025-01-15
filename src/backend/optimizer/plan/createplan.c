@@ -2269,6 +2269,16 @@ create_agg_plan(PlannerInfo *root, AggPath *best_path)
 	List	   *tlist;
 	List	   *quals;
 
+	if (CdbPathLocus_IsReplicated(best_path->path.locus) &&
+		contain_volatile_functions((Node *) best_path->qual))
+	{
+		/*
+		 * Replicated locus is not supported yet in context of volatile
+		 * functions handling.
+		*/
+		elog(ERROR, "could not devise a plan");
+	}
+
 	/*
 	 * Agg can project, so no need to be terribly picky about child tlist, but
 	 * we do need grouping columns to be available
@@ -2403,6 +2413,16 @@ create_groupingsets_plan(PlannerInfo *root, GroupingSetsPath *best_path)
 	/* Shouldn't get here without grouping sets */
 	Assert(root->parse->groupingSets);
 	Assert(rollups != NIL);
+
+	if (CdbPathLocus_IsReplicated(best_path->path.locus) &&
+		contain_volatile_functions((Node *) best_path->qual))
+	{
+		/*
+		 * Replicated locus is not supported yet in context of volatile
+		 * functions handling.
+		 */
+		elog(ERROR, "could not devise a plan");
+	}
 
 	/*
 	 * Agg can project, so no need to be terribly picky about child tlist, but
@@ -2933,6 +2953,20 @@ create_modifytable_plan(PlannerInfo *root, ModifyTablePath *best_path)
 							best_path->rowMarks,
 							best_path->onconflict,
 							best_path->epqParam);
+
+	/*
+	 * Currently, we prohibit applying volatile functions
+	 * to the result of modifying CTE with locus Replicated.
+	 *
+	 * Assumption: we only create subroots for subqueries and CTEs,
+	 * and only CTEs can have ModifyTable. We are creating a
+	 * ModifyTable, therefore if we are a subroot we are inside a
+	 * modifying CTE.
+	 */
+	if (root && root->parent_root &&
+		CdbPathLocus_IsReplicated(best_path->path.locus) &&
+		contain_volatile_functions((Node *) plan->returningLists))
+		elog(ERROR, "could not devise a plan");
 
 	copy_generic_path_info(&plan->plan, &best_path->path);
 
