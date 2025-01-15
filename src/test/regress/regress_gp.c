@@ -633,7 +633,7 @@ PG_FUNCTION_INFO_V1(resGroupPalloc);
 Datum
 resGroupPalloc(PG_FUNCTION_ARGS)
 {
-	static int32 startUpMBToAccount = -1;
+	static int32 startUpMbRemains = -1;
 	float ratio = PG_GETARG_FLOAT8(0);
 	int memLimit, slotQuota, sharedQuota;
 	int size;
@@ -643,9 +643,9 @@ resGroupPalloc(PG_FUNCTION_ARGS)
 	if (!IsResGroupEnabled())
 		PG_RETURN_INT32(0);
 
-	if (startUpMBToAccount == -1)
+	if (startUpMbRemains == -1)
 	{
-		startUpMBToAccount =
+		startUpMbRemains =
 			(VmemTracker_GetStartupChunks())
 			<< (VmemTracker_GetChunkSizeInBits() - BITS_IN_MB);
 	}
@@ -655,11 +655,10 @@ resGroupPalloc(PG_FUNCTION_ARGS)
 	// At startup, the backend process is already consuming some amount of
 	// memory. In order not to complicate the logic of the tests, we take this
 	// memory into account when allocating memory for tests.
-	if (startUpMBToAccount)
+	if (startUpMbRemains > 0)
 	{
-		int32 tmp = Max(0, startUpMBToAccount - size);
-		size = Max(0, size - startUpMBToAccount);
-		startUpMBToAccount = tmp;
+		size = Max(0, size - startUpMbRemains);
+		startUpMbRemains = Max(0, startUpMbRemains - size);
 	}
 	count = size / 512;
 	for (i = 0; i < count; i++)
