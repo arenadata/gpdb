@@ -41,7 +41,7 @@ class GPRebalance:
 
         hosts = self.getHostsFromGpArray()
         if options.filename:
-            with open(options.filenam, 'r') as fp:
+            with open(options.filename, 'r') as fp:
                 config = yaml.safe_load(fp)
                 for host_config in config['hosts']:
                     key = (host_config['hostname'], host_config['address'])
