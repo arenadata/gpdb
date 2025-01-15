@@ -181,35 +181,17 @@ def remove_pid_file(coordinator_data_directory: str):
         pass
 
 
-def dump_hosts_info(gparray: GpArray, coordinator_data_directory: str):
+def dump_hosts_info(hosts, coordinator_data_directory: str):
     """
       Converts info about hosts to YAML format
     """
-    hosts = {}
-    for pair in gparray.segmentPairs:
-        primary = pair.primaryDB
-        mirror = pair.mirrorDB
-        key_pr = (primary.hostname, primary.address)
-        if key_pr not in hosts:
-            hosts[key_pr] = {'segment_datadirs': set(),
-                             'mirror_datadirs': set()}
-        hosts[key_pr]['segment_datadirs'].add(os.path.dirname(primary.datadir))
-
-        if mirror:
-            key_mir = (mirror.hostname, mirror.address)
-            if key_mir not in hosts:
-                hosts[key_mir] = {'segment_datadirs': set(),
-                                  'mirror_datadirs': set()}
-            hosts[key_mir]['mirror_datadirs'].add(
-                os.path.dirname(mirror.datadir))
-
     yaml_entries = []
     for (hostname, address), val in hosts.items():
         host_entry = {
             'hostname': hostname,
             'address': address,
-            'primary_datadirs': list(val['segment_datadirs']),
-            'mirror_datadirs': list(val['mirror_datadirs']),
+            'primary_datadirs': list(val.primary_datadirs),
+            'mirror_datadirs': list(val.mirror_datadirs),
         }
         yaml_entries.append(host_entry)
 
@@ -327,14 +309,16 @@ def main(options, args, parser):
             logger.error('gprebalance ' + ' '.join(sys.argv[1:]))
             sys.exit(1)
 
+        gprebalance = GPRebalance(logger, gparray, dburl, options)
+
         # dump existing hosts configuration
         if options.genconf:
-            dump_hosts_info(gparray, options.coordinator_data_directory)
+            dump_hosts_info(gprebalance.getHostsFromGpArray(),
+                            options.coordinator_data_directory)
             logger.info('Generating hosts config in %s' %
                         options.coordinator_data_directory)
             sys.exit(0)
 
-        gprebalance = GPRebalance(logger, gparray, dburl, options)
         possibility_checks(gprebalance)
         logger.info('Validation passed. Preparing rebalance...')
         logger.info('Exiting...')
