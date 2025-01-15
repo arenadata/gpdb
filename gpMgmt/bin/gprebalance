@@ -99,32 +99,32 @@ def parseargs():
 def validate_options(options, args, parser):
     if len(args) > 0:
         logger.error(f'Unknown argument {args[0]}')
-        parser.exit()
+        parser.exit(1)
 
     if options.mirroring and options.mirroring not in ('grouped', 'spread'):
         logger.error('Mirroring strategy %s is not supported' %
                      options.mirroring)
         parser.print_help()
-        parser.exit()
+        parser.exit(1)
 
     try:
         options.coordinator_data_directory = get_coordinatordatadir()
         options.gphome = get_gphome()
     except GpError as msg:
         logger.error(msg)
-        parser.exit()
+        parser.exit(1)
 
     if not os.path.exists(options.coordinator_data_directory):
         logger.error('Coordinator data directory %s does not exist.' %
                      options.coordinator_data_directory)
-        parser.exit()
+        parser.exit(1)
 
     if options.genconf:
         for arg in sys.argv[1:]:
             if arg != '-g' and arg != '--gen-hosts':
                 logger.error('-g flag must be used alone')
                 parser.print_usage()
-                parser.exit()
+                parser.exit(1)
 
     return options, args
 
