@@ -8132,7 +8132,7 @@ StartupXLOG(void)
 		/*
 		 * Response to FTS probes after this point will not indicate that we are a
 		 * mirror because the am_mirror flag is set based on existence of
-		 * RECOVERY_COMMAND_FILE.  New libpq connections to the postmaster should
+		 * STANDBY_SIGNAL_FILE.  New libpq connections to the postmaster should
 		 * no longer return CAC_MIRROR_READY as response because we are no longer a
 		 * mirror.
 		 */
