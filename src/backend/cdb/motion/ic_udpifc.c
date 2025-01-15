@@ -1176,6 +1176,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 	struct addrinfo 		*addrs = NULL;
 	struct addrinfo 		*addr;
 	struct addrinfo 		hints;
+	char					service[32];
 	int						ret;
 	int 					ic_socket = PGINVALID_SOCKET;
 	struct sockaddr_storage ic_socket_addr;
@@ -1185,6 +1186,11 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 	uint32					socketSendBufferSize;
 	uint32					socketRecvBufferSize;
 
+	/*
+	 * we let the system pick the UDP port here so we don't have to manage
+	 * port resources ourselves.  So set the port to 0 (any port)
+	 */
+	snprintf(service, 32, "%d", 0);
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = AF_UNSPEC;	/* Allow IPv4 or IPv6 */
 	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
@@ -1220,8 +1226,7 @@ setupUDPListeningSocket(int *listenerSocketFd, uint16 *listenerPort, int *txFami
 	 * Restrict what IP address we will listen on to just the one that was
 	 * used to create this QE session.
 	 */
-	Assert(interconnect_address && strlen(interconnect_address) > 0);
-	ret = pg_getaddrinfo_all(interconnect_address, NULL, &hints, &addrs);
+	ret = pg_getaddrinfo_all(interconnect_address, service, &hints, &addrs);
 	if (ret || !addrs)
 	{
 		ereport(LOG,
