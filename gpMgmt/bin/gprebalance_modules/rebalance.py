@@ -7,7 +7,7 @@ from gppylib.db import dbconn
 from gppylib.gparray import GpArray, Segment, MODE_NOT_SYNC, STATUS_DOWN
 
 
-@dataclass
+@dataclass(eq=False)
 class Host:
     hostname: str
     address: str
@@ -16,6 +16,13 @@ class Host:
     # set of content ids
     primary_segments: Set[int]
     mirror_segments: Set[int]
+
+    def __eq__(self, other):
+        return self.hostname == other.hostname and \
+            self.address == other.address
+
+    def __hash__(self):
+        return hash((self.hostname, self.address))
 
 
 class MirrorStrategy(Enum):
@@ -39,26 +46,22 @@ class GPRebalance:
         else:
             self.target_strategy = MirrorStrategy.MIRRORLESS
 
-        hosts = self.getHostsFromGpArray()
+        self.current_hosts = list(self.getHostsFromGpArray().values())
+        self.target_hosts = self.current_hosts
         if options.filename:
             with open(options.filename, 'r') as fp:
+                hosts = {}
                 config = yaml.safe_load(fp)
                 for host_config in config['hosts']:
                     key = (host_config['hostname'], host_config['address'])
-                    if key not in hosts:
-                        hosts[key] = Host(hostname=host_config['hostname'],
-                                          address=host_config['address'],
-                                          primary_datadirs=set(
-                                          host_config['primary_datadirs']),
-                                          mirror_datadirs=set(
-                                          host_config['mirror_datadirs']),
-                                          primary_segments=set(), mirror_segments=set())
-                    else:
-                        hosts[key].primary_datadirs.union(
-                            set(host_config['primary_datadirs']))
-                        hosts[key].mirror_datadirs.union(
-                            set(host_config['mirror_datadirs']))
-        self.target_hosts = list(hosts.values())
+                    hosts[key] = Host(hostname=host_config['hostname'],
+                                      address=host_config['address'],
+                                      primary_datadirs=set(
+                        host_config['primary_datadirs']),
+                        mirror_datadirs=set(
+                        host_config['mirror_datadirs']),
+                        primary_segments=set(), mirror_segments=set())
+                self.target_hosts = list(hosts.values())
 
     def setMirroringStrategy(self, strategy: MirrorStrategy):
         self.target_strategy = strategy

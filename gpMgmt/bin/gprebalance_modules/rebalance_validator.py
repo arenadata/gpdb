@@ -7,13 +7,10 @@ class StateValidationError(Exception):
 
 
 class ClusterValidator:
-    def __init__(self, hosts: List[Host], segarray: List[Segment], has_mirrors: bool, mirror_strategy: MirrorStrategy):
-        self.hosts = hosts
+    def __init__(self, existing_hosts: List[Host], target_hosts: List[Host], segarray: List[Segment], has_mirrors: bool, mirror_strategy: MirrorStrategy):
         self.mirror_strategy = mirror_strategy
-        self.existing_hosts = [
-            h for h in hosts if h.primary_segments or h.mirror_segments]
-        self.new_hosts = [h for h in hosts if not bool(
-            h.primary_segments) and not bool(h.mirror_segments)]
+        self.existing_hosts = existing_hosts
+        self.target_hosts = target_hosts
         self.segarray = segarray
         self.has_mirrors = has_mirrors
 
@@ -54,11 +51,11 @@ class ClusterValidator:
 
     def prevalidate_segment_distribution(self):
         """
-        Validate whether segments can be uniformly distributed across hosts
+        Validate whether segments can be uniformly distributed across target hosts
         """
         total_primary_segments = sum(len(h.primary_segments)
                                      for h in self.existing_hosts)
-        total_hosts = len(self.hosts)
+        total_hosts = len(self.target_hosts)
 
         if total_primary_segments % total_hosts != 0:
             raise StateValidationError(
@@ -71,7 +68,7 @@ class ClusterValidator:
         """
         if not self.has_mirrors:
             return
-        total_hosts = len(self.hosts)
+        total_hosts = len(self.target_hosts)
         total_primary_segments = sum(len(h.primary_segments)
                                      for h in self.existing_hosts)
         if total_hosts < 2:

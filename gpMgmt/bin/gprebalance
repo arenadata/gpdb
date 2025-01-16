@@ -36,8 +36,9 @@ _help = ["""
 Mode is the desirable mirroring strategy after rebalance. Makes sense only when mirrorring
 is enabled for the cluster. Default value is "grouped".
 [-f <hosts_file>]
-The hosts configuration file (YAML format) defines the hosts configuration across the
-cluster. Existing info can be generated from gp_segment_configuration through -g option.
+The hosts configuration file (YAML format) defines the target hosts on which
+the rebalance procedure will distribute segments from existing configuration.
+Existing info can be generated from gp_segment_configuration through -g option.
 hosts:
 - hostname: <host_name>      # Machine hostname
   address: <address>         # Network address for connections
@@ -47,8 +48,9 @@ hosts:
   mirror_datadirs:           # Directories for mirror segments
     - /mdatadir1
     - /mdatadir2
-You can include empty hosts in the configuration, that  is useful
-for planning future cluster balance and segment redistribution.
+You can include empty hosts in the configuration or shrink the existing number
+of hosts, the utility will try to balance the segments strictly across hosts
+from the file.
 """]
 
 _usage = """
@@ -205,6 +207,7 @@ def dump_hosts_info(hosts, coordinator_data_directory: str):
 def possibility_checks(gpreb: GPRebalance):
     logger.info('Validation of rebalance possibility...')
     startup_validator = ClusterValidator(
+        gpreb.current_hosts,
         gpreb.target_hosts,
         gpreb.original_gparray.getSegmentsAsLoadedFromDb(),
         gpreb.original_gparray.get_mirroring_enabled(),
@@ -250,7 +253,10 @@ def possibility_checks(gpreb: GPRebalance):
 
     already_bal, _ = startup_validator.validate_existing_configuration()
     if already_bal:
-        if len(startup_validator.new_hosts) > 0:
+        # case of hosts shrinkage, expansion
+        if len(set(startup_validator.existing_hosts) &
+               set(startup_validator.target_hosts)) < len(startup_validator.existing_hosts) or \
+                len(startup_validator.target_hosts) > len(startup_validator.existing_hosts):
             try:
                 startup_validator.prevalidate_segment_distribution()
                 startup_validator.prevalidate_mirror_strategy()
