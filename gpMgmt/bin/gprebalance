@@ -124,7 +124,7 @@ def validate_options(options, args, parser):
     if options.genconf:
         for arg in sys.argv[1:]:
             if arg not in ('-g', '--gen-hosts'):
-                logger.error('-g flag must be used alone')
+                logger.error('-g or --gen-hosts flag must be used alone')
                 parser.print_usage()
                 parser.exit(1)
 
