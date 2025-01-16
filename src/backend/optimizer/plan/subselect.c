@@ -433,6 +433,16 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 		(contain_volatile_functions((Node *) subroot->parse->havingQual) ||
 		 contain_volatile_functions((Node *) best_path->pathtarget->exprs)))
 		CdbPathLocus_MakeSingleQE(&(best_path->locus), getgpsegmentCount());
+	else if (CdbPathLocus_IsReplicated(best_path->locus) &&
+		(contain_volatile_functions((Node *) subroot->parse->havingQual) ||
+		 contain_volatile_functions((Node *) best_path->pathtarget->exprs)))
+	{
+		/*
+		 * Replicated locus is not supported yet in context of volatile
+		 * functions handling.
+		 */
+		elog(ERROR, "could not devise a plan");
+	}
 
 	best_path = cdbllize_adjust_init_plan_path(root, best_path);
 
