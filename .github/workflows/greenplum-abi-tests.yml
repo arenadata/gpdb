@@ -22,7 +22,7 @@ on:
 
 jobs:
   abi-dump-setup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       BASELINE_REF: ${{ steps.vars.outputs.BASELINE_REF }}
       BASELINE_VERSION: ${{ steps.vars.outputs.BASELINE_VERSION }}
@@ -60,7 +60,7 @@ jobs:
 
   abi-dump:
     needs: abi-dump-setup
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         name:
@@ -87,17 +87,8 @@ jobs:
       - name: Install dependencies and abi-dumper
         run: |
           sudo gpdb_src/README.Ubuntu.bash
-          sudo apt install -y wget libuv1-dev libpam0g-dev libldap-dev libipc-run-perl abi-dumper
+          sudo apt install -y wget libuv1-dev libpam0g-dev libldap-dev libipc-run-perl universal-ctags abi-dumper
           sudo ln -fs python2 /usr/bin/python
-
-      ## FIXME: abi-dumper requires 'Universal Ctags' but the package manager only provides
-      ## 'Exuberant Ctags'.
-      - name: Install universal-ctags
-        run: |
-          wget 'https://github.com/universal-ctags/ctags-nightly-build/releases/download/2023.07.05%2Bafdae39c0c2e508d113cbc570f4635b96159840c/uctags-2023.07.05-linux-x86_64.tar.xz'
-          tar -xf uctags-2023.07.05-linux-x86_64.tar.xz
-          sudo cp uctags-2023.07.05-linux-x86_64/bin/* /usr/bin/
-          which ctags
 
       - name: Build Greenplum
         run: |
@@ -129,7 +120,7 @@ jobs:
     needs:
       - abi-dump-setup
       - abi-dump
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Download baseline
         uses: actions/download-artifact@v3
