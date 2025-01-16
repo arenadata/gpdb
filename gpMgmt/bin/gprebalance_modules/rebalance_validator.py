@@ -15,17 +15,13 @@ class ClusterValidator:
         self.has_mirrors = has_mirrors
 
     def validate_segment_status(self):
-        inv = self.get_invalid_segments()
-        if len(inv) > 0:
-            raise StateValidationError(
-                f"The {[s.content for s in inv]} segments are down")
-
-    def get_invalid_segments(self) -> List[Segment]:
-        l = []
+        inv = []
         for seg in self.segarray:
             if not seg.valid:
-                l.append(seg)
-        return l
+                inv.append(seg.content)
+        if len(inv) > 0:
+            raise StateValidationError(
+                f"The {[c for c in inv]} segments are down")
 
     def validate_existing_configuration(self) -> tuple[bool, MirrorStrategy]:
         arr = GpArray(self.segarray)
