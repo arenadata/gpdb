@@ -87,7 +87,7 @@ jobs:
       - name: Install dependencies and abi-dumper
         run: |
           sudo gpdb_src/README.Ubuntu.bash
-          sudo apt install -y wget libuv1-dev libpam0g-dev libldap-dev libipc-run-perl universal-ctags abi-dumper
+          sudo apt install -y libuv1-dev libpam0g-dev libldap-dev libipc-run-perl universal-ctags abi-dumper
           sudo ln -fs python2 /usr/bin/python
 
       - name: Build Greenplum
@@ -95,10 +95,10 @@ jobs:
           pushd gpdb_src
           CC='gcc -m64' \
           CFLAGS='-Og -g3 -Wno-maybe-uninitialized' LDFLAGS='-Wl,--enable-new-dtags -Wl,--export-dynamic' \
-          ./configure --with-quicklz --disable-gpperfmon --with-gssapi --enable-mapreduce --enable-orafce --enable-ic-proxy \
-                      --enable-orca --with-libxml --with-pythonsrc-ext --with-uuid=e2fs --with-pgport=5432 --enable-tap-tests \
-                      --enable-debug-extensions --with-perl --with-python --with-openssl --with-pam --with-ldap --with-includes="" \
-                      --with-libraries="" --disable-rpath \
+          ./configure --with-gssapi --enable-orafce --enable-ic-proxy --enable-orca --with-libxml \
+                      --with-uuid=e2fs --with-pgport=5432 --enable-tap-tests --enable-debug-extensions \
+                      --with-perl --with-python --with-openssl --with-pam --with-ldap
+                      --with-includes="" --with-libraries="" --disable-rpath \
                       --prefix=/usr/local/greenplum-db-devel \
                       --mandir=/usr/local/greenplum-db-devel/man
           sudo make -j`nproc` install
