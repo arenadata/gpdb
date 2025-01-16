@@ -655,11 +655,14 @@ resGroupPalloc(PG_FUNCTION_ARGS)
 	// At startup, the backend process is already consuming some amount of
 	// memory. In order not to complicate the logic of the tests, we take this
 	// memory into account when allocating memory for tests.
-	if (startUpMbRemains > 0)
+	if (startUpMbRemains >= size)
 	{
-		size = Max(0, size - startUpMbRemains);
-		startUpMbRemains = Max(0, startUpMbRemains - size);
+		startUpMbRemains -= size;
+		PG_RETURN_INT32(0);
 	}
+	size -= startUpMbRemains;
+	startUpMbRemains = 0;
+
 	count = size / 512;
 	for (i = 0; i < count; i++)
 		MemoryContextAlloc(TopMemoryContext, 512 * 1024 * 1024);

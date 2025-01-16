@@ -38,9 +38,9 @@ ALTER
 ALTER RESOURCE GROUP default_group SET memory_shared_quota 0;
 ALTER
 
-create resource group rg1 with (cpu_rate_limit=20, memory_limit=15, memory_shared_quota=100, memory_spill_ratio=0);
+create resource group rg1 with (cpu_rate_limit=20, memory_limit=15, memory_shared_quota=100);
 CREATE
-create resource group rg2 with (cpu_rate_limit=20, memory_limit=85, memory_shared_quota=100, memory_spill_ratio=0);
+create resource group rg2 with (cpu_rate_limit=20, memory_limit=85, memory_shared_quota=100);
 CREATE
 
 create role test1 with resource group rg1;
@@ -48,9 +48,9 @@ CREATE
 create role test2 with resource group rg2;
 CREATE
 
-set role test1;
+1: set role test1;
 SET
-create table t1 (a int) distributed randomly;
+1: create table t1 (a int) distributed randomly;
 CREATE
 -- Add exactly one line to each segment.
 0U: insert into t1 values (1);
@@ -62,11 +62,7 @@ INSERT 1
 0Uq: ... <quitting>
 1Uq: ... <quitting>
 2Uq: ... <quitting>
-reset role;
-RESET
 
-1: set role test1;
-SET
 -- Force nested loop join to avoid unnecessary memory allocations.
 1: set enable_nestloop = on;
 SET

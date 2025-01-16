@@ -700,7 +700,7 @@ VmemTracker_UnregisterStartupMemory(void)
 		pg_atomic_sub_fetch_u32((pg_atomic_uint32 *) &MySessionState->sessionVmem,
 								startupChunks);
 
-	ResGroupProcSubStartupChunks(startupChunks);
+	ResGroupProcAddStartupChunks(-startupChunks);
 
 	trackedBytes -= startupBytes;
 	trackedVmemChunks -= startupChunks;

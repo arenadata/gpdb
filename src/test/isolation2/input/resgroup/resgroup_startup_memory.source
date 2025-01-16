@@ -28,14 +28,14 @@ ALTER RESOURCE GROUP default_group SET memory_limit 0;
 ALTER RESOURCE GROUP admin_group SET memory_shared_quota 0;
 ALTER RESOURCE GROUP default_group SET memory_shared_quota 0;
 
-create resource group rg1 with (cpu_rate_limit=20, memory_limit=15, memory_shared_quota=100, memory_spill_ratio=0);
-create resource group rg2 with (cpu_rate_limit=20, memory_limit=85, memory_shared_quota=100, memory_spill_ratio=0);
+create resource group rg1 with (cpu_rate_limit=20, memory_limit=15, memory_shared_quota=100);
+create resource group rg2 with (cpu_rate_limit=20, memory_limit=85, memory_shared_quota=100);
 
 create role test1 with resource group rg1;
 create role test2 with resource group rg2;
 
-set role test1;
-create table t1 (a int) distributed randomly;
+1: set role test1;
+1: create table t1 (a int) distributed randomly;
 -- Add exactly one line to each segment.
 0U: insert into t1 values (1);
 1U: insert into t1 values (2);
@@ -43,9 +43,7 @@ create table t1 (a int) distributed randomly;
 0Uq:
 1Uq:
 2Uq:
-reset role;
 
-1: set role test1;
 -- Force nested loop join to avoid unnecessary memory allocations.
 1: set enable_nestloop = on;
 1: set enable_hashjoin = off;
@@ -66,10 +64,10 @@ select hold_memory_by_percent_on_qe(1);
 -- It is expected that the query will also be canceled due to lack of memory in
 -- the resource group and not in the Vmem tracker.
 1&: select * from alloc_view a1
-                      join alloc_view a2 using(a)
-                      join alloc_view a3 using(a)
-                      join alloc_view a4 using(a)
-                      join alloc_view a5 using(a);
+             join alloc_view a2 using(a)
+             join alloc_view a3 using(a)
+             join alloc_view a4 using(a)
+             join alloc_view a5 using(a);
 select gp_wait_until_triggered_fault('executor_pre_tuple_processed', 1, dbid)
     from gp_segment_configuration where role = 'p' and content > -1;
 select gp_inject_fault('executor_pre_tuple_processed', 'reset', dbid)
