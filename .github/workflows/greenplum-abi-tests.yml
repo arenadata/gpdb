@@ -74,7 +74,6 @@ jobs:
             repo: ${{ github.repository }}
             ref: ${{ github.sha }}
 
-    steps:
       ## FIXME: abi-dumper requires 'Universal Ctags' but the package manager only provides
       ## 'Exuberant Ctags'.
       - name: Install universal-ctags
@@ -84,6 +83,7 @@ jobs:
           sudo cp uctags-2023.07.05-linux-x86_64/bin/* /usr/bin/
           which ctags
 
+    steps:
       - name: Download Greenplum source code
         uses: actions/checkout@v3
         with:
