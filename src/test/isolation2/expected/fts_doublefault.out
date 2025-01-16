@@ -463,6 +463,9 @@ select gp_request_fts_probe_scan();
 -- end_ignore
 (exited with code 0)
 
+-1U: drop table last_timestamp;
+DROP TABLE
+
 !\retcode gpconfig -r gp_fts_mark_mirror_down_grace_period;
 -- start_ignore
 -- end_ignore

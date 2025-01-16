@@ -168,5 +168,7 @@ select gp_request_fts_probe_scan();
 
 !\retcode gprecoverseg -ar;
 
+-1U: drop table last_timestamp;
+
 !\retcode gpconfig -r gp_fts_mark_mirror_down_grace_period;
 !\retcode gpstop -u;
