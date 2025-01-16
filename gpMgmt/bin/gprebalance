@@ -136,9 +136,6 @@ def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
     Checks if there are any running instances of
     gprebalance/gpbackup/gpexpand/gpshrink/gpresize
     """
-
-    is_parallel = False
-
     for util in ('gprebalance', 'gpexpand', 'gpshrink', 'gpresize'):
         try:
             with open(f'{coordinator_data_directory}/{util}.pid', 'r') as fp:

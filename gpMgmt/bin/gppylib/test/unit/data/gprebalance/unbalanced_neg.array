@@ -6,4 +6,4 @@
 4|2|p|p|s|u|sdw1|sdw1|40002|/data/primary2
 # SDW2 (2 primary)
 5|3|p|p|s|u|sdw2|sdw2|40003|/data/primary3
-6|4|p|p|s|u|sdw1|sdw1|40002|/data/primary4
+6|4|p|p|s|u|sdw2|sdw2|40004|/data/primary4
