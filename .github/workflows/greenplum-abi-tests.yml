@@ -74,15 +74,6 @@ jobs:
             repo: ${{ github.repository }}
             ref: ${{ github.sha }}
 
-      ## FIXME: abi-dumper requires 'Universal Ctags' but the package manager only provides
-      ## 'Exuberant Ctags'.
-      - name: Install universal-ctags
-        run: |
-          wget 'https://github.com/universal-ctags/ctags-nightly-build/releases/download/2023.07.05%2Bafdae39c0c2e508d113cbc570f4635b96159840c/uctags-2023.07.05-linux-x86_64.tar.xz'
-          tar -xf uctags-2023.07.05-linux-x86_64.tar.xz
-          sudo cp uctags-2023.07.05-linux-x86_64/bin/* /usr/bin/
-          which ctags
-
     steps:
       - name: Download Greenplum source code
         uses: actions/checkout@v3
@@ -96,7 +87,7 @@ jobs:
       - name: Install dependencies and abi-dumper
         run: |
           sudo gpdb_src/README.Ubuntu.bash
-          sudo apt install -y wget libuv1-dev libpam0g-dev libldap-dev libipc-run-perl abi-dumper
+          sudo apt install -y wget libuv1-dev libpam0g-dev libldap-dev libipc-run-perl universal-ctags abi-dumper
           sudo ln -fs python2 /usr/bin/python
 
       - name: Build Greenplum
