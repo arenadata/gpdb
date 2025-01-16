@@ -33,10 +33,6 @@ ALTER RESOURCE GROUP admin_group SET memory_limit 0;
 ALTER
 ALTER RESOURCE GROUP default_group SET memory_limit 0;
 ALTER
-ALTER RESOURCE GROUP admin_group SET memory_shared_quota 0;
-ALTER
-ALTER RESOURCE GROUP default_group SET memory_shared_quota 0;
-ALTER
 
 create resource group rg1 with (cpu_rate_limit=20, memory_limit=15, memory_shared_quota=100);
 CREATE
@@ -162,14 +158,10 @@ DROP
 
 alter resource group default_group set memory_limit 30;
 ALTER
-alter resource group default_group set memory_shared_quota 80;
-ALTER
 alter resource group default_group set memory_spill_ratio 10;
 ALTER
 
 alter resource group default_group set memory_limit 10;
-ALTER
-alter resource group default_group set memory_shared_quota 80;
 ALTER
 alter resource group default_group set memory_spill_ratio 10;
 ALTER
