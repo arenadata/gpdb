@@ -52,8 +52,6 @@
 #include "utils/memutils.h"
 #include "utils/gp_alloc.h"
 
-#include "utils/hsearch.h"
-
 #include "miscadmin.h"
 
 /* Define this to detail debug alloc information */
