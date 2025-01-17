@@ -187,7 +187,7 @@ MemoryContextDumpChunkStats(MemoryContext context, int level, int max_children,
 
 	Size chunk_count = hash_get_num_entries(chunk_table);
 
-	if (chunk_count <= 0)
+	if (chunk_count == 0)
 	{
 		hash_destroy(chunk_table);
 		return;
