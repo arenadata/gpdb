@@ -236,7 +236,6 @@ extern char *getCpuSetByRole(const char *cpuset);
 extern void checkCpuSetByRole(const char *cpuset);
 
 extern void ResGroupProcAddStartupChunks(int32 chunks);
-extern void ResGroupProcSubStartupChunks(int32 chunks);
 
 #define LOG_RESGROUP_DEBUG(...) \
 	do {if (Debug_resource_group) elog(__VA_ARGS__); } while(false);
