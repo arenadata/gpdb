@@ -117,12 +117,23 @@ AllocSetUpdateAllocatedChunkStats(AllocSet set)
 			 (char *) chunk < (char *) block->freeptr;
 			 chunk = (AllocChunk) ((char *) chunk + chunk->size + ALLOC_CHUNKHDRSZ))
 		{
-			if (AllocSetChunkIsFree(chunk, set) ||
-				chunk->info.init != EXTRA_DYNAMIC_MEMORY_DEBUG_INIT_MAGIC)
+			if (AllocSetChunkIsFree(chunk, set))
 				continue;
-			if (!chunk->info.key.parent_func || !chunk->info.key.line ||
-				!chunk->info.filename || !chunk->info.func)
-				continue;
+
+			/*
+			 * The chunk is currently in usage. If we didn't fill the info, the
+			 * chunk wasn't allocated by one of our macros. Make sure we still
+			 * account it's memory.
+			 */
+			if (chunk->info.init != EXTRA_DYNAMIC_MEMORY_DEBUG_INIT_MAGIC ||
+				chunk->info.func == NULL ||
+				chunk->info.key.parent_func == NULL ||
+				chunk->info.filename == NULL)
+			{
+				chunk->info.func = "<no information>";
+				chunk->info.filename = "<unknown>";
+				chunk->info.key.parent_func = "<no information>";
+			}
 
 			AllocChunkUpdateStats(set->chunkTable, chunk);
 		}

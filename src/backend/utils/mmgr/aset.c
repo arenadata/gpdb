@@ -688,7 +688,7 @@ AllocSetContextCreateInternal(MemoryContext parent,
 	set->currentAllocated = 0;
 	set->peakAllocated = 0;
 
-#if defined EXTRA_DYNAMIC_MEMORY_DEBUG
+#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
 	set->chunkTable = NULL;
 #endif
 
