@@ -1895,7 +1895,7 @@ WalSndComputeSleeptime(TimestampTz now)
 	}
 
 	/* If archiving is enabled, send a status report to the client */
-	if (XLogArchivingStatusReportingActive() && XLogArchiveMode != ARCHIVE_MODE_ALWAYS)
+	if (XLogArchivingStatusReportingActive())
 	{
 		/*
 		 * If we requested an update from pgstat, poll every
@@ -3505,7 +3505,7 @@ WalSndKeepaliveIfNecessary(void)
 	/*
 	 * Send an archival status message, if necessary.
 	 */
-	if (XLogArchivingStatusReportingActive() && XLogArchiveMode != ARCHIVE_MODE_ALWAYS)
+	if (XLogArchivingStatusReportingActive())
 		WalSndArchivalReportIfNecessary(GetCurrentTimestamp());
 
 	/*
