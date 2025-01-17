@@ -446,26 +446,6 @@ static const unsigned char LogTable256[256] =
 #define AllocAllocInfo(_cxt, _chunk)
 #endif
 
-#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
-HTAB *
-AllocSetTakeChunkTable(MemoryContext context)
-{
-	Assert(AllocSetIsValid(context));
-	Assert(IsA(context, AllocSetContext));
-
-	HTAB *table = ((AllocSet) context)->chunkTable;
-	((AllocSet) context)->chunkTable = NULL;
-
-	return table;
-}
-
-MemoryContextChunkInfo *
-AllocPointerGetChunkInfo(void *ptr)
-{
-	return &AllocPointerGetChunk(ptr)->info;
-}
-#endif
-
 /* ----------
  * AllocSetFreeIndex -
  *

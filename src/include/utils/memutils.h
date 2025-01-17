@@ -20,8 +20,10 @@
 #define MEMUTILS_H
 
 #include "nodes/memnodes.h"
-#include "utils/hsearch.h"
 
+#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
+#include "utils/hsearch.h"
+#endif
 
 /*
  * MaxAllocSize, MaxAllocHugeSize

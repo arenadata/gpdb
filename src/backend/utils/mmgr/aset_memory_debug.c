@@ -4,8 +4,28 @@
 
 #include "utils/palloc_memory_debug.h"
 
+#include "utils/memutils.h"
 #include "access/hash.h"
 #include "utils/hsearch.h"
+
+/* Public functions, required by mcxt_memory_debug.c. */
+HTAB *
+AllocSetTakeChunkTable(MemoryContext context)
+{
+	Assert(AllocSetIsValid(context));
+	Assert(IsA(context, AllocSetContext));
+
+	HTAB *table = ((AllocSet) context)->chunkTable;
+	((AllocSet) context)->chunkTable = NULL;
+
+	return table;
+}
+
+MemoryContextChunkInfo *
+AllocPointerGetChunkInfo(void *ptr)
+{
+	return &AllocPointerGetChunk(ptr)->info;
+}
 
 /* Update individual chunk stats. */
 static void
