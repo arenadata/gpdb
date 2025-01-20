@@ -1,0 +1,28 @@
+FROM ubuntu:22.04 AS base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY README.Ubuntu.bash ./
+RUN set -eux && ./README.Ubuntu.bash
+RUN apt install -y rsync sudo python3.11 libipc-run-perl
+
+WORKDIR /home/gpadmin
+
+FROM base AS build
+
+COPY ./ gpdb_src
+
+WORKDIR /home/gpadmin/gpdb_src
+
+ENV CC="clang"
+ENV CXX="clang++"
+
+ENV CFLAGS="-Wno-deprecated-declarations"
+ENV CXXFLAGS="-O0"
+
+ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend"
+
+RUN ./configure $CONFIGURE_FLAGS
+
+# Run the check upon startup.
+ENTRYPOINT arenadata/scripts/run_clang_check.bash

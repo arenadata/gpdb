@@ -101,6 +101,14 @@ for Rocky Linux:
 docker run --rm -it gpdb7_regress:latest bash -c "gpdb_src/concourse/scripts/unit_tests_gporca.bash"
 ```
 
+## Clang check
+
+To just compile the code to check for errors with Clang on Ubuntu:
+```bash
+docker build -t gpdb7_u22_clang_check:latest -f arenadata/Dockerfile.ubuntu.clang-check .
+docker run -it gpdb7_u22_clang_check:latest
+```
+
 ## How to run demo cluster inside docker container manually
 
 1. Build or pull from internal registry (see above) needed image
