@@ -150,9 +150,6 @@ Plan *
 make_explicit_motion(PlannerInfo *root, Plan *lefttree, AttrNumber segidColIdx)
 {
 	Motion	   *motion;
-	plan_tree_base_prefix base;
-
-	base.node = (Node *) root;
 
 	Assert(segidColIdx > 0 && segidColIdx <= list_length(lefttree->targetlist));
 
