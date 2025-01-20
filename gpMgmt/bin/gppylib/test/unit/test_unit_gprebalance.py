@@ -101,6 +101,17 @@ class GpTestRebalance(GpTestCase):
             "Cluster is already balanced")
 
     @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile("balanced_no_mirrors"))
+    def test_no_mirrors_allow_mirrorless(self, mock1):
+        saved = self.options.allow_mirrorless
+        self.options.allow_mirrorless = True
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Cluster is already balanced")
+        self.options.allow_mirrorless = saved
+
+    @patch('gprebalance.GpArray.initFromCatalog',
            return_value=initGparrayFromFile("segments_down"))
     def test_segments_down(self, mock1):
         self.input_mock.return_value = "N"

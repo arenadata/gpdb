@@ -87,8 +87,6 @@ def parseargs():
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit.')
-    parser.add_option('', '--hba-hostnames', action='store_true', default=False,
-                      help='use hostnames instead of CIDR in pg_hba.conf')
     parser.add_option('--usage', action="briefhelp")
 
     parser.set_defaults(verbose=False)

@@ -15,10 +15,7 @@ class ClusterValidator:
         self.has_mirrors = has_mirrors
 
     def validate_segment_status(self):
-        inv = []
-        for seg in self.segarray:
-            if not seg.valid:
-                inv.append(seg.content)
+        inv = [seg.content for seg in self.segarray if not seg.valid]
         if len(inv) > 0:
             raise StateValidationError(
                 f"The {[c for c in inv]} segments are down")
