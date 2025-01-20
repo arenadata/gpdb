@@ -94,7 +94,9 @@ jobs:
         run: |
           pushd gpdb_src
           CC='gcc -m64' \
-          CFLAGS='-Og -g3 -Wno-maybe-uninitialized' LDFLAGS='-Wl,--enable-new-dtags -Wl,--export-dynamic' \
+          CXXFLAGS='-O0' \
+          CFLAGS='-gdwarf-4 -Og -g3 -Wno-maybe-uninitialized' \
+          LDFLAGS='-Wl,--enable-new-dtags -Wl,--export-dynamic' \
           ./configure --with-gssapi --enable-orafce --enable-ic-proxy --enable-orca --with-libxml \
                       --with-uuid=e2fs --with-pgport=5432 --enable-tap-tests --enable-debug-extensions \
                       --with-perl --with-python --with-openssl --with-pam --with-ldap --disable-rpath \
