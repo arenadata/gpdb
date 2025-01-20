@@ -118,6 +118,9 @@ make installcheck-world
   upstream. We try to keep the upstream tests identical to the upstream
   versions, to make merging with newer PostgreSQL releases easier.
 
+* Tests require a UTF-8 compatible locale. Ensure your system is set up
+  correctly before making the test cluster, e.g., `export LANG=en_US.UTF-8`.
+
 ## Alternative Configurations
 
 ### Building GPDB without GPORCA
@@ -175,12 +178,6 @@ throughout the codebase, but a few larger additions worth noting:
   In PostgreSQL, the user manual lives here. In Greenplum, the user
   manual is maintained separately and only the reference pages used
   to build man pages are here.
-
-* __gpdb-doc/__
-
-  Contains the Greenplum documentation in DITA XML format. Refer to
-  `gpdb-doc/README.md` for information on how to build, and work with
-  the documentation.
 
 * __ci/__
 
