@@ -759,6 +759,8 @@ workfile_made_in_temp_tablespace(void)
 	if(0 != strncmp(bufFilePath, expectedPathPrefix, strlen(expectedPathPrefix)))
 		success = false;
 
+	unit_test_result(success);
+
 	BufFileClose(bufFile);
 
 	unit_test_result(!work_set->active);
