@@ -109,7 +109,7 @@ check:
 unitdevel:
 	@echo "Running pure unit tests..."
 	PYTHONPATH=$(SERVER_SRC):$(SERVER_SBIN):$(PYTHONPATH):$(PYTHONSRC_INSTALL_PYTHON_PATH):$(SRC)/ext:$(SBIN_DIR):$(LIB_DIR):$(PYLIB_DIR)/mock-1.0.1 \
-	    python3 -m unittest discover --verbose -s $(SRC)/gppylib -p "test_unit_gprebalance.py"
+	    python3 -m unittest discover --verbose -s $(SRC)/gppylib -p "test_unit*.py"
 
 
 .PHONY: installcheck-bash
