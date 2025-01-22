@@ -15,7 +15,7 @@ class RecoveryInfo(object):
     Note: we don't have target hostname, since an object of this class will be accessed by the target host directly
     """
     def __init__(self, target_datadir, target_port, target_segment_dbid, source_hostname, source_port,
-                 source_datadir, is_full_recovery, is_differential_recovery,  progress_file):
+                 source_datadir, is_full_recovery, is_differential_recovery,  progress_file, is_only_basebackup, is_only_start):
         self.target_datadir = target_datadir
         self.target_port = target_port
         self.target_segment_dbid = target_segment_dbid
@@ -29,6 +29,8 @@ class RecoveryInfo(object):
         self.is_full_recovery = is_full_recovery
         self.is_differential_recovery = is_differential_recovery
         self.progress_file = progress_file
+        self.is_only_basebackup = is_only_basebackup
+        self.is_only_start = is_only_start
 
     def __str__(self):
         return json.dumps(self, default=lambda o: o.__dict__)
@@ -71,7 +73,7 @@ def build_recovery_info(mirrors_to_build):
             target_segment.getSegmentDataDirectory(), target_segment.getSegmentPort(),
             target_segment.getSegmentDbId(), source_segment.getSegmentHostName(),
             source_segment.getSegmentPort(), source_segment.getSegmentDataDirectory(),
-            to_recover.isFullSynchronization(), to_recover.isDifferentialSynchronization(), progress_file))
+            to_recover.isFullSynchronization(), to_recover.isDifferentialSynchronization(), progress_file, False, False))
     return recovery_info_by_host
 
 

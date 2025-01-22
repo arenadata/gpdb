@@ -225,9 +225,13 @@ class GpMirrorListToBuild:
         return self.__maxRate
 
     def _cleanup_before_recovery(self, gpArray, gpEnv):
-        self.checkForPortAndDirectoryConflicts(gpArray)
+        # self.checkForPortAndDirectoryConflicts(gpArray)
+        self.__logger.info("[RELOG] _stop_failed_segments - start")
         self._stop_failed_segments(gpEnv)
+        self.__logger.info("[RELOG] _stop_failed_segments - end")
+        self.__logger.info("[RELOG] _wait_fts_to_mark_down_segments - start")
         self._wait_fts_to_mark_down_segments(gpEnv, self._get_segments_to_mark_down())
+        self.__logger.info("[RELOG] _wait_fts_to_mark_down_segments - end")
         if not self.__forceoverwrite:
             self._clean_up_failed_segments()
         self._set_seg_status_in_gparray()
@@ -275,6 +279,7 @@ class GpMirrorListToBuild:
             from the mirrorsToBuild must be present in gpArray.
 
         """
+        self.__logger.info("[RELOG] __build_mirrors - start")
         if len(self.__mirrorsToBuild) == 0:
             self.__logger.info("No segments to {}".format(actionName))
             return True
@@ -285,22 +290,32 @@ class GpMirrorListToBuild:
 
         self.__logger.info("%s segment(s) to %s" % (len(self.__mirrorsToBuild), actionName))
 
-        self._cleanup_before_recovery(gpArray, gpEnv)
+        #self._cleanup_before_recovery(gpArray, gpEnv)
+        self.checkForPortAndDirectoryConflicts(gpArray)
+
         self._validate_gparray(gpArray)
 
         recovery_info_by_host = recoveryinfo.build_recovery_info(self.__mirrorsToBuild)
 
         self._run_setup_recovery(actionName, recovery_info_by_host)
 
+        recovery_results_stage_1 = self._run_recovery_stage_1_basebackup(actionName, recovery_info_by_host, gpEnv)
+
+        self._cleanup_before_recovery(gpArray, gpEnv)
+
         backout_map = self._update_config(recovery_info_by_host, gpArray)
 
-        recovery_results = self._run_recovery(actionName, recovery_info_by_host, gpEnv)
+        recovery_results_stage_2 = self._run_recovery_stage_2_start_segments(actionName, recovery_info_by_host, gpEnv)
+
         if actionName == GpMirrorListToBuild.Action.RECOVERMIRRORS:
-            self._revert_config_update(recovery_results, backout_map)
+            self._revert_config_update(recovery_results_stage_1, backout_map)
 
         self._trigger_fts_probe(port=gpEnv.getCoordinatorPort())
 
-        return recovery_results.recovery_successful()
+        self.__logger.info("[RELOG] __build_mirrors - end (segments are up)")
+
+        recovery_result = recovery_results_stage_1.recovery_successful() and recovery_results_stage_2.recovery_successful()
+        return recovery_result
 
     def _trigger_fts_probe(self, port=0):
         self.__logger.info('Triggering FTS probe')
@@ -587,6 +602,23 @@ class GpMirrorListToBuild:
         self._remove_progress_files(recovery_info_by_host, recovery_results)
         return recovery_results
 
+    def _run_recovery_stage_1_basebackup(self, action_name, recovery_info_by_host, gpEnv):
+        completed_recovery_results = self._do_recovery_stage_1_pg_basebackup(recovery_info_by_host, gpEnv)
+        recovery_results = RecoveryResult(action_name, completed_recovery_results, self.__logger)
+        recovery_results.print_bb_rewind_differential_update_and_start_errors()
+
+        self._remove_progress_files(recovery_info_by_host, recovery_results)
+        return recovery_results
+
+    def _run_recovery_stage_2_start_segments(self, action_name, recovery_info_by_host, gpEnv):
+        completed_recovery_results = self._do_recovery_stage_2_start_segments(recovery_info_by_host, gpEnv)
+        recovery_results = RecoveryResult(action_name, completed_recovery_results, self.__logger)
+        recovery_results.print_bb_rewind_differential_update_and_start_errors()
+
+        self._remove_progress_files(recovery_info_by_host, recovery_results)
+        return recovery_results
+
+
     def _do_recovery(self, recovery_info_by_host, gpEnv):
         """
         # Recover and start segments using gpsegrecovery, which will internally call either
@@ -621,6 +653,65 @@ class GpMirrorListToBuild:
         completed_recovery_results = self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, suppressErrorCheck=True,
                                                                                        progressCmds=progress_cmds)
         return completed_recovery_results
+
+    def _do_recovery_stage_1_pg_basebackup(self, recovery_info_by_host, gpEnv):
+        """
+        # do only pg_basebackup
+        """
+        self.__logger.info('Initiating segment recovery - pg_basebackup')
+        cmds = []
+        progress_cmds = []
+        era = read_era(gpEnv.getCoordinatorDataDir(), logger=self.__logger)
+        for hostName, recovery_info_list in recovery_info_by_host.items():
+            for ri in recovery_info_list:
+                ri.is_only_basebackup = True
+                ri.is_only_start = False
+                progressCmd = self._get_progress_cmd(ri.progress_file, ri.target_segment_dbid, hostName, ri.is_differential_recovery)
+                if progressCmd:
+                    progress_cmds.append(progressCmd)
+
+            cmds.append(gp.GpSegRecovery('Recover segments - Stage 1 - pg_basebackup',
+                                         recoveryinfo.serialize_list(recovery_info_list),
+                                         gplog.get_logger_dir(),
+                                         verbose=gplog.logging_is_verbose(),
+                                         batchSize=self.__parallelPerHost,
+                                         remoteHost=hostName,
+                                         era=era,
+                                         maxRate=self.__maxRate,
+                                         forceoverwrite=self.__forceoverwrite))
+        completed_recovery_results = self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, suppressErrorCheck=True,
+                                                                                       progressCmds=progress_cmds)
+        return completed_recovery_results
+
+    def _do_recovery_stage_2_start_segments(self, recovery_info_by_host, gpEnv):
+        """
+        # do only start of segments
+        """
+        self.__logger.info('Initiating segment recovery - start segments')
+        cmds = []
+        progress_cmds = []
+        era = read_era(gpEnv.getCoordinatorDataDir(), logger=self.__logger)
+        for hostName, recovery_info_list in recovery_info_by_host.items():
+            for ri in recovery_info_list:
+                ri.is_only_basebackup = False
+                ri.is_only_start = True
+                progressCmd = self._get_progress_cmd(ri.progress_file, ri.target_segment_dbid, hostName, ri.is_differential_recovery)
+                if progressCmd:
+                    progress_cmds.append(progressCmd)
+
+            cmds.append(gp.GpSegRecovery('Recover segments - Stage 2 - start segments',
+                                         recoveryinfo.serialize_list(recovery_info_list),
+                                         gplog.get_logger_dir(),
+                                         verbose=gplog.logging_is_verbose(),
+                                         batchSize=self.__parallelPerHost,
+                                         remoteHost=hostName,
+                                         era=era,
+                                         maxRate=self.__maxRate,
+                                         forceoverwrite=self.__forceoverwrite))
+        completed_recovery_results = self.__runWaitAndCheckWorkerPoolForErrorsAndClear(cmds, suppressErrorCheck=True,
+                                                                                       progressCmds=progress_cmds)
+        return completed_recovery_results
+
 
     def _do_setup_for_recovery(self, recovery_info_by_host):
         self.__logger.info('Setting up the required segments for recovery')
