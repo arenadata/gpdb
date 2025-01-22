@@ -17,12 +17,14 @@ WORKDIR /home/gpadmin/gpdb_src
 ENV CC="clang"
 ENV CXX="clang++"
 
-ENV CFLAGS="-Wno-deprecated-declarations"
-ENV CXXFLAGS="-O0"
+ENV CFLAGS="-O0 -Wno-deprecated-declarations"
+ENV CXXFLAGS="-O0 -Wno-deprecated-declarations"
 
-ENV CONFIGURE_FLAGS="--enable-debug-extensions --with-gssapi --enable-cassert --enable-debug --enable-depend"
+ENV CONFIGURE_FLAGS="--enable-gpcloud --enable-orafce --enable-tap-tests \
+                     --with-gssapi --with-libxml --with-openssl --with-perl \
+                     --with-python --with-uuid=e2fs --with-llvm --with-zstd \
+                     --enable-debug-extensions --enable-debug"
 
 RUN ./configure $CONFIGURE_FLAGS
 
-# Run the check upon startup.
-ENTRYPOINT arenadata/scripts/run_clang_check.bash
+ENTRYPOINT make -s -j`nproc`
