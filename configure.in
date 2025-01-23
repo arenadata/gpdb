@@ -1148,7 +1148,10 @@ AC_SUBST(with_zstd)
 
 if test "$with_zstd" = yes; then
   dnl zstd_errors.h was renamed from error_public.h in v1.1.1
-  PKG_CHECK_MODULES([ZSTD], [libzstd >= 1.4.0])
+  dnl require static zstd library to use custom allocation functions
+  PKG_CHECK_MODULES([ZSTD], [libzstd >= 1.4.0],
+                    [AC_CHECK_LIB([:libzstd.a], [ZSTD_compressCCtx], [],
+                                  [AC_MSG_ERROR([static zstd library not found])])])
 fi
 
 #
