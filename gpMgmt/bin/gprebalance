@@ -83,6 +83,8 @@ def parseargs():
                       help='dump cluster hosts configuration in yaml format')
     parser.add_option('-s', '--silent', action='store_true', default=False,
                       help='Do not prompt for confirmation to proceed on warnings')
+    parser.add_option('-p', '--show-plan', dest='show_plan', action='store_true', default=False,
+                      help='show rebalance plan')
     parser.add_option('-v', '--verbose', action='store_true',
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
@@ -270,8 +272,8 @@ def possibility_checks(gpreb: GPRebalance):
     already_bal, _ = startup_validator.validate_existing_configuration()
     if already_bal:
         # case of hosts shrinkage, expansion
-        if len(set(startup_validator.existing_hosts) &
-               set(startup_validator.target_hosts)) < len(startup_validator.existing_hosts) or \
+        if len(startup_validator.existing_hosts &
+               startup_validator.target_hosts) < len(startup_validator.existing_hosts) or \
                 len(startup_validator.target_hosts) > len(startup_validator.existing_hosts):
             try:
                 startup_validator.prevalidate_segment_distribution()
@@ -341,6 +343,9 @@ def main(options, args, parser):
 
         possibility_checks(gprebalance)
         logger.info('Validation passed. Preparing rebalance...')
+        plan = gprebalance.createPlan()
+        if options.show_plan:
+            logger.info(f"Resulting plan: \n {str(plan)}")
         logger.info('Exiting...')
         sys.exit(0)
     except Exception as e:
