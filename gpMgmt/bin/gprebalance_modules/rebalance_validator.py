@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Set
 from gprebalance_modules.rebalance import Host, MirrorStrategy, dbconn, GpArray,  Segment, MODE_NOT_SYNC, STATUS_DOWN
 
 
@@ -7,7 +7,7 @@ class StateValidationError(Exception):
 
 
 class ClusterValidator:
-    def __init__(self, existing_hosts: List[Host], target_hosts: List[Host], segarray: List[Segment], has_mirrors: bool, mirror_strategy: MirrorStrategy):
+    def __init__(self, existing_hosts: Set[Host], target_hosts: Set[Host], segarray: List[Segment], has_mirrors: bool, mirror_strategy: MirrorStrategy):
         self.mirror_strategy = mirror_strategy
         self.existing_hosts = existing_hosts
         self.target_hosts = target_hosts
@@ -32,7 +32,7 @@ class ClusterValidator:
         elif arr.hasMirrors:
             strat = MirrorStrategy.GROUPED
             for host in self.existing_hosts:
-                if host.primary_segments & host.mirror_segments:
+                if set([s.contentid for s in host.primary_segments]) & set([s.contentid for s in host.mirror_segments]):
                     strat = None
                     break
 
