@@ -63,6 +63,17 @@ class GPRebalance:
                         primary_segments=set(), mirror_segments=set())
                 self.target_hosts = list(hosts.values())
 
+        self.unpreferred_segments = self.getSegmentsUnpreferredRole()
+
+    def getSegmentsUnpreferredRole(self) -> List[tuple[Segment, Segment]]:
+        segs = []
+        for pair in self.original_gparray.segmentPairs:
+            prim = pair.primaryDB
+            mir = pair.mirrorDB
+            if prim.role != prim.preferred_role and mir.role != mir.preferred_role:
+                segs.append((prim, mir))
+        return segs
+
     def setMirroringStrategy(self, strategy: MirrorStrategy):
         self.target_strategy = strategy
 

@@ -176,6 +176,15 @@ class GpTestRebalance(GpTestCase):
                                                      "\n\nExiting...")
         self.options.mirroring = saved
 
+    @patch('gprebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile("unbalanced_unpreferred"))
+    def test_unbalanced_unpreferred(self, mock1):
+        self.input_mock.return_value = "Y"
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.info.assert_any_call(
+            "Validation passed. Preparing rebalance...")
+
 
 if __name__ == '__main__':
     run_tests()

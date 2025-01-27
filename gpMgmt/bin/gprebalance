@@ -75,7 +75,7 @@ def parseargs():
                       help='desirable mirroring strategy')
     parser.add_option('-c', '--clean', action='store_true',
                       help='remove the rebalance schema.')
-    parser.add_option('-f', '--hosts-file', metavar='<hosts_file>', dest='filename',
+    parser.add_option('-f', '--target-file', metavar='<hosts_file>', dest='filename',
                       help='yaml containing target hosts configuration')
     parser.add_option('--allow-mirrorless', dest='allow_mirrorless', action='store_true',
                       help='Allow to rebalance a cluster without mirrors', default=False)
@@ -178,7 +178,7 @@ def remove_pid_file(coordinator_data_directory: str):
         pass
 
 
-def dump_hosts_info(hosts, coordinator_data_directory: str):
+def dump_hosts_info(hosts):
     """
       Converts info about hosts to YAML format
     """
@@ -195,14 +195,35 @@ def dump_hosts_info(hosts, coordinator_data_directory: str):
     yaml_entries.sort(key=lambda x: x['hostname'])
     config = {'hosts': yaml_entries}
     config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
-    with open(coordinator_data_directory + '/gprebalance_hosts.yaml', 'w') as fp:
+    outputfile = os.getcwd() + "/gprebalance_hosts.yaml"
+    with open('gprebalance_hosts.yaml', 'w') as fp:
         fp.write(config_yaml)
+    logger.info('Generating hosts config in %s' % outputfile)
 
 
 def possibility_checks(gpreb: GPRebalance):
     logger.info('Validation of rebalance possibility...')
+
+    hosts_list = gpreb.current_hosts
+
+    if gpreb.unpreferred_segments:
+        if not gpreb.options.silent and ask_yesno('', "Current role does not match preferred role for several segments.\n"
+                                                      "Are you sure you want "
+                                                      "to continue with this gprebalance session?", "N"):
+            hstmap = gpreb.getHostsFromGpArray()
+            for prim, mir in gpreb.unpreferred_segments:
+                hstmap[(prim.hostname, prim.address)
+                       ].primary_segments.discard(prim.content)
+                hstmap[(prim.hostname, prim.address)
+                       ].mirror_segments.add(prim.content)
+                hstmap[(mir.hostname, mir.address)
+                       ].primary_segments.add(mir.content)
+                hstmap[(mir.hostname, mir.address)
+                       ].mirror_segments.discard(mir.content)
+            hosts_list = list(hstmap.values())
+
     startup_validator = ClusterValidator(
-        gpreb.current_hosts,
+        hosts_list,
         gpreb.target_hosts,
         gpreb.original_gparray.getSegmentsAsLoadedFromDb(),
         gpreb.original_gparray.get_mirroring_enabled(),
@@ -210,8 +231,8 @@ def possibility_checks(gpreb: GPRebalance):
     try:
         startup_validator.validate_segment_status()
     except StateValidationError as e:
-        if not gpreb.options.silent and not ask_yesno('', ''' %s Are you sure you want
-                                                      to continue with this gprebalance session?''' % str(e), "N"):
+        if not gpreb.options.silent and not ask_yesno('', " %s Are you sure you want "
+                                                      "to continue with this gprebalance session?" % str(e), "N"):
             logger.info('User Aborted. Exiting...')
             sys.exit(0)
         elif gpreb.options.silent:
@@ -219,11 +240,11 @@ def possibility_checks(gpreb: GPRebalance):
             sys.exit(0)
     if not gpreb.original_gparray.get_mirroring_enabled() and not gpreb.options.allow_mirrorless:
         if not gpreb.options.silent and not ask_yesno('',
-                                                      '''Mirroring is disabled.
-                                                      During rebalance the whole cluster may
-                                                      be not available.
-                                                      Are you sure you want
-                                                      to continue with this gprebalance session?''', "N"):
+                                                      "Mirroring is disabled. \n"
+                                                      "During rebalance the whole cluster may "
+                                                      "be not available. \n"
+                                                      "Are you sure you want "
+                                                      "to continue with this gprebalance session?", "N"):
             logger.info('User Aborted. Exiting...')
             sys.exit(0)
         elif gpreb.options.silent:
@@ -303,6 +324,9 @@ def main(options, args, parser):
 
         try:
             gparray = GpArray.initFromCatalog(dburl, utility=True)
+            # initGparrayFromFile(
+            # "/home/bimbo/gpdb_tmp/gpMgmt/bin/gppylib/test/unit/data/gprebalance/unbalanced_unpreferred.array")
+            #
         except DatabaseError as ex:
             logger.error('Failed to connect to database.  Make sure the')
             logger.error('Greenplum instance you wish to expand is running')
@@ -314,10 +338,7 @@ def main(options, args, parser):
 
         # dump existing hosts configuration
         if options.genconf:
-            dump_hosts_info(gprebalance.getHostsFromGpArray(),
-                            options.coordinator_data_directory)
-            logger.info('Generating hosts config in %s' %
-                        options.coordinator_data_directory)
+            dump_hosts_info(gprebalance.getHostsFromGpArray())
             sys.exit(0)
 
         possibility_checks(gprebalance)
@@ -333,8 +354,7 @@ def main(options, args, parser):
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
     finally:
-        if options:
-            remove_pid_file(options.coordinator_data_directory)
+        remove_pid_file(get_coordinatordatadir())
 
 
 if __name__ == '__main__':
