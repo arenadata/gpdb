@@ -710,6 +710,7 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 		Assert(list_length(tlist) == 1);
 		Query *query = (Query *) linitial(tlist);
 		query->parentStmtType = PARENTSTMTTYPE_CTAS;
+		query->intoPolicy = intoClause->intoPolicy;
 	}
 
 	/* Release snapshot if we got one */

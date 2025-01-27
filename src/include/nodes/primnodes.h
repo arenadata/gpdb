@@ -20,6 +20,7 @@
 #define PRIMNODES_H
 
 #include "access/attnum.h"
+#include "catalog/gp_distribution_policy.h"
 #include "nodes/bitmapset.h"
 #include "nodes/pg_list.h"
 #include "nodes/params.h"  /* For ParamListInfoData */
@@ -122,6 +123,7 @@ typedef struct IntoClause
 	Node	   *viewQuery;		/* materialized view's SELECT query */
 	bool		skipData;		/* true for WITH NO DATA */
 	Node       *distributedBy;  /* GPDB: columns to distribubte the data on. */
+	GpPolicy   *intoPolicy;
 } IntoClause;
 
 typedef struct CopyIntoClause

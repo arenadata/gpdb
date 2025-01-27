@@ -62,6 +62,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_func.h"
+#include "tcop/pquery.h"
 #include "utils/lsyscache.h"
 
 /* Working state for transformSetOperationTree_internal */
@@ -3591,6 +3592,9 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 		List	*policykeys = NIL;
 		List	*policyopclasses = NIL;
 
+		if (qry->targetList == NIL)
+			qry->targetList = FetchStatementTargetList((Node *)qry);
+
 		foreach(lc, dist->keyCols)
 		{
 			DistributionKeyElem  *dkelem = (DistributionKeyElem *) lfirst(lc);
@@ -3621,6 +3625,8 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 		qry->intoPolicy = createHashPartitionedPolicy(policykeys,
 													  policyopclasses,
 													  dist->numsegments);
+
+		into->intoPolicy = qry->intoPolicy;
 	}
 }
 
