@@ -324,9 +324,7 @@ def main(options, args, parser):
 
         try:
             gparray = GpArray.initFromCatalog(dburl, utility=True)
-            # initGparrayFromFile(
-            # "/home/bimbo/gpdb_tmp/gpMgmt/bin/gppylib/test/unit/data/gprebalance/unbalanced_unpreferred.array")
-            #
+
         except DatabaseError as ex:
             logger.error('Failed to connect to database.  Make sure the')
             logger.error('Greenplum instance you wish to expand is running')
