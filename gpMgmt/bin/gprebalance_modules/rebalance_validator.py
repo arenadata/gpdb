@@ -69,13 +69,10 @@ class ClusterValidator:
                 """Cannot support target mirroring strategy on given configuration. All
                 primaries will be at single host."""
             )
-        if total_primary_segments % total_hosts != 0:
-            raise StateValidationError(
-                f"Cannot evenly distribute {total_primary_segments} segments across {total_hosts} hosts."
-            )
 
         primaries_per_host = total_primary_segments // total_hosts
         if self.mirror_strategy == MirrorStrategy.SPREAD and primaries_per_host >= total_hosts:
             raise StateValidationError(
-                f"Cannot support spread mirroring strategy on given configuration."
+                "Cannot support spread mirroring strategy on given configuration. "
+                "Use cluster utilities like gpresize or gpexpand to get desired cluster configuration"
             )
