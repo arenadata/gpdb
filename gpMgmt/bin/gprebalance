@@ -28,12 +28,12 @@ DBNAME = 'postgres'
 
 _description = ("""
 Rebalances the existing segments configuration for getting
-optimal perfomance of whole cluster.
+optimal performance of whole cluster.
 """)
 
 _help = ["""
 [-m spread|grouped]
-Mode is the desirable mirroring strategy after rebalance. Makes sense only when mirrorring
+Mode is the desirable mirroring strategy after rebalance. Makes sense only when mirroring
 is enabled for the cluster. Default value is "grouped".
 [-f <hosts_file>]
 The hosts configuration file (YAML format) defines the target hosts on which
@@ -237,7 +237,7 @@ def possibility_checks(gpreb: GPRebalance):
             sys.exit(0)
         elif gpreb.options.silent:
             logger.info(f'{str(e)} Exiting...')
-            sys.exit(0)
+            sys.exit(1)
     if not gpreb.original_gparray.get_mirroring_enabled() and not gpreb.options.allow_mirrorless:
         if not gpreb.options.silent and not ask_yesno('',
                                                       "Mirroring is disabled. \n"
@@ -279,7 +279,7 @@ def possibility_checks(gpreb: GPRebalance):
             except StateValidationError:
                 logger.info(
                     'Cluster is already balanced. Cannot additionally rebalance to newly added hosts')
-                sys.exit(0)
+                sys.exit(1)
         else:
             logger.info('Cluster is already balanced')
             sys.exit(0)
