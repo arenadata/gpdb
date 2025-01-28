@@ -249,7 +249,7 @@ def possibility_checks(gpreb: GPRebalance):
             sys.exit(0)
         elif gpreb.options.silent:
             logger.info('Mirroring is disabled. Exiting...')
-            sys.exit(0)
+            sys.exit(1)
 
     if gpreb.original_gparray.get_mirroring_enabled() and startup_validator.mirror_strategy == MirrorStrategy.MIRRORLESS:
         if not gpreb.options.silent:
