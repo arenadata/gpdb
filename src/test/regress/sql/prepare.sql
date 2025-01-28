@@ -1,3 +1,8 @@
+-- start_matchsubs
+-- m/actual rows=\d+/
+-- s/actual rows=\d+/actual rows=###/
+-- end_matchsubs
+
 -- Regression tests for prepareable statements. We query the content
 -- of the pg_prepared_statements view as prepared statements are
 -- created and removed.
@@ -65,6 +70,10 @@ SELECT * FROM q5_prep_results;
 CREATE TEMPORARY TABLE q5_prep_nodata AS EXECUTE q5(200, 'DTAAAA')
     WITH NO DATA;
 SELECT * FROM q5_prep_nodata;
+PREPARE p AS SELECT * FROM generate_series(1, 10) i;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
+CREATE TEMPORARY TABLE t AS EXECUTE p;
+SELECT * FROM t;
 
 -- unknown or unspecified parameter types: should succeed
 PREPARE q6 AS
