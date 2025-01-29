@@ -236,7 +236,7 @@ def possibility_checks(gpreb: GPRebalance):
             logger.info('User Aborted. Exiting...')
             sys.exit(0)
         elif gpreb.options.silent:
-            logger.info(f'{str(e)} Exiting...')
+            logger.error(f'{str(e)} Exiting...')
             sys.exit(1)
     if not gpreb.original_gparray.get_mirroring_enabled() and not gpreb.options.allow_mirrorless:
         if not gpreb.options.silent and not ask_yesno('',
@@ -326,10 +326,10 @@ def main(options, args, parser):
             gparray = GpArray.initFromCatalog(dburl, utility=True)
 
         except DatabaseError as ex:
-            logger.error('Failed to connect to database.  Make sure the')
-            logger.error('Greenplum instance you wish to expand is running')
-            logger.error('and that your environment is correct, then rerun')
-            logger.error('gprebalance ' + ' '.join(sys.argv[1:]))
+            logger.error("Failed to connect to database.  Make sure the"
+                         " Greenplum instance you wish to expand is running"
+                         " and that your environment is correct, then rerun"
+                         " gprebalance" + ' '.join(sys.argv[1:]))
             sys.exit(1)
 
         gprebalance = GPRebalance(logger, gparray, dburl, options)

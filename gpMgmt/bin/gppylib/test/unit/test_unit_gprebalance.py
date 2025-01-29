@@ -172,8 +172,9 @@ class GpTestRebalance(GpTestCase):
         self.options.mirroring = 'spread'
         with self.assertRaises(SystemExit):
             self.subject.main(self.options, self.args, self.parser)
-        self.subject.logger.error.assert_called_with("gprebalance failed: Cannot support spread mirroring strategy on given configuration. "
-                                                     "\n\nExiting...")
+        self.subject.logger.error.assert_called_with(
+            "gprebalance failed: Cannot support spread mirroring strategy on given configuration."
+            " Use cluster utilities like gpresize or gpexpand to get desired cluster configuration \n\nExiting...")
         self.options.mirroring = saved
 
     @patch('gprebalance.GpArray.initFromCatalog',
