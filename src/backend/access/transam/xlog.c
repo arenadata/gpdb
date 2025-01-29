@@ -905,7 +905,7 @@ static MemoryContext walDebugCxt = NULL;
 
 static void readRecoverySignalFile(void);
 static void validateRecoveryParameters(void);
-static void exitArchiveRecovery(TimeLineID endTLI, XLogRecPtr endOfLog);
+static void XLogInitNewTimeline(TimeLineID endTLI, XLogRecPtr endOfLog);
 static bool recoveryStopsBefore(XLogReaderState *record);
 static bool recoveryStopsAfter(XLogReaderState *record);
 static void recoveryPausesHere(void);
@@ -5617,10 +5617,10 @@ validateRecoveryParameters(void)
 }
 
 /*
- * Exit archive-recovery state
+ * Initialize the first WAL segment on new timeline.
  */
 static void
-exitArchiveRecovery(TimeLineID endTLI, XLogRecPtr endOfLog)
+XLogInitNewTimeline(TimeLineID endTLI, XLogRecPtr endOfLog)
 {
 	char		xlogfname[MAXFNAMELEN];
 	XLogSegNo	endLogSegNo;
@@ -5630,24 +5630,9 @@ exitArchiveRecovery(TimeLineID endTLI, XLogRecPtr endOfLog)
 	Assert(endTLI != ThisTimeLineID);
 
 	/*
-	 * We are no longer in archive recovery state.
-	 */
-	InArchiveRecovery = false;
-
-	/*
 	 * Update min recovery point one last time.
 	 */
 	UpdateMinRecoveryPoint(InvalidXLogRecPtr, true);
-
-	/*
-	 * If the ending log segment is still open, close it (to avoid problems on
-	 * Windows with trying to rename or delete an open file).
-	 */
-	if (readFile >= 0)
-	{
-		close(readFile);
-		readFile = -1;
-	}
 
 	/*
 	 * Calculate the last segment on the old timeline, and the first segment
@@ -5700,27 +5685,6 @@ exitArchiveRecovery(TimeLineID endTLI, XLogRecPtr endOfLog)
 	 */
 	XLogFileName(xlogfname, ThisTimeLineID, startLogSegNo, wal_segment_size);
 	XLogArchiveCleanup(xlogfname);
-
-	/*
-	 * Remove the signal files out of the way, so that we don't accidentally
-	 * re-enter archive recovery mode in a subsequent crash.
-	 */
-	if (standby_signal_file_found)
-		durable_unlink(STANDBY_SIGNAL_FILE, FATAL);
-
-	if (recovery_signal_file_found)
-		durable_unlink(RECOVERY_SIGNAL_FILE, FATAL);
-
-	/*
-	 * Response to FTS probes after this point will not indicate that we are a
-	 * mirror because the am_mirror flag is set based on existence of
-	 * RECOVERY_COMMAND_FILE.  New libpq connections to the postmaster should
-	 * no longer return CAC_MIRROR_READY as response because we are no longer a
-	 * mirror.
-	 */
-	ResetMirrorReadyFlag();
-	ereport(LOG,
-			(errmsg("archive recovery complete")));
 }
 
 /*
@@ -7848,6 +7812,25 @@ StartupXLOG(void)
 	record = ReadRecord(xlogreader, LastRec, PANIC, false);
 	EndOfLog = EndRecPtr;
 
+	if (ArchiveRecoveryRequested)
+	{
+		/*
+		 * We are no longer in archive recovery state.
+		 */
+		Assert(InArchiveRecovery);
+		InArchiveRecovery = false;
+
+		/*
+		 * If the ending log segment is still open, close it (to avoid problems on
+		 * Windows with trying to rename or delete an open file).
+		 */
+		if (readFile >= 0)
+		{
+			close(readFile);
+			readFile = -1;
+		}
+	}
+
 	/*
 	 * EndOfLogTLI is the TLI in the filename of the XLOG segment containing
 	 * the end-of-log. It could be different from the timeline that EndOfLog
@@ -7924,8 +7907,6 @@ StartupXLOG(void)
 		char		reason[200];
 		char		recoveryPath[MAXPGPATH];
 
-		Assert(InArchiveRecovery);
-
 		ThisTimeLineID = findNewestTimeLine(recoveryTargetTLI) + 1;
 		ereport(LOG,
 				(errmsg("selected new timeline ID: %u", ThisTimeLineID)));
@@ -7960,12 +7941,11 @@ StartupXLOG(void)
 			snprintf(reason, sizeof(reason), "no recovery target specified");
 
 		/*
-		 * We are now done reading the old WAL.  Turn off archive fetching if
-		 * it was active, and make a writable copy of the last WAL segment.
-		 * (Note that we also have a copy of the last block of the old WAL in
-		 * readBuf; we will use that below.)
+		 * Make a writable copy of the last WAL segment.  (Note that we also
+		 * have a copy of the last block of the old WAL in
+		 * endOfRecovery->lastPage; we will use that below.)
 		 */
-		exitArchiveRecovery(EndOfLogTLI, EndOfLog);
+		XLogInitNewTimeline(EndOfLogTLI, EndOfLog);
 
 		/*
 		 * Write the timeline history file, and have it archived. After this
@@ -8080,6 +8060,8 @@ StartupXLOG(void)
 	UpdateFullPageWrites();
 	LocalXLogInsertAllowed = -1;
 
+	SIMPLE_FAULT_INJECTOR("before_persisting_new_tli");
+
 	if (InRecovery)
 	{
 		/*
@@ -8137,6 +8119,27 @@ StartupXLOG(void)
 
 	if (ArchiveRecoveryRequested)
 	{
+		/*
+		 * Remove the signal files out of the way, so that we don't accidentally
+		 * re-enter archive recovery mode in a subsequent crash.
+		 */
+		if (standby_signal_file_found)
+			durable_unlink(STANDBY_SIGNAL_FILE, FATAL);
+
+		if (recovery_signal_file_found)
+			durable_unlink(RECOVERY_SIGNAL_FILE, FATAL);
+
+		/*
+		 * Response to FTS probes after this point will not indicate that we are a
+		 * mirror because the am_mirror flag is set based on existence of
+		 * STANDBY_SIGNAL_FILE.  New libpq connections to the postmaster should
+		 * no longer return CAC_MIRROR_READY as response because we are no longer a
+		 * mirror.
+		 */
+		ResetMirrorReadyFlag();
+		ereport(LOG,
+				(errmsg("archive recovery complete")));
+
 		/*
 		 * And finally, execute the recovery_end_command, if any.
 		 */
