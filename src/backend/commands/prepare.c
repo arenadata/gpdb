@@ -721,8 +721,6 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	{
 		PlannedStmt *pstmt = lfirst_node(PlannedStmt, p);
 
-		pstmt->intoClause = into;
-
 		if (pstmt->commandType != CMD_UTILITY)
 			ExplainOnePlan(pstmt, into, es, query_string, paramLI, queryEnv,
 						   &planduration, 0);
