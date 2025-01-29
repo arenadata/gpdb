@@ -233,7 +233,7 @@ def possibility_checks(gpreb: GPRebalance):
     except StateValidationError as e:
         if not gpreb.options.silent and not ask_yesno('', " %s Are you sure you want "
                                                       "to continue with this gprebalance session?" % str(e), "N"):
-            logger.info('User Aborted. Exiting...')
+            logger.error('User Aborted. Exiting...')
             sys.exit(1)
         elif gpreb.options.silent:
             logger.error(f'{str(e)} Exiting...')
@@ -245,7 +245,7 @@ def possibility_checks(gpreb: GPRebalance):
                                                       "be not available. \n"
                                                       "Are you sure you want "
                                                       "to continue with this gprebalance session?", "N"):
-            logger.info('User Aborted. Exiting...')
+            logger.error('User Aborted. Exiting...')
             sys.exit(1)
         elif gpreb.options.silent:
             logger.error('Mirroring is disabled. Exiting...')

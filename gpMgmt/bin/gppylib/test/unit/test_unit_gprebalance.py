@@ -92,7 +92,7 @@ class GpTestRebalance(GpTestCase):
         self.input_mock.return_value = "N"
         with self.assertRaises(SystemExit):
             self.subject.main(self.options, self.args, self.parser)
-        self.subject.logger.info.assert_any_call(
+        self.subject.logger.error.assert_any_call(
             "User Aborted. Exiting...")
         self.input_mock.return_value = "Y"
         with self.assertRaises(SystemExit):
@@ -117,7 +117,7 @@ class GpTestRebalance(GpTestCase):
         self.input_mock.return_value = "N"
         with self.assertRaises(SystemExit):
             self.subject.main(self.options, self.args, self.parser)
-        self.subject.logger.info.assert_any_call(
+        self.subject.logger.error.assert_any_call(
             "User Aborted. Exiting...")
         self.input_mock.return_value = "Y"
         with self.assertRaises(SystemExit):
