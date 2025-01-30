@@ -4,6 +4,8 @@ from gppylib.db import dbconn
 from gppylib.commands.gp import *
 from gppylib.commands.unix import *
 
+MAX_PARALLEL_WORKERS = 6
+
 
 def create_pid_file(coordinator_data_directory: str):
     with open(f"{coordinator_data_directory}/gprebalance.pid", "w") as fp:

@@ -89,6 +89,10 @@ def main(options, args, parser):
         logger.info('Validation passed. Preparing rebalance...')
         logger.info('Exiting...')
         sys.exit(0)
+    except cli.OptionError as e:
+        logger.error(e)
+        parser.print_help()
+        sys.exit(1)
     except Exception as e:
         logger.error(f'gprebalance failed: {e} \n\nExiting...')
         sys.exit(1)

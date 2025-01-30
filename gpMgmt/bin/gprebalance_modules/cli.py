@@ -1,6 +1,7 @@
 import sys
-from gppylib.commands.gp import GpError, get_coordinatordatadir, get_gphome
+import datetime
 from gppylib.gpparseopts import OptParser, OptChecker
+from gprebalance_modules.utils import MAX_PARALLEL_WORKERS
 
 _description = ("""
 Rebalances the existing segments configuration for getting
@@ -31,8 +32,18 @@ from the file.
 
 _usage = """
  gprebalance -g
+
  gprebalance [-m <mode>] [-c] [-f <hosts_file>] [-s] [-v]
+
+ gpexpand [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']]
+            [-n parallel_processes]
+
+ gprebalance -r
+
  gprebalance -c
+
+ gprebalance -p
+
  gprebalance -? | -h | --help | --verbose | -v
 """
 
@@ -51,10 +62,20 @@ def parseargs():
 
     parser.add_option('-m', '--mirror-mode', dest='mirroring',
                       help='desirable mirroring strategy')
+    parser.add_option('-f', '--target-hosts', metavar='<hosts_file>', dest='filename',
+                      help='yaml containing target hosts configuration')
+    parser.add_option('-p', '--show-plan', dest='show_plan', action='store_true', default=False,
+                      help='show rebalance plan')
     parser.add_option('-c', '--clean', action='store_true',
                       help='remove the rebalance schema.')
-    parser.add_option('-f', '--target-file', metavar='<hosts_file>', dest='filename',
-                      help='yaml containing target hosts configuration')
+    parser.add_option('-r', '--rollback', action='store_true',
+                      help='remove the rebalance schema.')
+    parser.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
+                      help='duration from beginning to end.')
+    parser.add_option('-e', '--end', type='datetime', metavar='datetime',
+                      help="ending date and time in the format 'YYYY-MM-DD hh:mm:ss'.")
+    parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
+                      help='number of workerks performing segment movements at a time. Valid values are 1-%d.' % MAX_PARALLEL_WORKERS)
     parser.add_option('--allow-mirrorless', dest='allow_mirrorless', action='store_true',
                       help='Allow to rebalance a cluster without mirrors', default=False)
     parser.add_option('-g', '--gen-hosts', action='store_true', dest='genconf',
@@ -66,6 +87,12 @@ def parseargs():
     parser.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit.')
     parser.add_option('--usage', action="briefhelp")
+    parser.add_option('-S', '--simple-progress', action='store_true',
+                      help='show simple progress.')
+    parser.add_option('', '--hba-hostnames', action='store_true', default=False,
+                      help='use hostnames instead of CIDR in pg_hba.conf')
+    parser.add_option('--allow-intermediate-mixture', dest='allow_mixture', action='store_true',
+                      help='Allow primary and mirror from one pair to be at the same host during balancing', default=False)
 
     parser.set_defaults(verbose=False)
 
@@ -87,4 +114,26 @@ def validate_options(options, args):
             if arg not in ('-g', '--gen-hosts'):
                 raise OptionError('-g or --gen-hosts flag must be used alone')
 
+    if options.parallel > MAX_PARALLEL_WORKERS or options.parallel < 1:
+        raise OptionError(
+            'Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_WORKERS)
+
+    if options.end and not isinstance(options.end, datetime.datetime):
+        options.end = datetime.datetime.combine(options.end, datetime.time(0))
+
+    if options.end and options.end < datetime.datetime.now():
+        raise OptionError('End time occurs in the past')
+
+    if options.end and options.duration:
+        if options.end > datetime.datetime.now() + options.duration:
+            options.end = datetime.datetime.now() + options.duration
+    elif options.duration:
+        options.end = datetime.datetime.now() + options.duration
+
+    # -c and -r options are mutually exclusive
+    if options.rollback and options.clean:
+        rollbackOpt = "--rollback" if "--rollback" in sys.argv else "-r"
+        cleanOpt = "--clean" if "--clean" in sys.argv else "-c"
+        raise OptionError("%s and %s options cannot be specified together." %
+                          (rollbackOpt, cleanOpt))
     return options, args
