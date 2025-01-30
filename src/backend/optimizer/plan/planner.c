@@ -643,30 +643,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		top_plan = &gather->plan;
 	}
 
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		top_plan = cdbllize_decorate_subplans_with_motions(root, top_plan);
-	}
-
-	/*
-	 * If any Params were generated, run through the plan tree and compute
-	 * each plan node's extParam/allParam sets.  Ideally we'd merge this into
-	 * set_plan_references' tree traversal, but for now it has to be separate
-	 * because we need to visit subplans before not after main plan.
-	 */
-	if (glob->paramExecTypes != NIL)
-	{
-		Assert(list_length(glob->subplans) == list_length(glob->subroots));
-		forboth(lp, glob->subplans, lr, glob->subroots)
-		{
-			Plan	   *subplan = (Plan *) lfirst(lp);
-			PlannerInfo *subroot = lfirst_node(PlannerInfo, lr);
-
-			SS_finalize_plan(subroot, subplan);
-		}
-		SS_finalize_plan(root, top_plan);
-	}
-
 	/*
 	 * Fix sharing id and shared id.
 	 *
@@ -698,8 +674,29 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		if (Debug_print_prelim_plan)
 			elog_node_display(DEBUG1, "preliminary plan", top_plan, Debug_pretty_print);
 
+		top_plan = cdbllize_decorate_subplans_with_motions(root, top_plan);
+
 		if (gp_enable_motion_deadlock_sanity)
 			motion_sanity_check(root, top_plan);
+	}
+
+	/*
+	 * If any Params were generated, run through the plan tree and compute
+	 * each plan node's extParam/allParam sets.  Ideally we'd merge this into
+	 * set_plan_references' tree traversal, but for now it has to be separate
+	 * because we need to visit subplans before not after main plan.
+	 */
+	if (glob->paramExecTypes != NIL)
+	{
+		Assert(list_length(glob->subplans) == list_length(glob->subroots));
+		forboth(lp, glob->subplans, lr, glob->subroots)
+		{
+			Plan	   *subplan = (Plan *) lfirst(lp);
+			PlannerInfo *subroot = lfirst_node(PlannerInfo, lr);
+
+			SS_finalize_plan(subroot, subplan);
+		}
+		SS_finalize_plan(root, top_plan);
 	}
 
 	top_plan = set_plan_references(root, top_plan);
