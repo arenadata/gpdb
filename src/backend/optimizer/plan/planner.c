@@ -643,6 +643,11 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		top_plan = &gather->plan;
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		top_plan = cdbllize_decorate_subplans_with_motions(root, top_plan);
+	}
+
 	/*
 	 * If any Params were generated, run through the plan tree and compute
 	 * each plan node's extParam/allParam sets.  Ideally we'd merge this into
@@ -692,8 +697,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		/* Print plan if debugging. */
 		if (Debug_print_prelim_plan)
 			elog_node_display(DEBUG1, "preliminary plan", top_plan, Debug_pretty_print);
-
-		top_plan = cdbllize_decorate_subplans_with_motions(root, top_plan);
 
 		if (gp_enable_motion_deadlock_sanity)
 			motion_sanity_check(root, top_plan);
