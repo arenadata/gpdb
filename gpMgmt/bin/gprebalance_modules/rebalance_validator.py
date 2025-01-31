@@ -1,5 +1,4 @@
 from typing import List
-
 from gprebalance_modules.rebalance import Host, MirrorStrategy, dbconn, GpArray,  Segment, MODE_NOT_SYNC, STATUS_DOWN
 
 
