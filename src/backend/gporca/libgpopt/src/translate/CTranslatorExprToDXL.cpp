@@ -3216,17 +3216,14 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 {
 	COperator *popCorrelatedJoin = pexprCorrelatedNLJoin->Pop();
 	COperator::EOperatorId op_id = popCorrelatedJoin->Eopid();
-	BOOL fCorrelatedLOJ =
-		(COperator::EopPhysicalCorrelatedInLeftSemiNLJoin == op_id ||
-		 COperator::EopPhysicalCorrelatedLeftOuterNLJoin == op_id);
 	GPOS_ASSERT(COperator::EopPhysicalCorrelatedInLeftSemiNLJoin == op_id ||
 				COperator::EopPhysicalCorrelatedNotInLeftAntiSemiNLJoin ==
 					op_id ||
-				fCorrelatedLOJ);
+				COperator::EopPhysicalCorrelatedLeftOuterNLJoin == op_id);
 
 	EdxlSubPlanType dxl_subplan_type = Edxlsubplantype(pexprCorrelatedNLJoin);
-	GPOS_ASSERT_IMP(fCorrelatedLOJ, EdxlSubPlanTypeAny == dxl_subplan_type ||
-										EdxlSubPlanTypeAll == dxl_subplan_type);
+	GPOS_ASSERT(EdxlSubPlanTypeAny == dxl_subplan_type ||
+				EdxlSubPlanTypeAll == dxl_subplan_type);
 
 	CExpression *pexprInner = (*pexprCorrelatedNLJoin)[1];
 	CExpression *pexprScalar = (*pexprCorrelatedNLJoin)[2];
@@ -3236,45 +3233,34 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 		pexprInner, NULL /*colref_array*/, pdrgpdsBaseTables,
 		pulNonGatherMotions, pfDML, false /*fRemap*/, false /*fRoot*/);
 
-	// find required column from inner child
-	CColRefSet *pcrInner = GPOS_NEW(m_mp) CColRefSet(m_mp);
-	pcrInner->Include((*pdrgpcrInner)[0]);
+	// In fact, the inner (right) part of CorrelatedNLJoin is transformed
+	// into a subquery. The scalar part of CorrelatedNLJoin is transformed
+	// into a Test Expression of the subquery.
+	// At execution, the subquery returns a tuple, and Test Expression checks
+	// the condition for returning the tuple - it acts as a filter.
+	// We do not need all the output columns of the subquery, so we need to
+	// restrict the projection of the inner node.
+	// We need the "Reqd Inner Col" of CorrelatedNLJoin (pdrgpcrInner[0])
+	// and the columns from the scalar that appear in the subquery (inner part).
+	// Since the "Reqd Inner Col" always appears in the scalar (this is true
+	// for ANY/ALL subqueries), we need to define the used columns in the Test
+	// Expression that are output in the inner node.
+	CColRefSet *pcrsInner =
+		GPOS_NEW(m_mp) CColRefSet(m_mp, *pexprInner->DeriveOutputColumns());
+	CColRefSet *pcrsScalarUsed = pexprScalar->DeriveUsedColumns();
+	pcrsInner->Intersection(pcrsScalarUsed);
+	GPOS_ASSERT(pcrsInner->Size() > 0);
+	CDXLNode *inner_dxlnode = PdxlnRestrictResult(pdxlnInnerChild, pcrsInner);
+	pcrsInner->Release();
 
-	if (fCorrelatedLOJ)
-	{
-		// Overwrite required inner column based on scalar expression.
-		// The columns contained in the scalar and the inner
-		// (intersection) are params of TestExpr if Correlated. The
-		// remaining columns of scalar are treated as vars. The vars
-		// refer to the node external to subplan.
-
-		CColRefSet *pcrsInner = pexprInner->DeriveOutputColumns();
-		CColRefSet *pcrsUsed =
-			GPOS_NEW(m_mp) CColRefSet(m_mp, *pexprScalar->DeriveUsedColumns());
-		pcrsUsed->Intersection(pcrsInner);
-		if (0 < pcrsUsed->Size())
-		{
-			// Both sides of the SubPlan test expression can come from the
-			// inner side. So we need to pass pcrsUsed instead of pcrInner into
-			// PdxlnRestrictResult()
-
-			pcrInner->Release();
-			pcrInner = pcrsUsed;
-		}
-		else
-		{
-			pcrsUsed->Release();
-		}
-	}
-
-	CDXLNode *inner_dxlnode = PdxlnRestrictResult(pdxlnInnerChild, pcrInner);
-	pcrInner->Release();
-
-	// Params for the test expression are the output columns from the
-	// projection of the inner expression. The order of the params must
-	// match the order of the columns from the projection of the inner
-	// expression. For this obtain the necessary columns directly from
-	// the projection of result node.
+	// Params for the Test Expression are the output columns from the
+	// projection of the inner Result node. The order of the params must
+	// match the order of the columns from the projection. Therefore, the
+	// params are extracted from the projection of the inner Result node after
+	// restriction.
+	// Test Expression can also contain columns that are not in the inner
+	// part - such columns are considered as Vars.
+	// Note that test_expr_params are not serialized (not displayed in the DXL file).
 	CDXLColRefArray *test_expr_params =
 		GetResultProjectedColRefArray(inner_dxlnode);
 
