@@ -752,6 +752,7 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 	 * They will be added to the working queue, so keep going until the
 	 * working queue is empty.
 	 */
+	Assert(list_length(root->glob->subplans) == list_length(root->glob->subroots));
 	while (context.subplan_workingQueue)
 	{
 		int			plan_id = linitial_int(context.subplan_workingQueue);
