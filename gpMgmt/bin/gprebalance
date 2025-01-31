@@ -85,12 +85,12 @@ def parseargs():
 
     parser.add_option('-m', '--mirror-mode', dest='mirroring',
                       help='desirable mirroring strategy')
+    parser.add_option('-c', '--clean', action='store_true',
+                      help='remove the rebalance schema.')
     parser.add_option('-f', '--target-hosts', metavar='<hosts_file>', dest='filename',
                       help='yaml containing target hosts configuration')
     parser.add_option('-p', '--show-plan', dest='show_plan', action='store_true', default=False,
                       help='show rebalance plan')
-    parser.add_option('-c', '--clean', action='store_true',
-                      help='remove the rebalance schema.')
     parser.add_option('-r', '--rollback', action='store_true',
                       help='remove the rebalance schema.')
     parser.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
