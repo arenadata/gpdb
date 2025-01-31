@@ -163,14 +163,14 @@ def validate_options(options, args, parser):
     if options.end and not isinstance(options.end, datetime.datetime):
         options.end = datetime.datetime.combine(options.end, datetime.time(0))
 
-    if options.end and options.end < datetime.datetime.now():
-        logger.error('End time occurs in the past')
-        parser.print_help()
-        parser.exit(1)
-
-    if options.end and options.duration:
-        if options.end > datetime.datetime.now() + options.duration:
-            options.end = datetime.datetime.now() + options.duration
+    if options.end:
+        if options.end < datetime.datetime.now():
+            logger.error('End time occurs in the past')
+            parser.print_help()
+            parser.exit(1)
+        if options.duration:
+            if options.end > datetime.datetime.now() + options.duration:
+                options.end = datetime.datetime.now() + options.duration
     elif options.duration:
         options.end = datetime.datetime.now() + options.duration
 
