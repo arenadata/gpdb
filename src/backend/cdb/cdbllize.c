@@ -809,10 +809,7 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 			subplan->flow->locustype != CdbLocusType_General &&
 			subplan->flow->locustype != CdbLocusType_Replicated)
 		{
-			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
-
-			if (root->glob->paramExecTypes != NIL)
-				SS_finalize_plan(subroot, subplan);
+			subplan = fix_subplan_motion(subroot, subplan, context.currentPlanFlow);
 
 			/*
 			 * If we created a Motion, protect it from rescanning. Init Plans
@@ -1127,6 +1124,9 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 		motion->senderSliceInfo = sendSlice;
 
 		subplan = (Plan *) motion;
+
+		if (root->glob->paramExecTypes != NIL)
+			SS_finalize_plan(root, subplan);
 	}
 	return subplan;
 }
