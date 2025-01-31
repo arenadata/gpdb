@@ -716,7 +716,6 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 	CDXLTranslateContext test_expr_output_ctxt(
 		m_mp, output_context->IsParentAggNode(),
 		output_context->GetColIdToParamIdMap());
-
 	List *param_ids = NIL;
 	const CDXLColRefArray *test_expr_params = dxlop->GetTestExprParams();
 	// Fill in the param mapping of the outer context and save the param ids
@@ -1961,8 +1960,7 @@ CTranslatorDXLToScalar::TranslateDXLScalarIdentToScalar(
 			colid_var_plstmt_map->GetOutputContext()->GetParamIdMappingElement(
 				dxlop->GetDXLColRef()->Id()))
 	{
-		// not an outer ref -> Translate var node
-
+		// not an outer ref -> Translate var nodeS
 		result_expr = (Expr *) colid_var->VarFromDXLNodeScId(dxlop);
 	}
 	else

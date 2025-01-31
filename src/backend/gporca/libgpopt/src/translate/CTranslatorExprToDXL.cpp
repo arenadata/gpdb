@@ -3089,7 +3089,7 @@ CTranslatorExprToDXL::PdxlnRestrictResult(CDXLNode *dxlnode,
 //
 //	@doc:
 //		Helper to build a Result expression with project list
-//		restricted to required columns.
+//		restricted to required columns
 //
 //---------------------------------------------------------------------------
 CDXLNode *

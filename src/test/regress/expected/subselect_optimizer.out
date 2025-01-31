@@ -1235,15 +1235,27 @@ drop table tl1;
 drop table tl2;
 drop table tl3;
 drop table tl4;
--- Check deep tree support in Test expression node when outer params are present with =ANY or IN queries
+-- Check deep tree support with params in <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
+SET client_min_messages='log';
+SET optimizer_trace_fallback=on;
+LOG:  statement: SET optimizer_trace_fallback=on;
+LOG:  statement: SET optimizer_trace_fallback TO 'on'  (entry db 172.17.0.2:6000 pid=16675)
 CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
+LOG:  statement: CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
 INSERT INTO test_tbl_t VALUES ('0', 0);
+LOG:  statement: INSERT INTO test_tbl_t VALUES ('0', 0);
 CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
+LOG:  statement: CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
 INSERT INTO test_tbl_d VALUES ('0', 0);
+LOG:  statement: INSERT INTO test_tbl_d VALUES ('0', 0);
 CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
+LOG:  statement: CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
 INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
+LOG:  statement: INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
                                                                                                           QUERY PLAN                                                                                                           
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Result
@@ -1294,18 +1306,27 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
 (45 rows)
 
 SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+LOG:  statement: SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
  text_t | int_t 
 --------+-------
  0      |     0
 (1 row)
 
 INSERT INTO test_tbl_t VALUES ('0', 1);
+LOG:  statement: INSERT INTO test_tbl_t VALUES ('0', 1);
 INSERT INTO test_tbl_d VALUES ('0', 1);
+LOG:  statement: INSERT INTO test_tbl_d VALUES ('0', 1);
 INSERT INTO test_tbl_p VALUES ('0', 0);
+LOG:  statement: INSERT INTO test_tbl_p VALUES ('0', 0);
 ANALYZE test_tbl_t;
+LOG:  statement: ANALYZE test_tbl_t;
+-- After adding data, the ORCA physical plan changes.
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Result
@@ -1349,13 +1370,19 @@ EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
 (38 rows)
 
 SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+LOG:  statement: SELECT * FROM test_tbl_t WHERE
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
  text_t | int_t 
 --------+-------
  0      |     0
  0      |     1
 (2 rows)
 
+RESET client_min_messages;
+LOG:  statement: RESET client_min_messages;
+LOG:  statement: RESET client_min_messages  (entry db 172.17.0.2:6000 pid=16675)
+RESET optimizer_trace_fallback;
 DROP TABLE test_tbl_t;
 DROP TABLE test_tbl_d;
 DROP TABLE test_tbl_p;

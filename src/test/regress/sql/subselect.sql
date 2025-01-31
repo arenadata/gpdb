@@ -615,7 +615,9 @@ drop table tl2;
 drop table tl3;
 drop table tl4;
 
--- Check deep tree support in Test expression node when outer params are present with =ANY or IN queries
+-- Check deep tree support with params in <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
+SET client_min_messages='log';
+SET optimizer_trace_fallback=on;
 CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
 INSERT INTO test_tbl_t VALUES ('0', 0);
 
@@ -626,20 +628,23 @@ CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
 INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
 
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
 SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
 
 INSERT INTO test_tbl_t VALUES ('0', 1);
 INSERT INTO test_tbl_d VALUES ('0', 1);
 INSERT INTO test_tbl_p VALUES ('0', 0);
 ANALYZE test_tbl_t;
 
+-- After adding data, the ORCA physical plan changes.
 EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
 SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 from test_tbl_p) ORDER BY int_t;
+  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
 
+RESET client_min_messages;
+RESET optimizer_trace_fallback;
 DROP TABLE test_tbl_t;
 DROP TABLE test_tbl_d;
 DROP TABLE test_tbl_p;
