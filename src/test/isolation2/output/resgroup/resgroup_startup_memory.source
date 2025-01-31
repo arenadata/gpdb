@@ -169,3 +169,10 @@ alter resource group admin_group set memory_limit 10;
 ALTER
 alter resource group admin_group set memory_spill_ratio 10;
 ALTER
+
+drop function repeatPalloc(int, int);
+DROP
+drop function hold_memory_by_percent_on_qe(float);
+DROP
+drop function resGroupPalloc(float);
+DROP
