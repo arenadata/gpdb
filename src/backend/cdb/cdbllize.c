@@ -146,7 +146,7 @@ typedef struct
  * Forward Declarations
  */
 static Node *fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_context *context);
-static Plan *fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow);
+static Plan *fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow);
 static bool build_slice_table_walker(Node *node, build_slice_table_context *context);
 static void adjust_top_path_for_parallel_retrieve_cursor(Path *path, PlanSlice *slice);
 
@@ -1029,7 +1029,7 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
  * in 'outer_query_flow'. Subroutine of cdbllize_fix_outer_query_motions().
  */
 static Plan *
-fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
+fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow)
 {
 	bool		need_motion;
 
@@ -1126,8 +1126,8 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 
 		subplan = (Plan *) motion;
 
-		if (root->glob->paramExecTypes != NIL)
-			SS_finalize_plan(root, subplan);
+		if (subroot->glob->paramExecTypes != NIL)
+			SS_finalize_plan(subroot, subplan);
 	}
 	return subplan;
 }
