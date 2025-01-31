@@ -280,6 +280,33 @@ class PgReplicationSlot:
                      format(self.name, self.host, self.port))
         return True
 
+class PgReplicationSlotCopy:
+    def __init__(self, src_slot, dst_slot_name):
+        self.src_slot = src_slot
+        self.dst_slot_name = dst_slot_name
+
+    def do_copy(self):
+        if not self.src_slot.slot_exists():
+            logger.exception("PgReplicationSlotCopy: src slot {} doesn't exist for host:{}, port:{}".format(self.src_slot.name, self.src_slot.host, self.src_slot.port))
+            return False
+        else:
+            logger.debug("Copy slot {} to {} for host:{}, port:{}".format(self.src_slot.name, self.dst_slot_name, self.src_slot.host, self.src_slot.port))
+            sql = "SELECT pg_copy_physical_replication_slot('{}', '{}', false);".format(self.src_slot.name, self.dst_slot_name)
+            try:
+                dburl = dbconn.DbURL(hostname=self.src_slot.host, port=self.src_slot.port)
+                with closing(dbconn.connect(dburl, utility=True, encoding='UTF8')) as conn:
+                    dbconn.query(conn, sql)
+            except DatabaseError as e:
+                logger.exception("Failed to query pg_copy_physical_replication_slot for host:{}, port:{}: {}".
+                                format(self.src_slot.host, self.src_slot.port, str(e)))
+                return False
+            except Exception as ex:
+                raise Exception("Failed to create a copy of replication slot for host:{}, port:{} : {}".
+                                format(self.src_slot.host, self.src_slot.port, str(ex)))
+
+            logger.debug("Successfully created a copy {} of replication slot {} for host:{}, port:{}".
+                        format(self.dst_slot_name, self.src_slot.name, self.src_slot.host, self.src_slot.port))
+            return True
 
 class PgControlData(Command):
     def __init__(self, name, datadir, ctxt=LOCAL, remoteHost=None):

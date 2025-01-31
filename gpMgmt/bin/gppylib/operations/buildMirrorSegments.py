@@ -299,12 +299,15 @@ class GpMirrorListToBuild:
 
         self._run_setup_recovery(actionName, recovery_info_by_host)
 
+        # 1 - do pg_pasebackup with slot name = 'internal_wal_replication_slot_temp'
         recovery_results_stage_1 = self._run_recovery_stage_1_basebackup(actionName, recovery_info_by_host, gpEnv)
 
+        # 2 - Stop old mirrors
         self._cleanup_before_recovery(gpArray, gpEnv)
 
         backout_map = self._update_config(recovery_info_by_host, gpArray)
 
+        # 5 - Start new mirrors
         recovery_results_stage_2 = self._run_recovery_stage_2_start_segments(actionName, recovery_info_by_host, gpEnv)
 
         if actionName == GpMirrorListToBuild.Action.RECOVERMIRRORS:

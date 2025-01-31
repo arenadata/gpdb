@@ -5,7 +5,7 @@ import signal
 from contextlib import closing
 
 from gppylib.recoveryinfo import RecoveryErrorType
-from gppylib.commands.pg import PgBaseBackup, PgRewind, PgReplicationSlot
+from gppylib.commands.pg import PgBaseBackup, PgRewind, PgReplicationSlot, PgReplicationSlotCopy
 from gppylib.commands.unix import Rsync
 from recovery_base import RecoveryBase, set_recovery_cmd_results
 from gppylib.commands.base import Command, LOCAL
@@ -65,8 +65,8 @@ class FullRecovery2Phase(Command):
     def __init__(self, name, recovery_info, forceoverwrite, logger, era, maxRate, is_only_basebackup, is_only_start):
         self.name = name
         self.recovery_info = recovery_info
-        # TODO: deal with '_upd' suffix...
-        self.replicationSlotName = 'internal_wal_replication_slot_upd'
+        self.replicationSlotName = 'internal_wal_replication_slot'
+        self.replicationSlotNameTemp = 'internal_wal_replication_slot_temp'
         self.forceoverwrite = forceoverwrite
         self.era = era
         self.maxRate = maxRate
@@ -90,7 +90,7 @@ class FullRecovery2Phase(Command):
                                self.recovery_info.source_hostname,
                                str(self.recovery_info.source_port),
                                create_slot=True,
-                               replication_slot_name=self.replicationSlotName,
+                               replication_slot_name=self.replicationSlotNameTemp,
                                forceoverwrite=self.forceoverwrite,
                                target_gp_dbid=self.recovery_info.target_segment_dbid,
                                progress_file=self.recovery_info.progress_file,
@@ -103,6 +103,18 @@ class FullRecovery2Phase(Command):
             self.logger.info("Successfully ran pg_basebackup for dbid: {}".format(
                 self.recovery_info.target_segment_dbid))
         if self.is_only_start:
+            # 3. drop replication slot 'internal_wal_replication_slot'
+            self.logger.info("[RELOG] drop old slot")
+            oldSlot = PgReplicationSlot(self.recovery_info.source_hostname, str(self.recovery_info.source_port), self.replicationSlotName)
+            if oldSlot.slot_exists():
+                oldSlot.drop_slot()
+
+            # 4. select pg_copy_physical_replication_slot('internal_wal_replication_slot_temp', 'internal_wal_replication_slot', false);
+            self.logger.info("[RELOG] Create a new replication slot")
+            tempSlot = PgReplicationSlot(self.recovery_info.source_hostname, str(self.recovery_info.source_port), self.replicationSlotNameTemp)
+            newSlot = PgReplicationSlotCopy(tempSlot, self.replicationSlotName)
+            newSlot.do_copy()
+
             self.logger.info("[RELOG] Only start of segments")
             # Updating port number on conf after recovery
             self.error_type = RecoveryErrorType.UPDATE_ERROR
@@ -110,6 +122,10 @@ class FullRecovery2Phase(Command):
             update_replication_slot_in_conf(self.recovery_info, self.logger, self.replicationSlotName)
             self.error_type = RecoveryErrorType.START_ERROR
             start_segment(self.recovery_info, self.logger, self.era)
+
+            # 6. Drop temp replication slot
+            self.logger.info("[RELOG] drop temp replication slot")
+            tempSlot.drop_slot()
 
 
 class IncrementalRecovery(Command):
@@ -415,9 +431,9 @@ def update_port_in_conf(recovery_info, logger):
     modifyConfCmd.run(validateAfter=True)
 
 def update_replication_slot_in_conf(recovery_info, logger, slot):
-    logger.info("Updating %s/postgresql.conf" % recovery_info.target_datadir)
-    modifyConfCmd = ModifyConfSetting('Updating %s/postgresql.conf' % recovery_info.target_datadir,
-                                      "{}/{}".format(recovery_info.target_datadir, 'postgresql.conf'),
+    logger.info("Updating %s/postgresql.auto.conf" % recovery_info.target_datadir)
+    modifyConfCmd = ModifyConfSetting('Updating %s/postgresql.auto.conf' % recovery_info.target_datadir,
+                                      "{}/{}".format(recovery_info.target_datadir, 'postgresql.auto.conf'),
                                       'primary_slot_name', slot, optType='string')
     modifyConfCmd.run(validateAfter=True)
 
