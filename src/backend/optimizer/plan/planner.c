@@ -659,6 +659,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 			SS_finalize_plan(subroot, subplan);
 		}
+		SS_finalize_plan(root, top_plan);
 	}
 
 	/*
@@ -696,17 +697,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 		if (gp_enable_motion_deadlock_sanity)
 			motion_sanity_check(root, top_plan);
-	}
-
-	/*
-	 * If any Params were generated, run through the plan tree and compute
-	 * each plan node's extParam/allParam sets.  Ideally we'd merge this into
-	 * set_plan_references' tree traversal, but for now it has to be separate
-	 * because we need to visit subplans before not after main plan.
-	 */
-	if (glob->paramExecTypes != NIL)
-	{
-		SS_finalize_plan(root, top_plan);
 	}
 
 	top_plan = set_plan_references(root, top_plan);

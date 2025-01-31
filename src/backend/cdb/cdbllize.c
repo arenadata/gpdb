@@ -58,6 +58,7 @@
 #include "commands/defrem.h"
 #include "optimizer/clauses.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/subselect.h"
 #include "nodes/primnodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
@@ -756,7 +757,9 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 		int			plan_id = linitial_int(context.subplan_workingQueue);
 		decorate_subplan_info *sstate = &context.subplans[plan_id];
 		ListCell   *planlist_cell = list_nth_cell(root->glob->subplans, plan_id - 1);
+		ListCell   *rootlist_cell = list_nth_cell(root->glob->subroots, plan_id - 1);
 		Plan	   *subplan = (Plan *) lfirst(planlist_cell);
+		PlannerInfo *subroot = lfirst_node(PlannerInfo, rootlist_cell);
 
 		context.subplan_workingQueue = list_delete_first(context.subplan_workingQueue);
 
@@ -808,13 +811,21 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 		{
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
+			if (root->glob->paramExecTypes != NIL)
+				SS_finalize_plan(subroot, subplan);
+
 			/*
 			 * If we created a Motion, protect it from rescanning. Init Plans
 			 * and hashed SubPlans are never rescanned.
 			 */
 			if (IsA(subplan, Motion) && !sstate->is_initplan &&
 				!sstate->useHashTable)
+			{
 				subplan = (Plan *) make_material(subplan);
+
+				if (root->glob->paramExecTypes != NIL)
+					SS_finalize_plan(subroot, subplan);
+			}
 		}
 
 		subplan = (Plan *) fix_outer_query_motions_mutator((Node *) subplan, &context);
