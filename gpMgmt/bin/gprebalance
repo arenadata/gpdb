@@ -75,20 +75,6 @@ _usage = """
 EXECNAME = os.path.split(__file__)[-1]
 
 
-def roll_callback(option, opt_str, value, parser):
-    if hasattr(parser.values, 'clean'):
-        logger.error(" %s and %s options cannot be specified together." %
-                     (opt_str, '-c'))
-        parser.exit(1)
-
-
-def clean_callback(option, opt_str, value, parser):
-    if hasattr(parser.values, 'rollback'):
-        logger.error("%s and %s options cannot be specified together." %
-                     (opt_str, '-r'))
-        parser.exit(1)
-
-
 def parseargs():
     parser = OptParser(option_class=OptChecker,
                        description=' '.join(_description.split()),
@@ -99,14 +85,14 @@ def parseargs():
 
     parser.add_option('-m', '--mirror-mode', dest='mirroring',
                       help='desirable mirroring strategy')
-    parser.add_option('-c', '--clean', action='callback', dest='clean',
-                      help='remove the rebalance schema.', callback=clean_callback)
+    parser.add_option('-c', '--clean', action='store_true',
+                      help='remove the rebalance schema.')
     parser.add_option('-f', '--target-hosts', metavar='<hosts_file>', dest='filename',
                       help='yaml containing target hosts configuration')
     parser.add_option('-p', '--show-plan', dest='show_plan', action='store_true', default=False,
                       help='show rebalance plan')
-    parser.add_option('-r', '--rollback', action='callback', dest='rollback',
-                      help='remove the rebalance schema.',  callback=roll_callback)
+    parser.add_option('-r', '--rollback', action='store_true',
+                      help='remove the rebalance schema.')
     parser.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
                       help='duration from beginning to end.')
     parser.add_option('-e', '--end', type='datetime', metavar='datetime',
@@ -178,8 +164,6 @@ def validate_options(options, args, parser):
         if not isinstance(options.end, datetime.datetime):
             options.end = datetime.datetime.combine(
                 options.end, datetime.time(0))
-
-    if options.end:
         if options.end < datetime.datetime.now():
             logger.error('End time occurs in the past')
             parser.print_help()
@@ -189,6 +173,13 @@ def validate_options(options, args, parser):
                 options.end = datetime.datetime.now() + options.duration
     elif options.duration:
         options.end = datetime.datetime.now() + options.duration
+
+    if options.rollback and options.clean:
+        rollbackOpt = "--rollback" if "--rollback" in sys.argv else "-r"
+        cleanOpt = "--clean" if "--clean" in sys.argv else "-c"
+        logger.error("%s and %s options cannot be specified together." %
+                     (rollbackOpt, cleanOpt))
+        parser.exit(1)
 
     return options, args
 
