@@ -710,15 +710,15 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 	CDXLScalarSubPlan *dxlop =
 		CDXLScalarSubPlan::Cast(scalar_subplan_node->GetOperator());
 
-	// Generate outer context for test expression.
-	// When walking through the test expression tree, the params (inner
-	// subplan output columns) will be looked for in the outer context.
+	// When walking through the test expression tree, the test expression params.
+	// will be looked for in the output context.
+	// Generate output context for test expression params based on the outer output context.
 	CDXLTranslateContext test_expr_output_ctxt(
 		m_mp, output_context->IsParentAggNode(),
 		output_context->GetColIdToParamIdMap());
 	List *param_ids = NIL;
 	const CDXLColRefArray *test_expr_params = dxlop->GetTestExprParams();
-	// Fill in the param mapping of the outer context and save the param ids
+	// Fill in the param mapping of the output context and save the param ids
 	if (NULL != test_expr_params)
 	{
 		const ULONG size = test_expr_params->Size();
@@ -747,7 +747,7 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 		}
 	}
 
-	// Generate var mapping to handle test expression based on the required
+	// Generate ColIdVar mapping to handle test expression based on the required
 	// output context. Test expression may contain vars from external
 	// (relative to subplan) nodes, so add their context too.
 	// We create a copy of the external mapping because we don't want to
@@ -1960,7 +1960,7 @@ CTranslatorDXLToScalar::TranslateDXLScalarIdentToScalar(
 			colid_var_plstmt_map->GetOutputContext()->GetParamIdMappingElement(
 				dxlop->GetDXLColRef()->Id()))
 	{
-		// not an outer ref -> Translate var nodeS
+		// not an outer ref -> Translate var node
 		result_expr = (Expr *) colid_var->VarFromDXLNodeScId(dxlop);
 	}
 	else
