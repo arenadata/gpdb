@@ -297,6 +297,18 @@ class GpMirrorListToBuild:
                 is_full_sync = True
                 break
 
+        is_dir_conflict = False
+        for mirror in self.__mirrorsToBuild:
+            failedSegment = mirror.getFailedSegment()
+            for segmentPair in gpArray.getSegmentList():
+                if ((segmentPair.primaryDB.hostname == failedSegment.hostname or \
+                    segmentPair.primaryDB.address == failedSegment.address) and \
+                    segmentPair.primaryDB.datadir == failedSegment.datadir) or \
+                   ((segmentPair.mirrorDB.hostname == failedSegment.hostname or \
+                    segmentPair.mirrorDB.address == failedSegment.address) and \
+                    segmentPair.mirrorDB.datadir == failedSegment.datadir):
+                    is_dir_conflict = True
+
         if actionName not in [GpMirrorListToBuild.Action.ADDMIRRORS, GpMirrorListToBuild.Action.RECOVERMIRRORS]:
             raise Exception('Invalid action. Valid values are {} and {}'.format(GpMirrorListToBuild.Action.RECOVERMIRRORS,
                                                                                 GpMirrorListToBuild.Action.ADDMIRRORS))
@@ -305,7 +317,7 @@ class GpMirrorListToBuild:
 
         recovery_result = False
 
-        if is_full_sync:
+        if is_full_sync and not is_dir_conflict:
             self.checkForPortAndDirectoryConflicts(gpArray)
 
             self._validate_gparray(gpArray)
