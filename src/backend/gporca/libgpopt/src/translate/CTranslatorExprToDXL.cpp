@@ -3214,8 +3214,10 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 	CDistributionSpecArray *pdrgpdsBaseTables, ULONG *pulNonGatherMotions,
 	BOOL *pfDML)
 {
+#ifdef GPOS_DEBUG
 	COperator *popCorrelatedJoin = pexprCorrelatedNLJoin->Pop();
 	COperator::EOperatorId op_id = popCorrelatedJoin->Eopid();
+#endif	// GPOS_DEBUG
 	GPOS_ASSERT(COperator::EopPhysicalCorrelatedInLeftSemiNLJoin == op_id ||
 				COperator::EopPhysicalCorrelatedNotInLeftAntiSemiNLJoin ==
 					op_id ||
