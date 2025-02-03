@@ -291,23 +291,30 @@ class GpMirrorListToBuild:
             self.__logger.info("No segments to {}".format(actionName))
             return True
 
-        is_full_sync = False
+        is_full_sync = True
         for mirror in self.__mirrorsToBuild:
-            if mirror.isFullSynchronization():
-                is_full_sync = True
+            if not mirror.isFullSynchronization():
+                is_full_sync = False
                 break
 
         is_dir_conflict = False
         for mirror in self.__mirrorsToBuild:
+            if is_dir_conflict:
+                break;
             failedSegment = mirror.getFailedSegment()
             for segmentPair in gpArray.getSegmentList():
-                if ((segmentPair.primaryDB.hostname == failedSegment.hostname or \
-                    segmentPair.primaryDB.address == failedSegment.address) and \
-                    segmentPair.primaryDB.datadir == failedSegment.datadir) or \
-                   ((segmentPair.mirrorDB.hostname == failedSegment.hostname or \
-                    segmentPair.mirrorDB.address == failedSegment.address) and \
-                    segmentPair.mirrorDB.datadir == failedSegment.datadir):
-                    is_dir_conflict = True
+                primaryDB = segmentPair.primaryDB
+                mirrorDB = segmentPair.mirrorDB
+                if primaryDB is not None:
+                    if (primaryDB.hostname == failedSegment.hostname or primaryDB.address == failedSegment.address) and \
+                       primaryDB.datadir == failedSegment.datadir:
+                        is_dir_conflict = True
+                        break;
+                if mirrorDB is not None:
+                    if (mirrorDB.hostname == failedSegment.hostname or mirrorDB.address == failedSegment.address) and \
+                       mirrorDB.datadir == failedSegment.datadir:
+                        is_dir_conflict = True
+                        break;
 
         if actionName not in [GpMirrorListToBuild.Action.ADDMIRRORS, GpMirrorListToBuild.Action.RECOVERMIRRORS]:
             raise Exception('Invalid action. Valid values are {} and {}'.format(GpMirrorListToBuild.Action.RECOVERMIRRORS,
