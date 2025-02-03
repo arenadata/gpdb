@@ -302,6 +302,8 @@ class GpMirrorListToBuild:
             if is_dir_conflict:
                 break;
             failedSegment = mirror.getFailedSegment()
+            if failedSegment is None:
+                continue
             for segmentPair in gpArray.getSegmentList():
                 primaryDB = segmentPair.primaryDB
                 mirrorDB = segmentPair.mirrorDB
