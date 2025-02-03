@@ -225,7 +225,14 @@ class GpMirrorListToBuild:
         return self.__maxRate
 
     def _cleanup_before_recovery(self, gpArray, gpEnv):
-        # self.checkForPortAndDirectoryConflicts(gpArray)
+        self.checkForPortAndDirectoryConflicts(gpArray)
+        self._stop_failed_segments(gpEnv)
+        self._wait_fts_to_mark_down_segments(gpEnv, self._get_segments_to_mark_down())
+        if not self.__forceoverwrite:
+            self._clean_up_failed_segments()
+        self._set_seg_status_in_gparray()
+
+    def _cleanup_before_recovery_2(self, gpArray, gpEnv):
         self.__logger.info("[RELOG] _stop_failed_segments - start")
         self._stop_failed_segments(gpEnv)
         self.__logger.info("[RELOG] _stop_failed_segments - end")
@@ -284,40 +291,67 @@ class GpMirrorListToBuild:
             self.__logger.info("No segments to {}".format(actionName))
             return True
 
+        is_full_sync = False
+        for mirror in self.__mirrorsToBuild:
+            if mirror.isFullSynchronization():
+                is_full_sync = True
+                break
+
         if actionName not in [GpMirrorListToBuild.Action.ADDMIRRORS, GpMirrorListToBuild.Action.RECOVERMIRRORS]:
             raise Exception('Invalid action. Valid values are {} and {}'.format(GpMirrorListToBuild.Action.RECOVERMIRRORS,
                                                                                 GpMirrorListToBuild.Action.ADDMIRRORS))
 
         self.__logger.info("%s segment(s) to %s" % (len(self.__mirrorsToBuild), actionName))
 
-        #self._cleanup_before_recovery(gpArray, gpEnv)
-        self.checkForPortAndDirectoryConflicts(gpArray)
+        recovery_result = False
 
-        self._validate_gparray(gpArray)
+        if is_full_sync:
+            self.checkForPortAndDirectoryConflicts(gpArray)
 
-        recovery_info_by_host = recoveryinfo.build_recovery_info(self.__mirrorsToBuild)
+            self._validate_gparray(gpArray)
 
-        self._run_setup_recovery(actionName, recovery_info_by_host)
+            recovery_info_by_host = recoveryinfo.build_recovery_info(self.__mirrorsToBuild)
 
-        # 1 - do pg_pasebackup with slot name = 'internal_wal_replication_slot_temp'
-        recovery_results_stage_1 = self._run_recovery_stage_1_basebackup(actionName, recovery_info_by_host, gpEnv)
+            self._run_setup_recovery(actionName, recovery_info_by_host)
 
-        # 2 - Stop old mirrors
-        self._cleanup_before_recovery(gpArray, gpEnv)
+            # 1 - do pg_pasebackup with slot name = 'internal_wal_replication_slot_temp'
+            recovery_results_stage_1 = self._run_recovery_stage_1_basebackup(actionName, recovery_info_by_host, gpEnv)
 
-        backout_map = self._update_config(recovery_info_by_host, gpArray)
+            # 2 - Stop old mirrors
+            self._cleanup_before_recovery_2(gpArray, gpEnv)
 
-        # 5 - Start new mirrors
-        recovery_results_stage_2 = self._run_recovery_stage_2_start_segments(actionName, recovery_info_by_host, gpEnv)
+            backout_map = self._update_config(recovery_info_by_host, gpArray)
 
-        if actionName == GpMirrorListToBuild.Action.RECOVERMIRRORS:
-            self._revert_config_update(recovery_results_stage_1, backout_map)
+            # 5 - Handle replication slots and start new mirrors
+            recovery_results_stage_2 = self._run_recovery_stage_2_start_segments(actionName, recovery_info_by_host, gpEnv)
 
-        self._trigger_fts_probe(port=gpEnv.getCoordinatorPort())
+            if actionName == GpMirrorListToBuild.Action.RECOVERMIRRORS:
+                self._revert_config_update(recovery_results_stage_1, backout_map)
 
-        self.__logger.info("[RELOG] __build_mirrors - end (segments are up)")
+            self._trigger_fts_probe(port=gpEnv.getCoordinatorPort())
 
-        recovery_result = recovery_results_stage_1.recovery_successful() and recovery_results_stage_2.recovery_successful()
+            self.__logger.info("[RELOG] __build_mirrors - end (segments are up)")
+
+            recovery_result = recovery_results_stage_1.recovery_successful() and recovery_results_stage_2.recovery_successful()
+
+        else:
+            self._cleanup_before_recovery(gpArray, gpEnv)
+            self._validate_gparray(gpArray)
+
+            recovery_info_by_host = recoveryinfo.build_recovery_info(self.__mirrorsToBuild)
+
+            self._run_setup_recovery(actionName, recovery_info_by_host)
+
+            backout_map = self._update_config(recovery_info_by_host, gpArray)
+
+            recovery_results = self._run_recovery(actionName, recovery_info_by_host, gpEnv)
+            if actionName == GpMirrorListToBuild.Action.RECOVERMIRRORS:
+                self._revert_config_update(recovery_results, backout_map)
+
+            self._trigger_fts_probe(port=gpEnv.getCoordinatorPort())
+
+            recovery_result = recovery_results.recovery_successful()
+
         return recovery_result
 
     def _trigger_fts_probe(self, port=0):
