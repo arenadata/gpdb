@@ -208,7 +208,7 @@ Feature: gprecoverseg tests
         Then gprecoverseg should return a return code of 0
         And gprecoverseg should only spawn up to <coordinator_workers> workers in WorkerPool
         And check if gprecoverseg ran "$GPHOME/sbin/gpsegsetuprecovery.py" 1 times with args "-b <segHost_workers>"
-        And check if gprecoverseg ran "$GPHOME/sbin/gpsegrecovery.py" 1 times with args "-b <segHost_workers>"
+        And check if gprecoverseg ran "$GPHOME/sbin/gpsegrecovery.py" 2 times with args "-b <segHost_workers>"
         And gpsegsetuprecovery should only spawn up to <segHost_workers> workers in WorkerPool
         And gpsegrecovery should only spawn up to <segHost_workers> workers in WorkerPool
         And check if gprecoverseg ran "$GPHOME/sbin/gpsegstop.py" 1 times with args "-b <segHost_workers>"
