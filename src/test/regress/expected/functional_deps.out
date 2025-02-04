@@ -1168,7 +1168,7 @@ SELECT * FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (a,c
 (50 rows)
 
 SELECT sub_t.a, sub_t.b, sub_t.c FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (a,c)) ORDER BY a, c) AS sub_t 
-GROUP BY GROUPING SETS ((sub_t.a, sub_t.b, sub_t.c), ()) ORDER BY sub_t.a, sub_t.b, sub_t.c;
+GROUP BY GROUPING SETS ((sub_t.a, sub_t.b, sub_t.c), ()) ORDER BY sub_t.a, sub_t.b, sub_t.c; -- falls back to Postgres-based planner yet
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0
@@ -1638,7 +1638,7 @@ SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),()); -- fail
 ERROR:  column "test_table1.c" must appear in the GROUP BY clause or be used in an aggregate function
 LINE 1: SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((...
                      ^
-SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c; -- falls back to Postgres-based planner yet
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0
@@ -1747,7 +1747,7 @@ SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), ROLLUP (a));
 ERROR:  column "test_table1.c" must appear in the GROUP BY clause or be used in an aggregate function
 LINE 1: SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((...
                      ^
-SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c; -- falls back to Postgres-based planner yet
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0

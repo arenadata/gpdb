@@ -309,7 +309,7 @@ SELECT grouping(a) AS g_a, grouping(b) AS g_b, avg(c) AS avg_c FROM test_table1 
 -- Check sub-query
 SELECT * FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (a,c)) ORDER BY a, c) AS sub_t;
 SELECT sub_t.a, sub_t.b, sub_t.c FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (a,c)) ORDER BY a, c) AS sub_t 
-GROUP BY GROUPING SETS ((sub_t.a, sub_t.b, sub_t.c), ()) ORDER BY sub_t.a, sub_t.b, sub_t.c;
+GROUP BY GROUPING SETS ((sub_t.a, sub_t.b, sub_t.c), ()) ORDER BY sub_t.a, sub_t.b, sub_t.c; -- falls back to Postgres-based planner yet
 SELECT (SELECT c) FROM test_table1 GROUP BY a ORDER BY a;
 SELECT b, (SELECT c FROM (SELECT c) AS alias_test_table1) FROM test_table1 GROUP BY a ORDER BY a;
 -- Check cases with primary key consisting of more than 1 column
@@ -343,9 +343,9 @@ SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a),(b),()), a ORDER BY 
 SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b),()) ORDER BY a, b, c;
 SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b),()); -- fail
 SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),()); -- fail
-SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c; -- falls back to Postgres-based planner yet
 SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), ROLLUP (a)); -- fail
-SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c;
+SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c; -- falls back to Postgres-based planner yet
 SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((a),(b), CUBE (a)); -- fail
 
 -- only grouping expression
