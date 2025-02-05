@@ -1027,7 +1027,7 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 	if (outer_query_flow->flotype == FLOW_SINGLETON)
 	{
 		if (subplan->flow->flotype != FLOW_SINGLETON)
-			need_motion = true;
+			need_motion = false;
 		else
 			need_motion = false;
 	}
@@ -1035,7 +1035,7 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 			 outer_query_flow->flotype == FLOW_PARTITIONED)
 	{
 		// FIXME: Isn't it pointless to broadcast if it's already replicated?
-		need_motion = true;
+		need_motion = false;
 	}
 	else
 		elog(ERROR, "unexpected flow type %d in parent of SubPlan expression",
