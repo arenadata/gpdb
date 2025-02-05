@@ -805,7 +805,7 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 			subplan->flow->locustype != CdbLocusType_SegmentGeneral &&
 			subplan->flow->locustype != CdbLocusType_General &&
 			subplan->flow->locustype != CdbLocusType_Replicated &&
-			(sstate->is_initplan || sstate->useHashTable))
+			(sstate->is_initplan || sstate->useHashTable || IsA(subplan, Material) || IsA(subplan, Motion)))
 		{
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
