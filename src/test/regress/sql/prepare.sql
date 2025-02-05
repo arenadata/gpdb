@@ -87,6 +87,12 @@ PREPARE q7(unknown) AS
 SELECT name, statement, parameter_types FROM pg_prepared_statements
     ORDER BY name;
 
+-- make sure the plan is correct after CTAS
+DROP TABLE t;
+PREPARE p AS SELECT * FROM generate_series(1, 10) i;
+CREATE TEMPORARY TABLE t AS EXECUTE p;
+EXPLAIN (COSTS OFF) EXECUTE p;
+
 -- test DEALLOCATE ALL;
 DEALLOCATE ALL;
 SELECT name, statement, parameter_types FROM pg_prepared_statements
