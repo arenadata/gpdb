@@ -704,15 +704,6 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 									   plansource->num_params,
 									   queryEnv);
 
-	/* GPDB: For CTAS query, set its isCTAS to be true */
-	if (intoClause)
-	{
-		Assert(list_length(tlist) == 1);
-		Query *query = (Query *) linitial(tlist);
-		query->parentStmtType = PARENTSTMTTYPE_CTAS;
-		query->intoPolicy = intoClause->intoPolicy;
-	}
-
 	/* Release snapshot if we got one */
 	if (snapshot_set)
 		PopActiveSnapshot();
@@ -804,6 +795,15 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	 */
 
 	plansource->is_valid = true;
+
+	/* GPDB: For CTAS query, set its parentStmtType to PARENTSTMTTYPE_CTAS */
+	if (intoClause)
+	{
+		Assert(list_length(tlist) == 1);
+		Query *query = (Query *) linitial(tlist);
+		query->parentStmtType = PARENTSTMTTYPE_CTAS;
+		query->intoPolicy = intoClause->intoPolicy;
+	}
 
 	/* Return transient copy of querytrees for possible use in planning */
 	return tlist;
