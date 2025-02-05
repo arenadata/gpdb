@@ -1068,11 +1068,6 @@ fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow)
 
 		Assert(subFlow);
 
-		if (!bms_is_empty(subplan->extParam))
-		{
-
-		}
-
 		/*
 		 * Strip off any Material nodes at the top. There's no point in
 		 * materializing just below a Motion, because a Motion is never
