@@ -512,7 +512,7 @@ FetchStatementTargetList(Node *stmt)
 		else
 		{
 			if (query->commandType == CMD_SELECT &&
-				query->parentStmtType <= PARENTSTMTTYPE_CTAS)
+				query->parentStmtType == PARENTSTMTTYPE_NONE)
 				return query->targetList;
 			if (query->returningList)
 				return query->returningList;
