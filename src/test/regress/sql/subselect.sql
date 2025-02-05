@@ -615,36 +615,43 @@ drop table tl2;
 drop table tl3;
 drop table tl4;
 
--- Check deep tree support with params in <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
-SET client_min_messages='log';
-SET optimizer_trace_fallback=on;
-CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
-INSERT INTO test_tbl_t VALUES ('0', 0);
+-- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
+create table test_tbl_t as select 0 as int_t;
+create table test_tbl_d as select 0 as int_d;
+create table test_tbl_p as select int_p from (values (0), (1)) as s(int_p);
+set client_min_messages='log';
+set optimizer_trace_fallback=on;
 
-CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
-INSERT INTO test_tbl_d VALUES ('0', 0);
+-- The first query generates a DXL with <dxl:TestExpr>, the left node of which contains
+-- a deep tree and only params (see minidump).
+-- This testcase aims to verify that <dxl:TestExpr> with a deep tree and params in the
+-- left node is handled correctly during the DXL to Plan Statement stage.
+-- TestExpr and its params are not displayed in Explain output. However, the output is
+-- needed to make sure that the DXL we need is generated.
+explain (verbose, costs off) select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
 
-CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
-INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
+insert into test_tbl_t values (1);
+insert into test_tbl_d values (1);
+insert into test_tbl_p values (0);
+analyze test_tbl_t;
 
-EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+-- After adding data, the ORCA physical plan changes and DXL changes too. Now the left
+-- node <dxl:TestExpr> does not contain a deep tree. The left node contains an attribute
+-- that is not present in the internal <dxl:SubPlan> node. Such attributes in <dxl:TestExpr>
+-- are treated as Vars. The previous case contained only params (attributes contained in the
+-- inner <dxl:SubPlan> node). This test aims to verify that <dxl:TestExpr> with params and
+-- Vars simultaneously is handled correctly during the DXL to Plan Statement stage.
+-- We also need the Explain output to determine DXL.
+explain (verbose, costs off) select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
 
-INSERT INTO test_tbl_t VALUES ('0', 1);
-INSERT INTO test_tbl_d VALUES ('0', 1);
-INSERT INTO test_tbl_p VALUES ('0', 0);
-ANALYZE test_tbl_t;
-
--- After adding data, the ORCA physical plan changes.
-EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-
-RESET client_min_messages;
-RESET optimizer_trace_fallback;
-DROP TABLE test_tbl_t;
-DROP TABLE test_tbl_d;
-DROP TABLE test_tbl_p;
+reset client_min_messages;
+reset optimizer_trace_fallback;
+drop table test_tbl_t;
+drop table test_tbl_d;
+drop table test_tbl_p;

@@ -740,7 +740,7 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 #endif
 					test_expr_output_ctxt.FInsertParamMapping(
 						colid, colid_to_param_id_map);
-
+				GPOS_ASSERT(is_inserted);
 				Param *param = TranslateParamFromMapping(colid_to_param_id_map);
 				param_ids = gpdb::LAppendInt(param_ids, param->paramid);
 			}
@@ -870,17 +870,14 @@ CTranslatorDXLToScalar::TranslateDXLSubplanTestExprToScalar(
 
 	// Translate arguments
 	List *args = NULL;
-	Expr *outer_expr = NULL;
-	Expr *inner_expr = NULL;
-
 	CDXLNode *outer_child_node = (*test_expr_node)[0];
 	CDXLNode *inner_child_node = (*test_expr_node)[1];
 
-	outer_expr = TranslateDXLToScalar(outer_child_node, colid_var);
+	Expr *outer_expr = TranslateDXLToScalar(outer_child_node, colid_var);
 	GPOS_ASSERT(NULL != outer_expr);
 	args = gpdb::LAppend(args, outer_expr);
 
-	inner_expr = TranslateDXLToScalar(inner_child_node, colid_var);
+	Expr *inner_expr = TranslateDXLToScalar(inner_child_node, colid_var);
 	GPOS_ASSERT(NULL != inner_expr);
 	args = gpdb::LAppend(args, inner_expr);
 

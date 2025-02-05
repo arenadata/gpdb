@@ -1235,52 +1235,52 @@ drop table tl1;
 drop table tl2;
 drop table tl3;
 drop table tl4;
--- Check deep tree support with params in <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
-SET client_min_messages='log';
-SET optimizer_trace_fallback=on;
-LOG:  statement: SET optimizer_trace_fallback=on;
-LOG:  statement: SET optimizer_trace_fallback TO 'on'  (entry db 172.17.0.2:6000 pid=16675)
-CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
-LOG:  statement: CREATE TABLE test_tbl_t (text_t text, int_t int) DISTRIBUTED BY (int_t);
-INSERT INTO test_tbl_t VALUES ('0', 0);
-LOG:  statement: INSERT INTO test_tbl_t VALUES ('0', 0);
-CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
-LOG:  statement: CREATE TABLE test_tbl_d (text_d text, int_d int) DISTRIBUTED BY (int_d);
-INSERT INTO test_tbl_d VALUES ('0', 0);
-LOG:  statement: INSERT INTO test_tbl_d VALUES ('0', 0);
-CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
-LOG:  statement: CREATE TABLE test_tbl_p (text_p text, int_p int) DISTRIBUTED BY (int_p);
-INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
-LOG:  statement: INSERT INTO test_tbl_p VALUES ('0', 0), ('0', 1);
-EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+-- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
+create table test_tbl_t as select 0 as int_t;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause. Creating a NULL policy entry.
+create table test_tbl_d as select 0 as int_d;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause. Creating a NULL policy entry.
+create table test_tbl_p as select int_p from (values (0), (1)) as s(int_p);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause. Creating a NULL policy entry.
+set client_min_messages='log';
+set optimizer_trace_fallback=on;
+LOG:  statement: set optimizer_trace_fallback=on;
+LOG:  statement: SET optimizer_trace_fallback TO 'on'  (entry db 172.17.0.2:6000 pid=16711)
+-- The first query generates a DXL with <dxl:TestExpr>, the left node of which contains
+-- a deep tree and only params (see minidump).
+-- This testcase aims to verify that <dxl:TestExpr> with a deep tree and params in the
+-- left node is handled correctly during the DXL to Plan Statement stage.
+-- TestExpr and its params are not displayed in Explain output. However, the output is
+-- needed to make sure that the DXL we need is generated.
+explain (verbose, costs off) select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+LOG:  statement: explain (verbose, costs off) select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
                                                                                                           QUERY PLAN                                                                                                           
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Result
-   Output: test_tbl_t.text_t, test_tbl_t.int_t
+   Output: test_tbl_t.int_t
    Filter: (SubPlan 1)
    ->  Sort
-         Output: test_tbl_t.text_t, test_tbl_t.int_t
+         Output: test_tbl_t.int_t
          Sort Key: test_tbl_t.int_t
          ->  Gather Motion 3:1  (slice1; segments: 3)
-               Output: test_tbl_t.text_t, test_tbl_t.int_t
+               Output: test_tbl_t.int_t
                ->  Seq Scan on public.test_tbl_t
-                     Output: test_tbl_t.text_t, test_tbl_t.int_t
+                     Output: test_tbl_t.int_t
    SubPlan 1  (slice0)
      ->  Result
-           Output: (count("outer".ColRef_0028)), (sum((CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END))), ((test_tbl_p.int_p = 1))
+           Output: (count("outer".ColRef_0025)), (sum((CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END))), ((test_tbl_p.int_p = 1))
            ->  GroupAggregate
-                 Output: count("outer".ColRef_0028), sum((CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END)), ((test_tbl_p.int_p = 1)), test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
+                 Output: count("outer".ColRef_0025), sum((CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END)), ((test_tbl_p.int_p = 1)), test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
                  Group Key: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, ((test_tbl_p.int_p = 1))
                  ->  Sort
-                       Output: ((test_tbl_p.int_p = 1)), (CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END), test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, "outer".ColRef_0028
+                       Output: ((test_tbl_p.int_p = 1)), (CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END), test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, "outer".ColRef_0025
                        Sort Key: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, ((test_tbl_p.int_p = 1))
                        ->  Result
-                             Output: (test_tbl_p.int_p = 1), CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END, test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, "outer".ColRef_0028
+                             Output: (test_tbl_p.int_p = 1), CASE WHEN ((test_tbl_t.int_t = test_tbl_d.int_d) IS NULL) THEN 1 ELSE 0 END, test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, "outer".ColRef_0025
                              ->  Nested Loop Left Join
-                                   Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, test_tbl_d.int_d, "outer".ColRef_0028
+                                   Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id, test_tbl_d.int_d, "outer".ColRef_0025
                                    Join Filter: true
                                    ->  Materialize
                                          Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
@@ -1289,7 +1289,7 @@ LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
                                                ->  Seq Scan on public.test_tbl_p
                                                      Output: test_tbl_p.int_p, test_tbl_p.ctid, test_tbl_p.gp_segment_id
                                    ->  Materialize
-                                         Output: "outer".ColRef_0028, test_tbl_d.int_d
+                                         Output: "outer".ColRef_0025, test_tbl_d.int_d
                                          ->  Result
                                                Output: true, test_tbl_d.int_d
                                                ->  Result
@@ -1305,41 +1305,47 @@ LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
  Settings: optimizer=on
 (45 rows)
 
-SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-LOG:  statement: SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
- text_t | int_t 
---------+-------
- 0      |     0
+select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+LOG:  statement: select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+ int_t 
+-------
+     0
 (1 row)
 
-INSERT INTO test_tbl_t VALUES ('0', 1);
-LOG:  statement: INSERT INTO test_tbl_t VALUES ('0', 1);
-INSERT INTO test_tbl_d VALUES ('0', 1);
-LOG:  statement: INSERT INTO test_tbl_d VALUES ('0', 1);
-INSERT INTO test_tbl_p VALUES ('0', 0);
-LOG:  statement: INSERT INTO test_tbl_p VALUES ('0', 0);
-ANALYZE test_tbl_t;
-LOG:  statement: ANALYZE test_tbl_t;
--- After adding data, the ORCA physical plan changes.
-EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
+insert into test_tbl_t values (1);
+LOG:  statement: insert into test_tbl_t values (1);
+insert into test_tbl_d values (1);
+LOG:  statement: insert into test_tbl_d values (1);
+insert into test_tbl_p values (0);
+LOG:  statement: insert into test_tbl_p values (0);
+analyze test_tbl_t;
+LOG:  statement: analyze test_tbl_t;
+-- After adding data, the ORCA physical plan changes and DXL changes too. Now the left
+-- node <dxl:TestExpr> does not contain a deep tree. The left node contains an attribute
+-- that is not present in the internal <dxl:SubPlan> node. Such attributes in <dxl:TestExpr>
+-- are treated as Vars. The previous case contained only params (attributes contained in the
+-- inner <dxl:SubPlan> node). This test aims to verify that <dxl:TestExpr> with params and
+-- Vars simultaneously is handled correctly during the DXL to Plan Statement stage.
+-- We also need the Explain output to determine DXL.
+explain (verbose, costs off) select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+LOG:  statement: explain (verbose, costs off) select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
  Result
-   Output: test_tbl_t.text_t, test_tbl_t.int_t
+   Output: test_tbl_t.int_t
    Filter: (SubPlan 2)
    ->  Gather Motion 3:1  (slice1; segments: 3)
-         Output: test_tbl_t.text_t, test_tbl_t.int_t
+         Output: test_tbl_t.int_t
          Merge Key: test_tbl_t.int_t
          ->  Sort
-               Output: test_tbl_t.text_t, test_tbl_t.int_t
+               Output: test_tbl_t.int_t
                Sort Key: test_tbl_t.int_t
                ->  Seq Scan on public.test_tbl_t
-                     Output: test_tbl_t.text_t, test_tbl_t.int_t
+                     Output: test_tbl_t.int_t
    SubPlan 2  (slice0)
      ->  Result
            Output: true
@@ -1369,20 +1375,20 @@ LOG:  statement: EXPLAIN (VERBOSE, COSTS OFF) SELECT * FROM test_tbl_t WHERE
  Settings: optimizer=on
 (38 rows)
 
-SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
-LOG:  statement: SELECT * FROM test_tbl_t WHERE
-  (int_t IN (SELECT int_d FROM test_tbl_d)) IN (SELECT int_p = 1 FROM test_tbl_p) ORDER BY int_t;
- text_t | int_t 
---------+-------
- 0      |     0
- 0      |     1
+select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+LOG:  statement: select * from test_tbl_t where
+  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+ int_t 
+-------
+     0
+     1
 (2 rows)
 
-RESET client_min_messages;
-LOG:  statement: RESET client_min_messages;
-LOG:  statement: RESET client_min_messages  (entry db 172.17.0.2:6000 pid=16675)
-RESET optimizer_trace_fallback;
-DROP TABLE test_tbl_t;
-DROP TABLE test_tbl_d;
-DROP TABLE test_tbl_p;
+reset client_min_messages;
+LOG:  statement: reset client_min_messages;
+LOG:  statement: RESET client_min_messages  (entry db 172.17.0.2:6000 pid=16711)
+reset optimizer_trace_fallback;
+drop table test_tbl_t;
+drop table test_tbl_d;
+drop table test_tbl_p;
