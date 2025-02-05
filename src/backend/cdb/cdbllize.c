@@ -1024,7 +1024,11 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 {
 	bool		need_motion;
 
-	if (outer_query_flow->flotype == FLOW_SINGLETON)
+	if (!bms_is_empty(subplan->extParam))
+	{
+		need_motion = false;
+	}
+	else if (outer_query_flow->flotype == FLOW_SINGLETON)
 	{
 		if (subplan->flow->flotype != FLOW_SINGLETON)
 			need_motion = true;
