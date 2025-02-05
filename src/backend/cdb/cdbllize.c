@@ -58,7 +58,6 @@
 #include "commands/defrem.h"
 #include "optimizer/clauses.h"
 #include "optimizer/pathnode.h"
-#include "optimizer/subselect.h"
 #include "nodes/primnodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
@@ -146,7 +145,7 @@ typedef struct
  * Forward Declarations
  */
 static Node *fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_context *context);
-static Plan *fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow);
+static Plan *fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow);
 static bool build_slice_table_walker(Node *node, build_slice_table_context *context);
 static void adjust_top_path_for_parallel_retrieve_cursor(Path *path, PlanSlice *slice);
 
@@ -752,15 +751,12 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 	 * They will be added to the working queue, so keep going until the
 	 * working queue is empty.
 	 */
-	Assert(list_length(root->glob->subplans) == list_length(root->glob->subroots));
 	while (context.subplan_workingQueue)
 	{
 		int			plan_id = linitial_int(context.subplan_workingQueue);
 		decorate_subplan_info *sstate = &context.subplans[plan_id];
 		ListCell   *planlist_cell = list_nth_cell(root->glob->subplans, plan_id - 1);
-		ListCell   *rootlist_cell = list_nth_cell(root->glob->subroots, plan_id - 1);
 		Plan	   *subplan = (Plan *) lfirst(planlist_cell);
-		PlannerInfo *subroot = lfirst_node(PlannerInfo, rootlist_cell);
 
 		context.subplan_workingQueue = list_delete_first(context.subplan_workingQueue);
 
@@ -810,7 +806,7 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 			subplan->flow->locustype != CdbLocusType_General &&
 			subplan->flow->locustype != CdbLocusType_Replicated)
 		{
-			subplan = fix_subplan_motion(subroot, subplan, context.currentPlanFlow);
+			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
 			/*
 			 * If we created a Motion, protect it from rescanning. Init Plans
@@ -823,12 +819,8 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 				Bitmapset  *saveExtParam = subplan->extParam;
 
 				subplan = (Plan *) make_material(subplan);
-
-				if (root->glob->paramExecTypes != NIL)
-				{
-					subplan->allParam = saveAllParam;
-					subplan->extParam = saveExtParam;
-				}
+				subplan->allParam = saveAllParam;
+				subplan->extParam = saveExtParam;
 			}
 		}
 
@@ -1035,7 +1027,7 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
  * in 'outer_query_flow'. Subroutine of cdbllize_fix_outer_query_motions().
  */
 static Plan *
-fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow)
+fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 {
 	bool		need_motion;
 
@@ -1065,6 +1057,8 @@ fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow)
 		Motion	   *motion;
 		Flow	   *subFlow = subplan->flow;
 		List	   *initPlans = NIL;
+		Bitmapset  *saveAllParam = subplan->allParam;
+		Bitmapset  *saveExtParam = subplan->extParam;
 
 		Assert(subFlow);
 
@@ -1130,16 +1124,9 @@ fix_subplan_motion(PlannerInfo *subroot, Plan *subplan, Flow *outer_query_flow)
 		motion->plan.initPlan = initPlans;
 		motion->senderSliceInfo = sendSlice;
 
-		Bitmapset  *saveAllParam = subplan->allParam;
-		Bitmapset  *saveExtParam = subplan->extParam;
-
 		subplan = (Plan *) motion;
-
-		if (subroot->glob->paramExecTypes != NIL)
-		{
-			subplan->allParam = saveAllParam;
-			subplan->extParam = saveExtParam;
-		}
+		subplan->allParam = saveAllParam;
+		subplan->extParam = saveExtParam;
 	}
 	return subplan;
 }
