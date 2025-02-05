@@ -804,7 +804,8 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 		if (subplan->flow->locustype != CdbLocusType_OuterQuery &&
 			subplan->flow->locustype != CdbLocusType_SegmentGeneral &&
 			subplan->flow->locustype != CdbLocusType_General &&
-			subplan->flow->locustype != CdbLocusType_Replicated)
+			subplan->flow->locustype != CdbLocusType_Replicated &&
+			(sstate->is_initplan || sstate->useHashTable))
 		{
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
@@ -1027,7 +1028,7 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 	if (outer_query_flow->flotype == FLOW_SINGLETON)
 	{
 		if (subplan->flow->flotype != FLOW_SINGLETON)
-			need_motion = false;
+			need_motion = true;
 		else
 			need_motion = false;
 	}
@@ -1035,7 +1036,7 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 			 outer_query_flow->flotype == FLOW_PARTITIONED)
 	{
 		// FIXME: Isn't it pointless to broadcast if it's already replicated?
-		need_motion = false;
+		need_motion = true;
 	}
 	else
 		elog(ERROR, "unexpected flow type %d in parent of SubPlan expression",
