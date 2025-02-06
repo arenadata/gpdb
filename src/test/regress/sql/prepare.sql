@@ -98,6 +98,12 @@ CREATE TEMPORARY TABLE t2 AS EXECUTE prepared_update;
 PREPARE prepared_delete AS DELETE FROM simple_table WHERE a = 1 RETURNING *;
 CREATE TEMPORARY TABLE t2 AS EXECUTE prepared_delete;
 
+-- make sure the plan is correct after CTAS
+DROP TABLE t;
+PREPARE p AS SELECT * FROM generate_series(1, 10) i;
+CREATE TEMPORARY TABLE t AS EXECUTE p;
+EXPLAIN (COSTS OFF) EXECUTE p;
+
 -- test DEALLOCATE ALL;
 DEALLOCATE ALL;
 SELECT name, statement, parameter_types FROM pg_prepared_statements
