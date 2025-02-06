@@ -799,12 +799,14 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 
 		/*
 		 * If the subquery result is not available where the outer query needs it,
-		 * we have to add a Motion node to redistribute it.
+		 * we have to add a Motion node to redistribute it
+		 * (if subplan does not contain external parameters).
 		 */
 		if (subplan->flow->locustype != CdbLocusType_OuterQuery &&
 			subplan->flow->locustype != CdbLocusType_SegmentGeneral &&
 			subplan->flow->locustype != CdbLocusType_General &&
-			subplan->flow->locustype != CdbLocusType_Replicated)
+			subplan->flow->locustype != CdbLocusType_Replicated &&
+			bms_is_empty(subplan->extParam))
 		{
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
@@ -1024,11 +1026,7 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 {
 	bool		need_motion;
 
-	if (!bms_is_empty(subplan->extParam))
-	{
-		need_motion = false;
-	}
-	else if (outer_query_flow->flotype == FLOW_SINGLETON)
+	if (outer_query_flow->flotype == FLOW_SINGLETON)
 	{
 		if (subplan->flow->flotype != FLOW_SINGLETON)
 			need_motion = true;
