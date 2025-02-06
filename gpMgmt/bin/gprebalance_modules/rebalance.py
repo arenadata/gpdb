@@ -120,7 +120,8 @@ class GPRebalance:
                         mirror_datadirs=set(
                         host_config['mirror_datadirs']),
                         mirror_segments=set())
-                    if "replace" in config["hosts"]:
+                    # User can explicitly mark the host to be replacement for existing one
+                    if "replace" in host_config:
                         rep = tuple(host_config['replace'].split(','))
                         if rep in self.current_conf:
                             hosts[key].replacement_for = self.current_conf[rep]
@@ -185,40 +186,6 @@ class GPRebalance:
                 other.add(h)
         return other if len(other) > 0 else None, replacement_hosts if len(replacement_hosts) > 0 else None
 
-    def estimateSegmentSizes(self) -> Dict[int, int]:
-        sql = ("SELECT l.gp_segment_id AS content, array_agg(l.tblspc_loc) as arr "
-               "FROM pg_tablespace t, "
-               "gp_tablespace_location(t.oid) l "
-               "GROUP BY l.gp_segment_id;")
-        cursor = dbconn.query(self.conn, sql)
-        tablespaces = {}
-        for row in cursor:
-            if int(row[0]) >= 0:
-                s = list(row[1])
-                tablespaces[int(row[0])] = [p
-                                            for p in s if len(p)]
-                segmentSize = {}
-        for pair in self.original_gparray.segmentPairs:
-            primary = pair.primaryDB
-            datadir = primary.datadir
-            tablespaces[primary.content].append(datadir)
-            dirs = ' '.join(tablespaces[primary.content])
-            cmdStr = "du -sm %s | cut -f1" % dirs
-            cmd = Command("du", cmdStr, ctxt=REMOTE,
-                          remoteHost=primary.hostname)
-            cmd.run(validateAfter=True)
-            sout = cmd.get_results().stdout
-            if sout is None:
-                continue
-            lines = sout.split('\n')
-            sm = 0
-            for line in lines:
-                if line == '':
-                    continue
-                sm += int(line)
-            segmentSize[primary.content] = sm
-        return segmentSize
-
     def createPlan(self) -> Plan:
         primaries_count = self.original_gparray.get_primary_count()
         total_hosts = len(self.target_hosts)
@@ -233,4 +200,4 @@ class GPRebalance:
         balancer = ClusterBalancer(self.current_conf, (new_hosts, replacement_hosts),
                                    original_segments_map, {}, target_load, self.target_strategy)
 
-        return balancer.getPlan(balancer.hybrid_balance())
+        return balancer.getPlan(balancer.balance())
