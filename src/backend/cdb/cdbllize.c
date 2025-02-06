@@ -799,15 +799,19 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 
 		/*
 		 * If the subquery result is not available where the outer query needs it,
-		 * we have to add a Motion node to redistribute it
-		 * (if subplan does not contain external parameters).
+		 * we have to add a Motion node to redistribute it.
 		 */
 		if (subplan->flow->locustype != CdbLocusType_OuterQuery &&
 			subplan->flow->locustype != CdbLocusType_SegmentGeneral &&
 			subplan->flow->locustype != CdbLocusType_General &&
-			subplan->flow->locustype != CdbLocusType_Replicated &&
-			bms_is_empty(subplan->extParam))
+			subplan->flow->locustype != CdbLocusType_Replicated)
 		{
+			/*
+			 * Too late adding motions under parameterized sub-plans
+			 */
+			if (!bms_is_empty(subplan->extParam))
+				elog(ERROR, "could not parallelize SubPlan");
+
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
 			/*
