@@ -833,6 +833,70 @@ ConstraintSetParentConstraint(Oid childConstrId,
 	table_close(constrRel, RowExclusiveLock);
 }
 
+/*
+ * get_constraint_relation_oids
+ *		Find the IDs of the relations to which a constraint refers.
+ */
+void
+get_constraint_relation_oids(Oid constraint_oid, Oid *conrelid, Oid *confrelid)
+{
+	HeapTuple	tup;
+	Form_pg_constraint con;
+
+	tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for constraint %u", constraint_oid);
+	con = (Form_pg_constraint) GETSTRUCT(tup);
+	*conrelid = con->conrelid;
+	*confrelid = con->confrelid;
+	ReleaseSysCache(tup);
+}
+
+/*
+ * get_constraint_relation_columns
+ *		Find the columns of the relations to which a constraint refers.
+ *		Returns the list of found columns.
+ */
+List *
+get_constraint_relation_columns(Oid constraint_oid)
+{
+	List	   *conkeys_list = NIL;
+	HeapTuple	tp = SearchSysCache1(CONSTROID, ObjectIdGetDatum(constraint_oid));
+
+	if (HeapTupleIsValid(tp))
+	{
+		bool		is_null;
+		Relation	pg_constraint = heap_open(ConstraintRelationId, AccessShareLock);
+		Datum		adatum = heap_getattr(tp,
+										  Anum_pg_constraint_conkey,
+										  RelationGetDescr(pg_constraint),
+										  &is_null);
+
+		if (is_null)
+			elog(LOG, "null conkey for constraint %u", constraint_oid);
+		else
+		{
+			Datum	   *conkeys;
+			int			num_conkeys = 0;
+
+			deconstruct_array(DatumGetArrayTypeP(adatum),
+							  INT2OID, 2, true, 's',
+							  &conkeys, NULL, &num_conkeys);
+
+			for (int i = 0; i < num_conkeys; i++)
+			{
+				AttrNumber	attnum = DatumGetInt16(conkeys[i]);
+
+				conkeys_list = list_append_unique_int(conkeys_list, attnum);
+			}
+		}
+
+		heap_close(pg_constraint, AccessShareLock);
+		ReleaseSysCache(tp);
+	}
+
+	return conkeys_list;
+}
 
 /*
  * get_relation_constraint_oid

@@ -1169,6 +1169,8 @@ SELECT * FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (a,c
 
 SELECT sub_t.a, sub_t.b, sub_t.c FROM (SELECT a, b, c FROM test_table1 GROUP BY GROUPING SETS ((a), (a,c)) ORDER BY a, c) AS sub_t 
 GROUP BY GROUPING SETS ((sub_t.a, sub_t.b, sub_t.c), ()) ORDER BY sub_t.a, sub_t.b, sub_t.c; -- falls back to Postgres-based planner yet
+INFO:  GPORCA failed to produce a plan, falling back to Postgres-based planner
+DETAIL:  Falling back to Postgres-based planner because no plan has been computed for required properties in GPORCA
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0
@@ -1639,6 +1641,8 @@ ERROR:  column "test_table1.c" must appear in the GROUP BY clause or be used in 
 LINE 1: SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((...
                      ^
 SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), ROLLUP (a)) ORDER BY a, b, c; -- falls back to Postgres-based planner yet
+INFO:  GPORCA failed to produce a plan, falling back to Postgres-based planner
+DETAIL:  Falling back to Postgres-based planner because GPORCA does not support the following feature: nested grouping set
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0
@@ -1748,6 +1752,8 @@ ERROR:  column "test_table1.c" must appear in the GROUP BY clause or be used in 
 LINE 1: SELECT a, b, c FROM test_table1 GROUP BY b, GROUPING SETS ((...
                      ^
 SELECT a, b, c FROM test_table1 GROUP BY a, GROUPING SETS ((a),(b), CUBE (a)) ORDER BY a, b, c; -- falls back to Postgres-based planner yet
+INFO:  GPORCA failed to produce a plan, falling back to Postgres-based planner
+DETAIL:  Falling back to Postgres-based planner because GPORCA does not support the following feature: nested grouping set
  a  |   b   | c 
 ----+-------+---
   1 | text1 | 0
