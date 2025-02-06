@@ -806,12 +806,6 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 			subplan->flow->locustype != CdbLocusType_General &&
 			subplan->flow->locustype != CdbLocusType_Replicated)
 		{
-			/*
-			 * Too late adding motions under parameterized sub-plans
-			 */
-			if (!bms_is_empty(subplan->extParam))
-				elog(ERROR, "could not parallelize SubPlan");
-
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
 			/*
@@ -1049,6 +1043,12 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 
 	if (need_motion)
 	{
+		/*
+		 * Too late adding motions under parameterized sub-plans
+		 */
+		if (!bms_is_empty(subplan->extParam))
+			elog(ERROR, "could not parallelize SubPlan");
+
 		/*
 		 * We need to add a Motion to the top.
 		 */
