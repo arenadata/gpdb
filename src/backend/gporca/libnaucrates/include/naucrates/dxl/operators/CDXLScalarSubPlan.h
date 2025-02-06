@@ -62,7 +62,6 @@ private:
 	EdxlSubPlanType m_dxl_subplan_type;
 
 	// test expression -- not null if quantified/existential subplan
-
 	CDXLNode *m_dxlnode_test_expr;
 
 	// Test expression params array - the columns refs of the inner

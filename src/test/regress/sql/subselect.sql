@@ -616,42 +616,66 @@ drop table tl3;
 drop table tl4;
 
 -- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
-create table test_tbl_t as select 0 as int_t;
-create table test_tbl_d as select 0 as int_d;
-create table test_tbl_p as select int_p from (values (0), (1)) as s(int_p);
-set client_min_messages='log';
-set optimizer_trace_fallback=on;
+drop table if exists t1;
+drop table if exists t2;
+drop table if exists t3;
 
--- The first query generates a DXL with <dxl:TestExpr>, the left node of which contains
--- a deep tree and only params (see minidump).
+create table t1 as select 0 as i1;
+create table t2 as select 0 as i2;
+create table t3 as select i3 from (values (0), (1)) as s(i3);
+set optimizer_trace_fallback=on;
+set client_min_messages='log';
+
+-- The first query generates a DXL with <dxl:TestExpr>, the left node (inside Comparison)
+-- of which contains a deep tree and only params (see DXL in output).
+-- The simplified  DXL is printed here because the Explain command does not display TestExpr,
+-- but we need to check what TestExpr contains and how it is processed in the DXL to Plan
+-- Statement stage. With the Postgres optimizer, this check does not matter.
 -- This testcase aims to verify that <dxl:TestExpr> with a deep tree and params in the
 -- left node is handled correctly during the DXL to Plan Statement stage.
--- TestExpr and its params are not displayed in Explain output. However, the output is
--- needed to make sure that the DXL we need is generated.
-explain (verbose, costs off) select * from test_tbl_t where
-  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
-select * from test_tbl_t where
-  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
+-- Note the <Ident> with ColId 26 and 28. This appears from an internal subplan node.
 
-insert into test_tbl_t values (1);
-insert into test_tbl_d values (1);
-insert into test_tbl_p values (0);
-analyze test_tbl_t;
+-- Removed from DXL: <dxl:Sort> inside subplan; <dxl:GroupingColumns> inside subplan;
+-- some projection elements inside <dxl:Aggregate>; scan table t from <dxl:GatherMotion>.
+\! rm -rf $MASTER_DATA_DIRECTORY/minidumps
+-- start_ignore
+set optimizer_minidump=always;
+-- end_ignore
+select * from t1 where
+  (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
+-- start_ignore
+reset optimizer_minidump;
+-- end_ignore
+\! cut -b 18615-33305 $MASTER_DATA_DIRECTORY/minidumps/* | sed 's/></>\n</g' | sed '/Cost\|Properties\|ValuesList/d' | sed '323,344d;79,299d;68,76d;48,53d'
 
--- After adding data, the ORCA physical plan changes and DXL changes too. Now the left
--- node <dxl:TestExpr> does not contain a deep tree. The left node contains an attribute
--- that is not present in the internal <dxl:SubPlan> node. Such attributes in <dxl:TestExpr>
--- are treated as Vars. The previous case contained only params (attributes contained in the
+insert into t1 values (1);
+analyze t1;
+-- After adding data, the ORCA physical plan changes and DXL changes too.
+-- The outer <dxl:TestExpr> is empty. The second <dxl:TestExpr> (nested) does not contain a
+-- deep tree. The left node contains an attribute (Ident ColId="0") that is not present
+-- in the inner <dxl:SubPlan> node. Such attributes in <dxl:TestExpr> are treated as Vars.
+-- The previous case contained only params (attributes contained in the
 -- inner <dxl:SubPlan> node). This test aims to verify that <dxl:TestExpr> with params and
 -- Vars simultaneously is handled correctly during the DXL to Plan Statement stage.
--- We also need the Explain output to determine DXL.
-explain (verbose, costs off) select * from test_tbl_t where
-  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
-select * from test_tbl_t where
-  (int_t in (select int_d from test_tbl_d)) in (select int_p = 1 from test_tbl_p) order by int_t;
 
+-- Removed from DXL: <dxl:Materialize> inside the nested subplane; <dxl:GatherMotion> inside
+-- nested subplan; scan table t from outer <dxl:GatherMotion>.
+\! rm -rf $MASTER_DATA_DIRECTORY/minidumps
+-- start_ignore
+set optimizer_minidump=always;
+-- end_ignore
+select * from t1 where
+  (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
+-- start_ignore
+reset optimizer_minidump;
+-- end_ignore
+\! cut -b 18031-26444 $MASTER_DATA_DIRECTORY/minidumps/* | sed 's/></>\n</g' | sed '/Cost\|Properties\|ValuesList/d' | sed '156,201d;121,150d;71,107d'
+
+\! rm -rf $MASTER_DATA_DIRECTORY/minidumps
+-- start_ignore
 reset client_min_messages;
+-- end_ignore
 reset optimizer_trace_fallback;
-drop table test_tbl_t;
-drop table test_tbl_d;
-drop table test_tbl_p;
+drop table t1;
+drop table t2;
+drop table t3;
