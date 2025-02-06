@@ -677,6 +677,15 @@ cdbllize_adjust_init_plan_path(PlannerInfo *root, Path *best_path)
 									  entryLocus);
 }
 
+static bool
+subplan_is_material_under_motion(Plan *subplan)
+{
+	while (IsA(subplan, Material))
+		subplan = subplan->lefttree;
+
+	return IsA(subplan, Motion);
+}
+
 /*
  * cdbllize_decorate_subplans_with_motions - Adjust subplans for MPP.
  *
@@ -805,7 +814,8 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 			subplan->flow->locustype != CdbLocusType_SegmentGeneral &&
 			subplan->flow->locustype != CdbLocusType_General &&
 			subplan->flow->locustype != CdbLocusType_Replicated &&
-			(sstate->is_initplan || sstate->useHashTable || IsA(subplan, Material) || IsA(subplan, Motion)))
+			(sstate->is_initplan || sstate->useHashTable ||
+			subplan_is_material_under_motion(subplan)))
 		{
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
