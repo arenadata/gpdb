@@ -678,7 +678,7 @@ cdbllize_adjust_init_plan_path(PlannerInfo *root, Path *best_path)
 }
 
 static bool
-subplan_is_material_under_motion(Plan *subplan)
+subplan_is_materialized_motion(Plan *subplan)
 {
 	while (IsA(subplan, Material))
 		subplan = subplan->lefttree;
@@ -815,7 +815,8 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 			subplan->flow->locustype != CdbLocusType_General &&
 			subplan->flow->locustype != CdbLocusType_Replicated &&
 			(sstate->is_initplan || sstate->useHashTable ||
-			subplan_is_material_under_motion(subplan)))
+			subplan_is_materialized_motion(subplan) ||
+			bms_is_empty(subplan->extParam)))
 		{
 			subplan = fix_subplan_motion(root, subplan, context.currentPlanFlow);
 
