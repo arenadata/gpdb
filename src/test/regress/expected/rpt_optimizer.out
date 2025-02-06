@@ -4,6 +4,8 @@
 -- start_matchsubs
 -- m/\(cost=.*\)/
 -- s/\(cost=.*\)//
+-- m/ERROR:  could not parallelize SubPlan \([a-z]+\.c:\d+\)/
+-- s/\d+/XXX/g
 -- end_matchsubs
 create schema rpt;
 set search_path to rpt;
