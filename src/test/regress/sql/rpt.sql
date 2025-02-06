@@ -612,6 +612,9 @@ with cte as (
 )
 select count(distinct(rand)) from cte join d on cte.a = d.a;
 
+-- prohibit adding motion on late stage when subplan has external parameters
+explain (costs off, verbose) select (select b + random() o) from d;
+
 drop table t1;
 drop table t2;
 drop table r;
