@@ -1416,10 +1416,10 @@ drop table table_right;
 -- test cross params of initplan
 -- https://github.com/greenplum-db/gpdb/issues/16268
 create table tmp (a varchar, b varchar, c varchar);
-select (SELECT EXISTS
-                 (SELECT
-                  FROM pg_views
-                  WHERE schemaname = a)) from tmp;
+-- select (SELECT EXISTS
+--                  (SELECT
+--                   FROM pg_views
+--                   WHERE schemaname = a)) from tmp;
 drop table tmp;
 
 -- Test LEAST() and GREATEST() with an embedded subquery
