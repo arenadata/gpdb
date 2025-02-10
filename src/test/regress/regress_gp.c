@@ -652,9 +652,11 @@ resGroupPalloc(PG_FUNCTION_ARGS)
 
 	ResGroupGetMemInfo(&memLimit, &slotQuota, &sharedQuota);
 	size = ceilf(memLimit * ratio);
-	// At startup, the backend process is already consuming some amount of
-	// memory. In order not to complicate the logic of the tests, we take this
-	// memory into account when allocating memory for tests.
+	/*
+	 * At startup, the backend process is already consuming some amount of
+	 * memory. In order not to complicate the logic of the tests, we take this
+	 * memory into account when allocating memory for tests.
+	 */
 	if (startUpMbRemains >= size)
 	{
 		startUpMbRemains -= size;
