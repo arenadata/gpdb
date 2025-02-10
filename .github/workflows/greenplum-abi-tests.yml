@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload symbol/type checking exception list
         if: steps.check_exception_lists.outputs.EXCEPTION_LISTS_COUNT != '0'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: exception_lists
           path: '.abi-check/${{ steps.vars.outputs.BASELINE_VERSION }}/'
@@ -93,19 +93,6 @@ jobs:
           sudo apt install -y libuv1-dev libpam0g-dev libldap-dev libipc-run-perl abi-dumper
           sudo ln -fs python2 /usr/bin/python
 
-        # FIXME: The next lines is only needed for the current pass of the ABI
-        # tests and should be removed after merging README.ubuntu.bash changes
-        # into the base branch.
-      - name: Build libxerces 3.1.2
-        if: ${{matrix.ref == '6.27.1_arenadata58' }}
-        run: |
-          wget https://github.com/arenadata/gp-xerces/archive/refs/tags/v3.1.2-p1.tar.gz
-          tar -xzf v3.1.2-p1.tar.gz
-          pushd gp-xerces-3.1.2-p1
-          ./configure
-          make -j`nproc` && sudo make install
-          popd
-
       - name: Build Greenplum
         run: |
           ## TODO: Since abi-dumper requires debug info and it's hard to inject CFLAGS via the script for
@@ -126,7 +113,7 @@ jobs:
           abi-dumper -lver ${{ matrix.ref }} -skip-cxx -public-headers /usr/local/greenplum-db-devel/include/${{ needs.abi-dump-setup.outputs.ABI_HEADERS }} -o postgres-${{ matrix.ref }}.abi /usr/local/greenplum-db-devel/bin/postgres
 
       - name: Upload ABI files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: '*${{ matrix.ref }}.abi'
@@ -138,19 +125,19 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download baseline
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-baseline
           path: build-baseline/
       - name: Download latest
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-latest
           path: build-latest/
 
       - name: Download exception lists
         if: needs.abi-dump-setup.outputs.EXCEPTION_LISTS_COUNT != '0'
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: exception_lists
           path: exception_lists/
@@ -184,7 +171,7 @@ jobs:
 
       - name: Upload ABI Comparison
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: compat-report-${{ github.sha }}
           path: compat_reports/
