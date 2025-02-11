@@ -186,6 +186,8 @@ find_dml_state(const Oid relationOid)
 static inline void
 remove_dml_state(const Oid relationOid)
 {
+	Assert(appendOnlyDMLStates.state_table);
+
 #ifdef USE_ASSERT_CHECKING
 	AppendOnlyDMLState *state = (AppendOnlyDMLState *)
 #endif
@@ -193,8 +195,6 @@ remove_dml_state(const Oid relationOid)
 											   &relationOid,
 											   HASH_REMOVE,
 											   NULL);
-
-	Assert(appendOnlyDMLStates.state_table);
 	Assert(state);
 
 	if (appendOnlyDMLStates.last_used_state &&

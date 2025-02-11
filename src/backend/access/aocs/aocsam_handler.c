@@ -229,6 +229,8 @@ find_dml_state(const Oid relationOid)
 static inline void
 remove_dml_state(const Oid relationOid)
 {
+	Assert(aocoDMLStates.state_table);
+
 #ifdef USE_ASSERT_CHECKING
 	AOCODMLState *state = (AOCODMLState *)
 #endif
@@ -236,8 +238,6 @@ remove_dml_state(const Oid relationOid)
 										 &relationOid,
 										 HASH_REMOVE,
 										 NULL);
-
-	Assert(aocoDMLStates.state_table);
 	Assert(state);
 
 	if (aocoDMLStates.last_used_state &&
