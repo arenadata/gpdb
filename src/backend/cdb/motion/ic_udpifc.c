@@ -3190,7 +3190,9 @@ SetupUDPIFCInterconnect_Internal(SliceTable *sliceTable)
 			conn = &sendingChunkTransportState->conns[i];
 
 			if (conn->cdbProc)
+			{
 				setupOutgoingUDPConnection(interconnect_context, sendingChunkTransportState, conn);
+			}
 		}
 		snd_control_info.minCwnd = snd_control_info.cwnd;
 		snd_control_info.ssthresh = snd_buffer_pool.maxCount;

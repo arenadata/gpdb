@@ -238,6 +238,7 @@ remove_dml_state(const Oid relationOid)
 										 &relationOid,
 										 HASH_REMOVE,
 										 NULL);
+
 	Assert(state);
 
 	if (aocoDMLStates.last_used_state &&

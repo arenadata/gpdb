@@ -1347,10 +1347,8 @@ cdbexplain_formatMemory(char *outbuf, int bufsize, double bytes)
 #endif							/* USE_ASSERT_CHECKING */
 	snprintf(outbuf, bufsize, "%.0fK bytes", kb(bytes));
 
-#ifdef USE_ASSERT_CHECKING
 	Assert(nchars_written < bufsize &&
 		   "CDBEXPLAIN:  size of char buffer is smaller than the required number of chars");
-#endif
 }								/* cdbexplain_formatMemory */
 
 

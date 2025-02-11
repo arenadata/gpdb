@@ -661,7 +661,6 @@ VarBlockReaderInit(
 	 */
 	offsetToOffsetArray = VARBLOCK_HEADER_LEN +
 		((itemLenSum + 1) / 2) * 2;
-
 #ifdef USE_ASSERT_CHECKING
 	divisor =
 		(VarBlockGet_offsetsAreSmall(header)) ? 2 : VARBLOCK_BYTE_OFFSET_24_LEN;
