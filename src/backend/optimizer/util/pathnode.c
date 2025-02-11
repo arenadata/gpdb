@@ -3241,8 +3241,8 @@ create_resultscan_path(PlannerInfo *root, RelOptInfo *rel,
 
 	{
 #ifdef USE_ASSERT_CHECKING
-		char		exec_location;
-		exec_location =	check_execute_on_functions((Node *) rel->reltarget->exprs);
+		char exec_location =
+			check_execute_on_functions((Node *) rel->reltarget->exprs);
 #endif
 
 		/*

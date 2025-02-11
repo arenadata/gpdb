@@ -230,18 +230,14 @@ static inline void
 remove_dml_state(const Oid relationOid)
 {
 #ifdef USE_ASSERT_CHECKING
-	AOCODMLState *state;
-#endif
-	Assert(aocoDMLStates.state_table);
-
-#ifdef USE_ASSERT_CHECKING
-	state = (AOCODMLState *)
+	AOCODMLState *state = (AOCODMLState *)
 #endif
 		hash_search(aocoDMLStates.state_table,
 										 &relationOid,
 										 HASH_REMOVE,
 										 NULL);
 
+	Assert(aocoDMLStates.state_table);
 	Assert(state);
 
 	if (aocoDMLStates.last_used_state &&
@@ -1820,10 +1816,6 @@ aoco_index_build_range_scan(Relation heapRelation,
                                   TableScanDesc scan)
 {
 	AOCSScanDesc aocoscan;
-#ifdef USE_ASSERT_CHECKING
-	bool		is_system_catalog;
-	bool		checking_uniqueness;
-#endif
 	Datum		values[INDEX_MAX_KEYS];
 	bool		isnull[INDEX_MAX_KEYS];
 	double		reltuples;
@@ -1847,28 +1839,18 @@ aoco_index_build_range_scan(Relation heapRelation,
 	 */
 	Assert(OidIsValid(indexRelation->rd_rel->relam));
 
-#ifdef USE_ASSERT_CHECKING
-	/* Remember if it's a system catalog */
-	is_system_catalog = IsSystemRelation(heapRelation);
-#endif
-
 	/* Appendoptimized catalog tables are not supported. */
-	Assert(!is_system_catalog);
+	Assert(!IsSystemRelation(heapRelation));
 	/* Appendoptimized tables have no data on coordinator. */
 	if (IS_QUERY_DISPATCHER())
 		return 0;
-
-#ifdef USE_ASSERT_CHECKING
-	/* See whether we're verifying uniqueness/exclusion properties */
-	checking_uniqueness = (indexInfo->ii_Unique ||
-		indexInfo->ii_ExclusionOps != NULL);
 
 	/*
 	 * "Any visible" mode is not compatible with uniqueness checks; make sure
 	 * only one of those is requested.
 	 */
-	Assert(!(anyvisible && checking_uniqueness));
-#endif
+	Assert(!(anyvisible &&
+			 (indexInfo->ii_Unique || indexInfo->ii_ExclusionOps != NULL)));
 
 	/*
 	 * Need an EState for evaluation of index expressions and partial-index

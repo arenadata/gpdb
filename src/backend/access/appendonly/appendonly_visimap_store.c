@@ -63,9 +63,6 @@ AppendOnlyVisimapStore_Init(AppendOnlyVisimapStore *visiMapStore,
 							Snapshot snapshot,
 							MemoryContext memoryContext)
 {
-#ifdef USE_ASSERT_CHECKING
-	TupleDesc	heapTupleDesc;
-#endif
 	ScanKey		scanKey;
 	Oid 		visimapIdxid;
 
@@ -83,10 +80,8 @@ AppendOnlyVisimapStore_Init(AppendOnlyVisimapStore *visiMapStore,
 
 	visiMapStore->visimapIndex = index_open(visimapIdxid, lockmode);
 
-#ifdef USE_ASSERT_CHECKING
-	heapTupleDesc = RelationGetDescr(visiMapStore->visimapRelation);
-#endif
-	Assert(heapTupleDesc->natts == Natts_pg_aovisimap);
+	Assert(RelationGetDescr(visiMapStore->visimapRelation)->natts ==
+		   Natts_pg_aovisimap);
 
 	visiMapStore->scanKeys = palloc0(sizeof(ScanKeyData) * APPENDONLY_VISIMAP_INDEX_SCAN_KEY_NUM);
 

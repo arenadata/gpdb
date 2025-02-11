@@ -133,9 +133,7 @@ LocalDistribXact_DisplayString(int pgprocno)
 	PGPROC *proc = &ProcGlobal->allProcs[pgprocno];
 	PGXACT *pgxact = &ProcGlobal->allPgXact[pgprocno];
 #ifdef USE_ASSERT_CHECKING
-	int			snprintfResult;
-
-	snprintfResult =
+	int			snprintfResult =
 #endif
 		snprintf(
 				 LocalDistribDisplayBuffer,
