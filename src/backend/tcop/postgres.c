@@ -5494,7 +5494,7 @@ PostgresMain(int argc, char *argv[],
 					ouid = pq_getmsgint(&input_message, 4);
 					cuid = pq_getmsgint(&input_message, 4);
 
-					pq_getmsgint64(&input_message);
+					(void) pq_getmsgint64(&input_message);
 
 					/* check if the message is from standby QD and is expected */
 					is_hs_dispatch = pq_getmsgint(&input_message, 4);

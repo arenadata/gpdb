@@ -3239,20 +3239,14 @@ create_resultscan_path(PlannerInfo *root, RelOptInfo *rel,
 	pathnode->parallel_workers = 0;
 	pathnode->pathkeys = NIL;	/* result is always unordered */
 
-	{
-#ifdef USE_ASSERT_CHECKING
-		char exec_location =
-			check_execute_on_functions((Node *) rel->reltarget->exprs);
-#endif
-
-		/*
-		 * A function with EXECUTE ON { COORDINATOR | ALL SEGMENTS } attribute
-		 * must be a set-returning function, a subquery has set-returning 
-		 * functions in tlist can't be pulled up as RTE_RESULT relation.
-		 */
-		Assert(exec_location == PROEXECLOCATION_ANY);
-		CdbPathLocus_MakeGeneral(&pathnode->locus);
-	}
+	/*
+	 * A function with EXECUTE ON { COORDINATOR | ALL SEGMENTS } attribute
+	 * must be a set-returning function, a subquery has set-returning 
+	 * functions in tlist can't be pulled up as RTE_RESULT relation.
+	 */
+	Assert(check_execute_on_functions((Node *) rel->reltarget->exprs) ==
+		   PROEXECLOCATION_ANY);
+	CdbPathLocus_MakeGeneral(&pathnode->locus);
 
 	cost_resultscan(pathnode, root, rel, pathnode->param_info);
 
