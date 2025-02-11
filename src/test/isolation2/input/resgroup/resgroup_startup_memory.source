@@ -53,7 +53,7 @@ begin;
 -- Allocate all the memory in the second resource group.
 select hold_memory_by_percent_on_qe(1);
 -- Wait for all backends to run before executing the query. This is necessary
--- to avoid executing hold_memory before all backends are up.
+-- to avoid executing repeatPalloc before all backends are up.
 select gp_inject_fault_infinite('executor_pre_tuple_processed', 'suspend', dbid)
     from gp_segment_configuration where role = 'p' and content > -1;
 -- The first resource group has 682 * 0.15 = 102 MB of memory available.
