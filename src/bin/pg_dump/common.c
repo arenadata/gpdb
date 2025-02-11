@@ -133,7 +133,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	{
 		pg_log_info("identifying required binary upgrade calls");
 
-		getBinaryUpgradeObjects();
+		(void) getBinaryUpgradeObjects();
 	}
 
 	/*

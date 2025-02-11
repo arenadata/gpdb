@@ -1921,7 +1921,7 @@ test_consume_xids(PG_FUNCTION_ARGS)
 	TransactionId targetxid;
 
 	/* make sure we have a top-XID first */
-	GetCurrentTransactionId();
+	(void) GetCurrentTransactionId();
 
 	xid = ReadNewTransactionId();
 

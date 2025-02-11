@@ -4875,7 +4875,7 @@ DatumStreamBlock_IntegrityCheckDenseDelta(
 		int			byteLen;
 		bool		sign;
 
-		DatumStreamInt32CompressReserved3_Decode(p, &byteLen, &sign);
+		(void) DatumStreamInt32CompressReserved3_Decode(p, &byteLen, &sign);
 		/* UNDONE: Range check repeatCount */
 
 		totalDeltasSize += byteLen;

@@ -837,9 +837,6 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 	{
 		long pos = (long)(revents[i].user_data); /* original position */
 		bool		finished;
-#ifdef USE_ASSERT_CHECKING
-		int			sock;
-#endif
 		CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[pos];
 		SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 
@@ -857,7 +854,7 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 							  pos + 1, pParms->dispatchCount, segdbDesc->whoami);
 
 #ifdef USE_ASSERT_CHECKING
-		sock =
+		int sock =
 #endif
 			PQsocket(segdbDesc->conn);
 		Assert(sock >= 0);

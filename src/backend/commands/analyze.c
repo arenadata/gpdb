@@ -1979,9 +1979,6 @@ acquire_hll_by_query(Relation onerel, int nattrs, VacAttrStats **attrstats, int 
 {
 	StringInfoData str, columnStr;
 	int			i;
-#ifdef USE_ASSERT_CHECKING
-	int			ret;
-#endif
 	Datum	   *vals;
 	MemoryContext oldcxt;
 	const char *schemaName = get_namespace_name(RelationGetNamespace(onerel));
@@ -2015,7 +2012,7 @@ acquire_hll_by_query(Relation onerel, int nattrs, VacAttrStats **attrstats, int 
 	 * snapshot. That ensures that we see all changes by our own transaction.
 	 */
 #ifdef USE_ASSERT_CHECKING
-	ret =
+	int ret =
 #endif
 		SPI_execute(str.data, false, 0);
 	Assert(ret > 0);

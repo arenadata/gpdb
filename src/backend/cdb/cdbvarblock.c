@@ -663,15 +663,8 @@ VarBlockReaderInit(
 		((itemLenSum + 1) / 2) * 2;
 
 #ifdef USE_ASSERT_CHECKING
-	if (VarBlockGet_offsetsAreSmall(header))
-	{
-		divisor = 2;
-	}
-	else
-	{
-		divisor = VARBLOCK_BYTE_OFFSET_24_LEN;
-	}
-
+	divisor =
+		(VarBlockGet_offsetsAreSmall(header)) ? 2 : VARBLOCK_BYTE_OFFSET_24_LEN;
 	calculatedItemCount = (bufferLen - offsetToOffsetArray) / divisor;
 #endif
 	Assert(calculatedItemCount == VarBlockGet_itemCount(header));

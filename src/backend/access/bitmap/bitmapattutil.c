@@ -324,9 +324,6 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 {
 	TupleDesc	tupDesc;
 	HeapTuple	tuple;
-#ifdef USE_ASSERT_CHECKING
-	bool		result;
-#endif
 	Datum	   *indexDatum;
 	bool	   *indexNulls;
 
@@ -342,7 +339,7 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 	memcpy(indexDatum, datum, (tupDesc->natts - 2) * sizeof(Datum));
 	memcpy(indexNulls, nulls, (tupDesc->natts - 2) * sizeof(bool));
 #ifdef USE_ASSERT_CHECKING
-	result =
+	bool result =
 #endif
 		index_insert(lovIndex, indexDatum, indexNulls,
 					 	  &(tuple->t_self), lovHeap, true, NULL);

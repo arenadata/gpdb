@@ -786,7 +786,7 @@ ResLockUtilityPortal(Portal portal, float4 ignoreCostLimit)
 
 		PG_TRY();
 		{
-			ResLockAcquire(&tag, &incData);
+			(void) ResLockAcquire(&tag, &incData);
 		}
 		PG_CATCH();
 		{

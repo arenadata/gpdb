@@ -2079,9 +2079,6 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 static void
 BuildQueueStatusContext(QueueStatusContext *fctx)
 {
-#ifdef USE_ASSERT_CHECKING
-	int			num_calls = 0;
-#endif
 	int			numRecords;
 	int			i;
 	HASH_SEQ_STATUS status;
@@ -2106,7 +2103,7 @@ BuildQueueStatusContext(QueueStatusContext *fctx)
 	/* Initialize for a sequential scan of the resource queue hash. */
 	hash_seq_init(&status, ResQueueHash);
 #ifdef USE_ASSERT_CHECKING
-	num_calls =
+	int num_calls =
 #endif
 		hash_get_num_entries(ResQueueHash);
 	Assert(num_calls == ResScheduler->num_queues);

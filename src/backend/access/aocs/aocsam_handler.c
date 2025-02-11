@@ -2129,9 +2129,6 @@ aoco_index_build_range_scan(Relation heapRelation,
 			/* position every column to that rownum */
 			for (int colIdx = 0; colIdx < aocoscan->columnScanInfo.num_proj_atts; colIdx++)
 			{
-#ifdef USE_ASSERT_CHECKING
-				int 			err;
-#endif
 				AttrNumber		attno = aocoscan->columnScanInfo.proj_atts[colIdx];
 				int32 			rowNumInBlock;
 
@@ -2148,7 +2145,7 @@ aoco_index_build_range_scan(Relation heapRelation,
 
 				/* read the varblock we've just positioned to */
 #ifdef USE_ASSERT_CHECKING
-				err =
+				int err =
 #endif
 					datumstreamread_block(aocoscan->columnScanInfo.ds[attno], NULL, attno);
 				Assert(err >= 0); /* since it's a valid block, we must be able to read it */
