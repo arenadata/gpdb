@@ -221,6 +221,17 @@ CREATE TEMPORARY TABLE t2 AS EXECUTE prepared_delete;
 INFO:  GPORCA failed to produce a plan, falling back to Postgres-based planner
 DETAIL:  Falling back to Postgres-based planner because GPORCA does not support the following feature: RETURNING clause
 ERROR:  prepared statement is not a SELECT
+-- make sure the plan is correct after CTAS
+DROP TABLE t;
+PREPARE p AS SELECT * FROM generate_series(1, 10) i;
+CREATE TEMPORARY TABLE t AS EXECUTE p;
+EXPLAIN (COSTS OFF) EXECUTE p;
+            QUERY PLAN            
+----------------------------------
+ Function Scan on generate_series
+ Optimizer: GPORCA
+(2 rows)
+
 -- test DEALLOCATE ALL;
 DEALLOCATE ALL;
 SELECT name, statement, parameter_types FROM pg_prepared_statements

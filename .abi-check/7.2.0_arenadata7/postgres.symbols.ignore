@@ -5,3 +5,4 @@ optopt@@GLIBC_2.2.5
 optopt
 optimizer_partition_selection_log
 ConfigureNamesBool_gp
+ConfigureNamesInt_gp
