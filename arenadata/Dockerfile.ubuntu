@@ -19,6 +19,22 @@ RUN set -eux; \
     pip3 install pytest gsutil behave~=1.2.6 coverage~=4.5 'mock<=5.0.0' allure-behave==2.4.0 protobuf==3.20.0; \
     pip3 cache purge
 
+# Remove older LLVM versions and install LLVM 18
+RUN sudo apt-get remove --purge -y llvm-14 llvm-14-dev clang-14 && \
+    sudo apt-get update && \
+    sudo apt-get install -y wget gnupg lsb-release && \
+    wget https://apt.llvm.org/llvm-snapshot.gpg.key && \
+    sudo apt-key add llvm-snapshot.gpg.key && \
+    echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" | sudo tee /etc/apt/sources.list.d/llvm18.list && \
+    sudo apt-get update && \
+    sudo apt-get install -y llvm-18 clang-18 lldb-18 && \
+    sudo update-alternatives --install /usr/bin/llvm-config llvm-config /usr/lib/llvm-18/bin/llvm-config 50 && \
+    sudo update-alternatives --install /usr/bin/llvm-symbolizer llvm-symbolizer /usr/lib/llvm-18/bin/llvm-symbolizer 50 && \
+    sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-18 50 && \
+    sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 50 && \
+    sudo update-alternatives --install /usr/bin/llvm-ar llvm-ar /usr/lib/llvm-18/bin/llvm-ar 50 && \
+    sudo update-alternatives --install /usr/bin/llvm-ranlib llvm-ranlib /usr/lib/llvm-18/bin/llvm-ranlib 50
+
 WORKDIR /home/gpadmin
 
 FROM base AS build
