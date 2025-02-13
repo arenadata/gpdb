@@ -4,10 +4,13 @@ set optimizer = 0;
 set enable_seqscan = 0;
 -- collect all tuples on one segment
 create temp table t1 (a text, b int default 0) with (appendonly=true) distributed by (b);
-insert into t1 select MD5(random()::text) from generate_series(1, 500000);
+insert into t1 select MD5(random()::text) from generate_series(1, 50000);
 insert into t1 values ('apple');
 create index t1_idx on t1 using gin(to_tsvector('english', a)) with (fastupdate = false);
--- divide block_size by 4 because the size of ItemIdData is 4 bytes
+-- We define the maximum TID offset for a Heap table in the maxHeapOffset query as
+-- the maximum block size (BLCKSZ) divided by the pointer size (4 bytes), similar
+-- to the MaxOffsetNumber macro. To ensure that the AO table tuple with a large
+-- offset can be processed.
 with query as (select a, (ctid::text::point)[1]::int as offset from t1
               where to_tsvector('english', a) @@ to_tsquery('english', 'apple')),
      maxHeapOffset as (select current_setting('block_size')::int/4 as value)
