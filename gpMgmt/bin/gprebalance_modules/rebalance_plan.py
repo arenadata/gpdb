@@ -12,6 +12,8 @@ class Move:
     segid: SegmentId
     srcHost: Host
     dstHost: Host
+    is_mirror: bool
+    final_datadir: str
 
 
 class Plan:
@@ -340,7 +342,7 @@ class ClusterBalancer():
                 target_host = state1[target_location]
                 segid = next(seg for seg in source_host.primary_segments
                              if seg.contentid == contentid)
-                moves.append(Move(segid, source_host, target_host))
+                moves.append(Move(segid, source_host, target_host, False))
                 roles[segid] = 'p'
 
         # Find mirror segment moves
@@ -351,12 +353,9 @@ class ClusterBalancer():
                 target_host = state1[target_location]
                 segid = next(seg for seg in source_host.mirror_segments
                              if seg.contentid == contentid)
-                moves.append(Move(segid, source_host, target_host))
+                moves.append(Move(segid, source_host, target_host, True))
                 roles[segid] = 'm'
 
-        def is_primary_move(move):
-            return move.segid in state1[move.srcHost.hostname, move.srcHost.address].primary_segments
-
-        moves.sort(key=lambda m: 0 if is_primary_move(m) else 1)
+        moves.sort(key=lambda m: 1 if m.is_mirror else 0)
 
         return moves, roles
