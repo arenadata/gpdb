@@ -52,9 +52,6 @@ cdbgang_createGang_async(List *segments, SegmentType segmentType)
 	Gang	*newGangDefinition;
 	int		create_gang_retry_counter = 0;
 	int		in_recovery_mode_count = 0;
-#ifdef USE_ASSERT_CHECKING
-	int		other_failures = 0;
-#endif
 	int		successful_connections = 0;
 	int		poll_timeout = 0;
 	int		i = 0;
@@ -115,10 +112,11 @@ create_gang_retry:
 	Assert(newGangDefinition->size == size);
 	successful_connections = 0;
 	in_recovery_mode_count = 0;
-#ifdef USE_ASSERT_CHECKING
-	other_failures = 0;
-#endif
 	retry = false;
+
+#ifdef USE_ASSERT_CHECKING
+	int other_failures = 0;
+#endif
 
 	pollingStatus = palloc(sizeof(PostgresPollingStatusType) * size);
 	connStatusDone = palloc(sizeof(bool) * size);

@@ -28,8 +28,6 @@ pgbench: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 # exprscan is compiled as part of exprparse
 exprparse.o: exprscan.c
 
-exprparse.o: CFLAGS += -Wno-unused-but-set-variable
-
 distprep: exprparse.c exprscan.c
 
 install: all installdirs

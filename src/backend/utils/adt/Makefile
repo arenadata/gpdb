@@ -115,8 +115,6 @@ OBJS = \
 	xid.o \
 	xml.o
 
-array_userfuncs.o: CFLAGS += -Wno-unused-variable
-
 jsonpath_scan.c: FLEXFLAGS = -CF -p -p
 jsonpath_scan.c: FLEX_NO_BACKUP=yes
 

@@ -106,10 +106,6 @@ resetTimers(struct itimers *otimers)
 void
 restoreTimers(struct itimers *timers)
 {
-#ifdef USE_ASSERT_CHECKING
-	int			err;
-#endif
-
 	if (timers == NULL)
 	{
 		/* Coding error! */
@@ -122,7 +118,7 @@ restoreTimers(struct itimers *timers)
 	if (timerisset(&timers->rtimer.it_interval) || timerisset(&timers->rtimer.it_value))
 	{
 #ifdef USE_ASSERT_CHECKING
-		err =
+		int err =
 #endif
 			setitimer(ITIMER_REAL, &timers->rtimer, NULL);
 		Assert(err == 0);
@@ -130,7 +126,7 @@ restoreTimers(struct itimers *timers)
 	if (timerisset(&timers->vtimer.it_interval) || timerisset(&timers->vtimer.it_value))
 	{
 #ifdef USE_ASSERT_CHECKING
-		err =
+		int err =
 #endif
 			setitimer(ITIMER_VIRTUAL, &timers->vtimer, NULL);
 		Assert(err == 0);
@@ -138,7 +134,7 @@ restoreTimers(struct itimers *timers)
 	if (timerisset(&timers->ptimer.it_interval) || timerisset(&timers->ptimer.it_value))
 	{
 #ifdef USE_ASSERT_CHECKING
-		err =
+		int err =
 #endif
 			setitimer(ITIMER_PROF, &timers->ptimer, NULL);
 		Assert(err == 0);

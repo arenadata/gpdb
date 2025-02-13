@@ -896,13 +896,9 @@ array_int4_add(PG_FUNCTION_ARGS)
 				ndatabytes,
 				nbytes;
 	int		   *dims1,
-			   *lbs1,
-				ndims1,
-				ndatabytes1;
+				ndims1;
 	int		   *dims2,
-			   *lbs2,
-				ndims2,
-				ndatabytes2;
+				ndims2;
 	bool		bigenuf1,
 				bigenuf2;
 	int			i,
@@ -914,6 +910,10 @@ array_int4_add(PG_FUNCTION_ARGS)
 	Oid			element_type1; /* */
 	Oid			element_type2; /* */
 	ArrayType  *result;
+#ifdef USE_ASSERT_CHECKING
+	int			ndatabytes1,
+				ndatabytes2;
+#endif
 
 	v1 = PG_GETARG_ARRAYTYPE_P(0);
 	v2 = PG_GETARG_ARRAYTYPE_P(1);

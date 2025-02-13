@@ -617,14 +617,14 @@ standard_ExecutorStart(QueryDesc *queryDesc, int eflags)
 			 * If responsible for a non-root slice, arrange to enter the plan at the
 			 * slice's sending Motion node rather than at the top.
 			 */
+#ifdef USE_ASSERT_CHECKING
 			if (LocallyExecutingSliceIndex(estate) != RootSliceIndex(estate))
 			{
-#ifdef USE_ASSERT_CHECKING
 				MotionState *motionstate = getMotionState(
 					queryDesc->planstate, LocallyExecutingSliceIndex(estate));
-#endif
 				Assert(motionstate != NULL && IsA(motionstate, MotionState));
 			}
+#endif
 
 			if (Debug_print_slice_table)
 				elog_node_display(DEBUG3, "slice table", estate->es_sliceTable, true);
