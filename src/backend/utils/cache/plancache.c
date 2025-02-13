@@ -802,7 +802,7 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 		Assert(list_length(tlist) == 1);
 		Query *query = (Query *) linitial(tlist);
 		query->parentStmtType = PARENTSTMTTYPE_CTAS;
-		query->intoPolicy = intoClause->intoPolicy;
+		query->intoPolicy = (GpPolicy *)intoClause->distributedBy;
 	}
 
 	/* Return transient copy of querytrees for possible use in planning */

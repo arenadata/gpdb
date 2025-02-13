@@ -3586,7 +3586,11 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 						MaxPolicyAttributeNumber)));
 
 	if (dist->ptype == POLICYTYPE_REPLICATED)
+	{
 		qry->intoPolicy = createReplicatedGpPolicy(dist->numsegments);
+
+		into->distributedBy = (Node *)qry->intoPolicy;
+	}
 	else
 	{
 		List	*policykeys = NIL;
@@ -3626,7 +3630,7 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 													  policyopclasses,
 													  dist->numsegments);
 
-		into->intoPolicy = qry->intoPolicy;
+		into->distributedBy = (Node *)qry->intoPolicy;
 	}
 }
 
