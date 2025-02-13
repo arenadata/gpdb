@@ -4,6 +4,9 @@
 -- start_matchsubs
 -- m/\(cost=.*\)/
 -- s/\(cost=.*\)//
+
+-- m/ERROR:  could not parallelize SubPlan \([a-z]+\.c:\d+\)/
+-- s/\d+/XXX/g
 -- end_matchsubs
 create schema rpt;
 set search_path to rpt;
@@ -611,6 +614,9 @@ with cte as (
     select a, b * random() as rand from r
 )
 select count(distinct(rand)) from cte join d on cte.a = d.a;
+
+-- prohibit adding motion on late stage when subplan has external parameters
+explain (costs off, verbose) select (select b + random() o) from d;
 
 drop table t1;
 drop table t2;
