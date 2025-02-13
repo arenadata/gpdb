@@ -20,7 +20,6 @@
 #define PRIMNODES_H
 
 #include "access/attnum.h"
-#include "catalog/gp_distribution_policy.h"
 #include "nodes/bitmapset.h"
 #include "nodes/pg_list.h"
 #include "nodes/params.h"  /* For ParamListInfoData */
