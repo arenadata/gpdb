@@ -232,7 +232,7 @@ remove_dml_state(const Oid relationOid)
 	Assert(aocoDMLStates.state_table);
 
 #ifdef USE_ASSERT_CHECKING
-	AOCODMLState *state = (AOCODMLState *)
+	void *state =
 #endif
 		hash_search(aocoDMLStates.state_table,
 										 &relationOid,

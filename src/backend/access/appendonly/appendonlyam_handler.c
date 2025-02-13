@@ -189,7 +189,7 @@ remove_dml_state(const Oid relationOid)
 	Assert(appendOnlyDMLStates.state_table);
 
 #ifdef USE_ASSERT_CHECKING
-	AppendOnlyDMLState *state = (AppendOnlyDMLState *)
+	void *state =
 #endif
 		hash_search(appendOnlyDMLStates.state_table,
 											   &relationOid,
