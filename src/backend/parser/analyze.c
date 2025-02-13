@@ -3569,6 +3569,7 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
 	Assert(into != NULL);
 	Assert(into->distributedBy != NULL);
+	Assert(IsA(into->distributedBy, DistributedBy));
 
 	dist = (DistributedBy *)into->distributedBy;
 
