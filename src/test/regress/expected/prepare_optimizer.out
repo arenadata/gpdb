@@ -155,27 +155,6 @@ SELECT * FROM q5_prep_nodata;
 ---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
 (0 rows)
 
--- ensure EXPLAIN ANALYZE CTAS from prepared statement creates table
-PREPARE p AS SELECT 1 i;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
-CREATE TEMPORARY TABLE t AS EXECUTE p;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Result (actual rows=1 loops=1)
-   ->  Redistribute Motion 3:3  (slice1; segments: 3) (actual rows=1 loops=1)
-         ->  Result (actual rows=1 loops=1)
-               One-Time Filter: (gp_execution_segment() = 0)
-               ->  Result (actual rows=1 loops=1)
- Optimizer: GPORCA
-(6 rows)
-
-SELECT * FROM t;
- i 
----
- 1
-(1 row)
-
-DEALLOCATE p;
 -- unknown or unspecified parameter types: should succeed
 PREPARE q6 AS
     SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;

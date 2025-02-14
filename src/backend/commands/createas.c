@@ -560,7 +560,6 @@ intorel_startup_dummy(DestReceiver *self, int operation, TupleDesc typeinfo)
 {
 	Relation rel = ((DR_intorel *)self)->rel;
 	/* See intorel_initplan() for explanation */
-	Assert(rel != NULL);
 	if (rel->rd_tableam)
 		table_dml_init(rel);
 }

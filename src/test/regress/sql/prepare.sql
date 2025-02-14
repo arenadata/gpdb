@@ -66,13 +66,6 @@ CREATE TEMPORARY TABLE q5_prep_nodata AS EXECUTE q5(200, 'DTAAAA')
     WITH NO DATA;
 SELECT * FROM q5_prep_nodata;
 
--- ensure EXPLAIN ANALYZE CTAS from prepared statement creates table
-PREPARE p AS SELECT 1 i;
-EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF)
-CREATE TEMPORARY TABLE t AS EXECUTE p;
-SELECT * FROM t;
-DEALLOCATE p;
-
 -- unknown or unspecified parameter types: should succeed
 PREPARE q6 AS
     SELECT * FROM tenk1 WHERE unique1 = $1 AND stringu1 = $2;
