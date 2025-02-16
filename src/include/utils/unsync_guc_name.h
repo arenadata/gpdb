@@ -419,7 +419,6 @@
 		"optimizer_multilevel_partitioning",
 		"optimizer_nestloop_factor",
 		"optimizer_parallel_union",
-		"optimizer_partition_selection_log",
 		"optimizer_penalize_broadcast_threshold",
 		"optimizer_penalize_skew",
 		"optimizer_plan_id",

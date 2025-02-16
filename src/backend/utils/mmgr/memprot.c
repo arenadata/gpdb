@@ -46,6 +46,9 @@
 int 		gp_max_alloc_size_mb = GP_MAX_ALLOC_SIZE_MB_DEFAULT;
 #endif
 
+static Size startup_mem_total_addin_request = 0;
+static bool startup_mem_addin_request_allowed = true;
+
 static void gp_failed_to_alloc(MemoryAllocationStatus ec, int en, int sz);
 
 /*
@@ -209,6 +212,23 @@ void GPMemoryProtect_Shutdown()
 }
 
 /*
+ * GPMemoryProtect_RequestAddinStartupMemory
+ *		Request that GPMemoryProtect_TrackStartupMemory will register additional
+ *		memory for use by a loadable module.
+ *
+ * This is only useful if called from the _PG_init hook of a library that
+ * is loaded into the postmaster via shared_preload_libraries.
+ */
+void
+GPMemoryProtect_RequestAddinStartupMemory(Size size)
+{
+	if (IsUnderPostmaster || !startup_mem_addin_request_allowed)
+		return;					/* too late */
+
+	startup_mem_total_addin_request = add_size(startup_mem_total_addin_request, size);
+}
+
+/*
  * Add the per-process startup committed memory to vmem tracker.
  *
  * Postgresql suggests setting vm.overcommit_memory to 2, so system level OOM
@@ -235,7 +255,7 @@ void
 GPMemoryProtect_TrackStartupMemory(void)
 {
 	MemoryAllocationStatus status;
-	int64		bytes = 0;
+	Size		bytes = 0;
 
 	Assert(gp_mp_inited);
 
@@ -245,26 +265,17 @@ GPMemoryProtect_TrackStartupMemory(void)
 	 */
 	bytes += 6L << BITS_IN_MB;
 
-#ifdef USE_ORCA
-	/* When compile with ORCA it will commit 6MB more */
-	bytes += 6L << BITS_IN_MB;
-
-	/*
-	 * When optimizer_use_gpdb_allocators is on, at least 2MB of above will be
-	 * tracked by vmem tracker later, so do not recount them.  This GUC is not
-	 * available until gpdb 5.1.0 .
-	 */
-#if GP_VERSION_NUM >= 50100
-	if (optimizer_use_gpdb_allocators)
-		bytes -= 2L << BITS_IN_MB;
-#endif  /* GP_VERSION_NUM */
-#endif  /* USE_ORCA */
-
 	/* Leave some buffer for extensions like metrics_collector */
 	bytes += 2L << BITS_IN_MB;
 
+	/* freeze the addin request size and include it */
+	startup_mem_addin_request_allowed = false;
+	bytes = add_size(bytes, startup_mem_total_addin_request);
+
+	/* Ensure we do not overflow when converting to signed */
+	Assert((int64)bytes > 0);
 	/* Register the startup memory */
-	status = VmemTracker_RegisterStartupMemory(bytes);
+	status = VmemTracker_RegisterStartupMemory((int64)bytes);
 	if (status != MemoryAllocation_Success)
 		gp_failed_to_alloc(status, 0, bytes);
 }

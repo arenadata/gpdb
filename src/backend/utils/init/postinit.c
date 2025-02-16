@@ -101,10 +101,6 @@ static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
 
 extern bool DoingCommandRead;
-#ifdef USE_ORCA
-extern void InitGPOPT();
-extern void TerminateGPOPT();
-#endif
 
 
 /*** InitPostgres support ***/
@@ -682,20 +678,6 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	SessionState_Init();
 	/* Initialize memory protection */
 	GPMemoryProtect_Init();
-
-#ifdef USE_ORCA
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		/* Initialize GPOPT */
-		OptimizerMemoryContext = AllocSetContextCreate(TopMemoryContext,
-													"GPORCA Top-level Memory Context",
-													ALLOCSET_DEFAULT_MINSIZE,
-													ALLOCSET_DEFAULT_INITSIZE,
-													ALLOCSET_DEFAULT_MAXSIZE);
-
-		InitGPOPT();
-	}
-#endif
 
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
@@ -1465,16 +1447,6 @@ ShutdownPostgres(int code, Datum arg)
 	 * our usage, report now.
 	 */
 	ReportOOMConsumption();
-
-#ifdef USE_ORCA
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		TerminateGPOPT();
-
-		if (OptimizerMemoryContext != NULL)
-			MemoryContextDelete(OptimizerMemoryContext);
-	}
-#endif
 
 	/* Disable memory protection */
 	GPMemoryProtect_Shutdown();

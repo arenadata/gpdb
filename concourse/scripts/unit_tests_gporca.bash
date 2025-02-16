@@ -9,7 +9,7 @@ function test_orca
         return
     fi
     OUTPUT_DIR="../../../../gpAux/ext/${BLD_ARCH}"
-    pushd ${GPDB_SRC_PATH}/src/backend/gporca
+    pushd ${GPDB_SRC_PATH}/gpcontrib/orca/gporca
     concourse/build_and_test.py --build_type=RelWithDebInfo --output_dir=${OUTPUT_DIR}
     concourse/build_and_test.py --build_type=Debug --output_dir=${OUTPUT_DIR}
     popd

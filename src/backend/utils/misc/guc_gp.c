@@ -37,6 +37,7 @@
 #include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "optimizer/planmain.h"
+#include "optimizer/planner.h"
 #include "pgstat.h"
 #include "parser/scansup.h"
 #include "postmaster/autovacuum.h"
@@ -277,7 +278,6 @@ bool		optimizer_log;
 int			optimizer_log_failure;
 bool		optimizer_control = true;
 bool		optimizer_trace_fallback;
-bool		optimizer_partition_selection_log;
 int			optimizer_minidump;
 int			optimizer_cost_model;
 bool		optimizer_metadata_caching;
@@ -1866,15 +1866,11 @@ struct config_bool ConfigureNamesBool_gp[] =
 
 	{
 		{"optimizer", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enable GPORCA."),
+			gettext_noop("Enable external planner."),
 			NULL
 		},
 		&optimizer,
-#ifdef USE_ORCA
-		true,
-#else
 		false,
-#endif
 		check_optimizer, NULL, NULL
 	},
 
@@ -1896,17 +1892,6 @@ struct config_bool ConfigureNamesBool_gp[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&optimizer_trace_fallback,
-		false,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"optimizer_partition_selection_log", PGC_USERSET, LOGGING_WHAT,
-			gettext_noop("Log optimizer partition selection."),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&optimizer_partition_selection_log,
 		false,
 		NULL, NULL, NULL
 	},
@@ -5169,13 +5154,42 @@ check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source)
 static bool
 check_optimizer(bool *newval, void **extra, GucSource source)
 {
-#ifndef USE_ORCA
 	if (*newval)
 	{
-		GUC_check_errmsg("ORCA is not supported by this build");
-		return false;
+		/*
+		 * Use external planner only on dispatcher.
+		 * Others do not have information if external planner is used or not,
+		 * so always disable 'optimizer' if we are not at dispatcher.
+		 * We can't return false here, as it will break SET command, when it is
+		 * dispatched across segments, if external planner is registered for
+		 * the dispatcher.
+		 */
+		if (GP_ROLE_DISPATCH != Gp_role)
+			*newval = false;
+		else if (NULL == planner_hook)
+		{
+			if (source > PGC_S_ARGV)
+			{
+				/*
+				 * Assume that, if no planner_hook is registered for the
+				 * coordinator, we can use only standard Postgres planner.
+				 * Thus, forbid setting the GUC.
+				 */
+				GUC_check_errmsg("External planner is not registered");
+				return false;
+			}
+
+			/*
+			 * But in case GUC source <= PGC_S_ARGV, this function may be called
+			 * before external planner is loaded from a shared lib. For ex.,
+			 * user may set the GUC in 'postgresql.conf', so system will try to
+			 * apply the GUC before the init of shared libs. We need to allow
+			 * such cases, assuming that the user knows what he is doing.
+			 */
+			elog(LOG, "'optimizer' is explicitly set to 'on'. "
+					  "Please ensure that an external planner is added to 'shared_preload_libraries'");
+		}
 	}
-#endif
 
 	if (!optimizer_control)
 	{

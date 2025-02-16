@@ -787,9 +787,7 @@ PGAC_ARG_BOOL(enable, cassert, no, [enable assertion checks (for debugging)],
 #
 # Enable GPORCA optimizer
 #
-PGAC_ARG_BOOL(enable, orca, yes, [disable ORCA optimizer],
-              [AC_DEFINE([USE_ORCA], 1,
-                         [Define to 1 to build with Greenplum ORCA optimizer. (--enable-orca)])])
+PGAC_ARG_BOOL(enable, orca, yes, [disable ORCA optimizer])
 AC_MSG_RESULT([checking whether to build with ORCA... $enable_orca])
 AC_SUBST(enable_orca)
 

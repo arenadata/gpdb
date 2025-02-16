@@ -7905,9 +7905,7 @@ if test "${enable_orca+set}" = set; then :
   enableval=$enable_orca;
   case $enableval in
     yes)
-
-$as_echo "#define USE_ORCA 1" >>confdefs.h
-
+      :
       ;;
     no)
       :
@@ -7919,8 +7917,6 @@ $as_echo "#define USE_ORCA 1" >>confdefs.h
 
 else
   enable_orca=yes
-
-$as_echo "#define USE_ORCA 1" >>confdefs.h
 
 fi
 

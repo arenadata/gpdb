@@ -297,7 +297,7 @@ def dump_extstats(cur, oid_str, f_out):
 
 def get_non_default_optimization_gucs(cursor):
     # Ignore 'optimizer' guc as it is turned off by minirepro while creating connection object
-    query = "select name, setting from pg_settings where category like 'Query Tuning%' and setting!=boot_val and name!='optimizer';"
+    query = "select name, setting from pg_settings where (category like 'Query Tuning%' or category='Customized Options') and setting!=boot_val and name!='optimizer';"
     try:
         cursor.execute(query)
     except psycopg2.DatabaseError as e:

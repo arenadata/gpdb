@@ -36,6 +36,9 @@ endif
 ifeq "$(with_zstd)" "yes"
 	recurse_targets += zstd
 endif
+ifeq "$(enable_orca)" "yes"
+	recurse_targets += orca
+endif
 $(call recurse,all install clean distclean, $(recurse_targets))
 
 all: gpcloud orafce

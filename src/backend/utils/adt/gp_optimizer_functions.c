@@ -16,7 +16,46 @@
 #include "funcapi.h"
 #include "utils/builtins.h"
 
-extern Datum EnableXform(PG_FUNCTION_ARGS);
+typedef Datum (*gp_opt_version_func) (void);
+
+/*
+ * A stub function to call if no optimizer function is found.
+ */
+static Datum
+gp_optimizer_function_stub(PG_FUNCTION_ARGS)
+{
+	return CStringGetTextDatum("orca is not added to 'shared_preload_libraries'");
+}
+
+/*
+ * Loads optimizer function from a shared library. If library is not presented
+ * or doesn't contain the requested function or any of its dependencies,
+ * returns the stub function.
+ */
+static PGFunction
+gp_optimizer_load_function(char *funcname)
+{
+	volatile PGFunction func = NULL;
+	int32		savedInterruptHoldoffCount = InterruptHoldoffCount;
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		func = load_external_function("$libdir/orca", funcname, false, NULL);
+	}
+	PG_CATCH();
+	{
+		MemoryContextSwitchTo(oldcontext);
+		InterruptHoldoffCount = savedInterruptHoldoffCount;
+		FlushErrorState();
+	}
+	PG_END_TRY();
+
+	if (NULL == func)
+		func = gp_optimizer_function_stub;
+
+	return func;
+}
 
 /*
 * Enables transformations in the optimizer.
@@ -24,39 +63,30 @@ extern Datum EnableXform(PG_FUNCTION_ARGS);
 Datum
 enable_xform(PG_FUNCTION_ARGS)
 {
-#ifdef USE_ORCA
-	return EnableXform(fcinfo);
-#else
-	return CStringGetTextDatum("Server has been compiled without ORCA");
-#endif
+	PGFunction	func = gp_optimizer_load_function("EnableXform");
+
+	return func(fcinfo);
 }
 
-extern Datum DisableXform(PG_FUNCTION_ARGS);
-
-/* 
+/*
 * Disables transformations in the optimizer.
 */
 Datum
 disable_xform(PG_FUNCTION_ARGS)
 {
-#ifdef USE_ORCA
-	return DisableXform(fcinfo);
-#else
-	return CStringGetTextDatum("Server has been compiled without ORCA");
-#endif
+	PGFunction	func = gp_optimizer_load_function("DisableXform");
+
+	return func(fcinfo);
 }
 
-extern Datum LibraryVersion();
-	
 /*
 * Returns the optimizer and gpos library versions.
 */
 Datum
 gp_opt_version(PG_FUNCTION_ARGS pg_attribute_unused())
 {
-#ifdef USE_ORCA
-	return LibraryVersion();
-#else
-	return CStringGetTextDatum("Server has been compiled without ORCA");
-#endif
+	gp_opt_version_func func =
+		(gp_opt_version_func) gp_optimizer_load_function("LibraryVersion");
+
+	return func();
 }

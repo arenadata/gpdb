@@ -82,7 +82,6 @@
 #include "cdb/cdbtargeteddispatch.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
-#include "optimizer/orca.h"
 #include "storage/lmgr.h"
 #include "utils/guc.h"
 
@@ -92,8 +91,10 @@ double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;
 bool		parallel_leader_participation = true;
 
-/* Hook for plugins to get control in planner() */
+/* Hooks for plugins to get control in planner() */
 planner_hook_type planner_hook = NULL;
+plan_hint_hook_type plan_hint_hook = NULL;
+
 
 /* Hook for plugins to get control when grouping_planner() plans upper rels */
 create_upper_paths_hook_type create_upper_paths_hook = NULL;
@@ -296,7 +297,7 @@ static split_rollup_data *make_new_rollups_for_hash_grouping_set(PlannerInfo *ro
 																 Path *path,
 																 grouping_sets_data *gd);
 
-static void compute_jit_flags(PlannedStmt* pstmt);
+static void standard_planner_compute_jit_flags(PlannedStmt* pstmt);
 
 /*****************************************************************************
  *
@@ -354,61 +355,6 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	instr_time		starttime;
 	instr_time		endtime;
 
-	/*
-	 * Use ORCA only if it is enabled and we are in a coordinator QD process.
-	 *
-	 * ORCA excels in complex queries, most of which will access distributed
-	 * tables. We can't run such queries from the segments slices anyway because
-	 * they require dispatching a query within another - which is not allowed in
-	 * GPDB (see querytree_safe_for_qe()). Note that this restriction also
-	 * applies to non-QD coordinator slices.  Furthermore, ORCA doesn't currently
-	 * support pl/<lang> statements (relevant when they are planned on the segments).
-	 * For these reasons, restrict to using ORCA on the coordinator QD processes only.
-	 *
-	 * PARALLEL RETRIEVE CURSOR is not supported by ORCA yet.
-	 */
-	if (optimizer &&
-		GP_ROLE_DISPATCH == Gp_role &&
-		IS_QUERY_DISPATCHER() &&
-		(cursorOptions & CURSOR_OPT_SKIP_FOREIGN_PARTITIONS) == 0 &&
-		(cursorOptions & CURSOR_OPT_PARALLEL_RETRIEVE) == 0)
-	{
-		if (gp_log_optimization_time)
-			INSTR_TIME_SET_CURRENT(starttime);
-
-#ifdef USE_ORCA
-		result = optimize_query(parse, cursorOptions, boundParams);
-#else
-		/* Make sure this branch is not taken in builds using --disable-orca. */
-		Assert(false);
-		/* Keep compilers quiet in case the build used --disable-orca. */
-		result = NULL;
-#endif
-
-		/* decide jit state */
-		if (result)
-		{
-			/*
-			 * Setting Jit flags for Optimizer
-			 */
-			compute_jit_flags(result);
-		}
-
-		if (gp_log_optimization_time)
-		{
-			INSTR_TIME_SET_CURRENT(endtime);
-			INSTR_TIME_SUBTRACT(endtime, starttime);
-			elog(LOG, "Optimizer Time: %.3f ms", INSTR_TIME_GET_MILLISEC(endtime));
-		}
-
-		if (result)
-			return result;
-	}
-
-	/*
-	 * Fall back to using the PostgreSQL planner in case Orca didn't run (in
-	 * utility mode or on a segment) or if it didn't produce a plan.
-	 */
 	if (gp_log_optimization_time)
 		INSTR_TIME_SET_CURRENT(starttime);
 
@@ -762,7 +708,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->stmt_len = parse->stmt_len;
 
 	/* GPDB: JIT flags are set in wrapper function */
-	compute_jit_flags(result);
+	standard_planner_compute_jit_flags(result);
 
 	if (glob->partition_directory != NULL)
 		DestroyPartitionDirectory(glob->partition_directory);
@@ -8750,52 +8696,15 @@ make_new_rollups_for_hash_grouping_set(PlannerInfo        *root,
 
 /*
  * GPDB: This is moved from standard_planner(), so that it can be used by both
- * planner and ORCA. Please move any future code added to standard_planner() too.
+ * Postgres planner and an external planner. Please move any future code added to
+ * standard_planner() too.
  *
  * Decide JIT settings for the given plan and record them in PlannedStmt.jitFlags.
- *
- * Since the costing model of ORCA and Planner are different
- * (Planner cost usually higher), setting the JIT flags based on the
- * common JIT costing GUCs could lead to false triggering of JIT.
- *
- * To prevent this situation, separate  costing GUCs are created
- * for Optimizer and used here for setting the JIT flags.
- *
  */
-static void compute_jit_flags(PlannedStmt* pstmt)
+void compute_jit_flags(PlannedStmt* pstmt, double above_cost, double inline_above_cost, double optimize_above_cost)
 {
 	Plan* top_plan = pstmt->planTree;
 	pstmt->jitFlags = PGJIT_NONE;
-
-	/*
-	 * Common variables to hold values for optimizer or planner
-	 * based on function call.
-	 */
-	double above_cost;
-	double inline_above_cost;
-	double optimize_above_cost;
-
-	if (pstmt->planGen == PLANGEN_OPTIMIZER)
-	{
-
-		/*
-		 * Setting values for ORCA.
-		 */
-		above_cost = optimizer_jit_above_cost;
-		inline_above_cost = optimizer_jit_inline_above_cost;
-		optimize_above_cost = optimizer_jit_optimize_above_cost;
-	}
-	else
-	{
-
-		/*
-		 * Setting values for Planner.
-		 */
-		above_cost = jit_above_cost;
-		inline_above_cost = jit_inline_above_cost;
-		optimize_above_cost = jit_optimize_above_cost;
-
-	}
 
 	if (jit_enabled && above_cost >= 0 &&
 		top_plan->total_cost > above_cost)
@@ -8821,3 +8730,9 @@ static void compute_jit_flags(PlannedStmt* pstmt)
 			pstmt->jitFlags |= PGJIT_DEFORM;
 	}
 }
+
+static void standard_planner_compute_jit_flags(PlannedStmt* pstmt)
+{
+	compute_jit_flags(pstmt, jit_above_cost, jit_inline_above_cost, jit_optimize_above_cost);
+}
+

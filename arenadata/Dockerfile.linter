@@ -9,4 +9,4 @@ COPY . /opt/gpdb_src
 
 ENV CLANG_FORMAT=clang-format-11
 
-ENTRYPOINT src/tools/fmt gen && git diff --exit-code && src/tools/fmt chk
+ENTRYPOINT gpcontrib/orca/tools/fmt gen && git diff --exit-code && gpcontrib/orca/tools/fmt chk

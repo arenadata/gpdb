@@ -72,7 +72,6 @@ MemoryContext TopTransactionContext = NULL;
 MemoryContext CurTransactionContext = NULL;
 MemoryContext DispatcherContext = NULL;
 MemoryContext InterconnectContext = NULL;
-MemoryContext OptimizerMemoryContext = NULL;
 
 /* This is a transient link to the active portal's memory context: */
 MemoryContext PortalContext = NULL;
