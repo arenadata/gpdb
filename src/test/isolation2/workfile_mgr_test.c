@@ -726,7 +726,6 @@ workfile_made_in_temp_tablespace(void)
 {
 	const char *bufFilePath;
 	BufFile *bufFile;
-	bool		success = true;
 
 	unit_test_reset();
 
@@ -744,9 +743,6 @@ workfile_made_in_temp_tablespace(void)
 	 */
 	bufFile = BufFileCreateTempInSet("workfile_test", false, work_set);
 
-	if (bufFile == NULL)
-		success = false;
-
 	bufFilePath = BufFileGetFilename(bufFile);
 
 	char *expectedPathPrefix = "pg_tblspc/";
@@ -757,10 +753,12 @@ workfile_made_in_temp_tablespace(void)
 	 * workfiles are created in data directory having prefix, "base"
 	 */
 	if(0 != strncmp(bufFilePath, expectedPathPrefix, strlen(expectedPathPrefix)))
-		success = false;
-
-	/* FIXME: Should test this? */
-	(void) success;
+	{
+		/*
+		 * FIXME: Properly check the condition above. The test seems to
+		 * fail in the current state.
+		 */
+	}
 
 	BufFileClose(bufFile);
 
