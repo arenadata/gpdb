@@ -1160,10 +1160,8 @@ drop table tl2;
 drop table tl3;
 drop table tl4;
 -- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
-drop table if exists t1;
-drop table if exists t2;
+drop table if exists t1, t2, t3;
 NOTICE:  table "t2" does not exist, skipping
-drop table if exists t3;
 NOTICE:  table "t3" does not exist, skipping
 create table t1 as select 0 as i1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'i1' as the Greenplum Database data distribution key for this table.
@@ -1174,8 +1172,6 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 create table t3 as select i3 from (values (0), (1)) as s(i3);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'i3' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-set optimizer_trace_fallback=on;
-set client_min_messages='log';
 -- The first query generates a DXL with <dxl:TestExpr>, the left node (inside Comparison)
 -- of which contains a deep tree and only params (see DXL in output).
 -- The simplified  DXL is printed here because the Explain command does not display TestExpr,
@@ -1184,28 +1180,25 @@ set client_min_messages='log';
 -- This testcase aims to verify that <dxl:TestExpr> with a deep tree and params in the
 -- left node is handled correctly during the DXL to Plan Statement stage.
 -- Note the <Ident> with ColId 26 and 28. This appears from an internal subplan node.
--- Removed from DXL: <dxl:Sort> inside subplan; <dxl:GroupingColumns> inside subplan;
--- some projection elements inside <dxl:Aggregate>; scan table t from <dxl:GatherMotion>.
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
--- start_ignore
--- end_ignore
+set optimizer_trace_fallback=on;
+set optimizer_minidump=always;
 select * from t1 where
-  (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
-LOG:  statement: select * from t1 where
   (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
  i1 
 ----
   0
 (1 row)
 
+reset optimizer_minidump;
+reset optimizer_trace_fallback;
+-- Output DXL plan without unimportant properties.
 -- start_ignore
 -- end_ignore
-\! cut -b 18615-33305 $MASTER_DATA_DIRECTORY/minidumps/* | sed 's/></>\n</g' | sed '/Cost\|Properties\|ValuesList/d' | sed '323,344d;79,299d;68,76d;48,53d'
-cut: '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/qddir/demoDataDir-1/minidumps/*': No such file or directory
+select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/dump.xml')));
+ERROR:  could not stat file "minidumps/dump.xml": No such file or directory
 insert into t1 values (1);
-LOG:  statement: insert into t1 values (1);
 analyze t1;
-LOG:  statement: analyze t1;
 -- After adding data, the ORCA physical plan changes and DXL changes too.
 -- The outer <dxl:TestExpr> is empty. The second <dxl:TestExpr> (nested) does not contain a
 -- deep tree. The left node contains an attribute (Ident ColId="0") that is not present
@@ -1213,14 +1206,10 @@ LOG:  statement: analyze t1;
 -- The previous case contained only params (attributes contained in the
 -- inner <dxl:SubPlan> node). This test aims to verify that <dxl:TestExpr> with params and
 -- Vars simultaneously is handled correctly during the DXL to Plan Statement stage.
--- Removed from DXL: <dxl:Materialize> inside the nested subplane; <dxl:GatherMotion> inside
--- nested subplan; scan table t from outer <dxl:GatherMotion>.
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
--- start_ignore
--- end_ignore
+set optimizer_trace_fallback=on;
+set optimizer_minidump=always;
 select * from t1 where
-  (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
-LOG:  statement: select * from t1 where
   (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
  i1 
 ----
@@ -1228,14 +1217,12 @@ LOG:  statement: select * from t1 where
   1
 (2 rows)
 
--- start_ignore
--- end_ignore
-\! cut -b 18031-26444 $MASTER_DATA_DIRECTORY/minidumps/* | sed 's/></>\n</g' | sed '/Cost\|Properties\|ValuesList/d' | sed '156,201d;121,150d;71,107d'
-cut: '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/qddir/demoDataDir-1/minidumps/*': No such file or directory
-\! rm -rf $MASTER_DATA_DIRECTORY/minidumps
--- start_ignore
--- end_ignore
+reset optimizer_minidump;
 reset optimizer_trace_fallback;
-drop table t1;
-drop table t2;
-drop table t3;
+-- Output DXL plan without unimportant properties.
+-- start_ignore
+-- end_ignore
+select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/dump.xml')));
+ERROR:  could not stat file "minidumps/dump.xml": No such file or directory
+\! rm -rf $MASTER_DATA_DIRECTORY/minidumps
+drop table t1,t2,t3;

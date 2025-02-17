@@ -616,15 +616,10 @@ drop table tl3;
 drop table tl4;
 
 -- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
-drop table if exists t1;
-drop table if exists t2;
-drop table if exists t3;
-
+drop table if exists t1, t2, t3;
 create table t1 as select 0 as i1;
 create table t2 as select 0 as i2;
 create table t3 as select i3 from (values (0), (1)) as s(i3);
-set optimizer_trace_fallback=on;
-set client_min_messages='log';
 
 -- The first query generates a DXL with <dxl:TestExpr>, the left node (inside Comparison)
 -- of which contains a deep tree and only params (see DXL in output).
@@ -635,18 +630,28 @@ set client_min_messages='log';
 -- left node is handled correctly during the DXL to Plan Statement stage.
 -- Note the <Ident> with ColId 26 and 28. This appears from an internal subplan node.
 
--- Removed from DXL: <dxl:Sort> inside subplan; <dxl:GroupingColumns> inside subplan;
--- some projection elements inside <dxl:Aggregate>; scan table t from <dxl:GatherMotion>.
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
--- start_ignore
+
+set optimizer_trace_fallback=on;
 set optimizer_minidump=always;
--- end_ignore
 select * from t1 where
   (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
--- start_ignore
 reset optimizer_minidump;
+reset optimizer_trace_fallback;
+
+-- Output DXL plan without unimportant properties.
+-- start_ignore
+\! sed 's/></>\n</g' $MASTER_DATA_DIRECTORY/minidumps/*.mdp > $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i '/Cost\|Properties\|ValuesList/d' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/TypeMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/AggMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/SortOperatorMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/OperatorMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/Mdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/dxl://' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
 -- end_ignore
-\! cut -b 18615-33305 $MASTER_DATA_DIRECTORY/minidumps/* | sed 's/></>\n</g' | sed '/Cost\|Properties\|ValuesList/d' | sed '323,344d;79,299d;68,76d;48,53d'
+
+select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/dump.xml')));
 
 insert into t1 values (1);
 analyze t1;
@@ -658,24 +663,28 @@ analyze t1;
 -- inner <dxl:SubPlan> node). This test aims to verify that <dxl:TestExpr> with params and
 -- Vars simultaneously is handled correctly during the DXL to Plan Statement stage.
 
--- Removed from DXL: <dxl:Materialize> inside the nested subplane; <dxl:GatherMotion> inside
--- nested subplan; scan table t from outer <dxl:GatherMotion>.
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
--- start_ignore
+
+set optimizer_trace_fallback=on;
 set optimizer_minidump=always;
--- end_ignore
 select * from t1 where
   (i1 in (select i2 from t2)) in (select i3 = 1 from t3) order by i1;
--- start_ignore
 reset optimizer_minidump;
+reset optimizer_trace_fallback;
+
+-- Output DXL plan without unimportant properties.
+-- start_ignore
+\! sed 's/></>\n</g' $MASTER_DATA_DIRECTORY/minidumps/*.mdp > $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i '/Cost\|Properties\|ValuesList/d' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/TypeMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/AggMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/SortOperatorMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/OperatorMdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/Mdid=".*"//' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
+\! sed -i 's/dxl://' $MASTER_DATA_DIRECTORY/minidumps/dump.xml
 -- end_ignore
-\! cut -b 18031-26444 $MASTER_DATA_DIRECTORY/minidumps/* | sed 's/></>\n</g' | sed '/Cost\|Properties\|ValuesList/d' | sed '156,201d;121,150d;71,107d'
+
+select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/dump.xml')));
 
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
--- start_ignore
-reset client_min_messages;
--- end_ignore
-reset optimizer_trace_fallback;
-drop table t1;
-drop table t2;
-drop table t3;
+drop table t1,t2,t3;

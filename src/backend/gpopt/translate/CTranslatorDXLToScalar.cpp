@@ -763,6 +763,7 @@ CTranslatorDXLToScalar::TranslateDXLScalarSubplanToScalar(
 		dxlop->GetDxlTestExpr(), slink, &test_expr_var_mapping);
 
 	const CDXLColRefArray *outer_refs = dxlop->GetDxlOuterColRefsArray();
+
 	const ULONG len = outer_refs->Size();
 
 	// Translate a copy of the translate context: the param mappings from the outer scope get copied in the constructor
@@ -870,6 +871,7 @@ CTranslatorDXLToScalar::TranslateDXLSubplanTestExprToScalar(
 
 	// Translate arguments
 	List *args = NULL;
+	
 	CDXLNode *outer_child_node = (*test_expr_node)[0];
 	CDXLNode *inner_child_node = (*test_expr_node)[1];
 
