@@ -20,7 +20,7 @@ set optimizer = 0;
 
 -- Then I should be able to query the table
 select * from users where first_name @@ to_tsquery('John');
-explain select * from users where first_name @@ to_tsquery('John');
+explain (costs off) select * from users where first_name @@ to_tsquery('John');
 
 drop table users;
 reset optimizer;

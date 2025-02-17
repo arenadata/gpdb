@@ -21,13 +21,13 @@ select * from users where first_name @@ to_tsquery('John');
  'john':1
 (1 row)
 
-explain select * from users where first_name @@ to_tsquery('John');
-                                       QUERY PLAN                                       
-----------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice1; segments: 2)  (cost=13.16..73.54 rows=300 width=32)
-   ->  Bitmap Heap Scan on users  (cost=13.16..69.04 rows=150 width=32)
+explain (costs off) select * from users where first_name @@ to_tsquery('John');
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Bitmap Heap Scan on users
          Recheck Cond: (first_name @@ '''john'''::tsquery)
-         ->  Bitmap Index Scan on users_search_idx  (cost=0.00..13.13 rows=150 width=0)
+         ->  Bitmap Index Scan on users_search_idx
                Index Cond: (first_name @@ '''john'''::tsquery)
  Optimizer: Postgres-based planner
 (6 rows)
