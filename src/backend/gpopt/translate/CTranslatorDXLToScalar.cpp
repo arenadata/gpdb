@@ -871,7 +871,7 @@ CTranslatorDXLToScalar::TranslateDXLSubplanTestExprToScalar(
 
 	// Translate arguments
 	List *args = NULL;
-	
+
 	CDXLNode *outer_child_node = (*test_expr_node)[0];
 	CDXLNode *inner_child_node = (*test_expr_node)[1];
 
