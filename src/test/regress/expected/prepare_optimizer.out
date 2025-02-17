@@ -205,6 +205,17 @@ SELECT name, statement, parameter_types FROM pg_prepared_statements
       |     SELECT * FROM road WHERE thepath = $1;                          | 
 (5 rows)
 
+-- make sure the plan is correct after CTAS
+DROP TABLE t;
+PREPARE p AS SELECT * FROM generate_series(1, 10) i;
+CREATE TEMPORARY TABLE t AS EXECUTE p;
+EXPLAIN (COSTS OFF) EXECUTE p;
+              QUERY PLAN               
+---------------------------------------
+ Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(2 rows)
+
 -- test DEALLOCATE ALL;
 DEALLOCATE ALL;
 SELECT name, statement, parameter_types FROM pg_prepared_statements
