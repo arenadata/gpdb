@@ -45,7 +45,6 @@ class ClusterBalancer():
     def __init__(self, initial_conf: ClusterState,
                  new_hosts: tuple[Set[Host], Set[Host]],
                  segmentMap: Dict[SegmentId, Segment],
-                 segmentSizes: Dict[int, int],
                  target_load: int,
                  strat: MirrorStrategy
                  ):
@@ -53,14 +52,14 @@ class ClusterBalancer():
         self.new_hosts, self.replacement_hosts = new_hosts
         self.initialSegmentMap = segmentMap
         self.target_load = target_load
-        self.segmentSizes = segmentSizes
         self.target_strategy = strat
         self.initial_mirror_mapping = {}
         for k, v in segmentMap.items():
             if v.isSegmentMirror():
                 self.initial_mirror_mapping[k.contentid] = v
 
-    def get_working_conf(self) -> ClusterState:
+    def _get_working_conf(self) -> ClusterState:
+        """Get host-centric representation of cluster configuration"""
         working_conf = copy.deepcopy(self.in_conf)
         if self.new_hosts:
             for h in self.new_hosts:
@@ -71,7 +70,7 @@ class ClusterBalancer():
                 assert (h.status == HostStatus.REPLACEMENT)
                 working_conf[(h.hostname, h.address)] = copy.deepcopy(h)
                 assert (
-                    working_conf[(h.replacement_for.hostname, h.replacement_for.address)].status == HostStatus.DECOMMISSIONING)
+                    working_conf[h.replacement_for].status == HostStatus.DECOMMISSIONING)
         return working_conf
 
     def _getCurrentMirrorMapping(self, state: ClusterState) -> Dict[int, tuple[str, str]]:
@@ -88,8 +87,7 @@ class ClusterBalancer():
                 segment_mapping[segid.contentid] = (v.hostname, v.address)
         return segment_mapping
 
-    def _calculate_mirror_strategy_penalty(self, state: ClusterState) -> float:
-        penalty = 0.0
+    def _satisfies_strategy(self, state: ClusterState) -> bool:
         mirror_mapping = self._getCurrentMirrorMapping(state)
         if self.target_strategy == MirrorStrategy.GROUPED:
             for _, host in state.items():
@@ -99,11 +97,11 @@ class ClusterBalancer():
                 for s in host.primary_segments:
                     mirror_hosts.add(mirror_mapping[s.contentid])
                 if len(mirror_hosts) > 1:
-                    penalty += 10 * (len(mirror_hosts) - 1)
+                    return False
                 elif len(mirror_hosts & set([(host.hostname, host.address)])) > 0:
-                    penalty += 20
+                    return False
                 elif len(host.mirror_segments) == 0:
-                    penalty += 20
+                    return False
         elif self.target_strategy == MirrorStrategy.SPREAD:
             for _, host in state.items():
                 if host.status == HostStatus.DECOMMISSIONING:
@@ -113,43 +111,57 @@ class ClusterBalancer():
                     mirror_hosts_counts[mirror_mapping[s.contentid]] += 1
                 for t_h, count in mirror_hosts_counts.items():
                     if t_h == (host.hostname, host.address):
-                        penalty += 200 * count
+                        return False
                     elif count > 1:
-                        penalty += 100 * (count - 1)
-        return penalty
+                        return False
+        return True
+
+    def _check_balance(self, state: ClusterState) -> bool:
+        for _, host in state.items():
+            load = len(host.primary_segments)
+            deviation = abs(load - self.target_load)
+            if host.status == HostStatus.DECOMMISSIONING and (host.primary_segments or host.mirror_segments):
+                return False
+            elif host.status != HostStatus.DECOMMISSIONING and deviation != 0:
+                return False
+        return True
 
     def _move_from_decomissioning(self, state: ClusterState):
         if self.replacement_hosts:
             for rep in self.replacement_hosts:
                 # Host from which we must move all segments
-                decom_host_id = (rep.replacement_for.hostname,
-                                 rep.replacement_for.address)
+                decom_host_id = rep.replacement_for
                 replacement_host_id = (rep.hostname, rep.address)
+                assert (state[decom_host_id].status ==
+                        HostStatus.DECOMMISSIONING)
                 primaries = state[decom_host_id].primary_segments
                 mirrors = state[decom_host_id].mirror_segments
                 for segid in primaries:
                     state[replacement_host_id].add_primary(segid)
                 for segid in mirrors:
                     state[replacement_host_id].add_mirror(segid)
-                rep.replacement_for.primaries = []
-                rep.replacement_for.mirrors = []
+                state[decom_host_id].primary_segments = set()
+                state[decom_host_id].mirror_segments = set()
+
+    def _check_constraints(self, state: ClusterState):
+        return self._check_balance(state) and self._satisfies_strategy(state)
 
     def balance(self) -> ClusterState:
-        working_conf = self.get_working_conf()
+        working_conf = self._get_working_conf()
         # First, check if there are hosts explicitly marked for replacement
+        if self.replacement_hosts:
+            self._move_from_decomissioning(working_conf)
+            if self._check_constraints(working_conf):
+                return working_conf
 
-        conf = self.greedy_balance(working_conf)
-
+        conf = self.rough_balance(working_conf)
+        assert (self._check_constraints(conf))
         return conf
 
-    def _is_move_valid_greedy(self, segmentid: SegmentId, is_mirror: bool, target_host: Host, state: ClusterState) -> bool:
+    def _is_move_valid(self, segmentid: SegmentId, target_host: Host, state: ClusterState) -> bool:
         segment_locations = self._getCurrentSegmentMapping(state)
-        mirror_locations = self._getCurrentMirrorMapping(state)
 
-        if is_mirror:
-            current_host = mirror_locations[segmentid.contentid]
-        else:
-            current_host = segment_locations[segmentid.contentid]
+        current_host = segment_locations[segmentid.contentid]
 
         if current_host == (target_host.hostname, target_host.address):
             return False
@@ -159,39 +171,12 @@ class ClusterBalancer():
             return False
 
         # For primary moves, only check capacity
-        if not is_mirror and state[current_host].status != HostStatus.DECOMMISSIONING:
+        if state[current_host].status != HostStatus.DECOMMISSIONING:
             return len(target_host.primary_segments) + 1 <= self.target_load
 
-        # For mirror moves, check mirror strategy constraints
-        if is_mirror and self.target_strategy != MirrorStrategy.MIRRORLESS:
-            primary_host = segment_locations[segmentid.contentid]
-
-            # Never allow mirror on same host as primary
-            if primary_host == (target_host.hostname, target_host.address):
-                return False
-
-            if self.target_strategy == MirrorStrategy.SPREAD:
-                # Check spread strategy constraints only for mirror moves
-                mirror_hosts = set()
-                for ps in state[primary_host].primary_segments:
-                    mirror_hosts.add(mirror_locations[ps.contentid])
-                if (target_host.hostname, target_host.address) in mirror_hosts:
-                    return False
-            else:
-                mirrors_by_host = defaultdict(int)
-                for prim in state[primary_host].primary_segments:
-                    if mirror_locations[prim.contentid] != current_host and \
-                            state[mirror_locations[prim.contentid]].status != HostStatus.DECOMMISSIONING:
-                        mirrors_by_host[mirror_locations[prim.contentid]] += 1
-                mirror_hosts = sorted(mirrors_by_host.keys(),
-                                      key=lambda h: mirrors_by_host[h],
-                                      reverse=True)
-                if mirror_hosts and (target_host.hostname, target_host.address) != mirror_hosts[0]:
-                    return False
         return True
 
-    def greedy_balance(self, working_conf: ClusterState) -> ClusterState:
-        working_conf = self.get_working_conf()
+    def rough_balance(self, working_conf: ClusterState) -> ClusterState:
 
         def calculate_surplus_deficit():
             loads = {(h.hostname, h.address): len(h.primary_segments)
@@ -221,9 +206,9 @@ class ClusterBalancer():
                     key=lambda h: len(h.primary_segments)
                 )
 
-                for segment in list(source.primary_segments):
+                for segment in sorted(list(source.primary_segments), key=lambda x: x.contentid, reverse=True):
                     for target in potential_targets:
-                        if self._is_move_valid_greedy(segment, False, target, working_conf):
+                        if self._is_move_valid(segment, target, working_conf):
                             source.remove_primary(segment)
                             target.add_primary(segment)
                             moved = True
@@ -244,8 +229,8 @@ class ClusterBalancer():
                     for _, target_id in deficit_hosts:
                         target = working_conf[target_id]
 
-                        for segment in list(source.primary_segments):
-                            if self._is_move_valid_greedy(segment, False, target, working_conf):
+                        for segment in sorted(list(source.primary_segments), key=lambda x: x.contentid, reverse=True):
+                            if self._is_move_valid(segment, target, working_conf):
                                 source.remove_primary(segment)
                                 target.add_primary(segment)
                                 moved = True
@@ -258,65 +243,41 @@ class ClusterBalancer():
             if not moved:
                 break
 
-        # Phase 2: Fix Mirroring Violations
-        def mirror_violation_fixed():
-            return self._calculate_mirror_strategy_penalty(working_conf) < 1e-3
-        while not mirror_violation_fixed():
+            # Phase 2: Deterministic Mirror Placement
+        for _, host in working_conf.items():
+            host.mirror_segments = set()
 
-            for _, host in working_conf.items():
-                segment_locations = self._getCurrentSegmentMapping(
-                    working_conf)
-                mirror_locations = self._getCurrentMirrorMapping(working_conf)
+        active_hosts = [(h.hostname, h.address) for _, h in working_conf.items()
+                        if h.status != HostStatus.DECOMMISSIONING]
+        active_hosts.sort()  # ensure consistent ordering
 
-                # Check and fix mirror violations
-                for mirror in list(host.mirror_segments):
+        if self.target_strategy == MirrorStrategy.GROUPED:
+            # For each host, place all its primaries' mirrors on the next host
+            for i, host_id in enumerate(active_hosts):
+                next_host_id = active_hosts[(i + 1) % len(active_hosts)]
+                primaries = working_conf[host_id].primary_segments
+                for segment in primaries:
+                    mirror = self.initial_mirror_mapping[segment.contentid]
+                    working_conf[next_host_id].add_mirror(
+                        SegmentId(mirror.dbid, mirror.content))
 
-                    # Check if mirror is on same host or violates strategy
-                    current_primary_host = segment_locations[mirror.contentid]
-                    needs_move = False
+        elif self.target_strategy == MirrorStrategy.SPREAD:
+            # For each host, distribute mirrors across other hosts
+            for host_id in active_hosts:
+                other_hosts = [h for h in active_hosts if h != host_id]
+                primaries = list(working_conf[host_id].primary_segments)
 
-                    if current_primary_host == (host.hostname, host.address):
-                        needs_move = True
-                    elif host.status == HostStatus.DECOMMISSIONING:
-                        needs_move = True
-                    elif self.target_strategy == MirrorStrategy.SPREAD:
-                        mirror_count = sum(1 for p in working_conf[current_primary_host].primary_segments
-                                           if mirror_locations[p.contentid] == (host.hostname, host.address))
-                        if mirror_count > 1:
-                            needs_move = True
-                    elif self.target_strategy == MirrorStrategy.GROUPED:
-                        mirrors_by_primary_host = defaultdict(int)
-                        for mir in host.mirror_segments:
-                            if segment_locations[mir.contentid] == (host.hostname, host.address):
-                                continue
-                            mirrors_by_primary_host[segment_locations[mir.contentid]] += 1
-                        primary_hosts = sorted(mirrors_by_primary_host.keys(),
-                                               key=lambda h: mirrors_by_primary_host[h],
-                                               reverse=True)
-                        # move if not in largest group
-                        if mirrors_by_primary_host[current_primary_host] < mirrors_by_primary_host[primary_hosts[0]] or\
-                                len(primary_hosts) > 1:
-                            needs_move = True
-
-                    if needs_move:
-                        # Find valid target for mirror
-                        potential_targets = sorted(
-                            [h for _, h in working_conf.items()
-                             if h.status != HostStatus.DECOMMISSIONING],
-                            key=lambda h: len(h.mirror_segments)
-                        )
-
-                        for target in potential_targets:
-                            if self._is_move_valid_greedy(mirror, True, target, working_conf):
-                                host.remove_mirror(
-                                    mirror)
-                                target.add_mirror(mirror)
-                                break
+                # Distribute mirrors evenly across other hosts
+                for i, segment in enumerate(primaries):
+                    mirror_host = other_hosts[i % len(other_hosts)]
+                    mirror = self.initial_mirror_mapping[segment.contentid]
+                    working_conf[mirror_host].add_mirror(
+                        SegmentId(mirror.dbid, mirror.content))
 
         return working_conf
 
     def getPlan(self, finalState: ClusterState) -> Plan:
-        in_conf = self.get_working_conf()
+        in_conf = self._get_working_conf()
         moves, roles = self.get_moves_between_states(in_conf, finalState)
         plan = Plan()
         plan.moves = moves
@@ -342,7 +303,8 @@ class ClusterBalancer():
                 target_host = state1[target_location]
                 segid = next(seg for seg in source_host.primary_segments
                              if seg.contentid == contentid)
-                moves.append(Move(segid, source_host, target_host, False))
+                moves.append(
+                    Move(segid, source_host, target_host, False, None))
                 roles[segid] = 'p'
 
         # Find mirror segment moves
@@ -353,7 +315,7 @@ class ClusterBalancer():
                 target_host = state1[target_location]
                 segid = next(seg for seg in source_host.mirror_segments
                              if seg.contentid == contentid)
-                moves.append(Move(segid, source_host, target_host, True))
+                moves.append(Move(segid, source_host, target_host, True, None))
                 roles[segid] = 'm'
 
         moves.sort(key=lambda m: 1 if m.is_mirror else 0)

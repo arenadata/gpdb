@@ -122,9 +122,9 @@ class GPRebalance:
                         mirror_segments=set())
                     # User can explicitly mark the host to be replacement for existing one
                     if "replace" in host_config:
-                        rep = tuple(host_config['replace'].split(','))
+                        rep = tuple(host_config['replace'].split(', '))
                         if rep in self.current_conf:
-                            hosts[key].replacement_for = self.current_conf[rep]
+                            hosts[key].replacement_for = rep
                             hosts[key].status = HostStatus.REPLACEMENT
                             self.current_conf[rep].status = HostStatus.DECOMMISSIONING
                         else:
@@ -198,6 +198,6 @@ class GPRebalance:
             seg.dbid, seg.content): seg for seg in self.original_gparray.getSegmentsAsLoadedFromDb()}
 
         balancer = ClusterBalancer(self.current_conf, (new_hosts, replacement_hosts),
-                                   original_segments_map, {}, target_load, self.target_strategy)
+                                   original_segments_map, target_load, self.target_strategy)
 
         return balancer.getPlan(balancer.balance())
