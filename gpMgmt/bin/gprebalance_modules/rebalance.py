@@ -1,3 +1,5 @@
+from collections import defaultdict
+from datetime import datetime
 import yaml
 import os
 from dataclasses import dataclass
@@ -6,11 +8,18 @@ from enum import Enum
 from gppylib.db import dbconn
 from gppylib.gparray import GpArray, Segment, MODE_NOT_SYNC, STATUS_DOWN
 from gppylib.commands.base import *
+from gppylib.commands.gp import *
 
 
 class SegmentId(NamedTuple):
     dbid: int
     contentid: int
+
+
+@dataclass
+class SegmentSize():
+    source_data_dir_usage: int
+    source_tablespace_usage: Dict[str, int]
 
 
 class HostStatus(Enum):
@@ -86,6 +95,8 @@ class MirrorStrategy(Enum):
 
 
 from gprebalance_modules.rebalance_plan import ClusterBalancer, Move, Plan  # nopep8
+from gprebalance_modules.rebalance_executor import RebalanceExecutor, CONF_DIR  # nopep8
+from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus  # nopep8
 
 
 class GPRebalance:
@@ -138,6 +149,12 @@ class GPRebalance:
                             h.status = HostStatus.DECOMMISSIONING
 
         self.unpreferred_segments = self.getSegmentsUnpreferredRole()
+        self.segmentMap = {SegmentId(
+            seg.dbid, seg.content): seg for seg in self.original_gparray.getSegmentsAsLoadedFromDb()}
+        self.statusManager = StatusManager(
+            self.conn, self.options, self.logger)
+
+        self.executor = None
 
     def getSegmentsUnpreferredRole(self) -> List[tuple[Segment, Segment]]:
         segs = []
@@ -201,3 +218,111 @@ class GPRebalance:
                                    original_segments_map, target_load, self.target_strategy)
 
         return balancer.getPlan(balancer.balance())
+
+    def save_plan(self, plan: Plan):
+        # picke the plan in conf directory
+        datadir = self.options.coordinator_data_directory + CONF_DIR
+        os.makedirs(datadir, exist_ok=True)
+        plan.save_to_file(datadir, "plan")
+        self.statusManager.set_status('PLANNED', datadir)
+
+    def load_plan(self, datadir):
+        filename = datadir + "/plan.pkl"
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"No pickle file found at {filename}")
+        with open(filename, 'rb') as f:
+            plan = pickle.load(f)
+        return plan
+
+    def execute_plan(self, plan: Plan):
+        executor = RebalanceExecutor(plan,
+                                     self.original_gparray,
+                                     self.segmentMap,
+                                     self.current_conf,
+                                     self.logger,
+                                     self.statusManager,
+                                     self.conn,
+                                     self.dburl,
+                                     self.options)
+        executor.execute_moves()
+
+    @staticmethod
+    def prepare_gpdb_state(logger, dburl, options) -> str:
+        status_file_exists = os.path.exists(
+            options.coordinator_data_directory + '/gprebalance.status')
+        gprebalance_db_status = None
+
+        if not status_file_exists:
+            logger.info('Querying gprebalance schema for current state')
+            try:
+                gprebalance_db_status = GPRebalance.get_status_from_db(
+                    dburl, options)
+            except Exception as e:
+                raise Exception(
+                    'Error while trying to query the gprebalance schema: %s' % e)
+            logger.debug('Expansion status returned is %s' %
+                         gprebalance_db_status)
+        return gprebalance_db_status
+
+    @staticmethod
+    def get_status_from_db(dburl, options) -> str:
+        """Gets gprebalance status from the gprebalance schema"""
+        status_conn = None
+        gprebalance_db_status = None
+        if get_local_db_mode(options.coordinator_data_directory) == 'NORMAL':
+            try:
+                status_conn = dbconn.connect(dburl, encoding='UTF8')
+                # Get the last status entry
+                cursor = dbconn.query(
+                    status_conn, 'SELECT status FROM gprebalance.status ORDER BY updated DESC LIMIT 1')
+                if cursor.rowcount == 1:
+                    gprebalance_db_status = cursor.fetchone()[0]
+
+            except Exception:
+                # rebalance schema doesn't exists or there was a connection failure.
+                pass
+            finally:
+                if status_conn:
+                    status_conn.close()
+
+        # make sure gprebalance schema doesn't exist since it wasn't in DB provided
+        if not gprebalance_db_status:
+            conn = dbconn.connect(dburl, encoding='UTF8', utility=True)
+            try:
+                count = dbconn.querySingleton(conn,
+                                              "SELECT count(n.nspname) FROM pg_catalog.pg_namespace n WHERE n.nspname = 'gprebalance'")
+                if count > 0:
+                    raise Exception(
+                        "Existing rebalance state could not be determined, but a gprebalance schema already exists. Cannot proceed.")
+            finally:
+                conn.close()
+
+        return gprebalance_db_status
+
+    def get_state_from_file(self):
+        """Returns expansion state from status file"""
+        return self.statusManager.get_current_status()[0]
+
+    def setup_schema(self):
+        self.statusManager.set_status('REBALANCE_PREPARE_SCHEMA_STARTED')
+        self.logger.info('Creating expansion schema')
+        self.statusManager.setup_schema()
+        self.statusManager.set_status('REBALANCE_PREPARE_SCHEMA_DONE')
+        self.statusManager.set_db_status(RebalanceStatus.INITIALIZED)
+
+    def cleanup_schema(self):
+        self.logger.info('Dropping rebalance schema')
+        self.statusManager.cleanup_schema()
+
+    def remove_status_file(self):
+        if self.statusManager:
+            self.statusManager.remove_all()
+
+    def resume(self):
+        pass
+
+    def shutdown(self):
+        self.logger.info('Shutting down gprebalance...')
+        if self.executor:
+            self.executor.shutdown()
+        self.conn.close()

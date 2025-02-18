@@ -73,6 +73,8 @@ _usage = """
 """
 
 EXECNAME = os.path.split(__file__)[-1]
+MAX_BATCH_SIZE = 128
+MAX_PARALLEL = 96
 
 
 def parseargs():
@@ -89,8 +91,6 @@ def parseargs():
                       help='remove the rebalance schema.')
     parser.add_option('-f', '--target-hosts', metavar='<hosts_file>', dest='filename',
                       help='yaml containing target hosts configuration')
-    parser.add_option('-p', '--show-plan', dest='show_plan', action='store_true', default=False,
-                      help='show rebalance plan')
     parser.add_option('-r', '--rollback', action='store_true',
                       help='remove the rebalance schema.')
     parser.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
@@ -111,6 +111,8 @@ def parseargs():
                       help='debug output.')
     parser.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit.')
+    parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
+                      help='Rebalance configuration batch size. Valid values are 1-%d' % MAX_BATCH_SIZE)
     parser.add_option('--usage', action="briefhelp")
     parser.add_option('-S', '--simple-progress', action='store_true',
                       help='show simple progress.')
@@ -354,6 +356,9 @@ def sig_handler(sig, arg):
     os.kill(os.getpid(), sig)
 
 
+gprebalance = None
+
+
 def main(options, args, parser):
     try:
         signal.signal(signal.SIGTERM, sig_handler)
@@ -379,6 +384,9 @@ def main(options, args, parser):
         # create pid file
         create_pid_file(options.coordinator_data_directory)
 
+        gprebalance_db_status = GPRebalance.prepare_gpdb_state(
+            logger, dburl, options)
+
         try:
             gparray = GpArray.initFromCatalog(dburl, utility=True)
 
@@ -396,12 +404,33 @@ def main(options, args, parser):
             dump_hosts_info(gprebalance.getHostsFromGpArray())
             sys.exit(0)
 
-        possibility_checks(gprebalance)
-        logger.info('Validation passed. Preparing rebalance...')
-        plan = gprebalance.createPlan()
-        if options.show_plan:
-            logger.info(f"Resulting plan: \n {str(plan)}")
-        logger.info('Exiting...')
+        gprebalance_file_status = gprebalance.get_state_from_file()
+
+        from gprebalance_modules.rebalance_status import RebalanceStatus  # nopep8
+
+        if gprebalance_db_status == RebalanceStatus.COMPLETED:
+            logger.info('Rebalance has already completed')
+            logger.info(
+                'If you want to rebalance again, run gprebalance -c to perform cleanup')
+        elif gprebalance_file_status is None and gprebalance_db_status is None:
+            gprebalance.statusManager.create_status_file()
+            possibility_checks(gprebalance)
+            logger.info('Validation passed. Preparing rebalance...')
+            gprebalance.statusManager.set_status('VALIDATED', os.path.abspath(
+                options.filename) if options.filename else None)
+            plan = gprebalance.createPlan()
+            gprebalance.save_plan(plan)
+            if options.show_plan:
+                logger.info(f"Resulting plan: \n{str(plan)}")
+                sys.exit(0)
+            gprebalance.setup_schema()
+            gprebalance.execute_plan(plan)
+        elif gprebalance.statusManager.conf_dir:
+            plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir)
+            if options.show_plan:
+                logger.info(f"Resulting plan: \n{str(plan)}")
+                sys.exit(0)
+            gprebalance.resume()
         sys.exit(0)
     except Exception as e:
         if options and options.verbose:
@@ -412,6 +441,9 @@ def main(options, args, parser):
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
     finally:
+        gprebalance.remove_status_file()
+        gprebalance.cleanup_schema()
+        gprebalance.shutdown()
         remove_pid_file(get_coordinatordatadir())
 
 
