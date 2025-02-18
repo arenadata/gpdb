@@ -11,9 +11,7 @@ insert into users
 insert into users values (to_tsvector('John'));
 
 -- When I create a GIN index on users
-set gp_debug_linger=1;
 CREATE INDEX users_search_idx ON users USING gin (first_name);
-reset gp_debug_linger;
 
 -- Orca performs seq scan in this case, so disable Orca.
 set optimizer = 0;
