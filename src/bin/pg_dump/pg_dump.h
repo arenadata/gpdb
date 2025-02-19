@@ -797,7 +797,6 @@ extern void getSubscriptions(Archive *fout);
 
 /* START MPP ADDITION */
 extern ExtProtInfo *getExtProtocols(Archive *fout, int *numExtProtocols);
-extern BinaryUpgradeInfo *getBinaryUpgradeObjects(void);
 extern void getAOTableInfo(Archive *fout);
 extern void getBMIndxInfo(Archive *fout);
 extern void getPartitionDefs(Archive *fout, TableInfo tblinfo[], int numTables);
