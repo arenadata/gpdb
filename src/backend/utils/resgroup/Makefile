@@ -12,7 +12,6 @@ subdir = src/backend/utils/resgroup
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
-override CFLAGS := $(CFLAGS) -Wno-unused-but-set-variable
 
 OBJS = resgroup.o resgroup_helper.o
 
@@ -34,6 +33,8 @@ io_limit_gram.c: BISONFLAGS += -d
 io_limit_scanner.c: FLEXFLAGS = -CF -p -p
 io_limit_scanner.c: FLEX_NO_BACKUP=yes
 io_limit_scanner.c: FLEX_FIX_WARNING=yes
+
+io_limit_gram.o: CFLAGS += -Wno-unused-but-set-variable
 
 io_limit_gram.o io_limit_scanner.o cgroup-ops-linux-v2.o: io_limit_gram.h
 else

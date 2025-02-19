@@ -146,8 +146,6 @@ GppcDatum describe_spi(GPPC_FUNCTION_ARGS)
         char               *colname = NULL;
         GppcDatum               d_colname;
 
-        (void) GPPC_TF_INPUT_DESC(0, &iserror);
-
         if (GppcSPIConnect() < 0)
                 GppcReport(GPPC_ERROR, "unable to connect to SPI");
 
@@ -202,7 +200,6 @@ GppcDatum project_spi(GPPC_FUNCTION_ARGS)
 
         /* Get the next value from the input scan */
         odesc = GPPC_SRF_RESULT_DESC();
-        (void) GppcAnyTableGetTupleDesc(scan);
         tuple = GppcAnyTableGetNextTuple(scan);
 
         if (tuple == NULL)

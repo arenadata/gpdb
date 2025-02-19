@@ -225,7 +225,6 @@ test_XLogWalRcvProcessMsg(unsigned char type, char *buf, Size len,
 				/* read the fields */
 				walEnd = pq_getmsgint64(&incoming_message);
 				sendTime = pq_getmsgint64(&incoming_message);
-				(void) pq_getmsgbyte(&incoming_message);
 
 				elog(INFO, "keep alive: %X/%X at %s",
 					 (uint32) (walEnd >> 32), (uint32) walEnd,

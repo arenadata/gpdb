@@ -1013,7 +1013,7 @@ array_int4_add(PG_FUNCTION_ARGS)
 	if ( bigenuf1 && bigenuf2 ) /* Conformable arrays. */
 	{
 		Assert(ndatabytes == ARR_SIZE(v1) - ARR_DATA_OFFSET(v1) &&
-			   ndatabytes == ARR_DATA_OFFSET(v2));
+			   ndatabytes == ARR_SIZE(v2) - ARR_DATA_OFFSET(v2));
 		memcpy(ARR_DATA_PTR(result), dat1, ndatabytes);
 		for ( i = 0; i < nelem; i++ )
 			idata[i] += ((int*)dat2)[i];

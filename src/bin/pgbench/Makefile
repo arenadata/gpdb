@@ -7,8 +7,6 @@ subdir = src/bin/pgbench
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-override CFLAGS := $(CFLAGS) -Wno-unused-but-set-variable
-
 OBJS = pgbench.o exprparse.o $(WIN32RES)
 
 override CPPFLAGS := -I. -I$(srcdir) -I$(libpq_srcdir) $(CPPFLAGS)
@@ -24,6 +22,8 @@ all: pgbench
 
 pgbench: $(OBJS) | submake-libpq submake-libpgport submake-libpgfeutils
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
+
+exprparse.o: CFLAGS += -Wno-unused-but-set-variable
 
 # exprscan is compiled as part of exprparse
 exprparse.o: exprscan.c
