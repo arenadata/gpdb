@@ -230,6 +230,10 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		result->client_encoding = PG_SQL_ASCII;
 	}
 
+#ifndef FRONTEND
+	result->ctx = CurrentMemoryContext;
+#endif
+
 	return result;
 }
 
@@ -585,9 +589,13 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	 */
 	if (nBytes >= PGRESULT_SEP_ALLOC_THRESHOLD)
 	{
+#ifndef FRONTEND
+		block = (PGresult_data *) MemoryContextAlloc(res->ctx, nBytes + PGRESULT_BLOCK_OVERHEAD);
+#else
 		block = (PGresult_data *) malloc(nBytes + PGRESULT_BLOCK_OVERHEAD);
 		if (!block)
 			return NULL;
+#endif
 		space = block->space + PGRESULT_BLOCK_OVERHEAD;
 		if (res->curBlock)
 		{
@@ -609,9 +617,13 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	}
 
 	/* Otherwise, start a new block. */
+#ifndef FRONTEND
+	block = (PGresult_data *) MemoryContextAlloc(res->ctx, PGRESULT_DATA_BLOCKSIZE);
+#else
 	block = (PGresult_data *) malloc(PGRESULT_DATA_BLOCKSIZE);
 	if (!block)
 		return NULL;
+#endif
 	block->next = res->curBlock;
 	res->curBlock = block;
 	if (isBinary)
@@ -715,12 +727,20 @@ PQclear(PGresult *res)
 	while ((block = res->curBlock) != NULL)
 	{
 		res->curBlock = block->next;
+#ifndef FRONTEND
+		pfree(block);
+#else
 		free(block);
+#endif
 	}
 
 	/* Free the top-level tuple pointer array */
 	if (res->tuples)
+#ifndef FRONTEND
+		pfree(res->tuples);
+#else
 		free(res->tuples);
+#endif
 
 	/* zero out the pointer fields to catch programming errors */
 	res->attDescs = NULL;
@@ -950,11 +970,21 @@ pqAddTuple(PGresult *res, PGresAttValue *tup, const char **errmsgp)
 #endif
 
 		if (res->tuples == NULL)
+#ifndef FRONTEND
+			newTuples = (PGresAttValue **)
+				MemoryContextAlloc(res->ctx, newSize * sizeof(PGresAttValue *));
+#else
 			newTuples = (PGresAttValue **)
 				malloc(newSize * sizeof(PGresAttValue *));
+#endif
 		else
+#ifndef FRONTEND
+			newTuples = (PGresAttValue **)
+				repalloc(res->tuples, newSize * sizeof(PGresAttValue *));
+#else
 			newTuples = (PGresAttValue **)
 				realloc(res->tuples, newSize * sizeof(PGresAttValue *));
+#endif
 		if (!newTuples)
 			return FALSE;		/* malloc or realloc failed */
 		res->tupArrSize = newSize;

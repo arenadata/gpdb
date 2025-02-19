@@ -46,6 +46,10 @@
 /* include stuff found in fe only */
 #include "pqexpbuffer.h"
 
+#ifndef FRONTEND
+#include "utils/palloc.h"
+#endif
+
 #ifdef ENABLE_GSS
 #if defined(HAVE_GSSAPI_H)
 #include <gssapi.h>
@@ -249,6 +253,9 @@ struct pg_result
 	PQaoRelTupCount *aotupcounts;
 	int		nWaits;
 	int		*waitGxids;
+#ifndef FRONTEND
+	MemoryContext ctx;
+#endif
 };
 
 /* PGAsyncStatusType defines the state of the query-execution state machine */
