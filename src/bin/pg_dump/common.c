@@ -129,6 +129,13 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	/* GPDB specific variables */
 	int			numExtProtocols;
 
+	if (fout->dopt->binary_upgrade)
+	{
+		pg_log_info("identifying required binary upgrade calls");
+
+		(void) getBinaryUpgradeObjects();
+	}
+
 	/*
 	 * We must read extensions and extension membership info first, because
 	 * extension membership needs to be consultable during decisions about

@@ -5280,6 +5280,20 @@ getExtensions(Archive *fout, int *numExtensions)
 	return extinfo;
 }
 
+BinaryUpgradeInfo *
+getBinaryUpgradeObjects(void)
+{
+	BinaryUpgradeInfo	*binfo;
+
+	binfo = (BinaryUpgradeInfo *) pg_malloc0(sizeof(BinaryUpgradeInfo));
+
+	binfo->dobj.objType = DO_BINARY_UPGRADE;
+	AssignDumpId(&binfo->dobj);
+	binfo->dobj.name = pg_strdup("__binary_upgrade");
+
+	return binfo;
+}
+
 /*
  * getTypes:
  *	  read all types in the system catalogs and return them in the
