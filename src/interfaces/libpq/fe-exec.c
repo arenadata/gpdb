@@ -38,6 +38,19 @@
 #include <unistd.h>
 #endif
 
+#ifndef FRONTEND
+#include "postgres.h"
+#include "utils/memutils.h"
+
+#define maybe_palloc(sz) MemoryContextAlloc(CurTransactionContext, sz)
+#define maybe_repalloc(x, sz) repalloc(x, sz)
+#define maybe_pfree(x) pfree(x)
+#else
+#define maybe_palloc(sz) malloc(sz)
+#define maybe_repalloc(x, sz) realloc(x, sz)
+#define maybe_pfree(x) free(x)
+#endif
+
 /* keep this in same order as ExecStatusType in libpq-fe.h */
 char	   *const pgresStatus[] = {
 	"PGRES_EMPTY_QUERY",
@@ -151,7 +164,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 {
 	PGresult   *result;
 
-	result = (PGresult *) malloc(sizeof(PGresult));
+	result = (PGresult *) maybe_palloc(sizeof(PGresult));
 	if (!result)
 		return NULL;
 
@@ -585,7 +598,7 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	 */
 	if (nBytes >= PGRESULT_SEP_ALLOC_THRESHOLD)
 	{
-		block = (PGresult_data *) malloc(nBytes + PGRESULT_BLOCK_OVERHEAD);
+		block = (PGresult_data *) maybe_palloc(nBytes + PGRESULT_BLOCK_OVERHEAD);
 		if (!block)
 			return NULL;
 		space = block->space + PGRESULT_BLOCK_OVERHEAD;
@@ -609,7 +622,7 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	}
 
 	/* Otherwise, start a new block. */
-	block = (PGresult_data *) malloc(PGRESULT_DATA_BLOCKSIZE);
+	block = (PGresult_data *) maybe_palloc(PGRESULT_DATA_BLOCKSIZE);
 	if (!block)
 		return NULL;
 	block->next = res->curBlock;
@@ -715,12 +728,12 @@ PQclear(PGresult *res)
 	while ((block = res->curBlock) != NULL)
 	{
 		res->curBlock = block->next;
-		free(block);
+		maybe_pfree(block);
 	}
 
 	/* Free the top-level tuple pointer array */
 	if (res->tuples)
-		free(res->tuples);
+		maybe_pfree(res->tuples);
 
 	/* zero out the pointer fields to catch programming errors */
 	res->attDescs = NULL;
@@ -732,12 +745,12 @@ PQclear(PGresult *res)
 	/* res->curBlock was zeroed out earlier */
 
 	if (res->extras)
-		free(res->extras);
+		maybe_pfree(res->extras);
 	res->extraslen = 0;
 	res->extras = NULL;
 
 	if (res->aotupcounts)
-		free(res->aotupcounts);
+		maybe_pfree(res->aotupcounts);
 	res->naotupcounts = 0;
 
 	if (res->waitGxids)
@@ -745,7 +758,7 @@ PQclear(PGresult *res)
 	res->waitGxids = NULL;
 	res->nWaits = 0;
 	/* Free the PGresult structure itself */
-	free(res);
+	maybe_pfree(res);
 }
 
 /*
@@ -951,10 +964,10 @@ pqAddTuple(PGresult *res, PGresAttValue *tup, const char **errmsgp)
 
 		if (res->tuples == NULL)
 			newTuples = (PGresAttValue **)
-				malloc(newSize * sizeof(PGresAttValue *));
+				maybe_palloc(newSize * sizeof(PGresAttValue *));
 		else
 			newTuples = (PGresAttValue **)
-				realloc(res->tuples, newSize * sizeof(PGresAttValue *));
+				maybe_repalloc(res->tuples, newSize * sizeof(PGresAttValue *));
 		if (!newTuples)
 			return FALSE;		/* malloc or realloc failed */
 		res->tupArrSize = newSize;
