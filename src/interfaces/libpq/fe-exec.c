@@ -38,6 +38,11 @@
 #include <unistd.h>
 #endif
 
+#ifndef FRONTEND
+#include "postgres.h"
+#include "utils/memutils.h"
+#endif
+
 /* keep this in same order as ExecStatusType in libpq-fe.h */
 char	   *const pgresStatus[] = {
 	"PGRES_EMPTY_QUERY",
