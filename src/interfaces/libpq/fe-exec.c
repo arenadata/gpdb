@@ -42,7 +42,10 @@
 #include "postgres.h"
 #include "utils/memutils.h"
 
-#define maybe_palloc(sz) MemoryContextAlloc(CurTransactionContext, sz)
+#define maybe_palloc(sz)                                                       \
+	MemoryContextAlloc((CurTransactionContext != NULL) ? CurTransactionContext \
+													   : TopMemoryContext,     \
+					   sz)
 #define maybe_repalloc(x, sz) repalloc(x, sz)
 #define maybe_pfree(x) pfree(x)
 #else
