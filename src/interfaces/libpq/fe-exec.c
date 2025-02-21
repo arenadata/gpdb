@@ -167,7 +167,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 {
 	PGresult   *result;
 
-	result = (PGresult *) maybe_palloc(sizeof(PGresult));
+	result = (PGresult *) malloc(sizeof(PGresult));
 	if (!result)
 		return NULL;
 
@@ -748,12 +748,12 @@ PQclear(PGresult *res)
 	/* res->curBlock was zeroed out earlier */
 
 	if (res->extras)
-		maybe_pfree(res->extras);
+		free(res->extras);
 	res->extraslen = 0;
 	res->extras = NULL;
 
 	if (res->aotupcounts)
-		maybe_pfree(res->aotupcounts);
+		free(res->aotupcounts);
 	res->naotupcounts = 0;
 
 	if (res->waitGxids)
@@ -761,7 +761,7 @@ PQclear(PGresult *res)
 	res->waitGxids = NULL;
 	res->nWaits = 0;
 	/* Free the PGresult structure itself */
-	maybe_pfree(res);
+	free(res);
 }
 
 /*
