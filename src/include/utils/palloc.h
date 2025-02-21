@@ -33,6 +33,9 @@
 /*
  * Optional #defines for debugging...
  *
+ * Important: CDB_PALLOC_CALLER_ID is obsolete. EXTRA_DYNAMIC_MEMORY_DEBUG can
+ * be used instead.
+ *
  * If CDB_PALLOC_CALLER_ID is defined, MemoryContext error and warning
  * messages (such as "out of memory" and "invalid memory alloc request
  * size") will include the caller's source file name and line number.
@@ -52,6 +55,15 @@
 /*
 #define CDB_PALLOC_CALLER_ID
 */
+
+/*
+ * To enable collection of additional allocation data (function, file, and line 
+ * where the allocation occurred), add -DEXTRA_DYNAMIC_MEMORY_DEBUG to CFLAGS 
+ * during ./configure.
+ * Use MemoryContextStats(TopMemoryContext) to print the top allocations for 
+ * each MemoryContext into the logs, following the summary counters for each
+ * context.
+ */
 
 /*
  * GPDB_93_MERGE_FIXME: This mechanism got broken. If this is resurrected and
@@ -235,5 +247,12 @@ extern void MemoryContextStats(MemoryContext context);
 		MemoryContextStats(TopMemoryContext);\
 	}\
 }
+
+#ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
+#include "utils/palloc_memory_debug.h"
+#ifdef FRONTEND
+#include "utils/palloc_memory_debug_undef.h"
+#endif
+#endif
 
 #endif							/* PALLOC_H */
