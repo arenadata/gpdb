@@ -231,7 +231,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	}
 
 #ifndef FRONTEND
-	result->ctx = CurrentMemoryContext;
+	result->ctx = CurTransactionContext ? CurTransactionContext : CurrentMemoryContext;
 #endif
 
 	return result;
