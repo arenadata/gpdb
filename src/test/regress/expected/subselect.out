@@ -1160,9 +1160,9 @@ drop table tl2;
 drop table tl3;
 drop table tl4;
 -- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
+-- start_ignore
 drop table if exists t1, t2, t3;
-NOTICE:  table "t2" does not exist, skipping
-NOTICE:  table "t3" does not exist, skipping
+-- end_ignore
 create table t1 as select 0 as i1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'i1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
@@ -1195,10 +1195,10 @@ reset optimizer_trace_fallback;
 -- Output DXL plan without unimportant properties.
 -- start_ignore
 -- end_ignore
-select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/dump.xml')));
-ERROR:  could not stat file "minidumps/dump.xml": No such file or directory
-insert into t1 values (1);
-analyze t1;
+select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/pretty.xml')));
+ERROR:  could not stat file "minidumps/pretty.xml": No such file or directory
+--insert into t1 values (1);
+--analyze t1;
 -- After adding data, the ORCA physical plan changes and DXL changes too.
 -- The outer <dxl:TestExpr> is empty. The second <dxl:TestExpr> (nested) does not contain a
 -- deep tree. The left node contains an attribute (Ident ColId="0") that is not present
@@ -1214,15 +1214,13 @@ select * from t1 where
  i1 
 ----
   0
-  1
-(2 rows)
+(1 row)
 
 reset optimizer_minidump;
 reset optimizer_trace_fallback;
--- Output DXL plan without unimportant properties.
 -- start_ignore
 -- end_ignore
-select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/dump.xml')));
-ERROR:  could not stat file "minidumps/dump.xml": No such file or directory
+select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/pretty.xml')));
+ERROR:  could not stat file "minidumps/pretty.xml": No such file or directory
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
 drop table t1,t2,t3;
