@@ -774,7 +774,11 @@ PQclear(PGresult *res)
 	res->naotupcounts = 0;
 
 	if (res->waitGxids)
+#ifndef FRONTEND
+		pfree(res->waitGxids);
+#else
 		free(res->waitGxids);
+#endif
 	res->waitGxids = NULL;
 	res->nWaits = 0;
 	/* Free the PGresult structure itself */
