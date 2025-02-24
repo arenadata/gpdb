@@ -68,19 +68,17 @@ static bool isGPDB(void)
 	} talking_to_gpdb;
 
 	PGresult   *res;
-	char       *ver;
 
 	if (talking_to_gpdb == gpdb_yes)
 		return true;
 	else if (talking_to_gpdb == gpdb_no)
 		return false;
 
-	res = PSQLexec("select pg_catalog.version()");
+	res = PSQLexec("SELECT FROM pg_settings WHERE name = 'gp_server_version'");
 	if (!res)
 		return false;
 
-	ver = PQgetvalue(res, 0, 0);
-	if (strstr(ver, "Greenplum") != NULL)
+	if (PQntuples(res) == 1)
 	{
 		PQclear(res);
 		talking_to_gpdb = gpdb_yes;
