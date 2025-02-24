@@ -423,10 +423,11 @@ PQcopyResult(const PGresult *src, int flags)
  * Does not duplicate the event instance data, sets this to NULL.
  * Also, the resultInitialized flags are all cleared.
  */
-#ifndef FRONTEND
-static PGEvent *dupEvents(MemoryContext ctx, PGEvent *events, int count)
+static PGEvent *
+ #ifndef FRONTEND
+dupEvents(MemoryContext ctx, PGEvent *events, int count)
 #else
-static PGEvent *dupEvents(PGEvent *events, int count)
+dupEvents(PGEvent *events, int count)
 #endif
 {
 	PGEvent    *newEvents;
