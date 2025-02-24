@@ -190,6 +190,10 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 	result->nWaits = 0;
 	result->waitGxids = NULL;
 
+#ifndef FRONTEND
+	result->ctx = CurTransactionContext ? CurTransactionContext : CurrentMemoryContext;
+#endif
+
 	if (conn)
 	{
 		/* copy connection data we might need for operations on PGresult */
@@ -234,10 +238,6 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		result->noticeHooks.noticeProcArg = NULL;
 		result->client_encoding = PG_SQL_ASCII;
 	}
-
-#ifndef FRONTEND
-	result->ctx = CurTransactionContext ? CurTransactionContext : CurrentMemoryContext;
-#endif
 
 	return result;
 }
