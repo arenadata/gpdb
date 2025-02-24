@@ -84,6 +84,34 @@ typedef struct
 #endif   /* USE_SSL */
 
 /*
+ * Definitions meant to lessen the malloc() usage for CDB routines in
+ * server-sided code for struct PGresult allocations.
+ */
+#ifndef FRONTEND
+#include "postgres.h"
+#include "utils/memutils.h"
+
+/*
+ * CurTransactionContext's lifetime lasts until the end of the current query,
+ * which does the job well for backends. Auxillary processes do not set
+ * transaction contexts, so we have to use TopMemoryContext to achieve a
+ * lifetime equivalent to malloc().
+ */
+#define PQ_PALLOC_CONTEXT \
+	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext)
+
+#define maybe_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
+#define maybe_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
+#define maybe_repalloc(x, sz) repalloc(x, sz)
+#define maybe_pfree(x) pfree(x)
+#else
+#define maybe_palloc(sz) malloc(sz)
+#define maybe_pstrdup(x) strdup(x)
+#define maybe_repalloc(x, sz) realloc(x, sz)
+#define maybe_pfree(x) free(x)
+#endif
+
+/*
  * POSTGRES backend dependent Constants.
  */
 
