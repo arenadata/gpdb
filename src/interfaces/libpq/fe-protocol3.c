@@ -267,7 +267,7 @@ pqParseInput3(PGconn *conn)
 
 					/* now just loop through */
 					conn->result->aotupcounts =
-						malloc(sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
+						MemoryContextAlloc(conn->result->ctx, sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
 					ao = conn->result->aotupcounts;
 					for (i = 0; i < conn->result->naotupcounts; i++)
 					{

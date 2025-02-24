@@ -766,7 +766,11 @@ PQclear(PGresult *res)
 	res->extras = NULL;
 
 	if (res->aotupcounts)
+#ifndef FRONTEND
+		pfree(res->aotupcounts);
+#else
 		free(res->aotupcounts);
+#endif
 	res->naotupcounts = 0;
 
 	if (res->waitGxids)
