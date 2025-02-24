@@ -103,11 +103,12 @@ docker run --rm -it gpdb7_regress:latest bash -c "gpdb_src/concourse/scripts/uni
 
 ## Clang check
 
-To just compile the code to check for errors with Clang on Ubuntu:
+To just compile the code and check it for errors with Clang on Ubuntu:
 ```bash
 docker build -t gpdb7_u22_clang_check:latest -f arenadata/Dockerfile.ubuntu.clang-check .
-docker run -it gpdb7_u22_clang_check:latest
 ```
+
+The image can be safely removed afterwards, as the check itself is performed in the build stage.
 
 ## How to run demo cluster inside docker container manually
 
