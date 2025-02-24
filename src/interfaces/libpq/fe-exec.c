@@ -156,7 +156,11 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 {
 	PGresult   *result;
 
+#ifndef FRONTEND
+	result = (PGresult *) MemoryContextAlloc(CurTransactionContext ? CurTransactionContext : CurrentMemoryContext, sizeof(PGresult));
+#else
 	result = (PGresult *) malloc(sizeof(PGresult));
+#endif
 	if (!result)
 		return NULL;
 
@@ -782,7 +786,11 @@ PQclear(PGresult *res)
 	res->waitGxids = NULL;
 	res->nWaits = 0;
 	/* Free the PGresult structure itself */
+#ifndef FRONTEND
+	pfree(res);
+#else
 	free(res);
+#endif
 }
 
 /*
