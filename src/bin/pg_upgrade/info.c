@@ -451,9 +451,7 @@ get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo)
 			   *last_tablespace = NULL;
 
 	char		relstorage;
-	char		relkind;
 	int			i_relstorage = -1;
-	int			i_relkind = -1;
 
 	query[0] = '\0';			/* initialize query string to empty */
 
@@ -571,7 +569,6 @@ get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo)
 	i_nspname = PQfnumber(res, "nspname");
 	i_relname = PQfnumber(res, "relname");
 	i_relstorage = PQfnumber(res, "relstorage");
-	i_relkind = PQfnumber(res, "relkind");
 	i_relfilenode = PQfnumber(res, "relfilenode");
 	i_reltablespace = PQfnumber(res, "reltablespace");
 	i_spclocation = PQfnumber(res, "spclocation");
@@ -641,8 +638,6 @@ get_rel_infos(ClusterInfo *cluster, DbInfo *dbinfo)
 		/* Collect extra information about append-only tables */
 		relstorage = PQgetvalue(res, relnum, i_relstorage) [0];
 		curr->relstorage = relstorage;
-
-		relkind = PQgetvalue(res, relnum, i_relkind) [0];
 
 		/*
 		 * The structure of append

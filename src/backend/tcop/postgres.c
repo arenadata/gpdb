@@ -1651,7 +1651,9 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 			/* if some guc can not restore successful
 			 * we can not keep alive gang anymore.
 			 */
-			DisconnectAndDestroyAllGangs(false);
+			DisconnectAndDestroyAllGangs(true);
+			GpResetSessionIfNeeded();
+			GpDropTempTables();
 			/*
 			 * when qe elog an error, qd will use ReThrowError to
 			 * re throw the error, the errordata_stack_depth will ++,
@@ -5461,7 +5463,6 @@ PostgresMain(int argc, char *argv[],
 					int serializedPlantreelen = 0;
 					int serializedQueryDispatchDesclen = 0;
 					int resgroupInfoLen = 0;
-					TimestampTz statementStart;
 					Oid suid;
 					Oid ouid;
 					Oid cuid;
@@ -5495,7 +5496,7 @@ PostgresMain(int argc, char *argv[],
 					ouid = pq_getmsgint(&input_message, 4);
 					cuid = pq_getmsgint(&input_message, 4);
 
-					statementStart = pq_getmsgint64(&input_message);
+					(void) pq_getmsgint64(&input_message);
 
 					/* check if the message is from standby QD and is expected */
 					is_hs_dispatch = pq_getmsgint(&input_message, 4);

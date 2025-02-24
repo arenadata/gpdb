@@ -896,13 +896,9 @@ array_int4_add(PG_FUNCTION_ARGS)
 				ndatabytes,
 				nbytes;
 	int		   *dims1,
-			   *lbs1,
-				ndims1,
-				ndatabytes1;
+				ndims1;
 	int		   *dims2,
-			   *lbs2,
-				ndims2,
-				ndatabytes2;
+				ndims2;
 	bool		bigenuf1,
 				bigenuf2;
 	int			i,
@@ -966,15 +962,10 @@ array_int4_add(PG_FUNCTION_ARGS)
 						   ndims1, ndims2)));
 
 	/* get argument array details */
-	lbs1 = ARR_LBOUND(v1);
-	lbs2 = ARR_LBOUND(v2);
 	dims1 = ARR_DIMS(v1);
 	dims2 = ARR_DIMS(v2);
 	dat1 = ARR_DATA_PTR(v1);
 	dat2 = ARR_DATA_PTR(v2);
-
-	ndatabytes1 = ARR_SIZE(v1) - ARR_DATA_OFFSET(v1);
-	ndatabytes2 = ARR_SIZE(v2) - ARR_DATA_OFFSET(v2);
 
 	/*
 	 * resulting array is made up of the elements (possibly arrays
@@ -1021,7 +1012,8 @@ array_int4_add(PG_FUNCTION_ARGS)
 	
 	if ( bigenuf1 && bigenuf2 ) /* Conformable arrays. */
 	{
-		Assert(ndatabytes == ndatabytes1 && ndatabytes == ndatabytes2);
+		Assert(ndatabytes == ARR_SIZE(v1) - ARR_DATA_OFFSET(v1) &&
+			   ndatabytes == ARR_SIZE(v2) - ARR_DATA_OFFSET(v2));
 		memcpy(ARR_DATA_PTR(result), dat1, ndatabytes);
 		for ( i = 0; i < nelem; i++ )
 			idata[i] += ((int*)dat2)[i];
@@ -1029,14 +1021,14 @@ array_int4_add(PG_FUNCTION_ARGS)
 	}
 	else if ( bigenuf1 )
 	{
-		Assert(ndatabytes == ndatabytes1);
+		Assert(ndatabytes == ARR_SIZE(v1) - ARR_DATA_OFFSET(v1));
 		memcpy(ARR_DATA_PTR(result), dat1, ndatabytes);
 		/* Add in argument 2 */
 		accumToArray(ndims, dims, idata, dims2, (int*)dat2);
 	}
 	else if ( bigenuf2 )
 	{
-		Assert(ndatabytes == ndatabytes2);
+		Assert(ndatabytes == ARR_SIZE(v2) - ARR_DATA_OFFSET(v2));
 		memcpy(ARR_DATA_PTR(result), dat2, ndatabytes);
 		/* Add in argument 1 */
 		accumToArray(ndims, dims, idata, dims1, (int*)dat1);

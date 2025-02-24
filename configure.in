@@ -546,12 +546,6 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CC_CFLAGS_OPT([-fexcess-precision=standard])
   PGAC_PROG_CXX_CXXFLAGS_OPT([-fexcess-precision=standard])
 
-  # Silence compiler warnings about variables that are set, but otherwise
-  # unused. All of these warnings have been fixed in PostgreSQL, but there is
-  # still some GPDB added code that emit these. TODO: Fix the GPDB code and
-  # remove this.
-  PGAC_PROG_CC_CFLAGS_OPT([-Wno-unused-but-set-variable])
-
   PGAC_PROG_CXX_CFLAGS_OPT([-fexcess-precision=standard])
   # Optimization flags for specific files that benefit from vectorization
   PGAC_PROG_CC_VAR_OPT(CFLAGS_VECTOR, [-funroll-loops])
@@ -1148,7 +1142,10 @@ AC_SUBST(with_zstd)
 
 if test "$with_zstd" = yes; then
   dnl zstd_errors.h was renamed from error_public.h in v1.1.1
-  PKG_CHECK_MODULES([ZSTD], [libzstd >= 1.4.0])
+  dnl require static zstd library to use custom allocation functions
+  PKG_CHECK_MODULES([ZSTD], [libzstd >= 1.4.0],
+                    [AC_CHECK_LIB([:libzstd.a], [ZSTD_compressCCtx], [],
+                                  [AC_MSG_ERROR([static zstd library not found])])])
 fi
 
 #

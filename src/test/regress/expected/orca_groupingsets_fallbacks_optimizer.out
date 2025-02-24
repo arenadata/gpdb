@@ -76,8 +76,6 @@ create temp table gstest2 (a int primary key, b int, c int, d int, v int);
 insert into gstest2 values (1, 1, 1, 1, 1);
 insert into gstest2 values (2, 2, 2, 2, 1);
 select d from gstest2 group by grouping sets ((a,b), (a));
-INFO:  GPORCA failed to produce a plan, falling back to Postgres-based planner
-DETAIL:  Query-to-DXL Translation: No attribute entry found due to incorrect normalization of query
  d 
 ---
  2
