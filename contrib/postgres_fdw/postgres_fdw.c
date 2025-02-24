@@ -7281,7 +7281,7 @@ greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user)
 	PGresult   *res;
 
 	const char *query =
-		"SELECT FROM pg_settings WHERE name = 'gp_server_version'";
+		"SELECT FROM pg_catalog.pg_settings WHERE name = 'gp_server_version'";
 	conn = GetConnection(server, user, false);
 
 	res = pgfdw_exec_query(conn, query);

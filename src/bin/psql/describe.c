@@ -74,7 +74,8 @@ static bool isGPDB(void)
 	else if (talking_to_gpdb == gpdb_no)
 		return false;
 
-	res = PSQLexec("SELECT FROM pg_settings WHERE name = 'gp_server_version'");
+	res = PSQLexec("SELECT FROM pg_catalog.pg_settings"
+				   " WHERE name = 'gp_server_version'");
 	if (!res)
 		return false;
 
