@@ -5979,14 +5979,10 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 		Relation	OldHeap;
 		bool		hasIndexes;
 		Oid 		oldTableSpace;
-		char		oldRelPersistence;
-		Oid			oldAm;
 
 		/* We will lock the table iff we decide to actually rewrite it */
 		OldHeap = relation_open(tab->relid, NoLock);
 		oldTableSpace = OldHeap->rd_rel->reltablespace;
-		oldRelPersistence = OldHeap->rd_rel->relpersistence;
-		oldAm = OldHeap->rd_rel->relam;
 
 		{
 			List	   *indexIds;
@@ -17314,7 +17310,6 @@ checkPolicyCompatibleWithIndexes(Relation rel, GpPolicy *pol)
 			if (indexStruct->indisexclusion)
 			{
 				HeapTuple	ht_constr;
-				Form_pg_constraint conrec;
 				Oid			constraintId;
 				Datum	   *elems;
 				int			nElems;
@@ -17332,7 +17327,6 @@ checkPolicyCompatibleWithIndexes(Relation rel, GpPolicy *pol)
 				if (!HeapTupleIsValid(ht_constr))
 					elog(ERROR, "cache lookup failed for constraint %u",
 						 constraintId);
-				conrec = (Form_pg_constraint) GETSTRUCT(ht_constr);
 				datum = SysCacheGetAttr(CONSTROID, ht_constr,
 										Anum_pg_constraint_conexclop,
 										&isnull);

@@ -546,12 +546,6 @@ if test "$GCC" = yes -a "$ICC" = no; then
   PGAC_PROG_CC_CFLAGS_OPT([-fexcess-precision=standard])
   PGAC_PROG_CXX_CXXFLAGS_OPT([-fexcess-precision=standard])
 
-  # Silence compiler warnings about variables that are set, but otherwise
-  # unused. All of these warnings have been fixed in PostgreSQL, but there is
-  # still some GPDB added code that emit these. TODO: Fix the GPDB code and
-  # remove this.
-  PGAC_PROG_CC_CFLAGS_OPT([-Wno-unused-but-set-variable])
-
   PGAC_PROG_CXX_CFLAGS_OPT([-fexcess-precision=standard])
   # Optimization flags for specific files that benefit from vectorization
   PGAC_PROG_CC_VAR_OPT(CFLAGS_VECTOR, [-funroll-loops])

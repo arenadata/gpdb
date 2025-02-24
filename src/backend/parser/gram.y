@@ -3800,12 +3800,10 @@ alter_table_partition_id_spec:
 				{
 					Node		   *arg;
 					Value		   *val;
-					Node		   *fname;
 
                     /* allow RANK only */
 					if (list_length($3) != 1)
                         parser_yyerror("syntax error");
-					fname = linitial($3);
 					if (!(strcmp(strVal(linitial($3)), "rank") == 0))
                         parser_yyerror("syntax error");
 

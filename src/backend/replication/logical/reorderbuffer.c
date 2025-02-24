@@ -2278,7 +2278,9 @@ ReorderBufferSerializeTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 	dlist_mutable_iter change_i;
 	int			fd = -1;
 	XLogSegNo	curOpenSegNo = 0;
+#ifdef USE_ASSERT_CHECKING
 	Size		spilled = 0;
+#endif
 
 	elog(DEBUG2, "spill %u changes in XID %u to disk",
 		 (uint32) txn->nentries_mem, txn->xid);
@@ -2333,8 +2335,9 @@ ReorderBufferSerializeTXN(ReorderBuffer *rb, ReorderBufferTXN *txn)
 		ReorderBufferSerializeChange(rb, txn, fd, change);
 		dlist_delete(&change->node);
 		ReorderBufferReturnChange(rb, change);
-
+#ifdef USE_ASSERT_CHECKING
 		spilled++;
+#endif
 	}
 
 	Assert(spilled == txn->nentries_mem);

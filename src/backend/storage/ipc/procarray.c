@@ -5279,8 +5279,6 @@ ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 void
 ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result)
 {
-	pid_t		pid;
-	BackendId	backendId;
 	ProcArrayStruct *arrayP = procArray;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
@@ -5298,9 +5296,6 @@ ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result)
 		 */
 		if (proc->mppSessionId != sessionId || !proc->mppIsWriter)
 			continue;
-
-		pid = proc->pid;
-		backendId = proc->backendId;
 
 		SpinLockAcquire(&proc->movetoMutex);
 		/* If proc->movetoCallerPid not equals to MyProc->pid, the target
