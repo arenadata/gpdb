@@ -555,7 +555,7 @@ pqParseInput3(PGconn *conn)
 					{
 						if (conn->result->waitGxids == NULL)
 							conn->result->waitGxids =
-								malloc(sizeof(int) * conn->result->nWaits);
+								maybe_palloc(sizeof(int) * conn->result->nWaits);
 						for (i = 0; i < conn->result->nWaits; i++)
 						{
 							int gxid;
