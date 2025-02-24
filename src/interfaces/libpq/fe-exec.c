@@ -424,7 +424,7 @@ PQcopyResult(const PGresult *src, int flags)
  * Also, the resultInitialized flags are all cleared.
  */
 static PGEvent *
- #ifndef FRONTEND
+#ifndef FRONTEND
 dupEvents(MemoryContext ctx, PGEvent *events, int count)
 #else
 dupEvents(PGEvent *events, int count)
