@@ -1,14 +1,11 @@
 FROM ubuntu:22.04 AS base
 
 COPY ./README.Ubuntu.bash ./
-
 RUN set -eux && \
     DEBIAN_FRONTEND=noninteractive ./README.Ubuntu.bash
+RUN apt install -y libipc-run-perl # for --enable-tap-tests
 
-RUN apt install -y libipc-run-perl
-
-WORKDIR /home/gpadmin
-COPY ./ gpdb_src
+COPY ./ /home/gpadmin/gpdb_src
 WORKDIR /home/gpadmin/gpdb_src
 
 ENV CFLAGS="-O0 -Wno-deprecated-declarations"
