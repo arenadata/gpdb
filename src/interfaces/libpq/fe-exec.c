@@ -65,7 +65,11 @@ static int	static_client_encoding = PG_SQL_ASCII;
 static bool static_std_strings = false;
 
 
-static PGEvent *dupEvents(PGEvent *events, int count);
+static PGEvent *dupEvents(
+#ifndef FRONTEND
+	MemoryContext ctx,
+#endif
+	PGEvent *events, int count);
 static bool pqAddTuple(PGresult *res, PGresAttValue *tup,
 		   const char **errmsgp);
 static int PQsendQueryGuts(PGconn *conn,
@@ -224,7 +228,11 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		/* copy events last; result must be valid if we need to PQclear */
 		if (conn->nEvents > 0)
 		{
-			result->events = dupEvents(conn->events, conn->nEvents);
+			result->events = dupEvents(
+#ifndef FRONTEND
+				result->ctx,
+#endif
+				conn->events, conn->nEvents);
 			if (!result->events)
 			{
 				PQclear(result);
@@ -375,7 +383,11 @@ PQcopyResult(const PGresult *src, int flags)
 	/* Wants to copy PGEvents? */
 	if ((flags & PG_COPYRES_EVENTS) && src->nEvents > 0)
 	{
-		dest->events = dupEvents(src->events, src->nEvents);
+		dest->events = dupEvents(
+#ifndef FRONTEND
+			dest->ctx,
+#endif
+			src->events, src->nEvents);
 		if (!dest->events)
 		{
 			PQclear(dest);
@@ -412,7 +424,11 @@ PQcopyResult(const PGresult *src, int flags)
  * Also, the resultInitialized flags are all cleared.
  */
 static PGEvent *
-dupEvents(PGEvent *events, int count)
+dupEvents(
+#ifndef FRONTEND
+	MemoryContext ctx,
+#endif
+	PGEvent *events, int count)
 {
 	PGEvent    *newEvents;
 	int			i;
@@ -420,7 +436,11 @@ dupEvents(PGEvent *events, int count)
 	if (!events || count <= 0)
 		return NULL;
 
+#ifndef FRONTEND
+	newEvents = (PGEvent *) MemoryContextAlloc(ctx, count * sizeof(PGEvent));
+#else
 	newEvents = (PGEvent *) malloc(count * sizeof(PGEvent));
+#endif
 	if (!newEvents)
 		return NULL;
 
@@ -430,12 +450,21 @@ dupEvents(PGEvent *events, int count)
 		newEvents[i].passThrough = events[i].passThrough;
 		newEvents[i].data = NULL;
 		newEvents[i].resultInitialized = FALSE;
+#ifndef FRONTEND
+		newEvents[i].name = MemoryContextStrdup(ctx, events[i].name);
+#else
 		newEvents[i].name = strdup(events[i].name);
+#endif
 		if (!newEvents[i].name)
 		{
 			while (--i >= 0)
+#ifndef FRONTEND
+				pfree(newEvents[i].name);
+			pfree(newEvents);
+#else
 				free(newEvents[i].name);
 			free(newEvents);
+#endif
 			return NULL;
 		}
 	}
@@ -726,11 +755,19 @@ PQclear(PGresult *res)
 			(void) res->events[i].proc(PGEVT_RESULTDESTROY, &evt,
 									   res->events[i].passThrough);
 		}
+#ifndef FRONTEND
+		pfree(res->events[i].name);
+#else
 		free(res->events[i].name);
+#endif
 	}
 
 	if (res->events)
+#ifndef FRONTEND
+		pfree(res->events);
+#else
 		free(res->events);
+#endif
 
 	/* Free all the subsidiary blocks */
 	while ((block = res->curBlock) != NULL)
