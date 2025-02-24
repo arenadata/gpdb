@@ -1604,17 +1604,20 @@ ShutdownFuncExpr(Datum arg)
 	FuncExprState *fcache = (FuncExprState *) DatumGetPointer(arg);
 
 	/* Call the function last time to give a chance to release any resources */
-	/* We make a last call if function supports SFRM_Squelch protocol and 
-		was not invoked last last time.
+
+	/*
+	 * We make a last call if function supports SFRM_Squelch protocol and was
+	 * not invoked last last time.
 	 */
-	if (fcache->isSquelchSupported && fcache->fcinfo_data.flinfo->fn_extra != NULL) {
+	if (fcache->isSquelchSupported && fcache->fcinfo_data.flinfo->fn_extra != NULL)
+	{
 		FunctionCallInfoData *fcinfo = &fcache->fcinfo_data;
 
-		/* 
-			Prepare a resultinfo node for communication.
-			We don't want to use existing resultinfo node because
-			we are in the middle of shutdown functions chain and 
-			we do not want to interfere with other functions in the chain
+		/*
+		 * Prepare a resultinfo node for communication. We don't want to use
+		 * existing resultinfo node because we are in the middle of shutdown
+		 * functions chain and we do not want to interfere with other
+		 * functions in the chain
 		 */
 		ReturnSetInfo rsinfo = {
 			.type = T_ReturnSetInfo,
@@ -1626,7 +1629,7 @@ ShutdownFuncExpr(Datum arg)
 			.econtext = NULL,
 			.returnMode = SFRM_ValuePerCall | SFRM_Squelch
 		};
-	
+
 		fcinfo->isnull = false;
 		fcinfo->resultinfo = &rsinfo;
 
@@ -2431,6 +2434,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			rsinfo.isDone = ExprSingleResult;
 			result = FunctionCallInvoke(&fcinfo);
 
+			/* Reset SFRM_Squelch bit */
 			rsinfo.returnMode &= ~SFRM_Squelch;
 
 			pgstat_end_function_usage(&fcusage,

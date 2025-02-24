@@ -291,7 +291,7 @@ extern bool is_SquelchFuncCall(PG_FUNCTION_ARGS);
  * Set squelch flag for this function and test if it's squelching already
  * Note, that during squelch call function arguments are inaccessible,
  * so this call must appear before PG_GETARG_XXX() macros
-*/
+ */
 #define SRF_IS_SQUELCH_CALL() is_SquelchFuncCall(fcinfo)
 
 #define SRF_FIRSTCALL_INIT() init_MultiFuncCall(fcinfo)
