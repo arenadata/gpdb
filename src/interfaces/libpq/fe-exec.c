@@ -757,7 +757,11 @@ PQclear(PGresult *res)
 	/* res->curBlock was zeroed out earlier */
 
 	if (res->extras)
+#ifndef FRONTEND
+		pfree(res->extras);
+#else
 		free(res->extras);
+#endif
 	res->extraslen = 0;
 	res->extras = NULL;
 

@@ -529,7 +529,7 @@ pqParseInput3(PGconn *conn)
 
 					if (pqGetInt(&conn->result->extraslen, 4, conn))
 						return;
-					conn->result->extras = malloc(conn->result->extraslen);
+					conn->result->extras = MemoryContextAlloc(conn->result->ctx, conn->result->extraslen);
 					if (pqGetnchar((char *)conn->result->extras, conn->result->extraslen, conn))
 						return;
 					conn->asyncStatus = PGASYNC_READY;
