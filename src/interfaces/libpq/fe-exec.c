@@ -65,11 +65,11 @@ static int	static_client_encoding = PG_SQL_ASCII;
 static bool static_std_strings = false;
 
 
-static PGEvent *dupEvents(
 #ifndef FRONTEND
-	MemoryContext ctx,
+static PGEvent *dupEvents(MemoryContext ctx, PGEvent *events, int count);
+#else
+static PGEvent *dupEvents(PGEvent *events, int count);
 #endif
-	PGEvent *events, int count);
 static bool pqAddTuple(PGresult *res, PGresAttValue *tup,
 		   const char **errmsgp);
 static int PQsendQueryGuts(PGconn *conn,
@@ -228,11 +228,11 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 		/* copy events last; result must be valid if we need to PQclear */
 		if (conn->nEvents > 0)
 		{
-			result->events = dupEvents(
 #ifndef FRONTEND
-				result->ctx,
+			result->events = dupEvents(result->ctx, conn->events, conn->nEvents);
+#else
+			result->events = dupEvents(conn->events, conn->nEvents);
 #endif
-				conn->events, conn->nEvents);
 			if (!result->events)
 			{
 				PQclear(result);
@@ -383,11 +383,11 @@ PQcopyResult(const PGresult *src, int flags)
 	/* Wants to copy PGEvents? */
 	if ((flags & PG_COPYRES_EVENTS) && src->nEvents > 0)
 	{
-		dest->events = dupEvents(
 #ifndef FRONTEND
-			dest->ctx,
+		dest->events = dupEvents(dest->ctx, src->events, src->nEvents);
+#else
+		dest->events = dupEvents(src->events, src->nEvents);
 #endif
-			src->events, src->nEvents);
 		if (!dest->events)
 		{
 			PQclear(dest);
@@ -423,12 +423,11 @@ PQcopyResult(const PGresult *src, int flags)
  * Does not duplicate the event instance data, sets this to NULL.
  * Also, the resultInitialized flags are all cleared.
  */
-static PGEvent *
-dupEvents(
 #ifndef FRONTEND
-	MemoryContext ctx,
+static PGEvent *dupEvents(MemoryContext ctx, PGEvent *events, int count)
+#else
+static PGEvent *dupEvents(PGEvent *events, int count)
 #endif
-	PGEvent *events, int count)
 {
 	PGEvent    *newEvents;
 	int			i;
