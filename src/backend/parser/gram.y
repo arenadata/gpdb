@@ -13571,7 +13571,7 @@ ExecuteStmt: EXECUTE name execute_param_clause
 					$$ = (Node *) n;
 				}
 			| CREATE OptTemp TABLE create_as_target AS
-				EXECUTE name execute_param_clause opt_with_data OptDistributedBy
+				EXECUTE name execute_param_clause opt_with_data
 				{
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ExecuteStmt *n = makeNode(ExecuteStmt);
@@ -13584,12 +13584,11 @@ ExecuteStmt: EXECUTE name execute_param_clause
 					ctas->if_not_exists = false;
 					/* cram additional flags into the IntoClause */
 					$4->rel->relpersistence = $2;
-					ctas->into->distributedBy = $10;
 					$4->skipData = !($9);
 					$$ = (Node *) ctas;
 				}
 			| CREATE OptTemp TABLE IF_P NOT EXISTS create_as_target AS
-				EXECUTE name execute_param_clause opt_with_data OptDistributedBy
+				EXECUTE name execute_param_clause opt_with_data
 				{
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
 					ExecuteStmt *n = makeNode(ExecuteStmt);
@@ -13602,7 +13601,6 @@ ExecuteStmt: EXECUTE name execute_param_clause
 					ctas->if_not_exists = true;
 					/* cram additional flags into the IntoClause */
 					$7->rel->relpersistence = $2;
-					ctas->into->distributedBy = $13;
 					$7->skipData = !($12);
 					$$ = (Node *) ctas;
 				}
