@@ -393,7 +393,7 @@ static void postgresGetForeignUpperPaths(PlannerInfo *root,
 										 RelOptInfo *input_rel,
 										 RelOptInfo *output_rel,
 										 void *extra);
-static bool greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user);
+static bool gpCheckIsGP(ForeignServer *server, UserMapping *user);
 
 /*
  * Helper functions
@@ -2268,14 +2268,14 @@ postgresIsForeignRelUpdatable(Relation rel)
 		for (index = 0; index < server->num_segments; ++index)
 		{
 			rewrite_server_options(server, index);
-			if (greenplumCheckIsGreenplum(server, user))
+			if (gpCheckIsGP(server, user))
 				break;
 		}
 		if (index != server->num_segments)
 			isGreenplum = true;
 	}
 	else
-		isGreenplum = greenplumCheckIsGreenplum(server, user);
+		isGreenplum = gpCheckIsGP(server, user);
 
 	if (isGreenplum)
 		return (1 << CMD_INSERT);
@@ -7275,7 +7275,7 @@ find_em_for_rel_target(PlannerInfo *root, EquivalenceClass *ec,
 }
 
 static bool
-greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user)
+gpCheckIsGP(ForeignServer *server, UserMapping *user)
 {
 	PGconn     *conn;
 	PGresult   *res;
