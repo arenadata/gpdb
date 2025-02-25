@@ -62,6 +62,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/tlist.h"
 #include "parser/parse_func.h"
+#include "tcop/pquery.h"
 #include "utils/lsyscache.h"
 
 /* Working state for transformSetOperationTree_internal */
@@ -3568,6 +3569,7 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
 	Assert(into != NULL);
 	Assert(into->distributedBy != NULL);
+	Assert(IsA(into->distributedBy, DistributedBy));
 
 	dist = (DistributedBy *)into->distributedBy;
 
@@ -3590,6 +3592,9 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 	{
 		List	*policykeys = NIL;
 		List	*policyopclasses = NIL;
+
+		if (qry->targetList == NIL)
+			qry->targetList = FetchStatementTargetList((Node *)qry);
 
 		foreach(lc, dist->keyCols)
 		{
@@ -3622,6 +3627,8 @@ setQryDistributionPolicy(ParseState *pstate, IntoClause *into, Query *qry)
 													  policyopclasses,
 													  dist->numsegments);
 	}
+
+	into->distributedBy = (Node *)qry->intoPolicy;
 }
 
 /*

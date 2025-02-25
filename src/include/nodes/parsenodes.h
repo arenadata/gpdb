@@ -208,7 +208,7 @@ typedef struct Query
 
 	/*
 	 * MPP: Used only on QD. Don't serialize. Holds the result distribution
-	 * policy for SELECT ... INTO and set operations.
+	 * policy for SELECT ... INTO, CTAS, CTAE and set operations.
 	 */
 	struct GpPolicy *intoPolicy;
 
