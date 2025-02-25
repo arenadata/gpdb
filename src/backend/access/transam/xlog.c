@@ -12542,6 +12542,20 @@ read_backup_label(XLogRecPtr *checkPointLoc, bool *backupEndRequired,
 		ereport(DEBUG1,
 				(errmsg("backup timeline %u in file \"%s\"",
 						tli_from_file, BACKUP_LABEL_FILE)));
+
+		/*
+		 * If we start with recoveryTargetAction = shutdown, we can not correctly
+		 * switch to the next timeline after the next node's start. Because there
+		 * is not any guarantee, that restore_command will be set. To be sure, that
+		 * timeline after restore will be correct, we should not change it in case
+		 * of recoveryTargetAction = shutdown.
+		 * Otherwise, changing it to timeline from the backup label will guarantee,
+		 * that we will use history file for time, when backup was created.
+		 * After recovery node will switch to the first free timeline (if action
+		 * is set to promote).
+		 */
+		if (recoveryTargetAction != RECOVERY_TARGET_ACTION_SHUTDOWN)
+			recoveryTargetTLI = tli_from_file;
 	}
 
 	if (ferror(lfp) || FreeFile(lfp))
