@@ -3,8 +3,7 @@ FROM ubuntu:22.04 AS base
 ARG GPDB_SRC="/home/gpadmin/gpdb_src/"
 
 COPY ./README.Ubuntu.bash $GPDB_SRC
-RUN set -eux && \
-    DEBIAN_FRONTEND=noninteractive $GPDB_SRC/README.Ubuntu.bash
+RUN DEBIAN_FRONTEND=noninteractive $GPDB_SRC/README.Ubuntu.bash
 RUN apt install -y libxslt1-dev
 
 COPY ./ $GPDB_SRC
