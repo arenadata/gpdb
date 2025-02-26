@@ -52,7 +52,6 @@ sub restore_backup_primary
 	# configure recovery
 	$primary->set_recovery_mode;
 	open my $conf, '>', "$primary_pgdata/postgresql.auto.conf";
-	print $conf "synchronous_standby_names = '*'\n";
 	print $conf "recovery_target_action = 'promote'\n";
 	print $conf "restore_command = 'cp -vr $archivedir/%f $primary_pgdata/%p'\n";
 	print $conf "recovery_target_name = '$restore_point'\n";

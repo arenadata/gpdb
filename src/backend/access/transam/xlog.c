@@ -12554,7 +12554,8 @@ read_backup_label(XLogRecPtr *checkPointLoc, bool *backupEndRequired,
 		 * After recovery node will switch to the first free timeline (if action
 		 * is set to promote).
 		 */
-		if (recoveryTargetAction != RECOVERY_TARGET_ACTION_SHUTDOWN)
+		if (recoveryTargetAction != RECOVERY_TARGET_ACTION_SHUTDOWN &&
+			recoveryTargetTimeLineGoal != RECOVERY_TARGET_TIMELINE_NUMERIC)
 			recoveryTargetTLI = tli_from_file;
 	}
 
