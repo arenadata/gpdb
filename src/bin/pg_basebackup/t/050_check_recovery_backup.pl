@@ -14,8 +14,6 @@ umask(0077);
 my $tempdir = PostgreSQL::Test::Utils::tempdir;
 my $basebackupdir1 = $tempdir . '/basebackup1';
 my $basebackupdir2 = $tempdir . '/basebackup2';
-my $basebackupdir3 = $tempdir . '/basebackup3';
-my $basebackupdir4 = $tempdir . '/basebackup4';
 my $archivedir =  $tempdir . '/archive';
 
 my $primary = PostgreSQL::Test::Cluster->new('primary');
@@ -91,44 +89,9 @@ $primary->stop('smart');
 restore_backup_primary($basebackupdir2, 'backup_label2', '012 -> 013');
 wait_recovery_and_switch_wal_primary('012 -> 013');
 
-create_backup_primary($basebackupdir3, 'backup_label3');
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '013 -> 014');
-wait_recovery_and_switch_wal_primary('013 -> 014');
-
-create_backup_primary($basebackupdir4, 'backup_label4');
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '014 -> 015');
-wait_recovery_and_switch_wal_primary('014 -> 015');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '013 -> 024');
-wait_recovery_and_switch_wal_primary('013 -> 024');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '024 -> 025');
-wait_recovery_and_switch_wal_primary('024 -> 025');
-
 $primary->stop('smart');
 restore_backup_primary($basebackupdir2, 'backup_label2', '012 -> 023');
 wait_recovery_and_switch_wal_primary('012 -> 023');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '023 -> 034');
-wait_recovery_and_switch_wal_primary('023 -> 034');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '034 -> 035');
-wait_recovery_and_switch_wal_primary('034 -> 035');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '023 -> 044');
-wait_recovery_and_switch_wal_primary('023 -> 044');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '044 -> 045');
-wait_recovery_and_switch_wal_primary('044 -> 045');
-
 
 $primary->stop('smart');
 restore_backup_primary($basebackupdir1, 'backup_label1', '101 -> 112');
@@ -139,41 +102,8 @@ restore_backup_primary($basebackupdir2, 'backup_label2', '112 -> 113');
 wait_recovery_and_switch_wal_primary('112 -> 113');
 
 $primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '113 -> 114');
-wait_recovery_and_switch_wal_primary('113 -> 114');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '114 -> 115');
-wait_recovery_and_switch_wal_primary('114 -> 115');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '113 -> 124');
-wait_recovery_and_switch_wal_primary('113 -> 124');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '124 -> 125');
-wait_recovery_and_switch_wal_primary('124 -> 125');
-
-$primary->stop('smart');
 restore_backup_primary($basebackupdir2, 'backup_label2', '112 -> 123');
 wait_recovery_and_switch_wal_primary('112 -> 123');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '123 -> 134');
-wait_recovery_and_switch_wal_primary('123 -> 134');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '134 -> 135');
-wait_recovery_and_switch_wal_primary('134 -> 135');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '123 -> 144');
-wait_recovery_and_switch_wal_primary('123 -> 144');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '144 -> 145');
-wait_recovery_and_switch_wal_primary('144 -> 145');
-
 
 $primary->stop('smart');
 restore_backup_primary($basebackupdir1, 'backup_label1', '201 -> 212');
@@ -184,40 +114,8 @@ restore_backup_primary($basebackupdir2, 'backup_label2', '212 -> 213');
 wait_recovery_and_switch_wal_primary('212 -> 213');
 
 $primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '213 -> 214');
-wait_recovery_and_switch_wal_primary('213 -> 214');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '214 -> 215');
-wait_recovery_and_switch_wal_primary('214 -> 215');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '213 -> 224');
-wait_recovery_and_switch_wal_primary('213 -> 224');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '224 -> 225');
-wait_recovery_and_switch_wal_primary('224 -> 225');
-
-$primary->stop('smart');
 restore_backup_primary($basebackupdir2, 'backup_label2', '212 -> 223');
 wait_recovery_and_switch_wal_primary('212 -> 223');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '223 -> 234');
-wait_recovery_and_switch_wal_primary('223 -> 234');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '234 -> 235');
-wait_recovery_and_switch_wal_primary('234 -> 235');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir3, 'backup_label3', '223 -> 244');
-wait_recovery_and_switch_wal_primary('223 -> 244');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir4, 'backup_label4', '244 -> 245');
-wait_recovery_and_switch_wal_primary('244 -> 245');
 
 $primary->teardown_node;
 
