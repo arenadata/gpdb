@@ -646,7 +646,7 @@ reset optimizer_trace_fallback;
 \! mv $MASTER_DATA_DIRECTORY/minidumps/*.mdp $MASTER_DATA_DIRECTORY/minidumps/dump.mdp
 \! echo "import xml.dom.minidom" > $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! echo "dom = xml.dom.minidom.parse('$MASTER_DATA_DIRECTORY/minidumps/dump.mdp')" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
-\! echo "pretty_xml = dom.toprettyxml()" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
+\! echo "pretty_xml = dom.toprettyxml(indent='   ')" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! echo "with open('$MASTER_DATA_DIRECTORY/minidumps/pretty.xml', 'w') as file:" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! echo "\tfile.write(pretty_xml)" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! python $MASTER_DATA_DIRECTORY/minidumps/script.py
@@ -659,10 +659,10 @@ reset optimizer_trace_fallback;
 \! sed -i 's/dxl://' $MASTER_DATA_DIRECTORY/minidumps/pretty.xml
 -- end_ignore
 
-select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/pretty.xml')));
+select replace ((xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/pretty.xml'))))::text, '        <', '<');
 
---insert into t1 values (1);
---analyze t1;
+insert into t1 values (1);
+analyze t1;
 -- After adding data, the ORCA physical plan changes and DXL changes too.
 -- The outer <dxl:TestExpr> is empty. The second <dxl:TestExpr> (nested) does not contain a
 -- deep tree. The left node contains an attribute (Ident ColId="0") that is not present
@@ -684,7 +684,7 @@ reset optimizer_trace_fallback;
 \! mv $MASTER_DATA_DIRECTORY/minidumps/*.mdp $MASTER_DATA_DIRECTORY/minidumps/dump.mdp
 \! echo "import xml.dom.minidom" > $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! echo "dom = xml.dom.minidom.parse('$MASTER_DATA_DIRECTORY/minidumps/dump.mdp')" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
-\! echo "pretty_xml = dom.toprettyxml()" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
+\! echo "pretty_xml = dom.toprettyxml(indent='    ')" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! echo "with open('$MASTER_DATA_DIRECTORY/minidumps/pretty.xml', 'w') as file:" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! echo "\tfile.write(pretty_xml)" >> $MASTER_DATA_DIRECTORY/minidumps/script.py
 \! python $MASTER_DATA_DIRECTORY/minidumps/script.py
@@ -697,7 +697,6 @@ reset optimizer_trace_fallback;
 \! sed -i 's/dxl://' $MASTER_DATA_DIRECTORY/minidumps/pretty.xml
 -- end_ignore
 
-select xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/pretty.xml')));
-
+select replace ((xpath ('.//Plan', xmlparse(document pg_read_file('minidumps/pretty.xml'))))::text, '          <', '<');
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
 drop table t1,t2,t3;
