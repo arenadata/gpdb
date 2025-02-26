@@ -325,4 +325,7 @@ class GPRebalance:
         self.logger.info('Shutting down gprebalance...')
         if self.executor:
             self.executor.shutdown()
-        self.conn.close()
+            self.executor = None
+        if self.conn:
+            self.conn.close()
+            self.conn = None

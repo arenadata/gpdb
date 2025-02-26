@@ -1,4 +1,6 @@
 import base64
+import fcntl
+import multiprocessing
 import time
 from collections import defaultdict
 import pickle
@@ -14,6 +16,9 @@ from gppylib.commands.gp import *
 from gppylib.commands.unix import DiskFree, DiskUsage
 from gppylib.operations.validate_disk_space import FileSystem
 from gppylib.parseutils import *
+from gppylib.programs.clsRecoverSegment import GpRecoverSegmentProgram
+from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, \
+    fileSystemImplOs, osInterface, osImplNative, faultProberInterface, faultProberImplGpdb
 
 MAX_BATCH_SIZE = 128
 FILENAME = "/move_"
@@ -30,6 +35,55 @@ class NoValidDataDirectories(Exception):
     pass
 
 
+class RecoveryProcess:
+    @staticmethod
+    def run_recovery(cmd_args: list, result_queue: multiprocessing.Queue, log_file: str):
+        try:
+            log_fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+            flags = fcntl.fcntl(log_fd, fcntl.F_GETFL)
+            fcntl.fcntl(log_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+            os.dup2(log_fd, 1)  # stdout
+            os.dup2(log_fd, 2)  # stderr
+            os.close(log_fd)
+
+            # Register all necessary interfaces to run a gprecoverseg
+            # in a separate process
+            configurationInterface.registerConfigurationProvider(
+                configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
+            fileSystemInterface.registerFileSystemProvider(
+                fileSystemImplOs.GpFileSystemProviderUsingOs())
+            osInterface.registerOsProvider(
+                osImplNative.GpOsProviderUsingNative())
+            faultProberInterface.registerFaultProber(
+                faultProberImplGpdb.GpFaultProberImplGpdb())
+
+            local_parser = GpRecoverSegmentProgram.createParser()
+            local_options, args = local_parser.parse_args(cmd_args)
+
+            # Create and run the program
+            cmd = GpRecoverSegmentProgram.createProgram(local_options, args)
+            cmd.run()
+
+        except SystemExit as e:
+            error_msg = None
+            if e.code != 0:
+                error_msg = f"Gprecoverseg failed with exit code: {e.code}. See the {log_file}"
+            result_queue.put({
+                "status": "FAILED" if e.code != 0 else "SUCCESS",
+                "error": error_msg
+            })
+        except Exception as e:
+            error_msg = f"Error in gprecoverseg process: {str(e)}"
+            result_queue.put({
+                "status": "FAILED",
+                "error": error_msg
+            })
+        finally:
+            sys.stdout.flush()
+            sys.stderr.flush()
+            cmd.cleanup()
+
+
 class SingleMoveCommand(SQLCommand):
     def __init__(self, name: str, status_url: dbconn.DbURL, step_details, logger):
         self.status_url = status_url
@@ -42,16 +96,14 @@ class SingleMoveCommand(SQLCommand):
         SQLCommand.__init__(self, name)
 
     def write_gprecoverseg_config(self):
-        filename = self.conf_dir + FILENAME + "dbid"+str(self.segment.dbid)
-        fp = open(filename, 'w')
-        line = canonicalize_address(self.segment.address) + \
-            "|" + str(self.segment.port) + "|" + str(self.segment.datadir)
-        line = line + " "
-        line = line + canonicalize_address(self.move.dstHost.address) + \
-            "|" + str(self.move.target_port) + "|" + \
-            self.move.target_datadir + "/gpseg" + \
-            str(self.move.segid.contentid)
-        fp.write(line)
+        filename = self.conf_dir + FILENAME + "dbid" + str(self.segment.dbid)
+        with open(filename, 'w') as fp:
+            line = (f"{canonicalize_address(self.segment.address)}|"
+                    f"{self.segment.port}|{self.segment.datadir} "
+                    f"{canonicalize_address(self.move.dstHost.address)}|"
+                    f"{self.move.target_port}|"
+                    f"{self.move.target_datadir}/gpseg{self.move.segid.contentid}")
+            fp.write(line)
         return filename
 
     def run(self, validateAfter=False):
@@ -65,23 +117,41 @@ class SingleMoveCommand(SQLCommand):
             return
 
         filename = self.write_gprecoverseg_config()
-        recoversegOptions = "-i " + filename + \
-            " -B 1" + " -v -a"
+        log_file = os.path.join(self.conf_dir,
+                                f"gprecoverseg_dbid{self.segment.dbid}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+                                )
         self.logger.info(
-            f"About to run gprecoverseg for move dbid={self.segment.dbid} with options: {recoversegOptions}")
-        cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
+            f"About to run gprecoverseg for move dbid={self.segment.dbid}")
+
+        # Prepare command arguments
+        cmd_args = [
+            '-i', filename,
+            '-B', '1',
+            '-v', '-a'
+        ]
 
         StatusManager.update_record_status(
             status_conn, [self.segment.dbid], MoveStatus.IN_PROGRESS)
-        cmd.run()
 
-        if cmd.results.rc != 0:
-            self.logger.error(f"Could not perform mirror dbid={self.segment.dbid} move with content {self.segment.content} due to "
-                              f"recoverseg error: {cmd.results.stderr}\n"
-                              "Check the gprecoverseg log file, correct any problems, and re-run")
+        result_queue = multiprocessing.Queue()
+        recovery_process = multiprocessing.Process(
+            target=RecoveryProcess.run_recovery,
+            args=(cmd_args, result_queue, log_file)
+        )
+        recovery_process.start()
+
+        result = result_queue.get()
+        if result["status"] == "FAILED":
+            self.logger.error(
+                f"Could not perform mirror dbid={self.segment.dbid} "
+                f"move with content {self.segment.content} due to "
+                f"recoverseg error: {result['error']}\n"
+                "Check the gprecoverseg l og file, correct any problems, and re-run"
+            )
             StatusManager.update_record_status(
                 status_conn, [self.segment.dbid], MoveStatus.FAILED)
             self.move_error = True
+        recovery_process.join()
         if self.needs_switch:
             StatusManager.update_record_status(
                 status_conn, [self.segment.dbid], MoveStatus.AWAITS_SWITCH)
@@ -740,6 +810,8 @@ class RebalanceExecutor:
                         break
                     time.sleep(5)
                 if stoppedEarly:
+                    self.logger.info("Execution timeout is reached. Finishing existing jobs "
+                                     "and stopping rebalance.")
                     break
 
             self.queue.haltWork()
@@ -792,3 +864,4 @@ class RebalanceExecutor:
         if self.queue:
             self.queue.haltWork()
             self.queue.joinWorkers()
+            self.queue = None

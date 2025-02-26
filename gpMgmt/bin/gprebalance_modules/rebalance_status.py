@@ -184,13 +184,14 @@ class StatusManager:
     def update_record_status(conn: dbconn.Connection, dbids: List[int], status: MoveStatus):
         """Record initial move details"""
         dbid_str = ','.join(str(dbid) for dbid in dbids)
-        sql = """
-                    UPDATE gprebalance.status_detail SET status = '%s' WHERE
-                    dbid IN (%s)
-                """ % (
-            status,
-            dbid_str
-        )
+        if status == MoveStatus.COMPLETED:
+            sql = "UPDATE gprebalance.status_detail SET status = '%s' , rebalance_finished = '%s' WHERE dbid IN (%s)" % (
+                status, datetime.now(), dbid_str
+            )
+        else:
+            sql = "UPDATE gprebalance.status_detail SET status = '%s' WHERE dbid IN (%s)" % (
+                status, dbid_str
+            )
         dbconn.execSQL(conn, sql)
 
     def remove_all(self):

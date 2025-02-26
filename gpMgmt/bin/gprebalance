@@ -27,8 +27,6 @@ except ImportError as e:
 
 DBNAME = 'postgres'
 
-MAX_PARALLEL_WORKERS = 4
-
 _description = ("""
 Rebalances the existing segments configuration for getting
 optimal performance of whole cluster.
@@ -74,7 +72,7 @@ _usage = """
 
 EXECNAME = os.path.split(__file__)[-1]
 MAX_BATCH_SIZE = 128
-MAX_PARALLEL = 96
+MAX_PARALLEL_WORKERS = 96
 
 
 def parseargs():
@@ -97,7 +95,7 @@ def parseargs():
                       help='duration from beginning to end.')
     parser.add_option('-e', '--end', type='datetime', metavar='datetime',
                       help="ending date and time in the format 'YYYY-MM-DD hh:mm:ss'.")
-    parser.add_option('-n', '--parallel', type="int", default=1, metavar="<parallel_processes>",
+    parser.add_option('-n', '--parallel', type="int", default=4, metavar="<parallel_processes>",
                       help='number of workerks performing segment movements at a time. Valid values are 1-%d.' % MAX_PARALLEL_WORKERS)
     parser.add_option('--allow-mirrorless', dest='allow_mirrorless', action='store_true',
                       help='Allow to rebalance a cluster without mirrors', default=False)
@@ -347,16 +345,18 @@ def possibility_checks(gpreb: GPRebalance):
         startup_validator.prevalidate_mirror_strategy()
 
 
+gprebalance = None
+
+
 def sig_handler(sig, arg):
 
+    if gprebalance:
+        gprebalance.shutdown()
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
     signal.signal(signal.SIGHUP, signal.SIG_DFL)
 
     # raise sig
     os.kill(os.getpid(), sig)
-
-
-gprebalance = None
 
 
 def main(options, args, parser):
