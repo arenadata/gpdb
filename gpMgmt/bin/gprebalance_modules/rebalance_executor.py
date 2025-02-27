@@ -7,7 +7,7 @@ import pickle
 from typing import List, Dict, Optional, Set, Tuple
 from enum import Enum
 from gprebalance_modules.rebalance_plan import Move, Plan  # nopep8
-from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus, MoveStatus
+from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus, MoveStatus, SqlError
 from gprebalance_modules.rebalance import ClusterState, SegmentId, SegmentSize, Host
 from gppylib.gparray import GpArray, Segment
 from gppylib.db import dbconn
@@ -103,6 +103,9 @@ class SingleMoveCommand(SQLCommand):
                     f"{canonicalize_address(self.move.dstHost.address)}|"
                     f"{self.move.target_port}|"
                     f"{self.move.target_datadir}/gpseg{self.move.segid.contentid}")
+            self.logger.info(
+                "About to run gprecoverseg for mirror move "
+                f"(dbid = {self.segment.dbid}, content = {self.segment.content}) {line}")
             fp.write(line)
         return filename
 
@@ -112,54 +115,71 @@ class SingleMoveCommand(SQLCommand):
             status_conn = dbconn.connect(self.status_url, encoding='UTF8')
             StatusManager.record_move(status_conn, self.move, self.segment,
                                       self.size, datetime.datetime.now())
+
+            filename = self.write_gprecoverseg_config()
+            log_file = os.path.join(self.conf_dir,
+                                    f"gprecoverseg_dbid{self.segment.dbid}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+                                    )
+
+            # Prepare command arguments
+            cmd_args = [
+                '-i', filename,
+                '-B', '1',
+                '-v', '-a'
+            ]
+            try:
+                StatusManager.update_record_status(
+                    status_conn, [self.segment.dbid], MoveStatus.IN_PROGRESS)
+            except SqlError:
+                raise Exception(
+                    f"Could not update status for move with dbid={self.segment.dbid}: ")
+
+            result_queue = multiprocessing.Queue()
+            recovery_process = multiprocessing.Process(
+                target=RecoveryProcess.run_recovery,
+                args=(cmd_args, result_queue, log_file)
+            )
+            recovery_process.start()
+            result = result_queue.get()
+            recovery_process.join()
+            if result["status"] == "FAILED":
+                self.logger.error(
+                    f"Could not perform mirror dbid={self.segment.dbid} "
+                    f"move with content {self.segment.content} due to "
+                    f"recoverseg error: {result['error']}\n"
+                    "Check the gprecoverseg l og file, fix any problems, and re-run"
+                )
+                try:
+                    StatusManager.update_record_status(
+                        status_conn, [self.segment.dbid], MoveStatus.FAILED)
+                except SqlError:
+                    raise Exception(
+                        f"Could not update status for move with dbid={self.segment.dbid}: ")
+
+                self.move_error = True
+                status_conn.close()
+                return
+            if self.needs_switch:
+                try:
+                    StatusManager.update_record_status(
+                        status_conn, [self.segment.dbid], MoveStatus.AWAITS_SWITCH)
+                except SqlError:
+                    raise Exception(
+                        f"Could not update status for move with dbid={self.segment.dbid}: ")
+
+            try:
+                StatusManager.update_record_status(
+                    status_conn, [self.segment.dbid], MoveStatus.COMPLETED)
+            except SqlError:
+                raise Exception(
+                    f"Could not update status for move with dbid={self.segment.dbid}: ")
+            status_conn.close()
+
         except Exception as ex:
             self.logger.error(ex.__str__().strip())
-            return
-
-        filename = self.write_gprecoverseg_config()
-        log_file = os.path.join(self.conf_dir,
-                                f"gprecoverseg_dbid{self.segment.dbid}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-                                )
-        self.logger.info(
-            f"About to run gprecoverseg for move dbid={self.segment.dbid}")
-
-        # Prepare command arguments
-        cmd_args = [
-            '-i', filename,
-            '-B', '1',
-            '-v', '-a'
-        ]
-
-        StatusManager.update_record_status(
-            status_conn, [self.segment.dbid], MoveStatus.IN_PROGRESS)
-
-        result_queue = multiprocessing.Queue()
-        recovery_process = multiprocessing.Process(
-            target=RecoveryProcess.run_recovery,
-            args=(cmd_args, result_queue, log_file)
-        )
-        recovery_process.start()
-
-        result = result_queue.get()
-        if result["status"] == "FAILED":
-            self.logger.error(
-                f"Could not perform mirror dbid={self.segment.dbid} "
-                f"move with content {self.segment.content} due to "
-                f"recoverseg error: {result['error']}\n"
-                "Check the gprecoverseg l og file, correct any problems, and re-run"
-            )
-            StatusManager.update_record_status(
-                status_conn, [self.segment.dbid], MoveStatus.FAILED)
             self.move_error = True
-        recovery_process.join()
-        if self.needs_switch:
-            StatusManager.update_record_status(
-                status_conn, [self.segment.dbid], MoveStatus.AWAITS_SWITCH)
-
-        StatusManager.update_record_status(
-            status_conn, [self.segment.dbid], MoveStatus.COMPLETED)
-
-        status_conn.close()
+            status_conn.close()
+            return
 
 
 class FilesystemSpace:
@@ -779,6 +799,7 @@ class RebalanceExecutor:
                     self.logger.info(
                         f"Executing role swaps for {len(sequence[1])} segments")
                     self._execute_role_swaps(sequence[1])
+
                     self.statusManager.set_db_status(
                         RebalanceStatus.IN_PROGRESS)
                 else:
@@ -810,7 +831,7 @@ class RebalanceExecutor:
                         break
                     time.sleep(5)
                 if stoppedEarly:
-                    self.logger.info("Execution timeout is reached. Finishing existing jobs "
+                    self.logger.info("Execution timeout is reached. Waiting the existing jobs to finish "
                                      "and stopping rebalance.")
                     break
 
@@ -832,8 +853,6 @@ class RebalanceExecutor:
                 self.logger.info("Rebalance stopped due to timeout")
 
         except Exception as e:
-            logger.error(f"Rebalance failed: {e}")
-            self.statusManager.set_db_status(RebalanceStatus.FAILED)
             raise
 
     def _execute_role_swaps(self, segids: List[SegmentId]):
@@ -855,7 +874,8 @@ class RebalanceExecutor:
                             "status = 'awaits_switch'")
                 cur.execute("COMMIT")
         except Exception as e:
-            self.logger.error('could not execute SQL : %s' % str(e))
+            raise Exception('could not execute SQL : %s' % str(e))
+
         recoversegOptions = "-r -a"
         cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
         cmd.run(validateAfter=True)
