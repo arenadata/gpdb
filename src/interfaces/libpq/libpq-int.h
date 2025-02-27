@@ -93,7 +93,7 @@ typedef struct
 
 /*
  * CurTransactionContext's lifetime lasts until the end of the current query,
- * which does the job well for backends. Auxillary processes do not set
+ * which does the job well for backends. Auxiliary processes do not set
  * transaction contexts, so we have to use TopMemoryContext to achieve a
  * lifetime equivalent to malloc().
  */
