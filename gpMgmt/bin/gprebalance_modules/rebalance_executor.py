@@ -92,8 +92,14 @@ class SingleMoveCommand(SQLCommand):
          self.conf_dir, self.needs_switch) = step_details
 
         self.move_error = False
+        self.filename = None
 
         SQLCommand.__init__(self, name)
+
+    def __del__(self):
+        if self.filename is not None:
+            if os.path.exists(self.filename):
+                os.unlink(self.filename)
 
     def write_gprecoverseg_config(self):
         filename = self.conf_dir + FILENAME + "dbid" + str(self.segment.dbid)
@@ -116,7 +122,7 @@ class SingleMoveCommand(SQLCommand):
             self.logger.error(ex.__str__().strip())
             return
 
-        filename = self.write_gprecoverseg_config()
+        self.filename = self.write_gprecoverseg_config()
         log_file = os.path.join(self.conf_dir,
                                 f"gprecoverseg_dbid{self.segment.dbid}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
                                 )
@@ -125,7 +131,7 @@ class SingleMoveCommand(SQLCommand):
 
         # Prepare command arguments
         cmd_args = [
-            '-i', filename,
+            '-i', self.filename,
             '-B', '1',
             '-v', '-a'
         ]
