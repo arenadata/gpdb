@@ -4,6 +4,7 @@ import multiprocessing
 import time
 from collections import defaultdict
 import pickle
+import shutil
 from typing import List, Dict, Optional, Set, Tuple
 from enum import Enum
 from gprebalance_modules.rebalance_plan import Move, Plan  # nopep8
@@ -355,12 +356,18 @@ class RebalanceExecutor:
         self.statusManager = statusManager
         self.options = options
         self.dburl = dburl
+        self.to_delete = []
         segids = []
         for m in plan.moves:
             segids.append(m.segid)
         self.segmentSizes = self.estimateSegmentSizes(segids)
         self.resources = self.initializeHostResources(plan.moves)
         self.queue = None
+
+    def __del__(self):
+        for to_delete in self.to_delete:
+            self.logger.info(f"removing {to_delete}")
+            shutil.rmtree(to_delete)
 
     def initializeHostResources(self, moves: List[Move]):
         resources = {}
@@ -436,11 +443,13 @@ class RebalanceExecutor:
                 sourceSeg.address, [sourceSeg.datadir])
             segmentSizes[segid] = SegmentSize(
                 source_data_dir_usage[sourceSeg.datadir], None)
+            self.to_delete.append(sourceSeg.datadir)
         for segid, tblspace_dirs in tablespaces.items():
             sourceSeg = self.segmentMap[segid]
             source_tblsps_usage = self._disk_usage(
                 sourceSeg.address, tblspace_dirs)
             segmentSizes[segid].source_tablespace_usage = source_tblsps_usage
+            self.to_delete.extend(tblspace_dirs)
 
         return segmentSizes
 
