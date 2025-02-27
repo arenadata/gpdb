@@ -3,12 +3,14 @@ FROM ubuntu:22.04 AS base
 ARG GPDB_SRC="/home/gpadmin/gpdb_src/"
 
 COPY ./README.Ubuntu.bash $GPDB_SRC
+# Set frontend to avoid kerberos prompt.
 RUN DEBIAN_FRONTEND=noninteractive $GPDB_SRC/README.Ubuntu.bash
 RUN apt install -y libxslt1-dev
 
 COPY ./ $GPDB_SRC
 WORKDIR $GPDB_SRC
 
+# Speed up the ORCA build and ignore deprecations.
 ENV CFLAGS="-O0 -Wno-deprecated-declarations"
 
 RUN CC="clang" CXX="clang++" CXXFLAGS="$CFLAGS" \
@@ -18,4 +20,4 @@ RUN CC="clang" CXX="clang++" CXXFLAGS="$CFLAGS" \
                 --with-ldap --with-pam --with-openssl --with-libxml \
                 --with-libxslt --enable-debug-extensions --with-pam
 
-RUN make -s -j`nproc`
+RUN make -s -j"$(nproc)"
