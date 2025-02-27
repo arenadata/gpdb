@@ -18,6 +18,6 @@ RUN CC="clang" CXX="clang++" CXXFLAGS="$CFLAGS" \
                 --enable-depend --enable-cassert --enable-gpcloud \
                 --enable-ic-proxy --with-llvm --with-perl --with-gssapi \
                 --with-ldap --with-pam --with-openssl --with-libxml \
-                --with-libxslt --enable-debug-extensions --with-pam
+                --with-libxslt --enable-debug-extensions
 
 RUN make -s -j"$(nproc)"
