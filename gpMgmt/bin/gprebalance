@@ -443,6 +443,7 @@ def main(options, args, parser):
     finally:
         gprebalance.remove_status_file()
         gprebalance.cleanup_schema()
+        gprebalance.cleanup_plan()
         gprebalance.shutdown()
         remove_pid_file(get_coordinatordatadir())
 

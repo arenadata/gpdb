@@ -314,7 +314,15 @@ class GPRebalance:
         self.logger.info('Dropping rebalance schema')
         self.statusManager.cleanup_schema()
 
+    def cleanup_plan(self):
+        self.logger.info('Dropping rebalance plan')
+        datadir = self.options.coordinator_data_directory + CONF_DIR
+        plan_file = os.path.join(datadir, "plan.pkl")
+        if os.path.exists(plan_file):
+            os.unlink(plan_file)
+
     def remove_status_file(self):
+        self.logger.info('Dropping status file')
         if self.statusManager:
             self.statusManager.remove_all()
 
