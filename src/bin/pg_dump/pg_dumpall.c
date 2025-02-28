@@ -891,8 +891,7 @@ dumpResQueues(PGconn *conn)
 	PGresult   *res;
 	int			i_rsqname,
 				i_resname,
-				i_ressetting,
-				i_rqoid;
+				i_ressetting;
 	int			i;
 	char	   *prev_rsqname = NULL;
 	bool		bWith = false;
@@ -924,7 +923,6 @@ dumpResQueues(PGconn *conn)
 
 	res = executeQuery(conn, buf->data);
 
-	i_rqoid = PQfnumber(res, "oid");
 	i_rsqname = PQfnumber(res, "rsqname");
 	i_resname = PQfnumber(res, "resname");
 	i_ressetting = PQfnumber(res, "ressetting");

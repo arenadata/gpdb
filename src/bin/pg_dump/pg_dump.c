@@ -8896,7 +8896,6 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 	int			i_attfdwoptions;
 	int			i_attmissingval;
 	int			i_atthasdef;
-	int			i_attencoding;
 
 	/*
 	 * We want to perform just one query against pg_attribute, and then just
@@ -9049,7 +9048,6 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 	i_attfdwoptions = PQfnumber(res, "attfdwoptions");
 	i_attmissingval = PQfnumber(res, "attmissingval");
 	i_atthasdef = PQfnumber(res, "atthasdef");
-	i_attencoding = PQfnumber(res, "attencoding");
 
 	/* Within the next loop, we'll accumulate OIDs of tables with defaults */
 	resetPQExpBuffer(tbloids);
@@ -20119,14 +20117,12 @@ addDistributedByOld(Archive *fout, PQExpBuffer q, const TableInfo *tbinfo, int a
 		if (strlen(policydef) > 0)
 		{
 			bool		isfirst = true;
-			char	   *separator;
 
 			appendPQExpBuffer(q, " DISTRIBUTED BY (");
 
 			/* policy indicates one or more columns to distribute on */
 			policydef[strlen(policydef) - 1] = '\0';
 			policydef++;
-			separator = ",";
 
 			while ((policycol = nextToken(&policydef, ",")) != NULL)
 			{

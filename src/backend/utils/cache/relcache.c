@@ -4400,7 +4400,6 @@ AttrDefaultFetch(Relation relation)
 	HeapTuple	htup;
 	Datum		val;
 	bool		isnull;
-	int			found;
 	int			i;
 
 	ScanKeyInit(&skey,
@@ -4411,7 +4410,6 @@ AttrDefaultFetch(Relation relation)
 	adrel = table_open(AttrDefaultRelationId, AccessShareLock);
 	adscan = systable_beginscan(adrel, AttrDefaultIndexId, true,
 								NULL, 1, &skey);
-	found = 0;
 
 	while (HeapTupleIsValid(htup = systable_getnext(adscan)))
 	{
@@ -4426,8 +4424,6 @@ AttrDefaultFetch(Relation relation)
 				elog(WARNING, "multiple attrdef records found for attr %s of rel %s",
 					 NameStr(attr->attname),
 					 RelationGetRelationName(relation));
-			else
-				found++;
 
 			val = fastgetattr(htup,
 							  Anum_pg_attrdef_adbin,

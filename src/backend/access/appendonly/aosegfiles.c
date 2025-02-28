@@ -1574,7 +1574,6 @@ aorow_compression_ratio_internal(Relation parentrel)
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
 	volatile bool		connected = false;
-	int			proc;	/* 32 bit, only holds number of segments */
 	int			ret;
 	float8		compress_ratio = -1;	/* the default, meaning "not
 										 * available" */
@@ -1611,7 +1610,6 @@ aorow_compression_ratio_internal(Relation parentrel)
 
 		/* Do the query. */
 		ret = SPI_execute(sqlstmt.data, false, 0);
-		proc = (int) SPI_processed;
 
 		if (ret > 0 && SPI_tuptable != NULL)
 		{
@@ -1622,7 +1620,7 @@ aorow_compression_ratio_internal(Relation parentrel)
 			int64		eof_uncomp;
 
 			/* we expect only 1 tuple */
-			Assert(proc == 1);
+			Assert(SPI_processed == 1);
 
 			/*
 			 * Get totals from QE's and calculate the compression ratio. In
