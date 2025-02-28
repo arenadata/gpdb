@@ -12553,6 +12553,8 @@ read_backup_label(XLogRecPtr *checkPointLoc, bool *backupEndRequired,
 		 * that we will use history file for time, when backup was created.
 		 * After recovery node will switch to the first free timeline (if action
 		 * is set to promote).
+		 * Do not change TLI, if postgres.auto.conf contains numeric value for
+		 * target TLI.
 		 */
 		if (recoveryTargetAction != RECOVERY_TARGET_ACTION_SHUTDOWN &&
 			recoveryTargetTimeLineGoal != RECOVERY_TARGET_TIMELINE_NUMERIC)
