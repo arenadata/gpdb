@@ -13,6 +13,8 @@ WORKDIR $GPDB_SRC
 # Speed up the ORCA build and ignore deprecations.
 ENV CFLAGS="-O0 -Wno-deprecated-declarations"
 
+# Ensure we use as many C-code related ./configure flags here as possible for
+# the broadest compilation coverage.
 RUN CC="clang" CXX="clang++" CXXFLAGS="$CFLAGS" \
     ./configure --enable-orafce --enable-debug --enable-profiling \
                 --enable-depend --enable-cassert --enable-gpcloud \
