@@ -56,6 +56,10 @@ class InvalidStatusError(Exception):
     pass
 
 
+class SqlError(Exception):
+    pass
+
+
 class StatusManager:
     def __init__(self, conn: dbconn.Connection, options, logger):
 

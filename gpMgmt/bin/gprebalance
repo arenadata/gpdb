@@ -264,20 +264,9 @@ def possibility_checks(gpreb: GPRebalance):
     hosts_list = gpreb.current_hosts
 
     if gpreb.unpreferred_segments:
-        if not gpreb.options.silent and ask_yesno('', "Current role does not match preferred role for several segments.\n"
-                                                      "Are you sure you want "
-                                                      "to continue with this gprebalance session?", "N"):
-            hstmap = gpreb.getHostsFromGpArray()
-            for prim, mir in gpreb.unpreferred_segments:
-                hstmap[(prim.hostname, prim.address)
-                       ].primary_segments.discard(prim.content)
-                hstmap[(prim.hostname, prim.address)
-                       ].mirror_segments.add(prim.content)
-                hstmap[(mir.hostname, mir.address)
-                       ].primary_segments.add(mir.content)
-                hstmap[(mir.hostname, mir.address)
-                       ].mirror_segments.discard(mir.content)
-            hosts_list = list(hstmap.values())
+        logger.eror(
+            "Current role does not match preferred role for several segments. "
+            "Call gprecoverseg -r to restore the original roles")
 
     startup_validator = ClusterValidator(
         hosts_list,
