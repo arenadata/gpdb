@@ -267,7 +267,7 @@ pqParseInput3(PGconn *conn)
 
 					/* now just loop through */
 					conn->result->aotupcounts =
-						maybe_palloc(sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
+						pq_palloc(sizeof(PQaoRelTupCount) * conn->result->naotupcounts);
 					ao = conn->result->aotupcounts;
 					for (i = 0; i < conn->result->naotupcounts; i++)
 					{
@@ -529,7 +529,7 @@ pqParseInput3(PGconn *conn)
 
 					if (pqGetInt(&conn->result->extraslen, 4, conn))
 						return;
-					conn->result->extras = maybe_palloc(conn->result->extraslen);
+					conn->result->extras = pq_palloc(conn->result->extraslen);
 					if (pqGetnchar((char *)conn->result->extras, conn->result->extraslen, conn))
 						return;
 					conn->asyncStatus = PGASYNC_READY;
@@ -555,7 +555,7 @@ pqParseInput3(PGconn *conn)
 					{
 						if (conn->result->waitGxids == NULL)
 							conn->result->waitGxids =
-								maybe_palloc(sizeof(int) * conn->result->nWaits);
+								pq_palloc(sizeof(int) * conn->result->nWaits);
 						for (i = 0; i < conn->result->nWaits; i++)
 						{
 							int gxid;

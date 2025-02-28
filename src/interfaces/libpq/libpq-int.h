@@ -100,15 +100,15 @@ typedef struct
 #define PQ_PALLOC_CONTEXT \
 	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext)
 
-#define maybe_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
-#define maybe_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
-#define maybe_repalloc(x, sz) repalloc(x, sz)
-#define maybe_pfree(x) pfree(x)
+#define pq_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
+#define pq_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
+#define pq_repalloc(x, sz) repalloc(x, sz)
+#define pq_pfree(x) pfree(x)
 #else
-#define maybe_palloc(sz) malloc(sz)
-#define maybe_pstrdup(x) strdup(x)
-#define maybe_repalloc(x, sz) realloc(x, sz)
-#define maybe_pfree(x) free(x)
+#define pq_palloc(sz) malloc(sz)
+#define pq_pstrdup(x) strdup(x)
+#define pq_repalloc(x, sz) realloc(x, sz)
+#define pq_pfree(x) free(x)
 #endif
 
 /*

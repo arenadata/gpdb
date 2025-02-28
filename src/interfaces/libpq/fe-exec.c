@@ -151,7 +151,7 @@ PQmakeEmptyPGresult(PGconn *conn, ExecStatusType status)
 {
 	PGresult   *result;
 
-	result = (PGresult *) maybe_palloc(sizeof(PGresult));
+	result = (PGresult *) pq_palloc(sizeof(PGresult));
 	if (!result)
 		return NULL;
 
@@ -407,7 +407,7 @@ dupEvents(PGEvent *events, int count)
 	if (!events || count <= 0)
 		return NULL;
 
-	newEvents = (PGEvent *) maybe_palloc(count * sizeof(PGEvent));
+	newEvents = (PGEvent *) pq_palloc(count * sizeof(PGEvent));
 	if (!newEvents)
 		return NULL;
 
@@ -417,12 +417,12 @@ dupEvents(PGEvent *events, int count)
 		newEvents[i].passThrough = events[i].passThrough;
 		newEvents[i].data = NULL;
 		newEvents[i].resultInitialized = FALSE;
-		newEvents[i].name = maybe_pstrdup(events[i].name);
+		newEvents[i].name = pq_pstrdup(events[i].name);
 		if (!newEvents[i].name)
 		{
 			while (--i >= 0)
-				maybe_pfree(newEvents[i].name);
-			maybe_pfree(newEvents);
+				pq_pfree(newEvents[i].name);
+			pq_pfree(newEvents);
 			return NULL;
 		}
 	}
@@ -585,7 +585,7 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	 */
 	if (nBytes >= PGRESULT_SEP_ALLOC_THRESHOLD)
 	{
-		block = (PGresult_data *) maybe_palloc(nBytes + PGRESULT_BLOCK_OVERHEAD);
+		block = (PGresult_data *) pq_palloc(nBytes + PGRESULT_BLOCK_OVERHEAD);
 		if (!block)
 			return NULL;
 		space = block->space + PGRESULT_BLOCK_OVERHEAD;
@@ -609,7 +609,7 @@ pqResultAlloc(PGresult *res, size_t nBytes, bool isBinary)
 	}
 
 	/* Otherwise, start a new block. */
-	block = (PGresult_data *) maybe_palloc(PGRESULT_DATA_BLOCKSIZE);
+	block = (PGresult_data *) pq_palloc(PGRESULT_DATA_BLOCKSIZE);
 	if (!block)
 		return NULL;
 	block->next = res->curBlock;
@@ -709,18 +709,18 @@ PQclear(PGresult *res)
 	}
 
 	if (res->events)
-		maybe_pfree(res->events);
+		pq_pfree(res->events);
 
 	/* Free all the subsidiary blocks */
 	while ((block = res->curBlock) != NULL)
 	{
 		res->curBlock = block->next;
-		maybe_pfree(block);
+		pq_pfree(block);
 	}
 
 	/* Free the top-level tuple pointer array */
 	if (res->tuples)
-		maybe_pfree(res->tuples);
+		pq_pfree(res->tuples);
 
 	/* zero out the pointer fields to catch programming errors */
 	res->attDescs = NULL;
@@ -732,20 +732,20 @@ PQclear(PGresult *res)
 	/* res->curBlock was zeroed out earlier */
 
 	if (res->extras)
-		maybe_pfree(res->extras);
+		pq_pfree(res->extras);
 	res->extraslen = 0;
 	res->extras = NULL;
 
 	if (res->aotupcounts)
-		maybe_pfree(res->aotupcounts);
+		pq_pfree(res->aotupcounts);
 	res->naotupcounts = 0;
 
 	if (res->waitGxids)
-		maybe_pfree(res->waitGxids);
+		pq_pfree(res->waitGxids);
 	res->waitGxids = NULL;
 	res->nWaits = 0;
 	/* Free the PGresult structure itself */
-	maybe_pfree(res);
+	pq_pfree(res);
 }
 
 /*
@@ -951,10 +951,10 @@ pqAddTuple(PGresult *res, PGresAttValue *tup, const char **errmsgp)
 
 		if (res->tuples == NULL)
 			newTuples = (PGresAttValue **)
-				maybe_palloc(newSize * sizeof(PGresAttValue *));
+				pq_palloc(newSize * sizeof(PGresAttValue *));
 		else
 			newTuples = (PGresAttValue **)
-				maybe_repalloc(res->tuples, newSize * sizeof(PGresAttValue *));
+				pq_repalloc(res->tuples, newSize * sizeof(PGresAttValue *));
 		if (!newTuples)
 			return FALSE;		/* malloc or realloc failed */
 		res->tupArrSize = newSize;
