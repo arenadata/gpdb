@@ -286,7 +286,7 @@ class HostResources:
         self.filesystem_spaces.append(new_fs_space)
         return new_fs_space
 
-    def _determine_base_port(self) -> int:
+    def _determine_base_port(self) -> Tuple[int, int]:
         """Determine base port from existing port assignments"""
         all_ports = self.used_primary_ports | self.used_mirror_ports
 
@@ -315,7 +315,7 @@ class HostResources:
         Find available port for segment using existing base port pattern
         Returns suitable port number or None if no port available
         """
-        used_ports = self.used_mirror_ports if is_mirror else self.used_primary_ports
+        used_ports = self.used_primary_ports | self.used_mirror_ports
 
         # Calculate port based on content_id and base port
         port = self.base_port + (content_id * 2)
@@ -335,7 +335,7 @@ class HostResources:
         while current_port < 65536:  # Max TCP port
             if current_port not in used_ports:
                 return current_port
-            current_port += 2  # Keep even/odd pattern
+            current_port += 2
 
         return None
 
@@ -674,9 +674,6 @@ class RebalanceExecutor:
                 sequences.append(current_batch)
                 current_batch = []
             current_batch.append(mirror_move)
-
-        # Phase 2: First part moves (before first switch)
-        current_batch = []
 
         # Pure swaps: move mirrors to primary dirs
         for primary_move, mirror_move in pure_swaps:

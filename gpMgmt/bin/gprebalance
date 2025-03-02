@@ -267,6 +267,7 @@ def possibility_checks(gpreb: GPRebalance):
         logger.eror(
             "Current role does not match preferred role for several segments. "
             "Call gprecoverseg -r to restore the original roles")
+        sys.exit(1)
 
     startup_validator = ClusterValidator(
         hosts_list,
