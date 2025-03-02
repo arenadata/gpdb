@@ -302,7 +302,7 @@ class HostResources:
         self.filesystem_spaces.append(new_fs_space)
         return new_fs_space
 
-    def _determine_base_port(self) -> Tuple[int, int]:
+    def _determine_base_port(self) -> int:
         """Determine base port from existing port assignments"""
         all_ports = self.used_primary_ports | self.used_mirror_ports
 
