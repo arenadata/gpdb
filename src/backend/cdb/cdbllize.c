@@ -751,12 +751,15 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 	 * They will be added to the working queue, so keep going until the
 	 * working queue is empty.
 	 */
+	Assert(list_length(root->glob->subplans) == list_length(root->glob->subroots));
 	while (context.subplan_workingQueue)
 	{
 		int			plan_id = linitial_int(context.subplan_workingQueue);
 		decorate_subplan_info *sstate = &context.subplans[plan_id];
 		ListCell   *planlist_cell = list_nth_cell(root->glob->subplans, plan_id - 1);
+		ListCell   *rootlist_cell = list_nth_cell(root->glob->subroots, plan_id - 1);
 		Plan	   *subplan = (Plan *) lfirst(planlist_cell);
+		PlannerInfo *subroot = lfirst_node(PlannerInfo, rootlist_cell);
 
 		context.subplan_workingQueue = list_delete_first(context.subplan_workingQueue);
 
@@ -817,6 +820,7 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 				subplan = (Plan *) make_material(subplan);
 		}
 
+		planner_init_plan_tree_base(&context.base, subroot);
 		subplan = (Plan *) fix_outer_query_motions_mutator((Node *) subplan, &context);
 
 		lfirst(planlist_cell) = subplan;
@@ -834,11 +838,9 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
 	Node	   *newnode;
 	Plan	   *plan;
 	Flow	   *saveCurrentPlanFlow;
-
-#ifdef USE_ASSERT_CHECKING
 	PlannerInfo *root = (PlannerInfo *) context->base.node;
+
 	Assert(root && IsA(root, PlannerInfo));
-#endif
 
 	if (node == NULL)
 		return NULL;
@@ -862,6 +864,19 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
 		{
 			SubPlan	   *spexpr = (SubPlan *) node;
 			decorate_subplan_info *sstate = &context->subplans[spexpr->plan_id];
+
+			if (spexpr->is_initplan)
+			{
+				ListCell   *l;
+
+				foreach(l, root->init_plans)
+				{
+					SubPlan    *initsubplan = (SubPlan *) lfirst(l);
+
+					if (initsubplan->plan_id == spexpr->plan_id)
+						lfirst(l) = spexpr;
+				}
+			}
 
 			sstate->is_initplan = spexpr->is_initplan;
 			sstate->useHashTable = spexpr->useHashTable;
@@ -1043,12 +1058,6 @@ fix_subplan_motion(PlannerInfo *root, Plan *subplan, Flow *outer_query_flow)
 
 	if (need_motion)
 	{
-		/*
-		 * Too late adding motions under parameterized sub-plans
-		 */
-		if (!bms_is_empty(subplan->extParam))
-			elog(ERROR, "could not parallelize SubPlan");
-
 		/*
 		 * We need to add a Motion to the top.
 		 */
