@@ -2434,6 +2434,12 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			rsinfo.isDone = ExprSingleResult;
 			result = FunctionCallInvoke(&fcinfo);
 
+			if (IsA(funcexpr, FuncExprState) && IsA(funcexpr->expr, FuncExpr))
+			{
+				FuncExprState *fcache = (FuncExprState *) funcexpr;
+				fcache->isSquelchSupported = rsinfo.returnMode & SFRM_Squelch;
+			}
+			
 			/* Reset SFRM_Squelch bit */
 			rsinfo.returnMode &= ~SFRM_Squelch;
 
