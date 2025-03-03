@@ -17,6 +17,7 @@ ENV CFLAGS="-O0 -Wno-deprecated-declarations"
 # the broadest compilation coverage.
 RUN CC="clang" CXX="clang++" CXXFLAGS="$CFLAGS" \
     ./configure --enable-orafce --enable-debug --enable-profiling \
+                --with-uuid=e2fs --with-python --enable-orca \
                 --enable-depend --enable-cassert --enable-gpcloud \
                 --enable-ic-proxy --with-llvm --with-perl --with-gssapi \
                 --with-ldap --with-pam --with-openssl --with-libxml \
