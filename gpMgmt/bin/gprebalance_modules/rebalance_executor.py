@@ -92,14 +92,8 @@ class SingleMoveCommand(SQLCommand):
          self.conf_dir, self.needs_switch) = step_details
 
         self.move_error = False
-        self.filename = None
 
         SQLCommand.__init__(self, name)
-
-    def __del__(self):
-        if self.filename is not None:
-            if os.path.exists(self.filename):
-                os.unlink(self.filename)
 
     def write_gprecoverseg_config(self):
         filename = self.conf_dir + FILENAME + "dbid" + str(self.segment.dbid)
@@ -125,14 +119,14 @@ class SingleMoveCommand(SQLCommand):
             StatusManager.record_move(status_conn, self.move, self.segment,
                                       segsize, datetime.datetime.now())
 
-            self.filename = self.write_gprecoverseg_config()
+            filename = self.write_gprecoverseg_config()
             log_file = os.path.join(self.conf_dir,
                                     f"gprecoverseg_dbid{self.segment.dbid}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
                                     )
 
             # Prepare command arguments
             cmd_args = [
-                '-i', self.filename,
+                '-i', filename,
                 '-B', '1',
                 '-v', '-a'
             ]
@@ -195,6 +189,7 @@ class SingleMoveCommand(SQLCommand):
                     self.logger.info("Removing old segment's tablespace datadir (dbidi = %d): %s",
                                      self.segment.dbid, tblspdir)
                     cmd.run(validateAfter=True)
+            os.unlink(filename)
             status_conn.close()
 
         except Exception as ex:
