@@ -14,7 +14,7 @@ from gppylib.gparray import GpArray, Segment
 from gppylib.db import dbconn
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
-from gppylib.commands.unix import DiskFree, DiskUsage
+from gppylib.commands.unix import DiskFree, DiskUsage, RemoveDirectory
 from gppylib.operations.validate_disk_space import FileSystem
 from gppylib.parseutils import *
 from gppylib.programs.clsRecoverSegment import GpRecoverSegmentProgram
@@ -89,7 +89,7 @@ class SingleMoveCommand(SQLCommand):
     def __init__(self, name: str, status_url: dbconn.DbURL, step_details, logger):
         self.status_url = status_url
         self.logger = logger
-        (self.segment, self.move, self.size,
+        (self.segment, self.move, self.segmentSize,
          self.conf_dir, self.needs_switch) = step_details
 
         self.move_error = False
@@ -120,8 +120,11 @@ class SingleMoveCommand(SQLCommand):
         status_conn = None
         try:
             status_conn = dbconn.connect(self.status_url, encoding='UTF8')
+            segsize = self.segmentSize.source_data_dir_usage
+            if self.segmentSize.source_tablespace_usage:
+                segsize += sum(self.segmentSize.source_tablespace_usage.values())
             StatusManager.record_move(status_conn, self.move, self.segment,
-                                      self.size, datetime.datetime.now())
+                                      segsize, datetime.datetime.now())
 
             self.filename = self.write_gprecoverseg_config()
             log_file = os.path.join(self.conf_dir,
@@ -180,6 +183,19 @@ class SingleMoveCommand(SQLCommand):
             except SqlError:
                 raise Exception(
                     f"Could not update status for move with dbid={self.segment.dbid}: ")
+
+            self.logger.info("Removing old segment's datadir (dbidi = %d): %s",
+                             self.segment.dbid, self.segment.datadir)
+            cmd = RemoveDirectory("remove old mirror segment directories", self.segment.datadir,
+                                  ctxt=REMOTE, remoteHost=self.segment.address)
+            cmd.run(validateAfter=True)
+            if self.segmentSize.source_tablespace_usage:
+                for tblspdir in self.segmentSize.source_tablespace_usage:
+                    cmd = RemoveDirectory("remove old mirror segment directories", tblspdir,
+                                          ctxt=REMOTE, remoteHost=self.segment.address)
+                    self.logger.info("Removing old segment's tablespace datadir (dbidi = %d): %s",
+                                     self.segment.dbid, tblspdir)
+                    cmd.run(validateAfter=True)
             status_conn.close()
 
         except Exception as ex:
@@ -322,7 +338,7 @@ class HostResources:
         Find available port for segment using existing base port pattern
         Returns suitable port number or None if no port available
         """
-        used_ports = self.used_mirror_ports if is_mirror else self.used_primary_ports
+        used_ports = self.used_primary_ports | self.used_mirror_ports
 
         # Calculate port based on content_id and base port
         port = self.base_port + (content_id * 2)
@@ -342,7 +358,7 @@ class HostResources:
         while current_port < 65536:  # Max TCP port
             if current_port not in used_ports:
                 return current_port
-            current_port += 2  # Keep even/odd pattern
+            current_port += 2
 
         return None
 
@@ -690,9 +706,6 @@ class RebalanceExecutor:
                 current_batch = []
             current_batch.append(mirror_move)
 
-        # Phase 2: First part moves (before first switch)
-        current_batch = []
-
         # Pure swaps: move mirrors to primary dirs
         for primary_move, mirror_move in pure_swaps:
             if len(current_batch) >= self.options.batch_size:
@@ -823,13 +836,9 @@ class RebalanceExecutor:
                         needs_switch = False
                         if segid.contentid in former_switches or segid.contentid in latter_switches:
                             needs_switch = True
-                        segsize = self.segmentSizes[segid].source_data_dir_usage
-                        if self.segmentSizes[segid].source_tablespace_usage:
-                            segsize += sum(
-                                self.segmentSizes[segid].source_tablespace_usage.values())
                         step_details = (self.segmentMap[segid],
                                         move,
-                                        segsize,
+                                        self.segmentSizes[segid],
                                         conf_dir,
                                         needs_switch
                                         )

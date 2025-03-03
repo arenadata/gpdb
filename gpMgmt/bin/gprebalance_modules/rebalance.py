@@ -220,7 +220,7 @@ class GPRebalance:
         return balancer.getPlan(balancer.balance())
 
     def save_plan(self, plan: Plan):
-        # picke the plan in conf directory
+        # pickle the plan in conf directory
         datadir = self.options.coordinator_data_directory + CONF_DIR
         os.makedirs(datadir, exist_ok=True)
         plan.save_to_file(datadir, "plan")
