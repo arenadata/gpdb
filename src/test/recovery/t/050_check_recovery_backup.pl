@@ -78,7 +78,6 @@ $primary->safe_psql('postgres', 'CREATE DATABASE test_db');
 $primary->safe_psql('test_db', 'CREATE TABLE test as select generate_series(1,10)');
 $primary->safe_psql('postgres', 'CREATE ROLE postgres WITH LOGIN REPLICATION');
 
-
 create_backup_primary($basebackupdir1, 'backup_label1');
 $primary->stop('smart');
 restore_backup_primary($basebackupdir1, 'backup_label1', '001 -> 012');
@@ -116,7 +115,5 @@ wait_recovery_and_switch_wal_primary('212 -> 213');
 $primary->stop('smart');
 restore_backup_primary($basebackupdir2, 'backup_label2', '212 -> 223');
 wait_recovery_and_switch_wal_primary('212 -> 223');
-
-$primary->teardown_node;
 
 done_testing();
