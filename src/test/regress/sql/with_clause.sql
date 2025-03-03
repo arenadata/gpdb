@@ -444,6 +444,7 @@ select count(*) c from with_dml;
 
 -- Test one cannot use DML CTE if multiple CTE references found.
 -- Otherwise it will cause duplicated DML operations or planner errors.
+SET gp_cte_sharing TO off;
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
@@ -459,6 +460,24 @@ with cte as (
     delete from with_dml where i > 0
     returning i
 ) select count(*) from cte where i < (select avg(i) from cte);
+explain (costs off)
+with cte as (
+    insert into with_dml
+        select i, i * 2 from generate_series(1,5) i
+        returning *),
+cte2 as (
+    select * from cte)
+select * from cte2 a join cte2 b using (i);
+create table with_dml_repl (i int, j int) distributed replicated;
+explain (costs off)
+with cte as (
+    insert into with_dml_repl
+        select i, i * 2 from generate_series(1,5) i
+        returning *),
+cte2 as (
+    select * from cte)
+select * from cte2 a join cte2 b using (i);
+drop table with_dml_repl;
 
 -- Greenplum fails to execute SELECT INTO and CREATE TABLE AS statements, whose
 -- queries contain modifying CTEs, because Greenplum cannot have two writer
