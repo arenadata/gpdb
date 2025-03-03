@@ -1607,7 +1607,7 @@ ShutdownFuncExpr(Datum arg)
 
 	/*
 	 * We make a last call if function supports SFRM_Squelch protocol and was
-	 * not invoked last last time.
+	 * not invoked last time.
 	 */
 	if (fcache->isSquelchSupported && fcache->fcinfo_data.flinfo->fn_extra != NULL)
 	{
