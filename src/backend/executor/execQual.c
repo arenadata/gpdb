@@ -1631,7 +1631,7 @@ ShutdownFuncExpr(Datum arg)
 		};
 
 		fcinfo->isnull = false;
-		fcinfo->resultinfo = &rsinfo;
+		fcinfo->resultinfo = (Node *)&rsinfo;
 
 		FunctionCallInvoke(fcinfo);
 	}
@@ -2434,11 +2434,9 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			rsinfo.isDone = ExprSingleResult;
 			result = FunctionCallInvoke(&fcinfo);
 
-			if (IsA(funcexpr, FuncExprState) && IsA(funcexpr->expr, FuncExpr))
-			{
-				FuncExprState *fcache = (FuncExprState *) funcexpr;
-				fcache->isSquelchSupported = rsinfo.returnMode & SFRM_Squelch;
-			}
+			Assert (IsA(funcexpr, FuncExprState) && IsA(funcexpr->expr, FuncExpr));
+			FuncExprState *fcache = (FuncExprState *) funcexpr;
+			fcache->isSquelchSupported = rsinfo.returnMode & SFRM_Squelch;
 			
 			/* Reset SFRM_Squelch bit */
 			rsinfo.returnMode &= ~SFRM_Squelch;
