@@ -103,7 +103,7 @@ docker run --rm -it gpdb7_regress:latest bash -c "gpdb_src/concourse/scripts/uni
 
 ## Clang check
 
-To just compile the code and check it for errors with Clang on Ubuntu:
+To just compile the code and check it for warnings with Clang on Ubuntu:
 ```bash
 docker build -t gpdb7_u22_clang_check:latest -f arenadata/Dockerfile.ubuntu.clang-check .
 ```
