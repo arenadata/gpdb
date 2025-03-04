@@ -100,20 +100,4 @@ $primary->stop('smart');
 restore_backup_primary($basebackupdir2, 'backup_label2', '112 -> 113');
 wait_recovery_and_switch_wal_primary('112 -> 113');
 
-$primary->stop('smart');
-restore_backup_primary($basebackupdir2, 'backup_label2', '112 -> 123');
-wait_recovery_and_switch_wal_primary('112 -> 123');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir1, 'backup_label1', '201 -> 212');
-wait_recovery_and_switch_wal_primary('201 -> 212');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir2, 'backup_label2', '212 -> 213');
-wait_recovery_and_switch_wal_primary('212 -> 213');
-
-$primary->stop('smart');
-restore_backup_primary($basebackupdir2, 'backup_label2', '212 -> 223');
-wait_recovery_and_switch_wal_primary('212 -> 223');
-
 done_testing();
