@@ -15,8 +15,9 @@ ENV FLAGS="-O0 -Wno-deprecated-declarations"
 
 # Ensure we use as many C-code related ./configure flags here as possible for
 # the broadest compilation coverage.
-RUN CC="clang" CFLAGS="$FLAGS" BITCODE_CFLAGS="$FLAGS" \
-    CXX="clang++" CXXFLAGS="$FLAGS" BITCODE_CXXFLAGS="$FLAGS" \
+RUN CC="clang" CXX="clang++" \
+    CFLAGS="$FLAGS" CXXFLAGS="$FLAGS" CPPFLAGS="$FLAGS" \
+    BITCODE_CFLAGS="$FLAGS" BITCODE_CXXFLAGS="$FLAGS" \
     ./configure --enable-orafce --enable-debug --enable-profiling \
                 --with-uuid=e2fs --with-python --enable-orca \
                 --enable-depend --enable-cassert --enable-gpcloud \
