@@ -230,8 +230,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			 * GPDB_84_MERGE_FIXME: Should we rewrite this in a different way now that we have
 			 * ON SEGMENT/ ON MASTER attributes on functions?
 			 */
-			CdbDispatchCommand(
-"SELECT l.* FROM pg_catalog.pg_lock_status() l, generate_series(1, 10000)", DF_WITH_SNAPSHOT, &cdb_pgresults);
+			CdbDispatchCommand("SELECT * FROM pg_catalog.pg_lock_status()", DF_WITH_SNAPSHOT, &cdb_pgresults);
 
 			if (cdb_pgresults.numResults == 0)
 				elog(ERROR, "pg_locks didn't get back any data from the segDBs");
