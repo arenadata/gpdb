@@ -447,7 +447,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbDispatchResult *dispatchResult;
 	int			i;
-	int			db_count = 0;
+	int			db_count = pParms->dispatchCount;
 	int			timeout = 0;
 	bool		sentSignal = false;
 	struct pollfd *fds;
@@ -455,7 +455,22 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	struct timeval start_ts, now;
 	int64		diff_us;
 
-	db_count = pParms->dispatchCount;
+	/*
+	 * Was dispatchCancel() the callee? We don't need to read the results then.
+	 */
+	if (pParms->waitMode == DISPATCH_WAIT_CANCEL)
+	{
+		signalQEs(pParms);
+
+		for (i = 0; i < db_count; i++)
+		{
+			cdbconn_discardResults(
+				pParms->dispatchResultPtrArray[i]->segdbDesc, 20);
+		}
+
+		return;
+	}
+
 	fds = (struct pollfd *) palloc(db_count * sizeof(struct pollfd));
 
 #ifdef FAULT_INJECTOR
