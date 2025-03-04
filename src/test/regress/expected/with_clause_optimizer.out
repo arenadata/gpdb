@@ -2287,6 +2287,7 @@ WITH e AS (
  Optimizer: Pivotal Optimizer (GPORCA)
 (41 rows)
 
+RESET gp_cte_sharing;
 DROP TABLE d;
 DROP TABLE r;
 -- Test planner not pushing down quals to non-SELECT queries inside CTE. There
@@ -2332,7 +2333,6 @@ select count(*) c from with_dml;
 
 -- Test one cannot use DML CTE if multiple CTE references found.
 -- Otherwise it will cause duplicated DML operations or planner errors.
-SET gp_cte_sharing TO off;
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i

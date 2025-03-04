@@ -2023,27 +2023,28 @@ set_cte_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	if (!root->config->gp_cte_sharing || cte->cterefcount == 1)
 	{
-		/*
-		 * If plan sharing is disabled, we avoid performing DML inside CTE for
-		 * each reference. It'll cause duplicated DML operations or mutation
-		 * errors during cdbparallelize().
-		 */
-		if (cte->cterefcount > 1 &&
-			((Query *) cte->ctequery)->commandType != CMD_SELECT)
-			elog(ERROR, "Too much references to non-SELECT CTE");
-
-		/*
-		 * For non-select CTE It is important to check, that there is only one
-		 * reference. If such CTE is used more than one times from another CTE,
-		 * cterefcount will be more than one. But if non-select CTE is used one
-		 * time from another CTE and another CTE is used more than one time, we
-		 * will get situation: non-select CTE has cterefcount == 1, but used more
-		 * times. To check it, update cterefcount, and at the next iteration we
-		 * correctly check such cases. And it does not matter, how much CTE
-		 * between non-select CTE and the last select.
-		 */
 		if (((Query *) cte->ctequery)->commandType != CMD_SELECT)
+		{
+			/*
+			 * If plan sharing is disabled, we avoid performing DML inside CTE for
+			 * each reference. It'll cause duplicated DML operations or mutation
+			 * errors during cdbparallelize().
+			 */
+			if (cte->cterefcount > 1)
+				elog(ERROR, "Too much references to non-SELECT CTE");
+
+			/*
+			 * For non-select CTE it is important to check, that there is only one
+			 * reference. If such CTE is used more than one times from another CTE,
+			 * cterefcount will be more than one. But if non-select CTE is used one
+			 * time from another CTE and another CTE is used more than one time, we
+			 * will get situation: non-select CTE has cterefcount == 1, but used more
+			 * times. To check it, update cterefcount, and at the next iteration we
+			 * correctly check such cases. And it does not matter, how much CTE
+			 * between non-select CTE and the last select.
+			 */
 			cte->cterefcount++;
+		}
 
 		PlannerConfig *config = CopyPlannerConfig(root->config);
 

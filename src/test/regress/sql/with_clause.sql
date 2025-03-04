@@ -422,6 +422,7 @@ WITH e AS (
 ), h AS (
     SELECT a FROM d JOIN e f USING (b) JOIN e USING (b)
 ) SELECT * FROM r JOIN h USING (a) JOIN h i USING (a);
+RESET gp_cte_sharing;
 DROP TABLE d;
 DROP TABLE r;
 
@@ -444,7 +445,6 @@ select count(*) c from with_dml;
 
 -- Test one cannot use DML CTE if multiple CTE references found.
 -- Otherwise it will cause duplicated DML operations or planner errors.
-SET gp_cte_sharing TO off;
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
