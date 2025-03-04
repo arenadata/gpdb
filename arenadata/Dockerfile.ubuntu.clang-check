@@ -10,12 +10,13 @@ RUN apt install -y libxslt1-dev
 COPY ./ $GPDB_SRC
 WORKDIR $GPDB_SRC
 
-# Speed up the ORCA build and ignore deprecations.
-ENV CFLAGS="-O0 -Wno-deprecated-declarations"
+# Speed up bitcode and ORCA build and ignore deprecations.
+ENV FLAGS="-O0 -Wno-deprecated-declarations"
 
 # Ensure we use as many C-code related ./configure flags here as possible for
 # the broadest compilation coverage.
-RUN CC="clang" CXX="clang++" CXXFLAGS="$CFLAGS" \
+RUN CC="clang" CFLAGS="$FLAGS" BITCODE_CFLAGS="$FLAGS" \
+    CXX="clang++" CXXFLAGS="$FLAGS" BITCODE_CXXFLAGS="$FLAGS" \
     ./configure --enable-orafce --enable-debug --enable-profiling \
                 --with-uuid=e2fs --with-python --enable-orca \
                 --enable-depend --enable-cassert --enable-gpcloud \
