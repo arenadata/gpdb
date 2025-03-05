@@ -123,7 +123,7 @@ class GPRebalance:
                 config = yaml.safe_load(fp)
                 for host_config in config['hosts']:
                     key = (host_config['hostname'], host_config['address'])
-                    hosts[key] = Host(hostname=host_config['hostname'],
+                    file_host = Host(hostname=host_config['hostname'],
                                       address=host_config['address'],
                                       primary_datadirs=set(
                         host_config['primary_datadirs']),
@@ -131,6 +131,10 @@ class GPRebalance:
                         mirror_datadirs=set(
                         host_config['mirror_datadirs']),
                         mirror_segments=set())
+                    hosts[key] = file_host
+                    if key in self.current_conf:
+                        self.current_conf[key].primary_datadirs |= file_host.primary_datadirs
+                        self.current_conf[key].mirror_datadirs |= file_host.mirror_datadirs
                     # User can explicitly mark the host to be replacement for existing one
                     if "replace" in host_config:
                         rep = tuple(host_config['replace'].split(', '))

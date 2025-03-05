@@ -3029,6 +3029,24 @@ sdw1|sdw1|21502|/data/gpdata/gpexpand/data/mirror/gpseg2|8|2|m"""
     gpexpand = Gpexpand(context, working_directory=context.working_directory)
     gpexpand.initialize_segments()
 
+@given('the user runs gpexpand with segment imbalance for a two-node cluster with mirrors')
+@when('the user runs gpexpand with segment imbalance for a two-node cluster with mirrors')
+def impl(context):
+    inputfile_contents = """
+sdw2|sdw2|20502|/tmp/gpexpand_behave/two_nodes/data/primary/gpseg4|10|4|p
+sdw2|sdw2|21502|/tmp/gpexpand_behave/two_nodes/data/mirror/gpseg4|11|4|m
+sdw2|sdw2|20503|/tmp/gpexpand_behave/two_nodes/data/primary/gpseg5|12|5|p
+sdw2|sdw2|21503|/tmp/gpexpand_behave/two_nodes/data/mirror/gpseg5|13|5|m"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    inputfile_name = "%s/gpexpand_inputfile_%s" % (context.working_directory, timestamp)
+    with open(inputfile_name, 'w') as fd:
+        fd.write(inputfile_contents)
+
+    gpexpand = Gpexpand(context, working_directory=context.working_directory)
+    ret_code, std_err, std_out = gpexpand.initialize_segments()
+    if ret_code != 0:
+        raise Exception("gpexpand exited with return code: %d.\nstderr=%s\nstdout=%s" % (ret_code, std_err, std_out))
+
 @given('the coordinator pid has been saved')
 def impl(context):
     data_dir = os.path.join(context.working_directory,

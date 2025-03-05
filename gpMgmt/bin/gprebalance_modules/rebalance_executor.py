@@ -19,10 +19,13 @@ from gppylib.parseutils import *
 from gppylib.programs.clsRecoverSegment import GpRecoverSegmentProgram
 from gppylib.system import configurationInterface, configurationImplGpdb, fileSystemInterface, \
     fileSystemImplOs, osInterface, osImplNative, faultProberInterface, faultProberImplGpdb
+from gppylib.userinput import *
 
 MAX_BATCH_SIZE = 128
 FILENAME = "/move_"
 CONF_DIR = "/rebalance"
+DEFAULT_PRIMARY_PREF = "/data/primary"
+DEFAULT_MIRROR_PREF = "/data/mirror"
 
 begining_timestamp = None
 
@@ -394,6 +397,11 @@ class RebalanceExecutor:
         self.queue = None
 
     def initializeHostResources(self, moves: List[Move]):
+        def datadir_validator(input_value, *args):
+            if not input_value or input_value.find(' ') != -1 or input_value == '':
+                return None
+            else:
+                return input_value
         resources = {}
         for m in moves:
             prim_ports = set()
@@ -402,6 +410,22 @@ class RebalanceExecutor:
                 prim_ports.add(self.segmentMap[psid].port)
             for msid in m.dstHost.mirror_segments:
                 mir_ports.add(self.segmentMap[msid].port)
+            if len(m.dstHost.primary_datadirs) == 0:
+                prirmary_prefix = DEFAULT_PRIMARY_PREF
+                if not self.options.silent:
+                    prirmary_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
+                                                 f"is about to moved to host {m.dstHost.hostname}, but no primary datadits "
+                                                 "are specified for the host.", "Enter the primary datadir prefix",f"default={DEFAULT_PRIMARY_PREF}",
+                                                 DEFAULT_PRIMARY_PREF, datadir_validator, None)
+                m.dstHost.primary_datadirs.add(prirmary_prefix)
+            if len(m.dstHost.mirror_datadirs) == 0:
+                mirror_prefix = DEFAULT_MIRROR_PREF
+                if not self.options.silent:
+                    mirror_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
+                                                 f"is about to moved to host {m.dstHost.hostname}, but no mirror datadits "
+                                                 "are specified for the host.", "Enter the mirror datadir prefix",f"default={DEFAULT_MIRROR_PREF}",
+                                                 DEFAULT_MIRROR_PREF, datadir_validator, None)
+                m.dstHost.mirror_datadirs.add(mirror_prefix)
             resources[m.dstHost] = HostResources(
                 m.dstHost, (prim_ports, mir_ports))
         return resources
