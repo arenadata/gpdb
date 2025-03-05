@@ -28,7 +28,7 @@ DEFAULT_PRIMARY_PREF = "/data/primary"
 DEFAULT_MIRROR_PREF = "/data/mirror"
 
 begining_timestamp = None
-
+segment_prefix = "gpseg"
 
 class InsufficientDiskSpaceError(Exception):
     pass
@@ -92,7 +92,7 @@ class SingleMoveCommand(SQLCommand):
         self.status_url = status_url
         self.logger = logger
         (self.segment, self.move, self.segmentSize,
-         self.conf_dir, self.needs_switch) = step_details
+         self.conf_dir, self.needs_switch, self.options) = step_details
 
         self.move_error = False
 
@@ -105,7 +105,7 @@ class SingleMoveCommand(SQLCommand):
                     f"{self.segment.port}|{self.segment.datadir} "
                     f"{canonicalize_address(self.move.dstHost.address)}|"
                     f"{self.move.target_port}|"
-                    f"{self.move.target_datadir}/gpseg{self.move.segid.contentid}")
+                    f"{self.move.target_datadir}/{segment_prefix}{self.move.segid.contentid}")
             self.logger.info(
                 "About to run gprecoverseg for mirror move "
                 f"(dbid = {self.segment.dbid}, content = {self.segment.content}) {line}")
@@ -133,6 +133,8 @@ class SingleMoveCommand(SQLCommand):
                 '-B', '1',
                 '-v', '-a'
             ]
+            if self.options.hba_hostnames:
+                cmd_args.append('--hba-hostnames')
             try:
                 StatusManager.update_record_status(
                     status_conn, [self.segment.dbid], MoveStatus.IN_PROGRESS)
@@ -394,6 +396,19 @@ class RebalanceExecutor:
         self.segmentSizes = self.estimateSegmentSizes(segids)
         self.resources = self.initializeHostResources(plan.moves)
         self.queue = None
+
+        self.define_datadir_prefix()
+    
+    def define_datadir_prefix(self):
+        first_source_dir = None
+        for _, segment in self.segmentMap.items():
+            if segment.content >= 0:
+                first_source_dir = segment.datadir
+                break
+        
+        basename = os.path.basename(first_source_dir)
+        global segment_prefix
+        segment_prefix = ''.join(c for c in basename if not c.isdigit())
 
     def initializeHostResources(self, moves: List[Move]):
         def datadir_validator(input_value, default,  *args):
@@ -872,7 +887,8 @@ class RebalanceExecutor:
                                         move,
                                         self.segmentSizes[segid],
                                         conf_dir,
-                                        needs_switch
+                                        needs_switch,
+                                        self.options
                                         )
 
                         cmd = SingleMoveCommand(
@@ -933,6 +949,8 @@ class RebalanceExecutor:
             raise Exception('could not execute SQL : %s' % str(e))
 
         recoversegOptions = "-r -a"
+        if self.options.hba_hostnames:
+            recoversegOptions += " --hba-hostnames"
         cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
         cmd.run(validateAfter=True)
 
