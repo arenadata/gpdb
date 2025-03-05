@@ -246,12 +246,6 @@ test__CdbDispatchPlan_may_be_interrupted(void **state)
 	/* process was terminated by administrative command */
 	expect_ereport(FATAL);
 
-	/* signalQE() call due to cancel */
-	will_return(__wrap_PQcancel, TRUE);
-
-	/* results are discarded by cancel */
-	will_be_called(__wrap_cdbconn_discardResults);
-
 	/* QD will trying to cancel queries on QEs */
 	will_return(__wrap_PQcancel, TRUE);
 

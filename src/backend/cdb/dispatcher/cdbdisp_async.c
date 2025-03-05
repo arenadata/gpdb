@@ -458,18 +458,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	/*
 	 * Was dispatchCancel() the callee? We don't need to read the results then.
 	 */
-	if (pParms->waitMode == DISPATCH_WAIT_CANCEL)
-	{
-		signalQEs(pParms);
-
-		for (i = 0; i < db_count; i++)
-		{
-			cdbconn_discardResults(
-				pParms->dispatchResultPtrArray[i]->segdbDesc, 20);
-		}
-
-		return;
-	}
+	bool		should_cancel = (pParms->waitMode == DISPATCH_WAIT_CANCEL);
 
 	fds = (struct pollfd *) palloc(db_count * sizeof(struct pollfd));
 
@@ -695,8 +684,20 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 			if (timeout_sec >= 0 && diff_us >= timeout_sec * 1000000L)
 				break;
 		}
-		/* We have data waiting on one or more of the connections. */
+		else if (should_cancel)
+		{
+			signalQEs(pParms);
+
+			for (i = 0; i < db_count; i++)
+			{
+				cdbconn_discardResults(
+					pParms->dispatchResultPtrArray[i]->segdbDesc, 20);
+			}
+
+			break;
+		}
 		else
+			/* We have data waiting on one or more of the connections. */
 			handlePollSuccess(pParms, fds);
 	}
 
