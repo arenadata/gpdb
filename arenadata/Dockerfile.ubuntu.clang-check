@@ -1,4 +1,4 @@
-FROM ubuntu:22.04 AS base
+FROM ubuntu:22.04
 
 ARG GPDB_SRC="/home/gpadmin/gpdb_src/"
 
@@ -11,13 +11,13 @@ COPY ./ $GPDB_SRC
 WORKDIR $GPDB_SRC
 
 # Speed up bitcode and ORCA build and ignore deprecations.
-ENV FLAGS="-O0 -Wno-deprecated-declarations"
+ARG CFLAGS="-O0 -Wno-deprecated-declarations"
 
 # Ensure we use as many C-code related ./configure flags here as possible for
 # the broadest compilation coverage.
 RUN CC="clang" CXX="clang++" \
-    CFLAGS="$FLAGS" CXXFLAGS="$FLAGS" CPPFLAGS="$FLAGS" \
-    BITCODE_CFLAGS="$FLAGS" BITCODE_CXXFLAGS="$FLAGS" \
+    CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" CPPFLAGS="$CFLAGS" \
+    BITCODE_CFLAGS="$CFLAGS" BITCODE_CXXFLAGS="$CFLAGS" \
     ./configure --enable-orafce --enable-debug --enable-profiling \
                 --with-uuid=e2fs --with-python --enable-orca \
                 --enable-depend --enable-cassert --enable-gpcloud \
