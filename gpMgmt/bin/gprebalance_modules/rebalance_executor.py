@@ -432,7 +432,7 @@ class RebalanceExecutor:
                 prirmary_prefix = DEFAULT_PRIMARY_PREF
                 if not self.options.silent:
                     prirmary_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
-                                                 f"is about to be moved to host {m.dstHost.hostname}, but no primary datadits "
+                                                 f"is about to be moved to host {m.dstHost.hostname}, but no primary datadirs "
                                                  "are specified for the host.", "Enter the primary datadir prefix",f" (default={DEFAULT_PRIMARY_PREF})",
                                                  DEFAULT_PRIMARY_PREF, datadir_validator, None)
                 m.dstHost.primary_datadirs.add(prirmary_prefix.strip())
@@ -440,7 +440,7 @@ class RebalanceExecutor:
                 mirror_prefix = DEFAULT_MIRROR_PREF
                 if not self.options.silent:
                     mirror_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
-                                                 f"is about to be moved to host {m.dstHost.hostname}, but no mirror datadits "
+                                                 f"is about to be moved to host {m.dstHost.hostname}, but no mirror datadirs "
                                                  "are specified for the host.", "Enter the mirror datadir prefix",f" (default={DEFAULT_MIRROR_PREF})",
                                                  DEFAULT_MIRROR_PREF, datadir_validator, None)
                 m.dstHost.mirror_datadirs.add(mirror_prefix.strip())
