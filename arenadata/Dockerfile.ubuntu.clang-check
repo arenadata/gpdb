@@ -10,7 +10,7 @@ RUN apt install -y libxslt1-dev
 COPY ./ $GPDB_SRC
 WORKDIR $GPDB_SRC
 
-# Speed up bitcode and ORCA build and ignore deprecations.
+# Speed up bitcode and Orca build and ignore deprecations.
 ARG CFLAGS="-O0 -Wno-deprecated-declarations"
 
 # Ensure we use as many C-code related ./configure flags here as possible for

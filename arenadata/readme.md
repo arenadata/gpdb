@@ -108,9 +108,9 @@ To just compile the code and check it for warnings with Clang on Ubuntu:
 docker build -t gpdb7_u22_clang_check:latest -f arenadata/Dockerfile.ubuntu.clang-check .
 ```
 
-Options for C and C++ compilers can be overriden via `--build-arg CFLAGS=<...>`.
-The image can be safely removed afterwards, as the check itself is performed in
-the build stage.
+Options for C and C++ compilers can be overridden via
+`--build-arg CFLAGS=<...>`. The image can be safely removed afterwards, as the
+check itself is performed in the build stage.
 
 ## How to run demo cluster inside docker container manually
 
