@@ -26,6 +26,7 @@ char	   *__wrap_serializeNode(Node *node, int *size, int *uncompressed_size_out)
 char	   *__wrap_qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor, int txnOptions, char *debugCaller);
 void		__wrap_VirtualXactLockTableInsert(VirtualTransactionId vxid);
 void		__wrap_AcceptInvalidationMessages(void);
+void 		__wrap_cdbconn_discardResults(SegmentDatabaseDescriptor *segdbDesc, int retryCount);
 static void terminate_process();
 
 
@@ -177,6 +178,12 @@ terminate_process()
 	die(SIGTERM);
 }
 
+void
+__wrap_cdbconn_discardResults(SegmentDatabaseDescriptor *segdbDesc, int retryCount)
+{
+	mock();
+}
+
 /*
  * Test query may be interrupted during plan dispatching
  */
@@ -238,6 +245,9 @@ test__CdbDispatchPlan_may_be_interrupted(void **state)
 
 	/* process was terminated by administrative command */
 	expect_ereport(FATAL);
+
+	/* results are discarded by cancel */
+	will_be_called(__wrap_cdbconn_discardResults);
 
 	/* QD will trying to cancel queries on QEs */
 	will_return(__wrap_PQcancel, TRUE);
