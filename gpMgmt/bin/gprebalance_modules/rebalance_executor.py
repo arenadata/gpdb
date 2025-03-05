@@ -396,7 +396,11 @@ class RebalanceExecutor:
         self.queue = None
 
     def initializeHostResources(self, moves: List[Move]):
-        def datadir_validator(input_value, *args):
+        def datadir_validator(input_value, default,  *args):
+            if not input_value and not default:
+                return None
+            elif not input_value or input_value == '':
+                input_value = default
             if not input_value or input_value.find(' ') != -1 or input_value == '':
                 return None
             else:
@@ -413,18 +417,18 @@ class RebalanceExecutor:
                 prirmary_prefix = DEFAULT_PRIMARY_PREF
                 if not self.options.silent:
                     prirmary_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
-                                                 f"is about to moved to host {m.dstHost.hostname}, but no primary datadits "
-                                                 "are specified for the host.", "Enter the primary datadir prefix",f"default={DEFAULT_PRIMARY_PREF}",
+                                                 f"is about to be moved to host {m.dstHost.hostname}, but no primary datadits "
+                                                 "are specified for the host.", "Enter the primary datadir prefix",f" (default={DEFAULT_PRIMARY_PREF})",
                                                  DEFAULT_PRIMARY_PREF, datadir_validator, None)
-                m.dstHost.primary_datadirs.add(prirmary_prefix)
+                m.dstHost.primary_datadirs.add(prirmary_prefix.strip())
             if len(m.dstHost.mirror_datadirs) == 0:
                 mirror_prefix = DEFAULT_MIRROR_PREF
                 if not self.options.silent:
                     mirror_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
-                                                 f"is about to moved to host {m.dstHost.hostname}, but no mirror datadits "
-                                                 "are specified for the host.", "Enter the mirror datadir prefix",f"default={DEFAULT_MIRROR_PREF}",
+                                                 f"is about to be moved to host {m.dstHost.hostname}, but no mirror datadits "
+                                                 "are specified for the host.", "Enter the mirror datadir prefix",f" (default={DEFAULT_MIRROR_PREF})",
                                                  DEFAULT_MIRROR_PREF, datadir_validator, None)
-                m.dstHost.mirror_datadirs.add(mirror_prefix)
+                m.dstHost.mirror_datadirs.add(mirror_prefix.strip())
             resources[m.dstHost] = HostResources(
                 m.dstHost, (prim_ports, mir_ports))
         return resources
@@ -521,8 +525,10 @@ class RebalanceExecutor:
                 except:
                     continue
             if primary_move.target_datadir == None:
-                raise NoValidDataDirectories(f"Host {primary_host.hostname} does not have any valid primary "
-                                             f"datadirs for segment {mirror_move.segid}")
+                raise NoValidDataDirectories(f"Host {primary_host.hostname} does not have any valid mirror "
+                                             f"datadirs for segment {primary_move.segid}. None of the "
+                                             f"{primary_host.mirror_datadirs} either exists or has "
+                                             "enough free space for segment movement")
             primary_move.dstHost = primary_host
             for datadir in mirror_host.primary_datadirs:
                 try:
@@ -534,17 +540,21 @@ class RebalanceExecutor:
                     continue
             if mirror_move.target_datadir == None:
                 raise NoValidDataDirectories(f"Host {mirror_host.hostname} does not have any valid primary "
-                                             f"datadirs or ports for segment {mirror_move.segid}")
+                                             f"datadirs for segment {mirror_move.segid}.None of the "
+                                             f"{mirror_host.primary_datadirs} either exists or has "
+                                             "enough free space for segment movement")
             mirror_move.dstHost = mirror_host
 
             primary_move.target_port = self.resources[primary_host].can_accommodate_port(
                 True, primary_id.contentid)
             if not primary_move.target_port:
                 raise Exception("Cannot accomodate port")
+            self.resources[primary_host].reserve_port(primary_move.target_port, True)
             mirror_move.target_port = self.resources[mirror_host].can_accommodate_port(
                 False, primary_id.contentid)
             if not mirror_move.target_port:
                 raise Exception("Cannot accomodate port")
+            self.resources[mirror_host].reserve_port(mirror_move.target_port,False)
 
     def _prepare_pms(self, primary_mirrors:  List[Tuple[Move, Move]]):
         """
@@ -572,8 +582,10 @@ class RebalanceExecutor:
                     continue
             primary_move.dstHost = mirror_host
             if primary_move.target_datadir == None:
-                raise NoValidDataDirectories(f"Host {primary_host.hostname} does not have any valid primary "
-                                             f"datadirs for segment {mirror_move.segid}")
+                raise NoValidDataDirectories(f"Host {mirror_host.hostname} does not have any valid mirror "
+                                             f"datadirs for segment {primary_move.segid}. None of the "
+                                             f"{mirror_host.mirror_datadirs} either exists or has "
+                                             "enough free space for segment movement")
             for datadir in primary_host.primary_datadirs:
                 try:
                     self.resources[mirror_host].accommodate_segment(
@@ -583,18 +595,22 @@ class RebalanceExecutor:
                 except:
                     continue
             if mirror_move.target_datadir == None:
-                raise NoValidDataDirectories(f"Host {mirror_host.hostname} does not have any valid primary "
-                                             f"datadirs or ports for segment {mirror_move.segid}")
+                raise NoValidDataDirectories(f"Host {primary_host.hostname} does not have any valid primary "
+                                             f"datadirs for segment {mirror_move.segid}. None of the "
+                                             f"{primary_host.primary_datadirs} either exists or has "
+                                             "enough free space for segment movement")
             mirror_move.dstHost = primary_host
 
             primary_move.target_port = self.resources[mirror_host].can_accommodate_port(
                 True, primary_id.contentid)
             if not primary_move.target_port:
                 raise Exception("Cannot accomodate port")
+            self.resources[mirror_host].reserve_port(primary_move.target_port,True)
             mirror_move.target_port = self.resources[primary_host].can_accommodate_port(
                 False, primary_id.contentid)
             if not mirror_move.target_port:
                 raise Exception("Cannot accomodate port")
+            self.resources[primary_host].reserve_port(mirror_move.target_port,False)
 
     def _prepare_ps(self, primaries: List[Move]):
         """
@@ -618,12 +634,15 @@ class RebalanceExecutor:
                     continue
             if primary_move.target_datadir == None:
                 raise NoValidDataDirectories(f"Host {primary_host.hostname} does not have any valid primary "
-                                             f"datadirs for segment {primary_move.segid}")
+                                             f"datadirs for segment {primary_move.segid}. None of the "
+                                             f"{primary_host.primary_datadirs} either exists or has "
+                                             "enough free space for segment movement")
 
             primary_move.target_port = self.resources[primary_host].can_accommodate_port(
                 True, primary_id.contentid)
             if not primary_move.target_port:
                 raise Exception("Cannot accomodate port")
+            self.resources[primary_host].reserve_port(primary_move.target_port ,True)
 
     def _prepare_ms(self, mirrors: List[Move]):
         """
@@ -644,13 +663,17 @@ class RebalanceExecutor:
                 except:
                     continue
             if mirror_move.target_datadir == None:
-                raise NoValidDataDirectories(f"Host {mirror_host.hostname} does not have any valid primary "
-                                             f"datadirs for segment {mirror_move.segid}")
+                raise NoValidDataDirectories(f"Host {mirror_host.hostname} does not have any valid mirror "
+                                             f"datadirs for segment {mirror_move.segid}. None of the "
+                                             f"{mirror_host.mirror_datadirs} either exists or has "
+                                             "enough free space for segment movement")
 
             mirror_move.target_port = self.resources[mirror_host].can_accommodate_port(
                 True, mirror_id.contentid)
             if not mirror_move.target_port:
                 raise Exception("Cannot accomodate port")
+            self.resources[mirror_host].reserve_port(mirror_move.target_port ,True)
+
 
     def _classify_moves(self) -> Tuple[List[Tuple[Move, Move]], List[Tuple[Move, Move]], List[Move], List[Move]]:
         """
