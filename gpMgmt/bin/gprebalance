@@ -396,6 +396,13 @@ def main(options, args, parser):
 
         gprebalance_file_status = gprebalance.get_state_from_file()
 
+        if options.clean:
+            gprebalance.remove_status_file()
+            gprebalance.cleanup_schema()
+            gprebalance.cleanup_plan()
+            logger.info('Cleanup Finished.  exiting...')
+            sys.exit(0)
+
         from gprebalance_modules.rebalance_status import RebalanceStatus  # nopep8
 
         if gprebalance_db_status == RebalanceStatus.COMPLETED:
