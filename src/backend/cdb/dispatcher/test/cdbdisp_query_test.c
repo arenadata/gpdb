@@ -26,7 +26,6 @@ char	   *__wrap_serializeNode(Node *node, int *size, int *uncompressed_size_out)
 char	   *__wrap_qdSerializeDtxContextInfo(int *size, bool wantSnapshot, bool inCursor, int txnOptions, char *debugCaller);
 void		__wrap_VirtualXactLockTableInsert(VirtualTransactionId vxid);
 void		__wrap_AcceptInvalidationMessages(void);
-void 		__wrap_cdbconn_discardResults(SegmentDatabaseDescriptor *segdbDesc, int retryCount);
 static void terminate_process();
 
 
@@ -176,12 +175,6 @@ static void
 terminate_process()
 {
 	die(SIGTERM);
-}
-
-void
-__wrap_cdbconn_discardResults(SegmentDatabaseDescriptor *segdbDesc, int retryCount)
-{
-	mock();
 }
 
 /*
