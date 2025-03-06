@@ -1789,6 +1789,7 @@ _outSubPlan(StringInfo str, const SubPlan *node)
 	WRITE_NODE_FIELD(extParam);
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(per_call_cost, "%.2f");
+	WRITE_INT_FIELD(subLinkId);
 }
 
 static void
@@ -4978,14 +4979,23 @@ _outConstraint(StringInfo str, const Constraint *node)
 
 	WRITE_NODE_FIELD(exclusions);
 
+<<<<<<< HEAD
 	WRITE_NODE_FIELD(options);
 	WRITE_STRING_FIELD(indexname);
 	WRITE_STRING_FIELD(indexspace);
 	WRITE_BOOL_FIELD(reset_default_tblspc);
+=======
+		case CONSTR_IDENTITY:
+			appendStringInfoString(str, "IDENTITY");
+			WRITE_NODE_FIELD(options);
+			WRITE_CHAR_FIELD(generated_when);
+			break;
+>>>>>>> REL_12_13
 
 	WRITE_STRING_FIELD(access_method);
 	WRITE_NODE_FIELD(where_clause);
 
+<<<<<<< HEAD
 	WRITE_NODE_FIELD(pktable);
 	WRITE_NODE_FIELD(fk_attrs);
 	WRITE_NODE_FIELD(pk_attrs);
@@ -4994,6 +5004,16 @@ _outConstraint(StringInfo str, const Constraint *node)
 	WRITE_CHAR_FIELD(fk_del_action);
 	WRITE_NODE_FIELD(old_conpfeqop);
 	WRITE_OID_FIELD(old_pktable_oid);
+=======
+		case CONSTR_CHECK:
+			appendStringInfoString(str, "CHECK");
+			WRITE_BOOL_FIELD(is_no_inherit);
+			WRITE_NODE_FIELD(raw_expr);
+			WRITE_STRING_FIELD(cooked_expr);
+			WRITE_BOOL_FIELD(skip_validation);
+			WRITE_BOOL_FIELD(initially_valid);
+			break;
+>>>>>>> REL_12_13
 
 	WRITE_BOOL_FIELD(skip_validation);
 	WRITE_BOOL_FIELD(initially_valid);

@@ -1511,6 +1511,10 @@ rewriteValuesRTEToNulls(Query *parsetree, RangeTblEntry *rte)
 	List	   *newValues;
 	ListCell   *lc;
 
+<<<<<<< HEAD
+=======
+	Assert(rte->rtekind == RTE_VALUES);
+>>>>>>> REL_12_13
 	newValues = NIL;
 	foreach(lc, rte->values_lists)
 	{
@@ -3889,6 +3893,7 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 				Query	   *pt = (Query *) lfirst(n);
 				RangeTblEntry *values_rte;
 
+<<<<<<< HEAD
 				if (pt->commandType == CMD_INSERT &&
 					pt->jointree && IsA(pt->jointree, FromExpr) &&
 					list_length(pt->jointree->fromlist) == 1)
@@ -3912,6 +3917,8 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 				if (values_rte->rtekind != RTE_VALUES)
 					elog(ERROR, "failed to find VALUES RTE in product query");
 
+=======
+>>>>>>> REL_12_13
 				rewriteValuesRTEToNulls(pt, values_rte);
 			}
 		}
