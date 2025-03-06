@@ -3421,6 +3421,11 @@ finalize_primnode(Node *node, finalize_primnode_context *context)
 		ListCell   *lc;
 		Bitmapset  *subparamids;
 
+		/*
+		 * Check motions under parameterized sub-plans
+		 */
+		checkMotionWithParam((Node*) plan, plan->extParam, context->root);
+
 		/* Recurse into the testexpr, but not into the Plan */
 		finalize_primnode(subplan->testexpr, context);
 

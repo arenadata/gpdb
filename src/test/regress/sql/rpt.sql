@@ -5,7 +5,7 @@
 -- m/\(cost=.*\)/
 -- s/\(cost=.*\)//
 
--- m/ERROR:  could not parallelize SubPlan \([a-z]+\.c:\d+\)/
+-- m/ERROR:  Passing parameters across motion is not supported. \([a-z]+\.c:\d+\)/
 -- s/\d+/XXX/g
 -- end_matchsubs
 create schema rpt;

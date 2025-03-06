@@ -393,7 +393,7 @@ static void postgresGetForeignUpperPaths(PlannerInfo *root,
 										 RelOptInfo *input_rel,
 										 RelOptInfo *output_rel,
 										 void *extra);
-static int greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user);
+static bool gpCheckIsGP(ForeignServer *server, UserMapping *user);
 
 /*
  * Helper functions
@@ -2268,14 +2268,14 @@ postgresIsForeignRelUpdatable(Relation rel)
 		for (index = 0; index < server->num_segments; ++index)
 		{
 			rewrite_server_options(server, index);
-			if (greenplumCheckIsGreenplum(server, user))
+			if (gpCheckIsGP(server, user))
 				break;
 		}
 		if (index != server->num_segments)
 			isGreenplum = true;
 	}
 	else
-		isGreenplum = greenplumCheckIsGreenplum(server, user);
+		isGreenplum = gpCheckIsGP(server, user);
 
 	if (isGreenplum)
 		return (1 << CMD_INSERT);
@@ -7274,24 +7274,21 @@ find_em_for_rel_target(PlannerInfo *root, EquivalenceClass *ec,
 	return NULL;
 }
 
-static int
-greenplumCheckIsGreenplum(ForeignServer *server, UserMapping *user)
+static bool
+gpCheckIsGP(ForeignServer *server, UserMapping *user)
 {
 	PGconn     *conn;
 	PGresult   *res;
-	int                     ret;
 
-	char *query =  "SELECT version()";
+	const char *query =
+		"SELECT FROM pg_catalog.pg_settings WHERE name = 'gp_server_version'";
 	conn = GetConnection(server, user, false);
 
 	res = pgfdw_exec_query(conn, query);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		pgfdw_report_error(ERROR, res, conn, true, query);
 
-	if (PQntuples(res) == 0)
-		pgfdw_report_error(ERROR, res, conn, true, query);
-
-	ret = strstr(PQgetvalue(res, 0, 0), "Greenplum Database") ? 1 : 0;
+	bool ret = (PQntuples(res) == 1);
 
 	PQclear(res);
 	ReleaseConnection(conn);
