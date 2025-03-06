@@ -194,7 +194,6 @@ class SingleMoveCommand(SQLCommand):
                     self.logger.info("Removing old segment's tablespace datadir (dbidi = %d): %s",
                                      self.segment.dbid, tblspdir)
                     cmd.run(validateAfter=True)
-            os.unlink(filename)
             status_conn.close()
 
         except Exception as ex:

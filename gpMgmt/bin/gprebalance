@@ -399,7 +399,7 @@ def main(options, args, parser):
         if options.clean:
             gprebalance.remove_status_file()
             gprebalance.cleanup_schema()
-            gprebalance.cleanup_plan()
+            gprebalance.cleanup_directory()
             logger.info('Cleanup Finished.  exiting...')
             sys.exit(0)
 
