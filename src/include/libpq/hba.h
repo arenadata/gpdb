@@ -134,12 +134,8 @@ extern bool load_ident(void);
 extern void hba_getauthmethod(hbaPort *port);
 extern int	check_usermap(const char *usermap_name,
 						  const char *pg_role, const char *auth_user,
-<<<<<<< HEAD
-						  bool case_sensitive);
-extern bool check_same_host_or_net(SockAddr *raddr, IPCompareMethod method);
-=======
 						  bool case_insensitive);
->>>>>>> REL_12_13
+extern bool check_same_host_or_net(SockAddr *raddr, IPCompareMethod method);
 extern bool pg_isblank(const char c);
 
 #endif							/* HBA_H */
