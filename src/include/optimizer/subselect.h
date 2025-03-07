@@ -18,12 +18,9 @@
 #include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"
 
-<<<<<<< HEAD
+extern void SS_make_multiexprs_unique(PlannerInfo *root, PlannerInfo *subroot);
 #if 0
 /* Not used in GPDB */
-=======
-extern void SS_make_multiexprs_unique(PlannerInfo *root, PlannerInfo *subroot);
->>>>>>> REL_12_13
 extern void SS_process_ctes(PlannerInfo *root);
 #endif
 extern Node *convert_testexpr(PlannerInfo *root,
