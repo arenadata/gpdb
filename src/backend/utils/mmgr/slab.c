@@ -57,12 +57,9 @@
 #include "utils/gp_alloc.h"
 #include "lib/ilist.h"
 
-<<<<<<< HEAD
-=======
 
 #define Slab_BLOCKHDRSZ	MAXALIGN(sizeof(SlabBlock))
 
->>>>>>> REL_12_13
 /*
  * SlabContext is a specialized implementation of MemoryContext.
  */
