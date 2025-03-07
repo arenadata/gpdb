@@ -443,11 +443,8 @@ llvm_copy_attributes(LLVMValueRef v_from, LLVMValueRef v_to)
 	/* copy function attributes */
 	llvm_copy_attributes_at_index(v_from, v_to, LLVMAttributeFunctionIndex);
 
-	if (LLVMGetTypeKind(LLVMGetFunctionReturnType(v_to)) != LLVMVoidTypeKind)
-	{
-		/* and the return value attributes */
-		llvm_copy_attributes_at_index(v_from, v_to, LLVMAttributeReturnIndex);
-	}
+	/* and the return value attributes */
+	llvm_copy_attributes_at_index(v_from, v_to, LLVMAttributeReturnIndex);
 
 	/* and each function parameter's attribute */
 	param_count = LLVMCountParams(v_from);
