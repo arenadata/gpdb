@@ -375,25 +375,22 @@ extern List *list_qsort(const List *list, list_qsort_comparator cmp);
 extern int	length(List *list);
 #endif							/* ENABLE_LIST_COMPAT */
 
+#ifndef FRONTEND
+
+struct lock_free_list_cell;
 typedef struct lock_free_list_cell lock_free_list_cell;
+
+struct lock_free_list;
 typedef struct lock_free_list lock_free_list;
 
-struct lock_free_list
-{
-	lock_free_list_cell *head;
-};
-
-struct lock_free_list_cell
-{
-	void *value;
-	lock_free_list_cell *next;
-};
-
-lock_free_list *
+uint64
 lock_free_list_create(void);
 
+lock_free_list *
+lock_free_list_get_local_list(uint64 ls_dsa);
+
 void
-lock_free_list_destroy(lock_free_list *ls);
+lock_free_list_destroy(uint64 ls_dsa);
 
 /*
  * Allowed caller: writer.
@@ -421,12 +418,14 @@ lock_free_list_first(lock_free_list *ls);
  * Will free all 'deleted' cells between current_cell and the returned cell.
  */
 lock_free_list_cell *
-lock_free_list_next(lock_free_list_cell *current_cell);
+lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell);
 
 void *
 lock_free_list_get_value(lock_free_list_cell * cell);
 
 void
 lock_free_list_dump(FILE *fout, lock_free_list *ls);
+
+#endif /* FRONTEND */
 
 #endif							/* PG_LIST_H */

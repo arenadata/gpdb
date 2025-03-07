@@ -578,6 +578,8 @@ InitProcess(void)
 
 	MyProc->queryCommandId = 0;
 
+	MyProc->pendingDeletesList = InvalidDsaPointer;
+
 	/* Init gxact */
 	MyTmGxact->gxid = InvalidDistributedTransactionId;
 	resetTmGxact();

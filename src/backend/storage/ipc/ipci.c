@@ -100,6 +100,106 @@ RequestAddinShmemSpace(Size size)
 	total_addin_request = add_size(total_addin_request, size);
 }
 
+/* A struct to track pending deletes. Placed in static shared memory area. */
+typedef struct PendingDeleteShmemStruct
+{
+	dsa_pointer pdl_head;		/* ptr to list head of PendingDeleteListNode */
+	size_t		pdl_count;		/* count of PendingDeleteListNode nodes */
+	char		dsa_mem[FLEXIBLE_ARRAY_MEMBER]; /* a minimal memory area which
+												 * can be used for dsa
+												 * initialization */
+}			PendingDeleteShmemStruct;
+
+
+static PendingDeleteShmemStruct * PendingDeleteShmem = NULL;	/* shared pending delete
+																 * state  */
+
+/*
+ * Attach dsa once per process.
+ */
+dsa_area *
+PendingDeleteAttachDsa(void)
+{
+	MemoryContext oldcxt;
+
+	static dsa_area *pendingDeleteDsa = NULL;	/* ptr to DSA area attached by
+											 * current process */
+
+	if (pendingDeleteDsa)
+		return pendingDeleteDsa;
+
+	/*
+	 * Keep the DSA area ptr in TopMemoryContext to avoid excessive
+	 * attach/detach at every add/remove
+	 */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	pendingDeleteDsa = dsa_attach_in_place(PendingDeleteShmem->dsa_mem, NULL);
+	MemoryContextSwitchTo(oldcxt);
+
+	/* pin mappings, so they can survive res owner life end */
+	dsa_pin_mapping(pendingDeleteDsa);
+	/* disconnect from dsa on shmem exit */
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmem->dsa_mem);
+
+	elog(DEBUG3, "Pending delete DSA attached");
+
+	return pendingDeleteDsa;
+}
+
+
+/*
+ * Calculate size for pending delete shmem.
+ * The flexible array member should fit DSA.
+ */
+static Size
+PendingDeleteShmemSize(void)
+{
+	Size		size;
+
+	size = offsetof(PendingDeleteShmemStruct, dsa_mem);
+	/* dsa initialized over flexible static dsa_mem */
+	size = add_size(size, dsa_minimum_size());
+
+	return size;
+}
+
+static void
+PendingDeleteShmemInit(void)
+{
+	Size		size = PendingDeleteShmemSize();
+	bool		found;
+
+	PendingDeleteShmem = (PendingDeleteShmemStruct *)
+		ShmemInitStruct("Pending Delete",
+						size,
+						&found);
+
+	if (!found)
+	{
+		dsa_area   *dsa = dsa_create_in_place(PendingDeleteShmem->dsa_mem,
+											  dsa_minimum_size(),
+											  LWTRANCHE_PENDING_DELETE_DSA,
+											  NULL);
+
+		/*
+		 * we can't allocate memory segments inside postmaster, so list will
+		 * be initialized at runtime
+		 */
+		elog(LOG, "Pending delete shared memory initialized.");
+
+		/*
+		 * segments will be released by dsm_postmaster_shutdown(), but keep it
+		 * clean anyway
+		 */
+		on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmem->dsa_mem);
+
+		/*
+		 * we don't need dsa ptr here, all future dsa calls will be in
+		 * backends
+		 */
+		dsa_detach(dsa);
+	}
+}
 
 /*
  * CreateSharedMemoryAndSemaphores
@@ -232,6 +332,9 @@ CreateSharedMemoryAndSemaphores(int port)
 
 		/* size of parallel cursor count */
 		size = add_size(size, ParallelCursorCountSize());
+
+		/* size of pending delete nodes struct */
+		size = add_size(size, PendingDeleteShmemSize());
 
 		elog(DEBUG3, "invoking IpcMemoryCreate(size=%zu)", size);
 
@@ -407,6 +510,8 @@ CreateSharedMemoryAndSemaphores(int port)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 		ParallelCursorCountInit();
+
+	PendingDeleteShmemInit();
 
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations

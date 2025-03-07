@@ -55,6 +55,7 @@
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
 #include "storage/shmem.h"
 #include "storage/smgr.h"
 #include "storage/spin.h"
@@ -574,6 +575,70 @@ CheckpointerMain(void)
 						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 						 cur_timeout * 1000L /* convert to ms */ ,
 						 WAIT_EVENT_CHECKPOINTER_MAIN);
+	}
+}
+
+static bool shutdown_lfl_reader_requested = false;
+static void ReqLflShutdownHandler(SIGNAL_ARGS)
+{
+	shutdown_lfl_reader_requested = true;
+}
+
+void
+LflTestReaderMain()
+{
+	pqsignal(SIGHUP, SIG_IGN);	/* set flag to read config file */
+	pqsignal(SIGINT, SIG_IGN); /* request checkpoint */
+	pqsignal(SIGTERM, SIG_IGN); /* ignore SIGTERM */
+	pqsignal(SIGQUIT, chkpt_quickdie);	/* hard crash time */
+	pqsignal(SIGALRM, SIG_IGN);
+	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGUSR1, SIG_IGN);
+	pqsignal(SIGUSR2, ReqLflShutdownHandler);	/* request shutdown */
+
+	/*
+	 * Reset some signals that are accepted by postmaster but not here
+	 */
+	pqsignal(SIGCHLD, SIG_DFL);
+
+	/* We allow SIGQUIT (quickdie) at all times */
+	sigdelset(&BlockSig, SIGQUIT);
+
+	/*
+	 * Unblock signals (they were blocked when the postmaster forked us)
+	 */
+	PG_SETMASK(&UnBlockSig);
+
+	/*
+	 * Loop forever
+	 */
+	for (;;)
+	{
+		if (shutdown_lfl_reader_requested)
+		{
+			proc_exit(0);
+		}
+
+		List *pending_deletes_lists = GetPendingDeletesLists();
+
+		if (list_length(pending_deletes_lists) > 0)
+		{
+			ListCell *c;
+			foreach(c, pending_deletes_lists)
+			{
+				dsa_pointer pending_deletes_list_dsa = (dsa_pointer)lfirst(c);
+				lock_free_list *ls = lock_free_list_get_local_list(pending_deletes_list_dsa);
+				lock_free_list_cell * cell;
+				for (cell = lock_free_list_first(ls);
+					 cell != NULL;
+					 cell = lock_free_list_next(ls, cell))
+				{
+					elog(LOG, "[RELOG][READER] <%lu>", (uintptr_t)lock_free_list_get_value(cell));
+				}
+			}
+		}
+
+		pg_usleep(100);
 	}
 }
 

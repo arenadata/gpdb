@@ -18,6 +18,8 @@
 #ifndef IPC_H
 #define IPC_H
 
+#include "utils/dsa.h"
+
 typedef void (*pg_on_exit_callback) (int code, Datum arg);
 typedef void (*shmem_startup_hook_type) (void);
 
@@ -78,5 +80,7 @@ extern void proc_exit_prepare(int code);
 extern PGDLLIMPORT shmem_startup_hook_type shmem_startup_hook;
 
 extern void CreateSharedMemoryAndSemaphores(int port);
+
+dsa_area * PendingDeleteAttachDsa(void);
 
 #endif							/* IPC_H */

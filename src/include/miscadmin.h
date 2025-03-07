@@ -521,6 +521,8 @@ typedef enum
 	WalReceiverProcess,
 	ArchiverProcess,
 
+	LflTestReaderProcess,
+
 	NUM_AUXPROCTYPES			/* Must be last! */
 } AuxProcType;
 

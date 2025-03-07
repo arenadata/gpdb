@@ -17,6 +17,7 @@
 
 #include "nodes/pg_list.h"
 #include "port/atomics.h"
+#include "storage/ipc.h"
 
 
 /*
@@ -1355,40 +1356,72 @@ length(const List *list)
 }
 
 
-// TODO: use DSA
+struct lock_free_list
+{
+	dsa_pointer head;
+};
 
-#define LFL_MARK_CELL(cell)			(cell->next = (lock_free_list_cell *)((uintptr_t)cell->next | 0x1))
+struct lock_free_list_cell
+{
+	void *value;
+	dsa_pointer next;
+};
+
+/* BIG TODO: verify that dsa doesn't use the [0] bit !!!!!!!!! */
+
+#define LFL_MARK_CELL(cell)			(cell->next = (dsa_pointer)((uintptr_t)cell->next | 0x1))
 #define LFL_IS_CELL_MARKED(cell)	((uintptr_t)cell->next & 0x1)
 
-static inline lock_free_list_cell *
+static dsa_pointer
 lock_free_list_cell_get_next(lock_free_list_cell *cell)
 {
-	uintptr_t mask = (uintptr_t) -2;
-	return (lock_free_list_cell *)((uintptr_t)cell->next & mask);
+	dsa_pointer mask = (dsa_pointer) -2;
+	return cell->next & mask;
+}
+
+uint64
+lock_free_list_create()
+{
+	dsa_area *area = PendingDeleteAttachDsa();
+	dsa_pointer ls_dsa = dsa_allocate(area, sizeof(lock_free_list));
+	Assert(DsaPointerIsValid(ls_dsa));
+	lock_free_list *ls = (lock_free_list *)dsa_get_address(area, ls_dsa);
+
+	ls->head = InvalidDsaPointer;
+	return ls_dsa;
 }
 
 lock_free_list *
-lock_free_list_create()
+lock_free_list_get_local_list(uint64 ls_dsa)
 {
-	lock_free_list *ls = (lock_free_list *)palloc(sizeof(*ls));
-	ls->head = NULL;
-	return ls;
+	Assert(DsaPointerIsValid(ls_dsa));
+
+	dsa_area *area = PendingDeleteAttachDsa();
+	return (lock_free_list *)dsa_get_address((dsa_area *) area, (dsa_pointer) ls_dsa);
 }
 
+/* Maybe we do not need it at all. Now noody calls it. */
 void
-lock_free_list_destroy(lock_free_list *ls)
+lock_free_list_destroy(uint64 ls_dsa)
 {
+	// TODO: maybe need to wait while reader flushes all nodes, and then 
+	// remove the handle itself???...
+	dsa_area *area = PendingDeleteAttachDsa();
+
+	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
+
 	if (ls)
 	{
-		lock_free_list_cell *cell = ls->head;
-		while (cell != NULL)
+		dsa_pointer c_dsa = ls->head;
+		while (DsaPointerIsValid(c_dsa))
 		{
-			lock_free_list_cell * tmp = cell;
-			cell = lock_free_list_cell_get_next(cell);
-			pfree(tmp);
+			dsa_pointer tmp_dsa = c_dsa;
+			lock_free_list_cell* c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
+			c_dsa = lock_free_list_cell_get_next(c);
+			dsa_free(area, tmp_dsa);
 		}
-		pfree(ls);
 	}
+	dsa_free(area, ls_dsa);
 }
 
 /*
@@ -1399,15 +1432,18 @@ lock_free_list_push(lock_free_list *ls, void *value)
 {
 	Assert(ls);
 
-	lock_free_list_cell *new_cell;
+	dsa_area *area = PendingDeleteAttachDsa();
 
-	new_cell = (lock_free_list_cell *) palloc(sizeof(*new_cell));
+	dsa_pointer new_cell_dsa = dsa_allocate(area, sizeof(lock_free_list_cell));
+	Assert(DsaPointerIsValid(new_cell_dsa));
+
+	lock_free_list_cell *new_cell = (lock_free_list_cell*)dsa_get_address(area, new_cell_dsa);
+
 	new_cell->value = value;
 	new_cell->next = ls->head;
+	ls->head = new_cell_dsa;
 
-	ls->head = new_cell;
-
-	return ls->head;
+	return new_cell;
 }
 
 /*
@@ -1436,10 +1472,18 @@ lock_free_list_first(lock_free_list *ls)
 	 * push even before we leave this function, but we will ignore it and work
 	 * only with the list snaphot.
 	 */
-	lock_free_list_cell *head_snapshot_list = ls->head;
-	lock_free_list_cell *c = head_snapshot_list;
+	dsa_pointer head_snapshot_dsa = ls->head;
+	if (!DsaPointerIsValid(head_snapshot_dsa))
+		return NULL;
 
-	while (c != NULL && LFL_IS_CELL_MARKED(c))
+	dsa_area *area = PendingDeleteAttachDsa();
+
+	lock_free_list_cell *head_snapshot = (lock_free_list_cell*)dsa_get_address(area, head_snapshot_dsa);
+
+	dsa_pointer c_dsa = head_snapshot_dsa;
+	lock_free_list_cell *c = head_snapshot;
+
+	while (DsaPointerIsValid(c_dsa) && LFL_IS_CELL_MARKED(c))
 	{
 		/*
 		 * If we are here, HEAD is marked, so its 'next' should be redirected
@@ -1447,14 +1491,15 @@ lock_free_list_first(lock_free_list *ls)
 		 * And do not forget to keep the HEAD marked.
 		 * We do not free HEAD if it is marked, as we need it for the push.
 		 */
-		lock_free_list_cell *tmp = c;
-		c = lock_free_list_cell_get_next(c);
+		dsa_pointer tmp_dsa = c_dsa;
+		c_dsa = lock_free_list_cell_get_next(c);
+		c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
 
-		if (tmp != head_snapshot_list)
-			pfree(tmp); // TODO: change pfree
+		if (tmp_dsa != head_snapshot_dsa)
+			dsa_free(area, tmp_dsa);
 
-		head_snapshot_list->next = c;
-		LFL_MARK_CELL(head_snapshot_list);
+		head_snapshot->next = c_dsa;
+		LFL_MARK_CELL(head_snapshot);
 	}
 
 	return c;
@@ -1466,19 +1511,22 @@ lock_free_list_first(lock_free_list *ls)
  * Will free all 'deleted' cells between current_cell and the returned cell.
  */
 lock_free_list_cell *
-lock_free_list_next(lock_free_list_cell *current_cell)
+lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell)
 {
 	Assert(current_cell);
 
 	lock_free_list_cell *c = current_cell;
+	dsa_pointer c_dsa = InvalidDsaPointer;
+	dsa_area *area = PendingDeleteAttachDsa();
 
 	do
 	{
-		lock_free_list_cell *tmp = c;
-		c = lock_free_list_cell_get_next(c);
+		dsa_pointer tmp_dsa = c_dsa;
+		c_dsa = lock_free_list_cell_get_next(c);
+		c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
 
-		if (tmp != current_cell)
-			pfree(tmp);
+		if (DsaPointerIsValid(tmp_dsa))
+			dsa_free(area, tmp_dsa);
 
 		/*
 		 * current_cell could be marked by the writer process while we were
@@ -1487,26 +1535,20 @@ lock_free_list_next(lock_free_list_cell *current_cell)
 		 */
 		bool update_completed = false;
 
-		lock_free_list_cell *old_next = current_cell->next;
+		dsa_pointer old_next = current_cell->next;
 
 		while (!update_completed)
 		{
-			lock_free_list_cell *new_next = c;
-			if ((uintptr_t)old_next & 0x1)
-				new_next = (lock_free_list_cell *)((uintptr_t)new_next | 0x1);
+			dsa_pointer new_next = c_dsa;
+			if (old_next & 0x1)
+				new_next = new_next | 0x1;
 
-//TODO: maybe change to check SIZEOF_DSA_POINTER (or use dsa_pointer_atomic_* api) 
-#if defined(__x86_64__)
-			update_completed = pg_atomic_compare_exchange_u64((pg_atomic_uint64 *)&current_cell->next,
-					(uint64 *)&old_next,
-					(uint64)new_next);
-#else
-			update_completed = pg_atomic_compare_exchange_u32((pg_atomic_uint32 *)&current_cell->next,
-					(uint32 *)&old_next,
-					(uint32)new_next);
-#endif
+			dsa_pointer_atomic *target = (dsa_pointer_atomic *) &(current_cell->next);
+			update_completed = dsa_pointer_atomic_compare_exchange(target,
+					&old_next,
+					new_next);
 		}
-	} while (c != NULL && LFL_IS_CELL_MARKED(c));
+	} while (DsaPointerIsValid(c_dsa) && LFL_IS_CELL_MARKED(c));
 
 	return c;
 }
@@ -1518,18 +1560,24 @@ lock_free_list_get_value(lock_free_list_cell * cell)
 	return cell->value;
 }
 
+/* TODO: remove it */
 void
 lock_free_list_dump(FILE *fout, lock_free_list *ls)
 {
-	lock_free_list_cell *c = ls->head;
+	dsa_pointer c_dsa = ls->head;
+	dsa_area *area = PendingDeleteAttachDsa();
 
 	fprintf(fout, "<LIST START> ");
 
-	while (c != NULL)
+	while (DsaPointerIsValid(c_dsa))
 	{
+		lock_free_list_cell * c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
+
 		fprintf(fout, "<[%lu]:%s> ", (uintptr_t)c->value, LFL_IS_CELL_MARKED(c) ? "d" : "p");
-		c = lock_free_list_cell_get_next(c);
+
+		c_dsa = lock_free_list_cell_get_next(c);
 	}
 
 	fprintf(fout, "<LIST END>\n");
 }
+
