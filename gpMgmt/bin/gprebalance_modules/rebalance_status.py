@@ -77,8 +77,10 @@ class StatusManager:
                                'REBALANCE_PREPARE_SCHEMA_STARTED': 4,
                                'REBALANCE_PREPARE_SCHEMA_DONE': 5,
                                'EXECUTION_PREPARED': 6,
-                               'EXECTUTION_STARTED': 7,
-                               'EXECUTION_DONE': 8,
+                               'EXECUTION_STARTED': 7,
+                               'EXECUTION_FAILED' : 8,
+                               'EXECUTION_STOPPED' : 9,
+                               'EXECUTION_DONE': 10,
                                }
         self.conf_dir = None
         self.target_hosts_filename = None

@@ -5,7 +5,6 @@ import time
 from collections import defaultdict
 import pickle
 from typing import List, Dict, Optional, Set, Tuple
-from enum import Enum
 from gprebalance_modules.rebalance_plan import Move, Plan  # nopep8
 from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus, MoveStatus, SqlError
 from gprebalance_modules.rebalance import ClusterState, SegmentId, SegmentSize, Host
@@ -42,6 +41,9 @@ class RecoveryProcess:
     @staticmethod
     def run_recovery(cmd_args: list, result_queue: multiprocessing.Queue, log_file: str):
         try:
+            #prevent signal propagation from parent
+            os.setpgrp()
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
             log_fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
             flags = fcntl.fcntl(log_fd, fcntl.F_GETFL)
             fcntl.fcntl(log_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
@@ -105,7 +107,7 @@ class SingleMoveCommand(SQLCommand):
                     f"{self.segment.port}|{self.segment.datadir} "
                     f"{canonicalize_address(self.move.dstHost.address)}|"
                     f"{self.move.target_port}|"
-                    f"{self.move.target_datadir}/{segment_prefix}{self.move.segid.contentid}")
+                    f"{self.move.target_datadir}")
             self.logger.info(
                 "About to run gprecoverseg for mirror move "
                 f"(dbid = {self.segment.dbid}, content = {self.segment.content}) {line}")
@@ -201,6 +203,7 @@ class SingleMoveCommand(SQLCommand):
             self.move_error = True
             status_conn.close()
             return
+        
 
 
 class FilesystemSpace:
@@ -396,6 +399,7 @@ class RebalanceExecutor:
         self.segmentSizes = self.estimateSegmentSizes(segids)
         self.resources = self.initializeHostResources(plan.moves)
         self.queue = None
+        self.shutdown_requested = False
 
         self.define_datadir_prefix()
     
@@ -535,7 +539,7 @@ class RebalanceExecutor:
                 try:
                     self.resources[primary_host].accommodate_segment(
                         self.segmentSizes[primary_id], datadir)
-                    primary_move.target_datadir = datadir
+                    primary_move.target_datadir = datadir + f"/{segment_prefix}{primary_move.segid.contentid}"
                     break
                 except:
                     continue
@@ -549,7 +553,7 @@ class RebalanceExecutor:
                 try:
                     self.resources[mirror_host].accommodate_segment(
                         self.segmentSizes[primary_id], datadir)
-                    mirror_move.target_datadir = datadir
+                    mirror_move.target_datadir = datadir + f"/{segment_prefix}{mirror_move.segid.contentid}"
                     break
                 except:
                     continue
@@ -590,7 +594,7 @@ class RebalanceExecutor:
                 try:
                     self.resources[primary_host].accommodate_segment(
                         self.segmentSizes[primary_id], datadir)
-                    primary_move.target_datadir = datadir
+                    primary_move.target_datadir = datadir + f"/{segment_prefix}{primary_move.segid.contentid}"
                     break
                 except Exception as e:
                     self.logger.error(str(e))
@@ -605,7 +609,7 @@ class RebalanceExecutor:
                 try:
                     self.resources[mirror_host].accommodate_segment(
                         self.segmentSizes[primary_id], datadir)
-                    mirror_move.target_datadir = datadir
+                    mirror_move.target_datadir = datadir + f"/{segment_prefix}{mirror_move.segid.contentid}"
                     break
                 except:
                     continue
@@ -643,7 +647,7 @@ class RebalanceExecutor:
                 try:
                     self.resources[primary_host].accommodate_segment(
                         self.segmentSizes[primary_id], datadir)
-                    primary_move.target_datadir = datadir
+                    primary_move.target_datadir = datadir + f"/{segment_prefix}{primary_move.segid.contentid}"
                     break
                 except:
                     continue
@@ -673,7 +677,7 @@ class RebalanceExecutor:
                 try:
                     self.resources[mirror_host].accommodate_segment(
                         self.segmentSizes[mirror_id], datadir)
-                    mirror_move.target_datadir = datadir
+                    mirror_move.target_datadir = datadir + f"/{segment_prefix}{mirror_move.segid.contentid}"
                     break
                 except:
                     continue
@@ -850,12 +854,13 @@ class RebalanceExecutor:
             had_error = False
             if self.options.end:
                 stopTime = self.options.end
+            self.statusManager.set_status('EXECUTION_STARTED')
             for sequence in move_sequences:
+                if self.shutdown_requested:
+                    break
                 if isinstance(sequence[0], str) and sequence[0] == 'SWITCH':
 
                     while not self.queue.isDone():
-                        logger.debug(
-                            "woke up.  queue: %d finished %d  " % (self.queue.assigned, self.queue.completed_queue.qsize()))
                         if stopTime and datetime.datetime.now() >= stopTime:
                             stoppedEarly = True
                             break
@@ -864,9 +869,12 @@ class RebalanceExecutor:
                     for moveCommand in self.queue.getCompletedItems():
                         if moveCommand.move_error:
                             had_error = True
-                        break
+                            break
 
                     if stoppedEarly or had_error:
+                        break
+
+                    if self.shutdown_requested:
                         break
 
                     self.statusManager.set_db_status(
@@ -879,6 +887,8 @@ class RebalanceExecutor:
                         RebalanceStatus.IN_PROGRESS)
                 else:
                     for move in sequence:
+                        if self.shutdown_requested:
+                            break
                         segid = move.segid
                         needs_switch = False
                         if segid.contentid in former_switches or segid.contentid in latter_switches:
@@ -896,8 +906,6 @@ class RebalanceExecutor:
                         self.queue.addCommand(cmd)
 
                 while not self.queue.isDone():
-                    logger.debug(
-                        "woke up.  queue: %d finished %d  " % (self.queue.assigned, self.queue.completed_queue.qsize()))
                     if stopTime and datetime.datetime.now() >= stopTime:
                         stoppedEarly = True
                         break
@@ -906,23 +914,30 @@ class RebalanceExecutor:
                     self.logger.info("Execution timeout is reached. Waiting the existing jobs to finish "
                                      "and stopping rebalance.")
                     break
-
-            self.queue.haltWork()
-            self.queue.joinWorkers()
-
-            for moveCommand in self.queue.getCompletedItems():
-                if moveCommand.move_error:
-                    had_error = True
-                    break
-            if had_error or stoppedEarly:
+                for moveCommand in self.queue.getCompletedItems():
+                    if moveCommand.move_error:
+                        had_error = True
+                        break
+            
+            if self.queue:
+                self.queue.haltWork()
+                self.queue.joinWorkers()
+                self.queue = None
+            
+            if stoppedEarly or self.shutdown_requested:
                 self.statusManager.set_db_status(
                     RebalanceStatus.STOPPED)
+                self.statusManager.set_status('EXECUTION_STOPPED')
+                if not self.shutdown_requested:
+                    self.logger.info("Rebalance stopped due to timeout")
+            elif had_error:
+                self.statusManager.set_db_status(
+                    RebalanceStatus.FAILED)
+                self.statusManager.set_status('EXECUTION_FAILED')
             else:
+                self.statusManager.set_status('EXECUTION_DONE')
                 self.statusManager.set_db_status(
                     RebalanceStatus.COMPLETED)
-
-            if stoppedEarly:
-                self.logger.info("Rebalance stopped due to timeout")
 
         except Exception as e:
             raise
@@ -954,8 +969,13 @@ class RebalanceExecutor:
         cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
         cmd.run(validateAfter=True)
 
+
     def shutdown(self):
+        # the execution shutdown assumes finishing
+        # current jobs in queue
         if self.queue:
+            self.logger.info("Shutdown requested, will complete current jobs...")
+            self.shutdown_requested = True
             self.queue.haltWork()
             self.queue.joinWorkers()
             self.queue = None

@@ -239,7 +239,7 @@ class GPRebalance:
         return plan
 
     def execute_plan(self, plan: Plan):
-        executor = RebalanceExecutor(plan,
+        self.executor = RebalanceExecutor(plan,
                                      self.original_gparray,
                                      self.segmentMap,
                                      self.current_conf,
@@ -248,7 +248,7 @@ class GPRebalance:
                                      self.conn,
                                      self.dburl,
                                      self.options)
-        executor.execute_moves()
+        self.executor.execute_moves()
 
     @staticmethod
     def prepare_gpdb_state(logger, dburl, options) -> str:
@@ -323,6 +323,8 @@ class GPRebalance:
             self.statusManager.remove_all()
 
     def resume(self):
+        """TODO: implement proper state handling and provide
+        possibility to perform rebalance after fails"""
         pass
 
     def shutdown(self):

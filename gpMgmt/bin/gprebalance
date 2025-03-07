@@ -339,20 +339,15 @@ gprebalance = None
 
 
 def sig_handler(sig, arg):
-
-    if gprebalance:
+    if gprebalance is not None:
         gprebalance.shutdown()
-    signal.signal(signal.SIGTERM, signal.SIG_DFL)
-    signal.signal(signal.SIGHUP, signal.SIG_DFL)
-
-    # raise sig
-    os.kill(os.getpid(), sig)
 
 
 def main(options, args, parser):
     try:
         signal.signal(signal.SIGTERM, sig_handler)
         signal.signal(signal.SIGHUP, sig_handler)
+        signal.signal(signal.SIGINT, sig_handler)
 
         logger = get_default_logger()
         setup_tool_logging(EXECNAME, getLocalHostname(), getUserName())
@@ -369,24 +364,30 @@ def main(options, args, parser):
         configurationInterface.getConfigurationProvider(
         ).initializeProvider(gpEnv.getCoordinatorPort())
         dburl = dbconn.DbURL(dbname=DBNAME, port=gpEnv.getCoordinatorPort())
-        # check parallel execution of other cluster utilities
-        check_running_gputils(dburl, options.coordinator_data_directory)
-        # create pid file
-        create_pid_file(options.coordinator_data_directory)
-
-        gprebalance_db_status = GPRebalance.prepare_gpdb_state(
-            logger, dburl, options)
 
         try:
+            # check parallel execution of other cluster utilities
+            check_running_gputils(dburl, options.coordinator_data_directory)
             gparray = GpArray.initFromCatalog(dburl, utility=True)
-
         except DatabaseError as ex:
             logger.error("Failed to connect to database.  Make sure the"
                          " Greenplum instance you wish to expand is running"
                          " and that your environment is correct, then rerun"
                          " gprebalance" + ' '.join(sys.argv[1:]))
             sys.exit(1)
+        
+        # create pid file
+        create_pid_file(options.coordinator_data_directory)
+        
+        gprebalance_db_status = None
 
+        try:
+            gprebalance_db_status = GPRebalance.prepare_gpdb_state(
+            logger, dburl, options)
+        except:
+            pass
+        
+        global gprebalance
         gprebalance = GPRebalance(logger, gparray, dburl, options)
 
         # dump existing hosts configuration
