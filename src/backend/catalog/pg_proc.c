@@ -1081,14 +1081,9 @@ function_parse_error_transpose(const char *prosrc)
 	}
 
 	/* We can get the original query text from the active portal (hack...) */
-<<<<<<< HEAD
-	/* Assert(ActivePortal && PortalGetStatus(ActivePortal) == PORTAL_ACTIVE); */
-	queryText = ActivePortal->sourceText;
-=======
 	if (ActivePortal && ActivePortal->status == PORTAL_ACTIVE)
 	{
 		const char *queryText = ActivePortal->sourceText;
->>>>>>> REL_12_13
 
 		/* Try to locate the prosrc in the original text */
 		newerrposition = match_prosrc_to_query(prosrc, queryText,
