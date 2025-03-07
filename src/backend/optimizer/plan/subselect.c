@@ -94,16 +94,13 @@ static bool subplan_is_hashable(PlannerInfo *root, Plan *plan);
 static bool subpath_is_hashable(PlannerInfo *root, Path *path);
 static bool test_opexpr_is_hashable(OpExpr *testexpr, List *param_ids);
 static bool hash_ok_operator(OpExpr *expr);
-<<<<<<< HEAD
+static bool SS_make_multiexprs_unique_walker(Node *node, void *context);
 #if 0
 /*
  * The following several functions are used by SS_process_ctes.
  * But SS_process_ctes is commentted of because gpdb does not
  * use it.
  */
-=======
-static bool SS_make_multiexprs_unique_walker(Node *node, void *context);
->>>>>>> REL_12_13
 static bool contain_dml(Node *node);
 static bool contain_dml_walker(Node *node, void *context);
 static bool contain_outer_selfref(Node *node);
@@ -3668,15 +3665,11 @@ SS_make_initplan_from_plan(PlannerInfo *root,
 	 * comments in ExecReScan).
 	 */
 	node = makeNode(SubPlan);
-<<<<<<< HEAD
 	if (is_initplan_func_sublink)
 		node->subLinkType = INITPLAN_FUNC_SUBLINK;
 	else
 		node->subLinkType = EXPR_SUBLINK;
-=======
-	node->subLinkType = EXPR_SUBLINK;
 	node->subLinkId = 0;
->>>>>>> REL_12_13
 	node->plan_id = list_length(root->glob->subplans);
 	node->plan_name = psprintf("InitPlan %d (returns $%d)",
 							   node->plan_id, prm->paramid);
