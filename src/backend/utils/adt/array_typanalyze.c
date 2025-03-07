@@ -321,11 +321,7 @@ compute_array_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 		value = fetchfunc(stats, array_no, &isnull);
 		if (isnull)
 		{
-<<<<<<< HEAD
-			/* array is null, just count that */
-=======
 			/* ignore arrays that are null overall */
->>>>>>> REL_12_13
 			continue;
 		}
 
