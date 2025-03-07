@@ -29,11 +29,10 @@ extern void *pg_malloc_extended(size_t size, int flags);
 extern void *pg_realloc(void *pointer, size_t size);
 extern void pg_free(void *pointer);
 
-<<<<<<< HEAD
 #ifdef EXTRA_DYNAMIC_MEMORY_DEBUG
 #include "utils/palloc_memory_debug_undef.h"
 #endif
-=======
+
 /*
  * Variants with easier notation and more type safety
  */
@@ -55,7 +54,6 @@ extern void pg_free(void *pointer);
  * objects of type "type"
  */
 #define pg_realloc_array(pointer, type, count) ((type *) pg_realloc(pointer, sizeof(type) * (count)))
->>>>>>> REL_12_13
 
 /* Equivalent functions, deliberately named the same as backend functions */
 extern char *pstrdup(const char *in);
