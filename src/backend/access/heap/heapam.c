@@ -2645,20 +2645,7 @@ l1:
 		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 	}
 
-<<<<<<< HEAD
-	lp = PageGetItemId(page, ItemPointerGetOffsetNumber(tid));
-	Assert(ItemIdIsNormal(lp));
-
-	tp.t_tableOid = RelationGetRelid(relation);
-	tp.t_data = (HeapTupleHeader) PageGetItem(page, lp);
-	tp.t_len = ItemIdGetLength(lp);
-	tp.t_self = *tid;
-
-l1:
 	result = HeapTupleSatisfiesUpdate(relation, &tp, cid, buffer);
-=======
-	result = HeapTupleSatisfiesUpdate(&tp, cid, buffer);
->>>>>>> REL_12_13
 
 	if (result == TM_Invisible)
 	{
