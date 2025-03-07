@@ -163,16 +163,13 @@ static CdbVisitOpt planstate_walk_kids(PlanState *planstate,
 static TupleTableSlot *ExecProcNodeFirst(PlanState *node);
 #if 0
 static TupleTableSlot *ExecProcNodeInstr(PlanState *node);
-<<<<<<< HEAD
 #endif
 static TupleTableSlot *ExecProcNodeGPDB(PlanState *node);
 
 /* Greenplum specific helper function */
 static void prefetch_subplans(PlanState *ps);
 static List *find_all_mat_nodes(PlanState *ps);
-=======
 static bool ExecShutdownNode_walker(PlanState *node, void *context);
->>>>>>> REL_12_13
 
 
 /* ------------------------------------------------------------------------
