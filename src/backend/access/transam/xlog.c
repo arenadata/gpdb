@@ -2155,13 +2155,7 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, bool opportunistic)
 	XLogRecPtr	NewPageEndPtr = InvalidXLogRecPtr;
 	XLogRecPtr	NewPageBeginPtr;
 	XLogPageHeader NewPage;
-<<<<<<< HEAD
-#ifdef WAL_DEBUG
-	int			npages = 0;
-#endif
-=======
 	int			npages pg_attribute_unused() = 0;
->>>>>>> REL_12_13
 
 	LWLockAcquire(WALBufMappingLock, LW_EXCLUSIVE);
 
