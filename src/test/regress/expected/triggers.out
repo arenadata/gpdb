@@ -3067,17 +3067,11 @@ return null;
 end; $$;
 create trigger but_trigger after update on convslot_test_child
 referencing new table as new_table
-<<<<<<< HEAD
-for each statement execute function trigger_function2();
-ERROR:  Triggers for statements are not yet supported
-update convslot_test_parent set col1 = col1 || '1';
-create or replace function trigger_function3()
-=======
 for each statement execute function convslot_trig2();
+ERROR:  Triggers for statements are not yet supported
 update convslot_test_parent set col1 = col1 || '1';
 NOTICE:  trigger = but_trigger, new table = (11,tutu), (31,tutu)
 create function convslot_trig3()
->>>>>>> REL_12_13
 returns trigger
 language plpgsql
 AS $$
@@ -3090,21 +3084,13 @@ return null;
 end; $$;
 create trigger but_trigger2 after update on convslot_test_child
 referencing old table as old_table new table as new_table
-<<<<<<< HEAD
-for each statement execute function trigger_function3();
-ERROR:  Triggers for statements are not yet supported
-=======
 for each statement execute function convslot_trig3();
->>>>>>> REL_12_13
+ERROR:  Triggers for statements are not yet supported
 update convslot_test_parent set col1 = col1 || '1';
 create trigger bdt_trigger after delete on convslot_test_child
 referencing old table as old_table
-<<<<<<< HEAD
-for each statement execute function trigger_function1();
-ERROR:  Triggers for statements are not yet supported
-=======
 for each statement execute function convslot_trig1();
->>>>>>> REL_12_13
+ERROR:  Triggers for statements are not yet supported
 delete from convslot_test_parent;
 drop table convslot_test_child, convslot_test_parent;
 drop function convslot_trig1();
