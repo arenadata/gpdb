@@ -252,24 +252,21 @@ class GPRebalance:
 
     @staticmethod
     def prepare_gpdb_state(logger, dburl, options) -> str:
-        status_file_exists = os.path.exists(
-            options.coordinator_data_directory + '/gprebalance.status')
         gprebalance_db_status = None
 
-        if not status_file_exists:
-            logger.info('Querying gprebalance schema for current state')
-            try:
-                gprebalance_db_status = GPRebalance.get_status_from_db(
-                    dburl, options)
-            except Exception as e:
-                raise Exception(
-                    'Error while trying to query the gprebalance schema: %s' % e)
+        try:
+            gprebalance_db_status = GPRebalance.get_status_from_db(
+                dburl, options)
             logger.debug('Expansion status returned is %s' %
-                         gprebalance_db_status)
+                     gprebalance_db_status)
+        except Exception as e:
+            raise Exception(
+                'Error while trying to query the gprebalance schema: %s' % e)
+
         return gprebalance_db_status
 
     @staticmethod
-    def get_status_from_db(dburl, options) -> str:
+    def get_status_from_db(dburl, options) -> RebalanceStatus:
         """Gets gprebalance status from the gprebalance schema"""
         status_conn = None
         gprebalance_db_status = None
@@ -301,7 +298,7 @@ class GPRebalance:
             finally:
                 conn.close()
 
-        return gprebalance_db_status
+        return RebalanceStatus(gprebalance_db_status)
 
     def get_state_from_file(self):
         """Returns expansion state from status file"""
@@ -315,6 +312,8 @@ class GPRebalance:
         self.statusManager.set_db_status(RebalanceStatus.INITIALIZED)
 
     def cleanup_schema(self):
+        if not self.conn:
+            return
         self.logger.info('Dropping rebalance schema')
         self.statusManager.cleanup_schema()
 

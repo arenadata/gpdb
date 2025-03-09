@@ -341,6 +341,11 @@ gprebalance = None
 def sig_handler(sig, arg):
     if gprebalance is not None:
         gprebalance.shutdown()
+        if gprebalance.executor is None:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGHUP, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            os.kill(os.getpid(), sig)
 
 
 def main(options, args, parser):
@@ -399,7 +404,8 @@ def main(options, args, parser):
 
         from gprebalance_modules.rebalance_status import RebalanceStatus  # nopep8
 
-        if gprebalance_db_status == RebalanceStatus.COMPLETED:
+        if (gprebalance_db_status == RebalanceStatus.COMPLETED or
+            gprebalance_file_status == 'EXECUTION_DONE'):
             logger.info('Rebalance has already completed')
             logger.info(
                 'If you want to rebalance again, run gprebalance -c to perform cleanup')

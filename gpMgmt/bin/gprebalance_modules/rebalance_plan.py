@@ -24,8 +24,7 @@ class Plan:
         self.in_conf = None
         self.moves = []
         self.out_conf = None
-        self.roles = []
-        self.number_of_moves = 0
+        self.segmentMap = None
 
     def __str__(self):
         finalStr = ""
@@ -291,10 +290,9 @@ class ClusterBalancer():
         moves, roles = self.get_moves_between_states(in_conf, finalState)
         plan = Plan()
         plan.moves = moves
-        plan.number_of_moves = len(moves)
         plan.in_conf = in_conf
         plan.out_conf = finalState
-        plan.roles = roles
+        plan.segmentMap = self.initialSegmentMap
         return plan
 
     def get_moves_between_states(self, state1: ClusterState, state2: ClusterState):
@@ -310,7 +308,7 @@ class ClusterBalancer():
             current_location = primary_map1.get(contentid)
             if current_location and current_location != target_location:
                 source_host = state1[current_location]
-                target_host = state1[target_location]
+                target_host = state2[target_location]
                 segid = next(seg for seg in source_host.primary_segments
                              if seg.contentid == contentid)
                 moves.append(
@@ -322,7 +320,7 @@ class ClusterBalancer():
             current_location = mirror_map1.get(contentid)
             if current_location and current_location != target_location:
                 source_host = state1[current_location]
-                target_host = state1[target_location]
+                target_host = state2[target_location]
                 segid = next(seg for seg in source_host.mirror_segments
                              if seg.contentid == contentid)
                 moves.append(

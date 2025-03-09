@@ -881,7 +881,12 @@ class RebalanceExecutor:
                         RebalanceStatus.AWAITS_SWITCH)
                     self.logger.info(
                         f"Executing role swaps for {len(sequence[1])} segments")
-                    self._execute_role_swaps(sequence[1])
+                    try:
+                        self._execute_role_swaps(sequence[1])
+                    except Exception as e:
+                        had_error = True
+                        self.logger.error(f"Could not execute role swaps:{str(e)}")
+                        break
 
                     self.statusManager.set_db_status(
                         RebalanceStatus.IN_PROGRESS)

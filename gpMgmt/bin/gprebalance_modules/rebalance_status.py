@@ -154,7 +154,7 @@ class StatusManager:
         if not stamp:
             stamp = datetime.now()
         sql = "INSERT INTO gprebalance.status VALUES ('%s', '%s')" % (
-            status, stamp)
+            status.value, stamp)
         dbconn.execSQL(self.main_conn, sql)
 
     @staticmethod
@@ -180,7 +180,7 @@ class StatusManager:
             move.dstHost.hostname,
             move.target_datadir,
             move.target_port,
-            MoveStatus.PENDING,
+            MoveStatus.PENDING.value,
             str(start_time),
             source_kbytes
         )
@@ -192,11 +192,11 @@ class StatusManager:
         dbid_str = ','.join(str(dbid) for dbid in dbids)
         if status == MoveStatus.COMPLETED:
             sql = "UPDATE gprebalance.status_detail SET status = '%s' , rebalance_finished = '%s' WHERE dbid IN (%s)" % (
-                status, datetime.now(), dbid_str
+                status.value, datetime.now(), dbid_str
             )
         else:
             sql = "UPDATE gprebalance.status_detail SET status = '%s' WHERE dbid IN (%s)" % (
-                status, dbid_str
+                status.value, dbid_str
             )
         dbconn.execSQL(conn, sql)
 
