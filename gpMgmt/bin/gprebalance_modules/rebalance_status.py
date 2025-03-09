@@ -81,6 +81,11 @@ class StatusManager:
                                'EXECUTION_FAILED' : 8,
                                'EXECUTION_STOPPED' : 9,
                                'EXECUTION_DONE': 10,
+                               'ROLLBACK_PREPARED' : 11,
+                               'ROLLBACK_STARTED' : 12,
+                               'ROLLBACK_FAILED' : 13,
+                               'ROLLBACK_STOPPED' : 14,
+                               'ROLLBACK_DONE' : 15,
                                }
         self.conf_dir = None
         self.target_hosts_filename = None

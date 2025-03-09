@@ -118,9 +118,11 @@ class SingleMoveCommand(SQLCommand):
         status_conn = None
         try:
             status_conn = dbconn.connect(self.status_url, encoding='UTF8')
-            segsize = self.segmentSize.source_data_dir_usage
-            if self.segmentSize.source_tablespace_usage:
-                segsize += sum(self.segmentSize.source_tablespace_usage.values())
+            segsize = -1
+            if self.segmentSize:
+                segsize = self.segmentSize.source_data_dir_usage
+                if self.segmentSize.source_tablespace_usage:
+                    segsize += sum(self.segmentSize.source_tablespace_usage.values())
             StatusManager.record_move(status_conn, self.move, self.segment,
                                       segsize, datetime.datetime.now())
 
@@ -397,7 +399,7 @@ class RebalanceExecutor:
         for m in plan.moves:
             segids.append(m.segid)
         self.segmentSizes = self.estimateSegmentSizes(segids)
-        self.resources = self.initializeHostResources(plan.moves)
+        self.resources = self.initializeHostResources(plan.moves) if not options.rollback else None
         self.queue = None
         self.shutdown_requested = False
 
@@ -534,6 +536,12 @@ class RebalanceExecutor:
 
             primary_id = primary_move.segid
 
+            if self.options.rollback:
+                mirror_move.dstHost = primary_host
+                primary_move.dstHost = mirror_host
+                primary_move.target_datadir, mirror_move.target_datadir =  mirror_move.target_datadir, primary_move.target_datadir
+                primary_move.target_port, mirror_move.target_port =  mirror_move.target_port, primary_move.target_port
+                continue
             # define datadir
             for datadir in primary_host.mirror_datadirs:
                 try:
@@ -589,6 +597,12 @@ class RebalanceExecutor:
             primary_id = primary_move.segid
             mirror_id = mirror_move.segid
 
+            if self.options.rollback:
+                primary_move.dstHost = mirror_host
+                mirror_move.dstHost = primary_host
+                primary_move.target_datadir, mirror_move.target_datadir =  mirror_move.target_datadir, primary_move.target_datadir
+                primary_move.target_port, mirror_move.target_port =  mirror_move.target_port, primary_move.target_port
+                continue
             # define datadir
             for datadir in mirror_host.mirror_datadirs:
                 try:
@@ -638,10 +652,14 @@ class RebalanceExecutor:
         2. primary is moved to target dir
         3. primary is moved to mirror dir in mirror's target host
         """
+        if self.options.rollback:
+            return
+
         for primary_move in primaries:
             primary_host = primary_move.dstHost
 
             primary_id = primary_move.segid
+
             # define datadir
             for datadir in primary_host.primary_datadirs:
                 try:
@@ -668,6 +686,8 @@ class RebalanceExecutor:
         Choose the target directory for mirror-only move case:
         1. mirror is moved to mirror dir in mirror's target host
         """
+        if self.options.rollback:
+            return 
         for mirror_move in mirrors:
             mirror_host = mirror_move.dstHost
 
@@ -839,10 +859,15 @@ class RebalanceExecutor:
             conf_dir = self.options.coordinator_data_directory + CONF_DIR
 
             if firstRun:
-                self.statusManager.set_status('EXECUTION_PREPARED')
-                self.statusManager.set_db_status(
+                if self.options.rollback:
+                    self.statusManager.set_status('ROLLBACK_PREPARED')
+                    self.plan.save_to_file(conf_dir, "rollback_plan")
+                else:
+                    self.statusManager.set_status('EXECUTION_PREPARED')
+                    self.statusManager.set_db_status(
                     RebalanceStatus.PREPARED, begining_timestamp)
-                self.plan.save_to_file(conf_dir, "plan")
+                    self.plan.save_to_file(conf_dir, "plan")
+            
 
             self.statusManager.set_db_status(
                 RebalanceStatus.IN_PROGRESS)
@@ -854,7 +879,10 @@ class RebalanceExecutor:
             had_error = False
             if self.options.end:
                 stopTime = self.options.end
-            self.statusManager.set_status('EXECUTION_STARTED')
+            if self.options.rollback:
+                self.statusManager.set_status('ROLLBACK_STARTED')
+            else:
+                self.statusManager.set_status('EXECUTION_STARTED')
             for sequence in move_sequences:
                 if self.shutdown_requested:
                     break
@@ -887,7 +915,6 @@ class RebalanceExecutor:
                         had_error = True
                         self.logger.error(f"Could not execute role swaps:{str(e)}")
                         break
-
                     self.statusManager.set_db_status(
                         RebalanceStatus.IN_PROGRESS)
                 else:
@@ -932,21 +959,30 @@ class RebalanceExecutor:
             if stoppedEarly or self.shutdown_requested:
                 self.statusManager.set_db_status(
                     RebalanceStatus.STOPPED)
-                self.statusManager.set_status('EXECUTION_STOPPED')
+                if self.options.rollback:
+                    self.statusManager.set_status('ROLLBACK_STOPPED')
+                else:
+                    self.statusManager.set_status('EXECUTION_STOPPED')
                 if not self.shutdown_requested:
                     self.logger.info("Rebalance stopped due to timeout")
             elif had_error:
                 self.statusManager.set_db_status(
                     RebalanceStatus.FAILED)
-                self.statusManager.set_status('EXECUTION_FAILED')
+                if self.options.rollback:
+                    self.statusManager.set_status('ROLLBACK_FAILED')
+                else:
+                    self.statusManager.set_status('EXECUTION_FAILED')
             else:
-                self.statusManager.set_status('EXECUTION_DONE')
+                if self.options.rollback:
+                    self.statusManager.set_status('ROLLBACK_DONE')
+                else:
+                    self.statusManager.set_status('EXECUTION_DONE')
                 self.statusManager.set_db_status(
                     RebalanceStatus.COMPLETED)
 
         except Exception as e:
             raise
-
+    
     def _execute_role_swaps(self, segids: List[SegmentId]):
         """Execute multiple role swaps in single gprecoverseg -r call"""
         if not segids:
@@ -973,8 +1009,11 @@ class RebalanceExecutor:
             recoversegOptions += " --hba-hostnames"
         cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
         cmd.run(validateAfter=True)
+    
+    def execute_rollback(self):
+        pure_swaps, primary_mirrors, primaries, mirrors = self._classify_moves()
 
-
+        
     def shutdown(self):
         # the execution shutdown assumes finishing
         # current jobs in queue
