@@ -3297,12 +3297,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 	ExprEvalStep scratch = {0};
 	int			transno = 0;
 	int			setoff = 0;
-<<<<<<< HEAD
-	LastAttnumInfo deform = {0, 0, 0};
-=======
-	bool		isCombine = DO_AGGSPLIT_COMBINE(aggstate->aggsplit);
 	ExprSetupInfo deform = {0, 0, 0, NIL};
->>>>>>> REL_12_17
 
 	state->expr = (Expr *) aggstate;
 	state->parent = parent;
@@ -3318,22 +3313,6 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 	{
 		AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 
-<<<<<<< HEAD
-		get_last_attnums_walker((Node *) pertrans->aggref->aggdirectargs,
-								&deform);
-		get_last_attnums_walker((Node *) pertrans->aggref->args,
-								&deform);
-		get_last_attnums_walker((Node *) pertrans->aggref->aggorder,
-								&deform);
-		get_last_attnums_walker((Node *) pertrans->aggref->aggdistinct,
-								&deform);
-		get_last_attnums_walker((Node *) pertrans->aggref->aggfilter,
-								&deform);
-
-		if (aggstate->AggExprId_AttrNum > 0)
-			deform.last_outer = Max(deform.last_outer,
-									aggstate->AggExprId_AttrNum);
-=======
 		expr_setup_walker((Node *) pertrans->aggref->aggdirectargs,
 						  &deform);
 		expr_setup_walker((Node *) pertrans->aggref->args,
@@ -3344,7 +3323,10 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 						  &deform);
 		expr_setup_walker((Node *) pertrans->aggref->aggfilter,
 						  &deform);
->>>>>>> REL_12_17
+
+		if (aggstate->AggExprId_AttrNum > 0)
+			deform.last_outer = Max(deform.last_outer,
+									aggstate->AggExprId_AttrNum);
 	}
 	ExecPushExprSetupSteps(state, &deform);
 
