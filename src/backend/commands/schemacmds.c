@@ -71,7 +71,6 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	AclResult	aclresult;
 	ObjectAddress address;
 	StringInfoData pathbuf;
-<<<<<<< HEAD
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
 								  !IsBootstrapProcessingMode());
 
@@ -93,8 +92,6 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 		InitTempTableNamespace();
 		return InvalidOid;
 	}
-=======
->>>>>>> REL_12_17
 
 	GetUserIdAndSecContext(&saved_uid, &save_sec_context);
 
