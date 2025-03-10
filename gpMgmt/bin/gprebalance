@@ -431,7 +431,10 @@ def main(options, args, parser):
             if options.show_plan:
                 logger.info(f"Resulting plan: \n{str(plan)}")
                 sys.exit(0)
-            if gprebalance_file_status == 'ROLLBACK_FAILED' or \
+            if gprebalance_file_status == 'PLANNED':
+                gprebalance.setup_schema()
+                gprebalance.execute_plan(plan)
+            elif gprebalance_file_status == 'ROLLBACK_FAILED' or \
                gprebalance_file_status == 'ROLLBACK_STOPPED':
                 plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, True)
             if options.rollback:
@@ -448,6 +451,8 @@ def main(options, args, parser):
     except KeyboardInterrupt:
         sys.exit('\nUser Interrupted')
     finally:
+        if gprebalance:
+            gprebalance.shutdown()
         remove_pid_file(get_coordinatordatadir())
 
 
