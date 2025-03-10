@@ -636,7 +636,7 @@ class RebalanceExecutor:
         Choose the target directory for primary-only move case:
         1. role switch takes place
         2. primary is moved to target dir
-        3. primary is moved to mirror dir in mirror's target host
+        3. role switch
         """
         for primary_move in primaries:
             primary_host = primary_move.dstHost
