@@ -1672,14 +1672,6 @@ DefineIndex(Oid relationId,
 					Assert(GetUserId() == child_save_userid);
 					SetUserIdAndSecContext(root_save_userid,
 										   root_save_sec_context);
-<<<<<<< HEAD
-					DefineIndex(childRelid, childStmt,
-								InvalidOid, /* no predefined OID */
-								indexRelationId,	/* this is our child */
-								createdConstraintId,
-								is_alter_table, check_rights, check_not_in_use,
-								skip_build, quiet, is_new_table);
-=======
 					childAddr =
 						DefineIndex(childRelid, childStmt,
 									InvalidOid, /* no predefined OID */
@@ -1687,8 +1679,7 @@ DefineIndex(Oid relationId,
 									createdConstraintId,
 									is_alter_table, check_rights,
 									check_not_in_use,
-									skip_build, quiet);
->>>>>>> REL_12_17
+									skip_build, quiet, is_new_table);
 					SetUserIdAndSecContext(child_save_userid,
 										   child_save_sec_context);
 
