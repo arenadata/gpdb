@@ -1783,6 +1783,7 @@ select pg_get_ruledef(oid, true) from pg_rewrite
      43 AS col_b;
 (1 row)
 
+<<<<<<< HEAD
 -- test display negative operator of const-folder expression
 create table tdis(a int, b int, c int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -1799,6 +1800,31 @@ select pg_get_viewdef('tdis_v1', true);
    GROUP BY tdis.a, tdis.b, tdis.c, ('-1'::integer);
 (1 row)
 
+=======
+-- Test that changing the relkind of a relcache entry doesn't cause
+-- trouble. Prior instances of where it did:
+-- CALDaNm2yXz+zOtv7y5zBd5WKT8O0Ld3YxikuU3dcyCvxF7gypA@mail.gmail.com
+-- CALDaNm3oZA-8Wbps2Jd1g5_Gjrr-x3YWrJPek-mF5Asrrvz2Dg@mail.gmail.com
+CREATE TABLE tt26(c int);
+BEGIN;
+CREATE TABLE tt27(c int);
+SAVEPOINT q;
+CREATE RULE "_RETURN" AS ON SELECT TO tt27 DO INSTEAD SELECT * FROM tt26;
+SELECT * FROM tt27;
+ c 
+---
+(0 rows)
+
+ROLLBACK TO q;
+CREATE RULE "_RETURN" AS ON SELECT TO tt27 DO INSTEAD SELECT * FROM tt26;
+ROLLBACK;
+BEGIN;
+CREATE TABLE tt28(c int);
+CREATE RULE "_RETURN" AS ON SELECT TO tt28 DO INSTEAD SELECT * FROM tt26;
+CREATE RULE "_RETURN" AS ON SELECT TO tt28 DO INSTEAD SELECT * FROM tt26;
+ERROR:  "tt28" is already a view
+ROLLBACK;
+>>>>>>> REL_12_17
 -- clean up all the random objects we made above
 DROP SCHEMA temp_view_test CASCADE;
 NOTICE:  drop cascades to 27 other objects
@@ -1830,7 +1856,11 @@ drop cascades to view aliased_view_2
 drop cascades to view aliased_view_3
 drop cascades to view aliased_view_4
 DROP SCHEMA testviewschm2 CASCADE;
+<<<<<<< HEAD
 NOTICE:  drop cascades to 66 other objects
+=======
+NOTICE:  drop cascades to 65 other objects
+>>>>>>> REL_12_17
 DETAIL:  drop cascades to table t1
 drop cascades to view temporal1
 drop cascades to view temporal2
@@ -1895,5 +1925,9 @@ drop cascades to view tt20v
 drop cascades to view tt21v
 drop cascades to view tt22v
 drop cascades to view tt23v
+<<<<<<< HEAD
 drop cascades to table tdis
 drop cascades to view tdis_v1
+=======
+drop cascades to table tt26
+>>>>>>> REL_12_17

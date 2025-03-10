@@ -3542,7 +3542,7 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&CheckPointCompletionTarget,
 		0.5, 0.0, 1.0,
-		NULL, NULL, NULL
+		NULL, assign_checkpoint_completion_target, NULL
 	},
 
 	{
@@ -9498,8 +9498,68 @@ get_explain_guc_options(int *num)
 			 !is_member_of_role(GetUserId(), DEFAULT_ROLE_READ_ALL_SETTINGS)))
 			continue;
 
+<<<<<<< HEAD
 		/* skip GUC variables that match the built-in default */
 		if (!is_guc_modified(conf))
+=======
+		/* return only options that are different from their boot values */
+		modified = false;
+
+		switch (conf->vartype)
+		{
+			case PGC_BOOL:
+				{
+					struct config_bool *lconf = (struct config_bool *) conf;
+
+					modified = (lconf->boot_val != *(lconf->variable));
+				}
+				break;
+
+			case PGC_INT:
+				{
+					struct config_int *lconf = (struct config_int *) conf;
+
+					modified = (lconf->boot_val != *(lconf->variable));
+				}
+				break;
+
+			case PGC_REAL:
+				{
+					struct config_real *lconf = (struct config_real *) conf;
+
+					modified = (lconf->boot_val != *(lconf->variable));
+				}
+				break;
+
+			case PGC_STRING:
+				{
+					struct config_string *lconf = (struct config_string *) conf;
+
+					if (lconf->boot_val == NULL &&
+						*lconf->variable == NULL)
+						modified = false;
+					else if (lconf->boot_val == NULL ||
+							 *lconf->variable == NULL)
+						modified = true;
+					else
+						modified = (strcmp(lconf->boot_val, *(lconf->variable)) != 0);
+				}
+				break;
+
+			case PGC_ENUM:
+				{
+					struct config_enum *lconf = (struct config_enum *) conf;
+
+					modified = (lconf->boot_val != *(lconf->variable));
+				}
+				break;
+
+			default:
+				elog(ERROR, "unexpected GUC type: %d", conf->vartype);
+		}
+
+		if (!modified)
+>>>>>>> REL_12_17
 			continue;
 
 		/* OK, report it */

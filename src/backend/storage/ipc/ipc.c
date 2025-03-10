@@ -103,7 +103,10 @@ static int	on_proc_exit_index,
 void
 proc_exit(int code)
 {
+<<<<<<< HEAD
 	pqsignal(SIGALRM, SIG_IGN);
+=======
+>>>>>>> REL_12_17
 	/* not safe if forked by system(), etc. */
 	if (MyProcPid != (int) getpid())
 		elog(PANIC, "proc_exit() called in child process");

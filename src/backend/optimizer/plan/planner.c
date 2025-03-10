@@ -603,12 +603,10 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		Gather	   *gather = makeNode(Gather);
 
 		/*
-		 * If there are any initPlans attached to the formerly-top plan node,
-		 * move them up to the Gather node; same as we do for Material node in
-		 * materialize_finished_plan.
+		 * Top plan must not have any initPlans, else it shouldn't have been
+		 * marked parallel-safe.
 		 */
-		gather->plan.initPlan = top_plan->initPlan;
-		top_plan->initPlan = NIL;
+		Assert(top_plan->initPlan == NIL);
 
 		gather->plan.targetlist = top_plan->targetlist;
 		gather->plan.qual = NIL;
@@ -1900,10 +1898,6 @@ inheritance_planner(PlannerInfo *root)
 		Assert(subroot->join_info_list == NIL);
 		/* and we haven't created PlaceHolderInfos, either */
 		Assert(subroot->placeholder_list == NIL);
-
-		/* Fix MULTIEXPR_SUBLINK params if any */
-		if (root->multiexpr_params)
-			SS_make_multiexprs_unique(root, subroot);
 
 		/* Generate Path(s) for accessing this result relation */
 		grouping_planner(subroot, true, 0.0 /* retrieve all tuples */ );

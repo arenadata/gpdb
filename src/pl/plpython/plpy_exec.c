@@ -702,7 +702,11 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 			   *pltrelid,
 			   *plttablename,
 			   *plttableschema,
+<<<<<<< HEAD
 			   *pltargs,
+=======
+			   *pltargs = NULL,
+>>>>>>> REL_12_17
 			   *pytnew,
 			   *pytold,
 			   *pltdata;
@@ -726,11 +730,14 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 			return NULL;
 		}
 	}
+<<<<<<< HEAD
 	else
 	{
 		Py_INCREF(Py_None);
 		pltargs = Py_None;
 	}
+=======
+>>>>>>> REL_12_17
 
 	PG_TRY();
 	{
@@ -874,7 +881,11 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 			PyObject   *pltarg;
 
 			/* pltargs should have been allocated before the PG_TRY block. */
+<<<<<<< HEAD
 			Assert(pltargs && pltargs != Py_None);
+=======
+			Assert(pltargs);
+>>>>>>> REL_12_17
 
 			for (i = 0; i < tdata->tg_trigger->tgnargs; i++)
 			{

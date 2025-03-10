@@ -1320,6 +1320,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 	VALGRIND_MAKE_MEM_DEFINED(chunk, ALLOCCHUNK_PRIVATE_LEN);
 
 	oldchksize = chunk->size;
+<<<<<<< HEAD
 
 #ifdef USE_ASSERT_CHECKING
 	if (IsUnderPostmaster  && context != ErrorContext && mainthread() != 0 && !pthread_equal(main_tid, pthread_self()))
@@ -1331,6 +1332,8 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 #endif
 	}
 #endif
+=======
+>>>>>>> REL_12_17
 
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */

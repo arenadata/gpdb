@@ -94,6 +94,7 @@ static bool subplan_is_hashable(PlannerInfo *root, Plan *plan);
 static bool subpath_is_hashable(PlannerInfo *root, Path *path);
 static bool test_opexpr_is_hashable(OpExpr *testexpr, List *param_ids);
 static bool hash_ok_operator(OpExpr *expr);
+<<<<<<< HEAD
 static bool SS_make_multiexprs_unique_walker(Node *node, void *context);
 #if 0
 /*
@@ -101,6 +102,8 @@ static bool SS_make_multiexprs_unique_walker(Node *node, void *context);
  * But SS_process_ctes is commentted of because gpdb does not
  * use it.
  */
+=======
+>>>>>>> REL_12_17
 static bool contain_dml(Node *node);
 static bool contain_dml_walker(Node *node, void *context);
 static bool contain_outer_selfref(Node *node);
@@ -1114,134 +1117,6 @@ hash_ok_operator(OpExpr *expr)
 		ReleaseSysCache(tup);
 		return true;
 	}
-}
-
-/*
- * SS_make_multiexprs_unique
- *
- * After cloning an UPDATE targetlist that contains MULTIEXPR_SUBLINK
- * SubPlans, inheritance_planner() must call this to assign new, unique Param
- * IDs to the cloned MULTIEXPR_SUBLINKs' output parameters.  See notes in
- * ExecScanSubPlan.
- *
- * We do not need to renumber Param IDs for MULTIEXPR_SUBLINK plans that are
- * initplans, because those don't have input parameters that could cause
- * confusion.  Such initplans will not appear in the targetlist anyway, but
- * they still complicate matters because the surviving regular subplans might
- * not have consecutive subLinkIds.
- */
-void
-SS_make_multiexprs_unique(PlannerInfo *root, PlannerInfo *subroot)
-{
-	List	   *param_mapping = NIL;
-	ListCell   *lc;
-
-	/*
-	 * Find MULTIEXPR SubPlans in the cloned query.  We need only look at the
-	 * top level of the targetlist.
-	 */
-	foreach(lc, subroot->parse->targetList)
-	{
-		TargetEntry *tent = (TargetEntry *) lfirst(lc);
-		SubPlan    *splan;
-		Plan	   *plan;
-		List	   *params;
-		int			oldId,
-					newId;
-		ListCell   *lc2;
-
-		if (!IsA(tent->expr, SubPlan))
-			continue;
-		splan = (SubPlan *) tent->expr;
-		if (splan->subLinkType != MULTIEXPR_SUBLINK)
-			continue;
-
-		/* Found one, get the associated subplan */
-		plan = (Plan *) list_nth(root->glob->subplans, splan->plan_id - 1);
-
-		/*
-		 * Generate new PARAM_EXEC Param nodes, and overwrite splan->setParam
-		 * with their IDs.  This is just like what build_subplan did when it
-		 * made the SubPlan node we're cloning.  But because the param IDs are
-		 * assigned globally, we'll get new IDs.  (We assume here that the
-		 * subroot's tlist is a clone we can scribble on.)
-		 */
-		params = generate_subquery_params(root,
-										  plan->targetlist,
-										  &splan->setParam);
-
-		/*
-		 * Append the new replacement-Params list to root->multiexpr_params.
-		 * Then its index in that list becomes the new subLinkId of the
-		 * SubPlan.
-		 */
-		root->multiexpr_params = lappend(root->multiexpr_params, params);
-		oldId = splan->subLinkId;
-		newId = list_length(root->multiexpr_params);
-		Assert(newId > oldId);
-		splan->subLinkId = newId;
-
-		/*
-		 * Add a mapping entry to param_mapping so that we can update the
-		 * associated Params below.  Leave zeroes in the list for any
-		 * subLinkIds we don't encounter; those must have been converted to
-		 * initplans.
-		 */
-		while (list_length(param_mapping) < oldId)
-			param_mapping = lappend_int(param_mapping, 0);
-		lc2 = list_nth_cell(param_mapping, oldId - 1);
-		lfirst_int(lc2) = newId;
-	}
-
-	/*
-	 * Unless all the MULTIEXPRs were converted to initplans, we must now find
-	 * the Param nodes that reference the MULTIEXPR outputs and update their
-	 * sublink IDs so they'll reference the new outputs.  While such Params
-	 * must be in the cloned targetlist, they could be buried under stuff such
-	 * as FieldStores and SubscriptingRefs and type coercions.
-	 */
-	if (param_mapping != NIL)
-		SS_make_multiexprs_unique_walker((Node *) subroot->parse->targetList,
-										 (void *) param_mapping);
-}
-
-/*
- * Locate PARAM_MULTIEXPR Params in an expression tree, and update as needed.
- * (We can update-in-place because the tree was already copied.)
- */
-static bool
-SS_make_multiexprs_unique_walker(Node *node, void *context)
-{
-	if (node == NULL)
-		return false;
-	if (IsA(node, Param))
-	{
-		Param	   *p = (Param *) node;
-		List	   *param_mapping = (List *) context;
-		int			subqueryid;
-		int			colno;
-		int			newId;
-
-		if (p->paramkind != PARAM_MULTIEXPR)
-			return false;
-		subqueryid = p->paramid >> 16;
-		colno = p->paramid & 0xFFFF;
-
-		/*
-		 * If subqueryid doesn't have a mapping entry, it must refer to an
-		 * initplan, so don't change the Param.
-		 */
-		Assert(subqueryid > 0);
-		if (subqueryid > list_length(param_mapping))
-			return false;
-		newId = list_nth_int(param_mapping, subqueryid - 1);
-		if (newId == 0)
-			return false;
-		p->paramid = (newId << 16) + colno;
-		return false;
-	}
-	return expression_tree_walker(node, SS_make_multiexprs_unique_walker,
-								  context);
 }
 
 
@@ -2689,7 +2564,7 @@ SS_identify_outer_params(PlannerInfo *root)
  * This is separate from SS_attach_initplans because we might conditionally
  * create more initPlans during create_plan(), depending on which Path we
  * select.  However, Paths that would generate such initPlans are expected
- * to have included their cost already.
+ * to have included their cost and parallel-safety effects already.
  */
 void
 SS_charge_for_initplans(PlannerInfo *root, RelOptInfo *final_rel)
@@ -2745,8 +2620,10 @@ SS_charge_for_initplans(PlannerInfo *root, RelOptInfo *final_rel)
  * (In principle the initPlans could go in any node at or above where they're
  * referenced; but there seems no reason to put them any lower than the
  * topmost node, so we don't bother to track exactly where they came from.)
- * We do not touch the plan node's cost; the initplans should have been
- * accounted for in path costing.
+ *
+ * We do not touch the plan node's cost or parallel_safe flag.  The initplans
+ * must have been accounted for in SS_charge_for_initplans, or by any later
+ * code that adds initplans via SS_make_initplan_from_plan.
  */
 void
 SS_attach_initplans(PlannerInfo *root, Plan *plan)
@@ -3289,6 +3166,11 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 							  &context);
 			break;
 
+		case T_Hash:
+			finalize_primnode((Node *) ((Hash *) plan)->hashkeys,
+							  &context);
+			break;
+
 		case T_Limit:
 			finalize_primnode(((Limit *) plan)->limitOffset,
 							  &context);
@@ -3404,7 +3286,6 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 			break;
 
 		case T_ProjectSet:
-		case T_Hash:
 		case T_Material:
 		case T_Sort:
 		case T_ShareInputScan:

@@ -71,6 +71,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	AclResult	aclresult;
 	ObjectAddress address;
 	StringInfoData pathbuf;
+<<<<<<< HEAD
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
 								  !IsBootstrapProcessingMode());
 
@@ -92,6 +93,8 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 		InitTempTableNamespace();
 		return InvalidOid;
 	}
+=======
+>>>>>>> REL_12_17
 
 	GetUserIdAndSecContext(&saved_uid, &save_sec_context);
 
@@ -260,7 +263,8 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	 * we cannot, in general, run parse analysis on one statement until we
 	 * have actually executed the prior ones.
 	 */
-	parsetree_list = transformCreateSchemaStmt(stmt);
+	parsetree_list = transformCreateSchemaStmtElements(stmt->schemaElts,
+													   schemaName);
 
 	/*
 	 * Execute each command contained in the CREATE SCHEMA.  Since the grammar

@@ -13,9 +13,15 @@ my ($slapd, $ldap_bin_dir, $ldap_schema_dir);
 
 $ldap_bin_dir = undef;    # usually in PATH
 
-if ($^O eq 'darwin' && -d '/usr/local/opt/openldap')
+if ($^O eq 'darwin' && -d '/opt/homebrew/opt/openldap')
 {
-	# typical paths for Homebrew
+	# typical paths for Homebrew on ARM
+	$slapd           = '/opt/homebrew/opt/openldap/libexec/slapd';
+	$ldap_schema_dir = '/opt/homebrew/etc/openldap/schema';
+}
+elsif ($^O eq 'darwin' && -d '/usr/local/opt/openldap')
+{
+	# typical paths for Homebrew on Intel
 	$slapd           = '/usr/local/opt/openldap/libexec/slapd';
 	$ldap_schema_dir = '/usr/local/etc/openldap/schema';
 }
@@ -106,7 +112,8 @@ system_or_bail "openssl", "x509", "-req", "-in", "$slapd_certs/server.csr",
   "-CA", "$slapd_certs/ca.crt", "-CAkey", "$slapd_certs/ca.key",
   "-CAcreateserial", "-out", "$slapd_certs/server.crt";
 
-system_or_bail $slapd, '-f', $slapd_conf, '-h', "$ldap_url $ldaps_url";
+# -s0 prevents log messages ending up in syslog
+system_or_bail $slapd, '-f', $slapd_conf,'-s0', '-h', "$ldap_url $ldaps_url";
 
 END
 {

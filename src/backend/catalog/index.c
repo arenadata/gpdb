@@ -58,6 +58,7 @@
 #include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
+#include "catalog/storage_xlog.h"
 #include "commands/event_trigger.h"
 #include "commands/progress.h"
 #include "commands/tablecmds.h"
@@ -1625,7 +1626,6 @@ index_concurrently_swap(Oid newIndexId, Oid oldIndexId, const char *oldName)
 
 	/* Preserve indisreplident in the new index */
 	newIndexForm->indisreplident = oldIndexForm->indisreplident;
-	oldIndexForm->indisreplident = false;
 
 	/* Preserve indisclustered in the new index */
 	newIndexForm->indisclustered = oldIndexForm->indisclustered;
@@ -1637,6 +1637,7 @@ index_concurrently_swap(Oid newIndexId, Oid oldIndexId, const char *oldName)
 	newIndexForm->indisvalid = true;
 	oldIndexForm->indisvalid = false;
 	oldIndexForm->indisclustered = false;
+	oldIndexForm->indisreplident = false;
 
 	CatalogTupleUpdate(pg_index, &oldIndexTuple->t_self, oldIndexTuple);
 	CatalogTupleUpdate(pg_index, &newIndexTuple->t_self, newIndexTuple);
@@ -2623,7 +2624,7 @@ CompareIndexInfo(IndexInfo *info1, IndexInfo *info2,
 
 	/*
 	 * and columns match through the attribute map (actual attribute numbers
-	 * might differ!)  Note that this implies that index columns that are
+	 * might differ!)  Note that this checks that index columns that are
 	 * expressions appear in the same positions.  We will next compare the
 	 * expressions themselves.
 	 */
@@ -2632,13 +2633,22 @@ CompareIndexInfo(IndexInfo *info1, IndexInfo *info2,
 		if (maplen < info2->ii_IndexAttrNumbers[i])
 			elog(ERROR, "incorrect attribute map");
 
-		/* ignore expressions at this stage */
-		if ((info1->ii_IndexAttrNumbers[i] != InvalidAttrNumber) &&
-			(attmap[info2->ii_IndexAttrNumbers[i] - 1] !=
-			 info1->ii_IndexAttrNumbers[i]))
-			return false;
+		/* ignore expressions for now (but check their collation/opfamily) */
+		if (!(info1->ii_IndexAttrNumbers[i] == InvalidAttrNumber &&
+			  info2->ii_IndexAttrNumbers[i] == InvalidAttrNumber))
+		{
+			/* fail if just one index has an expression in this column */
+			if (info1->ii_IndexAttrNumbers[i] == InvalidAttrNumber ||
+				info2->ii_IndexAttrNumbers[i] == InvalidAttrNumber)
+				return false;
 
-		/* collation and opfamily is not valid for including columns */
+			/* both are columns, so check for match after mapping */
+			if (attmap[info2->ii_IndexAttrNumbers[i] - 1] !=
+				info1->ii_IndexAttrNumbers[i])
+				return false;
+		}
+
+		/* collation and opfamily are not valid for included columns */
 		if (i >= info1->ii_NumIndexKeyAttrs)
 			continue;
 
@@ -3140,10 +3150,10 @@ index_build(Relation heapRelation,
 	 * relfilenode won't change, and nothing needs to be done here.
 	 */
 	if (indexRelation->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED &&
-		!smgrexists(indexRelation->rd_smgr, INIT_FORKNUM))
+		!smgrexists(RelationGetSmgr(indexRelation), INIT_FORKNUM))
 	{
-		RelationOpenSmgr(indexRelation);
-		smgrcreate(indexRelation->rd_smgr, INIT_FORKNUM, false);
+		smgrcreate(RelationGetSmgr(indexRelation), INIT_FORKNUM, false);
+		log_smgrcreate(&indexRelation->rd_node, INIT_FORKNUM);
 		indexRelation->rd_indam->ambuildempty(indexRelation);
 	}
 
@@ -3594,10 +3604,12 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 			 * CONCURRENTLY that failed partway through.)
 			 *
 			 * Note: the CLUSTER logic assumes that indisclustered cannot be
-			 * set on any invalid index, so clear that flag too.
+			 * set on any invalid index, so clear that flag too.  For
+			 * cleanliness, also clear indisreplident.
 			 */
 			indexForm->indisvalid = false;
 			indexForm->indisclustered = false;
+			indexForm->indisreplident = false;
 			break;
 		case INDEX_DROP_SET_DEAD:
 
@@ -3609,6 +3621,8 @@ index_set_state_flags(Oid indexId, IndexStateFlagsAction action)
 			 * the index at all.
 			 */
 			Assert(!indexForm->indisvalid);
+			Assert(!indexForm->indisclustered);
+			Assert(!indexForm->indisreplident);
 			indexForm->indisready = false;
 			indexForm->indislive = false;
 			break;

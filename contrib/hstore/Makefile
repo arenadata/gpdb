@@ -15,8 +15,12 @@ PGFILEDESC = "hstore - key/value pair data type"
 
 HEADERS = hstore.h
 
+<<<<<<< HEAD
 REGRESS = hstore
 REGRESS_OPTS += --init-file=$(top_builddir)/src/test/regress/init_file
+=======
+REGRESS = hstore hstore_utf8
+>>>>>>> REL_12_17
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
