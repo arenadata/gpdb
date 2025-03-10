@@ -1012,7 +1012,6 @@ dropdb(const char *dbname, bool missing_ok)
 								  nsubscriptions, nsubscriptions)));
 
 	/*
-<<<<<<< HEAD
 	 * Free the database on the segDBs
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH)
@@ -1035,19 +1034,6 @@ dropdb(const char *dbname, bool missing_ok)
 	}
 
 	/*
-	 * Remove the database's tuple from pg_database.
-	 */
-	tup = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(db_id));
-	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "cache lookup failed for database %u", db_id);
-
-	CatalogTupleDelete(pgdbrel, &tup->t_self);
-
-	ReleaseSysCache(tup);
-
-	/*
-=======
->>>>>>> REL_12_17
 	 * Delete any comments or security labels associated with the database.
 	 */
 	DeleteSharedComments(db_id, DatabaseRelationId);
