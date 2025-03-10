@@ -4763,9 +4763,8 @@ PostgresMain(int argc, char *argv[],
 
 	/* these must be volatile to ensure state is preserved across longjmp: */
 	volatile bool send_ready_for_query = true;
-<<<<<<< HEAD
-	bool		idle_in_transaction_timeout_enabled = false;
-	bool		idle_gang_timeout_enabled = false;
+	volatile bool idle_in_transaction_timeout_enabled = false;
+	volatile bool idle_gang_timeout_enabled = false;
 
 	/*
 	 * CDB: Catch program error signals.
@@ -4773,9 +4772,6 @@ PostgresMain(int argc, char *argv[],
 	 * Save our main thread-id for comparison during signals.
 	 */
 	main_tid = pthread_self();
-=======
-	volatile bool disable_idle_in_transaction_timeout = false;
->>>>>>> REL_12_17
 
 	/* Initialize startup process environment if necessary. */
 	if (!IsUnderPostmaster)
@@ -5094,16 +5090,12 @@ PostgresMain(int argc, char *argv[],
 		 * query cancels from being misreported as timeouts in case we're
 		 * forgetting a timeout cancel.
 		 */
-<<<<<<< HEAD
-		disable_all_timeouts(false);
-		QueryCancelPending = false; /* second to avoid race condition */
-		QueryFinishPending = false;
-=======
 		disable_all_timeouts(false);	/* do first to avoid race condition */
 		QueryCancelPending = false;
->>>>>>> REL_12_17
+		QueryFinishPending = false;
 		stmt_timeout_active = false;
-		disable_idle_in_transaction_timeout = false;
+		idle_in_transaction_timeout_enabled = false;
+		idle_gang_timeout_enabled = false;
 
 		/* Not reading from the client anymore. */
 		DoingCommandRead = false;
