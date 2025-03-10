@@ -53,6 +53,7 @@
 #include "storage/condition_variable.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "storage/lock_free_list.h"
 #include "storage/lwlock.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
@@ -63,6 +64,8 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
+
+#include "cdb/cdbvars.h"
 
 
 /*----------
@@ -608,6 +611,9 @@ LflTestReaderMain()
 	 * Unblock signals (they were blocked when the postmaster forked us)
 	 */
 	PG_SETMASK(&UnBlockSig);
+
+	if (Gp_role == GP_ROLE_DISPATCH || IsRoleMirror())
+		proc_exit(0);
 
 	/*
 	 * Loop forever
