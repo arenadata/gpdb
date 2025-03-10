@@ -16,16 +16,6 @@
 #include "funcapi.h"
 #include "utils/builtins.h"
 
-#include "nodes/pg_list.h"
-
-#include "cdb/cdbvars.h"
-#include "cdb/cdbdisp_query.h"
-#include "cdb/cdbdispatchresult.h"
-#include "utils/timestamp.h"
-#include "libpq-fe.h"
-#include "cdb/cdbutil.h"
-#include "storage/proc.h"
-
 extern Datum EnableXform(PG_FUNCTION_ARGS);
 
 /*
@@ -70,5 +60,3 @@ gp_opt_version(PG_FUNCTION_ARGS pg_attribute_unused())
 	return CStringGetTextDatum("Server has been compiled without ORCA");
 #endif
 }
-
-
