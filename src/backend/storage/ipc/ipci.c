@@ -203,7 +203,12 @@ PendingDeleteShmemInit(void)
 
 
 
-//==============================================================================
+/*
+ * ===============================================
+ * Draft implementation of list with locks.
+ * Functions below are used only for comparison testing of performance.
+ * ===============================================
+ */
 
 dsa_pointer
 PendingDeleteShmemLinkNode(void * value);
@@ -230,7 +235,6 @@ PendingDeleteShmemLinkNode(void * value)
 {
 	dsa_area *dsa = PendingDeleteAttachDsa();
 	dsa_pointer cur = dsa_allocate(dsa, sizeof(PendingDeleteListNode));
-	
 
 	dsa_pointer head;
 	PendingDeleteListNode *cur_node;
@@ -304,7 +308,12 @@ PendingDeleteShmemUnlinkNode(dsa_pointer cur)
 }
 
 
-//==============================================================================
+/*
+ * ===============================================
+ * End.
+ * ===============================================
+ */
+
 
 /*
  * CreateSharedMemoryAndSemaphores

@@ -16,9 +16,8 @@ dsa_pointer
 lock_free_list_create(void);
 
 lock_free_list *
-lock_free_list_get_local_list(uint64 ls_dsa);
+lock_free_list_get_local_list(dsa_pointer ls_dsa);
 
-/* TODO: change type to dsa */
 void
 lock_free_list_destroy(dsa_pointer ls_dsa);
 
@@ -52,9 +51,6 @@ lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell);
 
 void *
 lock_free_list_get_value(lock_free_list_cell * cell);
-
-void
-lock_free_list_dump(FILE *fout, lock_free_list *ls);
 
 #endif /* FRONTEND */
 

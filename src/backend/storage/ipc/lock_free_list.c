@@ -12,8 +12,6 @@ struct lock_free_list_cell
 	dsa_pointer next;
 };
 
-/* BIG TODO: verify that dsa doesn't use the [0] bit !!!!!!!!! */
-
 #define LFL_MARK_CELL(cell)			(cell->next = (dsa_pointer)((uintptr_t)cell->next | 0x1))
 #define LFL_IS_CELL_MARKED(cell)	((uintptr_t)cell->next & 0x1)
 
@@ -37,20 +35,18 @@ lock_free_list_create()
 }
 
 lock_free_list *
-lock_free_list_get_local_list(uint64 ls_dsa)
+lock_free_list_get_local_list(dsa_pointer ls_dsa)
 {
 	Assert(DsaPointerIsValid(ls_dsa));
 
 	dsa_area *area = PendingDeleteAttachDsa();
-	return (lock_free_list *)dsa_get_address((dsa_area *) area, (dsa_pointer) ls_dsa);
+	return (lock_free_list *)dsa_get_address((dsa_area *) area, ls_dsa);
 }
 
-/* Maybe we do not need it at all. Now nobody calls it. */
+/* Maybe we do not need it at all. Nobody calls it for now. */
 void
 lock_free_list_destroy(dsa_pointer ls_dsa)
 {
-	// TODO: maybe need to wait while reader flushes all nodes, and then 
-	// remove the handle itself???...
 	dsa_area *area = PendingDeleteAttachDsa();
 
 	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
@@ -203,26 +199,5 @@ lock_free_list_get_value(lock_free_list_cell * cell)
 {
 	Assert(cell);
 	return cell->value;
-}
-
-/* TODO: remove it */
-void
-lock_free_list_dump(FILE *fout, lock_free_list *ls)
-{
-	dsa_pointer c_dsa = ls->head;
-	dsa_area *area = PendingDeleteAttachDsa();
-
-	fprintf(fout, "<LIST START> ");
-
-	while (DsaPointerIsValid(c_dsa))
-	{
-		lock_free_list_cell * c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
-
-		fprintf(fout, "<[%lu]:%s> ", (uintptr_t)c->value, LFL_IS_CELL_MARKED(c) ? "d" : "p");
-
-		c_dsa = lock_free_list_cell_get_next(c);
-	}
-
-	fprintf(fout, "<LIST END>\n");
 }
 
