@@ -434,6 +434,9 @@ def main(options, args, parser):
             if options.show_plan:
                 logger.info(f"Resulting plan: \n{str(plan)}")
                 sys.exit(0)
+            if gprebalance_file_status == 'PLANNED':
+                gprebalance.setup_schema()
+                gprebalance.execute_plan(plan)
             gprebalance.resume()
         sys.exit(0)
     except Exception as e:
