@@ -71,281 +71,74 @@ gp_opt_version(PG_FUNCTION_ARGS pg_attribute_unused())
 #endif
 }
 
-#if 0
-#define assert_true(a) Assert(a)
-#define assert_int_equal(a, b) Assert((uint64_t)a == (uint64_t)b)
 
-static void
-validate_list_single(lock_free_list *ls, List *cmp_ls)
+//TODO: remove ==============================================================================
+
+dsa_pointer
+PendingDeleteShmemLinkNode(void * value);
+
+void
+PendingDeleteShmemUnlinkNode(dsa_pointer cur);
+
+static Timestamp
+DoListWithLocksPerfTest(int elements, int *batch_size)
 {
-	ListCell *compare_cell = list_head(cmp_ls);
-	lock_free_list_cell *cell;
-	int len = 0;
-	for (cell = lock_free_list_first(ls);
-		 cell != NULL;
-		 cell = lock_free_list_next(ls, cell))
+	if (*batch_size < 1)
+		*batch_size = 1;
+
+	dsa_pointer *c = (dsa_pointer *)palloc(sizeof(dsa_pointer) * (*batch_size));
+
+	Timestamp start = GetCurrentTimestamp();
+
+	int remaining_elements = elements;
+	bool del_direction = true;
+	while (remaining_elements > 0)
 	{
-		assert_true(compare_cell != NULL);
-		assert_true(len < list_length(cmp_ls));
-		assert_int_equal(lock_free_list_get_value(cell), lfirst_int(compare_cell));
-		compare_cell = lnext(compare_cell);
-		len++;
-	}
-	assert_int_equal(len, list_length(cmp_ls));
-}
+		int batch_remaining_elements = remaining_elements < (*batch_size) ? remaining_elements : (*batch_size);
 
-static void
-validate_list(lock_free_list *ls, List *cmp_ls)
-{
-	/*
-	 * Always validate twice, as the reader does cleanup of deleted cells 
-	 * on its first iteration. On the second run we ensure that the cleanup
-	 * didn't break anything.
-	 */
-	validate_list_single(ls, cmp_ls);
-	validate_list_single(ls, cmp_ls);
-}
-
-
-static void
-test_lfl_1()
-{
-	lock_free_list_cell *c;
-
-	char filename[100] = {0};
-	sprintf(filename, "/tmp/%s_SEG_%d", __FUNCTION__, GpIdentity.segindex);
-	FILE * fout = fopen(filename, "w");
-
-	if (!fout)
-		return;
-
-	/* check list is empty */
-	uint64 ls_dsa = lock_free_list_create();
-	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
-
-	List *cmp_ls = NIL;
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	/* check one element list */
-	c = lock_free_list_push(ls, (void*)0x1);
-	cmp_ls = lcons_int(0x1, cmp_ls);
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	/* check list after deletion of the only element */
-	lock_free_list_delete(c);
-	cmp_ls = list_delete_int(cmp_ls, 0x1);
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	/* check adding of elements after deletion */
-	c = lock_free_list_push(ls, (void*)0x2);
-	cmp_ls = lcons_int(0x2, cmp_ls);
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	c = lock_free_list_push(ls, (void*)0x3);
-	cmp_ls = lcons_int(0x3, cmp_ls);
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_destroy(ls_dsa);
-
-	fclose(fout);
-}
-
-static void
-test_lfl_2()
-{
-	lock_free_list_cell *c;
-
-	char filename[100] = {0};
-	sprintf(filename, "/tmp/%s_SEG_%d", __FUNCTION__, GpIdentity.segindex);
-	FILE * fout = fopen(filename, "w");
-
-	if (!fout)
-		return;
-
-	uint64 ls_dsa = lock_free_list_create();
-	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
-
-	List *cmp_ls = NIL;
-
-	/* check deletion of tail element */
-	c = lock_free_list_push(ls, (void*)0x1);
-	cmp_ls = lcons_int(0x1, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_push(ls, (void*)0x2);
-	cmp_ls = lcons_int(0x2, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_delete(c);
-	cmp_ls = list_delete_int(cmp_ls, 0x1);
-
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_destroy(ls_dsa);
-
-	fclose(fout);
-}
-
-static void
-test_lfl_3()
-{
-	lock_free_list_cell *c;
-
-	char filename[100] = {0};
-	sprintf(filename, "/tmp/%s_SEG_%d", __FUNCTION__, GpIdentity.segindex);
-	FILE * fout = fopen(filename, "w");
-
-	if (!fout)
-		return;
-
-	uint64 ls_dsa = lock_free_list_create();
-	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
-
-	List *cmp_ls = NIL;
-
-	/* check deletion of middle element */
-	lock_free_list_push(ls, (void*)0x1);
-	cmp_ls = lcons_int(0x1, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	c = lock_free_list_push(ls, (void*)0x2);
-	cmp_ls = lcons_int(0x2, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_push(ls, (void*)0x3);
-	cmp_ls = lcons_int(0x3, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_delete(c);
-	cmp_ls = list_delete_int(cmp_ls, 0x2);
-
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_destroy(ls_dsa);
-
-	fclose(fout);
-}
-
-static void
-test_lfl_4()
-{
-	char filename[100] = {0};
-	sprintf(filename, "/tmp/%s_SEG_%d", __FUNCTION__, GpIdentity.segindex);
-	FILE * fout = fopen(filename, "w");
-
-	if (!fout)
-		return;
-
-	uint64 ls_dsa = lock_free_list_create();
-	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
-
-	List *cmp_ls = NIL;
-
-	/* check multiple deletions */
-	lock_free_list_cell *c[20] = {0};
-	for (uint64_t i = 0; i < 20; i++)
-	{
-		c[i] = lock_free_list_push(ls, (void*)i);
-		cmp_ls = lcons_int(i, cmp_ls);
-	}
-
-	lock_free_list_dump(fout, ls);
-
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_delete(c[0]);
-	cmp_ls = list_delete_int(cmp_ls, 0);
-	lock_free_list_delete(c[1]);
-	cmp_ls = list_delete_int(cmp_ls, 1);
-
-	lock_free_list_delete(c[6]);
-	cmp_ls = list_delete_int(cmp_ls, 6);
-	lock_free_list_delete(c[7]);
-	cmp_ls = list_delete_int(cmp_ls, 7);
-	lock_free_list_delete(c[8]);
-	cmp_ls = list_delete_int(cmp_ls, 8);
-
-	lock_free_list_delete(c[14]);
-	cmp_ls = list_delete_int(cmp_ls, 14);
-
-	lock_free_list_delete(c[18]);
-	cmp_ls = list_delete_int(cmp_ls, 18);
-	lock_free_list_delete(c[19]);
-	cmp_ls = list_delete_int(cmp_ls, 19);
-
-	lock_free_list_dump(fout, ls);
-
-	validate_list(ls, cmp_ls);
-
-	lock_free_list_dump(fout, ls);
-
-	lock_free_list_destroy(ls_dsa);
-
-	fclose(fout);
-}
-
-Datum
-lfl_test(PG_FUNCTION_ARGS)
-{
-	char	*testName = TextDatumGetCString(PG_GETARG_DATUM(0));
-
-	if (strcmp(testName, "unit_check") == 0)
-	{
-		if (Gp_role == GP_ROLE_DISPATCH)
+		for (uint64 i = 0; i < batch_remaining_elements; i++)
 		{
-			CdbPgResults cdb_pgresults = {NULL, 0};
-			StringInfoData buffer;
+			c[i] = PendingDeleteShmemLinkNode((void*)(i + GpIdentity.segindex * 1000));
+		}
 
-			initStringInfo(&buffer);
-			appendStringInfo(&buffer,
-							 "SELECT lfl_test('%s')",
-							 testName);
-
-			CdbDispatchCommand(buffer.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
-
-			cdbdisp_clearCdbPgResults(&cdb_pgresults);
-			return CStringGetTextDatum("lfl unit check done");
+		/* delete elements */
+		if (del_direction)
+		{
+			for (int i = 0; i < batch_remaining_elements; i++)
+			{
+				PendingDeleteShmemUnlinkNode(c[i]);
+			}
 		}
 		else
 		{
-			test_lfl_1();
-			test_lfl_2();
-			test_lfl_3();
-			test_lfl_4();
-			return CStringGetTextDatum("done...");
+			for (int i = batch_remaining_elements - 1; i >= 0; i--)
+			{
+				PendingDeleteShmemUnlinkNode(c[i]);
+			}
 		}
+		del_direction = !del_direction;
+
+		remaining_elements -= batch_remaining_elements;
 	}
-	return CStringGetTextDatum("No tests performed...");
+
+	Timestamp duration = GetCurrentTimestamp() - start;
+
+	pfree(c);
+
+	return duration;
 }
-#endif
+
+//==============================================================================
 
 typedef struct
 {
-	int start_ts;
+	uint64 start_ts;
 	int elem_num;
 	int duration_us;
 	StringInfo list_type;
 	int sess_id;
-	int segment; 
+	int segment;
+	int batch_size;
 } SLflPerfTestSegmentResult;
 
 typedef struct
@@ -354,9 +147,12 @@ typedef struct
 } SLflPerfTestCtx;
 
 static Timestamp
-DoLflPerfTest(int elements)
+DoLflPerfTest(int elements, int *batch_size)
 {
 	dsa_pointer ls_dsa = InvalidDsaPointer;
+
+	if (*batch_size < 1)
+		*batch_size = 1;
 
 	if (DsaPointerIsValid(MyProc->pendingDeletesList))
 	{
@@ -368,18 +164,17 @@ DoLflPerfTest(int elements)
 		MyProc->pendingDeletesList = ls_dsa;
 	}
 
+	lock_free_list_cell **c = (lock_free_list_cell**)palloc(sizeof(lock_free_list_cell *) * (*batch_size));
+
 	Timestamp start = GetCurrentTimestamp();
 
 	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
-
-	#define BATCH_SIZE 20
-	lock_free_list_cell *c[BATCH_SIZE] = {0};
 
 	int remaining_elements = elements;
 	bool del_direction = true;
 	while (remaining_elements > 0)
 	{
-		int batch_remaining_elements = remaining_elements < BATCH_SIZE ? remaining_elements : BATCH_SIZE;
+		int batch_remaining_elements = remaining_elements < (*batch_size) ? remaining_elements : (*batch_size);
 
 		for (uint64 i = 0; i < batch_remaining_elements; i++)
 		{
@@ -408,6 +203,8 @@ DoLflPerfTest(int elements)
 
 	Timestamp duration = GetCurrentTimestamp() - start;
 
+	pfree(c);
+
 	return duration;
 }
 
@@ -419,24 +216,26 @@ lfl_test_perf(PG_FUNCTION_ARGS)
 
 	char *target_list_type = TextDatumGetCString(PG_GETARG_DATUM(0));
 	int test_elem_num = PG_GETARG_INT32(1);
+	int batch_size = PG_GETARG_INT32(2);
 
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
 		TupleDesc	tupdesc;
-		int			nattr = 6;
+		int			nattr = 7;
 
 		funcctx = SRF_FIRSTCALL_INIT();
 
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		tupdesc = CreateTemplateTupleDesc(nattr);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "start_ts", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "start_ts", INT8OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "elem_num", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "duration_us", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "list_type", TEXTOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "sess_id", INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "segment", INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "batch_size", INT4OID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
 
@@ -457,8 +256,8 @@ lfl_test_perf(PG_FUNCTION_ARGS)
 
 			initStringInfo(&buffer);
 			appendStringInfo(&buffer,
-							 "SELECT * FROM lfl_test_perf('%s', %d)",
-							 target_list_type, test_elem_num);
+							 "SELECT * FROM lfl_test_perf('%s', %d, %d)",
+							 target_list_type, test_elem_num, batch_size);
 
 			CdbDispatchCommand(buffer.data, DF_WITH_SNAPSHOT, &cdb_pgresults);
 
@@ -476,15 +275,17 @@ lfl_test_perf(PG_FUNCTION_ARGS)
 				}
 
 				Assert(PQntuples(pg_result) == 1);
-				Assert(PQnfields(pg_result) == 6);
+				Assert(PQnfields(pg_result) == 7);
 
-				ctx->results[i].start_ts 	= atoi(PQgetvalue(pg_result, 0, 0));
+				//ctx->results[i].start_ts 	= atoi(PQgetvalue(pg_result, 0, 0));
+				sscanf(PQgetvalue(pg_result, 0, 0), "%lu", &(ctx->results[i].start_ts));
 				ctx->results[i].elem_num 	= atoi(PQgetvalue(pg_result, 0, 1));
 				ctx->results[i].duration_us = atoi(PQgetvalue(pg_result, 0, 2));
 				ctx->results[i].list_type 	= makeStringInfo();
 				appendStringInfoString(ctx->results[i].list_type, PQgetvalue(pg_result, 0, 3));
 				ctx->results[i].sess_id 	= atoi(PQgetvalue(pg_result, 0, 4));
 				ctx->results[i].segment 	= atoi(PQgetvalue(pg_result, 0, 5));
+				ctx->results[i].batch_size	= atoi(PQgetvalue(pg_result, 0, 6));
 			}
 
 			cdbdisp_clearCdbPgResults(&cdb_pgresults);
@@ -501,8 +302,8 @@ lfl_test_perf(PG_FUNCTION_ARGS)
 
 	if (funcctx->call_cntr < funcctx->max_calls)
 	{
-		Datum		values[7];
-		bool		nulls[7];
+		Datum		values[8];
+		bool		nulls[8];
 		HeapTuple	tuple;
 
 		MemSet(values, 0, sizeof(values));
@@ -512,30 +313,41 @@ lfl_test_perf(PG_FUNCTION_ARGS)
 		{
 			int64 start_ts = GetCurrentTimestamp();// TODO: fix this mess with 64/32bits
 			int32 elem_num = test_elem_num;
-			int64 duration = DoLflPerfTest(elem_num);
+			int64 duration = 0; 
 			int32 sess_id = gp_session_id;
 			int32 segment = GpIdentity.segindex;
 
-			values[0] = Int32GetDatum(start_ts);
+			values[0] = Int64GetDatum(start_ts);
 			values[1] = Int32GetDatum(elem_num);
-			values[2] = Int32GetDatum(duration);
+
 			if (strcmp(target_list_type, "lfl") == 0)
+			{
+				duration = DoLflPerfTest(elem_num, &batch_size);
 				values[3] = CStringGetTextDatum("lock free list");
-			else
+			}
+			else if (strcmp(target_list_type, "non-lfl") == 0)
+			{
+				duration = DoListWithLocksPerfTest(elem_num, &batch_size);
 				values[3] = CStringGetTextDatum("list with locks");
+			}
+			else
+				elog(ERROR, "unknown target list type to test");
+			values[2] = Int32GetDatum(duration);
 			values[4] = Int32GetDatum(sess_id);
 			values[5] = Int32GetDatum(segment);
+			values[6] = Int32GetDatum(batch_size);
 		}
 		else
 		{
 			SLflPerfTestSegmentResult *result = &ctx->results[funcctx->call_cntr];
 
-			values[0] = Int32GetDatum(result->start_ts);
+			values[0] = Int64GetDatum(result->start_ts);
 			values[1] = Int32GetDatum(result->elem_num);
 			values[2] = Int32GetDatum(result->duration_us);
 			values[3] = CStringGetTextDatum(result->list_type->data);
 			values[4] = Int32GetDatum(result->sess_id);
 			values[5] = Int32GetDatum(result->segment);
+			values[6] = Int32GetDatum(result->batch_size);
 		}
 
 		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);

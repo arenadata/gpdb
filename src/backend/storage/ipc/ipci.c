@@ -201,6 +201,111 @@ PendingDeleteShmemInit(void)
 	}
 }
 
+
+
+//==============================================================================
+
+dsa_pointer
+PendingDeleteShmemLinkNode(void * value);
+
+void
+PendingDeleteShmemUnlinkNode(dsa_pointer cur);
+
+/*
+ * Shared pending delete list node.
+ * Doubly linked list provides O(1) remove.
+ */
+typedef struct PendingDeleteListNode
+{
+	void *value;
+	dsa_pointer next;
+	dsa_pointer prev;
+}			PendingDeleteListNode;
+
+/*
+ * Prepend shared list with new pending delete node.
+ */
+dsa_pointer
+PendingDeleteShmemLinkNode(void * value)
+{
+	dsa_area *dsa = PendingDeleteAttachDsa();
+	dsa_pointer cur = dsa_allocate(dsa, sizeof(PendingDeleteListNode));
+	
+
+	dsa_pointer head;
+	PendingDeleteListNode *cur_node;
+
+	cur_node = (PendingDeleteListNode *) dsa_get_address(dsa, cur);
+
+	cur_node->value = value;
+
+	LWLockAcquire(PendingDeleteLock, LW_EXCLUSIVE);
+
+	head = PendingDeleteShmem->pdl_head;
+	cur_node->next = head;
+	cur_node->prev = InvalidDsaPointer;
+	if (DsaPointerIsValid(head))
+	{
+		PendingDeleteListNode *head_node = (PendingDeleteListNode *) dsa_get_address(dsa, head);
+
+		head_node->prev = cur;
+	}
+	PendingDeleteShmem->pdl_head = cur;
+	PendingDeleteShmem->pdl_count++;
+
+	LWLockRelease(PendingDeleteLock);
+
+	elog(DEBUG2, "Pending delete rel added to shmem.");
+
+	return cur;
+}
+
+/*
+ * Remove pending delete node from shared list
+ * cur - ptr to node which is already linked to list
+ */
+void
+PendingDeleteShmemUnlinkNode(dsa_pointer cur)
+{
+	dsa_area *dsa = PendingDeleteAttachDsa();
+	dsa_pointer head;
+	PendingDeleteListNode *cur_node;
+
+	cur_node = dsa_get_address(dsa, cur);
+
+	LWLockAcquire(PendingDeleteLock, LW_EXCLUSIVE);
+
+	head = PendingDeleteShmem->pdl_head;
+
+	if (DsaPointerIsValid(cur_node->next))
+	{
+		PendingDeleteListNode *next_node = dsa_get_address(dsa, cur_node->next);
+
+		next_node->prev = cur_node->prev;
+	}
+
+	if (DsaPointerIsValid(cur_node->prev))
+	{
+		PendingDeleteListNode *prev_node = dsa_get_address(dsa, cur_node->prev);
+
+		prev_node->next = cur_node->next;
+	}
+
+	if (cur == head)
+		PendingDeleteShmem->pdl_head = cur_node->next;
+
+	PendingDeleteShmem->pdl_count--;
+
+	LWLockRelease(PendingDeleteLock);
+
+	dsa_free(dsa, cur);
+
+	elog(DEBUG2, "Pending delete rel removed from shmem.");
+}
+
+
+//==============================================================================
+
 /*
  * CreateSharedMemoryAndSemaphores
  *		Creates and initializes shared memory and semaphores.
