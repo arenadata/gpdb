@@ -16,6 +16,7 @@
 
 #include "gpopt/base/CColRefSetIter.h"
 #include "gpopt/base/CColumnFactory.h"
+#include "gpopt/base/CCTEReq.h"
 #include "gpopt/base/CDistributionSpecAny.h"
 #include "gpopt/base/COptCtxt.h"
 #include "gpopt/operators/CLogicalLimit.h"
@@ -211,8 +212,6 @@ CQueryContext::PqcGenerate(CMemoryPool *mp, CExpression *pexpr,
 
 	CDistributionSpec *pds = NULL;
 
-	poptctxt->MarkDMLQuery(CUtils::FHasLogicalDML(mp, pexpr));
-
 	// DML commands do not have distribution requirement. Otherwise the
 	// distribution requirement is Singleton.
 	if (CUtils::FLogicalDML(pexpr->Pop()))
@@ -238,6 +237,28 @@ CQueryContext::PqcGenerate(CMemoryPool *mp, CExpression *pexpr,
 
 	// Required CTEs are obtained from the CTEInfo global information in the optimizer context
 	CCTEReq *pcter = poptctxt->Pcteinfo()->PcterProducers(mp);
+
+	// check if query has DML operation and mark it
+	BOOL fDML = CUtils::FHasLogicalDML(mp, pexpr);
+	if (!fDML)
+	{
+		// also check all required CTEs
+		CExpressionArray *pdrgpexpr = poptctxt->Pcteinfo()->PdrgPexpr(mp);
+
+		const ULONG size = pdrgpexpr->Size();
+		for (ULONG ul = 0; ul < size; ul++)
+		{
+			CExpression *pCteExpr = (*pdrgpexpr)[ul];
+			if (CUtils::FHasLogicalDML(mp, pCteExpr))
+			{
+				fDML = true;
+				break;
+			}
+		}
+
+		pdrgpexpr->Release();
+	}
+	poptctxt->MarkDMLQuery(fDML);
 
 	// NB: Partition propagation requirements are not initialized here.  They are
 	// constructed later based on derived relation properties (CPartInfo) by
