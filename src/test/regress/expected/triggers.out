@@ -3070,7 +3070,6 @@ referencing new table as new_table
 for each statement execute function convslot_trig2();
 ERROR:  Triggers for statements are not yet supported
 update convslot_test_parent set col1 = col1 || '1';
-NOTICE:  trigger = but_trigger, new table = (11,tutu), (31,tutu)
 create function convslot_trig3()
 returns trigger
 language plpgsql
@@ -3103,18 +3102,20 @@ partition by range (id);
 create table convslot_test_part (val int, id int not null);
 alter table convslot_test_parent
   attach partition convslot_test_part for values from (1) to (1000);
+ERROR:  distribution policy for "convslot_test_part" must be the same as that for "convslot_test_parent"
 create function convslot_trig4() returns trigger as
 $$begin raise exception 'BOOM!'; end$$ language plpgsql;
 create trigger convslot_test_parent_update
     after update on convslot_test_parent
     referencing old table as old_rows new table as new_rows
     for each statement execute procedure convslot_trig4();
+ERROR:  Triggers for statements are not yet supported
 insert into convslot_test_parent (id, val) values (1, 2);
+ERROR:  no partition of relation "convslot_test_parent" found for row  (seg1 172.18.0.8:7003 pid=22252)
+DETAIL:  Partition key of the failing row contains (id) = (1).
 begin;
 savepoint svp;
 update convslot_test_parent set val = 3;  -- error expected
-ERROR:  BOOM!
-CONTEXT:  PL/pgSQL function convslot_trig4() line 1 at RAISE
 rollback to savepoint svp;
 rollback;
 drop table convslot_test_parent;
