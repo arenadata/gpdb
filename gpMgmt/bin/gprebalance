@@ -437,6 +437,7 @@ def main(options, args, parser):
             if gprebalance_file_status == 'PLANNED':
                 gprebalance.setup_schema()
                 gprebalance.execute_plan(plan)
+            logger.info('Previous rebalance session was interrupted due to an error. If you want to rebalance again, run gprebalance -c to perform cleanup')
             gprebalance.resume()
         sys.exit(0)
     except Exception as e:

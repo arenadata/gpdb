@@ -428,28 +428,30 @@ class RebalanceExecutor:
         for m in moves:
             prim_ports = set()
             mir_ports = set()
-            for psid in m.dstHost.primary_segments:
-                prim_ports.add(self.segmentMap[psid].port)
-            for msid in m.dstHost.mirror_segments:
-                mir_ports.add(self.segmentMap[msid].port)
-            if len(m.dstHost.primary_datadirs) == 0:
-                prirmary_prefix = DEFAULT_PRIMARY_PREF
-                if not self.options.silent:
-                    prirmary_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
-                                                 f"is about to be moved to host {m.dstHost.hostname}, but no primary datadirs "
-                                                 "are specified for the host.", "Enter the primary datadir prefix",f" (default={DEFAULT_PRIMARY_PREF})",
-                                                 DEFAULT_PRIMARY_PREF, datadir_validator, None)
-                m.dstHost.primary_datadirs.add(prirmary_prefix.strip())
-            if len(m.dstHost.mirror_datadirs) == 0:
-                mirror_prefix = DEFAULT_MIRROR_PREF
-                if not self.options.silent:
-                    mirror_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
-                                                 f"is about to be moved to host {m.dstHost.hostname}, but no mirror datadirs "
-                                                 "are specified for the host.", "Enter the mirror datadir prefix",f" (default={DEFAULT_MIRROR_PREF})",
-                                                 DEFAULT_MIRROR_PREF, datadir_validator, None)
-                m.dstHost.mirror_datadirs.add(mirror_prefix.strip())
-            resources[m.dstHost] = HostResources(
-                m.dstHost, (prim_ports, mir_ports))
+            if m.dstHost not in resources:
+                for psid in m.dstHost.primary_segments:
+                    prim_ports.add(self.segmentMap[psid].port)
+                for msid in m.dstHost.mirror_segments:
+                    mir_ports.add(self.segmentMap[msid].port)
+                if len(m.dstHost.primary_datadirs) == 0:
+                    prirmary_prefix = DEFAULT_PRIMARY_PREF
+                    if not self.options.silent:
+                        prirmary_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
+                                                     f"is about to be moved to host {m.dstHost.hostname}, but no primary datadirs "
+                                                     "are specified for the host.", "Enter the primary datadir prefix",f" (default={DEFAULT_PRIMARY_PREF})",
+                                                     DEFAULT_PRIMARY_PREF, datadir_validator, None)
+                    m.dstHost.primary_datadirs.add(prirmary_prefix.strip())
+                if  self.gparr.hasMirrors and len(m.dstHost.mirror_datadirs) == 0:
+                    mirror_prefix = DEFAULT_MIRROR_PREF
+                    if not self.options.silent:
+                        mirror_prefix = ask_input(f"\nThe segment (dbid={m.segid.dbid}, content={m.segid.contentid}) "
+                                                     f"is about to be moved to host {m.dstHost.hostname}, but no mirror datadirs "
+                                                     "are specified for the host.", "Enter the mirror datadir prefix",f" (default={DEFAULT_MIRROR_PREF})",
+                                                     DEFAULT_MIRROR_PREF, datadir_validator, None)
+                    m.dstHost.mirror_datadirs.add(mirror_prefix.strip())
+
+                resources[m.dstHost] = HostResources(
+                    m.dstHost, (prim_ports, mir_ports))
         return resources
 
     def _disk_usage(self, hostaddr: str, dirs: List[str]) -> Dict[str, int]:
@@ -559,7 +561,7 @@ class RebalanceExecutor:
                     continue
             if mirror_move.target_datadir == None:
                 raise NoValidDataDirectories(f"Host {mirror_host.hostname} does not have any valid primary "
-                                             f"datadirs for segment {mirror_move.segid}.None of the "
+                                             f"datadirs for segment {mirror_move.segid}. None of the "
                                              f"{mirror_host.primary_datadirs} either exists or has "
                                              "enough free space for segment movement")
             mirror_move.dstHost = mirror_host
