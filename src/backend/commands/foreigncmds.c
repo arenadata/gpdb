@@ -502,10 +502,6 @@ static Oid
 lookup_fdw_handler_func(DefElem *handler)
 {
 	Oid			handlerOid;
-<<<<<<< HEAD
-=======
-	Oid			funcargtypes[1] = {0};	/* dummy */
->>>>>>> REL_12_17
 
 	if (handler == NULL || handler->arg == NULL)
 		return InvalidOid;
