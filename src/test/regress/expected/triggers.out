@@ -3070,7 +3070,6 @@ referencing new table as new_table
 for each statement execute function convslot_trig2();
 ERROR:  Triggers for statements are not yet supported
 update convslot_test_parent set col1 = col1 || '1';
-NOTICE:  trigger = but_trigger, new table = (11,tutu), (31,tutu)
 create function convslot_trig3()
 returns trigger
 language plpgsql
@@ -3099,8 +3098,9 @@ drop function convslot_trig3();
 -- Bug #17607: variant of above in which trigger function raises an error;
 -- we don't see any ill effects unless trigger tuple requires mapping
 create table convslot_test_parent (id int primary key, val int)
-partition by range (id);
-create table convslot_test_part (val int, id int not null);
+distributed by (id) partition by range (id);
+create table convslot_test_part (val int, id int not null)
+distributed by (id);
 alter table convslot_test_parent
   attach partition convslot_test_part for values from (1) to (1000);
 create function convslot_trig4() returns trigger as
@@ -3109,12 +3109,11 @@ create trigger convslot_test_parent_update
     after update on convslot_test_parent
     referencing old table as old_rows new table as new_rows
     for each statement execute procedure convslot_trig4();
+ERROR:  Triggers for statements are not yet supported
 insert into convslot_test_parent (id, val) values (1, 2);
 begin;
 savepoint svp;
 update convslot_test_parent set val = 3;  -- error expected
-ERROR:  BOOM!
-CONTEXT:  PL/pgSQL function convslot_trig4() line 1 at RAISE
 rollback to savepoint svp;
 rollback;
 drop table convslot_test_parent;

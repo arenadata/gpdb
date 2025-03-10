@@ -1835,6 +1835,116 @@ reset enable_indexscan;
 reset enable_bitmapscan;
 rollback;
 --
+-- Check handling of MULTIEXPR SubPlans in inherited updates
+--
+create table inhpar(f1 int, f2 text[], f3 int);
+insert into inhpar select generate_series(1,10);
+create table inhcld() inherits(inhpar);
+insert into inhcld select generate_series(11,10000);
+vacuum analyze inhcld;
+vacuum analyze inhpar;
+explain (verbose, costs off)
+update inhpar set
+  (f1, f2[1])    = (select p2.unique2, p2.stringu1 from int4_tbl limit 1),
+  (f2[2], f2[3]) = (select 'x', 'y' from int4_tbl limit 1),
+  (f3, f2[4])    = (select p2.unique2, p2.stringu1 from int4_tbl limit 1),
+  (f2[5], f2[6]) = (select 'x', 'y' from int4_tbl limit 1)
+from onek p2 where inhpar.f1 = p2.unique1;
+                                                                                                                                               QUERY PLAN                                                                                                                                               
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Update on public.inhpar
+   Update on public.inhpar
+   Update on public.inhcld
+   InitPlan 2 (returns $4,$5)  (slice1)
+     ->  Limit
+           Output: 'x'::text, 'y'::text
+           ->  Gather Motion 3:1  (slice2; segments: 3)
+                 Output: 'x'::text, 'y'::text
+                 ->  Limit
+                       Output: 'x'::text, 'y'::text
+                       ->  Seq Scan on public.int4_tbl
+                             Output: 'x'::text, 'y'::text
+   InitPlan 4 (returns $10,$11)  (slice3)
+     ->  Limit
+           Output: 'x'::text, 'y'::text
+           ->  Gather Motion 3:1  (slice4; segments: 3)
+                 Output: 'x'::text, 'y'::text
+                 ->  Limit
+                       Output: 'x'::text, 'y'::text
+                       ->  Seq Scan on public.int4_tbl int4_tbl_1
+                             Output: 'x'::text, 'y'::text
+   ->  Explicit Redistribute Motion 3:3  (slice5; segments: 3)
+         Output: ($12), ((((((inhpar.f2[1] := ($13)::text)[2] := $4)[3] := $5)[4] := ($15)::text)[5] := $10)[6] := $11), ($14), ((SubPlan 1 (returns $2,$3) (copy 5))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 6))), NULL::record, inhpar.ctid, inhpar.gp_segment_id, p2.ctid, (DMLAction)
+         ->  Split
+               Output: ($12), ((((((inhpar.f2[1] := ($13)::text)[2] := $4)[3] := $5)[4] := ($15)::text)[5] := $10)[6] := $11), ($14), ((SubPlan 1 (returns $2,$3) (copy 5))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 6))), NULL::record, inhpar.ctid, inhpar.gp_segment_id, p2.ctid, DMLAction
+               ->  Merge Join
+                     Output: $12, (((((inhpar.f2[1] := $13)[2] := $4)[3] := $5)[4] := $15)[5] := $10)[6] := $11, $14, (SubPlan 1 (returns $2,$3) (copy 5)), NULL::record, (SubPlan 3 (returns $8,$9) (copy 6)), NULL::record, inhpar.ctid, inhpar.gp_segment_id, p2.ctid
+                     Merge Cond: (inhpar.f1 = p2.unique1)
+                     ->  Sort
+                           Output: inhpar.f2, inhpar.ctid, inhpar.gp_segment_id, inhpar.f1
+                           Sort Key: inhpar.f1
+                           ->  Seq Scan on public.inhpar
+                                 Output: inhpar.f2, inhpar.ctid, inhpar.gp_segment_id, inhpar.f1
+                     ->  Index Scan using onek_unique1 on public.onek p2
+                           Output: p2.unique2, p2.stringu1, p2.ctid, p2.unique1
+                     SubPlan 1 (returns $2,$3) (copy 5)
+                       ->  Limit
+                             Output: (p2.unique2), (p2.stringu1)
+                             ->  Result
+                                   Output: p2.unique2, p2.stringu1
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice6; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl int4_tbl_2
+                     SubPlan 3 (returns $8,$9) (copy 6)
+                       ->  Limit
+                             Output: (p2.unique2), (p2.stringu1)
+                             ->  Result
+                                   Output: p2.unique2, p2.stringu1
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice7; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl int4_tbl_3
+   ->  Explicit Redistribute Motion 3:3  (slice8; segments: 3)
+         Output: ($16), ((((((inhcld.f2[1] := ($17)::text)[2] := $4)[3] := $5)[4] := ($19)::text)[5] := $10)[6] := $11), ($18), ((SubPlan 1 (returns $2,$3) (copy 7))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 8))), NULL::record, inhcld.ctid, inhcld.gp_segment_id, p2.ctid, (DMLAction)
+         ->  Split
+               Output: ($16), ((((((inhcld.f2[1] := ($17)::text)[2] := $4)[3] := $5)[4] := ($19)::text)[5] := $10)[6] := $11), ($18), ((SubPlan 1 (returns $2,$3) (copy 7))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 8))), NULL::record, inhcld.ctid, inhcld.gp_segment_id, p2.ctid, DMLAction
+               ->  Hash Join
+                     Output: $16, (((((inhcld.f2[1] := $17)[2] := $4)[3] := $5)[4] := $19)[5] := $10)[6] := $11, $18, (SubPlan 1 (returns $2,$3) (copy 7)), NULL::record, (SubPlan 3 (returns $8,$9) (copy 8)), NULL::record, inhcld.ctid, inhcld.gp_segment_id, p2.ctid
+                     Hash Cond: (inhcld.f1 = p2.unique1)
+                     ->  Seq Scan on public.inhcld
+                           Output: inhcld.f2, inhcld.ctid, inhcld.gp_segment_id, inhcld.f1
+                     ->  Hash
+                           Output: p2.unique2, p2.stringu1, p2.ctid, p2.unique1
+                           ->  Index Scan using onek_unique1 on public.onek p2
+                                 Output: p2.unique2, p2.stringu1, p2.ctid, p2.unique1
+                     SubPlan 1 (returns $2,$3) (copy 7)
+                       ->  Limit
+                             Output: (p2.unique2), (p2.stringu1)
+                             ->  Result
+                                   Output: p2.unique2, p2.stringu1
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice9; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl int4_tbl_4
+                     SubPlan 3 (returns $8,$9) (copy 8)
+                       ->  Limit
+                             Output: (p2.unique2), (p2.stringu1)
+                             ->  Result
+                                   Output: p2.unique2, p2.stringu1
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice10; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl int4_tbl_5
+ Optimizer: Postgres-based planner
+ Settings: enable_bitmapscan = 'off', enable_mergejoin = 'on', enable_seqscan = 'off'
+(82 rows)
+
+update inhpar set
+  (f1, f2[1])    = (select p2.unique2, p2.stringu1 from int4_tbl limit 1),
+  (f2[2], f2[3]) = (select 'x', 'y' from int4_tbl limit 1),
+  (f3, f2[4])    = (select p2.unique2, p2.stringu1 from int4_tbl limit 1),
+  (f2[5], f2[6]) = (select 'x', 'y' from int4_tbl limit 1)
+from onek p2 where inhpar.f1 = p2.unique1;
+drop table inhpar cascade;
+NOTICE:  drop cascades to table inhcld
+--
 -- Check handling of a constant-null CHECK constraint
 --
 create table cnullparent (f1 int);
