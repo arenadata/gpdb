@@ -76,7 +76,6 @@ sub adjust_database_contents
 	my ($old_version, %dbnames) = @_;
 	my $result = {};
 
-<<<<<<< HEAD
 	die "wrong type for \$old_version\n"
 	  unless $old_version->isa("PostgreSQL::Version");
 
@@ -85,8 +84,6 @@ sub adjust_database_contents
 	# Therefore, use a modified version object that only contains the major.
 	$old_version = PostgreSQL::Version->new($old_version->major);
 
-=======
->>>>>>> REL_12_17
 	# remove dbs of modules known to cause pg_upgrade to fail
 	# anything not builtin and incompatible should clean up its own db
 	foreach my $bad_module ('test_ddl_deparse', 'tsearch2')
@@ -247,14 +244,11 @@ sub adjust_old_dumpfile
 {
 	my ($old_version, $dump) = @_;
 
-<<<<<<< HEAD
 	die "wrong type for \$old_version\n"
 	  unless $old_version->isa("PostgreSQL::Version");
 	# See adjust_database_contents about this
 	$old_version = PostgreSQL::Version->new($old_version->major);
 
-=======
->>>>>>> REL_12_17
 	# use Unix newlines
 	$dump =~ s/\r\n/\n/g;
 
@@ -454,14 +448,11 @@ sub adjust_new_dumpfile
 {
 	my ($old_version, $dump) = @_;
 
-<<<<<<< HEAD
 	die "wrong type for \$old_version\n"
 	  unless $old_version->isa("PostgreSQL::Version");
 	# See adjust_database_contents about this
 	$old_version = PostgreSQL::Version->new($old_version->major);
 
-=======
->>>>>>> REL_12_17
 	# use Unix newlines
 	$dump =~ s/\r\n/\n/g;
 
