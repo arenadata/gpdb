@@ -25,6 +25,7 @@ class Plan:
         self.moves = []
         self.out_conf = None
         self.segmentMap = None
+        self.roles = []
 
     def __str__(self):
         finalStr = ""
@@ -293,6 +294,7 @@ class ClusterBalancer():
         plan.in_conf = in_conf
         plan.out_conf = finalState
         plan.segmentMap = self.initialSegmentMap
+        plan.roles = roles
         return plan
 
     def get_moves_between_states(self, state1: ClusterState, state2: ClusterState):
