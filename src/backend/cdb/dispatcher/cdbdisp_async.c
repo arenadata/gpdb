@@ -691,8 +691,10 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 
 			for (i = 0; i < db_count; i++)
 			{
-				cdbconn_discardResults(
-					pParms->dispatchResultPtrArray[i]->segdbDesc, 20);
+				CdbDispatchResult *r = pParms->dispatchResultPtrArray[i];
+
+				r->stillRunning = false;
+				cdbconn_discardResults(r->segdbDesc, 20);
 			}
 
 			break;
