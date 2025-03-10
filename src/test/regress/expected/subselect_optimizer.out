@@ -1236,8 +1236,6 @@ drop table tl2;
 drop table tl3;
 drop table tl4;
 -- Check support <dxl:TestExpr> node. TestExpr present with IN queries (equivalent =ANY).
--- start_ignore
--- end_ignore
 create table t1 as select 0 as i1;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause. Creating a NULL policy entry.
 create table t2 as select 0 as i2;
@@ -1251,7 +1249,8 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause. Creating a NULL policy entr
 -- Statement stage. With the Postgres optimizer, this check does not matter.
 -- This testcase aims to verify that <dxl:TestExpr> with a deep tree and params in the
 -- left node is handled correctly during the DXL to Plan Statement stage.
--- Note the <Ident> with ColId 26 and 28. This appears from an internal subplan node.
+-- Рay attention to the Ident nodes with ColId 26 and 28. They appear from an internal
+-- subplan node.
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
 set optimizer_trace_fallback=on;
 set optimizer_minidump=always;

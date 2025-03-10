@@ -630,7 +630,8 @@ create table t3 as select i3 from (values (0), (1)) as s(i3);
 -- Statement stage. With the Postgres optimizer, this check does not matter.
 -- This testcase aims to verify that <dxl:TestExpr> with a deep tree and params in the
 -- left node is handled correctly during the DXL to Plan Statement stage.
--- Note the <Ident> with ColId 26 and 28. This appears from an internal subplan node.
+-- Рay attention to the Ident nodes with ColId 26 and 28. They appear from an internal
+-- subplan node.
 
 \! rm -rf $MASTER_DATA_DIRECTORY/minidumps
 

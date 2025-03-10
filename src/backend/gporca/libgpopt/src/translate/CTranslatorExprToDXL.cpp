@@ -3244,14 +3244,14 @@ CTranslatorExprToDXL::PdxlnQuantifiedSubplan(
 	// restrict the projection of the inner node.
 	// We need the "Reqd Inner Col" of CorrelatedNLJoin (pdrgpcrInner[0])
 	// and the columns from the scalar that appear in the subquery (inner part).
-	// Since the "Reqd Inner Col" always appears in the scalar (this is true
-	// for ANY/ALL subqueries), we need to define the used columns in the Test
-	// Expression that are output in the inner node.
 	CColRefSet *pcrsInner =
 		GPOS_NEW(m_mp) CColRefSet(m_mp, *pexprInner->DeriveOutputColumns());
 	CColRefSet *pcrsScalarUsed = pexprScalar->DeriveUsedColumns();
 	pcrsInner->Intersection(pcrsScalarUsed);
-	GPOS_ASSERT(pcrsInner->Size() > 0);
+	if (0 == pcrsInner->Size())
+	{
+		pcrsInner->Include((*pdrgpcrInner)[0]);
+	}
 	CDXLNode *inner_dxlnode = PdxlnRestrictResult(pdxlnInnerChild, pcrsInner);
 	pcrsInner->Release();
 
