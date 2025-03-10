@@ -2440,9 +2440,10 @@ drop function convslot_trig3();
 -- we don't see any ill effects unless trigger tuple requires mapping
 
 create table convslot_test_parent (id int primary key, val int)
-partition by range (id);
+distributed by (id) partition by range (id);
 
-create table convslot_test_part (val int, id int not null);
+create table convslot_test_part (val int, id int not null)
+distributed by (id);
 
 alter table convslot_test_parent
   attach partition convslot_test_part for values from (1) to (1000);
