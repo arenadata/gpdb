@@ -673,12 +673,7 @@ heapam_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 {
 	SMgrRelation dstrel;
 
-<<<<<<< HEAD
 	dstrel = smgropen(*newrnode, rel->rd_backend, SMGR_MD);
-	RelationOpenSmgr(rel);
-=======
-	dstrel = smgropen(*newrnode, rel->rd_backend);
->>>>>>> REL_12_17
 
 	/*
 	 * Since we copy the file directly without looking at the shared buffers,
@@ -716,13 +711,8 @@ heapam_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 			if (rel->rd_rel->relpersistence == RELPERSISTENCE_PERMANENT ||
 				(rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED &&
 				 forkNum == INIT_FORKNUM))
-<<<<<<< HEAD
 				log_smgrcreate(newrnode, forkNum, SMGR_MD);
-			RelationCopyStorage(rel->rd_smgr, dstrel, forkNum,
-=======
-				log_smgrcreate(newrnode, forkNum);
 			RelationCopyStorage(RelationGetSmgr(rel), dstrel, forkNum,
->>>>>>> REL_12_17
 								rel->rd_rel->relpersistence);
 		}
 	}
