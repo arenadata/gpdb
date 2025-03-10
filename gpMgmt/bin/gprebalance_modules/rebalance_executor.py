@@ -12,7 +12,7 @@ from gppylib.gparray import GpArray, Segment
 from gppylib.db import dbconn
 from gppylib.commands.base import *
 from gppylib.commands.gp import *
-from gppylib.commands.unix import DiskFree, DiskUsage, RemoveDirectory
+from gppylib.commands.unix import DiskFree, DiskUsage, RemoveDirectory, getLocalHostname, getUserName
 from gppylib.operations.validate_disk_space import FileSystem
 from gppylib.parseutils import *
 from gppylib.programs.clsRecoverSegment import GpRecoverSegmentProgram
@@ -25,6 +25,7 @@ FILENAME = "/move_"
 CONF_DIR = "/rebalance"
 DEFAULT_PRIMARY_PREF = "/data/primary"
 DEFAULT_MIRROR_PREF = "/data/mirror"
+GPRECOVERSEG_DIR = 'gpAdminLogs/rebalance'
 
 begining_timestamp = None
 segment_prefix = "gpseg"
@@ -44,12 +45,26 @@ class RecoveryProcess:
             #prevent signal propagation from parent
             os.setpgrp()
             signal.signal(signal.SIGINT, signal.SIG_IGN)
+            
             log_fd = os.open(log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
             flags = fcntl.fcntl(log_fd, fcntl.F_GETFL)
             fcntl.fcntl(log_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
             os.dup2(log_fd, 1)  # stdout
             os.dup2(log_fd, 2)  # stderr
             os.close(log_fd)
+
+            import gppylib.gplog as gplog
+            if gplog._LOGGER:
+                for handler in gplog._LOGGER.handlers[:]:
+                    handler.close()
+                    gplog._LOGGER.removeHandler(handler)
+            gplog._LOGGER = None
+
+            gplog._FILENAME = None
+            gplog._DEFAULT_FORMATTER = None
+            gplog._LITERAL_FORMATTER = None
+            gplog._SOUT_HANDLER = None
+            gplog._FILE_HANDLER = None
 
             # Register all necessary interfaces to run a gprecoverseg
             # in a separate process
@@ -64,6 +79,10 @@ class RecoveryProcess:
 
             local_parser = GpRecoverSegmentProgram.createParser()
             local_options, args = local_parser.parse_args(cmd_args)
+            
+            gplog.setup_tool_logging("gprecoverseg", getLocalHostname(),
+                                          getUserName(),
+                                          logdir=local_options.logfileDirectory)
 
             # Create and run the program
             cmd = GpRecoverSegmentProgram.createProgram(local_options, args)
@@ -72,7 +91,7 @@ class RecoveryProcess:
         except SystemExit as e:
             error_msg = None
             if e.code != 0:
-                error_msg = f"Gprecoverseg failed with exit code: {e.code}. See the {log_file}"
+                error_msg = f"Gprecoverseg failed with exit code: {e.code}. See the log in {log_file}"
             result_queue.put({
                 "status": "FAILED" if e.code != 0 else "SUCCESS",
                 "error": error_msg
@@ -84,8 +103,6 @@ class RecoveryProcess:
                 "error": error_msg
             })
         finally:
-            sys.stdout.flush()
-            sys.stderr.flush()
             cmd.cleanup()
 
 
@@ -125,15 +142,27 @@ class SingleMoveCommand(SQLCommand):
                                       segsize, datetime.datetime.now())
 
             filename = self.write_gprecoverseg_config()
-            log_file = os.path.join(self.conf_dir,
-                                    f"gprecoverseg_dbid{self.segment.dbid}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-                                    )
 
+            strtime=datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            # in order to run gprecoverseg processes separately and avoid any races
+            # for resources gprecoverseg generates, we create separate log directories.
+            log_dir = f"{os.path.join(os.environ.get('HOME', '.'),GPRECOVERSEG_DIR)}/gprecoverseg_dbid{self.segment.dbid}_{strtime}"
+            mkdirCmd = MakeDirectory("rebalance log dir", log_dir)
+            mkdirCmd.run(validateAfter=True)
+            
+            mkdirCmd = MakeDirectory("rebalance log dir", log_dir, ctxt=REMOTE, remoteHost=self.move.srcHost.hostname)
+            mkdirCmd.run(validateAfter=True)
+            mkdirCmd = MakeDirectory("rebalance log dir", log_dir, ctxt=REMOTE, remoteHost=self.move.dstHost.hostname)
+            mkdirCmd.run(validateAfter=True)
+
+            log_file = f"{self.conf_dir}/gprecoverseg_dbid{self.segment.dbid}_{strtime}"
             # Prepare command arguments
             cmd_args = [
                 '-i', filename,
                 '-B', '1',
-                '-v', '-a'
+                '-v', '-a',
+                '-l', log_dir
             ]
             if self.options.hba_hostnames:
                 cmd_args.append('--hba-hostnames')
@@ -843,8 +872,19 @@ class RebalanceExecutor:
             begining_timestamp = datetime.datetime.now()
 
             conf_dir = self.options.coordinator_data_directory + CONF_DIR
-
+            hosts = set()
+            for move in self.moves:
+                hosts.add(move.srcHost.hostname)
+                hosts.add(move.dstHost.hostname)
+            
             if firstRun:
+                # in order to run gprecoverseg processes separately and avoid any races
+                # for resources gprecoverseg generates, we create separate log directories.
+                mkdirCmd = MakeDirectory("rebalance log dir", GPRECOVERSEG_DIR)
+                mkdirCmd.run(validateAfter=True)
+                for host in hosts:
+                    mkdirCmd = MakeDirectory("rebalance log dir", GPRECOVERSEG_DIR, ctxt=REMOTE, remoteHost=host)
+                    mkdirCmd.run(validateAfter=True)
                 self.statusManager.set_status('EXECUTION_PREPARED')
                 self.statusManager.set_db_status(
                     RebalanceStatus.PREPARED, begining_timestamp)
@@ -949,6 +989,12 @@ class RebalanceExecutor:
                 self.statusManager.set_status('EXECUTION_DONE')
                 self.statusManager.set_db_status(
                     RebalanceStatus.COMPLETED)
+                rmdirCmd = RemoveDirectory("remove recoverseg log dir",  f"{os.path.join(os.environ.get('HOME', '.'),GPRECOVERSEG_DIR)}")
+                rmdirCmd.run()
+                for host in hosts:
+                    rmdirCmd = RemoveDirectory("remove recoverseg log dir",  f"{os.path.join(os.environ.get('HOME', '.'),GPRECOVERSEG_DIR)}", ctxt=REMOTE, remoteHost=host)
+                    rmdirCmd.run()
+                
 
         except Exception as e:
             raise
@@ -974,7 +1020,7 @@ class RebalanceExecutor:
         except Exception as e:
             raise Exception('could not execute SQL : %s' % str(e))
 
-        recoversegOptions = "-r -a"
+        recoversegOptions = f"-r -a -l {os.path.join(os.environ.get('HOME', '.'),GPRECOVERSEG_DIR)}"
         if self.options.hba_hostnames:
             recoversegOptions += " --hba-hostnames"
         cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
