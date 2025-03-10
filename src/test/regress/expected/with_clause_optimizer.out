@@ -2304,16 +2304,17 @@ with cte as (
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Aggregate
-   ->  Gather Motion 3:1  (slice2; segments: 3)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Aggregate
-               ->  Subquery Scan on cte
-                     Filter: (cte.i > 2)
-                     ->  Insert on with_dml
-                           ->  Redistribute Motion 1:3  (slice1; segments: 1)
-                                 Hash Key: i.i
-                                 ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(10 rows)
+               ->  Result
+                     Filter: (generate_series.generate_series > 2)
+                     ->  Result
+                           ->  Insert
+                                 ->  Result
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(11 rows)
 
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
@@ -2407,12 +2408,15 @@ with cte as (
 ) select count(*) from cte;
                       QUERY PLAN                      
 ------------------------------------------------------
- Explicit Gather Motion 3:1  (slice1; segments: 3)
-   ->  Aggregate
-         ->  Insert on with_dml_dr
-               ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(5 rows)
+ Aggregate
+   ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Result
+                     ->  Insert
+                           ->  Result
+                                 ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(8 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2485,13 +2489,15 @@ with cte as (
                       QUERY PLAN                      
 ------------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: with_dml_dr.i
+   Merge Key: generate_series.generate_series
    ->  Sort
-         Sort Key: with_dml_dr.i
-         ->  Insert on with_dml_dr
-               ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(7 rows)
+         Sort Key: generate_series.generate_series
+         ->  Result
+               ->  Insert
+                     ->  Result
+                           ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(9 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2525,16 +2531,19 @@ with cte as (
 ) select count(*) from cte join t_repl using (i);
                          QUERY PLAN                         
 ------------------------------------------------------------
- Explicit Gather Motion 3:1  (slice1; segments: 3)
-   ->  Aggregate
-         ->  Hash Join
-               Hash Cond: (with_dml_dr.i = t_repl.i)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-               ->  Hash
-                     ->  Seq Scan on t_repl
- Optimizer: Postgres query optimizer
-(9 rows)
+ Aggregate
+   ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Hash Join
+                     Hash Cond: (generate_series.generate_series = t_repl.i)
+                     ->  Result
+                           ->  Insert
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+                     ->  Hash
+                           ->  Seq Scan on t_repl
+ Optimizer: Pivotal Optimizer (GPORCA)
+(12 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2702,16 +2711,21 @@ select count(*) from cte join
 (select a from generate_series(1,5) a) x on cte.i = x.a;
                          QUERY PLAN                         
 ------------------------------------------------------------
- Explicit Gather Motion 3:1  (slice1; segments: 3)
-   ->  Aggregate
-         ->  Hash Join
-               Hash Cond: (with_dml_dr.i = a.a)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-               ->  Hash
-                     ->  Function Scan on generate_series a
- Optimizer: Postgres query optimizer
-(9 rows)
+ Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Hash Join
+                     Hash Cond: (generate_series.generate_series = generate_series_1.generate_series)
+                     ->  Result
+                           One-Time Filter: (gp_execution_segment() = 1)
+                           ->  Function Scan on generate_series
+                     ->  Hash
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series generate_series_1
+ Optimizer: Pivotal Optimizer (GPORCA)
+(14 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2748,13 +2762,16 @@ with cte as (
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Aggregate
                ->  Hash Join
-                     Hash Cond: (with_dml_dr.i = t_hashed.i)
-                     ->  Insert on with_dml_dr
-                           ->  Function Scan on generate_series i
+                     Hash Cond: (generate_series.generate_series = t_hashed.i)
+                     ->  Result
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
                      ->  Hash
                            ->  Seq Scan on t_hashed
- Optimizer: Postgres query optimizer
-(10 rows)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(13 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2775,16 +2792,19 @@ with cte as (
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Aggregate
-   ->  Hash Left Join
-         Hash Cond: (with_dml_dr.i = t_hashed.i)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-         ->  Hash
-               ->  Gather Motion 3:1  (slice2; segments: 3)
-                     ->  Seq Scan on t_hashed
- Optimizer: Postgres query optimizer
-(10 rows)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Aggregate
+               ->  Hash Left Join
+                     Hash Cond: (generate_series.generate_series = t_hashed.i)
+                     ->  Result
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                     ->  Hash
+                           ->  Seq Scan on t_hashed
+ Optimizer: Pivotal Optimizer (GPORCA)
+(13 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2805,16 +2825,21 @@ with cte as (
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Aggregate
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 3:1  (slice2; segments: 3)
          ->  Aggregate
                ->  Hash Join
-                     Hash Cond: (with_dml_dr.i = t_strewn.i)
-                     ->  Insert on with_dml_dr
-                           ->  Function Scan on generate_series i
+                     Hash Cond: (generate_series.generate_series = t_strewn.i)
+                     ->  Result
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
                      ->  Hash
-                           ->  Seq Scan on t_strewn
- Optimizer: Postgres query optimizer
-(10 rows)
+                           ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                 Hash Key: t_strewn.i
+                                 ->  Seq Scan on t_strewn
+ Optimizer: Pivotal Optimizer (GPORCA)
+(15 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2835,16 +2860,21 @@ with cte as (
                           QUERY PLAN                           
 ---------------------------------------------------------------
  Aggregate
-   ->  Hash Left Join
-         Hash Cond: (with_dml_dr.i = t_strewn.i)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-         ->  Hash
-               ->  Gather Motion 3:1  (slice2; segments: 3)
-                     ->  Seq Scan on t_strewn
- Optimizer: Postgres query optimizer
-(10 rows)
+   ->  Gather Motion 3:1  (slice2; segments: 3)
+         ->  Aggregate
+               ->  Hash Left Join
+                     Hash Cond: (generate_series.generate_series = t_strewn.i)
+                     ->  Result
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                     ->  Hash
+                           ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                 Hash Key: t_strewn.i
+                                 ->  Seq Scan on t_strewn
+ Optimizer: Pivotal Optimizer (GPORCA)
+(15 rows)
 
 with cte as (
     insert into with_dml_dr
