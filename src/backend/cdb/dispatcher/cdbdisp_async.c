@@ -447,7 +447,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbDispatchResult *dispatchResult;
 	int			i;
-	int			db_count = pParms->dispatchCount;
+	int			db_count = 0;
 	int			timeout = 0;
 	bool		sentSignal = false;
 	struct pollfd *fds;
@@ -460,6 +460,7 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	 */
 	bool		should_cancel = (pParms->waitMode == DISPATCH_WAIT_CANCEL);
 
+	db_count = pParms->dispatchCount;
 	fds = (struct pollfd *) palloc(db_count * sizeof(struct pollfd));
 
 #ifdef FAULT_INJECTOR
@@ -696,8 +697,8 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 
 			break;
 		}
+		/* We have data waiting on one or more of the connections. */
 		else
-			/* We have data waiting on one or more of the connections. */
 			handlePollSuccess(pParms, fds);
 	}
 
