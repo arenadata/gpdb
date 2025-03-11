@@ -75,7 +75,7 @@ $primary->append_conf("postgresql.conf", "archive_mode = 'on'");
 $primary->append_conf("postgresql.conf", "archive_command = 'cp -rv %p $archivedir/'");
 $primary->start;
 $primary->safe_psql('postgres', 'CREATE DATABASE test_db');
-$primary->safe_psql('test_db', 'CREATE TABLE test as select generate_series(1,10)');
+$primary->safe_psql('test_db', 'CREATE TABLE test AS SELECT generate_series(1,10)');
 $primary->safe_psql('postgres', 'CREATE ROLE postgres WITH LOGIN REPLICATION');
 
 create_backup_primary($basebackupdir1, 'backup_label1');
@@ -100,7 +100,7 @@ $primary->stop('smart');
 restore_backup_primary($basebackupdir2, "recovery_target_name = 'backup_label2'", '112 -> 113');
 wait_recovery_and_switch_wal_primary('112 -> 113');
 
-$primary->safe_psql('test_db', 'CREATE TABLE test_2 as select generate_series(1,10)');
+$primary->safe_psql('test_db', 'CREATE TABLE test_2 AS SELECT generate_series(1,10)');
 $primary->safe_psql('test_db', 'SELECT * FROM test_2');
 $primary->safe_psql('test_db', 'CHECKPOINT');
 

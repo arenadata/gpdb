@@ -12554,7 +12554,7 @@ read_backup_label(XLogRecPtr *checkPointLoc, bool *backupEndRequired,
 		 * After recovery node will switch to the first free timeline (if action
 		 * is set to promote).
 		 * Do not change TLI, if postgres.auto.conf contains numeric value for
-		 * target TLI or if postgres.auto.conf contains recovery_target_name.
+		 * target TLI or if postgres.auto.conf does not contain recovery_target_name.
 		 */
 		if (recoveryTargetAction != RECOVERY_TARGET_ACTION_SHUTDOWN &&
 			recoveryTargetTimeLineGoal != RECOVERY_TARGET_TIMELINE_NUMERIC &&
