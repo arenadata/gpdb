@@ -442,7 +442,8 @@ with cte as (
 ) select count(*) from cte where i > 2;
 select count(*) c from with_dml;
 
--- Test ORCA shares DML CTE results if multiple CTE references found.
+-- Test one cannot use DML CTE if multiple CTE references found.
+-- Otherwise it will cause duplicated DML operations or planner errors.
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
