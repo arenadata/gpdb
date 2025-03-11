@@ -421,6 +421,8 @@ def main(options, args, parser):
             logger.info(
                 'If you want to rebalance again, run gprebalance -c to perform cleanup')
         elif gprebalance_file_status is None and gprebalance_db_status is None:
+            if options.rollback:
+                logger.error("Cannot perform rollback operation. Rebalance session status files are abscent.")
             gprebalance.statusManager.create_status_file()
             possibility_checks(gprebalance)
             logger.info('Validation passed. Preparing rebalance...')
