@@ -94,16 +94,12 @@ static bool subplan_is_hashable(PlannerInfo *root, Plan *plan);
 static bool subpath_is_hashable(PlannerInfo *root, Path *path);
 static bool test_opexpr_is_hashable(OpExpr *testexpr, List *param_ids);
 static bool hash_ok_operator(OpExpr *expr);
-<<<<<<< HEAD
-static bool SS_make_multiexprs_unique_walker(Node *node, void *context);
 #if 0
 /*
  * The following several functions are used by SS_process_ctes.
  * But SS_process_ctes is commentted of because gpdb does not
  * use it.
  */
-=======
->>>>>>> REL_12_17
 static bool contain_dml(Node *node);
 static bool contain_dml_walker(Node *node, void *context);
 static bool contain_outer_selfref(Node *node);
