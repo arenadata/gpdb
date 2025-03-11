@@ -370,7 +370,6 @@ brin_form_placeholder_tuple(BrinDesc *brdesc, BlockNumber blkno, Size *size)
 	rettuple->bt_blkno = blkno;
 	rettuple->bt_info = hoff;
 	rettuple->bt_info |= BRIN_NULLS_MASK | BRIN_PLACEHOLDER_MASK | BRIN_EMPTY_RANGE_MASK;
-<<<<<<< HEAD
 
 	bitP = ((bits8 *) ((char *) rettuple + SizeOfBrinTuple)) - 1;
 	bitmask = HIGHBIT;
@@ -417,8 +416,6 @@ brin_form_empty_tuple(BrinDesc *brdesc, BlockNumber blkno, Size *size)
 	rettuple->bt_blkno = blkno;
 	rettuple->bt_info = hoff;
 	rettuple->bt_info |= BRIN_NULLS_MASK | BRIN_EMPTY_RANGE_MASK;
-=======
->>>>>>> REL_12_17
 
 	bitP = ((bits8 *) ((char *) rettuple + SizeOfBrinTuple)) - 1;
 	bitmask = HIGHBIT;
