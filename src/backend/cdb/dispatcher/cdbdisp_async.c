@@ -691,10 +691,10 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 
 			for (i = 0; i < db_count; i++)
 			{
-				CdbDispatchResult *r = pParms->dispatchResultPtrArray[i];
+				dispatchResult = pParms->dispatchResultPtrArray[i];
 
-				r->stillRunning = false;
-				cdbconn_discardResults(r->segdbDesc, 20);
+				dispatchResult->stillRunning = false;
+				cdbconn_discardResults(dispatchResult->segdbDesc, 20);
 			}
 
 			forwardQENotices();
