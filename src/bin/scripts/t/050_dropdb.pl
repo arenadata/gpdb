@@ -1,15 +1,9 @@
 use strict;
 use warnings;
 
-<<<<<<< HEAD
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
-=======
-use PostgresNode;
-use TestLib;
-use Test::More tests => 12;
->>>>>>> REL_12_17
 
 program_help_ok('dropdb');
 program_version_ok('dropdb');
@@ -28,9 +22,6 @@ $node->issues_sql_like(
 $node->command_fails([ 'dropdb', 'nonexistent' ],
 	'fails with nonexistent database');
 
-<<<<<<< HEAD
-done_testing();
-=======
 # check that invalid database can be dropped with dropdb
 $node->safe_psql(
 	'postgres', q(
@@ -39,4 +30,5 @@ $node->safe_psql(
 ));
 $node->command_ok([ 'dropdb', 'regression_invalid' ],
   'invalid database can be dropped');
->>>>>>> REL_12_17
+
+done_testing();
