@@ -424,20 +424,15 @@ static PyObject *
 PLy_function_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc)
 {
 	PyObject   *volatile arg = NULL;
-	PyObject   *args;
+	PyObject   *volatile args = NULL;
 	int			i;
-
-	/*
-	 * Make any Py*_New() calls before the PG_TRY block so that we can quickly
-	 * return NULL on failure.  We can't return within the PG_TRY block, else
-	 * we'd miss unwinding the exception stack.
-	 */
-	args = PyList_New(proc->nargs);
-	if (!args)
-		return NULL;
 
 	PG_TRY();
 	{
+		args = PyList_New(proc->nargs);
+		if (!args)
+			return NULL;
+
 		for (i = 0; i < proc->nargs; i++)
 		{
 			PLyDatumToOb *arginfo = &proc->args[i];
@@ -702,24 +697,17 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 			   *pltrelid,
 			   *plttablename,
 			   *plttableschema,
-<<<<<<< HEAD
 			   *pltargs,
-=======
-			   *pltargs = NULL,
->>>>>>> REL_12_17
 			   *pytnew,
-			   *pytold,
-			   *pltdata;
+			   *pytold;
+	PyObject   *volatile pltdata = NULL;
 	char	   *stroid;
 
-	/*
-	 * Make any Py*_New() calls before the PG_TRY block so that we can quickly
-	 * return NULL on failure.  We can't return within the PG_TRY block, else
-	 * we'd miss unwinding the exception stack.
-	 */
-	pltdata = PyDict_New();
-	if (!pltdata)
-		return NULL;
+	PG_TRY();
+	{
+		pltdata = PyDict_New();
+		if (!pltdata)
+			return NULL;
 
 	if (tdata->tg_trigger->tgnargs)
 	{
@@ -730,14 +718,11 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 			return NULL;
 		}
 	}
-<<<<<<< HEAD
 	else
 	{
 		Py_INCREF(Py_None);
 		pltargs = Py_None;
 	}
-=======
->>>>>>> REL_12_17
 
 	PG_TRY();
 	{
@@ -881,11 +866,7 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 			PyObject   *pltarg;
 
 			/* pltargs should have been allocated before the PG_TRY block. */
-<<<<<<< HEAD
 			Assert(pltargs && pltargs != Py_None);
-=======
-			Assert(pltargs);
->>>>>>> REL_12_17
 
 			for (i = 0; i < tdata->tg_trigger->tgnargs; i++)
 			{
@@ -906,7 +887,6 @@ PLy_trigger_build_args(FunctionCallInfo fcinfo, PLyProcedure *proc, HeapTuple *r
 	}
 	PG_CATCH();
 	{
-		Py_XDECREF(pltargs);
 		Py_XDECREF(pltdata);
 		PG_RE_THROW();
 	}
