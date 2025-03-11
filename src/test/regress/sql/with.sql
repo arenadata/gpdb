@@ -1052,7 +1052,7 @@ select count(*) from rank_tbl where rank in (select rank from updated);
 DROP TABLE IF EXISTS t1;
 --end_ignore
 CREATE TABLE t1 (c1 int, c2 int) DISTRIBUTED RANDOMLY;
-SET optimizer=off;
+SET optimizer = off;
 
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH cte1 AS (
@@ -1066,7 +1066,7 @@ WITH cte1 AS (
 SELECT * FROM cte1 a JOIN cte1 b USING (c1);
 
 DROP TABLE t1;
-SET optimizer=on;
+RESET optimizer;
 
 -- Ensure that prefetch is not disabled for HashJoin in case of join at single segment.
 -- Test Shared Scan producer is executed under inner part of join first and the
