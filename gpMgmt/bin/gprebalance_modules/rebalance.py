@@ -321,7 +321,14 @@ class GPRebalance:
         self.logger.info('Dropping rebalance schema')
         self.statusManager.cleanup_schema()
 
+    def cleanup_directory(self):
+        self.logger.info('Dropping rebalance directory')
+        datadir = self.options.coordinator_data_directory + CONF_DIR
+        cmd = RemoveDirectory("Dropping rebalance directory", datadir)
+        cmd.run(validateAfter=True)
+
     def remove_status_file(self):
+        self.logger.info('Dropping status file')
         if self.statusManager:
             self.statusManager.remove_all()
     
