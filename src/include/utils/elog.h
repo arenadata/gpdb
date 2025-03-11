@@ -518,7 +518,12 @@ extern void set_syslog_parameters(const char *ident, int facility);
  */
 extern void write_stderr(const char *fmt,...) pg_attribute_printf(1, 2);
 
-<<<<<<< HEAD
+/*
+ * Write a message to STDERR using only async-signal-safe functions.  This can
+ * be used to safely emit a message from a signal handler.
+ */
+extern void write_stderr_signal_safe(const char *fmt);
+
 extern void write_message_to_server_log(int elevel,
 										int sqlerrcode,
 										const char *message,
@@ -551,12 +556,5 @@ extern bool gp_log_stack_trace_lines;   /* session GUC, controls line info in st
 extern const char *SegvBusIllName(int signal);
 extern void InitStandardHandlerForSigillSigsegvSigbus_OnMainThread(void);
 extern void StandardHandlerForSigillSigsegvSigbus_OnMainThread(char * processName, SIGNAL_ARGS);
-=======
-/*
- * Write a message to STDERR using only async-signal-safe functions.  This can
- * be used to safely emit a message from a signal handler.
- */
-extern void write_stderr_signal_safe(const char *fmt);
->>>>>>> REL_12_17
 
 #endif							/* ELOG_H */
