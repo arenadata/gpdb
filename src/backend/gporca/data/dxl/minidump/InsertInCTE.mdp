@@ -37,28 +37,6 @@ where t1.i in (select i from cte);
                 <dxl:OpFunc Mdid="0.141.1.0" />
                 <dxl:Commutator Mdid="0.514.1.0" />
             </dxl:GPDBScalarOp>
-            <dxl:ColumnStatistics Mdid="1.16387.1.0.0" Name="i" Width="4.000000" NullFreq="0.000000" NdvRemain="0.000000" FreqRemain="0.000000" ColStatsMissing="false">
-                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
-                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="1" />
-                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="2" />
-                </dxl:StatsBucket>
-                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
-                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="2" />
-                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="3" />
-                </dxl:StatsBucket>
-                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
-                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="3" />
-                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="4" />
-                </dxl:StatsBucket>
-                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
-                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="4" />
-                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="5" />
-                </dxl:StatsBucket>
-                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
-                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="5" />
-                    <dxl:UpperBound Closed="true" TypeMdid="0.23.1.0" Value="6" />
-                </dxl:StatsBucket>
-            </dxl:ColumnStatistics>
             <dxl:Type Mdid="0.16.1.0" Name="bool" IsRedistributable="true" IsHashable="true" IsMergeJoinable="true" IsComposite="false" IsTextRelated="false" IsFixedLength="true" Length="1" PassByValue="true">
                 <dxl:DistrOpfamily Mdid="0.2222.1.0" />
                 <dxl:LegacyDistrOpfamily Mdid="0.7124.1.0" />
@@ -204,11 +182,33 @@ where t1.i in (select i from cte);
                 <dxl:SumAgg Mdid="0.0.0.0" />
                 <dxl:CountAgg Mdid="0.2147.1.0" />
             </dxl:Type>
+            <dxl:ColumnStatistics Mdid="1.16390.1.0.0" Name="i" Width="4.000000" NullFreq="0.000000" NdvRemain="0.000000" FreqRemain="0.000000" ColStatsMissing="false">
+                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
+                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="1" />
+                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="2" />
+                </dxl:StatsBucket>
+                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
+                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="2" />
+                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="3" />
+                </dxl:StatsBucket>
+                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
+                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="3" />
+                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="4" />
+                </dxl:StatsBucket>
+                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
+                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="4" />
+                    <dxl:UpperBound Closed="false" TypeMdid="0.23.1.0" Value="5" />
+                </dxl:StatsBucket>
+                <dxl:StatsBucket Frequency="0.20000000000000001" DistinctValues="1.19999999999999996">
+                    <dxl:LowerBound Closed="true" TypeMdid="0.23.1.0" Value="5" />
+                    <dxl:UpperBound Closed="true" TypeMdid="0.23.1.0" Value="6" />
+                </dxl:StatsBucket>
+            </dxl:ColumnStatistics>
             <dxl:GPDBFunc Mdid="0.1067.1.0" Name="generate_series" ReturnsSet="true" Stability="Immutable" DataAccess="NoSQL" IsStrict="true" IsNDVPreserving="false" IsAllowedForPS="false">
                 <dxl:ResultType Mdid="0.23.1.0" />
             </dxl:GPDBFunc>
-            <dxl:RelationStatistics Mdid="2.16387.1.0" Name="t1" Rows="6.000000" RelPages="3" RelAllVisible="0" EmptyRelation="false" />
-            <dxl:Relation Mdid="6.16387.1.0" Name="t1" IsTemporary="false" HasOids="false" StorageType="Heap" DistributionPolicy="Hash" DistributionColumns="0" Keys="8,2" NumberLeafPartitions="0">
+            <dxl:RelationStatistics Mdid="2.16390.1.0" Name="t1" Rows="6.000000" RelPages="3" RelAllVisible="0" EmptyRelation="false" />
+            <dxl:Relation Mdid="6.16390.1.0" Name="t1" IsTemporary="false" HasOids="false" StorageType="Heap" DistributionPolicy="Hash" DistributionColumns="0" Keys="8,2" NumberLeafPartitions="0">
                 <dxl:Columns>
                     <dxl:Column Name="i" Attno="1" Mdid="0.23.1.0" Nullable="true" ColWidth="4">
                         <dxl:DefaultValue />
@@ -245,7 +245,7 @@ where t1.i in (select i from cte);
                     <dxl:DistrOpfamily Mdid="0.1977.1.0" />
                 </dxl:DistrOpfamilies>
             </dxl:Relation>
-            <dxl:Relation Mdid="6.16384.1.0" Name="with_dml_dr" IsTemporary="false" HasOids="false" StorageType="Heap" DistributionPolicy="Hash" DistributionColumns="0" Keys="8,2" NumberLeafPartitions="0">
+            <dxl:Relation Mdid="6.16393.1.0" Name="with_dml_dr" IsTemporary="false" HasOids="false" StorageType="Heap" DistributionPolicy="Hash" DistributionColumns="0" Keys="8,2" NumberLeafPartitions="0">
                 <dxl:Columns>
                     <dxl:Column Name="i" Attno="1" Mdid="0.23.1.0" Nullable="true" ColWidth="4">
                         <dxl:DefaultValue />
@@ -325,7 +325,7 @@ where t1.i in (select i from cte);
                             </dxl:ProjElem>
                         </dxl:ProjList>
                         <dxl:LogicalInsert InsertColumns="1,2">
-                            <dxl:TableDescriptor Mdid="6.16384.1.0" TableName="with_dml_dr">
+                            <dxl:TableDescriptor Mdid="6.16393.1.0" TableName="with_dml_dr">
                                 <dxl:Columns>
                                     <dxl:Column ColId="3" Attno="1" ColName="i" TypeMdid="0.23.1.0" ColWidth="4" />
                                     <dxl:Column ColId="4" Attno="2" ColName="j" TypeMdid="0.23.1.0" ColWidth="4" />
@@ -366,7 +366,7 @@ where t1.i in (select i from cte);
                         <dxl:LogicalCTEConsumer CTEId="1" Columns="23,24" />
                     </dxl:SubqueryAny>
                     <dxl:LogicalGet>
-                        <dxl:TableDescriptor Mdid="6.16387.1.0" TableName="t1">
+                        <dxl:TableDescriptor Mdid="6.16390.1.0" TableName="t1">
                             <dxl:Columns>
                                 <dxl:Column ColId="14" Attno="1" ColName="i" TypeMdid="0.23.1.0" ColWidth="4" />
                                 <dxl:Column ColId="15" Attno="2" ColName="j" TypeMdid="0.23.1.0" ColWidth="4" />
@@ -383,10 +383,10 @@ where t1.i in (select i from cte);
                 </dxl:LogicalSelect>
             </dxl:LogicalCTEAnchor>
         </dxl:Query>
-        <dxl:Plan Id="0" SpaceSize="350">
+        <dxl:Plan Id="0" SpaceSize="635">
             <dxl:GatherMotion InputSegments="0,1,2" OutputSegments="-1">
                 <dxl:Properties>
-                    <dxl:Cost StartupCost="0" TotalCost="446.780842" Rows="1000.000000" Width="8" />
+                    <dxl:Cost StartupCost="0" TotalCost="446.752069" Rows="1000.000000" Width="8" />
                 </dxl:Properties>
                 <dxl:ProjList>
                     <dxl:ProjElem ColId="13" Alias="i">
@@ -400,7 +400,7 @@ where t1.i in (select i from cte);
                 <dxl:SortingColumnList />
                 <dxl:HashJoin JoinType="In">
                     <dxl:Properties>
-                        <dxl:Cost StartupCost="0" TotalCost="446.751029" Rows="1000.000000" Width="8" />
+                        <dxl:Cost StartupCost="0" TotalCost="446.722256" Rows="1000.000000" Width="8" />
                     </dxl:Properties>
                     <dxl:ProjList>
                         <dxl:ProjElem ColId="13" Alias="i">
@@ -431,7 +431,7 @@ where t1.i in (select i from cte);
                             </dxl:ProjElem>
                         </dxl:ProjList>
                         <dxl:Filter />
-                        <dxl:TableDescriptor Mdid="6.16387.1.0" TableName="t1">
+                        <dxl:TableDescriptor Mdid="6.16390.1.0" TableName="t1">
                             <dxl:Columns>
                                 <dxl:Column ColId="13" Attno="1" ColName="i" TypeMdid="0.23.1.0" ColWidth="4" />
                                 <dxl:Column ColId="14" Attno="2" ColName="j" TypeMdid="0.23.1.0" ColWidth="4" />
@@ -447,7 +447,7 @@ where t1.i in (select i from cte);
                     </dxl:TableScan>
                     <dxl:RedistributeMotion InputSegments="0,1,2" OutputSegments="0,1,2">
                         <dxl:Properties>
-                            <dxl:Cost StartupCost="0" TotalCost="15.677667" Rows="1000.000000" Width="4" />
+                            <dxl:Cost StartupCost="0" TotalCost="15.648893" Rows="1000.000000" Width="4" />
                         </dxl:Properties>
                         <dxl:ProjList>
                             <dxl:ProjElem ColId="22" Alias="i">
@@ -463,7 +463,7 @@ where t1.i in (select i from cte);
                         </dxl:HashExprList>
                         <dxl:Result>
                             <dxl:Properties>
-                                <dxl:Cost StartupCost="0" TotalCost="15.673493" Rows="1000.000000" Width="4" />
+                                <dxl:Cost StartupCost="0" TotalCost="15.644720" Rows="1000.000000" Width="4" />
                             </dxl:Properties>
                             <dxl:ProjList>
                                 <dxl:ProjElem ColId="22" Alias="i">
@@ -474,7 +474,7 @@ where t1.i in (select i from cte);
                             <dxl:OneTimeFilter />
                             <dxl:Result>
                                 <dxl:Properties>
-                                    <dxl:Cost StartupCost="0" TotalCost="15.673493" Rows="1000.000000" Width="4" />
+                                    <dxl:Cost StartupCost="0" TotalCost="15.644720" Rows="1000.000000" Width="4" />
                                 </dxl:Properties>
                                 <dxl:ProjList>
                                     <dxl:ProjElem ColId="22" Alias="i">
@@ -488,7 +488,7 @@ where t1.i in (select i from cte);
                                 <dxl:OneTimeFilter />
                                 <dxl:DMLInsert Columns="24,25" ActionCol="39" CtidCol="0" SegmentIdCol="0">
                                     <dxl:Properties>
-                                        <dxl:Cost StartupCost="0" TotalCost="15.672160" Rows="1000.000000" Width="8" />
+                                        <dxl:Cost StartupCost="0" TotalCost="15.643387" Rows="1000.000000" Width="8" />
                                     </dxl:Properties>
                                     <dxl:DirectDispatchInfo />
                                     <dxl:ProjList>
@@ -528,7 +528,7 @@ where t1.i in (select i from cte);
                                             <dxl:Ident ColId="34" ColName="gp_segment_id" TypeMdid="0.23.1.0" />
                                         </dxl:ProjElem>
                                     </dxl:ProjList>
-                                    <dxl:TableDescriptor Mdid="6.16384.1.0" TableName="with_dml_dr">
+                                    <dxl:TableDescriptor Mdid="6.16393.1.0" TableName="with_dml_dr">
                                         <dxl:Columns>
                                             <dxl:Column ColId="26" Attno="1" ColName="i" TypeMdid="0.23.1.0" ColWidth="4" />
                                             <dxl:Column ColId="27" Attno="2" ColName="j" TypeMdid="0.23.1.0" ColWidth="4" />
@@ -541,48 +541,42 @@ where t1.i in (select i from cte);
                                             <dxl:Column ColId="34" Attno="-8" ColName="gp_segment_id" TypeMdid="0.23.1.0" ColWidth="4" />
                                         </dxl:Columns>
                                     </dxl:TableDescriptor>
-                                    <dxl:RedistributeMotion InputSegments="0" OutputSegments="0,1,2" DuplicateSensitive="true">
+                                    <dxl:Result>
                                         <dxl:Properties>
-                                            <dxl:Cost StartupCost="0" TotalCost="0.047160" Rows="1000.000000" Width="12" />
+                                            <dxl:Cost StartupCost="0" TotalCost="0.018387" Rows="1000.000000" Width="12" />
                                         </dxl:Properties>
                                         <dxl:ProjList>
                                             <dxl:ProjElem ColId="24" Alias="generate_series">
                                                 <dxl:Ident ColId="24" ColName="generate_series" TypeMdid="0.23.1.0" />
                                             </dxl:ProjElem>
                                             <dxl:ProjElem ColId="25" Alias="?column?">
-                                                <dxl:Ident ColId="25" ColName="?column?" TypeMdid="0.23.1.0" />
+                                                <dxl:OpExpr OperatorName="*" OperatorMdid="0.514.1.0" OperatorType="0.23.1.0">
+                                                    <dxl:Ident ColId="24" ColName="generate_series" TypeMdid="0.23.1.0" />
+                                                    <dxl:ConstValue TypeMdid="0.23.1.0" Value="100" />
+                                                </dxl:OpExpr>
                                             </dxl:ProjElem>
                                             <dxl:ProjElem ColId="39" Alias="ColRef_0039">
-                                                <dxl:Ident ColId="39" ColName="ColRef_0039" TypeMdid="0.23.1.0" />
+                                                <dxl:ConstValue TypeMdid="0.23.1.0" Value="1" />
                                             </dxl:ProjElem>
                                         </dxl:ProjList>
                                         <dxl:Filter />
-                                        <dxl:SortingColumnList />
-                                        <dxl:HashExprList>
-                                            <dxl:HashExpr Opfamily="0.1977.1.0">
-                                                <dxl:Ident ColId="24" ColName="generate_series" TypeMdid="0.23.1.0" />
-                                            </dxl:HashExpr>
-                                        </dxl:HashExprList>
-                                        <dxl:Result>
+                                        <dxl:OneTimeFilter />
+                                        <dxl:RedistributeMotion InputSegments="0" OutputSegments="0,1,2" DuplicateSensitive="true">
                                             <dxl:Properties>
-                                                <dxl:Cost StartupCost="0" TotalCost="0.016000" Rows="1000.000000" Width="12" />
+                                                <dxl:Cost StartupCost="0" TotalCost="0.014387" Rows="1000.000000" Width="4" />
                                             </dxl:Properties>
                                             <dxl:ProjList>
                                                 <dxl:ProjElem ColId="24" Alias="generate_series">
                                                     <dxl:Ident ColId="24" ColName="generate_series" TypeMdid="0.23.1.0" />
                                                 </dxl:ProjElem>
-                                                <dxl:ProjElem ColId="25" Alias="?column?">
-                                                    <dxl:OpExpr OperatorName="*" OperatorMdid="0.514.1.0" OperatorType="0.23.1.0">
-                                                        <dxl:Ident ColId="24" ColName="generate_series" TypeMdid="0.23.1.0" />
-                                                        <dxl:ConstValue TypeMdid="0.23.1.0" Value="100" />
-                                                    </dxl:OpExpr>
-                                                </dxl:ProjElem>
-                                                <dxl:ProjElem ColId="39" Alias="ColRef_0039">
-                                                    <dxl:ConstValue TypeMdid="0.23.1.0" Value="1" />
-                                                </dxl:ProjElem>
                                             </dxl:ProjList>
                                             <dxl:Filter />
-                                            <dxl:OneTimeFilter />
+                                            <dxl:SortingColumnList />
+                                            <dxl:HashExprList>
+                                                <dxl:HashExpr Opfamily="0.1977.1.0">
+                                                    <dxl:Ident ColId="24" ColName="generate_series" TypeMdid="0.23.1.0" />
+                                                </dxl:HashExpr>
+                                            </dxl:HashExprList>
                                             <dxl:TableValuedFunction FuncId="0.1067.1.0" Name="generate_series" TypeMdid="0.23.1.0">
                                                 <dxl:Properties>
                                                     <dxl:Cost StartupCost="0" TotalCost="0.004000" Rows="1000.000000" Width="4" />
@@ -595,8 +589,8 @@ where t1.i in (select i from cte);
                                                 <dxl:ConstValue TypeMdid="0.23.1.0" Value="1" />
                                                 <dxl:ConstValue TypeMdid="0.23.1.0" Value="6" />
                                             </dxl:TableValuedFunction>
-                                        </dxl:Result>
-                                    </dxl:RedistributeMotion>
+                                        </dxl:RedistributeMotion>
+                                    </dxl:Result>
                                 </dxl:DMLInsert>
                             </dxl:Result>
                         </dxl:Result>
