@@ -895,11 +895,8 @@ brinbuildCallback(Relation index,
 		if (has_nulls && !(col->bv_hasnulls || col->bv_allnulls))
 			col->bv_hasnulls = true;
 	}
-<<<<<<< HEAD
 	/* GPDB: Additional accounting in the build state for AO/CO relations */
 	state->bs_aoHasDataTuple = true;
-=======
->>>>>>> REL_12_17
 
 	/*
 	 * After updating summaries for all the keys, mark it as not empty.
