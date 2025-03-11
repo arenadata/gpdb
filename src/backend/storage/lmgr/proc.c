@@ -986,10 +986,8 @@ ProcKill(int code, Datum arg)
 
 	Assert(MyProc != NULL);
 
-<<<<<<< HEAD
 	SIMPLE_FAULT_INJECTOR("proc_kill");
-=======
->>>>>>> REL_12_17
+
 	/* not safe if forked by system(), etc. */
 	if (MyProc->pid != (int) getpid())
 		elog(PANIC, "ProcKill() called in child process");
