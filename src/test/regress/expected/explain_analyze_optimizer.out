@@ -112,7 +112,7 @@ WITH cte AS (
    ->  Result (actual rows=3 loops=1)
          ->  Insert (actual rows=3 loops=1)
                ->  Result (actual rows=3 loops=1)
-                     ->  Result (actual rows=5 loops=1)
+                     ->  Result (actual rows=3 loops=1)
                            ->  Function Scan on generate_series (actual rows=5 loops=1)
  Planning time: 20.649 ms
    (slice0)    Executor memory: 59K bytes.
