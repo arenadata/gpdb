@@ -3170,7 +3170,7 @@ RETURNS table (
     idx int,
     value int
   )
- AS '/home/denis/arena/ADBDEV-5023/src/test/regress/regress.so',
+ AS '@abs_srcdir@/regress.so',
 'gp_get_int_tuples' LANGUAGE C VOLATILE;
 -- Check the case with regular no Squelch finish and no query cancel
 SELECT * FROM gp_get_int_tuples(3);
