@@ -309,6 +309,9 @@ class ClusterBalancer():
         for contentid, target_location in primary_map2.items():
             current_location = primary_map1.get(contentid)
             if current_location and current_location != target_location:
+            #important notice. srcHost and dstHost are different
+            # objects even if they are describing the same host. 
+            # srcHost and dstHost are taken from state1 and state2 correspondingly
                 source_host = state1[current_location]
                 target_host = state2[target_location]
                 segid = next(seg for seg in source_host.primary_segments

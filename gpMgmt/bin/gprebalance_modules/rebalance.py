@@ -246,7 +246,7 @@ class GPRebalance:
         self.executor = RebalanceExecutor(plan,
                                      self.original_gparray,
                                      self.segmentMap,
-                                     self.current_conf,
+                                     plan.in_conf,
                                      self.logger,
                                      self.statusManager,
                                      self.conn,
