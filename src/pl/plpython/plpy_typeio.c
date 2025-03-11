@@ -1171,71 +1171,9 @@ PLySequence_ToArray(PLyObToDatum *arg, PyObject *plrv,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("return value of function with array return type is not a Python sequence")));
 
-<<<<<<< HEAD
-	Py_INCREF(plrv);
-
-	for (;;)
-	{
-		if (!PyList_Check(pyptr))
-			break;
-
-		if (ndim == MAXDIM)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("number of array dimensions exceeds the maximum allowed (%d)",
-							MAXDIM)));
-
-		dims[ndim] = PySequence_Length(pyptr);
-		if (dims[ndim] < 0)
-			PLy_elog(ERROR, "could not determine sequence length for function return value");
-
-		if (dims[ndim] > MaxAllocSize)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("array size exceeds the maximum allowed")));
-
-		len *= dims[ndim];
-		if (len > MaxAllocSize)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("array size exceeds the maximum allowed")));
-
-		if (dims[ndim] == 0)
-		{
-			/* empty sequence */
-			break;
-		}
-
-		ndim++;
-
-		next = PySequence_GetItem(pyptr, 0);
-		Py_XDECREF(pyptr);
-		pyptr = next;
-	}
-	Py_XDECREF(pyptr);
-
-	/*
-	 * Check for zero dimensions. This happens if the object is a tuple or a
-	 * string, rather than a list, or is not a sequence at all. We don't map
-	 * tuples or strings to arrays in general, but in the first level, be
-	 * lenient, for historical reasons. So if the object is a sequence of any
-	 * kind, treat it as a one-dimensional array.
-	 */
-	if (ndim == 0)
-	{
-		if (!PySequence_Check(plrv))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("return value of function with array return type is not a Python sequence")));
-
-		ndim = 1;
-		len = dims[0] = PySequence_Length(plrv);
-	}
-=======
 	/* Initialize dimensionality info with first-level dimension */
 	memset(dims, 0, sizeof(dims));
 	dims[0] = PySequence_Length(plrv);
->>>>>>> REL_12_17
 
 	/*
 	 * Traverse the Python lists, in depth-first order, and collect all the
@@ -1274,18 +1212,9 @@ PLySequence_ToArray_recurse(PyObject *obj, ArrayBuildState **astatep,
 	int			i;
 	int			len = PySequence_Length(obj);
 
-<<<<<<< HEAD
-	if (PySequence_Length(list) != dims[dim])
-		ereport(ERROR,
-				(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
-				 errmsg("wrong length of inner sequence: has length %d, but %d was expected",
-						(int) PySequence_Length(list), dims[dim]),
-				 (errdetail("To construct a multidimensional array, the inner sequences must all have the same length."))));
-=======
 	/* We should not get here with a non-sequence object */
 	if (len < 0)
 		PLy_elog(ERROR, "could not determine sequence length for function return value");
->>>>>>> REL_12_17
 
 	for (i = 0; i < len; i++)
 	{
