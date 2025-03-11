@@ -1228,27 +1228,6 @@ PG_TRY();
 	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 	/*
-<<<<<<< HEAD
-	 * Set Params of this plan from parent plan correlation values. (Any
-	 * calculation we have to do is done in the parent econtext, since the
-	 * Param values don't need to have per-query lifetime.)  Currently, we
-	 * expect only MULTIEXPR_SUBLINK plans to have any correlation values.
-	 */
-	Assert(subplan->parParam == NIL || subLinkType == MULTIEXPR_SUBLINK);
-	Assert(list_length(subplan->parParam) == list_length(node->args));
-
-	forboth(l, subplan->parParam, pvar, node->args)
-	{
-		int			paramid = lfirst_int(l);
-		ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
-
-		prm->value = ExecEvalExprSwitchContext((ExprState *) lfirst(pvar),
-											   econtext,
-											   &(prm->isnull));
-		planstate->chgParam = bms_add_member(planstate->chgParam, paramid);
-	}
-
-	/*
 	 * Setup the tuplestore writer for functionscan initplan
 	 * 
 	 * Note that the file of tuplestore should not be deleted when
@@ -1270,8 +1249,6 @@ PG_TRY();
 	}
 
 	/*
-=======
->>>>>>> REL_12_17
 	 * Run the plan.  (If it needs to be rescanned, the first ExecProcNode
 	 * call will take care of that.)
 	 */
