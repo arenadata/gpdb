@@ -429,9 +429,9 @@ class RebalanceExecutor:
             prim_ports = set()
             mir_ports = set()
             if m.dstHost not in resources:
-                for psid in m.dstHost.primary_segments:
+                for psid in self.cluster_state[(m.dstHost.hostname, m.dstHost.address)].primary_segments:
                     prim_ports.add(self.segmentMap[psid].port)
-                for msid in m.dstHost.mirror_segments:
+                for msid in self.cluster_state[(m.dstHost.hostname, m.dstHost.address)].mirror_segments:
                     mir_ports.add(self.segmentMap[msid].port)
                 if len(m.dstHost.primary_datadirs) == 0:
                     prirmary_prefix = DEFAULT_PRIMARY_PREF
@@ -531,8 +531,12 @@ class RebalanceExecutor:
         3. role switching takes place
         """
         for primary_move, mirror_move in swaps:
-            primary_host = primary_move.srcHost
-            mirror_host = mirror_move.srcHost
+            #important notice. srcHost and dstHost are different
+            # objects even if they are describing the same host. 
+            # This happens due to code in get_moves_between_states(state1, state2)
+            # srcHost and dstHost are taken from state1 and state2 correspondingly
+            primary_host = mirror_move.dstHost
+            mirror_host = primary_move.dstHost
 
             primary_id = primary_move.segid
 
