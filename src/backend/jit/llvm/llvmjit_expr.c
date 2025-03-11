@@ -161,17 +161,6 @@ llvm_compile_expr(ExprState *state)
 
 	LLVMPositionBuilderAtEnd(b, entry);
 
-<<<<<<< HEAD
-	v_tmpvaluep = LLVMBuildStructGEP(b, v_state,
-									 FIELDNO_EXPRSTATE_RESVALUE,
-									 "v.state.resvalue");
-	v_tmpisnullp = LLVMBuildStructGEP(b, v_state,
-									  FIELDNO_EXPRSTATE_RESNULL,
-									  "v.state.resnull");
-	v_parent = l_load_struct_gep(b, v_state,
-								 FIELDNO_EXPRSTATE_PARENT,
-								 "v.state.parent");
-=======
 	v_tmpvaluep = l_struct_gep(b,
 							   StructExprState,
 							   v_state,
@@ -182,7 +171,9 @@ llvm_compile_expr(ExprState *state)
 								v_state,
 								FIELDNO_EXPRSTATE_RESNULL,
 								"v.state.resnull");
->>>>>>> REL_12_17
+	v_parent = l_load_struct_gep(b, v_state,
+								 FIELDNO_EXPRSTATE_PARENT,
+								 "v.state.parent");
 
 	/* build global slots */
 	v_scanslot = l_load_struct_gep(b,
