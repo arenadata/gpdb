@@ -133,9 +133,9 @@ test: partition-key-update-3
 test: partition-key-update-4
 test: plpgsql-toast
 test: truncate-conflict
-<<<<<<< HEAD
 #test: serializable-parallel
 #test: serializable-parallel-2
+#test: serializable-parallel-3
 
 #test: prepared-transactions
 
@@ -146,8 +146,3 @@ test: ao-repeatable-read-vacuum
 
 test: ao-insert-eof create_index_hot udf-insert-deadlock heap-repeatable-read ao-repeatable-read
 test: vacuum-ao-concurrent-drop
-=======
-test: serializable-parallel
-test: serializable-parallel-2
-test: serializable-parallel-3
->>>>>>> REL_12_17
