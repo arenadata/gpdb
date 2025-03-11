@@ -3351,15 +3351,9 @@ FlushRelationBuffers(Relation rel)
 	int			i;
 	BufferDesc *bufHdr;
 
-<<<<<<< HEAD
-	/* Open rel at the smgr level if not already done */
-	RelationOpenSmgr(rel);
-
 	if (!RelationUsesBufferManager(rel))
 		return;
 
-=======
->>>>>>> REL_12_17
 	if (RelationUsesLocalBuffers(rel))
 	{
 		for (i = 0; i < NLocBuffer; i++)
@@ -3424,15 +3418,9 @@ FlushRelationBuffers(Relation rel)
 			(buf_state & (BM_VALID | BM_DIRTY)) == (BM_VALID | BM_DIRTY))
 		{
 			PinBuffer_Locked(bufHdr);
-<<<<<<< HEAD
 			AcquireContentLock(bufHdr, LW_SHARED);
-			FlushBuffer(bufHdr, rel->rd_smgr);
-			ReleaseContentLock(bufHdr);
-=======
-			LWLockAcquire(BufferDescriptorGetContentLock(bufHdr), LW_SHARED);
 			FlushBuffer(bufHdr, RelationGetSmgr(rel));
-			LWLockRelease(BufferDescriptorGetContentLock(bufHdr));
->>>>>>> REL_12_17
+			ReleaseContentLock(bufHdr);
 			UnpinBuffer(bufHdr, true);
 		}
 		else
