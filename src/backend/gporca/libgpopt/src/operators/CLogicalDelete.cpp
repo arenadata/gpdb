@@ -216,6 +216,7 @@ CLogicalDelete::PopCopyWithRemappedColumns(CMemoryPool *mp,
 		pcrTableOid =
 			CUtils::PcrRemap(m_pcrTableOid, colref_mapping, must_exist);
 	}
+	m_ptabdesc->AddRef();
 
 	return GPOS_NEW(mp)
 		CLogicalDelete(mp, m_ptabdesc, colref_array, pdrgpcrOutput, pcrCtid,
