@@ -113,6 +113,8 @@ extern Datum broken_int4out(PG_FUNCTION_ARGS);
 /* fts tests */
 extern Datum gp_fts_probe_stats(PG_FUNCTION_ARGS);
 
+extern Datum gp_get_int_tuples(PG_FUNCTION_ARGS);
+
 /* Triggers */
 
 typedef struct
@@ -2326,4 +2328,98 @@ gp_keepalives_check(PG_FUNCTION_ARGS) {
 	}
 
 	SRF_RETURN_DONE(funcctx);
+}
+
+
+
+/* Get a tuples with 2 int fields */
+/* But allocates some memory to detect that it had a chance to release it*/
+PG_FUNCTION_INFO_V1(gp_get_int_tuples);
+
+Datum
+gp_get_int_tuples(PG_FUNCTION_ARGS)
+{
+	typedef struct Context {
+		int index;
+		int max_index;
+		void *memory;
+		Relation	aorel;
+	} Context;
+
+	FuncCallContext		*fctx;
+	Context *context;
+
+	int			n = PG_GETARG_INT32(0);	
+
+	if (SRF_IS_SQUELCH_CALL())
+	{
+		fctx = SRF_PERCALL_SETUP();
+		context = (Context *) fctx->user_fctx;
+		goto srf_done;
+	}
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc tupdesc;
+		MemoryContext oldcontext;
+
+		fctx = SRF_FIRSTCALL_INIT();
+
+		/* Switch to memory context for appropriate multiple function call */
+		oldcontext = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
+
+		context = (Context *) palloc(sizeof(Context));
+		context->index = 0;
+		context->max_index = n;
+		/* get some random size memory */
+		context->memory = palloc(1042); 
+
+		context->aorel = heap_open(TypeRelationId, AccessShareLock);
+
+		/* Create tupdesc for result */
+		tupdesc = CreateTemplateTupleDesc(2, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "idx",
+							INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "value",
+							INT4OID, -1, 0);
+		
+		fctx->tuple_desc = BlessTupleDesc(tupdesc);							
+		fctx->user_fctx = context;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	fctx = SRF_PERCALL_SETUP();
+	context = (Context *) fctx->user_fctx;
+
+	if (context->index < context->max_index) {
+		Datum values[2];
+		bool nulls[2];
+		HeapTuple tuple;
+		Datum result;
+
+		if (context->index == 3) {
+			QueryFinishPending = true;
+		}
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+
+		values[0] = Int16GetDatum(context->index);
+		values[1] = Int16GetDatum(context->index + 10);
+
+		context->index++;
+
+		tuple = heap_form_tuple(fctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+		SRF_RETURN_NEXT(fctx, result);
+	}
+
+srf_done:
+	heap_close(context->aorel, AccessShareLock);
+	// pfree(context->memory);
+	// pfree(context);
+
+	SRF_RETURN_DONE(fctx);
 }
