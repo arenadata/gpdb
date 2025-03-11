@@ -43,11 +43,8 @@
 #include "nodes/execnodes.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-<<<<<<< HEAD
-=======
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
->>>>>>> REL_12_17
 #include "parser/parse_agg.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_oper.h"
