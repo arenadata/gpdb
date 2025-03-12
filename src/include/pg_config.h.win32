@@ -691,11 +691,7 @@
 #define PACKAGE_NAME "Greenplum Database"
 
 /* Define to the full name and version of this package. */
-<<<<<<< HEAD
 #define PACKAGE_STRING "Greenplum Database 7.0.0-beta"
-=======
-#define PACKAGE_STRING "PostgreSQL 12.17"
->>>>>>> REL_12_17
 
 /* Define to the version of this package. */
 #define PACKAGE_VERSION "12.17"
