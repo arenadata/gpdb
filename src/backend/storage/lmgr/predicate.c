@@ -1917,7 +1917,7 @@ GetSerializableTransactionSnapshotInt(Snapshot snapshot,
 		Assert(PredXact->SxactGlobalXminCount == 0);
 		PredXact->SxactGlobalXmin = snapshot->xmin;
 		PredXact->SxactGlobalXminCount = 1;
-		OldSerXidSetActiveSerXmin(snapshot->xmin);
+		SerialSetActiveSerXmin(snapshot->xmin);
 	}
 	else if (TransactionIdEquals(snapshot->xmin, PredXact->SxactGlobalXmin))
 	{
