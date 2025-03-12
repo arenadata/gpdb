@@ -15916,15 +15916,11 @@ index_copy_data(Relation rel, RelFileNode newrnode)
 {
 	SMgrRelation dstrel;
 
-<<<<<<< HEAD
 	SMgrImpl smgr_which = RelationIsAppendOptimized(rel) ? SMGR_AO : SMGR_MD;
 
 	dstrel = smgropen(newrnode, rel->rd_backend, smgr_which);
 					  
 	RelationOpenSmgr(rel);
-=======
-	dstrel = smgropen(newrnode, rel->rd_backend);
->>>>>>> REL_12_17
 
 	/*
 	 * Since we copy the file directly without looking at the shared buffers,
@@ -15962,13 +15958,8 @@ index_copy_data(Relation rel, RelFileNode newrnode)
 			if (rel->rd_rel->relpersistence == RELPERSISTENCE_PERMANENT ||
 				(rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED &&
 				 forkNum == INIT_FORKNUM))
-<<<<<<< HEAD
-				log_smgrcreate(&newrnode, forkNum, smgr_which);
-			RelationCopyStorage(rel->rd_smgr, dstrel, forkNum,
-=======
-				log_smgrcreate(&newrnode, forkNum);
+				log_smgrcreate(&newrnode, forkNum, smgr_which);				
 			RelationCopyStorage(RelationGetSmgr(rel), dstrel, forkNum,
->>>>>>> REL_12_17
 								rel->rd_rel->relpersistence);
 		}
 	}
