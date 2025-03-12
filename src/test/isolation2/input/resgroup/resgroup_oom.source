@@ -30,7 +30,7 @@ AND m.query = 'SELECT count(*) FROM gp_mock_cdbdispatchcommand(1000000);'
 LIMIT 1;
 
 -- Retrieve the actual amount memory that is used by the backend under load.
-! psql -At -d isolation2test -c "CREATE TABLE process_memory AS SELECT $(ps -o rss= -p $(psql -At -d isolation2test -c 'SELECT pid FROM process_pid')) AS kb;";
+! psql -At -d isolation2resgrouptest -c "CREATE TABLE process_memory AS SELECT $(ps -o rss= -p $(psql -At -d isolation2resgrouptest -c 'SELECT pid FROM process_pid')) AS kb;";
 
 -- Compare both values, allow 30 MB error threshold for Vmtracker.
 SELECT p.kb / 1024 - v.mb < 30 AS "is in threshold" FROM process_memory p, vmtracker_memory v;
