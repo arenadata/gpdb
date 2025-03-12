@@ -14,7 +14,6 @@
 
 #include "postgres.h"
 
-#include "access/htup_details.h"
 #include "funcapi.h"
 #include "tablefuncapi.h"
 #include "miscadmin.h"
@@ -2359,16 +2358,20 @@ typedef struct
 	int n_segments;
 	int n_tuples;
 	struct pg_result **pg_results;
-} gp_cdbdispatchcommand_status;
+} gp_mock_cdbdispatchcommand_status;
 
-PG_FUNCTION_INFO_V1(gp_cdbdispatchcommand);
+/* 
+ * This test function mocks CdbDispatchCommand() with a customizable amount of
+ * tuples.
+ */
+PG_FUNCTION_INFO_V1(gp_mock_cdbdispatchcommand);
 Datum
-gp_cdbdispatchcommand(PG_FUNCTION_ARGS)
+gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *func_ctx;
-	gp_cdbdispatchcommand_status *my_status;
+	gp_mock_cdbdispatchcommand_status *my_status;
 
-	int32 arg_count = PG_GETARG_INT32(0);
+	int32 arg_tuple_amount = PG_GETARG_INT32(0);
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2377,8 +2380,8 @@ gp_cdbdispatchcommand(PG_FUNCTION_ARGS)
 		func_ctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(func_ctx->multi_call_memory_ctx);
 
-		my_status = (gp_cdbdispatchcommand_status *) palloc0(
-			sizeof(gp_cdbdispatchcommand_status));
+		my_status = (gp_mock_cdbdispatchcommand_status *) palloc0(
+			sizeof(gp_mock_cdbdispatchcommand_status));
 
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
@@ -2386,7 +2389,8 @@ gp_cdbdispatchcommand(PG_FUNCTION_ARGS)
 			CdbPgResults cdb_pgresults = {NULL, 0};
 
 			char *query =
-				psprintf("SELECT * FROM gp_cdbdispatchcommand(%d)", arg_count);
+				psprintf("SELECT * FROM gp_mock_cdbdispatchcommand(%d)",
+						 arg_tuple_amount);
 
 			CdbDispatchCommand(query, DF_WITH_SNAPSHOT, &cdb_pgresults);
 
@@ -2411,12 +2415,12 @@ gp_cdbdispatchcommand(PG_FUNCTION_ARGS)
 	}
 
 	func_ctx = SRF_PERCALL_SETUP();
-	my_status = (gp_cdbdispatchcommand_status *) func_ctx->user_fctx;
+	my_status = (gp_mock_cdbdispatchcommand_status *) func_ctx->user_fctx;
 
 	/* Generate fake tuples from every segment. */
-	while (my_status->cur_tuple_idx < arg_count)
+	while (my_status->cur_tuple_idx < arg_tuple_amount)
 	{
-		if (my_status->cur_tuple_idx++ == arg_count)
+		if (my_status->cur_tuple_idx++ == arg_tuple_amount)
 		{
 			my_status->cur_tuple_idx--;
 			break;
@@ -2426,8 +2430,8 @@ gp_cdbdispatchcommand(PG_FUNCTION_ARGS)
 	}
 
 	/* Receive tuples from the loop above on master. */
-	while (my_status->cur_tuple_idx >= arg_count &&
-		   my_status->cur_tuple_idx < arg_count + my_status->n_tuples)
+	while (my_status->cur_tuple_idx >= arg_tuple_amount &&
+		   my_status->cur_tuple_idx < arg_tuple_amount + my_status->n_tuples)
 	{
 		Datum ret;
 		PGresult *res = my_status->pg_results[my_status->cur_segment_idx];

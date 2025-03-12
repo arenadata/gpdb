@@ -4,12 +4,7 @@ CREATE
 CREATE EXTENSION gp_internal_tools;
 CREATE
 
-CREATE OR REPLACE FUNCTION gp_cdbdispatchcommand(count int) RETURNS SETOF text AS '/home/sd/Work/Arenadata/src/gpdb/src/test/isolation2/../regress/regress.so', 'gp_cdbdispatchcommand' LANGUAGE C;
-CREATE
-
-CREATE RESOURCE GROUP rg_oom_test WITH (cpu_rate_limit=20, memory_limit=1);
-CREATE
-CREATE ROLE role_oom_test RESOURCE GROUP rg_oom_test;
+CREATE OR REPLACE FUNCTION gp_mock_cdbdispatchcommand(amount int) RETURNS SETOF text AS '/home/sd/Work/Arenadata/src/gpdb/src/test/isolation2/../regress/regress.so', 'gp_mock_cdbdispatchcommand' LANGUAGE C;
 CREATE
 -- end_ignore
 
@@ -25,7 +20,7 @@ SELECT gp_inject_fault('check_dispatch_result_end', 'suspend', dbid) FROM gp_seg
 (1 row)
 
 -- Send the heavy query.
-1&: SELECT count(*) FROM gp_cdbdispatchcommand(1000000);  <waiting ...>
+1&: SELECT count(*) FROM gp_mock_cdbdispatchcommand(1000000);  <waiting ...>
 
 -- Wait until we receive everything.
 SELECT gp_wait_until_triggered_fault('check_dispatch_result_end', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
@@ -35,7 +30,7 @@ SELECT gp_wait_until_triggered_fault('check_dispatch_result_end', 1, dbid) FROM 
 (1 row)
 
 -- Remember the amount of memory Vmtracker thinks we are using.
-CREATE TABLE vmtracker_memory AS SELECT m.vmem_mb AS mb FROM session_state.session_level_memory_consumption m WHERE segid = -1 AND m.query = 'SELECT count(*) FROM gp_cdbdispatchcommand(1000000);' LIMIT 1;
+CREATE TABLE vmtracker_memory AS SELECT m.vmem_mb AS mb FROM session_state.session_level_memory_consumption m WHERE segid = -1 AND m.query = 'SELECT count(*) FROM gp_mock_cdbdispatchcommand(1000000);' LIMIT 1;
 CREATE 1
 
 -- Retrieve the actual amount memory that is used by the backend under load.
@@ -45,11 +40,11 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 SELECT 1
 
 
--- Compare both values, allow 10MB error threshold for Vmtracker.
-SELECT p.kb / 1024 - v.mb < 30 AS "in threshold" FROM process_memory p, vmtracker_memory v;
- in threshold 
---------------
- t            
+-- Compare both values, allow 30 MB error threshold for Vmtracker.
+SELECT p.kb / 1024 - v.mb < 30 AS "is in threshold" FROM process_memory p, vmtracker_memory v;
+ is in threshold 
+-----------------
+ t               
 (1 row)
 
 SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
@@ -64,15 +59,13 @@ SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM gp_segme
  4000000 
 (1 row)
 
--- Make sure we don't enter error recursion on fail.
-1: SET ROLE role_oom_test;
-SET
-1: SELECT count(*) FROM gp_cdbdispatchcommand(5000000);
+-- And finally, make sure we don't enter error recursion on fail.
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(5000000);
 ERROR:  Out of memory
 DETAIL:  Resource group memory limit reached
 
 -- start_ignore
-DROP FUNCTION gp_cdbdispatchcommand(count int);
+DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
 DROP
 
 DROP TABLE vmtracker_memory;
@@ -80,10 +73,5 @@ DROP
 DROP TABLE process_pid;
 DROP
 DROP TABLE process_memory;
-DROP
-
-DROP ROLE role_oom_test;
-DROP
-DROP RESOURCE GROUP rg_oom_test;
 DROP
 -- end_ignore
