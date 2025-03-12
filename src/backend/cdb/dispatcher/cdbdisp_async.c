@@ -687,14 +687,22 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 		}
 		else if (should_cancel)
 		{
+			/* Make QEs come to their senses. */
 			signalQEs(pParms);
 
 			for (i = 0; i < db_count; i++)
 			{
 				dispatchResult = pParms->dispatchResultPtrArray[i];
 
-				dispatchResult->stillRunning = false;
+				/*
+				 * If we're cancelling the transaction due to an OOM, there
+				 * might not be enough memory to discard the result properly.
+				 * Try to free the async results first and pray.
+				 */
+				pqClearAsyncResult(dispatchResult->segdbDesc->conn);
 				cdbconn_discardResults(dispatchResult->segdbDesc, 20);
+
+				dispatchResult->stillRunning = false;
 			}
 
 			forwardQENotices();
