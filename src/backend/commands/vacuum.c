@@ -36,7 +36,6 @@
 #include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xact.h"
-#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/partition.h"
 #include "catalog/pg_database.h"
@@ -1812,7 +1811,6 @@ vac_update_datfrozenxid(void)
 	MultiXactId lastSaneMinMulti;
 	bool		bogus = false;
 	bool		dirty = false;
-	ScanKeyData key[1];
 
 	/*
 	 * Restrict this task to one backend per database.  This avoids race
@@ -1939,31 +1937,8 @@ vac_update_datfrozenxid(void)
 	/* Now fetch the pg_database tuple we need to update. */
 	relation = table_open(DatabaseRelationId, RowExclusiveLock);
 
-<<<<<<< HEAD
 	cached_tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
 	cached_dbform = (Form_pg_database) GETSTRUCT(cached_tuple);
-=======
-	/*
-	 * Get the pg_database tuple to scribble on.  Note that this does not
-	 * directly rely on the syscache to avoid issues with flattened toast
-	 * values for the in-place update.
-	 */
-	ScanKeyInit(&key[0],
-				Anum_pg_database_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(MyDatabaseId));
-
-	scan = systable_beginscan(relation, DatabaseOidIndexId, true,
-							  NULL, 1, key);
-	tuple = systable_getnext(scan);
-	tuple = heap_copytuple(tuple);
-	systable_endscan(scan);
-
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
-
-	dbform = (Form_pg_database) GETSTRUCT(tuple);
->>>>>>> REL_12_17
 
 	/*
 	 * As in vac_update_relstats(), we ordinarily don't want to let
