@@ -1,13 +1,8 @@
 use strict;
 use warnings;
 
-<<<<<<< HEAD
 use PostgreSQL::Test::Cluster;
 use Test::More;
-=======
-use PostgresNode;
-use Test::More tests => 4;
->>>>>>> REL_12_17
 
 my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
@@ -20,9 +15,6 @@ $node->issues_sql_like(
 	qr/statement: REINDEX.*statement: REINDEX/s,
 	'reindex all databases');
 
-<<<<<<< HEAD
-done_testing();
-=======
 $node->safe_psql(
 	'postgres', q(
 	CREATE DATABASE regression_invalid;
@@ -35,4 +27,5 @@ $node->command_ok([ 'reindexdb', '-a' ],
 # invalid database in 090_reindexdb.pl as well.
 $node->command_fails([ 'reindexdb', '-d', 'regression_invalid'],
   'reindexdb cannot target invalid database');
->>>>>>> REL_12_17
+
+done_testing();

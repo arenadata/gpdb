@@ -1,13 +1,8 @@
 use strict;
 use warnings;
 
-<<<<<<< HEAD
 use PostgreSQL::Test::Cluster;
 use Test::More;
-=======
-use PostgresNode;
-use Test::More tests => 4;
->>>>>>> REL_12_17
 
 my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
@@ -18,9 +13,6 @@ $node->issues_sql_like(
 	qr/statement: VACUUM.*statement: VACUUM/s,
 	'vacuum all databases');
 
-<<<<<<< HEAD
-done_testing();
-=======
 $node->safe_psql(
 	'postgres', q(
 	CREATE DATABASE regression_invalid;
@@ -33,4 +25,5 @@ $node->command_ok([ 'vacuumdb', '-a' ],
 # invalid database in 010_vacuumdb.pl as well.
 $node->command_fails([ 'vacuumdb', '-d', 'regression_invalid'],
   'vacuumdb cannot target invalid database');
->>>>>>> REL_12_17
+
+done_testing();
