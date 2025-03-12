@@ -71,13 +71,14 @@
 #endif
 
 /*
-<<<<<<< HEAD
  * ActivePerl 5.18 and later are MinGW-built, and their headers use GCC's
  * __inline__.  Translate to something MSVC recognizes.
  */
 #ifdef _MSC_VER
 #define __inline__ inline
-=======
+#endif
+
+/*
  * Newer versions of the perl headers trigger a lot of warnings with our
  * compiler flags (at least -Wdeclaration-after-statement,
  * -Wshadow=compatible-local are known to be problematic). The system_header
@@ -85,7 +86,6 @@
  */
 #ifdef HAVE_PRAGMA_GCC_SYSTEM_HEADER
 #pragma GCC system_header
->>>>>>> REL_12_17
 #endif
 
 /*
