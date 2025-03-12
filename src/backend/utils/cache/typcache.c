@@ -265,13 +265,6 @@ static const dshash_parameters srtr_typmod_table_params = {
 /* hashtable for recognizing registered record types */
 static HTAB *RecordCacheHash = NULL;
 
-<<<<<<< HEAD
-/* arrays of info about registered record types, indexed by assigned typmod */
-static TupleDesc *RecordCacheArray = NULL;
-static uint64 *RecordIdentifierArray = NULL;
-static int32 RecordCacheArrayLen = 0;	/* allocated length of above arrays */
-int32 NextRecordTypmod = 0;	/* number of entries used */
-=======
 typedef struct RecordCacheArrayEntry
 {
 	uint64		id;
@@ -281,8 +274,7 @@ typedef struct RecordCacheArrayEntry
 /* array of info about registered record types, indexed by assigned typmod */
 static RecordCacheArrayEntry *RecordCacheArray = NULL;
 static int32 RecordCacheArrayLen = 0;	/* allocated length of above array */
-static int32 NextRecordTypmod = 0;	/* number of entries used */
->>>>>>> REL_12_17
+int32 NextRecordTypmod = 0;	/* number of entries used */
 
 /*
  * Process-wide counter for generating unique tupledesc identifiers.
