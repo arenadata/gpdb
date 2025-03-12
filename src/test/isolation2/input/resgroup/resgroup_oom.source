@@ -41,7 +41,7 @@ gp_segment_configuration WHERE role = 'p' AND content = -1;
 1<:
 
 -- And finally, make sure we don't enter error recursion on fail.
-1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(5000000);
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(6000000);
 
 -- start_ignore
 DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
