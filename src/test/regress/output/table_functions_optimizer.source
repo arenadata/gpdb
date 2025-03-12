@@ -3200,9 +3200,8 @@ SELECT * FROM gp_get_int_tuples(100) LIMIT 10;
 -- Cleanup
 -- =======
 DROP SCHEMA table_function CASCADE;
-NOTICE:  drop cascades to 39 other objects
-DETAIL:  drop cascades to extension gp_inject_fault
-drop cascades to table example
+NOTICE:  drop cascades to 38 other objects
+DETAIL:  drop cascades to table example
 drop cascades to table history
 drop cascades to table example_r
 drop cascades to function scalar_1(integer)
