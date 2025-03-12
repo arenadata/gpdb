@@ -1854,27 +1854,6 @@ GetSerializableTransactionSnapshotInt(Snapshot snapshot,
 		return snapshot;
 	}
 
-<<<<<<< HEAD
-	/* Maintain serializable global xmin info. */
-	if (!TransactionIdIsValid(PredXact->SxactGlobalXmin))
-	{
-		Assert(PredXact->SxactGlobalXminCount == 0);
-		PredXact->SxactGlobalXmin = snapshot->xmin;
-		PredXact->SxactGlobalXminCount = 1;
-		SerialSetActiveSerXmin(snapshot->xmin);
-	}
-	else if (TransactionIdEquals(snapshot->xmin, PredXact->SxactGlobalXmin))
-	{
-		Assert(PredXact->SxactGlobalXminCount > 0);
-		PredXact->SxactGlobalXminCount++;
-	}
-	else
-	{
-		Assert(TransactionIdFollows(snapshot->xmin, PredXact->SxactGlobalXmin));
-	}
-
-=======
->>>>>>> REL_12_17
 	/* Initialize the structure. */
 	sxact->vxid = vxid;
 	sxact->SeqNo.lastCommitBeforeSnapshot = PredXact->LastSxactCommitSeqNo;
@@ -1938,7 +1917,7 @@ GetSerializableTransactionSnapshotInt(Snapshot snapshot,
 		Assert(PredXact->SxactGlobalXminCount == 0);
 		PredXact->SxactGlobalXmin = snapshot->xmin;
 		PredXact->SxactGlobalXminCount = 1;
-		OldSerXidSetActiveSerXmin(snapshot->xmin);
+		SerialSetActiveSerXmin(snapshot->xmin);
 	}
 	else if (TransactionIdEquals(snapshot->xmin, PredXact->SxactGlobalXmin))
 	{
