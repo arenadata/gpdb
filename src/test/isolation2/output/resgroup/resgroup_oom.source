@@ -4,7 +4,7 @@ CREATE
 CREATE EXTENSION gp_internal_tools;
 CREATE
 
-CREATE OR REPLACE FUNCTION gp_mock_cdbdispatchcommand(amount int) RETURNS SETOF text AS '/home/sd/Work/Arenadata/src/gpdb/src/test/isolation2/../regress/regress.so', 'gp_mock_cdbdispatchcommand' LANGUAGE C;
+CREATE OR REPLACE FUNCTION gp_mock_cdbdispatchcommand(amount int) RETURNS SETOF text AS '@abs_srcdir@/../regress/regress.so', 'gp_mock_cdbdispatchcommand' LANGUAGE C;
 CREATE
 -- end_ignore
 
