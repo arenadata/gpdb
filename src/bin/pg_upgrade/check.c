@@ -117,7 +117,6 @@ check_and_dump_old_cluster(bool live_check, char **sequence_script_file_name)
 	check_for_isn_and_int8_passing_mismatch(&old_cluster);
 
 	/*
-<<<<<<< HEAD
 	 * Check for various Greenplum failure cases
 	 */
 	check_greenplum();
@@ -127,8 +126,6 @@ check_and_dump_old_cluster(bool live_check, char **sequence_script_file_name)
 		old_GPDB6_check_for_unsupported_sha256_password_hashes();
 
 	/*
-=======
->>>>>>> REL_12_17
 	 * PG 12 removed types abstime, reltime, tinterval.
 	 */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1100)
