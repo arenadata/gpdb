@@ -1017,7 +1017,7 @@ ALTER TABLE example_r ALTER COLUMN a TYPE numeric;
 EXECUTE p6;
 DEALLOCATE p6;
 
--- PASS: Check that resurces can be freed with Squelch protocol if the function 
+-- PASS: Check that resources can be freed with Squelch protocol if the function 
 -- has been cancelled
 create or replace function gp_get_int_tuples(max_values int)
 RETURNS table (

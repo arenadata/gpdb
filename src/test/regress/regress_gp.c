@@ -2331,18 +2331,20 @@ gp_keepalives_check(PG_FUNCTION_ARGS) {
 }
 
 
-
-/* Get a tuples with 2 int fields */
-/* But allocates some memory to detect that it had a chance to release it*/
+/*
+ * This test function intended to check possibility of resources deallocation 
+ * using squelch protocol in case of query termination during run of materialized
+ * Value Per Call table returning function.
+ */
 PG_FUNCTION_INFO_V1(gp_get_int_tuples);
 
 Datum
 gp_get_int_tuples(PG_FUNCTION_ARGS)
 {
-	typedef struct Context {
+	typedef struct Context 
+	{
 		int index;
 		int max_index;
-		void *memory;
 		Relation	aorel;
 	} Context;
 
@@ -2371,8 +2373,6 @@ gp_get_int_tuples(PG_FUNCTION_ARGS)
 		context = (Context *) palloc(sizeof(Context));
 		context->index = 0;
 		context->max_index = n;
-		/* get some random size memory */
-		context->memory = palloc(1042); 
 
 		context->aorel = heap_open(TypeRelationId, AccessShareLock);
 
@@ -2393,13 +2393,16 @@ gp_get_int_tuples(PG_FUNCTION_ARGS)
 	fctx = SRF_PERCALL_SETUP();
 	context = (Context *) fctx->user_fctx;
 
-	if (context->index < context->max_index) {
+	if (context->index < context->max_index) 
+	{
 		Datum values[2];
 		bool nulls[2];
 		HeapTuple tuple;
 		Datum result;
 
-		if (context->index == 3) {
+		if (context->index == 3) 
+		{
+			/* Simulate query cancellation */
 			QueryFinishPending = true;
 		}
 
@@ -2418,8 +2421,6 @@ gp_get_int_tuples(PG_FUNCTION_ARGS)
 
 srf_done:
 	heap_close(context->aorel, AccessShareLock);
-	// pfree(context->memory);
-	// pfree(context);
 
 	SRF_RETURN_DONE(fctx);
 }
