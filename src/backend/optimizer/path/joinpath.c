@@ -24,15 +24,12 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
-<<<<<<< HEAD
+#include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "utils/lsyscache.h"
 
 #include "executor/nodeHash.h"                  /* ExecHashRowSize() */
 #include "cdb/cdbpath.h"                        /* cdbpath_rows() */
-=======
-#include "optimizer/restrictinfo.h"
->>>>>>> REL_12_17
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
 set_join_pathlist_hook_type set_join_pathlist_hook = NULL;
@@ -375,8 +372,8 @@ add_paths_to_joinrel(PlannerInfo *root,
 	 * permissions as, give the FDW a chance to push down joins.
 	 */
 	if (joinrel->fdwroutine &&
-<<<<<<< HEAD
-		joinrel->fdwroutine->GetForeignJoinPaths)
+		joinrel->fdwroutine->GetForeignJoinPaths &&
+		consider_join_pushdown)
 	{
 		if(joinrel->exec_location != FTEXECLOCATION_ALL_SEGMENTS ||
 		   !joinrel->fdwroutine->IsMPPPlanNeeded || joinrel->fdwroutine->IsMPPPlanNeeded() == 0)
@@ -386,13 +383,6 @@ add_paths_to_joinrel(PlannerInfo *root,
 													 jointype, &extra);
 		}
 	}
-=======
-		joinrel->fdwroutine->GetForeignJoinPaths &&
-		consider_join_pushdown)
-		joinrel->fdwroutine->GetForeignJoinPaths(root, joinrel,
-												 outerrel, innerrel,
-												 jointype, &extra);
->>>>>>> REL_12_17
 
 	/*
 	 * 6. Finally, give extensions a chance to manipulate the path list.  They
