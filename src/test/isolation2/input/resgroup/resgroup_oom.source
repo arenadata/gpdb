@@ -1,0 +1,59 @@
+-- start_ignore
+CREATE EXTENSION gp_inject_fault;
+CREATE EXTENSION gp_internal_tools;
+
+CREATE OR REPLACE FUNCTION gp_cdbdispatchcommand(count int)
+RETURNS SETOF text AS '@abs_srcdir@/../regress/regress.so',
+'gp_cdbdispatchcommand' LANGUAGE C;
+
+CREATE RESOURCE GROUP rg_oom_test WITH (cpu_rate_limit=20, memory_limit=1);
+CREATE ROLE role_oom_test RESOURCE GROUP rg_oom_test;
+-- end_ignore
+
+-- Remember PID of the backend under load.
+1: CREATE TABLE process_pid AS SELECT pg_backend_pid() AS pid;
+
+-- Freeze coordinator's session after it reads results from segments.
+SELECT gp_inject_fault('check_dispatch_result_end', 'suspend', dbid)
+FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+
+-- Send the heavy query.
+1&: SELECT count(*) FROM gp_cdbdispatchcommand(1000000);
+
+-- Wait until we receive everything.
+SELECT gp_wait_until_triggered_fault('check_dispatch_result_end', 1, dbid)
+FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+
+-- Remember the amount of memory Vmtracker thinks we are using.
+CREATE TABLE vmtracker_memory AS
+SELECT m.vmem_mb AS mb
+FROM session_state.session_level_memory_consumption m
+WHERE segid = -1
+AND m.query = 'SELECT count(*) FROM gp_cdbdispatchcommand(1000000);'
+LIMIT 1;
+
+-- Retrieve the actual amount memory that is used by the backend under load.
+! psql -At -d isolation2test -c "CREATE TABLE process_memory AS SELECT $(ps -o rss= -p $(psql -At -d isolation2test -c 'SELECT pid FROM process_pid')) AS kb;";
+
+-- Compare both values, allow 10MB error threshold for Vmtracker.
+SELECT p.kb / 1024 - v.mb < 30 AS "in threshold" FROM process_memory p, vmtracker_memory v;
+
+SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM
+gp_segment_configuration WHERE role = 'p' AND content = -1;
+
+1<:
+
+-- Make sure we don't enter error recursion on fail.
+1: SET ROLE role_oom_test;
+1: SELECT count(*) FROM gp_cdbdispatchcommand(5000000);
+
+-- start_ignore
+DROP FUNCTION gp_cdbdispatchcommand(count int);
+
+DROP TABLE vmtracker_memory;
+DROP TABLE process_pid;
+DROP TABLE process_memory;
+
+DROP ROLE role_oom_test;
+DROP RESOURCE GROUP rg_oom_test;
+-- end_ignore

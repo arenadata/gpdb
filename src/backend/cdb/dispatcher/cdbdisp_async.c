@@ -706,6 +706,10 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 			handlePollSuccess(pParms, fds);
 	}
 
+#ifdef FAULT_INJECTOR
+	SIMPLE_FAULT_INJECTOR("check_dispatch_result_end");
+#endif
+
 	pfree(fds);
 }
 

@@ -14,6 +14,7 @@
 
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "funcapi.h"
 #include "tablefuncapi.h"
 #include "miscadmin.h"
@@ -2348,4 +2349,113 @@ gp_keepalives_check(PG_FUNCTION_ARGS) {
 	}
 
 	SRF_RETURN_DONE(funcctx);
+}
+
+typedef struct
+{
+	int cur_tuple_idx;
+	int cur_segment_idx;
+	int cur_segment_tuple_idx;
+	int n_segments;
+	int n_tuples;
+	struct pg_result **pg_results;
+} gp_cdbdispatchcommand_status;
+
+PG_FUNCTION_INFO_V1(gp_cdbdispatchcommand);
+Datum
+gp_cdbdispatchcommand(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *func_ctx;
+	gp_cdbdispatchcommand_status *my_status;
+
+	int32 arg_count = PG_GETARG_INT32(0);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+
+		func_ctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(func_ctx->multi_call_memory_ctx);
+
+		my_status = (gp_cdbdispatchcommand_status *) palloc0(
+			sizeof(gp_cdbdispatchcommand_status));
+
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			int i;
+			CdbPgResults cdb_pgresults = {NULL, 0};
+
+			char *query =
+				psprintf("SELECT * FROM gp_cdbdispatchcommand(%d)", arg_count);
+
+			CdbDispatchCommand(query, DF_WITH_SNAPSHOT, &cdb_pgresults);
+
+			Assert(cdb_pgresults.numResults > 0);
+
+			for (i = 0; i < cdb_pgresults.numResults; i++)
+			{
+				Assert(PQresultStatus(cdb_pgresults.pg_results[i]) ==
+					   PGRES_TUPLES_OK);
+				my_status->n_tuples += PQntuples(cdb_pgresults.pg_results[i]);
+			}
+
+			my_status->n_segments = cdb_pgresults.numResults;
+			my_status->pg_results = cdb_pgresults.pg_results;
+
+			pfree(query);
+		}
+
+		func_ctx->user_fctx = (void *) my_status;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	func_ctx = SRF_PERCALL_SETUP();
+	my_status = (gp_cdbdispatchcommand_status *) func_ctx->user_fctx;
+
+	/* Generate fake tuples from every segment. */
+	while (my_status->cur_tuple_idx < arg_count)
+	{
+		if (my_status->cur_tuple_idx++ == arg_count)
+		{
+			my_status->cur_tuple_idx--;
+			break;
+		}
+
+		SRF_RETURN_NEXT(func_ctx, CStringGetTextDatum("sometext"));
+	}
+
+	/* Receive tuples from the loop above on master. */
+	while (my_status->cur_tuple_idx >= arg_count &&
+		   my_status->cur_tuple_idx < arg_count + my_status->n_tuples)
+	{
+		Datum ret;
+		PGresult *res = my_status->pg_results[my_status->cur_segment_idx];
+
+		my_status->cur_tuple_idx++;
+		my_status->cur_segment_tuple_idx++;
+
+		if (my_status->cur_segment_tuple_idx >= PQntuples(res))
+		{
+			my_status->cur_segment_idx++;
+			my_status->cur_segment_tuple_idx = 0;
+		}
+
+		ret = CStringGetTextDatum(
+			PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
+
+		SRF_RETURN_NEXT(func_ctx, ret);
+	}
+
+	if (my_status->pg_results != NULL)
+	{
+		int i;
+
+		for (i = 0; i < my_status->n_segments; i++)
+			PQclear(my_status->pg_results[i]);
+
+		pfree(my_status->pg_results);
+	}
+
+	SRF_RETURN_DONE(func_ctx);
 }
