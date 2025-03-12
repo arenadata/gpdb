@@ -1,15 +1,9 @@
 # Tests for various bugs found over time
 use strict;
 use warnings;
-<<<<<<< HEAD
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 use Test::More;
-=======
-use PostgresNode;
-use TestLib;
-use Test::More tests => 7;
->>>>>>> REL_12_17
 
 # Bug #15114
 
@@ -186,9 +180,6 @@ is( $node_subscriber->safe_psql(
 $node_publisher->stop('fast');
 $node_subscriber->stop('fast');
 
-<<<<<<< HEAD
-done_testing();
-=======
 # The bug was that when the REPLICA IDENTITY FULL is used with dropped or
 # generated columns, we fail to apply updates and deletes
 my $node_publisher_d_cols = get_new_node('node_publisher_d_cols');
@@ -253,4 +244,5 @@ is( $node_subscriber_d_cols->safe_psql(
 
 $node_publisher_d_cols->stop('fast');
 $node_subscriber_d_cols->stop('fast');
->>>>>>> REL_12_17
+
+done_testing();
