@@ -2378,9 +2378,6 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 	if (proto == CANCEL_REQUEST_CODE || proto == FINISH_REQUEST_CODE)
 	{
-<<<<<<< HEAD
-		processCancelRequest(port, buf, proto);
-=======
 		if (len != sizeof(CancelRequestPacket))
 		{
 			ereport(COMMERROR,
@@ -2388,8 +2385,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 					 errmsg("invalid length of startup packet")));
 			return STATUS_ERROR;
 		}
-		processCancelRequest(port, buf);
->>>>>>> REL_12_17
+		processCancelRequest(port, buf, proto);
 		/* Not really an error, but we don't want to proceed further */
 		return STATUS_ERROR;
 	}
