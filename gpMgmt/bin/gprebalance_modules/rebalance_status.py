@@ -81,6 +81,11 @@ class StatusManager:
                                'EXECUTION_FAILED' : 8,
                                'EXECUTION_STOPPED' : 9,
                                'EXECUTION_DONE': 10,
+                                'ROLLBACK_PREPARED' : 11,
+                               'ROLLBACK_STARTED' : 12,
+                               'ROLLBACK_FAILED' : 13,
+                               'ROLLBACK_STOPPED' : 14,
+                               'ROLLBACK_DONE' : 15,
                                }
         self.conf_dir = None
         self.target_hosts_filename = None
@@ -110,7 +115,7 @@ class StatusManager:
                 'Invalid status file.  Unknown status %s' % self._status)
 
     def create_status_file(self):
-        """Creates a new gpexpand status file"""
+        """Creates a new gprebalance status file"""
         try:
             self._fp = open(self._status_filename, 'w')
             self._fp.write('UNINITIALIZED:None\n')
@@ -135,7 +140,7 @@ class StatusManager:
                 'The status file is invalid and cannot be written to')
         if status not in self._status_values:
             raise InvalidStatusError(
-                '%s is an invalid gpexpand status' % status)
+                '%s is an invalid gprebalance status' % status)
         self._fp.write('%s:%s\n' % (status, status_info))
         self._fp.flush()
         os.fsync(self._fp)
