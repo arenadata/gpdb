@@ -135,11 +135,9 @@ class SingleMoveCommand(SQLCommand):
         status_conn = None
         try:
             status_conn = dbconn.connect(self.status_url, encoding='UTF8')
-            segsize = -1
-            if self.segmentSize:
-                segsize = self.segmentSize.source_data_dir_usage
-                if self.segmentSize.source_tablespace_usage:
-                    segsize += sum(self.segmentSize.source_tablespace_usage.values())
+            segsize = self.segmentSize.source_data_dir_usage
+            if self.segmentSize.source_tablespace_usage:
+                segsize += sum(self.segmentSize.source_tablespace_usage.values())
             StatusManager.record_move(status_conn, self.move, self.segment,
                                       segsize, datetime.datetime.now())
 
@@ -572,8 +570,8 @@ class RebalanceExecutor:
             primary_id = primary_move.segid
 
             if self.options.rollback:
-                mirror_move.dstHost = primary_host
-                primary_move.dstHost = mirror_host
+                mirror_move.dstHost = mirror_host
+                primary_move.dstHost = primary_host
                 primary_move.target_datadir, mirror_move.target_datadir =  mirror_move.target_datadir, primary_move.target_datadir
                 primary_move.target_port, mirror_move.target_port =  mirror_move.target_port, primary_move.target_port
                 continue
@@ -694,7 +692,6 @@ class RebalanceExecutor:
             primary_host = primary_move.dstHost
 
             primary_id = primary_move.segid
-
             # define datadir
             for datadir in primary_host.primary_datadirs:
                 try:
@@ -1063,11 +1060,8 @@ class RebalanceExecutor:
             recoversegOptions += " --hba-hostnames"
         cmd = GpRecoverSeg("Running gprecverseg", options=recoversegOptions)
         cmd.run(validateAfter=True)
-    
-    def execute_rollback(self):
-        pure_swaps, primary_mirrors, primaries, mirrors = self._classify_moves()
 
-        
+
     def shutdown(self):
         # the execution shutdown assumes finishing
         # current jobs in queue
