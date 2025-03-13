@@ -322,7 +322,6 @@ flagInhTables(Archive *fout, TableInfo *tblinfo, int numTables,
 			continue;
 
 		/*
-<<<<<<< HEAD
 		 * FIXME: In PostgreSQL, foreign tables can be inherited. But
 		 * pg_dump chokes on external tables, if an external table is
 		 * used as a partition, and a column has attislocal=false.
@@ -331,18 +330,11 @@ flagInhTables(Archive *fout, TableInfo *tblinfo, int numTables,
 			continue;
 
 		/*
-		 * Normally, we don't bother computing anything for non-target tables,
-		 * but if load-via-partition-root is specified, we gather information
-		 * on every partition in the system so that getRootTableInfo can trace
-		 * from any given to leaf partition all the way up to the root.  (We
-		 * don't need to mark them as interesting for getTableAttrs, though.)
-=======
 		 * Normally, we don't bother computing anything for non-target tables.
 		 * However, we must find the parents of non-root partitioned tables in
 		 * any case, so that we can trace from leaf partitions up to the root
 		 * (in case a leaf is to be dumped but its parents are not).  We need
 		 * not mark such parents interesting for getTableAttrs, though.
->>>>>>> REL_12_17
 		 */
 		if (!tblinfo[i].dobj.dump)
 		{
