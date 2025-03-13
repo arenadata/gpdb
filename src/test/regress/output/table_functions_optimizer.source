@@ -3213,8 +3213,7 @@ select gp_inject_fault('check_SRF_cancel', 'reset',
 (1 row)
 
 DROP SCHEMA table_function CASCADE;
-NOTICE:  drop cascades to 39 other objects
-DETAIL:  drop cascades to extension gp_inject_fault
+NOTICE:  drop cascades to 38 other objects
 drop cascades to table example
 drop cascades to table history
 drop cascades to table example_r
