@@ -1015,10 +1015,7 @@ class RebalanceExecutor:
             elif had_error:
                 self.statusManager.set_db_status(
                     RebalanceStatus.FAILED)
-                if self.options.rollback:
-                    self.statusManager.set_status('ROLLBACK_FAILED')
-                else:
-                    self.statusManager.set_status('EXECUTION_FAILED')
+                raise Exception("execution encountered movement erorrs")
             else:
                 if self.options.rollback:
                     self.statusManager.set_status('ROLLBACK_DONE')
@@ -1034,6 +1031,10 @@ class RebalanceExecutor:
                 
 
         except Exception as e:
+            if self.options.rollback:
+                self.statusManager.set_status('ROLLBACK_FAILED')
+            else:
+                self.statusManager.set_status('EXECUTION_FAILED')
             raise
     
     def _execute_role_swaps(self, segids: List[SegmentId]):

@@ -375,7 +375,7 @@ class GPRebalance:
     def resume(self, plan):
         """TODO: implement proper state handling and provide
         possibility to perform rebalance after fails"""
-        pass
+        raise NotImplementedError('Resuming operation is not implemented. Call gprebalance -c and rerun')
 
     def shutdown(self):
         self.logger.info('Shutting down gprebalance...')
