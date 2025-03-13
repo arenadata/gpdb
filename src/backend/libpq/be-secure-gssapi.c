@@ -194,7 +194,7 @@ be_gssapi_write(Port *port, void *ptr, size_t len)
 		if (major != GSS_S_COMPLETE)
 			pg_GSS_error_be(FATAL, gettext_noop("GSSAPI wrap error"), major, minor);
 
-		if (conf == 0)
+		if (conf_state == 0)
 			ereport(FATAL,
 					(errmsg("GSSAPI did not provide confidentiality")));
 
@@ -359,7 +359,7 @@ be_gssapi_read(Port *port, void *ptr, size_t len)
 			pg_GSS_error_be(FATAL, gettext_noop("GSSAPI unwrap error"),
 						 major, minor);
 
-		if (conf == 0)
+		if (conf_state == 0)
 			ereport(FATAL,
 					(errmsg("GSSAPI did not provide confidentiality")));
 

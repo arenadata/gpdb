@@ -1,6 +1,6 @@
 [submodule "gpAux/extensions/pgbouncer/source"]
 	path = gpAux/extensions/pgbouncer/source
-	url = https://github.com/greenplum-db/pgbouncer.git
+	url = https://github.com/arenadata/pgbouncer.git
 	branch = pgbouncer_1_8_1
 [submodule "gpMgmt/bin/pythonSrc/ext"]
 	path = gpMgmt/bin/pythonSrc/ext

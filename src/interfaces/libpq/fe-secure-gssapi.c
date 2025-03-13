@@ -202,7 +202,7 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 		 * hard failure, so we return -1 even if bytes_sent > 0.
 		 */
 		major = gss_wrap(&minor, gctx, 1, GSS_C_QOP_DEFAULT,
-						 &input, &conf_state, &output);
+						 &input, &conf, &output);
 		if (major != GSS_S_COMPLETE)
 		{
 			pg_GSS_error(libpq_gettext("GSSAPI wrap error"), conn, major, minor);
@@ -210,7 +210,7 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 			goto cleanup;
 		}
 
-		if (conf_state == 0)
+		if (conf == 0)
 		{
 			printfPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("outgoing GSSAPI message would not use confidentiality\n"));
@@ -390,7 +390,7 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 		output.length = 0;
 		input.value = PqGSSRecvBuffer + sizeof(uint32);
 
-		major = gss_unwrap(&minor, gctx, &input, &output, &conf_state, NULL);
+		major = gss_unwrap(&minor, gctx, &input, &output, &conf, NULL);
 		if (major != GSS_S_COMPLETE)
 		{
 			pg_GSS_error(libpq_gettext("GSSAPI unwrap error"), conn,
@@ -400,7 +400,7 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 			goto cleanup;
 		}
 
-		if (conf_state == 0)
+		if (conf == 0)
 		{
 			printfPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("GSSAPI did not provide confidentiality\n"));

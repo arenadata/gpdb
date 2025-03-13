@@ -77,32 +77,15 @@ function unittest_check_gpdb() {
 }
 
 function include_dependencies() {
+	declare -a library_search_path vendored_libs
 
-	mkdir -p ${GREENPLUM_INSTALL_DIR}/{lib/pkgconfig,include}
-	declare -a library_search_path header_search_path vendored_headers vendored_libs pkgconfigs
-
-	header_search_path=(/usr/local/include/ /usr/include/)
 	library_search_path+=($(cat /etc/ld.so.conf.d/*.conf | grep -v '#'))
 	library_search_path+=(/lib64 /usr/lib64 /lib /usr/lib)
 
-	pkgconfigs=(quicklz.pc)
-	vendored_libs=(libquicklz.so{,.1,.1.5.0} libxerces-c{,-3.1}.so)
-
-	# If not building for rhel8, vendor libzstd and libuv shared library, headers, and pkgconfig
-	if [[ "${BLD_ARCH}" != "rhel8_x86_64"* ]]; then
-		vendored_headers=(zstd*.h uv.h uv)
-		pkgconfigs+=(libzstd.pc libuv.pc)
-		vendored_libs+=(libzstd.so{,.1,.1.3.7} libuv.so{,.1,.1.0.0})
-
-		# Vendor headers - follow symlinks
-		for path in "${header_search_path[@]}"; do if [[ -d "${path}" ]]; then for header in "${vendored_headers[@]}"; do find -L $path -name $header -exec cp -avn '{}' ${GREENPLUM_INSTALL_DIR}/include \;; done; fi; done
-	fi
+	vendored_libs=(libxerces-c.so libLLVM{,-15,-15.0.7}.so)
 
 	# Vendor shared libraries - follow symlinks
 	for path in "${library_search_path[@]}"; do if [[ -d "${path}" ]]; then for lib in "${vendored_libs[@]}"; do find -L $path -name $lib -exec cp -avn '{}' ${GREENPLUM_INSTALL_DIR}/lib \;; done; fi; done
-	# vendor pkgconfig files
-	for path in "${library_search_path[@]}"; do if [[ -d "${path}/pkgconfig" ]]; then for pkg in "${pkgconfigs[@]}"; do find -L $path/pkgconfig/ -name $pkg -exec cp -avn '{}' ${GREENPLUM_INSTALL_DIR}/lib/pkgconfig \;; done; fi; done
-
 }
 function export_gpdb() {
 	TARBALL="${GPDB_ARTIFACTS_DIR}/${GPDB_BIN_FILENAME}"
@@ -150,7 +133,7 @@ function build_xerces() {
 	OUTPUT_DIR="${GPDB_EXT_PATH}"
 	mkdir -p xerces_patch/concourse
 	cp -r gpdb_src/src/backend/gporca/concourse/xerces-c xerces_patch/concourse
-	/usr/bin/python xerces_patch/concourse/xerces-c/build_xerces.py --output_dir="${OUTPUT_DIR}"
+	/usr/bin/python3 xerces_patch/concourse/xerces-c/build_xerces.py --output_dir="${OUTPUT_DIR}"
 	rm -rf build
 }
 
@@ -170,7 +153,7 @@ function _main() {
 		unittest_check_gpdb
 	fi
 
-	include_dependencies
+#	include_dependencies
 
 	export_gpdb
 	export_gpdb_extensions
