@@ -344,11 +344,7 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 									const char *prefix, Archive *fout);
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
-<<<<<<< HEAD
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
-=======
-static TableInfo *getRootTableInfo(TableInfo *tbinfo);
->>>>>>> REL_12_17
 static bool forcePartitionRootLoad(const TableInfo *tbinfo);
 
 
@@ -2643,11 +2639,7 @@ dumpTableData(Archive *fout, const TableDataInfo *tdinfo)
 	else
 		copyFrom = fmtQualifiedDumpable(tbinfo);
 
-<<<<<<< HEAD
 	if (dopt->dump_inserts == 0)
-=======
-	if (!dopt->dump_inserts)
->>>>>>> REL_12_17
 	{
 		/* Dump/restore using COPY */
 		dumpFn = dumpTableData_copy;
@@ -4050,11 +4042,8 @@ getPolicies(Archive *fout, TableInfo tblinfo[], int numTables)
 			Oid			polrelid = atooid(PQgetvalue(res, j, i_polrelid));
 			TableInfo  *tbinfo = findTableByOid(polrelid);
 
-<<<<<<< HEAD
 			tbinfo->dobj.components |= DUMP_COMPONENT_POLICY;
 
-=======
->>>>>>> REL_12_17
 			polinfo[j].dobj.objType = DO_POLICY;
 			polinfo[j].dobj.catId.tableoid =
 				atooid(PQgetvalue(res, j, i_tableoid));
@@ -6492,12 +6481,8 @@ getTables(Archive *fout, int *numTables)
 	int			i_reloftype;
 	int			i_relpages;
 	int			i_is_identity_sequence;
-<<<<<<< HEAD
 	int			i_relacl;
 	int			i_acldefault;
-=======
-	int			i_changed_acl;
->>>>>>> REL_12_17
 	int			i_ispartition;
 	int			i_amname;
 	int			i_relstorage;
@@ -6806,12 +6791,6 @@ getTables(Archive *fout, int *numTables)
 	i_checkoption = PQfnumber(res, "checkoption");
 	i_toastreloptions = PQfnumber(res, "toast_reloptions");
 	i_reloftype = PQfnumber(res, "reloftype");
-<<<<<<< HEAD
-=======
-	i_is_identity_sequence = PQfnumber(res, "is_identity_sequence");
-	i_changed_acl = PQfnumber(res, "changed_acl");
-	i_ispartition = PQfnumber(res, "ispartition");
->>>>>>> REL_12_17
 	i_amname = PQfnumber(res, "amname");
 	i_is_identity_sequence = PQfnumber(res, "is_identity_sequence");
 	i_relacl = PQfnumber(res, "relacl");
@@ -6960,15 +6939,10 @@ getTables(Archive *fout, int *numTables)
 		/* Tables have data */
 		tblinfo[i].dobj.components |= DUMP_COMPONENT_DATA;
 
-<<<<<<< HEAD
 		/* Mark whether table has an ACL */
 		if (!PQgetisnull(res, i, i_relacl))
 			tblinfo[i].dobj.components |= DUMP_COMPONENT_ACL;
 		tblinfo[i].hascolumnACLs = false;	/* may get set later */
-=======
-		/* Partition? */
-		tblinfo[i].ispartition = (strcmp(PQgetvalue(res, i, i_ispartition), "t") == 0);
->>>>>>> REL_12_17
 
 		/*
 		 * Read-lock target tables to make sure they aren't DROPPED or altered
@@ -7288,7 +7262,6 @@ getInherits(Archive *fout, int *numInherits)
 }
 
 /*
-<<<<<<< HEAD
  * getPartitionDefs
  *	get information about GPDB partition definitions on a dumpable table
  */
@@ -7372,8 +7345,6 @@ getPartitionDefs(Archive *fout, TableInfo tblinfo[], int numTables)
 }
 
 /*
-=======
->>>>>>> REL_12_17
  * getPartitioningInfo
  *	  get information about partitioning
  *
@@ -7441,10 +7412,6 @@ getPartitioningInfo(Archive *fout)
 	PQclear(res);
 
 	destroyPQExpBuffer(query);
-<<<<<<< HEAD
-
-=======
->>>>>>> REL_12_17
 }
 
 /*
@@ -16908,13 +16875,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	}
 	else
 	{
-<<<<<<< HEAD
-=======
-		char	   *partkeydef = NULL;
-		char	   *ftoptions = NULL;
-		char	   *srvname = NULL;
-
->>>>>>> REL_12_17
 		/*
 		 * Set reltypename, and collect any relkind-specific data that we
 		 * didn't fetch during getTables().
@@ -16975,12 +16935,9 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				break;
 			default:
 				reltypename = "TABLE";
-<<<<<<< HEAD
 				/* Is it an external table (server GPDB 6.x and below.) */
 				if (tbinfo->relstorage == RELSTORAGE_EXTERNAL)
 					reltypename = "EXTERNAL TABLE";
-=======
->>>>>>> REL_12_17
 				break;
 		}
 	}
@@ -17620,49 +17577,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  getFormattedTypeName(fout, tbinfo->reloftype,
 													   zeroAsOpaque));
 			}
-<<<<<<< HEAD
 			appendPQExpBuffer(q, "RESET allow_system_table_mods;\n");
-=======
-		}
-
-		/*
-		 * For partitioned tables, emit the ATTACH PARTITION clause.  Note
-		 * that we always want to create partitions this way instead of using
-		 * CREATE TABLE .. PARTITION OF, mainly to preserve a possible column
-		 * layout discrepancy with the parent, but also to ensure it gets the
-		 * correct tablespace setting if it differs from the parent's.
-		 */
-		if (tbinfo->ispartition)
-		{
-			PGresult   *ares;
-			char	   *partbound;
-			PQExpBuffer q2;
-
-			/* With partitions there can only be one parent */
-			if (tbinfo->numParents != 1)
-				fatal("invalid number of parents %d for table \"%s\"",
-					  tbinfo->numParents, tbinfo->dobj.name);
-
-			q2 = createPQExpBuffer();
-
-			/* Fetch the partition's partbound */
-			appendPQExpBuffer(q2,
-							  "SELECT pg_get_expr(c.relpartbound, c.oid) "
-							  "FROM pg_class c "
-							  "WHERE c.oid = '%u'",
-							  tbinfo->dobj.catId.oid);
-			ares = ExecuteSqlQueryForSingleRow(fout, q2->data);
-			partbound = PQgetvalue(ares, 0, 0);
-
-			/* Perform ALTER TABLE on the parent */
-			appendPQExpBuffer(q,
-							  "ALTER TABLE ONLY %s ATTACH PARTITION %s %s;\n",
-							  fmtQualifiedDumpable(parents[0]),
-							  qualrelname, partbound);
-
-			PQclear(ares);
-			destroyPQExpBuffer(q2);
->>>>>>> REL_12_17
 		}
 
 		/*
