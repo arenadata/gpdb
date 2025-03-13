@@ -444,6 +444,7 @@ def main(options, args, parser):
             if gprebalance_file_status == 'PLANNED':
                 gprebalance.setup_schema()
                 gprebalance.execute_plan(plan)
+                sys.exit(0)
             elif gprebalance_file_status == 'ROLLBACK_FAILED' or \
                gprebalance_file_status == 'ROLLBACK_STOPPED':
                 plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, True)

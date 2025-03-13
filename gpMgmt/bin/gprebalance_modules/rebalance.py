@@ -372,7 +372,7 @@ class GPRebalance:
                                           self.conn, self.dburl, self.options)
         self.executor.execute_moves()
 
-    def resume(self):
+    def resume(self, plan):
         """TODO: implement proper state handling and provide
         possibility to perform rebalance after fails"""
         pass
