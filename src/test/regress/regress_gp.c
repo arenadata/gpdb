@@ -2403,7 +2403,7 @@ gp_get_int_tuples(PG_FUNCTION_ARGS)
 		if (context->index == 3) 
 		{
 			/* Simulate query cancellation */
-			QueryFinishPending = true;
+			SIMPLE_FAULT_INJECTOR("check_SRF_cancel");
 		}
 
 		MemSet(values, 0, sizeof(values));
