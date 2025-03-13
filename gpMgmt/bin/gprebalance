@@ -439,7 +439,7 @@ def main(options, args, parser):
                 sys.exit(0)
             elif gprebalance_file_status == 'EXECUTION_FAILED':
                 logger.info('Previous rebalance session was interrupted due to an error. Trying to resume...')
-            elif gprebalance_file_status == 'STOPPED':
+            elif gprebalance_file_status == 'EXECUTION_STOPPED':
                 logger.info('Previous rebalance session was interrupted due to an timeout or user signal. Trying to resume...')
             gprebalance.resume()
         sys.exit(0)
