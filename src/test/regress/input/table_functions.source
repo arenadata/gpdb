@@ -1042,5 +1042,8 @@ SELECT * FROM gp_get_int_tuples(100) LIMIT 10;
 -- =======
 -- Cleanup
 -- =======
+select gp_inject_fault('check_SRF_cancel', 'reset', 
+    '', '', '', 1, 2, 0, dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+
 DROP SCHEMA table_function CASCADE;
 SET search_path TO public;
