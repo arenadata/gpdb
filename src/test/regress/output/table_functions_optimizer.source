@@ -3174,6 +3174,11 @@ RETURNS table (
 'gp_get_int_tuples' LANGUAGE C VOLATILE;
 select gp_inject_fault('check_SRF_cancel', 'finish_pending', 
     '', '', '', 1, 2, 0, dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
++ gp_inject_fault 
++-----------------
++ Success:
++(1 row)
++
 -- Check the case with regular no Squelch finish and no query cancel
 SELECT * FROM gp_get_int_tuples(3);
  idx | value 
