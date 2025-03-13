@@ -62,10 +62,10 @@
 #include "access/sysattr.h"
 #include "access/tupdesc_details.h"
 #include "access/tuptoaster.h"
+#include "common/hashfn.h"
 #include "executor/tuptable.h"
 #include "utils/datum.h"
 #include "utils/expandeddatum.h"
-#include "utils/hashutils.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
