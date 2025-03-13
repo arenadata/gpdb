@@ -263,12 +263,6 @@ def possibility_checks(gpreb: GPRebalance):
 
     hosts_list = gpreb.current_hosts
 
-    if gpreb.unpreferred_segments:
-        logger.eror(
-            "Current role does not match preferred role for several segments. "
-            "Call gprecoverseg -r to restore the original roles")
-        sys.exit(1)
-
     startup_validator = ClusterValidator(
         hosts_list,
         gpreb.target_hosts,
@@ -285,6 +279,11 @@ def possibility_checks(gpreb: GPRebalance):
         elif gpreb.options.silent:
             logger.error(f'{str(e)} Exiting...')
             sys.exit(1)
+    if gpreb.unpreferred_segments:
+        logger.error(
+            "Current role does not match preferred role for several segments. "
+            "Call gprecoverseg -r to restore the original roles")
+        sys.exit(1)
     if not gpreb.original_gparray.get_mirroring_enabled() and not gpreb.options.allow_mirrorless:
         if not gpreb.options.silent and not ask_yesno('',
                                                       "Mirroring is disabled. \n"
@@ -437,7 +436,11 @@ def main(options, args, parser):
             if gprebalance_file_status == 'PLANNED':
                 gprebalance.setup_schema()
                 gprebalance.execute_plan(plan)
-            logger.info('Previous rebalance session was interrupted due to an error. If you want to rebalance again, run gprebalance -c to perform cleanup')
+                sys.exit(0)
+            elif gprebalance_file_status == 'EXECUTION_FAILED':
+                logger.info('Previous rebalance session was interrupted due to an error. Trying to resume...')
+            elif gprebalance_file_status == 'STOPPED':
+                logger.info('Previous rebalance session was interrupted due to an timeout or user signal. Trying to resume...')
             gprebalance.resume()
         sys.exit(0)
     except Exception as e:

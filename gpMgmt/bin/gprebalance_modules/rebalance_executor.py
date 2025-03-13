@@ -984,7 +984,7 @@ class RebalanceExecutor:
             elif had_error:
                 self.statusManager.set_db_status(
                     RebalanceStatus.FAILED)
-                self.statusManager.set_status('EXECUTION_FAILED')
+                raise Exception("execution encountered movement erorrs")
             else:
                 self.statusManager.set_status('EXECUTION_DONE')
                 self.statusManager.set_db_status(
@@ -997,6 +997,7 @@ class RebalanceExecutor:
                 
 
         except Exception as e:
+            self.statusManager.set_status('EXECUTION_FAILED')
             raise
 
     def _execute_role_swaps(self, segids: List[SegmentId]):
