@@ -3606,20 +3606,14 @@ my %tests = (
 					   GRANT SELECT(city_id) ON TABLE dump_test.measurement
 						   TO regress_dump_test_role;',
 		regexp =>
-<<<<<<< HEAD
-		  qr/^\QGRANT SELECT ON TABLE dump_test.measurement TO regress_dump_test_role;\E/m,
+		  qr/^\QGRANT SELECT ON TABLE dump_test.measurement TO regress_dump_test_role;\E\n.*
+			 ^\QGRANT SELECT(city_id) ON TABLE dump_test.measurement TO regress_dump_test_role;\E/xms,
 		like => {
 			%full_runs,
 			%dump_test_schema_runs,
 			section_pre_data => 1,
 			only_dump_measurement => 1,
 		},
-=======
-		  qr/^\QGRANT SELECT ON TABLE dump_test.measurement TO regress_dump_test_role;\E\n.*
-			 ^\QGRANT SELECT(city_id) ON TABLE dump_test.measurement TO regress_dump_test_role;\E/xms,
-		like =>
-		  { %full_runs, %dump_test_schema_runs, section_pre_data => 1, },
->>>>>>> REL_12_17
 		unlike => {
 			exclude_dump_test_schema => 1,
 			no_privs                 => 1,
