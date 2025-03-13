@@ -1753,13 +1753,11 @@ reset_record_cache(void)
 	if (RecordCacheArray != NULL)
 	{
 		Assert(RecordCacheArrayLen != 0);
-		Assert(RecordIdentifierArray != NULL);
+		Assert(RecordCacheArray != NULL);
 
 		pfree(RecordCacheArray);
-		pfree(RecordIdentifierArray);
 
 		RecordCacheArray = NULL;
-		RecordIdentifierArray = NULL;
 		RecordCacheArrayLen = 0;
 	}
 }
@@ -2277,7 +2275,7 @@ build_tuple_node_list(int start)
 
 	for (; i < NextRecordTypmod; i++)
 	{
-		TupleDesc tmp = RecordCacheArray[i];
+		TupleDesc tmp = RecordCacheArray[i].tupdesc;
 
 		TupleDescNode *node = palloc0(sizeof(TupleDescNode));
 		node->type = T_TupleDescNode;
