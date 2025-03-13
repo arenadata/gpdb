@@ -1,3 +1,5 @@
+from collections import defaultdict
+from datetime import datetime
 import yaml
 import os
 from dataclasses import dataclass
@@ -6,11 +8,18 @@ from enum import Enum
 from gppylib.db import dbconn
 from gppylib.gparray import GpArray, Segment, MODE_NOT_SYNC, STATUS_DOWN
 from gppylib.commands.base import *
+from gppylib.commands.gp import *
 
 
 class SegmentId(NamedTuple):
     dbid: int
     contentid: int
+
+
+@dataclass
+class SegmentSize():
+    source_data_dir_usage: int
+    source_tablespace_usage: Dict[str, int]
 
 
 class HostStatus(Enum):
@@ -86,6 +95,8 @@ class MirrorStrategy(Enum):
 
 
 from gprebalance_modules.rebalance_plan import ClusterBalancer, Move, Plan  # nopep8
+from gprebalance_modules.rebalance_executor import RebalanceExecutor, CONF_DIR  # nopep8
+from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus  # nopep8
 
 
 class GPRebalance:
@@ -112,7 +123,7 @@ class GPRebalance:
                 config = yaml.safe_load(fp)
                 for host_config in config['hosts']:
                     key = (host_config['hostname'], host_config['address'])
-                    hosts[key] = Host(hostname=host_config['hostname'],
+                    file_host = Host(hostname=host_config['hostname'],
                                       address=host_config['address'],
                                       primary_datadirs=set(
                         host_config['primary_datadirs']),
@@ -120,6 +131,10 @@ class GPRebalance:
                         mirror_datadirs=set(
                         host_config['mirror_datadirs']),
                         mirror_segments=set())
+                    hosts[key] = file_host
+                    if key in self.current_conf:
+                        self.current_conf[key].primary_datadirs |= file_host.primary_datadirs
+                        self.current_conf[key].mirror_datadirs |= file_host.mirror_datadirs
                     # User can explicitly mark the host to be replacement for existing one
                     if "replace" in host_config:
                         rep = tuple(host_config['replace'].split(', '))
@@ -138,6 +153,12 @@ class GPRebalance:
                             h.status = HostStatus.DECOMMISSIONING
 
         self.unpreferred_segments = self.getSegmentsUnpreferredRole()
+        self.segmentMap = {SegmentId(
+            seg.dbid, seg.content): seg for seg in self.original_gparray.getSegmentsAsLoadedFromDb()}
+        self.statusManager = StatusManager(
+            self.conn, self.options, self.logger)
+
+        self.executor = None
 
     def getSegmentsUnpreferredRole(self) -> List[tuple[Segment, Segment]]:
         segs = []
@@ -201,3 +222,122 @@ class GPRebalance:
                                    original_segments_map, target_load, self.target_strategy)
 
         return balancer.getPlan(balancer.balance())
+
+    def save_plan(self, plan: Plan):
+        # pickle the plan in conf directory
+        datadir = self.options.coordinator_data_directory + CONF_DIR
+        os.makedirs(datadir, exist_ok=True)
+        plan.save_to_file(datadir, "plan")
+        self.statusManager.set_status('PLANNED', datadir)
+
+    def load_plan(self, datadir):
+        filename = datadir + "/plan.pkl"
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"No pickle file found at {filename}")
+        with open(filename, 'rb') as f:
+            plan = pickle.load(f)
+        return plan
+
+    def execute_plan(self, plan: Plan):
+        self.executor = RebalanceExecutor(plan,
+                                     self.original_gparray,
+                                     self.segmentMap,
+                                     plan.in_conf,
+                                     self.logger,
+                                     self.statusManager,
+                                     self.conn,
+                                     self.dburl,
+                                     self.options)
+        self.executor.execute_moves()
+
+    @staticmethod
+    def prepare_gpdb_state(logger, dburl, options) -> str:
+        gprebalance_db_status = None
+
+        try:
+            gprebalance_db_status = GPRebalance.get_status_from_db(
+                dburl, options)
+            logger.debug('Expansion status returned is %s' %
+                     gprebalance_db_status)
+        except Exception as e:
+            raise Exception(
+                'Error while trying to query the gprebalance schema: %s' % e)
+
+        return gprebalance_db_status
+
+    @staticmethod
+    def get_status_from_db(dburl, options) -> RebalanceStatus:
+        """Gets gprebalance status from the gprebalance schema"""
+        status_conn = None
+        gprebalance_db_status = None
+        if get_local_db_mode(options.coordinator_data_directory) == 'NORMAL':
+            try:
+                status_conn = dbconn.connect(dburl, encoding='UTF8')
+                # Get the last status entry
+                cursor = dbconn.query(
+                    status_conn, 'SELECT status FROM gprebalance.status ORDER BY updated DESC LIMIT 1')
+                if cursor.rowcount == 1:
+                    gprebalance_db_status = cursor.fetchone()[0]
+
+            except Exception:
+                # rebalance schema doesn't exists or there was a connection failure.
+                pass
+            finally:
+                if status_conn:
+                    status_conn.close()
+
+        # make sure gprebalance schema doesn't exist since it wasn't in DB provided
+        if not gprebalance_db_status:
+            conn = dbconn.connect(dburl, encoding='UTF8', utility=True)
+            try:
+                count = dbconn.querySingleton(conn,
+                                              "SELECT count(n.nspname) FROM pg_catalog.pg_namespace n WHERE n.nspname = 'gprebalance'")
+                if count > 0:
+                    raise Exception(
+                        "Existing rebalance state could not be determined, but a gprebalance schema already exists. Cannot proceed.")
+            finally:
+                conn.close()
+
+        return RebalanceStatus(gprebalance_db_status)
+
+    def get_state_from_file(self):
+        """Returns expansion state from status file"""
+        return self.statusManager.get_current_status()[0]
+
+    def setup_schema(self):
+        self.statusManager.set_status('REBALANCE_PREPARE_SCHEMA_STARTED')
+        self.logger.info('Creating expansion schema')
+        self.statusManager.setup_schema()
+        self.statusManager.set_status('REBALANCE_PREPARE_SCHEMA_DONE')
+        self.statusManager.set_db_status(RebalanceStatus.INITIALIZED)
+
+    def cleanup_schema(self):
+        if not self.conn:
+            return
+        self.logger.info('Dropping rebalance schema')
+        self.statusManager.cleanup_schema()
+
+    def cleanup_directory(self):
+        self.logger.info('Dropping rebalance directory')
+        datadir = self.options.coordinator_data_directory + CONF_DIR
+        cmd = RemoveDirectory("Dropping rebalance directory", datadir)
+        cmd.run(validateAfter=True)
+
+    def remove_status_file(self):
+        self.logger.info('Dropping status file')
+        if self.statusManager:
+            self.statusManager.remove_all()
+
+    def resume(self):
+        """TODO: implement proper state handling and provide
+        possibility to perform rebalance after fails"""
+        raise NotImplementedError('Resuming operation is not implemented. Call gprebalance -c and rerun')
+
+    def shutdown(self):
+        self.logger.info('Shutting down gprebalance...')
+        if self.executor:
+            self.executor.shutdown()
+            self.executor = None
+        if self.conn:
+            self.conn.close()
+            self.conn = None

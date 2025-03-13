@@ -1,4 +1,6 @@
 import copy
+import os
+import pickle
 import random
 import math
 from typing import List, Set, Dict
@@ -13,7 +15,8 @@ class Move:
     srcHost: Host
     dstHost: Host
     is_mirror: bool
-    final_datadir: str
+    target_datadir: str
+    target_port: int
 
 
 class Plan:
@@ -21,8 +24,8 @@ class Plan:
         self.in_conf = None
         self.moves = []
         self.out_conf = None
+        self.segmentMap = None
         self.roles = []
-        self.number_of_moves = 0
 
     def __str__(self):
         finalStr = ""
@@ -34,6 +37,13 @@ class Plan:
                 finalStr += f"{i} :M{m.segid.contentid} :"
             finalStr += f"H{m.srcHost.hostname} -> H{m.dstHost.hostname}\n"
         return finalStr
+
+    def save_to_file(self, directory: str, filename: str) -> str:
+        file_path = os.path.join(directory, f"{filename}.pkl")
+
+        # Pickle and save the plan
+        with open(file_path, 'wb') as f:
+            pickle.dump(self, f)
 
 
 class NoValidMovesError(Exception):
@@ -281,9 +291,9 @@ class ClusterBalancer():
         moves, roles = self.get_moves_between_states(in_conf, finalState)
         plan = Plan()
         plan.moves = moves
-        plan.number_of_moves = len(moves)
         plan.in_conf = in_conf
         plan.out_conf = finalState
+        plan.segmentMap = self.initialSegmentMap
         plan.roles = roles
         return plan
 
@@ -299,12 +309,15 @@ class ClusterBalancer():
         for contentid, target_location in primary_map2.items():
             current_location = primary_map1.get(contentid)
             if current_location and current_location != target_location:
+            #important notice. srcHost and dstHost are different
+            # objects even if they are describing the same host. 
+            # srcHost and dstHost are taken from state1 and state2 correspondingly
                 source_host = state1[current_location]
-                target_host = state1[target_location]
+                target_host = state2[target_location]
                 segid = next(seg for seg in source_host.primary_segments
                              if seg.contentid == contentid)
                 moves.append(
-                    Move(segid, source_host, target_host, False, None))
+                    Move(segid, source_host, target_host, False, None, None))
                 roles[segid] = 'p'
 
         # Find mirror segment moves
@@ -312,10 +325,11 @@ class ClusterBalancer():
             current_location = mirror_map1.get(contentid)
             if current_location and current_location != target_location:
                 source_host = state1[current_location]
-                target_host = state1[target_location]
+                target_host = state2[target_location]
                 segid = next(seg for seg in source_host.mirror_segments
                              if seg.contentid == contentid)
-                moves.append(Move(segid, source_host, target_host, True, None))
+                moves.append(
+                    Move(segid, source_host, target_host, True, None, None))
                 roles[segid] = 'm'
 
         moves.sort(key=lambda m: 1 if m.is_mirror else 0)
