@@ -56,7 +56,6 @@ SELECT '25:00:00 PDT'::timetz;  -- not allowed
 
 SELECT f1 + time with time zone '00:01' AS "Illegal" FROM TIMETZ_TBL;
 
-<<<<<<< HEAD
 -- basic sanity of sample timezones
 set timezone = 'America/New_York';
 SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as NYC;
@@ -71,7 +70,7 @@ SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Sh
 -- Casablanca time has changed in new timezone db lets verify it
 set timezone = 'Africa/Casablanca';
 SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Casablanca;
-=======
+
 --
 -- Test timetz_zone, timetz_izone
 --
@@ -91,4 +90,3 @@ SELECT f1 AS dat,
   FROM TIMETZ_TBL
   ORDER BY f1;
 ROLLBACK;
->>>>>>> REL_12_17
