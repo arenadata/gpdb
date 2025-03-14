@@ -2059,7 +2059,6 @@ class gpexpand:
                 cursor.close()
             except DatabaseError as ex:
                 if re.search("unrecognized configuration parameter", ex.__str__()):
-                    self.logger.info("gp_interconnect_proxy_addresses GUC does not exist, skipping IC Proxy validation.")
                     return
                 raise
 
