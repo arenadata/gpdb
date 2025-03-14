@@ -2050,28 +2050,24 @@ class gpexpand:
         And prompt user to set a proper value via gpconfig before expansion.
         """
 
-        conn = dbconn.connect(_gp_expand.dburl, encoding='UTF8')
-        # get GUC value: gp_interconnect_proxy_addresses
-        try:
-            sql = "show gp_interconnect_proxy_addresses;"
-            cursor = dbconn.execSQL(conn, sql)
-            icproxy_addresses_string = cursor.fetchone()[0].strip()
-            cursor.close()
-        except Exception as e:
-            if 'unrecognized configuration parameter' in str(e):
-                self.logger.info("gp_interconnect_proxy_addresses GUC does not exist, skipping IC Proxy validation.")
-                conn.close()
-                return
-            else:
-                conn.close()
+        with closing (dbconn.connect(_gp_expand.dburl, encoding='UTF8')) as conn:
+            # get GUC value: gp_interconnect_proxy_addresses
+            try:
+                sql = "show gp_interconnect_proxy_addresses;"
+                cursor = dbconn.execSQL(conn, sql)
+                icproxy_addresses_string = cursor.fetchone()[0].strip()
+                cursor.close()
+            except DatabaseError as ex:
+                if re.search("unrecognized configuration parameter", ex.__str__()):
+                    self.logger.info("gp_interconnect_proxy_addresses GUC does not exist, skipping IC Proxy validation.")
+                    return
                 raise
 
-        # get GUC value: gp_interconnect_type
-        sql = "show gp_interconnect_type;"
-        cursor = dbconn.execSQL(conn, sql)
-        ic_type = cursor.fetchone()[0].strip()
-        cursor.close()
-        conn.close()
+            # get GUC value: gp_interconnect_type
+            sql = "show gp_interconnect_type;"
+            cursor = dbconn.execSQL(conn, sql)
+            ic_type = cursor.fetchone()[0].strip()
+            cursor.close()
 
         # check if newly added dbid exists in gp_interconnect_proxy_addresses
         need_prompt = False
