@@ -2058,6 +2058,9 @@ class gpexpand:
                 icproxy_addresses_string = cursor.fetchone()[0].strip()
                 cursor.close()
             except DatabaseError as ex:
+                # If the error indicates that the GUC "gp_interconnect_proxy_addresses" is not recognized,
+                # it means the cluster is not using IC Proxy mode (or the feature is not enabled).
+                # In this case, we simply return without raising an error.
                 if re.search("unrecognized configuration parameter", ex.__str__()):
                     return
                 raise
