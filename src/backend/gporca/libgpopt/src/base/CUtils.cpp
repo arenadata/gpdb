@@ -3277,6 +3277,21 @@ CUtils::FLogicalDML(COperator *pop)
 		   COperator::EopLogicalUpdate == op_id;
 }
 
+BOOL
+CUtils::FCTAS(COperator *pop)
+{
+	GPOS_ASSERT(NULL != pop);
+
+	if (COperator::EopLogicalInsert != pop->Eopid())
+	{
+		return false;
+	}
+	
+	CLogicalInsert *popInsert = CLogicalInsert::PopConvert(pop);
+
+	return IMDId::EmdidGPDBCtas == popInsert->Ptabdesc()->MDId()->MdidType();
+}
+
 // recursively checks if the given expression has logical DML operator
 BOOL
 CUtils::FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr)

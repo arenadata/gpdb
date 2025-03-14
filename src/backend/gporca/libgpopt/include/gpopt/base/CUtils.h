@@ -779,6 +779,9 @@ public:
 	// recursively checks if the given expression has logical DML operator
 	static BOOL FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr);
 
+	// is operator responsible for CTAS operation
+	static BOOL FCTAS(COperator *pop);
+
 	// return regular string from wide-character string
 	static CHAR *CreateMultiByteCharStringFromWCString(CMemoryPool *mp,
 													   WCHAR *wsz);
