@@ -234,7 +234,8 @@ CConfigParamMapping::SConfigMappingElem CConfigParamMapping::m_elements[] = {
 	{EopttraceDoNotEnforceCorrelatedExecution,
 	 &optimizer_donot_enforce_subplans,
 	 false,	 // m_negate_param
-	 GPOS_WSZ_LIT("Do not try to enforce correlated execution in the optimizer")},
+	 GPOS_WSZ_LIT(
+		 "Do not try to enforce correlated execution in the optimizer")},
 
 	{EopttraceForceExpandedMDQAs, &optimizer_force_expanded_distinct_aggs,
 	 false,	 // m_negate_param
