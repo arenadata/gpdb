@@ -1848,115 +1848,43 @@ alter table inhcld inherit inhpar;
 insert into inhpar select x, x::text from generate_series(1,5) x;
 insert into inhcld select x::text, x from generate_series(6,10) x;
 explain (verbose, costs off)
-<<<<<<< HEAD
-update inhpar set
-  (f1, f2[1])    = (select p2.unique2, p2.stringu1 from int4_tbl limit 1),
-  (f2[2], f2[3]) = (select 'x', 'y' from int4_tbl limit 1),
-  (f3, f2[4])    = (select p2.unique2, p2.stringu1 from int4_tbl limit 1),
-  (f2[5], f2[6]) = (select 'x', 'y' from int4_tbl limit 1)
-from onek p2 where inhpar.f1 = p2.unique1;
-                                                                                                                                               QUERY PLAN                                                                                                                                               
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Update on public.inhpar
-   Update on public.inhpar
-   Update on public.inhcld
-   InitPlan 2 (returns $4,$5)  (slice1)
-     ->  Limit
-           Output: 'x'::text, 'y'::text
-           ->  Gather Motion 3:1  (slice2; segments: 3)
-                 Output: 'x'::text, 'y'::text
-                 ->  Limit
-                       Output: 'x'::text, 'y'::text
-                       ->  Seq Scan on public.int4_tbl
-                             Output: 'x'::text, 'y'::text
-   InitPlan 4 (returns $10,$11)  (slice3)
-     ->  Limit
-           Output: 'x'::text, 'y'::text
-           ->  Gather Motion 3:1  (slice4; segments: 3)
-                 Output: 'x'::text, 'y'::text
-                 ->  Limit
-                       Output: 'x'::text, 'y'::text
-                       ->  Seq Scan on public.int4_tbl int4_tbl_1
-                             Output: 'x'::text, 'y'::text
-   ->  Explicit Redistribute Motion 3:3  (slice5; segments: 3)
-         Output: ($12), ((((((inhpar.f2[1] := ($13)::text)[2] := $4)[3] := $5)[4] := ($15)::text)[5] := $10)[6] := $11), ($14), ((SubPlan 1 (returns $2,$3) (copy 5))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 6))), NULL::record, inhpar.ctid, inhpar.gp_segment_id, p2.ctid, (DMLAction)
-         ->  Split
-               Output: ($12), ((((((inhpar.f2[1] := ($13)::text)[2] := $4)[3] := $5)[4] := ($15)::text)[5] := $10)[6] := $11), ($14), ((SubPlan 1 (returns $2,$3) (copy 5))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 6))), NULL::record, inhpar.ctid, inhpar.gp_segment_id, p2.ctid, DMLAction
-               ->  Merge Join
-                     Output: $12, (((((inhpar.f2[1] := $13)[2] := $4)[3] := $5)[4] := $15)[5] := $10)[6] := $11, $14, (SubPlan 1 (returns $2,$3) (copy 5)), NULL::record, (SubPlan 3 (returns $8,$9) (copy 6)), NULL::record, inhpar.ctid, inhpar.gp_segment_id, p2.ctid
-                     Merge Cond: (inhpar.f1 = p2.unique1)
-                     ->  Sort
-                           Output: inhpar.f2, inhpar.ctid, inhpar.gp_segment_id, inhpar.f1
-                           Sort Key: inhpar.f1
-                           ->  Seq Scan on public.inhpar
-                                 Output: inhpar.f2, inhpar.ctid, inhpar.gp_segment_id, inhpar.f1
-                     ->  Index Scan using onek_unique1 on public.onek p2
-                           Output: p2.unique2, p2.stringu1, p2.ctid, p2.unique1
-                     SubPlan 1 (returns $2,$3) (copy 5)
-                       ->  Limit
-                             Output: (p2.unique2), (p2.stringu1)
-                             ->  Result
-                                   Output: p2.unique2, p2.stringu1
-                                   ->  Materialize
-                                         ->  Broadcast Motion 3:3  (slice6; segments: 3)
-                                               ->  Seq Scan on public.int4_tbl int4_tbl_2
-                     SubPlan 3 (returns $8,$9) (copy 6)
-                       ->  Limit
-                             Output: (p2.unique2), (p2.stringu1)
-                             ->  Result
-                                   Output: p2.unique2, p2.stringu1
-                                   ->  Materialize
-                                         ->  Broadcast Motion 3:3  (slice7; segments: 3)
-                                               ->  Seq Scan on public.int4_tbl int4_tbl_3
-   ->  Explicit Redistribute Motion 3:3  (slice8; segments: 3)
-         Output: ($16), ((((((inhcld.f2[1] := ($17)::text)[2] := $4)[3] := $5)[4] := ($19)::text)[5] := $10)[6] := $11), ($18), ((SubPlan 1 (returns $2,$3) (copy 7))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 8))), NULL::record, inhcld.ctid, inhcld.gp_segment_id, p2.ctid, (DMLAction)
-         ->  Split
-               Output: ($16), ((((((inhcld.f2[1] := ($17)::text)[2] := $4)[3] := $5)[4] := ($19)::text)[5] := $10)[6] := $11), ($18), ((SubPlan 1 (returns $2,$3) (copy 7))), NULL::record, ((SubPlan 3 (returns $8,$9) (copy 8))), NULL::record, inhcld.ctid, inhcld.gp_segment_id, p2.ctid, DMLAction
-               ->  Hash Join
-                     Output: $16, (((((inhcld.f2[1] := $17)[2] := $4)[3] := $5)[4] := $19)[5] := $10)[6] := $11, $18, (SubPlan 1 (returns $2,$3) (copy 7)), NULL::record, (SubPlan 3 (returns $8,$9) (copy 8)), NULL::record, inhcld.ctid, inhcld.gp_segment_id, p2.ctid
-                     Hash Cond: (inhcld.f1 = p2.unique1)
-                     ->  Seq Scan on public.inhcld
-                           Output: inhcld.f2, inhcld.ctid, inhcld.gp_segment_id, inhcld.f1
-                     ->  Hash
-                           Output: p2.unique2, p2.stringu1, p2.ctid, p2.unique1
-                           ->  Index Scan using onek_unique1 on public.onek p2
-                                 Output: p2.unique2, p2.stringu1, p2.ctid, p2.unique1
-                     SubPlan 1 (returns $2,$3) (copy 7)
-                       ->  Limit
-                             Output: (p2.unique2), (p2.stringu1)
-                             ->  Result
-                                   Output: p2.unique2, p2.stringu1
-                                   ->  Materialize
-                                         ->  Broadcast Motion 3:3  (slice9; segments: 3)
-                                               ->  Seq Scan on public.int4_tbl int4_tbl_4
-                     SubPlan 3 (returns $8,$9) (copy 8)
-                       ->  Limit
-                             Output: (p2.unique2), (p2.stringu1)
-                             ->  Result
-                                   Output: p2.unique2, p2.stringu1
-                                   ->  Materialize
-                                         ->  Broadcast Motion 3:3  (slice10; segments: 3)
-                                               ->  Seq Scan on public.int4_tbl int4_tbl_5
- Optimizer: Postgres-based planner
- Settings: enable_bitmapscan = 'off', enable_mergejoin = 'on', enable_seqscan = 'off', optimizer = 'off'
-(82 rows)
-=======
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
-                           QUERY PLAN                            
------------------------------------------------------------------
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
  Update on public.inhpar i
    Update on public.inhpar i
    Update on public.inhcld i_1
-   ->  Seq Scan on public.inhpar i
-         Output: $2, $3, (SubPlan 1 (returns $2,$3)), i.ctid
-         SubPlan 1 (returns $2,$3)
-           ->  Limit
-                 Output: (i.f1), (((i.f2)::text || '-'::text))
-                 ->  Seq Scan on public.int4_tbl
-                       Output: i.f1, ((i.f2)::text || '-'::text)
-   ->  Seq Scan on public.inhcld i_1
-         Output: $3, $2, (SubPlan 1 (returns $2,$3)), i_1.ctid
-(12 rows)
+   ->  Explicit Redistribute Motion 3:3  (slice1; segments: 3)
+         Output: ($2), (($3)::name), ((SubPlan 1 (returns $2,$3) (copy 2))), i.ctid, i.gp_segment_id, (DMLAction)
+         ->  Split
+               Output: ($2), (($3)::name), ((SubPlan 1 (returns $2,$3) (copy 2))), i.ctid, i.gp_segment_id, DMLAction
+               ->  Seq Scan on public.inhpar i
+                     Output: $2, $3, (SubPlan 1 (returns $2,$3) (copy 2)), i.ctid, i.gp_segment_id
+                     SubPlan 1 (returns $2,$3) (copy 2)
+                       ->  Limit
+                             Output: (i.f1), (((i.f2)::text || '-'::text))
+                             ->  Result
+                                   Output: i.f1, ((i.f2)::text || '-'::text)
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice2; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl
+   ->  Explicit Redistribute Motion 3:3  (slice3; segments: 3)
+         Output: (($3)::name), ($2), ((SubPlan 1 (returns $2,$3) (copy 3))), i_1.ctid, i_1.gp_segment_id, (DMLAction)
+         ->  Split
+               Output: (($3)::name), ($2), ((SubPlan 1 (returns $2,$3) (copy 3))), i_1.ctid, i_1.gp_segment_id, DMLAction
+               ->  Seq Scan on public.inhcld i_1
+                     Output: $3, $2, (SubPlan 1 (returns $2,$3) (copy 3)), i_1.ctid, i_1.gp_segment_id
+                     SubPlan 1 (returns $2,$3) (copy 3)
+                       ->  Limit
+                             Output: (i_1.f1), (((i_1.f2)::text || '-'::text))
+                             ->  Result
+                                   Output: i_1.f1, ((i_1.f2)::text || '-'::text)
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice4; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl int4_tbl_1
+ Optimizer: Postgres-based planner
+ Settings: enable_bitmapscan = 'off', enable_mergejoin = 'on', enable_seqscan = 'off', optimizer = 'off'
+(33 rows)
 
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
 select * from inhpar;
@@ -1973,7 +1901,6 @@ select * from inhpar;
   9 | 9-
  10 | 10-
 (10 rows)
->>>>>>> REL_12_17
 
 drop table inhpar cascade;
 NOTICE:  drop cascades to table inhcld
@@ -1988,21 +1915,42 @@ alter table inhpar attach partition inhcld2 for values from (5) to (100);
 insert into inhpar select x, x::text from generate_series(1,10) x;
 explain (verbose, costs off)
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
-                             QUERY PLAN                              
----------------------------------------------------------------------
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
  Update on public.inhpar i
    Update on public.inhcld1 i_1
    Update on public.inhcld2 i_2
-   ->  Seq Scan on public.inhcld1 i_1
-         Output: $3, $2, (SubPlan 1 (returns $2,$3)), i_1.ctid
-         SubPlan 1 (returns $2,$3)
-           ->  Limit
-                 Output: (i_1.f1), (((i_1.f2)::text || '-'::text))
-                 ->  Seq Scan on public.int4_tbl
-                       Output: i_1.f1, ((i_1.f2)::text || '-'::text)
-   ->  Seq Scan on public.inhcld2 i_2
-         Output: $2, $3, (SubPlan 1 (returns $2,$3)), i_2.ctid
-(12 rows)
+   ->  Explicit Redistribute Motion 3:3  (slice1; segments: 3)
+         Output: (($3)::name), ($2), ((SubPlan 1 (returns $2,$3) (copy 4))), i_1.ctid, i_1.gp_segment_id, (DMLAction)
+         ->  Split
+               Output: (($3)::name), ($2), ((SubPlan 1 (returns $2,$3) (copy 4))), i_1.ctid, i_1.gp_segment_id, DMLAction
+               ->  Seq Scan on public.inhcld1 i_1
+                     Output: $3, $2, (SubPlan 1 (returns $2,$3) (copy 4)), i_1.ctid, i_1.gp_segment_id
+                     SubPlan 1 (returns $2,$3) (copy 4)
+                       ->  Limit
+                             Output: (i_1.f1), (((i_1.f2)::text || '-'::text))
+                             ->  Result
+                                   Output: i_1.f1, ((i_1.f2)::text || '-'::text)
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice2; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl
+   ->  Explicit Redistribute Motion 3:3  (slice3; segments: 3)
+         Output: ($2), (($3)::name), ((SubPlan 1 (returns $2,$3) (copy 5))), i_2.ctid, i_2.gp_segment_id, (DMLAction)
+         ->  Split
+               Output: ($2), (($3)::name), ((SubPlan 1 (returns $2,$3) (copy 5))), i_2.ctid, i_2.gp_segment_id, DMLAction
+               ->  Seq Scan on public.inhcld2 i_2
+                     Output: $2, $3, (SubPlan 1 (returns $2,$3) (copy 5)), i_2.ctid, i_2.gp_segment_id
+                     SubPlan 1 (returns $2,$3) (copy 5)
+                       ->  Limit
+                             Output: (i_2.f1), (((i_2.f2)::text || '-'::text))
+                             ->  Result
+                                   Output: i_2.f1, ((i_2.f2)::text || '-'::text)
+                                   ->  Materialize
+                                         ->  Broadcast Motion 3:3  (slice4; segments: 3)
+                                               ->  Seq Scan on public.int4_tbl int4_tbl_1
+ Optimizer: Postgres-based planner
+ Settings: enable_bitmapscan = 'off', enable_mergejoin = 'on', enable_seqscan = 'off', optimizer = 'off'
+(33 rows)
 
 update inhpar i set (f1, f2) = (select i.f1, i.f2 || '-' from int4_tbl limit 1);
 select * from inhpar;
@@ -2023,16 +1971,17 @@ select * from inhpar;
 -- Also check ON CONFLICT
 insert into inhpar as i values (3), (7) on conflict (f1)
   do update set (f1, f2) = (select i.f1, i.f2 || '+');
+ERROR:  modification of distribution columns in OnConflictUpdate is not supported
 select * from inhpar order by f1;  -- tuple order might be unstable here
  f1 | f2  
 ----+-----
   1 | 1-
   2 | 2-
-  3 | 3-+
+  3 | 3-
   4 | 4-
   5 | 5-
   6 | 6-
-  7 | 7-+
+  7 | 7-
   8 | 8-
   9 | 9-
  10 | 10-
