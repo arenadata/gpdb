@@ -816,26 +816,8 @@ CTranslatorQueryToDXL::TranslateInsertQueryToDXL()
 		GPOS_NEW(m_mp) CDXLNode(m_mp, insert_dxlnode, query_dxlnode);
 
 	CRefCount::SafeRelease(m_dxl_query_output_cols);
-	if (NULL != m_query->returningList)
-	{
-		IntToUlongMap *output_attno_to_colid_mapping =
-			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
 
-		log_insert_dxlnode = ProcessReturningList(
-			log_insert_dxlnode, table_descr, output_attno_to_colid_mapping);
-
-		// this array is filled earlier with target list and was used to get colids by their indices earlier
-		// now fill it with what will truly be returned
-		m_dxl_query_output_cols = CreateDXLOutputCols(
-			m_query->returningList, output_attno_to_colid_mapping);
-
-		output_attno_to_colid_mapping->Release();
-	}
-	else
-	{
-		// we can safely set it to empty array here as we aren't outputting in this path
-		m_dxl_query_output_cols = GPOS_NEW(m_mp) CDXLNodeArray(m_mp);
-	}
+	log_insert_dxlnode = ProcessReturningList(log_insert_dxlnode, table_descr);
 
 	return log_insert_dxlnode;
 }
@@ -1175,43 +1157,47 @@ CTranslatorQueryToDXL::GetSystemColId(INT attribute_number)
 //
 //---------------------------------------------------------------------------
 CDXLNode *
-CTranslatorQueryToDXL::ProcessReturningList(
-	CDXLNode *dml_dxlnode, CDXLTableDescr *table_descr,
-	IntToUlongMap *output_attno_to_colid_mapping)
+CTranslatorQueryToDXL::ProcessReturningList(CDXLNode *dml_dxlnode,
+											CDXLTableDescr *table_descr)
 {
-	GPOS_ASSERT(m_query->returningList != NULL);
+	GPOS_ASSERT(dml_dxlnode != NULL);
 
-	CMappingVarColId *var_to_colid_map = GPOS_NEW(m_mp) CMappingVarColId(m_mp);
-	var_to_colid_map->LoadTblColumns(m_query_level, m_query->resultRelation,
-									 table_descr);
-
-	CDXLNode *returning_proj_list_dxlnode =
-		GPOS_NEW(m_mp) CDXLNode(m_mp, GPOS_NEW(m_mp) CDXLScalarProjList(m_mp));
-
-	ListCell *lc = NULL;
-	ForEach(lc, m_query->returningList)
+	if (m_query->returningList != NULL)
 	{
-		TargetEntry *target_entry = (TargetEntry *) lfirst(lc);
+		IntToUlongMap *sort_group_attno_to_colid_mapping =
+			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
+		IntToUlongMap *output_attno_to_colid_mapping =
+			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
 
-		CDXLNode *project_elem_dxlnode = TranslateExprToDXLProject(
-			target_entry->expr, target_entry->resname, var_to_colid_map, true);
+		// DML nodes output columns as in descriptor, temporary replace mapping
+		CMappingVarColId *var_to_colid_map_saved = m_var_to_colid_map;
+		m_var_to_colid_map = GPOS_NEW(m_mp) CMappingVarColId(m_mp);
+		m_var_to_colid_map->LoadTblColumns(
+			m_query_level, m_query->resultRelation, table_descr);
 
-		ULONG colid =
-			CDXLScalarProjElem::Cast(project_elem_dxlnode->GetOperator())->Id();
-		StoreAttnoColIdMapping(output_attno_to_colid_mapping,
-							   target_entry->resno, colid);
+		dml_dxlnode = TranslateTargetListToDXLProject(
+			m_query->returningList, dml_dxlnode, sort_group_attno_to_colid_mapping,
+			output_attno_to_colid_mapping, m_query->groupClause);
 
-		returning_proj_list_dxlnode->AddChild(project_elem_dxlnode);
+		// this array is filled earlier with target list and was used to get colids by their indices earlier
+		// now fill it with what will truly be returned
+		m_dxl_query_output_cols = CreateDXLOutputCols(
+			m_query->returningList, output_attno_to_colid_mapping);
+
+		GPOS_DELETE(m_var_to_colid_map);
+		m_var_to_colid_map = var_to_colid_map_saved;
+
+		output_attno_to_colid_mapping->Release();
+		sort_group_attno_to_colid_mapping->Release();
+	}
+	else
+	{
+		// we can safely set it to empty array here as we aren't outputting in this path
+		m_dxl_query_output_cols = GPOS_NEW(m_mp) CDXLNodeArray(m_mp);
 	}
 
-	CDXLNode *project_dxlnode =
-		GPOS_NEW(m_mp) CDXLNode(m_mp, GPOS_NEW(m_mp) CDXLLogicalProject(m_mp));
-	project_dxlnode->AddChild(returning_proj_list_dxlnode);
-	project_dxlnode->AddChild(dml_dxlnode);
-
-	GPOS_DELETE(var_to_colid_map);
-
-	return project_dxlnode;
+	// return project_dxlnode;
+	return dml_dxlnode;
 }
 
 //---------------------------------------------------------------------------
@@ -1295,26 +1281,8 @@ CTranslatorQueryToDXL::TranslateDeleteQueryToDXL()
 		GPOS_NEW(m_mp) CDXLNode(m_mp, delete_dxlop, query_dxlnode);
 
 	CRefCount::SafeRelease(m_dxl_query_output_cols);
-	if (NULL != m_query->returningList)
-	{
-		IntToUlongMap *output_attno_to_colid_mapping =
-			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
 
-		log_delete_dxlnode = ProcessReturningList(
-			log_delete_dxlnode, table_descr, output_attno_to_colid_mapping);
-
-		// this array is filled earlier with target list and was used to get colids by their indices earlier
-		// now fill it with what will truly be returned
-		m_dxl_query_output_cols = CreateDXLOutputCols(
-			m_query->returningList, output_attno_to_colid_mapping);
-
-		output_attno_to_colid_mapping->Release();
-	}
-	else
-	{
-		// we can safely set it to empty array here as we aren't outputting in this path
-		m_dxl_query_output_cols = GPOS_NEW(m_mp) CDXLNodeArray(m_mp);
-	}
+	log_delete_dxlnode = ProcessReturningList(log_delete_dxlnode, table_descr);
 
 	return log_delete_dxlnode;
 }
@@ -1434,26 +1402,8 @@ CTranslatorQueryToDXL::TranslateUpdateQueryToDXL()
 		GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopupdate, query_dxlnode);
 
 	CRefCount::SafeRelease(m_dxl_query_output_cols);
-	if (NULL != m_query->returningList)
-	{
-		IntToUlongMap *output_attno_to_colid_mapping =
-			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
 
-		log_update_dxlnode = ProcessReturningList(
-			log_update_dxlnode, table_descr, output_attno_to_colid_mapping);
-
-		// this array is filled earlier with target list and was used to get colids by their indices earlier
-		// now fill it with what will truly be returned
-		m_dxl_query_output_cols = CreateDXLOutputCols(
-			m_query->returningList, output_attno_to_colid_mapping);
-
-		output_attno_to_colid_mapping->Release();
-	}
-	else
-	{
-		// we can safely set it to empty array here as we aren't outputting in this path
-		m_dxl_query_output_cols = GPOS_NEW(m_mp) CDXLNodeArray(m_mp);
-	}
+	log_update_dxlnode = ProcessReturningList(log_update_dxlnode, table_descr);
 
 	return log_update_dxlnode;
 }

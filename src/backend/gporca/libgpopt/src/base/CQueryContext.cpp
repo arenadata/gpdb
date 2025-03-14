@@ -213,7 +213,8 @@ CQueryContext::PqcGenerate(CMemoryPool *mp, CExpression *pexpr,
 
 	// DML commands do not have distribution requirement. Otherwise the
 	// distribution requirement is Singleton.
-	if (CUtils::FLogicalDML(pexpr->Pop()))
+	// if (CUtils::FLogicalDML(pexpr->Pop()))
+	if (pdrgpulQueryOutputColRefId->Size() == 0)
 	{
 		pds = GPOS_NEW(mp) CDistributionSpecAny(COperator::EopSentinel);
 	}

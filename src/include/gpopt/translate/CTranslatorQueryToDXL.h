@@ -433,9 +433,8 @@ private:
 	ULONG GetSystemColId(INT attribute_number);
 
 	// Wrap dxl node in logical project with return columns from returningList
-	CDXLNode *ProcessReturningList(
-		CDXLNode *dml_dxlnode, CDXLTableDescr *table_descr,
-		IntToUlongMap *output_attno_to_colid_mapping);
+	CDXLNode *ProcessReturningList(CDXLNode *dml_dxlnode,
+								   CDXLTableDescr *table_descr);
 
 public:
 	// dtor
