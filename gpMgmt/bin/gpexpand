@@ -2053,10 +2053,7 @@ class gpexpand:
         with closing (dbconn.connect(_gp_expand.dburl, encoding='UTF8')) as conn:
             # get GUC value: gp_interconnect_proxy_addresses
             try:
-                sql = "show gp_interconnect_proxy_addresses;"
-                cursor = dbconn.execSQL(conn, sql)
-                icproxy_addresses_string = cursor.fetchone()[0].strip()
-                cursor.close()
+                icproxy_addresses_string = catalog.getSessionGUC(conn, 'gp_interconnect_proxy_addresses').strip()
             except DatabaseError as ex:
                 # If the error indicates that the GUC "gp_interconnect_proxy_addresses" is not recognized,
                 # it means the cluster was built without this option, for example,
@@ -2067,10 +2064,7 @@ class gpexpand:
                 raise
 
             # get GUC value: gp_interconnect_type
-            sql = "show gp_interconnect_type;"
-            cursor = dbconn.execSQL(conn, sql)
-            ic_type = cursor.fetchone()[0].strip()
-            cursor.close()
+            ic_type = catalog.getSessionGUC(conn, 'gp_interconnect_type').strip()
 
         # check if newly added dbid exists in gp_interconnect_proxy_addresses
         need_prompt = False
