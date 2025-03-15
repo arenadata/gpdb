@@ -4192,8 +4192,8 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 	rte->requiredPerms |= acl_mode;
 	m_dxl_to_plstmt_context->AddRTE(rte);
 
-	CDXLNode *project_list_dxlnode = (*dml_dxlnode)[0];
-	CDXLNode *project_list_output_dxlnode = (*dml_dxlnode)[1];
+	CDXLNode *project_list_output_dxlnode = (*dml_dxlnode)[0];
+	CDXLNode *project_list_dxlnode = (*dml_dxlnode)[1];
 	CDXLNode *child_dxlnode = (*dml_dxlnode)[2];
 
 	CDXLTranslateContext child_context(m_mp, false,

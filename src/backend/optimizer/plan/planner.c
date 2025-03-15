@@ -248,9 +248,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		}
 
 		if (result)
-		{
 			return result;
-		}
 	}
 
 	/*

@@ -169,10 +169,10 @@ CDXLPhysicalDML::SerializeToDXL(CXMLSerializer *xml_serializer,
 			CDXLTokens::GetDXLTokenStr(EdxltokenDirectDispatchInfo));
 	}
 
-	// serialize project list
+	// serialize project list for returning list
 	(*node)[0]->SerializeToDXL(xml_serializer);
 
-	// serialize project list for returning list
+	// serialize project list
 	(*node)[1]->SerializeToDXL(xml_serializer);
 
 	// serialize table descriptor

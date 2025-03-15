@@ -22,7 +22,6 @@
 #include "gpos/common/CHashMap.h"
 
 #include "gpopt/base/CCastUtils.h"
-#include "gpopt/base/CColRef.h"
 #include "gpopt/base/CColRefSetIter.h"
 #include "gpopt/base/CConstraintInterval.h"
 #include "gpopt/base/CUtils.h"
@@ -33,7 +32,6 @@
 #include "gpopt/operators/CPhysicalIndexOnlyScan.h"
 #include "gpopt/operators/CPhysicalMotionRandom.h"
 #include "gpopt/operators/CPredicateUtils.h"
-#include "gpopt/search/CScheduler.h"
 #include "gpopt/translate/CTranslatorDXLToExpr.h"
 #include "gpopt/translate/CTranslatorExprToDXLUtils.h"
 #include "naucrates/base/CDatumBoolGPDB.h"
@@ -4513,19 +4511,8 @@ CTranslatorExprToDXL::PdxlnMotion(CExpression *pexprMotion,
 	GPOS_ASSERT(NULL != motion);
 
 	// construct project list from child project list
-	CDXLNode *pdxlnProjListChild;
-	if (COperator::EopPhysicalDML == pexprChild->Pop()->Eopid() &&
-		COperator::EopPhysicalMotionGather == pexprMotion->Pop()->Eopid())
-	{
-		// dml nodes unlike others have output proj list in second child
-		GPOS_ASSERT(NULL != child_dxlnode && 2 <= child_dxlnode->Arity());
-		pdxlnProjListChild = (*child_dxlnode)[1];
-	}
-	else
-	{
-		GPOS_ASSERT(NULL != child_dxlnode && 1 <= child_dxlnode->Arity());
-		pdxlnProjListChild = (*child_dxlnode)[0];
-	}
+	GPOS_ASSERT(NULL != child_dxlnode && 1 <= child_dxlnode->Arity());
+	CDXLNode *pdxlnProjListChild = (*child_dxlnode)[0];
 
 	CDXLNode *proj_list_dxlnode =
 		CTranslatorExprToDXLUtils::PdxlnProjListFromChildProjList(
@@ -5862,8 +5849,8 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 	CDXLPhysicalProperties *dxl_properties = GetProperties(pexpr);
 	pdxlnDML->SetProperties(dxl_properties);
 
-	pdxlnDML->AddChild(pdxlnPrL);
 	pdxlnDML->AddChild(pdxlnPrLOutput);
+	pdxlnDML->AddChild(pdxlnPrL);
 	pdxlnDML->AddChild(child_dxlnode);
 
 #ifdef GPOS_DEBUG
