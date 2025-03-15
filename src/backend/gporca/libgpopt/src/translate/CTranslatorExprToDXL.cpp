@@ -5809,41 +5809,33 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 	// project list
 	CDXLNode *pdxlnPrL = PdxlnProjList(NULL, pdrgpcrSource);
 
-	// configure output project list if output was required
+	// configure output project list for used columns
 	CDXLNode *pdxlnPrLOutput;
-	if (pexpr->Prpp()->PcrsRequired()->Size() > 0)
+	ULongPtrArray *usedColsIndexes = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
+
+	for (ULONG outputColIndex = 0; outputColIndex < pdrgpcrOutput->Size();
+			outputColIndex++)
 	{
-		ULongPtrArray *indexes = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
-
-		for (ULONG outputColIndex = 0; outputColIndex < pdrgpcrOutput->Size();
-			 outputColIndex++)
+		CColRef *colref = (*pdrgpcrOutput)[outputColIndex];
+		if (colref->GetUsage(true, true) == CColRef::EUsed)
 		{
-			CColRef *colref = (*pdrgpcrOutput)[outputColIndex];
-			if (colref->GetUsage(true, true) == CColRef::EUsed)
-			{
-				indexes->Append(GPOS_NEW(m_mp) ULONG(outputColIndex));
-			}
+			usedColsIndexes->Append(GPOS_NEW(m_mp) ULONG(outputColIndex));
 		}
+	}
 
-		if (pdrgpcrOutput->Size() == indexes->Size())
-		{
-			pdxlnPrLOutput = PdxlnProjList(NULL, pdrgpcrOutput);
-		}
-		else
-		{
-			CColRefArray *reducedOutput =
-				pdrgpcrOutput->CreateReducedArray(indexes);
-			pdxlnPrLOutput = PdxlnProjList(NULL, reducedOutput);
-			reducedOutput->Release();
-		}
-
-		indexes->Release();
+	if (pdrgpcrOutput->Size() == usedColsIndexes->Size())
+	{
+		pdxlnPrLOutput = PdxlnProjList(NULL, pdrgpcrOutput);
 	}
 	else
 	{
-		pdxlnPrLOutput = GPOS_NEW(m_mp)
-			CDXLNode(m_mp, GPOS_NEW(m_mp) CDXLScalarProjList(m_mp));
+		CColRefArray *reducedOutput =
+			pdrgpcrOutput->CreateReducedArray(usedColsIndexes);
+		pdxlnPrLOutput = PdxlnProjList(NULL, reducedOutput);
+		reducedOutput->Release();
 	}
+
+	usedColsIndexes->Release();
 
 	CDXLNode *pdxlnDML = GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopDML);
 	CDXLPhysicalProperties *dxl_properties = GetProperties(pexpr);
