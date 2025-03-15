@@ -1176,8 +1176,9 @@ CTranslatorQueryToDXL::ProcessReturningList(CDXLNode *dml_dxlnode,
 			m_query_level, m_query->resultRelation, table_descr);
 
 		dml_dxlnode = TranslateTargetListToDXLProject(
-			m_query->returningList, dml_dxlnode, sort_group_attno_to_colid_mapping,
-			output_attno_to_colid_mapping, m_query->groupClause);
+			m_query->returningList, dml_dxlnode,
+			sort_group_attno_to_colid_mapping, output_attno_to_colid_mapping,
+			m_query->groupClause);
 
 		// this array is filled earlier with target list and was used to get colids by their indices earlier
 		// now fill it with what will truly be returned

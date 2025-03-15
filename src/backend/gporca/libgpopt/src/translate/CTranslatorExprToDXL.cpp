@@ -5810,7 +5810,7 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 	ULongPtrArray *usedColsIndexes = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
 
 	for (ULONG outputColIndex = 0; outputColIndex < pdrgpcrOutput->Size();
-			outputColIndex++)
+		 outputColIndex++)
 	{
 		CColRef *colref = (*pdrgpcrOutput)[outputColIndex];
 		if (colref->GetUsage(true, true) == CColRef::EUsed)
