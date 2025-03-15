@@ -211,9 +211,11 @@ CQueryContext::PqcGenerate(CMemoryPool *mp, CExpression *pexpr,
 
 	CDistributionSpec *pds = NULL;
 
-	// Dont require distribution on empty output or CTAS. Otherwise the
-	// distribution requirement is Singleton.
-	if (pdrgpulQueryOutputColRefId->Size() == 0 || CUtils::FCTAS(pexpr->Pop()))
+	// Dont require distribution for DML with empty output or CTAS.
+	// Otherwise the distribution requirement is Singleton.
+	if ((CUtils::FLogicalDML(pexpr->Pop()) &&
+		 pdrgpulQueryOutputColRefId->Size() == 0) ||
+		CUtils::FCTAS(pexpr->Pop()))
 	{
 		pds = GPOS_NEW(mp) CDistributionSpecAny(COperator::EopSentinel);
 	}
