@@ -2058,9 +2058,7 @@ CTranslatorDXLToPlStmt::TranslateDXLHash(
 
 	// create a reference to each entry in the child project list to create the target list of
 	// the hash node
-	Edxlopid dxl_op_id = dxlnode->GetOperator()->GetDXLOperator();
-	CDXLNode *project_list_dxlnode =
-		(*dxlnode)[EdxlopPhysicalDML == dxl_op_id ? 1 : 0];
+	CDXLNode *project_list_dxlnode = (*dxlnode)[0];
 	List *target_list = TranslateDXLProjectListToHashTargetList(
 		project_list_dxlnode, &dxl_translate_ctxt, output_context);
 
