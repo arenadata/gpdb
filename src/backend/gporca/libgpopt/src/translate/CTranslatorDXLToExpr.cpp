@@ -272,9 +272,6 @@ CTranslatorDXLToExpr::Pexpr(const CDXLNode *dxlnode,
 	m_pdrgpulOutputColRefs = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
 	m_pdrgpmdname = GPOS_NEW(m_mp) CMDNameArray(m_mp);
 
-	BOOL fGenerateRequiredColumns =
-		COperator::EopLogicalUpdate != pexpr->Pop()->Eopid();
-
 	const ULONG length = query_output_dxlnode_array->Size();
 	for (ULONG ul = 0; ul < length; ul++)
 	{
@@ -292,18 +289,15 @@ CTranslatorDXLToExpr::Pexpr(const CDXLNode *dxlnode,
 		// get its column reference from the hash map
 		const CColRef *colref = LookupColRef(m_phmulcr, colid);
 
-		if (fGenerateRequiredColumns)
-		{
-			const ULONG ulColRefId = colref->Id();
-			ULONG *pulCopy = GPOS_NEW(m_mp) ULONG(ulColRefId);
-			// add to the array of output column reference ids
-			m_pdrgpulOutputColRefs->Append(pulCopy);
+		const ULONG ulColRefId = colref->Id();
+		ULONG *pulCopy = GPOS_NEW(m_mp) ULONG(ulColRefId);
+		// add to the array of output column reference ids
+		m_pdrgpulOutputColRefs->Append(pulCopy);
 
-			// get the column names and add it to the array of output column names
-			CMDName *mdname =
-				GPOS_NEW(m_mp) CMDName(m_mp, dxl_colref->MdName()->GetMDName());
-			m_pdrgpmdname->Append(mdname);
-		}
+		// get the column names and add it to the array of output column names
+		CMDName *mdname =
+			GPOS_NEW(m_mp) CMDName(m_mp, dxl_colref->MdName()->GetMDName());
+		m_pdrgpmdname->Append(mdname);
 	}
 
 	return pexpr;
