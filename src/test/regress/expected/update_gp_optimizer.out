@@ -258,25 +258,20 @@ WITH CTE AS (DELETE FROM t1 RETURNING *)
 SELECT count(*) AS a FROM t_strewn JOIN cte USING (i);
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
- Gather Motion 1:1  (slice4; segments: 1)
+ Gather Motion 1:1  (slice3; segments: 1)
    ->  Aggregate
-         ->  Gather Motion 3:1  (slice3; segments: 3)
-               ->  Aggregate
-                     ->  Hash Join
-                           Hash Cond: (t_strewn.i = "outer".ColRef_0049)
-                           ->  Redistribute Motion 3:3  (slice1; segments: 3)
-                                 Hash Key: t_strewn.i
-                                 ->  Seq Scan on t_strewn
-                           ->  Hash
-                                 ->  Redistribute Motion 3:3  (slice2; segments: 3)
-                                       Hash Key: "outer".ColRef_0049
-                                       ->  Result
-                                             ->  Result
-                                                   ->  Delete
-                                                         ->  Result
-                                                               ->  Seq Scan on t1
+         ->  Gather Motion 3:1  (slice2; segments: 3)
+               ->  Hash Join
+                     Hash Cond: (t_strewn.i = "outer".ColRef_0045)
+                     ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                           Hash Key: t_strewn.i
+                           ->  Seq Scan on t_strewn
+                     ->  Hash
+                           ->  Delete
+                                 ->  Result
+                                       ->  Seq Scan on t1
  Optimizer: Pivotal Optimizer (GPORCA)
-(18 rows)
+(13 rows)
 
 WITH CTE AS (DELETE FROM t1 RETURNING *)
 SELECT count(*) AS a FROM t_strewn JOIN cte USING (i);

@@ -914,14 +914,13 @@ UPDATE rw_view1 v SET bb='Updated row 2' WHERE rw_view1_aa(v)=2
                 QUERY PLAN                
 ------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
-   ->  Result
-         ->  Update
-               ->  Split
-                     ->  Result
-                           ->  Index Scan using base_tbl_pkey on base_tbl
-                                 Index Cond: (a = 2)
+   ->  Update
+         ->  Split
+               ->  Result
+                     ->  Index Scan using base_tbl_pkey on base_tbl
+                           Index Cond: (a = 2)
  Optimizer: Pivotal Optimizer (GPORCA)
-(8 rows)
+(7 rows)
 
 DROP TABLE base_tbl CASCADE;
 NOTICE:  drop cascades to 2 other objects
@@ -1116,18 +1115,16 @@ EXPLAIN (verbose, costs off) UPDATE rw_view1 SET b = b + 1 RETURNING *;
 -------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    Output: base_tbl.a, base_tbl.b
-   ->  Result
-         Output: base_tbl.a, base_tbl.b
-         ->  Update
-               Output: base_tbl.a, base_tbl.b, (DMLAction), base_tbl.ctid
-               ->  Split
-                     Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id, DMLAction
-                     ->  Result
-                           Output: base_tbl.a, base_tbl.b, (base_tbl.b + 1), base_tbl.ctid, base_tbl.gp_segment_id
-                           ->  Seq Scan on public.base_tbl
-                                 Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id
+   ->  Update
+         Output: base_tbl.a, base_tbl.b, (DMLAction), base_tbl.ctid
+         ->  Split
+               Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id, DMLAction
+               ->  Result
+                     Output: base_tbl.a, base_tbl.b, (base_tbl.b + 1), base_tbl.ctid, base_tbl.gp_segment_id
+                     ->  Seq Scan on public.base_tbl
+                           Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(14 rows)
+(12 rows)
 
 UPDATE rw_view1 SET b = b + 1 RETURNING *;
  a | b  
