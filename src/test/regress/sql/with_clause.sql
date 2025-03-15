@@ -477,6 +477,15 @@ with cte as (
 cte2 as (
     select * from cte)
 select * from cte2 a join cte2 b using (i);
+explain (costs off)
+with recursive cte as (
+    select 1 as i from with_dml where with_dml.j = 2
+    union all
+    select cte2.i from cte join cte2 using(i)),
+cte2 as (
+    insert into with_dml_repl select i, i * 100 from generate_series(1,5) i
+    returning *
+) select * from cte;
 drop table with_dml_repl;
 
 -- Greenplum fails to execute SELECT INTO and CREATE TABLE AS statements, whose
