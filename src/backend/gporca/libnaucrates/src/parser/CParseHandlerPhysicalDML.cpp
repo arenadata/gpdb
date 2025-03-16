@@ -145,19 +145,19 @@ CParseHandlerPhysicalDML::StartElement(const XMLCh *const,	// element_uri,
 			m_parse_handler_mgr, this);
 	m_parse_handler_mgr->ActivateParseHandler(table_descr_parse_handler);
 
-	// parse handler for the returning proj list
-	CParseHandlerBase *proj_list_output_parse_handler =
-		CParseHandlerFactory::GetParseHandler(
-			m_mp, CDXLTokens::XmlstrToken(EdxltokenScalarProjList),
-			m_parse_handler_mgr, this);
-	m_parse_handler_mgr->ActivateParseHandler(proj_list_output_parse_handler);
-
 	// parse handler for the proj list
 	CParseHandlerBase *proj_list_parse_handler =
 		CParseHandlerFactory::GetParseHandler(
 			m_mp, CDXLTokens::XmlstrToken(EdxltokenScalarProjList),
 			m_parse_handler_mgr, this);
 	m_parse_handler_mgr->ActivateParseHandler(proj_list_parse_handler);
+
+	// parse handler for the returning proj list
+	CParseHandlerBase *proj_list_output_parse_handler =
+		CParseHandlerFactory::GetParseHandler(
+			m_mp, CDXLTokens::XmlstrToken(EdxltokenScalarProjList),
+			m_parse_handler_mgr, this);
+	m_parse_handler_mgr->ActivateParseHandler(proj_list_output_parse_handler);
 
 	//parse handler for the direct dispatch info
 	CParseHandlerBase *direct_dispatch_parse_handler =

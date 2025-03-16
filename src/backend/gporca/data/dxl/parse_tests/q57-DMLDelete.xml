@@ -6,6 +6,7 @@
         <dxl:Cost StartupCost="0" TotalCost="100.000000" Rows="1" Width="1"/>
       </dxl:Properties>
       <dxl:DirectDispatchInfo/>
+      <dxl:ProjList/>
       <dxl:ProjList>
         <dxl:ProjElem ColId="3" Alias="ctid">
           <dxl:Ident ColId="3" ColName="ctid" TypeMdid="0.27.1.0"/>
@@ -14,7 +15,6 @@
           <dxl:Ident ColId="9" ColName="gp_segment_id" TypeMdid="0.23.1.0"/>
         </dxl:ProjElem>
       </dxl:ProjList>
-      <dxl:ProjList/>
       <dxl:TableDescriptor Mdid="6.899686.1.1" TableName="t">
         <dxl:Columns>
           <dxl:Column ColId="12" Attno="1" ColName="t1" TypeMdid="0.23.1.0"/>
