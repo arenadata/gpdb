@@ -300,14 +300,6 @@ explain with cte as (
                         </dxl:Properties>
                         <dxl:DirectDispatchInfo />
                         <dxl:ProjList>
-                            <dxl:ProjElem ColId="22" Alias="i">
-                                <dxl:Ident ColId="22" ColName="i" TypeMdid="0.23.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="23" Alias="j">
-                                <dxl:Ident ColId="23" ColName="j" TypeMdid="0.23.1.0" />
-                            </dxl:ProjElem>
-                        </dxl:ProjList>
-                        <dxl:ProjList>
                             <dxl:ProjElem ColId="31" Alias="i">
                                 <dxl:Ident ColId="31" ColName="i" TypeMdid="0.23.1.0" />
                             </dxl:ProjElem>
@@ -334,6 +326,14 @@ explain with cte as (
                             </dxl:ProjElem>
                             <dxl:ProjElem ColId="39" Alias="gp_segment_id">
                                 <dxl:Ident ColId="39" ColName="gp_segment_id" TypeMdid="0.23.1.0" />
+                            </dxl:ProjElem>
+                        </dxl:ProjList>
+                        <dxl:ProjList>
+                            <dxl:ProjElem ColId="22" Alias="i">
+                                <dxl:Ident ColId="22" ColName="i" TypeMdid="0.23.1.0" />
+                            </dxl:ProjElem>
+                            <dxl:ProjElem ColId="23" Alias="j">
+                                <dxl:Ident ColId="23" ColName="j" TypeMdid="0.23.1.0" />
                             </dxl:ProjElem>
                         </dxl:ProjList>
                         <dxl:TableDescriptor Mdid="6.16399.1.0" TableName="with_dml_dr">

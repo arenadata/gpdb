@@ -209,6 +209,7 @@ insert into constraints_tab values (NULL, -1);
           <dxl:Cost StartupCost="0" TotalCost="0.020883" Rows="1.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="1" Alias="notnullcol">
             <dxl:Ident ColId="1" ColName="notnullcol" TypeMdid="0.25.1.0"/>
@@ -217,7 +218,6 @@ insert into constraints_tab values (NULL, -1);
             <dxl:Ident ColId="2" ColName="positivecol" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.16424.1.0" TableName="constraints_tab">
           <dxl:Columns>
             <dxl:Column ColId="3" Attno="1" ColName="notnullcol" TypeMdid="0.25.1.0" ColWidth="8"/>

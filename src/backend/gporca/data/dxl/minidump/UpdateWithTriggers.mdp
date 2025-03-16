@@ -220,7 +220,17 @@
             <dxl:Ident ColId="2" ColName="t3" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
+        <dxl:ProjList>
+          <dxl:ProjElem ColId="0" Alias="t1">
+            <dxl:Ident ColId="0" ColName="t1" TypeMdid="0.23.1.0"/>
+          </dxl:ProjElem>
+          <dxl:ProjElem ColId="1" Alias="t2">
+            <dxl:Ident ColId="1" ColName="t2" TypeMdid="0.23.1.0"/>
+          </dxl:ProjElem>
+          <dxl:ProjElem ColId="2" Alias="t3">
+            <dxl:Ident ColId="2" ColName="t3" TypeMdid="0.23.1.0"/>
+          </dxl:ProjElem>
+        </dxl:ProjList>
         <dxl:TableDescriptor Mdid="6.187777.1.1" TableName="t_trig">
           <dxl:Columns>
             <dxl:Column ColId="11" Attno="1" ColName="t1" TypeMdid="0.23.1.0"/>

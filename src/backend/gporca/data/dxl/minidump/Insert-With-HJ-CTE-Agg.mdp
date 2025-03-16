@@ -508,6 +508,7 @@
           <dxl:Cost StartupCost="0" TotalCost="867.122533" Rows="96.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="38" Alias="?column?">
             <dxl:Ident ColId="38" ColName="?column?" TypeMdid="0.25.1.0"/>
@@ -525,7 +526,6 @@
             <dxl:Ident ColId="44" ColName="gnp" TypeMdid="0.701.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.57387.1.0" TableName="countries_results">
           <dxl:Columns>
             <dxl:Column ColId="45" Attno="1" ColName="country_code" TypeMdid="0.25.1.0" ColWidth="8"/>

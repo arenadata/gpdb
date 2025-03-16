@@ -219,6 +219,7 @@
             <dxl:Datum TypeMdid="0.23.1.0" Value="0"/>
           </dxl:KeyValue>
         </dxl:DirectDispatchInfo>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="1" Alias="i">
             <dxl:Ident ColId="1" ColName="i" TypeMdid="0.23.1.0"/>
@@ -227,7 +228,6 @@
             <dxl:Ident ColId="2" ColName="j" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.16438.1.0" TableName="test">
           <dxl:Columns>
             <dxl:Column ColId="3" Attno="1" ColName="i" TypeMdid="0.23.1.0" ColWidth="4"/>

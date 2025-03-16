@@ -344,6 +344,7 @@ WHERE  sach_vsnr = 465132477;
             <dxl:Datum TypeMdid="0.23.1.0" Value="465132477"/>
           </dxl:KeyValue>
         </dxl:DirectDispatchInfo>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="0" Alias="ag">
             <dxl:Ident ColId="0" ColName="ag" TypeMdid="0.21.1.0"/>
@@ -355,7 +356,6 @@ WHERE  sach_vsnr = 465132477;
             <dxl:Ident ColId="10" ColName="idx_lfd_053" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.42167058.1.1" TableName="test_row_number_step2">
           <dxl:Columns>
             <dxl:Column ColId="12" Attno="2" ColName="sach_vsnr" TypeMdid="0.23.1.0"/>

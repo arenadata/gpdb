@@ -333,6 +333,7 @@
           <dxl:Cost StartupCost="0" TotalCost="862.690272" Rows="8.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="0" Alias="c">
             <dxl:Ident ColId="0" ColName="c" TypeMdid="0.23.1.0"/>
@@ -341,7 +342,6 @@
             <dxl:Ident ColId="1" ColName="d" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.17147.1.1" TableName="t">
           <dxl:Columns>
             <dxl:Column ColId="19" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>

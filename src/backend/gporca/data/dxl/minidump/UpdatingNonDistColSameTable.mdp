@@ -237,6 +237,7 @@
           <dxl:Cost StartupCost="0" TotalCost="431.072958" Rows="1.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="0" Alias="v_date_old">
             <dxl:Ident ColId="0" ColName="v_date_old" TypeMdid="0.1114.1.0"/>
@@ -248,7 +249,6 @@
             <dxl:Ident ColId="2" ColName="s_varchar_old" TypeMdid="0.1043.1.0" TypeModifier="14"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.49159.1.0" TableName="test">
           <dxl:Columns>
             <dxl:Column ColId="12" Attno="3" ColName="s_varchar_old" TypeMdid="0.1043.1.0" TypeModifier="14" ColWidth="6"/>
