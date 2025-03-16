@@ -194,12 +194,12 @@ INSERT INTO t VALUES (11),(12),(13);
           <dxl:Cost StartupCost="0" TotalCost="0.031272" Rows="3.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="0" Alias="column1">
             <dxl:Ident ColId="0" ColName="column1" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.6861048.1.1" TableName="lubo">
           <dxl:Columns>
             <dxl:Column ColId="3" Attno="1" ColName="i" TypeMdid="0.23.1.0"/>

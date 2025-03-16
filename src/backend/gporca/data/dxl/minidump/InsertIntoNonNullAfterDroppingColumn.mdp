@@ -190,12 +190,12 @@ EXPLAIN INSERT INTO ColumnMapping VALUES (NULL);
           <dxl:Datum TypeMdid="0.23.1.0" IsNull="true"/>
         </dxl:KeyValue>
       </dxl:DirectDispatchInfo>
+      <dxl:ProjList/>
       <dxl:ProjList>
         <dxl:ProjElem ColId="1" Alias="id">
           <dxl:Ident ColId="1" ColName="id" TypeMdid="0.23.1.0"/>
         </dxl:ProjElem>
       </dxl:ProjList>
-      <dxl:ProjList/>
       <dxl:TableDescriptor Mdid="6.616755.1.1" TableName="columnmapping">
         <dxl:Columns>
           <dxl:Column ColId="2" Attno="2" ColName="id" TypeMdid="0.23.1.0"/>

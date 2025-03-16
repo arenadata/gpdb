@@ -364,6 +364,7 @@
           <dxl:Cost StartupCost="0" TotalCost="862.062827" Rows="1.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="1" Alias="ttype">
             <dxl:Ident ColId="1" ColName="ttype" TypeMdid="0.1042.1.0"/>
@@ -378,7 +379,6 @@
             <dxl:Ident ColId="13" ColName="value" TypeMdid="0.701.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.254053.1.1" TableName="shipped" ExecuteAsUser="10">
           <dxl:Columns>
             <dxl:Column ColId="14" Attno="1" ColName="ttype" TypeMdid="0.1042.1.0" ColWidth="2"/>

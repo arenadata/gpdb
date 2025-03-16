@@ -180,6 +180,7 @@
           <dxl:Cost StartupCost="0" TotalCost="31.262000" Rows="3000.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="0" Alias="generate_series">
             <dxl:Ident ColId="0" ColName="generate_series" TypeMdid="0.23.1.0"/>
@@ -188,7 +189,6 @@
             <dxl:Ident ColId="0" ColName="generate_series" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.16421.1.0" TableName="r1">
           <dxl:Columns>
             <dxl:Column ColId="3" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0" ColWidth="6"/>

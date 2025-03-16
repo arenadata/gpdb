@@ -271,12 +271,12 @@
           <dxl:Cost StartupCost="0" TotalCost="431.031499" Rows="3.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="8" Alias="sum">
             <dxl:Ident ColId="8" ColName="sum" TypeMdid="0.700.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.16409.1.0" TableName="snackbox">
           <dxl:Columns>
             <dxl:Column ColId="10" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0" ColWidth="6"/>

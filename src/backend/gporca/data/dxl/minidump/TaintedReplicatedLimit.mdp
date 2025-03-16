@@ -259,12 +259,12 @@
           <dxl:Cost StartupCost="0" TotalCost="431.031503" Rows="3.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="0" Alias="c">
             <dxl:Ident ColId="0" ColName="c" TypeMdid="0.23.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.16402.1.0" TableName="snackbox">
           <dxl:Columns>
             <dxl:Column ColId="9" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0" ColWidth="6"/>

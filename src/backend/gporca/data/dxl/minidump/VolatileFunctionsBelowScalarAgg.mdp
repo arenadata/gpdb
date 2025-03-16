@@ -254,12 +254,12 @@
           <dxl:Cost StartupCost="0" TotalCost="0.015659" Rows="1.000000" Width="1"/>
         </dxl:Properties>
         <dxl:DirectDispatchInfo/>
+        <dxl:ProjList/>
         <dxl:ProjList>
           <dxl:ProjElem ColId="3" Alias="f1">
             <dxl:Ident ColId="3" ColName="f1" TypeMdid="0.25.1.0"/>
           </dxl:ProjElem>
         </dxl:ProjList>
-        <dxl:ProjList/>
         <dxl:TableDescriptor Mdid="6.16385.1.0" TableName="src">
           <dxl:Columns>
             <dxl:Column ColId="4" Attno="1" ColName="f1" TypeMdid="0.25.1.0" ColWidth="18"/>
