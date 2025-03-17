@@ -79,10 +79,6 @@ step wxext1	{ UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = 
 step tocds1	{ UPDATE accounts SET accountid = 'cds' WHERE accountid = 'checking'; }
 step tocdsext1 { UPDATE accounts_ext SET accountid = 'cds' WHERE accountid = 'checking'; }
 
-step "wxext1"	{ UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = 'checking' RETURNING balance; }
-step "tocds1"	{ UPDATE accounts SET accountid = 'cds' WHERE accountid = 'checking'; }
-step "tocdsext1" { UPDATE accounts_ext SET accountid = 'cds' WHERE accountid = 'checking'; }
-
 # d1 then wx1 checks that update can deal with the updated row vanishing
 # wx2 then d1 checks that the delete affects the updated row
 # wx2, wx2 then d1 checks that the delete checks the quals correctly (balance too high)
@@ -342,15 +338,6 @@ permutation wx1 wx1 wxext1 wxext1 wnested2 c1 c2 read
 permutation wx1 wxext1 wxext1 wnested2 c1 c2 read
 permutation wx1 tocds1 wnested2 c1 c2 read
 permutation wx1 tocdsext1 wnested2 c1 c2 read
-
-# Check that nested EPQ works correctly
-permutation "wnested2" "c1" "c2" "read"
-permutation "wx1" "wxext1" "wnested2" "c1" "c2" "read"
-permutation "wx1" "wx1" "wxext1" "wnested2" "c1" "c2" "read"
-permutation "wx1" "wx1" "wxext1" "wxext1" "wnested2" "c1" "c2" "read"
-permutation "wx1" "wxext1" "wxext1" "wnested2" "c1" "c2" "read"
-permutation "wx1" "tocds1" "wnested2" "c1" "c2" "read"
-permutation "wx1" "tocdsext1" "wnested2" "c1" "c2" "read"
 
 # test that an update to a self-modified row is ignored when
 # previously updated by the same cid
