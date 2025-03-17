@@ -16,11 +16,7 @@ CREATE SCHEMA test_ns_schema_1
        CREATE TABLE abc (
               a serial,
               b int UNIQUE
-<<<<<<< HEAD
        ) DISTRIBUTED BY (b);
-=======
-       );
->>>>>>> REL_12_17
 -- verify that the correct search_path restored on abort
 SET search_path to public;
 BEGIN;
