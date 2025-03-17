@@ -1012,6 +1012,7 @@ register_dirty_segment(SMgrRelation reln, ForkNumber forknum, MdfdVec *seg)
 {
 	FileTag		tag;
 
+	Assert(reln->smgr_which == SMGR_MD);
 	INIT_MD_FILETAG(tag, reln->smgr_rnode.node, forknum, seg->mdfd_segno);
 
 	/* Temp relations should never be fsync'd */
