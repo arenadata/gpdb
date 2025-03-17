@@ -2341,7 +2341,7 @@ PG_FUNCTION_INFO_V1(gp_get_int_tuples);
 Datum
 gp_get_int_tuples(PG_FUNCTION_ARGS)
 {
-	typedef struct Context 
+	typedef struct Context
 	{
 		int index;
 		int max_index;
@@ -2393,14 +2393,14 @@ gp_get_int_tuples(PG_FUNCTION_ARGS)
 	fctx = SRF_PERCALL_SETUP();
 	context = (Context *) fctx->user_fctx;
 
-	if (context->index < context->max_index) 
+	if (context->index < context->max_index)
 	{
 		Datum values[2];
 		bool nulls[2];
 		HeapTuple tuple;
 		Datum result;
 
-		if (context->index == 3) 
+		if (context->index == 3)
 		{
 			/* Simulate query cancellation */
 			SIMPLE_FAULT_INJECTOR("check_SRF_cancel");

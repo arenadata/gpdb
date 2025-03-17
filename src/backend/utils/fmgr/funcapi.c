@@ -174,7 +174,7 @@ end_MultiFuncCall(PG_FUNCTION_ARGS, FuncCallContext *funcctx)
 	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 
 	/* Deregister the shutdown callback */
-	if (rsi->econtext != NULL) 
+	if (rsi->econtext != NULL)
 	{
 		UnregisterExprContextCallback(rsi->econtext,
 									shutdown_MultiFuncCall,

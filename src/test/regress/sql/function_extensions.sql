@@ -370,7 +370,7 @@ create table srf_test_t1(a oid) DISTRIBUTED BY (a);
 
 insert into srf_test_t1 values ('ao1_srf_test'::regclass::oid), ('ao2_srf_test'::regclass::oid);
 
-select * from srf_test_t1 where a in 
+select * from srf_test_t1 where a in
        (select (gp_toolkit.__gp_aovisimap(srf_test_t1.a)).row_num
         from gp_dist_random('gp_id') limit 1);
 

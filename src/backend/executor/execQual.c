@@ -2438,20 +2438,20 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			FuncExprState *fcache = (FuncExprState *) funcexpr;
 			fcache->isSquelchSupported = rsinfo.returnMode & SFRM_Squelch;
 
-			ereport(DEBUG3, (errmsg("SFRM_Squelch after FunctionCallInvoke: %d",
-				fcache->isSquelchSupported)));
-
 			/* Reset SFRM_Squelch bit */
 			rsinfo.returnMode &= ~SFRM_Squelch;
 
 			/* Register cleanup callback if we didn't already */
 			if (fcache->isSquelchSupported && !fcache->shutdown_reg)
 			{
+				ereport(DEBUG3, (errmsg("SFRM_Squelch after FunctionCallInvoke: %d",
+					fcache->isSquelchSupported)));
+	
 				RegisterExprContextCallback(econtext,
 											ShutdownFuncExpr,
 										PointerGetDatum(fcache));
 				fcache->shutdown_reg = true;
-			}			
+			}
 
 			pgstat_end_function_usage(&fcusage,
 									  rsinfo.isDone != ExprMultipleResult);
