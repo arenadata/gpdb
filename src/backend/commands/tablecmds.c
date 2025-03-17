@@ -15919,8 +15919,6 @@ index_copy_data(Relation rel, RelFileNode newrnode)
 	SMgrImpl smgr_which = RelationIsAppendOptimized(rel) ? SMGR_AO : SMGR_MD;
 
 	dstrel = smgropen(newrnode, rel->rd_backend, smgr_which);
-					  
-	RelationOpenSmgr(rel);
 
 	/*
 	 * Since we copy the file directly without looking at the shared buffers,
