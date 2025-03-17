@@ -472,11 +472,8 @@ create table hp3 partition of hp for values with (modulus 4, remainder 3);
 prepare hp_q1 (text) as
 select * from hp where a is null and b = $1;
 
-set plan_cache_mode = force_generic_plan;
-
 explain (costs off) execute hp_q1('xxx');
 
-reset plan_cache_mode;
 deallocate hp_q1;
 
 drop table hp;
@@ -1271,3 +1268,5 @@ explain (costs off) select * from hp_contradict_test where a === 1 and b === 1 a
 drop table hp_contradict_test;
 drop operator class part_test_int4_ops2 using hash;
 drop operator ===(int4, int4);
+
+reset plan_cache_mode;

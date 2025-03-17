@@ -1231,7 +1231,6 @@ explain (costs off) select * from boolpart where not a = false;
 (4 rows)
 
 explain (costs off) select * from boolpart where a is true or a is not true;
-<<<<<<< HEAD
                        QUERY PLAN                       
 --------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -1240,46 +1239,30 @@ explain (costs off) select * from boolpart where a is true or a is not true;
                Filter: ((a IS TRUE) OR (a IS NOT TRUE))
          ->  Seq Scan on boolpart_t
                Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+         ->  Seq Scan on boolpart_default
+               Filter: ((a IS TRUE) OR (a IS NOT TRUE))
  Optimizer: Postgres query optimizer
-(7 rows)
+(9 rows)
 
 explain (costs off) select * from boolpart where a is not true;
                 QUERY PLAN                
 ------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
-   ->  Seq Scan on boolpart_f
-         Filter: (a IS NOT TRUE)
+   ->  Append
+         ->  Seq Scan on boolpart_f
+               Filter: (a IS NOT TRUE)
+         ->  Seq Scan on boolpart_default
+               Filter: (a IS NOT TRUE)
  Optimizer: Postgres query optimizer
-(4 rows)
-=======
-                    QUERY PLAN                    
---------------------------------------------------
- Append
-   ->  Seq Scan on boolpart_f
-         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-   ->  Seq Scan on boolpart_t
-         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-   ->  Seq Scan on boolpart_default
-         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
 (7 rows)
-
-explain (costs off) select * from boolpart where a is not true;
-             QUERY PLAN             
-------------------------------------
- Append
-   ->  Seq Scan on boolpart_f
-         Filter: (a IS NOT TRUE)
-   ->  Seq Scan on boolpart_default
-         Filter: (a IS NOT TRUE)
-(5 rows)
->>>>>>> REL_12_17
 
 explain (costs off) select * from boolpart where a is not true and a is not false;
                     QUERY PLAN                    
 --------------------------------------------------
- Seq Scan on boolpart_default
-   Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
-(2 rows)
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on boolpart_default
+         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+(4 rows)
 
 explain (costs off) select * from boolpart where a is unknown;
                 QUERY PLAN                
@@ -1370,90 +1353,98 @@ create table iboolpart_f partition of iboolpart for values in ('true');
 create table iboolpart_t partition of iboolpart for values in ('false');
 insert into iboolpart values (true), (false), (null);
 explain (costs off) select * from iboolpart where a in (true, false);
-                   QUERY PLAN                   
-------------------------------------------------
- Append
-   ->  Seq Scan on iboolpart_t
-         Filter: (a = ANY ('{t,f}'::boolean[]))
-   ->  Seq Scan on iboolpart_f
-         Filter: (a = ANY ('{t,f}'::boolean[]))
-   ->  Seq Scan on iboolpart_default
-         Filter: (a = ANY ('{t,f}'::boolean[]))
-(7 rows)
+                      QUERY PLAN                      
+------------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Append
+         ->  Seq Scan on iboolpart_t
+               Filter: (a = ANY ('{t,f}'::boolean[]))
+         ->  Seq Scan on iboolpart_f
+               Filter: (a = ANY ('{t,f}'::boolean[]))
+         ->  Seq Scan on iboolpart_default
+               Filter: (a = ANY ('{t,f}'::boolean[]))
+(9 rows)
 
 explain (costs off) select * from iboolpart where a = false;
-       QUERY PLAN        
--------------------------
- Seq Scan on iboolpart_f
-   Filter: (NOT a)
-(2 rows)
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on iboolpart_f
+         Filter: (NOT a)
+(4 rows)
 
 explain (costs off) select * from iboolpart where not a = false;
-       QUERY PLAN        
--------------------------
- Seq Scan on iboolpart_t
-   Filter: a
-(2 rows)
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on iboolpart_t
+         Filter: a
+(4 rows)
 
 explain (costs off) select * from iboolpart where a is true or a is not true;
-                    QUERY PLAN                    
---------------------------------------------------
- Append
-   ->  Seq Scan on iboolpart_t
-         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-   ->  Seq Scan on iboolpart_f
-         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-   ->  Seq Scan on iboolpart_default
-         Filter: ((a IS TRUE) OR (a IS NOT TRUE))
-(7 rows)
-
-explain (costs off) select * from iboolpart where a is not true;
-             QUERY PLAN              
--------------------------------------
- Append
-   ->  Seq Scan on iboolpart_t
-         Filter: (a IS NOT TRUE)
-   ->  Seq Scan on iboolpart_f
-         Filter: (a IS NOT TRUE)
-   ->  Seq Scan on iboolpart_default
-         Filter: (a IS NOT TRUE)
-(7 rows)
-
-explain (costs off) select * from iboolpart where a is not true and a is not false;
                        QUERY PLAN                       
 --------------------------------------------------------
- Append
-   ->  Seq Scan on iboolpart_t
-         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
-   ->  Seq Scan on iboolpart_f
-         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
-   ->  Seq Scan on iboolpart_default
-         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
-(7 rows)
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on iboolpart_t
+               Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+         ->  Seq Scan on iboolpart_f
+               Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+         ->  Seq Scan on iboolpart_default
+               Filter: ((a IS TRUE) OR (a IS NOT TRUE))
+(9 rows)
+
+explain (costs off) select * from iboolpart where a is not true;
+                QUERY PLAN                 
+-------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on iboolpart_t
+               Filter: (a IS NOT TRUE)
+         ->  Seq Scan on iboolpart_f
+               Filter: (a IS NOT TRUE)
+         ->  Seq Scan on iboolpart_default
+               Filter: (a IS NOT TRUE)
+(9 rows)
+
+explain (costs off) select * from iboolpart where a is not true and a is not false;
+                          QUERY PLAN                          
+--------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on iboolpart_t
+               Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+         ->  Seq Scan on iboolpart_f
+               Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+         ->  Seq Scan on iboolpart_default
+               Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+(9 rows)
 
 explain (costs off) select * from iboolpart where a is unknown;
-             QUERY PLAN              
--------------------------------------
- Append
-   ->  Seq Scan on iboolpart_t
-         Filter: (a IS UNKNOWN)
-   ->  Seq Scan on iboolpart_f
-         Filter: (a IS UNKNOWN)
-   ->  Seq Scan on iboolpart_default
-         Filter: (a IS UNKNOWN)
-(7 rows)
+                QUERY PLAN                 
+-------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on iboolpart_t
+               Filter: (a IS UNKNOWN)
+         ->  Seq Scan on iboolpart_f
+               Filter: (a IS UNKNOWN)
+         ->  Seq Scan on iboolpart_default
+               Filter: (a IS UNKNOWN)
+(9 rows)
 
 explain (costs off) select * from iboolpart where a is not unknown;
-             QUERY PLAN              
--------------------------------------
- Append
-   ->  Seq Scan on iboolpart_t
-         Filter: (a IS NOT UNKNOWN)
-   ->  Seq Scan on iboolpart_f
-         Filter: (a IS NOT UNKNOWN)
-   ->  Seq Scan on iboolpart_default
-         Filter: (a IS NOT UNKNOWN)
-(7 rows)
+                QUERY PLAN                 
+-------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on iboolpart_t
+               Filter: (a IS NOT UNKNOWN)
+         ->  Seq Scan on iboolpart_f
+               Filter: (a IS NOT UNKNOWN)
+         ->  Seq Scan on iboolpart_default
+               Filter: (a IS NOT UNKNOWN)
+(9 rows)
 
 select * from iboolpart where a in (true, false);
  a 
@@ -2350,17 +2341,16 @@ create table hp3 partition of hp for values with (modulus 4, remainder 3);
 -- Ensure we correctly prune unneeded partitions when there is an IS NULL qual
 prepare hp_q1 (text) as
 select * from hp where a is null and b = $1;
-set plan_cache_mode = force_generic_plan;
 explain (costs off) execute hp_q1('xxx');
-                 QUERY PLAN                 
---------------------------------------------
- Append
-   Subplans Removed: 3
-   ->  Seq Scan on hp2
-         Filter: ((a IS NULL) AND (b = $1))
-(4 rows)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Append
+         Subplans Removed: 3
+         ->  Seq Scan on hp2
+               Filter: ((a IS NULL) AND (b = $1))
+(6 rows)
 
-reset plan_cache_mode;
 deallocate hp_q1;
 drop table hp;
 -- Test a backwards Append scan
@@ -4493,22 +4483,6 @@ explain (costs off) select * from rp_prefix_test3 where a >= 1 and b >= 1 and b 
  Optimizer: Postgres query optimizer
 (4 rows)
 
-<<<<<<< HEAD
-create table hp_prefix_test (a int, b int, c int, d int) partition by hash (a part_test_int4_ops, b part_test_int4_ops, c part_test_int4_ops, d part_test_int4_ops);
-create table hp_prefix_test_p1 partition of hp_prefix_test for values with (modulus 2, remainder 0);
-create table hp_prefix_test_p2 partition of hp_prefix_test for values with (modulus 2, remainder 1);
--- Test that get_steps_using_prefix() handles non-NULL step_nullkeys
-explain (costs off) select * from hp_prefix_test where a = 1 and b is null and c = 1 and d = 1;
-                            QUERY PLAN                             
--------------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   ->  Seq Scan on hp_prefix_test_p1
-         Filter: ((b IS NULL) AND (a = 1) AND (c = 1) AND (d = 1))
- Optimizer: Postgres query optimizer
-(4 rows)
-
-=======
->>>>>>> REL_12_17
 drop table rp_prefix_test1;
 drop table rp_prefix_test2;
 drop table rp_prefix_test3;
@@ -4583,68 +4557,100 @@ order by g.s;
 
 \gexec
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d is null
- Seq Scan on hp_prefix_test_p0
-   Filter: ((a IS NULL) AND (b IS NULL) AND (c IS NULL) AND (d IS NULL))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p0
+         Filter: ((a IS NULL) AND (b IS NULL) AND (c IS NULL) AND (d IS NULL))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d is null
- Seq Scan on hp_prefix_test_p1
-   Filter: ((b IS NULL) AND (c IS NULL) AND (d IS NULL) AND (a = 1))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p1
+         Filter: ((b IS NULL) AND (c IS NULL) AND (d IS NULL) AND (a = 1))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d is null
- Seq Scan on hp_prefix_test_p2
-   Filter: ((a IS NULL) AND (c IS NULL) AND (d IS NULL) AND (b = 2))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p2
+         Filter: ((a IS NULL) AND (c IS NULL) AND (d IS NULL) AND (b = 2))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d is null
- Seq Scan on hp_prefix_test_p4
-   Filter: ((c IS NULL) AND (d IS NULL) AND (a = 1) AND (b = 2))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p4
+         Filter: ((c IS NULL) AND (d IS NULL) AND (a = 1) AND (b = 2))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d is null
- Seq Scan on hp_prefix_test_p3
-   Filter: ((a IS NULL) AND (b IS NULL) AND (d IS NULL) AND (c = 3))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p3
+         Filter: ((a IS NULL) AND (b IS NULL) AND (d IS NULL) AND (c = 3))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d is null
- Seq Scan on hp_prefix_test_p7
-   Filter: ((b IS NULL) AND (d IS NULL) AND (a = 1) AND (c = 3))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p7
+         Filter: ((b IS NULL) AND (d IS NULL) AND (a = 1) AND (c = 3))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d is null
- Seq Scan on hp_prefix_test_p4
-   Filter: ((a IS NULL) AND (d IS NULL) AND (b = 2) AND (c = 3))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p4
+         Filter: ((a IS NULL) AND (d IS NULL) AND (b = 2) AND (c = 3))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d is null
- Seq Scan on hp_prefix_test_p5
-   Filter: ((d IS NULL) AND (a = 1) AND (b = 2) AND (c = 3))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p5
+         Filter: ((d IS NULL) AND (a = 1) AND (b = 2) AND (c = 3))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c is null and d = 4
- Seq Scan on hp_prefix_test_p4
-   Filter: ((a IS NULL) AND (b IS NULL) AND (c IS NULL) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p4
+         Filter: ((a IS NULL) AND (b IS NULL) AND (c IS NULL) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c is null and d = 4
- Seq Scan on hp_prefix_test_p6
-   Filter: ((b IS NULL) AND (c IS NULL) AND (a = 1) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p6
+         Filter: ((b IS NULL) AND (c IS NULL) AND (a = 1) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c is null and d = 4
- Seq Scan on hp_prefix_test_p5
-   Filter: ((a IS NULL) AND (c IS NULL) AND (b = 2) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p5
+         Filter: ((a IS NULL) AND (c IS NULL) AND (b = 2) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c is null and d = 4
- Seq Scan on hp_prefix_test_p6
-   Filter: ((c IS NULL) AND (a = 1) AND (b = 2) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p6
+         Filter: ((c IS NULL) AND (a = 1) AND (b = 2) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b is null and c = 3 and d = 4
- Seq Scan on hp_prefix_test_p4
-   Filter: ((a IS NULL) AND (b IS NULL) AND (c = 3) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p4
+         Filter: ((a IS NULL) AND (b IS NULL) AND (c = 3) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b is null and c = 3 and d = 4
- Seq Scan on hp_prefix_test_p5
-   Filter: ((b IS NULL) AND (a = 1) AND (c = 3) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p5
+         Filter: ((b IS NULL) AND (a = 1) AND (c = 3) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a is null and b = 2 and c = 3 and d = 4
- Seq Scan on hp_prefix_test_p6
-   Filter: ((a IS NULL) AND (b = 2) AND (c = 3) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p6
+         Filter: ((a IS NULL) AND (b = 2) AND (c = 3) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 explain (costs off) select tableoid::regclass,* from hp_prefix_test where a = 1 and b = 2 and c = 3 and d = 4
- Seq Scan on hp_prefix_test_p4
-   Filter: ((a = 1) AND (b = 2) AND (c = 3) AND (d = 4))
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on hp_prefix_test_p4
+         Filter: ((a = 1) AND (b = 2) AND (c = 3) AND (d = 4))
+ Optimizer: Postgres-based planner
 
 -- And ensure we get exactly 1 row from each. Again, all 16 possible combinations.
 select
@@ -4758,3 +4764,4 @@ explain (costs off) select * from hp_contradict_test where a === 1 and b === 1 a
 drop table hp_contradict_test;
 drop operator class part_test_int4_ops2 using hash;
 drop operator ===(int4, int4);
+reset plan_cache_mode;
