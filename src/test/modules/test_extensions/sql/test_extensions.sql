@@ -209,7 +209,6 @@ ALTER EXTENSION test_ext_cine UPDATE TO '1.1';
 
 \dx+ test_ext_cine
 
-<<<<<<< HEAD
 
 
 --
@@ -350,11 +349,10 @@ drop table ext8_table1;
 drop table ext8_temp_table1;
 -- Cleanup
 drop extension test_ext8;
-=======
+
 --
 -- Test @extschema@ syntax.
 --
 CREATE SCHEMA "has space";
 CREATE EXTENSION test_ext_extschema SCHEMA has$dollar;
 CREATE EXTENSION test_ext_extschema SCHEMA "has space";
->>>>>>> REL_12_17
