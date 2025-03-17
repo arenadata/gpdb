@@ -3476,9 +3476,8 @@ where b;
 
 -- Test PHV in a semijoin qual, which confused useless-RTE removal (bug #17700)
 explain (verbose, costs off)
-with ctetable as not materialized ( select 1 as f1 )
-select * from ctetable c1
-where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+select * from ( select 1 as f1 ) c1
+where f1 in ( select c3.f1 from ( select 1 as f1 ) c2 full join ( select 1 as f1 ) c3 on true );
          QUERY PLAN         
 ----------------------------
  Result
@@ -3486,9 +3485,8 @@ where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
    One-Time Filter: (1 = 1)
 (3 rows)
 
-with ctetable as not materialized ( select 1 as f1 )
-select * from ctetable c1
-where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+select * from ( select 1 as f1 ) c1
+where f1 in ( select c3.f1 from ( select 1 as f1 ) c2 full join ( select 1 as f1 ) c3 on true );
  f1 
 ----
   1
@@ -6630,23 +6628,33 @@ left join j2 on j1.id1 = j2.id1 where j1.id2 = 1;
  Settings: enable_nestloop=on, optimizer=off
 (17 rows)
 
-create unique index j1_id2_idx on j1(id2) where id2 is not null;
+-- GPDB: distributed by (id2) is needed to create a unique index later
+create table j1d (id1 int, id2 int, primary key(id1,id2)) distributed by (id2);
+create unique index j1_id2_idx on j1d(id2) where id2 is not null;
 -- ensure we don't use a partial unique index as unique proofs
 explain (verbose, costs off)
-select * from j1
-inner join j2 on j1.id2 = j2.id2;
-                QUERY PLAN                
-------------------------------------------
- Nested Loop
-   Output: j1.id1, j1.id2, j2.id1, j2.id2
-   Join Filter: (j1.id2 = j2.id2)
-   ->  Seq Scan on public.j2
-         Output: j2.id1, j2.id2
-   ->  Seq Scan on public.j1
-         Output: j1.id1, j1.id2
-(7 rows)
+select * from j2
+inner join j1d on j1d.id2 = j2.id2;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Output: j2.id1, j2.id2, j1d.id1, j1d.id2
+   ->  Nested Loop
+         Output: j2.id1, j2.id2, j1d.id1, j1d.id2
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Output: j2.id1, j2.id2
+               Hash Key: j2.id2
+               ->  Seq Scan on public.j2
+                     Output: j2.id1, j2.id2
+         ->  Index Scan using j1_id2_idx on public.j1d
+               Output: j1d.id1, j1d.id2
+               Index Cond: (j1d.id2 = j2.id2)
+ Optimizer: Postgres-based planner
+ Settings: enable_nestloop = 'on', optimizer = 'off'
+(14 rows)
 
 drop index j1_id2_idx;
+drop table j1d;
 -- validate logic in merge joins which skips mark and restore.
 -- it should only do this if all quals which were used to detect the unique
 -- are present as join quals, and not plain quals.

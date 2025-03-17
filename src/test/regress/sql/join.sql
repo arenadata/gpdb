@@ -1115,13 +1115,11 @@ where b;
 
 -- Test PHV in a semijoin qual, which confused useless-RTE removal (bug #17700)
 explain (verbose, costs off)
-with ctetable as not materialized ( select 1 as f1 )
-select * from ctetable c1
-where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+select * from ( select 1 as f1 ) c1
+where f1 in ( select c3.f1 from ( select 1 as f1 ) c2 full join ( select 1 as f1 ) c3 on true );
 
-with ctetable as not materialized ( select 1 as f1 )
-select * from ctetable c1
-where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+select * from ( select 1 as f1 ) c1
+where f1 in ( select c3.f1 from ( select 1 as f1 ) c2 full join ( select 1 as f1 ) c3 on true );
 
 --
 -- test extraction of restriction OR clauses from join OR clause
@@ -2208,14 +2206,18 @@ explain (verbose, costs off)
 select * from j1
 left join j2 on j1.id1 = j2.id1 where j1.id2 = 1;
 
-create unique index j1_id2_idx on j1(id2) where id2 is not null;
+-- GPDB: distributed by (id2) is needed to create a unique index later
+create table j1d (id1 int, id2 int, primary key(id1,id2)) distributed by (id2);
+
+create unique index j1_id2_idx on j1d(id2) where id2 is not null;
 
 -- ensure we don't use a partial unique index as unique proofs
 explain (verbose, costs off)
-select * from j1
-inner join j2 on j1.id2 = j2.id2;
+select * from j2
+inner join j1d on j1d.id2 = j2.id2;
 
 drop index j1_id2_idx;
+drop table j1d;
 
 -- validate logic in merge joins which skips mark and restore.
 -- it should only do this if all quals which were used to detect the unique
