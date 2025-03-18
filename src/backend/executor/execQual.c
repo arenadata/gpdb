@@ -2444,8 +2444,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			/* Register cleanup callback if we didn't already */
 			if (fcache->isSquelchSupported && !fcache->shutdown_reg)
 			{
-				ereport(DEBUG3, (errmsg("SFRM_Squelch after FunctionCallInvoke: %d",
-					fcache->isSquelchSupported)));
+				ereport(DEBUG3, (errmsg("SFRM_Squelch set after FunctionCallInvoke")));
 	
 				RegisterExprContextCallback(econtext,
 											ShutdownFuncExpr,
