@@ -186,7 +186,7 @@ class SingleMoveCommand(SQLCommand):
                     f"Could not perform mirror dbid={self.segment.dbid} "
                     f"move with content {self.segment.content} due to "
                     f"recoverseg error: {result['error']}\n"
-                    "Check the gprecoverseg l og file, fix any problems, and re-run"
+                    f"Check the gprecoverseg log file {log_file}, fix any problems, and re-run"
                 )
                 try:
                     StatusManager.update_record_status(

@@ -421,7 +421,7 @@ def main(options, args, parser):
                 'If you want to rebalance again, run gprebalance -c to perform cleanup')
         elif gprebalance_file_status is None and gprebalance_db_status is None:
             if options.rollback:
-                logger.error("Cannot perform rollback operation. Rebalance session status files are abscent.")
+                logger.error("Cannot perform rollback operation. Rebalance session status files are absent.")
                 sys.exit(1)
             gprebalance.statusManager.create_status_file()
             possibility_checks(gprebalance)
@@ -449,17 +449,19 @@ def main(options, args, parser):
                 logger.info('Previous rollback session was interrupted due to an error. Trying to resume...')
                 plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, True)
                 gprebalance.resume(plan)
+                sys.exit(0)
             elif gprebalance_file_status == 'EXECUTION_FAILED':
                 if not options.rollback:
                     logger.info('Previous rebalance session was interrupted due to an error. Trying to resume...')
                     gprebalance.resume(plan)
+                    sys.exit(0)
             elif gprebalance_file_status == 'EXECUTION_STOPPED':
                 if not options.rollback:
                     logger.info('Previous rebalance session was interrupted due to an timeout or user signal. Trying to resume...')
                     gprebalance.resume(plan)
-            else:
-                if options.rollback:
-                    gprebalance.rollback(plan)            
+                    sys.exit(0)
+            if options.rollback:
+                gprebalance.rollback(plan)            
         sys.exit(0)
     except Exception as e:
         if options and options.verbose:
