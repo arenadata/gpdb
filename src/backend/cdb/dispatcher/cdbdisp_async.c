@@ -694,13 +694,9 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 			{
 				dispatchResult = pParms->dispatchResultPtrArray[i];
 
-				/*
-				 * If we're cancelling the transaction due to an OOM, there
-				 * might not be enough memory to discard the result properly.
-				 * Try to free the async results first and pray.
-				 */
+				/* Free the results and reset async connection status. */
 				pqClearAsyncResult(dispatchResult->segdbDesc->conn);
-				cdbconn_discardResults(dispatchResult->segdbDesc, 20);
+				dispatchResult->segdbDesc->conn->asyncStatus = PGASYNC_READY;
 
 				dispatchResult->stillRunning = false;
 			}
