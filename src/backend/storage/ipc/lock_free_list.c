@@ -80,7 +80,22 @@ lock_free_list_delete(lock_free_list *ls, lock_free_list_cell *cell)
 
 	if (cell != NULL)
 	{
-		LFL_MARK_CELL(cell);
+		/*
+		 * We need to use CAS as the next node could be freed by the reader
+		 * process, if the next node was previously also marked as deleted,
+		 * while we are updating it here. We do not want to set back the freed
+		 * pointer here.
+		 */
+		bool update_completed = false;
+		dsa_pointer old_next = cell->next;
+		while (!update_completed)
+		{
+			dsa_pointer new_next = old_next | 0x1;
+			dsa_pointer_atomic *target = (dsa_pointer_atomic *) &(cell->next);
+			update_completed = dsa_pointer_atomic_compare_exchange(target,
+					&old_next,
+					new_next);
+		}
 
 		if (ls->count - 1 >= 0)
 		{
