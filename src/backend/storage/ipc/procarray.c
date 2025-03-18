@@ -5153,25 +5153,6 @@ GetSessionIdByPid(int pid)
 	return sessionId;
 }
 
-List *
-GetPendingDeletesLists()
-{
-	List *list = NIL;
-	ProcArrayStruct *arrayP = procArray;
-
-	LWLockAcquire(ProcArrayLock, LW_SHARED);
-	for (int i = 0; i < arrayP->numProcs; i++)
-	{
-		volatile PGPROC *proc = &allProcs[arrayP->pgprocnos[i]];
-		if (DsaPointerIsValid(proc->pendingDeletesList))
-		{
-			list = lappend(list, (void*)proc->pendingDeletesList);
-		}
-	}
-	LWLockRelease(ProcArrayLock);
-	return list;
-}
-
 /*
  * Set the destination group slot or group id in PGPROC, and send a signal to the proc.
  * slot is NULL on QE.

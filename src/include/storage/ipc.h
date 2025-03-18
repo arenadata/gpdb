@@ -19,6 +19,7 @@
 #define IPC_H
 
 #include "utils/dsa.h"
+#include "lock_free_list.h"
 
 typedef void (*pg_on_exit_callback) (int code, Datum arg);
 typedef void (*shmem_startup_hook_type) (void);
@@ -82,5 +83,14 @@ extern PGDLLIMPORT shmem_startup_hook_type shmem_startup_hook;
 extern void CreateSharedMemoryAndSemaphores(int port);
 
 dsa_area * PendingDeleteAttachDsa(void);
+
+/* Our shared memory area */
+typedef struct PendingDeleteShmemArrayStruct
+{
+	lock_free_list 	*lock_free_list_array;
+	char 			dsa_mem[FLEXIBLE_ARRAY_MEMBER];
+} PendingDeleteShmemArrayStruct;
+
+extern PendingDeleteShmemArrayStruct *PendingDeleteShmemArray;
 
 #endif							/* IPC_H */

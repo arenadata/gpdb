@@ -1,16 +1,5 @@
 #include "storage/lock_free_list.h"
-#include "storage/ipc.h"
-
-struct lock_free_list
-{
-	dsa_pointer head;
-};
-
-struct lock_free_list_cell
-{
-	void *value;
-	dsa_pointer next;
-};
+#include "miscadmin.h"
 
 #define LFL_MARK_CELL(cell)			(cell->next = (dsa_pointer)((uintptr_t)cell->next | 0x1))
 #define LFL_IS_CELL_MARKED(cell)	((uintptr_t)cell->next & 0x1)
@@ -22,47 +11,16 @@ lock_free_list_cell_get_next(lock_free_list_cell *cell)
 	return cell->next & mask;
 }
 
-dsa_pointer
-lock_free_list_create()
+void
+lock_free_list_init(lock_free_list *ls, dsa_allocator dsa_alloc, void *dsa_mem)
 {
-	dsa_area *area = PendingDeleteAttachDsa();
-	dsa_pointer ls_dsa = dsa_allocate(area, sizeof(lock_free_list));
-	Assert(DsaPointerIsValid(ls_dsa));
-	lock_free_list *ls = (lock_free_list *)dsa_get_address(area, ls_dsa);
+	Assert(ls);
 
 	ls->head = InvalidDsaPointer;
-	return ls_dsa;
-}
-
-lock_free_list *
-lock_free_list_get_local_list(dsa_pointer ls_dsa)
-{
-	Assert(DsaPointerIsValid(ls_dsa));
-
-	dsa_area *area = PendingDeleteAttachDsa();
-	return (lock_free_list *)dsa_get_address((dsa_area *) area, ls_dsa);
-}
-
-/* Maybe we do not need it at all. Nobody calls it for now. */
-void
-lock_free_list_destroy(dsa_pointer ls_dsa)
-{
-	dsa_area *area = PendingDeleteAttachDsa();
-
-	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
-
-	if (ls)
-	{
-		dsa_pointer c_dsa = ls->head;
-		while (DsaPointerIsValid(c_dsa))
-		{
-			dsa_pointer tmp_dsa = c_dsa;
-			lock_free_list_cell* c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
-			c_dsa = lock_free_list_cell_get_next(c);
-			dsa_free(area, tmp_dsa);
-		}
-	}
-	dsa_free(area, ls_dsa);
+	ls->dsa_alloc = dsa_alloc;
+	ls->dsa_mem = dsa_mem;
+	ls->count = 0;
+	ls->lf_procpid = MyProcPid;
 }
 
 /*
@@ -72,8 +30,9 @@ lock_free_list_cell *
 lock_free_list_push(lock_free_list *ls, void *value)
 {
 	Assert(ls);
+	Assert(ls->dsa_alloc);
 
-	dsa_area *area = PendingDeleteAttachDsa();
+	dsa_area *area = ls->dsa_alloc(ls->dsa_mem);
 
 	dsa_pointer new_cell_dsa = dsa_allocate(area, sizeof(lock_free_list_cell));
 	Assert(DsaPointerIsValid(new_cell_dsa));
@@ -83,6 +42,7 @@ lock_free_list_push(lock_free_list *ls, void *value)
 	new_cell->value = value;
 	new_cell->next = ls->head;
 	ls->head = new_cell_dsa;
+	ls->count++;
 
 	return new_cell;
 }
@@ -91,10 +51,19 @@ lock_free_list_push(lock_free_list *ls, void *value)
  * Allowed caller: writer.
  */
 void
-lock_free_list_delete(lock_free_list_cell *cell)
+lock_free_list_delete(lock_free_list *ls, lock_free_list_cell *cell)
 {
+	Assert(ls);
+
 	if (cell != NULL)
+	{
 		LFL_MARK_CELL(cell);
+
+		if (ls->count - 1 >= 0)
+		{
+			ls->count--;
+		}
+	}
 }
 
 /*
@@ -117,7 +86,7 @@ lock_free_list_first(lock_free_list *ls)
 	if (!DsaPointerIsValid(head_snapshot_dsa))
 		return NULL;
 
-	dsa_area *area = PendingDeleteAttachDsa();
+	dsa_area *area = ls->dsa_alloc(ls->dsa_mem);
 
 	lock_free_list_cell *head_snapshot = (lock_free_list_cell*)dsa_get_address(area, head_snapshot_dsa);
 
@@ -158,7 +127,7 @@ lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell)
 
 	lock_free_list_cell *c = current_cell;
 	dsa_pointer c_dsa = InvalidDsaPointer;
-	dsa_area *area = PendingDeleteAttachDsa();
+	dsa_area *area = ls->dsa_alloc(ls->dsa_mem);
 
 	do
 	{

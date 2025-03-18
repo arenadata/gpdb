@@ -154,7 +154,6 @@ extern void ProcArrayGetReplicationSlotXmin(TransactionId *xmin,
 											TransactionId *catalog_xmin);
 extern DistributedTransactionId LocalXidGetDistributedXid(TransactionId xid);
 extern int GetSessionIdByPid(int pid);
-extern List *GetPendingDeletesLists(void);
 extern bool ResGroupMoveSignalTarget(int sessionId, void *slot, Oid groupId,
 								bool isExecutor);
 extern void ResGroupMoveCheckTargetReady(int sessionId, bool *clean, bool *result);

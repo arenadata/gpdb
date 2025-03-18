@@ -13,6 +13,7 @@
 #include "cdb/cdbutil.h"
 #include "storage/proc.h"
 #include "storage/lock_free_list.h"
+#include "storage/ipc.h"
 
 
 dsa_pointer
@@ -87,26 +88,16 @@ DoListWithLocksPerfTest(int elements, int *batch_size)
 static Timestamp
 DoLflPerfTest(int elements, int *batch_size)
 {
-	dsa_pointer ls_dsa = InvalidDsaPointer;
+	lock_free_list *ls;
+
+	ls = &PendingDeleteShmemArray->lock_free_list_array[MyBackendId];
 
 	if (*batch_size < 1)
 		*batch_size = 1;
 
-	if (DsaPointerIsValid(MyProc->pendingDeletesList))
-	{
-		ls_dsa = MyProc->pendingDeletesList;
-	}
-	else
-	{
-		ls_dsa = lock_free_list_create();
-		MyProc->pendingDeletesList = ls_dsa;
-	}
-
 	lock_free_list_cell **c = (lock_free_list_cell**)palloc(sizeof(lock_free_list_cell *) * (*batch_size));
 
 	Timestamp start = GetCurrentTimestamp();
-
-	lock_free_list *ls = lock_free_list_get_local_list(ls_dsa);
 
 	int remaining_elements = elements;
 	bool del_direction = true;
@@ -124,14 +115,14 @@ DoLflPerfTest(int elements, int *batch_size)
 		{
 			for (int i = 0; i < batch_remaining_elements; i++)
 			{
-				lock_free_list_delete(c[i]);
+				lock_free_list_delete(ls, c[i]);
 			}
 		}
 		else
 		{
 			for (int i = batch_remaining_elements - 1; i >= 0; i--)
 			{
-				lock_free_list_delete(c[i]);
+				lock_free_list_delete(ls, c[i]);
 			}
 		}
 		del_direction = !del_direction;

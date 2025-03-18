@@ -1,25 +1,30 @@
 #ifndef LOCK_FREE_LIST_H
+#define LOCK_FREE_LIST_H
 
 #ifndef FRONTEND
 
 #include "postgres.h"
+#include "utils/dsa.h"
 
-#include "utils/dsa.h" 
+typedef dsa_area* (*dsa_allocator)(void *dsa_mem);
 
-struct lock_free_list_cell;
-typedef struct lock_free_list_cell lock_free_list_cell;
+typedef struct lock_free_list
+{
+	dsa_pointer 	head;
+	dsa_allocator 	dsa_alloc;
+	int 			count;
+	void			*dsa_mem;
+	int				lf_procpid;
+} lock_free_list;
 
-struct lock_free_list;
-typedef struct lock_free_list lock_free_list;
-
-dsa_pointer
-lock_free_list_create(void);
-
-lock_free_list *
-lock_free_list_get_local_list(dsa_pointer ls_dsa);
+typedef struct lock_free_list_cell
+{
+	void 		*value;
+	dsa_pointer next;
+} lock_free_list_cell;
 
 void
-lock_free_list_destroy(dsa_pointer ls_dsa);
+lock_free_list_init(lock_free_list *ls, dsa_allocator dsa_alloc, void *dsa_mem);
 
 /*
  * Allowed caller: writer.
@@ -31,7 +36,7 @@ lock_free_list_push(lock_free_list *ls, void *value);
  * Allowed caller: writer.
  */
 void
-lock_free_list_delete(lock_free_list_cell *cell);
+lock_free_list_delete(lock_free_list *ls, lock_free_list_cell *cell);
 
 /*
  * Allowed caller: reader.

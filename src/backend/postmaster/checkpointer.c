@@ -188,6 +188,7 @@ static void ReqCheckpointHandler(SIGNAL_ARGS);
 static void chkpt_sigusr1_handler(SIGNAL_ARGS);
 static void ReqShutdownHandler(SIGNAL_ARGS);
 
+static List *GetPendingDeletesLists(void);
 
 /*
  * Main entry point for checkpointer process
@@ -632,8 +633,7 @@ LflTestReaderMain()
 			ListCell *c;
 			foreach(c, pending_deletes_lists)
 			{
-				dsa_pointer pending_deletes_list_dsa = (dsa_pointer)lfirst(c);
-				lock_free_list *ls = lock_free_list_get_local_list(pending_deletes_list_dsa);
+				lock_free_list *ls = (lock_free_list *)lfirst(c);
 				lock_free_list_cell * cell;
 				for (cell = lock_free_list_first(ls);
 					 cell != NULL;
@@ -1462,4 +1462,27 @@ FirstCallSinceLastCheckpoint(void)
 	ckpt_done = new_done;
 
 	return FirstCall;
+}
+
+static List *
+GetPendingDeletesLists(void)
+{
+	List *list = NIL;
+
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		if (PendingDeleteShmemArray->lock_free_list_array[i].lf_procpid != InvalidPid &&
+				PendingDeleteShmemArray->lock_free_list_array[i].count > 0)
+		{
+			list = lappend(list, (void*) &PendingDeleteShmemArray->lock_free_list_array[i]);
+
+			elog(LOG, "GetPendingDeletesLists, got active pid: %d",
+				 PendingDeleteShmemArray->lock_free_list_array[i].lf_procpid);
+
+			elog(LOG, "GetPendingDeletesLists, count: %d",
+				 PendingDeleteShmemArray->lock_free_list_array[i].count);
+		}
+	}
+
+	return list;
 }
