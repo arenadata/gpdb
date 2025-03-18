@@ -1255,12 +1255,12 @@ ROLLBACK;
 begin;
 set local enable_hashjoin = on;
 -- GPDB: Join with the replicated table to avoid passing the parameter through motion.
-create table int4_tbl_repl (like int4_tbl) distributed replicated;
-insert into int4_tbl_repl select * from int4_tbl;
+create table tenk1_repl (like tenk1) distributed replicated;
+insert into tenk1_repl select * from tenk1;
 explain (costs off)
 select i8.q2, ss.* from
 int8_tbl i8,
-lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl_repl i4
+lateral (select t1.fivethous, i4.f1 from tenk1_repl t1 join int4_tbl i4
          on t1.fivethous = i4.f1+i8.q2 order by 1,2) ss;
                               QUERY PLAN                               
 -----------------------------------------------------------------------
@@ -1272,16 +1272,16 @@ lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl_repl i4
                ->  Sort
                      Sort Key: t1.fivethous, i4.f1
                      ->  Hash Join
-                           Hash Cond: ((i4.f1 + i8.q2) = t1.fivethous)
-                           ->  Seq Scan on int4_tbl_repl i4
+                           Hash Cond: (t1.fivethous = (i4.f1 + i8.q2))
+                           ->  Seq Scan on tenk1_repl t1
                            ->  Hash
-                                 ->  Seq Scan on tenk1 t1
+                                 ->  Seq Scan on int4_tbl i4
  Optimizer: Postgres-based planner
 (13 rows)
 
 select i8.q2, ss.* from
 int8_tbl i8,
-lateral (select t1.fivethous, i4.f1 from tenk1 t1 join int4_tbl_repl i4
+lateral (select t1.fivethous, i4.f1 from tenk1_repl t1 join int4_tbl i4
          on t1.fivethous = i4.f1+i8.q2 order by 1,2) ss;
  q2  | fivethous | f1 
 -----+-----------+----
