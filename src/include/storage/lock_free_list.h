@@ -6,14 +6,13 @@
 #include "postgres.h"
 #include "utils/dsa.h"
 
-typedef dsa_area* (*dsa_allocator)(void *dsa_mem);
+typedef dsa_area* (*dsa_area_allocator)(void);
 
 typedef struct lock_free_list
 {
 	dsa_pointer 	head;
-	dsa_allocator 	dsa_alloc;
+	dsa_area_allocator 	dsa_alloc_area;
 	int 			count;
-	void			*dsa_mem;
 	int				lf_procpid;
 } lock_free_list;
 
@@ -24,7 +23,10 @@ typedef struct lock_free_list_cell
 } lock_free_list_cell;
 
 void
-lock_free_list_init(lock_free_list *ls, dsa_allocator dsa_alloc, void *dsa_mem);
+lock_free_list_init(lock_free_list *ls, dsa_area_allocator dsa_alloc);
+
+void
+lock_free_list_attach_to_writer(lock_free_list *ls);
 
 /*
  * Allowed caller: writer.

@@ -82,7 +82,7 @@ extern PGDLLIMPORT shmem_startup_hook_type shmem_startup_hook;
 
 extern void CreateSharedMemoryAndSemaphores(int port);
 
-dsa_area * PendingDeleteAttachDsa(void);
+void PdlLflAttachToBackend(void);
 
 /* Our shared memory area */
 typedef struct PendingDeleteShmemArrayStruct

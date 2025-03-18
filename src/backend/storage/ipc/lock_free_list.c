@@ -1,4 +1,6 @@
 #include "storage/lock_free_list.h"
+#include "storage/backendid.h"
+#include "storage/ipc.h"
 #include "miscadmin.h"
 
 #define LFL_MARK_CELL(cell)			(cell->next = (dsa_pointer)((uintptr_t)cell->next | 0x1))
@@ -12,15 +14,34 @@ lock_free_list_cell_get_next(lock_free_list_cell *cell)
 }
 
 void
-lock_free_list_init(lock_free_list *ls, dsa_allocator dsa_alloc, void *dsa_mem)
+lock_free_list_init(lock_free_list *ls, dsa_area_allocator dsa_alloc_area)
 {
 	Assert(ls);
 
 	ls->head = InvalidDsaPointer;
-	ls->dsa_alloc = dsa_alloc;
-	ls->dsa_mem = dsa_mem;
+	ls->dsa_alloc_area = dsa_alloc_area;
 	ls->count = 0;
+	ls->lf_procpid = InvalidPid;
+}
+
+static void
+lock_free_list_shutdown_hook(int code, Datum arg)
+{
+	elog(LOG, "[RELOG] lock_free_list_shutdown_hook backend ID %d", MyBackendId);
+	lock_free_list *ls = (lock_free_list *)arg;
+
+	ls->lf_procpid = InvalidPid;
+}
+
+void
+lock_free_list_attach_to_writer(lock_free_list *ls)
+{
+	Assert(ls);
+	Assert(ls->lf_procpid == InvalidPid);
 	ls->lf_procpid = MyProcPid;
+
+	/* Set up a process-exit hook to clean up */
+	on_shmem_exit(lock_free_list_shutdown_hook, (Datum) ls);
 }
 
 /*
@@ -30,9 +51,10 @@ lock_free_list_cell *
 lock_free_list_push(lock_free_list *ls, void *value)
 {
 	Assert(ls);
-	Assert(ls->dsa_alloc);
+	Assert(ls->dsa_alloc_area);
+	Assert(ls->lf_procpid == MyProcPid);
 
-	dsa_area *area = ls->dsa_alloc(ls->dsa_mem);
+	dsa_area *area = ls->dsa_alloc_area();
 
 	dsa_pointer new_cell_dsa = dsa_allocate(area, sizeof(lock_free_list_cell));
 	Assert(DsaPointerIsValid(new_cell_dsa));
@@ -54,6 +76,7 @@ void
 lock_free_list_delete(lock_free_list *ls, lock_free_list_cell *cell)
 {
 	Assert(ls);
+	Assert(ls->lf_procpid == MyProcPid);
 
 	if (cell != NULL)
 	{
@@ -75,6 +98,7 @@ lock_free_list_cell *
 lock_free_list_first(lock_free_list *ls)
 {
 	Assert(ls);
+	Assert(ls->dsa_alloc_area);
 
 	/*
 	 * Read the head from the list only once. Consider it as a snapshot of the
@@ -86,7 +110,7 @@ lock_free_list_first(lock_free_list *ls)
 	if (!DsaPointerIsValid(head_snapshot_dsa))
 		return NULL;
 
-	dsa_area *area = ls->dsa_alloc(ls->dsa_mem);
+	dsa_area *area = ls->dsa_alloc_area();
 
 	lock_free_list_cell *head_snapshot = (lock_free_list_cell*)dsa_get_address(area, head_snapshot_dsa);
 
@@ -123,11 +147,13 @@ lock_free_list_first(lock_free_list *ls)
 lock_free_list_cell *
 lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell)
 {
+	Assert(ls);
+	Assert(ls->dsa_alloc_area);
 	Assert(current_cell);
 
 	lock_free_list_cell *c = current_cell;
 	dsa_pointer c_dsa = InvalidDsaPointer;
-	dsa_area *area = ls->dsa_alloc(ls->dsa_mem);
+	dsa_area *area = ls->dsa_alloc_area();
 
 	do
 	{

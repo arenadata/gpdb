@@ -114,17 +114,8 @@ static PendingDeleteShmemStruct * PendingDeleteShmem = NULL;	/* shared pending d
 																 * state  */
 PendingDeleteShmemArrayStruct * PendingDeleteShmemArray = NULL;
 
-static void
-pdl_beshutdown_hook(int code, Datum arg)
-{
-	PendingDeleteShmemArray->lock_free_list_array[MyBackendId].lf_procpid = InvalidPid;
-
-	/* disconnect from dsa on shmem exit */
-	dsa_on_shmem_exit_release_in_place(code, arg);
-}
-
 static dsa_area *
-PdlAttachDsa(void *dsa_mem)
+PdlAttachDsa()
 {
 	MemoryContext oldcxt;
 
@@ -139,13 +130,13 @@ PdlAttachDsa(void *dsa_mem)
 	 * attach/detach at every add/remove
 	 */
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-	pendingDeleteDsa = dsa_attach_in_place(dsa_mem, NULL);
+	pendingDeleteDsa = dsa_attach_in_place(PendingDeleteShmemArray->dsa_mem, NULL);
 	MemoryContextSwitchTo(oldcxt);
 
 	/* pin mappings, so they can survive res owner life end */
 	dsa_pin_mapping(pendingDeleteDsa);
 	/* Set up a process-exit hook to clean up */
-	on_shmem_exit(pdl_beshutdown_hook, (Datum) dsa_mem);
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmemArray->dsa_mem);
 
 	elog(DEBUG3, "Pending delete DSA attached");
 
@@ -200,8 +191,7 @@ PdlShmemInit(void)
 
 		for (i = 0; i < MaxBackends; i++) {
 			lock_free_list_init(&PendingDeleteShmemArray->lock_free_list_array[i],
-								&PdlAttachDsa,
-								&PendingDeleteShmemArray->dsa_mem);
+								&PdlAttachDsa);
 		}
 
 		/*
@@ -220,10 +210,16 @@ PdlShmemInit(void)
 	}
 }
 
+void PdlLflAttachToBackend()
+{
+	elog(LOG, "[RELOG] PdlLflAttachToBackend backend ID %d", MyBackendId);
+	lock_free_list_attach_to_writer(&PendingDeleteShmemArray->lock_free_list_array[MyBackendId]);
+}
+
 /*
  * Attach dsa once per process.
  */
-dsa_area *
+static dsa_area *
 PendingDeleteAttachDsa(void)
 {
 	MemoryContext oldcxt;
