@@ -6653,6 +6653,31 @@ inner join j1d on j1d.id2 = j2.id2;
  Settings: enable_nestloop = 'on', optimizer = 'off'
 (14 rows)
 
+create unique index j1_id2_idx_full on j1d(id2);
+-- ensure we detect a unique join with a full unique index (on Postgres optimizer)
+explain (verbose, costs off)
+select * from j2
+inner join j1d on j1d.id2 = j2.id2;
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Output: j2.id1, j2.id2, j1d.id1, j1d.id2
+   ->  Nested Loop
+         Output: j2.id1, j2.id2, j1d.id1, j1d.id2
+         Inner Unique: true
+         ->  Redistribute Motion 3:3  (slice2; segments: 3)
+               Output: j2.id1, j2.id2
+               Hash Key: j2.id2
+               ->  Seq Scan on public.j2
+                     Output: j2.id1, j2.id2
+         ->  Index Scan using j1_id2_idx_full on public.j1d
+               Output: j1d.id1, j1d.id2
+               Index Cond: (j1d.id2 = j2.id2)
+ Optimizer: Postgres-based planner
+ Settings: enable_nestloop = 'on', optimizer = 'off'
+(15 rows)
+
+drop index j1_id2_idx_full;
 drop index j1_id2_idx;
 drop table j1d;
 -- validate logic in merge joins which skips mark and restore.

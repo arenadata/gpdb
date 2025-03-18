@@ -2216,6 +2216,14 @@ explain (verbose, costs off)
 select * from j2
 inner join j1d on j1d.id2 = j2.id2;
 
+create unique index j1_id2_idx_full on j1d(id2);
+
+-- ensure we detect a unique join with a full unique index (on Postgres optimizer)
+explain (verbose, costs off)
+select * from j2
+inner join j1d on j1d.id2 = j2.id2;
+
+drop index j1_id2_idx_full;
 drop index j1_id2_idx;
 drop table j1d;
 
