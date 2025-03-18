@@ -220,13 +220,8 @@ mdcreate(SMgrRelation reln, ForkNumber forkNum, bool isRedo)
 	mdfd->mdfd_vfd = fd;
 	mdfd->mdfd_segno = 0;
 
-	if (!SmgrIsTemp(reln))
-	{
-		if (reln->smgr_which == SMGR_MD)
-			register_dirty_segment(reln, forkNum, mdfd);
-		else
-			register_dirty_segment_ao(reln->smgr_rnode.node, 0, fd);
-	}
+	if (!SmgrIsTemp(reln) && reln->smgr_which == SMGR_MD)
+		register_dirty_segment(reln, forkNum, mdfd);
 }
 
 /*
@@ -267,9 +262,6 @@ mdcreate_ao(RelFileNodeBackend rnode, int32 segmentFileNum, bool isRedo)
 	}
 
 	pfree(path);
-
-	if (!RelFileNodeBackendIsTemp(rnode))
-		register_dirty_segment_ao(rnode.node, segmentFileNum, fd);
 }
 
 /*
