@@ -2371,7 +2371,14 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 	FuncCallContext *func_ctx;
 	gp_mock_cdbdispatchcommand_status *my_status;
 
-	int32 arg_tuple_amount = PG_GETARG_INT32(0);
+	int arg_tuple_amount = PG_GETARG_INT32(0);
+
+	if (arg_tuple_amount <= 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("gp_mock_cdbdispatchcommand() should only be "
+							   "called with it's parameter greater than 0")));
+	}
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2418,45 +2425,36 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 	my_status = (gp_mock_cdbdispatchcommand_status *) func_ctx->user_fctx;
 
 	/* Generate fake tuples from every segment. */
-	while (my_status->cur_tuple_idx < arg_tuple_amount)
 	{
-		if (my_status->cur_tuple_idx++ == arg_tuple_amount)
-		{
-			my_status->cur_tuple_idx--;
-			break;
-		}
+		Datum some_text = CStringGetTextDatum("sometext");
 
-		SRF_RETURN_NEXT(func_ctx, CStringGetTextDatum("sometext"));
+		while (my_status->cur_tuple_idx++ < arg_tuple_amount)
+		{
+			SRF_RETURN_NEXT(func_ctx, some_text);
+		}
 	}
 
 	/* Receive tuples from the loop above on master. */
-	while (my_status->cur_tuple_idx >= arg_tuple_amount &&
-		   my_status->cur_tuple_idx < arg_tuple_amount + my_status->n_tuples)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		Datum ret;
-		PGresult *res = my_status->pg_results[my_status->cur_segment_idx];
-
-		my_status->cur_tuple_idx++;
-		my_status->cur_segment_tuple_idx++;
-
-		if (my_status->cur_segment_tuple_idx >= PQntuples(res))
+		while (my_status->cur_segment_idx < my_status->n_segments)
 		{
-			my_status->cur_segment_idx++;
-			my_status->cur_segment_tuple_idx = 0;
+			PGresult *res = my_status->pg_results[my_status->cur_segment_idx];
+			Datum ret = CStringGetTextDatum(
+				PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
+
+			my_status->cur_segment_tuple_idx++;
+
+			if (my_status->cur_segment_tuple_idx >= PQntuples(res))
+			{
+				PQclear(res);
+
+				my_status->cur_segment_idx++;
+				my_status->cur_segment_tuple_idx = 0;
+			}
+
+			SRF_RETURN_NEXT(func_ctx, ret);
 		}
-
-		ret = CStringGetTextDatum(
-			PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
-
-		SRF_RETURN_NEXT(func_ctx, ret);
-	}
-
-	if (my_status->pg_results != NULL)
-	{
-		int i;
-
-		for (i = 0; i < my_status->n_segments; i++)
-			PQclear(my_status->pg_results[i]);
 
 		pfree(my_status->pg_results);
 	}
