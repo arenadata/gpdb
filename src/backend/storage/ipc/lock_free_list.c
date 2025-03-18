@@ -40,6 +40,8 @@ lock_free_list_attach_to_writer(lock_free_list *ls)
 	Assert(ls->lf_procpid == InvalidPid);
 	ls->lf_procpid = MyProcPid;
 
+	// TODO: what if the list is not empty from the previous backend???
+
 	/* Set up a process-exit hook to clean up */
 	on_shmem_exit(lock_free_list_shutdown_hook, (Datum) ls);
 }
@@ -97,7 +99,7 @@ lock_free_list_delete(lock_free_list *ls, lock_free_list_cell *cell)
 					new_next);
 		}
 
-		if (ls->count - 1 >= 0)
+		if (ls->count > 0)
 		{
 			ls->count--;
 		}
