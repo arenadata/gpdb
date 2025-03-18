@@ -2789,23 +2789,26 @@ CREATE RULE v1_upd_rule AS ON UPDATE TO v1 DO INSTEAD
 CREATE VIEW v2 WITH (security_barrier = true) AS
   SELECT * FROM v1 WHERE EXISTS (SELECT 1);
 EXPLAIN (COSTS OFF) UPDATE v2 SET a = 1;
-                    QUERY PLAN                     
----------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Update on t1
-   InitPlan 1 (returns $0)
+   InitPlan 1 (returns $0)  (slice1)
      ->  Result
-   ->  Merge Join
-         Merge Cond: (t1.a = v1.a)
-         ->  Sort
-               Sort Key: t1.a
-               ->  Seq Scan on t1
-         ->  Sort
-               Sort Key: v1.a
-               ->  Subquery Scan on v1
-                     ->  Result
-                           One-Time Filter: $0
-                           ->  Seq Scan on t1 t1_1
-(14 rows)
+   ->  Explicit Redistribute Motion 3:3  (slice2; segments: 3)
+         ->  Split
+               ->  Merge Join
+                     Merge Cond: (t1.a = v1.a)
+                     ->  Sort
+                           Sort Key: t1.a
+                           ->  Seq Scan on t1
+                     ->  Sort
+                           Sort Key: v1.a
+                           ->  Subquery Scan on v1
+                                 ->  Result
+                                       One-Time Filter: $0
+                                       ->  Seq Scan on t1 t1_1
+ Optimizer: Postgres-based planner
+(17 rows)
 
 DROP VIEW v2;
 DROP VIEW v1;
