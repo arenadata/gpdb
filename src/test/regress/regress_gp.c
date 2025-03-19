@@ -2443,7 +2443,7 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 			Datum ret = CStringGetTextDatum(
 				PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
 
-			if (my_status->cur_segment_tuple_idx++ >= PQntuples(res))
+			if (++my_status->cur_segment_tuple_idx >= PQntuples(res))
 			{
 				PQclear(res);
 
