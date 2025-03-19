@@ -2,6 +2,7 @@
 #include "storage/backendid.h"
 #include "storage/ipc.h"
 #include "miscadmin.h"
+#include "catalog/storage_pending.h"
 
 #define LFL_MARK_CELL(cell)			(cell->next = (dsa_pointer)((uintptr_t)cell->next | 0x1))
 #define LFL_IS_CELL_MARKED(cell)	((uintptr_t)cell->next & 0x1)
@@ -50,7 +51,7 @@ lock_free_list_attach_to_writer(lock_free_list *ls)
  * Allowed caller: writer.
  */
 lock_free_list_cell *
-lock_free_list_push(lock_free_list *ls, void *value)
+lock_free_list_push(lock_free_list *ls, dsa_pointer value)
 {
 	Assert(ls);
 	Assert(ls->dsa_alloc_area);
@@ -106,6 +107,25 @@ lock_free_list_delete(lock_free_list *ls, lock_free_list_cell *cell)
 	}
 }
 
+lock_free_list_cell *
+LFL_PdlShmemAdd(lock_free_list *ls, RelFileNodePendingDelete * relnode, TransactionId xid)
+{
+	dsa_pointer xrelnode_dsa;
+	PendingRelXactDelete *xrelnode;
+
+	elog(DEBUG1, "LFL: Trying to add pending delete rel %d to shmem (xid: %d).", relnode->node.relNode, xid);
+
+	dsa_area *area = ls->dsa_alloc_area();
+
+	xrelnode_dsa = dsa_allocate(area, sizeof(*xrelnode));
+	xrelnode = dsa_get_address(area, xrelnode_dsa);
+
+	memcpy(&xrelnode->relnode, relnode, sizeof(*relnode));
+	xrelnode->xid = xid;
+
+	return lock_free_list_push(ls, xrelnode_dsa);
+}
+
 /*
  * Allowed caller: reader.
  * Will return the first not 'deleted' cell in a list, or NULL if no such cell.
@@ -147,7 +167,14 @@ lock_free_list_first(lock_free_list *ls)
 		c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
 
 		if (tmp_dsa != head_snapshot_dsa)
+		{
+			lock_free_list_cell *t = (lock_free_list_cell *)dsa_get_address(area, tmp_dsa);
+
+			if (DsaPointerIsValid(t->value))
+				dsa_free(area, t->value);
+
 			dsa_free(area, tmp_dsa);
+		}
 
 		head_snapshot->next = c_dsa;
 		LFL_MARK_CELL(head_snapshot);
@@ -179,7 +206,14 @@ lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell)
 		c = (lock_free_list_cell*)dsa_get_address(area, c_dsa);
 
 		if (DsaPointerIsValid(tmp_dsa))
+		{
+			lock_free_list_cell *t = (lock_free_list_cell *)dsa_get_address(area, tmp_dsa);
+
+			if (DsaPointerIsValid(t->value))
+				dsa_free(area, t->value);
+
 			dsa_free(area, tmp_dsa);
+		}
 
 		/*
 		 * current_cell could be marked by the writer process while we were
@@ -206,10 +240,18 @@ lock_free_list_next(lock_free_list *ls, lock_free_list_cell *current_cell)
 	return c;
 }
 
-void *
+dsa_pointer
 lock_free_list_get_value(lock_free_list_cell * cell)
 {
 	Assert(cell);
 	return cell->value;
 }
 
+dsa_area *
+lock_free_list_get_associated_area(lock_free_list *ls)
+{
+	Assert(ls);
+	Assert(ls->dsa_alloc_area);
+
+	return ls->dsa_alloc_area();
+}

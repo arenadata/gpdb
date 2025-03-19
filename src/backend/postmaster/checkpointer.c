@@ -635,12 +635,15 @@ LflTestReaderMain()
 			foreach(c, pending_deletes_lists)
 			{
 				lock_free_list *ls = (lock_free_list *)lfirst(c);
+				dsa_area *area = lock_free_list_get_associated_area(ls);
 				lock_free_list_cell * cell;
 				for (cell = lock_free_list_first(ls);
 					 cell != NULL;
 					 cell = lock_free_list_next(ls, cell))
 				{
-					elog(LOG, "[RELOG][READER] <%lu>", (uintptr_t)lock_free_list_get_value(cell));
+					dsa_pointer payload_dsa = lock_free_list_get_value(cell);
+					PendingRelXactDelete *xrelnode = (PendingRelXactDelete *)dsa_get_address(area, payload_dsa);
+					elog(LOG, "[RELOG][READER][LFL-PDL] <%u>", xrelnode->xid);
 				}
 			}
 		}

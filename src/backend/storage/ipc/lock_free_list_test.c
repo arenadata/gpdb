@@ -103,13 +103,14 @@ DoLflPerfTest(int elements, int *batch_size)
 
 	int remaining_elements = elements;
 	bool del_direction = true;
+	RelFileNodePendingDelete dummy = {0};
 	while (remaining_elements > 0)
 	{
 		int batch_remaining_elements = remaining_elements < (*batch_size) ? remaining_elements : (*batch_size);
 
 		for (uint64 i = 0; i < batch_remaining_elements; i++)
 		{
-			c[i] = lock_free_list_push(ls, (void*)(i + GpIdentity.segindex * 1000));
+			c[i] = LFL_PdlShmemAdd(ls, &dummy,  (TransactionId)(i + GpIdentity.segindex * 1000));
 		}
 
 		/* delete elements */
