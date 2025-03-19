@@ -367,6 +367,7 @@ def main(options, args, parser):
             configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
         configurationInterface.getConfigurationProvider(
         ).initializeProvider(gpEnv.getCoordinatorPort())
+
         dburl = dbconn.DbURL(dbname=DBNAME, port=gpEnv.getCoordinatorPort())
 
         try:
@@ -378,6 +379,9 @@ def main(options, args, parser):
                          " Greenplum instance you wish to expand is running"
                          " and that your environment is correct, then rerun"
                          " gprebalance" + ' '.join(sys.argv[1:]))
+            sys.exit(1)
+        except ConnectionError as ex:
+            logger.error(f"{str(ex)}")
             sys.exit(1)
         
         # create pid file
@@ -419,7 +423,8 @@ def main(options, args, parser):
             logger.info('Rollback has already completed')
             logger.info(
                 'If you want to rebalance again, run gprebalance -c to perform cleanup')
-        elif gprebalance_file_status is None and gprebalance_db_status is None:
+        elif (gprebalance_file_status is None and gprebalance_db_status is None) or \
+            gprebalance_file_status == 'UNINITIALIZED':
             if options.rollback:
                 logger.error("Cannot perform rollback operation. Rebalance session status files are absent.")
                 sys.exit(1)
