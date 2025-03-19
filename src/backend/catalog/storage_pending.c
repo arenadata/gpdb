@@ -97,7 +97,7 @@ PdlShmemInit(void)
 		dsa_area   *dsa = dsa_create_in_place(
 											  PendingDeletesArrayShmem->dsa_mem,
 											dsa_minimum_size(),
-											LWTRANCHE_PENDING_DELETE_DSA,
+											LWTRANCHE_PENDING_DELETE_DSA_PDL,
 											NULL
 		);
 

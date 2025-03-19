@@ -168,7 +168,7 @@ LFL_PDL_ShmemInit(void)
 		dsa_area *dsa = dsa_create_in_place(
 				LFL_PDL_ShmemArray->dsa_mem,
 				dsa_minimum_size(),
-				LWTRANCHE_PENDING_DELETE_DSA,
+				LWTRANCHE_PENDING_DELETE_DSA_LFL,
 				NULL
 		);
 
@@ -274,7 +274,7 @@ OLD_PDL_ShmemInit(void)
 	{
 		dsa_area   *dsa = dsa_create_in_place(OLD_PDL_Shmem->dsa_mem,
 											  dsa_minimum_size(),
-											  LWTRANCHE_PENDING_DELETE_DSA,
+											  LWTRANCHE_PENDING_DELETE_DSA_OLD_PDL,
 											  NULL);
 
 		/*
