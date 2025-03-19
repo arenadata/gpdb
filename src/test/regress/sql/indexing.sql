@@ -825,8 +825,11 @@ create table parted_isvalid_tab_11 partition of parted_isvalid_tab_1
 create table parted_isvalid_tab_12 partition of parted_isvalid_tab_1
   for values from (5) to (10);
 -- create an invalid index on one of the partitions.
-insert into parted_isvalid_tab_11 values (1, 0);
-create index concurrently parted_isvalid_idx_11 on parted_isvalid_tab_11 ((a/b));
+create index parted_isvalid_idx_11 on parted_isvalid_tab_11 ((a/b));
+-- GPDB: Simulate invalid index
+set allow_system_table_mods=on;
+update pg_index set indisvalid=false where indrelid='parted_isvalid_tab_11'::regclass;
+reset allow_system_table_mods;
 -- The previous invalid index is selected, invalidating all the indexes up to
 -- the top-most parent.
 create index parted_isvalid_idx on parted_isvalid_tab ((a/b));
