@@ -220,7 +220,7 @@ mdcreate(SMgrRelation reln, ForkNumber forkNum, bool isRedo)
 	mdfd->mdfd_vfd = fd;
 	mdfd->mdfd_segno = 0;
 
-	if (!SmgrIsTemp(reln))
+	if (!SmgrIsTemp(reln) && reln->smgr_which == SMGR_MD)
 		register_dirty_segment(reln, forkNum, mdfd);
 }
 
@@ -1004,6 +1004,7 @@ register_dirty_segment(SMgrRelation reln, ForkNumber forknum, MdfdVec *seg)
 {
 	FileTag		tag;
 
+	Assert(reln->smgr_which == SMGR_MD);
 	INIT_MD_FILETAG(tag, reln->smgr_rnode.node, forknum, seg->mdfd_segno);
 
 	/* Temp relations should never be fsync'd */
