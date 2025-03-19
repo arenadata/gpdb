@@ -472,11 +472,10 @@ create table hp3 partition of hp for values with (modulus 4, remainder 3);
 prepare hp_q1 (text) as
 select * from hp where a is null and b = $1;
 
-set plan_cache_mode = force_generic_plan;
-
+-- GPDB: Expect direct dispatch to one segment, since hp is distributed by a
+-- and a is known to be NULL.
 explain (costs off) execute hp_q1('xxx');
 
-reset plan_cache_mode;
 deallocate hp_q1;
 
 drop table hp;
@@ -1221,6 +1220,9 @@ from
 -- and equality quals.  This may seem a little excessive, but there have been
 -- a number of bugs in this area over the years.  We make use of row only
 -- output to reduce the size of the expected results.
+--
+-- GPDB: Expect direct dispatch to one segment, since hp_prefix_test is
+-- distributed by a and a is known to be either NULL or 1 in each query.
 \t on
 select
   'explain (costs off) select tableoid::regclass,* from hp_prefix_test where ' ||
@@ -1271,3 +1273,5 @@ explain (costs off) select * from hp_contradict_test where a === 1 and b === 1 a
 drop table hp_contradict_test;
 drop operator class part_test_int4_ops2 using hash;
 drop operator ===(int4, int4);
+
+reset plan_cache_mode;

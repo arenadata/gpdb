@@ -1235,21 +1235,21 @@ with cte(c) as materialized (select row(1, 2)),
 select * from cte2 as t
 where (select * from (select c as c1) s
        where (select (c1).f1 > 0)) is not null;
-                 QUERY PLAN                 
---------------------------------------------
- CTE Scan on cte
-   Output: cte.c
-   Filter: ((SubPlan 3) IS NOT NULL)
-   CTE cte
+                QUERY PLAN                
+------------------------------------------
+ Subquery Scan on t
+   Output: t.c
+   Filter: ((SubPlan 2) IS NOT NULL)
+   ->  Result
+         Output: ROW(1, 2)
+   SubPlan 2
      ->  Result
-           Output: '(1,2)'::record
-   SubPlan 3
-     ->  Result
-           Output: cte.c
-           One-Time Filter: $2
-           InitPlan 2 (returns $2)
+           Output: t.c
+           One-Time Filter: $1
+           InitPlan 1 (returns $1)
              ->  Result
-                   Output: ((cte.c).f1 > 0)
+                   Output: ((t.c).f1 > 0)
+ Optimizer: Postgres-based planner
 (13 rows)
 
 with cte(c) as materialized (select row(1, 2)),
