@@ -262,6 +262,9 @@ mdcreate_ao(RelFileNodeBackend rnode, int32 segmentFileNum, bool isRedo)
 	}
 
 	pfree(path);
+
+	if (!RelFileNodeBackendIsTemp(rnode))
+		register_dirty_segment_ao(rnode.node, segmentFileNum, fd);
 }
 
 /*
