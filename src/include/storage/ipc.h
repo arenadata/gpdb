@@ -85,12 +85,12 @@ extern void CreateSharedMemoryAndSemaphores(int port);
 void PdlLflAttachToBackend(void);
 
 /* Our shared memory area */
-typedef struct PendingDeleteShmemArrayStruct
+typedef struct LFL_PDL_ShmemArrayStruct
 {
 	lock_free_list 	*lock_free_list_array;
 	char 			dsa_mem[FLEXIBLE_ARRAY_MEMBER];
-} PendingDeleteShmemArrayStruct;
+} LFL_PDL_ShmemArrayStruct;
 
-extern PendingDeleteShmemArrayStruct *PendingDeleteShmemArray;
+extern LFL_PDL_ShmemArrayStruct *LFL_PDL_ShmemArray;
 
 #endif							/* IPC_H */

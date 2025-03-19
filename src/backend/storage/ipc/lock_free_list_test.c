@@ -90,7 +90,7 @@ DoLflPerfTest(int elements, int *batch_size)
 {
 	lock_free_list *ls;
 
-	ls = &PendingDeleteShmemArray->lock_free_list_array[MyBackendId];
+	ls = &LFL_PDL_ShmemArray->lock_free_list_array[MyBackendId];
 
 	if (*batch_size < 1)
 		*batch_size = 1;

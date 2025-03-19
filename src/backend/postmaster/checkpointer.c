@@ -1471,16 +1471,16 @@ GetPendingDeletesLists(void)
 
 	for (int i = 0; i < MaxBackends; i++)
 	{
-		if (PendingDeleteShmemArray->lock_free_list_array[i].lf_procpid != InvalidPid &&
-				PendingDeleteShmemArray->lock_free_list_array[i].count > 0)
+		if (LFL_PDL_ShmemArray->lock_free_list_array[i].lf_procpid != InvalidPid &&
+				LFL_PDL_ShmemArray->lock_free_list_array[i].count > 0)
 		{
-			list = lappend(list, (void*) &PendingDeleteShmemArray->lock_free_list_array[i]);
+			list = lappend(list, (void*) &LFL_PDL_ShmemArray->lock_free_list_array[i]);
 
 			elog(LOG, "GetPendingDeletesLists, got active pid: %d",
-				 PendingDeleteShmemArray->lock_free_list_array[i].lf_procpid);
+				 LFL_PDL_ShmemArray->lock_free_list_array[i].lf_procpid);
 
 			elog(LOG, "GetPendingDeletesLists, count: %d",
-				 PendingDeleteShmemArray->lock_free_list_array[i].count);
+				 LFL_PDL_ShmemArray->lock_free_list_array[i].count);
 		}
 	}
 

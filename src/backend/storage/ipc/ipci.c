@@ -100,10 +100,10 @@ RequestAddinShmemSpace(Size size)
 	total_addin_request = add_size(total_addin_request, size);
 }
 
-PendingDeleteShmemArrayStruct * PendingDeleteShmemArray = NULL;
+LFL_PDL_ShmemArrayStruct * LFL_PDL_ShmemArray = NULL;
 
 static dsa_area *
-PdlAttachDsa()
+LFL_PDL_AttachDsa()
 {
 	MemoryContext oldcxt;
 
@@ -118,13 +118,13 @@ PdlAttachDsa()
 	 * attach/detach at every add/remove
 	 */
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-	pendingDeleteDsa = dsa_attach_in_place(PendingDeleteShmemArray->dsa_mem, NULL);
+	pendingDeleteDsa = dsa_attach_in_place(LFL_PDL_ShmemArray->dsa_mem, NULL);
 	MemoryContextSwitchTo(oldcxt);
 
 	/* pin mappings, so they can survive res owner life end */
 	dsa_pin_mapping(pendingDeleteDsa);
 	/* Set up a process-exit hook to clean up */
-	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmemArray->dsa_mem);
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) LFL_PDL_ShmemArray->dsa_mem);
 
 	elog(DEBUG3, "Pending delete DSA attached");
 
@@ -132,12 +132,12 @@ PdlAttachDsa()
 }
 
 static Size
-PdlShmemSize(void)
+LFL_PDL_ShmemSize(void)
 {
 	Size		size;
 
 	/* dsa initialized over flexible static dsa_mem */
-	size = offsetof(PendingDeleteShmemArrayStruct, dsa_mem);
+	size = offsetof(LFL_PDL_ShmemArrayStruct, dsa_mem);
 
 	/* dsa initialized over flexible static dsa_mem */
 	size = add_size(size, dsa_minimum_size());
@@ -149,15 +149,15 @@ PdlShmemSize(void)
  * Initialize pending delete shmem struct.
  */
 static void
-PdlShmemInit(void)
+LFL_PDL_ShmemInit(void)
 {
 	Size		size;
 	bool		found;
 	int 		i;
 
-	size = PdlShmemSize();
+	size = LFL_PDL_ShmemSize();
 
-	PendingDeleteShmemArray = (PendingDeleteShmemArrayStruct *)
+	LFL_PDL_ShmemArray = (LFL_PDL_ShmemArrayStruct *)
 			ShmemInitStruct("Pending Deletes Array",
 							size,
 							&found);
@@ -165,28 +165,28 @@ PdlShmemInit(void)
 	if (!found)
 	{
 		dsa_area *dsa = dsa_create_in_place(
-				PendingDeleteShmemArray->dsa_mem,
+				LFL_PDL_ShmemArray->dsa_mem,
 				dsa_minimum_size(),
 				LWTRANCHE_PENDING_DELETE_DSA,
 				NULL
 		);
 
-		PendingDeleteShmemArray->lock_free_list_array =
+		LFL_PDL_ShmemArray->lock_free_list_array =
 				(lock_free_list *) ShmemAlloc(MaxBackends * sizeof(lock_free_list));
 
-		MemSet(PendingDeleteShmemArray->lock_free_list_array, 0,
+		MemSet(LFL_PDL_ShmemArray->lock_free_list_array, 0,
 			   MaxBackends * sizeof(lock_free_list));
 
 		for (i = 0; i < MaxBackends; i++) {
-			lock_free_list_init(&PendingDeleteShmemArray->lock_free_list_array[i],
-								&PdlAttachDsa);
+			lock_free_list_init(&LFL_PDL_ShmemArray->lock_free_list_array[i],
+								&LFL_PDL_AttachDsa);
 		}
 
 		/*
 		 * segments will be released by dsm_postmaster_shutdown(), but keep it
 		 * clean anyway
 		 */
-		on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) PendingDeleteShmemArray->dsa_mem);
+		on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) LFL_PDL_ShmemArray->dsa_mem);
 
 		/*
 		 * we don't need dsa ptr here, all future dsa calls will be in
@@ -194,14 +194,14 @@ PdlShmemInit(void)
 		 */
 		dsa_detach(dsa);
 
-		elog(DEBUG3, "Pending delete shared memory initialized.");
+		elog(DEBUG3, "LFL Pending delete shared memory initialized.");
 	}
 }
 
 void PdlLflAttachToBackend()
 {
 	elog(LOG, "[RELOG] PdlLflAttachToBackend backend ID %d", MyBackendId);
-	lock_free_list_attach_to_writer(&PendingDeleteShmemArray->lock_free_list_array[MyBackendId]);
+	lock_free_list_attach_to_writer(&LFL_PDL_ShmemArray->lock_free_list_array[MyBackendId]);
 }
 
 
@@ -552,7 +552,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, OLD_PDL_ShmemSize());
 
 		/* size of pending delete nodes struct */
-		size = add_size(size, PdlShmemSize());
+		size = add_size(size, LFL_PDL_ShmemSize());
 
 		elog(DEBUG3, "invoking IpcMemoryCreate(size=%zu)", size);
 
@@ -730,7 +730,7 @@ CreateSharedMemoryAndSemaphores(int port)
 		ParallelCursorCountInit();
 
 	OLD_PDL_ShmemInit();
-	PdlShmemInit();
+	LFL_PDL_ShmemInit();
 
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations
