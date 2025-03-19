@@ -66,6 +66,7 @@
 #include "utils/resowner.h"
 
 #include "cdb/cdbvars.h"
+#include "catalog/storage_pending.h"
 
 
 /*----------
@@ -643,6 +644,8 @@ LflTestReaderMain()
 				}
 			}
 		}
+
+		PdlDump();
 
 		pg_usleep(100);
 	}

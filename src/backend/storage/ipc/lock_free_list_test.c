@@ -14,6 +14,8 @@
 #include "storage/proc.h"
 #include "storage/lock_free_list.h"
 #include "storage/ipc.h"
+#include "catalog/storage_pending.h"
+#include "storage/relfilenode.h"
 
 
 dsa_pointer
@@ -123,6 +125,55 @@ DoLflPerfTest(int elements, int *batch_size)
 			for (int i = batch_remaining_elements - 1; i >= 0; i--)
 			{
 				lock_free_list_delete(ls, c[i]);
+			}
+		}
+		del_direction = !del_direction;
+
+		remaining_elements -= batch_remaining_elements;
+	}
+
+	Timestamp duration = GetCurrentTimestamp() - start;
+
+	pfree(c);
+
+	return duration;
+}
+
+static Timestamp
+DoLockPerBackendPerfTest(int elements, int *batch_size)
+{
+	if (*batch_size < 1)
+		*batch_size = 1;
+
+	dsa_pointer *c = (dsa_pointer *)palloc(sizeof(dsa_pointer) * (*batch_size));
+
+	Timestamp start = GetCurrentTimestamp();
+
+	int remaining_elements = elements;
+	bool del_direction = true;
+	RelFileNodePendingDelete dummy = {0};
+	while (remaining_elements > 0)
+	{
+		int batch_remaining_elements = remaining_elements < (*batch_size) ? remaining_elements : (*batch_size);
+
+		for (uint64 i = 0; i < batch_remaining_elements; i++)
+		{
+			c[i] = PdlShmemAdd(&dummy, (TransactionId)(i + GpIdentity.segindex * 1000));
+		}
+
+		/* delete elements */
+		if (del_direction)
+		{
+			for (int i = 0; i < batch_remaining_elements; i++)
+			{
+				PdlShmemRemove(c[i]);
+			}
+		}
+		else
+		{
+			for (int i = batch_remaining_elements - 1; i >= 0; i--)
+			{
+				PdlShmemRemove(c[i]);
 			}
 		}
 		del_direction = !del_direction;
@@ -258,6 +309,11 @@ lfl_test_perf(PG_FUNCTION_ARGS)
 			{
 				duration = DoListWithLocksPerfTest(elem_num, &batch_size);
 				values[3] = CStringGetTextDatum("list with locks");
+			}
+			else if (strcmp(target_list_type, "lock-per-backend") == 0)
+			{
+				duration = DoLockPerBackendPerfTest(elem_num, &batch_size);
+				values[3] = CStringGetTextDatum("lists with per-backend lock");
 			}
 			else
 				elog(ERROR, "unknown target list type to test");

@@ -24,6 +24,7 @@
 #include "access/subtrans.h"
 #include "access/twophase.h"
 #include "access/distributedlog.h"
+#include "catalog/storage_pending.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbvars.h"
 #include "commands/async.h"
@@ -158,7 +159,7 @@ LFL_PDL_ShmemInit(void)
 	size = LFL_PDL_ShmemSize();
 
 	LFL_PDL_ShmemArray = (LFL_PDL_ShmemArrayStruct *)
-			ShmemInitStruct("Pending Deletes Array",
+			ShmemInitStruct("LFL Pending Deletes Array",
 							size,
 							&found);
 
@@ -476,6 +477,15 @@ CreateSharedMemoryAndSemaphores(int port)
 		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
 			size = add_size(size, FtsShmemSize());
 
+		/* size of pending delete nodes struct */
+		size = add_size(size, OLD_PDL_ShmemSize());
+
+		/* size of pending delete nodes struct */
+		size = add_size(size, LFL_PDL_ShmemSize());
+
+		/* keep it before call to LWLockShmemSize() */
+		size = add_size(size, PdlShmemSize());
+
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, XLOGShmemSize());
 		size = add_size(size, DistributedLog_ShmemSize());
@@ -547,12 +557,6 @@ CreateSharedMemoryAndSemaphores(int port)
 
 		/* size of parallel cursor count */
 		size = add_size(size, ParallelCursorCountSize());
-
-		/* size of pending delete nodes struct */
-		size = add_size(size, OLD_PDL_ShmemSize());
-
-		/* size of pending delete nodes struct */
-		size = add_size(size, LFL_PDL_ShmemSize());
 
 		elog(DEBUG3, "invoking IpcMemoryCreate(size=%zu)", size);
 
@@ -731,6 +735,7 @@ CreateSharedMemoryAndSemaphores(int port)
 
 	OLD_PDL_ShmemInit();
 	LFL_PDL_ShmemInit();
+	PdlShmemInit();
 
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations
