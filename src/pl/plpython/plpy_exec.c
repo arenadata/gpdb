@@ -169,7 +169,7 @@ PLy_exec_function(FunctionCallInfo fcinfo, PLyProcedure *proc)
 				srfstate->iter = NULL;
 
 				if (has_error)
-					PLy_elog(ERROR, "function \"%s\" error fetching next item from iterator", proc->proname);
+					PLy_elog(ERROR, "error fetching next item from iterator");
 
 				/* Pass a null through the data-returning steps below */
 				Py_INCREF(Py_None);
