@@ -17,9 +17,9 @@
 
 
 dsa_pointer
-PendingDeleteShmemLinkNode(void * value);
+OLD_PDL_LinkNode(void * value);
 void
-PendingDeleteShmemUnlinkNode(dsa_pointer cur);
+OLD_PDL_UnlinkNode(dsa_pointer cur);
 
 typedef struct
 {
@@ -55,7 +55,7 @@ DoListWithLocksPerfTest(int elements, int *batch_size)
 
 		for (uint64 i = 0; i < batch_remaining_elements; i++)
 		{
-			c[i] = PendingDeleteShmemLinkNode((void*)(i + GpIdentity.segindex * 1000));
+			c[i] = OLD_PDL_LinkNode((void*)(i + GpIdentity.segindex * 1000));
 		}
 
 		/* delete elements */
@@ -63,14 +63,14 @@ DoListWithLocksPerfTest(int elements, int *batch_size)
 		{
 			for (int i = 0; i < batch_remaining_elements; i++)
 			{
-				PendingDeleteShmemUnlinkNode(c[i]);
+				OLD_PDL_UnlinkNode(c[i]);
 			}
 		}
 		else
 		{
 			for (int i = batch_remaining_elements - 1; i >= 0; i--)
 			{
-				PendingDeleteShmemUnlinkNode(c[i]);
+				OLD_PDL_UnlinkNode(c[i]);
 			}
 		}
 		del_direction = !del_direction;
