@@ -90,7 +90,7 @@ def parseargs():
     parser.add_option('-f', '--target-hosts', metavar='<hosts_file>', dest='filename',
                       help='yaml containing target hosts configuration')
     parser.add_option('-r', '--rollback', action='store_true',
-                      help='remove the rebalance schema.')
+                      help='bring the cluster back to the state before rebalance')
     parser.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
                       help='duration from beginning to end.')
     parser.add_option('-e', '--end', type='datetime', metavar='datetime',
@@ -367,6 +367,7 @@ def main(options, args, parser):
             configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
         configurationInterface.getConfigurationProvider(
         ).initializeProvider(gpEnv.getCoordinatorPort())
+
         dburl = dbconn.DbURL(dbname=DBNAME, port=gpEnv.getCoordinatorPort())
 
         try:
@@ -378,6 +379,9 @@ def main(options, args, parser):
                          " Greenplum instance you wish to expand is running"
                          " and that your environment is correct, then rerun"
                          " gprebalance" + ' '.join(sys.argv[1:]))
+            sys.exit(1)
+        except ConnectionError as ex:
+            logger.error(f"{str(ex)}")
             sys.exit(1)
         
         # create pid file
@@ -411,11 +415,19 @@ def main(options, args, parser):
         from gprebalance_modules.rebalance_status import RebalanceStatus  # nopep8
 
         if (gprebalance_db_status == RebalanceStatus.COMPLETED or
-            gprebalance_file_status == 'EXECUTION_DONE'):
+            gprebalance_file_status == 'EXECUTION_DONE') and not options.rollback:
             logger.info('Rebalance has already completed')
             logger.info(
                 'If you want to rebalance again, run gprebalance -c to perform cleanup')
-        elif gprebalance_file_status is None and gprebalance_db_status is None:
+        elif options.rollback and gprebalance_file_status == 'ROLLBACK_DONE':
+            logger.info('Rollback has already completed')
+            logger.info(
+                'If you want to rebalance again, run gprebalance -c to perform cleanup')
+        elif (gprebalance_file_status is None and gprebalance_db_status is None) or \
+            gprebalance_file_status == 'UNINITIALIZED':
+            if options.rollback:
+                logger.error("Cannot perform rollback operation. Rebalance session status files are absent.")
+                sys.exit(1)
             gprebalance.statusManager.create_status_file()
             possibility_checks(gprebalance)
             logger.info('Validation passed. Preparing rebalance...')
@@ -429,7 +441,7 @@ def main(options, args, parser):
             gprebalance.setup_schema()
             gprebalance.execute_plan(plan)
         elif gprebalance.statusManager.conf_dir:
-            plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir)
+            plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, False)
             if options.show_plan:
                 logger.info(f"Resulting plan: \n{str(plan)}")
                 sys.exit(0)
@@ -437,11 +449,24 @@ def main(options, args, parser):
                 gprebalance.setup_schema()
                 gprebalance.execute_plan(plan)
                 sys.exit(0)
+            elif gprebalance_file_status == 'ROLLBACK_FAILED' or \
+                gprebalance_file_status == 'ROLLBACK_STOPPED':
+                logger.info('Previous rollback session was interrupted due to an error. Trying to resume...')
+                plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, True)
+                gprebalance.resume(plan)
+                sys.exit(0)
             elif gprebalance_file_status == 'EXECUTION_FAILED':
-                logger.info('Previous rebalance session was interrupted due to an error. Trying to resume...')
+                if not options.rollback:
+                    logger.info('Previous rebalance session was interrupted due to an error. Trying to resume...')
+                    gprebalance.resume(plan)
+                    sys.exit(0)
             elif gprebalance_file_status == 'EXECUTION_STOPPED':
-                logger.info('Previous rebalance session was interrupted due to an timeout or user signal. Trying to resume...')
-            gprebalance.resume()
+                if not options.rollback:
+                    logger.info('Previous rebalance session was interrupted due to an timeout or user signal. Trying to resume...')
+                    gprebalance.resume(plan)
+                    sys.exit(0)
+            if options.rollback:
+                gprebalance.rollback(plan)            
         sys.exit(0)
     except Exception as e:
         if options and options.verbose:

@@ -230,8 +230,12 @@ class GPRebalance:
         plan.save_to_file(datadir, "plan")
         self.statusManager.set_status('PLANNED', datadir)
 
-    def load_plan(self, datadir):
-        filename = datadir + "/plan.pkl"
+    def load_plan(self, datadir, rollback):
+        filename = datadir 
+        if rollback:
+            filename += "/rollback_plan.pkl"
+        else:
+            filename += "/plan.pkl"
         if not os.path.exists(filename):
             raise FileNotFoundError(f"No pickle file found at {filename}")
         with open(filename, 'rb') as f:
@@ -327,8 +331,48 @@ class GPRebalance:
         self.logger.info('Dropping status file')
         if self.statusManager:
             self.statusManager.remove_all()
+    
 
-    def resume(self):
+    def rollback(self, plan:Plan):
+        new_plan = Plan()
+        cb = ClusterBalancer(self.current_conf, (set(), set()),
+                             self.segmentMap, 0, MirrorStrategy.MIRRORLESS)
+        new_moves, rls = cb.get_moves_between_states(self.current_conf, plan.in_conf)
+        for new_move in new_moves:
+            seg = plan.segmentMap[new_move.segid]
+            if self.segmentMap[new_move.segid].role == seg.role:
+                new_move.target_datadir = seg.datadir
+                new_move.target_port = seg.port
+            else:
+                for id, pair_seg in plan.segmentMap.items():
+                    if new_move.segid.contentid == id.contentid and new_move.segid.dbid != id.dbid:
+                        assert(pair_seg.role == self.segmentMap[new_move.segid].role)
+                        new_move.target_datadir = pair_seg.datadir
+                        new_move.target_port = pair_seg.port
+                        break
+        for segid, current_seg in self.segmentMap.items():
+            target_seg = plan.segmentMap[segid]
+            if (current_seg.hostname, current_seg.address) == (target_seg.hostname, target_seg.address) \
+                and current_seg.role == target_seg.role and current_seg.datadir != target_seg.datadir:
+                # Are there any cases besides swap when previously rebalance moved segment
+                # to the same host but to different dir?
+                assert(current_seg.role == 'm')
+                move = Move(segid, self.current_conf[(current_seg.hostname, current_seg.address)],
+                            self.current_conf[(current_seg.hostname, current_seg.address)], True,
+                            target_seg.datadir, target_seg.port)
+                new_moves.append(move)                         
+        
+        new_plan.moves = new_moves
+        new_plan.segmentMap = self.segmentMap
+        new_plan.in_conf = self.current_conf
+        new_plan.out_conf = plan.in_conf
+
+        self.executor = RebalanceExecutor(new_plan, self.original_gparray, self.segmentMap,
+                                          self.current_conf, self.logger, self.statusManager,
+                                          self.conn, self.dburl, self.options)
+        self.executor.execute_moves()
+
+    def resume(self, plan):
         """TODO: implement proper state handling and provide
         possibility to perform rebalance after fails"""
         raise NotImplementedError('Resuming operation is not implemented. Call gprebalance -c and rerun')
