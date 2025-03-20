@@ -2,6 +2,8 @@
 -- Extra GPDB tests on INSERT/UPDATE/DELETE RETURNING
 --
 
+SET optimizer_trace_fallback=ON;
+
 CREATE TABLE returning_parttab (distkey int4, partkey int4, i int, t text)
 DISTRIBUTED BY (distkey)
 PARTITION BY RANGE (partkey) (START (1) END (10));

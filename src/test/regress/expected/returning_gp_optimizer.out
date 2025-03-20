@@ -1,6 +1,7 @@
 --
 -- Extra GPDB tests on INSERT/UPDATE/DELETE RETURNING
 --
+SET optimizer_trace_fallback=ON;
 CREATE TABLE returning_parttab (distkey int4, partkey int4, i int, t text)
 DISTRIBUTED BY (distkey)
 PARTITION BY RANGE (partkey) (START (1) END (10));
@@ -132,6 +133,8 @@ FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
 CREATE TRIGGER
 -- Check returning sys attribute on insert 
 INSERT INTO returning_ctid(f2) VALUES ('test') RETURNING ctid;
+INFO:  GPORCA failed to produce a plan, falling back to planner
+DETAIL:  Feature not supported: INSERT with triggers
  ctid  
 -------
  (0,1)
@@ -170,6 +173,8 @@ FOR EACH ROW EXECUTE PROCEDURE trig_row_before_insupdate();
 CREATE TRIGGER
 -- Check returning sys attribute on insert
 INSERT INTO returning_ctid_aoco(f2) VALUES ('test') RETURNING ctid;
+INFO:  GPORCA failed to produce a plan, falling back to planner
+DETAIL:  Feature not supported: INSERT with triggers
      ctid     
 --------------
  (33554432,2)
