@@ -1550,7 +1550,9 @@ my %tests = (
 		create_order => 1,
 		create_sql => q(
 		    CREATE DATABASE regression_invalid;
-			UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid'),
+			SET allow_system_table_mods = on;
+			UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid';
+			RESET allow_system_table_mods;),
 		regexp => qr/^CREATE DATABASE regression_invalid/m,
 
 		# invalid databases should never be dumped
