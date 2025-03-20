@@ -212,6 +212,7 @@ sub advance_to_record_splitting_zone
 
 	# Calibrate our message size so that we can get closer 8 bytes at
 	# a time.
+	# (wal_block_size is 4 times larger in GPDB than in Postgres)
 	my $message_size = $WAL_BLOCK_SIZE - 80 * 4;
 	while ($page_offset <= $WAL_BLOCK_SIZE - $RECORD_HEADER_SIZE)
 	{
