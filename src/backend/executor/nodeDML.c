@@ -45,10 +45,10 @@ RemapProjection(ProjectionInfo *projInfo, AttrMap *map)
 	int *varNumbers = projInfo->pi_varNumbers;
 	int numSimpleVars = projInfo->pi_numSimpleVars;
 
-    for (int i = 0; i < numSimpleVars;++i)
-    {
+	for (int i = 0; i < numSimpleVars;++i)
+	{
 		varNumbers[i] = attrMap(map, varNumbers[i]);
-    }
+	}
 
 	if (projInfo->pi_lastInnerVar > 0)
 		projInfo->pi_lastInnerVar = attrMap(map, projInfo->pi_lastInnerVar);
