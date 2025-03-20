@@ -212,7 +212,7 @@ sub advance_to_record_splitting_zone
 
 	# Calibrate our message size so that we can get closer 8 bytes at
 	# a time.
-	my $message_size = $WAL_BLOCK_SIZE - 80;
+	my $message_size = $WAL_BLOCK_SIZE - 80 * 4;
 	while ($page_offset <= $WAL_BLOCK_SIZE - $RECORD_HEADER_SIZE)
 	{
 		emit_message($node, $message_size);
