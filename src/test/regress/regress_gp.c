@@ -2352,6 +2352,7 @@ gp_keepalives_check(PG_FUNCTION_ARGS) {
 	SRF_RETURN_DONE(funcctx);
 }
 
+
 /*
  * This test function intended to check possibility of resources deallocation 
  * using squelch protocol in case of query termination during run of materialized
