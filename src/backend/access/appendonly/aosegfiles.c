@@ -1571,6 +1571,12 @@ get_ao_distribution(PG_FUNCTION_ARGS)
 
 	VALIDATE_GP_ROLE();
 
+	if (SRF_IS_SQUELCH_CALL())
+	{
+		funcctx = SRF_PERCALL_SETUP();
+		goto srf_done;
+	}
+
 	/*
 	 * stuff done only on the first call of the function. In here we execute
 	 * the query, gather the result rows and keep them in our context so that
@@ -1720,6 +1726,7 @@ get_ao_distribution(PG_FUNCTION_ARGS)
 		SRF_RETURN_NEXT(funcctx, result);
 	}
 
+srf_done:
 	/*
 	 * do when there is no more left
 	 */
