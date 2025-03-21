@@ -1160,6 +1160,8 @@ CTranslatorQueryToDXL::ProcessReturningList(CDXLNode *dml_dxlnode,
 {
 	GPOS_ASSERT(dml_dxlnode != NULL);
 
+	CRefCount::SafeRelease(m_dxl_query_output_cols);
+
 	if (m_query->returningList != NULL)
 	{
 		IntToUlongMap *sort_group_attno_to_colid_mapping =
@@ -3964,23 +3966,8 @@ CTranslatorQueryToDXL::TranslateDerivedTablesToDXL(const RangeTblEntry *rte,
 CDXLNode *
 CTranslatorQueryToDXL::TranslateExprToDXL(Expr *expr)
 {
-	return TranslateExprToDXL(expr, m_var_to_colid_map);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorQueryToDXL::TranslateExprToDXL
-//
-//	@doc:
-//		Translate the Expr into a CDXLScalar node with specified mapping
-//
-//---------------------------------------------------------------------------
-CDXLNode *
-CTranslatorQueryToDXL::TranslateExprToDXL(Expr *expr,
-										  CMappingVarColId *var_to_colid_map)
-{
 	CDXLNode *scalar_dxlnode =
-		m_scalar_translator->TranslateScalarToDXL(expr, var_to_colid_map);
+		m_scalar_translator->TranslateScalarToDXL(expr, m_var_to_colid_map);
 	GPOS_ASSERT(NULL != scalar_dxlnode);
 
 	return scalar_dxlnode;
@@ -4533,28 +4520,10 @@ CTranslatorQueryToDXL::TranslateExprToDXLProject(Expr *expr,
 												 const CHAR *alias_name,
 												 BOOL insist_new_colids)
 {
-	return TranslateExprToDXLProject(expr, alias_name, m_var_to_colid_map,
-									 insist_new_colids);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CTranslatorQueryToDXL::TranslateExprToDXLProject
-//
-//	@doc:
-//		Create a DXL project element node from the target list entry or var.
-//		The function allocates memory in the translator memory pool, and the caller
-//		is responsible for freeing it.
-//---------------------------------------------------------------------------
-CDXLNode *
-CTranslatorQueryToDXL::TranslateExprToDXLProject(
-	Expr *expr, const CHAR *alias_name, CMappingVarColId *var_to_colid_map,
-	BOOL insist_new_colids)
-{
 	GPOS_ASSERT(NULL != expr);
 
 	// construct a scalar operator
-	CDXLNode *child_dxlnode = TranslateExprToDXL(expr, var_to_colid_map);
+	CDXLNode *child_dxlnode = TranslateExprToDXL(expr, m_var_to_colid_map);
 
 	// get the id and alias for the proj elem
 	ULONG project_elem_id;
