@@ -815,8 +815,6 @@ CTranslatorQueryToDXL::TranslateInsertQueryToDXL()
 	CDXLNode *log_insert_dxlnode =
 		GPOS_NEW(m_mp) CDXLNode(m_mp, insert_dxlnode, query_dxlnode);
 
-	CRefCount::SafeRelease(m_dxl_query_output_cols);
-
 	log_insert_dxlnode = ProcessReturningList(log_insert_dxlnode, table_descr);
 
 	return log_insert_dxlnode;
@@ -1281,8 +1279,6 @@ CTranslatorQueryToDXL::TranslateDeleteQueryToDXL()
 	CDXLNode *log_delete_dxlnode =
 		GPOS_NEW(m_mp) CDXLNode(m_mp, delete_dxlop, query_dxlnode);
 
-	CRefCount::SafeRelease(m_dxl_query_output_cols);
-
 	log_delete_dxlnode = ProcessReturningList(log_delete_dxlnode, table_descr);
 
 	return log_delete_dxlnode;
@@ -1401,8 +1397,6 @@ CTranslatorQueryToDXL::TranslateUpdateQueryToDXL()
 
 	CDXLNode *log_update_dxlnode =
 		GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopupdate, query_dxlnode);
-
-	CRefCount::SafeRelease(m_dxl_query_output_cols);
 
 	log_update_dxlnode = ProcessReturningList(log_update_dxlnode, table_descr);
 
