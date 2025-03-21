@@ -3489,6 +3489,7 @@ CUtils::PdrgpcrRemapAndCreate(CMemoryPool *mp, CColRefArray *colref_array,
 		{
 			// not found in hashmap, so create a new colref and add to hashmap
 			pcrMapped = col_factory->PcrCopy(colref);
+			pcrMapped->MarkUsage(colref->GetUsage(true, true));
 
 #ifdef GPOS_DEBUG
 			BOOL result =
