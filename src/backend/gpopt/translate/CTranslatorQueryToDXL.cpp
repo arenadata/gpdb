@@ -4523,7 +4523,7 @@ CTranslatorQueryToDXL::TranslateExprToDXLProject(Expr *expr,
 	GPOS_ASSERT(NULL != expr);
 
 	// construct a scalar operator
-	CDXLNode *child_dxlnode = TranslateExprToDXL(expr, m_var_to_colid_map);
+	CDXLNode *child_dxlnode = TranslateExprToDXL(expr);
 
 	// get the id and alias for the proj elem
 	ULONG project_elem_id;
