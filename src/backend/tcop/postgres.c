@@ -1807,7 +1807,14 @@ exec_simple_query(const char *query_string)
 		if (Gp_role == GP_ROLE_UTILITY && IsA(parsetree->stmt, TransactionStmt) &&
 			((TransactionStmt *) parsetree->stmt)->kind == TRANS_STMT_PREPARE)
 		{
-			ereport(ERROR,
+			int		elevel = ERROR;
+
+#ifdef FAULT_INJECTOR
+			if (SIMPLE_FAULT_INJECTOR("enable_prepare_transaction") == FaultInjectorTypeSkip)
+				elevel = WARNING;
+#endif
+
+			ereport(elevel,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("PREPARE TRANSACTION is not supported in utility mode")));
 		}

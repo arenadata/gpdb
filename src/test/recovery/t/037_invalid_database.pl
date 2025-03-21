@@ -29,7 +29,9 @@ $node->start;
 $node->safe_psql(
 	"postgres", qq(
 CREATE DATABASE regression_invalid;
+SET allow_system_table_mods = on;
 UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid';
+RESET allow_system_table_mods;
 ));
 
 my $psql_stdout = '';
@@ -58,7 +60,9 @@ $psql_stderr = '';
 $node->psql(
 	'postgres',
 	qq(
+SET allow_system_table_mods = on;
 UPDATE pg_database SET datfrozenxid = '123456' WHERE datname = 'regression_invalid';
+RESET allow_system_table_mods;
 DROP TABLE IF EXISTS foo_tbl; CREATE TABLE foo_tbl();
 VACUUM FREEZE;),
 	stderr => \$psql_stderr);
@@ -89,8 +93,9 @@ my $bgpsql_in    = '';
 my $bgpsql_out   = '';
 my $bgpsql_err   = '';
 my $bgpsql_timer = IPC::Run::timer($PostgreSQL::Test::Utils::timeout_default);
-my $bgpsql = $node->background_psql('postgres', \$bgpsql_in, \$bgpsql_out,
-	$bgpsql_timer, on_error_stop => 0);
+my $bgpsql = IPC::Run::start(
+	['psql', '-XAtq', '-d', $node->connstr('postgres'), '-f', '-'],
+	'<', \$bgpsql_in, '>', \$bgpsql_out, '2>', \$bgpsql_err, $bgpsql_timer);
 $bgpsql_out = '';
 $bgpsql_in .= "SELECT pg_backend_pid();\n";
 
@@ -101,10 +106,13 @@ $bgpsql_out = '';
 
 # create the database, prevent drop database via lock held by a 2PC transaction
 $bgpsql_in .= qq(
+  CREATE EXTENSION gp_inject_fault;
   CREATE DATABASE regression_invalid_interrupt;
   BEGIN;
   LOCK pg_tablespace;
+  SELECT gp_inject_fault('enable_prepare_transaction', 'skip', 1);
   PREPARE TRANSACTION 'lock_tblspc';
+  SELECT gp_inject_fault('enable_prepare_transaction', 'reset', 1);
   \\echo done
 );
 
