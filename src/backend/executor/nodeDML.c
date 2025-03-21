@@ -94,6 +94,12 @@ ExecDML(DMLState *node)
 
 		Assert(action == DML_INSERT || action == DML_DELETE);
 
+		/*
+		 * Temporary restore result tuple slot for use in next projection
+		 */
+		TupleTableSlot *savedResultTuple = node->ps.ps_ResultTupleSlot;
+		node->ps.ps_ResultTupleSlot = node->resultTupleSlot;
+		node->resultTupleSlot = NULL;
 
 		/*
 		* Reset per-tuple memory context to free any expression evaluation
@@ -110,8 +116,7 @@ ExecDML(DMLState *node)
 		node->cleanedUpSlot = ExecFilterJunk(node->junkfilter, projectedSlot);
 
 		/* restore returning projection result tuple */
-		node->ps.ps_ResultTupleSlot = node->resultTupleSlot;
-		node->resultTupleSlot = NULL;
+		node->ps.ps_ResultTupleSlot = savedResultTuple;
 
 		/*
 		* If we are modifying a leaf partition we have to ensure that partition
@@ -332,13 +337,16 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 			dmlstate->ps.state->es_result_relation_info->ri_RelationDesc->rd_att->tdhasoid,
 			dmlstate->cleanedUpSlot);
 
+	// Sort node reads this slot before dml gets executed, fill it in returning block or leave empty
+	dmlstate->resultTupleSlot = dmlstate->ps.ps_ResultTupleSlot;
+	dmlstate->ps.ps_ResultTupleSlot = NULL;
+
 	/*
 	 * Initialize RETURNING projections if needed.
 	 */
 	if (node->returningList)
 	{
 		TupleTableSlot *slot;
-		TupleTableSlot *savedResultTuple = dmlstate->ps.ps_ResultTupleSlot;
 
 		/* Initialize result tuple slot and assign its rowtype */
 		TupleDesc tupDesc = ExecTypeFromTL(node->returningList, false);
@@ -356,10 +364,6 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 		/* Set up a tuple table slot for use for trigger output tuples */
 		if (estate->es_trig_tuple_slot == NULL)
 			estate->es_trig_tuple_slot = ExecInitExtraTupleSlot(estate);
-
-		/* temporary store created tuple in dedicated state field and restore saved */
-		dmlstate->resultTupleSlot = slot;
-		dmlstate->ps.ps_ResultTupleSlot = savedResultTuple;
 	}
 
 	/*
