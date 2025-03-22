@@ -1031,8 +1031,6 @@
                         <dxl:TableDescriptor Mdid="6.106604.1.1" TableName="mpp_s6756">
                           <dxl:Columns>
                             <dxl:Column ColId="189" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>
-                            <dxl:Column ColId="213" Attno="2" ColName="d" TypeMdid="0.23.1.0"/>
-                            <dxl:Column ColId="214" Attno="3" ColName="e" TypeMdid="0.23.1.0"/>
                             <dxl:Column ColId="190" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
                             <dxl:Column ColId="191" Attno="-3" ColName="xmin" TypeMdid="0.28.1.0"/>
                             <dxl:Column ColId="192" Attno="-4" ColName="cmin" TypeMdid="0.29.1.0"/>
@@ -1279,9 +1277,7 @@
                       <dxl:Filter/>
                       <dxl:TableDescriptor Mdid="6.106604.1.1" TableName="mpp_s6756">
                         <dxl:Columns>
-                          <dxl:Column ColId="215" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>
                           <dxl:Column ColId="197" Attno="2" ColName="d" TypeMdid="0.23.1.0"/>
-                          <dxl:Column ColId="216" Attno="3" ColName="e" TypeMdid="0.23.1.0"/>
                           <dxl:Column ColId="198" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
                           <dxl:Column ColId="199" Attno="-3" ColName="xmin" TypeMdid="0.28.1.0"/>
                           <dxl:Column ColId="200" Attno="-4" ColName="cmin" TypeMdid="0.29.1.0"/>
@@ -1364,8 +1360,6 @@
                     <dxl:Filter/>
                     <dxl:TableDescriptor Mdid="6.106604.1.1" TableName="mpp_s6756">
                       <dxl:Columns>
-                        <dxl:Column ColId="217" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>
-                        <dxl:Column ColId="218" Attno="2" ColName="d" TypeMdid="0.23.1.0"/>
                         <dxl:Column ColId="205" Attno="3" ColName="e" TypeMdid="0.23.1.0"/>
                         <dxl:Column ColId="206" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
                         <dxl:Column ColId="207" Attno="-3" ColName="xmin" TypeMdid="0.28.1.0"/>
@@ -2424,8 +2418,6 @@
                           <dxl:TableDescriptor Mdid="6.106604.1.1" TableName="mpp_s6756">
                             <dxl:Columns>
                               <dxl:Column ColId="97" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>
-                              <dxl:Column ColId="122" Attno="2" ColName="d" TypeMdid="0.23.1.0"/>
-                              <dxl:Column ColId="123" Attno="3" ColName="e" TypeMdid="0.23.1.0"/>
                               <dxl:Column ColId="98" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
                               <dxl:Column ColId="99" Attno="-3" ColName="xmin" TypeMdid="0.28.1.0"/>
                               <dxl:Column ColId="100" Attno="-4" ColName="cmin" TypeMdid="0.29.1.0"/>
@@ -2577,7 +2569,6 @@
                             <dxl:TableDescriptor Mdid="6.106508.1.1" TableName="mpp_r6756">
                               <dxl:Columns>
                                 <dxl:Column ColId="87" Attno="1" ColName="a" TypeMdid="0.23.1.0"/>
-                                <dxl:Column ColId="121" Attno="2" ColName="b" TypeMdid="0.23.1.0"/>
                                 <dxl:Column ColId="88" Attno="3" ColName="x" TypeMdid="0.23.1.0"/>
                                 <dxl:Column ColId="89" Attno="4" ColName="y" TypeMdid="0.23.1.0"/>
                                 <dxl:Column ColId="90" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
@@ -2663,9 +2654,7 @@
                         <dxl:Filter/>
                         <dxl:TableDescriptor Mdid="6.106604.1.1" TableName="mpp_s6756">
                           <dxl:Columns>
-                            <dxl:Column ColId="124" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>
                             <dxl:Column ColId="105" Attno="2" ColName="d" TypeMdid="0.23.1.0"/>
-                            <dxl:Column ColId="125" Attno="3" ColName="e" TypeMdid="0.23.1.0"/>
                             <dxl:Column ColId="106" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
                             <dxl:Column ColId="107" Attno="-3" ColName="xmin" TypeMdid="0.28.1.0"/>
                             <dxl:Column ColId="108" Attno="-4" ColName="cmin" TypeMdid="0.29.1.0"/>
@@ -2748,8 +2737,6 @@
                       <dxl:Filter/>
                       <dxl:TableDescriptor Mdid="6.106604.1.1" TableName="mpp_s6756">
                         <dxl:Columns>
-                          <dxl:Column ColId="126" Attno="1" ColName="c" TypeMdid="0.23.1.0"/>
-                          <dxl:Column ColId="127" Attno="2" ColName="d" TypeMdid="0.23.1.0"/>
                           <dxl:Column ColId="113" Attno="3" ColName="e" TypeMdid="0.23.1.0"/>
                           <dxl:Column ColId="114" Attno="-1" ColName="ctid" TypeMdid="0.27.1.0"/>
                           <dxl:Column ColId="115" Attno="-3" ColName="xmin" TypeMdid="0.28.1.0"/>

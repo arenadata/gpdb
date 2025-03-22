@@ -498,27 +498,6 @@ where t1.i in (select i from cte);
                                         <dxl:ProjElem ColId="27" Alias="j">
                                             <dxl:Ident ColId="27" ColName="j" TypeMdid="0.23.1.0" />
                                         </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="28" Alias="ctid">
-                                            <dxl:Ident ColId="28" ColName="ctid" TypeMdid="0.27.1.0" />
-                                        </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="29" Alias="xmin">
-                                            <dxl:Ident ColId="29" ColName="xmin" TypeMdid="0.28.1.0" />
-                                        </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="30" Alias="cmin">
-                                            <dxl:Ident ColId="30" ColName="cmin" TypeMdid="0.29.1.0" />
-                                        </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="31" Alias="xmax">
-                                            <dxl:Ident ColId="31" ColName="xmax" TypeMdid="0.28.1.0" />
-                                        </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="32" Alias="cmax">
-                                            <dxl:Ident ColId="32" ColName="cmax" TypeMdid="0.29.1.0" />
-                                        </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="33" Alias="tableoid">
-                                            <dxl:Ident ColId="33" ColName="tableoid" TypeMdid="0.26.1.0" />
-                                        </dxl:ProjElem>
-                                        <dxl:ProjElem ColId="34" Alias="gp_segment_id">
-                                            <dxl:Ident ColId="34" ColName="gp_segment_id" TypeMdid="0.23.1.0" />
-                                        </dxl:ProjElem>
                                     </dxl:ProjList>
                                     <dxl:ProjList>
                                         <dxl:ProjElem ColId="24" Alias="generate_series">

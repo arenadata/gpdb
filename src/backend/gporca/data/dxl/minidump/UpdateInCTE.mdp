@@ -306,27 +306,6 @@ explain with cte as (
                             <dxl:ProjElem ColId="32" Alias="j">
                                 <dxl:Ident ColId="32" ColName="j" TypeMdid="0.23.1.0" />
                             </dxl:ProjElem>
-                            <dxl:ProjElem ColId="33" Alias="ctid">
-                                <dxl:Ident ColId="33" ColName="ctid" TypeMdid="0.27.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="34" Alias="xmin">
-                                <dxl:Ident ColId="34" ColName="xmin" TypeMdid="0.28.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="35" Alias="cmin">
-                                <dxl:Ident ColId="35" ColName="cmin" TypeMdid="0.29.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="36" Alias="xmax">
-                                <dxl:Ident ColId="36" ColName="xmax" TypeMdid="0.28.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="37" Alias="cmax">
-                                <dxl:Ident ColId="37" ColName="cmax" TypeMdid="0.29.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="38" Alias="tableoid">
-                                <dxl:Ident ColId="38" ColName="tableoid" TypeMdid="0.26.1.0" />
-                            </dxl:ProjElem>
-                            <dxl:ProjElem ColId="39" Alias="gp_segment_id">
-                                <dxl:Ident ColId="39" ColName="gp_segment_id" TypeMdid="0.23.1.0" />
-                            </dxl:ProjElem>
                         </dxl:ProjList>
                         <dxl:ProjList>
                             <dxl:ProjElem ColId="22" Alias="i">
