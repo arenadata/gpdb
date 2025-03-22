@@ -74,6 +74,14 @@ ExecDML(DMLState *node)
 
 		Assert(outerNode != NULL);
 
+		/* Temporary restore result tuple slot for use in next projection */
+		TupleTableSlot *returningResultTuple = node->ps.ps_ResultTupleSlot;
+		node->ps.ps_ResultTupleSlot = node->resultTupleSlot;
+
+		/* Set target list for projection */
+		List *returningTargetList = plannode->plan.targetlist;
+		plannode->plan.targetlist = plannode->projTargetList;
+
 		TupleTableSlot *slot = ExecProcNode(outerNode);
 		TupleTableSlot *resultSlot = NULL;
 
@@ -95,13 +103,6 @@ ExecDML(DMLState *node)
 		Assert(action == DML_INSERT || action == DML_DELETE);
 
 		/*
-		 * Temporary restore result tuple slot for use in next projection
-		 */
-		TupleTableSlot *savedResultTuple = node->ps.ps_ResultTupleSlot;
-		node->ps.ps_ResultTupleSlot = node->resultTupleSlot;
-		node->resultTupleSlot = NULL;
-
-		/*
 		* Reset per-tuple memory context to free any expression evaluation
 		* storage allocated in the previous tuple cycle.
 		*/
@@ -115,8 +116,9 @@ ExecDML(DMLState *node)
 		/* remove 'junk' columns from tuple */
 		node->cleanedUpSlot = ExecFilterJunk(node->junkfilter, projectedSlot);
 
-		/* restore returning projection result tuple */
-		node->ps.ps_ResultTupleSlot = savedResultTuple;
+		/* restore returning result tuple and taregt list*/
+		node->ps.ps_ResultTupleSlot = returningResultTuple;
+		plannode->plan.targetlist = returningTargetList;
 
 		/*
 		* If we are modifying a leaf partition we have to ensure that partition
@@ -284,6 +286,10 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 	CmdType operation = estate->es_plannedstmt->commandType;
 	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
 
+	/* set target list with projection and save returning target list */
+	List *returningTargetList = node->plan.targetlist;
+	node->plan.targetlist = node->projTargetList;
+
 	ExecInitResultTupleSlot(estate, &dmlstate->ps);
 
 	dmlstate->ps.targetlist = (List *)
@@ -336,35 +342,6 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 	dmlstate->junkfilter = ExecInitJunkFilter(node->plan.targetlist,
 			dmlstate->ps.state->es_result_relation_info->ri_RelationDesc->rd_att->tdhasoid,
 			dmlstate->cleanedUpSlot);
-
-	// Sort node reads this slot before dml gets executed, fill it in returning block or leave empty
-	dmlstate->resultTupleSlot = dmlstate->ps.ps_ResultTupleSlot;
-	dmlstate->ps.ps_ResultTupleSlot = NULL;
-
-	/*
-	 * Initialize RETURNING projections if needed.
-	 */
-	if (node->returningList)
-	{
-		TupleTableSlot *slot;
-
-		/* Initialize result tuple slot and assign its rowtype */
-		TupleDesc tupDesc = ExecTypeFromTL(node->returningList, false);
-
-		/* Set up a slot for the output of the RETURNING projection(s) */
-		ExecInitResultTupleSlot(estate, &dmlstate->ps);
-		ExecAssignResultType(&dmlstate->ps, tupDesc);
-		slot = dmlstate->ps.ps_ResultTupleSlot;
-
-		List *rliststate = (List *) ExecInitExpr((Expr *) node->returningList, &dmlstate->ps);
-		resultRelInfo->ri_projectReturning =
-			ExecBuildProjectionInfo(rliststate, dmlstate->ps.ps_ExprContext, slot,
-									resultRelInfo->ri_RelationDesc->rd_att);
-
-		/* Set up a tuple table slot for use for trigger output tuples */
-		if (estate->es_trig_tuple_slot == NULL)
-			estate->es_trig_tuple_slot = ExecInitExtraTupleSlot(estate);
-	}
 
 	/*
 	 * The comment below is related to ExecInsert(). The code works correctly,
@@ -427,6 +404,37 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 			dmlstate->canSetTag = false;
 		}
 	}
+
+	/* Sort node reads this slot before dml gets executed, fill it here or leave empty */
+	dmlstate->resultTupleSlot = dmlstate->ps.ps_ResultTupleSlot;
+
+	/*
+	 * Initialize RETURNING projections if needed.
+	 */
+	if (returningTargetList)
+	{
+		TupleTableSlot *slot;
+
+		/* Initialize result tuple slot and assign its rowtype */
+		TupleDesc tupDesc = ExecTypeFromTL(returningTargetList, false);
+
+		/* Set up a slot for the output of the RETURNING projection(s) */
+		ExecInitResultTupleSlot(estate, &dmlstate->ps);
+		ExecAssignResultType(&dmlstate->ps, tupDesc);
+		slot = dmlstate->ps.ps_ResultTupleSlot;
+
+		List *rliststate = (List *) ExecInitExpr((Expr *) returningTargetList, &dmlstate->ps);
+		resultRelInfo->ri_projectReturning =
+			ExecBuildProjectionInfo(rliststate, dmlstate->ps.ps_ExprContext, slot,
+									resultRelInfo->ri_RelationDesc->rd_att);
+
+		/* Set up a tuple table slot for use for trigger output tuples */
+		if (estate->es_trig_tuple_slot == NULL)
+			estate->es_trig_tuple_slot = ExecInitExtraTupleSlot(estate);
+	}
+
+	/* restore returning target list */
+	node->plan.targetlist = returningTargetList;
 
 	return dmlstate;
 }

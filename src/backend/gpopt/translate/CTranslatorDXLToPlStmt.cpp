@@ -3632,14 +3632,6 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 		child_dxlnode, &child_context, ctxt_translation_prev_siblings);
 	GPOS_ASSERT(NULL != child_plan && "child plan cannot be NULL");
 
-	List *child_plan_target_list = child_plan->targetlist;
-	if (IsA(child_plan, DML))
-	{
-		// DML node output is located in returningList
-		DML *dml_plan = (DML *) child_plan;
-		child_plan_target_list = dml_plan->returningList;
-	}
-
 	CDXLTranslationContextArray *child_contexts =
 		GPOS_NEW(m_mp) CDXLTranslationContextArray(m_mp);
 	child_contexts->Append(&child_context);
@@ -3670,7 +3662,7 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 		// materialize does not project, so it must use the child's target list
 		ListCell *lc_target_entry = NULL;
 		materialize_plan->targetlist = NIL;
-		ForEach(lc_target_entry, child_plan_target_list)
+		ForEach(lc_target_entry, child_plan->targetlist)
 		{
 			TargetEntry *te = (TargetEntry *) lfirst(lc_target_entry);
 			Var *var_new = gpdb::MakeVar(
@@ -3688,13 +3680,12 @@ CTranslatorDXLToPlStmt::TranslateDXLCTEProducerToSharedScan(
 		materialize_plan->nMotionNodes = child_plan->nMotionNodes;
 
 		child_plan = materialize_plan;
-		child_plan_target_list = child_plan->targetlist;
 	}
 
 	// Targetlist mismatch leads to different tuple bindings, see #12796.
 	// We assume targetlist's equivalence. In case of inequality one list
 	// is a subset of another, so it safe to compare only length.
-	if (list_length(child_plan_target_list) != list_length(plan->targetlist))
+	if (list_length(child_plan->targetlist) != list_length(plan->targetlist))
 		GPOS_RAISE(
 			gpdxl::ExmaDXL, gpdxl::ExmiDXL2PlStmtConversion,
 			GPOS_WSZ_LIT("Shared Scan and child plan targetlist mismatch."));
@@ -4210,13 +4201,14 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 							 NULL,	// translate context for the base table
 							 child_contexts, output_context);
 
-	dml->returningList =
+	// set targetlist as list of target entries to be computed for parent nodes
+	plan->targetlist =
 		TranslateDXLProjList(project_list_output_dxlnode, &base_table_context,
 							 child_contexts, output_context);
 
-	m_has_returning = m_has_returning || dml->returningList != NIL;
+	m_has_returning = m_has_returning || plan->targetlist != NIL;
 
-	if (dml->returningList != NIL &&
+	if (plan->targetlist != NIL &&
 		md_rel->GetRelDistribution() == IMDRelation::EreldistrReplicated)
 	{
 		m_returning_dml_on_replicated = true;
@@ -4271,7 +4263,8 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 
 	GPOS_ASSERT(0 != dml->actionColIdx);
 
-	plan->targetlist = dml_target_list;
+	// save targetlist for projection of results from outer nodes
+	dml->projTargetList = dml_target_list;
 
 	plan->lefttree = child_plan;
 	plan->nMotionNodes = child_plan->nMotionNodes;

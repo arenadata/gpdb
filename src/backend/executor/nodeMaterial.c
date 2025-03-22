@@ -358,14 +358,7 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	 * index into range table, while the material may refer to the same relation as "outer" varno)
 	 * [JIRA: MPP-25365]
 	 */
-	List *outerPlanTargetList = outerPlan->targetlist;
-	if (IsA(outerPlan, DML))
-	{
-		// DML node output is located in returningList
-		DML *dmlPlan = (DML *) outerPlan;
-		outerPlanTargetList = dmlPlan->returningList;
-	}
-	if (list_length(node->plan.targetlist) != list_length(outerPlanTargetList))
+	if (list_length(node->plan.targetlist) != list_length(outerPlan->targetlist))
 		elog(ERROR, "Material operator does not support projection");
 	outerPlanState(matstate) = ExecInitNode(outerPlan, estate, eflags);
 
