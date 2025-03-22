@@ -2531,6 +2531,39 @@ create table t_new as (with cte as
 (delete from with_dml where i > 0 returning *)
 select * from cte);
 ERROR:  cannot create plan with several writing gangs
+-- Test order by system column returned from modifying CTE on hash distributed table
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i, gp_segment_id
+) select i from cte order by gp_segment_id;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Result
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: gp_segment_id
+         ->  Sort
+               Sort Key: gp_segment_id
+               ->  Insert
+                     ->  Result
+                           ->  Result
+                                 ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(10 rows)
+
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i, gp_segment_id
+) select i from cte order by gp_segment_id;
+ i 
+---
+ 3
+ 4
+ 2
+ 1
+ 5
+(5 rows)
+
 drop table with_dml;
 -- Test various SELECT statements from CTE with
 -- modifying DML operations over replicated tables
