@@ -2431,7 +2431,24 @@ with cte as (
 cte2 as (
     select * from cte)
 select * from cte2 a join cte2 b using (i);
-ERROR:  Too much references to non-SELECT CTE (allpaths.c:2043)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 1:1)
+               ->  Materialize
+                     ->  Insert
+                           ->  Result
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+         ->  Hash Join
+               Hash Cond: (share1_ref3.i = share1_ref2.i)
+               ->  Shared Scan (share slice:id 1:1)
+               ->  Hash
+                     ->  Shared Scan (share slice:id 1:1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(14 rows)
+
 create table with_dml_repl (i int, j int) distributed replicated;
 explain (costs off)
 with cte as (
@@ -2448,11 +2465,10 @@ select * from cte2 a join cte2 b using (i);
          ->  Shared Scan (share slice:id 3:1)
                ->  Materialize
                      ->  Result
-                           ->  Result
-                                 One-Time Filter: (gp_execution_segment() = 2)
-                                 ->  Insert
-                                       ->  Result
-                                             ->  Function Scan on generate_series
+                           One-Time Filter: (gp_execution_segment() = 0)
+                           ->  Insert
+                                 ->  Result
+                                       ->  Function Scan on generate_series
          ->  Hash Join
                Hash Cond: (share1_ref3.i = share1_ref2.i)
                ->  Redistribute Motion 3:3  (slice1; segments: 3)
@@ -2463,7 +2479,7 @@ select * from cte2 a join cte2 b using (i);
                            Hash Key: share1_ref2.i
                            ->  Shared Scan (share slice:id 2:1)
  Optimizer: Pivotal Optimizer (GPORCA)
-(20 rows)
+(19 rows)
 
 explain (costs off)
 with recursive cte as (
@@ -2609,18 +2625,17 @@ with cte as (
     select i, i * 100 from generate_series(1,5) i
     returning i
 ) select * from cte order by i;
-                      QUERY PLAN                      
-------------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: generate_series.generate_series
-   ->  Result
-         ->  Sort
-               Sort Key: generate_series.generate_series
-               ->  Insert
-                     ->  Result
-                           ->  Function Scan on generate_series
+   Merge Key: i
+   ->  Sort
+         Sort Key: i
+         ->  Insert
+               ->  Result
+                     ->  Function Scan on generate_series
  Optimizer: Pivotal Optimizer (GPORCA)
-(9 rows)
+(8 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2657,7 +2672,7 @@ with cte as (
  Explicit Gather Motion 3:1  (slice1; segments: 3)
    ->  Aggregate
          ->  Hash Join
-               Hash Cond: (generate_series.generate_series = t_repl.i)
+               Hash Cond: (i = t_repl.i)
                ->  Insert
                      ->  Result
                            ->  Function Scan on generate_series
@@ -2837,7 +2852,7 @@ select count(*) from cte join
          ->  Gather Motion 3:1  (slice1; segments: 3)
                ->  Aggregate
                      ->  Hash Join
-                           Hash Cond: (generate_series.generate_series = generate_series_1.generate_series)
+                           Hash Cond: (i = generate_series_1.generate_series)
                            ->  Result
                                  ->  Insert
                                        ->  Result
@@ -2884,7 +2899,7 @@ with cte as (
          ->  Gather Motion 3:1  (slice1; segments: 3)
                ->  Aggregate
                      ->  Hash Join
-                           Hash Cond: (generate_series.generate_series = t_hashed.i)
+                           Hash Cond: (i = t_hashed.i)
                            ->  Result
                                  ->  Insert
                                        ->  Result
@@ -2917,7 +2932,7 @@ with cte as (
          ->  Gather Motion 3:1  (slice1; segments: 3)
                ->  Aggregate
                      ->  Hash Left Join
-                           Hash Cond: (generate_series.generate_series = t_hashed.i)
+                           Hash Cond: (i = t_hashed.i)
                            ->  Result
                                  ->  Insert
                                        ->  Result
@@ -2950,7 +2965,7 @@ with cte as (
          ->  Gather Motion 3:1  (slice2; segments: 3)
                ->  Aggregate
                      ->  Hash Join
-                           Hash Cond: (generate_series.generate_series = t_strewn.i)
+                           Hash Cond: (i = t_strewn.i)
                            ->  Result
                                  ->  Insert
                                        ->  Result
@@ -2985,7 +3000,7 @@ with cte as (
          ->  Gather Motion 3:1  (slice2; segments: 3)
                ->  Aggregate
                      ->  Hash Left Join
-                           Hash Cond: (generate_series.generate_series = t_strewn.i)
+                           Hash Cond: (i = t_strewn.i)
                            ->  Result
                                  ->  Insert
                                        ->  Result
@@ -3226,13 +3241,13 @@ order by 1;
    ->  Sort
          Sort Key: t1.i
          ->  Hash Join
-               Hash Cond: (generate_series.generate_series = t1.i)
+               Hash Cond: (i = t1.i)
                ->  HashAggregate
-                     Group Key: generate_series.generate_series
+                     Group Key: i
                      ->  Redistribute Motion 3:3  (slice1; segments: 3)
-                           Hash Key: generate_series.generate_series
+                           Hash Key: i
                            ->  HashAggregate
-                                 Group Key: generate_series.generate_series
+                                 Group Key: i
                                  ->  Result
                                        One-Time Filter: (gp_execution_segment() = 1)
                                        ->  Insert
@@ -3275,18 +3290,18 @@ order by 1;
    ->  Sort
          Sort Key: t1.i
          ->  Hash Join
-               Hash Cond: ((t1.j = generate_series.generate_series) AND (t1.i = generate_series.generate_series))
+               Hash Cond: ((t1.j = i) AND (t1.i = i))
                ->  Redistribute Motion 3:3  (slice1; segments: 3)
                      Hash Key: t1.j
                      ->  Seq Scan on t1
                            Filter: (NOT (j IS NULL))
                ->  Hash
                      ->  HashAggregate
-                           Group Key: generate_series.generate_series
+                           Group Key: i
                            ->  Redistribute Motion 3:3  (slice2; segments: 3)
-                                 Hash Key: generate_series.generate_series
+                                 Hash Key: i
                                  ->  HashAggregate
-                                       Group Key: generate_series.generate_series
+                                       Group Key: i
                                        ->  Result
                                              One-Time Filter: (gp_execution_segment() = 0)
                                              ->  Insert
@@ -3382,17 +3397,16 @@ order by 1;
                     QUERY PLAN                     
 ---------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: "outer".i
+   Merge Key: i
    ->  Sort
-         Sort Key: "outer".i
+         Sort Key: i
          ->  Append
-               ->  Result
-                     ->  Insert
+               ->  Insert
+                     ->  Result
                            ->  Result
-                                 ->  Result
                ->  Seq Scan on t_repl
  Optimizer: Pivotal Optimizer (GPORCA)
-(11 rows)
+(10 rows)
 
 with cte as (
     insert into with_dml_dr
