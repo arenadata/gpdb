@@ -1114,9 +1114,9 @@ EXPLAIN (verbose, costs off) UPDATE rw_view1 SET b = b + 1 RETURNING *;
                                         QUERY PLAN                                         
 -------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
-   Output: base_tbl.a, base_tbl.b
+   Output: a, b
    ->  Update
-         Output: base_tbl.a, base_tbl.b, (DMLAction), base_tbl.ctid
+         Output: a, b
          ->  Split
                Output: base_tbl.a, base_tbl.b, base_tbl.ctid, base_tbl.gp_segment_id, DMLAction
                ->  Result

@@ -2309,7 +2309,7 @@ with cte as (
          ->  Gather Motion 3:1  (slice1; segments: 3)
                ->  Aggregate
                      ->  Result
-                           Filter: (generate_series.generate_series > 2)
+                           Filter: (i > 2)
                            ->  Insert
                                  ->  Result
                                        ->  Result

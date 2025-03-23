@@ -262,7 +262,7 @@ SELECT count(*) AS a FROM t_strewn JOIN cte USING (i);
    ->  Aggregate
          ->  Gather Motion 3:1  (slice2; segments: 3)
                ->  Hash Join
-                     Hash Cond: (t_strewn.i = "outer".ColRef_0045)
+                     Hash Cond: (t_strewn.i = i)
                      ->  Redistribute Motion 3:3  (slice1; segments: 3)
                            Hash Key: t_strewn.i
                            ->  Seq Scan on t_strewn

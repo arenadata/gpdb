@@ -16290,7 +16290,6 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped VALUES (1, 2, 4);
                     QUERY PLAN                    
 --------------------------------------------------
  Insert
-   Output: c1, NULL::integer, c3, c4, ColRef_0014
    ->  Result
          Output: c1, c3, c4, 1
          ->  Result
@@ -16300,14 +16299,13 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped VALUES (1, 2, 4);
                      ->  Result
                            Output: true
  Optimizer: Pivotal Optimizer (GPORCA)
-(11 rows)
+(10 rows)
 
 INSERT INTO t_part_dropped VALUES (1, 2, 4);
 EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4);
                QUERY PLAN               
 ----------------------------------------
  Insert
-   Output: c1, c3, c4, ColRef_0014
    ->  Result
          Output: c1, c3, c4, 1
          ->  Result
@@ -16317,7 +16315,7 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4
                      ->  Result
                            Output: true
  Optimizer: Pivotal Optimizer (GPORCA)
-(11 rows)
+(10 rows)
 
 INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 4);
 INSERT INTO t_part_dropped_1_prt_p2 VALUES (1, 2, 0);
@@ -16327,7 +16325,6 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
                                                                                         QUERY PLAN                                                                                         
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part_dropped_1_prt_p2.c1, t_part_dropped_1_prt_p2.c3, t_part_dropped_1_prt_p2.c4, (DMLAction), t_part_dropped_1_prt_p2.ctid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part_dropped_1_prt_p2.c1, t_part_dropped_1_prt_p2.c3, t_part_dropped_1_prt_p2.c4, t_part_dropped_1_prt_p2.ctid, t_part_dropped_1_prt_p2.gp_segment_id, (DMLAction)
          Hash Key: t_part_dropped_1_prt_p2.c1
@@ -16338,14 +16335,13 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
                      ->  Seq Scan on public.t_part_dropped_1_prt_p2
                            Output: t_part_dropped_1_prt_p2.c1, t_part_dropped_1_prt_p2.c3, t_part_dropped_1_prt_p2.c4, t_part_dropped_1_prt_p2.ctid, t_part_dropped_1_prt_p2.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(12 rows)
+(11 rows)
 
 UPDATE t_part_dropped_1_prt_p2 SET c1 = 2;
 EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped SET c1 = 3;
                                                                                  QUERY PLAN                                                                                  
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part_dropped.c1, NULL::integer, t_part_dropped.c3, t_part_dropped.c4, (DMLAction), t_part_dropped.ctid, t_part_dropped.tableoid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part_dropped.c1, t_part_dropped.c3, t_part_dropped.c4, t_part_dropped.ctid, t_part_dropped.tableoid, t_part_dropped.gp_segment_id, (DMLAction)
          Hash Key: t_part_dropped.c1
@@ -16360,7 +16356,7 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped SET c1 = 3;
                            ->  Dynamic Seq Scan on public.t_part_dropped (dynamic scan id: 1)
                                  Output: t_part_dropped.c1, t_part_dropped.c3, t_part_dropped.c4, t_part_dropped.ctid, t_part_dropped.tableoid, t_part_dropped.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(16 rows)
+(15 rows)
 
 UPDATE t_part_dropped SET c1 = 3;
 -- Ensure that split update on leaf partition does not throw constraint error
@@ -16380,7 +16376,6 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
                                                                                  QUERY PLAN                                                                                  
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part_dropped.c1, NULL::integer, t_part_dropped.c3, t_part_dropped.c4, (DMLAction), t_part_dropped.ctid, t_part_dropped.tableoid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part_dropped.c1, t_part_dropped.c3, t_part_dropped.c4, t_part_dropped.ctid, t_part_dropped.tableoid, t_part_dropped.gp_segment_id, (DMLAction)
          Hash Key: t_part_dropped.c1
@@ -16396,7 +16391,7 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
                                  Output: t_part_dropped.c1, t_part_dropped.c3, t_part_dropped.c4, t_part_dropped.ctid, t_part_dropped.tableoid, t_part_dropped.gp_segment_id
                                  Filter: (t_part_dropped.c4 = 0)
  Optimizer: Pivotal Optimizer (GPORCA)
-(17 rows)
+(16 rows)
 
 UPDATE t_part_dropped SET c1 = 3 WHERE c4 = 0;
 SELECT count(*) FROM t_part_dropped_1_prt_p2;
@@ -16415,13 +16410,12 @@ EXPLAIN (COSTS OFF, VERBOSE) DELETE FROM t_part_dropped_1_prt_p2;
                                                                                   QUERY PLAN                                                                                   
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0020, t_part_dropped_1_prt_p2.ctid
    ->  Result
          Output: t_part_dropped_1_prt_p2.ctid, t_part_dropped_1_prt_p2.gp_segment_id, 0
          ->  Seq Scan on public.t_part_dropped_1_prt_p2
                Output: t_part_dropped_1_prt_p2.ctid, t_part_dropped_1_prt_p2.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(7 rows)
+(6 rows)
 
 DELETE FROM t_part_dropped_1_prt_p2;
 DROP TABLE t_part_dropped;
@@ -16442,7 +16436,6 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part VALUES (1, 5, 2, 5);
                QUERY PLAN               
 ----------------------------------------
  Insert
-   Output: c1, c2, c3, c4, ColRef_0016
    ->  Result
          Output: c1, c2, c3, c4, 1
          ->  Result
@@ -16452,14 +16445,13 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part VALUES (1, 5, 2, 5);
                      ->  Result
                            Output: true
  Optimizer: Pivotal Optimizer (GPORCA)
-(11 rows)
+(10 rows)
 
 INSERT INTO t_part VALUES (1, 5, 2, 5);
 EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
                       QUERY PLAN                      
 ------------------------------------------------------
  Insert
-   Output: c1, NULL::integer, c2, c3, c4, ColRef_0016
    ->  Result
          Output: c1, c2, c3, c4, 1
          ->  Result
@@ -16469,7 +16461,7 @@ EXPLAIN (COSTS OFF, VERBOSE) INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
                      ->  Result
                            Output: true
  Optimizer: Pivotal Optimizer (GPORCA)
-(11 rows)
+(10 rows)
 
 INSERT INTO t_part_1_prt_p2 VALUES (1, 5, 2, 5);
 -- Ensure that split update on leaf and root partitions does not
@@ -16478,7 +16470,6 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_1_prt_p2 SET c1 = 2;
                                                                               QUERY PLAN                                                                               
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part_1_prt_p2.c1, NULL::integer, t_part_1_prt_p2.c2, t_part_1_prt_p2.c3, t_part_1_prt_p2.c4, (DMLAction), t_part_1_prt_p2.ctid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part_1_prt_p2.c1, t_part_1_prt_p2.c2, t_part_1_prt_p2.c3, t_part_1_prt_p2.c4, t_part_1_prt_p2.ctid, t_part_1_prt_p2.gp_segment_id, (DMLAction)
          Hash Key: t_part_1_prt_p2.c1
@@ -16489,14 +16480,13 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part_1_prt_p2 SET c1 = 2;
                      ->  Seq Scan on public.t_part_1_prt_p2
                            Output: t_part_1_prt_p2.c1, t_part_1_prt_p2.c2, t_part_1_prt_p2.c3, t_part_1_prt_p2.c4, t_part_1_prt_p2.ctid, t_part_1_prt_p2.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(12 rows)
+(11 rows)
 
 UPDATE t_part_1_prt_p2 SET c1 = 2;
 EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
                                                                QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, (DMLAction), t_part.ctid, t_part.tableoid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, t_part.ctid, t_part.tableoid, t_part.gp_segment_id, (DMLAction)
          Hash Key: t_part.c1
@@ -16511,7 +16501,7 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
                            ->  Dynamic Seq Scan on public.t_part (dynamic scan id: 1)
                                  Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, t_part.ctid, t_part.tableoid, t_part.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(16 rows)
+(15 rows)
 
 UPDATE t_part SET c1 = 3;
 -- Ensure that split update on leaf partition does not throw constraint error
@@ -16529,13 +16519,12 @@ EXPLAIN (COSTS OFF, VERBOSE) DELETE FROM t_part_1_prt_p2;
                                                                         QUERY PLAN                                                                         
 -----------------------------------------------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0022, t_part_1_prt_p2.ctid
    ->  Result
          Output: t_part_1_prt_p2.ctid, t_part_1_prt_p2.gp_segment_id, 0
          ->  Seq Scan on public.t_part_1_prt_p2
                Output: t_part_1_prt_p2.ctid, t_part_1_prt_p2.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(7 rows)
+(6 rows)
 
 DELETE FROM t_part_1_prt_p2;
 DROP TABLE t_part;
@@ -16572,7 +16561,6 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
                                                                QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, (DMLAction), t_part.ctid, t_part.tableoid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, t_part.ctid, t_part.tableoid, t_part.gp_segment_id, (DMLAction)
          Hash Key: t_part.c1
@@ -16587,7 +16575,7 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
                            ->  Dynamic Seq Scan on public.t_part (dynamic scan id: 1)
                                  Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, t_part.ctid, t_part.tableoid, t_part.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(16 rows)
+(15 rows)
 
 UPDATE t_part SET c1 = 3;
 SELECT * FROM t_part_1_prt_p2;

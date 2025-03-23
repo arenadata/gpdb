@@ -3735,7 +3735,7 @@ where 0 = (select i from cte);
    ->  Nested Loop
          Join Filter: true
          ->  Result
-               Filter: (0 = t1.i)
+               Filter: (0 = i)
                ->  Assert
                      Assert Cond: ((row_number() OVER (?)) = 1)
                      ->  WindowAgg
@@ -3797,12 +3797,12 @@ order by i;
    ->  Sort
          Sort Key: t2.i
          ->  Hash Semi Join
-               Hash Cond: ((t2.i = generate_series.generate_series) AND (t2.i = generate_series.generate_series))
+               Hash Cond: ((t2.i = i) AND (t2.i = i))
                ->  Seq Scan on t2
                      Filter: (i > 0)
                ->  Hash
                      ->  Result
-                           Filter: (generate_series.generate_series > 0)
+                           Filter: (i > 0)
                            ->  Insert
                                  ->  Result
                                        ->  Result
@@ -3850,13 +3850,13 @@ order by i;
    ->  Sort
          Sort Key: t_repl.i
          ->  Hash Semi Join
-               Hash Cond: ((t_repl.i = generate_series.generate_series) AND (t_repl.i = generate_series.generate_series))
+               Hash Cond: ((t_repl.i = i) AND (t_repl.i = i))
                ->  Result
                      ->  Seq Scan on t_repl
                            Filter: (i > 0)
                ->  Hash
                      ->  Result
-                           Filter: (generate_series.generate_series > 0)
+                           Filter: (i > 0)
                            ->  Insert
                                  ->  Result
                                        ->  Result
@@ -3904,12 +3904,12 @@ order by i;
    ->  Sort
          Sort Key: t2.i
          ->  Hash Semi Join
-               Hash Cond: ((t2.i = t3.j) AND (t2.i = generate_series.generate_series))
+               Hash Cond: ((t2.i = t3.j) AND (t2.i = i))
                ->  Seq Scan on t2
                      Filter: (NOT (i IS NULL))
                ->  Hash
                      ->  Hash Join
-                           Hash Cond: (generate_series.generate_series = t3.i)
+                           Hash Cond: (i = t3.i)
                            ->  Insert
                                  ->  Result
                                        ->  Result
@@ -3954,13 +3954,13 @@ order by i;
    ->  Sort
          Sort Key: t_repl.i
          ->  Hash Semi Join
-               Hash Cond: ((t_repl.i = t3.j) AND (t_repl.i = generate_series.generate_series))
+               Hash Cond: ((t_repl.i = t3.j) AND (t_repl.i = i))
                ->  Result
                      ->  Seq Scan on t_repl
                            Filter: (NOT (i IS NULL))
                ->  Hash
                      ->  Hash Join
-                           Hash Cond: (generate_series.generate_series = t3.i)
+                           Hash Cond: (i = t3.i)
                            ->  Insert
                                  ->  Result
                                        ->  Result
