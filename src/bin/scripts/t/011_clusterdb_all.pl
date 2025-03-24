@@ -21,7 +21,9 @@ $node->issues_sql_like(
 $node->safe_psql(
 	'postgres', q(
 	CREATE DATABASE regression_invalid;
+	SET allow_system_table_mods = on;
 	UPDATE pg_database SET datconnlimit = -2 WHERE datname = 'regression_invalid';
+	RESET allow_system_table_mods;
 ));
 $node->command_ok([ 'clusterdb', '-a' ],
   'invalid database not targeted by clusterdb -a');
