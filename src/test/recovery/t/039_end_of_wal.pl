@@ -212,8 +212,7 @@ sub advance_to_record_splitting_zone
 
 	# Calibrate our message size so that we can get closer 8 bytes at
 	# a time.
-	# (wal_block_size is 4 times larger in GPDB than in Postgres)
-	my $message_size = $WAL_BLOCK_SIZE - 80 * 4;
+	my $message_size = $WAL_BLOCK_SIZE - 80;
 	while ($page_offset <= $WAL_BLOCK_SIZE - $RECORD_HEADER_SIZE)
 	{
 		emit_message($node, $message_size);
@@ -449,7 +448,7 @@ write_wal($node, $TLI, $end_lsn,
 	build_record_header(2 * 1024 * 1024 * 1024, 0, 0xdeadbeef));
 $log_size = -s $node->logfile;
 $node->start;
-ok($node->log_contains("invalid magic number 0000 ", $log_size),
+ok($node->log_contains("invalid magic number BEEF ", $log_size),
 	"xlp_magic zero (split record header)");
 
 # And we'll also check xlp_pageaddr before any header checks.
