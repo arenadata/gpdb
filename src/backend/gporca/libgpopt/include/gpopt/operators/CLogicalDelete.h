@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,17 +28,11 @@ class CTableDescriptor;
 //		Logical Delete operator
 //
 //---------------------------------------------------------------------------
-class CLogicalDelete : public CLogical
+class CLogicalDelete : public CLogicalReturning
 {
 private:
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
-
 	// columns to delete
 	CColRefArray *m_pdrgpcr;
-
-	// returning columns
-	CColRefArray *m_pdrgpcrOutput;
 
 	// ctid column
 	CColRef *m_pcrCtid;
@@ -60,12 +54,6 @@ public:
 	CLogicalDelete(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 				   CColRefArray *colref_array, CColRef *pcrCtid,
 				   CColRef *pcrSegmentId, CColRef *pcrTableOid);
-
-	// ctor
-	CLogicalDelete(CMemoryPool *mp, CTableDescriptor *ptabdesc,
-				   CColRefArray *colref_array, CColRefArray *pdrgpcrOutput,
-				   CColRef *pcrCtid, CColRef *pcrSegmentId,
-				   CColRef *pcrTableOid);
 
 	// dtor
 	virtual ~CLogicalDelete();
@@ -89,13 +77,6 @@ public:
 	Pdrgpcr() const
 	{
 		return m_pdrgpcr;
-	}
-
-	// output columns
-	CColRefArray *
-	PdrgpcrOutput() const
-	{
-		return m_pdrgpcrOutput;
 	}
 
 	// ctid column

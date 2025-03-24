@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,7 +28,7 @@ class CTableDescriptor;
 //		Logical DML operator
 //
 //---------------------------------------------------------------------------
-class CLogicalDML : public CLogical
+class CLogicalDML : public CLogicalReturning
 {
 public:
 	// enum of DML operators
@@ -51,9 +51,6 @@ private:
 
 	// source columns
 	CColRefArray *m_pdrgpcrSource;
-
-	// returning columns
-	CColRefArray *m_pdrgpcrOutput;
 
 	// set of modified columns from the target table
 	CBitSet *m_pbsModified;
@@ -118,14 +115,6 @@ public:
 	{
 		return m_pdrgpcrSource;
 	}
-
-	// output columns
-	CColRefArray *
-	PdrgpcrOutput() const
-	{
-		return m_pdrgpcrOutput;
-	}
-
 
 	// modified columns set
 	CBitSet *

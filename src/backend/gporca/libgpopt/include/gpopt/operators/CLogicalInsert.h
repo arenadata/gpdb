@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,17 +28,11 @@ class CTableDescriptor;
 //		Logical Insert operator
 //
 //---------------------------------------------------------------------------
-class CLogicalInsert : public CLogical
+class CLogicalInsert : public CLogicalReturning
 {
 private:
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
-
 	// source columns
 	CColRefArray *m_pdrgpcrSource;
-
-	// returning columns
-	CColRefArray *m_pdrgpcrOutput;
 
 	// private copy ctor
 	CLogicalInsert(const CLogicalInsert &);
@@ -50,10 +44,6 @@ public:
 	// ctor
 	CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 				   CColRefArray *colref_array);
-
-	// ctor
-	CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
-				   CColRefArray *colref_array, CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalInsert();
@@ -77,13 +67,6 @@ public:
 	PdrgpcrSource() const
 	{
 		return m_pdrgpcrSource;
-	}
-
-	// output columns
-	CColRefArray *
-	PdrgpcrOutput() const
-	{
-		return m_pdrgpcrOutput;
 	}
 
 	// return table's descriptor
