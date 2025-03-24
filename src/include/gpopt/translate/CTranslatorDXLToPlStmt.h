@@ -137,7 +137,7 @@ private:
 	// command type
 	CmdType m_cmd_type;
 
-	// is dml operation requiring returning
+	// does dml operation require returning
 	BOOL m_has_returning;
 
 	// has dml operation with returning on replicated table
