@@ -448,6 +448,9 @@ write_wal($node, $TLI, $end_lsn,
 	build_record_header(2 * 1024 * 1024 * 1024, 0, 0xdeadbeef));
 $log_size = -s $node->logfile;
 $node->start;
+# in GPDB, 8 bytes remain at the end of the page instead of 16 as in Postgres,
+# so at the beginning of the next page there is a part of the xl_prev field
+# instead of zeros
 ok($node->log_contains("invalid magic number BEEF ", $log_size),
 	"xlp_magic zero (split record header)");
 
