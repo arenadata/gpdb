@@ -1831,24 +1831,26 @@ explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t gr
 -------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    Output: t1.a
-   ->  Seq Scan on rpt.t1
+   ->  Nested Loop Left Anti Semi (Not-In) Join
          Output: t1.a
-         Filter: (SubPlan 1)
-         SubPlan 1
-           ->  Result
-                 Output: t.i
-                 Filter: (random() > '0'::double precision)
-                 ->  GroupAggregate
-                       Output: t.i
-                       Group Key: t.i
-                       ->  Sort
-                             Output: t.i
-                             Sort Key: t.i
-                             ->  Seq Scan on rpt.t
-                                   Output: t.i
+         Join Filter: true
+         ->  Seq Scan on rpt.t1
+               Output: t1.a
+         ->  Materialize
+               ->  Result
+                     Filter: (random() > '0'::double precision)
+                     ->  GroupAggregate
+                           Output: t.i
+                           Group Key: t.i
+                           ->  Sort
+                                 Output: t.i
+                                 Sort Key: t.i
+                                 ->  Seq Scan on rpt.t
+                                       Output: t.i
+                                       Filter: ((1 > t.i) IS DISTINCT FROM false)
  Optimizer: GPORCA
  Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
-(19 rows)
+(21 rows)
 
 drop table if exists t, t1, t2;
 drop function if exists f(i int);
