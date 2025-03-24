@@ -452,7 +452,7 @@ $node->start;
 # so at the beginning of the next page there is a part of the xl_prev field
 # instead of zeros
 ok($node->log_contains("invalid magic number BEEF ", $log_size),
-	"xlp_magic zero (split record header)");
+	"xlp_magic bad (split record header)");
 
 # And we'll also check xlp_pageaddr before any header checks.
 emit_message($node, 0);
