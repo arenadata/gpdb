@@ -35,7 +35,6 @@ const WCHAR CLogicalDML::m_rgwszDml[EdmlSentinel][10] = {
 //---------------------------------------------------------------------------
 CLogicalDML::CLogicalDML(CMemoryPool *mp)
 	: CLogicalReturning(mp),
-	  m_ptabdesc(NULL),
 	  m_pdrgpcrSource(NULL),
 	  m_pbsModified(NULL),
 	  m_pcrAction(NULL),
@@ -64,7 +63,6 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 						 CColRef *pcrTableOid)
 	: CLogicalReturning(mp, ptabdesc, pdrgpcrOutput),
 	  m_edmlop(edmlop),
-	  m_ptabdesc(ptabdesc),
 	  m_pdrgpcrSource(pdrgpcrSource),
 	  m_pbsModified(pbsModified),
 	  m_pcrAction(pcrAction),
@@ -74,7 +72,6 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 	  m_pcrTupleOid(pcrTupleOid)
 {
 	GPOS_ASSERT(EdmlSentinel != edmlop);
-	GPOS_ASSERT(NULL != ptabdesc);
 	GPOS_ASSERT(NULL != pdrgpcrSource);
 	GPOS_ASSERT(NULL != pbsModified);
 	GPOS_ASSERT(NULL != pcrAction);
@@ -115,7 +112,6 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 //---------------------------------------------------------------------------
 CLogicalDML::~CLogicalDML()
 {
-	CRefCount::SafeRelease(m_ptabdesc);
 	CRefCount::SafeRelease(m_pdrgpcrSource);
 	CRefCount::SafeRelease(m_pbsModified);
 }

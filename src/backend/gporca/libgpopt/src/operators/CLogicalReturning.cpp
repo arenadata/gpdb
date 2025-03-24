@@ -65,12 +65,28 @@ CLogicalReturning::CLogicalReturning(CMemoryPool *mp,
 	m_pcrsLocalUsed->Include(m_pdrgpcrOutput);
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalReturning::~CLogicalReturning
+//
+//	@doc:
+//		Dtor
+//
+//---------------------------------------------------------------------------
 CLogicalReturning::~CLogicalReturning()
 {
+	CRefCount::SafeRelease(m_ptabdesc);
 	CRefCount::SafeRelease(m_pdrgpcrOutput);
 }
 
-
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalReturning::OsPrint
+//
+//	@doc:
+//		debug print
+//
+//---------------------------------------------------------------------------
 IOstream &
 CLogicalReturning::OsPrint(IOstream &os) const
 {

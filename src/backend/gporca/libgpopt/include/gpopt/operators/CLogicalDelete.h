@@ -45,6 +45,9 @@ private:
 
 	// private copy ctor
 	CLogicalDelete(const CLogicalDelete &);
+	
+	// initialize locally used columns
+	void InitUsedColumns();
 
 public:
 	// ctor
@@ -54,6 +57,12 @@ public:
 	CLogicalDelete(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 				   CColRefArray *colref_array, CColRef *pcrCtid,
 				   CColRef *pcrSegmentId, CColRef *pcrTableOid);
+
+	// ctor
+	CLogicalDelete(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+				   CColRefArray *colref_array, CColRef *pcrCtid,
+				   CColRef *pcrSegmentId, CColRef *pcrTableOid,
+				   CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalDelete();

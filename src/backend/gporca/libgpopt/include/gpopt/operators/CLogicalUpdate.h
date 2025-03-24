@@ -52,6 +52,9 @@ private:
 	// private copy ctor
 	CLogicalUpdate(const CLogicalUpdate &);
 
+	// initialize locally used columns
+	void InitUsedColumns();
+
 public:
 	// ctor
 	explicit CLogicalUpdate(CMemoryPool *mp);
@@ -61,6 +64,13 @@ public:
 				   CColRefArray *pdrgpcrDelete, CColRefArray *pdrgpcrInsert,
 				   CColRef *pcrCtid, CColRef *pcrSegmentId,
 				   CColRef *pcrTupleOid, CColRef *pcrTableOid);
+
+	// ctor
+	CLogicalUpdate(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+				   CColRefArray *pdrgpcrDelete, CColRefArray *pdrgpcrInsert,
+				   CColRef *pcrCtid, CColRef *pcrSegmentId,
+				   CColRef *pcrTupleOid, CColRef *pcrTableOid,
+				   CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalUpdate();

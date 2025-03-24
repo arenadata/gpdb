@@ -51,10 +51,25 @@ CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 	  m_pdrgpcrSource(pdrgpcrSource)
 
 {
-	GPOS_ASSERT(NULL != ptabdesc);
-	GPOS_ASSERT(NULL != pdrgpcrSource);
+	InitUsedColumns();
+}
 
-	m_pcrsLocalUsed->Include(m_pdrgpcrSource);
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalInsert::CLogicalInsert
+//
+//	@doc:
+//		Ctor
+//
+//---------------------------------------------------------------------------
+CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+							   CColRefArray *pdrgpcrSource,
+							   CColRefArray *pdrgpcrOutput)
+	: CLogicalReturning(mp, ptabdesc, pdrgpcrOutput),
+	  m_pdrgpcrSource(pdrgpcrSource)
+
+{
+	InitUsedColumns();
 }
 
 //---------------------------------------------------------------------------
@@ -67,8 +82,22 @@ CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 //---------------------------------------------------------------------------
 CLogicalInsert::~CLogicalInsert()
 {
-	CRefCount::SafeRelease(m_ptabdesc);
 	CRefCount::SafeRelease(m_pdrgpcrSource);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalInsert::InitUsedColumns
+//
+//	@doc:
+//		Initialize locally used columns
+//
+//---------------------------------------------------------------------------
+void CLogicalInsert::InitUsedColumns()
+{
+	GPOS_ASSERT(NULL != m_pdrgpcrSource);
+
+	m_pcrsLocalUsed->Include(m_pdrgpcrSource);
 }
 
 //---------------------------------------------------------------------------
@@ -146,10 +175,7 @@ CLogicalInsert::PopCopyWithRemappedColumns(CMemoryPool *mp,
 	m_ptabdesc->AddRef();
 
 	CLogicalInsert *result = GPOS_NEW(mp)
-		CLogicalInsert(mp, m_ptabdesc, colref_array);
-
-	result->m_pdrgpcrOutput = pdrgpcrOutput;
-	result->m_pcrsLocalUsed->Include(result->m_pdrgpcrOutput);
+		CLogicalInsert(mp, m_ptabdesc, colref_array, pdrgpcrOutput);
 
 	return result;
 }

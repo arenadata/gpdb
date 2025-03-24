@@ -37,6 +37,9 @@ private:
 	// private copy ctor
 	CLogicalInsert(const CLogicalInsert &);
 
+	// initialize locally used columns
+	void InitUsedColumns();
+
 public:
 	// ctor
 	explicit CLogicalInsert(CMemoryPool *mp);
@@ -44,6 +47,10 @@ public:
 	// ctor
 	CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 				   CColRefArray *colref_array);
+
+	// ctor
+	CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+				   CColRefArray *colref_array, CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalInsert();

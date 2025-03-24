@@ -46,9 +46,6 @@ private:
 	// dml operator
 	EDMLOperator m_edmlop;
 
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
-
 	// source columns
 	CColRefArray *m_pdrgpcrSource;
 
