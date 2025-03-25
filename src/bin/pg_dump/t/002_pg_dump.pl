@@ -3144,14 +3144,11 @@ my %tests = (
 		    /xms,
 		like =>
 		  { %full_runs, %dump_test_schema_runs, section_post_data => 1, },
-<<<<<<< HEAD
 		unlike => {
 			exclude_dump_test_schema => 1,
+			exclude_test_table       => 1,
 			only_dump_measurement    => 1,
 		},
-=======
-		unlike => { exclude_dump_test_schema => 1, exclude_test_table => 1, },
->>>>>>> REL_12_22
 	},
 
 	'CREATE STATISTICS extended_stats_options' => {
