@@ -42,6 +42,7 @@
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rowsecurity.h"
+#include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -60,6 +61,12 @@ typedef struct acquireLocksOnSubLinks_context
 {
 	bool		for_execute;	/* AcquireRewriteLocks' forExecute param */
 } acquireLocksOnSubLinks_context;
+
+typedef struct fireRIRonSubLink_context
+{
+	List	   *activeRIRs;
+	bool		hasRowSecurity;
+} fireRIRonSubLink_context;
 
 static bool acquireLocksOnSubLinks(Node *node,
 								   acquireLocksOnSubLinks_context *context);
@@ -1085,9 +1092,9 @@ process_matched_tle(TargetEntry *src_tle,
 	 * resulting in each assignment containing a CoerceToDomain node over a
 	 * FieldStore or SubscriptingRef.  These should have matching target
 	 * domains, so we strip them and reconstitute a single CoerceToDomain over
-	 * the combined FieldStore/SubscriptingRef nodes.  (Notice that this has the
-	 * result that the domain's checks are applied only after we do all the
-	 * field or element updates, not after each one.  This is arguably desirable.)
+	 * the combined FieldStore/SubscriptingRef nodes.  (Notice that this has
+	 * the result that the domain's checks are applied only after we do all
+	 * the field or element updates, not after each one.  This is desirable.)
 	 *----------
 	 */
 	src_expr = (Node *) src_tle->expr;
@@ -1821,6 +1828,14 @@ ApplyRetrieveRule(Query *parsetree,
 	if (rule->qual != NULL)
 		elog(ERROR, "cannot handle qualified ON SELECT rule");
 
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(relation) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(relation))));
+
 	if (rt_index == parsetree->resultRelation)
 	{
 		/*
@@ -1937,6 +1952,12 @@ ApplyRetrieveRule(Query *parsetree,
 	 * routine).
 	 */
 	rule_action = fireRIRrules(rule_action, activeRIRs);
+
+	/*
+	 * Make sure the query is marked as having row security if the view query
+	 * does.
+	 */
+	parsetree->hasRowSecurity |= rule_action->hasRowSecurity;
 
 	/*
 	 * Now, plug the view query in as a subselect, converting the relation's
@@ -2063,7 +2084,7 @@ markQueryForLocking(Query *qry, Node *jtnode,
  * the SubLink's subselect link with the possibly-rewritten subquery.
  */
 static bool
-fireRIRonSubLink(Node *node, List *activeRIRs)
+fireRIRonSubLink(Node *node, fireRIRonSubLink_context *context)
 {
 	if (node == NULL)
 		return false;
@@ -2073,7 +2094,13 @@ fireRIRonSubLink(Node *node, List *activeRIRs)
 
 		/* Do what we came for */
 		sub->subselect = (Node *) fireRIRrules((Query *) sub->subselect,
-											   activeRIRs);
+											   context->activeRIRs);
+
+		/*
+		 * Remember if any of the sublinks have row security.
+		 */
+		context->hasRowSecurity |= ((Query *) sub->subselect)->hasRowSecurity;
+
 		/* Fall through to process lefthand args of SubLink */
 	}
 
@@ -2082,7 +2109,7 @@ fireRIRonSubLink(Node *node, List *activeRIRs)
 	 * subselects of subselects for us.
 	 */
 	return expression_tree_walker(node, fireRIRonSubLink,
-								  (void *) activeRIRs);
+								  (void *) context);
 }
 
 
@@ -2126,6 +2153,13 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 		if (rte->rtekind == RTE_SUBQUERY || rte->rtekind == RTE_TABLEFUNCTION)
 		{
 			rte->subquery = fireRIRrules(rte->subquery, activeRIRs);
+
+			/*
+			 * While we are here, make sure the query is marked as having row
+			 * security if any of its subqueries do.
+			 */
+			parsetree->hasRowSecurity |= rte->subquery->hasRowSecurity;
+
 			continue;
 		}
 
@@ -2243,6 +2277,12 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 
 		cte->ctequery = (Node *)
 			fireRIRrules((Query *) cte->ctequery, activeRIRs);
+
+		/*
+		 * While we are here, make sure the query is marked as having row
+		 * security if any of its CTEs do.
+		 */
+		parsetree->hasRowSecurity |= ((Query *) cte->ctequery)->hasRowSecurity;
 	}
 
 	/*
@@ -2250,8 +2290,21 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 	 * the rtable and cteList.
 	 */
 	if (parsetree->hasSubLinks)
-		query_tree_walker(parsetree, fireRIRonSubLink, (void *) activeRIRs,
+	{
+		fireRIRonSubLink_context context;
+
+		context.activeRIRs = activeRIRs;
+		context.hasRowSecurity = false;
+
+		query_tree_walker(parsetree, fireRIRonSubLink, (void *) &context,
 						  QTW_IGNORE_RC_SUBQUERIES);
+
+		/*
+		 * Make sure the query is marked as having row security if any of its
+		 * sublinks do.
+		 */
+		parsetree->hasRowSecurity |= context.hasRowSecurity;
+	}
 
 	/*
 	 * Apply any row level security policies.  We do this last because it
@@ -2291,6 +2344,7 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 			if (hasSubLinks)
 			{
 				acquireLocksOnSubLinks_context context;
+				fireRIRonSubLink_context fire_context;
 
 				/*
 				 * Recursively process the new quals, checking for infinite
@@ -2321,11 +2375,21 @@ fireRIRrules(Query *parsetree, List *activeRIRs)
 				 * Now that we have the locks on anything added by
 				 * get_row_security_policies, fire any RIR rules for them.
 				 */
+				fire_context.activeRIRs = activeRIRs;
+				fire_context.hasRowSecurity = false;
+
 				expression_tree_walker((Node *) securityQuals,
-									   fireRIRonSubLink, (void *) activeRIRs);
+									   fireRIRonSubLink, (void *) &fire_context);
 
 				expression_tree_walker((Node *) withCheckOptions,
-									   fireRIRonSubLink, (void *) activeRIRs);
+									   fireRIRonSubLink, (void *) &fire_context);
+
+				/*
+				 * We can ignore the value of fire_context.hasRowSecurity
+				 * since we only reach this code in cases where hasRowSecurity
+				 * is already true.
+				 */
+				Assert(hasRowSecurity);
 
 				activeRIRs = list_delete_first(activeRIRs);
 			}
@@ -3062,7 +3126,7 @@ relation_is_updatable(Oid reloid,
  *
  * This is used with simply-updatable views to map column-permissions sets for
  * the view columns onto the matching columns in the underlying base relation.
- * The targetlist is expected to be a list of plain Vars of the underlying
+ * Relevant entries in the targetlist must be plain Vars of the underlying
  * relation (as per the checks above in view_query_is_auto_updatable).
  */
 static Bitmapset *
@@ -3159,6 +3223,9 @@ rewriteTargetView(Query *parsetree, Relation view)
 	 */
 	viewquery = copyObject(get_view_query(view));
 
+	/* Locate RTE describing the view in the outer query */
+	view_rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
+
 	/* The view must be updatable, else fail */
 	auto_update_detail =
 		view_query_is_auto_updatable(viewquery,
@@ -3200,17 +3267,34 @@ rewriteTargetView(Query *parsetree, Relation view)
 		}
 	}
 
+	/* Check if the expansion of non-system views are restricted */
+	if (unlikely((restrict_nonsystem_relation_kind & RESTRICT_RELKIND_VIEW) != 0 &&
+				 RelationGetRelid(view) >= FirstNormalObjectId))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("access to non-system view \"%s\" is restricted",
+						RelationGetRelationName(view))));
+
 	/*
-	 * For INSERT/UPDATE the modified columns must all be updatable. Note that
-	 * we get the modified columns from the query's targetlist, not from the
-	 * result RTE's insertedCols and/or updatedCols set, since
-	 * rewriteTargetListIU may have added additional targetlist entries for
-	 * view defaults, and these must also be updatable.
+	 * For INSERT/UPDATE the modified columns must all be updatable.
 	 */
 	if (parsetree->commandType != CMD_DELETE)
 	{
-		Bitmapset  *modified_cols = NULL;
+		Bitmapset  *modified_cols;
 		char	   *non_updatable_col;
+
+		/*
+		 * Compute the set of modified columns as those listed in the result
+		 * RTE's insertedCols and/or updatedCols sets plus those that are
+		 * targets of the query's targetlist(s).  We must consider the query's
+		 * targetlist because rewriteTargetListIU may have added additional
+		 * targetlist entries for view defaults, and these must also be
+		 * updatable.  But rewriteTargetListIU can also remove entries if they
+		 * are DEFAULT markers and the column's default is NULL, so
+		 * considering only the targetlist would also be wrong.
+		 */
+		modified_cols = bms_union(view_rte->insertedCols,
+								  view_rte->updatedCols);
 
 		foreach(lc, parsetree->targetList)
 		{
@@ -3268,9 +3352,6 @@ rewriteTargetView(Query *parsetree, Relation view)
 			}
 		}
 	}
-
-	/* Locate RTE describing the view in the outer query */
-	view_rte = rt_fetch(parsetree->resultRelation, parsetree->rtable);
 
 	/*
 	 * If we get here, view_query_is_auto_updatable() has verified that the

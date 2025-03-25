@@ -3115,4 +3115,10 @@ use parent -norequire, qw(PostgreSQL::Test::Cluster::V_11);
 
 ########################################################################
 
+# There's no runtime requirement for the following package declaration, but it
+# convinces the RPM Package Manager that this file provides the Perl package
+# in question.  Perl v5.10.1 segfaults if a declaration of the to-be-aliased
+# package precedes the aliasing itself, hence the abnormal placement.
+package PostgreSQL::Test::Cluster;
+
 1;

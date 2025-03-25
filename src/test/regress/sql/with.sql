@@ -482,6 +482,35 @@ WITH RECURSIVE cte(level, id) as (
 	SELECT level+1, c FROM (SELECT * FROM cte OFFSET 0) foo, bar)
 SELECT * FROM cte LIMIT 10;
 
+-- allow this, because we historically have
+WITH RECURSIVE x(n) AS (
+  WITH x1 AS (SELECT 1 AS n)
+    SELECT 0
+    UNION
+    SELECT * FROM x1)
+	SELECT * FROM x;
+
+-- but this should be rejected
+WITH RECURSIVE x(n) AS (
+  WITH x1 AS (SELECT 1 FROM x)
+    SELECT 0
+    UNION
+    SELECT * FROM x1)
+	SELECT * FROM x;
+
+-- and this too
+WITH RECURSIVE x(n) AS (
+  (WITH x1 AS (SELECT 1 FROM x) SELECT * FROM x1)
+  UNION
+  SELECT 0)
+	SELECT * FROM x;
+
+-- and this
+WITH RECURSIVE x(n) AS (
+  SELECT 0 UNION SELECT 1
+  ORDER BY (SELECT n FROM x))
+	SELECT * FROM x;
+
 CREATE TEMPORARY TABLE y (a INTEGER) DISTRIBUTED RANDOMLY;
 INSERT INTO y SELECT generate_series(1, 10);
 

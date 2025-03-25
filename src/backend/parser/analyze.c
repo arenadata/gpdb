@@ -1130,17 +1130,28 @@ transformInsertRow(ParseState *pstate, List *exprlist,
 
 		if (strip_indirection)
 		{
+			/*
+			 * We need to remove top-level FieldStores and SubscriptingRefs,
+			 * as well as any CoerceToDomain appearing above one of those ---
+			 * but not a CoerceToDomain that isn't above one of those.
+			 */
 			while (expr)
 			{
-				if (IsA(expr, FieldStore))
+				Expr	   *subexpr = expr;
+
+				while (IsA(subexpr, CoerceToDomain))
 				{
-					FieldStore *fstore = (FieldStore *) expr;
+					subexpr = ((CoerceToDomain *) subexpr)->arg;
+				}
+				if (IsA(subexpr, FieldStore))
+				{
+					FieldStore *fstore = (FieldStore *) subexpr;
 
 					expr = (Expr *) linitial(fstore->newvals);
 				}
-				else if (IsA(expr, SubscriptingRef))
+				else if (IsA(subexpr, SubscriptingRef))
 				{
-					SubscriptingRef *sbsref = (SubscriptingRef *) expr;
+					SubscriptingRef *sbsref = (SubscriptingRef *) subexpr;
 
 					if (sbsref->refassgnexpr == NULL)
 						break;
@@ -3694,10 +3705,11 @@ checkCanOptSelectLockingClause(SelectStmt *stmt)
 		return false;
 
 	/*
+	 * GPDB can use ORCA only in dispatch mode.
 	 * TODO: if future ORCA can emit LockRows plannode,
 	 * we should remove such restriction here.
 	 */
-	if (optimizer)
+	if (Gp_role == GP_ROLE_DISPATCH && optimizer)
 		return false;
 
 	if (stmt->op != SETOP_NONE)
