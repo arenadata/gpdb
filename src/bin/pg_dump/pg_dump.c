@@ -344,12 +344,8 @@ static void appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
 									const char *prefix, Archive *fout);
 static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
-<<<<<<< HEAD
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
-=======
-static TableInfo *getRootTableInfo(TableInfo *tbinfo);
 static void set_restrict_relation_kind(Archive *AH, const char *value);
->>>>>>> REL_12_22
 static bool forcePartitionRootLoad(const TableInfo *tbinfo);
 
 
@@ -1388,18 +1384,17 @@ setup_connection(Archive *AH, const char *dumpencoding,
 	}
 
 	/*
-<<<<<<< HEAD
 	 * Initialize prepared-query state to "nothing prepared".  We do this here
 	 * so that a parallel dump worker will have its own state.
 	 */
 	AH->is_prepared = (bool *) pg_malloc0(NUM_PREP_QUERIES * sizeof(bool));
-=======
+
+	/*
 	 * For security reasons, we restrict the expansion of non-system views and
 	 * access to foreign tables during the pg_dump process. This restriction
 	 * is adjusted when dumping foreign table data.
 	 */
 	set_restrict_relation_kind(AH, "view, foreign-table");
->>>>>>> REL_12_22
 
 	/*
 	 * Start transaction-snapshot mode transaction to dump consistent data.
@@ -2203,14 +2198,10 @@ dumpTableData_copy(Archive *fout, const void *dcontext)
 
 	if (tdinfo->filtercond)
 	{
-<<<<<<< HEAD
-=======
 		/* Temporary allows to access to foreign tables to dump data */
 		if (tbinfo->relkind == RELKIND_FOREIGN_TABLE)
 			set_restrict_relation_kind(fout, "view");
 
-		/* Note: this syntax is only supported in 8.2 and up */
->>>>>>> REL_12_22
 		appendPQExpBufferStr(q, "COPY (SELECT ");
 		/* klugery to get rid of parens in column list */
 		if (strlen(column_list) > 2)
@@ -7822,12 +7813,8 @@ getExtendedStatistics(Archive *fout)
 	int			i_oid;
 	int			i_stxname;
 	int			i_stxnamespace;
-<<<<<<< HEAD
 	int			i_stxowner;
-=======
-	int			i_rolname;
 	int			i_stxrelid;
->>>>>>> REL_12_22
 	int			i;
 
 	/* Extended statistics were new in v10 */
@@ -7837,14 +7824,8 @@ getExtendedStatistics(Archive *fout)
 	query = createPQExpBuffer();
 
 	appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
-<<<<<<< HEAD
-					  "stxnamespace, stxowner "
+					  "stxnamespace, stxowner, stxrelid "
 					  "FROM pg_catalog.pg_statistic_ext");
-=======
-					  "stxnamespace, (%s stxowner) AS rolname, stxrelid "
-					  "FROM pg_catalog.pg_statistic_ext",
-					  username_subquery);
->>>>>>> REL_12_22
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -7854,12 +7835,7 @@ getExtendedStatistics(Archive *fout)
 	i_oid = PQfnumber(res, "oid");
 	i_stxname = PQfnumber(res, "stxname");
 	i_stxnamespace = PQfnumber(res, "stxnamespace");
-<<<<<<< HEAD
 	i_stxowner = PQfnumber(res, "stxowner");
-=======
-	i_rolname = PQfnumber(res, "rolname");
-	i_stxrelid = PQfnumber(res, "stxrelid");
->>>>>>> REL_12_22
 
 	statsextinfo = (StatsExtInfo *) pg_malloc(ntups * sizeof(StatsExtInfo));
 
@@ -7871,25 +7847,13 @@ getExtendedStatistics(Archive *fout)
 		AssignDumpId(&statsextinfo[i].dobj);
 		statsextinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_stxname));
 		statsextinfo[i].dobj.namespace =
-<<<<<<< HEAD
 			findNamespace(atooid(PQgetvalue(res, i, i_stxnamespace)));
 		statsextinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_stxowner));
-
-		/* Decide whether we want to dump it */
-		selectDumpableObject(&(statsextinfo[i].dobj), fout);
-=======
-			findNamespace(fout,
-						  atooid(PQgetvalue(res, i, i_stxnamespace)));
-		statsextinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
 		statsextinfo[i].stattable =
 			findTableByOid(atooid(PQgetvalue(res, i, i_stxrelid)));
 
 		/* Decide whether we want to dump it */
 		selectDumpableStatisticsObject(&(statsextinfo[i]), fout);
-
-		/* Stats objects do not currently have ACLs. */
-		statsextinfo[i].dobj.dump &= ~DUMP_COMPONENT_ACL;
->>>>>>> REL_12_22
 	}
 
 	PQclear(res);
