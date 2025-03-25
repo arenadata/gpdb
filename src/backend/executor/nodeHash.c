@@ -1319,6 +1319,7 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 					double		dtuples;
 					double		dbuckets;
 					int			new_nbuckets;
+					uint32		max_buckets;
 
 					/*
 					 * We probably also need a smaller bucket array.  How many
@@ -1331,9 +1332,18 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 					 * array.
 					 */
 					dtuples = (old_batch0->ntuples * 2.0) / new_nbatch;
+
+					/*
+					 * We need to calculate the maximum number of buckets to
+					 * stay within the MaxAllocSize boundary.  Round the
+					 * maximum number to the previous power of 2 given that
+					 * later we round the number to the next power of 2.
+					 */
+					max_buckets = MaxAllocSize / sizeof(dsa_pointer_atomic);
+					if ((max_buckets & (max_buckets - 1)) != 0)
+						max_buckets = 1 << (my_log2(max_buckets) - 1);
 					dbuckets = ceil(dtuples / gp_hashjoin_tuples_per_bucket);
-					dbuckets = Min(dbuckets,
-								   MaxAllocSize / sizeof(dsa_pointer_atomic));
+					dbuckets = Min(dbuckets, max_buckets);
 					new_nbuckets = (int) dbuckets;
 					new_nbuckets = Max(new_nbuckets, 1024);
 					new_nbuckets = 1 << my_log2(new_nbuckets);
@@ -1400,6 +1410,7 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 			if (BarrierArriveAndWait(&pstate->grow_batches_barrier,
 									 WAIT_EVENT_HASH_GROW_BATCHES_DECIDING))
 			{
+				ParallelHashJoinBatch *old_batches;
 				bool		space_exhausted = false;
 				bool		extreme_skew_detected = false;
 
@@ -1407,25 +1418,31 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 				ExecParallelHashEnsureBatchAccessors(hashtable);
 				ExecParallelHashTableSetCurrentBatch(hashtable, 0);
 
+				old_batches = dsa_get_address(hashtable->area, pstate->old_batches);
+
 				/* Are any of the new generation of batches exhausted? */
 				for (i = 0; i < hashtable->nbatch; ++i)
 				{
-					ParallelHashJoinBatch *batch = hashtable->batches[i].shared;
+					ParallelHashJoinBatch *batch;
+					ParallelHashJoinBatch *old_batch;
+					int			parent;
 
+					batch = hashtable->batches[i].shared;
 					if (batch->space_exhausted ||
 						batch->estimated_size > pstate->space_allowed)
-					{
-						int			parent;
-
 						space_exhausted = true;
 
+					parent = i % pstate->old_nbatch;
+					old_batch = NthParallelHashJoinBatch(old_batches, parent);
+					if (old_batch->space_exhausted ||
+						batch->estimated_size > pstate->space_allowed)
+					{
 						/*
 						 * Did this batch receive ALL of the tuples from its
 						 * parent batch?  That would indicate that further
 						 * repartitioning isn't going to help (the hash values
 						 * are probably all the same).
 						 */
-						parent = i % pstate->old_nbatch;
 						if (batch->ntuples == hashtable->batches[parent].shared->old_ntuples)
 							extreme_skew_detected = true;
 					}

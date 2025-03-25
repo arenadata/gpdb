@@ -337,8 +337,7 @@ static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 									  bool attrsOnly, bool missing_ok);
 static char *pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 										 int prettyFlags, bool missing_ok);
-static text *pg_get_expr_worker(text *expr, Oid relid, const char *relname,
-								int prettyFlags);
+static text *pg_get_expr_worker(text *expr, Oid relid, int prettyFlags);
 static int	print_function_arguments(StringInfo buf, HeapTuple proctup,
 									 bool print_table_args, bool print_defaults);
 static void print_function_rettype(StringInfo buf, HeapTuple proctup);
@@ -2373,6 +2372,11 @@ decompile_column_index_array(Datum column_index_array, Oid relId,
  * the one specified by the second parameter.  This is sufficient for
  * partial indexes, column default expressions, etc.  We also support
  * Var-free expressions, for which the OID can be InvalidOid.
+ *
+ * If the OID is nonzero but not actually valid, don't throw an error,
+ * just return NULL.  This is a bit questionable, but it's what we've
+ * done historically, and it can help avoid unwanted failures when
+ * examining catalog entries for just-deleted relations.
  * ----------
  */
 Datum
@@ -2380,29 +2384,16 @@ pg_get_expr(PG_FUNCTION_ARGS)
 {
 	text	   *expr = PG_GETARG_TEXT_PP(0);
 	Oid			relid = PG_GETARG_OID(1);
+	text	   *result;
 	int			prettyFlags;
-	char	   *relname;
 
 	prettyFlags = PRETTYFLAG_INDENT;
 
-	if (OidIsValid(relid))
-	{
-		/* Get the name for the relation */
-		relname = get_rel_name(relid);
-
-		/*
-		 * If the OID isn't actually valid, don't throw an error, just return
-		 * NULL.  This is a bit questionable, but it's what we've done
-		 * historically, and it can help avoid unwanted failures when
-		 * examining catalog entries for just-deleted relations.
-		 */
-		if (relname == NULL)
-			PG_RETURN_NULL();
-	}
+	result = pg_get_expr_worker(expr, relid, prettyFlags);
+	if (result)
+		PG_RETURN_TEXT_P(result);
 	else
-		relname = NULL;
-
-	PG_RETURN_TEXT_P(pg_get_expr_worker(expr, relid, relname, prettyFlags));
+		PG_RETURN_NULL();
 }
 
 Datum
@@ -2411,31 +2402,25 @@ pg_get_expr_ext(PG_FUNCTION_ARGS)
 	text	   *expr = PG_GETARG_TEXT_PP(0);
 	Oid			relid = PG_GETARG_OID(1);
 	bool		pretty = PG_GETARG_BOOL(2);
+	text	   *result;
 	int			prettyFlags;
-	char	   *relname;
 
 	prettyFlags = pretty ? (PRETTYFLAG_PAREN | PRETTYFLAG_INDENT | PRETTYFLAG_SCHEMA) : PRETTYFLAG_INDENT;
 
-	if (OidIsValid(relid))
-	{
-		/* Get the name for the relation */
-		relname = get_rel_name(relid);
-		/* See notes above */
-		if (relname == NULL)
-			PG_RETURN_NULL();
-	}
+	result = pg_get_expr_worker(expr, relid, prettyFlags);
+	if (result)
+		PG_RETURN_TEXT_P(result);
 	else
-		relname = NULL;
-
-	PG_RETURN_TEXT_P(pg_get_expr_worker(expr, relid, relname, prettyFlags));
+		PG_RETURN_NULL();
 }
 
 static text *
-pg_get_expr_worker(text *expr, Oid relid, const char *relname, int prettyFlags)
+pg_get_expr_worker(text *expr, Oid relid, int prettyFlags)
 {
 	Node	   *node;
 	List	   *context;
 	char	   *exprstr;
+	Relation	rel = NULL;
 	char	   *str;
 
 	/* Convert input TEXT object to C string */
@@ -2446,15 +2431,28 @@ pg_get_expr_worker(text *expr, Oid relid, const char *relname, int prettyFlags)
 
 	pfree(exprstr);
 
-	/* Prepare deparse context if needed */
+	/*
+	 * Prepare deparse context if needed.  If we are deparsing with a relid,
+	 * we need to transiently open and lock the rel, to make sure it won't go
+	 * away underneath us.  (set_relation_column_names would lock it anyway,
+	 * so this isn't really introducing any new behavior.)
+	 */
 	if (OidIsValid(relid))
-		context = deparse_context_for(relname, relid);
+	{
+		rel = try_relation_open(relid, AccessShareLock, false);
+		if (rel == NULL)
+			return NULL;
+		context = deparse_context_for(RelationGetRelationName(rel), relid);
+	}
 	else
 		context = NIL;
 
 	/* Deparse */
 	str = deparse_expression_pretty(node, context, false, false,
 									prettyFlags, 0);
+
+	if (rel != NULL)
+		relation_close(rel, AccessShareLock);
 
 	return string_to_text(str);
 }
@@ -7324,17 +7322,29 @@ get_name_for_var_field(Var *var, int fieldno,
 					/*
 					 * We're deparsing a Plan tree so we don't have complete
 					 * RTE entries (in particular, rte->subquery is NULL). But
-					 * the only place we'd see a Var directly referencing a
-					 * SUBQUERY RTE is in a SubqueryScan plan node, and we can
-					 * look into the child plan's tlist instead.
+					 * the only place we'd normally see a Var directly
+					 * referencing a SUBQUERY RTE is in a SubqueryScan plan
+					 * node, and we can look into the child plan's tlist
+					 * instead.  An exception occurs if the subquery was
+					 * proven empty and optimized away: then we'd find such a
+					 * Var in a childless Result node, and there's nothing in
+					 * the plan tree that would let us figure out what it had
+					 * originally referenced.  In that case, fall back on
+					 * printing "fN", analogously to the default column names
+					 * for RowExprs.
 					 */
 					TargetEntry *tle;
 					deparse_namespace save_dpns;
 					const char *result;
 
 					if (!dpns->inner_planstate)
-						elog(ERROR, "failed to find plan for subquery %s",
-							 rte->eref->aliasname);
+					{
+						char	   *dummy_name = palloc(32);
+
+						snprintf(dummy_name, 32, "f%d", fieldno);
+						return dummy_name;
+					}
+
 					tle = get_tle_by_resno(dpns->inner_tlist, attnum);
 					if (!tle)
 						elog(ERROR, "bogus varattno for subquery var: %d",
@@ -7444,17 +7454,24 @@ get_name_for_var_field(Var *var, int fieldno,
 				{
 					/*
 					 * We're deparsing a Plan tree so we don't have a CTE
-					 * list.  But the only place we'd see a Var directly
-					 * referencing a CTE RTE is in a CteScan plan node, and we
-					 * can look into the subplan's tlist instead.
+					 * list.  But the only place we'd normally see a Var
+					 * directly referencing a CTE RTE is in a CteScan plan
+					 * node, and we can look into the subplan's tlist instead.
+					 * As above, this can fail if the CTE has been proven
+					 * empty, in which case fall back to "fN".
 					 */
 					TargetEntry *tle;
 					deparse_namespace save_dpns;
 					const char *result;
 
 					if (!dpns->inner_planstate)
-						elog(ERROR, "failed to find plan for CTE %s",
-							 rte->eref->aliasname);
+					{
+						char	   *dummy_name = palloc(32);
+
+						snprintf(dummy_name, 32, "f%d", fieldno);
+						return dummy_name;
+					}
+
 					tle = get_tle_by_resno(dpns->inner_tlist, attnum);
 					if (!tle)
 						elog(ERROR, "bogus varattno for subquery var: %d",
