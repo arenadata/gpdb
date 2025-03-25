@@ -246,6 +246,8 @@ RelationBuildPartitionDesc_guts(Relation rel, bool validate)
 				if (!isnull)
 					boundspec = stringToNode(TextDatumGetCString(datum));
 			}
+			else
+				elog(ERROR, "could not find pg_class entry for oid %u", inhrelid);
 			systable_endscan(scan);
 			table_close(pg_class, AccessShareLock);
 		}
