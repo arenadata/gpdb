@@ -461,8 +461,7 @@ SetSessionUserId(Oid userid, bool is_superuser)
 bool
 IsAuthenticatedUserSuperUser()
 {
-	AssertState(OidIsValid(AuthenticatedUserId));
-	return AuthenticatedUserIsSuperuser;
+	return GetAuthenticatedUserIsSuperuser();
 }
 
 /*
