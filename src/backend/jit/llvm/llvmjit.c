@@ -51,12 +51,9 @@
 #endif
 #endif
 
-<<<<<<< HEAD
-=======
 
 #define LLVMJIT_LLVM_CONTEXT_REUSE_MAX 100
 
->>>>>>> REL_12_22
 /* Handle of a module emitted via ORC JIT */
 typedef struct LLVMJitHandle
 {
