@@ -87,19 +87,12 @@ typedef struct FixedParallelState
 	Oid			temp_namespace_id;
 	Oid			temp_toast_namespace_id;
 	int			sec_context;
-<<<<<<< HEAD
-	bool		is_superuser;
-	PGPROC	   *parallel_leader_pgproc;
-	pid_t		parallel_leader_pid;
-	BackendId	parallel_leader_backend_id;
-=======
 	bool		authenticated_user_is_superuser;
 	bool		session_user_is_superuser;
 	bool		role_is_superuser;
-	PGPROC	   *parallel_master_pgproc;
-	pid_t		parallel_master_pid;
-	BackendId	parallel_master_backend_id;
->>>>>>> REL_12_22
+	PGPROC	   *parallel_leader_pgproc;
+	pid_t		parallel_leader_pid;
+	BackendId	parallel_leader_backend_id;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 	SerializableXactHandle serializable_xact_handle;
