@@ -116,7 +116,8 @@ CLogicalUpdate::~CLogicalUpdate()
 //		Initialize locally used columns
 //
 //---------------------------------------------------------------------------
-void CLogicalUpdate::InitUsedColumns()
+void
+CLogicalUpdate::InitUsedColumns()
 {
 	GPOS_ASSERT(NULL != m_pdrgpcrDelete);
 	GPOS_ASSERT(NULL != m_pdrgpcrInsert);

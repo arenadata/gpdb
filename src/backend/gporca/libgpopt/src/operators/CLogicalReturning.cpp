@@ -18,9 +18,7 @@
 using namespace gpopt;
 
 CLogicalReturning::CLogicalReturning(CMemoryPool *mp)
-	: CLogical(mp),
-	  m_ptabdesc(NULL),
-	  m_pdrgpcrOutput(NULL)
+	: CLogical(mp), m_ptabdesc(NULL), m_pdrgpcrOutput(NULL)
 {
 }
 
@@ -33,10 +31,8 @@ CLogicalReturning::CLogicalReturning(CMemoryPool *mp)
 //
 //---------------------------------------------------------------------------
 CLogicalReturning::CLogicalReturning(CMemoryPool *mp,
-						CTableDescriptor *ptabdesc)
-	: CLogical(mp),
-	  m_ptabdesc(ptabdesc),
-	  m_pdrgpcrOutput(NULL)
+									 CTableDescriptor *ptabdesc)
+	: CLogical(mp), m_ptabdesc(ptabdesc), m_pdrgpcrOutput(NULL)
 {
 	GPOS_ASSERT(NULL != ptabdesc);
 

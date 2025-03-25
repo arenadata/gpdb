@@ -101,7 +101,8 @@ CLogicalDelete::~CLogicalDelete()
 //		Initialize locally used columns
 //
 //---------------------------------------------------------------------------
-void CLogicalDelete::InitUsedColumns()
+void
+CLogicalDelete::InitUsedColumns()
 {
 	GPOS_ASSERT(NULL != m_pdrgpcr);
 	GPOS_ASSERT(NULL != m_pcrCtid);
@@ -114,7 +115,6 @@ void CLogicalDelete::InitUsedColumns()
 	{
 		m_pcrsLocalUsed->Include(m_pcrTableOid);
 	}
-
 }
 
 //---------------------------------------------------------------------------

@@ -50,7 +50,8 @@ public:
 	CLogicalReturning(CMemoryPool *mp, CTableDescriptor *ptabdesc);
 
 	// ctor
-	CLogicalReturning(CMemoryPool *mp, CTableDescriptor *ptabdesc, CColRefArray *pdrgpcrOutput);
+	CLogicalReturning(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+					  CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalReturning();

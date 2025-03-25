@@ -45,7 +45,7 @@ private:
 
 	// private copy ctor
 	CLogicalDelete(const CLogicalDelete &);
-	
+
 	// initialize locally used columns
 	void InitUsedColumns();
 

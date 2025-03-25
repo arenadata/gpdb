@@ -30,8 +30,7 @@ using namespace gpopt;
 //
 //---------------------------------------------------------------------------
 CLogicalInsert::CLogicalInsert(CMemoryPool *mp)
-	: CLogicalReturning(mp),
-	  m_pdrgpcrSource(NULL)
+	: CLogicalReturning(mp), m_pdrgpcrSource(NULL)
 
 {
 	m_fPattern = true;
@@ -47,8 +46,7 @@ CLogicalInsert::CLogicalInsert(CMemoryPool *mp)
 //---------------------------------------------------------------------------
 CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 							   CColRefArray *pdrgpcrSource)
-	: CLogicalReturning(mp, ptabdesc),
-	  m_pdrgpcrSource(pdrgpcrSource)
+	: CLogicalReturning(mp, ptabdesc), m_pdrgpcrSource(pdrgpcrSource)
 
 {
 	InitUsedColumns();
@@ -93,7 +91,8 @@ CLogicalInsert::~CLogicalInsert()
 //		Initialize locally used columns
 //
 //---------------------------------------------------------------------------
-void CLogicalInsert::InitUsedColumns()
+void
+CLogicalInsert::InitUsedColumns()
 {
 	GPOS_ASSERT(NULL != m_pdrgpcrSource);
 
