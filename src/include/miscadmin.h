@@ -426,9 +426,16 @@ extern char *GetUserNameFromId(Oid roleid, bool noerr);
 extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
+<<<<<<< HEAD
 extern void	SetSessionUserId(Oid, bool);
 extern Oid	GetAuthenticatedUserId(void);
 extern bool IsAuthenticatedUserSuperUser(void);
+=======
+extern bool GetSessionUserIsSuperuser(void);
+extern Oid	GetAuthenticatedUserId(void);
+extern bool GetAuthenticatedUserIsSuperuser(void);
+extern void SetAuthenticatedUserId(Oid userid, bool is_superuser);
+>>>>>>> REL_12_22
 extern void GetUserIdAndSecContext(Oid *userid, int *sec_context);
 extern void SetUserIdAndSecContext(Oid userid, int sec_context);
 extern bool InLocalUserIdChange(void);

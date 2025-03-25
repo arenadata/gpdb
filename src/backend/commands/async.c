@@ -2103,6 +2103,10 @@ asyncQueueAdvanceTail(void)
 static void
 ProcessIncomingNotify(void)
 {
+<<<<<<< HEAD
+=======
+	MemoryContext oldcontext;
+>>>>>>> REL_12_22
 
 	/* We *must* reset the flag */
 	notifyInterruptPending = false;
@@ -2118,13 +2122,20 @@ ProcessIncomingNotify(void)
 
 	/*
 	 * We must run asyncQueueReadAllNotifications inside a transaction, else
-	 * bad things happen if it gets an error.
+	 * bad things happen if it gets an error.  However, we need to preserve
+	 * the caller's memory context (typically MessageContext).
 	 */
+	oldcontext = CurrentMemoryContext;
+
 	StartTransactionCommand();
 
 	asyncQueueReadAllNotifications();
 
 	CommitTransactionCommand();
+
+	/* Caller's context had better not have been transaction-local */
+	Assert(MemoryContextIsValid(oldcontext));
+	MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * Must flush the notify messages to ensure frontend gets them promptly.

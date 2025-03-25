@@ -1209,7 +1209,7 @@ initialize_environment(void)
 	/*
 	 * Set timezone and datestyle for datetime-related tests
 	 */
-	putenv("PGTZ=PST8PDT");
+	putenv("PGTZ=America/Los_Angeles");
 	putenv("PGDATESTYLE=Postgres, MDY");
 
 	/*
@@ -1644,7 +1644,7 @@ spawn_process(const char *cmdline)
 	HANDLE		restrictedToken;
 
 	memset(&pi, 0, sizeof(pi));
-	cmdline2 = psprintf("cmd /c \"%s\"", cmdline);
+	cmdline2 = psprintf("cmd /d /c \"%s\"", cmdline);
 
 	if ((restrictedToken =
 		 CreateRestrictedProcess(cmdline2, &pi)) == 0)

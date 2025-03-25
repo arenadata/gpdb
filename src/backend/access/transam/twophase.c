@@ -502,8 +502,12 @@ MarkAsPreparingGuts(GlobalTransaction gxact, TransactionId xid, const char *gid,
 	proc->roleId = owner;
 	proc->tempNamespaceId = InvalidOid;
 	proc->isBackgroundWorker = false;
+<<<<<<< HEAD
 	proc->mppSessionId = gp_session_id;
 	proc->lwWaiting = false;
+=======
+	proc->lwWaiting = LW_WS_NOT_WAITING;
+>>>>>>> REL_12_22
 	proc->lwWaitMode = 0;
 	proc->waitLock = NULL;
 	proc->waitProcLock = NULL;
@@ -1601,6 +1605,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	PGPROC	   *proc;
 	PGXACT	   *pgxact;
 	TransactionId xid;
+	bool		ondisk;
 	char	   *buf;
 	char	   *bufptr;
 	TwoPhaseFileHeader *hdr;
@@ -1787,6 +1792,12 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 
 	PredicateLockTwoPhaseFinish(xid, isCommit);
 
+	/*
+	 * Read this value while holding the two-phase lock, as the on-disk 2PC
+	 * file is physically removed after the lock is released.
+	 */
+	ondisk = gxact->ondisk;
+
 	/* Clear shared memory state */
 	RemoveGXact(gxact);
 
@@ -1802,7 +1813,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	/*
 	 * And now we can clean up any files we may have left.
 	 */
-	if (gxact->ondisk)
+	if (ondisk)
 		RemoveTwoPhaseFile(xid, true);
 
 	MyLockedGxact = NULL;
@@ -2167,9 +2178,8 @@ PrescanPreparedTransactions(TransactionId **xids_p, int *nxids_p)
  * This is never called at the end of recovery - we use
  * RecoverPreparedTransactions() at that point.
  *
- * The lack of calls to SubTransSetParent() calls here is by design;
- * those calls are made by RecoverPreparedTransactions() at the end of recovery
- * for those xacts that need this.
+ * This updates pg_subtrans, so that any subtransactions will be correctly
+ * seen as in-progress in snapshots taken during recovery.
  */
 void
 StandbyRecoverPreparedTransactions(void)
@@ -2189,7 +2199,7 @@ StandbyRecoverPreparedTransactions(void)
 
 		buf = ProcessTwoPhaseBuffer(xid,
 									gxact->prepare_start_lsn,
-									gxact->ondisk, false, false);
+									gxact->ondisk, true, false);
 		if (buf != NULL)
 			pfree(buf);
 	}

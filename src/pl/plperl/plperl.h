@@ -14,15 +14,11 @@
 #ifndef PL_PERL_H
 #define PL_PERL_H
 
-/* stop perl headers from hijacking stdio and other stuff on Windows */
-#ifdef WIN32
-#define WIN32IO_IS_STDIO
-#endif							/* WIN32 */
-
 /*
- * Supply a value of PERL_UNUSED_DECL that will satisfy gcc - the one
- * perl itself supplies doesn't seem to.
+ * Pull in Perl headers via a wrapper header, to control the scope of
+ * the system_header pragma therein.
  */
+<<<<<<< HEAD
 #define PERL_UNUSED_DECL pg_attribute_unused()
 
 /*
@@ -227,6 +223,9 @@
 #else
 #define AV_SIZE_MAX I32_MAX
 #endif
+=======
+#include "plperl_system.h"
+>>>>>>> REL_12_22
 
 /* declare routines from plperl.c for access by .xs files */
 HV		   *plperl_spi_exec(char *, int);

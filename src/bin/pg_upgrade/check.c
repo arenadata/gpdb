@@ -309,6 +309,7 @@ check_cluster_versions(void)
 	 */
 
 	/*
+<<<<<<< HEAD
 	 * Upgrading from anything older than an 9.4 based Greenplum (GPDB6) is not supported.
 	 */
 
@@ -328,6 +329,14 @@ check_cluster_versions(void)
 
 	/* cluster versions should already have been obtained */
 	Assert(new_cluster.major_version != 0);
+=======
+	 * The minimum version supported when this code shipped in a major version
+	 * was 8.4. This has since been raised to 9.0, but the support code for
+	 * dealing with 8.4 remains to avoid refactoring in a backbranch.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) < 900)
+		pg_fatal("This utility can only upgrade from PostgreSQL version 9.0 and later.\n");
+>>>>>>> REL_12_22
 
 	/* Only current PG version is supported as a target */
 	if (GET_MAJOR_VERSION(new_cluster.major_version) != GET_MAJOR_VERSION(PG_VERSION_NUM))

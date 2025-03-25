@@ -55,9 +55,14 @@ endif # win32
 
 SHLIB_LINK = $(perl_embed_ldflags)
 
+<<<<<<< HEAD
 REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-extension=plperl  --load-extension=plperlu
 REGRESS_OPTS += --init-file=init_file
 REGRESS = plperl plperl_lc plperl_trigger plperl_shared plperl_elog plperl_util plperl_init plperlu plperl_array plperl_call plperl_transaction
+=======
+REGRESS_OPTS = --dbname=$(PL_TESTDB) --dlpath=$(top_builddir)/src/test/regress --load-extension=plperl  --load-extension=plperlu
+REGRESS = plperl plperl_lc plperl_trigger plperl_shared plperl_elog plperl_util plperl_init plperlu plperl_array plperl_call plperl_transaction plperl_env
+>>>>>>> REL_12_22
 # if Perl can support two interpreters in one backend,
 # test plperl-and-plperlu cases
 ifneq ($(PERL),)
@@ -107,11 +112,11 @@ uninstall: uninstall-lib uninstall-data
 
 install-data: installdirs
 	$(INSTALL_DATA) $(addprefix $(srcdir)/, $(DATA)) '$(DESTDIR)$(datadir)/extension/'
-	$(INSTALL_DATA) $(srcdir)/plperl.h $(srcdir)/ppport.h $(srcdir)/plperl_helpers.h '$(DESTDIR)$(includedir_server)'
+	$(INSTALL_DATA) $(srcdir)/plperl.h $(srcdir)/plperl_system.h $(srcdir)/ppport.h $(srcdir)/plperl_helpers.h '$(DESTDIR)$(includedir_server)'
 
 uninstall-data:
 	rm -f $(addprefix '$(DESTDIR)$(datadir)/extension'/, $(notdir $(DATA)))
-	rm -f $(addprefix '$(DESTDIR)$(includedir_server)'/, plperl.h ppport.h)
+	rm -f $(addprefix '$(DESTDIR)$(includedir_server)'/, plperl.h plperl_system.h ppport.h)
 
 .PHONY: install-data uninstall-data
 
@@ -128,6 +133,7 @@ submake:
 
 clean distclean maintainer-clean: clean-lib
 	rm -f SPI.c Util.c $(OBJS) perlchunks.h plperl_opmask.h
+	rm -f sql/plperl_env.sql expected/plperl_env.out
 	rm -rf $(pg_regress_clean_files)
 ifeq ($(PORTNAME), win32)
 	rm -f $(perlwithver).def
