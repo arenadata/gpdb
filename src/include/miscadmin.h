@@ -427,7 +427,7 @@ extern Oid	GetUserId(void);
 extern Oid	GetOuterUserId(void);
 extern Oid	GetSessionUserId(void);
 extern void	SetSessionUserId(Oid, bool);
-extern bool IsAuthenticatedUserSuperUser(void);
+#define IsAuthenticatedUserSuperUser() GetAuthenticatedUserIsSuperuser()
 extern bool GetSessionUserIsSuperuser(void);
 extern Oid	GetAuthenticatedUserId(void);
 extern bool GetAuthenticatedUserIsSuperuser(void);
