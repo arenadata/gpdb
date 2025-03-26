@@ -210,17 +210,8 @@ CLogicalUpdate::PopCopyWithRemappedColumns(CMemoryPool *mp,
 	CColRefArray *pdrgpcrInsert =
 		CUtils::PdrgpcrRemap(mp, m_pdrgpcrInsert, colref_mapping, must_exist);
 
-	CColRefArray *pdrgpcrOutput = NULL;
-	if (must_exist)
-	{
-		pdrgpcrOutput =
-			CUtils::PdrgpcrRemapAndCreate(mp, m_pdrgpcrOutput, colref_mapping);
-	}
-	else
-	{
-		pdrgpcrOutput = CUtils::PdrgpcrRemap(mp, m_pdrgpcrOutput,
-											 colref_mapping, must_exist);
-	}
+	CColRefArray *pdrgpcrOutput =
+		CLogicalReturning::CopyRemappedColumns(mp, colref_mapping, must_exist);
 
 	CColRef *pcrCtid = CUtils::PcrRemap(m_pcrCtid, colref_mapping, must_exist);
 	CColRef *pcrSegmentId =

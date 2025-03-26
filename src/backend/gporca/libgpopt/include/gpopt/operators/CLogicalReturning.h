@@ -76,6 +76,11 @@ public:
 	// match function
 	virtual BOOL MatchesReturning(CLogicalReturning *popReturning) const;
 
+	// return a copy of output columns
+	virtual CColRefArray *CopyRemappedColumns(CMemoryPool *mp,
+											  UlongToColRefMap *colref_mapping,
+											  BOOL must_exist);
+
 	// derive key collections
 	virtual CKeyCollection *DeriveKeyCollection(
 		CMemoryPool *mp, CExpressionHandle &exprhdl) const;

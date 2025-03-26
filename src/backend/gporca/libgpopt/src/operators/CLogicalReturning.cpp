@@ -112,6 +112,34 @@ CLogicalReturning::HashValue() const
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CLogicalReturning::CopyRemappedColumns
+//
+//	@doc:
+//		return a copy of output columns
+//
+//---------------------------------------------------------------------------
+CColRefArray *
+CLogicalReturning::CopyRemappedColumns(CMemoryPool *mp,
+									   UlongToColRefMap *colref_mapping,
+									   BOOL must_exist)
+{
+	CColRefArray *pdrgpcrOutput = NULL;
+	if (must_exist)
+	{
+		pdrgpcrOutput =
+			CUtils::PdrgpcrRemapAndCreate(mp, m_pdrgpcrOutput, colref_mapping);
+	}
+	else
+	{
+		pdrgpcrOutput = CUtils::PdrgpcrRemap(mp, m_pdrgpcrOutput,
+											 colref_mapping, must_exist);
+	}
+
+	return pdrgpcrOutput;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CLogicalReturning::DeriveKeyCollection
 //
 //	@doc:
@@ -120,7 +148,7 @@ CLogicalReturning::HashValue() const
 //---------------------------------------------------------------------------
 CKeyCollection *
 CLogicalReturning::DeriveKeyCollection(CMemoryPool *mp,
-								 CExpressionHandle &  // exprhdl
+									   CExpressionHandle &	// exprhdl
 ) const
 {
 	const CBitSetArray *pdrgpbs = m_ptabdesc->PdrgpbsKeys();

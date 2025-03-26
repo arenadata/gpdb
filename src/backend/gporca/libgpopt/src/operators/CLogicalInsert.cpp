@@ -133,7 +133,7 @@ ULONG
 CLogicalInsert::HashValue() const
 {
 	ULONG ulHash = CLogicalReturning::HashValue();
-	
+
 	ulHash =
 		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrSource));
 
@@ -156,17 +156,8 @@ CLogicalInsert::PopCopyWithRemappedColumns(CMemoryPool *mp,
 	CColRefArray *colref_array =
 		CUtils::PdrgpcrRemap(mp, m_pdrgpcrSource, colref_mapping, must_exist);
 
-	CColRefArray *pdrgpcrOutput = NULL;
-	if (must_exist)
-	{
-		pdrgpcrOutput =
-			CUtils::PdrgpcrRemapAndCreate(mp, m_pdrgpcrOutput, colref_mapping);
-	}
-	else
-	{
-		pdrgpcrOutput = CUtils::PdrgpcrRemap(mp, m_pdrgpcrOutput,
-											 colref_mapping, must_exist);
-	}
+	CColRefArray *pdrgpcrOutput =
+		CLogicalReturning::CopyRemappedColumns(mp, colref_mapping, must_exist);
 	m_ptabdesc->AddRef();
 
 	CLogicalInsert *result = GPOS_NEW(mp)
