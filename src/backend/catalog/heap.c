@@ -665,7 +665,6 @@ CheckAttributeType(const char *attname,
 	char		att_typtype = get_typtype(atttypid);
 	Oid			att_typelem;
 
-<<<<<<< HEAD
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
 		/*
@@ -674,10 +673,9 @@ CheckAttributeType(const char *attname,
 		 */
 		return;
 	}
-=======
+
 	/* since this function recurses, it could be driven to stack overflow */
 	check_stack_depth();
->>>>>>> REL_12_22
 
 	if (att_typtype == TYPTYPE_PSEUDO)
 	{
