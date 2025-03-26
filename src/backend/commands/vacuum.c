@@ -1814,6 +1814,8 @@ vac_update_datfrozenxid(void)
 	MultiXactId lastSaneMinMulti;
 	bool		bogus = false;
 	bool		dirty = false;
+	ScanKeyData key[1];
+	void	   *inplace_state;
 
 	/*
 	 * Restrict this task to one backend per database.  This avoids race
@@ -1971,15 +1973,21 @@ vac_update_datfrozenxid(void)
 	{
 		HeapTuple			tuple;
 		Form_pg_database	tmp_dbform;
-		void			   *inplace_state;
 		/*
 		 * Fetch a copy of the tuple to scribble on from pg_database disk
 		 * heap table instead of system cache
 		 * "SearchSysCacheCopy1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId))".
 		 * Since the cache already flatten toast tuple, so the
-		 * heap_inplace_update will fail with "wrong tuple length".
+		 * systable_inplace_update_finish will fail with "wrong tuple length".
 		 */
-		tuple = fetch_database_tuple(relation, MyDatabaseId, &inplace_state);
+		ScanKeyInit(&key[0],
+					Anum_pg_database_oid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(MyDatabaseId));
+
+		systable_inplace_update_begin(relation, DatabaseOidIndexId, true,
+									  NULL, 1, key, &tuple, &inplace_state);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
 		tmp_dbform = (Form_pg_database) GETSTRUCT(tuple);
