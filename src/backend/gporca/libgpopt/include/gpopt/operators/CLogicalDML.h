@@ -148,13 +148,6 @@ public:
 		return m_pcrSegmentId;
 	}
 
-	// return table's descriptor
-	CTableDescriptor *
-	Ptabdesc() const
-	{
-		return m_ptabdesc;
-	}
-
 	// tuple oid column
 	CColRef *
 	PcrTupleOid() const

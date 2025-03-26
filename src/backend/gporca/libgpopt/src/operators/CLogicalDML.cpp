@@ -134,14 +134,13 @@ CLogicalDML::Matches(COperator *pop) const
 
 	CLogicalDML *popDML = CLogicalDML::PopConvert(pop);
 
-	return m_pcrAction == popDML->PcrAction() &&
+	return CLogicalReturning::MatchesReturning(popDML) &&
+		   m_pcrAction == popDML->PcrAction() &&
 		   m_pcrTableOid == popDML->PcrTableOid() &&
 		   m_pcrCtid == popDML->PcrCtid() &&
 		   m_pcrSegmentId == popDML->PcrSegmentId() &&
 		   m_pcrTupleOid == popDML->PcrTupleOid() &&
-		   m_ptabdesc->MDId()->Equals(popDML->Ptabdesc()->MDId()) &&
-		   m_pdrgpcrSource->Equals(popDML->PdrgpcrSource()) &&
-		   m_pdrgpcrOutput->Equals(popDML->PdrgpcrOutput());
+		   m_pdrgpcrSource->Equals(popDML->PdrgpcrSource());
 }
 
 //---------------------------------------------------------------------------
@@ -155,13 +154,11 @@ CLogicalDML::Matches(COperator *pop) const
 ULONG
 CLogicalDML::HashValue() const
 {
-	ULONG ulHash = gpos::CombineHashes(COperator::HashValue(),
-									   m_ptabdesc->MDId()->HashValue());
+	ULONG ulHash = CLogicalReturning::HashValue();
+
 	ulHash = gpos::CombineHashes(ulHash, gpos::HashPtr<CColRef>(m_pcrAction));
 	ulHash =
 		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrSource));
-	ulHash =
-		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrOutput));
 	ulHash = gpos::CombineHashes(ulHash, gpos::HashPtr<CColRef>(m_pcrTableOid));
 
 	if (EdmlDelete == m_edmlop || EdmlUpdate == m_edmlop)
