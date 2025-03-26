@@ -1759,30 +1759,6 @@ vac_update_relstats(Relation relation,
 }
 
 /*
- * fetch_database_tuple - Fetch a copy of database tuple from pg_database.
- *
- * This using disk heap table instead of system cache.
- * relation: opened pg_database relation in vac_update_datfrozenxid().
- */
-static HeapTuple
-fetch_database_tuple(Relation relation, Oid dbOid, void **inplace_state)
-{
-	ScanKeyData skey[1];
-	SysScanDesc sscan;
-	HeapTuple	tuple = NULL;
-
-	ScanKeyInit(&skey[0],
-				Anum_pg_database_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(dbOid));
-
-	systable_inplace_update_begin(relation, DatabaseOidIndexId, true,
-								  NULL, 1, skey, &tuple, inplace_state);
-
-	return tuple;
-}
-
-/*
  *	vac_update_datfrozenxid() -- update pg_database.datfrozenxid for our DB
  *
  *		Update pg_database's datfrozenxid entry for our database to be the
