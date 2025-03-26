@@ -110,6 +110,23 @@ CLogicalReturning::HashValue() const
 	return ulHash;
 }
 
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalReturning::DeriveKeyCollection
+//
+//	@doc:
+//		Derive key collection
+//
+//---------------------------------------------------------------------------
+CKeyCollection *
+CLogicalReturning::DeriveKeyCollection(CMemoryPool *mp,
+								 CExpressionHandle &  // exprhdl
+) const
+{
+	const CBitSetArray *pdrgpbs = m_ptabdesc->PdrgpbsKeys();
+
+	return CLogical::PkcKeysBaseTable(mp, pdrgpbs, m_pdrgpcrOutput);
+}
 
 //---------------------------------------------------------------------------
 //	@function:

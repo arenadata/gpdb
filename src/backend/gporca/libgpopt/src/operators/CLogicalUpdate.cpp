@@ -279,24 +279,6 @@ CLogicalUpdate::DeriveOutputColumns(CMemoryPool *mp,
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CLogicalUpdate::PkcDeriveKeys
-//
-//	@doc:
-//		Derive key collection
-//
-//---------------------------------------------------------------------------
-CKeyCollection *
-CLogicalUpdate::DeriveKeyCollection(CMemoryPool *mp,
-									CExpressionHandle &	 // exprhdl
-) const
-{
-	const CBitSetArray *pdrgpbs = m_ptabdesc->PdrgpbsKeys();
-
-	return CLogical::PkcKeysBaseTable(mp, pdrgpbs, m_pdrgpcrOutput);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
 //		CLogicalUpdate::DeriveMaxCard
 //
 //	@doc:

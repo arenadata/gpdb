@@ -195,10 +195,6 @@ public:
 	// candidate set of xforms
 	virtual CXformSet *PxfsCandidates(CMemoryPool *mp) const;
 
-	// derive key collections
-	virtual CKeyCollection *DeriveKeyCollection(
-		CMemoryPool *mp, CExpressionHandle &exprhdl) const;
-
 	// derive statistics
 	virtual IStatistics *PstatsDerive(CMemoryPool *mp,
 									  CExpressionHandle &exprhdl,

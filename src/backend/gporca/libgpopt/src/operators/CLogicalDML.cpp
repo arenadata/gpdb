@@ -297,24 +297,6 @@ CLogicalDML::DerivePropertyConstraint(CMemoryPool *mp,
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CLogicalDML::PkcDeriveKeys
-//
-//	@doc:
-//		Derive key collection
-//
-//---------------------------------------------------------------------------
-CKeyCollection *
-CLogicalDML::DeriveKeyCollection(CMemoryPool *mp,
-								 CExpressionHandle &  // exprhdl
-) const
-{
-	const CBitSetArray *pdrgpbs = m_ptabdesc->PdrgpbsKeys();
-
-	return CLogical::PkcKeysBaseTable(mp, pdrgpbs, m_pdrgpcrOutput);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
 //		CLogicalDML::DeriveMaxCard
 //
 //	@doc:

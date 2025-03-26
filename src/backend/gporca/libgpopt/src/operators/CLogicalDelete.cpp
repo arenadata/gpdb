@@ -233,24 +233,6 @@ CLogicalDelete::DeriveOutputColumns(CMemoryPool *mp,
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CLogicalDelete::PkcDeriveKeys
-//
-//	@doc:
-//		Derive key collection
-//
-//---------------------------------------------------------------------------
-CKeyCollection *
-CLogicalDelete::DeriveKeyCollection(CMemoryPool *mp,
-									CExpressionHandle &	 // exprhdl
-) const
-{
-	const CBitSetArray *pdrgpbs = m_ptabdesc->PdrgpbsKeys();
-
-	return CLogical::PkcKeysBaseTable(mp, pdrgpbs, m_pdrgpcrOutput);
-}
-
-//---------------------------------------------------------------------------
-//	@function:
 //		CLogicalDelete::DeriveMaxCard
 //
 //	@doc:

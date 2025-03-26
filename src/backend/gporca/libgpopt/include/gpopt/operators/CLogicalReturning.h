@@ -76,6 +76,10 @@ public:
 	// match function
 	virtual BOOL MatchesReturning(CLogicalReturning *popReturning) const;
 
+	// derive key collections
+	virtual CKeyCollection *DeriveKeyCollection(
+		CMemoryPool *mp, CExpressionHandle &exprhdl) const;
+
 	// debug print
 	virtual IOstream &OsPrint(IOstream &) const;
 
