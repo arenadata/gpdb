@@ -84,13 +84,13 @@ VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
  * distribution on it.
  */
 #define PG_LOCKS_INTERNAL_QUERY \
-	"select * from gp_dist_random('pg_catalog.pg_locks')"
+	"select l.* from gp_dist_random('pg_catalog.pg_locks') l, generate_series(1, 10000)"
 
 /*
- * Build a querydesc for pg_locks relation to be executed on segments, set
- * "dest" to portal->holdStore.
+ * Build a querydesc for SELECT on pg_locks relation to be into executor.
  */
-static QueryDesc *build_pg_locks_querydesc(void)
+static QueryDesc *
+build_pg_locks_querydesc(void)
 {
 	List *raw_parsetree_list;
 	Node *parsetree;
@@ -128,7 +128,8 @@ static QueryDesc *build_pg_locks_querydesc(void)
 	return queryDesc;
 }
 
-static TupleDesc build_pg_locks_tupdesc(void)
+static TupleDesc
+build_pg_locks_tupdesc(void)
 {
 	TupleDesc tupdesc = CreateTemplateTupleDesc(NUM_LOCK_STATUS_COLUMNS, false);
 
@@ -150,7 +151,7 @@ static TupleDesc build_pg_locks_tupdesc(void)
 	TupleDescInitEntry(tupdesc, (AttrNumber) 15, "fastpath", BOOLOID, -1, 0);
 
 	/*
-	 * These next columns are specific to GPDB
+	 * These next columns are specific to GPDB.
 	 */
 	TupleDescInitEntry(tupdesc, (AttrNumber) 16, "mppSessionId", INT4OID, -1,
 					   0);
@@ -190,7 +191,22 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		mystatus->lockData = GetLockStatusData();
 		mystatus->predLockData = GetPredicateLockStatusData();
 
-		/* Sent out a plan to the segments. To receive the results later. */
+		/*
+		 * Seeing the locks just from the masterDB isn't enough to know what is
+		 * locked, or if there is a deadlock, because segments also take locks.
+		 * Some show up only on the master, some only on the segDBs, and some on
+		 * both.
+		 *
+		 * We collect the lock information from all the segments via gather
+		 * motion. There might be multiple instances of the same lock coming
+		 * from different segments.
+		 *
+		 * Routines from executor are used to fetch rows one-by-one. The results
+		 * are still materialized, unfortunately. This is a limitation of
+		 * set-returning functions, since they cannot surely know whether the
+		 * upper node was limited, and are called until they are
+		 * SRF_RETURN_DONE().
+		 */
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
 			QueryDesc *queryDesc = build_pg_locks_querydesc();
@@ -437,17 +453,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		SRF_RETURN_NEXT(funcctx, result);
 	}
 
-
-	/*
-	 * Seeing the locks just from the masterDB isn't enough to know what is locked,
-	 * or if there is a deadlock.  That's because the segDBs also take locks.
-	 * Some locks show up only on the master, some only on the segDBs, and some on both.
-	 *
-	 * So, let's collect the lock information from all the segDBs.  Sure, this means
-	 * there are a lot more rows coming back from pg_locks than before, since most locks
-	 * on the segDBs happen across all the segDBs at the same time.  But not always,
-	 * so let's play it safe and get them all.
-	 */
+	/* Collect locks sent out by the segments on coordinator. */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		QueryDesc *queryDesc = mystatus->segQueryDesc;
