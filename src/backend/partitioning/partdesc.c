@@ -236,14 +236,6 @@ RelationBuildPartitionDesc_guts(Relation rel, bool validate)
 			scan = systable_beginscan(pg_class, ClassOidIndexId, true,
 									  NULL, 1, key);
 			tuple = systable_getnext(scan);
-<<<<<<< HEAD
-			if (!tuple)
-				elog(ERROR, "could not find pg_class entry for oid %u", inhrelid);
-			datum = heap_getattr(tuple, Anum_pg_class_relpartbound,
-								 RelationGetDescr(pg_class), &isnull);
-			if (!isnull)
-				boundspec = stringToNode(TextDatumGetCString(datum));
-=======
 			if (HeapTupleIsValid(tuple))
 			{
 				Datum		datum;
@@ -254,7 +246,8 @@ RelationBuildPartitionDesc_guts(Relation rel, bool validate)
 				if (!isnull)
 					boundspec = stringToNode(TextDatumGetCString(datum));
 			}
->>>>>>> REL_12_22
+			else
+				elog(ERROR, "could not find pg_class entry for oid %u", inhrelid);
 			systable_endscan(scan);
 			table_close(pg_class, AccessShareLock);
 		}
