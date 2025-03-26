@@ -63,6 +63,13 @@ public:
 		return m_pdrgpcrOutput;
 	}
 
+	// return table's descriptor
+	CTableDescriptor *
+	Ptabdesc() const
+	{
+		return m_ptabdesc;
+	}
+
 	// debug print
 	virtual IOstream &OsPrint(IOstream &) const;
 

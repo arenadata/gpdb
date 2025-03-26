@@ -131,13 +131,6 @@ public:
 		return m_pcrTableOid;
 	}
 
-	// return table's descriptor
-	CTableDescriptor *
-	Ptabdesc() const
-	{
-		return m_ptabdesc;
-	}
-
 	// operator specific hash function
 	virtual ULONG HashValue() const;
 
