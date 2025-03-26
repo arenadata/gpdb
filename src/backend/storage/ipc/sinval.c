@@ -230,14 +230,12 @@ ProcessCatchupInterrupt(void)
 
 			StartTransactionCommand();
 			CommitTransactionCommand();
-<<<<<<< HEAD
 
 			setDistributedTransactionContext(saveDistributedTransactionContext);
-=======
+
 			/* Caller's context had better not have been transaction-local */
 			Assert(MemoryContextIsValid(oldcontext));
 			MemoryContextSwitchTo(oldcontext);
->>>>>>> REL_12_22
 		}
 
 		in_process_catchup_event = 0;
