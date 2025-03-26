@@ -3305,8 +3305,7 @@ CUtils::FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr)
 
 	while (exprsToCheck->Size() > 0)
 	{
-		CExpression *pexprCurrent = (*exprsToCheck)[exprsToCheck->Size() - 1];
-		exprsToCheck->RemoveLast();
+		CExpression *pexprCurrent = exprsToCheck->RemoveLast();
 
 		if (FLogicalDML(pexprCurrent->Pop()))
 		{
