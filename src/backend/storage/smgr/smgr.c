@@ -62,29 +62,6 @@ static const f_smgr smgrsw[] = {
 		.smgr_nblocks = mdnblocks,
 		.smgr_truncate = mdtruncate,
 		.smgr_immedsync = mdimmedsync,
-	},
-	/*
-	 * Relation files that are different from heap, characterised by:
-	 *     1. variable blocksize
-	 *     2. block numbers are not consecutive
-	 *     3. shared buffers are not used
-	 * Append-optimized relation files currently fall in this category.
-	 */
-	{
-		.smgr_init = NULL,
-		.smgr_shutdown = NULL,
-		.smgr_close = mdclose,
-		.smgr_create = mdcreate,
-		.smgr_exists = mdexists,
-		.smgr_unlink = mdunlink_ao,
-		.smgr_extend = mdextend,
-		.smgr_prefetch = mdprefetch,
-		.smgr_read = mdread,
-		.smgr_write = mdwrite,
-		.smgr_writeback = mdwriteback,
-		.smgr_nblocks = mdnblocks,
-		.smgr_truncate = mdtruncate,
-		.smgr_immedsync = mdimmedsync,
 	}
 };
 
@@ -167,7 +144,7 @@ const f_smgr *
 smgr_standard(BackendId backend, RelFileNode rnode, SMgrImpl which)
 {
 	// for md.c 
-	return &smgrsw[which];
+	return &smgrsw[0];
 }
 
 const f_smgr *

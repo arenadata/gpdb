@@ -571,7 +571,7 @@ typedef struct ViewOptions
 			smgrsetowner(&((relation)->rd_smgr), \
 						 smgropen((relation)->rd_node, \
 								  (relation)->rd_backend, \
-								  RelationStorageIsAO(relation)?SMGR_AO:SMGR_MD)); \
+								  SMGR_MD)); \
 	} while (0)
 
 /*

@@ -23,8 +23,7 @@
 
 typedef enum SMgrImplementation
 {
-	SMGR_MD = 0,
-	SMGR_AO = 1
+	SMGR_MD = 0
 } SMgrImpl;
 
 
