@@ -79,14 +79,10 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
-<<<<<<< HEAD
 #include "catalog/pg_resgroup.h"
 #include "catalog/pg_extprotocol.h"
-=======
-#include "miscadmin.h"
 #include "storage/lmgr.h"
 #include "utils/inval.h"
->>>>>>> REL_12_22
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
