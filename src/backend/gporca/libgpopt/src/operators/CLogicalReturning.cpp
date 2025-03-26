@@ -77,6 +77,42 @@ CLogicalReturning::~CLogicalReturning()
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CLogicalReturning::Matches
+//
+//	@doc:
+//		Match function
+//
+//---------------------------------------------------------------------------
+BOOL
+CLogicalReturning::MatchesReturning(CLogicalReturning *popReturning) const
+{
+	return m_ptabdesc->MDId()->Equals(popReturning->Ptabdesc()->MDId()) &&
+		   m_pdrgpcrOutput->Equals(popReturning->PdrgpcrOutput());
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalReturning::HashValue
+//
+//	@doc:
+//		Hash function
+//
+//---------------------------------------------------------------------------
+ULONG
+CLogicalReturning::HashValue() const
+{
+	ULONG ulHash = gpos::CombineHashes(COperator::HashValue(),
+									   m_ptabdesc->MDId()->HashValue());
+
+	ulHash =
+		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrOutput));
+
+	return ulHash;
+}
+
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CLogicalReturning::OsPrint
 //
 //	@doc:

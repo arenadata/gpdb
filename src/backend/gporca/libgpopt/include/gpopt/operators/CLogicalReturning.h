@@ -70,6 +70,12 @@ public:
 		return m_ptabdesc;
 	}
 
+	// operator specific hash function
+	virtual ULONG HashValue() const;
+
+	// match function
+	virtual BOOL MatchesReturning(CLogicalReturning *popReturning) const;
+
 	// debug print
 	virtual IOstream &OsPrint(IOstream &) const;
 

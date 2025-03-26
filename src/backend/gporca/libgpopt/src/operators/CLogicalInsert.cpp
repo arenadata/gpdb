@@ -117,9 +117,8 @@ CLogicalInsert::Matches(COperator *pop) const
 
 	CLogicalInsert *popInsert = CLogicalInsert::PopConvert(pop);
 
-	return m_ptabdesc->MDId()->Equals(popInsert->Ptabdesc()->MDId()) &&
-		   m_pdrgpcrSource->Equals(popInsert->PdrgpcrSource()) &&
-		   m_pdrgpcrOutput->Equals(popInsert->PdrgpcrOutput());
+	return CLogicalReturning::MatchesReturning(popInsert) &&
+		   m_pdrgpcrSource->Equals(popInsert->PdrgpcrSource());
 }
 
 //---------------------------------------------------------------------------
@@ -133,13 +132,10 @@ CLogicalInsert::Matches(COperator *pop) const
 ULONG
 CLogicalInsert::HashValue() const
 {
-	ULONG ulHash = gpos::CombineHashes(COperator::HashValue(),
-									   m_ptabdesc->MDId()->HashValue());
+	ULONG ulHash = CLogicalReturning::HashValue();
+	
 	ulHash =
 		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrSource));
-
-	ulHash =
-		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrOutput));
 
 	return ulHash;
 }
