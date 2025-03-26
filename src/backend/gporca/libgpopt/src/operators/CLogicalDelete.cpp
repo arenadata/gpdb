@@ -142,8 +142,8 @@ CLogicalDelete::Matches(COperator *pop) const
 		   m_pdrgpcr->Equals(popDelete->Pdrgpcr()) &&
 		   m_pdrgpcrOutput->Equals(popDelete->PdrgpcrOutput());
 }
-//---------------------------------------------------------------------------
 
+//---------------------------------------------------------------------------
 //	@function:
 //		CLogicalDelete::HashValue
 //
