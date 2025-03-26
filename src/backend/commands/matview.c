@@ -867,18 +867,11 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 */
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
-<<<<<<< HEAD
 
 	/* Get distribute key of matview */
 	distributed = TextDatumGetCString(DirectFunctionCall1(pg_get_table_distributedby,
 														   ObjectIdGetDatum(tempOid)));
 
-	/* Start building the query for creating the diff table. */
-	resetStringInfo(&querybuf);
-	appendStringInfo(&querybuf,
-					 "CREATE TEMP TABLE %s AS "
-					 "SELECT mv.ctid AS tid, mv.gp_segment_id as sid, newdata.* "
-=======
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
 					 "CREATE TEMP TABLE %s (tid pg_catalog.tid)",
@@ -898,8 +891,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
 					 "INSERT INTO %s "
-					 "SELECT mv.ctid AS tid, newdata.*::%s AS newdata "
->>>>>>> REL_12_22
+					 "SELECT mv.ctid AS tid, mv.gp_segment_id as sid, newdata.* "
 					 "FROM %s mv FULL JOIN %s newdata ON (",
 					 diffname, matviewname, tempname);
 
