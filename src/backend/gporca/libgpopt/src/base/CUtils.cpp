@@ -3289,6 +3289,9 @@ CUtils::FCTAS(COperator *pop)
 
 	CLogicalInsert *popInsert = CLogicalInsert::PopConvert(pop);
 
+	GPOS_ASSERT(NULL != popInsert->Ptabdesc());
+	GPOS_ASSERT(NULL != popInsert->Ptabdesc()->MDId());
+
 	return IMDId::EmdidGPDBCtas == popInsert->Ptabdesc()->MDId()->MdidType();
 }
 
