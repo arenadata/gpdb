@@ -546,6 +546,18 @@ bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 					continue;
 			}
 
+			/*
+			 * If locus is SingleQE and there is volatile restrictions, do not
+			 * change such path, because outer quals will be under motion and
+			 * their re-scanning will return incorrect results.
+			 */
+			if (CdbPathLocus_IsSingleQE(origpath->locus) &&
+				contain_volatile_functions((Node *) (rel->baserestrictinfo)))
+			{
+				add_path(rel, origpath);
+				continue;
+			}
+
 			CdbPathLocus_MakeOuterQuery(&outerquery_locus);
 
 			path = cdbpath_create_motion_path(root,
@@ -754,11 +766,8 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * Greenplum specific behavior:
 	 * Change the path in pathlist if it is a general or segmentgeneral
 	 * path that contains volatile restrictions.
-	 * Do not do it, if list of the outer quals is not empty.
-	 * Outer query's motion will be decorated with materialize by
-	 * bring_to_outer_query.
 	 */
-	if (rel->upperrestrictinfo == NULL && rel->reloptkind == RELOPT_BASEREL)
+	if (rel->reloptkind == RELOPT_BASEREL)
 		handle_gen_seggen_volatile_path(root, rel);
 
 	/*
