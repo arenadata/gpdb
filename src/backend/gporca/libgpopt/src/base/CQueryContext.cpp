@@ -246,8 +246,7 @@ CQueryContext::PqcGenerate(CMemoryPool *mp, CExpression *pexpr,
 		// also check all required CTEs
 		CExpressionArray *pdrgpexpr = poptctxt->Pcteinfo()->PdrgPexpr(mp);
 
-		const ULONG size = pdrgpexpr->Size();
-		for (ULONG ul = 0; ul < size; ul++)
+		for (ULONG ul = 0; ul < pdrgpexpr->Size(); ul++)
 		{
 			CExpression *pCteExpr = (*pdrgpexpr)[ul];
 			if (CUtils::FHasLogicalDML(mp, pCteExpr))
