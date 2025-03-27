@@ -2482,10 +2482,10 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		MemoryContext oldcontext;
-
 		func_ctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(func_ctx->multi_call_memory_ctx);
+
+		MemoryContext oldcontext =
+			MemoryContextSwitchTo(func_ctx->multi_call_memory_ctx);
 
 		my_status = (gp_mock_cdbdispatchcommand_status *) palloc0(
 			sizeof(gp_mock_cdbdispatchcommand_status));
@@ -2496,20 +2496,18 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 		/* Send the command to segments from QD. */
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			int i;
-			CdbPgResults cdb_pgresults = {NULL, 0};
-
 			char *query =
 				psprintf("SELECT * FROM gp_mock_cdbdispatchcommand(%d)",
 						 arg_tuple_amount);
 
+			CdbPgResults cdb_pgresults = {0};
 			CdbDispatchCommand(query, DF_WITH_SNAPSHOT, &cdb_pgresults);
 
 			pfree(query);
 
 			Assert(cdb_pgresults.numResults > 0);
 
-			for (i = 0; i < cdb_pgresults.numResults; i++)
+			for (int i = 0; i < cdb_pgresults.numResults; i++)
 			{
 				Assert(PQresultStatus(cdb_pgresults.pg_results[i]) ==
 					   PGRES_TUPLES_OK);
