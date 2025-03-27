@@ -441,10 +441,6 @@ GetSessionUserId(void)
 	return SessionUserId;
 }
 
-<<<<<<< HEAD
-/* extern so DispatchAgent can use this (postgres.c) */
-extern void
-=======
 bool
 GetSessionUserIsSuperuser(void)
 {
@@ -452,8 +448,8 @@ GetSessionUserIsSuperuser(void)
 	return SessionUserIsSuperuser;
 }
 
-static void
->>>>>>> REL_12_22
+/* extern so DispatchAgent can use this (postgres.c) */
+extern void
 SetSessionUserId(Oid userid, bool is_superuser)
 {
 	AssertState(SecurityRestrictionContext == 0);
@@ -465,8 +461,7 @@ SetSessionUserId(Oid userid, bool is_superuser)
 bool
 IsAuthenticatedUserSuperUser()
 {
-	AssertState(OidIsValid(AuthenticatedUserId));
-	return AuthenticatedUserIsSuperuser;
+	return GetAuthenticatedUserIsSuperuser();
 }
 
 /*
@@ -761,13 +756,8 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 		 * many connections to each segment to execute a non-trivial plan and
 		 * the user connection limit does not map, semantically, to that idea.
 		 */
-<<<<<<< HEAD
 		if (Gp_role == GP_ROLE_DISPATCH && rform->rolconnlimit >= 0 &&
-			!AuthenticatedUserIsSuperuser &&
-=======
-		if (rform->rolconnlimit >= 0 &&
 			!is_superuser &&
->>>>>>> REL_12_22
 			CountUserBackends(roleid) > rform->rolconnlimit)
 			ereport(FATAL,
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
@@ -775,7 +765,6 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 							rname)));
 	}
 
-<<<<<<< HEAD
 	/*
 	 * If resource scheduling is enabled, then set cached value for the
 	 * queue. Do this even in standalone backend mode, just in case someone
@@ -786,15 +775,6 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 		SetResQueueId();
 	}
 
-	/* Record username and superuser status as GUC settings too */
-	SetConfigOption("session_authorization", rname,
-					PGC_BACKEND, PGC_S_OVERRIDE);
-	SetConfigOption("is_superuser",
-					AuthenticatedUserIsSuperuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
-
-=======
->>>>>>> REL_12_22
 	ReleaseSysCache(roleTup);
 }
 
@@ -851,20 +831,14 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 {
 	SetSessionUserId(userid, is_superuser);
 
-<<<<<<< HEAD
 	/* If resource scheduling enabled, set the cached queue for the new role.*/
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResQueueEnabled())
 	{
 		SetResQueueId();
 	}
 
-	SetConfigOption("is_superuser",
-					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
-=======
 	if (!SetRoleIsActive)
 		SetOuterUserId(userid, is_superuser);
->>>>>>> REL_12_22
 }
 
 /*
@@ -918,21 +892,13 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 	else
 		SetRoleIsActive = true;
 
-<<<<<<< HEAD
-	SetOuterUserId(roleid);
+	SetOuterUserId(roleid, is_superuser);
 
 	/* If resource scheduling enabled, set the cached queue for the new role.*/
 	if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_EXECUTE) && IsResQueueEnabled())
 	{
 		SetResQueueId();
 	}
-
-	SetConfigOption("is_superuser",
-					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
-=======
-	SetOuterUserId(roleid, is_superuser);
->>>>>>> REL_12_22
 }
 
 
