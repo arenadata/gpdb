@@ -3316,8 +3316,7 @@ CUtils::FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr)
 			return true;
 		}
 
-		const ULONG arity = pexprCurrent->Arity();
-		for (ULONG ul = 0; ul < arity; ++ul)
+		for (ULONG ul = 0; ul < pexprCurrent->Arity(); ++ul)
 		{
 			exprsToCheck->Append((*pexprCurrent)[ul]);
 		}
