@@ -1332,11 +1332,6 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 					 * array.
 					 */
 					dtuples = (old_batch0->ntuples * 2.0) / new_nbatch;
-<<<<<<< HEAD
-					dbuckets = ceil(dtuples / gp_hashjoin_tuples_per_bucket);
-					dbuckets = Min(dbuckets,
-								   MaxAllocSize / sizeof(dsa_pointer_atomic));
-=======
 
 					/*
 					 * We need to calculate the maximum number of buckets to
@@ -1347,9 +1342,8 @@ ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable)
 					max_buckets = MaxAllocSize / sizeof(dsa_pointer_atomic);
 					if ((max_buckets & (max_buckets - 1)) != 0)
 						max_buckets = 1 << (my_log2(max_buckets) - 1);
-					dbuckets = ceil(dtuples / NTUP_PER_BUCKET);
+					dbuckets = ceil(dtuples / gp_hashjoin_tuples_per_bucket);
 					dbuckets = Min(dbuckets, max_buckets);
->>>>>>> REL_12_22
 					new_nbuckets = (int) dbuckets;
 					new_nbuckets = Max(new_nbuckets, 1024);
 					new_nbuckets = 1 << my_log2(new_nbuckets);
