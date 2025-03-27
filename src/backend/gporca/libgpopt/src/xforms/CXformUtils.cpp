@@ -1385,27 +1385,7 @@ BOOL
 CXformUtils::FTriggersExist(CLogicalDML::EDMLOperator edmlop,
 							CTableDescriptor *ptabdesc, BOOL fBefore)
 {
-	CMDAccessor *md_accessor = COptCtxt::PoctxtFromTLS()->Pmda();
-	const IMDRelation *pmdrel = md_accessor->RetrieveRel(ptabdesc->MDId());
-	const ULONG ulTriggers = pmdrel->TriggerCount();
-
-	for (ULONG ul = 0; ul < ulTriggers; ul++)
-	{
-		const IMDTrigger *pmdtrigger =
-			md_accessor->RetrieveTrigger(pmdrel->TriggerMDidAt(ul));
-		if (!pmdtrigger->IsEnabled() || !pmdtrigger->ExecutesOnRowLevel() ||
-			!FTriggerApplies(edmlop, pmdtrigger))
-		{
-			continue;
-		}
-
-		if (pmdtrigger->IsBefore() == fBefore)
-		{
-			return true;
-		}
-	}
-
-	return false;
+	return FTriggersExistInner(edmlop, ptabdesc, true, fBefore);
 }
 
 //---------------------------------------------------------------------------
@@ -1421,24 +1401,7 @@ BOOL
 CXformUtils::FTriggersExist(CLogicalDML::EDMLOperator edmlop,
 							CTableDescriptor *ptabdesc)
 {
-	CMDAccessor *md_accessor = COptCtxt::PoctxtFromTLS()->Pmda();
-	const IMDRelation *pmdrel = md_accessor->RetrieveRel(ptabdesc->MDId());
-	const ULONG ulTriggers = pmdrel->TriggerCount();
-
-	for (ULONG ul = 0; ul < ulTriggers; ul++)
-	{
-		const IMDTrigger *pmdtrigger =
-			md_accessor->RetrieveTrigger(pmdrel->TriggerMDidAt(ul));
-		if (!pmdtrigger->IsEnabled() || !pmdtrigger->ExecutesOnRowLevel() ||
-			!FTriggerApplies(edmlop, pmdtrigger))
-		{
-			continue;
-		}
-
-		return true;
-	}
-
-	return false;
+	return FTriggersExistInner(edmlop, ptabdesc, false, false);
 }
 
 //---------------------------------------------------------------------------
@@ -4518,6 +4481,44 @@ CXformUtils::ICmpPrjElemsArr(const void *pvFst, const void *pvSnd)
 	}
 
 	return 0;
+}
+
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CXformUtils::FTriggersExistInner
+//
+//	@doc:
+//		Private warehouse for checking triggers on the
+//		given table that match the given DML operation
+//
+//---------------------------------------------------------------------------
+BOOL
+CXformUtils::FTriggersExistInner(CLogicalDML::EDMLOperator edmlop,
+								 CTableDescriptor *ptabdesc, BOOL shouldCheck,
+								 BOOL fBefore)
+{
+	CMDAccessor *md_accessor = COptCtxt::PoctxtFromTLS()->Pmda();
+	const IMDRelation *pmdrel = md_accessor->RetrieveRel(ptabdesc->MDId());
+	const ULONG ulTriggers = pmdrel->TriggerCount();
+
+	for (ULONG ul = 0; ul < ulTriggers; ul++)
+	{
+		const IMDTrigger *pmdtrigger =
+			md_accessor->RetrieveTrigger(pmdrel->TriggerMDidAt(ul));
+		if (!pmdtrigger->IsEnabled() || !pmdtrigger->ExecutesOnRowLevel() ||
+			!FTriggerApplies(edmlop, pmdtrigger))
+		{
+			continue;
+		}
+
+		if (shouldCheck && pmdtrigger->IsBefore() == fBefore)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 

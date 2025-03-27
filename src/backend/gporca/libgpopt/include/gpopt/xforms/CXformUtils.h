@@ -126,12 +126,12 @@ private:
 		CMemoryPool *mp, const IMDIndex *pmdindex, CTableDescriptor *ptabdesc,
 		ULONG ulOriginOpId, CName *pname, CColRefArray *pdrgpcrOutput);
 
-	typedef CExpression *(PRewrittenIndexPath)(CMemoryPool *mp,
-											   CExpression *pexprIndexCond,
-											   CExpression *pexprResidualCond,
-											   const IMDIndex *pmdindex,
-											   CTableDescriptor *ptabdesc,
-											   COperator *popLogical);
+	typedef CExpression *(PRewrittenIndexPath) (CMemoryPool *mp,
+												CExpression *pexprIndexCond,
+												CExpression *pexprResidualCond,
+												const IMDIndex *pmdindex,
+												CTableDescriptor *ptabdesc,
+												COperator *popLogical);
 
 	// private copy ctor
 	CXformUtils(const CXformUtils &);
@@ -350,6 +350,12 @@ private:
 
 	// comparator used in sorting arrays of project elements based on the column id of the first entry
 	static INT ICmpPrjElemsArr(const void *pvFst, const void *pvSnd);
+
+	// private warehouse for checking triggers on the
+	// given table that match the given DML operation
+	static BOOL FTriggersExistInner(CLogicalDML::EDMLOperator edmlop,
+									CTableDescriptor *ptabdesc,
+									BOOL shouldCheck, BOOL fBefore);
 
 public:
 	// helper function for implementation xforms on binary operators
