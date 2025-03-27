@@ -7576,16 +7576,28 @@ set_config_by_name(PG_FUNCTION_ARGS)
 	char	   *value;
 	char	   *new_value;
 	bool		is_local;
+
 	bool		is_sync;
 	GucContext	context;
+	GucSource 	source;
 
 	is_sync = isMppTxOptions_SynchronizationSet(
 		QEDtxContextInfo.distributedTxnOptions);
 
+	/*
+	 * If this is a synchronization SET, previous values from the startup packet
+	 * should be overwritten. The source and context are adjusted accordingly.
+	 */
 	if (is_sync)
+	{
+		source = PGC_S_CLIENT;
 		context = PGC_SIGHUP;
+	}
 	else
+	{
+		source = PGC_S_SESSION;
 		context = (superuser() ? PGC_SUSET : PGC_USERSET);
+	}
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
@@ -7614,7 +7626,7 @@ set_config_by_name(PG_FUNCTION_ARGS)
 	(void) set_config_option(name,
 							 value,
 							 context,
-							 (is_sync) ? PGC_S_CLIENT : PGC_S_SESSION,
+							 source,
 							 is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET,
 							 true,
 							 0);
