@@ -931,7 +931,7 @@ SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 	tailXid = serialControl->tailXid;
 	if (!TransactionIdIsValid(tailXid) || TransactionIdPrecedes(xid, tailXid))
 	{
-		LWLockRelease(serialControl);
+		LWLockRelease(SerialSLRULock);
 		return;
 	}
 
