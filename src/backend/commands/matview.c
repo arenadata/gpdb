@@ -878,6 +878,8 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 					 diffname, tempname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+	SetUserIdAndSecContext(relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
 					 "ALTER TABLE %s ADD COLUMN tid pg_catalog.tid",
@@ -890,8 +892,6 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 					 diffname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
-	SetUserIdAndSecContext(relowner,
-						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 
 	/* Start building the query for populating the diff table. */
 	resetStringInfo(&querybuf);
