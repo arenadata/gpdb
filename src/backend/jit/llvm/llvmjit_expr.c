@@ -2038,9 +2038,9 @@ llvm_compile_expr(ExprState *state)
 
 					/* Fetch and increment rowcounter */
 					v_rowcounter_p = l_ptr_const(rowcounter_p,
-												 l_ptr(LLVMInt64Type()));
-					v_rowcounter = l_load(b, LLVMInt64Type(), v_rowcounter_p, "v_rowcounter");
-					v_rowcounter_new = LLVMBuildAdd(b, v_rowcounter, l_int64_const(1), "v_rowcounter_new");
+												 l_ptr(LLVMInt64TypeInContext(lc)));
+					v_rowcounter = l_load(b, LLVMInt64TypeInContext(lc), v_rowcounter_p, "v_rowcounter");
+					v_rowcounter_new = LLVMBuildAdd(b, v_rowcounter, l_int64_const(lc, 1), "v_rowcounter_new");
 
 					/* Store the new value back */
 					LLVMBuildStore(b, v_rowcounter_new, v_rowcounter_p);
@@ -2397,7 +2397,7 @@ llvm_compile_expr(ExprState *state)
 						FIELDNO_AGGSTATE_ALL_PERGROUPS,
 						"aggstate.all_pergroups");
 
-					v_setoff = l_int32_const(
+					v_setoff = l_int32_const(lc,
 						op->d.agg_plain_pergroup_nullcheck.setoff);
 
 					v_pergroup_allaggs = l_load_gep1(b, l_ptr(StructAggStatePerGroupData),
