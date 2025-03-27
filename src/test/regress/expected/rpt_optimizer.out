@@ -1683,6 +1683,9 @@ create table t (i int) distributed replicated;
 create table t1 (a int) distributed by (a);
 create table t2 (a int, b float) distributed replicated;
 create or replace function f(i int) returns int language sql security definer as $$ select i; $$;
+insert into t select generate_series(0,10);
+insert into t1 select generate_series(0,10);
+insert into t2 select generate_series(0,10);
 -- ensure we make gather motion when volatile functions in subplan
 explain (costs off, verbose) select (select f(i) from t);
                          QUERY PLAN                          
@@ -1697,6 +1700,12 @@ explain (costs off, verbose) select (select f(i) from t);
  Optimizer: Postgres-based planner
  Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
 (9 rows)
+
+select count(*) from (select f(i) from t)i;
+ count 
+-------
+    11
+(1 row)
 
 explain (costs off, verbose) select (select f(i) from t group by f(i));
                          QUERY PLAN                          
@@ -1718,6 +1727,12 @@ explain (costs off, verbose) select (select f(i) from t group by f(i));
  Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
 (15 rows)
 
+select count(*) from (select f(i) from t group by f(i))i;
+ count 
+-------
+    11
+(1 row)
+
 explain (costs off, verbose) select (select i from t group by i having f(i) > 0);
                          QUERY PLAN                          
 -------------------------------------------------------------
@@ -1738,6 +1753,12 @@ explain (costs off, verbose) select (select i from t group by i having f(i) > 0)
  Optimizer: Postgres-based planner
  Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
 (16 rows)
+
+select count(*) from (select i from t group by i having f(i) > 0) i;
+ count 
+-------
+    10
+(1 row)
 
 -- ensure we do not make broadcast motion
 explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
@@ -1824,6 +1845,12 @@ explain (costs off, verbose) select * from t1 where a in (select f(i) from t whe
  Optimizer: GPORCA
  Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
 (20 rows)
+
+select count(*) from t1 where a in (select f(i) from t where i=a and f(i) > 0);
+ count 
+-------
+    10
+(1 row)
 
 -- ensure we do not break broadcast motion
 explain (costs off, verbose) select * from t1 where 1 <= ALL (select i from t group by i having random() > 0);
