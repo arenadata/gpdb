@@ -2779,17 +2779,7 @@ l1:
 			result = TM_Deleted;
 	}
 
-<<<<<<< HEAD
-	if (crosscheck != InvalidSnapshot && result == TM_Ok)
-	{
-		/* Perform additional check for transaction-snapshot mode RI updates */
-		if (!HeapTupleSatisfiesVisibility(relation, &tp, crosscheck, buffer))
-			result = TM_Updated;
-	}
-
-=======
 	/* sanity check the result HeapTupleSatisfiesUpdate() and the logic above */
->>>>>>> REL_12_22
 	if (result != TM_Ok)
 	{
 		Assert(result == TM_SelfModified ||
@@ -2804,7 +2794,7 @@ l1:
 	if (crosscheck != InvalidSnapshot && result == TM_Ok)
 	{
 		/* Perform additional check for transaction-snapshot mode RI updates */
-		if (!HeapTupleSatisfiesVisibility(&tp, crosscheck, buffer))
+		if (!HeapTupleSatisfiesVisibility(relation, &tp, crosscheck, buffer))
 			result = TM_Updated;
 	}
 
@@ -3443,20 +3433,7 @@ l2:
 			result = TM_Deleted;
 	}
 
-<<<<<<< HEAD
-	if (crosscheck != InvalidSnapshot && result == TM_Ok)
-	{
-		/* Perform additional check for transaction-snapshot mode RI updates */
-		if (!HeapTupleSatisfiesVisibility(relation, &oldtup, crosscheck, buffer))
-		{
-			result = TM_Updated;
-			Assert(!ItemPointerEquals(&oldtup.t_self, &oldtup.t_data->t_ctid));
-		}
-	}
-
-=======
 	/* Sanity check the result HeapTupleSatisfiesUpdate() and the logic above */
->>>>>>> REL_12_22
 	if (result != TM_Ok)
 	{
 		Assert(result == TM_SelfModified ||
@@ -3471,7 +3448,7 @@ l2:
 	if (crosscheck != InvalidSnapshot && result == TM_Ok)
 	{
 		/* Perform additional check for transaction-snapshot mode RI updates */
-		if (!HeapTupleSatisfiesVisibility(&oldtup, crosscheck, buffer))
+		if (!HeapTupleSatisfiesVisibility(relation, &oldtup, crosscheck, buffer))
 			result = TM_Updated;
 	}
 
@@ -3984,7 +3961,6 @@ l2:
 	return TM_Ok;
 }
 
-<<<<<<< HEAD
 TM_Result
 heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 			CommandId cid, Snapshot crosscheck, bool wait,
@@ -3996,7 +3972,6 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 								/* simple */ false);
 }
 
-=======
 #ifdef USE_ASSERT_CHECKING
 /*
  * Confirm adequate lock held during heap_update(), per rules from
@@ -4119,7 +4094,6 @@ check_inplace_rel_lock(HeapTuple oldtup)
 }
 #endif
 
->>>>>>> REL_12_22
 /*
  * Check if the specified attribute's values are the same.  Subroutine for
  * HeapDetermineColumnsInfo.
