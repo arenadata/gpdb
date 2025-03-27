@@ -177,16 +177,13 @@ static Datum postquel_get_single_result(TupleTableSlot *slot,
 										MemoryContext resultcontext);
 static void sql_exec_error_callback(void *arg);
 static void ShutdownSQLFunction(Datum arg);
-<<<<<<< HEAD
 static bool querytree_safe_for_qe_walker(Node *expr, void *context);
-=======
 static bool check_sql_fn_retval_ext2(Oid func_id,
 									 FunctionCallInfo fcinfo,
 									 Oid rettype, char prokind,
 									 List *queryTreeList,
 									 bool *modifyTargetList,
 									 JunkFilter **junkFilter);
->>>>>>> REL_12_22
 static void sqlfunction_startup(DestReceiver *self, int operation, TupleDesc typeinfo);
 static bool sqlfunction_receive(TupleTableSlot *slot, DestReceiver *self);
 static void sqlfunction_shutdown(DestReceiver *self);
