@@ -2487,8 +2487,7 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 		MemoryContext oldcontext =
 			MemoryContextSwitchTo(func_ctx->multi_call_memory_ctx);
 
-		my_status = (gp_mock_cdbdispatchcommand_status *) palloc0(
-			sizeof(gp_mock_cdbdispatchcommand_status));
+		my_status = palloc0(sizeof(gp_mock_cdbdispatchcommand_status));
 
 		/* Cache the return result. */
 		my_status->some_text = CStringGetTextDatum("sometext");
@@ -2518,7 +2517,7 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 			my_status->pg_results = cdb_pgresults.pg_results;
 		}
 
-		func_ctx->user_fctx = (void *) my_status;
+		func_ctx->user_fctx = my_status;
 
 		MemoryContextSwitchTo(oldcontext);
 	}
