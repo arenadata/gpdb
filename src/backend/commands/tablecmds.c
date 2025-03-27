@@ -4464,17 +4464,13 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
 	/* Caller is required to provide an adequate lock. */
 	rel = relation_open(relid, NoLock);
 
-<<<<<<< HEAD
 	/*
 	 * GPDB creates ALTER stmts and executes them internally as part of some
 	 * partition related ALTER stmts, hence for such internal ALTER stmts
 	 * can't meet this requirement.
 	 */
 	if (!stmt->is_internal)
-		CheckTableNotInUse(rel, "ALTER TABLE");
-=======
-	CheckAlterTableIsSafe(rel);
->>>>>>> REL_12_22
+		CheckAlterTableIsSafe(rel);
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
 
@@ -7082,7 +7078,6 @@ ATSimpleRecursion(List **wqueue, Relation rel,
 				continue;
 			/* find_all_inheritors already got lock */
 			childrel = relation_open(childrelid, NoLock);
-<<<<<<< HEAD
 
 			/*
 			 * GPDB: for now we disallow setting reloptions of the entire partition
@@ -7101,10 +7096,7 @@ ATSimpleRecursion(List **wqueue, Relation rel,
 								RelationGetRelationName(childrel)),
 						 errhint("Alter tables individually or change the child's AM to be same as parent.")));
 			
-			CheckTableNotInUse(childrel, "ALTER TABLE");
-=======
 			CheckAlterTableIsSafe(childrel);
->>>>>>> REL_12_22
 			ATPrepCmd(wqueue, childrel, cmd, false, true, lockmode);
 			relation_close(childrel, NoLock);
 		}
@@ -12828,24 +12820,6 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 		}
 
 		/*
-		 * If it's a foreign-key constraint, we'd better lock the referenced
-		 * table and check that that's not in use, just as we've already done
-		 * for the constrained table (else we might, eg, be dropping a trigger
-		 * that has unfired events).  But we can/must skip that in the
-		 * self-referential case.
-		 */
-		if (con->contype == CONSTRAINT_FOREIGN &&
-			con->confrelid != RelationGetRelid(rel))
-		{
-			Relation	frel;
-
-			/* Must match lock taken by RemoveTriggerById: */
-			frel = heap_open(con->confrelid, AccessExclusiveLock);
-			CheckTableNotInUse(frel, "ALTER TABLE");
-			heap_close(frel, NoLock);
-		}
-
-		/*
 		 * Perform the actual constraint deletion
 		 */
 		conobj.classId = ConstraintRelationId;
@@ -15619,12 +15593,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 static void
 ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 {
-<<<<<<< HEAD
-	Relation    rel;
-	Oid			oldTableSpace;
-=======
 	Relation	rel;
->>>>>>> REL_12_22
 	Oid			reltoastrelid;
 	Oid			relaosegrelid = InvalidOid;
 	Oid			relaoblkdirrelid = InvalidOid;
@@ -15662,7 +15631,6 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 		relation_close(toastRel, lockmode);
 	}
 
-<<<<<<< HEAD
 	/* Get the ao sub objects */
 	if (RelationStorageIsAO(rel))
 		GetAppendOnlyEntryAuxOids(rel,
@@ -15673,17 +15641,6 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 	/* Get the bitmap sub objects */
 	if (RelationIsBitmapIndex(rel))
 		GetBitmapIndexAuxOids(rel, &relbmrelid, &relbmidxid);
-
-	/* Get a modifiable copy of the relation's pg_class row */
-	pg_class = table_open(RelationRelationId, RowExclusiveLock);
-
-	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(tableOid));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for relation %u", tableOid);
-	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
-
-=======
->>>>>>> REL_12_22
 	/*
 	 * Relfilenodes are not unique in databases across tablespaces, so we need
 	 * to allocate a new one in the new tablespace.
@@ -15724,11 +15681,6 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 
 	InvokeObjectPostAlterHook(RelationRelationId, RelationGetRelid(rel), 0);
 
-<<<<<<< HEAD
-	heap_freetuple(tuple);
-
-	table_close(pg_class, RowExclusiveLock);
-
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH) && MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
@@ -15736,8 +15688,6 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 						   GetUserId(),
 						   "ALTER", "SET TABLESPACE");
 
-=======
->>>>>>> REL_12_22
 	relation_close(rel, NoLock);
 
 	/* Make sure the reltablespace change is visible */
