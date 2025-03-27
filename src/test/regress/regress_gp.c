@@ -2505,6 +2505,8 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 
 			CdbDispatchCommand(query, DF_WITH_SNAPSHOT, &cdb_pgresults);
 
+			pfree(query);
+
 			Assert(cdb_pgresults.numResults > 0);
 
 			for (i = 0; i < cdb_pgresults.numResults; i++)
@@ -2516,8 +2518,6 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 
 			my_status->n_segments = cdb_pgresults.numResults;
 			my_status->pg_results = cdb_pgresults.pg_results;
-
-			pfree(query);
 		}
 
 		func_ctx->user_fctx = (void *) my_status;
