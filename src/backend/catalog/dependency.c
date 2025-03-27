@@ -76,11 +76,8 @@
 #include "commands/sequence.h"
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
-<<<<<<< HEAD
 #include "foreign/foreign.h"
-=======
 #include "miscadmin.h"
->>>>>>> REL_12_22
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
 #include "rewrite/rewriteRemove.h"
