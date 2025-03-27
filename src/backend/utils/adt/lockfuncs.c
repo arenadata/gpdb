@@ -92,12 +92,12 @@ VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
 static QueryDesc *
 build_pg_locks_querydesc(void)
 {
-	List *raw_parsetree_list;
-	Node *parsetree;
-	List *querytree_list;
-	List *plantree_list;
+	List	  *raw_parsetree_list;
+	Node	  *parsetree;
+	List	  *querytree_list;
+	List	  *plantree_list;
 	PlannedStmt *plan_stmt;
-	QueryDesc *queryDesc = NULL;
+	QueryDesc  *queryDesc = NULL;
 
 	/* Parse the SQL string into a list of raw parse trees. */
 	raw_parsetree_list = pg_parse_query(PG_LOCKS_INTERNAL_QUERY);
@@ -131,7 +131,7 @@ build_pg_locks_querydesc(void)
 static TupleDesc
 build_pg_locks_tupdesc(void)
 {
-	TupleDesc tupdesc = CreateTemplateTupleDesc(NUM_LOCK_STATUS_COLUMNS, false);
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(NUM_LOCK_STATUS_COLUMNS, false);
 
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "locktype", TEXTOID, -1, 0);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "database", OIDOID, -1, 0);
@@ -192,24 +192,23 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		mystatus->predLockData = GetPredicateLockStatusData();
 
 		/*
-		 * Seeing the locks just from the masterDB isn't enough to know what is
-		 * locked, or if there is a deadlock, because segments also take locks.
-		 * Some show up only on the master, some only on the segDBs, and some on
-		 * both.
+		 * Seeing the locks just from the masterDB isn't enough to know what
+		 * is locked, or if there is a deadlock, because segments also take
+		 * locks. Some show up only on the master, some only on the segDBs,
+		 * and some on both.
 		 *
 		 * We collect the lock information from all the segments via gather
 		 * motion. There might be multiple instances of the same lock coming
 		 * from different segments.
 		 *
-		 * Routines from executor are used to fetch rows one-by-one. The results
-		 * are still materialized, unfortunately. This is a limitation of
-		 * set-returning functions, since they cannot surely know whether the
-		 * upper node was limited, and are called until they are
-		 * SRF_RETURN_DONE().
+		 * Routines from executor are used to fetch rows one-by-one. The
+		 * results are still materialized, unfortunately. This is a limitation
+		 * of set-returning functions, since they cannot surely know whether
+		 * the upper node was limited, and are called until they are
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			QueryDesc *queryDesc = build_pg_locks_querydesc();
+			QueryDesc  *queryDesc = build_pg_locks_querydesc();
 
 			ExecutorStart(queryDesc, 0);
 
@@ -456,11 +455,11 @@ pg_lock_status(PG_FUNCTION_ARGS)
 	/* Collect locks sent out by the segments on coordinator. */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		QueryDesc *queryDesc = mystatus->segQueryDesc;
+		QueryDesc  *queryDesc = mystatus->segQueryDesc;
 
 		for (;;)
 		{
-			HeapTuple ht;
+			HeapTuple	ht;
 			TupleTableSlot *tts = ExecProcNode(queryDesc->planstate);
 
 			if (TupIsNull(tts))
