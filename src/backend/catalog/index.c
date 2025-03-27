@@ -2896,7 +2896,7 @@ index_update_stats(Relation rel,
 	if (reltuples == 0 && rel->rd_rel->reltuples < 0)
 		reltuples = -1;
 
-	update_stats = reltuples >= 0;
+	update_stats = reltuples >= 0 && Gp_role != GP_ROLE_DISPATCH;
 
 	/*
 	 * Finish I/O and visibility map buffer locks before
@@ -2909,8 +2909,13 @@ index_update_stats(Relation rel,
 	{
 		relpages = RelationGetNumberOfBlocks(rel);
 
-		if (rel->rd_rel->relkind != RELKIND_INDEX)
+		/*
+		 * GPDB: We don't maintain relallvisible for AO/CO tables.
+		 */
+		if (rel->rd_rel->relkind != RELKIND_INDEX && !RelationStorageIsAO(rel))
 			visibilitymap_count(rel, &relallvisible, NULL);
+		else					/* don't bother for indexes */
+			relallvisible = 0;
 	}
 
 	/*
@@ -2966,26 +2971,8 @@ index_update_stats(Relation rel,
 		dirty = true;
 	}
 
-<<<<<<< HEAD
-	if (reltuples >= 0 && Gp_role != GP_ROLE_DISPATCH)
-	{
-		BlockNumber relpages;
-		BlockNumber relallvisible;
-
-		relpages = RelationGetNumberOfBlocks(rel);
-
-		/*
-		 * GPDB: We don't maintain relallvisible for AO/CO tables.
-		 */
-		if (rd_rel->relkind != RELKIND_INDEX && !RelationStorageIsAO(rel))
-			visibilitymap_count(rel, &relallvisible, NULL);
-		else					/* don't bother for indexes */
-			relallvisible = 0;
-
-=======
 	if (update_stats)
 	{
->>>>>>> REL_12_22
 		if (rd_rel->relpages != (int32) relpages)
 		{
 			rd_rel->relpages = (int32) relpages;
