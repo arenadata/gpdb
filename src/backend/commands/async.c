@@ -2103,10 +2103,7 @@ asyncQueueAdvanceTail(void)
 static void
 ProcessIncomingNotify(void)
 {
-<<<<<<< HEAD
-=======
 	MemoryContext oldcontext;
->>>>>>> REL_12_22
 
 	/* We *must* reset the flag */
 	notifyInterruptPending = false;
