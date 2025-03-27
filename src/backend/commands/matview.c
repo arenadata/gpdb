@@ -861,9 +861,9 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	 * Create the temporary "diff" table.
 	 *
 	 * Temporarily switch out of the SECURITY_RESTRICTED_OPERATION context,
-	 * because you cannot create temp tables in SRO context.  For extra
-	 * paranoia, add the composite type column only after switching back to
-	 * SRO context.
+	 * because you cannot create temp tables in SRO context.  In GPDB use
+	 * "SELECT alias.*" rather than "alias.*::compositetype" in upstream to
+	 * support DISTRIBUTED BY clause.
 	 */
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
@@ -874,24 +874,30 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
-					 "CREATE TEMP TABLE %s (tid pg_catalog.tid)",
+					 "CREATE TEMP TABLE %s (LIKE %s)",
+					 diffname, tempname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+	resetStringInfo(&querybuf);
+	appendStringInfo(&querybuf,
+					 "ALTER TABLE %s ADD COLUMN tid pg_catalog.tid",
+					 diffname);
+	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
+		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
+	resetStringInfo(&querybuf);
+	appendStringInfo(&querybuf,
+					 "ALTER TABLE %s ADD COLUMN sid pg_catalog.int",
 					 diffname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 	SetUserIdAndSecContext(relowner,
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
-	resetStringInfo(&querybuf);
-	appendStringInfo(&querybuf,
-					 "ALTER TABLE %s ADD COLUMN newdata %s",
-					 diffname, tempname);
-	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
-		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 
 	/* Start building the query for populating the diff table. */
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
 					 "INSERT INTO %s "
-					 "SELECT mv.ctid AS tid, mv.gp_segment_id as sid, newdata.* "
+					 "SELECT newdata.*, mv.ctid AS tid, mv.gp_segment_id as sid "
 					 "FROM %s mv FULL JOIN %s newdata ON (",
 					 diffname, matviewname, tempname);
 
