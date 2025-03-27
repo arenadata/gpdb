@@ -1759,36 +1759,6 @@ vac_update_relstats(Relation relation,
 }
 
 /*
- * fetch_database_tuple - Fetch a copy of database tuple from pg_database.
- *
- * This using disk heap table instead of system cache.
- * relation: opened pg_database relation in vac_update_datfrozenxid().
- */
-static HeapTuple
-fetch_database_tuple(Relation relation, Oid dbOid)
-{
-	ScanKeyData skey[1];
-	SysScanDesc sscan;
-	HeapTuple	tuple = NULL;
-
-	ScanKeyInit(&skey[0],
-				Anum_pg_database_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(dbOid));
-
-	sscan = systable_beginscan(relation, DatabaseOidIndexId, true,
-							   NULL, 1, skey);
-
-	tuple = systable_getnext(sscan);
-	if (HeapTupleIsValid(tuple))
-		tuple = heap_copytuple(tuple);
-
-	systable_endscan(sscan);
-
-	return tuple;
-}
-
-/*
  *	vac_update_datfrozenxid() -- update pg_database.datfrozenxid for our DB
  *
  *		Update pg_database's datfrozenxid entry for our database to be the
@@ -1820,11 +1790,8 @@ vac_update_datfrozenxid(void)
 	MultiXactId lastSaneMinMulti;
 	bool		bogus = false;
 	bool		dirty = false;
-<<<<<<< HEAD
-=======
 	ScanKeyData key[1];
 	void	   *inplace_state;
->>>>>>> REL_12_22
 
 	/*
 	 * Restrict this task to one backend per database.  This avoids race
@@ -1955,29 +1922,8 @@ vac_update_datfrozenxid(void)
 	/* Now fetch the pg_database tuple we need to update. */
 	relation = table_open(DatabaseRelationId, RowExclusiveLock);
 
-<<<<<<< HEAD
 	cached_tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
 	cached_dbform = (Form_pg_database) GETSTRUCT(cached_tuple);
-=======
-	/*
-	 * Fetch a copy of the tuple to scribble on.  We could check the syscache
-	 * tuple first.  If that concluded !dirty, we'd avoid waiting on
-	 * concurrent heap_update() and would avoid exclusive-locking the buffer.
-	 * For now, don't optimize that.
-	 */
-	ScanKeyInit(&key[0],
-				Anum_pg_database_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(MyDatabaseId));
-
-	systable_inplace_update_begin(relation, DatabaseOidIndexId, true,
-								  NULL, 1, key, &tuple, &inplace_state);
-
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
-
-	dbform = (Form_pg_database) GETSTRUCT(tuple);
->>>>>>> REL_12_22
 
 	/*
 	 * As in vac_update_relstats(), we ordinarily don't want to let
@@ -2000,7 +1946,6 @@ vac_update_datfrozenxid(void)
 		newMinMulti = cached_dbform->datminmxid;
 
 	if (dirty)
-<<<<<<< HEAD
 	{
 		HeapTuple			tuple;
 		Form_pg_database	tmp_dbform;
@@ -2009,21 +1954,23 @@ vac_update_datfrozenxid(void)
 		 * heap table instead of system cache
 		 * "SearchSysCacheCopy1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId))".
 		 * Since the cache already flatten toast tuple, so the
-		 * heap_inplace_update will fail with "wrong tuple length".
+		 * systable_inplace_update_finish will fail with "wrong tuple length".
 		 */
-		tuple = fetch_database_tuple(relation, MyDatabaseId);
+		ScanKeyInit(&key[0],
+					Anum_pg_database_oid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(MyDatabaseId));
+
+		systable_inplace_update_begin(relation, DatabaseOidIndexId, true,
+									  NULL, 1, key, &tuple, &inplace_state);
+
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "could not find tuple for database %u", MyDatabaseId);
 		tmp_dbform = (Form_pg_database) GETSTRUCT(tuple);
 		tmp_dbform->datfrozenxid = newFrozenXid;
 		tmp_dbform->datminmxid = newMinMulti;
-=======
-		systable_inplace_update_finish(inplace_state, tuple);
-	else
-		systable_inplace_update_cancel(inplace_state);
->>>>>>> REL_12_22
 
-		heap_inplace_update(relation, tuple);
+		systable_inplace_update_finish(inplace_state, tuple);
 		heap_freetuple(tuple);
 #ifdef FAULT_INJECTOR
 		FaultInjector_InjectFaultIfSet(
