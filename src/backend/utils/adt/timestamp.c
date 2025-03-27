@@ -2804,7 +2804,11 @@ timestamp_offset_internal(Timestamp timestamp, Interval *span)
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
 
-		tm->tm_mon += span->month;
+		if (pg_add_s32_overflow(tm->tm_mon, span->month, &tm->tm_mon))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
 		if (tm->tm_mon > MONTHS_PER_YEAR)
 		{
 			tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
@@ -2838,8 +2842,17 @@ timestamp_offset_internal(Timestamp timestamp, Interval *span)
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
 
-		/* Add days by converting to and from julian */
-		julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+		/*
+		 * Add days by converting to and from Julian.  We need an overflow
+		 * check here since j2date expects a non-negative integer input.
+		 */
+		julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+		if (pg_add_s32_overflow(julian, span->day, &julian) ||
+			julian < 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
 		j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
 		if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
@@ -2848,7 +2861,16 @@ timestamp_offset_internal(Timestamp timestamp, Interval *span)
 					 errmsg("timestamp out of range")));
 	}
 
-	timestamp += span->time;
+	if (pg_add_s64_overflow(timestamp, span->time, &timestamp))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	if (!IS_VALID_TIMESTAMP(timestamp))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
 	return timestamp;
 }
 
@@ -2900,7 +2922,11 @@ timestamptz_offset_internal(TimestampTz timestamp, Interval *span)
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
 
-		tm->tm_mon += span->month;
+		if (pg_add_s32_overflow(tm->tm_mon, span->month, &tm->tm_mon))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
 		if (tm->tm_mon > MONTHS_PER_YEAR)
 		{
 			tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
@@ -2936,8 +2962,20 @@ timestamptz_offset_internal(TimestampTz timestamp, Interval *span)
 					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 					 errmsg("timestamp out of range")));
 
-		/* Add days by converting to and from julian */
-		julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday) + span->day;
+		/*
+		 * Add days by converting to and from Julian.  We need an overflow
+		 * check here since j2date expects a non-negative integer input.
+		 * In practice though, it will give correct answers for small
+		 * negative Julian dates; we should allow -1 to avoid
+		 * timezone-dependent failures, as discussed in timestamp.h.
+		 */
+		julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
+		if (pg_add_s32_overflow(julian, span->day, &julian) ||
+			julian < -1)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					 errmsg("timestamp out of range")));
+
 		j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
 
 		tz = DetermineTimeZoneOffset(tm, session_timezone);
@@ -2948,7 +2986,16 @@ timestamptz_offset_internal(TimestampTz timestamp, Interval *span)
 					 errmsg("timestamp out of range")));
 	}
 
-	timestamp += span->time;
+	if (pg_add_s64_overflow(timestamp, span->time, &timestamp))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	if (!IS_VALID_TIMESTAMP(timestamp))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
 	return timestamp;
 }
 
@@ -3432,92 +3479,7 @@ timestamp_pl_interval(PG_FUNCTION_ARGS)
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
 	Timestamp	result;
 
-<<<<<<< HEAD
 	result = timestamp_offset_internal(timestamp, span);
-=======
-	if (TIMESTAMP_NOT_FINITE(timestamp))
-		result = timestamp;
-	else
-	{
-		if (span->month != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec;
-
-			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-
-			if (pg_add_s32_overflow(tm->tm_mon, span->month, &tm->tm_mon))
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-			if (tm->tm_mon > MONTHS_PER_YEAR)
-			{
-				tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
-				tm->tm_mon = ((tm->tm_mon - 1) % MONTHS_PER_YEAR) + 1;
-			}
-			else if (tm->tm_mon < 1)
-			{
-				tm->tm_year += tm->tm_mon / MONTHS_PER_YEAR - 1;
-				tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
-			}
-
-			/* adjust for end of month boundary problems... */
-			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
-
-			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-		}
-
-		if (span->day != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec;
-			int			julian;
-
-			if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-
-			/*
-			 * Add days by converting to and from Julian.  We need an overflow
-			 * check here since j2date expects a non-negative integer input.
-			 */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
-			if (pg_add_s32_overflow(julian, span->day, &julian) ||
-				julian < 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-
-			if (tm2timestamp(tm, fsec, NULL, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-		}
-
-		if (pg_add_s64_overflow(timestamp, span->time, &timestamp))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
-
-		if (!IS_VALID_TIMESTAMP(timestamp))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
-
-		result = timestamp;
-	}
->>>>>>> REL_12_22
 
 	PG_RETURN_TIMESTAMP(result);
 }
@@ -3555,102 +3517,7 @@ timestamptz_pl_interval(PG_FUNCTION_ARGS)
 {
 	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
 	Interval   *span = PG_GETARG_INTERVAL_P(1);
-<<<<<<< HEAD
 	TimestampTz result = timestamptz_offset_internal(timestamp, span);
-=======
-	TimestampTz result;
-	int			tz;
-
-	if (TIMESTAMP_NOT_FINITE(timestamp))
-		result = timestamp;
-	else
-	{
-		if (span->month != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec;
-
-			if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-
-			if (pg_add_s32_overflow(tm->tm_mon, span->month, &tm->tm_mon))
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-			if (tm->tm_mon > MONTHS_PER_YEAR)
-			{
-				tm->tm_year += (tm->tm_mon - 1) / MONTHS_PER_YEAR;
-				tm->tm_mon = ((tm->tm_mon - 1) % MONTHS_PER_YEAR) + 1;
-			}
-			else if (tm->tm_mon < 1)
-			{
-				tm->tm_year += tm->tm_mon / MONTHS_PER_YEAR - 1;
-				tm->tm_mon = tm->tm_mon % MONTHS_PER_YEAR + MONTHS_PER_YEAR;
-			}
-
-			/* adjust for end of month boundary problems... */
-			if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
-				tm->tm_mday = (day_tab[isleap(tm->tm_year)][tm->tm_mon - 1]);
-
-			tz = DetermineTimeZoneOffset(tm, session_timezone);
-
-			if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-		}
-
-		if (span->day != 0)
-		{
-			struct pg_tm tt,
-					   *tm = &tt;
-			fsec_t		fsec;
-			int			julian;
-
-			if (timestamp2tm(timestamp, &tz, tm, &fsec, NULL, NULL) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-
-			/*
-			 * Add days by converting to and from Julian.  We need an overflow
-			 * check here since j2date expects a non-negative integer input.
-			 * In practice though, it will give correct answers for small
-			 * negative Julian dates; we should allow -1 to avoid
-			 * timezone-dependent failures, as discussed in timestamp.h.
-			 */
-			julian = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
-			if (pg_add_s32_overflow(julian, span->day, &julian) ||
-				julian < -1)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-			j2date(julian, &tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-
-			tz = DetermineTimeZoneOffset(tm, session_timezone);
-
-			if (tm2timestamp(tm, fsec, &tz, &timestamp) != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-						 errmsg("timestamp out of range")));
-		}
-
-		if (pg_add_s64_overflow(timestamp, span->time, &timestamp))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
-
-		if (!IS_VALID_TIMESTAMP(timestamp))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("timestamp out of range")));
-
-		result = timestamp;
-	}
->>>>>>> REL_12_22
 
 	PG_RETURN_TIMESTAMP(result);
 }
