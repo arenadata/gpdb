@@ -84,12 +84,32 @@
 #endif
 
 /*
+ * ActivePerl 5.18 and later are MinGW-built, and their headers use GCC's
+ * __inline__.  Translate to something MSVC recognizes.
+ */
+#ifdef _MSC_VER
+#define __inline__ inline
+#endif
+
+/*
  * Get the basic Perl API.  We use PERL_NO_GET_CONTEXT mode so that our code
  * can compile against MULTIPLICITY Perl builds without including XSUB.h.
  */
 #define PERL_NO_GET_CONTEXT
 #include "EXTERN.h"
-#include "perl.h"
+#if defined(__clang__)
+	#pragma clang diagnostic push
+	#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+	#include "perl.h"
+	#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+	#pragma GCC diagnostic push
+	#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+	#include "perl.h"
+	#pragma GCC diagnostic pop
+#else
+	#include "perl.h"
+#endif
 
 /*
  * We want to include XSUB.h only within .xs files, because on some platforms
