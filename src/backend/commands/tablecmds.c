@@ -4464,17 +4464,13 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
 	/* Caller is required to provide an adequate lock. */
 	rel = relation_open(relid, NoLock);
 
-<<<<<<< HEAD
 	/*
 	 * GPDB creates ALTER stmts and executes them internally as part of some
 	 * partition related ALTER stmts, hence for such internal ALTER stmts
 	 * can't meet this requirement.
 	 */
 	if (!stmt->is_internal)
-		CheckTableNotInUse(rel, "ALTER TABLE");
-=======
-	CheckAlterTableIsSafe(rel);
->>>>>>> REL_12_22
+		CheckAlterTableIsSafe(rel);
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
 
@@ -7082,7 +7078,6 @@ ATSimpleRecursion(List **wqueue, Relation rel,
 				continue;
 			/* find_all_inheritors already got lock */
 			childrel = relation_open(childrelid, NoLock);
-<<<<<<< HEAD
 
 			/*
 			 * GPDB: for now we disallow setting reloptions of the entire partition
@@ -7101,10 +7096,7 @@ ATSimpleRecursion(List **wqueue, Relation rel,
 								RelationGetRelationName(childrel)),
 						 errhint("Alter tables individually or change the child's AM to be same as parent.")));
 			
-			CheckTableNotInUse(childrel, "ALTER TABLE");
-=======
 			CheckAlterTableIsSafe(childrel);
->>>>>>> REL_12_22
 			ATPrepCmd(wqueue, childrel, cmd, false, true, lockmode);
 			relation_close(childrel, NoLock);
 		}
