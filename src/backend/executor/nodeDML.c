@@ -446,9 +446,7 @@ ExecEndDML(DMLState *node)
 
 	ExecFreeExprContext(&node->ps);
 	if (node->ps.ps_ResultTupleSlot != NULL)
-	{
 		ExecClearTuple(node->ps.ps_ResultTupleSlot);
-	}
 	ExecClearTuple(node->cleanedUpSlot);
 	ExecEndNode(outerPlanState(node));
 	EndPlanStateGpmonPkt(&node->ps);
