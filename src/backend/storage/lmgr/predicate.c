@@ -928,17 +928,12 @@ SerialAdd(TransactionId xid, SerCommitSeqNo minConflictCommitSeqNo)
 	 * back the global xmin just finished, making 'xid' uninteresting, but
 	 * ClearOldPredicateLocks() has not yet run.
 	 */
-<<<<<<< HEAD
 	tailXid = serialControl->tailXid;
-	Assert(TransactionIdIsValid(tailXid));
-=======
-	tailXid = oldSerXidControl->tailXid;
 	if (!TransactionIdIsValid(tailXid) || TransactionIdPrecedes(xid, tailXid))
 	{
-		LWLockRelease(OldSerXidLock);
+		LWLockRelease(SerialSLRULock);
 		return;
 	}
->>>>>>> REL_12_22
 
 	/*
 	 * If the SLRU is currently unused, zero out the whole active region from
