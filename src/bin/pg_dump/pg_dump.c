@@ -7836,6 +7836,7 @@ getExtendedStatistics(Archive *fout)
 	i_stxname = PQfnumber(res, "stxname");
 	i_stxnamespace = PQfnumber(res, "stxnamespace");
 	i_stxowner = PQfnumber(res, "stxowner");
+	i_stxrelid = PQfnumber(res, "stxrelid");
 
 	statsextinfo = (StatsExtInfo *) pg_malloc(ntups * sizeof(StatsExtInfo));
 
