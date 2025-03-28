@@ -1,9 +1,5 @@
 
-<<<<<<< HEAD
-# Copyright (c) 2021-2023, PostgreSQL Global Development Group
-=======
 # Copyright (c) 2021-2024, PostgreSQL Global Development Group
->>>>>>> REL_12_22
 
 =pod
 
@@ -58,11 +54,7 @@ initiated by PostgreSQL::Test::Cluster.
 package PostgreSQL::Test::BackgroundPsql;
 
 use strict;
-<<<<<<< HEAD
-use warnings;
-=======
 use warnings FATAL => 'all';
->>>>>>> REL_12_22
 
 use Carp;
 use Config;
@@ -76,11 +68,7 @@ use Test::More;
 
 =over
 
-<<<<<<< HEAD
-=item PostgreSQL::Test::BackroundPsql->new(interactive, @params)
-=======
 =item PostgreSQL::Test::BackgroundPsql->new(interactive, @psql_params, timeout)
->>>>>>> REL_12_22
 
 Builds a new object of class C<PostgreSQL::Test::BackgroundPsql> for either
 an interactive or background session and starts it. If C<interactive> is
@@ -93,18 +81,6 @@ string. For C<interactive> sessions, IO::Pty is required.
 sub new
 {
 	my $class = shift;
-<<<<<<< HEAD
-	my ($interactive, $psql_params) = @_;
-	my $psql = {'stdin' => '', 'stdout' => '', 'stderr' => '', 'query_timer_restart' => undef};
-	my $run;
-
-	# This constructor should only be called from PostgreSQL::Test::Cluster
-    my ($package, $file, $line) = caller;
-    die "Forbidden caller of constructor: package: $package, file: $file:$line"
-	  unless $package->isa('PostgreSQL::Test::Cluster');
-
-	$psql->{timeout} = IPC::Run::timeout($PostgreSQL::Test::Utils::timeout_default);
-=======
 	my ($interactive, $psql_params, $timeout) = @_;
 	my $psql = {
 		'stdin' => '',
@@ -124,17 +100,12 @@ sub new
 		defined($timeout)
 		? $timeout
 		: $PostgreSQL::Test::Utils::timeout_default);
->>>>>>> REL_12_22
 
 	if ($interactive)
 	{
 		$run = IPC::Run::start $psql_params,
-<<<<<<< HEAD
-		  '<pty<', \$psql->{stdin}, '>pty>', \$psql->{stdout}, '2>', \$psql->{stderr},
-=======
 		  '<pty<', \$psql->{stdin}, '>pty>', \$psql->{stdout}, '2>',
 		  \$psql->{stderr},
->>>>>>> REL_12_22
 		  $psql->{timeout};
 	}
 	else
@@ -165,14 +136,9 @@ sub _wait_connect
 	# errors anyway, but that might be added later.)
 	my $banner = "background_psql: ready";
 	$self->{stdin} .= "\\echo $banner\n";
-<<<<<<< HEAD
-	$self->{run}->pump() until $self->{stdout} =~ /$banner/ || $self->{timeout}->is_expired;
-	$self->{stdout} = ''; # clear out banner
-=======
 	$self->{run}->pump()
 	  until $self->{stdout} =~ /$banner/ || $self->{timeout}->is_expired;
 	$self->{stdout} = '';    # clear out banner
->>>>>>> REL_12_22
 
 	die "psql startup timed out" if $self->{timeout}->is_expired;
 }
@@ -218,17 +184,10 @@ sub reconnect_and_clear
 
 	# restart
 	$self->{run}->run();
-<<<<<<< HEAD
-	$self->{stdin}  = '';
-	$self->{stdout} = '';
-
-	$self->_wait_connect()
-=======
 	$self->{stdin} = '';
 	$self->{stdout} = '';
 
 	$self->_wait_connect();
->>>>>>> REL_12_22
 }
 
 =pod
@@ -253,11 +212,7 @@ sub query
 	$self->{timeout}->start() if (defined($self->{query_timer_restart}));
 
 	# Feed the query to psql's stdin, followed by \n (so psql processes the
-<<<<<<< HEAD
-	# line), by a ; (so that psql issues the query, if it doesnt't include a ;
-=======
 	# line), by a ; (so that psql issues the query, if it doesn't include a ;
->>>>>>> REL_12_22
 	# itself), and a separator echoed with \echo, that we can wait on.
 	my $banner = "background_psql: QUERY_SEPARATOR";
 	$self->{stdin} .= "$query\n;\n\\echo $banner\n";
@@ -268,22 +223,14 @@ sub query
 	$output = $self->{stdout};
 
 	# remove banner again, our caller doesn't care
-<<<<<<< HEAD
-	$output =~ s/\n$banner$//s;
-=======
 	$output =~ s/\n$banner\n$//s;
->>>>>>> REL_12_22
 
 	# clear out output for the next query
 	$self->{stdout} = '';
 
 	$ret = $self->{stderr} eq "" ? 0 : 1;
 
-<<<<<<< HEAD
-	return wantarray ? ( $output, $ret ) : $output;
-=======
 	return wantarray ? ($output, $ret) : $output;
->>>>>>> REL_12_22
 }
 
 =pod
@@ -356,11 +303,7 @@ sub set_query_timer_restart
 {
 	my $self = shift;
 
-<<<<<<< HEAD
-	$self->{query_timer_restart} = shift if @_;
-=======
 	$self->{query_timer_restart} = 1;
->>>>>>> REL_12_22
 	return $self->{query_timer_restart};
 }
 
