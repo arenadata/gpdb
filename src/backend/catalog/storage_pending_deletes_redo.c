@@ -1,0 +1,328 @@
+#include "postgres.h"
+
+#include "access/clog.h"
+#include "access/transam.h"
+#include "catalog/storage_pending_deletes.h"
+#include "miscadmin.h"
+#include "storage/md.h"
+#include "utils/elog.h"
+#include "utils/guc.h"
+#include "utils/hsearch.h"
+
+#define VALIDATE_CALLER_PROCESS() \
+	if (!AmStartupProcess()) elog(ERROR, "%s is allowed only from Startup process", __FUNCTION__);
+
+/*
+ * HTAB entry for pending deletes for the given xid.
+ */
+typedef struct PendingDeleteHtabNode
+{
+	TransactionId xid;
+	List	   *relnode_list;	/* list of RelFileNodePendingDelete */
+}	PendingDeleteHtabNode;
+
+/*
+ * Hash table for pending deletes relfilenodes for a given xid.
+ */
+static HTAB *pendingDeletesRedo = NULL;
+
+/*
+ * This function inserts XLOG_PENDING_DELETE record into WAL. It is called
+ * during checkpoint creation.
+ */
+void
+PdlXLogInsert()
+{
+	Size		size = 0;
+
+	if (IsBootstrapProcessingMode() || !gp_track_pending_delete)
+		return;
+
+	PendingRelXactDeleteArray *arr = PdlXLogShmemDump(&size);
+
+	if (size > 0 && arr != NULL)
+	{
+		XLogRecPtr	rec;
+		XLogRecData rdata;
+
+		rdata.buffer = InvalidBuffer;
+		rdata.data = (char *) arr;
+		rdata.len = size;
+		rdata.next = NULL;
+		rdata.buffer_std = false;
+
+		rec = XLogInsert(RM_XLOG_ID, XLOG_PENDING_DELETE, &rdata);
+
+		XLogFlush(rec);
+
+		elog(DEBUG1, "Pending delete XLog record inserted");
+
+		pfree(arr);
+	}
+}
+
+/*
+ * This function adds pending delete node to a pendingDeletesRedo hash-table
+ * during WAL redo processing. It is called when:
+ *	1. XLOG_SMGR_CREATE xlog message is replayed by smrg_redo;
+ *	2. XLOG_PENDING_DELETE xlog message is replayed by PdlRedoXLogRecord.
+ */
+void
+PdlRedoAdd(PendingRelXactDelete * pd)
+{
+	Assert(pd);
+
+	if (IsBootstrapProcessingMode() ||
+		(pd->xid == InvalidTransactionId) ||
+		!gp_track_pending_delete)
+		return;
+
+	VALIDATE_CALLER_PROCESS();
+
+	if (NULL == pendingDeletesRedo)
+	{
+		HASHCTL		info =
+		{
+			.keysize = sizeof(TransactionId),
+			.entrysize = sizeof(PendingDeleteHtabNode)
+		};
+
+		pendingDeletesRedo = hash_create("pendingDeletesRedo hash",
+										 32,
+										 &info,
+										 HASH_ELEM);
+	}
+
+	bool		found = false;
+
+	PendingDeleteHtabNode *entry =
+	(PendingDeleteHtabNode *) hash_search(pendingDeletesRedo, &pd->xid, HASH_ENTER, &found);
+
+	if (!found)
+	{
+		entry->xid = pd->xid;
+		entry->relnode_list = NIL;
+	}
+
+	RelFileNodePendingDelete *data = (RelFileNodePendingDelete *) palloc(sizeof(*data));
+
+	memcpy(data, &pd->relnode, sizeof(*data));
+	entry->relnode_list = lappend(entry->relnode_list, data);
+}
+
+/*
+ * This function replays XLOG_PENDING_DELETE xlog record.
+ */
+void
+PdlRedoXLogRecord(XLogRecord *record)
+{
+	Assert(record);
+
+	if (IsBootstrapProcessingMode() || !gp_track_pending_delete)
+		return;
+
+	PendingRelXactDeleteArray *arr = (PendingRelXactDeleteArray *) XLogRecGetData(record);
+
+	TransactionId oldest_xid = ShmemVariableCache->oldestXid;
+
+	Assert(arr->count);
+
+	for (int i = 0; i < arr->count; i++)
+	{
+		PendingRelXactDelete *pd = (PendingRelXactDelete *) & (arr->array[i]);
+
+		/*
+		 * This function should check transaction status before adding
+		 * relfilenode to a pendingDeletesRedo hash table. Concurrent xlog
+		 * inserts (concurrent to a checkpointing process) of commit or abort
+		 * xlog records may out out-date pending deletes list. We don't want
+		 * to use aggressive locking of shared structures in order to avoid
+		 * performance drawbacks of concurrent commits or aborts. So the
+		 * strategy is to double-check relfilenodes with it's transaction
+		 * status. If it's TRANSACTION_STATUS_IN_PROGRESS, then it's
+		 * permitted to delete files (it's orphaned), if it's in some other
+		 * status - don't touch it. Also we should check transaction xid
+		 * doesn't cross "freeze horizon" and compare it with current
+		 * oldestXid value. Motivation of this check is that clog might get
+		 * truncated after REDO point and before replaying XLOG_PENDING_DELETE
+		 * record (though that looks like unlikely will happen in real-world,
+		 * but still needs to be considered as possible scenario). So in that
+		 * case we can't rely on xid status of that frozen transactions.
+		 * Second point is that there is no way that clog would be truncated
+		 * when transaction is in progress, so it's either been committed or
+		 * aborted before that.
+		 */
+
+		if (TransactionIdPrecedes(pd->xid, oldest_xid))
+			elog(WARNING, "Prevented adding node for XLOG_PENDING_DELETE record for xid: %u, oldestXid: %u",
+				 pd->xid, oldest_xid);
+		else
+		{
+			XLogRecPtr	result;
+			XidStatus	status = TransactionIdGetStatus(pd->xid, &result);
+
+			if (status == TRANSACTION_STATUS_IN_PROGRESS)
+				PdlRedoAdd(pd);
+			else
+				elog(WARNING, "Prevented adding node for XLOG_PENDING_DELETE record for xid: %u, status: %d",
+					 pd->xid, status);
+		}
+	}
+}
+
+static void
+PdlRedoRemove(TransactionId xid)
+{
+	if (IsBootstrapProcessingMode() ||
+		(xid == InvalidTransactionId) ||
+		(NULL == pendingDeletesRedo) ||
+		!gp_track_pending_delete)
+		return;
+
+	PendingDeleteHtabNode *entry =
+	(PendingDeleteHtabNode *) hash_search(pendingDeletesRedo, &xid, HASH_REMOVE, NULL);
+
+	if (entry)
+		list_free_deep(entry->relnode_list);
+}
+
+/*
+ * This function removes pending delete nodes from redo hash-table
+ * (pendingDeleteRedo) for a given transaction identified by it's xid and
+ * sub-transactions (if there are). It is called from xact_redo_commit_internal,
+ * xact_redo_distributed_commit or xact_redo_abort.
+ * (TODO: and RemovePendingDeletesForPreparedTransactions)
+ */
+void
+PdlRedoRemoveTree(TransactionId xid,
+				  TransactionId *sub_xids, int nsubxacts)
+{
+	if (IsBootstrapProcessingMode() ||
+		(xid == InvalidTransactionId) ||
+		!gp_track_pending_delete)
+		return;
+
+	VALIDATE_CALLER_PROCESS();
+
+	for (int i = 0; i < nsubxacts; i++)
+		PdlRedoRemove(sub_xids[i]);
+
+	PdlRedoRemove(xid);
+}
+
+/*
+ * This function serializes the contents of hash table entry into a structure
+ * suitable to pass into DropRelationFiles() functions.
+ */
+static RelFileNodePendingDelete *
+PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode * hnode, int *ndelrels)
+{
+	ListCell   *cell;
+
+	foreach(cell, hnode->relnode_list)
+	{
+		RelFileNodePendingDelete *pending_delete_node = (RelFileNodePendingDelete *) lfirst(cell);
+		ListCell   *i_cell = lnext(cell);
+		ListCell   *i_cell_prev = cell;
+
+		while (i_cell)
+		{
+			ListCell   *i_cell_next = lnext(i_cell);
+			RelFileNodePendingDelete *i_relnode = (RelFileNodePendingDelete *) lfirst(i_cell);
+
+			if (RelFileNodeEquals(pending_delete_node->node, i_relnode->node))
+			{
+				elog(DEBUG1, "Duplicate pending delete node found: (rel: (%u: %u: %u); xid: %u)",
+					 pending_delete_node->node.spcNode,
+					 pending_delete_node->node.dbNode,
+					 pending_delete_node->node.relNode,
+					 hnode->xid);
+
+				hnode->relnode_list = list_delete_cell(hnode->relnode_list, i_cell, i_cell_prev);
+				pfree(i_relnode);
+			}
+			else
+				i_cell_prev = i_cell;
+
+			i_cell = i_cell_next;
+		}
+	}
+
+	*ndelrels = list_length(hnode->relnode_list);
+
+	if (*ndelrels <= 0)
+	{
+		elog(WARNING, "Empty list for xid: %u", hnode->xid);
+		return NULL;
+	}
+
+	RelFileNodePendingDelete *delrels = (RelFileNodePendingDelete *) palloc((*ndelrels) * sizeof(RelFileNodePendingDelete));
+
+	int			i = 0;
+
+	foreach_with_count(cell, hnode->relnode_list, i)
+	{
+		RelFileNodePendingDelete *pending_delete_node = (RelFileNodePendingDelete *) lfirst(cell);
+
+		elog(LOG, "Prepare to drop node (%u: %u: %u) for xid: %u",
+			 pending_delete_node->node.spcNode,
+			 pending_delete_node->node.dbNode,
+			 pending_delete_node->node.relNode,
+			 hnode->xid);
+
+		memcpy(&delrels[i], pending_delete_node, sizeof(RelFileNodePendingDelete));
+	}
+
+	return delrels;
+}
+
+/*
+ * This function deletes files for pending delete nodes. It is called from
+ * StartupXLOG().
+ */
+void
+PdlRedoDropFiles()
+{
+	if (IsBootstrapProcessingMode() ||
+		!gp_track_pending_delete ||
+		(NULL == pendingDeletesRedo) ||
+		(hash_get_num_entries(pendingDeletesRedo) == 0))
+		return;
+
+	VALIDATE_CALLER_PROCESS();
+
+	TransactionId oldest_xid = ShmemVariableCache->oldestXid;
+	HASH_SEQ_STATUS scan_status = {0};
+	PendingDeleteHtabNode *node;
+
+	hash_seq_init(&scan_status, pendingDeletesRedo);
+	while ((node = (PendingDeleteHtabNode *) hash_seq_search(&scan_status)) != NULL)
+	{
+		if (TransactionIdPrecedes(node->xid, oldest_xid))
+			elog(WARNING, "Prevented drop files for xid: %u, oldestXid: %u",
+				 node->xid, oldest_xid);
+		else
+		{
+			XLogRecPtr	result;
+			XidStatus	status = TransactionIdGetStatus(node->xid, &result);
+
+			if (status != TRANSACTION_STATUS_IN_PROGRESS)
+				elog(WARNING, "Prevented drop files for xid: %u, status: %d",
+					 node->xid, status);
+			else
+			{
+				int			ndelrels = 0;
+				RelFileNodePendingDelete *delrels = PdlRedoPrepareArrayForDrop(node, &ndelrels);
+
+				DropRelationFiles(delrels, ndelrels, true);
+				elog(LOG, "Pending delete rels were dropped (count: %d; xid: %d).", ndelrels, node->xid);
+				pfree(delrels);
+			}
+		}
+
+		list_free_deep(node->relnode_list);
+	}
+
+	hash_destroy(pendingDeletesRedo);
+	pendingDeletesRedo = NULL;
+}

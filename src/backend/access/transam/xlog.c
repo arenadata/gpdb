@@ -36,6 +36,7 @@
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
+#include "catalog/storage_pending_deletes_redo.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
@@ -7505,7 +7506,13 @@ StartupXLOG(void)
 				 * xlogreader in this function.
 				 */
 				if (record->xl_rmid == RM_XLOG_ID)
+				{
 					VerifyOverwriteContrecord(record, xlogreader);
+
+					uint8 info = record->xl_info & ~XLR_INFO_MASK;
+					if (info == XLOG_CHECKPOINT_SHUTDOWN || info == XLOG_END_OF_RECOVERY)
+						PdlRedoDropFiles();
+				}
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
@@ -7968,6 +7975,9 @@ StartupXLOG(void)
 			CreateCheckPoint(CHECKPOINT_END_OF_RECOVERY | CHECKPOINT_IMMEDIATE);
 
 		UtilityModeCloseDtmRedoFile();
+
+		/* Clean up orphaned files */
+		PdlRedoDropFiles();
 
 		/*
 		 * And finally, execute the recovery_end_command, if any.
@@ -9315,6 +9325,9 @@ CreateCheckPoint(int flags)
 	 * checkpoint record.
 	 */
 	getDtxCheckPointInfo(&dtxCheckPointInfo, &dtxCheckPointInfoSize);
+
+	if (!shutdown)
+		PdlXLogInsert();
 
 	CheckPointGuts(checkPoint.redo, flags);
 
@@ -10781,6 +10794,11 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 
 		/* Keep track of full_page_writes */
 		lastFullPageWrites = fpw;
+	}
+	else if (info == XLOG_PENDING_DELETE)
+	{
+		if (IsCrashRecoveryOnly())
+			PdlRedoXLogRecord(record);
 	}
 }
 
