@@ -114,7 +114,7 @@ ExecDML(DMLState *node)
 		/* remove 'junk' columns from tuple */
 		node->cleanedUpSlot = ExecFilterJunk(node->junkfilter, projectedSlot);
 
-		/* restore returning result tuple and taregt list*/
+		/* restore returning result tuple and target list*/
 		node->ps.ps_ResultTupleSlot = returningResultTuple;
 		plannode->plan.targetlist = returningTargetList;
 
