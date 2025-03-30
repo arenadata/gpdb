@@ -126,12 +126,12 @@ private:
 		CMemoryPool *mp, const IMDIndex *pmdindex, CTableDescriptor *ptabdesc,
 		ULONG ulOriginOpId, CName *pname, CColRefArray *pdrgpcrOutput);
 
-	typedef CExpression *(PRewrittenIndexPath) (CMemoryPool *mp,
-												CExpression *pexprIndexCond,
-												CExpression *pexprResidualCond,
-												const IMDIndex *pmdindex,
-												CTableDescriptor *ptabdesc,
-												COperator *popLogical);
+	typedef CExpression *(PRewrittenIndexPath)(CMemoryPool *mp,
+											   CExpression *pexprIndexCond,
+											   CExpression *pexprResidualCond,
+											   const IMDIndex *pmdindex,
+											   CTableDescriptor *ptabdesc,
+											   COperator *popLogical);
 
 	// private copy ctor
 	CXformUtils(const CXformUtils &);
