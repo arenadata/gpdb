@@ -1,19 +1,16 @@
 -- start_ignore
 CREATE RESOURCE GROUP rg_oom_test
-WITH (cpu_rate_limit=20, memory_limit=20, memory_shared_quota=0);
-
+WITH (cpu_rate_limit=20, memory_limit=20, memory_shared_quota=100);
 CREATE ROLE role_oom_test RESOURCE GROUP rg_oom_test;
 
 CREATE EXTENSION gp_inject_fault;
-CREATE EXTENSION gp_internal_tools;
 
 CREATE OR REPLACE FUNCTION gp_mock_cdbdispatchcommand(amount int)
 RETURNS SETOF text AS '@abs_srcdir@/../regress/regress.so',
 'gp_mock_cdbdispatchcommand' LANGUAGE C;
 -- end_ignore
 
--- Remember PID of the backend under load.
-1: CREATE TABLE process_pid AS SELECT pg_backend_pid() AS pid;
+1: SET ROLE TO role_oom_test;
 
 -- Freeze coordinator's session after it reads results from segments.
 SELECT gp_inject_fault('check_dispatch_result_end', 'suspend', dbid)
@@ -26,19 +23,13 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 SELECT gp_wait_until_triggered_fault('check_dispatch_result_end', 1, dbid)
 FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
--- Remember the amount of memory Vmtracker thinks we are using.
-CREATE TABLE vmtracker_memory AS
-SELECT m.vmem_mb AS mb
-FROM session_state.session_level_memory_consumption m
-WHERE segid = -1
-AND m.query = 'SELECT count(*) FROM gp_mock_cdbdispatchcommand(1000000);'
-LIMIT 1;
-
--- Retrieve the actual amount memory that is used by the backend under load.
-! psql -At -d isolation2resgrouptest -c "CREATE TABLE process_memory AS SELECT $(ps -o rss= -p $(psql -At -d isolation2resgrouptest -c 'SELECT pid FROM process_pid')) AS kb;";
-
--- Compare both values, allow 30 MB error threshold for Vmtracker.
-SELECT p.kb / 1024 - v.mb < 30 AS "is in threshold" FROM process_memory p, vmtracker_memory v;
+-- The query should've used 135 MB of memory. Allow 10 MB error threshold.
+WITH r AS (
+  SELECT (memory_usage->'-1'->'used')::text::int AS mb
+  FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test'
+)
+SELECT r.mb - 130 < 10 AS "under threshold", r.mb - 130 > 0 AS "above than 0"
+FROM r;
 
 SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM
 gp_segment_configuration WHERE role = 'p' AND content = -1;
@@ -46,15 +37,10 @@ gp_segment_configuration WHERE role = 'p' AND content = -1;
 1<:
 
 -- And finally, make sure we don't enter error recursion on fail.
-1: SET ROLE TO role_oom_test;
-1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(6000000);
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(5000000);
 
 -- start_ignore
 DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
-
-DROP TABLE vmtracker_memory;
-DROP TABLE process_pid;
-DROP TABLE process_memory;
 
 DROP ROLE role_oom_test;
 DROP RESOURCE GROUP rg_oom_test;
