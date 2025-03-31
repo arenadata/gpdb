@@ -1,6 +1,5 @@
 //---------------------------------------------------------------------------
-//	Greenplum Database
-//	Copyright (C) 2013 EMC Corp.
+//	Copyright (c) 2025 Greengage Community
 //
 //	@filename:
 //		CLogicalReturning.cpp
