@@ -180,6 +180,9 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
 
+		/*
+		 * switch to memory context appropriate for multiple function calls
+		 */
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/*
@@ -187,6 +190,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		 * out as a result set.
 		 */
 		mystatus = (PG_Lock_Status *) palloc0(sizeof(PG_Lock_Status));
+		funcctx->user_fctx = (void *) mystatus;
 
 		mystatus->lockData = GetLockStatusData();
 		mystatus->predLockData = GetPredicateLockStatusData();
@@ -228,8 +232,6 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			 */
 			funcctx->tuple_desc = BlessTupleDesc(build_pg_locks_tupdesc());
 		}
-
-		funcctx->user_fctx = (void *) mystatus;
 
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -455,18 +457,13 @@ pg_lock_status(PG_FUNCTION_ARGS)
 	/* Collect locks sent out by the segments on coordinator. */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		QueryDesc  *queryDesc = mystatus->segQueryDesc;
+		HeapTuple ht;
+		QueryDesc *queryDesc = mystatus->segQueryDesc;
 
-		for (;;)
+		TupleTableSlot *tts = ExecProcNode(queryDesc->planstate);
+
+		if (!TupIsNull(tts))
 		{
-			HeapTuple	ht;
-			TupleTableSlot *tts = ExecProcNode(queryDesc->planstate);
-
-			if (TupIsNull(tts))
-			{
-				break;
-			}
-
 			Assert(tts->tts_tupleDescriptor->natts == NUM_LOCK_STATUS_COLUMNS);
 
 			ht = ExecFetchSlotHeapTuple(tts);
