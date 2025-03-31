@@ -1,7 +1,18 @@
 --
 -- HOROLOGY
 --
-<<<<<<< HEAD
+SHOW TimeZone;  -- Many of these tests depend on the prevailing settings
+      TimeZone       
+---------------------
+ America/Los_Angeles
+(1 row)
+
+SHOW DateStyle;
+   DateStyle   
+---------------
+ Postgres, MDY
+(1 row)
+
 -- create needed tables
 CREATE TABLE INTERVAL_HOROLOGY_TBL (f1 interval);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'f1' as the Greenplum Database data distribution key for this table.
@@ -189,20 +200,6 @@ reset datestyle;
 --
 --
 SET DateStyle = 'Postgres, MDY';
-=======
-SHOW TimeZone;  -- Many of these tests depend on the prevailing settings
-      TimeZone       
----------------------
- America/Los_Angeles
-(1 row)
-
-SHOW DateStyle;
-   DateStyle   
----------------
- Postgres, MDY
-(1 row)
-
->>>>>>> REL_12_22
 --
 -- Test various input formats
 --
@@ -919,63 +916,12 @@ SELECT '' AS "64", d1 + interval '1 year' AS one_year FROM TIMESTAMPTZ_HOROLOGY_
  64 |            one_year             
 ----+---------------------------------
     | -infinity
-<<<<<<< HEAD
-    | Thu Feb 16 17:32:01 0096 PST BC
-    | Sun Feb 16 17:32:01 0098 PST
-    | Fri Feb 16 17:32:01 0598 PST
-    | Wed Feb 16 17:32:01 1098 PST
-    | Sun Feb 16 17:32:01 1698 PST
-    | Fri Feb 16 17:32:01 1798 PST
-=======
-    | infinity
-    | Thu Dec 31 16:00:00 1970 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:02 1998 PST
-    | Tue Feb 10 17:32:01.4 1998 PST
-    | Tue Feb 10 17:32:01.5 1998 PST
-    | Tue Feb 10 17:32:01.6 1998 PST
-    | Fri Jan 02 00:00:00 1998 PST
-    | Fri Jan 02 03:04:05 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Wed Jun 10 17:32:01 1998 PDT
-    | Sun Sep 22 18:19:20 2002 PDT
-    | Thu Mar 15 08:14:01 2001 PST
-    | Thu Mar 15 04:14:02 2001 PST
-    | Thu Mar 15 02:14:03 2001 PST
-    | Thu Mar 15 03:14:04 2001 PST
-    | Thu Mar 15 01:14:05 2001 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:00 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 17:32:01 1998 PST
-    | Tue Feb 10 09:32:01 1998 PST
-    | Tue Feb 10 09:32:01 1998 PST
-    | Tue Feb 10 09:32:01 1998 PST
-    | Tue Feb 10 14:32:01 1998 PST
-    | Fri Jul 10 14:32:01 1998 PDT
-    | Wed Jun 10 18:32:01 1998 PDT
-    | Tue Feb 10 17:32:01 1998 PST
-    | Wed Feb 11 17:32:01 1998 PST
-    | Thu Feb 12 17:32:01 1998 PST
-    | Fri Feb 13 17:32:01 1998 PST
-    | Sat Feb 14 17:32:01 1998 PST
-    | Sun Feb 15 17:32:01 1998 PST
-    | Mon Feb 16 17:32:01 1998 PST
     | Thu Feb 16 17:32:01 0096 LMT BC
     | Sun Feb 16 17:32:01 0098 LMT
     | Fri Feb 16 17:32:01 0598 LMT
     | Wed Feb 16 17:32:01 1098 LMT
     | Sun Feb 16 17:32:01 1698 LMT
     | Fri Feb 16 17:32:01 1798 LMT
->>>>>>> REL_12_22
     | Wed Feb 16 17:32:01 1898 PST
     | Thu Dec 31 16:00:00 1970 PST
     | Fri Feb 28 17:32:01 1997 PST
@@ -1041,63 +987,12 @@ SELECT '' AS "64", d1 - interval '1 year' AS one_year FROM TIMESTAMPTZ_HOROLOGY_
  64 |            one_year             
 ----+---------------------------------
     | -infinity
-<<<<<<< HEAD
-    | Mon Feb 16 17:32:01 0098 PST BC
-    | Thu Feb 16 17:32:01 0096 PST
-    | Tue Feb 16 17:32:01 0596 PST
-    | Sun Feb 16 17:32:01 1096 PST
-    | Thu Feb 16 17:32:01 1696 PST
-    | Tue Feb 16 17:32:01 1796 PST
-=======
-    | infinity
-    | Tue Dec 31 16:00:00 1968 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:02 1996 PST
-    | Sat Feb 10 17:32:01.4 1996 PST
-    | Sat Feb 10 17:32:01.5 1996 PST
-    | Sat Feb 10 17:32:01.6 1996 PST
-    | Tue Jan 02 00:00:00 1996 PST
-    | Tue Jan 02 03:04:05 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Mon Jun 10 17:32:01 1996 PDT
-    | Fri Sep 22 18:19:20 2000 PDT
-    | Mon Mar 15 08:14:01 1999 PST
-    | Mon Mar 15 04:14:02 1999 PST
-    | Mon Mar 15 02:14:03 1999 PST
-    | Mon Mar 15 03:14:04 1999 PST
-    | Mon Mar 15 01:14:05 1999 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:00 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sat Feb 10 09:32:01 1996 PST
-    | Sat Feb 10 09:32:01 1996 PST
-    | Sat Feb 10 09:32:01 1996 PST
-    | Sat Feb 10 14:32:01 1996 PST
-    | Wed Jul 10 14:32:01 1996 PDT
-    | Mon Jun 10 18:32:01 1996 PDT
-    | Sat Feb 10 17:32:01 1996 PST
-    | Sun Feb 11 17:32:01 1996 PST
-    | Mon Feb 12 17:32:01 1996 PST
-    | Tue Feb 13 17:32:01 1996 PST
-    | Wed Feb 14 17:32:01 1996 PST
-    | Thu Feb 15 17:32:01 1996 PST
-    | Fri Feb 16 17:32:01 1996 PST
     | Mon Feb 16 17:32:01 0098 LMT BC
     | Thu Feb 16 17:32:01 0096 LMT
     | Tue Feb 16 17:32:01 0596 LMT
     | Sun Feb 16 17:32:01 1096 LMT
     | Thu Feb 16 17:32:01 1696 LMT
     | Tue Feb 16 17:32:01 1796 LMT
->>>>>>> REL_12_22
     | Sun Feb 16 17:32:01 1896 PST
     | Tue Dec 31 16:00:00 1968 PST
     | Tue Feb 28 17:32:01 1995 PST
