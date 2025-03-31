@@ -173,6 +173,21 @@ pg_lock_status(PG_FUNCTION_ARGS)
 	LockData   *lockData;
 	PredicateLockData *predLockData;
 
+	if (SRF_IS_SQUELCH_CALL())
+	{
+		funcctx = SRF_PERCALL_SETUP();
+		mystatus = funcctx->user_fctx;
+
+		if (mystatus->segQueryDesc != NULL)
+		{
+			ExecutorFinish(mystatus->segQueryDesc);
+			ExecutorEnd(mystatus->segQueryDesc);
+			FreeQueryDesc(mystatus->segQueryDesc);
+		}
+
+		SRF_RETURN_DONE(funcctx);
+	}
+
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
@@ -203,12 +218,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		 *
 		 * We collect the lock information from all the segments via gather
 		 * motion. There might be multiple instances of the same lock coming
-		 * from different segments.
-		 *
-		 * Routines from executor are used to fetch rows one-by-one. The
-		 * results are still materialized, unfortunately. This is a limitation
-		 * of set-returning functions, since they cannot surely know whether
-		 * the upper node was limited, and are called until they are
+		 * from different segments. Routines from executor are used to fetch
+		 * rows one-by-one.
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
@@ -238,6 +249,7 @@ pg_lock_status(PG_FUNCTION_ARGS)
 
 	funcctx = SRF_PERCALL_SETUP();
 	mystatus = (PG_Lock_Status *) funcctx->user_fctx;
+
 	lockData = mystatus->lockData;
 
 	/*
@@ -474,6 +486,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		ExecutorFinish(queryDesc);
 		ExecutorEnd(queryDesc);
 		FreeQueryDesc(queryDesc);
+
+		mystatus->segQueryDesc = NULL;
 	}
 
 	/*
