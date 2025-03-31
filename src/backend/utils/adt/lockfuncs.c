@@ -84,7 +84,7 @@ VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
  * distribution on it.
  */
 #define PG_LOCKS_INTERNAL_QUERY \
-	"select * from gp_dist_random('pg_catalog.pg_locks')"
+	"select l.* from gp_dist_random('pg_catalog.pg_locks') l, generate_series(1, 10000)"
 
 /*
  * Build a querydesc for SELECT on pg_locks relation to be passed to executor.
