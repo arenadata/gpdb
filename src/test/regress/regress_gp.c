@@ -2523,7 +2523,7 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 	}
 
 	func_ctx = SRF_PERCALL_SETUP();
-	my_status = (gp_mock_cdbdispatchcommand_status *) func_ctx->user_fctx;
+	my_status = func_ctx->user_fctx;
 
 	/* Generate fake tuples from every segment. */
 	if (my_status->cur_tuple_idx++ < arg_tuple_amount)
