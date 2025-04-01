@@ -1564,6 +1564,7 @@ static void
 send_guc_to_QE(List *guc_list, bool is_restore)
 {
 	Assert(Gp_role == GP_ROLE_DISPATCH && guc_list);
+
 	ListCell *lc;
 	MemoryContext oldcontext = CurrentMemoryContext;
 
@@ -1571,6 +1572,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 
 	foreach(lc, guc_list)
 	{
+		bool is_success = true;
 		struct config_generic* gconfig = (struct config_generic *)lfirst(lc);
 
 		/*
@@ -1589,25 +1591,29 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		}
 		PG_CATCH();
 		{
-			/* if some guc can not restore successful
-			 * we can not keep alive gang anymore.
-			 */
-			DisconnectAndDestroyAllGangs(true);
-			CheckForResetSession();
-			/*
-			 * when qe elog an error, qd will use ReThrowError to
-			 * re throw the error, the errordata_stack_depth will ++,
-			 * when we catch the error we should reset errordata_stack_depth
-			 * by FlushErrorState.
-			 */
+			EmitErrorReport();
 			FlushErrorState();
-			/*
-			 * this is a top-level catch block and we are responsible for
-			 * restoring the right memory context.
-			 */
+
+			is_success = false;
 			MemoryContextSwitchTo(oldcontext);
 		}
 		PG_END_TRY();
+
+		/*
+		 * Can't continue the transaction or keep the gang alive if GUCs are out
+		 * of sync. Explode!
+		 */
+		if (!is_success)
+		{
+			DisconnectAndDestroyAllGangs(true);
+
+			ereport(
+				ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("failed to synchronize GUC settings across segments"),
+				 errdetail("Query aborted due to GUC synchronization failure"),
+				 errhint("Check segment logs for more details")));
+		}
 	}
 
 	finish_xact_command();
