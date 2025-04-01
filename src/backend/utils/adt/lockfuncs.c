@@ -20,6 +20,7 @@
 #include "storage/predicate_internals.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/faultinjector.h"
 
 #include "cdb/cdbvars.h"
 #include "utils/snapmgr.h"
@@ -184,6 +185,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 			ExecutorEnd(mystatus->segQueryDesc);
 			FreeQueryDesc(mystatus->segQueryDesc);
 		}
+
+		SIMPLE_FAULT_INJECTOR("pg_lock_status_squelched");
 
 		SRF_RETURN_DONE(funcctx);
 	}
@@ -465,6 +468,8 @@ pg_lock_status(PG_FUNCTION_ARGS)
 		result = HeapTupleGetDatum(tuple);
 		SRF_RETURN_NEXT(funcctx, result);
 	}
+
+	SIMPLE_FAULT_INJECTOR("pg_lock_status_local_locks_collected");
 
 	/* Collect locks sent out by the segments on coordinator. */
 	if (Gp_role == GP_ROLE_DISPATCH)

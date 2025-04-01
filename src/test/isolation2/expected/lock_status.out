@@ -1,0 +1,150 @@
+-- start_ignore
+CREATE EXTENSION gp_inject_fault;
+CREATE
+-- end_ignore
+
+CREATE TABLE t_part(i int) PARTITION BY RANGE (i) (START (0) END (20) EVERY (1));
+CREATE
+
+-- Create a lot of locks.
+2: BEGIN;
+BEGIN
+2: LOCK TABLE t_part IN ACCESS EXCLUSIVE MODE;
+LOCK
+
+--
+-- Test pg_locks view behavior.
+--
+
+1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid), gp_inject_fault('pg_lock_status_squelched', 'error', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault | gp_inject_fault 
+-----------------+-----------------
+ Success:        | Success:        
+(1 row)
+
+-- Materializes everything regardless of LIMIT clause, as of now.
+SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
+ f 
+---
+ f 
+(1 row)
+
+1: SELECT gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
+ gp_wait_until_triggered_fault 
+-------------------------------
+ Success:                      
+(1 row)
+
+1: SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
+--
+-- Test pg_lock_status() behavior with LIMIT clause that should return results
+-- only from coordinator.
+--
+
+1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'error', dbid), gp_inject_fault('pg_lock_status_squelched', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault | gp_inject_fault 
+-----------------+-----------------
+ Success:        | Success:        
+(1 row)
+
+-- Doesn't materialize anything.
+SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
+ f 
+---
+ f 
+(1 row)
+
+1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
+ gp_wait_until_triggered_fault 
+-------------------------------
+ Success:                      
+(1 row)
+
+1: SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
+--
+-- Test pg_lock_status() behavior with LIMIT clause that should return results
+-- both from coordinator and from segments.
+--
+
+1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid), gp_inject_fault('pg_lock_status_squelched', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault | gp_inject_fault 
+-----------------+-----------------
+ Success:        | Success:        
+(1 row)
+
+-- Retrieves only 40 rows, should pull in ~20 locks from coordinator and from a
+-- segment.
+SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 40;
+ f 
+---
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+ f 
+(40 rows)
+
+1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid), gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
+ gp_wait_until_triggered_fault | gp_wait_until_triggered_fault 
+-------------------------------+-------------------------------
+ Success:                      | Success:                      
+(1 row)
+
+1: SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
+2: ROLLBACK;
+ROLLBACK
+
+-- start_ignore
+DROP TABLE t_part;
+DROP
+-- end_ignore
