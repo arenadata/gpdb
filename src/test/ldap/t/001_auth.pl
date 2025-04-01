@@ -4,14 +4,6 @@ use PostgreSQL::Test::Utils;
 use PostgreSQL::Test::Cluster;
 use Test::More;
 
-<<<<<<< HEAD
-if ($ENV{with_ldap} ne 'yes')
-{
-	plan skip_all => 'LDAP not supported by this build';
-}
-
-=======
->>>>>>> REL_12_22
 my ($slapd, $ldap_bin_dir, $ldap_schema_dir);
 
 $ldap_bin_dir = undef;    # usually in PATH
