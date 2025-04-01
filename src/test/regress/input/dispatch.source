@@ -710,7 +710,20 @@ SELECT * from show_on_segments('backslash_quote');
 
 SELECT FROM gang_is_the_same;
 
+-- But don't fail silently if we encountered an error.
+SELECT gp_inject_fault('dispatch_set_command', 'error', dbid)
+FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+
+--start_ignore
+\!gpstop -u
+--end_ignore
+
+-- Table is gone after an error.
 DROP TABLE gang_is_the_same;
+
+SELECT gp_inject_fault('dispatch_set_command', 'reset', dbid)
+FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+
 RESET SESSION AUTHORIZATION;
 
 DROP FUNCTION show_on_segments(show_name text);
