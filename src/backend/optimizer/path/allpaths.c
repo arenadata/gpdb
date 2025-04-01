@@ -562,6 +562,7 @@ bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 															  path->parent->reltarget,
 															  outer_quals,
 															  true);
+
 		add_path(rel, path);
 	}
 	set_cheapest(rel);
@@ -758,7 +759,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * Outer query's motion will be decorated with materialize by
 	 * bring_to_outer_query.
 	 */
-	if (rel->upperrestrictinfo == NULL && rel->reloptkind == RELOPT_BASEREL)
+	if (!rel->upperrestrictinfo && rel->reloptkind == RELOPT_BASEREL)
 		handle_gen_seggen_volatile_path(root, rel);
 
 	/*
