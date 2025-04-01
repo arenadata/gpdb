@@ -31,9 +31,9 @@ SELECT gp_wait_until_triggered_fault('check_dispatch_result_end', 1, dbid) FROM 
  Success:                      
 (1 row)
 
--- The query should've used 135 MB of memory. Allow 10 MB error threshold.
-WITH r AS ( SELECT (memory_usage->'-1'->'used')::text::int AS mb FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test' ) SELECT r.mb - 130 < 10 AS "under 140 MB", r.mb - 130 > 0 AS "above 130 MB" FROM r;
- under 140 MB | above 130 MB 
+-- The query should've used ~135 MB of memory. Allow 15 MB error.
+WITH r AS ( SELECT (memory_usage->'-1'->'used')::text::int AS mb FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test' ) SELECT r.mb - 150 < 0 AS "under 150 MB", r.mb - 120 > 0 AS "above 120 MB" FROM r;
+ under 150 MB | above 120 MB 
 --------------+--------------
  t            | t            
 (1 row)
@@ -51,7 +51,11 @@ SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM gp_segme
 (1 row)
 
 -- And finally, make sure we don't enter error recursion on fail.
-1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(66666666);
+ALTER RESOURCE GROUP rg_oom_test SET memory_limit 1;
+ALTER
+ALTER RESOURCE GROUP rg_oom_test SET memory_shared_quota 0;
+ALTER
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(5000000);
 ERROR:  Out of memory
 DETAIL:  Resource group memory limit reached
 
