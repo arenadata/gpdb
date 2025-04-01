@@ -1564,7 +1564,6 @@ static void
 send_guc_to_QE(List *guc_list, bool is_restore)
 {
 	Assert(Gp_role == GP_ROLE_DISPATCH && guc_list);
-
 	ListCell *lc;
 	MemoryContext oldcontext = CurrentMemoryContext;
 
