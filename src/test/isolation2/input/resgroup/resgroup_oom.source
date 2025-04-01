@@ -28,7 +28,7 @@ WITH r AS (
   SELECT (memory_usage->'-1'->'used')::text::int AS mb
   FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test'
 )
-SELECT r.mb - 130 < 10 AS "under threshold", r.mb - 130 > 0 AS "above than 0"
+SELECT r.mb - 130 < 10 AS "under 140 MB", r.mb - 130 > 0 AS "above 130 MB"
 FROM r;
 
 SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM
@@ -37,7 +37,7 @@ gp_segment_configuration WHERE role = 'p' AND content = -1;
 1<:
 
 -- And finally, make sure we don't enter error recursion on fail.
-1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(5000000);
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(6666666);
 
 -- start_ignore
 DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
