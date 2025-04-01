@@ -1220,9 +1220,9 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 --end_ignore
 -- Table is gone after an error.
 DROP TABLE gang_is_the_same;
-WARNING:  fault triggered, fault name:'dispatch_set_command' fault type:'error'
-WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 214)
-ERROR:  failed to synchronize GUC settings across segments (postgres.c:1611)
+WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 36)
+ERROR:  fault triggered, fault name:'dispatch_set_command' fault type:'error'
+ERROR:  failed to synchronize GUC settings across segments (postgres.c:1615)
 DETAIL:  Query aborted due to GUC synchronization failure
 HINT:  Check segment logs for more details
 SELECT gp_inject_fault('dispatch_set_command', 'reset', dbid)
