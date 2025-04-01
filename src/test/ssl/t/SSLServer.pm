@@ -40,8 +40,6 @@ our @EXPORT = qw(
   switch_server_cert
 );
 
-<<<<<<< HEAD
-=======
 # Force SSL tests nodes to begin in TCP mode. They won't work in Unix Socket
 # mode and this way they will find a port to run on in a more robust way.
 # Use an INIT block, it will run after the INIT block in PostgresNode.pm,
@@ -85,7 +83,6 @@ sub test_connect_fails
 	return;
 }
 
->>>>>>> REL_12_22
 # Copy a set of files, taking into account wildcards
 sub copy_files
 {
