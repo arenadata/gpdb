@@ -109,9 +109,7 @@ sub run_test
 		},
 		$test_primary_datadir);
 	@paths = sort @paths;
-<<<<<<< HEAD
 	@list_of_expected_files = sort @list_of_expected_files;
-=======
 
 	# File::Find converts backslashes to slashes in the newer Perl
 	# versions. To support all Perl versions, do the same conversion
@@ -122,10 +120,9 @@ sub run_test
 		{
 			$filename =~ s{\\}{/}g;
 		}
-		$test_master_datadir =~ s{\\}{/}g;
+		$test_primary_datadir =~ s{\\}{/}g;
 	}
 
->>>>>>> REL_12_22
 	is_deeply(
 		\@paths,
 		\@list_of_expected_files,
