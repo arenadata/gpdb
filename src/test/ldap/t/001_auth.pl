@@ -370,5 +370,8 @@ $node->append_conf('pg_hba.conf',
 );
 $node->stop;
 is($node->start(fail_ok => 1), 0, "bad combination of LDAPS and StartTLS");
+ok($node->log_contains(
+	"cannot use 'ldaptls' with 'ldaps' scheme or 'ldapurl' start with 'ldaps://'"),
+	"bad combination of LDAPS and StartTLS");
 
 done_testing();
