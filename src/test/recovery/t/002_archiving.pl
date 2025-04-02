@@ -128,23 +128,11 @@ $node_standby->promote;
 # performed a checkpoint after promotion yet.
 $node_standby->safe_psql('postgres', "checkpoint");# wait for the partial file to get archived
 
-<<<<<<< HEAD
 $node_standby->safe_psql('postgres',
 	"INSERT INTO test_partial_wal SELECT generate_series(1,1000)");
 # Once we promote the standby, it will be on a new timeline and we want to assert
 # that the latest file from the old timeline is archived properly
 post_standby_promotion_tests();
-=======
-# Wait until the history file has been stored on the archives of the
-# primary once the promotion of the standby completes.  This ensures that
-# the second standby created below will be able to restore this file,
-# creating a RECOVERYHISTORY.
-my $primary_archive = $node_master->archive_dir;
-$caughtup_query =
-  "SELECT size IS NOT NULL FROM pg_stat_file('$primary_archive/00000002.history', true)";
-$node_master->poll_query_until('postgres', $caughtup_query)
-  or die "Timed out while waiting for archiving of 00000002.history";
->>>>>>> REL_12_22
 
 $node_primary->stop;
 $node_standby->safe_psql('postgres',
@@ -179,8 +167,9 @@ $node_primary->safe_psql('postgres',
 
 sub wait_until_file_exists
 {
-	my ($filepath, $filedesc) = @_;
-	my $query = "SELECT size IS NOT NULL FROM pg_stat_file('$filepath')";
+	my ($filepath, $filedesc, $missing_ok) = @_;
+	$missing_ok = "false" if (!defined($missing_ok));
+	my $query = "SELECT size IS NOT NULL FROM pg_stat_file('$filepath', $missing_ok)";
 	# we aren't querying primary because we stop the primary node for some of the
 	# scenarios
 	$node_standby->poll_query_until('postgres', $query)
@@ -256,7 +245,7 @@ sub check_history_files
 	# the second standby created below will be able to restore this file,
 	# creating a RECOVERYHISTORY.
 	my $primary_archive = $node_primary->archive_dir;
-	wait_until_file_exists("$primary_archive/00000002.history", "history file to be archived");
+	wait_until_file_exists("$primary_archive/00000002.history", "history file to be archived", "true");
 
 	my $node_standby2 = PostgreSQL::Test::Cluster->new('standby2');
 	$node_standby2->init_from_backup($node_primary, $backup_name,
