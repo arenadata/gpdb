@@ -6,9 +6,11 @@ ALTER DATABASE regression_utf8 CONNECTION_LIMIT 123;
 
 -- Test PgDatabaseToastTable.  Doing this with GRANT would be slow.
 BEGIN;
+SET allow_system_table_mods=ON;
 UPDATE pg_database
 SET datacl = array_fill(makeaclitem(10, 10, 'USAGE', false), ARRAY[5e5::int])
 WHERE datname = 'regression_utf8';
+RESET allow_system_table_mods;
 -- load catcache entry, if nothing else does
 ALTER DATABASE regression_utf8 RESET TABLESPACE;
 ROLLBACK;

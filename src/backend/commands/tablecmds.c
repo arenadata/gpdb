@@ -15430,6 +15430,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 			*/
 			if (*aoopt_changed && rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
 			{
+				UnlockTuple(pgclass, &tuple->t_self, InplaceUpdateTupleLock);
 				ReleaseSysCache(tuple);
 				table_close(pgclass, RowExclusiveLock);
 				return newOptions;

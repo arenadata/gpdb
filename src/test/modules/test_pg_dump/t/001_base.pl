@@ -674,13 +674,8 @@ my %tests = (
 #########################################
 # Create a PG instance to test actually dumping from
 
-<<<<<<< HEAD
 my $node = PostgreSQL::Test::Cluster->new('main');
-$node->init;
-=======
-my $node = get_new_node('main');
 $node->init('auth_extra' => [ '--create-role', 'regress_dump_login_role' ]);
->>>>>>> REL_12_22
 $node->start;
 
 my $port = $node->port;
