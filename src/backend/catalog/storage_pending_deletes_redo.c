@@ -9,9 +9,6 @@
 #include "utils/guc.h"
 #include "utils/hsearch.h"
 
-#define VALIDATE_CALLER_PROCESS() \
-	if (!AmStartupProcess()) elog(ERROR, "%s is allowed only from Startup process", __FUNCTION__);
-
 /*
  * HTAB entry for pending deletes for the given xid.
  */
@@ -76,8 +73,6 @@ PdlRedoAdd(PendingRelXactDelete * pd)
 		(pd->xid == InvalidTransactionId) ||
 		!gp_track_pending_delete)
 		return;
-
-	VALIDATE_CALLER_PROCESS();
 
 	if (NULL == pendingDeletesRedo)
 	{
@@ -202,8 +197,6 @@ PdlRedoRemoveTree(TransactionId xid,
 		!gp_track_pending_delete)
 		return;
 
-	VALIDATE_CALLER_PROCESS();
-
 	for (int i = 0; i < nsubxacts; i++)
 		PdlRedoRemove(sub_xids[i]);
 
@@ -288,8 +281,6 @@ PdlRedoDropFiles()
 		(NULL == pendingDeletesRedo) ||
 		(hash_get_num_entries(pendingDeletesRedo) == 0))
 		return;
-
-	VALIDATE_CALLER_PROCESS();
 
 	TransactionId oldest_xid = ShmemVariableCache->oldestXid;
 	HASH_SEQ_STATUS scan_status = {0};
