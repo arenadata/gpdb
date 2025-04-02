@@ -51,11 +51,9 @@ SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM gp_segme
 (1 row)
 
 -- And finally, make sure we don't enter error recursion on fail.
-ALTER RESOURCE GROUP rg_oom_test SET memory_limit 1;
-ALTER
 ALTER RESOURCE GROUP rg_oom_test SET memory_shared_quota 0;
 ALTER
-1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(5000000);
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(10000000);
 ERROR:  Out of memory
 DETAIL:  Resource group memory limit reached
 
