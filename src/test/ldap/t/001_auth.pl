@@ -368,9 +368,7 @@ unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldaps_url/$ldap_basedn??sub?(uid=\$username)" ldaptls=1}
 );
-$node->restart;
-
-$ENV{"PGPASSWORD"} = 'secret1';
-test_access($node, 'test1', 2, 'bad combination of LDAPS and StartTLS');
+$node->stop;
+is($node->start(fail_ok => 1), 0, "bad combination of LDAPS and StartTLS");
 
 done_testing();
