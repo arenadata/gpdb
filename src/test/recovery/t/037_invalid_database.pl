@@ -88,37 +88,6 @@ is($node->psql('postgres', 'DROP DATABASE regression_invalid'),
 # Test that interruption of DROP DATABASE is handled properly. To ensure the
 # interruption happens at the appropriate moment, we lock pg_tablespace. DROP
 # DATABASE scans pg_tablespace once it has reached the "irreversible" part of
-<<<<<<< HEAD
-# dropping the database, making it a suitable point to wait.
-my $bgpsql_in    = '';
-my $bgpsql_out   = '';
-my $bgpsql_err   = '';
-my $bgpsql_timer = IPC::Run::timer($PostgreSQL::Test::Utils::timeout_default);
-my $bgpsql = IPC::Run::start(
-	['psql', '-XAtq', '-d', $node->connstr('postgres'), '-f', '-'],
-	'<', \$bgpsql_in, '>', \$bgpsql_out, '2>', \$bgpsql_err, $bgpsql_timer);
-$bgpsql_out = '';
-$bgpsql_in .= "SELECT pg_backend_pid();\n";
-
-pump_until($bgpsql, $bgpsql_timer, \$bgpsql_out, qr/\d/);
-
-my $pid = $bgpsql_out;
-$bgpsql_out = '';
-
-# create the database, prevent drop database via lock held by a 2PC transaction
-$bgpsql_in .= qq(
-  CREATE EXTENSION gp_inject_fault;
-  CREATE DATABASE regression_invalid_interrupt;
-  BEGIN;
-  LOCK pg_tablespace;
-  SELECT gp_inject_fault('enable_prepare_transaction', 'skip', 1);
-  PREPARE TRANSACTION 'lock_tblspc';
-  SELECT gp_inject_fault('enable_prepare_transaction', 'reset', 1);
-  \\echo done
-);
-
-ok(pump_until($bgpsql, $bgpsql_timer, \$bgpsql_out, qr/done/),
-=======
 # dropping the database, making it a suitable point to wait.  Since relcache
 # init reads pg_tablespace, establish each connection before locking.  This
 # avoids a connection-time hang with debug_discard_caches.
@@ -129,11 +98,14 @@ my $pid = $bgpsql->query('SELECT pg_backend_pid()');
 # create the database, prevent drop database via lock held by a 2PC transaction
 ok( $bgpsql->query_safe(
 		qq(
+  CREATE EXTENSION gp_inject_fault;
   CREATE DATABASE regression_invalid_interrupt;
   BEGIN;
   LOCK pg_tablespace;
-  PREPARE TRANSACTION 'lock_tblspc';)),
->>>>>>> REL_12_22
+  SELECT gp_inject_fault('enable_prepare_transaction', 'skip', 1);
+  PREPARE TRANSACTION 'lock_tblspc';
+  SELECT gp_inject_fault('enable_prepare_transaction', 'reset', 1);
+  )),
 	"blocked DROP DATABASE completion");
 
 # Try to drop. This will wait due to the still held lock.
