@@ -2,7 +2,6 @@
 use strict;
 use warnings;
 
-<<<<<<< HEAD
 use PostgreSQL::Test::Cluster;
 use PostgreSQL::Test::Utils;
 
@@ -13,11 +12,6 @@ use PostgreSQL::Test::Utils;
 use Test::More tests => 1;
 is(-1, -1, "Disable this TAP test");
 exit;
-=======
-use PostgresNode;
-use TestLib;
-use Test::More tests => 27;
->>>>>>> REL_12_22
 
 my $psql_out = '';
 my $psql_rc  = '';
