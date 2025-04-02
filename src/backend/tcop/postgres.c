@@ -25,6 +25,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include "utils/elog.h"
 #ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
 #endif
@@ -1590,10 +1591,13 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		}
 		PG_CATCH();
 		{
-			EmitErrorReport();
+			if (!elog_dismiss(WARNING))
+				EmitErrorReport();
+
 			FlushErrorState();
 
 			is_success = false;
+
 			MemoryContextSwitchTo(oldcontext);
 		}
 		PG_END_TRY();
