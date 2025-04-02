@@ -186,7 +186,6 @@ reset datestyle;
 --
 --
 --
-SET DateStyle = 'Postgres, MDY';
 
 --
 -- Test various input formats
