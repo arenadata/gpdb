@@ -1,7 +1,9 @@
 --
 -- HOROLOGY
 --
-<<<<<<< HEAD
+SHOW TimeZone;  -- Many of these tests depend on the prevailing settings
+SHOW DateStyle;
+
 -- create needed tables
 
 CREATE TABLE INTERVAL_HOROLOGY_TBL (f1 interval);
@@ -184,12 +186,6 @@ reset datestyle;
 --
 --
 --
-SET DateStyle = 'Postgres, MDY';
-=======
-
-SHOW TimeZone;  -- Many of these tests depend on the prevailing settings
-SHOW DateStyle;
->>>>>>> REL_12_22
 
 --
 -- Test various input formats
