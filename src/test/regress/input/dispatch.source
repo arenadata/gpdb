@@ -634,6 +634,11 @@ drop table t_create_gang_time;
 -- to segments on gpstop -u, if GUC_GPDB_NEED_SYNC is present in the flags.
 --
 
+-- start_matchsubs
+-- m/^ERROR:  failed to synchronize GUC settings across segments \(postgres.c:\d+\)/
+-- s/^ERROR:  failed to synchronize GUC settings across segments \(postgres.c:\d+\)/ERROR:  failed to synchronize GUC settings across segments/
+-- end_matchsubs
+
 -- start_ignore
 DROP ROLE IF EXISTS dispatch_test_user2;
 -- end_ignore
