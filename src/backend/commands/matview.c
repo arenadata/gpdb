@@ -876,6 +876,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 	appendStringInfo(&querybuf,
 					 "CREATE TEMP TABLE %s (LIKE %s)",
 					 diffname, tempname);
+	appendStringInfoString(&querybuf, distributed);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 	SetUserIdAndSecContext(relowner,
@@ -888,7 +889,7 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
 	resetStringInfo(&querybuf);
 	appendStringInfo(&querybuf,
-					 "ALTER TABLE %s ADD COLUMN sid pg_catalog.int",
+					 "ALTER TABLE %s ADD COLUMN sid pg_catalog.int4",
 					 diffname);
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_UTILITY)
 		elog(ERROR, "SPI_exec failed: %s", querybuf.data);
@@ -1029,7 +1030,6 @@ refresh_by_match_merge(Oid matviewOid, Oid tempOid, Oid relowner,
 						   " AND newdata.* OPERATOR(pg_catalog.*=) mv.*) "
 						   "WHERE newdata.* IS NULL OR mv.* IS NULL "
 						   "ORDER BY tid "); /* GPDB: tailing space matters */
-	appendStringInfoString(&querybuf, distributed);
 
 	/* Populate the temporary "diff" table. */
 	if (SPI_exec(querybuf.data, 0) != SPI_OK_INSERT)
