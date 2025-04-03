@@ -416,11 +416,12 @@ drop table minmaxtest cascade;
 -- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
 begin;
 set local enable_sort = off;
+create temp table int4_tbl_repl as select * from int4_tbl distributed replicated;
 explain (costs off)
-  select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
-  from int4_tbl t0;
-select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
-from int4_tbl t0;
+  select f1, (select distinct min(t1.f1) from int4_tbl_repl t1 where t1.f1 = t0.f1)
+  from int4_tbl_repl t0;
+select f1, (select distinct min(t1.f1) from int4_tbl_repl t1 where t1.f1 = t0.f1)
+from int4_tbl_repl t0;
 rollback;
 
 -- check for correct detection of nested-aggregate errors
