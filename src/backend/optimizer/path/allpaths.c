@@ -755,11 +755,8 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * Greenplum specific behavior:
 	 * Change the path in pathlist if it is a general or segmentgeneral
 	 * path that contains volatile restrictions.
-	 * Do not do it, if list of the outer quals is not empty.
-	 * Outer query's motion will be decorated with materialize by
-	 * bring_to_outer_query.
 	 */
-	if (!rel->upperrestrictinfo && rel->reloptkind == RELOPT_BASEREL)
+	if (rel->reloptkind == RELOPT_BASEREL)
 		handle_gen_seggen_volatile_path(root, rel);
 
 	/*

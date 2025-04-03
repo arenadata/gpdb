@@ -224,24 +224,35 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			return subpath;
 		}
 
-		if (CdbPathLocus_IsGeneral(subpath->locus))
-		{
-			/* XXX: this is a bit bogus. We just change the subpath's locus. */
-			subpath->locus = locus;
-			return subpath;
-		}
-
-		if (CdbPathLocus_IsEntry(subpath->locus) ||
+		if (CdbPathLocus_IsGeneral(subpath->locus) ||
+			CdbPathLocus_IsEntry(subpath->locus) ||
 			CdbPathLocus_IsSingleQE(subpath->locus))
 		{
-			/*
-			 * XXX: this is a bit bogus. We just change the subpath's locus.
-			 *
-			 * This is also bogus, because the outer query might need to run
-			 * in segments.
-			 */
-			subpath->locus = locus;
-			return subpath;
+			if (IsA(subpath, CdbMotionPath))
+			{
+				subpath->locus = locus;
+				return (Path *) create_material_path(root, subpath->parent,
+													 subpath);
+			}
+			else if (IsA(subpath, ProjectionPath))
+			{
+				ProjectionPath* projection_path = (ProjectionPath *) subpath;
+
+				if (IsA(projection_path->subpath, CdbMotionPath))
+				{
+					subpath = projection_path->subpath;
+					subpath->locus = locus;
+					projection_path->subpath = (Path *) create_material_path(root,
+																subpath->parent,
+																subpath);
+					return (Path *) projection_path;
+				}
+			}
+			else
+			{
+				subpath->locus = locus;
+				return subpath;
+			}
 		}
 	}
 	else if (CdbPathLocus_IsBottleneck(locus))
