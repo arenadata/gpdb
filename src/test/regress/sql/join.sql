@@ -1973,7 +1973,13 @@ select * from
   ) as q2;
 
 -- check for generation of join EC conditions at wrong level (bug #18429)
+-- GPDB: persuade the planner to choose same plan as in upstream.
+set enable_nestloop=on;
+-- start_ignore
+drop table if exists tenk1_repl;
+-- end_ignore
 create table tenk1_repl as select * from tenk1 distributed replicated;
+create index tenk1_repl_unique2 on tenk1_repl using btree(unique2 int4_ops);
 explain (costs off)
 select * from (
   select arrayd.ad, coalesce(c.hundred, 0) as h
@@ -1991,6 +1997,8 @@ select * from (
   ) c on true
 ) c2
 where c2.h * c2.ad = c2.h * (c2.ad + 1);
+reset enable_nestloop;
+drop table tenk1_repl;
 
 -- check the number of columns specified
 SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);

@@ -6078,7 +6078,10 @@ select * from
 (6 rows)
 
 -- check for generation of join EC conditions at wrong level (bug #18429)
+-- GPDB: persuade the planner to choose same plan as in upstream.
+set enable_nestloop=on;
 create table tenk1_repl as select * from tenk1 distributed replicated;
+create index tenk1_repl_unique2 on tenk1_repl using btree(unique2 int4_ops);
 explain (costs off)
 select * from (
   select arrayd.ad, coalesce(c.hundred, 0) as h
@@ -6091,14 +6094,15 @@ where c2.h * c2.ad = c2.h * (c2.ad + 1);
                                                       QUERY PLAN                                                       
 -----------------------------------------------------------------------------------------------------------------------
  Gather Motion 1:1  (slice1; segments: 1)
-   ->  Hash Right Join
-         Hash Cond: (tenk1_repl.unique2 = arrayd.ad)
+   ->  Nested Loop Left Join
          Filter: ((COALESCE(tenk1_repl.hundred, 0) * arrayd.ad) = (COALESCE(tenk1_repl.hundred, 0) * (arrayd.ad + 1)))
-         ->  Seq Scan on tenk1_repl
-         ->  Hash
-               ->  Function Scan on unnest arrayd
+         ->  Function Scan on unnest arrayd
+         ->  Bitmap Heap Scan on tenk1_repl
+               Recheck Cond: (unique2 = arrayd.ad)
+               ->  Bitmap Index Scan on tenk1_repl_unique2
+                     Index Cond: (unique2 = arrayd.ad)
  Optimizer: Postgres-based planner
-(8 rows)
+(9 rows)
 
 select * from (
   select arrayd.ad, coalesce(c.hundred, 0) as h
@@ -6112,6 +6116,8 @@ where c2.h * c2.ad = c2.h * (c2.ad + 1);
 ----+---
 (0 rows)
 
+reset enable_nestloop;
+drop table tenk1_repl;
 -- check the number of columns specified
 SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);
 ERROR:  join expression "ss" has 3 columns available but 4 columns specified
