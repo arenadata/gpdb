@@ -413,6 +413,7 @@ SELECT * FROM prt1_l t1 JOIN LATERAL
 			  (SELECT * FROM prt1_l t2 TABLESAMPLE SYSTEM (t1.a) REPEATABLE(t1.b)) s
 			  ON t1.a = s.a AND t1.b = s.b AND t1.c = s.c;
 
+-- GPDB: FIXME For now GPDB do not support such queries.
 -- If there are lateral references to the other relation in scan's restriction
 -- clauses, we cannot generate a partitionwise join.
 EXPLAIN (COSTS OFF)
