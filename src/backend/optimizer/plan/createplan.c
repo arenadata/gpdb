@@ -4443,7 +4443,11 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 		if (!cteplaninfo->shared_plan)
 		{
 			RelOptInfo *sub_final_rel;
-			GangType	saved_gangType = root->curSlice->gangType;
+			GangType	saved_gangType;
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				saved_gangType = root->curSlice->gangType;
+			}
 
 			sub_final_rel = fetch_upper_rel(best_path->parent->subroot, UPPERREL_FINAL, NULL);
 			subplan = create_plan(best_path->parent->subroot, sub_final_rel->cheapest_total_path, root->curSlice);
@@ -4458,9 +4462,12 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			 * gets to the reader gang (it depends of tree traverse order
 			 * inside the apply_shareinput_dag_to_tree function)
 			 */
-			if (root->curSlice->gangType != saved_gangType &&
-				root->curSlice->gangType == GANGTYPE_PRIMARY_WRITER)
-				cteplaninfo->rootSliceIsWriter = true;
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				if (root->curSlice->gangType != saved_gangType &&
+					root->curSlice->gangType == GANGTYPE_PRIMARY_WRITER)
+					cteplaninfo->rootSliceIsWriter = true;
+			}
 		}
 		/* Wrap the common Plan tree in a ShareInputScan node */
 		subplan = share_prepared_plan(cteroot, cteplaninfo->shared_plan);
