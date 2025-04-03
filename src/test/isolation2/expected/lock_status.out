@@ -3,7 +3,7 @@ CREATE EXTENSION gp_inject_fault;
 CREATE
 -- end_ignore
 
-CREATE TABLE t_part(i int) PARTITION BY RANGE (i) (START (0) END (20) EVERY (1));
+CREATE TABLE t_part(i int) PARTITION BY RANGE (i) (START (0) END (5) EVERY (1));
 CREATE
 
 -- Create a lot of locks.
@@ -52,7 +52,8 @@ SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
  Success:        | Success:        
 (1 row)
 
--- Doesn't materialize anything.
+-- Doesn't materialize anything, gets squelched after the first row from
+-- coordinator.
 SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
  f 
 ---
@@ -82,9 +83,9 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
  Success:        | Success:        
 (1 row)
 
--- Retrieves only 40 rows, should pull in ~20 locks from coordinator and from a
--- segment.
-SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 40;
+-- Retrieves some rows from coordinator and from a segment, then gets
+-- squelched.
+SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 10;
  f 
 ---
  f 
@@ -97,37 +98,7 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 40;
  f 
  f 
  f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
- f 
-(40 rows)
+(10 rows)
 
 1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid), gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
  gp_wait_until_triggered_fault | gp_wait_until_triggered_fault 
@@ -144,7 +115,5 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 40;
 2: ROLLBACK;
 ROLLBACK
 
--- start_ignore
 DROP TABLE t_part;
 DROP
--- end_ignore
