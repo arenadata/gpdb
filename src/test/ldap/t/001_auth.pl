@@ -4,14 +4,6 @@ use PostgreSQL::Test::Utils;
 use PostgreSQL::Test::Cluster;
 use Test::More;
 
-<<<<<<< HEAD
-if ($ENV{with_ldap} ne 'yes')
-{
-	plan skip_all => 'LDAP not supported by this build';
-}
-
-=======
->>>>>>> REL_12_22
 my ($slapd, $ldap_bin_dir, $ldap_schema_dir);
 
 $ldap_bin_dir = undef;    # usually in PATH
@@ -376,9 +368,10 @@ unlink($node->data_dir . '/pg_hba.conf');
 $node->append_conf('pg_hba.conf',
 	qq{local all all ldap ldapurl="$ldaps_url/$ldap_basedn??sub?(uid=\$username)" ldaptls=1}
 );
-$node->restart;
-
-$ENV{"PGPASSWORD"} = 'secret1';
-test_access($node, 'test1', 2, 'bad combination of LDAPS and StartTLS');
+$node->stop;
+is($node->start(fail_ok => 1), 0, "bad combination of LDAPS and StartTLS");
+ok($node->log_contains(
+	"cannot use 'ldaptls' with 'ldaps' scheme or 'ldapurl' start with 'ldaps://'"),
+	"bad combination of LDAPS and StartTLS");
 
 done_testing();
