@@ -8,10 +8,6 @@
 !\retcode gpstop -au;
 (exited with code 0)
 
--- start_ignore
-DROP DATABASE IF EXISTS regression_invalid_interrupt;
-DROP DATABASE
--- end_ignore
 -- Create the database
 CREATE DATABASE regression_invalid_interrupt;
 CREATE DATABASE
