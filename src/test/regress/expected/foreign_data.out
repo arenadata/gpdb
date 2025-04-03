@@ -2095,8 +2095,8 @@ Server: test
 -- Greenplum Database database dump
 --
 
--- Dumped from database version 12.12
--- Dumped by pg_dump version 12.12
+-- Dumped from database version 12.22
+-- Dumped by pg_dump version 12.22
 
 SET gp_default_storage_options = '';
 SET statement_timeout = 0;
@@ -2139,8 +2139,8 @@ RESET gp_default_storage_options;
 -- Greenplum Database database dump
 --
 
--- Dumped from database version 12.12
--- Dumped by pg_dump version 12.12
+-- Dumped from database version 12.22
+-- Dumped by pg_dump version 12.22
 
 SET gp_default_storage_options = '';
 SET statement_timeout = 0;
