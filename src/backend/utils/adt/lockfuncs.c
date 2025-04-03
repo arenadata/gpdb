@@ -22,6 +22,8 @@
 #include "utils/builtins.h"
 #include "utils/faultinjector.h"
 
+#include "cdb/cdbsetop.h"
+#include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 #include "utils/snapmgr.h"
 
@@ -85,7 +87,7 @@ VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
  * distribution on it.
  */
 #define PG_LOCKS_INTERNAL_QUERY \
-	"select * from gp_dist_random('pg_catalog.pg_locks')"
+	"select (pg_catalog.pg_lock_status()).*"
 
 /*
  * Build a querydesc for SELECT on pg_locks relation to be passed to executor.
@@ -118,6 +120,14 @@ build_pg_locks_querydesc(void)
 	/* There is only one statement in list due to simple select. */
 	Assert(list_length(plantree_list) == 1);
 	plan_stmt = (PlannedStmt *) linitial(plantree_list);
+
+	/* Add a gather motion atop the plan. */
+	plan_stmt->planTree->flow = NULL;
+	mark_plan_strewn(plan_stmt->planTree, getgpsegmentCount());
+	plan_stmt->planTree =
+		(Plan *) make_motion_gather_to_QD(NULL, plan_stmt->planTree, NULL);
+	((Motion *) plan_stmt->planTree)->motionID = 1;
+	plan_stmt->nMotionNodes = 1;
 
 	queryDesc =
 		CreateQueryDesc(plan_stmt, PG_LOCKS_INTERNAL_QUERY, GetActiveSnapshot(),
