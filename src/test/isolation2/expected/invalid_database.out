@@ -1,0 +1,59 @@
+-- test that interruption of DROP DATABASE is handled properly
+
+!\retcode gpconfig -c autovacuum -v off;
+(exited with code 0)
+!\retcode gpstop -au;
+(exited with code 0)
+
+-- create the database
+CREATE DATABASE regression_invalid_interrupt;
+CREATE DATABASE
+
+-- prevent drop database via lock on pg_tablespace on segment 0
+0U: BEGIN;
+BEGIN
+0U: LOCK pg_tablespace;
+LOCK TABLE
+
+-- try to drop, this will wait due to the still held lock on segment 0
+1&: DROP DATABASE regression_invalid_interrupt;  <waiting ...>
+
+-- ensure the DROP DATABASE is waiting for the lock
+SELECT EXISTS (SELECT FROM pg_locks WHERE NOT granted AND relation = 'pg_tablespace'::regclass AND mode = 'AccessShareLock');
+ exists 
+--------
+ t      
+(1 row)
+
+-- and finally interrupt the DROP DATABASE on segment 0
+0U: SELECT pg_cancel_backend(pid) FROM pg_locks WHERE NOT granted AND relation = 'pg_tablespace'::regclass AND mode = 'AccessShareLock';
+ pg_cancel_backend 
+-------------------
+ t                 
+(1 row)
+0Uq: ... <quitting>
+
+1<:  <... completed>
+ERROR:  canceling MPP operation  (seg0 172.18.0.7:7002 pid=41634)
+1q: ... <quitting>
+
+-- verify that connection to the database aren't allowed
+! psql -d regression_invalid_interrupt -c "SELECT 1";
+psql: error: FATAL:  cannot connect to invalid database "regression_invalid_interrupt"
+HINT:  Use DROP DATABASE to drop invalid databases.
+
+
+-- to properly drop the database, we need to reset inject fault
+SELECT gp_inject_fault('dropdb_before_remove_tablespace', 'reset', dbid) FROM gp_segment_configuration WHERE content = 0 AND role = 'p';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
+DROP DATABASE regression_invalid_interrupt;
+DROP DATABASE
+
+!\retcode gpconfig -r autovacuum;
+(exited with code 0)
+!\retcode gpstop -au;
+(exited with code 0)
