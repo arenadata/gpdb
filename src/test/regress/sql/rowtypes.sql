@@ -526,6 +526,8 @@ drop view composite_v;
 --
 -- Check cases where the composite comes from a proven-dummy rel (bug #18576)
 --
+-- GPDB: only check with Postgres optimizer to avoid creating different plans
+set optimizer=off;
 explain (verbose, costs off)
 select (ss.a).x, (ss.a).n from
   (select information_schema._pg_expandarray(array[1,2]) AS a) ss;
@@ -533,6 +535,7 @@ explain (verbose, costs off)
 select (ss.a).x, (ss.a).n from
   (select information_schema._pg_expandarray(array[1,2]) AS a) ss
 where false;
+reset optimizer;
 
 explain (verbose, costs off)
 with cte(c) as materialized (select row(1, 2)),
