@@ -562,7 +562,6 @@ bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 															  path->parent->reltarget,
 															  outer_quals,
 															  true);
-
 		add_path(rel, path);
 	}
 	set_cheapest(rel);
