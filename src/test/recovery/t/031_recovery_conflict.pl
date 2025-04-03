@@ -187,7 +187,6 @@ $psql_standby->reconnect_and_clear();
 check_conflict_stat("lock");
 
 # See allow_in_place_tablespaces comment above
-<<<<<<< HEAD
 ## RECOVERY CONFLICT 4: Tablespace conflict
 $sect = "tablespace conflict";
 $expected_conflicts++;
@@ -215,36 +214,6 @@ check_conflict_log(
 	"User was or might have been using tablespace that must be dropped");
 $psql_standby->reconnect_and_clear();
 check_conflict_stat("tablespace");
-=======
-### RECOVERY CONFLICT 4: Tablespace conflict
-#$sect = "tablespace conflict";
-#$expected_conflicts++;
-#
-## DECLARE a cursor for a query which, with sufficiently low work_mem, will
-## spill tuples into temp files in the temporary tablespace created during
-## setup.
-#$res = $psql_standby->query_safe(qq[
-#        BEGIN;
-#        SET work_mem = '64kB';
-#        DECLARE $cursor1 CURSOR FOR
-#          SELECT count(*) FROM generate_series(1,6000);
-#        FETCH FORWARD FROM $cursor1;
-#        ]);
-#like($res, qr/^6000$/m,
-#	"$sect: cursor with conflicting temp file established");
-#
-## Drop the tablespace currently containing spill files for the query on the
-## standby
-#$node_primary->safe_psql($test_db, qq[DROP TABLESPACE $tablespace1;]);
-#
-#$primary_lsn = $node_primary->lsn('flush');
-#$node_primary->wait_for_catchup($node_standby, 'replay', $primary_lsn);
-#
-#check_conflict_log(
-#	"User was or might have been using tablespace that must be dropped");
-#$psql_standby->reconnect_and_clear();
-#check_conflict_stat("tablespace");
->>>>>>> REL_12_22
 
 
 ## RECOVERY CONFLICT 5: Deadlock
