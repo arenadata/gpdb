@@ -461,8 +461,6 @@ SELECT 1 FROM tenk1_vw_sec
 
 rollback;
 
-<<<<<<< HEAD
-=======
 -- test that function option SET ROLE works in parallel workers.
 create role regress_parallel_worker;
 
@@ -516,4 +514,3 @@ SET force_parallel_mode = on;
 DELETE FROM parallel_hang WHERE 380 <= i AND i <= 420;
 
 ROLLBACK;
->>>>>>> REL_12_22
