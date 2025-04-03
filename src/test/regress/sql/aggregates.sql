@@ -414,6 +414,8 @@ select distinct min(f1), max(f1) from minmaxtest;
 drop table minmaxtest cascade;
 
 -- DISTINCT can also trigger wrong answers with hash aggregation (bug #18465)
+-- Note: GPDB does not support the min/max optimization for correlated subplans
+-- in the postgres planner
 begin;
 set local enable_sort = off;
 create temp table int4_tbl_repl as select * from int4_tbl distributed replicated;
