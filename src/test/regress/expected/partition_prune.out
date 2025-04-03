@@ -1350,31 +1350,37 @@ delete from boolpart where a is null;
 create table boolpart_null partition of boolpart for values in (null);
 insert into boolpart values(null);
 explain (costs off) select * from boolpart where a is not true;
-           QUERY PLAN            
----------------------------------
- Append
-   ->  Seq Scan on boolpart_f
-         Filter: (a IS NOT TRUE)
-   ->  Seq Scan on boolpart_null
-         Filter: (a IS NOT TRUE)
-(5 rows)
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on boolpart_f
+               Filter: (a IS NOT TRUE)
+         ->  Seq Scan on boolpart_null
+               Filter: (a IS NOT TRUE)
+ Optimizer: Postgres-based planner
+(7 rows)
 
 explain (costs off) select * from boolpart where a is not true and a is not false;
-                    QUERY PLAN                    
---------------------------------------------------
- Seq Scan on boolpart_null
-   Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
-(2 rows)
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on boolpart_null
+         Filter: ((a IS NOT TRUE) AND (a IS NOT FALSE))
+ Optimizer: Postgres-based planner
+(4 rows)
 
 explain (costs off) select * from boolpart where a is not false;
-            QUERY PLAN            
-----------------------------------
- Append
-   ->  Seq Scan on boolpart_t
-         Filter: (a IS NOT FALSE)
-   ->  Seq Scan on boolpart_null
-         Filter: (a IS NOT FALSE)
-(5 rows)
+                QUERY PLAN                
+------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on boolpart_t
+               Filter: (a IS NOT FALSE)
+         ->  Seq Scan on boolpart_null
+               Filter: (a IS NOT FALSE)
+ Optimizer: Postgres-based planner
+(7 rows)
 
 select * from boolpart where a is not true;
  a 
@@ -1593,29 +1599,33 @@ explain (costs off)  select * from boolrangep where not a and not b and c = 25;
 
 -- ensure we prune boolrangep_tf
 explain (costs off)  select * from boolrangep where a is not true and not b and c = 25;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Append
-   ->  Seq Scan on boolrangep_ff1
-         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
-   ->  Seq Scan on boolrangep_ff2
-         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
-   ->  Seq Scan on boolrangep_ft
-         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
-   ->  Seq Scan on boolrangep_null
-         Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
-(9 rows)
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on boolrangep_ff1
+               Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+         ->  Seq Scan on boolrangep_ff2
+               Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+         ->  Seq Scan on boolrangep_ft
+               Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+         ->  Seq Scan on boolrangep_null
+               Filter: ((a IS NOT TRUE) AND (NOT b) AND (c = 25))
+ Optimizer: Postgres-based planner
+(11 rows)
 
 -- ensure we prune everything apart from boolrangep_tf and boolrangep_null
 explain (costs off)  select * from boolrangep where a is not false and not b and c = 25;
-                         QUERY PLAN                          
--------------------------------------------------------------
- Append
-   ->  Seq Scan on boolrangep_tf
-         Filter: ((a IS NOT FALSE) AND (NOT b) AND (c = 25))
-   ->  Seq Scan on boolrangep_null
-         Filter: ((a IS NOT FALSE) AND (NOT b) AND (c = 25))
-(5 rows)
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on boolrangep_tf
+               Filter: ((a IS NOT FALSE) AND (NOT b) AND (c = 25))
+         ->  Seq Scan on boolrangep_null
+               Filter: ((a IS NOT FALSE) AND (NOT b) AND (c = 25))
+ Optimizer: Postgres-based planner
+(7 rows)
 
 -- test scalar-to-array operators
 create table coercepart (a varchar) partition by list (a);
@@ -3115,29 +3125,11 @@ update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
                            ->  Bitmap Index Scan on ab_a1_b3_a_idx (never executed)
                                  Index Cond: (a = 1)
    ->  Nested Loop (actual rows=1 loops=1)
-<<<<<<< HEAD
          ->  Bitmap Heap Scan on ab_a1_b2 (actual rows=1 loops=1)
                Recheck Cond: (a = 1)
                Heap Blocks: exact=1
                ->  Bitmap Index Scan on ab_a1_b2_a_idx (actual rows=1 loops=1)
                      Index Cond: (a = 1)
-=======
-         ->  Append (actual rows=1 loops=1)
-               ->  Bitmap Heap Scan on ab_a1_b1 ab_a1_b1_1 (actual rows=0 loops=1)
-                     Recheck Cond: (a = 1)
-                     ->  Bitmap Index Scan on ab_a1_b1_a_idx (actual rows=0 loops=1)
-                           Index Cond: (a = 1)
-               ->  Bitmap Heap Scan on ab_a1_b2 ab_a1_b2_1 (actual rows=1 loops=1)
-                     Recheck Cond: (a = 1)
-                     Heap Blocks: exact=1
-                     ->  Bitmap Index Scan on ab_a1_b2_a_idx (actual rows=1 loops=1)
-                           Index Cond: (a = 1)
-               ->  Bitmap Heap Scan on ab_a1_b3 ab_a1_b3_1 (actual rows=0 loops=1)
-                     Recheck Cond: (a = 1)
-                     Heap Blocks: exact=1
-                     ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
-                           Index Cond: (a = 1)
->>>>>>> REL_12_22
          ->  Materialize (actual rows=1 loops=1)
                ->  Append (actual rows=1 loops=1)
                      ->  Bitmap Heap Scan on ab_a1_b1 ab_a1_b1_1 (actual rows=0 loops=1)
@@ -3154,7 +3146,6 @@ update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
                            ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
                                  Index Cond: (a = 1)
    ->  Nested Loop (actual rows=0 loops=1)
-<<<<<<< HEAD
          ->  Bitmap Heap Scan on ab_a1_b3 (actual rows=0 loops=1)
                Recheck Cond: (a = 1)
                ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
@@ -3175,30 +3166,6 @@ update ab_a1 set b = 3 from ab where ab.a = 1 and ab.a = ab_a1.a;
                                  Index Cond: (a = 1)
  Optimizer: Postgres query optimizer
 (62 rows)
-=======
-         ->  Append (actual rows=1 loops=1)
-               ->  Bitmap Heap Scan on ab_a1_b1 ab_a1_b1_1 (actual rows=0 loops=1)
-                     Recheck Cond: (a = 1)
-                     ->  Bitmap Index Scan on ab_a1_b1_a_idx (actual rows=0 loops=1)
-                           Index Cond: (a = 1)
-               ->  Bitmap Heap Scan on ab_a1_b2 ab_a1_b2_1 (actual rows=1 loops=1)
-                     Recheck Cond: (a = 1)
-                     Heap Blocks: exact=1
-                     ->  Bitmap Index Scan on ab_a1_b2_a_idx (actual rows=1 loops=1)
-                           Index Cond: (a = 1)
-               ->  Bitmap Heap Scan on ab_a1_b3 ab_a1_b3_1 (actual rows=0 loops=1)
-                     Recheck Cond: (a = 1)
-                     Heap Blocks: exact=1
-                     ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
-                           Index Cond: (a = 1)
-         ->  Materialize (actual rows=0 loops=1)
-               ->  Bitmap Heap Scan on ab_a1_b3 (actual rows=0 loops=1)
-                     Recheck Cond: (a = 1)
-                     Heap Blocks: exact=1
-                     ->  Bitmap Index Scan on ab_a1_b3_a_idx (actual rows=1 loops=1)
-                           Index Cond: (a = 1)
-(68 rows)
->>>>>>> REL_12_22
 
 table ab;
  a | b 
