@@ -8,7 +8,6 @@
 #include "access/clog.h"
 #include "access/transam.h"
 #include "catalog/storage_pending_deletes_redo.h"
-#include "miscadmin.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
@@ -65,8 +64,6 @@ static List *ls_transactions_comlpete = NIL;
 static void
 setup(int test)
 {
-	MyAuxProcType = StartupProcess;
-
 	static VariableCacheData test_cache = {0};
 
 	ShmemVariableCache = &test_cache;
