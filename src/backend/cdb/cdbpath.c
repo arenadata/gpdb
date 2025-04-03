@@ -238,7 +238,8 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			{
 				ProjectionPath* projection_path = (ProjectionPath *) subpath;
 
-				if (IsA(projection_path->subpath, CdbMotionPath))
+				if (projection_path->subpath &&
+					IsA(projection_path->subpath, CdbMotionPath))
 				{
 					subpath = projection_path->subpath;
 					subpath->locus = locus;
