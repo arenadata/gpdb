@@ -5543,6 +5543,9 @@ create_limit_path(PlannerInfo *root, RelOptInfo *rel,
 	 * If the limit path's locus is general or segmentgeneral
 	 * we have to make it singleQE.
 	 */
+	if (contains_outer_params(limitCount, root) || contains_outer_params(limitOffset, root)) 
+		return (Path *)pathnode;
+
 	if (CdbPathLocus_IsSegmentGeneral(pathnode->path.locus) || 
 			CdbPathLocus_IsGeneral(pathnode->path.locus) ||
 			contain_volatile_functions(pathnode->limitOffset) || contain_volatile_functions(pathnode->limitCount))
