@@ -1973,12 +1973,13 @@ select * from
   ) as q2;
 
 -- check for generation of join EC conditions at wrong level (bug #18429)
+create table tenk1_repl as select * from tenk1 distributed replicated;
 explain (costs off)
 select * from (
   select arrayd.ad, coalesce(c.hundred, 0) as h
   from unnest(array[1]) as arrayd(ad)
   left join lateral (
-    select hundred from tenk1 where unique2 = arrayd.ad
+    select hundred from tenk1_repl where unique2 = arrayd.ad
   ) c on true
 ) c2
 where c2.h * c2.ad = c2.h * (c2.ad + 1);
@@ -1986,7 +1987,7 @@ select * from (
   select arrayd.ad, coalesce(c.hundred, 0) as h
   from unnest(array[1]) as arrayd(ad)
   left join lateral (
-    select hundred from tenk1 where unique2 = arrayd.ad
+    select hundred from tenk1_repl where unique2 = arrayd.ad
   ) c on true
 ) c2
 where c2.h * c2.ad = c2.h * (c2.ad + 1);
