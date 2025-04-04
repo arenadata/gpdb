@@ -3708,7 +3708,7 @@ checkCanOptSelectLockingClause(SelectStmt *stmt)
 	 * TODO: if future ORCA can emit LockRows plannode,
 	 * we should remove such restriction here.
 	 */
-	if (optimizer)
+	if (Gp_role == GP_ROLE_DISPATCH && optimizer)
 		return false;
 
 	if (stmt->op != SETOP_NONE)
