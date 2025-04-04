@@ -9,13 +9,7 @@ program_help_ok('pg_isready');
 program_version_ok('pg_isready');
 program_options_handling_ok('pg_isready');
 
-<<<<<<< HEAD
-command_fails(['pg_isready'], 'fails with no server running');
-
 my $node = PostgreSQL::Test::Cluster->new('main');
-=======
-my $node = get_new_node('main');
->>>>>>> REL_12_22
 $node->init;
 
 $node->command_fails(['pg_isready'], 'fails with no server running');
