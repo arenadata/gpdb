@@ -4448,8 +4448,6 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			{
 				saved_gangType = root->curSlice->gangType;
 			}
-			/* temp */
-			Assert(Gp_role == GP_ROLE_DISPATCH); 
 
 			sub_final_rel = fetch_upper_rel(best_path->parent->subroot, UPPERREL_FINAL, NULL);
 			subplan = create_plan(best_path->parent->subroot, sub_final_rel->cheapest_total_path, root->curSlice);
