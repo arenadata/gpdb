@@ -475,7 +475,6 @@ WITH RECURSIVE x(n) AS (SELECT n FROM x)
 WITH RECURSIVE x(n) AS (SELECT n FROM x UNION ALL SELECT 1)
 	SELECT * FROM x;
 
-<<<<<<< HEAD
 -- recursive term with a self-reference within a subquery is not allowed
 WITH RECURSIVE cte(level, id) as (
 	SELECT 1, 2
@@ -483,8 +482,6 @@ WITH RECURSIVE cte(level, id) as (
 	SELECT level+1, c FROM (SELECT * FROM cte OFFSET 0) foo, bar)
 SELECT * FROM cte LIMIT 10;
 
-CREATE TEMPORARY TABLE y (a INTEGER) DISTRIBUTED RANDOMLY;
-=======
 -- allow this, because we historically have
 WITH RECURSIVE x(n) AS (
   WITH x1 AS (SELECT 1 AS n)
@@ -514,8 +511,7 @@ WITH RECURSIVE x(n) AS (
   ORDER BY (SELECT n FROM x))
 	SELECT * FROM x;
 
-CREATE TEMPORARY TABLE y (a INTEGER);
->>>>>>> REL_12_22
+CREATE TEMPORARY TABLE y (a INTEGER) DISTRIBUTED RANDOMLY;
 INSERT INTO y SELECT generate_series(1, 10);
 
 -- LEFT JOIN
