@@ -691,6 +691,7 @@ drop table idxpart;
 create table idxpart (a int, b text, c int[]) partition by range (a);
 create table idxpart1 partition of idxpart for values from (0) to (100000);
 set enable_seqscan to off;
+set optimizer to off;
 
 create index idxpart_brin on idxpart using brin(b);
 explain (costs off) select * from idxpart where b = 'abcd';
@@ -705,6 +706,7 @@ explain (costs off) select * from idxpart where c @> array[42];
 drop index idxpart_gin;
 
 reset enable_seqscan;
+reset optimizer;
 drop table idxpart;
 
 -- intentionally leave some objects around
