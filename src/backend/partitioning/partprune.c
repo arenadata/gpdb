@@ -3633,13 +3633,13 @@ match_boolean_partition_clause(Oid partopfamily, Expr *clause, Expr *partkey,
 			{
 				case IS_NOT_TRUE:
 					*noteq = true;
-					/* fall through */
+					fallthru;
 				case IS_TRUE:
 					*outconst = (Expr *) makeBoolConst(true, false);
 					break;
 				case IS_NOT_FALSE:
 					*noteq = true;
-					/* fall through */
+					fallthru;
 				case IS_FALSE:
 					*outconst = (Expr *) makeBoolConst(false, false);
 					break;
