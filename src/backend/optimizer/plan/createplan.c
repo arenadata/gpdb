@@ -4445,7 +4445,7 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			RelOptInfo *sub_final_rel;
 			GangType	saved_gangType = GANGTYPE_UNALLOCATED;
 			/*
-			 * Since topSlice is only initialized in the dispatcher role,
+			 * Since topSlice is only initialized on the QD,
 			 * root->curSlice may be NULL in other roles. Check before accessing it.
 			 */
 			if (root->curSlice)
