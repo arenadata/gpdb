@@ -7509,17 +7509,12 @@ StartupXLOG(void)
 				{
 					VerifyOverwriteContrecord(record, xlogreader);
 
-				/*
-				 * TODO: uncomment call to PdlRedoDropFiles() when
-				 * RemovePendingDeletesForPreparedTransactions() is
-				 * implemented (it should be called right before PdlRedoDropFiles()).
-				 * Without it test 'crash_recovery_dtm' fails.
-				 */
-#if 0
-					uint8 info = record->xl_info & ~XLR_INFO_MASK;
-					if (info == XLOG_CHECKPOINT_SHUTDOWN || info == XLOG_END_OF_RECOVERY)
-						PdlRedoDropFiles();
-#endif
+					/*
+					 * TODO: add call to PdlRedoDropFiles() when
+					 * RemovePendingDeletesForPreparedTransactions() is
+					 * implemented. It should be called right before PdlRedoDropFiles().
+					 * Without it test 'crash_recovery_dtm' fails.
+					 */
 				}
 
 				/* Pop the error context stack */
@@ -7985,15 +7980,11 @@ StartupXLOG(void)
 		UtilityModeCloseDtmRedoFile();
 
 		/*
-		 * TODO: uncomment call to PdlRedoDropFiles() when
+		 * TODO: add call to PdlRedoDropFiles() when
 		 * RemovePendingDeletesForPreparedTransactions() is
-		 * implemented (it should be called right before PdlRedoDropFiles())
+		 * implemented. It should be called right before PdlRedoDropFiles().
 		 * Without it test 'crash_recovery_dtm' fails.
 		 */
-#if 0
-		/* Clean up orphaned files */
-		PdlRedoDropFiles();
-#endif
 
 		/*
 		 * And finally, execute the recovery_end_command, if any.

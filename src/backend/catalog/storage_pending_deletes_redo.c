@@ -1,3 +1,16 @@
+/*-------------------------------------------------------------------------
+ *
+ * storage_pending_deletes_redo.c
+ *	  code to support processing of pending deletes (orphaned files) in WAL
+ *
+ * Copyright (c) 2025 Greengage Community
+ *
+ * IDENTIFICATION
+ *	  src/backend/catalog/storage_pending_deletes_redo.c
+ *
+ *-------------------------------------------------------------------------
+ */
+
 #include "postgres.h"
 
 #include "access/clog.h"
@@ -40,13 +53,14 @@ PdlXLogInsert()
 	if (size > 0 && arr != NULL)
 	{
 		XLogRecPtr	rec;
-		XLogRecData rdata;
-
-		rdata.buffer = InvalidBuffer;
-		rdata.data = (char *) arr;
-		rdata.len = size;
-		rdata.next = NULL;
-		rdata.buffer_std = false;
+		XLogRecData rdata =
+		{
+			.buffer = InvalidBuffer,
+			.data = (char *) arr,
+			.len = size,
+			.next = NULL,
+			.buffer_std = false
+		};
 
 		rec = XLogInsert(RM_XLOG_ID, XLOG_PENDING_DELETE, &rdata);
 
@@ -101,7 +115,7 @@ PdlRedoAdd(PendingRelXactDelete * pd)
 
 	RelFileNodePendingDelete *data = (RelFileNodePendingDelete *) palloc(sizeof(*data));
 
-	memcpy(data, &pd->relnode, sizeof(*data));
+	*data = pd->relnode;
 	entry->relnode_list = lappend(entry->relnode_list, data);
 }
 
@@ -124,7 +138,7 @@ PdlRedoXLogRecord(XLogRecord *record)
 
 	for (int i = 0; i < arr->count; i++)
 	{
-		PendingRelXactDelete *pd = (PendingRelXactDelete *) & (arr->array[i]);
+		PendingRelXactDelete *pd = (PendingRelXactDelete *) &(arr->array[i]);
 
 		/*
 		 * This function should check transaction status before adding
@@ -174,8 +188,8 @@ PdlRedoRemove(TransactionId xid)
 		!gp_track_pending_delete)
 		return;
 
-	PendingDeleteHtabNode *entry =
-	(PendingDeleteHtabNode *) hash_search(pendingDeletesRedo, &xid, HASH_REMOVE, NULL);
+	PendingDeleteHtabNode *entry = (PendingDeleteHtabNode *)
+		hash_search(pendingDeletesRedo, &xid, HASH_REMOVE, NULL);
 
 	if (entry)
 		list_free_deep(entry->relnode_list);
@@ -208,7 +222,7 @@ PdlRedoRemoveTree(TransactionId xid,
  * suitable to pass into DropRelationFiles() functions.
  */
 static RelFileNodePendingDelete *
-PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode * hnode, int *ndelrels)
+PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 {
 	ListCell   *cell;
 
@@ -249,7 +263,8 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode * hnode, int *ndelrels)
 		return NULL;
 	}
 
-	RelFileNodePendingDelete *delrels = (RelFileNodePendingDelete *) palloc((*ndelrels) * sizeof(RelFileNodePendingDelete));
+	RelFileNodePendingDelete *delrels = (RelFileNodePendingDelete *)
+		palloc((*ndelrels) * sizeof(RelFileNodePendingDelete));
 
 	int			i = 0;
 
@@ -263,7 +278,7 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode * hnode, int *ndelrels)
 			 pending_delete_node->node.relNode,
 			 hnode->xid);
 
-		memcpy(&delrels[i], pending_delete_node, sizeof(RelFileNodePendingDelete));
+		delrels[i] = *pending_delete_node;
 	}
 
 	return delrels;

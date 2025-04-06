@@ -3412,8 +3412,11 @@ struct config_bool ConfigureNamesBool_gp[] =
 
 	{
 		{"gp_track_pending_delete", PGC_POSTMASTER, CUSTOM_OPTIONS,
-			gettext_noop("Enable extended pending deletion tracking to avoid accumulation of orphaned files."),
-			gettext_noop("Disabling this turns off storing relation nodes in shmem, dumping them to WAL and removing of files during recovery.")
+			gettext_noop("Enable extended pending deletion tracking to avoid "
+						 "accumulation of orphaned files."),
+			gettext_noop("Disabling this turns off storing relation nodes in "
+						 "shmem, dumping them to WAL and removing of files "
+						 "during recovery.")
 		},
 		&gp_track_pending_delete,
 		true,

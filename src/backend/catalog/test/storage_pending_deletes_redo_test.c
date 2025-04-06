@@ -1,3 +1,15 @@
+/*-------------------------------------------------------------------------
+ *
+ * storage_pending_deletes_redo_test.c
+ *	  code to test functionality from storage_pending_deletes_redo.c
+ *
+ * Copyright (c) 2025 Greengage Community
+ *
+ * IDENTIFICATION
+ *	  src/backend/catalog/test/storage_pending_deletes_redo_test.c
+ *
+ *-------------------------------------------------------------------------
+ */
 #include <stdarg.h>
 #include <stddef.h>
 #include <setjmp.h>
@@ -25,7 +37,7 @@
 #define TEST_XLOG_REC_PTR 100
 
 void
-			__wrap_DropRelationFiles(RelFileNodePendingDelete * delrels, int ndelrels, bool isRedo);
+			__wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool isRedo);
 
 XidStatus
 			__wrap_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
@@ -76,7 +88,7 @@ setup(int test)
 }
 
 void
-__wrap_DropRelationFiles(RelFileNodePendingDelete * delrels, int ndelrels, bool isRedo)
+__wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool isRedo)
 {
 	DropRelationFiles_call_count++;
 	switch (test_number)
@@ -331,13 +343,14 @@ test_1(void **state)
 	setup(1);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -358,13 +371,14 @@ test_2(void **state)
 	setup(2);
 	ShmemVariableCache->oldestXid = (TransactionId) 2;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -384,18 +398,18 @@ test_3(void **state)
 	setup(3);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
 	pd.xid = (TransactionId) 2;
-	pd.relnode.isTempRelation = false;
 	pd.relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	pd.relnode.node.dbNode = TEST_DB_OID2;
 	pd.relnode.node.relNode = TEST_REL_OID2;
@@ -418,14 +432,14 @@ test_4(void **state)
 	setup(4);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -455,13 +469,14 @@ test_5(void **state)
 
 	for (int i = 0; i < TEST_EXPECTED_NOTES_COUNT; i++)
 	{
-		PendingRelXactDelete pd = {0};
-
-		pd.xid = (TransactionId) i;
-		pd.relnode.isTempRelation = false;
-		pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-		pd.relnode.node.dbNode = TEST_DB_OID1;
-		pd.relnode.node.relNode = TEST_REL_OID1 + i;
+		PendingRelXactDelete pd =
+		{
+			.xid = (TransactionId) i,
+			.relnode.isTempRelation = false,
+			.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+			.relnode.node.dbNode = TEST_DB_OID1,
+			.relnode.node.relNode = TEST_REL_OID1 + i
+		};
 
 		PdlRedoAdd(&pd);
 
@@ -522,13 +537,14 @@ test_6(void **state)
 	setup(6);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	ls_transactions_comlpete = lappend_int(ls_transactions_comlpete, pd.xid);
 
@@ -554,13 +570,14 @@ test_7(void **state)
 	setup(7);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -583,13 +600,14 @@ test_8(void **state)
 	setup(8);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -612,13 +630,14 @@ test_9(void **state)
 	setup(9);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -641,13 +660,14 @@ test_10(void **state)
 	setup(10);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	PdlRedoAdd(&pd);
 
@@ -686,14 +706,15 @@ test_11(void **state)
 
 	for (int i = 0; i < TEST_EXPECTED_NOTES_COUNT; i++)
 	{
-		PendingRelXactDelete pd = {0};
-
-		/* add oldest xid here just to ensure that all nodes will be added */
-		pd.xid = ShmemVariableCache->oldestXid + (TransactionId) i;
-		pd.relnode.isTempRelation = false;
-		pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-		pd.relnode.node.dbNode = TEST_DB_OID1;
-		pd.relnode.node.relNode = TEST_REL_OID1 + i;
+		PendingRelXactDelete pd =
+		{
+			/* add oldest xid here just to ensure that all nodes will be added */
+			.xid = ShmemVariableCache->oldestXid + (TransactionId) i,
+			.relnode.isTempRelation = false,
+			.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+			.relnode.node.dbNode = TEST_DB_OID1,
+			.relnode.node.relNode = TEST_REL_OID1 + i
+		};
 
 		PdlRedoAdd(&pd);
 
@@ -741,26 +762,23 @@ test_12(void **state)
 	setup(12);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
 	for (int i = 0; i < TEST_EXPECTED_NOTES_COUNT; i++)
 	{
-		PendingRelXactDelete pd = {0};
-
-		/* add oldest xid here just to ensure that all nodes will be added */
-		pd.xid = ShmemVariableCache->oldestXid + (TransactionId) i;
-		pd.relnode.isTempRelation = false;
-		pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-		pd.relnode.node.dbNode = TEST_DB_OID1;
-		pd.relnode.node.relNode = TEST_REL_OID1 + i;
+		PendingRelXactDelete pd =
+		{
+			/* add oldest xid here just to ensure that all nodes will be added */
+			.xid = ShmemVariableCache->oldestXid + (TransactionId) i,
+			.relnode.isTempRelation = false,
+			.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+			.relnode.node.dbNode = TEST_DB_OID1,
+			.relnode.node.relNode = TEST_REL_OID1 + i
+		};
 
 		PdlRedoAdd(&pd);
 
 		/* and fill data which is expected... */
 		test_expected_relnodes[i] = pd.relnode.node;
 	}
-
-	PdlRedoAdd(&pd);
 
 	TransactionId xid_to_remove = 5;
 	TransactionId sub_xids_to_remove[] = {10, 11, 12, 15};
@@ -803,10 +821,8 @@ test_create_xlog_record(int pending_deletes_count)
 	int			buffer_size =
 	SizeOfXLogRecord + sizeof(size_t) + sizeof(PendingRelXactDelete) * pending_deletes_count;
 
-	char	   *buffer = palloc(buffer_size);
+	char	   *buffer = palloc0(buffer_size);
 	XLogRecord *record = (XLogRecord *) buffer;
-
-	MemSet(record, 0, SizeOfXLogRecord);
 
 	return record;
 }
@@ -982,13 +998,14 @@ test_18(void **state)
 	setup(18);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	gp_track_pending_delete = false;
 	PdlRedoAdd(&pd);
@@ -1031,13 +1048,14 @@ test_19(void **state)
 	setup(19);
 	ShmemVariableCache->oldestXid = (TransactionId) 1;
 
-	PendingRelXactDelete pd = {0};
-
-	pd.xid = (TransactionId) 1;
-	pd.relnode.isTempRelation = false;
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
-	pd.relnode.node.relNode = TEST_REL_OID1;
+	PendingRelXactDelete pd =
+	{
+		.xid = (TransactionId) 1,
+		.relnode.isTempRelation = false,
+		.relnode.node.spcNode = TEST_TABLESPACE_OID1,
+		.relnode.node.dbNode = TEST_DB_OID1,
+		.relnode.node.relNode = TEST_REL_OID1
+	};
 
 	Mode = BootstrapProcessing;
 	PdlRedoAdd(&pd);

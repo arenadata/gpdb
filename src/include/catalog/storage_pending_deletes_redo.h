@@ -1,3 +1,15 @@
+/*-------------------------------------------------------------------------
+ *
+ * storage.h
+ *	  prototypes for functions in backend/catalog/storage_pending_deletes_redo.c
+ *
+ * Copyright (c) 2025 Greengage Community
+ *
+ * IDENTIFICATION
+ * src/include/catalog/storage_pending_deletes_redo.h
+ *
+ *-------------------------------------------------------------------------
+ */
 #ifndef STORAGE_PENDING_DELETES_REDO_H
 #define STORAGE_PENDING_DELETES_REDO_H
 
