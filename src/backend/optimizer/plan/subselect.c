@@ -446,11 +446,8 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 
 	best_path = cdbllize_adjust_init_plan_path(root, best_path);
 
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		subroot->curSlice = palloc0(sizeof(PlanSlice));
-		subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
-	}
+	subroot->curSlice = palloc0(sizeof(PlanSlice));
+	subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
 
 	if (splan_is_initplan(plan_params, subLinkType))
 		unset_allow_append_initplan_for_function_scan();
@@ -510,11 +507,8 @@ make_subplan(PlannerInfo *root, Query *orig_subquery,
 				SubPlan    *hashplan;
 				AlternativeSubPlan *asplan;
 
-				if (Gp_role == GP_ROLE_DISPATCH)
-				{
-					subroot->curSlice = palloc0(sizeof(PlanSlice));
-					subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
-				}
+				subroot->curSlice = palloc0(sizeof(PlanSlice));
+				subroot->curSlice->gangType = GANGTYPE_UNALLOCATED;
 
 				/* OK, finish planning the ANY subquery */
 				plan = create_plan(subroot, best_path, subroot->curSlice);
