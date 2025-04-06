@@ -4444,7 +4444,11 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 		{
 			RelOptInfo *sub_final_rel;
 			GangType	saved_gangType = GANGTYPE_UNALLOCATED;
-			if (Gp_role == GP_ROLE_DISPATCH)
+			/*
+			 * Since topSlice is only initialized in the dispatcher role,
+			 * root->curSlice may be NULL in other roles. Check before accessing it.
+			 */
+			if (root->curSlice)
 			{
 				saved_gangType = root->curSlice->gangType;
 			}
@@ -4462,7 +4466,7 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			 * gets to the reader gang (it depends of tree traverse order
 			 * inside the apply_shareinput_dag_to_tree function)
 			 */
-			if (Gp_role == GP_ROLE_DISPATCH &&
+			if (root->curSlice &&
 				root->curSlice->gangType != saved_gangType &&
 				root->curSlice->gangType == GANGTYPE_PRIMARY_WRITER)
 				cteplaninfo->rootSliceIsWriter = true;
