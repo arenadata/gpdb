@@ -4446,8 +4446,9 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			GangType	saved_gangType = GANGTYPE_UNALLOCATED;
 			/*
 			 * Since topSlice is only initialized on the QD,
-			 * root->curSlice may be NULL in other roles. Check before accessing it.
+			 * root->curSlice may be NULL in other roles. Check it first.
 			 */
+			Assert(Gp_role != GP_ROLE_DISPATCH || root->curSlice != NULL);
 			if (root->curSlice)
 			{
 				saved_gangType = root->curSlice->gangType;
@@ -4464,9 +4465,11 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			 * ShareInputScan as writing slice creator, in order to prevent
 			 * the situation, when consumer gets to the writer gang and producer
 			 * gets to the reader gang (it depends of tree traverse order
-			 * inside the apply_shareinput_dag_to_tree function)
+			 * inside the apply_shareinput_dag_to_tree function). This only
+			 * applies on QD, where slice and gangType are assigned.
 			 */
-			if (root->curSlice &&
+			if (Gp_role == GP_ROLE_DISPATCH &&
+				root->curSlice &&
 				root->curSlice->gangType != saved_gangType &&
 				root->curSlice->gangType == GANGTYPE_PRIMARY_WRITER)
 				cteplaninfo->rootSliceIsWriter = true;
