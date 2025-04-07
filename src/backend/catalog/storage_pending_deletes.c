@@ -5,7 +5,6 @@
  *
  * Copyright (c) 2025 Greengage Community
  *
- * IDENTIFICATION
  *	  src/backend/catalog/storage_pending_deletes.c
  *
  *-------------------------------------------------------------------------

@@ -5,7 +5,6 @@
  *
  * Copyright (c) 2025 Greengage Community
  *
- * IDENTIFICATION
  * src/include/catalog/storage_pending_deletes.h
  *
  *-------------------------------------------------------------------------
@@ -17,7 +16,7 @@
 
 #include "storage/relfilenode.h"
 
-/* Pending delete node linked to xact it created */
+/* Pending delete node linked to xact which created it */
 typedef struct PendingRelXactDelete
 {
 	RelFileNodePendingDelete relnode;
@@ -26,7 +25,7 @@ typedef struct PendingRelXactDelete
 
 typedef struct PendingRelXactDeleteArray
 {
-	size_t		count;
+	Size		count;
 	PendingRelXactDelete array[FLEXIBLE_ARRAY_MEMBER];
 }	PendingRelXactDeleteArray;
 

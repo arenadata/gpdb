@@ -5,7 +5,6 @@
  *
  * Copyright (c) 2025 Greengage Community
  *
- * IDENTIFICATION
  * src/include/catalog/storage_pending_deletes_redo.h
  *
  *-------------------------------------------------------------------------

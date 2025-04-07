@@ -5,7 +5,6 @@
  *
  * Copyright (c) 2025 Greengage Community
  *
- * IDENTIFICATION
  *	  src/backend/catalog/test/storage_pending_deletes_redo_test.c
  *
  *-------------------------------------------------------------------------
@@ -271,7 +270,7 @@ __wrap_PdlXLogShmemDump(Size *size)
 	/* return something valid */
 	int			node_count = 1;
 
-	*size = sizeof(size_t) + sizeof(PendingRelXactDelete) * (node_count);
+	*size = sizeof(Size) + sizeof(PendingRelXactDelete) * (node_count);
 	char	   *buffer = palloc(*size);
 
 	PendingRelXactDeleteArray *pending_deletes =
@@ -302,7 +301,7 @@ __wrap_XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 	assert_int_equal(rdata->buffer, InvalidBuffer);
 	assert_false(rdata->buffer_std);
 	assert_true(rdata->next == NULL);
-	assert_true(rdata->len == (sizeof(size_t) + sizeof(PendingRelXactDelete)));
+	assert_true(rdata->len == (sizeof(Size) + sizeof(PendingRelXactDelete)));
 
 	PendingRelXactDeleteArray *pending_deletes =
 	(PendingRelXactDeleteArray *) rdata->data;
@@ -819,7 +818,7 @@ static XLogRecord *
 test_create_xlog_record(int pending_deletes_count)
 {
 	int			buffer_size =
-	SizeOfXLogRecord + sizeof(size_t) + sizeof(PendingRelXactDelete) * pending_deletes_count;
+	SizeOfXLogRecord + sizeof(Size) + sizeof(PendingRelXactDelete) * pending_deletes_count;
 
 	char	   *buffer = palloc0(buffer_size);
 	XLogRecord *record = (XLogRecord *) buffer;
