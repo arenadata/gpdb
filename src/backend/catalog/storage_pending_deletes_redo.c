@@ -15,7 +15,7 @@
 
 #include "access/clog.h"
 #include "access/transam.h"
-#include "catalog/storage_pending_deletes.h"
+#include "catalog/storage_pending_deletes_redo.h"
 #include "miscadmin.h"
 #include "storage/md.h"
 #include "utils/elog.h"

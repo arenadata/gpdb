@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * storage.h
+ * storage_pending_deletes_redo.h
  *	  prototypes for functions in backend/catalog/storage_pending_deletes_redo.c
  *
  * Copyright (c) 2025 Greengage Community
@@ -16,21 +16,7 @@
 #include "postgres.h"
 
 #include "access/xlog.h"
-#include "nodes/pg_list.h"
-#include "storage/relfilenode.h"
-
-/* Pending delete node linked to xact it created */
-typedef struct PendingRelXactDelete
-{
-	RelFileNodePendingDelete relnode;
-	TransactionId xid;
-}	PendingRelXactDelete;
-
-typedef struct PendingRelXactDeleteArray
-{
-	size_t		count;
-	PendingRelXactDelete array[FLEXIBLE_ARRAY_MEMBER];
-}	PendingRelXactDeleteArray;
+#include "catalog/storage_pending_deletes.h"
 
 extern void PdlXLogInsert(void);
 
