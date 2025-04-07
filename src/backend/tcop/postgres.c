@@ -1572,7 +1572,6 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 
 	foreach(lc, guc_list)
 	{
-		bool is_success = true;
 		struct config_generic* gconfig = (struct config_generic *)lfirst(lc);
 
 		/*
@@ -1591,30 +1590,41 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		}
 		PG_CATCH();
 		{
+			/*
+			 * report error as warning 
+			*/
 			if (!elog_dismiss(WARNING))
+			{
 				PG_RE_THROW();
+			}
 
-			is_success = false;
-
-			MemoryContextSwitchTo(oldcontext);
-		}
-		PG_END_TRY();
-
-		/*
-		 * Can't continue the transaction or keep the gang alive if GUCs are out
-		 * of sync. Explode!
-		 */
-		if (!is_success)
-		{
+			/* if some guc can not restore successful
+			 * we can not keep alive gang anymore.
+			 */
 			DisconnectAndDestroyAllGangs(true);
+
+			/*
+			 * when qe elog an error, qd will use ReThrowError to
+			 * re throw the error, the errordata_stack_depth will ++,
+			 * when we catch the error we should reset errordata_stack_depth
+			 * by FlushErrorState.
+			 */
+			FlushErrorState();
 
 			ereport(
 				ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("failed to synchronize GUC settings across segments"),
-				 errdetail("Query aborted due to GUC synchronization failure"),
-				 errhint("Check segment logs for more details")));
+					errmsg("failed to synchronize GUC settings across segments"),
+					errdetail("Query aborted due to GUC synchronization failure"),
+					errhint("Check segment logs for more details")));
+
+			/*
+			 * this is a top-level catch block and we are responsible for
+			 * restoring the right memory context.
+			*/	 					
+			MemoryContextSwitchTo(oldcontext);
 		}
+		PG_END_TRY();
 	}
 
 	finish_xact_command();
