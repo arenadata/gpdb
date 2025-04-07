@@ -317,16 +317,16 @@ $cur_primary->psql('postgres', "COMMIT PREPARED 'xact_009_12'");
 # primary is down.
 ###############################################################################
 
-$cur_master->psql(
+$cur_primary->psql(
 	'postgres', "
 	CREATE TABLE t_009_tbl_standby_mvcc (id int, msg text);
 	BEGIN;
-	INSERT INTO t_009_tbl_standby_mvcc VALUES (1, 'issued to ${cur_master_name}');
+	INSERT INTO t_009_tbl_standby_mvcc VALUES (1, 'issued to ${cur_primary_name}');
 	SAVEPOINT s1;
-	INSERT INTO t_009_tbl_standby_mvcc VALUES (2, 'issued to ${cur_master_name}');
+	INSERT INTO t_009_tbl_standby_mvcc VALUES (2, 'issued to ${cur_primary_name}');
 	PREPARE TRANSACTION 'xact_009_standby_mvcc';
 	");
-$cur_master->stop;
+$cur_primary->stop;
 $cur_standby->restart;
 
 # Acquire a snapshot in standby, before we commit the prepared transaction
@@ -338,8 +338,8 @@ is($psql_out, '0',
 	"Prepared transaction not visible in standby before commit");
 
 # Commit the transaction in primary
-$cur_master->start;
-$cur_master->psql('postgres', "
+$cur_primary->start;
+$cur_primary->psql('postgres', "
 SET synchronous_commit='remote_apply'; -- To ensure the standby is caught up
 COMMIT PREPARED 'xact_009_standby_mvcc';
 ");
