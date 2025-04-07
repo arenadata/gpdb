@@ -389,8 +389,11 @@ ProcessConfigFileInternal(GucContext context, bool return_changed)
 		if (item->ignore)
 			continue;
 
-		/* In SIGHUP cases in the postmaster, we want to report changes */
-		if (context == PGC_SIGHUP && !IsUnderPostmaster)
+		/*
+		 * In SIGHUP cases in the postmaster, we want to report changes.
+		 * GPDB: if return_changed we need save pre_value too.
+		 */
+		if ((context == PGC_SIGHUP && !IsUnderPostmaster) || return_changed)
 		{
 			const char *preval = GetConfigOption(item->name, true, false);
 
@@ -414,16 +417,20 @@ ProcessConfigFileInternal(GucContext context, bool return_changed)
 				if (!post_value)
 					post_value = "";
 				if (strcmp(pre_value, post_value) != 0)
-					ereport(elevel,
-							(errmsg("parameter \"%s\" changed to \"%s\"",
-									item->name, item->value)));
-			}
+				{
 
-			if (return_changed)
-			{
-				struct config_generic *gconf = find_option(item->name, false, elevel);
-				if (gconf != NULL)
-					changed_gucs = lappend(changed_gucs, gconf);
+					if (context == PGC_SIGHUP && !IsUnderPostmaster)
+						ereport(elevel,
+								(errmsg("parameter \"%s\" changed to \"%s\"",
+										item->name, item->value)));
+
+					if (return_changed)
+					{
+						struct config_generic *gconf = find_option(item->name, false, elevel);
+						if (gconf != NULL)
+							changed_gucs = lappend(changed_gucs, gconf);
+					}
+				}
 			}
 		}
 		else if (scres == 0)
