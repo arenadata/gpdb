@@ -6,15 +6,15 @@ SELECT dbms_random.initialize(8);
 (1 row)
 
 SELECT dbms_random.normal()::numeric(10, 8);
-   normal    
--------------
- -0.49725878
+   normal   
+------------
+ 0.12583199
 (1 row)
 
 SELECT dbms_random.normal()::numeric(10, 8);
    normal    
 -------------
- -0.01196404
+ -0.61543969
 (1 row)
 
 SELECT dbms_random.seed(8);
