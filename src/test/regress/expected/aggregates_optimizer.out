@@ -1255,25 +1255,27 @@ drop cascades to table minmaxtest3
 -- in the postgres planner
 begin;
 set local enable_sort = off;
-create temp table int4_tbl_repl as select * from int4_tbl distributed replicated;
 explain (costs off)
-  select f1, (select distinct min(t1.f1) from int4_tbl_repl t1 where t1.f1 = t0.f1)
-  from int4_tbl_repl t0;
-                       QUERY PLAN                       
---------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   ->  Seq Scan on int4_tbl_repl t0
+  select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+  from int4_tbl t0;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on int4_tbl t0
          SubPlan 1
            ->  GroupAggregate
                  Group Key: min(t1.f1)
                  ->  Aggregate
-                       ->  Seq Scan on int4_tbl_repl t1
-                             Filter: (f1 = t0.f1)
+                       ->  Result
+                             Filter: (t1.f1 = t0.f1)
+                             ->  Materialize
+                                   ->  Broadcast Motion 3:3  (slice2; segments: 3)
+                                         ->  Seq Scan on int4_tbl t1
  Optimizer: GPORCA
-(9 rows)
+(12 rows)
 
-select f1, (select distinct min(t1.f1) from int4_tbl_repl t1 where t1.f1 = t0.f1)
-from int4_tbl_repl t0;
+select f1, (select distinct min(t1.f1) from int4_tbl t1 where t1.f1 = t0.f1)
+from int4_tbl t0;
      f1      |     min     
 -------------+-------------
       123456 |      123456
