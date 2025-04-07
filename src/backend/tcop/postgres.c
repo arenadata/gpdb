@@ -1592,9 +1592,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		PG_CATCH();
 		{
 			if (!elog_dismiss(WARNING))
-				EmitErrorReport();
-
-			FlushErrorState();
+				PG_RE_THROW();
 
 			is_success = false;
 
