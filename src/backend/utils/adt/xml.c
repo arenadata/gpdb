@@ -1863,7 +1863,7 @@ xml_errorHandler(void *data, PgXmlErrorPtr error)
 			if (error->code == XML_ERR_NOT_WELL_BALANCED &&
 				xmlerrcxt->err_occurred)
 				return;
-			/* fall through */
+			fallthru;
 
 		case XML_FROM_NONE:
 		case XML_FROM_MEMORY:

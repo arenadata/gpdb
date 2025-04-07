@@ -480,7 +480,7 @@ SELECT * FROM trigger_test_generated;
 
 -- recursive call of a trigger mustn't corrupt TD (bug #18456)
 
-CREATE TABLE recursive_trigger_test (a int, b int);
+CREATE TABLE recursive_trigger_test (a int, b int) DISTRIBUTED BY (b);
 
 CREATE FUNCTION recursive_trigger_func() RETURNS trigger
 LANGUAGE plpythonu
@@ -497,6 +497,6 @@ CREATE TRIGGER recursive_trigger_trig
   AFTER INSERT OR UPDATE ON recursive_trigger_test
   FOR EACH ROW EXECUTE PROCEDURE recursive_trigger_func();
 
-INSERT INTO recursive_trigger_test VALUES (0, 0);
-UPDATE recursive_trigger_test SET a = 11 WHERE b = 0;
-SELECT * FROM recursive_trigger_test;
+\! PGOPTIONS='-c gp_role=utility' psql -X pl_regression -c "INSERT INTO recursive_trigger_test VALUES (0, 0);"
+\! PGOPTIONS='-c gp_role=utility' psql -X pl_regression -c "UPDATE recursive_trigger_test SET a = 11 WHERE b = 0;"
+\! PGOPTIONS='-c gp_role=utility' psql -X pl_regression -c "SELECT * FROM recursive_trigger_test;"
