@@ -35,6 +35,6 @@ typedef struct PendingRelXactDeleteArray
  * Note: the returned result is always palloc'ed. Caller is responsible for
  * freeing it.
  */
-PendingRelXactDeleteArray *PdlXLogShmemDump(Size *size);
+extern PendingRelXactDeleteArray *PdlXLogShmemDump(Size *size);
 
 #endif   /* STORAGE_PENDING_DELETES_H */
