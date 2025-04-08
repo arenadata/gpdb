@@ -4448,11 +4448,9 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			 * Since topSlice is only initialized on the QD,
 			 * root->curSlice may be NULL in other roles. Check it first.
 			 */
-			Assert(Gp_role != GP_ROLE_DISPATCH || root->curSlice != NULL);
-			if (root->curSlice)
-			{
+			AssertImply(Gp_role == GP_ROLE_DISPATCH, root->curSlice != NULL);
+			if (Gp_role == GP_ROLE_DISPATCH && root->curSlice != NULL)
 				saved_gangType = root->curSlice->gangType;
-			}
 
 			sub_final_rel = fetch_upper_rel(best_path->parent->subroot, UPPERREL_FINAL, NULL);
 			subplan = create_plan(best_path->parent->subroot, sub_final_rel->cheapest_total_path, root->curSlice);
@@ -4469,7 +4467,7 @@ create_ctescan_plan(PlannerInfo *root, Path *best_path,
 			 * applies on QD, where slice and gangType are assigned.
 			 */
 			if (Gp_role == GP_ROLE_DISPATCH &&
-				root->curSlice &&
+				root->curSlice != NULL &&
 				root->curSlice->gangType != saved_gangType &&
 				root->curSlice->gangType == GANGTYPE_PRIMARY_WRITER)
 				cteplaninfo->rootSliceIsWriter = true;
