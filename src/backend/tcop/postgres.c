@@ -1621,7 +1621,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 			/*
 			 * this is a top-level catch block and we are responsible for
 			 * restoring the right memory context.
-			*/	 					
+			 */
 			MemoryContextSwitchTo(oldcontext);
 		}
 		PG_END_TRY();

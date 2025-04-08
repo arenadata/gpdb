@@ -736,6 +736,7 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
 --start_ignore
 \!gpconfig -r log_min_messages
+\!gpstop -u
 --end_ignore
 
 RESET SESSION AUTHORIZATION;

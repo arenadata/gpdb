@@ -1220,9 +1220,6 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  Success:
 (1 row)
 
---start_ignore
-\!gpstop -u
---end_ignore
 -- Table is gone after an error.
 DROP TABLE gang_is_the_same;
 WARNING:  fault triggered, fault name:'dispatch_set_command' fault type:'error'
