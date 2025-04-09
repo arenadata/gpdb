@@ -1337,7 +1337,7 @@ CStatisticsUtils::AddNdvForAllGrpCols(
 		if (NULL != histogram)
 		{
 			distinct_vals = histogram->GetNumDistinct();
-			if (histogram->IsEmpty())
+			if (histogram->IsEmpty() || histogram->IsColStatsMissing())
 			{
 				distinct_vals = DefaultDistinctVals(input_stats->Rows());
 			}
