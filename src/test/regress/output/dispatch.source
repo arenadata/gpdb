@@ -1240,14 +1240,14 @@ DROP ROLE dispatch_test_user2;
 -- connect to postgres database to reproduce unchanged GUCs sending
 \c postgres
 -- set log_duration to view `SELECT pg_catalog.set_config` in log on segment
--- this command should send on segments only changed GUCs
+-- this command should send only changed GUCs to segments
 SELECT 1;
  ?column? 
 ----------
         1
 (1 row)
 
--- check sended GUCs on segment 0
+-- check sent GUCs on segment 0
 SELECT logdebug FROM gp_toolkit.__gp_log_segment_ext
 WHERE logdatabase = current_database()
 AND logseverity = 'LOG'
