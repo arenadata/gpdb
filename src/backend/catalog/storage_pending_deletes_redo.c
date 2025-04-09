@@ -35,6 +35,12 @@ typedef struct PendingDeleteHtabNode
  */
 static HTAB *pendingDeletesRedo = NULL;
 
+static bool
+PdlTrackingDisabled()
+{
+	return IsBootstrapProcessingMode() || !gp_track_pending_delete;
+}
+
 /*
  * This function inserts XLOG_PENDING_DELETE record into WAL.
  */
@@ -43,7 +49,7 @@ PdlXLogInsert()
 {
 	Size		size = 0;
 
-	if (IsBootstrapProcessingMode() || !gp_track_pending_delete)
+	if (PdlTrackingDisabled())
 		return;
 
 	PendingRelXactDeleteArray *arr = PdlXLogShmemDump(&size);
@@ -79,9 +85,7 @@ PdlRedoAdd(PendingRelXactDelete * pd)
 {
 	Assert(pd);
 
-	if (IsBootstrapProcessingMode() ||
-		(pd->xid == InvalidTransactionId) ||
-		!gp_track_pending_delete)
+	if (PdlTrackingDisabled() || (pd->xid == InvalidTransactionId))
 		return;
 
 	if (NULL == pendingDeletesRedo)
@@ -100,8 +104,8 @@ PdlRedoAdd(PendingRelXactDelete * pd)
 
 	bool		found = false;
 
-	PendingDeleteHtabNode *entry =
-	(PendingDeleteHtabNode *) hash_search(pendingDeletesRedo, &pd->xid, HASH_ENTER, &found);
+	PendingDeleteHtabNode *entry = (PendingDeleteHtabNode *)
+		hash_search(pendingDeletesRedo, &pd->xid, HASH_ENTER, &found);
 
 	if (!found)
 	{
@@ -109,7 +113,8 @@ PdlRedoAdd(PendingRelXactDelete * pd)
 		entry->relnode_list = NIL;
 	}
 
-	RelFileNodePendingDelete *data = (RelFileNodePendingDelete *) palloc(sizeof(*data));
+	RelFileNodePendingDelete *data = (RelFileNodePendingDelete *)
+		palloc(sizeof(*data));
 
 	*data = pd->relnode;
 	entry->relnode_list = lappend(entry->relnode_list, data);
@@ -123,10 +128,11 @@ PdlRedoXLogRecord(XLogRecord *record)
 {
 	Assert(record);
 
-	if (IsBootstrapProcessingMode() || !gp_track_pending_delete)
+	if (PdlTrackingDisabled())
 		return;
 
-	PendingRelXactDeleteArray *arr = (PendingRelXactDeleteArray *) XLogRecGetData(record);
+	PendingRelXactDeleteArray *arr = (PendingRelXactDeleteArray *)
+		XLogRecGetData(record);
 
 	TransactionId oldest_xid = ShmemVariableCache->oldestXid;
 
@@ -134,7 +140,7 @@ PdlRedoXLogRecord(XLogRecord *record)
 
 	for (int i = 0; i < arr->count; i++)
 	{
-		PendingRelXactDelete *pd = (PendingRelXactDelete *) &(arr->array[i]);
+		PendingRelXactDelete *pd = &(arr->array[i]);
 
 		/*
 		 * This function should check transaction status before adding
@@ -159,7 +165,9 @@ PdlRedoXLogRecord(XLogRecord *record)
 		 */
 
 		if (TransactionIdPrecedes(pd->xid, oldest_xid))
-			elog(WARNING, "Prevented adding node for XLOG_PENDING_DELETE record for xid: %u, oldestXid: %u",
+			elog(WARNING,
+				 "Prevented adding node for XLOG_PENDING_DELETE "
+				 "record for xid: %u, oldestXid: %u",
 				 pd->xid, oldest_xid);
 		else
 		{
@@ -169,7 +177,9 @@ PdlRedoXLogRecord(XLogRecord *record)
 			if (status == TRANSACTION_STATUS_IN_PROGRESS)
 				PdlRedoAdd(pd);
 			else
-				elog(WARNING, "Prevented adding node for XLOG_PENDING_DELETE record for xid: %u, status: %d",
+				elog(WARNING,
+					 "Prevented adding node for XLOG_PENDING_DELETE "
+					 "record for xid: %u, status: %d",
 					 pd->xid, status);
 		}
 	}
@@ -198,8 +208,7 @@ void
 PdlRedoRemoveTree(TransactionId xid,
 				  TransactionId *sub_xids, int nsubxacts)
 {
-	if (IsBootstrapProcessingMode() ||
-		!gp_track_pending_delete)
+	if (PdlTrackingDisabled())
 		return;
 
 	for (int i = 0; i < nsubxacts; i++)
@@ -219,24 +228,29 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 
 	foreach(cell, hnode->relnode_list)
 	{
-		RelFileNodePendingDelete *pending_delete_node = (RelFileNodePendingDelete *) lfirst(cell);
+		RelFileNodePendingDelete *pending_delete_node =
+			(RelFileNodePendingDelete *) lfirst(cell);
 		ListCell   *i_cell = lnext(cell);
 		ListCell   *i_cell_prev = cell;
 
 		while (i_cell)
 		{
 			ListCell   *i_cell_next = lnext(i_cell);
-			RelFileNodePendingDelete *i_relnode = (RelFileNodePendingDelete *) lfirst(i_cell);
+			RelFileNodePendingDelete *i_relnode =
+				(RelFileNodePendingDelete *) lfirst(i_cell);
 
 			if (RelFileNodeEquals(pending_delete_node->node, i_relnode->node))
 			{
-				elog(DEBUG1, "Duplicate pending delete node found: (rel: (%u: %u: %u); xid: %u)",
+				elog(DEBUG1,
+					 "Duplicate pending delete node found: "
+					 "(rel: (%u: %u: %u); xid: %u)",
 					 pending_delete_node->node.spcNode,
 					 pending_delete_node->node.dbNode,
 					 pending_delete_node->node.relNode,
 					 hnode->xid);
 
-				hnode->relnode_list = list_delete_cell(hnode->relnode_list, i_cell, i_cell_prev);
+				hnode->relnode_list =
+					list_delete_cell(hnode->relnode_list, i_cell, i_cell_prev);
 				pfree(i_relnode);
 			}
 			else
@@ -261,7 +275,8 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 
 	foreach_with_count(cell, hnode->relnode_list, i)
 	{
-		RelFileNodePendingDelete *pending_delete_node = (RelFileNodePendingDelete *) lfirst(cell);
+		RelFileNodePendingDelete *pending_delete_node =
+			(RelFileNodePendingDelete *) lfirst(cell);
 
 		elog(LOG, "Prepare to drop node (%u: %u: %u) for xid: %u",
 			 pending_delete_node->node.spcNode,
@@ -281,8 +296,7 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 void
 PdlRedoDropFiles()
 {
-	if (IsBootstrapProcessingMode() ||
-		!gp_track_pending_delete ||
+	if (PdlTrackingDisabled() ||
 		(NULL == pendingDeletesRedo) ||
 		(hash_get_num_entries(pendingDeletesRedo) == 0))
 		return;
@@ -308,10 +322,16 @@ PdlRedoDropFiles()
 			else
 			{
 				int			ndelrels = 0;
-				RelFileNodePendingDelete *delrels = PdlRedoPrepareArrayForDrop(node, &ndelrels);
+				RelFileNodePendingDelete *delrels =
+					PdlRedoPrepareArrayForDrop(node, &ndelrels);
 
 				DropRelationFiles(delrels, ndelrels, true);
-				elog(LOG, "Pending delete rels were dropped (count: %d; xid: %d).", ndelrels, node->xid);
+
+				elog(LOG,
+					 "Pending delete rels were dropped (count: %d; xid: %d).",
+					 ndelrels,
+					 node->xid);
+
 				pfree(delrels);
 			}
 		}

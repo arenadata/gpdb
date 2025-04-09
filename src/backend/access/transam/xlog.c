@@ -7506,16 +7506,7 @@ StartupXLOG(void)
 				 * xlogreader in this function.
 				 */
 				if (record->xl_rmid == RM_XLOG_ID)
-				{
 					VerifyOverwriteContrecord(record, xlogreader);
-
-					/*
-					 * TODO: add call to PdlRedoDropFiles() when
-					 * RemovePendingDeletesForPreparedTransactions() is
-					 * implemented. It should be called right before PdlRedoDropFiles().
-					 * Without it test 'crash_recovery_dtm' fails.
-					 */
-				}
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
@@ -7978,13 +7969,6 @@ StartupXLOG(void)
 			CreateCheckPoint(CHECKPOINT_END_OF_RECOVERY | CHECKPOINT_IMMEDIATE);
 
 		UtilityModeCloseDtmRedoFile();
-
-		/*
-		 * TODO: add call to PdlRedoDropFiles() when
-		 * RemovePendingDeletesForPreparedTransactions() is
-		 * implemented. It should be called right before PdlRedoDropFiles().
-		 * Without it test 'crash_recovery_dtm' fails.
-		 */
 
 		/*
 		 * And finally, execute the recovery_end_command, if any.
