@@ -262,7 +262,6 @@ pg_lock_status(PG_FUNCTION_ARGS)
 
 	funcctx = SRF_PERCALL_SETUP();
 	mystatus = (PG_Lock_Status *) funcctx->user_fctx;
-
 	lockData = mystatus->lockData;
 
 	/*
