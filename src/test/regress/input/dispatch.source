@@ -743,3 +743,24 @@ RESET SESSION AUTHORIZATION;
 
 DROP FUNCTION show_on_segments(show_name text);
 DROP ROLE dispatch_test_user2;
+
+\c postgres
+--start_ignore
+\! gpconfig -c log_duration -v on
+\! gpstop -u
+--end_ignore
+
+SELECT 1;
+
+SELECT logdebug FROM gp_toolkit.__gp_log_segment_ext
+WHERE logdatabase = current_database()
+AND logseverity = 'LOG'
+AND logsegment = 'seg0'
+AND logsession = 'con' || current_setting('gp_session_id')
+AND logdebug LIKE 'SELECT pg_catalog.set_config(%';
+
+--start_ignore
+\! gpconfig -r log_duration
+\! gpstop -u
+--end_ignore
+\c regression

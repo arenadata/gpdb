@@ -1237,3 +1237,22 @@ FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 RESET SESSION AUTHORIZATION;
 DROP FUNCTION show_on_segments(show_name text);
 DROP ROLE dispatch_test_user2;
+\c postgres
+SELECT 1;
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT logdebug FROM gp_toolkit.__gp_log_segment_ext
+WHERE logdatabase = current_database()
+AND logseverity = 'LOG'
+AND logsegment = 'seg0'
+AND logsession = 'con' || current_setting('gp_session_id')
+AND logdebug LIKE 'SELECT pg_catalog.set_config(%';
+                          logdebug                           
+-------------------------------------------------------------
+ SELECT pg_catalog.set_config('log_duration', 'true', false)
+(1 row)
+
+\c regression
