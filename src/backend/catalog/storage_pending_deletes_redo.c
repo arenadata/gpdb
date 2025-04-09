@@ -36,8 +36,7 @@ typedef struct PendingDeleteHtabNode
 static HTAB *pendingDeletesRedo = NULL;
 
 /*
- * This function inserts XLOG_PENDING_DELETE record into WAL. It is called
- * during checkpoint creation.
+ * This function inserts XLOG_PENDING_DELETE record into WAL.
  */
 void
 PdlXLogInsert()
@@ -73,9 +72,7 @@ PdlXLogInsert()
 
 /*
  * This function adds pending delete node to a pendingDeletesRedo hash-table
- * during WAL redo processing. It is called when:
- *	1. XLOG_SMGR_CREATE xlog message is replayed by smrg_redo;
- *	2. XLOG_PENDING_DELETE xlog message is replayed by PdlRedoXLogRecord.
+ * during WAL redo processing.
  */
 void
 PdlRedoAdd(PendingRelXactDelete * pd)
@@ -181,10 +178,8 @@ PdlRedoXLogRecord(XLogRecord *record)
 static void
 PdlRedoRemove(TransactionId xid)
 {
-	if (IsBootstrapProcessingMode() ||
-		(xid == InvalidTransactionId) ||
-		(NULL == pendingDeletesRedo) ||
-		!gp_track_pending_delete)
+	if ((xid == InvalidTransactionId) ||
+		(NULL == pendingDeletesRedo))
 		return;
 
 	PendingDeleteHtabNode *entry = (PendingDeleteHtabNode *)
@@ -197,16 +192,13 @@ PdlRedoRemove(TransactionId xid)
 /*
  * This function removes pending delete nodes from redo hash-table
  * (pendingDeleteRedo) for a given transaction identified by it's xid and
- * sub-transactions (if there are). It is called from xact_redo_commit_internal,
- * xact_redo_distributed_commit or xact_redo_abort.
- * (TODO: and RemovePendingDeletesForPreparedTransactions)
+ * sub-transactions (if there are).
  */
 void
 PdlRedoRemoveTree(TransactionId xid,
 				  TransactionId *sub_xids, int nsubxacts)
 {
 	if (IsBootstrapProcessingMode() ||
-		(xid == InvalidTransactionId) ||
 		!gp_track_pending_delete)
 		return;
 
@@ -284,8 +276,7 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 }
 
 /*
- * This function deletes files for pending delete nodes. It is called from
- * StartupXLOG().
+ * This function deletes files for pending delete nodes.
  */
 void
 PdlRedoDropFiles()
