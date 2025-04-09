@@ -7,16 +7,16 @@ CREATE TABLE t_part(i int) PARTITION BY RANGE (i) (START (0) END (5) EVERY (1));
 CREATE
 
 -- Create a lot of locks.
-2: BEGIN;
+1: BEGIN;
 BEGIN
-2: LOCK TABLE t_part IN ACCESS EXCLUSIVE MODE;
+1: LOCK TABLE t_part IN ACCESS EXCLUSIVE MODE;
 LOCK
 
 --
 -- Test pg_locks view behavior.
 --
 
-1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid), gp_inject_fault('pg_lock_status_squelched', 'error', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid), gp_inject_fault('pg_lock_status_squelched', 'error', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  gp_inject_fault | gp_inject_fault 
 -----------------+-----------------
  Success:        | Success:        
@@ -29,13 +29,13 @@ SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
  f 
 (1 row)
 
-1: SELECT gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
+SELECT gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
  gp_wait_until_triggered_fault 
 -------------------------------
  Success:                      
 (1 row)
 
-1: SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  gp_inject_fault 
 -----------------
  Success:        
@@ -46,7 +46,7 @@ SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
 -- only from coordinator.
 --
 
-1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'error', dbid), gp_inject_fault('pg_lock_status_squelched', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'error', dbid), gp_inject_fault('pg_lock_status_squelched', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  gp_inject_fault | gp_inject_fault 
 -----------------+-----------------
  Success:        | Success:        
@@ -60,13 +60,13 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
  f 
 (1 row)
 
-1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
+SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
  gp_wait_until_triggered_fault 
 -------------------------------
  Success:                      
 (1 row)
 
-1: SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  gp_inject_fault 
 -----------------
  Success:        
@@ -77,7 +77,7 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
 -- both from coordinator and from segments.
 --
 
-1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid), gp_inject_fault('pg_lock_status_squelched', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid), gp_inject_fault('pg_lock_status_squelched', 'skip', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  gp_inject_fault | gp_inject_fault 
 -----------------+-----------------
  Success:        | Success:        
@@ -100,19 +100,19 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 10;
  f 
 (10 rows)
 
-1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid), gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
+SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid), gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid) FROM gp_segment_configuration WHERE role = 'p' and content = -1;
  gp_wait_until_triggered_fault | gp_wait_until_triggered_fault 
 -------------------------------+-------------------------------
  Success:                      | Success:                      
 (1 row)
 
-1: SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
+SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
  gp_inject_fault 
 -----------------
  Success:        
 (1 row)
 
-2: ROLLBACK;
+1: ROLLBACK;
 ROLLBACK
 
 DROP TABLE t_part;

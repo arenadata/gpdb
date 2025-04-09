@@ -6,24 +6,24 @@ CREATE TABLE t_part(i int)
 PARTITION BY RANGE (i) (START (0) END (5) EVERY (1));
 
 -- Create a lot of locks.
-2: BEGIN;
-2: LOCK TABLE t_part IN ACCESS EXCLUSIVE MODE;
+1: BEGIN;
+1: LOCK TABLE t_part IN ACCESS EXCLUSIVE MODE;
 
 --
 -- Test pg_locks view behavior.
 --
 
-1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid),
+SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid),
           gp_inject_fault('pg_lock_status_squelched', 'error', dbid)
    FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
 -- Materializes everything regardless of LIMIT clause, as of now.
 SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
 
-1: SELECT gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid)
+SELECT gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid)
    FROM gp_segment_configuration WHERE role = 'p' and content = -1;
 
-1: SELECT gp_inject_fault('all', 'reset', dbid)
+SELECT gp_inject_fault('all', 'reset', dbid)
    FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
 --
@@ -31,7 +31,7 @@ SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
 -- only from coordinator.
 --
 
-1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'error', dbid),
+SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'error', dbid),
           gp_inject_fault('pg_lock_status_squelched', 'skip', dbid)
    FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
@@ -39,10 +39,10 @@ SELECT locktype = 'nothing' AS f FROM pg_locks LIMIT 1;
 -- coordinator.
 SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
 
-1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid)
+SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid)
    FROM gp_segment_configuration WHERE role = 'p' and content = -1;
 
-1: SELECT gp_inject_fault('all', 'reset', dbid)
+SELECT gp_inject_fault('all', 'reset', dbid)
    FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
 --
@@ -50,7 +50,7 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
 -- both from coordinator and from segments.
 --
 
-1: SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid),
+SELECT gp_inject_fault('pg_lock_status_local_locks_collected', 'skip', dbid),
           gp_inject_fault('pg_lock_status_squelched', 'skip', dbid)
    FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
@@ -58,13 +58,13 @@ SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 1;
 -- squelched.
 SELECT pg_lock_status()::text = 'nothing' AS f LIMIT 10;
 
-1: SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid),
+SELECT gp_wait_until_triggered_fault('pg_lock_status_squelched', 1, dbid),
           gp_wait_until_triggered_fault('pg_lock_status_local_locks_collected', 1, dbid)
    FROM gp_segment_configuration WHERE role = 'p' and content = -1;
 
-1: SELECT gp_inject_fault('all', 'reset', dbid)
+SELECT gp_inject_fault('all', 'reset', dbid)
    FROM gp_segment_configuration WHERE role = 'p' AND content = -1;
 
-2: ROLLBACK;
+1: ROLLBACK;
 
 DROP TABLE t_part;
