@@ -1,14 +1,15 @@
 -- start_ignore
+CREATE EXTENSION gp_inject_fault;
+DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
+DROP ROLE role_oom_test;
+DROP RESOURCE GROUP rg_oom_test;
+-- end_ignore
 CREATE RESOURCE GROUP rg_oom_test
 WITH (cpu_rate_limit=20, memory_limit=20, memory_shared_quota=100);
 CREATE ROLE role_oom_test RESOURCE GROUP rg_oom_test;
-
-CREATE EXTENSION gp_inject_fault;
-
 CREATE OR REPLACE FUNCTION gp_mock_cdbdispatchcommand(amount int)
 RETURNS SETOF text AS '@abs_srcdir@/../regress/regress.so',
 'gp_mock_cdbdispatchcommand' LANGUAGE C;
--- end_ignore
 
 1: SET ROLE TO role_oom_test;
 
@@ -40,9 +41,6 @@ gp_segment_configuration WHERE role = 'p' AND content = -1;
 ALTER RESOURCE GROUP rg_oom_test SET memory_shared_quota 0;
 1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(10000000);
 
--- start_ignore
 DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
-
 DROP ROLE role_oom_test;
 DROP RESOURCE GROUP rg_oom_test;
--- end_ignore
