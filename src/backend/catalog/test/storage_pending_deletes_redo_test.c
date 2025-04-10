@@ -669,7 +669,7 @@ test_9(void **state)
 
 /*
  * Scenario:
- * add several pending delete node with the same xid
+ * add several pending delete nodes with the same xid
  * and remove pending deletes for that xid
  * and then drop files.
  */
@@ -690,13 +690,10 @@ test_10(void **state)
 
 	PdlRedoAdd(&pd);
 
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	pd.relnode.node.dbNode = TEST_DB_OID1;
 	pd.relnode.node.relNode = TEST_REL_OID2;
 
 	PdlRedoAdd(&pd);
 
-	pd.relnode.node.spcNode = TEST_TABLESPACE_OID1;
 	pd.relnode.node.dbNode = TEST_DB_OID2;
 	pd.relnode.node.relNode = TEST_REL_OID1;
 
@@ -711,7 +708,7 @@ test_10(void **state)
 
 /*
  * Scenario:
- * add several pending delete node with the different xids
+ * add several pending delete nodes with the different xids
  * and remove pending deletes for one of the xids
  * and then drop files.
  */
@@ -771,7 +768,7 @@ test_11(void **state)
 
 /*
  * Scenario:
- * add several pending delete node with the different xids
+ * add several pending delete nodes with the different xids
  * and remove pending deletes for one of the xids + some sub_xids
  * and then drop files.
  */

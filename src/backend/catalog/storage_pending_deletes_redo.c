@@ -165,10 +165,10 @@ PdlRedoXLogRecord(XLogRecord *record)
 		 */
 
 		if (TransactionIdPrecedes(pd->xid, oldest_xid))
-			elog(WARNING,
-				 "Prevented adding node for XLOG_PENDING_DELETE "
-				 "record for xid: %u, oldestXid: %u",
-				 pd->xid, oldest_xid);
+			ereport(LOG, (errmsg(
+					"Prevented adding node for XLOG_PENDING_DELETE "
+					"record for xid: %u, oldestXid: %u",
+					pd->xid, oldest_xid)));
 		else
 		{
 			XLogRecPtr	result;
@@ -177,10 +177,10 @@ PdlRedoXLogRecord(XLogRecord *record)
 			if (status == TRANSACTION_STATUS_IN_PROGRESS)
 				PdlRedoAdd(pd);
 			else
-				elog(WARNING,
-					 "Prevented adding node for XLOG_PENDING_DELETE "
-					 "record for xid: %u, status: %d",
-					 pd->xid, status);
+				ereport(LOG, (errmsg(
+						"Prevented adding node for XLOG_PENDING_DELETE "
+						"record for xid: %u, status: %d",
+						pd->xid, status)));
 		}
 	}
 }
@@ -264,7 +264,7 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 
 	if (*ndelrels <= 0)
 	{
-		elog(WARNING, "Empty list for xid: %u", hnode->xid);
+		ereport(WARNING, (errmsg("Empty list for xid: %u", hnode->xid)));
 		return NULL;
 	}
 
@@ -278,11 +278,12 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 		RelFileNodePendingDelete *pending_delete_node =
 			(RelFileNodePendingDelete *) lfirst(cell);
 
-		elog(LOG, "Prepare to drop node (%u: %u: %u) for xid: %u",
-			 pending_delete_node->node.spcNode,
-			 pending_delete_node->node.dbNode,
-			 pending_delete_node->node.relNode,
-			 hnode->xid);
+		ereport(LOG, (errmsg(
+				"Prepare to drop node (%u: %u: %u) for xid: %u",
+				pending_delete_node->node.spcNode,
+				pending_delete_node->node.dbNode,
+				pending_delete_node->node.relNode,
+				hnode->xid)));
 
 		delrels[i] = *pending_delete_node;
 	}
@@ -309,16 +310,18 @@ PdlRedoDropFiles()
 	while ((node = (PendingDeleteHtabNode *) hash_seq_search(&scan_status)) != NULL)
 	{
 		if (TransactionIdPrecedes(node->xid, oldest_xid))
-			elog(WARNING, "Prevented drop files for xid: %u, oldestXid: %u",
-				 node->xid, oldest_xid);
+			ereport(WARNING, (errmsg(
+					"Prevented drop files for xid: %u, oldestXid: %u",
+					node->xid, oldest_xid)));
 		else
 		{
 			XLogRecPtr	result;
 			XidStatus	status = TransactionIdGetStatus(node->xid, &result);
 
 			if (status != TRANSACTION_STATUS_IN_PROGRESS)
-				elog(WARNING, "Prevented drop files for xid: %u, status: %d",
-					 node->xid, status);
+				ereport(WARNING, (errmsg(
+						"Prevented drop files for xid: %u, status: %d",
+						node->xid, status)));
 			else
 			{
 				int			ndelrels = 0;
@@ -327,10 +330,10 @@ PdlRedoDropFiles()
 
 				DropRelationFiles(delrels, ndelrels, true);
 
-				elog(LOG,
-					 "Pending delete rels were dropped (count: %d; xid: %d).",
-					 ndelrels,
-					 node->xid);
+				ereport(LOG, (errmsg(
+						"Pending delete rels were dropped (count: %d; xid: %d).",
+						ndelrels,
+						node->xid)));
 
 				pfree(delrels);
 			}
