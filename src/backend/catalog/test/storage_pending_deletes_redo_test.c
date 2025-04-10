@@ -36,16 +36,18 @@
 #define TEST_XLOG_REC_PTR 100
 
 void
-			__wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool isRedo);
+__wrap_DropRelationFiles(RelFileNodePendingDelete *delrels,
+								int ndelrels,
+								bool isRedo);
 
 XidStatus
-			__wrap_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
+__wrap_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
 
 PendingRelXactDeleteArray *
-			__wrap_PdlXLogShmemDump(Size *size);
+__wrap_PdlXLogShmemDump(Size *size);
 
 XLogRecPtr
-			__wrap_XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
+__wrap_XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
 
 void
 			__wrap_XLogFlush(XLogRecPtr record);
@@ -53,16 +55,25 @@ void
 /* id of test, which is currently being executed */
 static int	test_number = 0;
 
-/* counter to accumulate how many times DropRelationFiles() was called during test */
+/*
+ * counter to accumulate how many times DropRelationFiles() was called during
+ * test
+ */
 static int	DropRelationFiles_call_count = 0;
 
 /* counter to accumulate how many times XLogInsert() was called during test */
 static int	XLogInsert_call_count = 0;
 
-/* counter to accumulate how many times PdlXLogShmemDump() was called during test */
+/*
+ * counter to accumulate how many times PdlXLogShmemDump() was called during
+ * test
+ */
 static int	PdlXLogShmemDump_call_count = 0;
 
-/* array of relnodes expected by test, in case there are more than 1-2 nodes involved */
+/*
+ * array of relnodes expected by test, in case there are more than 1-2 nodes
+ * involved
+ */
 #define TEST_EXPECTED_NOTES_COUNT 20
 static RelFileNode test_expected_relnodes[TEST_EXPECTED_NOTES_COUNT];
 
@@ -87,7 +98,9 @@ setup(int test)
 }
 
 void
-__wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool isRedo)
+__wrap_DropRelationFiles(RelFileNodePendingDelete *delrels,
+								int ndelrels,
+								bool isRedo)
 {
 	DropRelationFiles_call_count++;
 	switch (test_number)
@@ -130,7 +143,6 @@ __wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool i
 				assert_int_equal(ndelrels, 1);
 				assert_true(isRedo);
 				RelFileNodePendingDelete *pd = &(delrels[0]);
-				int			arr_size = sizeof(test_3_expected_results) / sizeof(RelFileNode);
 
 				/*
 				 * We can't guarantee that the order of relnodes dropping will
@@ -141,7 +153,7 @@ __wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool i
 				 * them with InvalidOid. And we will check that all values are
 				 * excluded as the last step.
 				 */
-				for (int i = 0; i < arr_size; i++)
+				for (int i = 0; i < ARRAY_SIZE(test_3_expected_results); i++)
 				{
 					if (RelFileNodeEquals(test_3_expected_results[i], pd->node))
 					{
@@ -153,11 +165,14 @@ __wrap_DropRelationFiles(RelFileNodePendingDelete *delrels, int ndelrels, bool i
 
 				if (DropRelationFiles_call_count == 2)
 				{
-					for (int i = 0; i < arr_size; i++)
+					for (int i = 0; i < ARRAY_SIZE(test_3_expected_results); i++)
 					{
-						assert_int_equal(test_3_expected_results[i].spcNode, InvalidOid);
-						assert_int_equal(test_3_expected_results[i].dbNode, InvalidOid);
-						assert_int_equal(test_3_expected_results[i].relNode, InvalidOid);
+						assert_int_equal(test_3_expected_results[i].spcNode,
+										 InvalidOid);
+						assert_int_equal(test_3_expected_results[i].dbNode,
+										 InvalidOid);
+						assert_int_equal(test_3_expected_results[i].relNode,
+										 InvalidOid);
 					}
 				}
 
@@ -274,7 +289,7 @@ __wrap_PdlXLogShmemDump(Size *size)
 	char	   *buffer = palloc(*size);
 
 	PendingRelXactDeleteArray *pending_deletes =
-	(PendingRelXactDeleteArray *) buffer;
+		(PendingRelXactDeleteArray *) buffer;
 
 	pending_deletes->count = node_count;
 
@@ -304,7 +319,7 @@ __wrap_XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 	assert_true(rdata->len == (sizeof(Size) + sizeof(PendingRelXactDelete)));
 
 	PendingRelXactDeleteArray *pending_deletes =
-	(PendingRelXactDeleteArray *) rdata->data;
+		(PendingRelXactDeleteArray *) rdata->data;
 
 	assert_int_equal(pending_deletes->count, 1);
 
@@ -488,22 +503,27 @@ test_5(void **state)
 
 	/* mark some transactions as complete, let's say XIDs: 10, 12, 15 */
 	TransactionId complete_xids[] = {10, 12, 15};
-	int			complete_xids_count = sizeof(complete_xids) / sizeof(TransactionId);
+	int			complete_xids_count = ARRAY_SIZE(complete_xids);
 
 	for (int i = 0; i < complete_xids_count; i++)
 	{
-		ls_transactions_comlpete = lappend_int(ls_transactions_comlpete, complete_xids[i]);
+		ls_transactions_comlpete = lappend_int(ls_transactions_comlpete,
+											   complete_xids[i]);
 	}
 
 	PdlRedoDropFiles();
 
-	assert_int_equal(DropRelationFiles_call_count, TEST_EXPECTED_NOTES_COUNT - ShmemVariableCache->oldestXid - complete_xids_count);
+	assert_int_equal(DropRelationFiles_call_count,
+					TEST_EXPECTED_NOTES_COUNT - ShmemVariableCache->oldestXid -
+					complete_xids_count);
 
 	/* Check that data for complete xids is not touched by PdlRedoDropFiles */
 	for (int i = 0; i < complete_xids_count; i++)
 	{
-		ls_transactions_comlpete = lappend_int(ls_transactions_comlpete, complete_xids[i]);
-		assert_int_equal(test_expected_relnodes[complete_xids[i]].relNode, TEST_REL_OID1 + complete_xids[i]);
+		ls_transactions_comlpete = lappend_int(ls_transactions_comlpete,
+											   complete_xids[i]);
+		assert_int_equal(test_expected_relnodes[complete_xids[i]].relNode,
+						 TEST_REL_OID1 + complete_xids[i]);
 		/* Replace it with InvalidOid to simplify further check */
 		test_expected_relnodes[complete_xids[i]].relNode = InvalidOid;
 	}
@@ -781,7 +801,7 @@ test_12(void **state)
 
 	TransactionId xid_to_remove = 5;
 	TransactionId sub_xids_to_remove[] = {10, 11, 12, 15};
-	int			nsubxacts = sizeof(sub_xids_to_remove) / sizeof(TransactionId);
+	int			nsubxacts = ARRAY_SIZE(sub_xids_to_remove);
 
 	PdlRedoRemoveTree(xid_to_remove, sub_xids_to_remove, nsubxacts);
 
@@ -817,13 +837,10 @@ test_12(void **state)
 static XLogRecord *
 test_create_xlog_record(int pending_deletes_count)
 {
-	int			buffer_size =
-	SizeOfXLogRecord + sizeof(Size) + sizeof(PendingRelXactDelete) * pending_deletes_count;
+	Size buffer_size = SizeOfXLogRecord + sizeof(Size) + 
+		sizeof(PendingRelXactDelete) * pending_deletes_count;
 
-	char	   *buffer = palloc0(buffer_size);
-	XLogRecord *record = (XLogRecord *) buffer;
-
-	return record;
+	return (XLogRecord *)palloc0(buffer_size);
 }
 
 /*
@@ -842,7 +859,7 @@ test_13(void **state)
 	XLogRecord *record = test_create_xlog_record(pending_deletes_count);
 
 	PendingRelXactDeleteArray *pending_deletes =
-	(PendingRelXactDeleteArray *) ((char *) record + SizeOfXLogRecord);
+		(PendingRelXactDeleteArray *) ((char *) record + SizeOfXLogRecord);
 
 	pending_deletes->count = pending_deletes_count;
 
@@ -882,11 +899,11 @@ test_14(void **state)
 	XLogRecord *record = test_create_xlog_record(pending_deletes_count);
 
 	PendingRelXactDeleteArray *pending_deletes =
-	(PendingRelXactDeleteArray *) ((char *) record + SizeOfXLogRecord);
+		(PendingRelXactDeleteArray *) ((char *) record + SizeOfXLogRecord);
 
 	pending_deletes->count = pending_deletes_count;
 
-	memset(test_expected_relnodes, 0, sizeof(RelFileNode) * TEST_EXPECTED_NOTES_COUNT);
+	memset(test_expected_relnodes, 0, sizeof(test_expected_relnodes));
 
 	for (int i = 0; i < pending_deletes_count; i++)
 	{
@@ -902,7 +919,8 @@ test_14(void **state)
 	}
 
 	/* mark some transaction as complete, let's say XID: 3 */
-	ls_transactions_comlpete = lappend_int(ls_transactions_comlpete, (TransactionId) 3);
+	ls_transactions_comlpete = lappend_int(ls_transactions_comlpete,
+										   (TransactionId) 3);
 
 	PdlRedoXLogRecord(record);
 
@@ -916,11 +934,12 @@ test_14(void **state)
 	 */
 	TransactionId skipped_xids[] = {1, 3};
 
-	for (int i = 0; i < sizeof(skipped_xids) / sizeof(TransactionId); i++)
+	for (int i = 0; i < ARRAY_SIZE(skipped_xids); i++)
 	{
 		int			idx = skipped_xids[i] - 1;
 
-		assert_int_equal(test_expected_relnodes[idx].relNode, TEST_REL_OID1 + idx);
+		assert_int_equal(test_expected_relnodes[idx].relNode,
+						 TEST_REL_OID1 + idx);
 		test_expected_relnodes[idx].relNode = InvalidOid;
 	}
 

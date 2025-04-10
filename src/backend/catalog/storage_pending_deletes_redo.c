@@ -269,7 +269,7 @@ PdlRedoPrepareArrayForDrop(PendingDeleteHtabNode *hnode, int *ndelrels)
 	}
 
 	RelFileNodePendingDelete *delrels = (RelFileNodePendingDelete *)
-		palloc((*ndelrels) * sizeof(RelFileNodePendingDelete));
+		palloc((*ndelrels) * sizeof(*delrels));
 
 	int			i = 0;
 
