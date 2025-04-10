@@ -87,7 +87,7 @@ VXIDGetDatum(BackendId bid, LocalTransactionId lxid)
  * distribution on it.
  */
 #define PG_LOCKS_INTERNAL_QUERY \
-	"select (pg_catalog.pg_lock_status()).*"
+	"select * from pg_catalog.pg_lock_status()"
 
 /*
  * Build a querydesc for SELECT on pg_locks relation to be passed to executor.
