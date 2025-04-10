@@ -2526,29 +2526,32 @@ gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
 	my_status = func_ctx->user_fctx;
 
 	/* Generate fake tuples from every segment. */
-	if (my_status->cur_tuple_idx++ < arg_tuple_amount)
+	if (my_status->cur_tuple_idx < arg_tuple_amount)
 	{
+		my_status->cur_tuple_idx++;
 		SRF_RETURN_NEXT(func_ctx, my_status->some_text);
 	}
 
 	/* Receive tuples from the loop above on master. */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		if (my_status->cur_segment_idx < my_status->n_segments)
+		while (my_status->cur_segment_idx < my_status->n_segments)
 		{
 			PGresult *res = my_status->pg_results[my_status->cur_segment_idx];
-			Datum ret = CStringGetTextDatum(
-				PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
 
-			if (++my_status->cur_segment_tuple_idx >= PQntuples(res))
+			if (my_status->cur_segment_tuple_idx < PQntuples(res))
 			{
-				PQclear(res);
+				Datum ret = CStringGetTextDatum(
+					PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
 
-				my_status->cur_segment_idx++;
-				my_status->cur_segment_tuple_idx = 0;
+				my_status->cur_segment_tuple_idx++;
+				SRF_RETURN_NEXT(func_ctx, ret);
 			}
 
-			SRF_RETURN_NEXT(func_ctx, ret);
+			PQclear(res);
+
+			my_status->cur_segment_idx++;
+			my_status->cur_segment_tuple_idx = 0;
 		}
 
 		pfree(my_status->pg_results);
