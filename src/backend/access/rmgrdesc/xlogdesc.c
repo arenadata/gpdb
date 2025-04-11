@@ -18,6 +18,7 @@
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "catalog/pg_control.h"
+#include "catalog/storage_pending_deletes.h"
 #include "utils/guc.h"
 #include "utils/timestamp.h"
 
@@ -213,6 +214,11 @@ xlog_desc(StringInfo buf, XLogReaderState *record)
 						 (uint32) (xlrec.overwritten_lsn >> 32),
 						 (uint32) xlrec.overwritten_lsn,
 						 timestamptz_to_str(xlrec.overwrite_time));
+	}
+	else if (info == XLOG_PENDING_DELETE)
+	{
+		appendStringInfo(buf, "orphaned relfilenodes to delete: %zu",
+						 ((PendingRelXactDeleteArray *)rec)->count);
 	}
 }
 
