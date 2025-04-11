@@ -36,6 +36,7 @@
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
+#include "catalog/storage_pending_deletes_redo.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
@@ -9316,6 +9317,9 @@ CreateCheckPoint(int flags)
 	 */
 	getDtxCheckPointInfo(&dtxCheckPointInfo, &dtxCheckPointInfoSize);
 
+	if (!shutdown)
+		PdlXLogInsert();
+
 	CheckPointGuts(checkPoint.redo, flags);
 
 	/*
@@ -10781,6 +10785,11 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 
 		/* Keep track of full_page_writes */
 		lastFullPageWrites = fpw;
+	}
+	else if (info == XLOG_PENDING_DELETE)
+	{
+		if (IsCrashRecoveryOnly())
+			PdlRedoXLogRecord(record);
 	}
 }
 

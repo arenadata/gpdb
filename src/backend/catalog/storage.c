@@ -24,6 +24,7 @@
 #include "access/xlogutils.h"
 #include "catalog/catalog.h"
 #include "catalog/storage.h"
+#include "catalog/storage_pending_deletes_redo.h"
 #include "catalog/storage_xlog.h"
 #include "common/relpath.h"
 #include "commands/dbcommands.h"
@@ -513,10 +514,31 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	if (info == XLOG_SMGR_CREATE)
 	{
 		xl_smgr_create *xlrec = (xl_smgr_create *) XLogRecGetData(record);
+		PendingRelXactDelete pd =
+		{
+			.relnode =
+			{
+				.node = xlrec->rnode,
+				/*
+				 * Temp relations are not logged in WAL, so it is always false
+				 * here.
+				 */
+				.isTempRelation = false,
+				/*
+				 * TODO: We do not have info about relstorage from the record.
+				 * Need to handle it somehow - decision is yet pending.
+				 * Until then we can't handle AO tables properly...
+				 */
+				.relstorage = RELSTORAGE_HEAP
+			},
+			.xid = record->xl_xid
+		};
 		SMgrRelation reln;
 
 		reln = smgropen(xlrec->rnode, InvalidBackendId);
 		smgrcreate(reln, xlrec->forkNum, true);
+
+		PdlRedoAdd(&pd);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
