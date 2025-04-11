@@ -136,6 +136,9 @@ static void
 			signalQEs(CdbDispatchCmdAsync *pParms);
 
 static void
+			signalQE(CdbDispatchResult *dispatchResult, DispatchWaitMode waitMode);
+
+static void
 			checkSegmentAlive(CdbDispatchCmdAsync *pParms);
 
 static void
@@ -455,11 +458,6 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 	struct timeval start_ts, now;
 	int64		diff_us;
 
-	/*
-	 * Was dispatchCancel() the callee? We don't need to read the results then.
-	 */
-	bool		should_cancel = (pParms->waitMode == DISPATCH_WAIT_CANCEL);
-
 	db_count = pParms->dispatchCount;
 	fds = (struct pollfd *) palloc(db_count * sizeof(struct pollfd));
 
@@ -685,30 +683,6 @@ checkDispatchResult(CdbDispatcherState *ds, int timeout_sec)
 			if (timeout_sec >= 0 && diff_us >= timeout_sec * 1000000L)
 				break;
 		}
-		else if (should_cancel)
-		{
-			/* Make QEs come to their senses. */
-			signalQEs(pParms);
-
-			for (i = 0; i < db_count; i++)
-			{
-				dispatchResult = pParms->dispatchResultPtrArray[i];
-
-				/*
-				 * If we're cancelling the transaction due to an OOM, there
-				 * might not be enough memory to discard the result properly.
-				 * Try to free the async results first and pray.
-				 */
-				pqClearAsyncResult(dispatchResult->segdbDesc->conn);
-				cdbconn_discardResults(dispatchResult->segdbDesc, 20);
-
-				dispatchResult->stillRunning = false;
-			}
-
-			forwardQENotices();
-
-			break;
-		}
 		/* We have data waiting on one or more of the connections. */
 		else
 			handlePollSuccess(pParms, fds);
@@ -897,6 +871,32 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 		ELOG_DISPATCHER_DEBUG("PQsocket says there are results from %d of %d (%s)",
 							  i + 1, pParms->dispatchCount, segdbDesc->whoami);
 
+
+		/*
+		 * Was dispatchCancel() the callee? We don't need to read the results then.
+		 */
+
+		if (pParms->waitMode == DISPATCH_WAIT_CANCEL)
+		{
+			/* Make QE come to its sense. */
+			signalQE(dispatchResult, DISPATCH_WAIT_CANCEL);
+
+			/*
+			 * If we're cancelling the transaction due to an OOM, there
+			 * might not be enough memory to discard the result properly.
+			 * Try to free the async results first and pray.
+			 */
+
+			pqClearAsyncResult(dispatchResult->segdbDesc->conn);
+			cdbconn_discardResults(dispatchResult->segdbDesc, 20);
+
+			dispatchResult->stillRunning = false;
+
+			forwardQENotices();
+
+			continue;
+		}
+
 		/*
 		 * Receive and process results from this QE.
 		 */
@@ -947,34 +947,44 @@ signalQEs(CdbDispatchCmdAsync *pParms)
 
 	for (i = 0; i < pParms->dispatchCount; i++)
 	{
-		char		errbuf[256];
-		bool		sent = false;
 		CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[i];
 
-		Assert(dispatchResult != NULL);
-		SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
-
-		/*
-		 * Don't send the signal if - QE is finished or canceled - the signal
-		 * was already sent - connection is dead
-		 */
-
-		if (!dispatchResult->stillRunning ||
-			dispatchResult->wasCanceled ||
-			(pParms->waitMode == DISPATCH_WAIT_ACK_ROOT &&
-			 dispatchResult->receivedAckMsg) ||
-			cdbconn_isBadConnection(segdbDesc))
-			continue;
-
-		memset(errbuf, 0, sizeof(errbuf));
-
-		sent = cdbconn_signalQE(segdbDesc, errbuf, waitMode == DISPATCH_WAIT_CANCEL);
-		if (sent)
-			dispatchResult->sentSignal = waitMode;
-		else
-			elog(LOG, "Unable to cancel: %s",
-				 strlen(errbuf) == 0 ? "cannot allocate PGCancel" : errbuf);
+		signalQE(dispatchResult, waitMode);
 	}
+}
+
+/*
+ * Send finish or cancel signal to QE if needed.
+ */
+static void
+signalQE(CdbDispatchResult *dispatchResult, DispatchWaitMode waitMode)
+{
+	char		errbuf[256];
+	bool		sent = false;
+
+	Assert(dispatchResult != NULL);
+	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
+
+	/*
+	 * Don't send the signal if - QE is finished or canceled - the signal
+	 * was already sent - connection is dead
+	 */
+
+	if (!dispatchResult->stillRunning ||
+		dispatchResult->wasCanceled ||
+		(waitMode == DISPATCH_WAIT_ACK_ROOT &&
+		 dispatchResult->receivedAckMsg) ||
+		cdbconn_isBadConnection(segdbDesc))
+		return;
+
+	memset(errbuf, 0, sizeof(errbuf));
+
+	sent = cdbconn_signalQE(segdbDesc, errbuf, waitMode == DISPATCH_WAIT_CANCEL);
+	if (sent)
+		dispatchResult->sentSignal = waitMode;
+	else
+		elog(LOG, "Unable to cancel: %s",
+			 strlen(errbuf) == 0 ? "cannot allocate PGCancel" : errbuf);
 }
 
 /*
