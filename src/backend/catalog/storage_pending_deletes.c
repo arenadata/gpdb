@@ -54,12 +54,48 @@ static void PdlAttachDsa(void);
 PendingRelXactDeleteArray *
 PdlXLogShmemDump(Size *size)
 {
-	/*
-	 * For now it is only a stub. Should be implemented in scope of
-	 * ADBDEV-7303.
-	 */
-	*size = 0;
-	return NULL;
+	PdlAttachDsa();
+
+	PendingRelXactDeleteArray *ret = NULL;
+
+	*size = offsetof(PendingRelXactDeleteArray, array);
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		PendingDeletesList *list = &BackendsPendingDeletes->list[i];
+
+		LWLockAcquire(list->lock, LW_SHARED);
+
+		if (list->count > 0 && DsaPointerIsValid(list->head))
+		{
+			*size += sizeof(*ret->array) * list->count;
+			if (ret != NULL)
+				ret = repalloc(ret, *size);
+			else
+			{
+				ret = palloc(*size);
+				ret->count = 0;
+			}
+			
+
+			for (dsa_pointer pdl_node_dsa = list->head; DsaPointerIsValid(pdl_node_dsa);)
+			{
+				PendingDeleteListNode *pdl_node = dsa_get_address(pendingDeletesDsa, pdl_node_dsa);
+
+				ret->array[ret->count++] = pdl_node->xrelnode;
+				pdl_node_dsa = pdl_node->next;
+			}
+		}
+
+		LWLockRelease(list->lock);
+	}
+
+	if (ret == NULL)
+	{
+		*size = 0;
+		return NULL;
+	}
+
+	return ret;
 }
 
 /*
@@ -105,7 +141,7 @@ PdlShmemInit(void)
 
 	dsa_area *dsa = dsa_create_in_place(
 		BackendsPendingDeletes->dsa_mem, dsa_minimum_size(),
-		LWLockNewTrancheId(), "storage_pending_dsa", NULL);
+		LWLockNewTrancheId(), "storage_pending_deletes", NULL);
 	on_shmem_exit(dsa_on_shmem_exit_release_in_place,
 		(Datum) BackendsPendingDeletes->dsa_mem);
 	dsa_detach(dsa);
