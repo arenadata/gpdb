@@ -83,7 +83,7 @@ PdlShmemInit(void)
 	if (!is_tracking_enabled())
 		return;
 
-	bool		found;
+	bool found;
 	BackendsPendingDeletes = (BackendsPendingDeletesArray *)
 		ShmemInitStruct("Pending deletes array", 
 			add_size(offsetof(BackendsPendingDeletesArray, dsa_mem),
@@ -96,14 +96,14 @@ PdlShmemInit(void)
 	BackendsPendingDeletes->list = (PendingDeletesList *) ShmemAlloc(pdl_size);
 	for (int i = 0; i < MaxBackends; i++)
 	{
-		BackendsPendingDeletes->list[i] = (PendingDeletesList){
+		BackendsPendingDeletes->list[i] = (PendingDeletesList) {
 			.head = InvalidDsaPointer,
 			.count = 0,
 			.lock = LWLockAssign()
 		};
 	}
 
-	dsa_area   *dsa = dsa_create_in_place(
+	dsa_area *dsa = dsa_create_in_place(
 		BackendsPendingDeletes->dsa_mem, dsa_minimum_size(),
 		LWLockNewTrancheId(), "storage_pending_dsa", NULL);
 	on_shmem_exit(dsa_on_shmem_exit_release_in_place,
@@ -146,14 +146,16 @@ PdlAttachDsa(void)
 	 * attach/detach at every add/remove
 	 */
 	MemoryContext oldcxt = MemoryContextSwitchTo(TopMemoryContext);
-	pendingDeletesDsa = dsa_attach_in_place(BackendsPendingDeletes->dsa_mem, NULL);
+	pendingDeletesDsa = dsa_attach_in_place(BackendsPendingDeletes->dsa_mem,
+											NULL);
 	MemoryContextSwitchTo(oldcxt);
 
 	/* pin mappings, so they can survive res owner life end */
 	dsa_pin_mapping(pendingDeletesDsa);
 
 	/* disconnect from dsa on shmem exit */
-	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) BackendsPendingDeletes->dsa_mem);
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place,
+		(Datum) BackendsPendingDeletes->dsa_mem);
 	on_shmem_exit(pdl_beshutdown_hook, 0);
 }
 
@@ -164,16 +166,17 @@ PdlAttachDsa(void)
 dsa_pointer
 PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid)
 {
-	if (!is_tracking_enabled() || xid == InvalidTransactionId)
+	if (!is_tracking_enabled() || xid == InvalidTransactionId ||
+		MyBackendId == InvalidBackendId)
 		return InvalidDsaPointer;
 
 	PdlAttachDsa();
 
 	PendingDeleteListNode *node;
 	dsa_pointer node_dsa = dsa_allocate(pendingDeletesDsa,
-											sizeof(*node));
+										sizeof(*node));
 	node = dsa_get_address(pendingDeletesDsa, node_dsa);
-	*node = (PendingDeleteListNode) {
+	*node = (PendingDeleteListNode)	{
 		.xrelnode = {
 			.relnode = *relnode,
 			.xid = xid
@@ -195,4 +198,41 @@ PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid)
 	LWLockRelease(list->lock);
 	
 	return node_dsa;
+}
+
+/*
+ * Fast remove pending delete node from shmem.
+ * node_ptr is a ptr to already added node.
+ */
+void
+PdlShmemRemove(dsa_pointer node_ptr)
+{
+	if (!is_tracking_enabled() || MyBackendId == InvalidBackendId)
+		return;
+
+	Assert(DsaPointerIsValid(node_ptr));
+
+	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
+	PendingDeleteListNode *node = dsa_get_address(pendingDeletesDsa, node_ptr);
+
+	LWLockAcquire(list->lock, LW_EXCLUSIVE);
+	if (DsaPointerIsValid(node->next))
+	{
+		PendingDeleteListNode *next_node = dsa_get_address(pendingDeletesDsa, node->next);
+		next_node->prev = node->prev;
+	}
+
+	if (DsaPointerIsValid(node->prev))
+	{
+		PendingDeleteListNode *prev_node = dsa_get_address(pendingDeletesDsa, node->prev);
+		prev_node->next = node->next;
+	}
+	else
+		list->head = node->next;
+
+	list->count--;
+	LWLockRelease(list->lock);
+
+
+	dsa_free(pendingDeletesDsa, node_ptr);
 }

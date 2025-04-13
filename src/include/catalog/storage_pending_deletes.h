@@ -41,6 +41,6 @@ extern PendingRelXactDeleteArray *PdlXLogShmemDump(Size *size);
 extern Size PdlShmemSize(void);
 extern void PdlShmemInit(void);
 extern dsa_pointer PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid);
-extern void PdlShmemRemove(PendingRelXactDelete node);
+extern void PdlShmemRemove(dsa_pointer node_ptr);
 
 #endif   /* STORAGE_PENDING_DELETES_H */
