@@ -89,16 +89,15 @@ typedef struct
  */
 #ifndef FRONTEND
 #include "postgres.h"
+#include "cdb/cdbutil.h"
 #include "utils/memutils.h"
-
 /*
  * CurTransactionContext's lifetime lasts until the end of the current query,
  * which does the job well for backends. Auxiliary processes do not set
  * transaction contexts, so we have to use TopMemoryContext to achieve a
  * lifetime equivalent to malloc().
  */
-#define PQ_PALLOC_CONTEXT \
-	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext)
+#define PQ_PALLOC_CONTEXT (CdbComponentsContext)
 
 #define pq_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
 #define pq_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
