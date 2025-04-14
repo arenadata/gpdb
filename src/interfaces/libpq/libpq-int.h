@@ -89,7 +89,6 @@ typedef struct
  */
 #ifndef FRONTEND
 #include "postgres.h"
-#include "cdb/cdbutil.h"
 #include "utils/memutils.h"
 
 /*
@@ -99,8 +98,7 @@ typedef struct
  * lifetime equivalent to malloc().
  */
 #define PQ_PALLOC_CONTEXT \
-	((CdbComponentsContext != NULL) ? CdbComponentsContext : \
-	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext))
+	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext)
 
 #define pq_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
 #define pq_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
