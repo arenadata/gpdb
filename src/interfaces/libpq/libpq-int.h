@@ -99,8 +99,7 @@ typedef struct
  * lifetime equivalent to malloc().
  */
 #define PQ_PALLOC_CONTEXT \
-	((CdbComponentsContext != NULL) ? CdbComponentsContext : \
-	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext))
+	((CdbComponentsContext != NULL) ? CdbComponentsContext : TopMemoryContext)
 
 #define pq_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
 #define pq_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
