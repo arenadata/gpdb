@@ -2602,6 +2602,52 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 									   scanjoin_target_parallel_safe,
 									   scanjoin_target_same_exprs);
 
+		if (contain_volatile_functions((Node *) scanjoin_target->exprs) && !CdbPathLocus_IsReplicated(root->final_locus))
+		{
+			foreach(lc, current_rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(lc);
+				if (CdbPathLocus_IsGeneral(path->locus))
+				{
+					CdbPathLocus_MakeSingleQE(&(path->locus), getgpsegmentCount());
+				}
+			}
+		}
+		if (root->is_correlated_subplan && !CdbPathLocus_IsReplicated(root->final_locus))
+		{
+			foreach(lc, current_rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(lc);
+
+				if (CdbPathLocus_IsSingleQE(path->locus))
+				{
+					CdbMotionPath *motion_path;
+
+					motion_path = makeNode(CdbMotionPath);
+					motion_path->path.pathtype = T_Motion;
+					motion_path->path.parent = path->parent;
+					motion_path->path.pathtarget = path->pathtarget;
+					motion_path->path.rows = path->rows;
+					motion_path->path.parallel_aware = false;
+					motion_path->path.parallel_safe = path->parallel_safe;
+					motion_path->path.parallel_workers = path->parallel_workers;
+					motion_path->path.pathkeys = NIL;
+					motion_path->subpath = path;
+					/* Costs, etc, are same as subpath. */
+					motion_path->path.startup_cost = path->total_cost;
+					motion_path->path.total_cost = path->total_cost;
+					motion_path->path.memory = path->memory;
+					motion_path->path.motionHazard = path->motionHazard;
+					/* Motion nodes are never rescannable. */
+					motion_path->path.rescannable = false;
+					CdbPathLocus_MakeOuterQuery(&motion_path->path.locus);
+
+					Path *mpath = (Path *) create_material_path(root, motion_path->path.parent, &motion_path->path);
+					lfirst(lc) = mpath;
+				}
+			}
+			set_cheapest(current_rel);
+		}
 		/*
 		 * Save the various upper-rel PathTargets we just computed into
 		 * root->upper_targets[].  The core code doesn't use this, but it
