@@ -1339,7 +1339,20 @@ CStatisticsUtils::AddNdvForAllGrpCols(
 			distinct_vals = histogram->GetNumDistinct();
 			if (histogram->IsEmpty() || histogram->IsColStatsMissing())
 			{
-				distinct_vals = DefaultDistinctVals(input_stats->Rows());
+				CColumnFactory *col_factory = COptCtxt::PoctxtFromTLS()->Pcf();
+				CColRef *colref = col_factory->LookupColRef(colid);
+				GPOS_ASSERT(NULL != colref);
+
+				if (IMDType::EtiBool == colref->RetrieveType()->GetDatumType())
+				{
+					// A boolean column can have at most 3 values (true, false,
+					// and NULL).
+					distinct_vals = CDouble(3.0);
+				}
+				else
+				{
+					distinct_vals = DefaultDistinctVals(input_stats->Rows());
+				}
 			}
 		}
 		output_ndvs->Append(GPOS_NEW(mp) CDouble(distinct_vals));
