@@ -1257,6 +1257,18 @@ JOIN cte b USING (i);
 
 DROP TABLE with_test;
 
+-- Test shared modifying CTE behavior in utility mode
+CREATE TABLE with_test (i int, j int) DISTRIBUTED RANDOMLY;
+
+-- check when slice is not allocated (topslice is allocated only on QD)
+\! PGOPTIONS='-c gp_session_role=utility' psql -p 7002 -d regression -c 'EXPLAIN (SLICETABLE, COSTS OFF) WITH cte AS (INSERT INTO with_test VALUES (1, 2) RETURNING *) SELECT i FROM cte a JOIN cte b USING (i);'
+\! PGOPTIONS='-c gp_session_role=utility' psql -p 7002 -d regression -c 'WITH cte AS (INSERT INTO with_test VALUES (1, 2) RETURNING *) SELECT i FROM cte a JOIN cte b USING (i);'
+
+-- check when slice is allocated inside InitPlan
+\! PGOPTIONS='-c gp_session_role=utility' psql -p 7002 -d regression -c 'EXPLAIN (SLICETABLE, COSTS OFF) WITH cte AS (INSERT INTO with_test VALUES (3, 4) RETURNING *) SELECT i FROM cte WHERE 4 = (SELECT j FROM cte);'
+\! PGOPTIONS='-c gp_session_role=utility' psql -p 7002 -d regression -c 'WITH cte AS (INSERT INTO with_test VALUES (3, 4) RETURNING *) SELECT i FROM cte WHERE 4 = (SELECT j FROM cte);'
+DROP TABLE with_test;
+
 -- Test cross slice Shared Scan with consumer in slice 0.
 --start_ignore
 SET enable_nestloop = ON;

@@ -373,12 +373,20 @@ static bool recoveryStopAfter;
  * be scanning data that was copied from an ancestor timeline when the current
  * file was created.)  During a sequential scan we do not allow this value
  * to decrease.
+ *
+ * curFileUpto: the end of the curFileTLI timeline in the history of the
+ * timeline we're recovering to (ie. recoveryTargetTLI).  We must not read the
+ * currently open file beyond this position, because it contains WAL that is
+ * not part of the history of the timeline we're recovering to.  Upon reaching
+ * that point, we need to open the file from the next timeline in the history
+ * instead.
  */
 RecoveryTargetTimeLineGoal recoveryTargetTimeLineGoal = RECOVERY_TARGET_TIMELINE_LATEST;
 TimeLineID	recoveryTargetTLIRequested = 0;
 TimeLineID	recoveryTargetTLI = 0;
 static List *expectedTLEs;
 static TimeLineID curFileTLI;
+static XLogRecPtr curFileUpto;
 
 /*
  * ProcLastRecPtr points to the start of the last XLOG record inserted by the
@@ -3776,6 +3784,9 @@ XLogFileRead(XLogSegNo segno, int emode, TimeLineID tli,
 	{
 		/* Success! */
 		curFileTLI = tli;
+		if (!expectedTLEs)
+			expectedTLEs = readTimeLineHistory(recoveryTargetTLI);
+		curFileUpto = tliSwitchPoint(curFileTLI, expectedTLEs, NULL);
 
 		/* Report recovery progress in PS display */
 		snprintf(activitymsg, sizeof(activitymsg), "recovering %s",
@@ -4618,6 +4629,8 @@ rescanLatestTimeLine(void)
 	 * between the old target and new target in pg_wal.
 	 */
 	restoreTimeLineHistoryFiles(oldtarget + 1, newtarget);
+	if (curFileTLI != 0)
+		curFileUpto = tliSwitchPoint(curFileTLI, expectedTLEs, NULL);
 
 	ereport(LOG,
 			(errmsg("new target timeline is %u",
@@ -12813,10 +12826,39 @@ XLogPageRead(XLogReaderState *xlogreader, XLogRecPtr targetPagePtr, int reqLen,
 	int			emode = private->emode;
 	uint32		targetPageOff;
 	XLogSegNo	targetSegNo PG_USED_FOR_ASSERTS_ONLY;
+	XLogRecPtr	readUpto;
 	int			r;
 
 	XLByteToSeg(targetPagePtr, targetSegNo, wal_segment_size);
 	targetPageOff = XLogSegmentOffset(targetPagePtr, wal_segment_size);
+
+retry:
+	/*
+	 * If we have reached the end of the current timeline in the recovery
+	 * target timeline's history, need to switch to the file from the next
+	 * timeline.
+	 *
+	 * Note: The logic and purpose of this is similar to
+	 * XLogReadDetermineTimeline(), but we don't use the end-of-segment to
+	 * determine the next TLI like XLogReadDetermineTimeline() does.  We don't
+	 * need it because XLogFileReadAnyTLI() will try to read from the WAL
+	 * segment with the latest possible TLI.  This is more flexible than
+	 * XLogReadDetermineTimeline(), which makes it more likely that we'll make
+	 * some progress towards the recovery target, even if all the WAL is not
+	 * (yet) available.
+	 */
+	if (curFileUpto != InvalidXLogRecPtr &&
+		curFileUpto <= targetPagePtr + reqLen)
+	{
+		if (readFile >= 0)
+		{
+			close(readFile);
+			readFile = -1;
+		}
+		curFileTLI = tliOfPointInHistory(targetPagePtr + reqLen, expectedTLEs);
+		curFileUpto = tliSwitchPoint(curFileTLI, expectedTLEs, NULL);
+		readSource = XLOG_FROM_ANY;
+	}
 
 	/*
 	 * See if we need to switch to a new segment because the requested record
@@ -12858,7 +12900,6 @@ XLogPageRead(XLogReaderState *xlogreader, XLogRecPtr targetPagePtr, int reqLen,
 		   (uint32) (targetRecPtr >> 32), (uint32) targetRecPtr,
 		   readSegNo, targetPageOff);
 
-retry:
 	/* See if we need to retrieve more data */
 	if (readFile < 0 ||
 		(readSource == XLOG_FROM_STREAM &&
@@ -12880,10 +12921,25 @@ retry:
 	}
 
 	/*
+	 * If the recovery target TLI changed during WaitForWALToBecomeAvailable,
+	 * the record we're looking for might not be on this file anymore.
+	 */
+	 if (curFileUpto != InvalidXLogRecPtr &&
+		 curFileUpto <= targetPagePtr + reqLen)
+		 goto retry;
+
+	/*
 	 * At this point, we have the right segment open and if we're streaming we
 	 * know the requested record is in it.
 	 */
 	Assert(readFile != -1);
+
+	/*
+	 * If we're recovering through old timelines, make sure we don't read
+	 * beyond the point where we're supposed to switch to next timeline in the
+	 * recovery target's history.
+	 */
+	readUpto = curFileUpto;
 
 	/*
 	 * If the current segment is being streamed from the primary, calculate how
@@ -12891,16 +12947,18 @@ retry:
 	 * requested record has been received, but this is for the benefit of
 	 * future calls, to allow quick exit at the top of this function.
 	 */
-	if (readSource == XLOG_FROM_STREAM)
+	if (readSource == XLOG_FROM_STREAM &&
+		(readUpto == InvalidXLogRecPtr || receivedUpto < readUpto))
 	{
-		if (((targetPagePtr) / XLOG_BLCKSZ) != (receivedUpto / XLOG_BLCKSZ))
-			readLen = XLOG_BLCKSZ;
-		else
-			readLen = XLogSegmentOffset(receivedUpto, wal_segment_size) -
-				targetPageOff;
+		readUpto = receivedUpto;
 	}
-	else
+
+	if (readUpto == InvalidXLogRecPtr ||
+		((targetPagePtr) / XLOG_BLCKSZ) != (readUpto / XLOG_BLCKSZ))
 		readLen = XLOG_BLCKSZ;
+	else
+		readLen = XLogSegmentOffset(readUpto, wal_segment_size) -
+			targetPageOff;
 
 	/* Read the requested page */
 	readOff = targetPageOff;
@@ -13122,6 +13180,9 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 						XLogRecPtr	ptr;
 						TimeLineID	tli;
 
+						if (!expectedTLEs)
+							expectedTLEs = readTimeLineHistory(recoveryTargetTLI);
+
 						if (fetching_ckpt)
 						{
 							ptr = RedoStartLSN;
@@ -13144,6 +13205,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 									 tli, curFileTLI);
 						}
 						curFileTLI = tli;
+						curFileUpto = tliSwitchPoint(tli, expectedTLEs, NULL);
 						RequestXLogStreaming(tli, ptr, PrimaryConnInfo,
 											 PrimarySlotName);
 						receivedUpto = 0;
@@ -13280,7 +13342,10 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 				}
 				/* Reset curFileTLI if random fetch. */
 				if (randAccess)
+				{
 					curFileTLI = 0;
+					curFileUpto = InvalidXLogRecPtr;
+				}
 
 				/*
 				 * Try to restore the file from archive, or read an existing
