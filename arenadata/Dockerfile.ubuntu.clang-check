@@ -1,0 +1,28 @@
+FROM ubuntu:22.04
+
+ARG GPDB_SRC="/home/gpadmin/gpdb_src/"
+
+COPY ./README.Ubuntu.bash $GPDB_SRC
+# Set frontend to avoid kerberos prompt.
+RUN DEBIAN_FRONTEND=noninteractive $GPDB_SRC/README.Ubuntu.bash
+RUN apt install -y libxslt1-dev
+
+COPY ./ $GPDB_SRC
+WORKDIR $GPDB_SRC
+
+# Speed up bitcode and Orca build and ignore deprecations.
+ARG CFLAGS="-O0 -Wno-deprecated-declarations"
+
+# Ensure we use as many C-code related ./configure flags here as possible for
+# the broadest compilation coverage.
+RUN CC="clang" CXX="clang++" \
+    CFLAGS="$CFLAGS" CXXFLAGS="$CFLAGS" CPPFLAGS="$CFLAGS" \
+    BITCODE_CFLAGS="$CFLAGS" BITCODE_CXXFLAGS="$CFLAGS" \
+    ./configure --enable-orafce --enable-debug --enable-profiling \
+                --with-uuid=e2fs --with-python --enable-orca \
+                --enable-depend --enable-cassert --enable-gpcloud \
+                --enable-ic-proxy --with-llvm --with-perl --with-gssapi \
+                --with-ldap --with-pam --with-openssl --with-libxml \
+                --with-libxslt --enable-debug-extensions
+
+RUN make -s -j"$(nproc)"
