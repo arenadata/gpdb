@@ -28,9 +28,8 @@ typedef struct PendingDeleteListNode
 
 typedef struct PendingDeletesList 
 {
-	LWLock *lock; /* protects the fields below */
-	dsa_pointer head; /* ptr to list head of PendingDeleteListNode */
-	Size count; /* count of PendingDeleteListNode nodes */
+	LWLock *lock; /* protects the list */
+	dsa_pointer head; /* ptr to PendingDeleteListNode list head */
 } PendingDeletesList;
 
 typedef struct BackendsPendingDeletesArray
@@ -52,47 +51,37 @@ static inline bool is_tracking_enabled()
 static void PdlAttachDsa(void);
 
 PendingRelXactDeleteArray *
-PdlXLogShmemDump(Size *size)
+PdlXLogShmemDump(void)
 {
 	PdlAttachDsa();
 
 	PendingRelXactDeleteArray *ret = NULL;
 
-	*size = offsetof(PendingRelXactDeleteArray, array);
+	Size size = offsetof(PendingRelXactDeleteArray, array);
 	for (int i = 0; i < MaxBackends; i++)
 	{
 		PendingDeletesList *list = &BackendsPendingDeletes->list[i];
 
 		LWLockAcquire(list->lock, LW_SHARED);
 
-		if (list->count > 0 && DsaPointerIsValid(list->head))
+		for (dsa_pointer pdl_node_dsa = list->head; DsaPointerIsValid(pdl_node_dsa);)
 		{
-			*size += sizeof(*ret->array) * list->count;
+			PendingDeleteListNode *pdl_node = dsa_get_address(pendingDeletesDsa, pdl_node_dsa);
+
+			size += sizeof(*ret->array);
 			if (ret != NULL)
-				ret = repalloc(ret, *size);
+				ret = repalloc(ret, size);
 			else
 			{
-				ret = palloc(*size);
+				ret = palloc(size);
 				ret->count = 0;
 			}
-			
 
-			for (dsa_pointer pdl_node_dsa = list->head; DsaPointerIsValid(pdl_node_dsa);)
-			{
-				PendingDeleteListNode *pdl_node = dsa_get_address(pendingDeletesDsa, pdl_node_dsa);
-
-				ret->array[ret->count++] = pdl_node->xrelnode;
-				pdl_node_dsa = pdl_node->next;
-			}
+			ret->array[ret->count++] = pdl_node->xrelnode;
+			pdl_node_dsa = pdl_node->next;
 		}
 
 		LWLockRelease(list->lock);
-	}
-
-	if (ret == NULL)
-	{
-		*size = 0;
-		return NULL;
 	}
 
 	return ret;
@@ -134,7 +123,6 @@ PdlShmemInit(void)
 	{
 		BackendsPendingDeletes->list[i] = (PendingDeletesList) {
 			.head = InvalidDsaPointer,
-			.count = 0,
 			.lock = LWLockAssign()
 		};
 	}
@@ -155,7 +143,7 @@ pdl_beshutdown_hook(int code, Datum arg)
 		return;
 
 	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
-	if (list->head == InvalidDsaPointer && list->count == 0)
+	if (list->head == InvalidDsaPointer)
 		return;
 
 	/* Assert on debug build and warning on release */
@@ -166,7 +154,6 @@ pdl_beshutdown_hook(int code, Datum arg)
 				"MyBackend: %d, MyProcPid: %d", MyBackendId, MyProcPid)));
 
 	list->head = InvalidDsaPointer;
-	list->count = 0;
 }
 /*
  * Attach dsa once per process.
@@ -230,7 +217,6 @@ PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid)
 		next_node->prev = node_dsa;
 	}
 	list->head = node_dsa;
-	list->count++;
 	LWLockRelease(list->lock);
 	
 	return node_dsa;
@@ -266,7 +252,6 @@ PdlShmemRemove(dsa_pointer node_ptr)
 	else
 		list->head = node->next;
 
-	list->count--;
 	LWLockRelease(list->lock);
 
 
