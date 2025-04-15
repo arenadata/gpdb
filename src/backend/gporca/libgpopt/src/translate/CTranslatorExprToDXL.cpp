@@ -3910,6 +3910,7 @@ CTranslatorExprToDXL::PdxlnCorrelatedNLJoin(
 	// ORCA generates a plan with CorrelatedInnerNLJoin with a Const true join filter and a LIMIT over the
 	// scan of bar. The same foo.a = foo.b condition is also added as a filter on the table scan of foo.
 	if (CUtils::FScalarConstTrue(pexprScalar) &&
+		Edxlsubplantype(pexpr) == EdxlSubPlanTypeScalar &&
 		(COperator::EopPhysicalCorrelatedInnerNLJoin == op_id ||
 		 COperator::EopPhysicalCorrelatedInLeftSemiNLJoin == op_id))
 	{

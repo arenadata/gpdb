@@ -1069,3 +1069,23 @@ drop table tl1;
 drop table tl2;
 drop table tl3;
 drop table tl4;
+
+--Test case for subquery, which returns more than one rows
+-- start_ignore
+DROP TABLE IF EXISTS table1, table2;
+-- end_ignore
+CREATE TABLE table1 (a INT, b INT) DISTRIBUTED BY (a);
+CREATE TABLE table2 (a INT, b INT) DISTRIBUTED BY (a);
+
+INSERT INTO table1 VALUES (1, 0);
+INSERT INTO table1 VALUES (1, 0);
+INSERT INTO table2 VALUES (0, 10);
+INSERT INTO table2 VALUES (0, 10);
+
+EXPLAIN (COSTS off)
+SELECT * FROM table1 WHERE 10 in
+	(SELECT b FROM table2 WHERE table2.a = 0 OR table1.b = table2.b);
+SELECT * FROM table1 WHERE 10 in
+	(SELECT b FROM table2 WHERE table2.a = 0 OR table1.b = table2.b);
+
+DROP TABLE table1, table2;
