@@ -13,6 +13,7 @@
  */
 #include "postgres.h"
 
+#include "access/aosegfiles.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -23,6 +24,7 @@
 #include "cdb/cdbdispatchresult.h"
 #include "libpq-fe.h"
 #include "lib/stringinfo.h"
+#include "utils/guc.h"
 #include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/builtins.h"
@@ -74,6 +76,37 @@ cdbRelMaxSegSize(Relation rel)
 	pfree(sql);
 
 	cdbdisp_clearCdbPgResults(&cdb_pgresults);
+
+	/* AO relation may be compressed, so need to adjust size calculation */
+	if (RelationIsAppendOptimized(rel))
+	{
+		/*
+		 * This function may be called during Orca's planning and
+		 * get_ao_compression_ratio may also involve query execution on
+		 * auxiliary relations of the AO table - that will involve Orca again.
+		 * But Orca doesn't support such nested planning. So, use standard
+		 * planner when invoking get_ao_compression_ratio.
+		 */
+		bool save_optimizer_guc_value = optimizer;
+		optimizer = false;
+
+		float8 compression_ratio = DatumGetFloat8(DirectFunctionCall1(
+			get_ao_compression_ratio,
+			ObjectIdGetDatum(RelationGetRelid(rel))));
+
+		optimizer = save_optimizer_guc_value;
+
+		/*
+		 * get_ao_compression_ratio can return -1 if compression information
+		 * is not available. So, for any value below 1.0 (which is the minimum
+		 * reasonable start of compression ratio), we consider there is no
+		 * compression.
+		 */
+		if (compression_ratio < 1.0)
+			compression_ratio = 1.0;
+
+		size = size * compression_ratio;
+	}
 
 	return size;
 }

@@ -47,6 +47,7 @@
 
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbrelsize.h"
+#include "cdb/cdbutil.h"
 #include "catalog/pg_appendonly_fn.h"
 #include "catalog/pg_exttable.h"
 #include "catalog/pg_inherits_fn.h"
@@ -510,7 +511,15 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * to derive curpages, else use the default value.
 		 */
 		if (gp_enable_relsize_collection)
+		{
 			curpages = cdbRelMaxSegSize(rel) / BLCKSZ;
+			/*
+			 * If the relation is not replicated, we need to scale up the value
+			 * from one segment to the entire cluster.
+			 */
+			if (relOptInfo->cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+				curpages *= getgpsegmentCount();
+		}
 		else
 			curpages = DEFAULT_INTERNAL_TABLE_PAGES;
 	}
@@ -546,8 +555,25 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		int32		tuple_width;
 
 		tuple_width = get_rel_data_width(rel, attr_widths);
-		tuple_width += sizeof(HeapTupleHeaderData);
-		tuple_width += sizeof(ItemPointerData);
+
+		if (RelationIsAoRows(rel))
+		{
+			/*
+			 * Row oriented relations store memtyples, that have 4 byte header,
+			 * plus storage is done in VarBlock, which has item-offsets array
+			 * with at 2 or 3 byte offsets. For simplicity, in our rough
+			 * estimation we consider only 2 byte offsets. Thus, we add 6 bytes
+			 * to the tuple width.
+			 */
+			tuple_width += 6;
+		}
+		else if (!RelationIsAoCols(rel))
+		{
+			/* do the adjustment for heap relations */
+			tuple_width += sizeof(HeapTupleHeaderData);
+			tuple_width += sizeof(ItemPointerData);
+		}
+
 		/* note: integer division is intentional here */
 		density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
 	}
