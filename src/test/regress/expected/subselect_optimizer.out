@@ -1104,19 +1104,7 @@ explain (verbose, costs off)
 explain (verbose, costs off)
   select x, x from
     (select (select random() where y=y) as x from (values(1),(2)) v(y)) ss;
-                                 QUERY PLAN                                 
-----------------------------------------------------------------------------
- Subquery Scan on ss
-   Output: ss.x, ss.x
-   ->  Values Scan on "*VALUES*"
-         Output: (SubPlan 1)
-         SubPlan 1
-           ->  Result
-                 Output: random()
-                 One-Time Filter: ("*VALUES*".column1 = "*VALUES*".column1)
- Optimizer: Postgres query optimizer
-(9 rows)
-
+ERROR:  Passing parameters across motion is not supported. (cdbmutate.c:2051)
 --
 -- Test rescan of a hashed subplan (the use of random() is to prevent the
 -- sub-select from being pulled up, which would result in not hashing)
