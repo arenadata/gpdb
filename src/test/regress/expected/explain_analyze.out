@@ -132,7 +132,24 @@ explain (analyze, timing off, costs off)
   select a.i from (select x::int as i, x::int / 5 as j from round(random() / 5) as x) a
     where a.j = (select round(random() / 5)::int where a.i = 0)
       and a.i = a.j;
-ERROR:  Passing parameters across motion is not supported. (cdbmutate.c:2051)
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Function Scan on round x (actual rows=1 loops=1)
+   Filter: (((SubPlan 1) = (x)::integer) AND (((x)::integer / 5) = (SubPlan 1)))
+   InitPlan 2 (returns $1)
+     ->  Result (actual rows=1 loops=1)
+   SubPlan 1
+     ->  Materialize (actual rows=1 loops=2)
+           ->  Result (actual rows=1 loops=2)
+                 One-Time Filter: ((x.x)::integer = 0)
+ Optimizer: Postgres-based planner
+ Planning Time: 0.259 ms
+   (slice0)    Executor memory: 19K bytes.
+   (slice1)    Executor memory: 52K bytes.  Work_mem: 17K bytes max.
+ Memory used:  256000kB
+ Execution Time: 0.112 ms
+(14 rows)
+
 -- explain_processing_on
 drop table slice_test;
 drop table slice_test2;

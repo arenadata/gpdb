@@ -989,10 +989,10 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
 		 * For non-top slice, if this motion is QE singleton and subplan's locus
 		 * is CdbLocusType_SegmentGeneral, omit this motion.
 		 */
-		shouldOmit |= context->sliceDepth > 0 &&
-					  context->currentPlanFlow->flotype == FLOW_SINGLETON &&
+		shouldOmit |= context->currentPlanFlow->flotype == FLOW_SINGLETON &&
 					  context->currentPlanFlow->segindex == 0 &&
-					  motion->plan.lefttree->flow->locustype == CdbLocusType_SegmentGeneral;
+					  (motion->plan.lefttree->flow->locustype == CdbLocusType_SegmentGeneral ||
+					   motion->plan.lefttree->flow->locustype == CdbLocusType_SingleQE);
 
 		if (shouldOmit)
 		{
