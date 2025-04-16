@@ -244,7 +244,7 @@ PdlShmemRemove(dsa_pointer node_ptr)
  * Note: the returned result is palloc'ed. Caller is responsible for
  * freeing it.
  */
-PendingRelXactDeleteArra *
+PendingRelXactDeleteArray *
 PdlXLogShmemDump(void)
 {
 	PdlAttachDsa();
