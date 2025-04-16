@@ -30,18 +30,11 @@ typedef struct PendingRelXactDeleteArray
 	PendingRelXactDelete array[FLEXIBLE_ARRAY_MEMBER];
 }	PendingRelXactDeleteArray;
 
-/*
- * This function collects info about pending deletes from all backends and
- * returns the accumulated result.
- * Note: the returned result is always palloc'ed. Caller is responsible for
- * freeing it.
- */
-extern PendingRelXactDeleteArray *PdlXLogShmemDump(void);
-
 extern Size PdlShmemSize(void);
 extern void PdlShmemInit(void);
-extern dsa_pointer PdlShmemAdd(const RelFileNodePendingDelete *relnode,
-							   TransactionId xid);
+extern dsa_pointer PdlShmemAdd(const RelFileNodePendingDelete * relnode,
+			TransactionId xid);
 extern void PdlShmemRemove(dsa_pointer node_ptr);
+extern PendingRelXactDeleteArray *PdlXLogShmemDump(void);
 
 #endif   /* STORAGE_PENDING_DELETES_H */

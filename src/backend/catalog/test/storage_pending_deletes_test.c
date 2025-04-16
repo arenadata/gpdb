@@ -20,7 +20,8 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 
-enum {
+enum
+{
 	TEST_TABLESPACE_OID1 = 11111,
 	TEST_TABLESPACE_OID2 = 11112,
 
@@ -37,8 +38,11 @@ enum {
 };
 
 /* Don't try to read a non-existent postmaster.pid file */
-void __wrap_AddToDataDirLockFile(int target_line, const char *str);
-void __wrap_AddToDataDirLockFile(int target_line, const char *str){}
+void		__wrap_AddToDataDirLockFile(int target_line, const char *str);
+void
+__wrap_AddToDataDirLockFile(int target_line, const char *str)
+{
+}
 
 /* Dump without additions */
 static void
@@ -51,10 +55,12 @@ test_empty(void **state)
 static void
 test_1(void **state)
 {
-	const RelFileNodePendingDelete relnode = {
-		.node = {
+	const RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		},
 		.relstorage = RELSTORAGE_HEAP
@@ -67,7 +73,7 @@ test_1(void **state)
 	assert_int_equal(arr->count, 1);
 	assert_int_equal(arr->array[0].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[0].relnode, &relnode, sizeof(relnode));
-	
+
 /* clean up */
 	pfree(arr);
 	PdlShmemRemove(p);
@@ -77,8 +83,10 @@ test_1(void **state)
 static void
 test_remove_fisrt(void **state)
 {
-	RelFileNodePendingDelete relnode = {
-		.node = {
+	RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
 			.dbNode = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
@@ -86,6 +94,7 @@ test_remove_fisrt(void **state)
 	};
 
 	dsa_pointer p[5];
+
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
@@ -99,29 +108,38 @@ test_remove_fisrt(void **state)
 	PdlShmemRemove(p[0]);
 
 	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+
 	assert_true(arr != NULL);
 	assert_int_equal(arr->count, 4);
 	assert_int_equal(arr->array[0].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[0].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[1].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[1].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[2].xid, TEST_XID3);
 	assert_memory_equal(&arr->array[2].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[3].xid, TEST_XID2);
 	assert_memory_equal(&arr->array[3].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
-	
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
+
 /* clean up */
 	pfree(arr);
 	for (int i = 1; i < ARRAY_SIZE(p); i++)
@@ -132,19 +150,22 @@ test_remove_fisrt(void **state)
 static void
 test_remove_middle(void **state)
 {
-	RelFileNodePendingDelete relnode = {
-		.node = {
+	RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
 	dsa_pointer p[4];
+
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
-	
+
 	relnode.node.dbNode = TEST_DB_OID2;
 	dsa_pointer p_middle = PdlShmemAdd(&relnode, TEST_XID1);
 
@@ -156,28 +177,37 @@ test_remove_middle(void **state)
 	PdlShmemRemove(p_middle);
 
 	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+
 	assert_true(arr != NULL);
 	assert_int_equal(arr->count, 4);
 	assert_int_equal(arr->array[0].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[0].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[1].xid, TEST_XID3);
 	assert_memory_equal(&arr->array[1].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[2].xid, TEST_XID2);
 	assert_memory_equal(&arr->array[2].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[3].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[3].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 
 /* clean up */
 	pfree(arr);
@@ -189,15 +219,18 @@ test_remove_middle(void **state)
 static void
 test_remove_last(void **state)
 {
-	RelFileNodePendingDelete relnode = {
-		.node = {
+	RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
 	dsa_pointer p[4];
+
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
@@ -208,31 +241,41 @@ test_remove_last(void **state)
 
 	relnode.node.relNode = TEST_REL_OID1;
 	dsa_pointer p_last = PdlShmemAdd(&relnode, TEST_XID1);
+
 	PdlShmemRemove(p_last);
 
 	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+
 	assert_true(arr != NULL);
 	assert_int_equal(arr->count, 4);
 	assert_int_equal(arr->array[0].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[0].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[1].xid, TEST_XID3);
 	assert_memory_equal(&arr->array[1].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[2].xid, TEST_XID2);
 	assert_memory_equal(&arr->array[2].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[3].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[3].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 
 /* clean up */
 	pfree(arr);
@@ -244,16 +287,18 @@ test_remove_last(void **state)
 static void
 test_invalid_xid(void **state)
 {
-	const RelFileNodePendingDelete relnode = {
-		.node = {
+	const RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
 	assert_false(DsaPointerIsValid(
-					PdlShmemAdd(&relnode, InvalidTransactionId)));
+							   PdlShmemAdd(&relnode, InvalidTransactionId)));
 	assert_true(PdlXLogShmemDump() == NULL);
 }
 
@@ -261,15 +306,18 @@ test_invalid_xid(void **state)
 static void
 test_invalid_backend(void **state)
 {
-	const RelFileNodePendingDelete relnode = {
-		.node = {
+	const RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
-	BackendId old = MyBackendId;
+	BackendId	old = MyBackendId;
+
 	MyBackendId = InvalidBackendId;
 
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
@@ -283,15 +331,18 @@ test_invalid_backend(void **state)
 static void
 test_invalid_mode(void **state)
 {
-	const RelFileNodePendingDelete relnode = {
-		.node = {
+	const RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
 	ProcessingMode old = Mode;
+
 	Mode = BootstrapProcessing;
 
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
@@ -305,15 +356,18 @@ test_invalid_mode(void **state)
 static void
 test_tracking_disabled(void **state)
 {
-	const RelFileNodePendingDelete relnode = {
-		.node = {
+	const RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
-	bool old = gp_track_pending_delete;
+	bool		old = gp_track_pending_delete;
+
 	gp_track_pending_delete = false;
 
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
@@ -327,15 +381,18 @@ test_tracking_disabled(void **state)
 static void
 test_shmem_type(void **state)
 {
-	const RelFileNodePendingDelete relnode = {
-		.node = {
+	const RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
-	int old = dynamic_shared_memory_type;
+	int			old = dynamic_shared_memory_type;
+
 	dynamic_shared_memory_type = DSM_IMPL_NONE;
 
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
@@ -349,22 +406,26 @@ test_shmem_type(void **state)
 static void
 test_2_backends(void **state)
 {
-	RelFileNodePendingDelete relnode = {
-		.node = {
+	RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
 			.spcNode = TEST_TABLESPACE_OID1,
-			.dbNode = TEST_DB_OID1,
+			.dbNode  = TEST_DB_OID1,
 			.relNode = TEST_REL_OID1
 		}
 	};
 
 	dsa_pointer p[5];
+
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
 	relnode.node.dbNode = TEST_DB_OID2;
 	p[2] = PdlShmemAdd(&relnode, TEST_XID1);
 
-	BackendId old = MyBackendId;
+	BackendId	old = MyBackendId;
+
 	MyBackendId = 3;
 	relnode.node.relNode = TEST_REL_OID2;
 	p[3] = PdlShmemAdd(&relnode, TEST_XID3);
@@ -372,33 +433,44 @@ test_2_backends(void **state)
 	p[4] = PdlShmemAdd(&relnode, TEST_XID4);
 
 	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+
 	assert_true(arr != NULL);
 	assert_int_equal(arr->count, 5);
 	assert_int_equal(arr->array[0].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[0].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[1].xid, TEST_XID2);
 	assert_memory_equal(&arr->array[1].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[2].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[2].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[3].xid, TEST_XID4);
 	assert_memory_equal(&arr->array[3].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 	assert_int_equal(arr->array[4].xid, TEST_XID3);
 	assert_memory_equal(&arr->array[4].relnode,
-		&((RelFileNodePendingDelete){
-			{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}}),
-		sizeof(RelFileNodePendingDelete));
+						&((RelFileNodePendingDelete)
+						{
+							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
+						}),
+						sizeof(RelFileNodePendingDelete));
 
 /* clean up */
 	MyBackendId = old;
@@ -430,10 +502,11 @@ main(int argc, char *argv[])
 
 	gp_track_pending_delete = true;
 	dynamic_shared_memory_type = DSM_IMPL_POSIX;
-	DataDir=".";
+	DataDir = ".";
 	MaxBackends = 5;
 
 	PGShmemHeader *shim = NULL;
+
 	InitShmemAccess(PGSharedMemoryCreate(300000, 6000, &shim));
 	InitShmemAllocation();
 	CreateLWLocks();
@@ -444,7 +517,9 @@ main(int argc, char *argv[])
 
 	IsUnderPostmaster = true;
 	MyBackendId = 1;
-	PGPROC proc = { .backendId = MyBackendId };
+
+	PGPROC		proc = {.backendId = MyBackendId};
+
 	MyProc = &proc;
 	return run_tests(tests);
 }
