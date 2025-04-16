@@ -41,6 +41,7 @@ typedef struct BackendsPendingDeletesArray
 static BackendsPendingDeletesArray *BackendsPendingDeletes = NULL;
 static dsa_area *pendingDeletesDsa = NULL;	/* ptr to DSA area attached by
 											 * current process */
+
 static inline bool is_tracking_enabled()
 {
 	return !IsBootstrapProcessingMode() &&
@@ -48,48 +49,9 @@ static inline bool is_tracking_enabled()
 		   dynamic_shared_memory_type != DSM_IMPL_NONE;
 }
 
-static void PdlAttachDsa(void);
-
-PendingRelXactDeleteArray *
-PdlXLogShmemDump(void)
-{
-	PdlAttachDsa();
-
-	PendingRelXactDeleteArray *ret = NULL;
-
-	Size size = offsetof(PendingRelXactDeleteArray, array);
-	for (int i = 0; i < MaxBackends; i++)
-	{
-		PendingDeletesList *list = &BackendsPendingDeletes->list[i];
-
-		LWLockAcquire(list->lock, LW_SHARED);
-
-		for (dsa_pointer pdl_node_dsa = list->head; DsaPointerIsValid(pdl_node_dsa);)
-		{
-			PendingDeleteListNode *pdl_node = dsa_get_address(pendingDeletesDsa, pdl_node_dsa);
-
-			size += sizeof(*ret->array);
-			if (ret != NULL)
-				ret = repalloc(ret, size);
-			else
-			{
-				ret = palloc(size);
-				ret->count = 0;
-			}
-
-			ret->array[ret->count++] = pdl_node->xrelnode;
-			pdl_node_dsa = pdl_node->next;
-		}
-
-		LWLockRelease(list->lock);
-	}
-
-	return ret;
-}
-
 /*
- * Calculate size for pending delete shmem.
- * The flexible array member should fit DSA.
+ * Calculate shmem size for pending deletes.
+ * BackendsPendingDeletesArray.dsa_mem should fit DSA.
  */
 Size
 PdlShmemSize(void)
@@ -102,6 +64,7 @@ PdlShmemSize(void)
 	return add_size(size, mul_size(sizeof(PendingDeletesList), MaxBackends));
 }
 
+/* Initialize shared memory pending delete lists for all backends */
 void
 PdlShmemInit(void)
 {
@@ -117,7 +80,7 @@ PdlShmemInit(void)
 	if (found)
 		return;
 
-	Size pdl_size = mul_size(sizeof(PendingDeletesList), MaxBackends);
+	const Size pdl_size = mul_size(sizeof(PendingDeletesList), MaxBackends);
 	BackendsPendingDeletes->list = (PendingDeletesList *) ShmemAlloc(pdl_size);
 	for (int i = 0; i < MaxBackends; i++)
 	{
@@ -135,15 +98,20 @@ PdlShmemInit(void)
 	dsa_detach(dsa);
 }
 
-
+/*
+ * Cleanup pending deletes list.
+ * When the function is called, the list should be empty
+ */
 static void
 pdl_beshutdown_hook(int code, Datum arg)
 {
+	dsa_release_in_place(BackendsPendingDeletes->dsa_mem);
+
 	if (MyBackendId == InvalidBackendId)
 		return;
 
 	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
-	if (list->head == InvalidDsaPointer)
+	if (!DsaPointerIsValid(list->head))
 		return;
 
 	/* Assert on debug build and warning on release */
@@ -152,12 +120,10 @@ pdl_beshutdown_hook(int code, Datum arg)
 		(errcode(ERRCODE_INTERNAL_ERROR),
 		 errmsg("Pending deletes list is not empty. "
 				"MyBackend: %d, MyProcPid: %d", MyBackendId, MyProcPid)));
-
 	list->head = InvalidDsaPointer;
 }
-/*
- * Attach dsa once per process.
- */
+
+/* Attach DSA once per process. */
 static void
 PdlAttachDsa(void)
 {
@@ -176,18 +142,15 @@ PdlAttachDsa(void)
 	/* pin mappings, so they can survive res owner life end */
 	dsa_pin_mapping(pendingDeletesDsa);
 
-	/* disconnect from dsa on shmem exit */
-	on_shmem_exit(dsa_on_shmem_exit_release_in_place,
-		(Datum) BackendsPendingDeletes->dsa_mem);
 	on_shmem_exit(pdl_beshutdown_hook, 0);
 }
 
 /*
- * Add pending delete node to shmem.
- * Return dsa ptr of newly created node. This ptr can be used for fast remove.
+ * Add pending delete node to the list of current backend.
+ * Return DSA ptr of a created node. This ptr can be passed to PdlShmemRemove.
  */
 dsa_pointer
-PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid)
+PdlShmemAdd(const RelFileNodePendingDelete *relnode, TransactionId xid)
 {
 	if (!is_tracking_enabled() || xid == InvalidTransactionId ||
 		MyBackendId == InvalidBackendId)
@@ -196,8 +159,8 @@ PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid)
 	PdlAttachDsa();
 
 	PendingDeleteListNode *node;
-	dsa_pointer node_dsa = dsa_allocate(pendingDeletesDsa,
-										sizeof(*node));
+	const dsa_pointer node_dsa = dsa_allocate(pendingDeletesDsa,
+											  sizeof(*node));
 	node = dsa_get_address(pendingDeletesDsa, node_dsa);
 	*node = (PendingDeleteListNode)	{
 		.xrelnode = {
@@ -223,8 +186,8 @@ PdlShmemAdd(RelFileNodePendingDelete *relnode, TransactionId xid)
 }
 
 /*
- * Fast remove pending delete node from shmem.
- * node_ptr is a ptr to already added node.
+ * Remove pending delete node from the list of current backend.
+ * node_ptr is a ptr to already added node (see PdlShmemAdd)
  */
 void
 PdlShmemRemove(dsa_pointer node_ptr)
@@ -235,18 +198,21 @@ PdlShmemRemove(dsa_pointer node_ptr)
 	Assert(DsaPointerIsValid(node_ptr));
 
 	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
-	PendingDeleteListNode *node = dsa_get_address(pendingDeletesDsa, node_ptr);
+	const PendingDeleteListNode *node =
+		dsa_get_address(pendingDeletesDsa, node_ptr);
 
 	LWLockAcquire(list->lock, LW_EXCLUSIVE);
 	if (DsaPointerIsValid(node->next))
 	{
-		PendingDeleteListNode *next_node = dsa_get_address(pendingDeletesDsa, node->next);
+		PendingDeleteListNode *next_node = dsa_get_address(pendingDeletesDsa,
+														   node->next);
 		next_node->prev = node->prev;
 	}
 
 	if (DsaPointerIsValid(node->prev))
 	{
-		PendingDeleteListNode *prev_node = dsa_get_address(pendingDeletesDsa, node->prev);
+		PendingDeleteListNode *prev_node = dsa_get_address(pendingDeletesDsa,
+														   node->prev);
 		prev_node->next = node->next;
 	}
 	else
@@ -254,6 +220,48 @@ PdlShmemRemove(dsa_pointer node_ptr)
 
 	LWLockRelease(list->lock);
 
-
 	dsa_free(pendingDeletesDsa, node_ptr);
+}
+
+/*
+ * Dump pending delete nodes from all backends to array.
+ * Return NULL if there are no nodes.
+ */
+PendingRelXactDeleteArray *
+PdlXLogShmemDump(void)
+{
+	PdlAttachDsa();
+
+	PendingRelXactDeleteArray *ret = NULL;
+
+	Size size = offsetof(PendingRelXactDeleteArray, array);
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		PendingDeletesList *list = &BackendsPendingDeletes->list[i];
+
+		LWLockAcquire(list->lock, LW_SHARED);
+
+		for (dsa_pointer pdl_node_dsa = list->head;
+			 DsaPointerIsValid(pdl_node_dsa);)
+		{
+			const PendingDeleteListNode *pdl_node = 
+				dsa_get_address(pendingDeletesDsa, pdl_node_dsa);
+
+			size += sizeof(*ret->array);
+			if (ret != NULL)
+				ret = repalloc(ret, size);
+			else
+			{
+				ret = palloc(size);
+				ret->count = 0;
+			}
+
+			ret->array[ret->count++] = pdl_node->xrelnode;
+			pdl_node_dsa = pdl_node->next;
+		}
+
+		LWLockRelease(list->lock);
+	}
+
+	return ret;
 }
