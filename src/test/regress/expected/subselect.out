@@ -2166,9 +2166,6 @@ create table table2 as
 explain (costs off)
 select * from table1 where 10 in
     (select b from table2 where table2.a = 0 or table1.b = table2.b);
-explain (costs off)
-select * from table1 where 10 in
-    (select b from table2 where table2.a = 0 or table1.b = table2.b);
                               QUERY PLAN                               
 -----------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -2183,8 +2180,8 @@ select * from table1 where 10 in
  Optimizer: Postgres-based planner
 (10 rows)
 
-SELECT * FROM table1 WHERE 10 in
-	(SELECT b FROM table2 WHERE table2.a = 0 OR table1.b = table2.b);
+select * from table1 where 10 in
+    (select b from table2 where table2.a = 0 or table1.b = table2.b);
  a | b 
 ---+---
  1 | 0

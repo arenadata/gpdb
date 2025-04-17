@@ -1077,12 +1077,14 @@ drop table if exists table1, table2;
 
 create table table1 as
     select * from (values (1, 0), (1, 0)) v(a, b) distributed by (a);
+
 create table table2 as
     select * from (values (0, 10), (0, 10)) v(a, b) distributed by (a);
 
 explain (costs off)
 select * from table1 where 10 in
     (select b from table2 where table2.a = 0 or table1.b = table2.b);
+
 select * from table1 where 10 in
     (select b from table2 where table2.a = 0 or table1.b = table2.b);
 
