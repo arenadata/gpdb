@@ -48,6 +48,21 @@ is_tracking_enabled()
 		dynamic_shared_memory_type != DSM_IMPL_NONE;
 }
 
+/* Memory required for the BackendsPendingDeletesArray structure */
+static inline Size
+PdlStructSize(void)
+{
+	return add_size(offsetof(BackendsPendingDeletesArray, dsa_mem),
+					dsa_minimum_size());
+}
+
+/* Memory required for array of PendingDeletesList-s */
+static inline Size
+PdlListArraySize(void)
+{
+	return mul_size(sizeof(PendingDeletesList), MaxBackends);
+}
+
 /*
  * Calculate shmem size for pending deletes.
  * BackendsPendingDeletesArray.dsa_mem should fit DSA.
@@ -58,10 +73,7 @@ PdlShmemSize(void)
 	if (!gp_track_pending_delete)
 		return 0;
 
-	Size		size = add_size(offsetof(BackendsPendingDeletesArray, dsa_mem),
-								dsa_minimum_size());
-
-	return add_size(size, mul_size(sizeof(PendingDeletesList), MaxBackends));
+	return add_size(PdlStructSize(), PdlListArraySize());
 }
 
 /* Initialize shared memory pending delete lists for all backends */
@@ -74,16 +86,12 @@ PdlShmemInit(void)
 	bool		found;
 
 	BackendsPendingDeletes = (BackendsPendingDeletesArray *)
-		ShmemInitStruct("Pending deletes array",
-						add_size(offsetof(BackendsPendingDeletesArray, dsa_mem),
-								 dsa_minimum_size()),
-						&found);
+		ShmemInitStruct("Pending deletes array", PdlStructSize(), &found);
 	if (found)
 		return;
 
-	const Size	pdl_size = mul_size(sizeof(PendingDeletesList), MaxBackends);
-
-	BackendsPendingDeletes->list = (PendingDeletesList *) ShmemAlloc(pdl_size);
+	BackendsPendingDeletes->list = (PendingDeletesList *)
+		ShmemAlloc(PdlListArraySize());
 	if (BackendsPendingDeletes->list == NULL)
 	{
 		ereport(ERROR,
