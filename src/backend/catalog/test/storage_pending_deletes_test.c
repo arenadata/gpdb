@@ -74,7 +74,7 @@ test_1(void **state)
 	assert_int_equal(arr->array[0].xid, TEST_XID1);
 	assert_memory_equal(&arr->array[0].relnode, &relnode, sizeof(relnode));
 
-/* clean up */
+	/* clean up */
 	pfree(arr);
 	PdlShmemRemove(p);
 }
@@ -140,7 +140,7 @@ test_remove_fisrt(void **state)
 						}),
 						sizeof(RelFileNodePendingDelete));
 
-/* clean up */
+	/* clean up */
 	pfree(arr);
 	for (int i = 1; i < ARRAY_SIZE(p); i++)
 		PdlShmemRemove(p[i]);
@@ -209,7 +209,7 @@ test_remove_middle(void **state)
 						}),
 						sizeof(RelFileNodePendingDelete));
 
-/* clean up */
+	/* clean up */
 	pfree(arr);
 	for (int i = 0; i < ARRAY_SIZE(p); i++)
 		PdlShmemRemove(p[i]);
@@ -277,7 +277,7 @@ test_remove_last(void **state)
 						}),
 						sizeof(RelFileNodePendingDelete));
 
-/* clean up */
+	/* clean up */
 	pfree(arr);
 	for (int i = 0; i < ARRAY_SIZE(p); i++)
 		PdlShmemRemove(p[i]);
@@ -323,7 +323,7 @@ test_invalid_backend(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-/* clean up */
+	/* clean up */
 	MyBackendId = old;
 }
 
@@ -348,7 +348,7 @@ test_invalid_mode(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-/* clean up */
+	/* clean up */
 	Mode = old;
 }
 
@@ -373,7 +373,7 @@ test_tracking_disabled(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-/* clean up */
+	/* clean up */
 	gp_track_pending_delete = old;
 }
 
@@ -398,7 +398,7 @@ test_shmem_type(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-/* clean up */
+	/* clean up */
 	dynamic_shared_memory_type = old;
 }
 
@@ -472,7 +472,7 @@ test_2_backends(void **state)
 						}),
 						sizeof(RelFileNodePendingDelete));
 
-/* clean up */
+	/* clean up */
 	MyBackendId = old;
 	pfree(arr);
 	for (int i = 0; i < ARRAY_SIZE(p); i++)
