@@ -170,6 +170,14 @@ PdlShmemAdd(const RelFileNodePendingDelete * relnode, TransactionId xid)
 	const dsa_pointer node_dsa = dsa_allocate(pendingDeletesDsa,
 											  sizeof(*node));
 
+	if (!DsaPointerIsValid(node_dsa))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Not enough memory to add pending delete node. "
+					   "MyBackend: %d, MyProcPid: %d", MyBackendId, MyProcPid)));
+	}
+
 	node = dsa_get_address(pendingDeletesDsa, node_dsa);
 	*node = (PendingDeleteListNode)
 	{
