@@ -84,6 +84,13 @@ PdlShmemInit(void)
 	const Size	pdl_size = mul_size(sizeof(PendingDeletesList), MaxBackends);
 
 	BackendsPendingDeletes->list = (PendingDeletesList *) ShmemAlloc(pdl_size);
+	if (BackendsPendingDeletes->list == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("Not enough memory to create pending deletes lists.")));
+	}
+	
 	for (int i = 0; i < MaxBackends; i++)
 	{
 		BackendsPendingDeletes->list[i] = (PendingDeletesList)
