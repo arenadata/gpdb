@@ -4,6 +4,7 @@ test: gpdispatch
 # test if gxid is valid or not on the cluster before running the tests
 test: check_gxid
 
+test: invalid_database
 test: checkpoint_dtx_info
 test: autovacuum-analyze
 test: vacuum_skip_locked_onseg
@@ -319,7 +320,6 @@ test: reindex/vacuum_while_reindex_ao_bitmap reindex/vacuum_while_reindex_heap_b
 # Cancel test
 test: cancel_plpython
 test: cancel_query
-test: invalid_database
 
 # Tests for getting numsegments in utility mode
 test: upgrade_numsegments

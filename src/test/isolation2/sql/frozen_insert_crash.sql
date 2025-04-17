@@ -216,5 +216,3 @@ $$ LANGUAGE plpgsql;
 -- validating at the end here
 ! psql postgres -At -c "set enable_indexscan = off; set enable_seqscan = on; explain (costs off) select distinct f.gp_segment_id, f.objmod, f.last_sequence from gp_dist_random('gp_fastsequence') f left join gp_dist_random('pg_appendonly') a on segrelid = objid and a.gp_segment_id = f.gp_segment_id where a.gp_segment_id = 0 and relid = (select oid from pg_class where relname = 'tab_fi');" | grep "Seq Scan on gp_fastsequence";
 ! psql postgres -At -c "set enable_indexscan = on; set enable_seqscan = off; explain (costs off) select distinct f.gp_segment_id, f.objmod, f.last_sequence from gp_dist_random('gp_fastsequence') f left join gp_dist_random('pg_appendonly') a on segrelid = objid and a.gp_segment_id = f.gp_segment_id where a.gp_segment_id = 0 and relid = (select oid from pg_class where relname = 'tab_fi');" | grep "Index Scan using gp_fastsequence";
-
-1: drop table tab_fi;
