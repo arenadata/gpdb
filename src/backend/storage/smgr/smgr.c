@@ -19,6 +19,7 @@
  */
 #include "postgres.h"
 
+<<<<<<< HEAD
 #include "access/aomd.h"
 #include "access/xact.h"
 #include "access/xlogutils.h"
@@ -26,6 +27,8 @@
 #include "catalog/indexing.h"
 #include "commands/tablespace.h"
 #include "postmaster/postmaster.h"
+=======
+>>>>>>> sync-pg-phase1
 #include "lib/ilist.h"
 #include "storage/bufmgr.h"
 #include "storage/ipc.h"
@@ -40,16 +43,46 @@
  * For example, disk quota extension will use these hooks to
  * detect active tables.
  */
+<<<<<<< HEAD
 file_create_hook_type file_create_hook = NULL;
 file_extend_hook_type file_extend_hook = NULL;
 file_truncate_hook_type file_truncate_hook = NULL;
 file_unlink_hook_type file_unlink_hook = NULL;
+=======
+typedef struct f_smgr
+{
+	void		(*smgr_init) (void);	/* may be NULL */
+	void		(*smgr_shutdown) (void);	/* may be NULL */
+	void		(*smgr_open) (SMgrRelation reln);
+	void		(*smgr_close) (SMgrRelation reln, ForkNumber forknum);
+	void		(*smgr_create) (SMgrRelation reln, ForkNumber forknum,
+								bool isRedo);
+	bool		(*smgr_exists) (SMgrRelation reln, ForkNumber forknum);
+	void		(*smgr_unlink) (RelFileNodeBackend rnode, ForkNumber forknum,
+								bool isRedo);
+	void		(*smgr_extend) (SMgrRelation reln, ForkNumber forknum,
+								BlockNumber blocknum, char *buffer, bool skipFsync);
+	void		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
+								  BlockNumber blocknum);
+	void		(*smgr_read) (SMgrRelation reln, ForkNumber forknum,
+							  BlockNumber blocknum, char *buffer);
+	void		(*smgr_write) (SMgrRelation reln, ForkNumber forknum,
+							   BlockNumber blocknum, char *buffer, bool skipFsync);
+	void		(*smgr_writeback) (SMgrRelation reln, ForkNumber forknum,
+								   BlockNumber blocknum, BlockNumber nblocks);
+	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
+	void		(*smgr_truncate) (SMgrRelation reln, ForkNumber forknum,
+								  BlockNumber nblocks);
+	void		(*smgr_immedsync) (SMgrRelation reln, ForkNumber forknum);
+} f_smgr;
+>>>>>>> sync-pg-phase1
 
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
 	{
 		.smgr_init = mdinit,
 		.smgr_shutdown = NULL,
+		.smgr_open = mdopen,
 		.smgr_close = mdclose,
 		.smgr_create = mdcreate,
 		.smgr_exists = mdexists,
@@ -224,8 +257,6 @@ smgropen(RelFileNode rnode, BackendId backend, SMgrImpl which)
 	/* Initialize it if not present before */
 	if (!found)
 	{
-		int			forknum;
-
 		/* hash_search already filled in the lookup key */
 		reln->smgr_owner = NULL;
 		reln->smgr_targblock = InvalidBlockNumber;
@@ -234,9 +265,8 @@ smgropen(RelFileNode rnode, BackendId backend, SMgrImpl which)
 		reln->smgr_which = which;
 		reln->storageManager = smgr(backend, rnode, which);
 
-		/* mark it not open */
-		for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
-			reln->md_num_open_segs[forknum] = 0;
+		/* implementation-specific initialization */
+		smgrsw[reln->smgr_which].smgr_open(reln);
 
 		/* it has no owner yet */
 		dlist_push_tail(&unowned_relns, &reln->node);
@@ -385,13 +415,11 @@ smgrclosenode(RelFileNodeBackend rnode)
  *		Given an already-created (but presumably unused) SMgrRelation,
  *		cause the underlying disk file or other storage for the fork
  *		to be created.
- *
- *		If isRedo is true, it is okay for the underlying file to exist
- *		already because we are in a WAL replay sequence.
  */
 void
 smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 {
+<<<<<<< HEAD
 	/*
 	 * Exit quickly in WAL replay mode if we've already opened the file. If
 	 * it's open, it surely must exist.
@@ -416,6 +444,9 @@ smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 
 	if (file_create_hook)
 		(*file_create_hook)(reln->smgr_rnode);
+=======
+	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
+>>>>>>> sync-pg-phase1
 }
 
 /*

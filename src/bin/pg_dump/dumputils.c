@@ -402,10 +402,26 @@ buildDefaultACLCommands(const char *type, const char *nspname,
 	if (nspname)
 		appendPQExpBuffer(prefix, "IN SCHEMA %s ", fmtId(nspname));
 
+<<<<<<< HEAD
 	/*
 	 * There's no such thing as initprivs for a default ACL, so the base ACL
 	 * is always just the object-type-specific default.
 	 */
+=======
+	if (strlen(initacls) != 0 || strlen(initracls) != 0)
+	{
+		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(true);\n");
+		if (!buildACLCommands("", NULL, NULL, type,
+							  initacls, initracls, owner,
+							  prefix->data, remoteVersion, sql))
+		{
+			destroyPQExpBuffer(prefix);
+			return false;
+		}
+		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
+	}
+
+>>>>>>> sync-pg-phase1
 	if (!buildACLCommands("", NULL, NULL, type,
 						  acls, acldefault, owner,
 						  prefix->data, remoteVersion, sql))

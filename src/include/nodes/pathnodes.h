@@ -336,7 +336,11 @@ struct PlannerInfo
 
 	List	   *eq_classes;		/* list of active EquivalenceClasses */
 
+<<<<<<< HEAD
 	List	   *non_eq_clauses;	/* list of non-equivalence clauses */
+=======
+	bool		ec_merging_done;	/* set true once ECs are canonical */
+>>>>>>> sync-pg-phase1
 
 	List	   *canon_pathkeys; /* list of "canonical" PathKeys */
 
@@ -676,6 +680,8 @@ static inline void planner_subplan_put_plan(struct PlannerInfo *root, SubPlan *s
  *		pages - number of disk pages in relation (zero if not a table)
  *		tuples - number of tuples in relation (not considering restrictions)
  *		allvisfrac - fraction of disk pages that are marked all-visible
+ *		eclass_indexes - EquivalenceClasses that mention this rel (filled
+ *						 only after EC merging is complete)
  *		subroot - PlannerInfo for subquery (NULL if it's not a subquery)
  *		subplan_params - list of PlannerParamItems to be passed to subquery
  *
@@ -855,7 +861,13 @@ typedef struct RelOptInfo
     struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
 	Oid			relam;			/* form_pg_class access method */
 	double		allvisfrac;
+<<<<<<< HEAD
 	PlannerInfo *subroot;		/* if subquery (in GPDB: or CTE) */
+=======
+	Bitmapset  *eclass_indexes; /* Indexes in PlannerInfo's eq_classes list of
+								 * ECs that mention this rel */
+	PlannerInfo *subroot;		/* if subquery */
+>>>>>>> sync-pg-phase1
 	List	   *subplan_params; /* if subquery */
 	int			rel_parallel_workers;	/* wanted number of parallel workers */
 

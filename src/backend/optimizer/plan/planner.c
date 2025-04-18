@@ -836,6 +836,7 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	root->cte_plan_ids = NIL;
 	root->multiexpr_params = NIL;
 	root->eq_classes = NIL;
+<<<<<<< HEAD
 	root->non_eq_clauses = NIL;
 	root->init_plans = NIL;
 
@@ -845,6 +846,9 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		root->list_cteplaninfo = init_list_cteplaninfo(list_length(parse->cteList));
 	}
 
+=======
+	root->ec_merging_done = false;
+>>>>>>> sync-pg-phase1
 	root->append_rel_list = NIL;
 	root->rowMarks = NIL;
 	memset(root->upper_rels, 0, sizeof(root->upper_rels));
@@ -3756,6 +3760,14 @@ remove_useless_groupby_columns(PlannerInfo *root)
 		if (rte->rtekind != RTE_RELATION)
 			continue;
 
+		/*
+		 * We must skip inheritance parent tables as some of the child rels
+		 * may cause duplicate rows.  This cannot happen with partitioned
+		 * tables, however.
+		 */
+		if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
+			continue;
+
 		/* Nothing to do unless this rel has multiple Vars in GROUP BY */
 		relattnos = groupbyattnos[relid];
 		if (bms_membership(relattnos) != BMS_MULTIPLE)
@@ -3975,7 +3987,7 @@ extract_rollup_sets(List *groupingSets)
 	while (lc1 && lfirst(lc1) == NIL)
 	{
 		++num_empty;
-		lc1 = lnext(lc1);
+		lc1 = lnext(groupingSets, lc1);
 	}
 
 	/* bail out now if it turns out that all we had were empty sets. */
@@ -4009,7 +4021,7 @@ extract_rollup_sets(List *groupingSets)
 	j = 0;
 	i = 1;
 
-	for_each_cell(lc, lc1)
+	for_each_cell(lc, groupingSets, lc1)
 	{
 		List	   *candidate = (List *) lfirst(lc);
 		Bitmapset  *candidate_set = NULL;
@@ -4865,6 +4877,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 		 * Aggregate is distributed, then the number of groups in one segment
 		 * is only a fraction of the total.
 		 */
+<<<<<<< HEAD
 		if (CdbPathLocus_IsPartitioned(path->locus))
 			dNumGroups = clamp_row_est(dNumGroupsTotal /
 									   CdbPathLocus_NumSegments(path->locus));
@@ -4878,6 +4891,15 @@ consider_groupingsets_paths(PlannerInfo *root,
 
 		if (srd->unhashed_rollup)
 			exclude_groups = srd->unhashed_rollup->numGroups;
+=======
+		if (l_start != NULL &&
+			pathkeys_contained_in(root->group_pathkeys, path->pathkeys))
+		{
+			unhashed_rollup = lfirst_node(RollupData, l_start);
+			exclude_groups = unhashed_rollup->numGroups;
+			l_start = lnext(gd->rollups, l_start);
+		}
+>>>>>>> sync-pg-phase1
 
 		hashsize = estimate_hashagg_tablesize(path,
 											  agg_costs,
@@ -4903,6 +4925,88 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   parse->groupClause,
 											   srd->new_rollups);
 
+<<<<<<< HEAD
+=======
+		for_each_cell(lc, gd->rollups, l_start)
+		{
+			RollupData *rollup = lfirst_node(RollupData, lc);
+
+			/*
+			 * If we find an unhashable rollup that's not been skipped by the
+			 * "actually sorted" check above, we can't cope; we'd need sorted
+			 * input (with a different sort order) but we can't get that here.
+			 * So bail out; we'll get a valid path from the is_sorted case
+			 * instead.
+			 *
+			 * The mere presence of empty grouping sets doesn't make a rollup
+			 * unhashable (see preprocess_grouping_sets), we handle those
+			 * specially below.
+			 */
+			if (!rollup->hashable)
+				return;
+			else
+				sets_data = list_concat(sets_data, list_copy(rollup->gsets_data));
+		}
+		foreach(lc, sets_data)
+		{
+			GroupingSetData *gs = lfirst_node(GroupingSetData, lc);
+			List	   *gset = gs->set;
+			RollupData *rollup;
+
+			if (gset == NIL)
+			{
+				/* Empty grouping sets can't be hashed. */
+				empty_sets_data = lappend(empty_sets_data, gs);
+				empty_sets = lappend(empty_sets, NIL);
+			}
+			else
+			{
+				rollup = makeNode(RollupData);
+
+				rollup->groupClause = preprocess_groupclause(root, gset);
+				rollup->gsets_data = list_make1(gs);
+				rollup->gsets = remap_to_groupclause_idx(rollup->groupClause,
+														 rollup->gsets_data,
+														 gd->tleref_to_colnum_map);
+				rollup->numGroups = gs->numGroups;
+				rollup->hashable = true;
+				rollup->is_hashed = true;
+				new_rollups = lappend(new_rollups, rollup);
+			}
+		}
+
+		/*
+		 * If we didn't find anything nonempty to hash, then bail.  We'll
+		 * generate a path from the is_sorted case.
+		 */
+		if (new_rollups == NIL)
+			return;
+
+		/*
+		 * If there were empty grouping sets they should have been in the
+		 * first rollup.
+		 */
+		Assert(!unhashed_rollup || !empty_sets);
+
+		if (unhashed_rollup)
+		{
+			new_rollups = lappend(new_rollups, unhashed_rollup);
+			strat = AGG_MIXED;
+		}
+		else if (empty_sets)
+		{
+			RollupData *rollup = makeNode(RollupData);
+
+			rollup->groupClause = NIL;
+			rollup->gsets_data = empty_sets_data;
+			rollup->gsets = empty_sets;
+			rollup->numGroups = list_length(empty_sets);
+			rollup->hashable = false;
+			rollup->is_hashed = false;
+			new_rollups = lappend(new_rollups, rollup);
+			strat = AGG_MIXED;
+		}
+>>>>>>> sync-pg-phase1
 
 		add_path(grouped_rel, (Path *)
 				 create_groupingsets_path(root,
@@ -5008,7 +5112,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 			 * below, must use the same condition.
 			 */
 			i = 0;
-			for_each_cell(lc, lnext(list_head(gd->rollups)))
+			for_each_cell(lc, gd->rollups, list_second_cell(gd->rollups))
 			{
 				RollupData *rollup = lfirst_node(RollupData, lc);
 
@@ -5042,7 +5146,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 				rollups = list_make1(linitial(gd->rollups));
 
 				i = 0;
-				for_each_cell(lc, lnext(list_head(gd->rollups)))
+				for_each_cell(lc, gd->rollups, list_second_cell(gd->rollups))
 				{
 					RollupData *rollup = lfirst_node(RollupData, lc);
 
@@ -5269,7 +5373,7 @@ create_one_window_path(PlannerInfo *root,
 											   wc->partitionClause,
 											   NIL);
 
-		if (lnext(l))
+		if (lnext(activeWindows, l))
 		{
 			/*
 			 * Add the current WindowFuncs to the output target for this
@@ -6031,7 +6135,7 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 
 		Assert(orig_tlist_item != NULL);
 		orig_tle = lfirst_node(TargetEntry, orig_tlist_item);
-		orig_tlist_item = lnext(orig_tlist_item);
+		orig_tlist_item = lnext(orig_tlist, orig_tlist_item);
 		if (orig_tle->resjunk)	/* should not happen */
 			elog(ERROR, "resjunk output columns are not implemented");
 		Assert(new_tle->resno == orig_tle->resno);

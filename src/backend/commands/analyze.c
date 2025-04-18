@@ -622,7 +622,8 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 						if (indexpr_item == NULL)	/* shouldn't happen */
 							elog(ERROR, "too few entries in indexprs list");
 						indexkey = (Node *) lfirst(indexpr_item);
-						indexpr_item = lnext(indexpr_item);
+						indexpr_item = lnext(indexInfo->ii_Expressions,
+											 indexpr_item);
 						thisdata->vacattrstats[tcnt] =
 							examine_attribute(Irel[ind], i + 1, indexkey, elevel);
 						if (thisdata->vacattrstats[tcnt] != NULL)
@@ -923,6 +924,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		}
 
 		/*
+<<<<<<< HEAD
 		 * Should we build extended statistics for this relation?
 		 *
 		 * The extended statistics catalog does not include an inheritance
@@ -938,12 +940,18 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		build_ext_stats = (onerel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE) ? inh : (!inh);
 
 		/*
+=======
+>>>>>>> sync-pg-phase1
 		 * Build extended statistics (if there are any).
 		 *
 		 * For now we only build extended statistics on individual relations,
 		 * not for relations representing inheritance trees.
 		 */
+<<<<<<< HEAD
 		if (build_ext_stats)
+=======
+		if (!inh)
+>>>>>>> sync-pg-phase1
 			BuildRelationExtStatistics(onerel, totalrows, numrows, rows,
 									   attr_cnt, vacattrstats);
 	}

@@ -63,16 +63,19 @@
 #include "cdb/cdbvars.h" /* gp_select_invisible */
 
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
-static inline void BitmapDoneInitializingSharedState(
-													 ParallelBitmapHeapState *pstate);
+static inline void BitmapDoneInitializingSharedState(ParallelBitmapHeapState *pstate);
 static inline void BitmapAdjustPrefetchIterator(BitmapHeapScanState *node,
 												TBMIterateResult *tbmres);
 static inline void BitmapAdjustPrefetchTarget(BitmapHeapScanState *node);
 static inline void BitmapPrefetch(BitmapHeapScanState *node,
 								  TableScanDesc scan);
+<<<<<<< HEAD
 static bool BitmapShouldInitializeSharedState(
 											  ParallelBitmapHeapState *pstate);
 static void ExecEagerFreeBitmapHeapScan(BitmapHeapScanState *node);
+=======
+static bool BitmapShouldInitializeSharedState(ParallelBitmapHeapState *pstate);
+>>>>>>> sync-pg-phase1
 
 
 /*

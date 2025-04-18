@@ -666,7 +666,11 @@ extern void VirtualXactLockTableInsert(VirtualTransactionId vxid);
 extern void VirtualXactLockTableCleanup(void);
 extern bool VirtualXactLock(VirtualTransactionId vxid, bool wait);
 
+<<<<<<< HEAD
 /* Check whether a waiter's request lockmode conflict with the holder's hold mask */
 extern bool CheckWaitLockModeConflictHoldMask(LOCKTAG tag, LOCKMODE waitLockMode, LOCKMASK holderMask);
 
 #endif							/* LOCK_H */
+=======
+#endif							/* LOCK_H_ */
+>>>>>>> sync-pg-phase1

@@ -709,6 +709,25 @@ typedef struct _SubscriptionInfo
 } SubscriptionInfo;
 
 /*
+<<<<<<< HEAD
+=======
+ * We build an array of these with an entry for each object that is an
+ * extension member according to pg_depend.
+ */
+typedef struct _extensionMemberId
+{
+	CatalogId	catId;			/* tableoid+oid of some member object */
+	ExtensionInfo *ext;			/* owning extension */
+} ExtensionMemberId;
+
+/* placeholders for comment starting and ending delimiters */
+extern char g_comment_start[10];
+extern char g_comment_end[10];
+
+extern char g_opaque_type[10];	/* name for the opaque type */
+
+/*
+>>>>>>> sync-pg-phase1
  *	common utility functions
  */
 
