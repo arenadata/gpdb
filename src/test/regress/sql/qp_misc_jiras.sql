@@ -2648,7 +2648,9 @@ set gp_enable_relsize_collection = on;
 set gp_autostats_mode = none;
 
 -- Check heap table.
+-- start_ignore
 drop table if exists test_table;
+-- end_ignore
 create table test_table
 as (select generate_series(1, 300000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed by (col_1);
 

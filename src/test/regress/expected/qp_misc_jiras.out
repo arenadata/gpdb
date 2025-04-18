@@ -4613,8 +4613,6 @@ explain select b from epsilon_test where b in (11,30) limit 30;
 set gp_enable_relsize_collection = on;
 set gp_autostats_mode = none;
 -- Check heap table.
-drop table if exists test_table;
-NOTICE:  table "test_table" does not exist, skipping
 create table test_table
 as (select generate_series(1, 300000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed by (col_1);
 explain select count(1) from test_table;
