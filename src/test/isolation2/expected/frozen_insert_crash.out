@@ -453,5 +453,3 @@ COMMIT
                                 ->  Index Scan using gp_fastsequence_objid_objmod_index on gp_fastsequence f
 
 
-1: drop table tab_fi;
-DROP TABLE
