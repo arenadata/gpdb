@@ -118,7 +118,7 @@ test_1(void **state)
 	dump_and_clean(&expected, 1, &p, 1);
 }
 
-/* Add nodes and remove the first one before dump */
+/* Add nodes, remove the first one, add a node */
 static void
 test_remove_fisrt(void **state)
 {
@@ -145,10 +145,10 @@ test_remove_fisrt(void **state)
 	relnode.node.relNode = TEST_REL_OID2;
 	p[2] = PdlShmemAdd(&relnode, TEST_XID1);
 
+	PdlShmemRemove(p_first);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID1;
 	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
-
-	PdlShmemRemove(p_first);
 
 	PendingRelXactDelete expected[] = 
 	{
@@ -173,7 +173,7 @@ test_remove_fisrt(void **state)
 	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
-/* Add nodes and remove a node from the middle before dump */
+/* Add nodes, remove a node from the middle, add a node */
 static void
 test_remove_middle(void **state)
 {
@@ -200,27 +200,27 @@ test_remove_middle(void **state)
 	relnode.node.relNode = TEST_REL_OID2;
 	p[2] = PdlShmemAdd(&relnode, TEST_XID3);
 
+	PdlShmemRemove(p_middle);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID1;
 	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
-
-	PdlShmemRemove(p_middle);
 
 	PendingRelXactDelete expected[] = 
 	{
 		{
-			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
 			.xid = TEST_XID1
-		},
-		{
-			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
-			.xid = TEST_XID3
 		},
 		{
 			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}},
 			.xid = TEST_XID2
 		},
 		{
-			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID3
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
 			.xid = TEST_XID1
 		},
 	};
@@ -228,7 +228,7 @@ test_remove_middle(void **state)
 	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
-/* Add nodes and remove the last one before dump */
+/* Add nodes, remove the last one, add a node */
 static void
 test_remove_last(void **state)
 {
@@ -253,29 +253,29 @@ test_remove_last(void **state)
 	p[2] = PdlShmemAdd(&relnode, TEST_XID3);
 
 	relnode.node.relNode = TEST_REL_OID2;
-	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
-
-	relnode.node.relNode = TEST_REL_OID1;
 	dsa_pointer p_last = PdlShmemAdd(&relnode, TEST_XID1);
 
 	PdlShmemRemove(p_last);
 
+	relnode.node.dbNode = TEST_DB_OID1;
+	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
+
 	PendingRelXactDelete expected[] = 
 	{
 		{
-			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
 			.xid = TEST_XID1
-		},
-		{
-			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
-			.xid = TEST_XID3
 		},
 		{
 			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}},
 			.xid = TEST_XID2
 		},
 		{
-			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
+			.xid = TEST_XID3
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID2}},
 			.xid = TEST_XID1
 		},
 	};
@@ -439,7 +439,7 @@ test_2_backends(void **state)
 	PendingRelXactDelete expected[] = 
 	{
 		{
-			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
 			.xid = TEST_XID1
 		},
 		{
@@ -447,16 +447,16 @@ test_2_backends(void **state)
 			.xid = TEST_XID2
 		},
 		{
-			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
 			.xid = TEST_XID1
-		},
-		{
-			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
-			.xid = TEST_XID4
 		},
 		{
 			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
 			.xid = TEST_XID3
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID4
 		},
 	};
 
