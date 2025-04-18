@@ -76,6 +76,14 @@ check_and_clean(PendingRelXactDeleteArray *arr,
 	assert_true(PdlXLogShmemDump() == NULL);
 }
 
+/* Call PdlXLogShmemDump(), check its result and clean up */
+static void 
+dump_and_clean(PendingRelXactDelete *expected, Size expectedCnt,
+			   dsa_pointer *p, Size pCnt)
+{
+	check_and_clean(PdlXLogShmemDump(), expected, expectedCnt, p, pCnt);
+}
+
 
 /* Dump without additions */
 static void
@@ -107,7 +115,7 @@ test_1(void **state)
 		.xid = TEST_XID1
 	};
 
-	check_and_clean(PdlXLogShmemDump(), &expected, 1, &p, 1);
+	dump_and_clean(&expected, 1, &p, 1);
 }
 
 /* Add nodes and remove the first one before dump */
@@ -162,8 +170,7 @@ test_remove_fisrt(void **state)
 		},
 	};
 
-	check_and_clean(PdlXLogShmemDump(),
-					expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
+	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
 /* Add nodes and remove a node from the middle before dump */
@@ -218,8 +225,7 @@ test_remove_middle(void **state)
 		},
 	};
 
-	check_and_clean(PdlXLogShmemDump(),
-					expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
+	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
 /* Add nodes and remove the last one before dump */
@@ -274,8 +280,7 @@ test_remove_last(void **state)
 		},
 	};
 
-	check_and_clean(PdlXLogShmemDump(),
-					expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
+	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
 /* Add node with invalid transaction id */
