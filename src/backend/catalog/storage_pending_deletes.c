@@ -93,20 +93,16 @@ PdlShmemInit(void)
 	BackendsPendingDeletes->list = (PendingDeletesList *)
 		ShmemAlloc(PdlListArraySize());
 	if (BackendsPendingDeletes->list == NULL)
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("Not enough memory to create pending deletes lists.")));
-	}
 	
 	for (int i = 0; i < MaxBackends; i++)
-	{
 		BackendsPendingDeletes->list[i] = (PendingDeletesList)
 		{
 			.head = InvalidDsaPointer,
 			.lock = LWLockAssign()
 		};
-	}
 
 	dsa_area   *dsa = dsa_create_in_place(
 						 BackendsPendingDeletes->dsa_mem, dsa_minimum_size(),
@@ -186,12 +182,10 @@ PdlShmemAdd(const RelFileNodePendingDelete * relnode, TransactionId xid)
 	const dsa_pointer node_dsa = dsa_allocate(dsa, sizeof(*node));
 
 	if (!DsaPointerIsValid(node_dsa))
-	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("Not enough memory to add pending delete node. "
 				   "MyBackend: %d, MyProcPid: %d", MyBackendId, MyProcPid)));
-	}
 
 	node = dsa_get_address(dsa, node_dsa);
 	*node = (PendingDeleteListNode)
