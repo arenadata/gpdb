@@ -46,7 +46,6 @@
 #include "executor/functions.h"
 #include "cdb/memquota.h"
 #include "parser/analyze.h"
-#include "storage/proc.h"
 
 /*
  * These global variables are part of the API for various SPI functions
@@ -2231,10 +2230,10 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 			{
 				PlannedStmt* pstmt = (PlannedStmt *) stmt;
 				canSetTag = pstmt->canSetTag;
-				/* GPDB: Mark all queries as SPI inner query for extension usage 
-					But make sure that SPI is not top level itself by looking at queryCommandId
+				/* GPDB: Mark all queries as SPI inner query for extension usage
+					But make sure that SPI is not top level itself
 				*/
-				if (MyProc->queryCommandId != 0)
+				if (!IsBackgroundWorker || _SPI_connected > 0)
 					((PlannedStmt*)pstmt)->metricsQueryType = SPI_INNER_QUERY;
 			}
 			else
