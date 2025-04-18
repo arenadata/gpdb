@@ -44,6 +44,39 @@ __wrap_AddToDataDirLockFile(int target_line, const char *str)
 {
 }
 
+
+/* Function to sort array of PendingRelXactDelete using qsort */
+static int
+cmp_pdl(const void *p1, const void *p2)
+{
+	return memcmp(p1, p2, sizeof(PendingRelXactDelete));
+}
+
+/* Check and clean up when PdlXLogShmemDump returns not NULL */
+static void 
+check_and_clean(PendingRelXactDeleteArray *arr,
+				PendingRelXactDelete *expected, Size expectedCnt,
+				dsa_pointer *p, Size pCnt)
+{
+	assert_true(arr != NULL);
+
+	assert_int_equal(arr->count, expectedCnt);
+
+	/* Order doesn't matter */
+	qsort (expected,   expectedCnt, sizeof(*expected), cmp_pdl);
+	qsort (arr->array, expectedCnt, sizeof(*expected), cmp_pdl);
+	assert_memory_equal(arr->array, expected, expectedCnt*sizeof(*expected));
+
+	/* Clean up */
+	pfree(arr);
+	for (int i = 0; i < pCnt; i++)
+		PdlShmemRemove(p[i]);
+
+	/* Check whether cleanup is ok */
+	assert_true(PdlXLogShmemDump() == NULL);
+}
+
+
 /* Dump without additions */
 static void
 test_empty(void **state)
@@ -67,16 +100,14 @@ test_1(void **state)
 	};
 
 	dsa_pointer p = PdlShmemAdd(&relnode, TEST_XID1);
-	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+	
+	PendingRelXactDelete expected = 
+	{
+		.relnode = relnode,
+		.xid = TEST_XID1
+	};
 
-	assert_true(arr != NULL);
-	assert_int_equal(arr->count, 1);
-	assert_int_equal(arr->array[0].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[0].relnode, &relnode, sizeof(relnode));
-
-	/* clean up */
-	pfree(arr);
-	PdlShmemRemove(p);
+	check_and_clean(PdlXLogShmemDump(), &expected, 1, &p, 1);
 }
 
 /* Add nodes and remove the first one before dump */
@@ -93,57 +124,46 @@ test_remove_fisrt(void **state)
 		}
 	};
 
-	dsa_pointer p[5];
+	dsa_pointer p_first = PdlShmemAdd(&relnode, TEST_XID1);
 
-	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
+	dsa_pointer p[4];
+	
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
-	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
+	p[0] = PdlShmemAdd(&relnode, TEST_XID2);
+
 	relnode.node.dbNode = TEST_DB_OID2;
-	p[2] = PdlShmemAdd(&relnode, TEST_XID3);
+	p[1] = PdlShmemAdd(&relnode, TEST_XID3);
+
 	relnode.node.relNode = TEST_REL_OID2;
-	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
+	p[2] = PdlShmemAdd(&relnode, TEST_XID1);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID1;
-	p[4] = PdlShmemAdd(&relnode, TEST_XID1);
+	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
 
-	PdlShmemRemove(p[0]);
+	PdlShmemRemove(p_first);
 
-	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+	PendingRelXactDelete expected[] = 
+	{
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID2
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
+			.xid = TEST_XID3
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID1
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID1
+		},
+	};
 
-	assert_true(arr != NULL);
-	assert_int_equal(arr->count, 4);
-	assert_int_equal(arr->array[0].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[0].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[1].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[1].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[2].xid, TEST_XID3);
-	assert_memory_equal(&arr->array[2].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[3].xid, TEST_XID2);
-	assert_memory_equal(&arr->array[3].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-
-	/* clean up */
-	pfree(arr);
-	for (int i = 1; i < ARRAY_SIZE(p); i++)
-		PdlShmemRemove(p[i]);
+	check_and_clean(PdlXLogShmemDump(),
+					expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
 /* Add nodes and remove a node from the middle before dump */
@@ -163,6 +183,7 @@ test_remove_middle(void **state)
 	dsa_pointer p[4];
 
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
 
@@ -171,48 +192,34 @@ test_remove_middle(void **state)
 
 	relnode.node.relNode = TEST_REL_OID2;
 	p[2] = PdlShmemAdd(&relnode, TEST_XID3);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID1;
 	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
 
 	PdlShmemRemove(p_middle);
 
-	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+	PendingRelXactDelete expected[] = 
+	{
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID1
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID3
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID2
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID1
+		},
+	};
 
-	assert_true(arr != NULL);
-	assert_int_equal(arr->count, 4);
-	assert_int_equal(arr->array[0].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[0].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[1].xid, TEST_XID3);
-	assert_memory_equal(&arr->array[1].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[2].xid, TEST_XID2);
-	assert_memory_equal(&arr->array[2].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[3].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[3].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-
-	/* clean up */
-	pfree(arr);
-	for (int i = 0; i < ARRAY_SIZE(p); i++)
-		PdlShmemRemove(p[i]);
+	check_and_clean(PdlXLogShmemDump(),
+					expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
 /* Add nodes and remove the last one before dump */
@@ -232,10 +239,13 @@ test_remove_last(void **state)
 	dsa_pointer p[4];
 
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
+
 	relnode.node.dbNode = TEST_DB_OID2;
 	p[2] = PdlShmemAdd(&relnode, TEST_XID3);
+
 	relnode.node.relNode = TEST_REL_OID2;
 	p[3] = PdlShmemAdd(&relnode, TEST_XID1);
 
@@ -244,43 +254,28 @@ test_remove_last(void **state)
 
 	PdlShmemRemove(p_last);
 
-	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+	PendingRelXactDelete expected[] = 
+	{
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID1
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
+			.xid = TEST_XID3
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID2
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID1
+		},
+	};
 
-	assert_true(arr != NULL);
-	assert_int_equal(arr->count, 4);
-	assert_int_equal(arr->array[0].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[0].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[1].xid, TEST_XID3);
-	assert_memory_equal(&arr->array[1].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[2].xid, TEST_XID2);
-	assert_memory_equal(&arr->array[2].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[3].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[3].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-
-	/* clean up */
-	pfree(arr);
-	for (int i = 0; i < ARRAY_SIZE(p); i++)
-		PdlShmemRemove(p[i]);
+	check_and_clean(PdlXLogShmemDump(),
+					expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
 }
 
 /* Add node with invalid transaction id */
@@ -323,7 +318,7 @@ test_invalid_backend(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-	/* clean up */
+	/* Clean up */
 	MyBackendId = old;
 }
 
@@ -348,7 +343,7 @@ test_invalid_mode(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-	/* clean up */
+	/* Clean up */
 	Mode = old;
 }
 
@@ -373,7 +368,7 @@ test_tracking_disabled(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-	/* clean up */
+	/* Clean up */
 	gp_track_pending_delete = old;
 }
 
@@ -398,7 +393,7 @@ test_shmem_type(void **state)
 	assert_false(DsaPointerIsValid(PdlShmemAdd(&relnode, TEST_XID1)));
 	assert_true(PdlXLogShmemDump() == NULL);
 
-	/* clean up */
+	/* Clean up */
 	dynamic_shared_memory_type = old;
 }
 
@@ -419,64 +414,61 @@ test_2_backends(void **state)
 	dsa_pointer p[5];
 
 	p[0] = PdlShmemAdd(&relnode, TEST_XID1);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID2;
 	p[1] = PdlShmemAdd(&relnode, TEST_XID2);
+
 	relnode.node.dbNode = TEST_DB_OID2;
 	p[2] = PdlShmemAdd(&relnode, TEST_XID1);
 
 	BackendId	old = MyBackendId;
 
 	MyBackendId = 3;
+
 	relnode.node.relNode = TEST_REL_OID2;
 	p[3] = PdlShmemAdd(&relnode, TEST_XID3);
+
 	relnode.node.spcNode = TEST_TABLESPACE_OID1;
 	p[4] = PdlShmemAdd(&relnode, TEST_XID4);
 
-	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
+	PendingRelXactDelete expected[] = 
+	{
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}},
+			.xid = TEST_XID1
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID2
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}},
+			.xid = TEST_XID1
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID4
+		},
+		{
+			.relnode = {{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}},
+			.xid = TEST_XID3
+		},
+	};
 
-	assert_true(arr != NULL);
-	assert_int_equal(arr->count, 5);
-	assert_int_equal(arr->array[0].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[0].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[1].xid, TEST_XID2);
-	assert_memory_equal(&arr->array[1].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[2].xid, TEST_XID1);
-	assert_memory_equal(&arr->array[2].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID1, TEST_DB_OID1, TEST_REL_OID1}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[3].xid, TEST_XID4);
-	assert_memory_equal(&arr->array[3].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID1, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
-	assert_int_equal(arr->array[4].xid, TEST_XID3);
-	assert_memory_equal(&arr->array[4].relnode,
-						&((RelFileNodePendingDelete)
-						{
-							{TEST_TABLESPACE_OID2, TEST_DB_OID2, TEST_REL_OID2}
-						}),
-						sizeof(RelFileNodePendingDelete));
+	PendingRelXactDeleteArray	*arr = PdlXLogShmemDump();
 
-	/* clean up */
+	/* 
+	 * Clean up.
+	 * Elements which were added for backend 3 should be removed
+	 * when MyBackendId is 3. Other elements are removed in check_and_clean
+	 * after restoring MyBackendId.
+	 */
+	PdlShmemRemove(p[3]);
+	PdlShmemRemove(p[4]);
+
 	MyBackendId = old;
-	pfree(arr);
-	for (int i = 0; i < ARRAY_SIZE(p); i++)
-		PdlShmemRemove(p[i]);
+
+	check_and_clean(arr, expected, ARRAY_SIZE(expected), p, 3);
 }
 
 int
