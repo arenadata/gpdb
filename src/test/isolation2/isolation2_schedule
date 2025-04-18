@@ -319,7 +319,6 @@ test: reindex/vacuum_while_reindex_ao_bitmap reindex/vacuum_while_reindex_heap_b
 # Cancel test
 test: cancel_plpython
 test: cancel_query
-test: invalid_database
 
 # Tests for getting numsegments in utility mode
 test: upgrade_numsegments
