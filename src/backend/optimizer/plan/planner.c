@@ -2607,7 +2607,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 			foreach(lc, current_rel->pathlist)
 			{
 				Path *path = (Path *) lfirst(lc);
-				if (CdbPathLocus_IsGeneral(path->locus))
+				if (CdbPathLocus_IsGeneral(path->locus) || CdbPathLocus_IsSegmentGeneral(path->locus))
 				{
 					CdbPathLocus_MakeSingleQE(&(path->locus), getgpsegmentCount());
 				}

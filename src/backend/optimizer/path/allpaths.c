@@ -523,8 +523,11 @@ bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 		CdbPathLocus outerquery_locus;
 
 		if (CdbPathLocus_IsGeneral(origpath->locus) ||
-			CdbPathLocus_IsOuterQuery(origpath->locus))
+			CdbPathLocus_IsOuterQuery(origpath->locus) ||
+			contain_volatile_functions((Node *) root->processed_tlist))
+		{
 			path = origpath;
+		}
 		else
 		{
 			/*
