@@ -336,11 +336,9 @@ struct PlannerInfo
 
 	List	   *eq_classes;		/* list of active EquivalenceClasses */
 
-<<<<<<< HEAD
 	List	   *non_eq_clauses;	/* list of non-equivalence clauses */
-=======
+
 	bool		ec_merging_done;	/* set true once ECs are canonical */
->>>>>>> sync-pg-phase1
 
 	List	   *canon_pathkeys; /* list of "canonical" PathKeys */
 

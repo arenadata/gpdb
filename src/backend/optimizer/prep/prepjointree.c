@@ -1052,11 +1052,8 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	subroot->cte_plan_ids = NIL;
 	subroot->multiexpr_params = NIL;
 	subroot->eq_classes = NIL;
-<<<<<<< HEAD
-	subroot->non_eq_clauses = NIL;
-=======
 	subroot->ec_merging_done = false;
->>>>>>> sync-pg-phase1
+	subroot->non_eq_clauses = NIL;
 	subroot->append_rel_list = NIL;
 	subroot->rowMarks = NIL;
 	memset(subroot->upper_rels, 0, sizeof(subroot->upper_rels));
