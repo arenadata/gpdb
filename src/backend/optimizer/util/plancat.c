@@ -1074,7 +1074,11 @@ relation_excluded_by_constraints(PlannerInfo *root,
 		}
 	}
 
-	if (predicate_refuted_by(safe_restrictions, safe_restrictions))
+	/*
+	 * We can use weak refutation here, since we're comparing restriction
+	 * clauses with restriction clauses.
+	 */
+	if (predicate_refuted_by_weak(safe_restrictions, safe_restrictions))
 		return true;
 
 	/* Only plain relations have constraints */
@@ -1112,9 +1116,19 @@ relation_excluded_by_constraints(PlannerInfo *root,
 	 * an obvious optimization.  Some of the clauses might be OR clauses that
 	 * have volatile and nonvolatile subclauses, and it's OK to make
 	 * deductions with the nonvolatile parts.
+	 *
+	 * For regular rels we have to prove that the constraints would yield
+	 * false,not just NULL. For partitions a row must definitively satisfy
+	 * the constraint to be stored, NULL constraint means "unknown" which
+	 * cannot satisfy a definitive storage requirement. Therefore, weak
+	 * refutation is sufficient for pruning. (However, this can
+	 * be bypassed if we exchanged partition without validation, but it's
+	 * user's responsibility.)
 	 */
-	if (predicate_refuted_by(safe_constraints, rel->baserestrictinfo))
-		return true;
+	if (rel_is_part_child(rte->relid))
+		return predicate_refuted_by_weak(safe_constraints, rel->baserestrictinfo);
+	else
+		return predicate_refuted_by(safe_constraints, rel->baserestrictinfo);
 
 	return false;
 }
