@@ -26,7 +26,7 @@ SELECT gp_wait_until_triggered_fault('check_dispatch_result_end', 1, dbid) FROM 
 (1 row)
 
 -- The query should've used ~135 MB of memory. Allow 15 MB error.
-WITH r AS ( SELECT (memory_usage->'-1'->'used')::text::int AS mb FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test' ) SELECT r.mb - 150 < 0 AS "under 150 MB", r.mb - 120 > 0 AS "above 120 MB" FROM r;
+WITH r AS ( SELECT (memory_usage->'-1'->'used')::text::int AS mb FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test' ) SELECT r.mb < 150 AS "under 150 MB", r.mb > 120 AS "above 120 MB" FROM r;
  under 150 MB | above 120 MB 
 --------------+--------------
  t            | t            

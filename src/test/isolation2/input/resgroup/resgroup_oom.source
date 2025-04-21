@@ -29,7 +29,7 @@ WITH r AS (
   SELECT (memory_usage->'-1'->'used')::text::int AS mb
   FROM gp_toolkit.gp_resgroup_status WHERE rsgname = 'rg_oom_test'
 )
-SELECT r.mb - 150 < 0 AS "under 150 MB", r.mb - 120 > 0 AS "above 120 MB"
+SELECT r.mb < 150 AS "under 150 MB", r.mb > 120 AS "above 120 MB"
 FROM r;
 
 SELECT gp_inject_fault('check_dispatch_result_end', 'reset', dbid) FROM
