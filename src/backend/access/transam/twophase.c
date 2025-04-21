@@ -2465,9 +2465,8 @@ void
 RemovePendingDeletesForPreparedTransactions()
 {
 	HASH_SEQ_STATUS scan_status;
-	prpt_map *entry;
+	prpt_map   *entry;
 	XLogReaderState *xlogreader;
-	XLogRecPtr xlogrec_ptr = InvalidXLogRecPtr;
 
 	if (NULL == crashRecoverPostCheckpointPreparedTransactions_map_ht)
 		return;
@@ -2475,26 +2474,23 @@ RemovePendingDeletesForPreparedTransactions()
 	xlogreader = XLogReaderAllocate(&read_local_xlog_page, NULL);
 	if (!xlogreader)
 		ereport(ERROR,
-			(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory"),
-			 errdetail("Failed while allocating an XLog reading processor.")));
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory"),
+		   errdetail("Failed while allocating an XLog reading processor.")));
 
 	hash_seq_init(&scan_status,
 				  crashRecoverPostCheckpointPreparedTransactions_map_ht);
-
-	entry = (prpt_map *)hash_seq_search(&scan_status);
-
-	if (entry != NULL)
-		xlogrec_ptr = entry->xlogrecptr;
-
-	while (xlogrec_ptr != InvalidXLogRecPtr)
+	while ((entry = (prpt_map *) hash_seq_search(&scan_status)) != NULL)
 	{
-		char *errormsg = NULL;
+		char	   *errormsg = NULL;
 		XLogRecord *xlogrec;
 		TwoPhaseFileHeader *hdr;
 		TransactionId *subxids = NULL;
 
-		xlogrec = XLogReadRecord(xlogreader, xlogrec_ptr, &errormsg);
+		if (entry->xlogrecptr == InvalidXLogRecPtr)
+			continue;
+
+		xlogrec = XLogReadRecord(xlogreader, entry->xlogrecptr, &errormsg);
 		if (NULL == xlogrec)
 		{
 			if (errormsg)
@@ -2512,18 +2508,9 @@ RemovePendingDeletesForPreparedTransactions()
 
 		if (hdr->nsubxacts > 0)
 			subxids = (TransactionId *)
-					  ((char *)hdr + MAXALIGN(sizeof(TwoPhaseFileHeader)));
+				((char *) hdr + MAXALIGN(sizeof(TwoPhaseFileHeader)));
 
 		PdlRedoRemoveTree(hdr->xid, subxids, hdr->nsubxacts);
-
-		/* Get the next entry */
-		entry = (prpt_map *)hash_seq_search(&scan_status);
-
-		if (entry != NULL)
-			xlogrec_ptr = entry->xlogrecptr;
-		else
-			xlogrec_ptr = InvalidXLogRecPtr;
-
 	}
 
 	XLogReaderFree(xlogreader);
