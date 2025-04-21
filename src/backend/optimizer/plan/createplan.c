@@ -3228,7 +3228,7 @@ create_splitupdate_plan(PlannerInfo *root, SplitUpdatePath *path)
 		Form_pg_attribute	attr;
 
 		tle = (TargetEntry *) lfirst(lc);
-		lc = lnext(lc);
+		lc = lnext(subplan->targetlist, lc);
 		Assert(tle);
 
 		attr = &resultDesc->attrs[attrIdx - 1];
@@ -3249,7 +3249,7 @@ create_splitupdate_plan(PlannerInfo *root, SplitUpdatePath *path)
 	lastresno = list_length(splitupdate->plan.targetlist);
 
 	/* Copy all junk attributes. */
-	for (; lc != NULL; lc = lnext(lc))
+	for (; lc != NULL; lc = lnext(subplan->targetlist, lc))
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(lc);
 		TargetEntry *newtle;

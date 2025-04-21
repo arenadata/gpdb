@@ -407,7 +407,7 @@ for_each_cell_setup(List *lst, ListCell *initcell)
 #define foreach_with_count(cell, list, counter) \
 	for ((cell) = list_head(list), (counter)=0; \
 	     (cell) != NULL; \
-	     (cell) = lnext(cell), ++(counter))
+	     (cell) = lnext(list, cell), ++(counter))
 
 
 /*
@@ -575,15 +575,10 @@ extern List *list_copy(const List *list);
 extern List *list_copy_tail(const List *list, int nskip);
 extern List *list_copy_deep(const List *oldlist);
 
-<<<<<<< HEAD
 extern void *list_nth_replace(List *list, int n, void *new_data);
 
-typedef int (*list_qsort_comparator) (const void *a, const void *b);
-extern List *list_qsort(const List *list, list_qsort_comparator cmp);
-=======
 typedef int (*list_sort_comparator) (const ListCell *a, const ListCell *b);
 extern void list_sort(List *list, list_sort_comparator cmp);
->>>>>>> sync-pg-phase1
 
 extern int	list_oid_cmp(const ListCell *p1, const ListCell *p2);
 

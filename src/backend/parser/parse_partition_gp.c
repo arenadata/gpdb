@@ -979,7 +979,6 @@ static char *
 extract_tablename_from_options(List **options)
 {
 	ListCell *o_lc;
-	ListCell *prev_lc = NULL;
 	char *tablename = NULL;
 
 	foreach (o_lc, *options)
@@ -999,11 +998,10 @@ extract_tablename_from_options(List **options)
 						 errmsg("invalid tablename specification")));
 
 			char *relname_str = defGetString(pDef);
-			*options = list_delete_cell(*options, o_lc, prev_lc);
+			*options = list_delete_cell(*options, o_lc);
 			tablename = pstrdup(relname_str);
 			break;
 		}
-		prev_lc = o_lc;
 	}
 
 	return tablename;

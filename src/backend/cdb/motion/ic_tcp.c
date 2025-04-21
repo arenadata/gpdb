@@ -1727,7 +1727,7 @@ SetupTCPInterconnect(EState *estate)
 			 * we'll get the next cell ready now in case we need to delete the
 			 * cell that corresponds to our MotionConn
 			 */
-			cell = lnext(cell);
+			cell = lnext(interconnect_context->incompleteConns, cell);
 
 			if (MPP_FD_ISSET(conn->sockfd, &rset))
 			{
@@ -1993,7 +1993,7 @@ TeardownTCPInterconnect(ChunkTransportState *transportStates, bool hasErrors)
 		 * The list operations are kind of confusing (see list.c), we could
 		 * alternatively write the following line as:
 		 *
-		 * incompleteConns = list_delete_cell(incompleteConns, cell, NULL); or
+		 * incompleteConns = list_delete_cell(incompleteConns, cell); or
 		 * incompleteConns = list_delete_first(incompleteConns); or
 		 * incompleteConns = list_delete_ptr(incompleteConns, conn)
 		 */

@@ -2604,8 +2604,8 @@ coerceSetOpTypes(ParseState *pstate, Node *sop,
 				*targetlist = lappend(*targetlist, restle);
 			}
 
-			pct = pct ? lnext(pct) : NULL;
-			pcm = pcm ? lnext(pcm) : NULL;
+			pct = pct ? lnext(preselected_coltypes, pct) : NULL;
+			pcm = pcm ? lnext(preselected_coltypmods, pcm) : NULL;
 		}
 	}
 }

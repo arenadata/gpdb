@@ -582,7 +582,6 @@ cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 	MemoryContext				oldContext;
 	ListCell 					*curItem = NULL;
 	ListCell					*nextItem = NULL;
-	ListCell 					*prevItem = NULL;
 
 	Assert(CdbComponentsContext);
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
@@ -591,17 +590,16 @@ cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 	while (curItem != NULL)
 	{
 		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
-		nextItem = lnext(curItem);
+		nextItem = lnext(cdi->freelist, curItem);
 		Assert(segdbDesc);
 
 		if (segdbDesc->isWriter && !includeWriter)
 		{
-			prevItem = curItem;
 			curItem = nextItem;
 			continue;
 		}
 
-		cdi->freelist = list_delete_cell(cdi->freelist, curItem, prevItem); 
+		cdi->freelist = list_delete_cell(cdi->freelist, curItem);
 		DECR_COUNT(cdi, numIdleQEs);
 
 		cdbconn_termSegmentDescriptor(segdbDesc);
@@ -780,7 +778,6 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 	CdbComponentDatabaseInfo	*cdbinfo;
 	ListCell 					*curItem = NULL;
 	ListCell 					*nextItem = NULL;
-	ListCell					*prevItem = NULL;
 	MemoryContext 				oldContext;
 	bool						isWriter;
 
@@ -798,18 +795,17 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 		SegmentDatabaseDescriptor *tmp =
 				(SegmentDatabaseDescriptor *)lfirst(curItem);
 
-		nextItem = lnext(curItem);
+		nextItem = lnext(cdbinfo->freelist, curItem);
 		Assert(tmp);
 
 		if ((segmentType == SEGMENTTYPE_EXPLICT_WRITER && !tmp->isWriter) ||
 			(segmentType == SEGMENTTYPE_EXPLICT_READER && tmp->isWriter))
 		{
-			prevItem = curItem;
 			curItem = nextItem;
 			continue;
 		}
 
-		cdbinfo->freelist = list_delete_cell(cdbinfo->freelist, curItem, prevItem); 
+		cdbinfo->freelist = list_delete_cell(cdbinfo->freelist, curItem);
 		/* update numIdleQEs */
 		DECR_COUNT(cdbinfo, numIdleQEs);
 
@@ -930,7 +926,7 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 
 		for (cell = list_head(segdbDesc->segment_database_info->freelist);
 			 cell && ((SegmentDatabaseDescriptor *) lfirst(cell))->isWriter;
-			 lastWriter = cell, cell = lnext(cell)) ;
+			 lastWriter = cell, cell = lnext(segdbDesc->segment_database_info->freelist, cell)) ;
 
 		if (lastWriter)
 			lappend_cell(segdbDesc->segment_database_info->freelist,

@@ -2202,7 +2202,7 @@ gp_keepalives_check(PG_FUNCTION_ARGS)
 
 		/* The QE segment freelist contains the idle QE info that stores the PGconn objects */
 		if (context->cdbs->segment_db_info[context->index].freelist == NULL
-			|| (context->currentQE != NULL && lnext(context->currentQE) == NULL))
+			|| (context->currentQE != NULL && lnext(context->cdbs->segment_db_info[context->index].freelist, context->currentQE) == NULL))
 		{
 			/* This QE segment freelist is empty or we've reached the end of the freelist */
 			context->currentQE = NULL;
@@ -2217,7 +2217,7 @@ gp_keepalives_check(PG_FUNCTION_ARGS)
 		else
 		{
 			/* Continue to next item in the QE segment freelist (e.g. readers and writers) */
-			context->currentQE = lnext(context->currentQE);
+			context->currentQE = lnext(context->cdbs->segment_db_info[context->index].freelist, context->currentQE);
 		}
 
 		/* Obtain the socket file descriptor from each libpq connection */
