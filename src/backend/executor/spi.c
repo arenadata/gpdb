@@ -1329,11 +1329,14 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	cplan = GetCachedPlan(plansource, paramLI, false, NULL);
 	stmt_list = cplan->stmt_list;
 
-	/* GPDB: Mark all queries as SPI inner queries for extension usage */
+	/*
+	 * GPDB: Mark all queries as SPI inner queries for extension usage.
+	 * But make sure that SPI is not top level itself.
+	 */
 	foreach(lc, stmt_list)
 	{
 		Node *stmt = (Node *) lfirst(lc);
-		if (IsA(stmt, PlannedStmt))
+		if (IsA(stmt, PlannedStmt) && (!IsBackgroundWorker || _SPI_connected > 0))
 			((PlannedStmt*)stmt)->metricsQueryType = SPI_INNER_QUERY;
 	}
 
