@@ -375,6 +375,12 @@ cdbconn_discardResults(SegmentDatabaseDescriptor *segdbDesc,
 		}
 	}
 
+	/* Make sure libpq discards the unparsed messages too. */
+	if (segdbDesc->conn->result != NULL)
+		segdbDesc->conn->result->resultStatus = PGRES_FATAL_ERROR;
+	if (segdbDesc->conn->next_result != NULL)
+		segdbDesc->conn->next_result->resultStatus = PGRES_FATAL_ERROR;
+
 	/*
 	 * Clear of all the notify messages as well.
 	 */
