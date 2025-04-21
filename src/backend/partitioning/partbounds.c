@@ -2836,13 +2836,8 @@ satisfies_hash_partition(PG_FUNCTION_ARGS)
 		PartitionKey key;
 		int			j;
 
-<<<<<<< HEAD
-		/* Open parent relation and fetch partition keyinfo */
-		parent = try_relation_open(parentId, AccessShareLock, false);
-=======
 		/* Open parent relation and fetch partition key info */
-		parent = try_relation_open(parentId, AccessShareLock);
->>>>>>> sync-pg-phase1
+		parent = try_relation_open(parentId, AccessShareLock, false);
 		if (parent == NULL)
 			PG_RETURN_NULL();
 		key = RelationGetPartitionKey(parent);
