@@ -1794,11 +1794,7 @@ FileClose(File file)
 	if (!FileIsNotOpen(file))
 	{
 		/* close the file */
-<<<<<<< HEAD
-		if (gp_retry_close(vfdP->fd))
-=======
-		if (close(vfdP->fd) != 0)
->>>>>>> sync-pg-phase1
+		if (gp_retry_close(vfdP->fd) != 0)
 		{
 			/*
 			 * We may need to panic on failure to close non-temporary files;
