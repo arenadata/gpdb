@@ -56,6 +56,7 @@
 #include "access/xlogutils.h"
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
+#include "catalog/storage_pending_deletes_redo.h"
 #include "catalog/storage_tablespace.h"
 #include "catalog/storage_database.h"
 #include "funcapi.h"
@@ -2459,3 +2460,71 @@ getTwoPhaseOldestPreparedTransactionXLogRecPtr(prepared_transaction_agg_state *p
 	return oldest;
 
 }  /* end getTwoPhaseOldestPreparedTransactionXLogRecPtr */
+
+void
+RemovePendingDeletesForPreparedTransactions()
+{
+	HASH_SEQ_STATUS scan_status;
+	prpt_map *entry;
+	XLogReaderState *xlogreader;
+	XLogRecPtr xlogrec_ptr = InvalidXLogRecPtr;
+
+	if (NULL == crashRecoverPostCheckpointPreparedTransactions_map_ht)
+		return;
+
+	xlogreader = XLogReaderAllocate(&read_local_xlog_page, NULL);
+	if (!xlogreader)
+		ereport(ERROR,
+			(errcode(ERRCODE_OUT_OF_MEMORY),
+			 errmsg("out of memory"),
+			 errdetail("Failed while allocating an XLog reading processor.")));
+
+	hash_seq_init(&scan_status,
+				  crashRecoverPostCheckpointPreparedTransactions_map_ht);
+
+	entry = (prpt_map *)hash_seq_search(&scan_status);
+
+	if (entry != NULL)
+		xlogrec_ptr = entry->xlogrecptr;
+
+	while (xlogrec_ptr != InvalidXLogRecPtr)
+	{
+		char *errormsg = NULL;
+		XLogRecord *xlogrec;
+		TwoPhaseFileHeader *hdr;
+		TransactionId *subxids = NULL;
+
+		xlogrec = XLogReadRecord(xlogreader, xlogrec_ptr, &errormsg);
+		if (NULL == xlogrec)
+		{
+			if (errormsg)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg("xlog record is invalid"),
+						 errdetail("%s", errormsg)));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg("xlog record is invalid")));
+		}
+
+		hdr = (TwoPhaseFileHeader *) XLogRecGetData(xlogrec);
+
+		if (hdr->nsubxacts > 0)
+			subxids = (TransactionId *)
+					  ((char *)hdr + MAXALIGN(sizeof(TwoPhaseFileHeader)));
+
+		PdlRedoRemoveTree(hdr->xid, subxids, hdr->nsubxacts);
+
+		/* Get the next entry */
+		entry = (prpt_map *)hash_seq_search(&scan_status);
+
+		if (entry != NULL)
+			xlogrec_ptr = entry->xlogrecptr;
+		else
+			xlogrec_ptr = InvalidXLogRecPtr;
+
+	}
+
+	XLogReaderFree(xlogreader);
+}  /* end RemovePendingDeletesForPreparedTransactions */

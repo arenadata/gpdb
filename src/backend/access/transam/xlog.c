@@ -7506,7 +7506,17 @@ StartupXLOG(void)
 				 * xlogreader in this function.
 				 */
 				if (record->xl_rmid == RM_XLOG_ID)
+				{
 					VerifyOverwriteContrecord(record, xlogreader);
+
+					uint8 info = record->xl_info & ~XLR_INFO_MASK;
+					if (info == XLOG_CHECKPOINT_SHUTDOWN || info == XLOG_END_OF_RECOVERY)
+					{
+						RemovePendingDeletesForPreparedTransactions();
+						/* Clean up orphaned files */
+						PdlRedoDropFiles();
+					}
+				}
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
@@ -7969,6 +7979,10 @@ StartupXLOG(void)
 			CreateCheckPoint(CHECKPOINT_END_OF_RECOVERY | CHECKPOINT_IMMEDIATE);
 
 		UtilityModeCloseDtmRedoFile();
+
+		RemovePendingDeletesForPreparedTransactions();
+		/* Clean up orphaned files */
+		PdlRedoDropFiles();
 
 		/*
 		 * And finally, execute the recovery_end_command, if any.
