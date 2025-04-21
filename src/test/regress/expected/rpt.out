@@ -797,8 +797,8 @@ explain (costs off) select * from t_hashdist where a in (select random()::int fr
                ->  Redistribute Motion 1:3  (slice2; segments: 1)
                      Hash Key: ((random())::integer)
                      ->  HashAggregate
-                           Group Key: ((random())::integer)
-                                 ->  Seq Scan on t_replicate_volatile
+                           Group Key: (random())::integer
+                           ->  Seq Scan on t_replicate_volatile
  Optimizer: Postgres query optimizer
 (11 rows)
 
