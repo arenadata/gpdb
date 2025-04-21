@@ -559,13 +559,13 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		if (RelationIsAoRows(rel))
 		{
 			/*
-			 * Row oriented relations store memtyples, that have 4 byte header,
+			 * Row oriented relations store memtuples, that have a header,
 			 * plus storage is done in VarBlock, which has item-offsets array
 			 * with at 2 or 3 byte offsets. For simplicity, in our rough
-			 * estimation we consider only 2 byte offsets. Thus, we add 6 bytes
-			 * to the tuple width.
+			 * estimation we consider only 2 byte offsets. Thus, we add
+			 * (2 + header size) to the tuple width.
 			 */
-			tuple_width += 6;
+			tuple_width += (offsetof(MemTupleData, PRIVATE_mt_bits) + 2);
 		}
 		else if (!RelationIsAoCols(rel))
 		{
