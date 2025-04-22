@@ -2236,8 +2236,9 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 			{
 				PlannedStmt* pstmt = (PlannedStmt *) stmt;
 				canSetTag = pstmt->canSetTag;
-				/* GPDB: Mark all queries as SPI inner query for extension usage
-					But make sure that SPI is not top level itself
+				/*
+				* GPDB: Mark all queries as SPI inner queries for extension usage.
+				* But make sure that SPI is not top level itself.
 				*/
 				if (!IsBackgroundWorker || _SPI_connected > 0)
 					((PlannedStmt*)pstmt)->metricsQueryType = SPI_INNER_QUERY;
