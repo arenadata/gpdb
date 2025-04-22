@@ -598,24 +598,9 @@ vacuum_one_database(const char *dbname, vacuumingOptions *vacopts,
 	 */
 	if (concurrentCons <= 0)
 		concurrentCons = 1;
-<<<<<<< HEAD
-	slots = (ParallelSlot *) pg_malloc(sizeof(ParallelSlot) * concurrentCons);
-	init_slot(slots, conn);
-	if (parallel)
-	{
-		for (i = 1; i < concurrentCons; i++)
-		{
-			conn = connectDatabase(dbname, host, port, username, prompt_password,
-								   progname, echo, false, true);
-			init_slot(slots + i, conn);
-		}
-
-	}
-=======
 
 	slots = ParallelSlotsSetup(dbname, host, port, username, prompt_password,
 							   progname, echo, conn, concurrentCons);
->>>>>>> sync-pg-phase1
 
 	/*
 	 * Prepare all the connections to run the appropriate analyze stage, if
