@@ -409,7 +409,7 @@ deduceImplicitRangeBounds(ParseState *pstate, Relation parentrel, List *stmts, b
 			}
 			if (!stmt->partbound->upperdatums)
 			{
-				Node *next = lc->next ? lfirst(lc->next) : NULL;
+				Node *next = lnext(stmts, lc) ? lfirst(lnext(stmts, lc)) : NULL;
 				if (next)
 				{
 					CreateStmt *nextstmt = (CreateStmt *)next;
