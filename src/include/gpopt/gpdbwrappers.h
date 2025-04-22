@@ -38,7 +38,6 @@ struct Query;
 using ScanKey = struct ScanKeyData *;
 struct Bitmapset;
 struct Plan;
-struct ListCell;
 struct TargetEntry;
 struct Expr;
 struct ExtTableEntry;
