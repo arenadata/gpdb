@@ -15649,13 +15649,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (!buildACLCommands(name, subname, nspname, type,
 							  initprivs, acldefault, owner,
 							  "", fout->remoteVersion, sql))
-<<<<<<< HEAD
 			fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				  initprivs, acldefault, name, type);
-=======
-			fatal("could not parse initial GRANT ACL list (%s) or initial REVOKE ACL list (%s) for object \"%s\" (%s)",
-				  initacls, initracls, name, type);
->>>>>>> sync-pg-phase1
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
 	}
 
