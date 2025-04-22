@@ -22,12 +22,9 @@
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
-<<<<<<< HEAD
-=======
 #define ERRCODE_UNDEFINED_TABLE  "42P01"
 
 
->>>>>>> sync-pg-phase1
 static PGcancel *volatile cancelConn = NULL;
 bool		CancelRequested = false;
 
