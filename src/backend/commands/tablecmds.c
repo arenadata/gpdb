@@ -13196,7 +13196,12 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 			if (rel->rd_rel->relpersistence == RELPERSISTENCE_PERMANENT ||
 				(rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED &&
 				 forkNum == INIT_FORKNUM))
-				log_smgrcreate(&newrnode, forkNum);
+			{
+				XLogRecPtr recptr = log_smgrcreate(&newrnode,
+												   forkNum,
+												   rel->rd_rel->relstorage);
+				XLogFlush(recptr);
+			}
 			copy_relation_data(rel->rd_smgr, dstrel, forkNum,
 							   rel->rd_rel->relpersistence);
 		}

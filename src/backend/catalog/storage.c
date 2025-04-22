@@ -105,7 +105,12 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	smgrcreate(srel, MAIN_FORKNUM, false);
 
 	if (needs_wal)
-		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM);
+	{
+		XLogRecPtr recptr =
+			log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, relstorage);
+
+		XLogFlush(recptr);
+	}
 
 	/* Add the relation to the list of stuff to delete at abort */
 	pending = (PendingRelDelete *)
@@ -122,16 +127,19 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 /*
  * Perform XLogInsert of a XLOG_SMGR_CREATE record to WAL.
  */
-void
-log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum)
+XLogRecPtr
+log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum, char relstorage)
 {
-	xl_smgr_create xlrec;
+	xl_smgr_create_pdl xlrec;
 	XLogRecData rdata;
 
 	/*
 	 * Make an XLOG entry reporting the file creation.
 	 */
-	xlrec.rnode = *rnode;
+	xlrec.relnode.node = *rnode;
+	/* temp relations are not logged in WAL, so it is always false here */
+	xlrec.relnode.isTempRelation = false;
+	xlrec.relnode.relstorage = relstorage;
 	xlrec.forkNum = forkNum;
 
 	rdata.data = (char *) &xlrec;
@@ -139,7 +147,7 @@ log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum)
 	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
 
-	XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE, &rdata);
+	return XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE_PDL, &rdata);
 }
 
 /*
@@ -514,28 +522,23 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	if (info == XLOG_SMGR_CREATE)
 	{
 		xl_smgr_create *xlrec = (xl_smgr_create *) XLogRecGetData(record);
+		SMgrRelation reln;
+
+		reln = smgropen(xlrec->rnode, InvalidBackendId);
+		smgrcreate(reln, xlrec->forkNum, true);
+	}
+	if (info == XLOG_SMGR_CREATE_PDL)
+	{
+		xl_smgr_create_pdl *xlrec =
+			(xl_smgr_create_pdl *) XLogRecGetData(record);
 		PendingRelXactDelete pd =
 		{
-			.relnode =
-			{
-				.node = xlrec->rnode,
-				/*
-				 * Temp relations are not logged in WAL, so it is always false
-				 * here.
-				 */
-				.isTempRelation = false,
-				/*
-				 * TODO: We do not have info about relstorage from the record.
-				 * Need to handle it somehow - decision is yet pending.
-				 * Until then we can't handle AO tables properly...
-				 */
-				.relstorage = RELSTORAGE_HEAP
-			},
+			.relnode = xlrec->relnode,
 			.xid = record->xl_xid
 		};
 		SMgrRelation reln;
 
-		reln = smgropen(xlrec->rnode, InvalidBackendId);
+		reln = smgropen(xlrec->relnode.node, InvalidBackendId);
 		smgrcreate(reln, xlrec->forkNum, true);
 
 		PdlRedoAdd(&pd);

@@ -32,6 +32,14 @@ smgr_desc(StringInfo buf, XLogRecord *record)
 		appendStringInfo(buf, "file create: %s", path);
 		pfree(path);
 	}
+	else if (info == XLOG_SMGR_CREATE_PDL)
+	{
+		xl_smgr_create_pdl *xlrec = (xl_smgr_create_pdl *) rec;
+		char	   *path = relpathperm(xlrec->relnode.node, xlrec->forkNum);
+
+		appendStringInfo(buf, "file create: %s", path);
+		pfree(path);
+	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
 		xl_smgr_truncate *xlrec = (xl_smgr_truncate *) rec;
