@@ -270,8 +270,7 @@ __wrap_PdlXLogShmemDump(void)
 	/* return something valid */
 	int			node_count = 1;
 
-	char	   *buffer = palloc(offsetof(PendingRelXactDeleteArray, array) +
-								sizeof(PendingRelXactDelete) * node_count);
+	char	   *buffer = palloc(PdlDumpSize(node_count));
 
 	PendingRelXactDeleteArray *pending_deletes =
 		(PendingRelXactDeleteArray *) buffer;

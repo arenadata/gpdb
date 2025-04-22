@@ -59,8 +59,7 @@ PdlXLogInsert()
 		{
 			.buffer = InvalidBuffer,
 			.data = (char *) arr,
-			.len = offsetof(PendingRelXactDeleteArray, array) + 
-				   sizeof(*arr->array) * arr->count,
+			.len = PdlDumpSize(arr->count),
 			.next = NULL,
 			.buffer_std = false
 		};

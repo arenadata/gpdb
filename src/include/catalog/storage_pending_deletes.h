@@ -30,6 +30,14 @@ typedef struct PendingRelXactDeleteArray
 	PendingRelXactDelete array[FLEXIBLE_ARRAY_MEMBER];
 }	PendingRelXactDeleteArray;
 
+static inline Size
+PdlDumpSize(Size count)
+{
+	Size array_size = sizeof(PendingRelXactDelete) * count;
+
+	return offsetof(PendingRelXactDeleteArray, array) + array_size;
+}
+
 extern Size PdlShmemSize(void);
 extern void PdlShmemInit(void);
 extern dsa_pointer PdlShmemAdd(const RelFileNodePendingDelete * relnode,
