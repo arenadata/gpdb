@@ -2683,14 +2683,11 @@ describeOneTableDetails(const char *schemaname,
 			 tableinfo.relkind == RELKIND_MATVIEW ||
 			 tableinfo.relkind == RELKIND_FOREIGN_TABLE ||
 			 tableinfo.relkind == RELKIND_PARTITIONED_TABLE ||
-<<<<<<< HEAD
+			 tableinfo.relkind == RELKIND_PARTITIONED_INDEX ||
+			 tableinfo.relkind == RELKIND_TOASTVALUE ||
 			 tableinfo.relkind == RELKIND_AOSEGMENTS ||
 			 tableinfo.relkind == RELKIND_AOBLOCKDIR ||
 			 tableinfo.relkind == RELKIND_AOVISIMAP)
-=======
-			 tableinfo.relkind == RELKIND_PARTITIONED_INDEX ||
-			 tableinfo.relkind == RELKIND_TOASTVALUE)
->>>>>>> sync-pg-phase1
 	{
 		/* Footer information about a table */
 		PGresult   *result = NULL;
