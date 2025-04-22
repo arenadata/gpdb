@@ -21,17 +21,6 @@
 #include "fe_utils/string_utils.h"
 #include "scripts_parallel.h"
 
-<<<<<<< HEAD
-#define ERRCODE_UNDEFINED_TABLE  "42P01"
-
-/* Parallel vacuuming stuff */
-typedef struct ParallelSlot
-{
-	PGconn	   *connection;		/* One connection */
-	bool		isFree;			/* Is it known to be idle? */
-} ParallelSlot;
-=======
->>>>>>> sync-pg-phase1
 
 /* vacuum options controlled by user flags */
 typedef struct vacuumingOptions
