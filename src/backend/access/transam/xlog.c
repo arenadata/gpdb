@@ -7452,8 +7452,8 @@ StartupXLOG(void)
 					TimeLineID	newTLI = ThisTimeLineID;
 					TimeLineID	prevTLI = ThisTimeLineID;
 
-					if (info == XLOG_CHECKPOINT_SHUTDOWN ||
-					   info == XLOG_END_OF_RECOVERY)
+					if ((info == XLOG_CHECKPOINT_SHUTDOWN) ||
+						(info == XLOG_END_OF_RECOVERY))
 					{
 						RemovePendingDeletesForPreparedTransactions();
 						/* Clean up orphaned files */
