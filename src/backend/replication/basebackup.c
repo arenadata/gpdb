@@ -594,7 +594,7 @@ perform_base_backup(basebackup_options *opt)
 			}
 
 			elogif(debug_basebackup, LOG,
-				   "basebackup perform -- Sent xlog file %s", walFiles[i]);
+				   "basebackup perform -- Sent xlog file %s", walFileName);
 
 			/* wal_segment_size is a multiple of 512, so no need for padding */
 
