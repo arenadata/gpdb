@@ -4622,12 +4622,8 @@ listTables(const char *tabtypes, const char *pattern, bool verbose, bool showSys
 	PQExpBufferData buf;
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
-<<<<<<< HEAD
-	static const bool translate_columns[] = {false, false, true, false, false /* Storage */, false, false, false, false};
-=======
 	int			cols_so_far;
-	bool		translate_columns[] = {false, false, true, false, false, false, false, false};
->>>>>>> sync-pg-phase1
+	bool		translate_columns[] = {false, false, true, false, false /* Storage */, false, false, false, false};
 
 	/* If tabtypes is empty, we default to \dtvmsE (but see also command.c) */
 	if (!(showTables || showIndexes || showViews || showMatViews || showSeq || showForeign))
