@@ -929,8 +929,7 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 			 lastWriter = cell, cell = lnext(segdbDesc->segment_database_info->freelist, cell)) ;
 
 		if (lastWriter)
-			lappend_cell(segdbDesc->segment_database_info->freelist,
-						 lastWriter, segdbDesc);
+			lappend(segdbDesc->segment_database_info->freelist, segdbDesc);
 		else
 			segdbDesc->segment_database_info->freelist =
 				lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
