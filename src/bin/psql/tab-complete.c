@@ -2702,7 +2702,6 @@ psql_completion(const char *text, int start, int end)
 	else if (Matches("CREATE", "ROLE|USER|GROUP", MatchAny, "IN"))
 		COMPLETE_WITH("GROUP", "ROLE");
 
-<<<<<<< HEAD
 /* CREATE/DROP RESOURCE GROUP/QUEUE */
 	else if (Matches("CREATE|DROP", "RESOURCE"))
 	 {
@@ -2725,8 +2724,6 @@ psql_completion(const char *text, int start, int end)
 		COMPLETE_WITH_LIST(list_CREATERESOURCEGROUP);
 	}
 
-
-=======
 /* CREATE TYPE */
 	else if (Matches("CREATE", "TYPE", MatchAny))
 		COMPLETE_WITH("(", "AS");
@@ -2766,7 +2763,6 @@ psql_completion(const char *text, int start, int end)
 			COMPLETE_WITH(",", ")");
 	}
 
->>>>>>> sync-pg-phase1
 /* CREATE VIEW --- is allowed inside CREATE SCHEMA, so use TailMatches */
 	/* Complete CREATE VIEW <name> with AS */
 	else if (TailMatches("CREATE", "VIEW", MatchAny))
