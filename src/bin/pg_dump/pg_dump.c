@@ -4976,36 +4976,10 @@ getNamespaces(Archive *fout, int *numNamespaces)
 	 */
 	if (fout->remoteVersion >= 90200)
 		appendPQExpBuffer(query, "SELECT n.tableoid, n.oid, n.nspname, "
-<<<<<<< HEAD
 						  "n.nspowner, "
 						  "n.nspacl, "
 						  "acldefault('n', n.nspowner) AS acldefault "
 						  "FROM pg_namespace n");
-=======
-						  "(%s nspowner) AS rolname, "
-						  "%s as nspacl, "
-						  "%s as rnspacl, "
-						  "%s as initnspacl, "
-						  "%s as initrnspacl "
-						  "FROM pg_namespace n "
-						  "LEFT JOIN pg_init_privs pip "
-						  "ON (n.oid = pip.objoid "
-						  "AND pip.classoid = 'pg_namespace'::regclass "
-						  "AND pip.objsubid = 0",
-						  username_subquery,
-						  acl_subquery->data,
-						  racl_subquery->data,
-						  init_acl_subquery->data,
-						  init_racl_subquery->data);
-
-		appendPQExpBufferStr(query, ") ");
-
-		destroyPQExpBuffer(acl_subquery);
-		destroyPQExpBuffer(racl_subquery);
-		destroyPQExpBuffer(init_acl_subquery);
-		destroyPQExpBuffer(init_racl_subquery);
-	}
->>>>>>> sync-pg-phase1
 	else
 		appendPQExpBuffer(query, "SELECT n.tableoid, n.oid, n.nspname, "
 						  "n.nspowner, "
