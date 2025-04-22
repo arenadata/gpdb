@@ -7452,6 +7452,14 @@ StartupXLOG(void)
 					TimeLineID	newTLI = ThisTimeLineID;
 					TimeLineID	prevTLI = ThisTimeLineID;
 
+					if (info == XLOG_CHECKPOINT_SHUTDOWN ||
+					   info == XLOG_END_OF_RECOVERY)
+					{
+						RemovePendingDeletesForPreparedTransactions();
+						/* Clean up orphaned files */
+						PdlRedoDropFiles();
+					}
+
 					if (info == XLOG_CHECKPOINT_SHUTDOWN)
 					{
 						CheckPoint	checkPoint;
@@ -7506,17 +7514,7 @@ StartupXLOG(void)
 				 * xlogreader in this function.
 				 */
 				if (record->xl_rmid == RM_XLOG_ID)
-				{
 					VerifyOverwriteContrecord(record, xlogreader);
-
-					uint8 info = record->xl_info & ~XLR_INFO_MASK;
-					if (info == XLOG_CHECKPOINT_SHUTDOWN || info == XLOG_END_OF_RECOVERY)
-					{
-						RemovePendingDeletesForPreparedTransactions();
-						/* Clean up orphaned files */
-						PdlRedoDropFiles();
-					}
-				}
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
