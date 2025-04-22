@@ -117,7 +117,6 @@ CREATE STATISTICS ab1_a_b_stats ON a, b FROM ab1;
 ANALYZE ab1;
 DROP TABLE ab1 CASCADE;
 NOTICE:  drop cascades to table ab1c
-<<<<<<< HEAD
 -- Tests for stats with inheritance
 CREATE TABLE stxdinh(a int, b int);
 CREATE TABLE stxdinh1() INHERITS(stxdinh);
@@ -178,8 +177,6 @@ SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinp GROUP BY 1, 2');
 (1 row)
 
 DROP TABLE stxdinp;
-=======
->>>>>>> sync-pg-phase1
 -- Verify supported object types for extended statistics
 CREATE schema tststats;
 CREATE TABLE tststats.t (a int, b int, c text);
