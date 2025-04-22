@@ -859,13 +859,9 @@ typedef struct RelOptInfo
     struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
 	Oid			relam;			/* form_pg_class access method */
 	double		allvisfrac;
-<<<<<<< HEAD
-	PlannerInfo *subroot;		/* if subquery (in GPDB: or CTE) */
-=======
 	Bitmapset  *eclass_indexes; /* Indexes in PlannerInfo's eq_classes list of
 								 * ECs that mention this rel */
-	PlannerInfo *subroot;		/* if subquery */
->>>>>>> sync-pg-phase1
+	PlannerInfo *subroot;		/* if subquery (in GPDB: or CTE) */
 	List	   *subplan_params; /* if subquery */
 	int			rel_parallel_workers;	/* wanted number of parallel workers */
 
