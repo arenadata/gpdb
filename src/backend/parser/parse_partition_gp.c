@@ -341,7 +341,7 @@ list_qsort_arg(List *list, qsort_arg_comparator cmp, void *arg)
 
 	i = 0;
 	foreach(cell, list)
-		cell->data.ptr_value = create_stmts[i++];
+		cell->ptr_value = create_stmts[i++];
 
 	pfree(create_stmts);
 }
