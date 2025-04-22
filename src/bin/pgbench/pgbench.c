@@ -5154,11 +5154,8 @@ main(int argc, char **argv)
 		{"log-prefix", required_argument, NULL, 7},
 		{"foreign-keys", no_argument, NULL, 8},
 		{"random-seed", required_argument, NULL, 9},
-<<<<<<< HEAD
 		{"use-unique-keys", no_argument, &use_unique_key, 1},
-=======
 		{"show-script", required_argument, NULL, 10},
->>>>>>> sync-pg-phase1
 		{NULL, 0, NULL, 0}
 	};
 
