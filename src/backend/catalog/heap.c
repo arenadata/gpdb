@@ -1893,12 +1893,11 @@ heap_create_with_catalog(const char *relname,
 void
 heap_create_init_fork(Relation rel)
 {
-	XLogRecPtr recptr;
 	RelationOpenSmgr(rel);
 	smgrcreate(rel->rd_smgr, INIT_FORKNUM, false);
-	recptr = log_smgrcreate(&rel->rd_smgr->smgr_rnode.node,
-							INIT_FORKNUM,
-							rel->rd_rel->relstorage);
+	XLogRecPtr recptr = log_smgrcreate(&rel->rd_smgr->smgr_rnode.node,
+									   INIT_FORKNUM,
+									   rel->rd_rel->relstorage);
 	XLogFlush(recptr);
 	smgrimmedsync(rel->rd_smgr, INIT_FORKNUM);
 }

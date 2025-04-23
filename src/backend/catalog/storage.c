@@ -536,9 +536,8 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			.relnode = xlrec->relnode,
 			.xid = record->xl_xid
 		};
-		SMgrRelation reln;
 
-		reln = smgropen(xlrec->relnode.node, InvalidBackendId);
+		SMgrRelation reln = smgropen(xlrec->relnode.node, InvalidBackendId);
 		smgrcreate(reln, xlrec->forkNum, true);
 
 		PdlRedoAdd(&pd);
