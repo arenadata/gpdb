@@ -527,7 +527,7 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 		reln = smgropen(xlrec->rnode, InvalidBackendId);
 		smgrcreate(reln, xlrec->forkNum, true);
 	}
-	if (info == XLOG_SMGR_CREATE_PDL)
+	else if (info == XLOG_SMGR_CREATE_PDL)
 	{
 		xl_smgr_create_pdl *xlrec =
 			(xl_smgr_create_pdl *) XLogRecGetData(record);
