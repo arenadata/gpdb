@@ -825,6 +825,24 @@ handlePollError(CdbDispatchCmdAsync *pParms)
 	return;
 }
 
+static void
+resetConnAndResult(CdbDispatchResult *r)
+{
+	PGconn *c = r->segdbDesc->conn;
+
+	/* Replace current result with a fatal error dummy one. */
+	pqClearAsyncResult(c);
+
+	/* Discard anything that is unread. */
+	c->inStart = c->inCursor = c->inEnd = 0;
+	c->result = PQmakeEmptyPGresult(c, PGRES_FATAL_ERROR);
+	c->asyncStatus = PGASYNC_READY;
+
+	PQclear(PQgetResult(c));
+
+	r->stillRunning = false;
+}
+
 /*
  * Receive and process results from QEs.
  */
@@ -884,13 +902,10 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 			/*
 			 * If we're cancelling the transaction due to an OOM, there
 			 * might not be enough memory to discard the result properly.
-			 * Try to free the async results first and pray.
+			 *
+			 * Try to free the results, reset the connection buffer and pray.
 			 */
-
-			pqClearAsyncResult(dispatchResult->segdbDesc->conn);
-			cdbconn_discardResults(dispatchResult->segdbDesc, 20);
-
-			dispatchResult->stillRunning = false;
+			resetConnAndResult(dispatchResult);
 
 			forwardQENotices();
 
