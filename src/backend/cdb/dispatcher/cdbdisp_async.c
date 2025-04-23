@@ -829,18 +829,35 @@ static void
 resetConnAndResult(CdbDispatchResult *dispatchResult)
 {
 	PGresult   *res;
+	PGnotify   *notify;
 	PGconn	   *conn = dispatchResult->segdbDesc->conn;
 
-	/* Replace current result with a fatal error dummy one. */
+	/* Free some memory in case we're tight on it. */
 	pqClearAsyncResult(conn);
+
+	/* Replace current result with a fatal error dummy one. */
 	conn->result = PQmakeEmptyPGresult(conn, PGRES_FATAL_ERROR);
 
-	/* Discard anything that is unread. */
-	conn->inStart = conn->inEnd;
-	conn->asyncStatus = PGASYNC_READY;
+	/*
+	 * Discard anything that is unread. Since our result contains a fatal error,
+	 * we'll just consume the entire message without actually parsing it.
+	 */
+	conn->asyncStatus = PGASYNC_BUSY;
 
 	while ((res = PQgetResult(conn)) != NULL)
 		PQclear(res);
+
+	/* Free notices. */
+	notify = conn->notifyHead;
+
+	while (notify != NULL)
+	{
+		PGnotify   *prev = notify;
+		notify = notify->next;
+		PQfreemem(prev);
+	}
+
+	conn->notifyHead = conn->notifyTail = NULL;
 
 	dispatchResult->stillRunning = false;
 }
