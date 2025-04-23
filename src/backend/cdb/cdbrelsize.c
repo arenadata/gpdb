@@ -33,15 +33,65 @@
 #include "cdb/cdbrelsize.h"
 
 /*
+ * Get the max size of the relation across segments
+ */
+int64
+cdbRelMaxSegSize(Relation rel)
+{
+	int64		size = 0;
+	int			i;
+	CdbPgResults cdb_pgresults = {NULL, 0};
+	char	   *sql;
+
+	/*
+	 * Let's ask the QEs for the size of the relation
+	 *
+	 * Relation Oids are assumed to be in sync in all nodes.
+	 */
+	sql = psprintf("select pg_catalog.pg_relation_size(%u)",
+				   RelationGetRelid(rel));
+
+	CdbDispatchCommand(sql, DF_WITH_SNAPSHOT, &cdb_pgresults);
+
+	for (i = 0; i < cdb_pgresults.numResults; i++)
+	{
+		struct pg_result *pgresult = cdb_pgresults.pg_results[i];
+
+		if (PQresultStatus(pgresult) != PGRES_TUPLES_OK)
+		{
+			cdbdisp_clearCdbPgResults(&cdb_pgresults);
+			elog(ERROR, "cdbRelMaxSegSize: resultStatus not tuples_Ok: %s %s",
+				 PQresStatus(PQresultStatus(pgresult)), PQresultErrorMessage(pgresult));
+		}
+		else
+		{
+			Assert(PQntuples(pgresult) == 1);
+			int64		tempsize = 0;
+
+			(void) scanint8(PQgetvalue(pgresult, 0, 0), false, &tempsize);
+			if (tempsize > size)
+				size = tempsize;
+		}
+	}
+
+	pfree(sql);
+
+	cdbdisp_clearCdbPgResults(&cdb_pgresults);
+
+	return size;
+}
+
+
+/*
  * Get the size of the relation after decompression.
  */
 int64
 cdbRelUncompressedSize(Relation rel)
 {
 	StringInfoData sql;
-	Oid reloid = RelationGetRelid(rel);
-	int64 result = 0;
-	volatile bool connected = false; /* volatile is required by PG_TRY */
+	Oid			reloid = RelationGetRelid(rel);
+	int64		result = 0;
+	volatile bool connected = false;	/* volatile is required by PG_TRY */
 
 	initStringInfo(&sql);
 	if (RelationIsAppendOptimized(rel))
@@ -56,12 +106,13 @@ cdbRelUncompressedSize(Relation rel)
 
 	/*
 	 * This function may be called during Orca's planning and
-	 * get_ao_compression_ratio may also involve query execution on
-	 * auxiliary relations of the AO table - that will involve Orca again.
-	 * But Orca doesn't support such nested planning. So, use standard
-	 * planner when invoking get_ao_compression_ratio.
+	 * get_ao_compression_ratio may also involve query execution on auxiliary
+	 * relations of the AO table - that will involve Orca again. But Orca
+	 * doesn't support such nested planning. So, use standard planner when
+	 * invoking get_ao_compression_ratio.
 	 */
-	bool save_optimizer_guc_value = optimizer;
+	bool		save_optimizer_guc_value = optimizer;
+
 	optimizer = false;
 
 	PG_TRY();
@@ -90,12 +141,13 @@ cdbRelUncompressedSize(Relation rel)
 			Assert(SPI_processed == 1);
 
 			char	   *val = SPI_getvalue(tuple, tupdesc, 1);
+
 			Assert(NULL != val);
 
 			if (!scanint8(val, true, &result))
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("unable to parse result string to int8.")));
+						 errmsg("unable to parse result string to int8.")));
 		}
 
 		connected = false;

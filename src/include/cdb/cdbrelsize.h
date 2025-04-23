@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbrelsize.h
- *	  Get the size of the relation after decompression
+ *	  Various functions related to relation size calculation
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present Pivotal Software, Inc.
@@ -16,6 +16,8 @@
 #define CDBRELSIZE_H_
 
 #include "utils/relcache.h"
+
+extern int64 cdbRelMaxSegSize(Relation rel);
 
 extern int64 cdbRelUncompressedSize(Relation rel);
 
