@@ -826,21 +826,23 @@ handlePollError(CdbDispatchCmdAsync *pParms)
 }
 
 static void
-resetConnAndResult(CdbDispatchResult *r)
+resetConnAndResult(CdbDispatchResult *dispatchResult)
 {
-	PGconn *c = r->segdbDesc->conn;
+	PGresult   *res;
+	PGconn	   *conn = dispatchResult->segdbDesc->conn;
 
 	/* Replace current result with a fatal error dummy one. */
-	pqClearAsyncResult(c);
-	c->result = PQmakeEmptyPGresult(c, PGRES_FATAL_ERROR);
+	pqClearAsyncResult(conn);
+	conn->result = PQmakeEmptyPGresult(conn, PGRES_FATAL_ERROR);
 
 	/* Discard anything that is unread. */
-	c->inStart = c->inCursor = c->inEnd = 0;
-	c->asyncStatus = PGASYNC_READY;
+	conn->inStart = conn->inEnd;
+	conn->asyncStatus = PGASYNC_READY;
 
-	PQclear(PQgetResult(c));
+	while ((res = PQgetResult(conn)) != NULL)
+		PQclear(res);
 
-	r->stillRunning = false;
+	dispatchResult->stillRunning = false;
 }
 
 /*
