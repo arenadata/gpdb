@@ -13,7 +13,6 @@
  */
 #include "postgres.h"
 
-#include "access/aosegfiles.h"
 #include "executor/spi.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
