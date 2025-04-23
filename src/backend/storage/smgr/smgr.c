@@ -387,9 +387,9 @@ smgrclosenode(RelFileNodeBackend rnode)
 void
 smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 {
+	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
 	if (file_create_hook)
 		(*file_create_hook)(reln->smgr_rnode);
-	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
 }
 
 /*
