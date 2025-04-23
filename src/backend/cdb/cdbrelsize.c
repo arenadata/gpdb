@@ -80,7 +80,6 @@ cdbRelMaxSegSize(Relation rel)
 	return size;
 }
 
-
 /*
  * Get the size of the relation after decompression.
  */
