@@ -2670,6 +2670,24 @@ as (select generate_series(1, 300000)::int as col_1, 1::int as col_2, 1::int as 
 
 explain select count(1) from test_table;
 
+-- Check replicated AO table with row orientation and compression.
+drop table test_table;
+create table test_table with (APPENDONLY=true, ORIENTATION=row, COMPRESSTYPE=zlib, COMPRESSLEVEL=2)
+as (select generate_series(1, 100000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed replicated;
+
+explain select count(1) from test_table;
+
+-- Check AO table with row orientation and compression and with high skew.
+drop table test_table;
+create table test_table with (APPENDONLY=true, ORIENTATION=row, COMPRESSTYPE=zlib, COMPRESSLEVEL=2)
+as
+(select generate_series(1, 150000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5)
+union all
+(select 1::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5 from generate_series(1, 150000))
+distributed by (col_1);
+
+explain select count(1) from test_table;
+
 drop table test_table;
 reset gp_enable_relsize_collection;
 reset gp_autostats_mode;
