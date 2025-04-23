@@ -1330,17 +1330,18 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	stmt_list = cplan->stmt_list;
 
 	/*
-	 * GPDB: Mark all queries as SPI inner queries for extension usage.
-	 * But make sure that SPI is not top level itself.
+	 * GPDB: Mark all queries as SPI inner queries for extension usage. But
+	 * make sure that SPI is not top level itself.
 	 */
 	if (!IsBackgroundWorker || _SPI_connected > 0)
 	{
 		foreach(lc, stmt_list)
 		{
-			Node *stmt = (Node *) lfirst(lc);
+			Node	   *stmt = (Node *) lfirst(lc);
+
 			if (IsA(stmt, PlannedStmt))
-				((PlannedStmt*)stmt)->metricsQueryType = SPI_INNER_QUERY;
-		}	
+				((PlannedStmt *) stmt)->metricsQueryType = SPI_INNER_QUERY;
+		}
 	}
 
 	/* Pop the error context stack */
@@ -2236,12 +2237,13 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 			{
 				PlannedStmt* pstmt = (PlannedStmt *) stmt;
 				canSetTag = pstmt->canSetTag;
+
 				/*
-				* GPDB: Mark all queries as SPI inner queries for extension usage.
-				* But make sure that SPI is not top level itself.
-				*/
+				 * GPDB: Mark all queries as SPI inner queries for extension
+				 * usage. But make sure that SPI is not top level itself.
+				 */
 				if (!IsBackgroundWorker || _SPI_connected > 0)
-					((PlannedStmt*)pstmt)->metricsQueryType = SPI_INNER_QUERY;
+					((PlannedStmt *) pstmt)->metricsQueryType = SPI_INNER_QUERY;
 			}
 			else
 			{
