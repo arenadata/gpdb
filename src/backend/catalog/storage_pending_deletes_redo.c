@@ -47,21 +47,19 @@ PdlTrackingDisabled()
 void
 PdlXLogInsert()
 {
-	Size		size = 0;
-
 	if (PdlTrackingDisabled())
 		return;
 
-	PendingRelXactDeleteArray *arr = PdlXLogShmemDump(&size);
+	PendingRelXactDeleteArray *arr = PdlXLogShmemDump();
 
-	if (size > 0 && arr != NULL)
+	if (arr != NULL)
 	{
 		XLogRecPtr	rec;
 		XLogRecData rdata =
 		{
 			.buffer = InvalidBuffer,
 			.data = (char *) arr,
-			.len = size,
+			.len = PdlDumpSize(arr->count),
 			.next = NULL,
 			.buffer_std = false
 		};

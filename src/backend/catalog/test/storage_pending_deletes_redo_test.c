@@ -44,7 +44,7 @@ XidStatus
 __wrap_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
 
 PendingRelXactDeleteArray *
-__wrap_PdlXLogShmemDump(Size *size);
+__wrap_PdlXLogShmemDump(void);
 
 XLogRecPtr
 __wrap_XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
@@ -261,32 +261,16 @@ __wrap_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 }
 
 PendingRelXactDeleteArray *
-__wrap_PdlXLogShmemDump(Size *size)
+__wrap_PdlXLogShmemDump(void)
 {
 	PdlXLogShmemDump_call_count++;
-	switch (test_number)
-	{
-		case 15:
-			{
-				/* return 0 size, and the returned pointer points to some junk */
-				*size = 0;
-				return (PendingRelXactDeleteArray *) 0xFFFFFFFF;
-			}
-		case 16:
-			{
-				/* return not 0 size, but the returned pointer is NULL */
-				*size = 1;
-				return NULL;
-			}
-		default:
-			break;
-	}
+	if (test_number == 16)
+		return NULL;
 
 	/* return something valid */
 	int			node_count = 1;
 
-	*size = sizeof(Size) + sizeof(PendingRelXactDelete) * (node_count);
-	char	   *buffer = palloc(*size);
+	char	   *buffer = palloc(PdlDumpSize(node_count));
 
 	PendingRelXactDeleteArray *pending_deletes =
 		(PendingRelXactDeleteArray *) buffer;
@@ -959,23 +943,7 @@ test_14(void **state)
 
 /*
  * Scenario:
- * check PdlXlogInsert() if PdlXLogShmemDump provided 0 nodes.
- */
-static void
-test_15(void **state)
-{
-	setup(15);
-
-	PdlXLogInsert();
-
-	assert_int_equal(PdlXLogShmemDump_call_count, 1);
-	assert_int_equal(XLogInsert_call_count, 0);
-}
-
-/*
- * Scenario:
- * check PdlXlogInsert() if PdlXLogShmemDump provided not 0 nodes, but returned
- * pointer is NULL.
+ * check PdlXlogInsert() if PdlXLogShmemDump returned NULL.
  */
 static void
 test_16(void **state)
@@ -1123,7 +1091,6 @@ main(int argc, char *argv[])
 		unit_test(test_12),
 		unit_test(test_13),
 		unit_test(test_14),
-		unit_test(test_15),
 		unit_test(test_16),
 		unit_test(test_17),
 		unit_test(test_18),

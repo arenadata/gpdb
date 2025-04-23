@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "storage/relfilenode.h"
+#include "utils/dsa.h"
 
 /* Pending delete node linked to xact which created it */
 typedef struct PendingRelXactDelete
@@ -29,12 +30,19 @@ typedef struct PendingRelXactDeleteArray
 	PendingRelXactDelete array[FLEXIBLE_ARRAY_MEMBER];
 }	PendingRelXactDeleteArray;
 
-/*
- * This function collects info about pending deletes from all backends and
- * returns the accumulated result.
- * Note: the returned result is always palloc'ed. Caller is responsible for
- * freeing it.
- */
-extern PendingRelXactDeleteArray *PdlXLogShmemDump(Size *size);
+static inline Size
+PdlDumpSize(Size count)
+{
+	Size array_size = sizeof(PendingRelXactDelete) * count;
+
+	return offsetof(PendingRelXactDeleteArray, array) + array_size;
+}
+
+extern Size PdlShmemSize(void);
+extern void PdlShmemInit(void);
+extern dsa_pointer PdlShmemAdd(const RelFileNodePendingDelete * relnode,
+			TransactionId xid);
+extern void PdlShmemRemove(dsa_pointer node_ptr);
+extern PendingRelXactDeleteArray *PdlXLogShmemDump(void);
 
 #endif   /* STORAGE_PENDING_DELETES_H */
