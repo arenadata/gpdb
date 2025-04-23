@@ -272,13 +272,20 @@ PdlXLogShmemDump(void)
 
 		LWLockAcquire(list->lock, LW_SHARED);
 
+		Size list_len = 0;
 		for (dsa_pointer pdl_node_dsa = list->head;
 			 DsaPointerIsValid(pdl_node_dsa);)
 		{
 			const PendingDeleteListNode *pdl_node = dsa_get_address(dsa,
 															   pdl_node_dsa);
 
-			size += sizeof(*ret->array);
+			list_len++;
+			pdl_node_dsa = pdl_node->next;
+		}
+
+		if (list_len > 0)
+		{
+			size += sizeof(*ret->array) * list_len;
 			if (ret != NULL)
 				ret = repalloc(ret, size);
 			else
@@ -287,8 +294,15 @@ PdlXLogShmemDump(void)
 				ret->count = 0;
 			}
 
-			ret->array[ret->count++] = pdl_node->xrelnode;
-			pdl_node_dsa = pdl_node->next;
+			for (dsa_pointer pdl_node_dsa = list->head;
+				 DsaPointerIsValid(pdl_node_dsa);)
+			{
+				const PendingDeleteListNode *pdl_node = dsa_get_address(dsa,
+																  pdl_node_dsa);
+
+				ret->array[ret->count++] = pdl_node->xrelnode;
+				pdl_node_dsa = pdl_node->next;
+			}
 		}
 
 		LWLockRelease(list->lock);
