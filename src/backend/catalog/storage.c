@@ -58,10 +58,19 @@ typedef struct PendingRelDelete
 	RelFileNodePendingDelete relnode;		/* relation that may need to be deleted */
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
 	int			nestLevel;		/* xact nesting level of request */
+	dsa_pointer shmem_ptr;		/* ptr to shared pending delete list */
 	struct PendingRelDelete *next;		/* linked-list link */
 } PendingRelDelete;
 
 static PendingRelDelete *pendingDeletes = NULL; /* head of linked list */
+
+static void
+PendingRelDeleteFree(PendingRelDelete *pending)
+{
+	Assert(pending != NULL);
+	PdlShmemRemove(pending->shmem_ptr);
+	pfree(pending);
+}
 
 /*
  * RelationCreateStorage
@@ -116,6 +125,8 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
+	pending->shmem_ptr = PdlShmemAdd(&pending->relnode,
+									 GetCurrentTransactionId());
 	pendingDeletes = pending;
 }
 
@@ -211,7 +222,7 @@ RelationPreserveStorage(RelFileNode rnode, bool atCommit)
 				prev->next = next;
 			else
 				pendingDeletes = next;
-			pfree(pending);
+			PendingRelDeleteFree(pending);
 			/* prev does not change */
 		}
 		else
@@ -367,7 +378,7 @@ smgrDoPendingDeletes(bool isCommit)
 				srels[nrels++] = srel;
 			}
 			/* must explicitly free the list entry */
-			pfree(pending);
+			PendingRelDeleteFree(pending);
 			/* prev does not change */
 		}
 	}
@@ -468,7 +479,7 @@ PostPrepare_smgr(void)
 		next = pending->next;
 		pendingDeletes = next;
 		/* must explicitly free the list entry */
-		pfree(pending);
+		PendingRelDeleteFree(pending);
 	}
 }
 
