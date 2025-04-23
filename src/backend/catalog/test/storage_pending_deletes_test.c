@@ -52,11 +52,10 @@ cmp_pdl(const void *p1, const void *p2)
 	return memcmp(p1, p2, sizeof(PendingRelXactDelete));
 }
 
-/* Check and clean up when PdlXLogShmemDump returns not NULL */
+/* Check if PdlXLogShmemDump returns expected array */
 static void 
-check_and_clean(PendingRelXactDeleteArray *arr,
-				PendingRelXactDelete *expected, Size expectedCnt,
-				dsa_pointer *p, Size pCnt)
+check_array(PendingRelXactDeleteArray *arr,
+			PendingRelXactDelete *expected, Size expectedCnt)
 {
 	assert_true(arr != NULL);
 
@@ -66,9 +65,12 @@ check_and_clean(PendingRelXactDeleteArray *arr,
 	qsort (expected,   expectedCnt, sizeof(*expected), cmp_pdl);
 	qsort (arr->array, expectedCnt, sizeof(*expected), cmp_pdl);
 	assert_memory_equal(arr->array, expected, expectedCnt*sizeof(*expected));
+}
 
-	/* Clean up */
-	pfree(arr);
+/* Remove nodes received in the p array from backends lists */
+static void 
+clean_lists(dsa_pointer *p, Size pCnt)
+{
 	for (int i = 0; i < pCnt; i++)
 		PdlShmemRemove(p[i]);
 
@@ -78,10 +80,12 @@ check_and_clean(PendingRelXactDeleteArray *arr,
 
 /* Call PdlXLogShmemDump(), check its result and clean up */
 static void 
-dump_and_clean(PendingRelXactDelete *expected, Size expectedCnt,
-			   dsa_pointer *p, Size pCnt)
+check_dump(PendingRelXactDelete *expected, Size expectedCnt)
 {
-	check_and_clean(PdlXLogShmemDump(), expected, expectedCnt, p, pCnt);
+	PendingRelXactDeleteArray   *arr = PdlXLogShmemDump();
+
+	check_array(arr, expected, expectedCnt);
+	pfree(arr);
 }
 
 
@@ -115,7 +119,8 @@ test_1(void **state)
 		.xid = TEST_XID1
 	};
 
-	dump_and_clean(&expected, 1, &p, 1);
+	check_dump(&expected, 1);
+	clean_lists(&p, 1);
 }
 
 /* Add nodes, remove the first one, add a node */
@@ -170,7 +175,8 @@ test_remove_fisrt(void **state)
 		},
 	};
 
-	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
+	check_dump(expected, ARRAY_SIZE(expected));
+	clean_lists(p, ARRAY_SIZE(p));
 }
 
 /* Add nodes, remove a node from the middle, add a node */
@@ -225,7 +231,8 @@ test_remove_middle(void **state)
 		},
 	};
 
-	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
+	check_dump(expected, ARRAY_SIZE(expected));
+	clean_lists(p, ARRAY_SIZE(p));
 }
 
 /* Add nodes, remove the last one, add a node */
@@ -280,7 +287,8 @@ test_remove_last(void **state)
 		},
 	};
 
-	dump_and_clean(expected, ARRAY_SIZE(expected), p, ARRAY_SIZE(p));
+	check_dump(expected, ARRAY_SIZE(expected));
+	clean_lists(p, ARRAY_SIZE(p));
 }
 
 /* Add node with invalid transaction id */
@@ -465,7 +473,7 @@ test_2_backends(void **state)
 	/* 
 	 * Clean up.
 	 * Elements which were added for backend 3 should be removed
-	 * when MyBackendId is 3. Other elements are removed in check_and_clean
+	 * when MyBackendId is 3. Other elements are removed in clean_lists
 	 * after restoring MyBackendId.
 	 */
 	PdlShmemRemove(p[3]);
@@ -473,7 +481,43 @@ test_2_backends(void **state)
 
 	MyBackendId = old;
 
-	check_and_clean(arr, expected, ARRAY_SIZE(expected), p, 3);
+	check_array(arr, expected, ARRAY_SIZE(expected));
+	pfree(arr);
+
+	clean_lists(p, 3);
+}
+
+/* Add nodes to use repalloc twice in PdlXLogShmemDump() */
+static void
+test_repalloc(void **state)
+{
+	RelFileNodePendingDelete relnode =
+	{
+		.node =
+		{
+			.spcNode = TEST_TABLESPACE_OID1,
+			.dbNode = TEST_DB_OID1,
+			.relNode = TEST_REL_OID1
+		}
+	};
+
+	dsa_pointer p[100]; /* 100 > 32 + 64 */
+	PendingRelXactDelete expected[ARRAY_SIZE(p)];
+	
+	for(int i = 0; i < ARRAY_SIZE(p); i++)
+	{
+		relnode.node.spcNode += i;
+		relnode.node.dbNode  += i;
+		relnode.node.relNode += i;
+
+		p[i] = PdlShmemAdd(&relnode, TEST_XID1 + i);
+
+		expected[i].relnode = relnode;
+		expected[i].xid = TEST_XID1 + i;
+	}
+
+	check_dump(expected, ARRAY_SIZE(expected));
+	clean_lists(p, ARRAY_SIZE(p));
 }
 
 int
@@ -492,7 +536,8 @@ main(int argc, char *argv[])
 		unit_test(test_invalid_mode),
 		unit_test(test_tracking_disabled),
 		unit_test(test_shmem_type),
-		unit_test(test_2_backends)
+		unit_test(test_2_backends),
+		unit_test(test_repalloc)
 	};
 
 	MemoryContextInit();

@@ -34,7 +34,7 @@ typedef struct PendingDeletesList
 
 typedef struct BackendsPendingDeletesArray
 {
-	PendingDeletesList *list;
+	PendingDeletesList *array;
 	char		dsa_mem[FLEXIBLE_ARRAY_MEMBER];
 }	BackendsPendingDeletesArray;
 
@@ -90,15 +90,15 @@ PdlShmemInit(void)
 	if (found)
 		return;
 
-	BackendsPendingDeletes->list = (PendingDeletesList *)
+	BackendsPendingDeletes->array = (PendingDeletesList *)
 		ShmemAlloc(PdlListArraySize());
-	if (BackendsPendingDeletes->list == NULL)
+	if (BackendsPendingDeletes->array == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("Not enough memory to create pending deletes lists.")));
 	
 	for (int i = 0; i < MaxBackends; i++)
-		BackendsPendingDeletes->list[i] = (PendingDeletesList)
+		BackendsPendingDeletes->array[i] = (PendingDeletesList)
 		{
 			.head = InvalidDsaPointer,
 			.lock = LWLockAssign()
@@ -125,7 +125,7 @@ pdl_beshutdown_hook(int code, Datum arg)
 	if (MyBackendId == InvalidBackendId)
 		return;
 
-	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
+	PendingDeletesList *list = &BackendsPendingDeletes->array[MyBackendId];
 
 	if (!DsaPointerIsValid(list->head))
 		return;
@@ -198,7 +198,7 @@ PdlShmemAdd(const RelFileNodePendingDelete * relnode, TransactionId xid)
 		.prev = InvalidDsaPointer
 	};
 
-	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
+	PendingDeletesList *list = &BackendsPendingDeletes->array[MyBackendId];
 
 	LWLockAcquire(list->lock, LW_EXCLUSIVE);
 	node->next = list->head;
@@ -228,7 +228,7 @@ PdlShmemRemove(dsa_pointer node_ptr)
 	Assert(DsaPointerIsValid(node_ptr));
 
 	dsa_area   *dsa = PdlAttachDsa();
-	PendingDeletesList *list = &BackendsPendingDeletes->list[MyBackendId];
+	PendingDeletesList *list = &BackendsPendingDeletes->array[MyBackendId];
 	const PendingDeleteListNode *node = dsa_get_address(dsa, node_ptr);
 
 	LWLockAcquire(list->lock, LW_EXCLUSIVE);
@@ -265,44 +265,35 @@ PdlXLogShmemDump(void)
 	dsa_area   *dsa = PdlAttachDsa();
 	PendingRelXactDeleteArray *ret = NULL;
 	Size		size = offsetof(PendingRelXactDeleteArray, array);
+	Size		step = sizeof(*ret->array) * 32;
 
 	for (int i = 0; i < MaxBackends; i++)
 	{
-		PendingDeletesList *list = &BackendsPendingDeletes->list[i];
+		PendingDeletesList *list = &BackendsPendingDeletes->array[i];
 
 		LWLockAcquire(list->lock, LW_SHARED);
 
-		Size list_len = 0;
 		for (dsa_pointer pdl_node_dsa = list->head;
 			 DsaPointerIsValid(pdl_node_dsa);)
 		{
 			const PendingDeleteListNode *pdl_node = dsa_get_address(dsa,
 															   pdl_node_dsa);
 
-			list_len++;
-			pdl_node_dsa = pdl_node->next;
-		}
-
-		if (list_len > 0)
-		{
-			size += sizeof(*ret->array) * list_len;
-			if (ret != NULL)
-				ret = repalloc(ret, size);
-			else
+			if (ret == NULL)
 			{
+				size += step;
 				ret = palloc(size);
 				ret->count = 0;
 			}
-
-			for (dsa_pointer pdl_node_dsa = list->head;
-				 DsaPointerIsValid(pdl_node_dsa);)
+			else if (PdlDumpSize(ret->count + 1) > size)
 			{
-				const PendingDeleteListNode *pdl_node = dsa_get_address(dsa,
-																  pdl_node_dsa);
-
-				ret->array[ret->count++] = pdl_node->xrelnode;
-				pdl_node_dsa = pdl_node->next;
+				step *= 2;
+				size += step;
+				ret = repalloc(ret, size);
 			}
+
+			ret->array[ret->count++] = pdl_node->xrelnode;
+			pdl_node_dsa = pdl_node->next;
 		}
 
 		LWLockRelease(list->lock);
