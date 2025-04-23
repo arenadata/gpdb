@@ -11303,7 +11303,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		GpPolicyIsPartitioned(rel->rd_cdbpolicy) &&
 		tab->dist_opfamily_changed)
 	{
-		relContainsTuples = cdbRelMaxSegSize(rel) > 0;
+		relContainsTuples = cdbRelUncompressedSize(rel) > 0;
 	}
 
 	/*

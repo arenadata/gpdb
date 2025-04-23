@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbrelsize.h
- *	  Get the max size of the relation across the segDBs
+ *	  Get the size of the relation after decompression
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present Pivotal Software, Inc.
@@ -17,6 +17,6 @@
 
 #include "utils/relcache.h"
 
-extern int64 cdbRelMaxSegSize(Relation rel);
+extern int64 cdbRelUncompressedSize(Relation rel);
 
 #endif /* CDBRELSIZE_H_ */

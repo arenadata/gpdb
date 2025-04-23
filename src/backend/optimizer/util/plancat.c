@@ -512,13 +512,13 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 */
 		if (gp_enable_relsize_collection)
 		{
-			curpages = cdbRelMaxSegSize(rel) / BLCKSZ;
+			curpages = cdbRelUncompressedSize(rel) / BLCKSZ;
 			/*
-			 * If the relation is not replicated, we need to scale up the value
-			 * from one segment to the entire cluster.
+			 * If the relation is replicated, we need to scale down to the value
+			 * on one segment in order to calculate row count properly.
 			 */
-			if (relOptInfo->cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
-				curpages *= getgpsegmentCount();
+			if (relOptInfo->cdbpolicy->ptype == POLICYTYPE_REPLICATED)
+				curpages /= getgpsegmentCount();
 		}
 		else
 			curpages = DEFAULT_INTERNAL_TABLE_PAGES;

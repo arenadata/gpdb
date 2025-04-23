@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "access/aosegfiles.h"
+#include "executor/spi.h"
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -32,81 +33,92 @@
 #include "cdb/cdbrelsize.h"
 
 /*
- * Get the max size of the relation across segments
+ * Get the size of the relation after decompression.
  */
 int64
-cdbRelMaxSegSize(Relation rel)
+cdbRelUncompressedSize(Relation rel)
 {
-	int64		size = 0;
-	int			i;
-	CdbPgResults cdb_pgresults = {NULL, 0};
-	char	   *sql;
+	StringInfoData sql;
+	Oid reloid = RelationGetRelid(rel);
+	int64 result = 0;
+	volatile bool connected = false; /* volatile is required by PG_TRY */
+
+	initStringInfo(&sql);
+	if (RelationIsAppendOptimized(rel))
+		appendStringInfo(&sql,
+						 "select (pg_catalog.pg_relation_size(%u) * "
+						 "get_ao_compression_ratio(%u))::int8",
+						 reloid,
+						 reloid);
+	else
+		appendStringInfo(&sql, "select pg_catalog.pg_relation_size(%u)",
+						 reloid);
 
 	/*
-	 * Let's ask the QEs for the size of the relation
-	 *
-	 * Relation Oids are assumed to be in sync in all nodes.
+	 * This function may be called during Orca's planning and
+	 * get_ao_compression_ratio may also involve query execution on
+	 * auxiliary relations of the AO table - that will involve Orca again.
+	 * But Orca doesn't support such nested planning. So, use standard
+	 * planner when invoking get_ao_compression_ratio.
 	 */
-	sql = psprintf("select pg_catalog.pg_relation_size(%u)",
-				   RelationGetRelid(rel));
+	bool save_optimizer_guc_value = optimizer;
+	optimizer = false;
 
-	CdbDispatchCommand(sql, DF_WITH_SNAPSHOT, &cdb_pgresults);
-
-	for (i = 0; i < cdb_pgresults.numResults; i++)
+	PG_TRY();
 	{
-		struct pg_result *pgresult = cdb_pgresults.pg_results[i];
 
-		if (PQresultStatus(pgresult) != PGRES_TUPLES_OK)
-		{
-			cdbdisp_clearCdbPgResults(&cdb_pgresults);
-			elog(ERROR, "cdbRelMaxSegSize: resultStatus not tuples_Ok: %s %s",
-				 PQresStatus(PQresultStatus(pgresult)), PQresultErrorMessage(pgresult));
-		}
+		if (SPI_OK_CONNECT != SPI_connect())
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unable to obtain relation size information"),
+					 errdetail("SPI_connect failed in cdbRelMaxSegSize.")));
+
+		connected = true;
+
+		if ((SPI_execute(sql.data, false, 0) <= 0) || (SPI_tuptable == NULL))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unable to obtain relation size information"),
+					 errdetail("SPI_execute failed in cdbRelMaxSegSize.")));
 		else
 		{
-			Assert(PQntuples(pgresult) == 1);
-			int64		tempsize = 0;
+			TupleDesc	tupdesc = SPI_tuptable->tupdesc;
+			SPITupleTable *tuptable = SPI_tuptable;
+			HeapTuple	tuple = tuptable->vals[0];
 
-			(void) scanint8(PQgetvalue(pgresult, 0, 0), false, &tempsize);
-			if (tempsize > size)
-				size = tempsize;
+			/* we expect only 1 tuple */
+			Assert(SPI_processed == 1);
+
+			char	   *val = SPI_getvalue(tuple, tupdesc, 1);
+			Assert(NULL != val);
+
+			if (!scanint8(val, true, &result))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("unable to parse result string to int8.")));
 		}
+
+		connected = false;
+		SPI_finish();
 	}
-
-	pfree(sql);
-
-	cdbdisp_clearCdbPgResults(&cdb_pgresults);
-
-	/* AO relation may be compressed, so need to adjust size calculation */
-	if (RelationIsAppendOptimized(rel))
+	/* Clean up in case of error. */
+	PG_CATCH();
 	{
-		/*
-		 * This function may be called during Orca's planning and
-		 * get_ao_compression_ratio may also involve query execution on
-		 * auxiliary relations of the AO table - that will involve Orca again.
-		 * But Orca doesn't support such nested planning. So, use standard
-		 * planner when invoking get_ao_compression_ratio.
-		 */
-		bool save_optimizer_guc_value = optimizer;
-		optimizer = false;
-
-		float8 compression_ratio = DatumGetFloat8(DirectFunctionCall1(
-			get_ao_compression_ratio,
-			ObjectIdGetDatum(RelationGetRelid(rel))));
+		if (connected)
+			SPI_finish();
 
 		optimizer = save_optimizer_guc_value;
 
-		/*
-		 * get_ao_compression_ratio can return -1 if compression information
-		 * is not available. So, for any value below 1.0 (which is the minimum
-		 * reasonable start of compression ratio), we consider there is no
-		 * compression.
-		 */
-		if (compression_ratio < 1.0)
-			compression_ratio = 1.0;
+		pfree(sql.data);
 
-		size = size * compression_ratio;
+		/* Carry on with error handling. */
+		PG_RE_THROW();
 	}
+	PG_END_TRY();
 
-	return size;
+	optimizer = save_optimizer_guc_value;
+
+	pfree(sql.data);
+
+	return result;
 }
