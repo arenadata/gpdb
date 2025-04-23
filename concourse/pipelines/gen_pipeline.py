@@ -153,12 +153,51 @@ def create_pipeline(args, git_remote, git_branch):
         test_trigger = "false"
 
     variables_type = args.pipeline_target
+    os_username = {
+        "rhel8" : "rhel",
+        "rocky8" : "rocky",
+        "oel8" : "oel",
+        "rhel9" : "rhel",
+        "rocky9" : "rocky",
+        "oel9" : "oel"
+    }
+    test_os = {
+        "rhel8" : "centos",
+        "rocky8": "centos",
+        "oel8" : "centos",
+        "rhel9" : "centos",
+        "rocky9": "centos",
+        "oel9" : "centos"
+    }
+    compile_platform = {
+        "rhel8" : "rocky8",
+        "rocky8": "rocky8",
+        "oel8" : "rocky8",
+        "rhel9" : "rocky9",
+        "rocky9": "rocky9",
+        "oel9" : "rocky9"
+    }
+    dist = {
+        "rhel8" : "el8",
+        "rocky8" : "el8",
+        "oel8" : "el8",
+        "rhel9" : "el9",
+        "rocky9" : "el9",
+        "oel9": "el9"
+    }
+
 
     context = {
         'template_filename': args.template_filename,
         'generator_filename': os.path.basename(__file__),
         'timestamp': datetime.datetime.now(),
-        'os_types': args.os_types,
+        'os_type': args.os_type,
+        'default_os_type': default_os_type,
+        'os_username': os_username[args.os_type],
+        'test_os': test_os[args.os_type],
+        'compile_platform': compile_platform[args.os_type],
+        'dist': dist[args.os_type],
+        'pipeline_target': args.pipeline_target,
         'test_sections': args.test_sections,
         'pipeline_configuration': args.pipeline_configuration,
         'test_trigger': test_trigger,
@@ -397,7 +436,11 @@ def main():
         exit(1)
 
     if args.pipeline_target == 'prod' and not args.directed_release:
-        args.pipeline_configuration = 'prod'
+        args.test_sections = [
+            'icw',
+            'cli',
+            'release'
+        ]
 
     # use_ICW_workers adds tags to the specified concourse definitions which
     # correspond to dedicated concourse workers to increase performance.
