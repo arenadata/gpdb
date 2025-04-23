@@ -65,7 +65,7 @@ SeparateOutMppExecute(List **options)
 								mpp_execute)));
 			}
 
-			*options = list_delete_cell(*options, lc);
+			foreach_delete_current(*options, lc);
 			break;
 		}
 	}
@@ -98,7 +98,7 @@ SeparateOutNumSegments(List **options)
 								num_segments)));
 			}
 
-			*options = list_delete_cell(*options, lc);
+			foreach_delete_current(*options, lc);
 			break;
 		}
 	}

@@ -1105,7 +1105,7 @@ lookupCustomFormatter(List **options, bool iswritable)
 		{
 			formatter_name = defGetString(defel);
 			funcname = list_make1(makeString(formatter_name));
-			*options = list_delete_cell(*options, cell);
+			foreach_delete_current(*options, cell);
 			break;
 		}
 	}
