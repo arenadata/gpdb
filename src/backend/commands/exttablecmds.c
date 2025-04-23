@@ -804,7 +804,7 @@ ExtractErrorLogPersistent(List **options)
 		DefElem    *def = (DefElem *) lfirst(cell);
 		if (pg_strcasecmp(def->defname, "error_log_persistent") == 0)
 		{
-			foreach_delete_current(*options, cell);
+			*options = foreach_delete_current(*options, cell);
 			/* these accept only boolean values */
 			return defGetBoolean(def);
 		}

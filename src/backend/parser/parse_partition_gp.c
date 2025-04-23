@@ -998,7 +998,7 @@ extract_tablename_from_options(List **options)
 						 errmsg("invalid tablename specification")));
 
 			char *relname_str = defGetString(pDef);
-			foreach_delete_current(*options, o_lc);
+			*options = foreach_delete_current(*options, o_lc);
 			tablename = pstrdup(relname_str);
 			break;
 		}
