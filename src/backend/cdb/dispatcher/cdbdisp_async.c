@@ -832,10 +832,10 @@ resetConnAndResult(CdbDispatchResult *r)
 
 	/* Replace current result with a fatal error dummy one. */
 	pqClearAsyncResult(c);
+	c->result = PQmakeEmptyPGresult(c, PGRES_FATAL_ERROR);
 
 	/* Discard anything that is unread. */
 	c->inStart = c->inCursor = c->inEnd = 0;
-	c->result = PQmakeEmptyPGresult(c, PGRES_FATAL_ERROR);
 	c->asyncStatus = PGASYNC_READY;
 
 	PQclear(PQgetResult(c));
