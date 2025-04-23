@@ -22,10 +22,8 @@
  */
 #define gdd_list_foreach_safe(iter, _list) \
 	for ((iter).list = (_list), \
-		 (iter).prev = NULL, \
 		 (iter).cell = list_head((iter).list); \
 		 (iter).cell != NULL; \
-		 (iter).prev = (iter).cell, \
 		 (iter).cell = (iter).cell ? lnext((iter).list, (iter).cell) : list_head((iter).list))
 
 /*
@@ -33,7 +31,6 @@
  */
 #define gdd_list_iter_get_list(iter) ((iter).list)
 #define gdd_list_iter_get_cell(iter) ((iter).cell)
-#define gdd_list_iter_get_prev(iter) ((iter).prev)
 
 /*
  * Helper function to get the current pointer at iter.
@@ -47,8 +44,7 @@
 #define gdd_list_iter_delete(iter) do \
 { \
 	(iter).list = list_delete_cell((iter).list, (iter).cell); \
-	(iter).prev = (iter).list != NIL ? (iter).prev : NULL; \
-	(iter).cell = (iter).prev; \
+	(iter).cell = (iter).list != NIL ? (iter).cell : NULL; \
 } while (0)
 
 
@@ -171,7 +167,6 @@ struct GddListIter
 {
 	List		*list;
 	ListCell	*cell;
-	ListCell	*prev;
 };
 
 /*
