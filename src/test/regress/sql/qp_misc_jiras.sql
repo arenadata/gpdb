@@ -2642,8 +2642,6 @@ explain select b from epsilon_test where b in (11,30) limit 30;
 -- m/rows=10\d\d\d\d /
 -- s/rows=10\d\d\d\d /rows=100000 /
 -- end_matchsubs
---
--- explain_processing_off
 set gp_enable_relsize_collection = on;
 set gp_autostats_mode = none;
 
@@ -2654,6 +2652,7 @@ drop table if exists test_table;
 create table test_table
 as (select generate_series(1, 300000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed by (col_1);
 
+-- explain_processing_off
 explain select count(1) from test_table;
 
 -- Check AO table with column orientation and compression.
@@ -2661,6 +2660,7 @@ drop table test_table;
 create table test_table with (APPENDONLY=true, ORIENTATION=column, COMPRESSTYPE=rle_type, COMPRESSLEVEL=2)
 as (select generate_series(1, 300000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed by (col_1);
 
+-- explain_processing_off
 explain select count(1) from test_table;
 
 -- Check AO table with row orientation and compression.
@@ -2668,6 +2668,7 @@ drop table test_table;
 create table test_table with (APPENDONLY=true, ORIENTATION=row, COMPRESSTYPE=zlib, COMPRESSLEVEL=2)
 as (select generate_series(1, 300000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed by (col_1);
 
+-- explain_processing_off
 explain select count(1) from test_table;
 
 -- Check replicated AO table with row orientation and compression.
@@ -2675,6 +2676,7 @@ drop table test_table;
 create table test_table with (APPENDONLY=true, ORIENTATION=row, COMPRESSTYPE=zlib, COMPRESSLEVEL=2)
 as (select generate_series(1, 100000)::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5) distributed replicated;
 
+-- explain_processing_off
 explain select count(1) from test_table;
 
 -- Check AO table with row orientation and compression and with high skew.
@@ -2686,12 +2688,12 @@ union all
 (select 1::int as col_1, 1::int as col_2, 1::int as col_3, 1::int as col_4, 1::int as col_5 from generate_series(1, 150000))
 distributed by (col_1);
 
+-- explain_processing_off
 explain select count(1) from test_table;
 
 drop table test_table;
 reset gp_enable_relsize_collection;
 reset gp_autostats_mode;
--- explain_processing_on
 
 -- start_ignore
 drop schema qp_misc_jiras cascade;
