@@ -1989,11 +1989,8 @@ Indexes:
     "anothertab_f3_excl" EXCLUDE USING btree (f3 WITH =)
     "anothertab_f4_excl" EXCLUDE USING btree (f4 WITH =) WHERE (f4 IS NOT NULL)
     "anothertab_f4_excl1" EXCLUDE USING btree (f4 WITH =) WHERE (f5 > 0)
-<<<<<<< HEAD
-Distributed Replicated
-=======
     "anothertab_f4_idx" UNIQUE, btree (f4)
->>>>>>> sync-pg-phase1
+Distributed Replicated
 
 -- In GPDB, you cannot change the type of a column that's part of a unique key
 alter table anothertab drop constraint anothertab_pkey;
@@ -2028,11 +2025,8 @@ Indexes:
     "anothertab_f3_excl" EXCLUDE USING btree (f3 WITH =)
     "anothertab_f4_excl" EXCLUDE USING btree (f4 WITH =) WHERE (f4 IS NOT NULL)
     "anothertab_f4_excl1" EXCLUDE USING btree (f4 WITH =) WHERE (f5 > 0)
-<<<<<<< HEAD
-Distributed Replicated
-=======
     "anothertab_f4_idx" UNIQUE, btree (f4)
->>>>>>> sync-pg-phase1
+Distributed Replicated
 
 drop table anothertab;
 create table another (f1 int, f2 text);
