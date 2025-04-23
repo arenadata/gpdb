@@ -599,7 +599,7 @@ cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 			continue;
 		}
 
-		cdi->freelist = list_delete_cell(cdi->freelist, curItem);
+		cdi->freelist = foreach_delete_current(cdi->freelist, curItem);
 		DECR_COUNT(cdi, numIdleQEs);
 
 		cdbconn_termSegmentDescriptor(segdbDesc);
@@ -805,7 +805,7 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 			continue;
 		}
 
-		cdbinfo->freelist = list_delete_cell(cdbinfo->freelist, curItem);
+		cdbinfo->freelist = foreach_delete_current(cdbinfo->freelist, curItem);
 		/* update numIdleQEs */
 		DECR_COUNT(cdbinfo, numIdleQEs);
 

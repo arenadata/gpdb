@@ -394,7 +394,7 @@ GetPreassignedOid(OidAssignment *searchkey)
 #endif
 
 			oid = p->oid;
-			preassigned_oids = list_delete_cell(preassigned_oids, cur_item);
+			preassigned_oids = foreach_delete_current(preassigned_oids, cur_item);
 			pfree(p);
 			return oid;
 		}
@@ -1270,7 +1270,7 @@ GetPreassignedIndexNameForChildIndex(Oid parentIdxOid, Oid childRelId)
 #endif
 
 			result = pstrdup(p->objname);
-			preassigned_oids = list_delete_cell(preassigned_oids, cur_item);
+			preassigned_oids = foreach_delete_current(preassigned_oids, cur_item);
 			pfree(p);
 			return result;
 		}
