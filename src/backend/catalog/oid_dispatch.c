@@ -375,9 +375,7 @@ GetPreassignedOid(OidAssignment *searchkey)
 			return AssignBinaryUpgradeReservedOid();
 	}
 
-	cur_item = list_head(preassigned_oids);
-
-	while (cur_item != NULL)
+	foreach(cur_item, preassigned_oids)
 	{
 		OidAssignment *p = (OidAssignment *) lfirst(cur_item);
 
@@ -398,7 +396,6 @@ GetPreassignedOid(OidAssignment *searchkey)
 			pfree(p);
 			return oid;
 		}
-		cur_item = lnext(preassigned_oids, cur_item);
 	}
 
 	return InvalidOid;
@@ -1254,9 +1251,7 @@ GetPreassignedIndexNameForChildIndex(Oid parentIdxOid, Oid childRelId)
 	ListCell   *cur_item;
 	char	   *result = NULL;
 
-	cur_item = list_head(preassigned_oids);
-
-	while (cur_item != NULL)
+	foreach(cur_item, preassigned_oids)
 	{
 		OidAssignment *p = (OidAssignment *) lfirst(cur_item);
 
@@ -1274,7 +1269,6 @@ GetPreassignedIndexNameForChildIndex(Oid parentIdxOid, Oid childRelId)
 			pfree(p);
 			return result;
 		}
-		cur_item = lnext(preassigned_oids, cur_item);
 	}
 
 	if (result == NULL)

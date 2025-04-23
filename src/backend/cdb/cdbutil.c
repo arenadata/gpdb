@@ -581,21 +581,17 @@ cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 	SegmentDatabaseDescriptor	*segdbDesc;
 	MemoryContext				oldContext;
 	ListCell 					*curItem = NULL;
-	ListCell					*nextItem = NULL;
 
 	Assert(CdbComponentsContext);
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
-	curItem = list_head(cdi->freelist);
 
-	while (curItem != NULL)
+	foreach(curItem, cdi->freelist)
 	{
 		segdbDesc = (SegmentDatabaseDescriptor *)lfirst(curItem);
-		nextItem = lnext(cdi->freelist, curItem);
 		Assert(segdbDesc);
 
 		if (segdbDesc->isWriter && !includeWriter)
 		{
-			curItem = nextItem;
 			continue;
 		}
 
@@ -603,9 +599,6 @@ cleanupComponentIdleQEs(CdbComponentDatabaseInfo *cdi, bool includeWriter)
 		DECR_COUNT(cdi, numIdleQEs);
 
 		cdbconn_termSegmentDescriptor(segdbDesc);
-
-		curItem = nextItem;
-
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -777,7 +770,6 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 	SegmentDatabaseDescriptor	*segdbDesc = NULL;
 	CdbComponentDatabaseInfo	*cdbinfo;
 	ListCell 					*curItem = NULL;
-	ListCell 					*nextItem = NULL;
 	MemoryContext 				oldContext;
 	bool						isWriter;
 
@@ -789,19 +781,16 @@ cdbcomponent_allocateIdleQE(int contentId, SegmentType segmentType)
 	 * Always try to pop from the head.  Make sure to push them back to head
 	 * in cdbcomponent_recycleIdleQE().
 	 */
-	curItem = list_head(cdbinfo->freelist);
-	while (curItem != NULL)
+	foreach(curItem, cdbinfo->freelist)
 	{
 		SegmentDatabaseDescriptor *tmp =
 				(SegmentDatabaseDescriptor *)lfirst(curItem);
 
-		nextItem = lnext(cdbinfo->freelist, curItem);
 		Assert(tmp);
 
 		if ((segmentType == SEGMENTTYPE_EXPLICT_WRITER && !tmp->isWriter) ||
 			(segmentType == SEGMENTTYPE_EXPLICT_READER && tmp->isWriter))
 		{
-			curItem = nextItem;
 			continue;
 		}
 
