@@ -2223,11 +2223,12 @@ toast_fetch_datum(struct varlena *attr)
 		 * Some checks on the data we've found
 		 */
 		if (residx != nextidx)
-<<<<<<< HEAD
-			elog(ERROR, "unexpected chunk number %d (expected %d) for toast value %u in %s",
-				 residx, nextidx,
-				 toast_pointer.va_valueid,
-				 RelationGetRelationName(toastrel));
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg_internal("unexpected chunk number %d (expected %d) for toast value %u in %s",
+									 residx, nextidx,
+									 toast_pointer.va_valueid,
+									 RelationGetRelationName(toastrel))));
 
 		if ((residx == 0) && (chunksize < ressize)
 			&& (chunksize != actual_max_chunk_size))
@@ -2252,51 +2253,25 @@ toast_fetch_datum(struct varlena *attr)
 		if (residx < numchunks - 1)
 		{
 			if (chunksize != actual_max_chunk_size)
-				elog(ERROR, "unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s",
-					 chunksize, (int) actual_max_chunk_size,
-					 residx, numchunks,
-					 toast_pointer.va_valueid,
-					 RelationGetRelationName(toastrel));
-		}
-		else if (residx == numchunks - 1)
-		{
-			if ((residx * actual_max_chunk_size + chunksize) != ressize)
-				elog(ERROR, "unexpected chunk size %d (expected %d) in final chunk %d for toast value %u in %s",
-					 chunksize,
-					 (int) (ressize - residx * actual_max_chunk_size),
-					 residx,
-					 toast_pointer.va_valueid,
-					 RelationGetRelationName(toastrel));
-=======
-			ereport(ERROR,
-					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg_internal("unexpected chunk number %d (expected %d) for toast value %u in %s",
-									 residx, nextidx,
-									 toast_pointer.va_valueid,
-									 RelationGetRelationName(toastrel))));
-		if (residx < numchunks - 1)
-		{
-			if (chunksize != TOAST_MAX_CHUNK_SIZE)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg_internal("unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s",
-										 chunksize, (int) TOAST_MAX_CHUNK_SIZE,
+										 chunksize, (int) actual_max_chunk_size,
 										 residx, numchunks,
 										 toast_pointer.va_valueid,
 										 RelationGetRelationName(toastrel))));
 		}
 		else if (residx == numchunks - 1)
 		{
-			if ((residx * TOAST_MAX_CHUNK_SIZE + chunksize) != ressize)
+			if ((residx * actual_max_chunk_size + chunksize) != ressize)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg_internal("unexpected chunk size %d (expected %d) in final chunk %d for toast value %u in %s",
 										 chunksize,
-										 (int) (ressize - residx * TOAST_MAX_CHUNK_SIZE),
+										 (int) (ressize - residx * actual_max_chunk_size),
 										 residx,
 										 toast_pointer.va_valueid,
 										 RelationGetRelationName(toastrel))));
->>>>>>> sync-pg-phase1
 		}
 		else
 			ereport(ERROR,
