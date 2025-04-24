@@ -848,16 +848,12 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 		PQclear(res);
 
 	/* Free notices. */
-	notify = conn->notifyHead;
+	while ((notify = PQnotifies(conn)) != NULL)
+		PQfreeNotify(notify);
 
-	while (notify != NULL)
-	{
-		PGnotify   *prev = notify;
-		notify = notify->next;
-		PQfreemem(prev);
-	}
-
-	conn->notifyHead = conn->notifyTail = NULL;
+	/* Nullify this connection's result as well as we don't need the fatal error
+	 * status anymore. */
+	pqClearAsyncResult(conn);
 
 	dispatchResult->stillRunning = false;
 }
