@@ -1500,7 +1500,6 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 	return true;
 }
 
-<<<<<<< HEAD
 bool
 zstd_decompress_backupblock(const char *source, int32 slen, char *dest,
 							int32 rawsize, char *errormessage)
@@ -1561,7 +1560,7 @@ zstd_decompress_backupblock(const char *source, int32 slen, char *dest,
 				 "binary not compiled with ZSTD support");
 		return false;
 }
-=======
+
 #ifndef FRONTEND
 
 /*
@@ -1595,4 +1594,3 @@ XLogRecGetFullXid(XLogReaderState *record)
 }
 
 #endif
->>>>>>> sync-pg-phase1
