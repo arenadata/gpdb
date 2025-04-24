@@ -2621,29 +2621,9 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 
 				if (CdbPathLocus_IsSingleQE(path->locus))
 				{
-					CdbMotionPath *motion_path;
-
-					motion_path = makeNode(CdbMotionPath);
-					motion_path->path.pathtype = T_Motion;
-					motion_path->path.parent = path->parent;
-					motion_path->path.pathtarget = path->pathtarget;
-					motion_path->path.rows = path->rows;
-					motion_path->path.parallel_aware = false;
-					motion_path->path.parallel_safe = path->parallel_safe;
-					motion_path->path.parallel_workers = path->parallel_workers;
-					motion_path->path.pathkeys = NIL;
-					motion_path->subpath = path;
-					/* Costs, etc, are same as subpath. */
-					motion_path->path.startup_cost = path->total_cost;
-					motion_path->path.total_cost = path->total_cost;
-					motion_path->path.memory = path->memory;
-					motion_path->path.motionHazard = path->motionHazard;
-					/* Motion nodes are never rescannable. */
-					motion_path->path.rescannable = false;
-					CdbPathLocus_MakeOuterQuery(&motion_path->path.locus);
-
-					Path *mpath = (Path *) create_material_path(root, motion_path->path.parent, &motion_path->path);
-					lfirst(lc) = mpath;
+					Path *motion_path = cdbpath_create_motion_to_outer_query(root, path);
+					Path *material_path = (Path *) create_material_path(root, motion_path->parent, motion_path);
+					lfirst(lc) = material_path;
 				}
 			}
 			set_cheapest(current_rel);

@@ -146,11 +146,11 @@ explain (analyze, timing off, costs off)
            ->  Result (actual rows=1 loops=2)
                  One-Time Filter: ((x.x)::integer = 0)
  Optimizer: Postgres-based planner
- Planning Time: 0.259 ms
+ Planning Time: 2.920 ms
    (slice0)    Executor memory: 19K bytes.
-   (slice1)    Executor memory: 52K bytes.  Work_mem: 17K bytes max.
- Memory used:  256000kB
- Execution Time: 0.112 ms
+   (slice1)    Executor memory: 36K bytes.  Work_mem: 17K bytes max.
+ Memory used:  128000kB
+ Execution Time: 0.085 ms
 (14 rows)
 
 -- explain_processing_on
