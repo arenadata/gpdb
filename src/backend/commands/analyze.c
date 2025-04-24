@@ -924,7 +924,6 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		}
 
 		/*
-<<<<<<< HEAD
 		 * Should we build extended statistics for this relation?
 		 *
 		 * The extended statistics catalog does not include an inheritance
@@ -940,18 +939,12 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		build_ext_stats = (onerel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE) ? inh : (!inh);
 
 		/*
-=======
->>>>>>> sync-pg-phase1
 		 * Build extended statistics (if there are any).
 		 *
 		 * For now we only build extended statistics on individual relations,
 		 * not for relations representing inheritance trees.
 		 */
-<<<<<<< HEAD
 		if (build_ext_stats)
-=======
-		if (!inh)
->>>>>>> sync-pg-phase1
 			BuildRelationExtStatistics(onerel, totalrows, numrows, rows,
 									   attr_cnt, vacattrstats);
 	}
