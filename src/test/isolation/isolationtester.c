@@ -26,7 +26,6 @@
  * connections represent spec-defined sessions.  We also track the backend
  * PID, in numeric and string formats, for each connection.
  */
-<<<<<<< HEAD
 typedef struct IsoConnInfo
 {
 	/* The libpq connection object for this connection. */
@@ -43,11 +42,6 @@ typedef struct IsoConnInfo
 } IsoConnInfo;
 
 static IsoConnInfo *conns = NULL;
-=======
-static PGconn **conns = NULL;
-static int *backend_pids = NULL;
-static const char **backend_pid_strs = NULL;
->>>>>>> sync-pg-phase1
 static int	nconns = 0;
 
 /* Flag indicating some new NOTICE has arrived */
@@ -69,15 +63,11 @@ static void run_permutation(TestSpec *testspec, int nsteps,
 /* Flag bits for try_complete_step(s) */
 #define STEP_NONBLOCK	0x1		/* return as soon as cmd waits for a lock */
 #define STEP_RETRY		0x2		/* this is a retry of a previously-waiting cmd */
-<<<<<<< HEAD
 
 static int	try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
 							   int nwaiting, int flags);
 static bool try_complete_step(TestSpec *testspec, PermutationStep *pstep,
 							  int flags);
-=======
-static bool try_complete_step(TestSpec *testspec, Step *step, int flags);
->>>>>>> sync-pg-phase1
 
 static int	step_qsort_cmp(const void *a, const void *b);
 static int	step_bsearch_cmp(const void *a, const void *b);
@@ -161,13 +151,7 @@ main(int argc, char **argv)
 	 * extra for lock wait detection and global work.
 	 */
 	nconns = 1 + testspec->nsessions;
-<<<<<<< HEAD
 	conns = (IsoConnInfo *) pg_malloc0(nconns * sizeof(IsoConnInfo));
-=======
-	conns = (PGconn **) pg_malloc0(nconns * sizeof(PGconn *));
-	backend_pids = pg_malloc0(nconns * sizeof(*backend_pids));
-	backend_pid_strs = pg_malloc0(nconns * sizeof(*backend_pid_strs));
->>>>>>> sync-pg-phase1
 	atexit(disconnect_atexit);
 
 	for (i = 0; i < nconns; i++)
@@ -201,23 +185,8 @@ main(int argc, char **argv)
 								 NULL);
 
 		/* Save each connection's backend PID for subsequent use. */
-<<<<<<< HEAD
 		conns[i].backend_pid = PQbackendPID(conns[i].conn);
 		conns[i].backend_pid_str = psprintf("%d", conns[i].backend_pid);
-=======
-		backend_pids[i] = PQbackendPID(conns[i]);
-		backend_pid_strs[i] = psprintf("%d", backend_pids[i]);
-	}
-
-	/* Set the session index fields in steps. */
-	for (i = 0; i < testspec->nsessions; i++)
-	{
-		Session    *session = testspec->sessions[i];
-		int			stepindex;
-
-		for (stepindex = 0; stepindex < session->nsteps; stepindex++)
-			session->steps[stepindex]->session = i;
->>>>>>> sync-pg-phase1
 	}
 
 	/*
@@ -232,15 +201,9 @@ main(int argc, char **argv)
 	appendPQExpBufferStr(&wait_query,
 						 "SELECT pg_catalog.pg_isolation_test_session_is_blocked($1, '{");
 	/* The spec syntax requires at least one session; assume that here. */
-<<<<<<< HEAD
 	appendPQExpBufferStr(&wait_query, conns[1].backend_pid_str);
 	for (i = 2; i < nconns; i++)
 		appendPQExpBuffer(&wait_query, ",%s", conns[i].backend_pid_str);
-=======
-	appendPQExpBufferStr(&wait_query, backend_pid_strs[1]);
-	for (i = 2; i < nconns; i++)
-		appendPQExpBuffer(&wait_query, ",%s", backend_pid_strs[i]);
->>>>>>> sync-pg-phase1
 	appendPQExpBufferStr(&wait_query, "}')");
 
 	res = PQprepare(conns[0].conn, PREP_WAITING, wait_query.data, 0, NULL);
@@ -603,40 +566,12 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 			{
 				PermutationStep *oldstep = iconn->active_step;
 
-<<<<<<< HEAD
 				/*
 				 * Wait for oldstep.  But even though we don't use
 				 * STEP_NONBLOCK, it might not complete because of blocker
 				 * conditions.
 				 */
 				if (!try_complete_step(testspec, oldstep, STEP_RETRY))
-=======
-				/* Wait for previous step on this connection. */
-				try_complete_step(testspec, oldstep, STEP_RETRY);
-
-				/* Remove that step from the waiting[] array. */
-				if (w + 1 < nwaiting)
-					memmove(&waiting[w], &waiting[w + 1],
-							(nwaiting - (w + 1)) * sizeof(Step *));
-				nwaiting--;
-
-				break;
-			}
-		}
-		if (oldstep != NULL)
-		{
-			/*
-			 * Check for completion of any steps that were previously waiting.
-			 * Remove any that have completed from waiting[], and include them
-			 * in the list for report_multiple_error_messages().
-			 */
-			w = 0;
-			nerrorstep = 0;
-			while (w < nwaiting)
-			{
-				if (try_complete_step(testspec, waiting[w],
-									  STEP_NONBLOCK | STEP_RETRY))
->>>>>>> sync-pg-phase1
 				{
 					/* Done, so remove oldstep from the waiting[] array. */
 					int			w;
@@ -710,36 +645,17 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 			exit(1);
 		}
 
-<<<<<<< HEAD
 		/* Remember we launched a step. */
 		iconn->active_step = pstep;
-=======
-		/* Try to complete this step without blocking.  */
-		mustwait = try_complete_step(testspec, step, STEP_NONBLOCK);
->>>>>>> sync-pg-phase1
 
 		/* Remember target number of NOTICEs for any blocker conditions. */
 		for (j = 0; j < pstep->nblockers; j++)
 		{
-<<<<<<< HEAD
 			PermutationStepBlocker *blocker = pstep->blockers[j];
 
 			if (blocker->blocktype == PSB_NUM_NOTICES)
 				blocker->target_notices = blocker->num_notices +
 					conns[blocker->step->session + 1].total_notices;
-=======
-			if (try_complete_step(testspec, waiting[w],
-								  STEP_NONBLOCK | STEP_RETRY))
-				w++;
-			else
-			{
-				errorstep[nerrorstep++] = waiting[w];
-				if (w + 1 < nwaiting)
-					memmove(&waiting[w], &waiting[w + 1],
-							(nwaiting - (w + 1)) * sizeof(Step *));
-				nwaiting--;
-			}
->>>>>>> sync-pg-phase1
 		}
 
 		/* Try to complete this step without blocking.  */
@@ -758,13 +674,8 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 	nwaiting = try_complete_steps(testspec, waiting, nwaiting, STEP_RETRY);
 	if (nwaiting != 0)
 	{
-<<<<<<< HEAD
 		fprintf(stderr, "failed to complete permutation due to mutually-blocking steps\n");
 		exit(1);
-=======
-		try_complete_step(testspec, waiting[w], STEP_RETRY);
-		report_error_message(waiting[w]);
->>>>>>> sync-pg-phase1
 	}
 
 	/* Perform per-session teardown */
@@ -878,11 +789,7 @@ try_complete_steps(TestSpec *testspec, PermutationStep **waiting,
  * that any lock wait will persist until we have executed additional steps.
  */
 static bool
-<<<<<<< HEAD
 try_complete_step(TestSpec *testspec, PermutationStep *pstep, int flags)
-=======
-try_complete_step(TestSpec *testspec, Step *step, int flags)
->>>>>>> sync-pg-phase1
 {
 	Step	   *step = pstep->step;
 	IsoConnInfo *iconn = &conns[1 + step->session];
@@ -951,13 +858,8 @@ try_complete_step(TestSpec *testspec, Step *step, int flags)
 			{
 				bool		waiting;
 
-<<<<<<< HEAD
 				res = PQexecPrepared(conns[0].conn, PREP_WAITING, 1,
 									 &conns[step->session + 1].backend_pid_str,
-=======
-				res = PQexecPrepared(conns[0], PREP_WAITING, 1,
-									 &backend_pid_strs[step->session + 1],
->>>>>>> sync-pg-phase1
 									 NULL, NULL, 0);
 				if (PQresultStatus(res) != PGRES_TUPLES_OK ||
 					PQntuples(res) != 1)
@@ -1123,7 +1025,6 @@ try_complete_step(TestSpec *testspec, Step *step, int flags)
 		/* Try to identify which session it came from */
 		const char *sendername = NULL;
 		char		pidstring[32];
-<<<<<<< HEAD
 		int			i;
 
 		for (i = 0; i < testspec->nsessions; i++)
@@ -1131,14 +1032,6 @@ try_complete_step(TestSpec *testspec, Step *step, int flags)
 			if (notify->be_pid == conns[i + 1].backend_pid)
 			{
 				sendername = conns[i + 1].sessionname;
-=======
-
-		for (int i = 0; i < testspec->nsessions; i++)
-		{
-			if (notify->be_pid == backend_pids[i + 1])
-			{
-				sendername = testspec->sessions[i]->name;
->>>>>>> sync-pg-phase1
 				break;
 			}
 		}
@@ -1155,7 +1048,6 @@ try_complete_step(TestSpec *testspec, Step *step, int flags)
 		PQconsumeInput(conn);
 	}
 
-<<<<<<< HEAD
 	/* Connection is now idle. */
 	iconn->active_step = NULL;
 
@@ -1193,8 +1085,6 @@ step_has_blocker(PermutationStep *pstep)
 				break;
 		}
 	}
-=======
->>>>>>> sync-pg-phase1
 	return false;
 }
 
@@ -1224,7 +1114,6 @@ printResultSet(PGresult *res)
 static void
 isotesterNoticeProcessor(void *arg, const char *message)
 {
-<<<<<<< HEAD
 	IsoConnInfo *myconn = (IsoConnInfo *) arg;
 
 	/* Prefix the backend's message with the session name. */
@@ -1232,9 +1121,6 @@ isotesterNoticeProcessor(void *arg, const char *message)
 	/* Record notices, since we may need this to decide to unblock a step. */
 	myconn->total_notices++;
 	any_new_notice = true;
-=======
-	printf("%s: %s", (char *) arg, message);
->>>>>>> sync-pg-phase1
 }
 
 /* notice processor, hides the message */
