@@ -109,8 +109,8 @@ test: create_table_like alter_generic alter_operator misc async dbsize misc_func
 
 # rules cannot run concurrently with any test that creates
 # a view or rule in the public schema
-<<<<<<< HEAD
-test: psql psql_crosstab amutils stats_ext
+# collate.*.utf8 tests cannot be run in parallel with each other
+test: psql psql_crosstab amutils stats_ext collate.linux.utf8
 #
 # 'rules' test is disabled in GPDB. Maintaining the list of views in it is
 # too painful, and there are also errors because of cross-segment UPDATEs
@@ -120,10 +120,6 @@ test: psql psql_crosstab amutils stats_ext
 # merge, it was done a long time ago, it's time to revisit this so we can re-
 # enable it
 #test: rules
-=======
-# collate.*.utf8 tests cannot be run in parallel with each other
-test: rules psql psql_crosstab amutils stats_ext collate.linux.utf8
->>>>>>> sync-pg-phase1
 
 # run by itself so it can run parallel workers
 test: select_parallel
