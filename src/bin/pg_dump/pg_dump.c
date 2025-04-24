@@ -4976,36 +4976,10 @@ getNamespaces(Archive *fout, int *numNamespaces)
 	 */
 	if (fout->remoteVersion >= 90200)
 		appendPQExpBuffer(query, "SELECT n.tableoid, n.oid, n.nspname, "
-<<<<<<< HEAD
 						  "n.nspowner, "
 						  "n.nspacl, "
 						  "acldefault('n', n.nspowner) AS acldefault "
 						  "FROM pg_namespace n");
-=======
-						  "(%s nspowner) AS rolname, "
-						  "%s as nspacl, "
-						  "%s as rnspacl, "
-						  "%s as initnspacl, "
-						  "%s as initrnspacl "
-						  "FROM pg_namespace n "
-						  "LEFT JOIN pg_init_privs pip "
-						  "ON (n.oid = pip.objoid "
-						  "AND pip.classoid = 'pg_namespace'::regclass "
-						  "AND pip.objsubid = 0",
-						  username_subquery,
-						  acl_subquery->data,
-						  racl_subquery->data,
-						  init_acl_subquery->data,
-						  init_racl_subquery->data);
-
-		appendPQExpBufferStr(query, ") ");
-
-		destroyPQExpBuffer(acl_subquery);
-		destroyPQExpBuffer(racl_subquery);
-		destroyPQExpBuffer(init_acl_subquery);
-		destroyPQExpBuffer(init_racl_subquery);
-	}
->>>>>>> sync-pg-phase1
 	else
 		appendPQExpBuffer(query, "SELECT n.tableoid, n.oid, n.nspname, "
 						  "n.nspowner, "
@@ -8748,7 +8722,6 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		 * Locate the associated TableInfo; we rely on tblinfo[] being in OID
 		 * order.
 		 */
-<<<<<<< HEAD
 		while (++curtblindx < numTables)
 		{
 			tbinfo = &tblinfo[curtblindx];
@@ -8785,139 +8758,6 @@ getTableAttrs(Archive *fout, TableInfo *tblinfo, int numTables)
 		tbinfo->inhNotNull = (bool *) pg_malloc(numatts * sizeof(bool));
 		tbinfo->attrdefs = (AttrDefInfo **) pg_malloc(numatts * sizeof(AttrDefInfo *));
 		tbinfo->attencoding = (char **) pg_malloc(numatts * sizeof(char*));
-=======
-		pg_log_info("finding the columns and types of table \"%s.%s\"",
-					tbinfo->dobj.namespace->dobj.name,
-					tbinfo->dobj.name);
-
-		resetPQExpBuffer(q);
-
-		appendPQExpBufferStr(q,
-							 "SELECT\n"
-							 "a.attnum,\n"
-							 "a.attname,\n"
-							 "a.atttypmod,\n"
-							 "a.attstattarget,\n"
-							 "a.attstorage,\n"
-							 "t.typstorage,\n"
-							 "a.attnotnull,\n"
-							 "a.atthasdef,\n"
-							 "a.attisdropped,\n"
-							 "a.attlen,\n"
-							 "a.attalign,\n"
-							 "a.attislocal,\n"
-							 "pg_catalog.format_type(t.oid, a.atttypmod) AS atttypname,\n");
-
-		if (fout->remoteVersion >= 120000)
-			appendPQExpBufferStr(q,
-								 "a.attgenerated,\n");
-		else
-			appendPQExpBufferStr(q,
-								 "'' AS attgenerated,\n");
-
-		if (fout->remoteVersion >= 110000)
-			appendPQExpBufferStr(q,
-								 "CASE WHEN a.atthasmissing AND NOT a.attisdropped "
-								 "THEN a.attmissingval ELSE null END AS attmissingval,\n");
-		else
-			appendPQExpBufferStr(q,
-								 "NULL AS attmissingval,\n");
-
-		if (fout->remoteVersion >= 100000)
-			appendPQExpBufferStr(q,
-								 "a.attidentity,\n");
-		else
-			appendPQExpBufferStr(q,
-								 "'' AS attidentity,\n");
-
-		if (fout->remoteVersion >= 90200)
-			appendPQExpBufferStr(q,
-								 "pg_catalog.array_to_string(ARRAY("
-								 "SELECT pg_catalog.quote_ident(option_name) || "
-								 "' ' || pg_catalog.quote_literal(option_value) "
-								 "FROM pg_catalog.pg_options_to_table(attfdwoptions) "
-								 "ORDER BY option_name"
-								 "), E',\n    ') AS attfdwoptions,\n");
-		else
-			appendPQExpBufferStr(q,
-								 "'' AS attfdwoptions,\n");
-
-		if (fout->remoteVersion >= 90100)
-		{
-			/*
-			 * Since we only want to dump COLLATE clauses for attributes whose
-			 * collation is different from their type's default, we use a CASE
-			 * here to suppress uninteresting attcollations cheaply.
-			 */
-			appendPQExpBufferStr(q,
-								 "CASE WHEN a.attcollation <> t.typcollation "
-								 "THEN a.attcollation ELSE 0 END AS attcollation,\n");
-		}
-		else
-			appendPQExpBufferStr(q,
-								 "0 AS attcollation,\n");
-
-		if (fout->remoteVersion >= 90000)
-			appendPQExpBufferStr(q,
-								 "array_to_string(a.attoptions, ', ') AS attoptions\n");
-		else
-			appendPQExpBufferStr(q,
-								 "'' AS attoptions\n");
-
-		/* need left join here to not fail on dropped columns ... */
-		appendPQExpBuffer(q,
-						  "FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_type t "
-						  "ON a.atttypid = t.oid\n"
-						  "WHERE a.attrelid = '%u'::pg_catalog.oid "
-						  "AND a.attnum > 0::pg_catalog.int2\n"
-						  "ORDER BY a.attnum",
-						  tbinfo->dobj.catId.oid);
-
-		res = ExecuteSqlQuery(fout, q->data, PGRES_TUPLES_OK);
-
-		ntups = PQntuples(res);
-
-		i_attnum = PQfnumber(res, "attnum");
-		i_attname = PQfnumber(res, "attname");
-		i_atttypname = PQfnumber(res, "atttypname");
-		i_atttypmod = PQfnumber(res, "atttypmod");
-		i_attstattarget = PQfnumber(res, "attstattarget");
-		i_attstorage = PQfnumber(res, "attstorage");
-		i_typstorage = PQfnumber(res, "typstorage");
-		i_attnotnull = PQfnumber(res, "attnotnull");
-		i_atthasdef = PQfnumber(res, "atthasdef");
-		i_attidentity = PQfnumber(res, "attidentity");
-		i_attgenerated = PQfnumber(res, "attgenerated");
-		i_attisdropped = PQfnumber(res, "attisdropped");
-		i_attlen = PQfnumber(res, "attlen");
-		i_attalign = PQfnumber(res, "attalign");
-		i_attislocal = PQfnumber(res, "attislocal");
-		i_attoptions = PQfnumber(res, "attoptions");
-		i_attcollation = PQfnumber(res, "attcollation");
-		i_attfdwoptions = PQfnumber(res, "attfdwoptions");
-		i_attmissingval = PQfnumber(res, "attmissingval");
-
-		tbinfo->numatts = ntups;
-		tbinfo->attnames = (char **) pg_malloc(ntups * sizeof(char *));
-		tbinfo->atttypnames = (char **) pg_malloc(ntups * sizeof(char *));
-		tbinfo->atttypmod = (int *) pg_malloc(ntups * sizeof(int));
-		tbinfo->attstattarget = (int *) pg_malloc(ntups * sizeof(int));
-		tbinfo->attstorage = (char *) pg_malloc(ntups * sizeof(char));
-		tbinfo->typstorage = (char *) pg_malloc(ntups * sizeof(char));
-		tbinfo->attidentity = (char *) pg_malloc(ntups * sizeof(char));
-		tbinfo->attgenerated = (char *) pg_malloc(ntups * sizeof(char));
-		tbinfo->attisdropped = (bool *) pg_malloc(ntups * sizeof(bool));
-		tbinfo->attlen = (int *) pg_malloc(ntups * sizeof(int));
-		tbinfo->attalign = (char *) pg_malloc(ntups * sizeof(char));
-		tbinfo->attislocal = (bool *) pg_malloc(ntups * sizeof(bool));
-		tbinfo->attoptions = (char **) pg_malloc(ntups * sizeof(char *));
-		tbinfo->attcollation = (Oid *) pg_malloc(ntups * sizeof(Oid));
-		tbinfo->attfdwoptions = (char **) pg_malloc(ntups * sizeof(char *));
-		tbinfo->attmissingval = (char **) pg_malloc(ntups * sizeof(char *));
-		tbinfo->notnull = (bool *) pg_malloc(ntups * sizeof(bool));
-		tbinfo->inhNotNull = (bool *) pg_malloc(ntups * sizeof(bool));
-		tbinfo->attrdefs = (AttrDefInfo **) pg_malloc(ntups * sizeof(AttrDefInfo *));
->>>>>>> sync-pg-phase1
 		hasdefaults = false;
 
 		for (int j = 0; j < numatts; j++, r++)
@@ -15675,13 +15515,8 @@ dumpACL(Archive *fout, DumpId objDumpId, DumpId altDumpId,
 		if (!buildACLCommands(name, subname, nspname, type,
 							  initprivs, acldefault, owner,
 							  "", fout->remoteVersion, sql))
-<<<<<<< HEAD
 			fatal("could not parse initial ACL list (%s) or default (%s) for object \"%s\" (%s)",
 				  initprivs, acldefault, name, type);
-=======
-			fatal("could not parse initial GRANT ACL list (%s) or initial REVOKE ACL list (%s) for object \"%s\" (%s)",
-				  initacls, initracls, name, type);
->>>>>>> sync-pg-phase1
 		appendPQExpBufferStr(sql, "SELECT pg_catalog.binary_upgrade_set_record_init_privs(false);\n");
 	}
 
