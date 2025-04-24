@@ -1974,7 +1974,6 @@ spi_printtup(TupleTableSlot *slot, DestReceiver *self)
 		tuptable->alloced = newalloced;
 	}
 
-<<<<<<< HEAD
 	/*
 	 * XXX TODO: This is extremely stupid.	Most likely we only need a
 	 * memtuple. However, TONS of places, assumes heaptuple.
@@ -1982,13 +1981,8 @@ spi_printtup(TupleTableSlot *slot, DestReceiver *self)
 	 * Suggested fix: In SPITupleTable, change TupleDesc tupdesc to a slot, and
 	 * access everything through slot_XXX intreface.
 	 */
-	tuptable->vals[tuptable->alloced - tuptable->free] =
-		ExecCopySlotHeapTuple(slot);
-	(tuptable->free)--;
-=======
 	tuptable->vals[tuptable->numvals] = ExecCopySlotHeapTuple(slot);
 	(tuptable->numvals)++;
->>>>>>> sync-pg-phase1
 
 	MemoryContextSwitchTo(oldcxt);
 
