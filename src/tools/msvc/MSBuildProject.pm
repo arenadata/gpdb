@@ -36,18 +36,10 @@ sub WriteHeader
 EOF
 	$self->WriteConfigurationHeader($f, 'Debug');
 	$self->WriteConfigurationHeader($f, 'Release');
-	my $sdkversion=$ENV{'WindowsSDKVersion'};
-	if ($sdkversion =~ /.*\\$/)
-	{
-		chop $sdkversion;
-	}
 	print $f <<EOF;
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>$self->{guid}</ProjectGuid>
-<<<<<<< HEAD
-    <WindowsTargetPlatformVersion>$sdkversion</WindowsTargetPlatformVersion>
-=======
 EOF
 	# Check whether WindowsSDKVersion env variable is present.
 	# Add WindowsTargetPlatformVersion node if so.
@@ -61,7 +53,6 @@ EOF
 EOF
 	}
 	print $f <<EOF;
->>>>>>> sync-pg-phase1
   </PropertyGroup>
   <Import Project="\$(VCTargetsPath)\\Microsoft.Cpp.Default.props" />
 EOF
