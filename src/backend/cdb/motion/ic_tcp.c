@@ -1969,7 +1969,7 @@ TeardownTCPInterconnect(ChunkTransportState *transportStates, bool hasErrors)
 	/*
 	 * These are connected inbound peers that we haven't dealt with quite yet
 	 */
-	while ((cell = list_head(transportStates->incompleteConns)) != NULL)
+	foreach(cell, transportStates->incompleteConns)
 	{
 		MotionConn *conn = (MotionConn *) lfirst(cell);
 
@@ -1997,7 +1997,7 @@ TeardownTCPInterconnect(ChunkTransportState *transportStates, bool hasErrors)
 		 * incompleteConns = list_delete_first(incompleteConns); or
 		 * incompleteConns = list_delete_ptr(incompleteConns, conn)
 		 */
-		transportStates->incompleteConns = list_delete(transportStates->incompleteConns, conn);
+		transportStates->incompleteConns = foreach_delete_current(transportStates->incompleteConns, cell);
 	}
 
 	list_free(transportStates->incompleteConns);
