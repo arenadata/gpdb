@@ -354,7 +354,10 @@ insert into srf_test_t1 values ('ao1_srf_test'::regclass::oid), ('ao2_srf_test':
 select * from srf_test_t1 where a in 
        (select (gp_toolkit.__gp_aoblkdir(srf_test_t1.a)).row_count 
         from gp_dist_random('gp_id') limit 1);
-ERROR:  Passing parameters across motion is not supported. (cdbmutate.c:2051)
+ a 
+---
+(0 rows)
+
 drop table ao1_srf_test;
 drop table ao2_srf_test;
 drop table srf_test_t1;
