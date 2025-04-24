@@ -405,7 +405,7 @@ recurse_set_operations(Node *setOp, PlannerInfo *root,
 
 			*pTargetList = generate_setop_tlist(colTypes, colCollations,
 												flag,
-												OUTER_VAR,
+												0,
 												false,
 												*pTargetList,
 												refnames_tlist);
@@ -1454,7 +1454,7 @@ generate_append_tlist(List *colTypes, List *colCollations,
 
 		Assert(reftle->resno == resno);
 		Assert(!reftle->resjunk);
-		expr = (Node *) makeVar(OUTER_VAR,
+		expr = (Node *) makeVar(0,
 								resno,
 								colType,
 								colTypmod,
@@ -1479,7 +1479,7 @@ generate_append_tlist(List *colTypes, List *colCollations,
 	{
 		/* Add a resjunk flag column */
 		/* flag value is shown as copied up from subplan */
-		expr = (Node *) makeVar(OUTER_VAR,
+		expr = (Node *) makeVar(0,
 								resno,
 								INT4OID,
 								-1,
