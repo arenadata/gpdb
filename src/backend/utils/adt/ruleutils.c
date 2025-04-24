@@ -5385,7 +5385,7 @@ get_select_query_def(Query *query, deparse_context *context,
 				Node *expr = (Node *) lfirst(lc);
 
 				get_rule_expr(expr, context, false);
-				if (lc->next)
+				if (lnext(query->scatterClause, lc))
 					appendStringInfo(buf, ", ");
 			}
 		}

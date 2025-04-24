@@ -484,10 +484,10 @@ guc_options_include_retrieve_conn(List *guc_options)
 		char       *value;
 
 		name = lfirst(gucopts);
-		gucopts = lnext(gucopts);
+		gucopts = lnext(guc_options, gucopts);
 
 		value = lfirst(gucopts);
-		gucopts = lnext(gucopts);
+		gucopts = lnext(guc_options, gucopts);
 
 		if (guc_name_compare(name, "gp_retrieve_conn") == 0)
 		{

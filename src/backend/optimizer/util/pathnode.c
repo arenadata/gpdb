@@ -5318,7 +5318,7 @@ adjust_modifytable_subpaths(PlannerInfo *root, CmdType operation,
 			else
 				subpath = create_motion_path_for_upddel(root, rti, targetPolicy, subpath);
 
-			lci = lnext(lci);
+			lci = lnext(is_split_updates, lci);
 		}
 		lfirst(lcp) = subpath;
 	}

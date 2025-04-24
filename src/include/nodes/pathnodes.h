@@ -574,7 +574,7 @@ static inline struct PlannerInfo *planner_subplan_get_root(struct PlannerInfo *r
 static inline void planner_subplan_put_plan(struct PlannerInfo *root, SubPlan *subplan, Plan *plan) 
 {
 	ListCell *cell = list_nth_cell(root->glob->subplans, subplan->plan_id-1);
-	cell->data.ptr_value = plan;
+	cell->ptr_value = plan;
 }
 
 /*----------

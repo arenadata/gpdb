@@ -8510,12 +8510,12 @@ make_new_rollups_for_hash_grouping_set(PlannerInfo        *root,
 		pathkeys_contained_in(root->group_pathkeys, path->pathkeys))
 	{
 		unhashed_rollup = lfirst_node(RollupData, l_start);
-		l_start = lnext(l_start);
+		l_start = lnext(gd->rollups, l_start);
 	}
 
 	sets_data = list_copy(gd->unsortable_sets);
 
-	for_each_cell(lc, l_start)
+	for_each_cell(lc, gd->rollups, l_start)
 	{
 		RollupData *rollup = lfirst_node(RollupData, lc);
 

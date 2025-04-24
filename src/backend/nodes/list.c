@@ -567,31 +567,6 @@ list_truncate(List *list, int new_size)
 }
 
 /*
-<<<<<<< HEAD
- * Locate the n'th cell (counting from 0) of the list.  It is an assertion
- * failure if there is no such cell.
- */
-ListCell *
-list_nth_cell(const List *list, int n)
-{
-	ListCell   *match;
-
-	Assert(list != NIL);
-	Assert(n >= 0);
-	Assert(n < list->length);
-	check_list_invariants(list);
-
-	/* Does the caller actually mean to fetch the tail? */
-	if (n == list->length - 1)
-		return list->tail;
-
-	for (match = list->head; n-- > 0; match = match->next)
-		;
-
-	return match;
-}
-
-/**
  * Replace the n-th data pointer in the list with newvalue.
  * Returns oldvalue. Assumes that n is a valid offset.
  */
@@ -601,47 +576,12 @@ list_nth_replace(List *list, int n, void *new_data)
 	ListCell *lc = NULL;
 	lc = list_nth_cell(list, n);
 	Assert(lc);
-	void *old_data = lc->data.ptr_value;
-	lc->data.ptr_value = new_data;
+	void *old_data = lc->ptr_value;
+	lc->ptr_value = new_data;
 	return old_data;
 }
 
 /*
- * Return the data value contained in the n'th element of the
- * specified list. (List elements begin at 0.)
- */
-void *
-list_nth(const List *list, int n)
-{
-	Assert(IsPointerList(list));
-	return lfirst(list_nth_cell(list, n));
-}
-
-/*
- * Return the integer value contained in the n'th element of the
- * specified list.
- */
-int
-list_nth_int(const List *list, int n)
-{
-	Assert(IsIntegerList(list));
-	return lfirst_int(list_nth_cell(list, n));
-}
-
-/*
- * Return the OID value contained in the n'th element of the specified
- * list.
- */
-Oid
-list_nth_oid(const List *list, int n)
-{
-	Assert(IsOidList(list));
-	return lfirst_oid(list_nth_cell(list, n));
-}
-
-/*
-=======
->>>>>>> sync-pg-phase1
  * Return true iff 'datum' is a member of the list. Equality is
  * determined via equal(), so callers should ensure that they pass a
  * Node as 'datum'.
