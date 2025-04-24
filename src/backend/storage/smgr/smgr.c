@@ -19,17 +19,13 @@
  */
 #include "postgres.h"
 
-<<<<<<< HEAD
 #include "access/aomd.h"
 #include "access/xact.h"
 #include "access/xlogutils.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
-#include "commands/tablespace.h"
-#include "postmaster/postmaster.h"
-=======
->>>>>>> sync-pg-phase1
 #include "lib/ilist.h"
+#include "postmaster/postmaster.h"
 #include "storage/bufmgr.h"
 #include "storage/ipc.h"
 #include "storage/md.h"
@@ -43,39 +39,10 @@
  * For example, disk quota extension will use these hooks to
  * detect active tables.
  */
-<<<<<<< HEAD
 file_create_hook_type file_create_hook = NULL;
 file_extend_hook_type file_extend_hook = NULL;
 file_truncate_hook_type file_truncate_hook = NULL;
 file_unlink_hook_type file_unlink_hook = NULL;
-=======
-typedef struct f_smgr
-{
-	void		(*smgr_init) (void);	/* may be NULL */
-	void		(*smgr_shutdown) (void);	/* may be NULL */
-	void		(*smgr_open) (SMgrRelation reln);
-	void		(*smgr_close) (SMgrRelation reln, ForkNumber forknum);
-	void		(*smgr_create) (SMgrRelation reln, ForkNumber forknum,
-								bool isRedo);
-	bool		(*smgr_exists) (SMgrRelation reln, ForkNumber forknum);
-	void		(*smgr_unlink) (RelFileNodeBackend rnode, ForkNumber forknum,
-								bool isRedo);
-	void		(*smgr_extend) (SMgrRelation reln, ForkNumber forknum,
-								BlockNumber blocknum, char *buffer, bool skipFsync);
-	void		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
-								  BlockNumber blocknum);
-	void		(*smgr_read) (SMgrRelation reln, ForkNumber forknum,
-							  BlockNumber blocknum, char *buffer);
-	void		(*smgr_write) (SMgrRelation reln, ForkNumber forknum,
-							   BlockNumber blocknum, char *buffer, bool skipFsync);
-	void		(*smgr_writeback) (SMgrRelation reln, ForkNumber forknum,
-								   BlockNumber blocknum, BlockNumber nblocks);
-	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
-	void		(*smgr_truncate) (SMgrRelation reln, ForkNumber forknum,
-								  BlockNumber nblocks);
-	void		(*smgr_immedsync) (SMgrRelation reln, ForkNumber forknum);
-} f_smgr;
->>>>>>> sync-pg-phase1
 
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
@@ -106,6 +73,7 @@ static const f_smgr smgrsw[] = {
 	{
 		.smgr_init = mdinit,
 		.smgr_shutdown = NULL,
+		.smgr_open = mdopen,
 		.smgr_close = mdclose,
 		.smgr_create = mdcreate,
 		.smgr_exists = mdexists,
@@ -419,34 +387,9 @@ smgrclosenode(RelFileNodeBackend rnode)
 void
 smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 {
-<<<<<<< HEAD
-	/*
-	 * Exit quickly in WAL replay mode if we've already opened the file. If
-	 * it's open, it surely must exist.
-	 */
-	if (isRedo && reln->md_num_open_segs[forknum] > 0)
-		return;
-
-	/*
-	 * We may be using the target table space for the first time in this
-	 * database, so create a per-database subdirectory if needed.
-	 *
-	 * XXX this is a fairly ugly violation of module layering, but this seems
-	 * to be the best place to put the check.  Maybe TablespaceCreateDbspace
-	 * should be here and not in commands/tablespace.c?  But that would imply
-	 * importing a lot of stuff that smgr.c oughtn't know, either.
-	 */
-	TablespaceCreateDbspace(reln->smgr_rnode.node.spcNode,
-							reln->smgr_rnode.node.dbNode,
-							isRedo);
-
-    (*reln->storageManager).smgr_create(reln, forknum, isRedo);
-
+	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
 	if (file_create_hook)
 		(*file_create_hook)(reln->smgr_rnode);
-=======
-	smgrsw[reln->smgr_which].smgr_create(reln, forknum, isRedo);
->>>>>>> sync-pg-phase1
 }
 
 /*
