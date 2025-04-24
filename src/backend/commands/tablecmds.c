@@ -4769,11 +4769,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DropConstraint: /* DROP CONSTRAINT */
 			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE);
 			ATCheckPartitionsNotInUse(rel, lockmode);
-<<<<<<< HEAD
-			/* Recursion occurs during execution phase */
-=======
 			/* Other recursion occurs during execution phase */
->>>>>>> sync-pg-phase1
 			/* No command-specific prep needed except saving recurse flag */
 			if (recurse)
 				cmd->subtype = AT_DropConstraintRecurse;
@@ -6857,11 +6853,7 @@ ATCheckPartitionsNotInUse(Relation rel, LOCKMODE lockmode)
 
 		inh = find_all_inheritors(RelationGetRelid(rel), lockmode, NULL);
 		/* first element is the parent rel; must ignore it */
-<<<<<<< HEAD
-		for_each_cell(cell, lnext(list_head(inh)))
-=======
 		for_each_cell(cell, inh, list_second_cell(inh))
->>>>>>> sync-pg-phase1
 		{
 			Relation	childrel;
 
