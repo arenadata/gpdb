@@ -237,7 +237,14 @@ CreatePublication(CreatePublicationStmt *stmt)
 
 	InvokeObjectPostCreateHook(PublicationRelationId, puboid, 0);
 
-<<<<<<< HEAD
+	if (wal_level != WAL_LEVEL_LOGICAL)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("wal_level is insufficient to publish logical changes"),
+				 errhint("Set wal_level to logical before creating subscriptions.")));
+	}
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt,
@@ -249,14 +256,6 @@ CreatePublication(CreatePublicationStmt *stmt)
 
 		/* MPP-6929: metadata tracking */
 		MetaTrackAddObject(PublicationRelationId, myself.objectId, GetUserId(), "CREATE", "PUBLICATION");
-=======
-	if (wal_level != WAL_LEVEL_LOGICAL)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("wal_level is insufficient to publish logical changes"),
-				 errhint("Set wal_level to logical before creating subscriptions.")));
->>>>>>> sync-pg-phase1
 	}
 
 	return myself;
