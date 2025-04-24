@@ -24,18 +24,10 @@ smgr_desc(StringInfo buf, XLogRecord *record)
 	uint8           info = record->xl_info & ~XLR_INFO_MASK;
 	char            *rec = XLogRecGetData(record);
 
-	if (info == XLOG_SMGR_CREATE)
+	if ((info == XLOG_SMGR_CREATE) || (info == XLOG_SMGR_CREATE_PDL))
 	{
 		xl_smgr_create *xlrec = (xl_smgr_create *) rec;
 		char	   *path = relpathperm(xlrec->rnode, xlrec->forkNum);
-
-		appendStringInfo(buf, "file create: %s", path);
-		pfree(path);
-	}
-	else if (info == XLOG_SMGR_CREATE_PDL)
-	{
-		xl_smgr_create_pdl *xlrec = (xl_smgr_create_pdl *) rec;
-		char	   *path = relpathperm(xlrec->relnode.node, xlrec->forkNum);
 
 		appendStringInfo(buf, "file create: %s", path);
 		pfree(path);

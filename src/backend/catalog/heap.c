@@ -1895,10 +1895,9 @@ heap_create_init_fork(Relation rel)
 {
 	RelationOpenSmgr(rel);
 	smgrcreate(rel->rd_smgr, INIT_FORKNUM, false);
-	XLogRecPtr recptr = log_smgrcreate(&rel->rd_smgr->smgr_rnode.node,
-									   INIT_FORKNUM,
-									   rel->rd_rel->relstorage);
-	XLogFlush(recptr);
+	log_smgrcreate(&rel->rd_smgr->smgr_rnode.node,
+				   INIT_FORKNUM,
+				   rel->rd_rel->relstorage);
 	smgrimmedsync(rel->rd_smgr, INIT_FORKNUM);
 }
 

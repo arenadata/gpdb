@@ -105,12 +105,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	smgrcreate(srel, MAIN_FORKNUM, false);
 
 	if (needs_wal)
-	{
-		XLogRecPtr recptr =
-			log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, relstorage);
-
-		XLogFlush(recptr);
-	}
+		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, relstorage);
 
 	/* Add the relation to the list of stuff to delete at abort */
 	pending = (PendingRelDelete *)
@@ -125,9 +120,9 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 }
 
 /*
- * Perform XLogInsert of a XLOG_SMGR_CREATE record to WAL.
+ * Perform XLogInsert of a XLOG_SMGR_CREATE_PDL record to WAL.
  */
-XLogRecPtr
+void
 log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum, char relstorage)
 {
 	xl_smgr_create_pdl xlrec;
@@ -136,18 +131,18 @@ log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum, char relstorage)
 	/*
 	 * Make an XLOG entry reporting the file creation.
 	 */
-	xlrec.relnode.node = *rnode;
-	/* temp relations are not logged in WAL, so it is always false here */
-	xlrec.relnode.isTempRelation = false;
-	xlrec.relnode.relstorage = relstorage;
-	xlrec.forkNum = forkNum;
+	xlrec.createrec.rnode = *rnode;
+	xlrec.createrec.forkNum = forkNum;
+	xlrec.relstorage = relstorage;
 
 	rdata.data = (char *) &xlrec;
 	rdata.len = sizeof(xlrec);
 	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
 
-	return XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE_PDL, &rdata);
+	XLogRecPtr recptr = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE_PDL, &rdata);
+
+	XLogFlush(recptr);
 }
 
 /*
@@ -533,12 +528,21 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 			(xl_smgr_create_pdl *) XLogRecGetData(record);
 		PendingRelXactDelete pd =
 		{
-			.relnode = xlrec->relnode,
+			.relnode =
+			{
+				.node = xlrec->createrec.rnode,
+				/*
+				 * Temp relations are not logged in WAL, so it is always false
+				 * here.
+				 */
+				.isTempRelation = false,
+				.relstorage = xlrec->relstorage
+			},
 			.xid = record->xl_xid
 		};
 
-		SMgrRelation reln = smgropen(xlrec->relnode.node, InvalidBackendId);
-		smgrcreate(reln, xlrec->forkNum, true);
+		SMgrRelation reln = smgropen(xlrec->createrec.rnode, InvalidBackendId);
+		smgrcreate(reln, xlrec->createrec.forkNum, true);
 
 		PdlRedoAdd(&pd);
 	}

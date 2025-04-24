@@ -43,8 +43,8 @@ typedef struct xl_smgr_create
 
 typedef struct xl_smgr_create_pdl
 {
-	RelFileNodePendingDelete relnode;
-	ForkNumber	forkNum;
+	xl_smgr_create createrec;
+	char relstorage;
 } xl_smgr_create_pdl;
 
 typedef struct xl_smgr_truncate
@@ -53,7 +53,7 @@ typedef struct xl_smgr_truncate
 	RelFileNode rnode;
 } xl_smgr_truncate;
 
-extern XLogRecPtr log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum, char relstorage);
+extern void log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum, char relstorage);
 
 extern void smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record);
 extern void smgr_desc(StringInfo buf, XLogRecord *record);
