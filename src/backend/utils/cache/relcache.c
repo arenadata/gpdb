@@ -2427,6 +2427,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		pfree(relation->rd_amcache);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
+	if (relation->rd_cdbpolicy)
+		pfree(relation->rd_cdbpolicy);
 	if (relation->rd_indexcxt)
 		MemoryContextDelete(relation->rd_indexcxt);
 	if (relation->rd_rulescxt)
@@ -2439,14 +2441,6 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 		MemoryContextDelete(relation->rd_pdcxt);
 	if (relation->rd_partcheckcxt)
 		MemoryContextDelete(relation->rd_partcheckcxt);
-<<<<<<< HEAD
-	if (relation->rd_fdwroutine)
-		pfree(relation->rd_fdwroutine);
-	if (relation->rd_cdbpolicy)
-		pfree(relation->rd_cdbpolicy);
-
-=======
->>>>>>> sync-pg-phase1
 	pfree(relation);
 }
 
