@@ -55,12 +55,7 @@
  * catalog versions from Greenplum.
  */
 
-<<<<<<< HEAD
 /*							3yyymmddN */
-#define CATALOG_VERSION_NO	302209061
-=======
-/*							yyyymmddN */
-#define CATALOG_VERSION_NO	201907222
->>>>>>> sync-pg-phase1
+#define CATALOG_VERSION_NO	302504211
 
 #endif
