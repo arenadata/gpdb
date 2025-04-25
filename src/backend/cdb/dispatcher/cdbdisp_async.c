@@ -853,7 +853,7 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 
 	/* Free notices. */
 	while ((notify = PQnotifies(conn)) != NULL)
-		PQfreeNotify(notify);
+		PQfreemem(notify);
 
 	/*
 	 * Nullify this connection's result as well as we don't need the fatal error
