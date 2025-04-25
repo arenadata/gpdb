@@ -68,7 +68,8 @@ static void
 PendingRelDeleteFree(PendingRelDelete *pending)
 {
 	Assert(pending != NULL);
-	PdlShmemRemove(pending->shmem_ptr);
+	if (DsaPointerIsValid(pending->shmem_ptr))
+		PdlShmemRemove(pending->shmem_ptr);
 	pfree(pending);
 }
 
@@ -171,6 +172,7 @@ RelationDropStorage(Relation rel)
 	pending->atCommit = true;	/* delete if commit */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
+	pending->shmem_ptr = InvalidDsaPointer;
 	pendingDeletes = pending;
 
 	/*
