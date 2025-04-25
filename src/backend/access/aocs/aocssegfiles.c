@@ -511,7 +511,6 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 
 		connected = true;
 
-		/* Do the query. */
 		if ((SPI_execute(sqlstmt.data, false, 0) <= 0) || (SPI_tuptable == NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
