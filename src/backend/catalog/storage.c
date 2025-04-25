@@ -105,7 +105,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	smgrcreate(srel, MAIN_FORKNUM, false);
 
 	if (needs_wal)
-		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM);
+		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, relstorage);
 
 	/* Add the relation to the list of stuff to delete at abort */
 	pending = (PendingRelDelete *)
@@ -120,26 +120,29 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 }
 
 /*
- * Perform XLogInsert of a XLOG_SMGR_CREATE record to WAL.
+ * Perform XLogInsert of a XLOG_SMGR_CREATE_PDL record to WAL.
  */
 void
-log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum)
+log_smgrcreate(RelFileNode *rnode, ForkNumber forkNum, char relstorage)
 {
-	xl_smgr_create xlrec;
+	xl_smgr_create_pdl xlrec;
 	XLogRecData rdata;
 
 	/*
 	 * Make an XLOG entry reporting the file creation.
 	 */
-	xlrec.rnode = *rnode;
-	xlrec.forkNum = forkNum;
+	xlrec.createrec.rnode = *rnode;
+	xlrec.createrec.forkNum = forkNum;
+	xlrec.relstorage = relstorage;
 
 	rdata.data = (char *) &xlrec;
 	rdata.len = sizeof(xlrec);
 	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
 
-	XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE, &rdata);
+	XLogRecPtr recptr = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE_PDL, &rdata);
+
+	XLogFlush(recptr);
 }
 
 /*
@@ -514,29 +517,32 @@ smgr_redo(XLogRecPtr beginLoc, XLogRecPtr lsn, XLogRecord *record)
 	if (info == XLOG_SMGR_CREATE)
 	{
 		xl_smgr_create *xlrec = (xl_smgr_create *) XLogRecGetData(record);
+		SMgrRelation reln;
+
+		reln = smgropen(xlrec->rnode, InvalidBackendId);
+		smgrcreate(reln, xlrec->forkNum, true);
+	}
+	else if (info == XLOG_SMGR_CREATE_PDL)
+	{
+		xl_smgr_create_pdl *xlrec =
+			(xl_smgr_create_pdl *) XLogRecGetData(record);
 		PendingRelXactDelete pd =
 		{
 			.relnode =
 			{
-				.node = xlrec->rnode,
+				.node = xlrec->createrec.rnode,
 				/*
 				 * Temp relations are not logged in WAL, so it is always false
 				 * here.
 				 */
 				.isTempRelation = false,
-				/*
-				 * TODO: We do not have info about relstorage from the record.
-				 * Need to handle it somehow - decision is yet pending.
-				 * Until then we can't handle AO tables properly...
-				 */
-				.relstorage = RELSTORAGE_HEAP
+				.relstorage = xlrec->relstorage
 			},
 			.xid = record->xl_xid
 		};
-		SMgrRelation reln;
 
-		reln = smgropen(xlrec->rnode, InvalidBackendId);
-		smgrcreate(reln, xlrec->forkNum, true);
+		SMgrRelation reln = smgropen(xlrec->createrec.rnode, InvalidBackendId);
+		smgrcreate(reln, xlrec->createrec.forkNum, true);
 
 		PdlRedoAdd(&pd);
 	}
