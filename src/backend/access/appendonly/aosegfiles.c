@@ -967,6 +967,126 @@ GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 }
 
 /*
+ * GetSegFilesTotalsCluster
+ *
+ * Get the total FileSegTotals information for a specific AO table
+ * from the pg_aoseg tables on the entire cluster.
+ * Note: result is palloced, caller should free it.
+ */
+FileSegTotals *GetSegFilesTotalsCluster(Relation parentrel)
+{
+	FileSegTotals *result;
+	StringInfoData sqlstmt;
+	Relation	aosegrel;
+	volatile bool connected = false;
+	Oid segrelid = InvalidOid;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(RelationIsAoRows(parentrel));
+
+	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), NULL,
+							  &segrelid,
+							  NULL, NULL, NULL, NULL);
+	Assert(OidIsValid(segrelid));
+
+	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
+
+	aosegrel = heap_open(segrelid, AccessShareLock);
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt,
+					 "select count(1), sum(eof), sum(tupcount), "
+					 "sum(varblockcount), sum(eofuncompressed) "
+					 "from gp_dist_random('%s.%s')",
+					 get_namespace_name(RelationGetNamespace(aosegrel)),
+					 RelationGetRelationName(aosegrel));
+
+	heap_close(aosegrel, AccessShareLock);
+
+	/*
+	 * Temporarily disable ORCA because it's slow to start up, and it
+	 * wouldn't come up with any better plan for the simple queries that
+	 * we run.
+	 * Plus this function may be called during Orca's work, and that will
+	 * result in nested Orca planning, which is not supported.
+	 */
+	bool save_optimizer_guc_value = optimizer;
+	optimizer = false;
+
+	PG_TRY();
+	{
+
+		if (SPI_OK_CONNECT != SPI_connect())
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unable to obtain AO relation information from segment databases"),
+					 errdetail("SPI_connect failed in GetSegFilesTotalsCluster.")));
+
+		connected = true;
+
+		if ((SPI_execute(sqlstmt.data, false, 0) <= 0) || (SPI_tuptable == NULL))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unable to obtain relation size information"),
+					 errdetail("SPI_execute failed in GetSegFilesTotalsCluster.")));
+		else
+		{
+			TupleDesc	tupdesc = SPI_tuptable->tupdesc;
+			SPITupleTable *tuptable = SPI_tuptable;
+			HeapTuple	tuple = tuptable->vals[0];
+
+			/* we expect only 1 tuple */
+			Assert(SPI_processed == 1);
+
+			char *attr_totalfilesegs = SPI_getvalue(tuple, tupdesc, 1);
+			char *attr_totalbytes = SPI_getvalue(tuple, tupdesc, 2);
+			char *attr_totaltuples = SPI_getvalue(tuple, tupdesc, 3);
+			char *attr_totalvarblocks = SPI_getvalue(tuple, tupdesc, 4);
+			char *attr_totalbytesuncompressed = SPI_getvalue(tuple, tupdesc, 5);
+
+			Assert(attr_totalfilesegs);
+			Assert(attr_totalbytes);
+			Assert(attr_totaltuples);
+			Assert(attr_totalvarblocks);
+			Assert(attr_totalbytesuncompressed);
+
+			result->totalfilesegs = pg_atoi(attr_totalfilesegs, sizeof(int32), 0);
+
+			if (!scanint8(attr_totalbytes, true, &result->totalbytes) ||
+			   !scanint8(attr_totaltuples, true, &result->totaltuples) ||
+			   !scanint8(attr_totalvarblocks, true, &result->totalvarblocks) ||
+			   !scanint8(attr_totalbytesuncompressed, true, &result->totalbytesuncompressed))
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg("unable to parse string to int8.")));
+		}
+
+		connected = false;
+		SPI_finish();
+	}
+
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		pfree(sqlstmt.data);
+
+		optimizer = save_optimizer_guc_value;
+
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	pfree(sqlstmt.data);
+
+	optimizer = save_optimizer_guc_value;
+
+	return result;
+}
+
+/*
  * GetAOTotalBytes
  *
  * Get the total bytes for a specific AO table from the pg_aoseg table on this local segdb.

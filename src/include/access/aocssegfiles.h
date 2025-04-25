@@ -151,6 +151,8 @@ extern int64 GetAOCSTotalBytes(
 extern FileSegTotals *GetAOCSSSegFilesTotals(Relation parentrel,
 					   Snapshot appendOnlyMetaDataSnapshot);
 
+extern FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel);
+
 extern AOCSFileSegInfo *NewAOCSFileSegInfo(int32 segno, int32 nvp);
 extern void InsertInitialAOCSFileSegInfo(Relation prel, int32 segno, int32 nvp);
 extern void UpdateAOCSFileSegInfo(struct AOCSInsertDescData *desc);

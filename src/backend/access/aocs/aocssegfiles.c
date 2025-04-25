@@ -455,6 +455,137 @@ GetAOCSSSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 }
 
 /*
+ * GetAOCSSSegFilesTotals
+ *
+ * Get the total FileSegTotals information for a specific AO table
+ * from the pg_aoseg tables on the entire cluster.
+ * Note: result is palloced, caller should free it.
+ */
+FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
+{
+	FileSegTotals *result;
+	StringInfoData sqlstmt;
+	Relation	aosegrel;
+	volatile bool connected = false;
+	Oid			segrelid = InvalidOid;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(RelationIsAoCols(parentrel));
+
+	GetAppendOnlyEntryAuxOids(RelationGetRelid(parentrel), NULL,
+							  &segrelid, NULL, NULL, NULL, NULL);
+	Assert(OidIsValid(segrelid));
+
+	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
+
+	/*
+	 * open the aoseg relation
+	 */
+	aosegrel = heap_open(segrelid, AccessShareLock);
+
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt, "select tupcount, varblockcount, vpinfo "
+					 "from gp_dist_random('%s.%s')",
+					 get_namespace_name(RelationGetNamespace(aosegrel)),
+					 RelationGetRelationName(aosegrel));
+
+	heap_close(aosegrel, AccessShareLock);
+
+	/*
+	 * Temporarily disable ORCA because it's slow to start up, and it
+	 * wouldn't come up with any better plan for the simple queries that
+	 * we run.
+	 * Plus this function may be called during Orca's work, and that will
+	 * result in nested Orca planning, which is not supported.
+	 */
+	bool save_optimizer_guc_value = optimizer;
+	optimizer = false;
+
+	PG_TRY();
+	{
+		if (SPI_OK_CONNECT != SPI_connect())
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unable to obtain AO relation information from segment databases"),
+					 errdetail("SPI_connect failed in GetAOCSSegFilesTotalsCluster")));
+
+		connected = true;
+
+		/* Do the query. */
+		if ((SPI_execute(sqlstmt.data, false, 0) <= 0) || (SPI_tuptable == NULL))
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("unable to obtain relation size information"),
+					 errdetail("SPI_execute failed in GetAOCSSegFilesTotalsCluster.")));
+		else
+		{
+			TupleDesc	tupdesc = SPI_tuptable->tupdesc;
+			SPITupleTable *tuptable = SPI_tuptable;
+			for (int i = 0; i < SPI_processed; i++)
+			{
+				HeapTuple tuple = tuptable->vals[i];
+
+				int64 tupcount = 0;
+				int64 varblockcount = 0;
+				char *attr_tupcount = SPI_getvalue(tuple, tupdesc, 1);
+				char *attr_varblockcount = SPI_getvalue(tuple, tupdesc, 2);
+
+				if (!scanint8(attr_tupcount, true, &tupcount) ||
+				   !scanint8(attr_varblockcount, true, &varblockcount))
+						ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							errmsg("unable to parse string to int8.")));
+
+				result->totaltuples += tupcount;
+				result->totalvarblocks += varblockcount;
+
+				/*
+				 * Each vpinfo is a binary struct with a variable number
+				 * of entries on the end.
+				 */
+				bool isnull;
+				Datum vpinfoDatum = heap_getattr(tuple, 3, tupdesc, &isnull);
+				Assert(!isnull);
+
+				AOCSVPInfo * vpinfo = (AOCSVPInfo *) DatumGetByteaP(vpinfoDatum);
+
+				Assert(vpinfo->version == 0);
+				for (int j = 0; j < vpinfo->nEntry; j++)
+				{
+					result->totalbytes += vpinfo->entry[j].eof;
+					result->totalbytesuncompressed += vpinfo->entry[j].eof_uncompressed;
+				}
+
+				result->totalfilesegs++;
+			}
+		}
+
+		connected = false;
+		SPI_finish();
+	}
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+
+		pfree(sqlstmt.data);
+
+		optimizer = save_optimizer_guc_value;
+
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	pfree(sqlstmt.data);
+
+	optimizer = save_optimizer_guc_value;
+
+	return result;
+}
+
+/*
  * GetAOCSTotalBytes
  *
  * Get the total bytes for a specific AOCS table from the pg_aocsseg table on

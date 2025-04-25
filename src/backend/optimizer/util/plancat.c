@@ -41,6 +41,7 @@
 #include "parser/parsetree.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/bufmgr.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -470,6 +471,12 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	double		density;
     BlockNumber curpages = 0;
 
+	/*
+	 * Set tuples to -1 to distinguish if we had set it for AO table
+	 * from FileSegTotals, and do not calculate it in this case.
+     */
+	*tuples = -1;
+
     /* Rel not distributed?  RelationGetNumberOfBlocks can get actual #pages. */
     if (!relOptInfo->cdbpolicy ||
         relOptInfo->cdbpolicy->ptype == POLICYTYPE_ENTRY)
@@ -512,7 +519,32 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 */
 		if (gp_enable_relsize_collection)
 		{
-			curpages = cdbRelUncompressedSize(rel) / BLCKSZ;
+			if (RelationIsAppendOptimized(rel))
+			{
+				FileSegTotals *totals;
+				if (RelationIsAoRows(rel))
+					totals = GetSegFilesTotalsCluster(rel);
+				else
+					totals = GetAOCSSegFilesTotalsCluster(rel);
+
+				Assert(totals);
+
+				curpages = totals->totalbytesuncompressed / BLCKSZ;
+				*tuples = totals->totaltuples;
+
+				if (relOptInfo->cdbpolicy->ptype == POLICYTYPE_REPLICATED)
+					*tuples /= getgpsegmentCount();
+
+				pfree(totals);
+			}
+			else
+			{
+				curpages = DatumGetInt64(DirectFunctionCall2(
+					pg_relation_size,
+					ObjectIdGetDatum(RelationGetRelid(rel)),
+					CStringGetTextDatum("main")))  / BLCKSZ;
+			}
+
 			/*
 			 * If the relation is replicated, we need to scale down to the value
 			 * on one segment in order to calculate row count properly.
@@ -577,7 +609,9 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		/* note: integer division is intentional here */
 		density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
 	}
-	*tuples = rint(density * (double) curpages);
+	/* Calculate tuples only if they were not set before */
+	if (*tuples < 0)
+		*tuples = rint(density * (double) curpages);
 
 	/*
 	 * We use relallvisible as-is, rather than scaling it up like we
