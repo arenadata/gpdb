@@ -849,7 +849,17 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	conn->asyncStatus = PGASYNC_BUSY;
 
 	while ((res = PQgetResult(conn)) != NULL)
-		PQclear(res);
+	{
+		switch (PQresultStatus(res))
+		{
+		case PGRES_COPY_IN:
+		case PGRES_COPY_OUT:
+		case PGRES_COPY_BOTH:
+			PQendcopy(conn);
+		default:
+			PQclear(res);
+		}
+	}
 
 	/* Free notices. */
 	while ((notify = PQnotifies(conn)) != NULL)
