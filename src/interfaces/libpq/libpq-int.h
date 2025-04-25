@@ -100,15 +100,15 @@ typedef struct
 #define PQ_PALLOC_CONTEXT \
 	((CurTransactionContext != NULL) ? CurTransactionContext : TopMemoryContext)
 
-#define pq_palloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
-#define pq_pstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
-#define pq_repalloc(x, sz) repalloc(x, sz)
-#define pq_pfree(x) pfree(x)
+#define pqPalloc(sz) MemoryContextAlloc(PQ_PALLOC_CONTEXT, sz)
+#define pqPstrdup(x) MemoryContextStrdup(PQ_PALLOC_CONTEXT, x)
+#define pqRepalloc(x, sz) repalloc(x, sz)
+#define pqPfree(x) pfree(x)
 #else
-#define pq_palloc(sz) malloc(sz)
-#define pq_pstrdup(x) strdup(x)
-#define pq_repalloc(x, sz) realloc(x, sz)
-#define pq_pfree(x) free(x)
+#define pqPalloc(sz) malloc(sz)
+#define pqPstrdup(x) strdup(x)
+#define pqRepalloc(x, sz) realloc(x, sz)
+#define pqPfree(x) free(x)
 #endif
 
 /*
