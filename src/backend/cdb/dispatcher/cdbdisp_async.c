@@ -825,6 +825,10 @@ handlePollError(CdbDispatchCmdAsync *pParms)
 	return;
 }
 
+/*
+ * Completely discard results from a dispatchResult's connection without extra
+ * memory allocations by abusing libpq state-machine hacks.
+ */
 static void
 resetConnAndResult(CdbDispatchResult *dispatchResult)
 {
@@ -851,8 +855,10 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	while ((notify = PQnotifies(conn)) != NULL)
 		PQfreeNotify(notify);
 
-	/* Nullify this connection's result as well as we don't need the fatal error
-	 * status anymore. */
+	/*
+	 * Nullify this connection's result as well as we don't need the fatal error
+	 * status anymore.
+	 */
 	pqClearAsyncResult(conn);
 
 	dispatchResult->stillRunning = false;
