@@ -1512,7 +1512,7 @@ gp_update_aocol_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
-	bool		connected = false;
+	volatile bool connected = false;
 	int			proc;	/* 32 bit, only holds number of segments */
 	int			ret;
 	int64		total_count = 0;
@@ -1698,7 +1698,7 @@ aocol_compression_ratio_internal(Relation parentrel)
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
-	bool		connected = false;
+	volatile bool connected = false;
 	int			proc;	/* 32 bit, only holds number of segments */
 	int			ret;
 	int64		eof = 0;
