@@ -856,6 +856,7 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 		case PGRES_COPY_OUT:
 		case PGRES_COPY_BOTH:
 			PQendcopy(conn);
+			/* fallthrough */
 		default:
 			PQclear(res);
 		}
