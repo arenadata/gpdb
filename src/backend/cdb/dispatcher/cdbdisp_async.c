@@ -990,14 +990,9 @@ static void
 signalQEs(CdbDispatchCmdAsync *pParms)
 {
 	int			i;
-	DispatchWaitMode waitMode = pParms->waitMode;
 
 	for (i = 0; i < pParms->dispatchCount; i++)
-	{
-		CdbDispatchResult *dispatchResult = pParms->dispatchResultPtrArray[i];
-
-		signalQE(dispatchResult, waitMode);
-	}
+		signalQE(pParms->dispatchResultPtrArray[i], pParms->waitMode);
 }
 
 /*
@@ -1006,9 +1001,6 @@ signalQEs(CdbDispatchCmdAsync *pParms)
 static void
 signalQE(CdbDispatchResult *dispatchResult, DispatchWaitMode waitMode)
 {
-	char		errbuf[256];
-	bool		sent = false;
-
 	Assert(dispatchResult != NULL);
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 
@@ -1022,12 +1014,13 @@ signalQE(CdbDispatchResult *dispatchResult, DispatchWaitMode waitMode)
 		(waitMode == DISPATCH_WAIT_ACK_ROOT &&
 		 dispatchResult->receivedAckMsg) ||
 		cdbconn_isBadConnection(segdbDesc))
+	{
 		return;
+	}
 
-	memset(errbuf, 0, sizeof(errbuf));
+	char		errbuf[256] = {0};
 
-	sent = cdbconn_signalQE(segdbDesc, errbuf, waitMode == DISPATCH_WAIT_CANCEL);
-	if (sent)
+	if (cdbconn_signalQE(segdbDesc, errbuf, waitMode == DISPATCH_WAIT_CANCEL))
 		dispatchResult->sentSignal = waitMode;
 	else
 		elog(LOG, "Unable to cancel: %s",
