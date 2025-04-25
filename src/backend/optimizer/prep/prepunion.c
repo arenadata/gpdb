@@ -1371,6 +1371,7 @@ generate_setop_tlist(List *colTypes, List *colCollations,
  *
  * The entries in the Append's targetlist should always be simple Vars;
  * we just have to make sure they have the right datatypes/typmods/collations.
+ * The Vars are always generated with varno 0.
  *
  * XXX a problem with the varno-zero approach is that set_pathtarget_cost_width
  * cannot figure out a realistic width for the tlist we make here.  But we
