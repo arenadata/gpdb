@@ -3907,8 +3907,8 @@ CTranslatorExprToDXL::PdxlnCorrelatedNLJoin(
 	// projection from the outer table such as:
 	// select * from foo where 10 > (select bar.b from bar where foo.b = bar.b);
 	// If bar is a very small table, ORCA generates a CorrelatedInnerNLJoin with
-	// a Const true join filter and condition foo.a = foo.b is added as a filter
-	// to the Result node after scan of bar.
+	// a Const true join filter and condition 10 > bar.b is added as a filter
+	// to the  scan of bar.
 	// For the other cases function BuildSubplans generates another sublink type
 	// for correct type of join condition.
 	if (CUtils::FScalarConstTrue(pexprScalar) &&
