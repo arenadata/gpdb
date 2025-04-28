@@ -88,7 +88,6 @@ CREATE STATISTICS ab1_a_b_stats ON a, b FROM ab1;
 ANALYZE ab1;
 DROP TABLE ab1 CASCADE;
 
-<<<<<<< HEAD
 -- Tests for stats with inheritance
 CREATE TABLE stxdinh(a int, b int);
 CREATE TABLE stxdinh1() INHERITS(stxdinh);
@@ -121,8 +120,6 @@ SELECT 1 FROM pg_statistic_ext WHERE stxrelid = 'stxdinp'::regclass;
 SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinp GROUP BY 1, 2');
 DROP TABLE stxdinp;
 
-=======
->>>>>>> sync-pg-phase1
 -- Verify supported object types for extended statistics
 CREATE schema tststats;
 
