@@ -836,15 +836,13 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	PGnotify   *notify;
 	PGconn	   *conn = dispatchResult->segdbDesc->conn;
 
-	/* Free some memory in case we're tight on it. */
-	pqClearAsyncResult(conn);
-
 	/* Replace current result with a fatal error dummy one. */
-	conn->result = PQmakeEmptyPGresult(conn, PGRES_FATAL_ERROR);
+	pqSaveErrorResult(conn);
 
 	/*
-	 * Discard anything that is unread. Since our result contains a fatal error,
-	 * we'll just consume the entire message without actually parsing it.
+	 * Discard anything that is unread. Since our result contains a fatal
+	 * error, we'll just consume the entire message without actually parsing
+	 * it.
 	 */
 	conn->asyncStatus = PGASYNC_BUSY;
 
@@ -852,13 +850,13 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	{
 		switch (PQresultStatus(res))
 		{
-		case PGRES_COPY_IN:
-		case PGRES_COPY_OUT:
-		case PGRES_COPY_BOTH:
-			PQendcopy(conn);
-			/* fallthrough */
-		default:
-			PQclear(res);
+			case PGRES_COPY_IN:
+			case PGRES_COPY_OUT:
+			case PGRES_COPY_BOTH:
+				PQendcopy(conn);
+				/* fallthrough */
+			default:
+				PQclear(res);
 		}
 	}
 
@@ -867,8 +865,8 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 		PQfreemem(notify);
 
 	/*
-	 * Nullify this connection's result as well as we don't need the fatal error
-	 * status anymore.
+	 * Nullify this connection's result as well as we don't need the fatal
+	 * error status anymore.
 	 */
 	pqClearAsyncResult(conn);
 
