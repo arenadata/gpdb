@@ -757,8 +757,7 @@ get_eclass_for_sort_expr(PlannerInfo *root,
 		int			ec_index = list_length(root->eq_classes) - 1;
 		int			i = -1;
 
-		while ((i = bms_next_member(newec->ec_relids, i)) > 0 &&
-				!IS_SPECIAL_VARNO(i))
+		while ((i = bms_next_member(newec->ec_relids, i)) > 0)
 		{
 			RelOptInfo *rel = root->simple_rel_array[i];
 
