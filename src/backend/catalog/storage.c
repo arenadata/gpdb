@@ -58,7 +58,7 @@ typedef struct PendingRelDelete
 	RelFileNodePendingDelete relnode;		/* relation that may need to be deleted */
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
 	int			nestLevel;		/* xact nesting level of request */
-	dsa_pointer shmem_ptr;		/* ptr to shared pending delete list */
+	dsa_pointer shmem_ptr;		/* ptr to shared pending delete list node */
 	struct PendingRelDelete *next;		/* linked-list link */
 } PendingRelDelete;
 
