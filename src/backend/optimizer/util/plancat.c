@@ -468,7 +468,6 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	BlockNumber relpages;
 	double		reltuples;
 	BlockNumber relallvisible;
-	double		density;
     BlockNumber curpages = 0;
 
 	/*
@@ -521,21 +520,17 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		{
 			if (RelationIsAppendOptimized(rel))
 			{
-				FileSegTotals *totals;
+				FileSegTotals totals = {0};
 				if (RelationIsAoRows(rel))
-					totals = GetSegFilesTotalsCluster(rel);
+					GetSegFilesTotalsCluster(rel, &totals);
 				else
-					totals = GetAOCSSegFilesTotalsCluster(rel);
+					GetAOCSSegFilesTotalsCluster(rel, &totals);
 
-				Assert(totals);
-
-				curpages = totals->totalbytesuncompressed / BLCKSZ;
-				*tuples = totals->totaltuples;
+				curpages = totals.totalbytes / BLCKSZ;
+				*tuples = totals.totaltuples;
 
 				if (relOptInfo->cdbpolicy->ptype == POLICYTYPE_REPLICATED)
 					*tuples /= getgpsegmentCount();
-
-				pfree(totals);
 			}
 			else
 			{
@@ -570,48 +565,51 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		relpages--;
 	}
 
-	/*
-	 * Estimate number of tuples from previous tuple density (as of last
-	 * analyze)
-	 */
-	if (relpages > 0)
-		density = reltuples / (double) relpages;
-	else
-	{
-		/*
-		 * When we have no data because the relation was truncated, estimate
-		 * tuples per page from attribute datatypes.
-		 *
-		 * (This is the same computation as in get_relation_info()
-		 */
-		int32		tuple_width;
-
-		tuple_width = get_rel_data_width(rel, attr_widths);
-
-		if (RelationIsAoRows(rel))
-		{
-			/*
-			 * Row oriented relations store memtuples, that have a header,
-			 * plus storage is done in VarBlock, which has item-offsets array
-			 * with at 2 or 3 byte offsets. For simplicity, in our rough
-			 * estimation we consider only 2 byte offsets. Thus, we add
-			 * (2 + header size) to the tuple width.
-			 */
-			tuple_width += (offsetof(MemTupleData, PRIVATE_mt_bits) + 2);
-		}
-		else if (!RelationIsAoCols(rel))
-		{
-			/* do the adjustment for heap relations */
-			tuple_width += sizeof(HeapTupleHeaderData);
-			tuple_width += sizeof(ItemPointerData);
-		}
-
-		/* note: integer division is intentional here */
-		density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
-	}
 	/* Calculate tuples only if they were not set before */
 	if (*tuples < 0)
+	{
+		double density;
+		/*
+		 * Estimate number of tuples from previous tuple density (as of last
+		 * analyze)
+		 */
+		if (relpages > 0)
+			density = reltuples / (double) relpages;
+		else
+		{
+			/*
+			 * When we have no data because the relation was truncated, estimate
+			 * tuples per page from attribute datatypes.
+			 *
+			 * (This is the same computation as in get_relation_info()
+			 */
+			int32		tuple_width;
+
+			tuple_width = get_rel_data_width(rel, attr_widths);
+
+			if (RelationIsAoRows(rel))
+			{
+				/*
+				 * Row oriented relations store memtuples, that have a header,
+				 * plus storage is done in VarBlock, which has item-offsets
+				 * array with at 2 or 3 byte offsets. For simplicity, in our
+				 * rough estimation we consider only 2 byte offsets. Thus, we
+				 * add (2 + header size) to the tuple width.
+				 */
+				tuple_width += (offsetof(MemTupleData, PRIVATE_mt_bits) + 2);
+			}
+			else if (!RelationIsAoCols(rel))
+			{
+				/* do the adjustment for heap relations */
+				tuple_width += sizeof(HeapTupleHeaderData);
+				tuple_width += sizeof(ItemPointerData);
+			}
+
+			/* note: integer division is intentional here */
+			density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
+		}
 		*tuples = rint(density * (double) curpages);
+	}
 
 	/*
 	 * We use relallvisible as-is, rather than scaling it up like we

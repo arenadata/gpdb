@@ -457,13 +457,12 @@ GetAOCSSSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 /*
  * GetAOCSSSegFilesTotals
  *
- * Get the total FileSegTotals information for a specific AO table
- * from the pg_aoseg tables on the entire cluster.
- * Note: result is palloced, caller should free it.
+ * Fill the total FileSegTotals information for a specific AO table from
+ * the pg_aoseg tables on the entire cluster.
  */
-FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
+void GetAOCSSegFilesTotalsCluster(Relation parentrel,
+										  FileSegTotals *totals)
 {
-	FileSegTotals *result;
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
 	volatile bool connected = false;
@@ -476,7 +475,7 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 							  &segrelid, NULL, NULL, NULL, NULL);
 	Assert(OidIsValid(segrelid));
 
-	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
+	Assert(totals);
 
 	/*
 	 * open the aoseg relation
@@ -492,9 +491,8 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 	heap_close(aosegrel, AccessShareLock);
 
 	/*
-	 * Temporarily disable ORCA because it's slow to start up, and it
-	 * wouldn't come up with any better plan for the simple queries that
-	 * we run.
+	 * Temporarily disable Orca because it's slow to start up, and it wouldn't
+	 * come up with any better plan for the simple queries that we run.
 	 * Plus this function may be called during Orca's work, and that will
 	 * result in nested Orca planning, which is not supported.
 	 */
@@ -506,16 +504,17 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 		if (SPI_OK_CONNECT != SPI_connect())
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("unable to obtain AO relation information from segment databases"),
-					 errdetail("SPI_connect failed in GetAOCSSegFilesTotalsCluster")));
+					 errmsg("unable to obtain AO relation information"),
+					 errdetail("SPI_connect failed in %s.", __func__)));
 
 		connected = true;
 
-		if ((SPI_execute(sqlstmt.data, false, 0) <= 0) || (SPI_tuptable == NULL))
+		if ((SPI_execute(sqlstmt.data, false, 0) <= 0) ||
+			(SPI_tuptable == NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("unable to obtain relation size information"),
-					 errdetail("SPI_execute failed in GetAOCSSegFilesTotalsCluster.")));
+					 errmsg("unable to obtain AO relation information"),
+					 errdetail("SPI_execute failed in %s.", __func__)));
 		else
 		{
 			TupleDesc	tupdesc = SPI_tuptable->tupdesc;
@@ -529,14 +528,14 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 				char *attr_tupcount = SPI_getvalue(tuple, tupdesc, 1);
 				char *attr_varblockcount = SPI_getvalue(tuple, tupdesc, 2);
 
-				if (!scanint8(attr_tupcount, true, &tupcount) ||
-				   !scanint8(attr_varblockcount, true, &varblockcount))
+				if (!(scanint8(attr_tupcount, true, &tupcount) &&
+					 scanint8(attr_varblockcount, true, &varblockcount)))
 						ereport(ERROR,
 							(errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("unable to parse string to int8.")));
 
-				result->totaltuples += tupcount;
-				result->totalvarblocks += varblockcount;
+				totals->totaltuples += tupcount;
+				totals->totalvarblocks += varblockcount;
 
 				/*
 				 * Each vpinfo is a binary struct with a variable number
@@ -546,16 +545,17 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 				Datum vpinfoDatum = heap_getattr(tuple, 3, tupdesc, &isnull);
 				Assert(!isnull);
 
-				AOCSVPInfo * vpinfo = (AOCSVPInfo *) DatumGetByteaP(vpinfoDatum);
+				AOCSVPInfo *vpinfo = (AOCSVPInfo *) DatumGetByteaP(vpinfoDatum);
 
 				Assert(vpinfo->version == 0);
 				for (int j = 0; j < vpinfo->nEntry; j++)
 				{
-					result->totalbytes += vpinfo->entry[j].eof;
-					result->totalbytesuncompressed += vpinfo->entry[j].eof_uncompressed;
+					totals->totalbytes += vpinfo->entry[j].eof;
+					totals->totalbytesuncompressed +=
+						vpinfo->entry[j].eof_uncompressed;
 				}
 
-				result->totalfilesegs++;
+				totals->totalfilesegs++;
 			}
 		}
 
@@ -580,8 +580,6 @@ FileSegTotals *GetAOCSSegFilesTotalsCluster(Relation parentrel)
 	pfree(sqlstmt.data);
 
 	optimizer = save_optimizer_guc_value;
-
-	return result;
 }
 
 /*
