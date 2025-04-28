@@ -911,6 +911,7 @@ UpdateFileSegInfo_internal(Relation parentrel,
 FileSegTotals *
 GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 {
+
 	Relation	pg_aoseg_rel;
 	TupleDesc	pg_aoseg_dsc;
 	HeapTuple	tuple;
@@ -923,9 +924,9 @@ GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 				state;
 	bool		isNull;
 
-	Assert(RelationIsAoRows(parentrel));		/* doesn't fit for AO column
-												 * store. should implement
-												 * same for CO */
+	Assert(RelationIsAoRows(parentrel));	/* doesn't fit for AO column
+											 * store. should implement same
+											 * for CO */
 
 	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
 
