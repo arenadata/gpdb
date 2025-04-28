@@ -1014,7 +1014,6 @@ GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 
 	PG_TRY();
 	{
-
 		if (SPI_OK_CONNECT != SPI_connect())
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
