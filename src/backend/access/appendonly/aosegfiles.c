@@ -992,8 +992,9 @@ GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 	aosegrel = heap_open(segrelid, AccessShareLock);
 	initStringInfo(&sqlstmt);
 	appendStringInfo(&sqlstmt,
-					 "select count(1), sum(eof), sum(tupcount), "
-					 "sum(varblockcount), sum(eofuncompressed) "
+					 "select count(1)::int4, "
+					 "sum(eof)::int8, sum(tupcount)::int8, "
+					 "sum(varblockcount)::int8, sum(eofuncompressed)::int8 "
 					 "from gp_dist_random('%s.%s')",
 					 get_namespace_name(RelationGetNamespace(aosegrel)),
 					 RelationGetRelationName(aosegrel));
@@ -1032,34 +1033,36 @@ GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 			TupleDesc	tupdesc = SPI_tuptable->tupdesc;
 			SPITupleTable *tuptable = SPI_tuptable;
 			HeapTuple	tuple = tuptable->vals[0];
+			bool		isnull;
 
 			/* we expect only 1 tuple */
 			Assert(SPI_processed == 1);
 
-			char	   *attr_totalfilesegs = SPI_getvalue(tuple, tupdesc, 1);
-			char	   *attr_totalbytes = SPI_getvalue(tuple, tupdesc, 2);
-			char	   *attr_totaltuples = SPI_getvalue(tuple, tupdesc, 3);
-			char	   *attr_totalvarblocks = SPI_getvalue(tuple, tupdesc, 4);
-			char	   *attr_totalbytesuncompressed =
-							SPI_getvalue(tuple, tupdesc, 5);
+			Datum		datum_totalfilesegs =
+				SPI_getbinval(tuple, tupdesc, 1, &isnull);
+			Assert(!isnull);
+			totals->totalfilesegs = DatumGetInt32(datum_totalfilesegs);
 
-			Assert(attr_totalfilesegs);
-			Assert(attr_totalbytes);
-			Assert(attr_totaltuples);
-			Assert(attr_totalvarblocks);
-			Assert(attr_totalbytesuncompressed);
+			Datum		datum_totalbytes =
+				SPI_getbinval(tuple, tupdesc, 2, &isnull);
+			Assert(!isnull);
+			totals->totalbytes = DatumGetInt64(datum_totalbytes);
 
-			totals->totalfilesegs =
-				pg_atoi(attr_totalfilesegs, sizeof(int32), 0);
+			Datum		datum_totaltuples =
+				SPI_getbinval(tuple, tupdesc, 3, &isnull);
+			Assert(!isnull);
+			totals->totaltuples = DatumGetInt64(datum_totaltuples);
 
-			if (!(scanint8(attr_totalbytes, true, &totals->totalbytes) &&
-				  scanint8(attr_totaltuples, true, &totals->totaltuples) &&
-			  scanint8(attr_totalvarblocks, true, &totals->totalvarblocks) &&
-				  scanint8(attr_totalbytesuncompressed, true,
-						   &totals->totalbytesuncompressed)))
-				ereport(ERROR,
-						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("unable to parse string to int8.")));
+			Datum		datum_totalvarblocks =
+				SPI_getbinval(tuple, tupdesc, 4, &isnull);
+			Assert(!isnull);
+			totals->totalvarblocks = DatumGetInt64(datum_totalvarblocks);
+
+			Datum		datum_totalbytesuncompressed =
+				SPI_getbinval(tuple, tupdesc, 5, &isnull);
+			Assert(!isnull);
+			totals->totalbytesuncompressed =
+				DatumGetInt64(datum_totalbytesuncompressed);
 		}
 
 		connected = false;

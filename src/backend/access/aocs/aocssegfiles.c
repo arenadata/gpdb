@@ -484,7 +484,8 @@ GetAOCSSegFilesTotalsCluster(Relation parentrel,
 	aosegrel = heap_open(segrelid, AccessShareLock);
 
 	initStringInfo(&sqlstmt);
-	appendStringInfo(&sqlstmt, "select tupcount, varblockcount, vpinfo "
+	appendStringInfo(&sqlstmt,
+					 "select tupcount::int8, varblockcount::int8, vpinfo "
 					 "from gp_dist_random('%s.%s')",
 					 get_namespace_name(RelationGetNamespace(aosegrel)),
 					 RelationGetRelationName(aosegrel));
@@ -523,33 +524,28 @@ GetAOCSSegFilesTotalsCluster(Relation parentrel,
 			for (int i = 0; i < SPI_processed; i++)
 			{
 				HeapTuple	tuple = tuptable->vals[i];
+				bool		isnull;
 
-				int64		tupcount = 0;
-				int64		varblockcount = 0;
-				char	   *attr_tupcount = SPI_getvalue(tuple, tupdesc, 1);
-				char	   *attr_varblockcount =
-								SPI_getvalue(tuple, tupdesc, 2);
+				Datum		datum_tupcount =
+					SPI_getbinval(tuple, tupdesc, 1, &isnull);
+				Assert(!isnull);
+				totals->totaltuples += DatumGetInt64(datum_tupcount);
 
-				if (!(scanint8(attr_tupcount, true, &tupcount) &&
-					  scanint8(attr_varblockcount, true, &varblockcount)))
-					ereport(ERROR,
-							(errcode(ERRCODE_INTERNAL_ERROR),
-							 errmsg("unable to parse string to int8.")));
-
-				totals->totaltuples += tupcount;
-				totals->totalvarblocks += varblockcount;
+				Datum		datum_varblockcount =
+					SPI_getbinval(tuple, tupdesc, 2, &isnull);
+				Assert(!isnull);
+				totals->totalvarblocks += DatumGetInt64(datum_varblockcount);
 
 				/*
 				 * Each vpinfo is a binary struct with a variable number of
 				 * entries on the end.
 				 */
-				bool		isnull;
-				Datum		vpinfoDatum =
-								heap_getattr(tuple, 3, tupdesc, &isnull);
-
+				Datum		datum_vpinfo =
+					SPI_getbinval(tuple, tupdesc, 3, &isnull);
 				Assert(!isnull);
 
-				AOCSVPInfo *vpinfo = (AOCSVPInfo *) DatumGetByteaP(vpinfoDatum);
+				AOCSVPInfo *vpinfo = (AOCSVPInfo *)
+					DatumGetByteaP(datum_vpinfo);
 
 				Assert(vpinfo->version == 0);
 				for (int j = 0; j < vpinfo->nEntry; j++)
