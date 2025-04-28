@@ -163,7 +163,7 @@ extern void SetFileSegInfoState(Relation parentrel, int segno, FileSegInfoState 
 extern FileSegTotals *GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
 
 extern void GetSegFilesTotalsCluster(Relation parentrel,
-					FileSegTotals * totals);
+						 FileSegTotals * totals);
 
 extern int64 GetAOTotalBytes(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot);
 

@@ -460,8 +460,9 @@ GetAOCSSSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
  * Fill the total FileSegTotals information for a specific AO table from
  * the pg_aoseg tables on the entire cluster.
  */
-void GetAOCSSegFilesTotalsCluster(Relation parentrel,
-										  FileSegTotals *totals)
+void
+GetAOCSSegFilesTotalsCluster(Relation parentrel,
+							 FileSegTotals * totals)
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
@@ -492,11 +493,11 @@ void GetAOCSSegFilesTotalsCluster(Relation parentrel,
 
 	/*
 	 * Temporarily disable Orca because it's slow to start up, and it wouldn't
-	 * come up with any better plan for the simple queries that we run.
-	 * Plus this function may be called during Orca's work, and that will
-	 * result in nested Orca planning, which is not supported.
+	 * come up with any better plan for the simple queries that we run. Plus
+	 * this function may be called during Orca's work, and that will result in
+	 * nested Orca planning, which is not supported.
 	 */
-	bool save_optimizer_guc_value = optimizer;
+	bool		save_optimizer_guc_value = optimizer;
 	optimizer = false;
 
 	PG_TRY();
@@ -521,28 +522,31 @@ void GetAOCSSegFilesTotalsCluster(Relation parentrel,
 			SPITupleTable *tuptable = SPI_tuptable;
 			for (int i = 0; i < SPI_processed; i++)
 			{
-				HeapTuple tuple = tuptable->vals[i];
+				HeapTuple	tuple = tuptable->vals[i];
 
-				int64 tupcount = 0;
-				int64 varblockcount = 0;
-				char *attr_tupcount = SPI_getvalue(tuple, tupdesc, 1);
-				char *attr_varblockcount = SPI_getvalue(tuple, tupdesc, 2);
+				int64		tupcount = 0;
+				int64		varblockcount = 0;
+				char	   *attr_tupcount = SPI_getvalue(tuple, tupdesc, 1);
+				char	   *attr_varblockcount =
+								SPI_getvalue(tuple, tupdesc, 2);
 
 				if (!(scanint8(attr_tupcount, true, &tupcount) &&
-					 scanint8(attr_varblockcount, true, &varblockcount)))
-						ereport(ERROR,
+					  scanint8(attr_varblockcount, true, &varblockcount)))
+					ereport(ERROR,
 							(errcode(ERRCODE_INTERNAL_ERROR),
-							errmsg("unable to parse string to int8.")));
+							 errmsg("unable to parse string to int8.")));
 
 				totals->totaltuples += tupcount;
 				totals->totalvarblocks += varblockcount;
 
 				/*
-				 * Each vpinfo is a binary struct with a variable number
-				 * of entries on the end.
+				 * Each vpinfo is a binary struct with a variable number of
+				 * entries on the end.
 				 */
-				bool isnull;
-				Datum vpinfoDatum = heap_getattr(tuple, 3, tupdesc, &isnull);
+				bool		isnull;
+				Datum		vpinfoDatum =
+								heap_getattr(tuple, 3, tupdesc, &isnull);
+
 				Assert(!isnull);
 
 				AOCSVPInfo *vpinfo = (AOCSVPInfo *) DatumGetByteaP(vpinfoDatum);

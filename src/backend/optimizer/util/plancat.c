@@ -471,9 +471,9 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
     BlockNumber curpages = 0;
 
 	/*
-	 * Set tuples to -1 to distinguish if we had set it for AO table
-	 * from FileSegTotals, and do not calculate it in this case.
-     */
+	 * Set tuples to -1 to distinguish if we had set it for AO table from
+	 * FileSegTotals, and do not calculate it in this case.
+	 */
 	*tuples = -1;
 
     /* Rel not distributed?  RelationGetNumberOfBlocks can get actual #pages. */
@@ -535,14 +535,14 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 			else
 			{
 				curpages = DatumGetInt64(DirectFunctionCall2(
-					pg_relation_size,
-					ObjectIdGetDatum(RelationGetRelid(rel)),
-					CStringGetTextDatum("main")))  / BLCKSZ;
+															 pg_relation_size,
+									 ObjectIdGetDatum(RelationGetRelid(rel)),
+									  CStringGetTextDatum("main"))) / BLCKSZ;
 			}
 
 			/*
-			 * If the relation is replicated, we need to scale down to the value
-			 * on one segment in order to calculate row count properly.
+			 * If the relation is replicated, we need to scale down to the
+			 * value on one segment in order to calculate row count properly.
 			 */
 			if (relOptInfo->cdbpolicy->ptype == POLICYTYPE_REPLICATED)
 				curpages /= getgpsegmentCount();
@@ -568,7 +568,8 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	/* Calculate tuples only if they were not set before */
 	if (*tuples < 0)
 	{
-		double density;
+		double		density;
+
 		/*
 		 * Estimate number of tuples from previous tuple density (as of last
 		 * analyze)
@@ -578,8 +579,8 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		else
 		{
 			/*
-			 * When we have no data because the relation was truncated, estimate
-			 * tuples per page from attribute datatypes.
+			 * When we have no data because the relation was truncated,
+			 * estimate tuples per page from attribute datatypes.
 			 *
 			 * (This is the same computation as in get_relation_info()
 			 */

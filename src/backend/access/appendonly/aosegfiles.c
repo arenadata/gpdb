@@ -911,7 +911,6 @@ UpdateFileSegInfo_internal(Relation parentrel,
 FileSegTotals *
 GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 {
-
 	Relation	pg_aoseg_rel;
 	TupleDesc	pg_aoseg_dsc;
 	HeapTuple	tuple;
@@ -924,9 +923,9 @@ GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
 				state;
 	bool		isNull;
 
-	Assert(RelationIsAoRows(parentrel));	/* doesn't fit for AO column
-											 * store. should implement same
-											 * for CO */
+	Assert(RelationIsAoRows(parentrel));		/* doesn't fit for AO column
+												 * store. should implement
+												 * same for CO */
 
 	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
 
@@ -972,12 +971,13 @@ GetSegFilesTotals(Relation parentrel, Snapshot appendOnlyMetaDataSnapshot)
  * Fill the total FileSegTotals information for a specific AO table
  * from the pg_aoseg tables on the entire cluster.
  */
-void GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
+void
+GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
 	volatile bool connected = false;
-	Oid segrelid = InvalidOid;
+	Oid			segrelid = InvalidOid;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH);
 	Assert(RelationIsAoRows(parentrel));
@@ -1002,11 +1002,12 @@ void GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 
 	/*
 	 * Temporarily disable Orca because it's slow to start up, and it wouldn't
-	 * come up with any better plan for the simple queries that we run.
-	 * Plus this function may be called during Orca's work, and that will
-	 * result in nested Orca planning, which is not supported.
+	 * come up with any better plan for the simple queries that we run. Plus
+	 * this function may be called during Orca's work, and that will result in
+	 * nested Orca planning, which is not supported.
 	 */
-	bool save_optimizer_guc_value = optimizer;
+	bool		save_optimizer_guc_value = optimizer;
+
 	optimizer = false;
 
 	PG_TRY();
@@ -1035,11 +1036,12 @@ void GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 			/* we expect only 1 tuple */
 			Assert(SPI_processed == 1);
 
-			char *attr_totalfilesegs = SPI_getvalue(tuple, tupdesc, 1);
-			char *attr_totalbytes = SPI_getvalue(tuple, tupdesc, 2);
-			char *attr_totaltuples = SPI_getvalue(tuple, tupdesc, 3);
-			char *attr_totalvarblocks = SPI_getvalue(tuple, tupdesc, 4);
-			char *attr_totalbytesuncompressed = SPI_getvalue(tuple, tupdesc, 5);
+			char	   *attr_totalfilesegs = SPI_getvalue(tuple, tupdesc, 1);
+			char	   *attr_totalbytes = SPI_getvalue(tuple, tupdesc, 2);
+			char	   *attr_totaltuples = SPI_getvalue(tuple, tupdesc, 3);
+			char	   *attr_totalvarblocks = SPI_getvalue(tuple, tupdesc, 4);
+			char	   *attr_totalbytesuncompressed =
+							SPI_getvalue(tuple, tupdesc, 5);
 
 			Assert(attr_totalfilesegs);
 			Assert(attr_totalbytes);
@@ -1051,13 +1053,13 @@ void GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 				pg_atoi(attr_totalfilesegs, sizeof(int32), 0);
 
 			if (!(scanint8(attr_totalbytes, true, &totals->totalbytes) &&
-				 scanint8(attr_totaltuples, true, &totals->totaltuples) &&
-				 scanint8(attr_totalvarblocks, true, &totals->totalvarblocks) &&
-				 scanint8(attr_totalbytesuncompressed, true,
-						  &totals->totalbytesuncompressed)))
+				  scanint8(attr_totaltuples, true, &totals->totaltuples) &&
+			  scanint8(attr_totalvarblocks, true, &totals->totalvarblocks) &&
+				  scanint8(attr_totalbytesuncompressed, true,
+						   &totals->totalbytesuncompressed)))
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("unable to parse string to int8.")));
+						 errmsg("unable to parse string to int8.")));
 		}
 
 		connected = false;
