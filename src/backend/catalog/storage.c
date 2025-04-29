@@ -58,7 +58,7 @@ typedef struct PendingRelDelete
 	RelFileNodePendingDelete relnode;		/* relation that may need to be deleted */
 	bool		atCommit;		/* T=delete at commit; F=delete at abort */
 	int			nestLevel;		/* xact nesting level of request */
-	dsa_pointer shmem_ptr;		/* ptr to shared pending delete list node */
+	dsa_pointer shmemPtr;		/* ptr to shared pending delete list node */
 	struct PendingRelDelete *next;		/* linked-list link */
 } PendingRelDelete;
 
@@ -68,8 +68,8 @@ static void
 PendingRelDeleteFree(PendingRelDelete *pending)
 {
 	Assert(pending != NULL);
-	if (DsaPointerIsValid(pending->shmem_ptr))
-		PdlShmemRemove(pending->shmem_ptr);
+	if (DsaPointerIsValid(pending->shmemPtr))
+		PdlShmemRemove(pending->shmemPtr);
 	pfree(pending);
 }
 
@@ -126,8 +126,8 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
-	pending->shmem_ptr = PdlShmemAdd(&pending->relnode,
-									 GetCurrentTransactionId());
+	pending->shmemPtr = PdlShmemAdd(&pending->relnode,
+									GetCurrentTransactionId());
 	pendingDeletes = pending;
 }
 
@@ -172,7 +172,7 @@ RelationDropStorage(Relation rel)
 	pending->atCommit = true;	/* delete if commit */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
-	pending->shmem_ptr = InvalidDsaPointer;
+	pending->shmemPtr = InvalidDsaPointer;
 	pendingDeletes = pending;
 
 	/*
