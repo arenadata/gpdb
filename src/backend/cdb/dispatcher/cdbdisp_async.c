@@ -923,7 +923,6 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 		/*
 		 * Was dispatchCancel() the callee? We don't need to read the results then.
 		 */
-
 		if (pParms->waitMode == DISPATCH_WAIT_CANCEL)
 		{
 			/* Make QE come to its sense. */
@@ -932,8 +931,7 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 			/*
 			 * If we're cancelling the transaction due to an OOM, there
 			 * might not be enough memory to discard the result properly.
-			 *
-			 * Try to free the results, reset the connection buffer and pray.
+			 * Let's get the big guns out.
 			 */
 			resetConnAndResult(dispatchResult);
 
