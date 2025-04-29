@@ -216,12 +216,15 @@ select b from gist_tbl where b <@ box(point(5,5), point(6,6));
 explain (costs off)
 select b from gist_tbl where b <@ box(point(5,5), point(6,6))
 order by b <-> point(5.2, 5.91);
-                      QUERY PLAN                      
-------------------------------------------------------
- Index Only Scan using gist_tbl_box_index on gist_tbl
-   Index Cond: (b <@ '(6,6),(5,5)'::box)
-   Order By: (b <-> '(5.2,5.91)'::point)
-(3 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: ((b <-> '(5.2,5.91)'::point))
+   ->  Index Only Scan using gist_tbl_box_index on gist_tbl
+         Index Cond: (b <@ '(6,6),(5,5)'::box)
+         Order By: (b <-> '(5.2,5.91)'::point)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 select b from gist_tbl where b <@ box(point(5,5), point(6,6))
 order by b <-> point(5.2, 5.91);
@@ -254,12 +257,15 @@ order by b <-> point(5.2, 5.91);
 explain (costs off)
 select b from gist_tbl where b <@ box(point(5,5), point(6,6))
 order by point(5.2, 5.91) <-> b;
-                      QUERY PLAN                      
-------------------------------------------------------
- Index Only Scan using gist_tbl_box_index on gist_tbl
-   Index Cond: (b <@ '(6,6),(5,5)'::box)
-   Order By: (b <-> '(5.2,5.91)'::point)
-(3 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   Merge Key: (('(5.2,5.91)'::point <-> b))
+   ->  Index Only Scan using gist_tbl_box_index on gist_tbl
+         Index Cond: (b <@ '(6,6),(5,5)'::box)
+         Order By: (b <-> '(5.2,5.91)'::point)
+ Optimizer: Postgres query optimizer
+(6 rows)
 
 select b from gist_tbl where b <@ box(point(5,5), point(6,6))
 order by point(5.2, 5.91) <-> b;
