@@ -181,8 +181,11 @@ class SingleMoveCommand(SQLCommand):
                         recovery_process.join()
                 except Exception:
                     pass
-                time.sleep(20)
+                time.sleep(10)
             
+            if not result_queue.empty():
+                result = result_queue.get(block=False)
+           
             if result is None:
                 exit_code = recovery_process.exitcode
                 if exit_code < 0:
