@@ -118,6 +118,10 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 
 	if (needs_wal)
 	{
+		/* 
+		 * Call GetCurrentTransactionId before log_smgrcreate, because
+		 * XLOG_SMGR_CREATE_PDL WAL record should be always linked to XID
+		 */
 		xid = GetCurrentTransactionId();
 		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, relstorage);
 	}
