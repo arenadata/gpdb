@@ -426,6 +426,8 @@ def main(options, args, parser):
             gprebalance.save_plan(plan)
             if options.show_plan:
                 logger.info(f"Resulting plan: \n{str(plan)}")
+                # should be removed when state machine will be ready
+                gprebalance.statusManager.set_status(RebalanceStatus.UNINITIALIZED)
                 sys.exit(0)
             gprebalance.execute_plan(plan)
         elif gprebalance.statusManager.conf_dir:
