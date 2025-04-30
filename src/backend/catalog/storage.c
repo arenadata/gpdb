@@ -19,6 +19,7 @@
 
 #include "postgres.h"
 
+#include "access/transam.h"
 #include "access/visibilitymap.h"
 #include "access/xact.h"
 #include "access/xlogutils.h"
@@ -91,6 +92,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	SMgrRelation srel;
 	BackendId	backend;
 	bool		needs_wal;
+	TransactionId xid = InvalidTransactionId;
 
 	switch (relpersistence)
 	{
@@ -115,7 +117,10 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	smgrcreate(srel, MAIN_FORKNUM, false);
 
 	if (needs_wal)
+	{
+		xid = GetCurrentTransactionId();
 		log_smgrcreate(&srel->smgr_rnode.node, MAIN_FORKNUM, relstorage);
+	}
 
 	/* Add the relation to the list of stuff to delete at abort */
 	pending = (PendingRelDelete *)
@@ -126,8 +131,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, char relstorage)
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
 	pending->next = pendingDeletes;
-	pending->shmemPtr = PdlShmemAdd(&pending->relnode,
-									GetCurrentTransactionId());
+	pending->shmemPtr = PdlShmemAdd(&pending->relnode, xid);
 	pendingDeletes = pending;
 }
 
