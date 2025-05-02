@@ -4554,6 +4554,43 @@ CTranslatorExprToDXL::PdxlnMotion(CExpression *pexprMotion,
 		CTranslatorExprToDXLUtils::PdxlnProjListFromChildProjList(
 			m_mp, m_pcf, m_phmcrdxln, pdxlnProjListChild);
 
+	// load unhandled subplans required by child to motion them too
+	CDXLNode *pdxlnPrLstSplan = NULL;
+	CColRefSetIter reqColRefIter(*pexprMotion->Prpp()->PcrsRequired());
+	while (reqColRefIter.Advance())
+	{
+		CColRef *colref = reqColRefIter.Pcr();
+		CDXLNode *dxlnode = m_phmcrdxln->Find(colref);
+
+		if (NULL != dxlnode && EdxlopScalarSubPlan == dxlnode->GetOperator()->GetDXLOperator())
+		{
+			if (pdxlnPrLstSplan == NULL)
+			{
+				// make a copy of motion's proj list
+				pdxlnPrLstSplan =
+					CTranslatorExprToDXLUtils::PdxlnProjListFromChildProjList(
+						m_mp, m_pcf, m_phmcrdxln, pdxlnProjListChild);
+			}
+
+			CDXLNode *pdxlnPrElSplan = CTranslatorExprToDXLUtils::PdxlnProjElem(
+				m_mp, m_phmcrdxln, colref);
+			pdxlnPrLstSplan->AddChild(pdxlnPrElSplan);
+
+			// also add new proj elem referencing created subplan to motion's proj list
+			CDXLNode *pdxlnPrEl = CTranslatorExprToDXLUtils::PdxlnProjElem(
+				m_mp, m_phmcrdxln, colref);
+			proj_list_dxlnode->AddChild(pdxlnPrEl);
+		}
+	}
+
+	// if there are any leftover subplans wrap them in extra Result node
+	if (pdxlnPrLstSplan != NULL)
+	{
+		child_dxlnode = PdxlnResult(
+			CTranslatorExprToDXLUtils::PdxlpropCopy(m_mp, child_dxlnode),
+			pdxlnPrLstSplan, child_dxlnode);
+	}
+
 	// set input and output segment information
 	motion->SetSegmentInfo(GetInputSegIdsArray(pexprMotion),
 						   GetOutputSegIdsArray(pexprMotion));
