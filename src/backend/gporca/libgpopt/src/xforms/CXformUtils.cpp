@@ -4512,7 +4512,7 @@ CXformUtils::FTriggersExistInner(CLogicalDML::EDMLOperator edmlop,
 			continue;
 		}
 
-		if (shouldCheck && pmdtrigger->IsBefore() == fBefore)
+		if (!shouldCheck || pmdtrigger->IsBefore() == fBefore)
 		{
 			return true;
 		}
