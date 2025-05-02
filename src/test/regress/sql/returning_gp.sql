@@ -43,6 +43,16 @@ delete from returning_parttab where partkey = 14 returning *;
 -- Check table contents, to be sure that all the commands did what they claimed.
 select * from returning_parttab;
 
+-- Test DML on partitioned table with RETURNING subquery with cte
+explain (costs off)
+with cte as (
+  select distkey from returning_parttab limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+
+with cte as (
+  select distkey from returning_parttab limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+
 --
 -- Test UPDATE RETURNING with a split update, i.e. an update of the distribution
 -- key.

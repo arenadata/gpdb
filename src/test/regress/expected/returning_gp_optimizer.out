@@ -96,6 +96,38 @@ select * from returning_parttab;
        2 |      19 | multi2 3
 (11 rows)
 
+-- Test DML on partitioned table with RETURNING subquery with cte
+explain (costs off)
+with cte as (
+  select distkey from returning_parttab limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+INFO:  GPORCA failed to produce a plan, falling back to planner
+DETAIL:  No plan has been computed for required properties
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)
+   ->  Insert on returning_parttab
+         InitPlan 1 (returns $0)  (slice3)
+           ->  Limit
+                 ->  Gather Motion 3:1  (slice1; segments: 3)
+                       ->  Limit
+                             ->  Append
+                                   ->  Seq Scan on returning_parttab_1_prt_1
+                                   ->  Seq Scan on returning_parttab_1_prt_newpart
+         ->  Result
+ Optimizer: Postgres query optimizer
+(11 rows)
+
+with cte as (
+  select distkey from returning_parttab limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+INFO:  GPORCA failed to produce a plan, falling back to planner
+DETAIL:  No plan has been computed for required properties
+ distkey 
+---------
+       2
+(1 row)
+
 --
 -- Test UPDATE RETURNING with a split update, i.e. an update of the distribution
 -- key.
