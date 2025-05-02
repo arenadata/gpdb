@@ -4562,7 +4562,8 @@ CTranslatorExprToDXL::PdxlnMotion(CExpression *pexprMotion,
 		CColRef *colref = reqColRefIter.Pcr();
 		CDXLNode *dxlnode = m_phmcrdxln->Find(colref);
 
-		if (NULL != dxlnode && EdxlopScalarSubPlan == dxlnode->GetOperator()->GetDXLOperator())
+		if (NULL != dxlnode &&
+			EdxlopScalarSubPlan == dxlnode->GetOperator()->GetDXLOperator())
 		{
 			if (pdxlnPrLstSplan == NULL)
 			{
