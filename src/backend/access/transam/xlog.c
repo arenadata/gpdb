@@ -7455,9 +7455,9 @@ StartupXLOG(void)
 					if ((info == XLOG_CHECKPOINT_SHUTDOWN) ||
 						(info == XLOG_END_OF_RECOVERY))
 					{
-						RemovePendingDeletesForPreparedTransactions();
-						/* Clean up orphaned files */
-						PdlRedoDropFiles();
+						if (RemovePendingDeletesForPreparedTransactions())
+							/* Clean up orphaned files */
+							PdlRedoDropFiles();
 					}
 
 					if (info == XLOG_CHECKPOINT_SHUTDOWN)
@@ -7978,9 +7978,12 @@ StartupXLOG(void)
 
 		UtilityModeCloseDtmRedoFile();
 
-		RemovePendingDeletesForPreparedTransactions();
-		/* Clean up orphaned files */
-		PdlRedoDropFiles();
+		if (RemovePendingDeletesForPreparedTransactions())
+			/* Clean up orphaned files */
+			PdlRedoDropFiles();
+		else
+			ereport(WARNING, (errmsg(
+					"Couldn't drop orphaned files")));
 
 		/*
 		 * And finally, execute the recovery_end_command, if any.

@@ -2461,15 +2461,17 @@ getTwoPhaseOldestPreparedTransactionXLogRecPtr(prepared_transaction_agg_state *p
 
 }  /* end getTwoPhaseOldestPreparedTransactionXLogRecPtr */
 
-void
+bool
 RemovePendingDeletesForPreparedTransactions()
 {
 	HASH_SEQ_STATUS scan_status;
 	prpt_map   *entry;
 	XLogReaderState *xlogreader;
+	volatile bool result = true;
+	MemoryContext oldcontext = CurrentMemoryContext;
 
 	if (NULL == crashRecoverPostCheckpointPreparedTransactions_map_ht)
-		return;
+		return result;
 
 	xlogreader = XLogReaderAllocate(&read_local_xlog_page, NULL);
 	if (!xlogreader)
@@ -2483,14 +2485,37 @@ RemovePendingDeletesForPreparedTransactions()
 	while ((entry = (prpt_map *) hash_seq_search(&scan_status)) != NULL)
 	{
 		char	   *errormsg = NULL;
-		XLogRecord *xlogrec;
+		volatile XLogRecord *xlogrec;
 		TwoPhaseFileHeader *hdr;
 		TransactionId *subxids = NULL;
 
 		if (entry->xlogrecptr == InvalidXLogRecPtr)
 			continue;
 
-		xlogrec = XLogReadRecord(xlogreader, entry->xlogrecptr, &errormsg);
+		int savedInterruptHoldoffCount = InterruptHoldoffCount;
+		PG_TRY();
+		{
+			xlogrec = XLogReadRecord(xlogreader, entry->xlogrecptr, &errormsg);
+		}
+		PG_CATCH();
+		{
+			MemoryContextSwitchTo(oldcontext);
+			InterruptHoldoffCount = savedInterruptHoldoffCount;
+			FlushErrorState();
+			result = false;
+		}
+		PG_END_TRY();
+
+		if (!result)
+		{
+			elog(LOG, "Failed to read WAL record %X/%X for XID %u in %s",
+				 (uint32) (entry->xlogrecptr >> 32),
+				 (uint32) entry->xlogrecptr,
+				 entry->xid,
+				 __func__);
+			break;
+		}
+
 		if (NULL == xlogrec)
 		{
 			if (errormsg)
@@ -2514,4 +2539,6 @@ RemovePendingDeletesForPreparedTransactions()
 	}
 
 	XLogReaderFree(xlogreader);
+
+	return result;
 }  /* end RemovePendingDeletesForPreparedTransactions */
