@@ -1,0 +1,388 @@
+-- start_ignore
+create extension if not exists gp_inject_fault;
+-- end_ignore
+
+-- start_matchsubs
+-- m/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/
+-- s/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/ERROR:  Error on receive from segX sliceX X.X.X.X:X pid=X: server closed the connection unexpectedly/
+-- end_matchsubs
+
+select current_setting('data_directory') || '/' as dd
+\gset
+
+-- Check that orphaned files are not left on the coordinator when the files are
+-- created after checkpoint
+
+checkpoint;
+
+-- Skip checkpoints on the coordinator
+select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content = -1;
+
+-- Start transaction and create tables of different access methods in it
+begin;
+create table t_orphaned_h(i int)
+distributed by (i);
+
+create table t_orphaned_r(i int)
+with (appendonly=true, orientation=row)
+distributed by (i);
+-- Create index to create block directory table
+create index t_orphaned_r_i on t_orphaned_r(i);
+
+create table t_orphaned_c(i int)
+with (appendonly=true, orientation=column)
+distributed by (i);
+-- Create index to create block directory table
+create index t_orphaned_c_i on t_orphaned_c(i);
+
+-- Get the tables file names on the coordinator
+select :'dd' || pg_relation_filepath('t_orphaned_h') as h_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_r') as r_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_r_i') as r_i_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_c') as c_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_c_i') as c_i_coord_file
+\gset
+
+select :'dd' || pg_relation_filepath(segrelid) as segrelid,
+       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
+       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
+       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
+       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
+  from pg_catalog.pg_appendonly
+ where relid = 't_orphaned_r'::regclass::oid
+\gset r_coord_file_
+
+select :'dd' || pg_relation_filepath(segrelid) as segrelid,
+       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
+       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
+       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
+       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
+  from pg_catalog.pg_appendonly
+ where relid = 't_orphaned_c'::regclass::oid
+\gset c_coord_file_
+
+-- Make sure that the tables files exist on the coordinator
+select (pg_stat_file(:'h_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
+
+-- Get segfault on the coordinator and reconnect after its restart
+select gp_inject_fault('before_read_command', 'segv', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content = -1;
+
+-- The error message from psql can be different, so ignore it
+\! psql postgres -c "select 1" 2> /dev/null
+\! sleep 2
+\c regression
+
+-- All the inject faults has been reset after the coordinator restart
+
+-- Check that the tables files don't exist on the coordinator
+select (pg_stat_file(:'h_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
+
+
+-- Check that orphaned files are not left on the coordinator when the files are
+-- created before checkpoint
+
+-- Start transaction and create tables of different access methods in it before
+-- checkpoint
+begin;
+create table t_orphaned_h(i int)
+distributed by (i);
+
+create table t_orphaned_r(i int)
+with (appendonly=true, orientation=row)
+distributed by (i);
+-- Create index to create block directory table
+create index t_orphaned_r_i on t_orphaned_r(i);
+
+create table t_orphaned_c(i int)
+with (appendonly=true, orientation=column)
+distributed by (i);
+-- Create index to create block directory table
+create index t_orphaned_c_i on t_orphaned_c(i);
+
+checkpoint;
+
+-- Get the tables file names on the coordinator
+select :'dd' || pg_relation_filepath('t_orphaned_h') as h_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_r') as r_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_r_i') as r_i_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_c') as c_coord_file
+\gset
+select :'dd' || pg_relation_filepath('t_orphaned_c_i') as c_i_coord_file
+\gset
+
+select :'dd' || pg_relation_filepath(segrelid) as segrelid,
+       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
+       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
+       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
+       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
+  from pg_catalog.pg_appendonly
+ where relid = 't_orphaned_r'::regclass::oid
+\gset r_coord_file_
+
+select :'dd' || pg_relation_filepath(segrelid) as segrelid,
+       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
+       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
+       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
+       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
+  from pg_catalog.pg_appendonly
+ where relid = 't_orphaned_c'::regclass::oid
+\gset c_coord_file_
+
+-- Make sure that the tables files exist on the coordinator
+select (pg_stat_file(:'h_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
+
+-- Get segfault on the coordinator and reconnect after its restart
+select gp_inject_fault('before_read_command', 'segv', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content = -1;
+
+-- The error message from psql can be different, so ignore it
+\! psql postgres -c "select 1" 2> /dev/null
+\! sleep 2
+\c regression
+
+-- Check that the table files don't exist on the coordinator
+select (pg_stat_file(:'h_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
+select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
+
+
+-- Clean up
+\unset dd
+\unset h_coord_file
+\unset r_coord_file
+\unset r_i_coord_file
+\unset r_coord_file_segrelid
+\unset r_coord_file_blkdirrelid
+\unset r_coord_file_blkdiridxid
+\unset r_coord_file_visimaprelid
+\unset r_coord_file_visimapidxid
+\unset c_coord_file
+\unset c_i_coord_file
+\unset c_coord_file_segrelid
+\unset c_coord_file_blkdirrelid
+\unset c_coord_file_blkdiridxid
+\unset c_coord_file_visimaprelid
+\unset c_coord_file_visimapidxid
+
+
+-- Check that orphaned files are not left on segments
+
+create or replace function getTableFiles(t text) returns text
+language plpgsql
+as $$
+begin
+    return current_setting('gp_contentid') ||
+           current_setting('data_directory') || '/' ||
+           pg_relation_filepath(t::regclass);
+end
+$$
+execute on all segments;
+
+-- Return true when file corresponding to a segment exists on this segment
+create or replace function checkTableFiles(arr text[]) returns bool
+language plpgsql
+as $$
+declare
+    str text;
+    gp_contentid text;
+    filename text;
+    firstSlashPos int;
+begin
+    foreach str in array arr loop
+        firstSlashPos := position('/' in str);
+        gp_contentid := substring(str from 1 for (firstSlashPos - 1));
+        if gp_contentid = current_setting('gp_contentid') then
+            filename := substring(str from firstSlashPos);
+            return (pg_stat_file(filename, true)).size is not null;
+        end if;
+    end loop;
+
+    return false;
+end
+$$
+execute on all segments;
+
+
+-- Check that an orphaned file is not left on the coordinator when the file is
+-- created after checkpoint
+checkpoint;
+
+-- Skip checkpoints
+select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content > -1;
+
+-- Start transaction and create a table in it
+begin;
+create table t_orphaned_h(i int)
+distributed by (i);
+
+create table t_orphaned_r(i int)
+with (appendonly=true, orientation=row)
+distributed by (i);
+
+-- Create the .128 file
+create table t_orphaned_c
+with (appendonly=true, orientation=column) as
+select i as i, i*2 as j from generate_series(1,100) i
+distributed by (i);
+
+-- Get list of the tables file names on each segment
+select array(select getTableFiles('t_orphaned_h')) as h_seg_files
+\gset
+select array(select getTableFiles('t_orphaned_r')) as r_seg_files
+\gset
+select array(select getTableFiles('t_orphaned_c')) as c_seg_files
+\gset
+select array(select getTableFiles('t_orphaned_c') || '.128') as c_seg_files128
+\gset
+
+-- Make sure that all the tables files exist on the segments
+select checkTableFiles(:'h_seg_files');
+select checkTableFiles(:'r_seg_files');
+select checkTableFiles(:'c_seg_files');
+select checkTableFiles(:'c_seg_files128');
+
+-- Get segfault on all segments
+select gp_inject_fault('before_read_command', 'segv', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content != -1;
+
+select 1 from gp_dist_random('gp_id');
+
+-- Rollback the transaction to make it possible to run queries after the error
+rollback;
+
+-- Check that the tables files don't exist on the segments
+select checkTableFiles(:'h_seg_files');
+select checkTableFiles(:'r_seg_files');
+select checkTableFiles(:'c_seg_files');
+select checkTableFiles(:'c_seg_files128');
+
+
+-- Check that orphaned files are not left on segments when the files are
+-- created before checkpoint
+
+-- Start transaction and create tables in it before checkpoint
+begin;
+create table t_orphaned_h(i int)
+distributed by (i);
+
+create table t_orphaned_r(i int)
+with (appendonly=true, orientation=row)
+distributed by (i);
+
+-- Create the .128 file
+create table t_orphaned_c
+with (appendonly=true, orientation=column) as
+select i as i, i*2 as j from generate_series(1,100) i
+distributed by (i);
+
+checkpoint;
+
+-- Get list of the tables file names on each segment
+select array(select getTableFiles('t_orphaned_h')) as h_seg_files
+\gset
+select array(select getTableFiles('t_orphaned_r')) as r_seg_files
+\gset
+select array(select getTableFiles('t_orphaned_c')) as c_seg_files
+\gset
+select array(select getTableFiles('t_orphaned_c') || '.128') as c_seg_files128
+\gset
+
+-- Make sure that all the tables files exist on the segments
+select checkTableFiles(:'h_seg_files');
+select checkTableFiles(:'r_seg_files');
+select checkTableFiles(:'c_seg_files');
+select checkTableFiles(:'c_seg_files128');
+
+-- Get segfault on all segments
+select gp_inject_fault('before_read_command', 'segv', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content != -1;
+
+select 1 from gp_dist_random('gp_id');
+
+-- Rollback the transaction to make it possible to run queries after the error
+rollback;
+
+-- Check that the tables files don't exist on the segments
+select checkTableFiles(:'h_seg_files');
+select checkTableFiles(:'r_seg_files');
+select checkTableFiles(:'c_seg_files');
+select checkTableFiles(:'c_seg_files128');
+
+
+-- Clean up
+\unset h_seg_files
+\unset r_seg_files
+\unset c_seg_files
+\unset c_seg_files128
+drop function checkTableFiles(arr text[]);
+drop function getTableFiles(t regclass);
