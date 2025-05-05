@@ -5631,7 +5631,7 @@ static bool
 contain_grouping_clause_walker(Node *node, void *context)
 {
 	if (node == NULL)
-		return false;
+		return true;
 	else if (IsA(node, GroupingClause))
 		return true;			/* abort the tree traversal and return true */
 	
