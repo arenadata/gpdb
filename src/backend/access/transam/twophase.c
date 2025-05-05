@@ -2485,7 +2485,7 @@ RemovePendingDeletesForPreparedTransactions()
 	while ((entry = (prpt_map *) hash_seq_search(&scan_status)) != NULL)
 	{
 		char	   *errormsg = NULL;
-		volatile XLogRecord *xlogrec;
+		volatile XLogRecord *xlogrec = NULL;
 		TwoPhaseFileHeader *hdr;
 		TransactionId *subxids = NULL;
 
