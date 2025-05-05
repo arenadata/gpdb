@@ -858,6 +858,8 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 			default:
 				PQclear(res);
 		}
+
+		pqSaveErrorResult(conn);
 	}
 
 	/* Free notices. */
