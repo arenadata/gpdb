@@ -829,7 +829,9 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 	{
 		Node	   *havingclause = (Node *) lfirst(l);
 
-		if (contain_agg_clause(havingclause) ||
+		if ((parse->groupClause &&
+			contain_extended_grouping(parse->groupClause)) ||
+			contain_agg_clause(havingclause) ||
 			contain_volatile_functions(havingclause) ||
 			contain_subplans(havingclause))
 		{

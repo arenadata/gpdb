@@ -78,6 +78,10 @@ copy gstest2 from stdin;
 ANALYZE gstest2;
 
 explain (costs off)
+select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 order by a;
+select a,count(*) from gstest2 group by rollup(a) having a is distinct from 1 order by a;
+
+explain (costs off)
 select v.c, (select count(*) from gstest2 group by () having v.c)
   from (values (false),(true)) v(c) order by v.c;
 select v.c, (select count(*) from gstest2 group by () having v.c)
