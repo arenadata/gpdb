@@ -95,7 +95,7 @@ select * from returning_parttab;
 -- Test DML on partitioned table with RETURNING subquery with cte
 explain (costs off)
 with cte as (
-  select distkey from returning_parttab limit 1
+  select distkey from returning_parttab order by distkey limit 1
 ) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
                                     QUERY PLAN                                     
 -----------------------------------------------------------------------------------
@@ -104,20 +104,23 @@ with cte as (
          InitPlan 1 (returns $0)  (slice3)
            ->  Limit
                  ->  Gather Motion 3:1  (slice1; segments: 3)
+                       Merge Key: returning_parttab_1_prt_1.distkey
                        ->  Limit
-                             ->  Append
-                                   ->  Seq Scan on returning_parttab_1_prt_1
-                                   ->  Seq Scan on returning_parttab_1_prt_newpart
+                             ->  Sort
+                                   Sort Key: returning_parttab_1_prt_1.distkey
+                                   ->  Append
+                                         ->  Seq Scan on returning_parttab_1_prt_1
+                                         ->  Seq Scan on returning_parttab_1_prt_newpart
          ->  Result
  Optimizer: Postgres query optimizer
-(11 rows)
+(14 rows)
 
 with cte as (
-  select distkey from returning_parttab limit 1
+  select distkey from returning_parttab order by distkey limit 1
 ) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
  distkey 
 ---------
-       2
+       1
 (1 row)
 
 --

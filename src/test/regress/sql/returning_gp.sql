@@ -46,11 +46,11 @@ select * from returning_parttab;
 -- Test DML on partitioned table with RETURNING subquery with cte
 explain (costs off)
 with cte as (
-  select distkey from returning_parttab limit 1
+  select distkey from returning_parttab order by distkey limit 1
 ) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
 
 with cte as (
-  select distkey from returning_parttab limit 1
+  select distkey from returning_parttab order by distkey limit 1
 ) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
 
 --
