@@ -3,7 +3,7 @@ use warnings;
 
 use PostgresNode;
 use TestLib;
-use Test::More tests => 44;
+use Test::More tests => 42;
 
 program_help_ok('reindexdb');
 program_version_ok('reindexdb');
@@ -116,6 +116,9 @@ $node->issues_sql_like(
 $node->command_ok(
 	['reindexdb', '-j', '2', '-S', 's3'],
 	'parallel reindexdb with empty schema');
+# GPDB: REINDEX CONCURRENTLY doesn't work on GPDB, skip.
+SKIP: {
+	skip "REINDEX CONCURRENTLY not implemented on GPDB", 1;
 $node->command_checks_all(
 	[ 'reindexdb', '-j', '2', '--concurrently', '-d', 'postgres' ],
 	0,
@@ -124,3 +127,4 @@ $node->command_checks_all(
 		qr/^reindexdb: warning: cannot reindex system catalogs concurrently, skipping all/s
 	],
 	'parallel reindexdb for system with --concurrently skips catalogs');
+} # end SKIP
