@@ -269,6 +269,7 @@
 		"integer_datetimes",
 		"is_superuser",
 		"jit_provider",
+		"restrict_nonsystem_relation_kind",
 		"join_collapse_limit",
 		"krb_caseins_users",
 		"krb_server_keyfile",
