@@ -2622,7 +2622,7 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * rather than necessary for correctness, we skip it if enable_material is
 	 * off.
 	 */
-	else if (enable_material && innersortkeys != NIL &&
+	else if (enable_material && innersortkeys == NIL &&
 			 relation_byte_size(inner_path_rows, inner_path->parent->width) >
 			 (work_mem * 1024L))
 		path->materialize_inner = true;
