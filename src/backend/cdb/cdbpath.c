@@ -224,10 +224,34 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			return subpath;
 		}
 
-		if (CdbPathLocus_IsGeneral(subpath->locus) ||
-			CdbPathLocus_IsEntry(subpath->locus) ||
+		if (CdbPathLocus_IsGeneral(subpath->locus))
+		{
+			/* XXX: this is a bit bogus. We just change the subpath's locus. */
+			subpath->locus = locus;
+			return subpath;
+		}
+
+		if (CdbPathLocus_IsEntry(subpath->locus) ||
 			CdbPathLocus_IsSingleQE(subpath->locus))
 		{
+			/*
+			 * If count of segments is not changed, just change locus.
+			 */
+			if (CdbPathLocus_NumSegments(subpath->locus) ==
+				CdbPathLocus_NumSegments(locus))
+			{
+				subpath->locus = locus;
+				return subpath;
+			}
+
+			/*
+			 * For correct changing locus from Entry or SingleQE to Outer, we
+			 * should add Motion and Materialize nodes. If these nodes are
+			 * present, just change locus to Outer.
+			 * Also there may be projection path node, just change locus at the
+			 * such node, too.
+			 * All other cases will be processed at the end of the function.
+			 */
 			if (IsA(subpath, CdbMotionPath))
 			{
 				subpath->locus = locus;
@@ -241,6 +265,7 @@ cdbpath_create_motion_path(PlannerInfo *root,
 				if (projection_path->subpath &&
 					IsA(projection_path->subpath, CdbMotionPath))
 				{
+					subpath->locus = locus;
 					subpath = projection_path->subpath;
 					subpath->locus = locus;
 					projection_path->subpath = (Path *) create_material_path(root,
@@ -248,11 +273,6 @@ cdbpath_create_motion_path(PlannerInfo *root,
 																subpath);
 					return (Path *) projection_path;
 				}
-			}
-			else
-			{
-				subpath->locus = locus;
-				return subpath;
 			}
 		}
 	}
