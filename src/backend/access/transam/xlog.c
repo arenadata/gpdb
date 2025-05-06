@@ -7460,8 +7460,9 @@ StartupXLOG(void)
 						 * prepared transaction is yet not committed/aborted,
 						 * but the respective WAL segment file is already
 						 * recycled. It may happen is some corner cases, like:
-						 * 1. Primary performs Prepare for a transaction;
-						 * 2. Primary fails and Mirror is promoted;
+						 * 1. Primary successfully performs Prepare for a
+						 * transaction;
+						 * 2. Primary stops responding and Mirror is promoted;
 						 * 3. New Primary (ex Mirror) commits the transaction;
 						 * 4. New Primary (ex Mirror) recycles WAL segment with
 						 * the Prepare record (because both Primary and Mirror
