@@ -100,7 +100,7 @@ from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus 
 
 
 class GPRebalance:
-    def __init__(self, logger, gparray, dburl, options):
+    def __init__(self, logger, gparray, dburl, options, gpEnv):
         self.logger = logger
         self.dburl = dburl
         self.options = options
@@ -155,8 +155,7 @@ class GPRebalance:
         self.unpreferred_segments = self.getSegmentsUnpreferredRole()
         self.segmentMap = {SegmentId(
             seg.dbid, seg.content): seg for seg in self.original_gparray.getSegmentsAsLoadedFromDb()}
-        self.statusManager = StatusManager(
-            self.conn, self.options, self.logger)
+        self.statusManager = StatusManager(self.options, self.logger, self.original_gparray, self.conn, gpEnv)
 
         self.executor = None
 
@@ -228,8 +227,7 @@ class GPRebalance:
         datadir = self.options.coordinator_data_directory + CONF_DIR
         os.makedirs(datadir, exist_ok=True)
         plan.save_to_file(datadir, "plan")
-        self.statusManager.set_status('PLANNED', datadir)
-
+    
     def load_plan(self, datadir, rollback):
         filename = datadir 
         if rollback:
@@ -254,72 +252,12 @@ class GPRebalance:
                                      self.options)
         self.executor.execute_moves()
 
-    @staticmethod
-    def prepare_gpdb_state(logger, dburl, options) -> str:
-        gprebalance_db_status = None
-
-        try:
-            gprebalance_db_status = GPRebalance.get_status_from_db(
-                dburl, options)
-            logger.debug('Expansion status returned is %s' %
-                     gprebalance_db_status)
-        except Exception as e:
-            raise Exception(
-                'Error while trying to query the gprebalance schema: %s' % e)
-
-        return gprebalance_db_status
-
-    @staticmethod
-    def get_status_from_db(dburl, options) -> RebalanceStatus:
-        """Gets gprebalance status from the gprebalance schema"""
-        status_conn = None
-        gprebalance_db_status = None
-        if get_local_db_mode(options.coordinator_data_directory) == 'NORMAL':
-            try:
-                status_conn = dbconn.connect(dburl, encoding='UTF8')
-                # Get the last status entry
-                cursor = dbconn.query(
-                    status_conn, 'SELECT status FROM gprebalance.status ORDER BY updated DESC LIMIT 1')
-                if cursor.rowcount == 1:
-                    gprebalance_db_status = cursor.fetchone()[0]
-
-            except Exception:
-                # rebalance schema doesn't exists or there was a connection failure.
-                pass
-            finally:
-                if status_conn:
-                    status_conn.close()
-
-        # make sure gprebalance schema doesn't exist since it wasn't in DB provided
-        if not gprebalance_db_status:
-            conn = dbconn.connect(dburl, encoding='UTF8', utility=True)
-            try:
-                count = dbconn.querySingleton(conn,
-                                              "SELECT count(n.nspname) FROM pg_catalog.pg_namespace n WHERE n.nspname = 'gprebalance'")
-                if count > 0:
-                    raise Exception(
-                        "Existing rebalance state could not be determined, but a gprebalance schema already exists. Cannot proceed.")
-            finally:
-                conn.close()
-
-        return RebalanceStatus(gprebalance_db_status)
-
     def get_state_from_file(self):
         """Returns expansion state from status file"""
-        return self.statusManager.get_current_status()[0]
-
-    def setup_schema(self):
-        self.statusManager.set_status('REBALANCE_PREPARE_SCHEMA_STARTED')
-        self.logger.info('Creating expansion schema')
-        self.statusManager.setup_schema()
-        self.statusManager.set_status('REBALANCE_PREPARE_SCHEMA_DONE')
-        self.statusManager.set_db_status(RebalanceStatus.INITIALIZED)
-
-    def cleanup_schema(self):
-        if not self.conn:
-            return
-        self.logger.info('Dropping rebalance schema')
-        self.statusManager.cleanup_schema()
+        status = self.statusManager.get_current_status()[0]
+        if status:
+            return RebalanceStatus(status)
+        return None
 
     def cleanup_directory(self):
         self.logger.info('Dropping rebalance directory')

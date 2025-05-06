@@ -6,7 +6,7 @@ from collections import defaultdict
 import pickle
 from typing import List, Dict, Optional, Set, Tuple
 from gprebalance_modules.rebalance_plan import Move, Plan  # nopep8
-from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus, MoveStatus, SqlError
+from gprebalance_modules.rebalance_status import StatusManager, RebalanceStatus, MoveStatus
 from gprebalance_modules.rebalance import ClusterState, SegmentId, SegmentSize, Host
 from gppylib.gparray import GpArray, Segment
 from gppylib.db import dbconn
@@ -107,8 +107,8 @@ class RecoveryProcess:
 
 
 class SingleMoveCommand(SQLCommand):
-    def __init__(self, name: str, status_url: dbconn.DbURL, step_details, logger):
-        self.status_url = status_url
+    def __init__(self, name: str, step_details, logger, statusManager: StatusManager):
+        self.status_manager = statusManager
         self.logger = logger
         (self.segment, self.move, self.segmentSize,
          self.conf_dir, self.needs_switch, self.options) = step_details
@@ -134,12 +134,11 @@ class SingleMoveCommand(SQLCommand):
     def run(self, validateAfter=False):
         status_conn = None
         try:
-            status_conn = dbconn.connect(self.status_url, encoding='UTF8')
+            
             segsize = self.segmentSize.source_data_dir_usage
             if self.segmentSize.source_tablespace_usage:
                 segsize += sum(self.segmentSize.source_tablespace_usage.values())
-            StatusManager.record_move(status_conn, self.move, self.segment,
-                                      segsize, datetime.datetime.now())
+            self.status_manager.update_move_status([self.segment.dbid], MoveStatus.IN_PROGRESS)
 
             filename = self.write_gprecoverseg_config()
 
@@ -166,12 +165,6 @@ class SingleMoveCommand(SQLCommand):
             ]
             if self.options.hba_hostnames:
                 cmd_args.append('--hba-hostnames')
-            try:
-                StatusManager.update_record_status(
-                    status_conn, [self.segment.dbid], MoveStatus.IN_PROGRESS)
-            except SqlError:
-                raise Exception(
-                    f"Could not update status for move with dbid={self.segment.dbid}: ")
 
             result_queue = multiprocessing.Queue()
             recovery_process = multiprocessing.Process(
@@ -179,8 +172,39 @@ class SingleMoveCommand(SQLCommand):
                 args=(cmd_args, result_queue, log_file)
             )
             recovery_process.start()
-            result = result_queue.get()
-            recovery_process.join()
+            result = None
+            while recovery_process.is_alive():
+            # Check if result is available without blocking
+                try:
+                    if not result_queue.empty():
+                        result = result_queue.get(block=False)
+                        recovery_process.join()
+                except Exception:
+                    pass
+                time.sleep(10)
+            
+            if not result_queue.empty():
+                result = result_queue.get(block=False)
+           
+            if result is None:
+                exit_code = recovery_process.exitcode
+                if exit_code < 0:
+                    self.logger.error(
+                    f"Could not perform mirror dbid={self.segment.dbid} "
+                    f"move with content {self.segment.content} due to "
+                    f"recoverseg error: Process terminated by signal {-exit_code}\n"
+                    f"Check the gprecoverseg log file {log_file}, fix any problems, and re-run"
+                )
+                else:
+                    self.logger.error(
+                    f"Could not perform mirror dbid={self.segment.dbid} "
+                    f"move with content {self.segment.content} due to "
+                    f"recoverseg error: Process exited with code {exit_code}\n"
+                    f"Check the gprecoverseg log file {log_file}, fix any problems, and re-run")
+                self.status_manager.update_move_status([self.segment.dbid], MoveStatus.FAILED)
+                self.move_error = True
+                return
+            
             if result["status"] == "FAILED":
                 self.logger.error(
                     f"Could not perform mirror dbid={self.segment.dbid} "
@@ -188,30 +212,15 @@ class SingleMoveCommand(SQLCommand):
                     f"recoverseg error: {result['error']}\n"
                     f"Check the gprecoverseg log file {log_file}, fix any problems, and re-run"
                 )
-                try:
-                    StatusManager.update_record_status(
-                        status_conn, [self.segment.dbid], MoveStatus.FAILED)
-                except SqlError:
-                    raise Exception(
-                        f"Could not update status for move with dbid={self.segment.dbid}: ")
+                self.status_manager.update_move_status([self.segment.dbid], MoveStatus.FAILED)
 
                 self.move_error = True
-                status_conn.close()
                 return
             if self.needs_switch:
-                try:
-                    StatusManager.update_record_status(
-                        status_conn, [self.segment.dbid], MoveStatus.AWAITS_SWITCH)
-                except SqlError:
-                    raise Exception(
-                        f"Could not update status for move with dbid={self.segment.dbid}: ")
-
-            try:
-                StatusManager.update_record_status(
-                    status_conn, [self.segment.dbid], MoveStatus.COMPLETED)
-            except SqlError:
-                raise Exception(
-                    f"Could not update status for move with dbid={self.segment.dbid}: ")
+                self.status_manager.update_move_status([self.segment.dbid], MoveStatus.AWAITS_SWITCH)
+            else:
+                self.status_manager.update_move_status([self.segment.dbid], MoveStatus.COMPLETED)
+           
 
             self.logger.info("Removing old segment's datadir (dbidi = %d): %s",
                              self.segment.dbid, self.segment.datadir)
@@ -225,12 +234,10 @@ class SingleMoveCommand(SQLCommand):
                     self.logger.info("Removing old segment's tablespace datadir (dbidi = %d): %s",
                                      self.segment.dbid, tblspdir)
                     cmd.run(validateAfter=True)
-            status_conn.close()
 
         except Exception as ex:
             self.logger.error(ex.__str__().strip())
             self.move_error = True
-            status_conn.close()
             return
         
 
@@ -889,6 +896,23 @@ class RebalanceExecutor:
             begining_timestamp = datetime.datetime.now()
 
             conf_dir = self.options.coordinator_data_directory + CONF_DIR
+
+            #record moves in status file
+            detail_list = []
+            for seq_no, seq in enumerate(move_sequences):
+                if not isinstance(seq[0], str):
+                    for move in seq:
+                        needs_switch = False
+                        if move.segid.contentid in former_switches or move.segid.contentid in latter_switches:
+                            needs_switch = True
+                        if move.segid.contentid in former_switches and move.segid.contentid in latter_switches:
+                            needs_switch = False
+                        detail_list.append((seq_no, self.segmentMap[move.segid],
+                                move,
+                                self.segmentSizes[move.segid].source_data_dir_usage,
+                                needs_switch))
+            self.statusManager.record_moves_batch(detail_list)
+
             hosts = set()
             for move in self.moves:
                 hosts.add(move.srcHost.hostname)
@@ -896,7 +920,8 @@ class RebalanceExecutor:
             
             if firstRun:
                 # in order to run gprecoverseg processes separately and avoid any races
-                # for resources gprecoverseg generates, we create separate log directories.
+                # for resources gprecoverseg generates (progress file), we create
+                # separate log directories.
                 mkdirCmd = MakeDirectory("rebalance log dir", GPRECOVERSEG_DIR)
                 mkdirCmd.run(validateAfter=True)
                 for host in hosts:
@@ -904,17 +929,11 @@ class RebalanceExecutor:
                     mkdirCmd.run(validateAfter=True)
                 
                 if self.options.rollback:
-                    self.statusManager.set_status('ROLLBACK_PREPARED')
+                    self.statusManager.set_status(RebalanceStatus.ROLLBACK_PREPARED, conf_dir)
                     self.plan.save_to_file(conf_dir, "rollback_plan")
                 else:
-                    self.statusManager.set_status('EXECUTION_PREPARED')
-                    self.statusManager.set_db_status(
-                    RebalanceStatus.PREPARED, begining_timestamp)
+                    self.statusManager.set_status(RebalanceStatus.PREPARED, conf_dir)
                     self.plan.save_to_file(conf_dir, "plan")
-            
-
-            self.statusManager.set_db_status(
-                RebalanceStatus.IN_PROGRESS)
 
             self.queue = WorkerPool(self.options.parallel)
 
@@ -924,9 +943,9 @@ class RebalanceExecutor:
             if self.options.end:
                 stopTime = self.options.end
             if self.options.rollback:
-                self.statusManager.set_status('ROLLBACK_STARTED')
+                self.statusManager.set_status(RebalanceStatus.ROLLBACK_IN_PROGRESS)
             else:
-                self.statusManager.set_status('EXECUTION_STARTED')
+                self.statusManager.set_status(RebalanceStatus.IN_PROGRESS)
             for sequence in move_sequences:
                 if self.shutdown_requested:
                     break
@@ -949,17 +968,21 @@ class RebalanceExecutor:
                     if self.shutdown_requested:
                         break
 
-                    self.statusManager.set_db_status(
+                    self.statusManager.set_status(
                         RebalanceStatus.AWAITS_SWITCH)
                     self.logger.info(
                         f"Executing role swaps for {len(sequence[1])} segments")
                     try:
                         self._execute_role_swaps(sequence[1])
+                        for segid in sequence[1]:
+                            if segid in former_switches and segid not in latter_switches:
+                                self.statusManager.update_move_status(sequence[1], MoveStatus.COMPLETED)
+                                break
                     except Exception as e:
                         had_error = True
                         self.logger.error(f"Could not execute role swaps:{str(e)}")
                         break
-                    self.statusManager.set_db_status(
+                    self.statusManager.set_status(
                         RebalanceStatus.IN_PROGRESS)
                 else:
                     for move in sequence:
@@ -978,7 +1001,7 @@ class RebalanceExecutor:
                                         )
 
                         cmd = SingleMoveCommand(
-                            "name", self.dburl, step_details, self.logger)
+                            "name", step_details, self.logger, self.statusManager)
                         self.queue.addCommand(cmd)
 
                 while not self.queue.isDone():
@@ -1001,25 +1024,23 @@ class RebalanceExecutor:
                 self.queue = None
             
             if stoppedEarly or self.shutdown_requested:
-                self.statusManager.set_db_status(
-                    RebalanceStatus.STOPPED)
-                if self.options.rollback:
-                    self.statusManager.set_status('ROLLBACK_STOPPED')
-                else:
-                    self.statusManager.set_status('EXECUTION_STOPPED')
+                self.statusManager.set_status(RebalanceStatus.STOPPED)
                 if not self.shutdown_requested:
                     self.logger.info("Rebalance stopped due to timeout")
             elif had_error:
-                self.statusManager.set_db_status(
+                if self.options.rollback:
+                    self.statusManager.set_status(
+                    RebalanceStatus.ROLLBACK_FAILED)
+                else:
+                    self.statusManager.set_status(
                     RebalanceStatus.FAILED)
                 raise Exception("execution encountered movement erorrs")
             else:
                 if self.options.rollback:
-                    self.statusManager.set_status('ROLLBACK_DONE')
+                    self.statusManager.set_status(RebalanceStatus.ROLLBACK_DONE)
                 else:
-                    self.statusManager.set_status('EXECUTION_DONE')
-                self.statusManager.set_db_status(
-                    RebalanceStatus.COMPLETED)
+                    self.statusManager.set_status(RebalanceStatus.DONE)
+
                 rmdirCmd = RemoveDirectory("remove recoverseg log dir",  f"{os.path.join(os.environ.get('HOME', '.'),GPRECOVERSEG_DIR)}")
                 rmdirCmd.run()
                 for host in hosts:
@@ -1029,9 +1050,9 @@ class RebalanceExecutor:
 
         except Exception as e:
             if self.options.rollback:
-                self.statusManager.set_status('ROLLBACK_FAILED')
+                self.statusManager.set_status(RebalanceStatus.ROLLBACK_FAILED)
             else:
-                self.statusManager.set_status('EXECUTION_FAILED')
+                self.statusManager.set_status(RebalanceStatus.FAILED)
             raise
     
     def _execute_role_swaps(self, segids: List[SegmentId]):
@@ -1049,8 +1070,6 @@ class RebalanceExecutor:
                             "content IN %s AND preferred_role = 'p'", (data,))
                 cur.execute("UPDATE gp_segment_configuration SET preferred_role = 'p' WHERE "
                             "content IN %s AND preferred_role = 't'", (data,))
-                cur.execute("UPDATE gprebalance.status_detail SET status = 'PENDING' WHERE "
-                            "status = 'awaits_switch'")
                 cur.execute("COMMIT")
         except Exception as e:
             raise Exception('could not execute SQL : %s' % str(e))
