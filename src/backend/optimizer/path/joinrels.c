@@ -878,7 +878,6 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 					mark_dummy_rel(root, joinrel);
 					break;
 				}
-				sjinfo->inner_unique = true;
 				add_paths_to_joinrel(root, joinrel, rel1, rel2,
 									 JOIN_UNIQUE_INNER, sjinfo,
 									 restrictlist);

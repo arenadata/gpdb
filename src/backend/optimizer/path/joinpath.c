@@ -642,7 +642,6 @@ sort_inner_and_outer(PlannerInfo *root,
 	}
 	else if (jointype == JOIN_UNIQUE_INNER)
 	{
-		sjinfo->inner_unique = true;
 		inner_path = (Path *) create_unique_path(root, innerrel,
 												 inner_path, sjinfo);
 		Assert(inner_path);
@@ -822,7 +821,6 @@ match_unsorted_outer(PlannerInfo *root,
 			break;
 		case JOIN_UNIQUE_OUTER:
 		case JOIN_UNIQUE_INNER:
-			sjinfo->inner_unique = true;
 			jointype = JOIN_INNER;
 			nestjoinOK = true;
 			useallclauses = false;
@@ -849,7 +847,6 @@ match_unsorted_outer(PlannerInfo *root,
 	 */
 	if (save_jointype == JOIN_UNIQUE_INNER)
 	{
-		sjinfo->inner_unique = true;
 		/* No way to do this with an inner path parameterized by outer rel */
 		if (inner_cheapest_total == NULL)
 			return;
@@ -912,7 +909,6 @@ match_unsorted_outer(PlannerInfo *root,
 
 		if (save_jointype == JOIN_UNIQUE_INNER)
 		{
-			sjinfo->inner_unique = true;
 			/*
 			 * Consider nestloop join, but only with the unique-ified cheapest
 			 * inner path
@@ -1039,10 +1035,7 @@ match_unsorted_outer(PlannerInfo *root,
 
 		/* Can't do anything else if inner path needs to be unique'd */
 		if (save_jointype == JOIN_UNIQUE_INNER)
-		{
-			sjinfo->inner_unique = true;
 			continue;
-		}
 
 		/*
 		 * Look for presorted inner paths that satisfy the innersortkey list
@@ -1321,7 +1314,6 @@ hash_inner_and_outer(PlannerInfo *root,
 		}
 		else if (jointype == JOIN_UNIQUE_INNER)
 		{
-			sjinfo->inner_unique = true;
 			cheapest_total_inner = (Path *)
 				create_unique_path(root, innerrel,
 								   cheapest_total_inner, sjinfo);
