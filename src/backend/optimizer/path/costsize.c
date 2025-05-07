@@ -2480,7 +2480,6 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	double		mergejointuples,
 				rescannedtuples;
 	double		rescanratio;
-	bool		skip_mark_restore;	/* can executor skip mark/restore? */
 
 	/* Protect some assumptions below that rowcounts aren't zero or NaN */
 	if (inner_path_rows <= 0 || isnan(inner_path_rows))
@@ -2520,9 +2519,9 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 		 sjinfo->inner_unique) &&
 		(list_length(path->jpath.joinrestrictinfo) ==
 		 list_length(path->path_mergeclauses)))
-		skip_mark_restore = true;
+		path->skip_mark_restore = true;
 	else
-		skip_mark_restore = false;
+		path->skip_mark_restore = false;
 
 	/*
 	 * Get approx # tuples passing the mergequals.  We use approx_tuple_count
@@ -2556,7 +2555,7 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * The whole issue is moot if we are working from a unique-ified outer
 	 * input, or if we know we don't need to mark/restore at all.
 	 */
-	if (IsA(outer_path, UniquePath) || skip_mark_restore)
+	if (IsA(outer_path, UniquePath) || path->skip_mark_restore)
 		rescannedtuples = 0;
 	else
 	{
@@ -2603,7 +2602,7 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	/*
 	 * If we don't need mark/restore at all, we don't need materialization.
 	 */
-	if (skip_mark_restore)
+	if (path->skip_mark_restore)
 		path->materialize_inner = false;
 
 	/*

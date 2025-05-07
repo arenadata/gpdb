@@ -1349,6 +1349,7 @@ typedef struct MergePath
 	List	   *path_mergeclauses;		/* join clauses to be used for merge */
 	List	   *outersortkeys;	/* keys for explicit sort, if any */
 	List	   *innersortkeys;	/* keys for explicit sort, if any */
+	bool		skip_mark_restore;	/* can executor skip mark/restore? */
 	bool		materialize_inner;		/* add Materialize to inner? */
 } MergePath;
 
