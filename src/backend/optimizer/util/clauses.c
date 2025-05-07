@@ -5624,6 +5624,14 @@ flatten_join_alias_var_optimizer(Query *query, int queryLevel)
 bool
 contain_extended_grouping(List *grp)
 {
+	ListCell   *lc;
+
+	foreach(lc, (List *) grp)
+	{
+		if (lfirst(lc) == NULL)
+			return true;
+	}
+
 	return contain_grouping_clause_walker((Node *)grp, NULL);
 }
 
@@ -5631,7 +5639,7 @@ static bool
 contain_grouping_clause_walker(Node *node, void *context)
 {
 	if (node == NULL)
-		return true;
+		return false;
 	else if (IsA(node, GroupingClause))
 		return true;			/* abort the tree traversal and return true */
 	
