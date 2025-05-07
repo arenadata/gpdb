@@ -1724,6 +1724,8 @@ typedef struct SpecialJoinInfo
 	bool		lhs_strict;		/* joinclause is strict for some LHS rel */
 	bool		delay_upper_joins;		/* can't commute with upper RHS */
 	List	   *join_quals;		/* join quals, in implicit-AND list format */
+	bool		inner_unique;	/* each outer tuple provably matches no more
+								 * than one inner tuple */
 } SpecialJoinInfo;
 
 /*
