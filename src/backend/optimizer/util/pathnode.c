@@ -1742,8 +1742,6 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 	Assert(sjinfo->jointype == JOIN_SEMI);
 	Assert(bms_equal(rel->relids, sjinfo->syn_righthand));
 
-	sjinfo->inner_unique = true;
-
 	/* If result already cached, return it */
 	if (rel->cheapest_unique_path)
 		return (UniquePath *) rel->cheapest_unique_path;

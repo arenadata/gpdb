@@ -2204,7 +2204,6 @@ _outMergePath(StringInfo str, const MergePath *node)
 	WRITE_NODE_FIELD(path_mergeclauses);
 	WRITE_NODE_FIELD(outersortkeys);
 	WRITE_NODE_FIELD(innersortkeys);
-	WRITE_BOOL_FIELD(skip_mark_restore);
 	WRITE_BOOL_FIELD(materialize_inner);
 }
 

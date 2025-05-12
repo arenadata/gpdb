@@ -1349,7 +1349,6 @@ typedef struct MergePath
 	List	   *path_mergeclauses;		/* join clauses to be used for merge */
 	List	   *outersortkeys;	/* keys for explicit sort, if any */
 	List	   *innersortkeys;	/* keys for explicit sort, if any */
-	bool		skip_mark_restore;	/* can executor skip mark/restore? */
 	bool		materialize_inner;		/* add Materialize to inner? */
 } MergePath;
 
@@ -1725,8 +1724,6 @@ typedef struct SpecialJoinInfo
 	bool		lhs_strict;		/* joinclause is strict for some LHS rel */
 	bool		delay_upper_joins;		/* can't commute with upper RHS */
 	List	   *join_quals;		/* join quals, in implicit-AND list format */
-	bool		inner_unique;	/* each outer tuple provably matches no more
-								 * than one inner tuple */
 } SpecialJoinInfo;
 
 /*
