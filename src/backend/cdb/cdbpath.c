@@ -231,8 +231,19 @@ cdbpath_create_motion_path(PlannerInfo *root,
 			return subpath;
 		}
 
-		if (CdbPathLocus_IsEntry(subpath->locus) ||
-			CdbPathLocus_IsSingleQE(subpath->locus))
+		if (CdbPathLocus_IsEntry(subpath->locus))
+		{
+			/*
+			 * XXX: this is a bit bogus. We just change the subpath's locus.
+			 *
+			 * This is also bogus, because the outer query might need to run
+			 * in segments.
+			 */
+			subpath->locus = locus;
+			return subpath;
+		}
+
+		if (CdbPathLocus_IsSingleQE(subpath->locus))
 		{
 			/*
 			 * For correct changing locus from Entry or SingleQE to Outer, we
