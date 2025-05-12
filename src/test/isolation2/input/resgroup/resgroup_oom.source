@@ -1,3 +1,10 @@
+-- start_matchsubs
+-- m/ERROR:  Out of memory.*/
+-- s/ERROR:  Out of memory.*/ERROR:  Out of memory/
+-- m/ERROR:  Canceling query because of high VMEM usage.*/
+-- s/ERROR:  Canceling query because of high VMEM usage.*/ERROR:  Out of memory/
+-- end_matchsubs
+
 -- start_ignore
 CREATE EXTENSION gp_inject_fault;
 DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
