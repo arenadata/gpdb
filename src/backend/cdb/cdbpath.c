@@ -246,13 +246,11 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		if (CdbPathLocus_IsSingleQE(subpath->locus))
 		{
 			/*
-			 * For correct changing locus from Entry or SingleQE to Outer, we
-			 * should add Motion and Materialize nodes. If these nodes are
-			 * present, just change locus to Outer.
-			 * Also there may be projection path node, just change locus at the
-			 * such node, too.
-			 * For other cases Motion and Materialize nodes will added processed
-			 * at the end of this function.
+			 * For correct changing locus from SingleQE to Outer, we should add
+			 * Motion and Materialize nodes. If these nodes are present, just
+			 * change locus to Outer. Also there may be projection path node,
+			 * just change locus at the such node, too. For other cases Motion
+			 * and Materialize nodes will added at the end of this function.
 			 */
 
 			/*
