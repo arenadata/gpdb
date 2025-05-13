@@ -2467,7 +2467,7 @@ RemovePendingDeletesForPreparedTransactions()
 	HASH_SEQ_STATUS scan_status;
 	prpt_map   *entry;
 	XLogReaderState *xlogreader;
-	volatile bool result = true;
+	bool result = true;
 	MemoryContext oldcontext = CurrentMemoryContext;
 
 	if (NULL == crashRecoverPostCheckpointPreparedTransactions_map_ht)
@@ -2485,7 +2485,7 @@ RemovePendingDeletesForPreparedTransactions()
 	while ((entry = (prpt_map *) hash_seq_search(&scan_status)) != NULL)
 	{
 		char	   *errormsg = NULL;
-		volatile XLogRecord *xlogrec = NULL;
+		XLogRecord *xlogrec = NULL;
 		TwoPhaseFileHeader *hdr;
 		TransactionId *subxids = NULL;
 
