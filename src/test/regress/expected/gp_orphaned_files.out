@@ -1,14 +1,69 @@
 -- start_ignore
 create extension if not exists gp_inject_fault;
+drop index if exists t_orphaned_r_i, t_orphaned_c_i;
+NOTICE:  index "t_orphaned_r_i" does not exist, skipping
+NOTICE:  index "t_orphaned_c_i" does not exist, skipping
+drop table if exists t_orphaned_h, t_orphaned_r, t_orphaned_c;
+NOTICE:  table "t_orphaned_h" does not exist, skipping
+NOTICE:  table "t_orphaned_r" does not exist, skipping
+NOTICE:  table "t_orphaned_c" does not exist, skipping
 -- end_ignore
 -- start_matchsubs
 -- m/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/
 -- s/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/ERROR:  Error on receive from segX sliceX X.X.X.X:X pid=X: server closed the connection unexpectedly/
 -- end_matchsubs
-select current_setting('data_directory') || '/' as dd
-\gset
--- Check that orphaned files are not left on the coordinator when the files are
--- created after checkpoint
+-- Check that orphaned files are not left on the coordinator and the standby
+-- createdwhen the files are after checkpoint
+-- Create tables of different access methods and return command to check their
+-- files existence on the coordinator and the standby
+create or replace function createTables() returns text as
+$$ 
+declare
+  cmd text;
+begin
+  create table t_orphaned_h(i int)
+  distributed by (i);
+
+  create table t_orphaned_r(i int)
+  with (appendonly=true, orientation=row)
+  distributed by (i);
+  -- Create index to create block directory table
+  create index t_orphaned_r_i on t_orphaned_r(i);
+
+  create table t_orphaned_c(i int)
+  with (appendonly=true, orientation=column)
+  distributed by (i);
+  -- Create index to create block directory table
+  create index t_orphaned_c_i on t_orphaned_c(i);
+
+  -- Ensure that the mirrors have applied the filesystem changes
+  perform force_mirrors_to_catch_up();
+
+  -- The command do not output PGDATA directories to make it possible to run
+  -- the test without docker
+  select '\! ' ||
+         string_agg('cd ' || datadir || '&&' || lswc, ';' order by datadir)
+  into cmd
+  from (
+    select 'ls ' || string_agg(pg_relation_filepath(a.unnest), ' ')
+                 || ' 2>/dev/null | wc -l' lswc
+    from (
+      select unnest(array['t_orphaned_h'::regclass,
+                          't_orphaned_r'::regclass, 't_orphaned_r_i'::regclass,
+                          't_orphaned_c'::regclass, 't_orphaned_c_i'::regclass])
+      union all
+      select unnest(array[segrelid,
+                          blkdirrelid, blkdiridxid,
+                          visimaprelid, visimapidxid])
+        from pg_catalog.pg_appendonly
+       where relid in ('t_orphaned_r'::regclass, 't_orphaned_c'::regclass)
+    ) a
+  ) f,
+  (select datadir from gp_segment_configuration where content = -1) d;
+
+  return cmd;
+end
+$$ language plpgsql;
 checkpoint;
 -- Skip checkpoints on the coordinator
 select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
@@ -19,138 +74,15 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
  Success:
 (1 row)
 
--- Start transaction and create tables of different access methods in it
+-- Start transaction and create tables in it
 begin;
-create table t_orphaned_h(i int)
-distributed by (i);
-create table t_orphaned_r(i int)
-with (appendonly=true, orientation=row)
-distributed by (i);
--- Create index to create block directory table
-create index t_orphaned_r_i on t_orphaned_r(i);
-create table t_orphaned_c(i int)
-with (appendonly=true, orientation=column)
-distributed by (i);
--- Create index to create block directory table
-create index t_orphaned_c_i on t_orphaned_c(i);
--- Get the tables file names on the coordinator
-select :'dd' || pg_relation_filepath('t_orphaned_h') as h_coord_file
+select createTables() check_files
 \gset
-select :'dd' || pg_relation_filepath('t_orphaned_r') as r_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_r_i') as r_i_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_c') as c_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_c_i') as c_i_coord_file
-\gset
-select :'dd' || pg_relation_filepath(segrelid) as segrelid,
-       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
-       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
-       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
-       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
-  from pg_catalog.pg_appendonly
- where relid = 't_orphaned_r'::regclass::oid
-\gset r_coord_file_
-select :'dd' || pg_relation_filepath(segrelid) as segrelid,
-       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
-       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
-       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
-       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
-  from pg_catalog.pg_appendonly
- where relid = 't_orphaned_c'::regclass::oid
-\gset c_coord_file_
--- Make sure that the tables files exist on the coordinator
-select (pg_stat_file(:'h_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
+ 
+-- Make sure that the tables files exist on the coordinator and the standby
+:check_files
+15
+15
 -- Get segfault on the coordinator and reconnect after its restart
 select gp_inject_fault('before_read_command', 'segv', dbid)
   from gp_segment_configuration
@@ -165,233 +97,28 @@ select gp_inject_fault('before_read_command', 'segv', dbid)
 \! sleep 2
 \c regression
 -- All the inject faults has been reset after the coordinator restart
--- Check that the tables files don't exist on the coordinator
-select (pg_stat_file(:'h_coord_file', true)).size is not null;
- ?column? 
-----------
- f
+select force_mirrors_to_catch_up();
+ force_mirrors_to_catch_up 
+---------------------------
+ 
 (1 row)
 
-select (pg_stat_file(:'r_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
+-- Check that the tables files don't exist on the coordinator and the standby
+:check_files
+0
+0
 -- Check that orphaned files are not left on the coordinator when the files are
 -- created before checkpoint
 -- Start transaction and create tables of different access methods in it before
 -- checkpoint
 begin;
-create table t_orphaned_h(i int)
-distributed by (i);
-create table t_orphaned_r(i int)
-with (appendonly=true, orientation=row)
-distributed by (i);
--- Create index to create block directory table
-create index t_orphaned_r_i on t_orphaned_r(i);
-create table t_orphaned_c(i int)
-with (appendonly=true, orientation=column)
-distributed by (i);
--- Create index to create block directory table
-create index t_orphaned_c_i on t_orphaned_c(i);
+select createTables() check_files
+\gset
 checkpoint;
--- Get the tables file names on the coordinator
-select :'dd' || pg_relation_filepath('t_orphaned_h') as h_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_r') as r_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_r_i') as r_i_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_c') as c_coord_file
-\gset
-select :'dd' || pg_relation_filepath('t_orphaned_c_i') as c_i_coord_file
-\gset
-select :'dd' || pg_relation_filepath(segrelid) as segrelid,
-       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
-       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
-       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
-       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
-  from pg_catalog.pg_appendonly
- where relid = 't_orphaned_r'::regclass::oid
-\gset r_coord_file_
-select :'dd' || pg_relation_filepath(segrelid) as segrelid,
-       :'dd' || pg_relation_filepath(blkdirrelid) as blkdirrelid,
-       :'dd' || pg_relation_filepath(blkdiridxid) as blkdiridxid,
-       :'dd' || pg_relation_filepath(visimaprelid) as visimaprelid,
-       :'dd' || pg_relation_filepath(visimapidxid) as visimapidxid
-  from pg_catalog.pg_appendonly
- where relid = 't_orphaned_c'::regclass::oid
-\gset c_coord_file_
--- Make sure that the tables files exist on the coordinator
-select (pg_stat_file(:'h_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- t
-(1 row)
-
+-- Make sure that the tables files exist on the coordinator and the standby
+:check_files
+15
+15
 -- Get segfault on the coordinator and reconnect after its restart
 select gp_inject_fault('before_read_command', 'segv', dbid)
   from gp_segment_configuration
@@ -405,149 +132,86 @@ select gp_inject_fault('before_read_command', 'segv', dbid)
 \! psql postgres -c "select 1" 2> /dev/null
 \! sleep 2
 \c regression
--- Check that the table files don't exist on the coordinator
-select (pg_stat_file(:'h_coord_file', true)).size is not null;
- ?column? 
-----------
- f
+select force_mirrors_to_catch_up();
+ force_mirrors_to_catch_up 
+---------------------------
+ 
 (1 row)
 
-select (pg_stat_file(:'r_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_i_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'r_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_i_coord_file', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_segrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdirrelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_blkdiridxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimaprelid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
-select (pg_stat_file(:'c_coord_file_visimapidxid', true)).size is not null;
- ?column? 
-----------
- f
-(1 row)
-
+-- Check that the tables files don't exist on the coordinator and the standby
+:check_files
+0
+0
 -- Clean up
-\unset dd
-\unset h_coord_file
-\unset r_coord_file
-\unset r_i_coord_file
-\unset r_coord_file_segrelid
-\unset r_coord_file_blkdirrelid
-\unset r_coord_file_blkdiridxid
-\unset r_coord_file_visimaprelid
-\unset r_coord_file_visimapidxid
-\unset c_coord_file
-\unset c_i_coord_file
-\unset c_coord_file_segrelid
-\unset c_coord_file_blkdirrelid
-\unset c_coord_file_blkdiridxid
-\unset c_coord_file_visimaprelid
-\unset c_coord_file_visimapidxid
+\unset check_files
+drop function createTables();
 -- Check that orphaned files are not left on segments
-create or replace function getTableFiles(t text) returns text
-language plpgsql
-as $$
-begin
-    return current_setting('gp_contentid') ||
-           current_setting('data_directory') || '/' ||
-           pg_relation_filepath(t::regclass);
-end
-$$
+create or replace function getTableSegFiles
+(t regclass, out gp_contentid smallint, out filepath text)
+as 'select current_setting(''gp_contentid'')::smallint, pg_relation_filepath(t)'
+language sql
 execute on all segments;
--- Return true when file corresponding to a segment exists on this segment
-create or replace function checkTableFiles(arr text[]) returns bool
-language plpgsql
-as $$
+-- Get list of the tables file names on each segment
+create or replace function createTables() returns text as
+$$ 
 declare
-    str text;
-    gp_contentid text;
-    filename text;
-    firstSlashPos int;
+  cmd text;
 begin
-    foreach str in array arr loop
-        firstSlashPos := position('/' in str);
-        gp_contentid := substring(str from 1 for (firstSlashPos - 1));
-        if gp_contentid = current_setting('gp_contentid') then
-            filename := substring(str from firstSlashPos);
-            return (pg_stat_file(filename, true)).size is not null;
-        end if;
-    end loop;
+  -- Minimal fillfactor to minimize rows number for creating second main fork file
+  create table t_orphaned_h(i int)
+  with (fillfactor=10)
+  distributed by (i);
+  -- Create the .1 file. Separate insert to create FSM. 
+  insert into t_orphaned_h select generate_series(1,9000000);
 
-    return false;
+  create table t_orphaned_r(i int)
+  with (appendonly=true, orientation=row)
+  distributed by (i);
+  -- Create the .1 file
+  insert into t_orphaned_r select generate_series(1,100);
+
+  -- Create the .128 file
+  create table t_orphaned_c
+  with (appendonly=true, orientation=column) as
+  select i as i, i*2 as j from generate_series(1,100) i
+  distributed by (i);
+  -- Create the .1 and .129 files
+  insert into t_orphaned_c
+  select i as i, i*2 as j from generate_series(1,100) i;
+
+  -- Ensure that the mirrors have applied the filesystem changes
+  perform force_mirrors_to_catch_up();
+
+  -- The command do not output PGDATA directories to make it possible to run
+  -- the test without docker
+  select '\! ' ||
+         string_agg('cd ' || datadir || '&&' || lswc, ';' order by datadir)
+  into cmd
+  from (
+    select gp_contentid,
+           'ls ' || string_agg(f, ' ') || ' 2>/dev/null | wc -l' lswc
+    from (
+      select gp_contentid, filepath || suf f
+        from getTableSegFiles('t_orphaned_h'),
+             (values(''), ('.1'), ('_fsm')) v(suf)
+      union all
+      select gp_contentid, filepath || suf
+        from getTableSegFiles('t_orphaned_r'),
+             (values(''), ('.1')) v(suf)
+      union all
+      select gp_contentid, filepath || suf
+        from getTableSegFiles('t_orphaned_c'),
+             (values(''), ('.1'), ('.128'), ('.129')) v(suf)
+    ) a
+    group by gp_contentid
+  ) f,
+  (select content, datadir from gp_segment_configuration where content > -1) d
+  where f.gp_contentid = d.content;
+
+  return cmd;
 end
-$$
-execute on all segments;
--- Check that an orphaned file is not left on the coordinator when the file is
+$$ language plpgsql;
+-- Check that an orphaned files are not left on segments when the files are
 -- created after checkpoint
 checkpoint;
 -- Skip checkpoints
@@ -561,60 +225,18 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
  Success:
 (3 rows)
 
--- Start transaction and create a table in it
+-- Start transaction and create tables in it
 begin;
-create table t_orphaned_h(i int)
-distributed by (i);
-create table t_orphaned_r(i int)
-with (appendonly=true, orientation=row)
-distributed by (i);
--- Create the .128 file
-create table t_orphaned_c
-with (appendonly=true, orientation=column) as
-select i as i, i*2 as j from generate_series(1,100) i
-distributed by (i);
--- Get list of the tables file names on each segment
-select array(select getTableFiles('t_orphaned_h')) as h_seg_files
-\gset
-select array(select getTableFiles('t_orphaned_r')) as r_seg_files
-\gset
-select array(select getTableFiles('t_orphaned_c')) as c_seg_files
-\gset
-select array(select getTableFiles('t_orphaned_c') || '.128') as c_seg_files128
+select createTables() check_files
 \gset
 -- Make sure that all the tables files exist on the segments
-select checkTableFiles(:'h_seg_files');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
-select checkTableFiles(:'r_seg_files');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
-select checkTableFiles(:'c_seg_files');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
-select checkTableFiles(:'c_seg_files128');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
+:check_files
+9
+9
+9
+9
+9
+9
 -- Get segfault on all segments
 select gp_inject_fault('before_read_command', 'segv', dbid)
   from gp_segment_configuration
@@ -627,101 +249,40 @@ select gp_inject_fault('before_read_command', 'segv', dbid)
 (3 rows)
 
 select 1 from gp_dist_random('gp_id');
-ERROR:  Error on receive from seg0 slice1 127.0.0.1:6002 pid=32628: server closed the connection unexpectedly
+ERROR:  Error on receive from seg0 slice1 127.0.0.1:6002 pid=37709: server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
 -- Rollback the transaction to make it possible to run queries after the error
 rollback;
+select force_mirrors_to_catch_up();
+ force_mirrors_to_catch_up 
+---------------------------
+ 
+(1 row)
+
 -- Check that the tables files don't exist on the segments
-select checkTableFiles(:'h_seg_files');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
-select checkTableFiles(:'r_seg_files');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
-select checkTableFiles(:'c_seg_files');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
-select checkTableFiles(:'c_seg_files128');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
+:check_files
+0
+0
+0
+0
+0
+0
 -- Check that orphaned files are not left on segments when the files are
 -- created before checkpoint
 -- Start transaction and create tables in it before checkpoint
 begin;
-create table t_orphaned_h(i int)
-distributed by (i);
-create table t_orphaned_r(i int)
-with (appendonly=true, orientation=row)
-distributed by (i);
--- Create the .128 file
-create table t_orphaned_c
-with (appendonly=true, orientation=column) as
-select i as i, i*2 as j from generate_series(1,100) i
-distributed by (i);
+select createTables() check_files
+\gset
 checkpoint;
--- Get list of the tables file names on each segment
-select array(select getTableFiles('t_orphaned_h')) as h_seg_files
-\gset
-select array(select getTableFiles('t_orphaned_r')) as r_seg_files
-\gset
-select array(select getTableFiles('t_orphaned_c')) as c_seg_files
-\gset
-select array(select getTableFiles('t_orphaned_c') || '.128') as c_seg_files128
-\gset
 -- Make sure that all the tables files exist on the segments
-select checkTableFiles(:'h_seg_files');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
-select checkTableFiles(:'r_seg_files');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
-select checkTableFiles(:'c_seg_files');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
-select checkTableFiles(:'c_seg_files128');
- checktablefiles 
------------------
- t
- t
- t
-(3 rows)
-
+:check_files
+9
+9
+9
+9
+9
+9
 -- Get segfault on all segments
 select gp_inject_fault('before_read_command', 'segv', dbid)
   from gp_segment_configuration
@@ -734,49 +295,26 @@ select gp_inject_fault('before_read_command', 'segv', dbid)
 (3 rows)
 
 select 1 from gp_dist_random('gp_id');
-ERROR:  Error on receive from seg0 slice1 127.0.0.1:6002 pid=32663: server closed the connection unexpectedly
+ERROR:  Error on receive from seg0 slice1 127.0.0.1:6002 pid=37807: server closed the connection unexpectedly
 	This probably means the server terminated abnormally
 	before or while processing the request.
 -- Rollback the transaction to make it possible to run queries after the error
 rollback;
+select force_mirrors_to_catch_up();
+ force_mirrors_to_catch_up 
+---------------------------
+ 
+(1 row)
+
 -- Check that the tables files don't exist on the segments
-select checkTableFiles(:'h_seg_files');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
-select checkTableFiles(:'r_seg_files');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
-select checkTableFiles(:'c_seg_files');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
-select checkTableFiles(:'c_seg_files128');
- checktablefiles 
------------------
- f
- f
- f
-(3 rows)
-
+:check_files
+0
+0
+0
+0
+0
+0
 -- Clean up
-\unset h_seg_files
-\unset r_seg_files
-\unset c_seg_files
-\unset c_seg_files128
-drop function checkTableFiles(arr text[]);
-drop function getTableFiles(t regclass);
-ERROR:  function gettablefiles(regclass) does not exist
+\unset check_files
+drop function createTables();
+drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepath text);
