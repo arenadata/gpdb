@@ -5713,6 +5713,7 @@ from t t inner join t tt using (a) group by a;
  Optimizer: Postgres query optimizer
 (12 rows)
 
+drop table t;
 reset enable_mergejoin;
 reset enable_hashjoin;
 reset work_mem;

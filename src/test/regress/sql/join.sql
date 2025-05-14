@@ -1775,6 +1775,7 @@ set work_mem = 64;
 explain (costs off)
 select a, count(distinct tt.b) filter(where tt.b::int > 500)
 from t t inner join t tt using (a) group by a;
+drop table t;
 reset enable_mergejoin;
 reset enable_hashjoin;
 reset work_mem;
