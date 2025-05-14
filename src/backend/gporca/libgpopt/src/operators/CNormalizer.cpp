@@ -124,7 +124,9 @@ CNormalizer::FPushable(CExpression *pexprLogical, CExpression *pexprPred)
 		// are called so we don't want aggregate to use volatile function result
 		// while it processes each row
 		if (CPredicateUtils::FContainsVolatileFunction(pexprPred))
+		{
 			return false;
+		}
 
 		// we also do not push through aggregate when it has no grouping columns
 		// because HAVING clause should not produce any rows when the predicate
