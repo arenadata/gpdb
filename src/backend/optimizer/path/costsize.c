@@ -2588,7 +2588,7 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * Prefer materializing if it looks cheaper, unless the user has asked to
 	 * suppress materialization.
 	 */
-	if (false && enable_material && mat_inner_cost < bare_inner_cost)
+	if (enable_material && mat_inner_cost < bare_inner_cost)
 		path->materialize_inner = true;
 
 	/*
@@ -2611,6 +2611,12 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 			 !ExecSupportsMarkRestore(inner_path->pathtype))
 		path->materialize_inner = true;
 
+#if 0
+	/*
+	 * In GPDB 6, this is not an optimization because the Mark/Restore
+	 * functionality has been significantly reworked in
+	 * ExecMaterialMarkPos/ExecMaterialRestrPos functions.
+	 */
 	/*
 	 * Also, force materializing if the inner path is to be sorted and the
 	 * sort is expected to spill to disk.  This is because the final merge
@@ -2622,10 +2628,11 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * rather than necessary for correctness, we skip it if enable_material is
 	 * off.
 	 */
-	else if (false && enable_material && innersortkeys != NIL &&
+	else if (enable_material && innersortkeys != NIL &&
 			 relation_byte_size(inner_path_rows, inner_path->parent->width) >
 			 (work_mem * 1024L))
 		path->materialize_inner = true;
+#endif
 	else
 		path->materialize_inner = false;
 
