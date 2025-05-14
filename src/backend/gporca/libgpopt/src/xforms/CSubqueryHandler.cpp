@@ -780,6 +780,7 @@ CSubqueryHandler::FCreateOuterApplyForScalarSubquery(
 					CUtils::PexprScalarConstInt8(mp, -1 /*value*/)),
 				CUtils::PexprScalarConstInt8(mp, 0 /*value*/, true /*is_null*/),
 				pexprCoalesce);
+			pdrgpexprPredicates->Release();
 		}
 		else if (0 < pdrgpexprPredicates->Size())
 		{
