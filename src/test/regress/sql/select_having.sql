@@ -47,4 +47,8 @@ SELECT 1 AS one FROM test_having HAVING 1 < 2;
 -- and just to prove that we aren't scanning the table:
 SELECT 1 AS one FROM test_having WHERE 1/a = 1 HAVING 1 < 2;
 
+-- make sure HAVING false produces NULL
+SELECT v.c, (SELECT count(*) FROM test_having GROUP BY () HAVING v.c)
+  FROM (VALUES (false),(true)) v(c) ORDER BY v.c;
+
 DROP TABLE test_having;

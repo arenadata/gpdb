@@ -734,14 +734,16 @@ CSubqueryHandler::FCreateOuterApplyForScalarSubquery(
 			mp, pexprOuter, pexprInner, colref, popSubquery->Eopid());
 
 	const CLogicalGbAgg *pgbAgg = nullptr;
+	CExpressionArray *pdrgpexprPredicates = GPOS_NEW(mp) CExpressionArray(mp);
 	BOOL fHasCountAggMatchingColumn = CUtils::FHasCountAggMatchingColumn(
-		(*pexprSubquery)[0], colref, &pgbAgg);
+		(*pexprSubquery)[0], colref, &pgbAgg, pdrgpexprPredicates);
 
 	if (!fHasCountAggMatchingColumn)
 	{
 		// residual scalar uses the scalar subquery column
 		*ppexprNewOuter = pexprLeftOuterApply;
 		*ppexprResidualScalar = CUtils::PexprScalarIdent(mp, colref);
+		pdrgpexprPredicates->Release();
 		return fSuccess;
 	}
 
@@ -779,12 +781,25 @@ CSubqueryHandler::FCreateOuterApplyForScalarSubquery(
 				CUtils::PexprScalarConstInt8(mp, 0 /*value*/, true /*is_null*/),
 				pexprCoalesce);
 		}
+		else if (0 < pdrgpexprPredicates->Size())
+		{
+			// we have a HAVING clause on top of count(*), so we need to produce NULL in case when when
+			// HAVING predicate is false.
+			CExpression *pexprPred =
+				CPredicateUtils::PexprConjunction(mp, pdrgpexprPredicates);
+			*ppexprResidualScalar = GPOS_NEW(mp)
+				CExpression(mp, GPOS_NEW(mp) CScalarIf(mp, pmdidInt8),
+							pexprPred, pexprCoalesce,
+							CUtils::PexprScalarConstInt8(mp, 0 /*value*/,
+														 true /*is_null*/));
+		}
 		else
 		{
 			// count(*) value can either be NULL (if produced by a lower outer join), or some value >= 0,
 			// we return coalesce(count(*), 0) in this case
 
 			*ppexprResidualScalar = pexprCoalesce;
+			pdrgpexprPredicates->Release();
 		}
 
 		return fSuccess;
@@ -792,6 +807,7 @@ CSubqueryHandler::FCreateOuterApplyForScalarSubquery(
 
 	// residual scalar uses the computed subquery column
 	*ppexprResidualScalar = CUtils::PexprScalarIdent(mp, pcrComputed);
+	pdrgpexprPredicates->Release();
 	return fSuccess;
 }
 
