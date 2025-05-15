@@ -2092,7 +2092,8 @@ CUtils::FHasCountAggMatchingColumn(CMemoryPool *mp,
 										   ppdrgpexprPredicates))
 			{
 				if (nullptr != ppdrgpexprPredicates &&
-					COperator::EopLogicalSelect == pop->Eopid())
+					COperator::EopLogicalSelect == pop->Eopid() &&
+					arity > 1)
 				{
 					CExpression *pexprPred = (*pexpr)[1];
 					pexprPred->AddRef();
