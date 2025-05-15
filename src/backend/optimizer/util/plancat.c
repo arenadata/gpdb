@@ -588,28 +588,40 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 
 			tuple_width = get_rel_data_width(rel, attr_widths);
 
-			if (RelationIsAoRows(rel))
-			{
+			if (tuple_width == 0)
 				/*
-				 * Row oriented relations store memtuples, that have a header,
-				 * plus storage is done in VarBlock, which has item-offsets
-				 * array with at 2 or 3 byte offsets. For simplicity, in our
-				 * rough estimation we consider only 2 byte offsets. Thus, we
-				 * add (2 + header size) to the tuple width.
+				 * If the relation has 0 columns, set the same value for tuple
+				 * count, as we would get if we run ANALYZE on the relation.
 				 */
-				tuple_width += (offsetof(MemTupleData, PRIVATE_mt_bits) + 2);
-			}
-			else if (!RelationIsAoCols(rel))
+				*tuples = 1;
+			else
 			{
-				/* do the adjustment for heap relations */
-				tuple_width += sizeof(HeapTupleHeaderData);
-				tuple_width += sizeof(ItemPointerData);
-			}
+				if (RelationIsAoRows(rel))
+				{
+					/*
+					 * Row oriented relations store memtuples, that have a
+					 * header, plus storage is done in VarBlock, which has
+					 * item-offsets array with at 2 or 3 byte offsets. For
+					 * simplicity, in our rough estimation we consider only 2
+					 * byte offsets. Thus, we add (2 + header size) to the
+					 * tuple width.
+					 */
+					tuple_width +=
+						(offsetof(MemTupleData, PRIVATE_mt_bits) + 2);
+				}
+				else if (!RelationIsAoCols(rel))
+				{
+					/* do the adjustment for heap relations */
+					tuple_width += sizeof(HeapTupleHeaderData);
+					tuple_width += sizeof(ItemPointerData);
+				}
 
-			/* note: integer division is intentional here */
-			density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
+				/* note: integer division is intentional here */
+				density = (BLCKSZ - SizeOfPageHeaderData) / tuple_width;
+			}
 		}
-		*tuples = rint(density * (double) curpages);
+		if (*tuples < 0)
+			*tuples = rint(density * (double) curpages);
 	}
 
 	/*
