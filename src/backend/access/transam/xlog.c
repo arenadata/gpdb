@@ -10788,8 +10788,7 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 	}
 	else if (info == XLOG_PENDING_DELETE)
 	{
-		if (IsCrashRecoveryOnly())
-			PdlRedoXLogRecord(record);
+		PdlRedoXLogRecord(record);
 	}
 }
 
