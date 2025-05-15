@@ -2691,8 +2691,41 @@ distributed by (col_1);
 -- explain_processing_off
 explain select count(1) from test_table;
 
+-- Check 0 column tables
 drop table test_table;
+create table test_table();
+-- explain_processing_off
+explain select * from test_table;
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=row);
+-- explain_processing_off
+explain select * from test_table;
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=column);
+-- explain_processing_off
+explain select * from test_table;
+
 reset gp_enable_relsize_collection;
+
+-- Check 0 column tables with default gp_enable_relsize_collection
+drop table test_table;
+create table test_table();
+-- explain_processing_off
+explain select * from test_table;
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=row);
+-- explain_processing_off
+explain select * from test_table;
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=column);
+-- explain_processing_off
+explain select * from test_table;
+
+drop table test_table;
 reset gp_autostats_mode;
 
 -- start_ignore

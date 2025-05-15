@@ -4687,8 +4687,88 @@ explain select count(1) from test_table;
  Optimizer: Pivotal Optimizer (GPORCA)
 (5 rows)
 
+-- Check 0 column tables
 drop table test_table;
+create table test_table();
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+WARNING:  creating a table with no columns.
+-- explain_processing_off
+explain select * from test_table;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..430.00 rows=1 width=1)
+   ->  Seq Scan on test_table  (cost=0.00..430.00 rows=1 width=1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(3 rows)
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=row);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+WARNING:  creating a table with no columns.
+-- explain_processing_off
+explain select * from test_table;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..430.00 rows=1 width=1)
+   ->  Seq Scan on test_table  (cost=0.00..430.00 rows=1 width=1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(3 rows)
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=column);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+WARNING:  creating a table with no columns.
+-- explain_processing_off
+explain select * from test_table;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..430.00 rows=1 width=1)
+   ->  Seq Scan on test_table  (cost=0.00..430.00 rows=1 width=1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(3 rows)
+
 reset gp_enable_relsize_collection;
+-- Check 0 column tables with default gp_enable_relsize_collection
+drop table test_table;
+create table test_table();
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+WARNING:  creating a table with no columns.
+-- explain_processing_off
+explain select * from test_table;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..430.00 rows=1 width=1)
+   ->  Seq Scan on test_table  (cost=0.00..430.00 rows=1 width=1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(3 rows)
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=row);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+WARNING:  creating a table with no columns.
+-- explain_processing_off
+explain select * from test_table;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..430.00 rows=1 width=1)
+   ->  Seq Scan on test_table  (cost=0.00..430.00 rows=1 width=1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(3 rows)
+
+drop table test_table;
+create table test_table() with (APPENDONLY=true, ORIENTATION=column);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.
+WARNING:  creating a table with no columns.
+-- explain_processing_off
+explain select * from test_table;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)  (cost=0.00..430.00 rows=1 width=1)
+   ->  Seq Scan on test_table  (cost=0.00..430.00 rows=1 width=1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(3 rows)
+
+drop table test_table;
 reset gp_autostats_mode;
 -- start_ignore
 drop schema qp_misc_jiras cascade;
