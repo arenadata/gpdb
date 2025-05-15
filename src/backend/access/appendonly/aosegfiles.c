@@ -1045,32 +1045,20 @@ GetSegFilesTotalsCluster(Relation parentrel, FileSegTotals * totals)
 
 			Datum		datum_totalbytes =
 				SPI_getbinval(tuple, tupdesc, 2, &isnull);
-			if (isnull)
-				totals->totalbytes = 0;
-			else
-				totals->totalbytes = DatumGetInt64(datum_totalbytes);
+			totals->totalbytes = DatumGetInt64(datum_totalbytes);
 
 			Datum		datum_totaltuples =
 				SPI_getbinval(tuple, tupdesc, 3, &isnull);
-			if (isnull)
-				totals->totaltuples = 0;
-			else
-				totals->totaltuples = DatumGetInt64(datum_totaltuples);
+			totals->totaltuples = DatumGetInt64(datum_totaltuples);
 
 			Datum		datum_totalvarblocks =
 				SPI_getbinval(tuple, tupdesc, 4, &isnull);
-			if (isnull)
-				totals->totalvarblocks = 0;
-			else
-				totals->totalvarblocks = DatumGetInt64(datum_totalvarblocks);
+			totals->totalvarblocks = DatumGetInt64(datum_totalvarblocks);
 
 			Datum		datum_totalbytesuncompressed =
 				SPI_getbinval(tuple, tupdesc, 5, &isnull);
-			if (isnull)
-				totals->totalbytesuncompressed = 0;
-			else
-				totals->totalbytesuncompressed =
-					DatumGetInt64(datum_totalbytesuncompressed);
+			totals->totalbytesuncompressed =
+				DatumGetInt64(datum_totalbytesuncompressed);
 		}
 
 		connected = false;
