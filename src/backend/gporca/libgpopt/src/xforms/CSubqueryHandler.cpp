@@ -736,7 +736,7 @@ CSubqueryHandler::FCreateOuterApplyForScalarSubquery(
 	const CLogicalGbAgg *pgbAgg = nullptr;
 	CExpressionArray *pdrgpexprPredicates = GPOS_NEW(mp) CExpressionArray(mp);
 	BOOL fHasCountAggMatchingColumn = CUtils::FHasCountAggMatchingColumn(
-		(*pexprSubquery)[0], colref, &pgbAgg, pdrgpexprPredicates);
+		mp, (*pexprSubquery)[0], colref, &pgbAgg, &pdrgpexprPredicates);
 
 	if (!fHasCountAggMatchingColumn)
 	{
