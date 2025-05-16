@@ -4854,11 +4854,7 @@ EndTransactionBlock(bool chain)
 						 errmsg("%s can only be used in transaction blocks",
 								"COMMIT AND CHAIN")));
 			else
-<<<<<<< HEAD
 				ereport((Gp_role == GP_ROLE_EXECUTE) ? DEBUG2 : WARNING,
-=======
-				ereport(WARNING,
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 						 errmsg("there is no transaction in progress")));
 			result = true;
@@ -4981,11 +4977,7 @@ UserAbortTransactionBlock(bool chain)
 						 errmsg("%s can only be used in transaction blocks",
 								"ROLLBACK AND CHAIN")));
 			else
-<<<<<<< HEAD
 				ereport((Gp_role == GP_ROLE_EXECUTE) ? DEBUG2 : WARNING,
-=======
-				ereport(WARNING,
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 						 errmsg("there is no transaction in progress")));
 			s->blockState = TBLOCK_ABORT_PENDING;
