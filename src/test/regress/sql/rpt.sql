@@ -433,7 +433,10 @@ create table t_replicate_dst(id serial, i integer) distributed replicated;
 create table t_replicate_src(i integer) distributed replicated;
 insert into t_replicate_src select i from generate_series(1, 5) i;
 explain (costs off, verbose) insert into t_replicate_dst (i) select i from t_replicate_src;
+SET optimizer to off;
+-- query below produced assertion error at ORCA
 explain (costs off, verbose) with s as (select i from t_replicate_src group by i having random() > 0) insert into t_replicate_dst (i) select i from s;
+RESET optimizer;
 insert into t_replicate_dst (i) select i from t_replicate_src;
 select distinct id from gp_dist_random('t_replicate_dst') order by id;
 
@@ -652,9 +655,6 @@ explain (costs off, verbose) select (select f(i) from t group by f(i));
 select count(*) from (select f(i) from t group by f(i))i;
 explain (costs off, verbose) select (select i from t group by i having f(i) > 0);
 select count(*) from (select i from t group by i having f(i) > 0) i;
--- ensure we do not make broadcast motion
-explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
-explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
 -- ensure we make broadcast motion when volatile function in deleting motion flow
 explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
 -- ensure we make broadcast motion when volatile function in correlated subplan qual

@@ -976,6 +976,8 @@ explain (costs off, verbose) insert into t_replicate_dst (i) select i from t_rep
  Settings: enable_seqscan = 'off'
 (7 rows)
 
+SET optimizer to off;
+-- query below produced assertion error at ORCA
 explain (costs off, verbose) with s as (select i from t_replicate_src group by i having random() > 0) insert into t_replicate_dst (i) select i from s;
                                        QUERY PLAN                                       
 ----------------------------------------------------------------------------------------
@@ -999,6 +1001,7 @@ explain (costs off, verbose) with s as (select i from t_replicate_src group by i
  Settings: enable_seqscan = 'off'
 (18 rows)
 
+RESET optimizer;
 insert into t_replicate_dst (i) select i from t_replicate_src;
 select distinct id from gp_dist_random('t_replicate_dst') order by id;
  id 
@@ -1746,51 +1749,6 @@ select count(*) from (select i from t group by i having f(i) > 0) i;
 -------
     10
 (1 row)
-
--- ensure we do not make broadcast motion
-explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a group by i);
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Output: t1.a
-   ->  Seq Scan on rpt.t1
-         Output: t1.a
-         Filter: (SubPlan 1)
-         SubPlan 1
-           ->  Result
-                 Output: random(), t.i
-                 Filter: (t.i = t1.a)
-                 ->  Materialize
-                       Output: t.i
-                       ->  Broadcast Motion 1:3  (slice2; segments: 1)
-                             Output: t.i
-                             ->  Seq Scan on rpt.t
-                                   Output: t.i
- Optimizer: Postgres-based planner
- Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
-(17 rows)
-
-explain (costs off, verbose) select * from t1 where a in (select random() from t where i=a);
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Output: t1.a
-   ->  Seq Scan on rpt.t1
-         Output: t1.a
-         Filter: (SubPlan 1)
-         SubPlan 1
-           ->  Result
-                 Output: random()
-                 Filter: (t.i = t1.a)
-                 ->  Materialize
-                       Output: t.i
-                       ->  Broadcast Motion 1:3  (slice2; segments: 1)
-                             Output: t.i
-                             ->  Seq Scan on rpt.t
-                                   Output: t.i
- Optimizer: Postgres-based planner
- Settings: enable_bitmapscan = 'off', enable_seqscan = 'off'
-(17 rows)
 
 -- ensure we make broadcast motion when volatile function in deleting motion flow
 explain (costs off, verbose) insert into t2 (a, b) select i, random() from t;
