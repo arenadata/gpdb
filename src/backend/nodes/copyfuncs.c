@@ -1158,6 +1158,7 @@ _copyHashJoin(const HashJoin *from)
 	 * copy remainder of node
 	 */
 	COPY_NODE_FIELD(hashclauses);
+<<<<<<< HEAD
 	COPY_NODE_FIELD(hashqualclauses);
 
 	return newnode;
@@ -1178,6 +1179,11 @@ _copyShareInputScan(const ShareInputScan *from)
 	COPY_SCALAR_FIELD(producer_slice_id);
 	COPY_SCALAR_FIELD(this_slice_id);
 	COPY_SCALAR_FIELD(nconsumers);
+=======
+	COPY_NODE_FIELD(hashoperators);
+	COPY_NODE_FIELD(hashcollations);
+	COPY_NODE_FIELD(hashkeys);
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	return newnode;
 }
@@ -1366,6 +1372,7 @@ _copyHash(const Hash *from)
 	/*
 	 * copy remainder of node
 	 */
+	COPY_NODE_FIELD(hashkeys);
 	COPY_SCALAR_FIELD(skewTable);
 	COPY_SCALAR_FIELD(skewColumn);
 	COPY_SCALAR_FIELD(skewInherit);
@@ -4148,6 +4155,18 @@ _copyCreateStatsStmt(const CreateStatsStmt *from)
 	return newnode;
 }
 
+static AlterStatsStmt *
+_copyAlterStatsStmt(const AlterStatsStmt *from)
+{
+	AlterStatsStmt *newnode = makeNode(AlterStatsStmt);
+
+	COPY_NODE_FIELD(defnames);
+	COPY_SCALAR_FIELD(stxstattarget);
+	COPY_SCALAR_FIELD(missing_ok);
+
+	return newnode;
+}
+
 static CreateFunctionStmt *
 _copyCreateFunctionStmt(const CreateFunctionStmt *from)
 {
@@ -6294,6 +6313,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_CreateStatsStmt:
 			retval = _copyCreateStatsStmt(from);
+			break;
+		case T_AlterStatsStmt:
+			retval = _copyAlterStatsStmt(from);
 			break;
 		case T_CreateFunctionStmt:
 			retval = _copyCreateFunctionStmt(from);

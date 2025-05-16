@@ -20,8 +20,11 @@
 #include "access/amapi.h"
 #include "access/itup.h"
 #include "access/sdir.h"
+<<<<<<< HEAD
 #include "common/hashfn.h"
 #include "fmgr.h"
+=======
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #include "lib/stringinfo.h"
 #include "storage/bufmgr.h"
 #include "storage/lockdefs.h"
@@ -252,7 +255,7 @@ typedef struct HashMetaPageData
 	uint32		hashm_maxbucket;	/* ID of maximum bucket in use */
 	uint32		hashm_highmask; /* mask to modulo into entire table */
 	uint32		hashm_lowmask;	/* mask to modulo into lower half of table */
-	uint32		hashm_ovflpoint;	/* splitpoint from which ovflpgs being
+	uint32		hashm_ovflpoint;	/* splitpoint from which ovflpage being
 									 * allocated */
 	uint32		hashm_firstfree;	/* lowest-number free ovflpage (bit#) */
 	uint32		hashm_nmaps;	/* number of bitmap pages */

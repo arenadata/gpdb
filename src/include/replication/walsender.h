@@ -14,9 +14,12 @@
 
 #include <signal.h>
 
+<<<<<<< HEAD
 #include "fmgr.h"
 #include "access/xlogdefs.h"
 
+=======
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 /*
  * What to do with a snapshot in create replication slot command.
  */

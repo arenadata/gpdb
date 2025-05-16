@@ -151,8 +151,13 @@ step:
 				$$ = pg_malloc(sizeof(Step));
 				$$->name = $2;
 				$$->sql = $3;
+<<<<<<< HEAD
 				$$->session = -1; /* until filled */
 				$$->used = false;
+=======
+				$$->used = false;
+				$$->errormsg = NULL;
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 			}
 		;
 

@@ -889,11 +889,12 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		pull_up_sublinks(root);
 
 	/*
-	 * Scan the rangetable for set-returning functions, and inline them if
-	 * possible (producing subqueries that might get pulled up next).
-	 * Recursion issues here are handled in the same way as for SubLinks.
+	 * Scan the rangetable for function RTEs, do const-simplification on them,
+	 * and then inline them if possible (producing subqueries that might get
+	 * pulled up next).  Recursion issues here are handled in the same way as
+	 * for SubLinks.
 	 */
-	inline_set_returning_functions(root);
+	preprocess_function_rtes(root);
 
 	/*
 	 * Check to see if any subqueries in the jointree can be merged into this
@@ -1359,7 +1360,9 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	}
 
 	/*
-	 * Simplify constant expressions.
+	 * Simplify constant expressions.  For function RTEs, this was already
+	 * done by preprocess_function_rtes ... but we have to do it again if the
+	 * RTE is LATERAL and might have contained join alias variables.
 	 *
 	 * Note: an essential effect of this is to convert named-argument function
 	 * calls to positional notation and insert the current actual values of
@@ -1373,7 +1376,9 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 * careful to maintain AND/OR flatness --- that is, do not generate a tree
 	 * with AND directly under AND, nor OR directly under OR.
 	 */
-	expr = eval_const_expressions(root, expr);
+	if (!(kind == EXPRKIND_RTFUNC ||
+		  (kind == EXPRKIND_RTFUNC_LATERAL && !root->hasJoinRTEs)))
+		expr = eval_const_expressions(root, expr);
 
 	/*
 	 * If it's a qual or havingQual, canonicalize it.
@@ -4190,10 +4195,6 @@ reorder_grouping_sets(List *groupingsets, List *sortclause)
 			}
 		}
 
-		/*
-		 * Safe to use list_concat (which shares cells of the second arg)
-		 * because we know that new_elems does not share cells with anything.
-		 */
 		previous = list_concat(previous, new_elems);
 
 		gs->set = list_copy(previous);
@@ -4861,9 +4862,30 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   gd->rollups);
 
 		/*
+<<<<<<< HEAD
 		 * dNumGroupsTotal is the total number of groups across all segments. If the
 		 * Aggregate is distributed, then the number of groups in one segment
 		 * is only a fraction of the total.
+=======
+		 * If the input is coincidentally sorted usefully (which can happen
+		 * even if is_sorted is false, since that only means that our caller
+		 * has set up the sorting for us), then save some hashtable space by
+		 * making use of that. But we need to watch out for degenerate cases:
+		 *
+		 * 1) If there are any empty grouping sets, then group_pathkeys might
+		 * be NIL if all non-empty grouping sets are unsortable. In this case,
+		 * there will be a rollup containing only empty groups, and the
+		 * pathkeys_contained_in test is vacuously true; this is ok.
+		 *
+		 * XXX: the above relies on the fact that group_pathkeys is generated
+		 * from the first rollup. If we add the ability to consider multiple
+		 * sort orders for grouping input, this assumption might fail.
+		 *
+		 * 2) If there are no empty sets and only unsortable sets, then the
+		 * rollups list will be empty (and thus l_start == NULL), and
+		 * group_pathkeys will be NIL; we must ensure that the vacuously-true
+		 * pathkeys_contained_in test doesn't cause us to crash.
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 		 */
 		if (CdbPathLocus_IsPartitioned(path->locus))
 			dNumGroups = clamp_row_est(dNumGroupsTotal /
@@ -4903,6 +4925,88 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   parse->groupClause,
 											   srd->new_rollups);
 
+<<<<<<< HEAD
+=======
+		for_each_cell(lc, gd->rollups, l_start)
+		{
+			RollupData *rollup = lfirst_node(RollupData, lc);
+
+			/*
+			 * If we find an unhashable rollup that's not been skipped by the
+			 * "actually sorted" check above, we can't cope; we'd need sorted
+			 * input (with a different sort order) but we can't get that here.
+			 * So bail out; we'll get a valid path from the is_sorted case
+			 * instead.
+			 *
+			 * The mere presence of empty grouping sets doesn't make a rollup
+			 * unhashable (see preprocess_grouping_sets), we handle those
+			 * specially below.
+			 */
+			if (!rollup->hashable)
+				return;
+
+			sets_data = list_concat(sets_data, rollup->gsets_data);
+		}
+		foreach(lc, sets_data)
+		{
+			GroupingSetData *gs = lfirst_node(GroupingSetData, lc);
+			List	   *gset = gs->set;
+			RollupData *rollup;
+
+			if (gset == NIL)
+			{
+				/* Empty grouping sets can't be hashed. */
+				empty_sets_data = lappend(empty_sets_data, gs);
+				empty_sets = lappend(empty_sets, NIL);
+			}
+			else
+			{
+				rollup = makeNode(RollupData);
+
+				rollup->groupClause = preprocess_groupclause(root, gset);
+				rollup->gsets_data = list_make1(gs);
+				rollup->gsets = remap_to_groupclause_idx(rollup->groupClause,
+														 rollup->gsets_data,
+														 gd->tleref_to_colnum_map);
+				rollup->numGroups = gs->numGroups;
+				rollup->hashable = true;
+				rollup->is_hashed = true;
+				new_rollups = lappend(new_rollups, rollup);
+			}
+		}
+
+		/*
+		 * If we didn't find anything nonempty to hash, then bail.  We'll
+		 * generate a path from the is_sorted case.
+		 */
+		if (new_rollups == NIL)
+			return;
+
+		/*
+		 * If there were empty grouping sets they should have been in the
+		 * first rollup.
+		 */
+		Assert(!unhashed_rollup || !empty_sets);
+
+		if (unhashed_rollup)
+		{
+			new_rollups = lappend(new_rollups, unhashed_rollup);
+			strat = AGG_MIXED;
+		}
+		else if (empty_sets)
+		{
+			RollupData *rollup = makeNode(RollupData);
+
+			rollup->groupClause = NIL;
+			rollup->gsets_data = empty_sets_data;
+			rollup->gsets = empty_sets;
+			rollup->numGroups = list_length(empty_sets);
+			rollup->hashable = false;
+			rollup->is_hashed = false;
+			new_rollups = lappend(new_rollups, rollup);
+			strat = AGG_MIXED;
+		}
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 		add_path(grouped_rel, (Path *)
 				 create_groupingsets_path(root,
@@ -5050,7 +5154,7 @@ consider_groupingsets_paths(PlannerInfo *root,
 					{
 						if (bms_is_member(i, hash_items))
 							hash_sets = list_concat(hash_sets,
-													list_copy(rollup->gsets_data));
+													rollup->gsets_data);
 						else
 							rollups = lappend(rollups, rollup);
 						++i;
@@ -5865,7 +5969,7 @@ make_group_input_target(PlannerInfo *root, PathTarget *final_target)
  * a regular aggregation node would, plus any aggregates used in HAVING;
  * except that the Aggref nodes should be marked as partial aggregates.
  *
- * In addition, we'd better emit any Vars and PlaceholderVars that are
+ * In addition, we'd better emit any Vars and PlaceHolderVars that are
  * used outside of Aggrefs in the aggregation tlist and HAVING.  (Presumably,
  * these would be Vars that are grouped by or used in grouping expressions.)
  *
@@ -6355,8 +6459,7 @@ make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
 				 errdetail("Window ordering columns must be of sortable datatypes.")));
 
 	/* Okay, make the combined pathkeys */
-	window_sortclauses = list_concat(list_copy(wc->partitionClause),
-									 list_copy(wc->orderClause));
+	window_sortclauses = list_concat_copy(wc->partitionClause, wc->orderClause);
 	window_pathkeys = make_pathkeys_for_sortclauses(root,
 													window_sortclauses,
 													tlist);

@@ -116,8 +116,8 @@ int			synchronous_commit = SYNCHRONOUS_COMMIT_ON;
  * in the user backend, so we need some additional bookkeeping.
  *
  * XactTopFullTransactionId stores the XID of our toplevel transaction, which
- * will be the same as TopTransactionState.fullTransactionId in an ordinary
- * backend; but in a parallel backend, which does not have the entire
+ * will be the same as TopTransactionStateData.fullTransactionId in an
+ * ordinary backend; but in a parallel backend, which does not have the entire
  * transaction state, it will instead be copied from the backend that started
  * the parallel operation.
  *
@@ -1521,7 +1521,7 @@ RecordTransactionCommit(void)
 	if (!markXidCommitted)
 	{
 		/*
-		 * We expect that every smgrscheduleunlink is followed by a catalog
+		 * We expect that every RelationDropStorage is followed by a catalog
 		 * update, and hence XID assignment, so we shouldn't get here with any
 		 * pending deletes.  Use a real test not just an Assert to check this,
 		 * since it's a bit fragile.
@@ -4854,7 +4854,11 @@ EndTransactionBlock(bool chain)
 						 errmsg("%s can only be used in transaction blocks",
 								"COMMIT AND CHAIN")));
 			else
+<<<<<<< HEAD
 				ereport((Gp_role == GP_ROLE_EXECUTE) ? DEBUG2 : WARNING,
+=======
+				ereport(WARNING,
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 						 errmsg("there is no transaction in progress")));
 			result = true;
@@ -4977,7 +4981,11 @@ UserAbortTransactionBlock(bool chain)
 						 errmsg("%s can only be used in transaction blocks",
 								"ROLLBACK AND CHAIN")));
 			else
+<<<<<<< HEAD
 				ereport((Gp_role == GP_ROLE_EXECUTE) ? DEBUG2 : WARNING,
+=======
+				ereport(WARNING,
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 						(errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
 						 errmsg("there is no transaction in progress")));
 			s->blockState = TBLOCK_ABORT_PENDING;

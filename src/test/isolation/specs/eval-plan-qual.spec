@@ -49,7 +49,11 @@ setup
   r bool;
   BEGIN
   EXECUTE format('SELECT $1 %s $2', p_op) INTO r USING p_a, p_b;
+<<<<<<< HEAD
   RAISE WARNING '%: % % % % %: %', p_comment, pg_typeof(p_a), p_a, p_op, pg_typeof(p_b), p_b, r;
+=======
+  RAISE NOTICE '%: % % % % %: %', p_comment, pg_typeof(p_a), p_a, p_op, pg_typeof(p_b), p_b, r;
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
   RETURN r;
   END;$$;
 }

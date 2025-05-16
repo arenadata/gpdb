@@ -186,15 +186,25 @@ NOTICE:  should see this only if -100 fits in smallint
 --
 -- test foreign key error trapping
 --
+<<<<<<< HEAD
 create temp table master(f1 int primary key);
 create temp table slave(f1 int references master deferrable);
 insert into master values(1);
 insert into slave values(1);
 insert into slave values(2);	-- fails
+=======
+create temp table root(f1 int primary key);
+create temp table leaf(f1 int references root deferrable);
+insert into root values(1);
+insert into leaf values(1);
+insert into leaf values(2);	-- fails
+ERROR:  insert or update on table "leaf" violates foreign key constraint "leaf_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "root".
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 create function trap_foreign_key(int) returns int as $$
 begin
 	begin	-- start a subtransaction
-		insert into slave values($1);
+		insert into leaf values($1);
 	exception
 		when foreign_key_violation then
 			raise notice 'caught foreign_key_violation';
@@ -235,6 +245,11 @@ begin;
 
   savepoint x;
     set constraints all immediate; -- fails
+<<<<<<< HEAD
+=======
+ERROR:  insert or update on table "leaf" violates foreign key constraint "leaf_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "root".
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
   rollback to x;
   select trap_foreign_key_2();  -- detects FK violation
  trap_foreign_key_2 
@@ -243,5 +258,10 @@ begin;
 (1 row)
 
 commit;				-- still fails
+<<<<<<< HEAD
+=======
+ERROR:  insert or update on table "leaf" violates foreign key constraint "leaf_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "root".
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 drop function trap_foreign_key(int);
 drop function trap_foreign_key_2();

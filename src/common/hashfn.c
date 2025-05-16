@@ -158,10 +158,15 @@
  * by using the final values of both b and c.  b is perhaps a little less
  * well mixed than c, however.
  */
+<<<<<<< HEAD:src/common/hashfn.c
 uint32
 hash_bytes(const unsigned char *k, int keylen)
+=======
+Datum
+hash_any(const unsigned char *k, int keylen)
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/backend/utils/hash/hashfn.c
 {
-	register uint32 a,
+	uint32		a,
 				b,
 				c,
 				len;
@@ -174,7 +179,7 @@ hash_bytes(const unsigned char *k, int keylen)
 	if (((uintptr_t) k & UINT32_ALIGN_MASK) == 0)
 	{
 		/* Code path for aligned source data */
-		register const uint32 *ka = (const uint32 *) k;
+		const uint32 *ka = (const uint32 *) k;
 
 		/* handle most of the key */
 		while (len >= 12)
@@ -384,10 +389,16 @@ hash_bytes(const unsigned char *k, int keylen)
  *
  * Returns a uint64 value.  Otherwise similar to hash_bytes.
  */
+<<<<<<< HEAD:src/common/hashfn.c
 uint64
 hash_bytes_extended(const unsigned char *k, int keylen, uint64 seed)
+=======
+Datum
+hash_any_extended(const unsigned char *k, int keylen,
+				  uint64 seed)
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/backend/utils/hash/hashfn.c
 {
-	register uint32 a,
+	uint32		a,
 				b,
 				c,
 				len;
@@ -413,7 +424,7 @@ hash_bytes_extended(const unsigned char *k, int keylen, uint64 seed)
 	if (((uintptr_t) k & UINT32_ALIGN_MASK) == 0)
 	{
 		/* Code path for aligned source data */
-		register const uint32 *ka = (const uint32 *) k;
+		const uint32 *ka = (const uint32 *) k;
 
 		/* handle most of the key */
 		while (len >= 12)
@@ -625,7 +636,7 @@ hash_bytes_extended(const unsigned char *k, int keylen, uint64 seed)
 uint32
 hash_bytes_uint32(uint32 k)
 {
-	register uint32 a,
+	uint32		a,
 				b,
 				c;
 
@@ -646,7 +657,7 @@ hash_bytes_uint32(uint32 k)
 uint64
 hash_bytes_uint32_extended(uint32 k, uint64 seed)
 {
-	register uint32 a,
+	uint32		a,
 				b,
 				c;
 

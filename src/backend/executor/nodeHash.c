@@ -174,7 +174,8 @@ MultiExecPrivateHash(HashState *node)
 	SIMPLE_FAULT_INJECTOR("multi_exec_hash_large_vmem");
 
 	/*
-	 * get all inner tuples and insert into the hash table (or temp files)
+	 * Get all tuples from the node below the Hash node and insert into the
+	 * hash table (or temp files).
 	 */
 	for (;;)
 	{
@@ -183,10 +184,15 @@ MultiExecPrivateHash(HashState *node)
 			break;
 
 		/* We have to compute the hash value */
+<<<<<<< HEAD
 		econtext->ecxt_innertuple = slot;
 		bool hashkeys_null = false;
 
 		if (ExecHashGetHashValue(node, hashtable, econtext, hashkeys,
+=======
+		econtext->ecxt_outertuple = slot;
+		if (ExecHashGetHashValue(hashtable, econtext, hashkeys,
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 								 false, hashtable->keepNulls,
 								 &hashvalue, &hashkeys_null))
 		{
@@ -316,8 +322,13 @@ MultiExecParallelHash(HashState *node)
 				slot = ExecProcNode(outerNode);
 				if (TupIsNull(slot))
 					break;
+<<<<<<< HEAD
 				econtext->ecxt_innertuple = slot;
 				if (ExecHashGetHashValue(node, hashtable, econtext, hashkeys,
+=======
+				econtext->ecxt_outertuple = slot;
+				if (ExecHashGetHashValue(hashtable, econtext, hashkeys,
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 										 false, hashtable->keepNulls,
 										 &hashvalue, &hashkeys_null))
 					ExecParallelHashTableInsert(hashtable, slot, hashvalue);
@@ -423,8 +434,9 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 	/*
 	 * initialize child expressions
 	 */
-	hashstate->ps.qual =
-		ExecInitQual(node->plan.qual, (PlanState *) hashstate);
+	Assert(node->plan.qual == NIL);
+	hashstate->hashkeys =
+		ExecInitExprList(node->hashkeys, (PlanState *) hashstate);
 
 	return hashstate;
 }
@@ -1951,9 +1963,13 @@ ExecParallelHashTableInsertCurrentBatch(HashJoinTable hashtable,
  * ExecHashGetHashValue
  *		Compute the hash value for a tuple
  *
- * The tuple to be tested must be in either econtext->ecxt_outertuple or
- * econtext->ecxt_innertuple.  Vars in the hashkeys expressions should have
- * varno either OUTER_VAR or INNER_VAR.
+ * The tuple to be tested must be in econtext->ecxt_outertuple (thus Vars in
+ * the hashkeys expressions need to have OUTER_VAR as varno). If outer_tuple
+ * is false (meaning it's the HashJoin's inner node, Hash), econtext,
+ * hashkeys, and slot need to be from Hash, with hashkeys/slot referencing and
+ * being suitable for tuples from the node below the Hash. Conversely, if
+ * outer_tuple is true, econtext is from HashJoin, and hashkeys/slot need to
+ * be appropriate for tuples from HashJoin's outer node.
  *
  * A true result means the tuple's hash value has been successfully computed
  * and stored at *hashvalue.  A false result means the tuple cannot match

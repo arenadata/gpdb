@@ -4,6 +4,7 @@
 \echo Use "ALTER EXTENSION pageinspect UPDATE TO '1.8'" to load this file. \quit
 
 --
+<<<<<<< HEAD
 -- bm_metap()
 --
 CREATE FUNCTION bm_metap(IN relname text,
@@ -66,3 +67,14 @@ CREATE FUNCTION bm_bitmap_page_items(IN page bytea,
     RETURNS SETOF record
 AS 'MODULE_PATHNAME', 'bm_bitmap_page_items_bytea'
     LANGUAGE C STRICT PARALLEL SAFE;
+=======
+-- heap_tuple_infomask_flags()
+--
+CREATE FUNCTION heap_tuple_infomask_flags(
+       t_infomask integer,
+       t_infomask2 integer,
+       decode_combined boolean DEFAULT false)
+RETURNS text[]
+AS 'MODULE_PATHNAME', 'heap_tuple_infomask_flags'
+LANGUAGE C STRICT PARALLEL SAFE;
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8

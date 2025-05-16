@@ -397,6 +397,7 @@ extern PGPROC *AuxiliaryPidGetProc(int pid);
 extern void BecomeLockGroupLeader(void);
 extern bool BecomeLockGroupMember(PGPROC *leader, int pid);
 
+<<<<<<< HEAD
 extern int ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet);
 
 extern void ResLockWaitCancel(void);
@@ -404,3 +405,6 @@ extern bool ProcCanSetMppSessionId(void);
 extern void ProcNewMppSessionId(int *newSessionId);
 
 #endif							/* PROC_H */
+=======
+#endif							/* _PROC_H_ */
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8

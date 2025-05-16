@@ -20,8 +20,12 @@
 
 #include "postgres.h"
 
+<<<<<<< HEAD
 #include "access/heapam.h"
 #include "access/tuptoaster.h"
+=======
+#include "access/detoast.h"
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #include "executor/tstoreReceiver.h"
 
 

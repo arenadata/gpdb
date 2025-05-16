@@ -107,6 +107,7 @@ where relname like '__star' order by relname;
  f_star  |        1 |        16
 (6 rows)
 
+<<<<<<< HEAD
 select relname, vacuum_count, analyze_count, autovacuum_count, autoanalyze_count
 from pg_stat_all_tables
 where relname like '__star' order by relname;
@@ -120,6 +121,8 @@ where relname like '__star' order by relname;
  f_star  |            0 |             1 |                0 |                 0
 (6 rows)
 
+=======
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 -- Disable Parallel Append
 alter table a_star reset (parallel_workers);
 alter table b_star reset (parallel_workers);

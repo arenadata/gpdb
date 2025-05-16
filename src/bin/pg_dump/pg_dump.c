@@ -1154,14 +1154,14 @@ help(const char *progname)
 	printf(_("  -c, --clean                  clean (drop) database objects before recreating\n"));
 	printf(_("  -C, --create                 include commands to create database in dump\n"));
 	printf(_("  -E, --encoding=ENCODING      dump the data in encoding ENCODING\n"));
-	printf(_("  -n, --schema=SCHEMA          dump the named schema(s) only\n"));
-	printf(_("  -N, --exclude-schema=SCHEMA  do NOT dump the named schema(s)\n"));
+	printf(_("  -n, --schema=PATTERN         dump the specified schema(s) only\n"));
+	printf(_("  -N, --exclude-schema=PATTERN do NOT dump the specified schema(s)\n"));
 	printf(_("  -O, --no-owner               skip restoration of object ownership in\n"
 			 "                               plain-text format\n"));
 	printf(_("  -s, --schema-only            dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME         superuser user name to use in plain-text format\n"));
-	printf(_("  -t, --table=TABLE            dump the named table(s) only\n"));
-	printf(_("  -T, --exclude-table=TABLE    do NOT dump the named table(s)\n"));
+	printf(_("  -t, --table=PATTERN          dump the specified table(s) only\n"));
+	printf(_("  -T, --exclude-table=PATTERN  do NOT dump the specified table(s)\n"));
 	printf(_("  -x, --no-privileges          do not dump privileges (grant/revoke)\n"));
 	printf(_("  --binary-upgrade             for use by upgrade utilities only\n"));
 	printf(_("  --column-inserts             dump data as INSERT commands with column names\n"));
@@ -1169,7 +1169,7 @@ help(const char *progname)
 	printf(_("  --disable-triggers           disable triggers during data-only restore\n"));
 	printf(_("  --enable-row-security        enable row security (dump only content user has\n"
 			 "                               access to)\n"));
-	printf(_("  --exclude-table-data=TABLE   do NOT dump data for the named table(s)\n"));
+	printf(_("  --exclude-table-data=PATTERN do NOT dump data for the specified table(s)\n"));
 	printf(_("  --extra-float-digits=NUM     override default setting for extra_float_digits\n"));
 	printf(_("  --if-exists                  use IF EXISTS when dropping objects\n"));
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
@@ -7442,7 +7442,12 @@ getExtendedStatistics(Archive *fout)
 	int			i_oid;
 	int			i_stxname;
 	int			i_stxnamespace;
+<<<<<<< HEAD
 	int			i_stxowner;
+=======
+	int			i_rolname;
+	int			i_stattarget;
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	int			i;
 
 	/* Extended statistics were new in v10 */
@@ -7451,9 +7456,22 @@ getExtendedStatistics(Archive *fout)
 
 	query = createPQExpBuffer();
 
+<<<<<<< HEAD
 	appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
 					  "stxnamespace, stxowner "
 					  "FROM pg_catalog.pg_statistic_ext");
+=======
+	if (fout->remoteVersion < 130000)
+		appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
+						  "stxnamespace, (%s stxowner) AS rolname, (-1) AS stxstattarget "
+						  "FROM pg_catalog.pg_statistic_ext",
+						  username_subquery);
+	else
+		appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
+						  "stxnamespace, (%s stxowner) AS rolname, stxstattarget "
+						  "FROM pg_catalog.pg_statistic_ext",
+						  username_subquery);
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -7463,7 +7481,12 @@ getExtendedStatistics(Archive *fout)
 	i_oid = PQfnumber(res, "oid");
 	i_stxname = PQfnumber(res, "stxname");
 	i_stxnamespace = PQfnumber(res, "stxnamespace");
+<<<<<<< HEAD
 	i_stxowner = PQfnumber(res, "stxowner");
+=======
+	i_rolname = PQfnumber(res, "rolname");
+	i_stattarget = PQfnumber(res, "stxstattarget");
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	statsextinfo = (StatsExtInfo *) pg_malloc(ntups * sizeof(StatsExtInfo));
 
@@ -7475,8 +7498,15 @@ getExtendedStatistics(Archive *fout)
 		AssignDumpId(&statsextinfo[i].dobj);
 		statsextinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_stxname));
 		statsextinfo[i].dobj.namespace =
+<<<<<<< HEAD
 			findNamespace(atooid(PQgetvalue(res, i, i_stxnamespace)));
 		statsextinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_stxowner));
+=======
+			findNamespace(fout,
+						  atooid(PQgetvalue(res, i, i_stxnamespace)));
+		statsextinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
+		statsextinfo[i].stattarget = atoi(PQgetvalue(res, i, i_stattarget));
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(statsextinfo[i].dobj), fout);
@@ -17822,6 +17852,19 @@ dumpStatisticsExt(Archive *fout, const StatsExtInfo *statsextinfo)
 	/* Result of pg_get_statisticsobjdef is complete except for semicolon */
 	appendPQExpBuffer(q, "%s;\n", stxdef);
 
+	/*
+	 * We only issue an ALTER STATISTICS statement if the stxstattarget entry
+	 * for this statictics object is non-negative (i.e. it's not the default
+	 * value).
+	 */
+	if (statsextinfo->stattarget >= 0)
+	{
+		appendPQExpBuffer(q, "ALTER STATISTICS %s ",
+						  fmtQualifiedDumpable(statsextinfo));
+		appendPQExpBuffer(q, "SET STATISTICS %d;\n",
+						  statsextinfo->stattarget);
+	}
+
 	appendPQExpBuffer(delq, "DROP STATISTICS %s;\n",
 					  fmtQualifiedDumpable(statsextinfo));
 
@@ -19129,7 +19172,7 @@ processExtensionTables(Archive *fout, ExtensionInfo extinfo[],
 	}
 
 	/*
-	 * Now that all the TableInfoData objects have been created for all the
+	 * Now that all the TableDataInfo objects have been created for all the
 	 * extensions, check their FK dependencies and register them to try and
 	 * dump the data out in an order that they can be restored in.
 	 *
@@ -19257,21 +19300,28 @@ getDependencies(Archive *fout)
 	 * entries will have dependencies on their parent opfamily, which we
 	 * should drop since they'd likewise become useless self-dependencies.
 	 * (But be sure to keep deps on *other* opfamilies; see amopsortfamily.)
+	 *
+	 * Skip this for pre-8.3 source servers: pg_opfamily doesn't exist there,
+	 * and the (known) cases where it would matter to have these dependencies
+	 * can't arise anyway.
 	 */
-	appendPQExpBufferStr(query, "UNION ALL\n"
-						 "SELECT 'pg_opfamily'::regclass AS classid, amopfamily AS objid, refclassid, refobjid, deptype "
-						 "FROM pg_depend d, pg_amop o "
-						 "WHERE deptype NOT IN ('p', 'e', 'i') AND "
-						 "classid = 'pg_amop'::regclass AND objid = o.oid "
-						 "AND NOT (refclassid = 'pg_opfamily'::regclass AND amopfamily = refobjid)\n");
+	if (fout->remoteVersion >= 80300)
+	{
+		appendPQExpBufferStr(query, "UNION ALL\n"
+							 "SELECT 'pg_opfamily'::regclass AS classid, amopfamily AS objid, refclassid, refobjid, deptype "
+							 "FROM pg_depend d, pg_amop o "
+							 "WHERE deptype NOT IN ('p', 'e', 'i') AND "
+							 "classid = 'pg_amop'::regclass AND objid = o.oid "
+							 "AND NOT (refclassid = 'pg_opfamily'::regclass AND amopfamily = refobjid)\n");
 
-	/* Likewise for pg_amproc entries */
-	appendPQExpBufferStr(query, "UNION ALL\n"
-						 "SELECT 'pg_opfamily'::regclass AS classid, amprocfamily AS objid, refclassid, refobjid, deptype "
-						 "FROM pg_depend d, pg_amproc p "
-						 "WHERE deptype NOT IN ('p', 'e', 'i') AND "
-						 "classid = 'pg_amproc'::regclass AND objid = p.oid "
-						 "AND NOT (refclassid = 'pg_opfamily'::regclass AND amprocfamily = refobjid)\n");
+		/* Likewise for pg_amproc entries */
+		appendPQExpBufferStr(query, "UNION ALL\n"
+							 "SELECT 'pg_opfamily'::regclass AS classid, amprocfamily AS objid, refclassid, refobjid, deptype "
+							 "FROM pg_depend d, pg_amproc p "
+							 "WHERE deptype NOT IN ('p', 'e', 'i') AND "
+							 "classid = 'pg_amproc'::regclass AND objid = p.oid "
+							 "AND NOT (refclassid = 'pg_opfamily'::regclass AND amprocfamily = refobjid)\n");
+	}
 
 	/* Sort the output for efficiency below */
 	appendPQExpBufferStr(query, "ORDER BY 1,2");

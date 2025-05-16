@@ -259,11 +259,19 @@ checking       1050
 savings        600            
 
 starting permutation: wnested2 c1 c2 read
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -293,10 +301,17 @@ step wxext1: UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = '
 balance        
 
 400            
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -310,6 +325,7 @@ step wnested2:
     );
  <waiting ...>
 step c1: COMMIT;
+<<<<<<< HEAD
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 400 > numeric 200.0: t
 s2: WARNING:  upid: text checking = text checking: t
@@ -319,6 +335,17 @@ s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 400 > numeric 200.0: t
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 400 > numeric 200.0: t
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 400 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 400 > numeric 200.0: t
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: <... completed>
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
@@ -340,10 +367,17 @@ step wxext1: UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = '
 balance        
 
 400            
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -357,11 +391,19 @@ step wnested2:
     );
  <waiting ...>
 step c1: COMMIT;
+<<<<<<< HEAD
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 400 > numeric 200.0: t
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 200 > numeric 200.0: f
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 400 > numeric 200.0: t
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 200 > numeric 200.0: f
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: <... completed>
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
@@ -387,10 +429,17 @@ step wxext1: UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = '
 balance        
 
 200            
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -404,10 +453,17 @@ step wnested2:
     );
  <waiting ...>
 step c1: COMMIT;
+<<<<<<< HEAD
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 200 > numeric 200.0: f
 s2: WARNING:  lock_id: text savings = text checking: f
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 200 > numeric 200.0: f
+s2: NOTICE:  lock_id: text savings = text checking: f
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: <... completed>
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
@@ -429,10 +485,17 @@ step wxext1: UPDATE accounts_ext SET balance = balance - 200 WHERE accountid = '
 balance        
 
 200            
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -446,10 +509,17 @@ step wnested2:
     );
  <waiting ...>
 step c1: COMMIT;
+<<<<<<< HEAD
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 200 > numeric 200.0: f
 s2: WARNING:  lock_id: text savings = text checking: f
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 200 > numeric 200.0: f
+s2: NOTICE:  lock_id: text savings = text checking: f
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: <... completed>
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
@@ -464,10 +534,17 @@ balance
 
 400            
 step tocds1: UPDATE accounts SET accountid = 'cds' WHERE accountid = 'checking';
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -481,8 +558,13 @@ step wnested2:
     );
  <waiting ...>
 step c1: COMMIT;
+<<<<<<< HEAD
 s2: WARNING:  upid: text cds = text checking: f
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  upid: text cds = text checking: f
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: <... completed>
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;
@@ -497,10 +579,17 @@ balance
 
 400            
 step tocdsext1: UPDATE accounts_ext SET accountid = 'cds' WHERE accountid = 'checking';
+<<<<<<< HEAD
 s2: WARNING:  upid: text checking = text checking: t
 s2: WARNING:  up: numeric 600 > numeric 200.0: t
 s2: WARNING:  lock_id: text checking = text checking: t
 s2: WARNING:  lock_bal: numeric 600 > numeric 200.0: t
+=======
+s2: NOTICE:  upid: text checking = text checking: t
+s2: NOTICE:  up: numeric 600 > numeric 200.0: t
+s2: NOTICE:  lock_id: text checking = text checking: t
+s2: NOTICE:  lock_bal: numeric 600 > numeric 200.0: t
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: 
     UPDATE accounts SET balance = balance - 1200
     WHERE noisy_oper('upid', accountid, '=', 'checking')
@@ -514,9 +603,15 @@ step wnested2:
     );
  <waiting ...>
 step c1: COMMIT;
+<<<<<<< HEAD
 s2: WARNING:  lock_id: text cds = text checking: f
 s2: WARNING:  lock_id: text savings = text checking: f
 s2: WARNING:  upid: text savings = text checking: f
+=======
+s2: NOTICE:  lock_id: text cds = text checking: f
+s2: NOTICE:  lock_id: text savings = text checking: f
+s2: NOTICE:  upid: text savings = text checking: f
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 step wnested2: <... completed>
 step c2: COMMIT;
 step read: SELECT * FROM accounts ORDER BY accountid;

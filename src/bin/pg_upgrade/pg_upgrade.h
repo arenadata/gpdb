@@ -20,9 +20,6 @@
 /* Use port in the private/dynamic port number range */
 #define DEF_PGUPORT			50432
 
-/* Allocate for null byte */
-#define USER_NAME_SIZE		128
-
 #define MAX_STRING			1024
 #define QUERY_ALLOC			8192
 
@@ -215,9 +212,14 @@ typedef struct
 	/* Can't use NAMEDATALEN; not guaranteed to be same on client */
 	char	   *nspname;		/* namespace name */
 	char	   *relname;		/* relation name */
+<<<<<<< HEAD
 	Oid			reloid;			/* relation oid */
 	char		relstorage;
 	Oid			relfilenode;	/* relation relfile node */
+=======
+	Oid			reloid;			/* relation OID */
+	Oid			relfilenode;	/* relation file node */
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	Oid			indtable;		/* if index, OID of its table, else 0 */
 	Oid			toastheap;		/* if toast table, OID of base table, else 0 */
 	char	   *tablespace;		/* tablespace path; "" for cluster default */

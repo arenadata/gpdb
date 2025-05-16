@@ -565,6 +565,11 @@ SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1
 SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1';
         f1         
 -------------------
+<<<<<<< HEAD
+=======
+ (0,0)
+ (1e-300,-1e-300)
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
  (-3,4)
  (-10,0)
  (10,10)
@@ -572,7 +577,12 @@ SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' ORDER BY f1 <-> '0,1
  (5.1,34.5)
  (1e+300,Infinity)
  (NaN,NaN)
+<<<<<<< HEAD
 (7 rows)
+=======
+ 
+(10 rows)
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM point_tbl WHERE f1 IS NULL;
@@ -606,6 +616,11 @@ SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL O
 SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL ORDER BY f1 <-> '0,1';
         f1         
 -------------------
+<<<<<<< HEAD
+=======
+ (0,0)
+ (1e-300,-1e-300)
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
  (-3,4)
  (-10,0)
  (10,10)
@@ -613,7 +628,11 @@ SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 IS NOT NULL O
  (5.1,34.5)
  (1e+300,Infinity)
  (NaN,NaN)
+<<<<<<< HEAD
 (7 rows)
+=======
+(9 rows)
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 EXPLAIN (COSTS OFF)
 SELECT * FROM point_tbl WHERE NOT f1 ~= '(1e-300, -1e-300)' AND f1 <@ '(-10,-10),(10,10)':: box ORDER BY f1 <-> '0,1';

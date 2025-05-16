@@ -1,17 +1,17 @@
 /*-------------------------------------------------------------------------
  *
- * tuptoaster.h
- *	  POSTGRES definitions for external and compressed storage
+ * heaptoast.h
+ *	  Heap-specific definitions for external and compressed storage
  *	  of variable size attributes.
  *
  * Copyright (c) 2000-2019, PostgreSQL Global Development Group
  *
- * src/include/access/tuptoaster.h
+ * src/include/access/heaptoast.h
  *
  *-------------------------------------------------------------------------
  */
-#ifndef TUPTOASTER_H
-#define TUPTOASTER_H
+#ifndef HEAPTOAST_H
+#define HEAPTOAST_H
 
 #include "access/htup_details.h"
 #include "access/memtup.h"
@@ -22,13 +22,6 @@
 #define VARSIZE_TO_SHORT(PTR)   ((char)(VARSIZE(PTR)-VARHDRSZ+VARHDRSZ_SHORT) | 0x80)
 #define VARSIZE_TO_SHORT_D(D)   VARSIZE_TO_SHORT(DatumGetPointer(D))
 #endif 
-
-/*
- * This enables de-toasting of index entries.  Needed until VACUUM is
- * smart enough to rebuild indexes from scratch.
- */
-#define TOAST_INDEX_HACK
-
 
 /*
  * Find the maximum size of a tuple if there are to be N tuples per page.
@@ -101,6 +94,7 @@
 	 sizeof(int32) -									\
 	 VARHDRSZ)
 
+<<<<<<< HEAD:src/include/access/tuptoaster.h
 /* Size of an EXTERNAL datum that contains a standard TOAST pointer */
 #define TOAST_POINTER_SIZE (VARHDRSZ_EXTERNAL + sizeof(varatt_external))
 
@@ -134,6 +128,8 @@ do { \
 
 #define SET_VARSIZE_C(PTR)			(((varattrib_1b *) (PTR))->va_header |= 0x40)
 
+=======
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/include/access/heaptoast.h
 /* ----------
  * toast_insert_or_update -
  *
@@ -165,6 +161,7 @@ extern MemTuple toast_insert_or_update_memtup(Relation rel,
 extern void toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative);
 
 /* ----------
+<<<<<<< HEAD:src/include/access/tuptoaster.h
  * toast_delete_datum -
  *
  *	Delete a single external stored value.
@@ -219,6 +216,8 @@ extern struct varlena *heap_tuple_untoast_attr_slice(struct varlena *attr,
 													 int32 slicelength);
 
 /* ----------
+=======
+>>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/include/access/heaptoast.h
  * toast_flatten_tuple -
  *
  *	"Flatten" a tuple to contain no out-of-line toasted fields.
@@ -248,36 +247,4 @@ extern HeapTuple toast_build_flattened_tuple(TupleDesc tupleDesc,
 											 Datum *values,
 											 bool *isnull);
 
-/* ----------
- * toast_compress_datum -
- *
- *	Create a compressed version of a varlena datum, if possible
- * ----------
- */
-extern Datum toast_compress_datum(Datum value);
-
-/* ----------
- * toast_raw_datum_size -
- *
- *	Return the raw (detoasted) size of a varlena datum
- * ----------
- */
-extern Size toast_raw_datum_size(Datum value);
-
-/* ----------
- * toast_datum_size -
- *
- *	Return the storage size of a varlena datum
- * ----------
- */
-extern Size toast_datum_size(Datum value);
-
-/* ----------
- * toast_get_valid_index -
- *
- *	Return OID of valid index associated to a toast relation
- * ----------
- */
-extern Oid	toast_get_valid_index(Oid toastoid, LOCKMODE lock);
-
-#endif							/* TUPTOASTER_H */
+#endif							/* HEAPTOAST_H */
