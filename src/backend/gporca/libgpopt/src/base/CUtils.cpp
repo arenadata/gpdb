@@ -2091,9 +2091,9 @@ CUtils::FHasCountAggMatchingColumn(const CExpression *pexpr,
 										   pdrgpexprPredicates))
 			{
 				if (nullptr != pdrgpexprPredicates &&
-					COperator::EopLogicalSelect == pop->Eopid() &&
-					arity > 1)
+					COperator::EopLogicalSelect == pop->Eopid())
 				{
+					GPOS_ASSERT(arity > 1);
 					CExpression *pexprPred = (*pexpr)[1];
 					pexprPred->AddRef();
 					pdrgpexprPredicates->Append(pexprPred);
