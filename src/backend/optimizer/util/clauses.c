@@ -5596,35 +5596,40 @@ flatten_join_alias_var_optimizer(Query *query, int queryLevel)
 	if (NIL != targetList)
 	{
 		queryNew->targetList = (List *) flatten_join_alias_vars(queryNew, (Node *) targetList);
-		pfree(targetList);
+		if (targetList != queryNew->targetList)
+			pfree(targetList);
 	}
 
 	List * returningList = queryNew->returningList;
 	if (NIL != returningList)
 	{
 		queryNew->returningList = (List *) flatten_join_alias_vars(queryNew, (Node *) returningList);
-		pfree(returningList);
+		if (returningList != queryNew->returningList)
+			pfree(returningList);
 	}
 
 	Node *havingQual = queryNew->havingQual;
 	if (NULL != havingQual)
 	{
 		queryNew->havingQual = flatten_join_alias_vars(queryNew, havingQual);
-		pfree(havingQual);
+		if (havingQual != queryNew->havingQual)
+			pfree(havingQual);
 	}
 
 	List *scatterClause = queryNew->scatterClause;
 	if (NIL != scatterClause)
 	{
 		queryNew->scatterClause = (List *) flatten_join_alias_vars(queryNew, (Node *) scatterClause);
-		pfree(scatterClause);
+		if (scatterClause != queryNew->scatterClause)
+			pfree(scatterClause);
 	}
 
 	Node *limitOffset = queryNew->limitOffset;
 	if (NULL != limitOffset)
 	{
 		queryNew->limitOffset = flatten_join_alias_vars(queryNew, limitOffset);
-		pfree(limitOffset);
+		if (limitOffset != queryNew->limitOffset)
+			pfree(limitOffset);
 	}
 
 	List *windowClause = queryNew->windowClause;
@@ -5651,7 +5656,8 @@ flatten_join_alias_var_optimizer(Query *query, int queryLevel)
 	if (NULL != limitCount)
 	{
 		queryNew->limitCount = flatten_join_alias_vars(queryNew, limitCount);
-		pfree(limitCount);
+		if (limitCount != queryNew->limitCount)
+			pfree(limitCount);
 	}
 
     return queryNew;
