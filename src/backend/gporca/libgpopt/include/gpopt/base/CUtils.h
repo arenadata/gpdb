@@ -267,11 +267,10 @@ public:
 
 	// check if given expression has count matching the given column, returns the Logical GroupBy Agg above
 	// also returns pdrgpexprPredicates containing all selection predicates above GroupBy Agg
-	static BOOL FHasCountAggMatchingColumn(CMemoryPool *mp,
-										   const CExpression *pexpr,
+	static BOOL FHasCountAggMatchingColumn(const CExpression *pexpr,
 										   const CColRef *colref,
 										   const CLogicalGbAgg **ppgbAgg,
-										   CExpressionArray **pdrgpexprPredicates);
+										   CExpressionArray *pdrgpexprPredicates);
 
 	// generate a GbAgg with count(*) and sum(col) over the given expression
 	static CExpression *PexprCountStarAndSum(CMemoryPool *mp,

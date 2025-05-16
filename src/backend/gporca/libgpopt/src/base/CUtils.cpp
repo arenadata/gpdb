@@ -2056,11 +2056,10 @@ FCountAggMatchingColumn(CExpression *pexprPrjElem, const CColRef *colref)
 
 
 BOOL
-CUtils::FHasCountAggMatchingColumn(CMemoryPool *mp,
-								   const CExpression *pexpr,
+CUtils::FHasCountAggMatchingColumn(const CExpression *pexpr,
 								   const CColRef *colref,
 								   const CLogicalGbAgg **ppgbAgg,
-								   CExpressionArray **ppdrgpexprPredicates)
+								   CExpressionArray *pdrgpexprPredicates)
 {
 	COperator *pop = pexpr->Pop();
 	// base case, we have a logical agg operator
@@ -2088,20 +2087,16 @@ CUtils::FHasCountAggMatchingColumn(CMemoryPool *mp,
 		for (ULONG ul = 0; ul < arity; ul++)
 		{
 			const CExpression *pexprChild = (*pexpr)[ul];
-			if (FHasCountAggMatchingColumn(mp, pexprChild, colref, ppgbAgg,
-										   ppdrgpexprPredicates))
+			if (FHasCountAggMatchingColumn(pexprChild, colref, ppgbAgg,
+										   pdrgpexprPredicates))
 			{
-				if (nullptr != ppdrgpexprPredicates &&
+				if (nullptr != pdrgpexprPredicates &&
 					COperator::EopLogicalSelect == pop->Eopid() &&
 					arity > 1)
 				{
 					CExpression *pexprPred = (*pexpr)[1];
 					pexprPred->AddRef();
-					if (nullptr == *ppdrgpexprPredicates)
-					{
-						*ppdrgpexprPredicates = GPOS_NEW(mp) CExpressionArray(mp);
-					}
-					(*ppdrgpexprPredicates)->Append(pexprPred);
+					pdrgpexprPredicates->Append(pexprPred);
 				}
 				return true;
 			}
