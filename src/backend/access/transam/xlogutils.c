@@ -528,7 +528,6 @@ XLogReadBufferExtended(RelFileNode rnode, ForkNumber forknum,
 }
 
 /*
-<<<<<<< HEAD
  * If the AO segment file does not exist, log the relfilenode into the
  * invalid_page_table hash table using the segment file number as the block
  * number to avoid creating a new hash table specifically for AO.  The entry
@@ -544,10 +543,7 @@ XLogAOSegmentFile(RelFileNode rnode, uint32 segmentFileNum)
 }
 
 /*
- * Struct actually returned by XLogFakeRelcacheEntry, though the declared
-=======
  * Struct actually returned by CreateFakeRelcacheEntry, though the declared
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
  * return type is Relation.
  */
 typedef struct
