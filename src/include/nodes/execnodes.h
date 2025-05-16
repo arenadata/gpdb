@@ -2736,13 +2736,9 @@ typedef struct HashState
 	PlanState	ps;				/* its first field is NodeTag */
 	HashJoinTable hashtable;	/* hash table for the hashjoin */
 	List	   *hashkeys;		/* list of ExprState nodes */
-<<<<<<< HEAD
 	bool		hs_keepnull;	/* Keep nulls */
 	bool		hs_quit_if_hashkeys_null;	/* quit building hash table if hashkeys are all null */
 	bool		hs_hashkeys_null;	/* found an instance wherein hashkeys are all null */
-	/* hashkeys is same as parent's hj_InnerHashKeys */
-=======
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	SharedHashInfo *shared_info;	/* one entry per worker */
 	HashInstrumentation *hinstrument;	/* this worker's entry */
