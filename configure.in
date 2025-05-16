@@ -2634,13 +2634,7 @@ fi
 #
 # Check for documentation-building tools
 #
-<<<<<<< HEAD
 PGAC_PATH_PROGS(XMLLINT, xmllint)
-=======
-PGAC_PATH_XMLLINT
-PGAC_CHECK_DOCBOOK(4.5)
-PGAC_PATH_PROGS(DBTOEPUB, dbtoepub)
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 PGAC_PATH_PROGS(XSLTPROC, xsltproc)
 PGAC_PATH_PROGS(FOP, fop)
 PGAC_PATH_PROGS(DBTOEPUB, dbtoepub)

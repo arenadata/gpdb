@@ -151,15 +151,9 @@
 /* Define to 1 if you have the `CRYPTO_lock' function. */
 #undef HAVE_CRYPTO_LOCK
 
-<<<<<<< HEAD
-/* Define to 1 if you have the <crypt.h> header file. */
-#undef HAVE_CRYPT_H
-
 /* define if the compiler supports basic C++14 syntax */
 #undef HAVE_CXX14
 
-=======
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 /* Define to 1 if you have the declaration of `fdatasync', and to 0 if you
    don't. */
 #undef HAVE_DECL_FDATASYNC
@@ -229,16 +223,14 @@
 /* Define to 1 if you have the <editline/readline.h> header file. */
 #undef HAVE_EDITLINE_READLINE_H
 
-<<<<<<< HEAD
 /* Define to 1 if you have the <event.h> header file. */
 #undef HAVE_EVENT_H
 
 /* Define to 1 if you have the <execinfo.h> header file. */
 #undef HAVE_EXECINFO_H
-=======
+
 /* Define to 1 if you have the `explicit_bzero' function. */
 #undef HAVE_EXPLICIT_BZERO
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 /* Define to 1 if you have the `fdatasync' function. */
 #undef HAVE_FDATASYNC
