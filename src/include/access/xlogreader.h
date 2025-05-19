@@ -225,20 +225,13 @@ extern struct XLogRecord *XLogReadRecord(XLogReaderState *state,
 extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
 										 XLogRecPtr recptr, char *phdr);
 
-<<<<<<< HEAD
 /* Validate a page */
 extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
 					XLogRecPtr recptr, char *phdr);
 
-/* Invalidate read state */
-extern void XLogReaderInvalReadState(XLogReaderState *state);
-
 /* In GPDB, this is needed in the backend, too, for WAL replication tests. */
 /* #ifdef FRONTEND */
 #if 1
-=======
-#ifdef FRONTEND
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 extern XLogRecPtr XLogFindNextRecord(XLogReaderState *state, XLogRecPtr RecPtr);
 #endif							/* FRONTEND */
 /* Functions for decoding an XLogRecord */
