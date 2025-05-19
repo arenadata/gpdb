@@ -670,9 +670,6 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	/* end of funny indentation */
 
 	/*
-<<<<<<< HEAD
-	 * Maintain information if the row of a column exceeds WIDTH_THRESHOLD
-=======
 	 * Look at extended statistics objects too, as those may define custom
 	 * statistics target. So we may need to sample more rows and then build
 	 * the statistics with enough detail.
@@ -683,8 +680,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		targrows = minrows;
 
 	/*
-	 * Acquire the sample rows
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+	 * Maintain information if the row of a column exceeds WIDTH_THRESHOLD
 	 */
 	colLargeRowIndexes = (Bitmapset **) palloc0(sizeof(Bitmapset *) * onerel->rd_att->natts);
 	colLargeRowLength = (double *)palloc0(sizeof(double) * onerel->rd_att->natts);
