@@ -184,15 +184,10 @@ MultiExecPrivateHash(HashState *node)
 			break;
 
 		/* We have to compute the hash value */
-<<<<<<< HEAD
-		econtext->ecxt_innertuple = slot;
+		econtext->ecxt_outertuple = slot;
 		bool hashkeys_null = false;
 
 		if (ExecHashGetHashValue(node, hashtable, econtext, hashkeys,
-=======
-		econtext->ecxt_outertuple = slot;
-		if (ExecHashGetHashValue(hashtable, econtext, hashkeys,
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 								 false, hashtable->keepNulls,
 								 &hashvalue, &hashkeys_null))
 		{
@@ -322,13 +317,8 @@ MultiExecParallelHash(HashState *node)
 				slot = ExecProcNode(outerNode);
 				if (TupIsNull(slot))
 					break;
-<<<<<<< HEAD
-				econtext->ecxt_innertuple = slot;
-				if (ExecHashGetHashValue(node, hashtable, econtext, hashkeys,
-=======
 				econtext->ecxt_outertuple = slot;
-				if (ExecHashGetHashValue(hashtable, econtext, hashkeys,
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+				if (ExecHashGetHashValue(node, hashtable, econtext, hashkeys,
 										 false, hashtable->keepNulls,
 										 &hashvalue, &hashkeys_null))
 					ExecParallelHashTableInsert(hashtable, slot, hashvalue);
