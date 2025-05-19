@@ -44,7 +44,6 @@ typedef struct IsoConnInfo
 static IsoConnInfo *conns = NULL;
 static int	nconns = 0;
 
-<<<<<<< HEAD
 /* Flag indicating some new NOTICE has arrived */
 static bool any_new_notice = false;
 
@@ -53,8 +52,6 @@ static int64 max_step_wait = 300 * USECS_PER_SEC;
 
 
 static void check_testspec(TestSpec *testspec);
-=======
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 static void run_testspec(TestSpec *testspec);
 static void run_all_permutations(TestSpec *testspec);
 static void run_all_permutations_recurse(TestSpec *testspec, int nsteps,
@@ -144,40 +141,8 @@ main(int argc, char **argv)
 	spec_yyparse();
 	testspec = &parseresult;
 
-<<<<<<< HEAD
 	/* Perform post-parse checking, and fill in linking fields */
 	check_testspec(testspec);
-=======
-	/* Create a lookup table of all steps. */
-	nallsteps = 0;
-	for (i = 0; i < testspec->nsessions; i++)
-		nallsteps += testspec->sessions[i]->nsteps;
-
-	allsteps = pg_malloc(nallsteps * sizeof(Step *));
-
-	n = 0;
-	for (i = 0; i < testspec->nsessions; i++)
-	{
-		for (j = 0; j < testspec->sessions[i]->nsteps; j++)
-			allsteps[n++] = testspec->sessions[i]->steps[j];
-	}
-
-	qsort(allsteps, nallsteps, sizeof(Step *), &step_qsort_cmp);
-	testspec->nallsteps = nallsteps;
-	testspec->allsteps = allsteps;
-
-	/* Verify that all step names are unique */
-	for (i = 1; i < testspec->nallsteps; i++)
-	{
-		if (strcmp(testspec->allsteps[i - 1]->name,
-				   testspec->allsteps[i]->name) == 0)
-		{
-			fprintf(stderr, "duplicate step name: %s\n",
-					testspec->allsteps[i]->name);
-			exit(1);
-		}
-	}
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	printf("Parsed test spec with %d sessions\n", testspec->nsessions);
 
@@ -546,12 +511,7 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 	int			nwaiting = 0;
 	PermutationStep **waiting;
 
-<<<<<<< HEAD
 	waiting = pg_malloc(sizeof(PermutationStep *) * testspec->nsessions);
-=======
-	waiting = pg_malloc(sizeof(Step *) * testspec->nsessions);
-	errorstep = pg_malloc(sizeof(Step *) * testspec->nsessions);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	printf("\nstarting permutation:");
 	for (i = 0; i < nsteps; i++)
