@@ -15,9 +15,9 @@
  */
 #include "postgres.h"
 
+#include "access/heaptoast.h"
 #include "access/htup.h"
 #include "access/memtup.h"
-#include "access/tuptoaster.h"
 #include "catalog/pg_type.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbsrlz.h"
