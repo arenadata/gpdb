@@ -20,11 +20,7 @@
 #include "access/amapi.h"
 #include "access/itup.h"
 #include "access/sdir.h"
-<<<<<<< HEAD
 #include "common/hashfn.h"
-#include "fmgr.h"
-=======
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #include "lib/stringinfo.h"
 #include "storage/bufmgr.h"
 #include "storage/lockdefs.h"
