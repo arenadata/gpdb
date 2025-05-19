@@ -1249,14 +1249,6 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 		rvcontext.wrap_non_vars = true;
 	}
 
-	List *newTList = (List *)
-		pullup_replace_vars((Node *) parse->targetList, &rvcontext);
-
-	if (parse->scatterClause)
-	{
-		UpdateScatterClause(parse, newTList);
-	}
-
 	/*
 	 * Replace all of the top query's references to the subquery's outputs
 	 * with copies of the adjusted subtlist items, being careful not to
@@ -2188,13 +2180,15 @@ perform_pullup_replace_vars(PlannerInfo *root,
 	 * outer join.  replace_vars_in_jointree tracks its location in the
 	 * jointree and uses PHVs or not appropriately.
 	 */
-	parse->targetList = (List *)
+	List *newTList = (List *)
 		pullup_replace_vars((Node *) parse->targetList, rvcontext);
 
 	if (parse->scatterClause)
 	{
-		UpdateScatterClause(parse, parse->targetList);
+		UpdateScatterClause(parse, newTList);
 	}
+
+	parse->targetList = newTList;
 
 	parse->returningList = (List *)
 		pullup_replace_vars((Node *) parse->returningList, rvcontext);
