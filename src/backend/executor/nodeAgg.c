@@ -269,15 +269,11 @@
 #include "parser/parse_coerce.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-<<<<<<< HEAD
 #include "utils/datum.h"
 #include "utils/dynahash.h"
 #include "utils/expandeddatum.h"
 #include "utils/faultinjector.h"
 #include "utils/logtape.h"
-=======
-#include "utils/expandeddatum.h"
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
