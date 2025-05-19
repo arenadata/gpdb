@@ -32,7 +32,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/tuptoaster.h"
+#include "access/heaptoast.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "common/pg_lzcompress.h"

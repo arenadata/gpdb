@@ -14,7 +14,7 @@
 
 #include "postgres.h"
 #include "access/tupmacs.h"
-#include "access/tuptoaster.h"
+#include "access/heaptoast.h"
 #include "utils/datumstreamblock.h"
 #include "utils/guc.h"
 

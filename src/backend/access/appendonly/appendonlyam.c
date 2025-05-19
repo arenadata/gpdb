@@ -41,7 +41,7 @@
 #include "access/aomd.h"
 #include "access/transam.h"
 #include "access/tupdesc.h"
-#include "access/tuptoaster.h"
+#include "access/heaptoast.h"
 #include "access/valid.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
