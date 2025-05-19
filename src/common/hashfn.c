@@ -158,13 +158,8 @@
  * by using the final values of both b and c.  b is perhaps a little less
  * well mixed than c, however.
  */
-<<<<<<< HEAD:src/common/hashfn.c
 uint32
 hash_bytes(const unsigned char *k, int keylen)
-=======
-Datum
-hash_any(const unsigned char *k, int keylen)
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/backend/utils/hash/hashfn.c
 {
 	uint32		a,
 				b,
@@ -389,14 +384,8 @@ hash_any(const unsigned char *k, int keylen)
  *
  * Returns a uint64 value.  Otherwise similar to hash_bytes.
  */
-<<<<<<< HEAD:src/common/hashfn.c
 uint64
 hash_bytes_extended(const unsigned char *k, int keylen, uint64 seed)
-=======
-Datum
-hash_any_extended(const unsigned char *k, int keylen,
-				  uint64 seed)
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/backend/utils/hash/hashfn.c
 {
 	uint32		a,
 				b,
