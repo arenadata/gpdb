@@ -1023,13 +1023,10 @@ _outHashJoin(StringInfo str, const HashJoin *node)
 	_outJoinPlanInfo(str, (const Join *) node);
 
 	WRITE_NODE_FIELD(hashclauses);
-<<<<<<< HEAD
 	WRITE_NODE_FIELD(hashqualclauses);
-=======
 	WRITE_NODE_FIELD(hashoperators);
 	WRITE_NODE_FIELD(hashcollations);
 	WRITE_NODE_FIELD(hashkeys);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 }
 
 static void
@@ -1173,12 +1170,9 @@ _outHash(StringInfo str, const Hash *node)
 	WRITE_NODE_TYPE("HASH");
 
 	_outPlanInfo(str, (const Plan *) node);
-<<<<<<< HEAD
-	WRITE_BOOL_FIELD(rescannable);          /*CDB*/
-=======
 
+	WRITE_BOOL_FIELD(rescannable);          /*CDB*/
 	WRITE_NODE_FIELD(hashkeys);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	WRITE_OID_FIELD(skewTable);
 	WRITE_INT_FIELD(skewColumn);
 	WRITE_BOOL_FIELD(skewInherit);
