@@ -1262,102 +1262,9 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 * with copies of the adjusted subtlist items, being careful not to
 	 * replace any of the jointree structure.
 	 */
-<<<<<<< HEAD
-	parse->targetList = newTList;
-
-	parse->returningList = (List *)
-		pullup_replace_vars((Node *) parse->returningList, &rvcontext);
-	if (parse->onConflict)
-	{
-		parse->onConflict->onConflictSet = (List *)
-			pullup_replace_vars((Node *) parse->onConflict->onConflictSet,
-								&rvcontext);
-		parse->onConflict->onConflictWhere =
-			pullup_replace_vars(parse->onConflict->onConflictWhere,
-								&rvcontext);
-
-		/*
-		 * We assume ON CONFLICT's arbiterElems, arbiterWhere, exclRelTlist
-		 * can't contain any references to a subquery
-		 */
-	}
-	replace_vars_in_jointree((Node *) parse->jointree, &rvcontext,
-							 lowest_nulling_outer_join);
-	Assert(parse->setOperations == NULL);
-	parse->havingQual = pullup_replace_vars(parse->havingQual, &rvcontext);
-
-	if (parse->windowClause)
-	{
-		foreach(lc, parse->windowClause)
-		{
-			WindowClause *wc = (WindowClause *) lfirst(lc);
-
-			if (wc->startOffset)
-				wc->startOffset =
-					pullup_replace_vars((Node *) wc->startOffset, &rvcontext);
-			if (wc->endOffset)
-				wc->endOffset =
-					pullup_replace_vars((Node *) wc->endOffset, &rvcontext);
-		}
-	}
-
-	/*
-	 * Replace references in the translated_vars lists of appendrels. When
-	 * pulling up an appendrel member, we do not need PHVs in the list of the
-	 * parent appendrel --- there isn't any outer join between. Elsewhere, use
-	 * PHVs for safety.  (This analysis could be made tighter but it seems
-	 * unlikely to be worth much trouble.)
-	 */
-	foreach(lc, root->append_rel_list)
-	{
-		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(lc);
-		bool		save_need_phvs = rvcontext.need_phvs;
-
-		if (appinfo == containing_appendrel)
-			rvcontext.need_phvs = false;
-		appinfo->translated_vars = (List *)
-			pullup_replace_vars((Node *) appinfo->translated_vars, &rvcontext);
-		rvcontext.need_phvs = save_need_phvs;
-	}
-
-	/*
-	 * Replace references in the joinaliasvars lists of join RTEs.
-	 *
-	 * You might think that we could avoid using PHVs for alias vars of joins
-	 * below lowest_nulling_outer_join, but that doesn't work because the
-	 * alias vars could be referenced above that join; we need the PHVs to be
-	 * present in such references after the alias vars get flattened.  (It
-	 * might be worth trying to be smarter here, someday.)
-	 */
-	foreach(lc, parse->rtable)
-	{
-		RangeTblEntry *otherrte = (RangeTblEntry *) lfirst(lc);
-
-		if (otherrte->rtekind == RTE_JOIN)
-			otherrte->joinaliasvars = (List *)
-				pullup_replace_vars((Node *) otherrte->joinaliasvars,
-									&rvcontext);
-		else if (otherrte->rtekind == RTE_SUBQUERY && rte != otherrte)
-		{
-			 /*
-			  * here the sublevels_up can only be 1, because if larger than 1,
-			  * then the sublink is multilevel correlated, and cannot be pulled
-			  * up to be a subquery range table; while on the other hand, we
-			  * cannot directly put a subquery which refer to other relations
-			  * of the same level after FROM.
-			  */
-			otherrte->subquery = (Query *)
-				ReplaceVarsFromTargetList((Node *) otherrte->subquery,
-										  varno, 1, rte,
-										  subquery->targetList, REPLACEVARS_REPORT_ERROR,
-										  0, NULL);
-		}
-	}
-=======
 	perform_pullup_replace_vars(root, &rvcontext,
 								lowest_nulling_outer_join,
 								containing_appendrel);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	/*
 	 * If the subquery had a LATERAL marker, propagate that to any of its
@@ -2283,6 +2190,12 @@ perform_pullup_replace_vars(PlannerInfo *root,
 	 */
 	parse->targetList = (List *)
 		pullup_replace_vars((Node *) parse->targetList, rvcontext);
+
+	if (parse->scatterClause)
+	{
+		UpdateScatterClause(parse, parse->targetList);
+	}
+
 	parse->returningList = (List *)
 		pullup_replace_vars((Node *) parse->returningList, rvcontext);
 	if (parse->onConflict)
@@ -2303,6 +2216,21 @@ perform_pullup_replace_vars(PlannerInfo *root,
 							 lowest_nulling_outer_join);
 	Assert(parse->setOperations == NULL);
 	parse->havingQual = pullup_replace_vars(parse->havingQual, rvcontext);
+
+	if (parse->windowClause)
+	{
+		foreach(lc, parse->windowClause)
+		{
+			WindowClause *wc = (WindowClause *) lfirst(lc);
+
+			if (wc->startOffset)
+				wc->startOffset =
+					pullup_replace_vars((Node *) wc->startOffset, rvcontext);
+			if (wc->endOffset)
+				wc->endOffset =
+					pullup_replace_vars((Node *) wc->endOffset, rvcontext);
+		}
+	}
 
 	/*
 	 * Replace references in the translated_vars lists of appendrels.  When
@@ -2340,6 +2268,24 @@ perform_pullup_replace_vars(PlannerInfo *root,
 			otherrte->joinaliasvars = (List *)
 				pullup_replace_vars((Node *) otherrte->joinaliasvars,
 									rvcontext);
+		else if (otherrte->rtekind == RTE_SUBQUERY &&
+			rvcontext->target_rte != otherrte)
+		{
+			 /*
+			  * here the sublevels_up can only be 1, because if larger than 1,
+			  * then the sublink is multilevel correlated, and cannot be pulled
+			  * up to be a subquery range table; while on the other hand, we
+			  * cannot directly put a subquery which refer to other relations
+			  * of the same level after FROM.
+			  */
+			otherrte->subquery = (Query *)
+				ReplaceVarsFromTargetList((Node *) otherrte->subquery,
+										  rvcontext->varno, 1,
+										  rvcontext->target_rte,
+										  rvcontext->targetlist,
+										  REPLACEVARS_REPORT_ERROR,
+										  0, NULL);
+		}
 	}
 }
 
