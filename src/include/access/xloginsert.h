@@ -42,12 +42,8 @@
 extern void XLogBeginInsert(void);
 extern void XLogSetRecordFlags(uint8 flags);
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info);
-<<<<<<< HEAD
 extern XLogRecPtr XLogInsert_OverrideXid(RmgrId rmid, uint8 info, TransactionId overrideXid);
-extern void XLogEnsureRecordSpace(int nbuffers, int ndatas);
-=======
 extern void XLogEnsureRecordSpace(int max_block_id, int ndatas);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 extern void XLogRegisterData(char *data, int len);
 extern void XLogRegisterBuffer(uint8 block_id, Buffer buffer, uint8 flags);
 extern void XLogRegisterBlock(uint8 block_id, RelFileNode *rnode,
