@@ -1158,8 +1158,10 @@ _copyHashJoin(const HashJoin *from)
 	 * copy remainder of node
 	 */
 	COPY_NODE_FIELD(hashclauses);
-<<<<<<< HEAD
 	COPY_NODE_FIELD(hashqualclauses);
+	COPY_NODE_FIELD(hashoperators);
+	COPY_NODE_FIELD(hashcollations);
+	COPY_NODE_FIELD(hashkeys);
 
 	return newnode;
 }
@@ -1179,11 +1181,6 @@ _copyShareInputScan(const ShareInputScan *from)
 	COPY_SCALAR_FIELD(producer_slice_id);
 	COPY_SCALAR_FIELD(this_slice_id);
 	COPY_SCALAR_FIELD(nconsumers);
-=======
-	COPY_NODE_FIELD(hashoperators);
-	COPY_NODE_FIELD(hashcollations);
-	COPY_NODE_FIELD(hashkeys);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	return newnode;
 }

@@ -1090,9 +1090,7 @@ typedef struct HashJoin
 {
 	Join		join;
 	List	   *hashclauses;
-<<<<<<< HEAD
 	List	   *hashqualclauses;
-=======
 	List	   *hashoperators;
 	List	   *hashcollations;
 
@@ -1101,7 +1099,6 @@ typedef struct HashJoin
 	 * perform lookups in the hashtable over the inner plan.
 	 */
 	List	   *hashkeys;
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 } HashJoin;
 
 #define SHARE_ID_NOT_SHARED (-1)
@@ -1353,16 +1350,13 @@ typedef struct GatherMerge
 typedef struct Hash
 {
 	Plan		plan;
-<<<<<<< HEAD
 	bool		rescannable;            /* CDB: true => save rows for rescan */
-=======
 
 	/*
 	 * List of expressions to be hashed for tuples from Hash's outer plan,
 	 * needed to put them into the hashtable.
 	 */
 	List	   *hashkeys;		/* hash keys for the hashjoin condition */
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	Oid			skewTable;		/* outer join key's table OID, or InvalidOid */
 	AttrNumber	skewColumn;		/* outer join key's column #, or zero */
 	bool		skewInherit;	/* is outer join rel an inheritance tree? */

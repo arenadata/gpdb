@@ -256,17 +256,11 @@ static NestLoop *make_nestloop(List *tlist,
 							   JoinType jointype, bool inner_unique);
 static HashJoin *make_hashjoin(List *tlist,
 							   List *joinclauses, List *otherclauses,
-<<<<<<< HEAD
-							   List *hashclauses, Plan *lefttree,
-							   Plan *righttree, JoinType jointype,
-							   bool inner_unique);
-=======
 							   List *hashclauses,
 							   List *hashoperators, List *hashcollations,
 							   List *hashkeys,
 							   Plan *lefttree, Plan *righttree,
 							   JoinType jointype, bool inner_unique);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 static Hash *make_hash(Plan *lefttree,
 					   List *hashkeys,
 					   Oid skewTable,
@@ -5412,13 +5406,10 @@ create_hashjoin_plan(PlannerInfo *root,
 	Oid			skewTable = InvalidOid;
 	AttrNumber	skewColumn = InvalidAttrNumber;
 	bool		skewInherit = false;
-<<<<<<< HEAD
+	ListCell   *lc;
 	bool		partition_selectors_created;
 
 	push_partition_selector_candidate_for_join(root, &best_path->jpath);
-=======
-	ListCell   *lc;
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	/*
 	 * HashJoin can project, so we don't have to demand exact tlists from the
@@ -6705,13 +6696,10 @@ make_hashjoin(List *tlist,
 	plan->lefttree = lefttree;
 	plan->righttree = righttree;
 	node->hashclauses = hashclauses;
-<<<<<<< HEAD
 	node->hashqualclauses = NIL;
-=======
 	node->hashoperators = hashoperators;
 	node->hashcollations = hashcollations;
 	node->hashkeys = hashkeys;
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	node->join.jointype = jointype;
 	node->join.inner_unique = inner_unique;
 	node->join.joinqual = joinclauses;
