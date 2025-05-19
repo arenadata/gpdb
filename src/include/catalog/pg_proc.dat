@@ -5861,12 +5861,8 @@
 { oid => '2073', descr => 'extract text matching regular expression',
   proname => 'substring', prorettype => 'text', proargtypes => 'text text',
   prosrc => 'textregexsubstr' },
-<<<<<<< HEAD
-{ oid => '2074', descr => 'extract text matching SQL99 regular expression',
-  prodataaccess => 'c',
-=======
 { oid => '2074', descr => 'extract text matching SQL regular expression',
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+  prodataaccess => 'c',
   proname => 'substring', prolang => 'sql', prorettype => 'text',
   proargtypes => 'text text text',
   prosrc => 'select pg_catalog.substring($1, pg_catalog.similar_to_escape($2, $3))' },
