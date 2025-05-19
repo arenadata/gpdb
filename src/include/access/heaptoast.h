@@ -94,42 +94,6 @@
 	 sizeof(int32) -									\
 	 VARHDRSZ)
 
-<<<<<<< HEAD:src/include/access/tuptoaster.h
-/* Size of an EXTERNAL datum that contains a standard TOAST pointer */
-#define TOAST_POINTER_SIZE (VARHDRSZ_EXTERNAL + sizeof(varatt_external))
-
-/* Size of an EXTERNAL datum that contains an indirection pointer */
-#define INDIRECT_POINTER_SIZE (VARHDRSZ_EXTERNAL + sizeof(varatt_indirect))
-
-/*
- * Testing whether an externally-stored value is compressed now requires
- * comparing extsize (the actual length of the external data) to rawsize
- * (the original uncompressed datum's size).  The latter includes VARHDRSZ
- * overhead, the former doesn't.  We never use compression unless it actually
- * saves space, so we expect either equality or less-than.
- */
-#define VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer) \
-	((toast_pointer).va_extsize < (toast_pointer).va_rawsize - VARHDRSZ)
-
-/*
- * Macro to fetch the possibly-unaligned contents of an EXTERNAL datum
- * into a local "struct varatt_external" toast pointer.  This should be
- * just a memcpy, but some versions of gcc seem to produce broken code
- * that assumes the datum contents are aligned.  Introducing an explicit
- * intermediate "varattrib_1b_e *" variable seems to fix it.
- */
-#define VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr) \
-do { \
-	varattrib_1b_e *attre = (varattrib_1b_e *) (attr); \
-	Assert(VARATT_IS_EXTERNAL(attre)); \
-	Assert(VARSIZE_EXTERNAL(attre) == sizeof(toast_pointer) + VARHDRSZ_EXTERNAL); \
-	memcpy(&(toast_pointer), VARDATA_EXTERNAL(attre), sizeof(toast_pointer)); \
-} while (0)
-
-#define SET_VARSIZE_C(PTR)			(((varattrib_1b *) (PTR))->va_header |= 0x40)
-
-=======
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/include/access/heaptoast.h
 /* ----------
  * toast_insert_or_update -
  *
@@ -161,25 +125,6 @@ extern MemTuple toast_insert_or_update_memtup(Relation rel,
 extern void toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative);
 
 /* ----------
-<<<<<<< HEAD:src/include/access/tuptoaster.h
- * toast_delete_datum -
- *
- *	Delete a single external stored value.
- * ----------
- */
-extern void toast_delete_datum(Relation rel, Datum value, bool is_speculative);
-
-/* ----------
- * heap_tuple_fetch_attr() -
- *
- *		Fetches an external stored attribute from the toast
- *		relation. Does NOT decompress it, if stored external
- *		in compressed format.
- * ----------
- */
-extern struct varlena *heap_tuple_fetch_attr(struct varlena *attr);
-
-/* ----------
  * varattrib_untoast_ptr_len
  * 
  *		Fast path to get the pointer and length, avoid palloc if possible.
@@ -196,28 +141,6 @@ extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void 
 extern int varattrib_untoast_len(Datum d);
 
 /* ----------
- * heap_tuple_untoast_attr() -
- *
- *		Fully detoasts one attribute, fetching and/or decompressing
- *		it as needed.
- * ----------
- */
-extern struct varlena *heap_tuple_untoast_attr(struct varlena *attr);
-
-/* ----------
- * heap_tuple_untoast_attr_slice() -
- *
- *		Fetches only the specified portion of an attribute.
- *		(Handles all cases for attribute storage)
- * ----------
- */
-extern struct varlena *heap_tuple_untoast_attr_slice(struct varlena *attr,
-													 int32 sliceoffset,
-													 int32 slicelength);
-
-/* ----------
-=======
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8:src/include/access/heaptoast.h
  * toast_flatten_tuple -
  *
  *	"Flatten" a tuple to contain no out-of-line toasted fields.
