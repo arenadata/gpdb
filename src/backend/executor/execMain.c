@@ -3818,13 +3818,8 @@ EvalPlanQualBegin(EPQState *epqstate)
 			 * by the subplan, just in case they got reset since
 			 * EvalPlanQualStart (see comments therein).
 			 */
-<<<<<<< HEAD
-			ExecSetParamPlanMulti(planstate->plan->extParam,
-								  GetPerTupleExprContext(parentestate), NULL);
-=======
 			ExecSetParamPlanMulti(rcplanstate->plan->extParam,
-								  GetPerTupleExprContext(parentestate));
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+								  GetPerTupleExprContext(parentestate), NULL);
 
 			i = list_length(parentestate->es_plannedstmt->paramExecTypes);
 
