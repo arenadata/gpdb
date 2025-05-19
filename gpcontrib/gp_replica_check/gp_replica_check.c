@@ -587,6 +587,7 @@ get_relfilenode_map()
 		rentry->relfilenode = rnode;
 		rentry->relam = classtuple->relam;
 		rentry->relkind = classtuple->relkind;
+		rentry->segments = NIL;
 		strlcpy(rentry->relname, NameStr(classtuple->relname), sizeof(rentry->relname));
 	}
 	table_endscan(scan);
