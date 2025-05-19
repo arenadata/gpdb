@@ -4862,30 +4862,9 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   gd->rollups);
 
 		/*
-<<<<<<< HEAD
 		 * dNumGroupsTotal is the total number of groups across all segments. If the
 		 * Aggregate is distributed, then the number of groups in one segment
 		 * is only a fraction of the total.
-=======
-		 * If the input is coincidentally sorted usefully (which can happen
-		 * even if is_sorted is false, since that only means that our caller
-		 * has set up the sorting for us), then save some hashtable space by
-		 * making use of that. But we need to watch out for degenerate cases:
-		 *
-		 * 1) If there are any empty grouping sets, then group_pathkeys might
-		 * be NIL if all non-empty grouping sets are unsortable. In this case,
-		 * there will be a rollup containing only empty groups, and the
-		 * pathkeys_contained_in test is vacuously true; this is ok.
-		 *
-		 * XXX: the above relies on the fact that group_pathkeys is generated
-		 * from the first rollup. If we add the ability to consider multiple
-		 * sort orders for grouping input, this assumption might fail.
-		 *
-		 * 2) If there are no empty sets and only unsortable sets, then the
-		 * rollups list will be empty (and thus l_start == NULL), and
-		 * group_pathkeys will be NIL; we must ensure that the vacuously-true
-		 * pathkeys_contained_in test doesn't cause us to crash.
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 		 */
 		if (CdbPathLocus_IsPartitioned(path->locus))
 			dNumGroups = clamp_row_est(dNumGroupsTotal /
@@ -4925,88 +4904,6 @@ consider_groupingsets_paths(PlannerInfo *root,
 											   parse->groupClause,
 											   srd->new_rollups);
 
-<<<<<<< HEAD
-=======
-		for_each_cell(lc, gd->rollups, l_start)
-		{
-			RollupData *rollup = lfirst_node(RollupData, lc);
-
-			/*
-			 * If we find an unhashable rollup that's not been skipped by the
-			 * "actually sorted" check above, we can't cope; we'd need sorted
-			 * input (with a different sort order) but we can't get that here.
-			 * So bail out; we'll get a valid path from the is_sorted case
-			 * instead.
-			 *
-			 * The mere presence of empty grouping sets doesn't make a rollup
-			 * unhashable (see preprocess_grouping_sets), we handle those
-			 * specially below.
-			 */
-			if (!rollup->hashable)
-				return;
-
-			sets_data = list_concat(sets_data, rollup->gsets_data);
-		}
-		foreach(lc, sets_data)
-		{
-			GroupingSetData *gs = lfirst_node(GroupingSetData, lc);
-			List	   *gset = gs->set;
-			RollupData *rollup;
-
-			if (gset == NIL)
-			{
-				/* Empty grouping sets can't be hashed. */
-				empty_sets_data = lappend(empty_sets_data, gs);
-				empty_sets = lappend(empty_sets, NIL);
-			}
-			else
-			{
-				rollup = makeNode(RollupData);
-
-				rollup->groupClause = preprocess_groupclause(root, gset);
-				rollup->gsets_data = list_make1(gs);
-				rollup->gsets = remap_to_groupclause_idx(rollup->groupClause,
-														 rollup->gsets_data,
-														 gd->tleref_to_colnum_map);
-				rollup->numGroups = gs->numGroups;
-				rollup->hashable = true;
-				rollup->is_hashed = true;
-				new_rollups = lappend(new_rollups, rollup);
-			}
-		}
-
-		/*
-		 * If we didn't find anything nonempty to hash, then bail.  We'll
-		 * generate a path from the is_sorted case.
-		 */
-		if (new_rollups == NIL)
-			return;
-
-		/*
-		 * If there were empty grouping sets they should have been in the
-		 * first rollup.
-		 */
-		Assert(!unhashed_rollup || !empty_sets);
-
-		if (unhashed_rollup)
-		{
-			new_rollups = lappend(new_rollups, unhashed_rollup);
-			strat = AGG_MIXED;
-		}
-		else if (empty_sets)
-		{
-			RollupData *rollup = makeNode(RollupData);
-
-			rollup->groupClause = NIL;
-			rollup->gsets_data = empty_sets_data;
-			rollup->gsets = empty_sets;
-			rollup->numGroups = list_length(empty_sets);
-			rollup->hashable = false;
-			rollup->is_hashed = false;
-			new_rollups = lappend(new_rollups, rollup);
-			strat = AGG_MIXED;
-		}
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 		add_path(grouped_rel, (Path *)
 				 create_groupingsets_path(root,
@@ -8635,7 +8532,7 @@ make_new_rollups_for_hash_grouping_set(PlannerInfo        *root,
 		if (!rollup->hashable)
 			return NULL;
 
-		sets_data = list_concat(sets_data, list_copy(rollup->gsets_data));
+		sets_data = list_concat(sets_data, rollup->gsets_data);
 	}
 	foreach(lc, sets_data)
 	{
