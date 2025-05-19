@@ -7442,12 +7442,8 @@ getExtendedStatistics(Archive *fout)
 	int			i_oid;
 	int			i_stxname;
 	int			i_stxnamespace;
-<<<<<<< HEAD
 	int			i_stxowner;
-=======
-	int			i_rolname;
 	int			i_stattarget;
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	int			i;
 
 	/* Extended statistics were new in v10 */
@@ -7456,22 +7452,14 @@ getExtendedStatistics(Archive *fout)
 
 	query = createPQExpBuffer();
 
-<<<<<<< HEAD
-	appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
-					  "stxnamespace, stxowner "
-					  "FROM pg_catalog.pg_statistic_ext");
-=======
 	if (fout->remoteVersion < 130000)
 		appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
-						  "stxnamespace, (%s stxowner) AS rolname, (-1) AS stxstattarget "
-						  "FROM pg_catalog.pg_statistic_ext",
-						  username_subquery);
+						  "stxnamespace, stxowner, (-1) AS stxstattarget "
+						  "FROM pg_catalog.pg_statistic_ext");
 	else
 		appendPQExpBuffer(query, "SELECT tableoid, oid, stxname, "
-						  "stxnamespace, (%s stxowner) AS rolname, stxstattarget "
-						  "FROM pg_catalog.pg_statistic_ext",
-						  username_subquery);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+						  "stxnamespace, stxowner, stxstattarget "
+						  "FROM pg_catalog.pg_statistic_ext");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -7481,12 +7469,8 @@ getExtendedStatistics(Archive *fout)
 	i_oid = PQfnumber(res, "oid");
 	i_stxname = PQfnumber(res, "stxname");
 	i_stxnamespace = PQfnumber(res, "stxnamespace");
-<<<<<<< HEAD
 	i_stxowner = PQfnumber(res, "stxowner");
-=======
-	i_rolname = PQfnumber(res, "rolname");
 	i_stattarget = PQfnumber(res, "stxstattarget");
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	statsextinfo = (StatsExtInfo *) pg_malloc(ntups * sizeof(StatsExtInfo));
 
@@ -7498,15 +7482,9 @@ getExtendedStatistics(Archive *fout)
 		AssignDumpId(&statsextinfo[i].dobj);
 		statsextinfo[i].dobj.name = pg_strdup(PQgetvalue(res, i, i_stxname));
 		statsextinfo[i].dobj.namespace =
-<<<<<<< HEAD
 			findNamespace(atooid(PQgetvalue(res, i, i_stxnamespace)));
 		statsextinfo[i].rolname = getRoleName(PQgetvalue(res, i, i_stxowner));
-=======
-			findNamespace(fout,
-						  atooid(PQgetvalue(res, i, i_stxnamespace)));
-		statsextinfo[i].rolname = pg_strdup(PQgetvalue(res, i, i_rolname));
 		statsextinfo[i].stattarget = atoi(PQgetvalue(res, i, i_stattarget));
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 		/* Decide whether we want to dump it */
 		selectDumpableObject(&(statsextinfo[i].dobj), fout);
