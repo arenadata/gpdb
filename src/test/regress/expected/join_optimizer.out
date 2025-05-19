@@ -5812,6 +5812,7 @@ HINT:  There is an entry for table "xx1", but it cannot be referenced from this 
 -- Test for not adding unnecessary materialization during merge join
 create table t (a int);
 set enable_hashjoin = off;
+set enable_mergejoin = on;
 set work_mem = 64;
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 explain (costs off)
@@ -5829,5 +5830,6 @@ select * from t, t tt where t.a = tt.a;
 
 drop table t;
 reset enable_hashjoin;
+reset enable_mergejoin;
 reset work_mem;
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.

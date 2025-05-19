@@ -1769,9 +1769,11 @@ drop table if exists t;
 -- end_ignore
 create table t (a int);
 set enable_hashjoin = off;
+set enable_mergejoin = on;
 set work_mem = 64;
 explain (costs off)
 select * from t, t tt where t.a = tt.a;
 drop table t;
 reset enable_hashjoin;
+reset enable_mergejoin;
 reset work_mem;
