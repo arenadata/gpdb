@@ -401,12 +401,12 @@ CPhysicalDML::FProvidesReqdCols(CExpressionHandle &exprhdl,
 								ULONG  // ulOptReq
 ) const
 {
+	GPOS_ASSERT(NULL != pcrsRequired);
+
 	if (m_isCTAS)
 	{
 		return FUnaryProvidesReqdCols(exprhdl, pcrsRequired);
 	}
-
-	GPOS_ASSERT(NULL != pcrsRequired);
 
 	CColRefSet *pcrs = GPOS_NEW(m_mp) CColRefSet(m_mp);
 	pcrs->Include(m_pdrgpcrOutput);
