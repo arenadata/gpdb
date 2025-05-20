@@ -49,7 +49,7 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-#include "access/tuptoaster.h"
+#include "access/heaptoast.h"
 #include "catalog/pg_collation.h"
 #include "cdb/cdbvars.h"
 #include "utils/pg_locale.h"
