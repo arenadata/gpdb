@@ -106,11 +106,25 @@ toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative)
  * from the pre-8.1 API of this routine.
  * ----------
  */
-HeapTuple
-toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
-					   int options)
+static int
+compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool hasnull, Datum *d, bool *isnull)
 {
-	HeapTuple	result_tuple;
+	if(pbind)
+	{
+		uint32 nullsave_dummy;
+		return (int) compute_memtuple_size(pbind, d, isnull, &nullsave_dummy, &hasnull);
+	}
+
+	return heap_compute_data_size(tupdesc, d, isnull);
+}
+
+
+static void *
+toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
+							   MemTupleBinding *pbind, int toast_tuple_target,
+							   bool isFrozen, int options, bool ismemtuple)
+{
+	void	   *result_gtuple;
 	TupleDesc	tupleDesc;
 	int			numAttrs;
 	int			i;
@@ -132,6 +146,10 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	int32		toast_sizes[MaxHeapAttributeNumber];
 	bool		toast_free[MaxHeapAttributeNumber];
 	bool		toast_delold[MaxHeapAttributeNumber];
+
+	AssertImply(ismemtuple, pbind);
+	AssertImply(!ismemtuple, !pbind);
+	Assert(toast_tuple_target > 0);
 
 	/*
 	 * Ignore the INSERT_SPECULATIVE option. Speculative insertions/super
@@ -155,10 +173,19 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	numAttrs = tupleDesc->natts;
 
 	Assert(numAttrs <= MaxHeapAttributeNumber);
-	heap_deform_tuple(newtup, tupleDesc, toast_values, toast_isnull);
-	if (oldtup != NULL)
-		heap_deform_tuple(oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
 
+	if(ismemtuple)
+		memtuple_deform((MemTuple) newtup, pbind, toast_values, toast_isnull);
+	else
+		heap_deform_tuple((HeapTuple) newtup, tupleDesc, toast_values, toast_isnull);
+
+	if (oldtup != NULL)
+	{
+		if(ismemtuple)
+			memtuple_deform((MemTuple) oldtup, pbind, toast_oldvalues, toast_oldisnull);
+		else
+			heap_deform_tuple((HeapTuple) oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
+	}
 	/* ----------
 	 * Then collect information about the values given
 	 *
@@ -295,20 +322,28 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	 * ----------
 	 */
 
-	/* compute header overhead --- this should match heap_form_tuple() */
-	hoff = SizeofHeapTupleHeader;
-	if (has_nulls)
-		hoff += BITMAPLEN(numAttrs);
-	hoff = MAXALIGN(hoff);
-	/* now convert to a limit on the tuple data size */
-	maxDataLen = RelationGetToastTupleTarget(rel, TOAST_TUPLE_TARGET) - hoff;
+	if (!ismemtuple)
+	{
+		/* compute header overhead --- this should match heap_form_tuple() */
+		hoff = SizeofHeapTupleHeader;
+		if (has_nulls)
+			hoff += BITMAPLEN(numAttrs);
+		hoff = MAXALIGN(hoff);
+		/* now convert to a limit on the tuple data size */
+		maxDataLen = RelationGetToastTupleTarget(rel, TOAST_TUPLE_TARGET) - hoff;
+	}
+	else
+	{
+		maxDataLen = toast_tuple_target;
+		hoff = -1; /* keep compiler quiet about using 'hoff' uninitialized */
+	}
 
 	/*
 	 * Look for attributes with attstorage 'x' to compress.  Also find large
 	 * attributes with attstorage 'x' or 'e', and store them external.
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen)
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen)
 	{
 		int			biggest_attno = -1;
 		int32		biggest_size = MAXALIGN(TOAST_POINTER_SIZE);
@@ -386,7 +421,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 			old_value = toast_values[i];
 			toast_action[i] = 'p';
 			toast_values[i] = toast_save_datum(rel, toast_values[i],
-											   toast_oldexternal[i], options);
+											   toast_oldexternal[i], isFrozen, options);
 			if (toast_free[i])
 				pfree(DatumGetPointer(old_value));
 			toast_free[i] = true;
@@ -399,8 +434,8 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	 * Second we look for attributes of attstorage 'x' or 'e' that are still
 	 * inline.  But skip this if there's no toast table to push them to.
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen &&
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen &&
 		   rel->rd_rel->reltoastrelid != InvalidOid)
 	{
 		int			biggest_attno = -1;
@@ -439,7 +474,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		old_value = toast_values[i];
 		toast_action[i] = 'p';
 		toast_values[i] = toast_save_datum(rel, toast_values[i],
-										   toast_oldexternal[i], options);
+										   toast_oldexternal[i], isFrozen, options);
 		if (toast_free[i])
 			pfree(DatumGetPointer(old_value));
 		toast_free[i] = true;
@@ -452,8 +487,8 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	 * Round 3 - this time we take attributes with storage 'm' into
 	 * compression
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen)
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen)
 	{
 		int			biggest_attno = -1;
 		int32		biggest_size = MAXALIGN(TOAST_POINTER_SIZE);
@@ -513,10 +548,18 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	 * increase the target tuple size, so that 'm' attributes aren't stored
 	 * externally unless really necessary.
 	 */
-	maxDataLen = TOAST_TUPLE_TARGET_MAIN - hoff;
+	/*
+	 * FIXME: Should we do something like this with memtuples on
+	 * AO tables too? Currently we do not increase the target tuple size for AO
+	 * table, so there are occasions when columns of type 'm' will be stored
+	 * out-of-line but they could otherwise be accommodated in-block
+	 * c.f. upstream Postgres commit ca7c8168de76459380577eda56a3ed09b4f6195c
+	 */
+	if (!ismemtuple)
+		maxDataLen = TOAST_TUPLE_TARGET_MAIN - hoff;
 
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen &&
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen &&
 		   rel->rd_rel->reltoastrelid != InvalidOid)
 	{
 		int			biggest_attno = -1;
@@ -553,7 +596,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		old_value = toast_values[i];
 		toast_action[i] = 'p';
 		toast_values[i] = toast_save_datum(rel, toast_values[i],
-										   toast_oldexternal[i], options);
+										   toast_oldexternal[i], isFrozen, options);
 		if (toast_free[i])
 			pfree(DatumGetPointer(old_value));
 		toast_free[i] = true;
@@ -562,64 +605,79 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		need_free = true;
 	}
 
+	/* XXX Maybe we should check here for any compressed inline attributes that
+	 * didn't save enough to warrant keeping. In particular attributes whose
+	 * rawsize is < 128 bytes and didn't save at least 3 bytes... or even maybe
+	 * more given alignment issues
+	 */
+
 	/*
 	 * In the case we toasted any values, we need to build a new heap tuple
 	 * with the changed values.
 	 */
 	if (need_change)
 	{
-		HeapTupleHeader olddata = newtup->t_data;
-		HeapTupleHeader new_data;
-		int32		new_header_len;
-		int32		new_data_len;
-		int32		new_tuple_len;
+		if(ismemtuple)
+		{
+			result_gtuple = (void *) memtuple_form(pbind, toast_values, toast_isnull);
+		}
+		else
+		{
+			HeapTupleHeader olddata = ((HeapTuple) newtup)->t_data;
+			HeapTupleHeader new_data;
+			int32		new_header_len;
+			int32		new_data_len;
+			int32		new_tuple_len;
+			HeapTuple	result_tuple;
 
-		/*
-		 * Calculate the new size of the tuple.
-		 *
-		 * Note: we used to assume here that the old tuple's t_hoff must equal
-		 * the new_header_len value, but that was incorrect.  The old tuple
-		 * might have a smaller-than-current natts, if there's been an ALTER
-		 * TABLE ADD COLUMN since it was stored; and that would lead to a
-		 * different conclusion about the size of the null bitmap, or even
-		 * whether there needs to be one at all.
-		 */
-		new_header_len = SizeofHeapTupleHeader;
-		if (has_nulls)
-			new_header_len += BITMAPLEN(numAttrs);
-		new_header_len = MAXALIGN(new_header_len);
-		new_data_len = heap_compute_data_size(tupleDesc,
-											  toast_values, toast_isnull);
-		new_tuple_len = new_header_len + new_data_len;
+			/*
+			 * Calculate the new size of the tuple.
+			 *
+			 * Note: we used to assume here that the old tuple's t_hoff must equal
+			 * the new_header_len value, but that was incorrect.  The old tuple
+			 * might have a smaller-than-current natts, if there's been an ALTER
+			 * TABLE ADD COLUMN since it was stored; and that would lead to a
+			 * different conclusion about the size of the null bitmap, or even
+			 * whether there needs to be one at all.
+			 */
+			new_header_len = SizeofHeapTupleHeader;
+			if (has_nulls)
+				new_header_len += BITMAPLEN(numAttrs);
+			new_header_len = MAXALIGN(new_header_len);
+			new_data_len = heap_compute_data_size(tupleDesc,
+												  toast_values, toast_isnull);
+			new_tuple_len = new_header_len + new_data_len;
 
-		/*
-		 * Allocate and zero the space needed, and fill HeapTupleData fields.
-		 */
-		result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_tuple_len);
-		result_tuple->t_len = new_tuple_len;
-		result_tuple->t_self = newtup->t_self;
-		result_tuple->t_tableOid = newtup->t_tableOid;
-		new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
-		result_tuple->t_data = new_data;
+			/*
+			 * Allocate and zero the space needed, and fill HeapTupleData fields.
+			 */
+			result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_tuple_len);
+			result_tuple->t_len = new_tuple_len;
+			result_tuple->t_self = ((HeapTuple) newtup)->t_self;
+			result_tuple->t_tableOid = ((HeapTuple) newtup)->t_tableOid;
+			new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
+			result_tuple->t_data = new_data;
 
-		/*
-		 * Copy the existing tuple header, but adjust natts and t_hoff.
-		 */
-		memcpy(new_data, olddata, SizeofHeapTupleHeader);
-		HeapTupleHeaderSetNatts(new_data, numAttrs);
-		new_data->t_hoff = new_header_len;
+			/*
+			 * Copy the existing tuple header, but adjust natts and t_hoff.
+			 */
+			memcpy(new_data, olddata, SizeofHeapTupleHeader);
+			HeapTupleHeaderSetNatts(new_data, numAttrs);
+			new_data->t_hoff = new_header_len;
 
-		/* Copy over the data, and fill the null bitmap if needed */
-		heap_fill_tuple(tupleDesc,
-						toast_values,
-						toast_isnull,
-						(char *) new_data + new_header_len,
-						new_data_len,
-						&(new_data->t_infomask),
-						has_nulls ? new_data->t_bits : NULL);
+			/* Copy over the data, and fill the null bitmap if needed */
+			heap_fill_tuple(tupleDesc,
+							toast_values,
+							toast_isnull,
+							(char *) new_data + new_header_len,
+							new_data_len,
+							&(new_data->t_infomask),
+							has_nulls ? new_data->t_bits : NULL);
+			result_gtuple = (void *) result_tuple;
+		}
 	}
 	else
-		result_tuple = newtup;
+		result_gtuple = newtup;
 
 	/*
 	 * Free allocated temp values
@@ -637,9 +695,38 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 			if (toast_delold[i])
 				toast_delete_datum(rel, toast_oldvalues[i], false);
 
-	return result_tuple;
+	return result_gtuple;
 }
 
+HeapTuple
+toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
+					   int toast_tuple_target,
+					   bool isFrozen, int options)
+{
+	return (HeapTuple) toast_insert_or_update_generic(rel,
+													  (void *) newtup,
+													  (void *) oldtup,
+													  NULL,
+													  toast_tuple_target,
+													  isFrozen,
+													  options,
+													  false);
+}
+
+MemTuple
+toast_insert_or_update_memtup(Relation rel, MemTuple newtup, MemTuple oldtup,
+					   MemTupleBinding *pbind, int toast_tuple_target,
+					   bool isFrozen, int options)
+{
+	return (MemTuple) toast_insert_or_update_generic(rel,
+													 (void *) newtup,
+													 (void *) oldtup,
+													 pbind,
+													 toast_tuple_target,
+													 isFrozen,
+													 options,
+													 true);
+}
 
 /* ----------
  * toast_flatten_tuple -
@@ -719,7 +806,6 @@ toast_flatten_tuple(HeapTuple tup, TupleDesc tupleDesc)
 
 	return new_tuple;
 }
-
 
 /* ----------
  * toast_flatten_tuple_to_datum -
