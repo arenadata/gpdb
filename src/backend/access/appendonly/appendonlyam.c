@@ -2714,7 +2714,7 @@ appendonly_insert_init(Relation rel, int segno, int64 num_rows)
 																	 * calculation */
 	aoInsertDesc->tempSpace = (uint8 *) palloc(aoInsertDesc->tempSpaceLen * sizeof(uint8));
 	maxtupsize = aoInsertDesc->maxDataLen - VARBLOCK_HEADER_LEN - 4;
-	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4;	/* see tuptoaster.h for
+	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4;	/* see heaptoast.h for
 															 * more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
 
