@@ -27,6 +27,9 @@
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 
+/* GPDB additions */
+#include "utils/faultinjector.h"
+
 static bool toastrel_valueid_exists(Relation toastrel, Oid valueid);
 static bool toastid_valueid_exists(Oid toastrelid, Oid valueid);
 
@@ -108,7 +111,7 @@ toast_compress_datum(Datum value)
  */
 Datum
 toast_save_datum(Relation rel, Datum value,
-				 struct varlena *oldexternal, int options)
+				 struct varlena *oldexternal, bool isFrozen, int options)
 {
 	Relation	toastrel;
 	Relation   *toastidxs;
@@ -116,6 +119,7 @@ toast_save_datum(Relation rel, Datum value,
 	TupleDesc	toasttupDesc;
 	Datum		t_values[3];
 	bool		t_isnull[3];
+	TransactionId myxid = GetCurrentTransactionId();
 	CommandId	mycid = GetCurrentCommandId(true);
 	struct varlena *result;
 	struct varatt_external toast_pointer;
@@ -136,6 +140,8 @@ toast_save_datum(Relation rel, Datum value,
 	int			validIndex;
 
 	Assert(!VARATT_IS_EXTERNAL(value));
+
+	int32		max_chunk_size = TOAST_MAX_CHUNK_SIZE;
 
 	/*
 	 * Open the toast relation and its indexes.  We can use the index to check
@@ -275,6 +281,27 @@ toast_save_datum(Relation rel, Datum value,
 		}
 	}
 
+#ifdef USE_ASSERT_CHECKING
+	Assert((VARATT_IS_COMPRESSED(value) || 0) == (VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer) || 0));
+
+	if (VARATT_IS_COMPRESSED(value))
+	{
+		Assert(VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer));
+		elog(DEBUG4,
+			 "saved toast datum, original varsize %ud rawsize %ud new extsize %ud rawsize %uld\n", 
+			 VARSIZE(value), VARRAWSIZE_4B_C(value) + VARHDRSZ,
+			 toast_pointer.va_extsize, toast_pointer.va_rawsize);
+	}
+	else
+	{
+		Assert(!VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer));
+		elog(DEBUG4,
+			 "saved toast datum, original varsize %ud new extsize %ud rawsize %ud\n", 
+			 VARSIZE(value),
+			 toast_pointer.va_extsize, toast_pointer.va_rawsize);
+	}
+#endif
+
 	/*
 	 * Initialize constant parts of the tuple data
 	 */
@@ -283,6 +310,21 @@ toast_save_datum(Relation rel, Datum value,
 	t_isnull[0] = false;
 	t_isnull[1] = false;
 	t_isnull[2] = false;
+
+#ifdef FAULT_INJECTOR
+	/*
+	 * GPDB: for upgrade testing purposes, allow the maximum chunk size to be
+	 * modified (here, we decrease it by one). The result must still fit into
+	 * TOAST_MAX_CHUNK_SIZE so that it doesn't overflow our chunk_data struct.
+	 */
+	if (FaultInjector_InjectFaultIfSet("decrease_toast_max_chunk_size",
+									   DDLNotSpecified,
+									   "", /* databaseName */
+									   ""  /* tableName */) != FaultInjectorTypeNotSpecified)
+	{
+		max_chunk_size--;
+	}
+#endif
 
 	/*
 	 * Split up the item into chunks
@@ -296,7 +338,7 @@ toast_save_datum(Relation rel, Datum value,
 		/*
 		 * Calculate the size of this chunk
 		 */
-		chunk_size = Min(TOAST_MAX_CHUNK_SIZE, data_todo);
+		chunk_size = Min(max_chunk_size, data_todo);
 
 		/*
 		 * Build a tuple and store it
@@ -306,7 +348,16 @@ toast_save_datum(Relation rel, Datum value,
 		memcpy(VARDATA(&chunk_data), data_p, chunk_size);
 		toasttup = heap_form_tuple(toasttupDesc, t_values, t_isnull);
 
-		heap_insert(toastrel, toasttup, mycid, options, NULL);
+		if (!isFrozen)
+		{
+			/* the normal case. regular insert */
+			heap_insert(toastrel, toasttup, mycid, options, NULL, myxid);
+		}
+		else
+		{
+			/* insert and freeze the tuple. used for errtables and their related toast data */
+			frozen_heap_insert(toastrel, toasttup);
+		}
 
 		/*
 		 * Create the index entry.  We cheat a little here by not using
