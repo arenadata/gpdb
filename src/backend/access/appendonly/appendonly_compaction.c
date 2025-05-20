@@ -31,6 +31,7 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/heaptoast.h"
+#include "access/toast_internals.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
