@@ -477,12 +477,8 @@ typedef struct _indexAttachInfo
 typedef struct _statsExtInfo
 {
 	DumpableObject dobj;
-<<<<<<< HEAD
 	const char *rolname;
-=======
-	char	   *rolname;		/* name of owner, or empty string */
 	int			stattarget;		/* statistics target */
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 } StatsExtInfo;
 
 typedef struct _ruleInfo
