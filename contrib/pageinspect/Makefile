@@ -5,11 +5,7 @@ OBJS		= rawpage.o heapfuncs.o bmfuncs.o btreefuncs.o fsmfuncs.o \
 		  brinfuncs.o ginfuncs.o hashfuncs.o $(WIN32RES)
 
 EXTENSION = pageinspect
-<<<<<<< HEAD
 DATA = pageinspect--1.7--1.8.sql pageinspect--1.6--1.7.sql \
-=======
-DATA =  pageinspect--1.7--1.8.sql pageinspect--1.6--1.7.sql \
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	pageinspect--1.5.sql pageinspect--1.5--1.6.sql \
 	pageinspect--1.4--1.5.sql pageinspect--1.3--1.4.sql \
 	pageinspect--1.2--1.3.sql pageinspect--1.1--1.2.sql \
