@@ -502,11 +502,7 @@ run_permutation(TestSpec *testspec, int nsteps, PermutationStep **steps)
 
 	printf("\nstarting permutation:");
 	for (i = 0; i < nsteps; i++)
-	{
-		/* Track the permutation as in-use */
-		steps[i]->used = true;
 		printf(" %s", steps[i]->name);
-	}
 	printf("\n");
 
 	/* Perform setup */
