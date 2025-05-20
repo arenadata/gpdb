@@ -666,7 +666,6 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	Assert(!VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer));
 
 	attrsize = toast_pointer.va_extsize;
-	totalchunks = ((attrsize - 1) / TOAST_MAX_CHUNK_SIZE) + 1;
 
 	if (sliceoffset >= attrsize)
 	{
