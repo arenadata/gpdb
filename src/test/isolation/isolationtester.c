@@ -373,8 +373,6 @@ static int *piles;
 static void
 run_testspec(TestSpec *testspec)
 {
-	int			i;
-
 	if (testspec->permutations)
 		run_named_permutations(testspec);
 	else
