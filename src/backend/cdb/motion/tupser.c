@@ -15,6 +15,7 @@
  */
 #include "postgres.h"
 
+#include "access/detoast.h"
 #include "access/heaptoast.h"
 #include "access/htup.h"
 #include "access/memtup.h"

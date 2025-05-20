@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include "access/detoast.h"
 #include "access/heaptoast.h"
 #include "access/tupmacs.h"
 
