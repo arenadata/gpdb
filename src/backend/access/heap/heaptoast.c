@@ -27,7 +27,6 @@
 #include "access/detoast.h"
 #include "access/heapam.h"
 #include "access/heaptoast.h"
-#include "access/toast_helper.h"
 #include "access/toast_internals.h"
 
 
@@ -41,6 +40,8 @@ void
 toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative)
 {
 	TupleDesc	tupleDesc;
+	int			numAttrs;
+	int			i;
 	Datum		toast_values[MaxHeapAttributeNumber];
 	bool		toast_isnull[MaxHeapAttributeNumber];
 
@@ -63,12 +64,27 @@ toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative)
 	 * least one varlena column, by the way.)
 	 */
 	tupleDesc = rel->rd_att;
+	numAttrs = tupleDesc->natts;
 
-	Assert(tupleDesc->natts <= MaxHeapAttributeNumber);
+	Assert(numAttrs <= MaxHeapAttributeNumber);
 	heap_deform_tuple(oldtup, tupleDesc, toast_values, toast_isnull);
 
-	/* Do the real work. */
-	toast_delete_external(rel, toast_values, toast_isnull, is_speculative);
+	/*
+	 * Check for external stored attributes and delete them from the secondary
+	 * relation.
+	 */
+	for (i = 0; i < numAttrs; i++)
+	{
+		if (TupleDescAttr(tupleDesc, i)->attlen == -1)
+		{
+			Datum		value = toast_values[i];
+
+			if (toast_isnull[i])
+				continue;
+			else if (VARATT_IS_EXTERNAL_ONDISK(PointerGetDatum(value)))
+				toast_delete_datum(rel, value, is_speculative);
+		}
+	}
 }
 
 
@@ -90,23 +106,50 @@ toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative)
  * from the pre-8.1 API of this routine.
  * ----------
  */
-HeapTuple
-toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
-					   int options)
+static int
+compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool hasnull, Datum *d, bool *isnull)
 {
-	HeapTuple	result_tuple;
+	if(pbind)
+	{
+		uint32 nullsave_dummy;
+		return (int) compute_memtuple_size(pbind, d, isnull, &nullsave_dummy, &hasnull);
+	}
+
+	return heap_compute_data_size(tupdesc, d, isnull);
+}
+
+
+HeapTuple
+toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
+							   MemTupleBinding *pbind, int toast_tuple_target,
+							   bool isFrozen, int options, bool ismemtuple)
+{
+	void	   *result_gtuple;
 	TupleDesc	tupleDesc;
 	int			numAttrs;
+	int			i;
+
+	bool		need_change = false;
+	bool		need_free = false;
+	bool		need_delold = false;
+	bool		has_nulls = false;
 
 	Size		maxDataLen;
 	Size		hoff;
 
+	char		toast_action[MaxHeapAttributeNumber];
 	bool		toast_isnull[MaxHeapAttributeNumber];
 	bool		toast_oldisnull[MaxHeapAttributeNumber];
 	Datum		toast_values[MaxHeapAttributeNumber];
 	Datum		toast_oldvalues[MaxHeapAttributeNumber];
-	ToastAttrInfo toast_attr[MaxHeapAttributeNumber];
-	ToastTupleContext ttc;
+	struct varlena *toast_oldexternal[MaxHeapAttributeNumber];
+	int32		toast_sizes[MaxHeapAttributeNumber];
+	bool		toast_free[MaxHeapAttributeNumber];
+	bool		toast_delold[MaxHeapAttributeNumber];
+
+	AssertImply(ismemtuple, pbind);
+	AssertImply(!ismemtuple, !pbind);
+	Assert(toast_tuple_target > 0);
 
 	/*
 	 * Ignore the INSERT_SPECULATIVE option. Speculative insertions/super
@@ -130,29 +173,143 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	numAttrs = tupleDesc->natts;
 
 	Assert(numAttrs <= MaxHeapAttributeNumber);
-	heap_deform_tuple(newtup, tupleDesc, toast_values, toast_isnull);
-	if (oldtup != NULL)
-		heap_deform_tuple(oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
 
+	if(ismemtuple)
+		memtuple_deform((MemTuple) newtup, pbind, toast_values, toast_isnull);
+	else
+		heap_deform_tuple((HeapTuple) newtup, tupleDesc, toast_values, toast_isnull);
+
+	if (oldtup != NULL)
+	{
+		if(ismemtuple)
+			memtuple_deform((MemTuple) oldtup, pbind, toast_oldvalues, toast_oldisnull);
+		else
+			heap_deform_tuple((HeapTuple) oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
+	}
 	/* ----------
-	 * Prepare for toasting
+	 * Then collect information about the values given
+	 *
+	 * NOTE: toast_action[i] can have these values:
+	 *		' '		default handling
+	 *		'p'		already processed --- don't touch it
+	 *		'x'		incompressible, but OK to move off
+	 *
+	 * NOTE: toast_sizes[i] is only made valid for varlena attributes with
+	 *		toast_action[i] different from 'p'.
 	 * ----------
 	 */
-	ttc.ttc_rel = rel;
-	ttc.ttc_values = toast_values;
-	ttc.ttc_isnull = toast_isnull;
-	if (oldtup == NULL)
+	memset(toast_action, ' ', numAttrs * sizeof(char));
+	memset(toast_oldexternal, 0, numAttrs * sizeof(struct varlena *));
+	memset(toast_free, 0, numAttrs * sizeof(bool));
+	memset(toast_delold, 0, numAttrs * sizeof(bool));
+
+	for (i = 0; i < numAttrs; i++)
 	{
-		ttc.ttc_oldvalues = NULL;
-		ttc.ttc_oldisnull = NULL;
+		Form_pg_attribute att = TupleDescAttr(tupleDesc, i);
+		struct varlena *old_value;
+		struct varlena *new_value;
+
+		if (oldtup != NULL)
+		{
+			/*
+			 * For UPDATE get the old and new values of this attribute
+			 */
+			old_value = (struct varlena *) DatumGetPointer(toast_oldvalues[i]);
+			new_value = (struct varlena *) DatumGetPointer(toast_values[i]);
+
+			/*
+			 * If the old value is stored on disk, check if it has changed so
+			 * we have to delete it later.
+			 */
+			if (att->attlen == -1 && !toast_oldisnull[i] &&
+				VARATT_IS_EXTERNAL_ONDISK(old_value))
+			{
+				if (toast_isnull[i] || !VARATT_IS_EXTERNAL_ONDISK(new_value) ||
+					memcmp((char *) old_value, (char *) new_value,
+						   VARSIZE_EXTERNAL(old_value)) != 0)
+				{
+					/*
+					 * The old external stored value isn't needed any more
+					 * after the update
+					 */
+					toast_delold[i] = true;
+					need_delold = true;
+				}
+				else
+				{
+					/*
+					 * This attribute isn't changed by this update so we reuse
+					 * the original reference to the old value in the new
+					 * tuple.
+					 */
+					toast_action[i] = 'p';
+					continue;
+				}
+			}
+		}
+		else
+		{
+			/*
+			 * For INSERT simply get the new value
+			 */
+			new_value = (struct varlena *) DatumGetPointer(toast_values[i]);
+		}
+
+		/*
+		 * Handle NULL attributes
+		 */
+		if (toast_isnull[i])
+		{
+			toast_action[i] = 'p';
+			has_nulls = true;
+			continue;
+		}
+
+		/*
+		 * Now look at varlena attributes
+		 */
+		if (att->attlen == -1)
+		{
+			/*
+			 * If the table's attribute says PLAIN always, force it so.
+			 */
+			if (att->attstorage == 'p')
+				toast_action[i] = 'p';
+
+			/*
+			 * We took care of UPDATE above, so any external value we find
+			 * still in the tuple must be someone else's that we cannot reuse
+			 * (this includes the case of an out-of-line in-memory datum).
+			 * Fetch it back (without decompression, unless we are forcing
+			 * PLAIN storage).  If necessary, we'll push it out as a new
+			 * external value below.
+			 */
+			if (VARATT_IS_EXTERNAL(new_value))
+			{
+				toast_oldexternal[i] = new_value;
+				if (att->attstorage == 'p')
+					new_value = heap_tuple_untoast_attr(new_value);
+				else
+					new_value = heap_tuple_fetch_attr(new_value);
+				toast_values[i] = PointerGetDatum(new_value);
+				toast_free[i] = true;
+				need_change = true;
+				need_free = true;
+			}
+
+			/*
+			 * Remember the size of this attribute
+			 */
+			toast_sizes[i] = VARSIZE_ANY(new_value);
+		}
+		else
+		{
+			/*
+			 * Not a varlena attribute, plain storage always
+			 */
+			toast_action[i] = 'p';
+		}
 	}
-	else
-	{
-		ttc.ttc_oldvalues = toast_oldvalues;
-		ttc.ttc_oldisnull = toast_oldisnull;
-	}
-	ttc.ttc_attr = toast_attr;
-	toast_tuple_init(&ttc);
 
 	/* ----------
 	 * Compress and/or save external until data fits into target length
@@ -165,36 +322,89 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	 * ----------
 	 */
 
-	/* compute header overhead --- this should match heap_form_tuple() */
-	hoff = SizeofHeapTupleHeader;
-	if ((ttc.ttc_flags & TOAST_HAS_NULLS) != 0)
-		hoff += BITMAPLEN(numAttrs);
-	hoff = MAXALIGN(hoff);
-	/* now convert to a limit on the tuple data size */
-	maxDataLen = RelationGetToastTupleTarget(rel, TOAST_TUPLE_TARGET) - hoff;
+	if (!ismemtuple)
+	{
+		/* compute header overhead --- this should match heap_form_tuple() */
+		hoff = SizeofHeapTupleHeader;
+		if (has_nulls)
+			hoff += BITMAPLEN(numAttrs);
+		hoff = MAXALIGN(hoff);
+		/* now convert to a limit on the tuple data size */
+		maxDataLen = RelationGetToastTupleTarget(rel, TOAST_TUPLE_TARGET) - hoff;
+	}
+	else
+	{
+		maxDataLen = toast_tuple_target;
+		hoff = -1; /* keep compiler quiet about using 'hoff' uninitialized */
+	}
 
 	/*
 	 * Look for attributes with attstorage 'x' to compress.  Also find large
 	 * attributes with attstorage 'x' or 'e', and store them external.
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen)
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen)
 	{
-		int			biggest_attno;
+		int			biggest_attno = -1;
+		int32		biggest_size = MAXALIGN(TOAST_POINTER_SIZE);
+		Datum		old_value;
+		Datum		new_value;
 
-		biggest_attno = toast_tuple_find_biggest_attribute(&ttc, true, false);
+		/*
+		 * Search for the biggest yet unprocessed internal attribute
+		 */
+		for (i = 0; i < numAttrs; i++)
+		{
+			Form_pg_attribute att = TupleDescAttr(tupleDesc, i);
+
+			if (toast_action[i] != ' ')
+				continue;
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
+				continue;		/* can't happen, toast_action would be 'p' */
+			if (VARATT_IS_COMPRESSED(DatumGetPointer(toast_values[i])))
+				continue;
+			if (att->attstorage != 'x' && att->attstorage != 'e')
+				continue;
+			if (toast_sizes[i] > biggest_size)
+			{
+				biggest_attno = i;
+				biggest_size = toast_sizes[i];
+			}
+		}
+
 		if (biggest_attno < 0)
 			break;
 
 		/*
 		 * Attempt to compress it inline, if it has attstorage 'x'
 		 */
-		if (TupleDescAttr(tupleDesc, biggest_attno)->attstorage == 'x')
-			toast_tuple_try_compression(&ttc, biggest_attno);
+		i = biggest_attno;
+		if (TupleDescAttr(tupleDesc, i)->attstorage == 'x')
+		{
+			old_value = toast_values[i];
+			new_value = toast_compress_datum(old_value);
+
+			if (DatumGetPointer(new_value) != NULL)
+			{
+				/* successful compression */
+				if (toast_free[i])
+					pfree(DatumGetPointer(old_value));
+				toast_values[i] = new_value;
+				toast_free[i] = true;
+				toast_sizes[i] = VARSIZE(DatumGetPointer(toast_values[i]));
+				need_change = true;
+				need_free = true;
+			}
+			else
+			{
+				/* incompressible, ignore on subsequent compression passes */
+				toast_action[i] = 'x';
+			}
+		}
 		else
 		{
 			/* has attstorage 'e', ignore on subsequent compression passes */
-			toast_attr[biggest_attno].tai_colflags |= TOASTCOL_INCOMPRESSIBLE;
+			toast_action[i] = 'x';
 		}
 
 		/*
@@ -205,42 +415,132 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		 *
 		 * XXX maybe the threshold should be less than maxDataLen?
 		 */
-		if (toast_attr[biggest_attno].tai_size > maxDataLen &&
+		if (toast_sizes[i] > maxDataLen &&
 			rel->rd_rel->reltoastrelid != InvalidOid)
-			toast_tuple_externalize(&ttc, biggest_attno, options);
+		{
+			old_value = toast_values[i];
+			toast_action[i] = 'p';
+			toast_values[i] = toast_save_datum(rel, toast_values[i],
+											   toast_oldexternal[i], isFrozen, options);
+			if (toast_free[i])
+				pfree(DatumGetPointer(old_value));
+			toast_free[i] = true;
+			need_change = true;
+			need_free = true;
+		}
 	}
 
 	/*
 	 * Second we look for attributes of attstorage 'x' or 'e' that are still
-	 * inline, and make them external.  But skip this if there's no toast
-	 * table to push them to.
+	 * inline.  But skip this if there's no toast table to push them to.
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen &&
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen &&
 		   rel->rd_rel->reltoastrelid != InvalidOid)
 	{
-		int			biggest_attno;
+		int			biggest_attno = -1;
+		int32		biggest_size = MAXALIGN(TOAST_POINTER_SIZE);
+		Datum		old_value;
 
-		biggest_attno = toast_tuple_find_biggest_attribute(&ttc, false, false);
+		/*------
+		 * Search for the biggest yet inlined attribute with
+		 * attstorage equals 'x' or 'e'
+		 *------
+		 */
+		for (i = 0; i < numAttrs; i++)
+		{
+			Form_pg_attribute att = TupleDescAttr(tupleDesc, i);
+
+			if (toast_action[i] == 'p')
+				continue;
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
+				continue;		/* can't happen, toast_action would be 'p' */
+			if (att->attstorage != 'x' && att->attstorage != 'e')
+				continue;
+			if (toast_sizes[i] > biggest_size)
+			{
+				biggest_attno = i;
+				biggest_size = toast_sizes[i];
+			}
+		}
+
 		if (biggest_attno < 0)
 			break;
-		toast_tuple_externalize(&ttc, biggest_attno, options);
+
+		/*
+		 * Store this external
+		 */
+		i = biggest_attno;
+		old_value = toast_values[i];
+		toast_action[i] = 'p';
+		toast_values[i] = toast_save_datum(rel, toast_values[i],
+										   toast_oldexternal[i], isFrozen, options);
+		if (toast_free[i])
+			pfree(DatumGetPointer(old_value));
+		toast_free[i] = true;
+
+		need_change = true;
+		need_free = true;
 	}
 
 	/*
 	 * Round 3 - this time we take attributes with storage 'm' into
 	 * compression
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen)
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen)
 	{
-		int			biggest_attno;
+		int			biggest_attno = -1;
+		int32		biggest_size = MAXALIGN(TOAST_POINTER_SIZE);
+		Datum		old_value;
+		Datum		new_value;
 
-		biggest_attno = toast_tuple_find_biggest_attribute(&ttc, true, true);
+		/*
+		 * Search for the biggest yet uncompressed internal attribute
+		 */
+		for (i = 0; i < numAttrs; i++)
+		{
+			if (toast_action[i] != ' ')
+				continue;
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
+				continue;		/* can't happen, toast_action would be 'p' */
+			if (VARATT_IS_COMPRESSED(DatumGetPointer(toast_values[i])))
+				continue;
+			if (TupleDescAttr(tupleDesc, i)->attstorage != 'm')
+				continue;
+			if (toast_sizes[i] > biggest_size)
+			{
+				biggest_attno = i;
+				biggest_size = toast_sizes[i];
+			}
+		}
+
 		if (biggest_attno < 0)
 			break;
 
-		toast_tuple_try_compression(&ttc, biggest_attno);
+		/*
+		 * Attempt to compress it inline
+		 */
+		i = biggest_attno;
+		old_value = toast_values[i];
+		new_value = toast_compress_datum(old_value);
+
+		if (DatumGetPointer(new_value) != NULL)
+		{
+			/* successful compression */
+			if (toast_free[i])
+				pfree(DatumGetPointer(old_value));
+			toast_values[i] = new_value;
+			toast_free[i] = true;
+			toast_sizes[i] = VARSIZE(DatumGetPointer(toast_values[i]));
+			need_change = true;
+			need_free = true;
+		}
+		else
+		{
+			/* incompressible, ignore on subsequent compression passes */
+			toast_action[i] = 'x';
+		}
 	}
 
 	/*
@@ -248,86 +548,185 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 	 * increase the target tuple size, so that 'm' attributes aren't stored
 	 * externally unless really necessary.
 	 */
-	maxDataLen = TOAST_TUPLE_TARGET_MAIN - hoff;
+	/*
+	 * FIXME: Should we do something like this with memtuples on
+	 * AO tables too? Currently we do not increase the target tuple size for AO
+	 * table, so there are occasions when columns of type 'm' will be stored
+	 * out-of-line but they could otherwise be accommodated in-block
+	 * c.f. upstream Postgres commit ca7c8168de76459380577eda56a3ed09b4f6195c
+	 */
+	if (!ismemtuple)
+		maxDataLen = TOAST_TUPLE_TARGET_MAIN - hoff;
 
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen &&
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls,
+							   toast_values, toast_isnull) > maxDataLen &&
 		   rel->rd_rel->reltoastrelid != InvalidOid)
 	{
-		int			biggest_attno;
+		int			biggest_attno = -1;
+		int32		biggest_size = MAXALIGN(TOAST_POINTER_SIZE);
+		Datum		old_value;
 
-		biggest_attno = toast_tuple_find_biggest_attribute(&ttc, false, true);
+		/*--------
+		 * Search for the biggest yet inlined attribute with
+		 * attstorage = 'm'
+		 *--------
+		 */
+		for (i = 0; i < numAttrs; i++)
+		{
+			if (toast_action[i] == 'p')
+				continue;
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
+				continue;		/* can't happen, toast_action would be 'p' */
+			if (TupleDescAttr(tupleDesc, i)->attstorage != 'm')
+				continue;
+			if (toast_sizes[i] > biggest_size)
+			{
+				biggest_attno = i;
+				biggest_size = toast_sizes[i];
+			}
+		}
+
 		if (biggest_attno < 0)
 			break;
 
-		toast_tuple_externalize(&ttc, biggest_attno, options);
+		/*
+		 * Store this external
+		 */
+		i = biggest_attno;
+		old_value = toast_values[i];
+		toast_action[i] = 'p';
+		toast_values[i] = toast_save_datum(rel, toast_values[i],
+										   toast_oldexternal[i], isFrozen, options);
+		if (toast_free[i])
+			pfree(DatumGetPointer(old_value));
+		toast_free[i] = true;
+
+		need_change = true;
+		need_free = true;
 	}
+
+	/* XXX Maybe we should check here for any compressed inline attributes that
+	 * didn't save enough to warrant keeping. In particular attributes whose
+	 * rawsize is < 128 bytes and didn't save at least 3 bytes... or even maybe
+	 * more given alignment issues
+	 */
 
 	/*
 	 * In the case we toasted any values, we need to build a new heap tuple
 	 * with the changed values.
 	 */
-	if ((ttc.ttc_flags & TOAST_NEEDS_CHANGE) != 0)
+	if (need_change)
 	{
-		HeapTupleHeader olddata = newtup->t_data;
-		HeapTupleHeader new_data;
-		int32		new_header_len;
-		int32		new_data_len;
-		int32		new_tuple_len;
+		if(ismemtuple)
+		{
+			result_gtuple = (void *) memtuple_form(pbind, toast_values, toast_isnull);
+		}
+		else
+		{
+			HeapTupleHeader olddata = ((HeapTuple) newtup)->t_data;
+			HeapTupleHeader new_data;
+			int32		new_header_len;
+			int32		new_data_len;
+			int32		new_tuple_len;
+			HeapTuple	result_tuple;
 
-		/*
-		 * Calculate the new size of the tuple.
-		 *
-		 * Note: we used to assume here that the old tuple's t_hoff must equal
-		 * the new_header_len value, but that was incorrect.  The old tuple
-		 * might have a smaller-than-current natts, if there's been an ALTER
-		 * TABLE ADD COLUMN since it was stored; and that would lead to a
-		 * different conclusion about the size of the null bitmap, or even
-		 * whether there needs to be one at all.
-		 */
-		new_header_len = SizeofHeapTupleHeader;
-		if ((ttc.ttc_flags & TOAST_HAS_NULLS) != 0)
-			new_header_len += BITMAPLEN(numAttrs);
-		new_header_len = MAXALIGN(new_header_len);
-		new_data_len = heap_compute_data_size(tupleDesc,
-											  toast_values, toast_isnull);
-		new_tuple_len = new_header_len + new_data_len;
+			/*
+			 * Calculate the new size of the tuple.
+			 *
+			 * Note: we used to assume here that the old tuple's t_hoff must equal
+			 * the new_header_len value, but that was incorrect.  The old tuple
+			 * might have a smaller-than-current natts, if there's been an ALTER
+			 * TABLE ADD COLUMN since it was stored; and that would lead to a
+			 * different conclusion about the size of the null bitmap, or even
+			 * whether there needs to be one at all.
+			 */
+			new_header_len = SizeofHeapTupleHeader;
+			if (has_nulls)
+				new_header_len += BITMAPLEN(numAttrs);
+			new_header_len = MAXALIGN(new_header_len);
+			new_data_len = heap_compute_data_size(tupleDesc,
+												  toast_values, toast_isnull);
+			new_tuple_len = new_header_len + new_data_len;
 
-		/*
-		 * Allocate and zero the space needed, and fill HeapTupleData fields.
-		 */
-		result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_tuple_len);
-		result_tuple->t_len = new_tuple_len;
-		result_tuple->t_self = newtup->t_self;
-		result_tuple->t_tableOid = newtup->t_tableOid;
-		new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
-		result_tuple->t_data = new_data;
+			/*
+			 * Allocate and zero the space needed, and fill HeapTupleData fields.
+			 */
+			result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_tuple_len);
+			result_tuple->t_len = new_tuple_len;
+			result_tuple->t_self = ((HeapTuple) newtup)->t_self;
+			result_tuple->t_tableOid = ((HeapTuple) newtup)->t_tableOid;
+			new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
+			result_tuple->t_data = new_data;
 
-		/*
-		 * Copy the existing tuple header, but adjust natts and t_hoff.
-		 */
-		memcpy(new_data, olddata, SizeofHeapTupleHeader);
-		HeapTupleHeaderSetNatts(new_data, numAttrs);
-		new_data->t_hoff = new_header_len;
+			/*
+			 * Copy the existing tuple header, but adjust natts and t_hoff.
+			 */
+			memcpy(new_data, olddata, SizeofHeapTupleHeader);
+			HeapTupleHeaderSetNatts(new_data, numAttrs);
+			new_data->t_hoff = new_header_len;
 
-		/* Copy over the data, and fill the null bitmap if needed */
-		heap_fill_tuple(tupleDesc,
-						toast_values,
-						toast_isnull,
-						(char *) new_data + new_header_len,
-						new_data_len,
-						&(new_data->t_infomask),
-						((ttc.ttc_flags & TOAST_HAS_NULLS) != 0) ?
-						new_data->t_bits : NULL);
+			/* Copy over the data, and fill the null bitmap if needed */
+			heap_fill_tuple(tupleDesc,
+							toast_values,
+							toast_isnull,
+							(char *) new_data + new_header_len,
+							new_data_len,
+							&(new_data->t_infomask),
+							has_nulls ? new_data->t_bits : NULL);
+			result_gtuple = (void *) result_tuple;
+		}
 	}
 	else
-		result_tuple = newtup;
+		result_gtuple = newtup;
 
-	toast_tuple_cleanup(&ttc);
+	/*
+	 * Free allocated temp values
+	 */
+	if (need_free)
+		for (i = 0; i < numAttrs; i++)
+			if (toast_free[i])
+				pfree(DatumGetPointer(toast_values[i]));
 
-	return result_tuple;
+	/*
+	 * Delete external values from the old tuple
+	 */
+	if (need_delold)
+		for (i = 0; i < numAttrs; i++)
+			if (toast_delold[i])
+				toast_delete_datum(rel, toast_oldvalues[i], false);
+
+	return result_gtuple;
 }
 
+HeapTuple
+toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
+					   int toast_tuple_target,
+					   bool isFrozen, int options)
+{
+	return (HeapTuple) toast_insert_or_update_generic(rel,
+													  (void *) newtup,
+													  (void *) oldtup,
+													  NULL,
+													  toast_tuple_target,
+													  isFrozen,
+													  options,
+													  false);
+}
+
+MemTuple
+toast_insert_or_update_memtup(Relation rel, MemTuple newtup, MemTuple oldtup,
+					   MemTupleBinding *pbind, int toast_tuple_target,
+					   bool isFrozen, int options)
+{
+	return (MemTuple) toast_insert_or_update_generic(rel,
+													 (void *) newtup,
+													 (void *) oldtup,
+													 pbind,
+													 toast_tuple_target,
+													 isFrozen,
+													 options,
+													 true);
+}
 
 /* ----------
  * toast_flatten_tuple -
@@ -407,7 +806,6 @@ toast_flatten_tuple(HeapTuple tup, TupleDesc tupleDesc)
 
 	return new_tuple;
 }
-
 
 /* ----------
  * toast_flatten_tuple_to_datum -
