@@ -379,17 +379,6 @@ run_testspec(TestSpec *testspec)
 		run_named_permutations(testspec);
 	else
 		run_all_permutations(testspec);
-
-	/*
-	 * Verify that all steps have been used, complaining about anything
-	 * defined but not used.
-	 */
-	for (i = 0; i < testspec->nallsteps; i++)
-	{
-		if (!testspec->allsteps[i]->used)
-			fprintf(stderr, "unused step name: %s\n",
-					testspec->allsteps[i]->name);
-	}
 }
 
 /*
