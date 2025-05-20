@@ -102,6 +102,114 @@ heap_tuple_fetch_attr(struct varlena *attr)
 }
 
 
+/*
+ * If this function is changed then update varattrib_untoast_ptr_len as well
+ */
+int
+varattrib_untoast_len(Datum d)
+{
+	if (DatumGetPointer(d) == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg(" Unable to detoast datum "),
+				 errprintstack(true)));
+	}
+
+	struct varlena *attr = (struct varlena *) DatumGetPointer(d);
+	struct varlena *result;
+
+	int len = -1;
+	void *toFree = NULL;
+
+	if (VARATT_IS_EXTENDED(attr))
+	{
+		if (VARATT_IS_EXTERNAL(attr))
+		{
+			result = toast_fetch_datum(attr);
+			/* toast_fetch_datum will palloc, so set it up for free */
+			toFree = result;
+		}
+
+		if (VARATT_IS_COMPRESSED(attr))
+		{
+			len = TOAST_COMPRESS_RAWSIZE(attr);
+		}
+		else if (VARATT_IS_SHORT(attr))
+		{
+			len = VARSIZE_SHORT(attr) - VARHDRSZ_SHORT;
+		}
+	}
+
+	if(len == -1)
+		len = VARSIZE(attr) - VARHDRSZ;
+
+	if (toFree)
+		pfree(toFree);
+
+	Assert(len >= 0);
+	return len;
+}
+
+/*
+ * If this function is changed then update varattrib_untoast_len as well
+ */
+void
+varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree)
+{
+	if (DatumGetPointer(d) == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg(" Unable to detoast datum "),
+				 errprintstack(true)));
+	}
+
+	struct varlena *va = (struct varlena *) DatumGetPointer(d);
+	struct varlena *attr = va;
+
+	*len = -1;
+	*tofree = NULL;
+
+	if (VARATT_IS_EXTENDED(va))
+	{
+		if (VARATT_IS_EXTERNAL(va))
+		{
+			attr = toast_fetch_datum(va);
+			/* toast_fetch_datum will palloc, so set it up for free */
+			*tofree = attr;
+		}
+
+		if (VARATT_IS_COMPRESSED(attr))
+		{
+			struct varlena *tmp = attr;
+			attr = toast_decompress_datum(tmp);
+
+			/* If tofree is set, that is, we get it from toast_fetch_datum.
+			 * We need to free it here
+			 */
+			if(*tofree)
+				pfree(*tofree);
+			*tofree = attr;
+		}
+		else if (VARATT_IS_SHORT(attr))
+		{
+			/* Warning! Return unaligned pointer! */
+			*len = VARSIZE_SHORT(attr) - VARHDRSZ_SHORT;
+			*datastart = VARDATA_SHORT(attr);
+			attr = NULL;
+		}
+	}
+
+	if (*len == -1)
+	{
+		*datastart = VARDATA(attr);
+		*len = VARSIZE(attr) - VARHDRSZ;
+	}
+
+	Assert(*len >= 0);
+}
+
 /* ----------
  * heap_tuple_untoast_attr -
  *
@@ -322,11 +430,18 @@ toast_fetch_datum(struct varlena *attr)
 	if (!VARATT_IS_EXTERNAL_ONDISK(attr))
 		elog(ERROR, "toast_fetch_datum shouldn't be called for non-ondisk datums");
 
+	/*
+	 * GPDB: start with the assumption that chunks max out at
+	 * TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
+	 * from GPDB 4.3), in which case we'll readjust numchunks later.
+	 */
+	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
+
 	/* Must copy to access aligned fields */
 	VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr);
 
 	ressize = toast_pointer.va_extsize;
-	numchunks = ((ressize - 1) / TOAST_MAX_CHUNK_SIZE) + 1;
+	numchunks = ((ressize - 1) / actual_max_chunk_size) + 1;
 
 	result = (struct varlena *) palloc(ressize + VARHDRSZ);
 
@@ -407,25 +522,46 @@ toast_fetch_datum(struct varlena *attr)
 									 residx, nextidx,
 									 toast_pointer.va_valueid,
 									 RelationGetRelationName(toastrel))));
+
+		if ((residx == 0) && (chunksize < ressize)
+			&& (chunksize != actual_max_chunk_size))
+		{
+			/*
+			 * GPDB: This toasted tuple is using a different max chunk size.
+			 * This can happen after an upgrade, for instance. Realign our
+			 * expectations.
+			 *
+			 * Only perform this check on the first chunk (the max size isn't
+			 * allowed to change partway through), and only if we expect more
+			 * chunks to come after this based on ressize.
+			 */
+			elog(DEBUG4, "readjusting max chunk size from %d to %d for toast value %u in %s",
+				 actual_max_chunk_size, chunksize, toast_pointer.va_valueid,
+				 RelationGetRelationName(toastrel));
+
+			actual_max_chunk_size = chunksize;
+			numchunks = ((ressize - 1) / actual_max_chunk_size) + 1;
+		}
+
 		if (residx < numchunks - 1)
 		{
-			if (chunksize != TOAST_MAX_CHUNK_SIZE)
+			if (chunksize != actual_max_chunk_size)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg_internal("unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s",
-										 chunksize, (int) TOAST_MAX_CHUNK_SIZE,
+										 chunksize, (int) actual_max_chunk_size,
 										 residx, numchunks,
 										 toast_pointer.va_valueid,
 										 RelationGetRelationName(toastrel))));
 		}
 		else if (residx == numchunks - 1)
 		{
-			if ((residx * TOAST_MAX_CHUNK_SIZE + chunksize) != ressize)
+			if ((residx * actual_max_chunk_size + chunksize) != ressize)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_CORRUPTED),
 						 errmsg_internal("unexpected chunk size %d (expected %d) in final chunk %d for toast value %u in %s",
 										 chunksize,
-										 (int) (ressize - residx * TOAST_MAX_CHUNK_SIZE),
+										 (int) (ressize - residx * actual_max_chunk_size),
 										 residx,
 										 toast_pointer.va_valueid,
 										 RelationGetRelationName(toastrel))));
@@ -442,7 +578,7 @@ toast_fetch_datum(struct varlena *attr)
 		/*
 		 * Copy the data into proper place in our result
 		 */
-		memcpy(VARDATA(result) + residx * TOAST_MAX_CHUNK_SIZE,
+		memcpy(VARDATA(result) + residx * actual_max_chunk_size,
 			   chunkdata,
 			   chunksize);
 
@@ -510,6 +646,13 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	int			validIndex;
 	SnapshotData SnapshotToast;
 
+	/*
+	 * GPDB: start with the assumption that chunks max out at
+	 * TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
+	 * from GPDB 4.3), in which case we'll readjust everything later.
+	 */
+	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
+
 	if (!VARATT_IS_EXTERNAL_ONDISK(attr))
 		elog(ERROR, "toast_fetch_datum_slice shouldn't be called for non-ondisk datums");
 
@@ -523,7 +666,6 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	Assert(!VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer));
 
 	attrsize = toast_pointer.va_extsize;
-	totalchunks = ((attrsize - 1) / TOAST_MAX_CHUNK_SIZE) + 1;
 
 	if (sliceoffset >= attrsize)
 	{
@@ -541,13 +683,6 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	if (length == 0)
 		return result;			/* Can save a lot of work at this point! */
 
-	startchunk = sliceoffset / TOAST_MAX_CHUNK_SIZE;
-	endchunk = (sliceoffset + length - 1) / TOAST_MAX_CHUNK_SIZE;
-	numchunks = (endchunk - startchunk) + 1;
-
-	startoffset = sliceoffset % TOAST_MAX_CHUNK_SIZE;
-	endoffset = (sliceoffset + length - 1) % TOAST_MAX_CHUNK_SIZE;
-
 	/*
 	 * Open the toast relation and its indexes
 	 */
@@ -559,6 +694,75 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 									AccessShareLock,
 									&toastidxs,
 									&num_indexes);
+
+	{
+		/*
+		 * GPDB: because we allow upgrades from clusters with different
+		 * TOAST_MAX_CHUNK_SIZEs, we can't compute our chunk offsets yet. Open
+		 * the first chunk and check its size.
+		 */
+		ScanKeyInit(&toastkey[0],
+					(AttrNumber) 1,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(toast_pointer.va_valueid));
+		ScanKeyInit(&toastkey[1],
+					(AttrNumber) 2,
+					BTEqualStrategyNumber, F_INT4EQ,
+					Int32GetDatum(0));
+		nscankeys = 2;
+
+		init_toast_snapshot(&SnapshotToast);
+		toastscan = systable_beginscan_ordered(toastrel, toastidxs[validIndex],
+											   &SnapshotToast, nscankeys, toastkey);
+
+		if ((ttup = systable_getnext_ordered(toastscan, ForwardScanDirection)) != NULL)
+		{
+			/*
+			 * Have a chunk, extract the sequence number and the data
+			 */
+			residx = DatumGetInt32(fastgetattr(ttup, 2, toasttupDesc, &isnull));
+			Assert(!isnull);
+			chunk = DatumGetPointer(fastgetattr(ttup, 3, toasttupDesc, &isnull));
+			Assert(!isnull);
+
+			if (!VARATT_IS_EXTENDED(chunk))
+			{
+				chunksize = VARSIZE(chunk) - VARHDRSZ;
+			}
+			else if (VARATT_IS_SHORT(chunk))
+			{
+				/* could happen due to heap_form_tuple doing its thing */
+				chunksize = VARSIZE_SHORT(chunk) - VARHDRSZ_SHORT;
+			}
+			else
+			{
+				/* should never happen */
+				elog(ERROR, "found toasted toast chunk for toast value %u in %s",
+					 toast_pointer.va_valueid,
+					 RelationGetRelationName(toastrel));
+				chunksize = 0;		/* keep compiler quiet */
+			}
+
+			if (chunksize < attrsize)
+			{
+				/*
+				 * Only adjust the max chunk size if this isn't the only chunk.
+				 */
+				actual_max_chunk_size = chunksize;
+			}
+		}
+
+		systable_endscan_ordered(toastscan);
+	}
+
+	totalchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
+
+	startchunk = sliceoffset / actual_max_chunk_size;
+	endchunk = (sliceoffset + length - 1) / actual_max_chunk_size;
+	numchunks = (endchunk - startchunk) + 1;
+
+	startoffset = sliceoffset % actual_max_chunk_size;
+	endoffset = (sliceoffset + length - 1) % actual_max_chunk_size;
 
 	/*
 	 * Setup a scan key to fetch from the index. This is either two keys or
@@ -642,19 +846,19 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 				 RelationGetRelationName(toastrel));
 		if (residx < totalchunks - 1)
 		{
-			if (chunksize != TOAST_MAX_CHUNK_SIZE)
+			if (chunksize != actual_max_chunk_size)
 				elog(ERROR, "unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s when fetching slice",
-					 chunksize, (int) TOAST_MAX_CHUNK_SIZE,
+					 chunksize, (int) actual_max_chunk_size,
 					 residx, totalchunks,
 					 toast_pointer.va_valueid,
 					 RelationGetRelationName(toastrel));
 		}
 		else if (residx == totalchunks - 1)
 		{
-			if ((residx * TOAST_MAX_CHUNK_SIZE + chunksize) != attrsize)
+			if ((residx * actual_max_chunk_size + chunksize) != attrsize)
 				elog(ERROR, "unexpected chunk size %d (expected %d) in final chunk %d for toast value %u in %s when fetching slice",
 					 chunksize,
-					 (int) (attrsize - residx * TOAST_MAX_CHUNK_SIZE),
+					 (int) (attrsize - residx * actual_max_chunk_size),
 					 residx,
 					 toast_pointer.va_valueid,
 					 RelationGetRelationName(toastrel));
@@ -677,7 +881,7 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 			chcpyend = endoffset;
 
 		memcpy(VARDATA(result) +
-			   (residx * TOAST_MAX_CHUNK_SIZE - sliceoffset) + chcpystrt,
+			   (residx * actual_max_chunk_size - sliceoffset) + chcpystrt,
 			   chunkdata + chcpystrt,
 			   (chcpyend - chcpystrt) + 1);
 
