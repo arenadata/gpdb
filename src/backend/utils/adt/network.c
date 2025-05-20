@@ -26,11 +26,7 @@
 #include "nodes/supportnodes.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
-<<<<<<< HEAD
-=======
 #include "utils/guc.h"
-#include "utils/hashutils.h"
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #include "utils/inet.h"
 #include "utils/lsyscache.h"
 #include "utils/sortsupport.h"
