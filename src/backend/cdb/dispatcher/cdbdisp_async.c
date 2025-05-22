@@ -927,9 +927,6 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 		 */
 		if (pParms->waitMode == DISPATCH_WAIT_CANCEL)
 		{
-			/* Make QE come to its sense. */
-			signalQE(dispatchResult, DISPATCH_WAIT_CANCEL);
-
 			/*
 			 * If we're cancelling the transaction due to an OOM, there
 			 * might not be enough memory to discard the result properly.
