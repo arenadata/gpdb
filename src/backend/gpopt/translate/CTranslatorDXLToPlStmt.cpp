@@ -4264,7 +4264,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 	GPOS_ASSERT(0 != dml->actionColIdx);
 
 	// save targetlist for projection of results from outer nodes
-	dml->childTargetList = dml_target_list;
+	dml->targetListProj = dml_target_list;
 
 	plan->lefttree = child_plan;
 	plan->nMotionNodes = child_plan->nMotionNodes;

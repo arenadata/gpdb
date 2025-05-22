@@ -78,7 +78,7 @@ ExecDML(DMLState *node)
 
 		/* Set target list for projection */
 		List *returningTargetList = plannode->plan.targetlist;
-		plannode->plan.targetlist = plannode->childTargetList;
+		plannode->plan.targetlist = plannode->targetListProj;
 
 		TupleTableSlot *slot = ExecProcNode(outerNode);
 		TupleTableSlot *resultSlot = NULL;
@@ -286,7 +286,7 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 
 	/* set target list with projection and save returning target list */
 	List *returningTargetList = node->plan.targetlist;
-	node->plan.targetlist = node->childTargetList;
+	node->plan.targetlist = node->targetListProj;
 
 	ExecInitResultTupleSlot(estate, &dmlstate->ps);
 
