@@ -461,14 +461,7 @@ ExecSquelchDML(DMLState *node)
 	 * regardless of any LIMIT's or other forms for projections which could
 	 * end up causing a squelch to happen.
 	 */
-	for (;;)
-	{
-		TupleTableSlot *result;
-
-		result = ExecDML(node);
-		if (!result)
-			break;
-	}
+	while (ExecDML(node) != NULL);
 }
 
 /* EOF */
