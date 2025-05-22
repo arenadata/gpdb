@@ -23,7 +23,7 @@ CLogicalReturning::CLogicalReturning(CMemoryPool *mp)
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CLogicalDML::CLogicalDML
+//		CLogicalReturning::CLogicalReturning
 //
 //	@doc:
 //		Ctor
@@ -43,7 +43,7 @@ CLogicalReturning::CLogicalReturning(CMemoryPool *mp,
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CLogicalDML::CLogicalDML
+//		CCLogicalReturning::CLogicalReturning
 //
 //	@doc:
 //		Ctor
