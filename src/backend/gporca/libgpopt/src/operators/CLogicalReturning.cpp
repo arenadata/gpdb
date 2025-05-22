@@ -31,7 +31,7 @@ CLogicalReturning::CLogicalReturning(CMemoryPool *mp)
 //---------------------------------------------------------------------------
 CLogicalReturning::CLogicalReturning(CMemoryPool *mp,
 									 CTableDescriptor *ptabdesc)
-	: CLogical(mp), m_ptabdesc(ptabdesc), m_pdrgpcrOutput(NULL)
+	: CLogical(mp), m_ptabdesc(ptabdesc)
 {
 	GPOS_ASSERT(NULL != ptabdesc);
 
