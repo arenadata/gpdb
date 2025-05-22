@@ -387,13 +387,6 @@ SELECT row_to_json(row((select array_agg(x) as d from generate_series(5,10) x)),
 analyze rows;
 select attname, to_json(histogram_bounds) histogram_bounds
 from pg_stats
-<<<<<<< HEAD
-where attname = 'tmplname' and tablename = 'pg_pltemplate';
-                                                histogram_bounds                                                
-----------------------------------------------------------------------------------------------------------------
- ["pljava","pljavau","plperl","plperlu","plpgsql","plpython2u","plpython3u","plpythonu","plr","pltcl","pltclu"]
-(1 row)
-=======
 where tablename = 'rows' and
       schemaname = pg_my_temp_schema()::regnamespace::text
 order by 1;
@@ -402,7 +395,6 @@ order by 1;
  x       | [1,2,3]
  y       | ["txt1","txt2","txt3"]
 (2 rows)
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 -- to_json, timestamps
 select to_json(timestamp '2014-05-28 12:22:35.614298');
