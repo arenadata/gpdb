@@ -6,7 +6,6 @@
 /results/
 /log/
 
-<<<<<<< HEAD
 # Configure-generated files
 /GPTest.pm
 
@@ -31,10 +30,7 @@ regression.out
 
 stdin
 stdout
-=======
-# Note: regreesion.* are only left behind on a failure; that's why they're not ignored
-=======
+
 # Note: regression.* are only left behind on a failure; that's why they're not ignored
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #/regression.diffs
 #/regression.out
