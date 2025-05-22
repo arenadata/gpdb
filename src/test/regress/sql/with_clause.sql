@@ -521,7 +521,7 @@ create table t_new as (with cte as
 (delete from with_dml where i > 0 returning *)
 select * from cte);
 
--- Test order by system column returned from modifying CTE on hash distributed table
+-- Test usage of system columns returned from DML operations
 explain (costs off)
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
