@@ -803,7 +803,7 @@ preprocess_function_rtes(PlannerInfo *root)
 
 			/* Apply const-simplification */
 			rte->functions = (List *)
-				eval_const_expressions(root, (Node *) rte->functions);
+				eval_const_expressions_not_eval(root, (Node *) rte->functions);
 
 			/* Check safety of expansion, and expand if possible */
 			funcquery = inline_set_returning_function(root, rte);

@@ -2474,8 +2474,9 @@ transform_array_Const_to_ArrayExpr(Const *c)
  * converted to positional notation.  The executor won't handle either.
  *--------------------
  */
-Node *
-eval_const_expressions(PlannerInfo *root, Node *node)
+static Node *
+eval_const_expressions_internal(PlannerInfo *root, Node *node,
+								bool eval_stable_functions)
 {
 	eval_const_expressions_context context;
 	Node                          *result;
@@ -2492,13 +2493,26 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	context.recurse_queries = false; /* do not recurse into query structures */
 	context.recurse_sublink_testexpr = true;
 	context.max_size = 0;
-	context.eval_stable_functions = should_eval_stable_functions(root);
+	context.eval_stable_functions = eval_stable_functions;
 
 	saved_oid_assignments = SaveOidAssignments();
 	result = eval_const_expressions_mutator(node, &context);
 	RestoreOidAssignments(saved_oid_assignments);
 
 	return result;
+}
+
+Node *
+eval_const_expressions(PlannerInfo *root, Node *node)
+{
+	return eval_const_expressions_internal(root, node,
+										   should_eval_stable_functions(root));
+}
+
+Node *
+eval_const_expressions_not_eval(PlannerInfo *root, Node *node)
+{
+	return eval_const_expressions_internal(root, node, false);
 }
 
 /*--------------------
