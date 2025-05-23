@@ -32,11 +32,6 @@ typedef struct
 
 struct Step
 {
-<<<<<<< HEAD
-=======
-	int			session;
-	bool		used;
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 	char	   *name;
 	char	   *sql;
 	/* These fields are filled by check_testspec(): */
