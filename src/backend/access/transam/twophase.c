@@ -2491,7 +2491,7 @@ RemovePendingDeletesForPreparedTransactions()
 		if (entry->xlogrecptr == InvalidXLogRecPtr)
 			continue;
 
-		int savedInterruptHoldoffCount = InterruptHoldoffCount;
+		volatile int savedInterruptHoldoffCount = InterruptHoldoffCount;
 		PG_TRY();
 		{
 			xlogrec = XLogReadRecord(xlogreader, entry->xlogrecptr, &errormsg);
@@ -2530,10 +2530,10 @@ RemovePendingDeletesForPreparedTransactions()
 
 		hdr = (TwoPhaseFileHeader *) XLogRecGetData(xlogrec);
 
-		TransactionId *subxids = NULL;
-		if (hdr->nsubxacts > 0)
-			subxids = (TransactionId *)
-				((char *) hdr + MAXALIGN(sizeof(TwoPhaseFileHeader)));
+		TransactionId *subxids = (hdr->nsubxacts > 0) ?
+			(TransactionId *)
+				((char *) hdr + MAXALIGN(sizeof(TwoPhaseFileHeader))) :
+			NULL;
 
 		PdlRedoRemoveTree(hdr->xid, subxids, hdr->nsubxacts);
 	}
