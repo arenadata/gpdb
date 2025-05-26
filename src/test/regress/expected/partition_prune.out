@@ -285,36 +285,9 @@ explain (costs off) select * from rlp where a = 1;
 ------------------------------------------
  Gather Motion 1:1  (slice1; segments: 1)
    ->  Seq Scan on rlp2
-<<<<<<< HEAD
          Filter: (a = 1)
  Optimizer: Postgres query optimizer
 (4 rows)
-=======
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp3abcd
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp3efgh
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp3nullxy
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp3_default
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp4_1
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp4_2
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp4_default
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp5_1
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp_default_10
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp_default_30
-         Filter: (a <= 31)
-   ->  Seq Scan on rlp_default_default
-         Filter: (a <= 31)
-(27 rows)
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 explain (costs off) select * from rlp where a = 1::bigint;		/* same as above */
                 QUERY PLAN                
@@ -409,7 +382,6 @@ explain (costs off) select * from rlp where a > 10;
  Optimizer: Postgres query optimizer
 (25 rows)
 
-<<<<<<< HEAD
 explain (costs off) select * from rlp where a < 15;
                  QUERY PLAN                  
 ---------------------------------------------
@@ -603,17 +575,6 @@ explain (costs off) select * from rlp where a > 30;
                Filter: (a > 30)
  Optimizer: Postgres query optimizer
 (9 rows)
-=======
-explain (costs off) select * from rlp where a > 20 and a < 27;
-               QUERY PLAN                
------------------------------------------
- Append
-   ->  Seq Scan on rlp4_1
-         Filter: ((a > 20) AND (a < 27))
-   ->  Seq Scan on rlp4_2
-         Filter: ((a > 20) AND (a < 27))
-(5 rows)
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 explain (costs off) select * from rlp where a = 30;	/* only default is scanned */
                 QUERY PLAN                
@@ -649,8 +610,6 @@ explain (costs off) select * from rlp where a <= 31;
                Filter: (a <= 31)
          ->  Seq Scan on rlp5_1
                Filter: (a <= 31)
-         ->  Seq Scan on rlp5_default
-               Filter: (a <= 31)
          ->  Seq Scan on rlp_default_10
                Filter: (a <= 31)
          ->  Seq Scan on rlp_default_30
@@ -658,7 +617,7 @@ explain (costs off) select * from rlp where a <= 31;
          ->  Seq Scan on rlp_default_default
                Filter: (a <= 31)
  Optimizer: Postgres query optimizer
-(31 rows)
+(29 rows)
 
 explain (costs off) select * from rlp where a = 1 or a = 7;
                 QUERY PLAN                
@@ -710,12 +669,8 @@ explain (costs off) select * from rlp where a > 20 and a < 27;
                Filter: ((a > 20) AND (a < 27))
          ->  Seq Scan on rlp4_2
                Filter: ((a > 20) AND (a < 27))
-         ->  Seq Scan on rlp4_default
-               Filter: ((a > 20) AND (a < 27))
-         ->  Seq Scan on rlp_default_default
-               Filter: ((a > 20) AND (a < 27))
  Optimizer: Postgres query optimizer
-(11 rows)
+(7 rows)
 
 explain (costs off) select * from rlp where a = 29;
                 QUERY PLAN                
@@ -745,25 +700,29 @@ explain (costs off) select * from rlp where a >= 29;
 (13 rows)
 
 explain (costs off) select * from rlp where a < 1 or (a > 20 and a < 25);
-                      QUERY PLAN                      
-------------------------------------------------------
- Append
-   ->  Seq Scan on rlp1
-         Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
-   ->  Seq Scan on rlp4_1
-         Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
-(5 rows)
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Append
+         ->  Seq Scan on rlp1
+               Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
+         ->  Seq Scan on rlp4_1
+               Filter: ((a < 1) OR ((a > 20) AND (a < 25)))
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 -- where clause contradicts sub-partition's constraint
 explain (costs off) select * from rlp where a = 20 or a = 40;
-               QUERY PLAN               
-----------------------------------------
- Append
-   ->  Seq Scan on rlp4_1
-         Filter: ((a = 20) OR (a = 40))
-   ->  Seq Scan on rlp5_default
-         Filter: ((a = 20) OR (a = 40))
-(5 rows)
+                  QUERY PLAN                  
+----------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Append
+         ->  Seq Scan on rlp4_1
+               Filter: ((a = 20) OR (a = 40))
+         ->  Seq Scan on rlp5_default
+               Filter: ((a = 20) OR (a = 40))
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 explain (costs off) select * from rlp3 where a = 20;   /* empty */
         QUERY PLAN        
@@ -1432,21 +1391,25 @@ explain (costs off) select * from coercepart where a !~ all ('{ab,bc}');
 (9 rows)
 
 explain (costs off) select * from coercepart where a = any ('{ab,bc}');
-                      QUERY PLAN                       
--------------------------------------------------------
- Append
-   ->  Seq Scan on coercepart_ab
-         Filter: ((a)::text = ANY ('{ab,bc}'::text[]))
-   ->  Seq Scan on coercepart_bc
-         Filter: ((a)::text = ANY ('{ab,bc}'::text[]))
-(5 rows)
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Gather Motion 2:1  (slice1; segments: 2)
+   ->  Append
+         ->  Seq Scan on coercepart_ab
+               Filter: ((a)::text = ANY ('{ab,bc}'::text[]))
+         ->  Seq Scan on coercepart_bc
+               Filter: ((a)::text = ANY ('{ab,bc}'::text[]))
+ Optimizer: Postgres query optimizer
+(7 rows)
 
 explain (costs off) select * from coercepart where a = any ('{ab,null}');
-                    QUERY PLAN                     
----------------------------------------------------
- Seq Scan on coercepart_ab
-   Filter: ((a)::text = ANY ('{ab,NULL}'::text[]))
-(2 rows)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on coercepart_ab
+         Filter: ((a)::text = ANY ('{ab,NULL}'::text[]))
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 explain (costs off) select * from coercepart where a = any (null::text[]);
         QUERY PLAN        
@@ -1456,11 +1419,13 @@ explain (costs off) select * from coercepart where a = any (null::text[]);
 (2 rows)
 
 explain (costs off) select * from coercepart where a = all ('{ab}');
-                  QUERY PLAN                  
-----------------------------------------------
- Seq Scan on coercepart_ab
-   Filter: ((a)::text = ALL ('{ab}'::text[]))
-(2 rows)
+                     QUERY PLAN                     
+----------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)
+   ->  Seq Scan on coercepart_ab
+         Filter: ((a)::text = ALL ('{ab}'::text[]))
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 explain (costs off) select * from coercepart where a = all ('{ab,bc}');
         QUERY PLAN        
@@ -3442,16 +3407,18 @@ select * from stable_qual_pruning
 explain (analyze, costs off, summary off, timing off)
 select * from stable_qual_pruning
   where a = any(null::timestamptz[]);
-                           QUERY PLAN                           
-----------------------------------------------------------------
- Append (actual rows=0 loops=1)
-   ->  Seq Scan on stable_qual_pruning1 (actual rows=0 loops=1)
-         Filter: (a = ANY (NULL::timestamp with time zone[]))
-   ->  Seq Scan on stable_qual_pruning2 (actual rows=0 loops=1)
-         Filter: (a = ANY (NULL::timestamp with time zone[]))
-   ->  Seq Scan on stable_qual_pruning3 (actual rows=0 loops=1)
-         Filter: (a = ANY (NULL::timestamp with time zone[]))
-(7 rows)
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3) (actual rows=0 loops=1)
+   ->  Append (actual rows=0 loops=1)
+         ->  Seq Scan on stable_qual_pruning1 (actual rows=0 loops=1)
+               Filter: (a = ANY (NULL::timestamp with time zone[]))
+         ->  Seq Scan on stable_qual_pruning2 (actual rows=0 loops=1)
+               Filter: (a = ANY (NULL::timestamp with time zone[]))
+         ->  Seq Scan on stable_qual_pruning3 (actual rows=0 loops=1)
+               Filter: (a = ANY (NULL::timestamp with time zone[]))
+ Optimizer: Postgres query optimizer
+(9 rows)
 
 drop table stable_qual_pruning;
 --
