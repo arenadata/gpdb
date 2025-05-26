@@ -103,7 +103,7 @@ compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool hasnull, Dat
 }
 
 
-HeapTuple
+static void *
 toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
 							   MemTupleBinding *pbind, int toast_tuple_target,
 							   bool isFrozen, int options, bool ismemtuple)
