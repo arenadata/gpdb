@@ -2614,8 +2614,8 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 #if 0
 	/*
 	 * In GPDB 6, this is not an optimization because the Mark/Restore
-	 * functionality has been significantly reworked in
-	 * ExecMaterialMarkPos/ExecMaterialRestrPos functions.
+	 * functionality in tuplestore.c has been significantly refactored into
+	 * tuplestorenew.c and it is still spilled to disk, so disable it.
 	 */
 	/*
 	 * Also, force materializing if the inner path is to be sorted and the
