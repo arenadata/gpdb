@@ -7452,6 +7452,40 @@ StartupXLOG(void)
 					TimeLineID	newTLI = ThisTimeLineID;
 					TimeLineID	prevTLI = ThisTimeLineID;
 
+					if ((info == XLOG_CHECKPOINT_SHUTDOWN) ||
+						(info == XLOG_END_OF_RECOVERY))
+					{
+						/*
+						 * At this point we may encounter a situation, when some
+						 * prepared transaction is yet not committed/aborted,
+						 * but the respective WAL segment file is already
+						 * recycled. It may happen is some corner cases, like:
+						 * 1. Primary successfully performs Prepare for a
+						 * transaction;
+						 * 2. Primary stops responding and Mirror is promoted;
+						 * 3. New Primary (ex Mirror) commits the transaction;
+						 * 4. New Primary (ex Mirror) recycles WAL segment with
+						 * the Prepare record (because both Primary and Mirror
+						 * has done the Prepare);
+						 * 5. Ex Primary is recovered as new Mirror, it has the
+						 * the transaction in the list of prepared transactions,
+						 * but doesn't have the WAL segment. And the new Mirror
+						 * should soon see the commit REDO record from the new
+						 * Primary (and remove the transaction from the list of
+						 * prepared transactions).
+						 *
+						 * In such a case
+						 * RemovePendingDeletesForPreparedTransactions() will
+						 * return FALSE. And we postpone the removal of orphaned
+						 * files until all such prepared transactions without
+						 * WAL segment files are wiped out from the list of
+						 * prepared transactions.
+						 */
+						if (RemovePendingDeletesForPreparedTransactions())
+							/* Clean up orphaned files */
+							PdlRedoDropFiles();
+					}
+
 					if (info == XLOG_CHECKPOINT_SHUTDOWN)
 					{
 						CheckPoint	checkPoint;
@@ -7969,6 +8003,21 @@ StartupXLOG(void)
 			CreateCheckPoint(CHECKPOINT_END_OF_RECOVERY | CHECKPOINT_IMMEDIATE);
 
 		UtilityModeCloseDtmRedoFile();
+
+		/*
+		 * By this moment, there shouldn't be any prepared transaction with
+		 * missing respective WAL segment file, meaning
+		 * RemovePendingDeletesForPreparedTransactions() should return TRUE.
+		 * If not, most likely the respective WAL segment file is recycled
+		 * illegally, and we do not perform orphaned files removal (as we might
+		 * remove smth that is already committed). Instead, we emit a warning.
+		 */
+		if (RemovePendingDeletesForPreparedTransactions())
+			/* Clean up orphaned files */
+			PdlRedoDropFiles();
+		else
+			ereport(WARNING, (errmsg(
+					"Couldn't drop orphaned files")));
 
 		/*
 		 * And finally, execute the recovery_end_command, if any.
@@ -10788,8 +10837,7 @@ xlog_redo(XLogRecPtr beginLoc __attribute__((unused)), XLogRecPtr lsn __attribut
 	}
 	else if (info == XLOG_PENDING_DELETE)
 	{
-		if (IsCrashRecoveryOnly())
-			PdlRedoXLogRecord(record);
+		PdlRedoXLogRecord(record);
 	}
 }
 
@@ -12158,7 +12206,7 @@ retry:
 
 	/*
 	 * Check the page header immediately, so that we can retry immediately if
-	 * it's not valid. This may seem unnecessary, because XLogReadRecord()
+	 * it's not valid. This may seem unnecessary, because ReadPageInternal()
 	 * validates the page header anyway, and would propagate the failure up to
 	 * ReadRecord(), which would retry. However, there's a corner case with
 	 * continuation records, if a record is split across two pages such that
@@ -12181,9 +12229,23 @@ retry:
 	 *
 	 * Validating the page header is cheap enough that doing it twice
 	 * shouldn't be a big deal from a performance point of view.
+	 *
+	 * When not in standby mode, an invalid page header should cause recovery
+	 * to end, not retry reading the page, so we don't need to validate the
+	 * page header here for the retry. Instead, ReadPageInternal() is
+	 * responsible for the validation.
 	 */
-	if (!XLogReaderValidatePageHeader(xlogreader, targetPagePtr, readBuf))
+	if (StandbyMode &&
+		!XLogReaderValidatePageHeader(xlogreader, targetPagePtr, readBuf))
 	{
+		/*
+		 * Emit this error right now then retry this page immediately. Use
+		 * errmsg_internal() because the message was already translated.
+		 */
+		if (xlogreader->errormsg_buf[0])
+			ereport(emode_for_corrupt_record(emode, EndRecPtr),
+					(errmsg_internal("%s", xlogreader->errormsg_buf)));
+
 		/* reset any error XLogReaderValidatePageHeader() might have set */
 		xlogreader->errormsg_buf[0] = '\0';
 		goto next_record_is_invalid;

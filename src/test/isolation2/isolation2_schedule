@@ -355,3 +355,6 @@ test: free_remapper_fatal
 test: spilling_hashagg
 
 test: copy_interrupt
+
+# test pg_locks view and pg_lock_status() function
+test: lock_status
