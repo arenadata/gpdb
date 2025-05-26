@@ -2491,7 +2491,7 @@ RemovePendingDeletesForPreparedTransactions()
 		if (entry->xlogrecptr == InvalidXLogRecPtr)
 			continue;
 
-		volatile int savedInterruptHoldoffCount = InterruptHoldoffCount;
+		int savedInterruptHoldoffCount = InterruptHoldoffCount;
 		PG_TRY();
 		{
 			xlogrec = XLogReadRecord(xlogreader, entry->xlogrecptr, &errormsg);
