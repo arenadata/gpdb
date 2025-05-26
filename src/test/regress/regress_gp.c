@@ -114,6 +114,8 @@ extern Datum broken_int4out(PG_FUNCTION_ARGS);
 /* fts tests */
 extern Datum gp_fts_probe_stats(PG_FUNCTION_ARGS);
 
+extern Datum gp_get_int_tuples(PG_FUNCTION_ARGS);
+
 /* Triggers */
 
 typedef struct
@@ -2348,4 +2350,212 @@ gp_keepalives_check(PG_FUNCTION_ARGS) {
 	}
 
 	SRF_RETURN_DONE(funcctx);
+}
+
+
+/*
+ * This test function intended to check possibility of resources deallocation 
+ * using squelch protocol in case of query termination during run of materialized
+ * Value Per Call table returning function.
+ */
+PG_FUNCTION_INFO_V1(gp_get_int_tuples);
+
+Datum
+gp_get_int_tuples(PG_FUNCTION_ARGS)
+{
+	typedef struct Context
+	{
+		int index;
+		int max_index;
+		Relation	aorel;
+	} Context;
+
+	FuncCallContext		*fctx;
+	Context *context;
+
+	int			n = PG_GETARG_INT32(0);	
+
+	if (SRF_IS_SQUELCH_CALL())
+	{
+		fctx = SRF_PERCALL_SETUP();
+		context = (Context *) fctx->user_fctx;
+		goto srf_done;
+	}
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc tupdesc;
+		MemoryContext oldcontext;
+
+		fctx = SRF_FIRSTCALL_INIT();
+
+		/* Switch to memory context for appropriate multiple function call */
+		oldcontext = MemoryContextSwitchTo(fctx->multi_call_memory_ctx);
+
+		context = (Context *) palloc(sizeof(Context));
+		context->index = 0;
+		context->max_index = n;
+
+		context->aorel = heap_open(TypeRelationId, AccessShareLock);
+
+		/* Create tupdesc for result */
+		tupdesc = CreateTemplateTupleDesc(2, false);
+
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "idx",
+							INT4OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "value",
+							INT4OID, -1, 0);
+		
+		fctx->tuple_desc = BlessTupleDesc(tupdesc);							
+		fctx->user_fctx = context;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	fctx = SRF_PERCALL_SETUP();
+	context = (Context *) fctx->user_fctx;
+
+	if (context->index < context->max_index)
+	{
+		Datum values[2];
+		bool nulls[2];
+		HeapTuple tuple;
+		Datum result;
+
+		if (context->index == 3)
+		{
+			/* Simulate query cancellation */
+			SIMPLE_FAULT_INJECTOR("check_SRF_cancel");
+		}
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+
+		values[0] = Int16GetDatum(context->index);
+		values[1] = Int16GetDatum(context->index + 10);
+
+		context->index++;
+
+		tuple = heap_form_tuple(fctx->tuple_desc, values, nulls);
+		result = HeapTupleGetDatum(tuple);
+		SRF_RETURN_NEXT(fctx, result);
+	}
+
+srf_done:
+	heap_close(context->aorel, AccessShareLock);
+
+	SRF_RETURN_DONE(fctx);
+}
+
+typedef struct
+{
+	int cur_tuple_idx;
+	int cur_segment_idx;
+	int cur_segment_tuple_idx;
+
+	int n_segments;
+	int n_tuples;
+
+	Datum some_text;
+	struct pg_result **pg_results;
+} gp_mock_cdbdispatchcommand_status;
+
+/* 
+ * This test function mocks CdbDispatchCommand() with a customizable amount of
+ * tuples.
+ */
+PG_FUNCTION_INFO_V1(gp_mock_cdbdispatchcommand);
+Datum
+gp_mock_cdbdispatchcommand(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *func_ctx;
+	gp_mock_cdbdispatchcommand_status *my_status;
+
+	int arg_tuple_amount = PG_GETARG_INT32(0);
+
+	if (arg_tuple_amount <= 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("gp_mock_cdbdispatchcommand() should only be "
+							   "called with it's parameter greater than 0")));
+	}
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		func_ctx = SRF_FIRSTCALL_INIT();
+
+		MemoryContext oldcontext =
+			MemoryContextSwitchTo(func_ctx->multi_call_memory_ctx);
+
+		my_status = palloc0(sizeof(gp_mock_cdbdispatchcommand_status));
+
+		/* Cache the return result. */
+		my_status->some_text = CStringGetTextDatum("sometext");
+
+		/* Send the command to segments from QD. */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			char *query =
+				psprintf("SELECT * FROM gp_mock_cdbdispatchcommand(%d)",
+						 arg_tuple_amount);
+
+			CdbPgResults cdb_pgresults = {0};
+			CdbDispatchCommand(query, DF_WITH_SNAPSHOT, &cdb_pgresults);
+
+			pfree(query);
+
+			Assert(cdb_pgresults.numResults > 0);
+
+			for (int i = 0; i < cdb_pgresults.numResults; i++)
+			{
+				Assert(PQresultStatus(cdb_pgresults.pg_results[i]) ==
+					   PGRES_TUPLES_OK);
+				my_status->n_tuples += PQntuples(cdb_pgresults.pg_results[i]);
+			}
+
+			my_status->n_segments = cdb_pgresults.numResults;
+			my_status->pg_results = cdb_pgresults.pg_results;
+		}
+
+		func_ctx->user_fctx = my_status;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	func_ctx = SRF_PERCALL_SETUP();
+	my_status = func_ctx->user_fctx;
+
+	/* Generate fake tuples from every segment. */
+	if (my_status->cur_tuple_idx < arg_tuple_amount)
+	{
+		my_status->cur_tuple_idx++;
+		SRF_RETURN_NEXT(func_ctx, my_status->some_text);
+	}
+
+	/* Receive tuples from the loop above on master. */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		while (my_status->cur_segment_idx < my_status->n_segments)
+		{
+			PGresult *res = my_status->pg_results[my_status->cur_segment_idx];
+
+			if (my_status->cur_segment_tuple_idx < PQntuples(res))
+			{
+				Datum ret = CStringGetTextDatum(
+					PQgetvalue(res, my_status->cur_segment_tuple_idx, 0));
+
+				my_status->cur_segment_tuple_idx++;
+				SRF_RETURN_NEXT(func_ctx, ret);
+			}
+
+			PQclear(res);
+
+			my_status->cur_segment_idx++;
+			my_status->cur_segment_tuple_idx = 0;
+		}
+
+		pfree(my_status->pg_results);
+	}
+
+	SRF_RETURN_DONE(func_ctx);
 }
