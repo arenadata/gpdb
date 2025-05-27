@@ -97,11 +97,7 @@ ecpg_start_test(const char *testname,
 	char		outfile_source[MAXPGPATH],
 				expectfile_source[MAXPGPATH];
 	char		cmd[MAXPGPATH * 3];
-<<<<<<< HEAD
-=======
-	char	   *testname_dash;
 	char	   *appnameenv;
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 	snprintf(inprg, sizeof(inprg), "%s/%s", inputdir, testname);
 	snprintf(insource, sizeof(insource), "%s.c", testname);
@@ -150,7 +146,7 @@ ecpg_start_test(const char *testname,
 			 outfile_stdout,
 			 outfile_stderr);
 
-	appnameenv = psprintf("PGAPPNAME=ecpg/%s", testname_dash);
+	appnameenv = psprintf("PGAPPNAME=ecpg/%s", testname_dash.data);
 	putenv(appnameenv);
 
 	pid = spawn_process(cmd);
@@ -162,17 +158,9 @@ ecpg_start_test(const char *testname,
 		exit(2);
 	}
 
-<<<<<<< HEAD
-	free(testname_dash.data);
-=======
 	unsetenv("PGAPPNAME");
 	free(appnameenv);
-
-	free(testname_dash);
-	free(outfile_stdout);
-	free(outfile_stderr);
-	free(outfile_source);
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+	free(testname_dash.data);
 
 	return pid;
 }
