@@ -606,6 +606,9 @@ DROP ROLE IF EXISTS dispatch_test_user2;
 CREATE ROLE dispatch_test_user2 NOSUPERUSER;
 SET SESSION AUTHORIZATION dispatch_test_user2;
 
+-- Make sure the gang wasn't dropped by a silent error.
+CREATE TEMP TABLE gang_is_the_same();
+
 CREATE OR REPLACE FUNCTION show_on_segments(show_name text)
 RETURNS table (guc_name text, guc_setting text)
 EXECUTE ON ALL SEGMENTS AS $$
@@ -669,6 +672,9 @@ SELECT * from show_on_segments('log_min_messages');
 SHOW constraint_exclusion;
 SELECT * from show_on_segments('constraint_exclusion');
 
+SELECT FROM gang_is_the_same;
+
+DROP TABLE gang_is_the_same;
 RESET SESSION AUTHORIZATION;
 
 DROP FUNCTION show_on_segments(show_name text);
