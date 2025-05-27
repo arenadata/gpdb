@@ -784,7 +784,7 @@ CSubqueryHandler::FCreateOuterApplyForScalarSubquery(
 		}
 		else if (0 < pdrgpexprPredicates->Size())
 		{
-			// we have a HAVING clause on top of count(*), so we need to produce NULL in case when when
+			// we have a HAVING clause on top of count(*), so we need to produce NULL in case when
 			// HAVING predicate is false.
 			CExpression *pexprPred =
 				CPredicateUtils::PexprConjunction(mp, pdrgpexprPredicates);
