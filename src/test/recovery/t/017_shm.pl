@@ -39,61 +39,6 @@ sub log_ipcs
 	return;
 }
 
-<<<<<<< HEAD
-# These tests need a $port such that nothing creates or removes a segment in
-# $port's IpcMemoryKey range while this test script runs.  While there's no
-# way to ensure that in general, we do ensure that if PostgreSQL tests are the
-# only actors.  With TCP, the first get_new_node picks a port number.  With
-# Unix sockets, use a postmaster, $port_holder, to represent a key space
-# reservation.  $port_holder holds a reservation on the key space of port
-# 1+$port_holder->port if it created the first IpcMemoryKey of its own port's
-# key space.  If multiple copies of this test script run concurrently, they
-# will pick different ports.  $port_holder postmasters use odd-numbered ports,
-# and tests use even-numbered ports.  In the absence of collisions from other
-# shmget() activity, gnat starts with key 0x7d001 (512001), and flea starts
-# with key 0x7d002 (512002).
-my $port_holder;
-if (!$PostgresNode::use_tcp)
-{
-	my $lock_port;
-	for ($lock_port = 511; $lock_port < 711; $lock_port += 2)
-	{
-		$port_holder = PostgresNode->get_new_node(
-			"port${lock_port}_holder",
-			port     => $lock_port,
-			own_host => 1);
-		$port_holder->init;
-		# GPDB: minimum max_connections is 10 in GPDB
-		$port_holder->append_conf('postgresql.conf', 'max_connections = 10');
-		$port_holder->start;
-		# Match the AddToDataDirLockFile() call in sysv_shmem.c.  Assume all
-		# systems not using sysv_shmem.c do use TCP.
-		my $shmem_key_line_prefix = sprintf("%9lu ", 1 + $lock_port * 1000);
-		last
-		  if slurp_file($port_holder->data_dir . '/postmaster.pid') =~
-		  /^$shmem_key_line_prefix/m;
-		$port_holder->stop;
-	}
-	$port = $lock_port + 1;
-}
-
-# Node setup.
-sub init_start
-{
-	my $name = shift;
-	my $ret = PostgresNode->get_new_node($name, port => $port, own_host => 1);
-	defined($port) or $port = $ret->port;    # same port for all nodes
-	$ret->init;
-	# Limit semaphore consumption, since we run several nodes concurrently.
-	# GPDB: minimum max_connections is 10 in GPDB
-	$ret->append_conf('postgresql.conf', 'max_connections = 10');
-	$ret->start;
-	log_ipcs();
-	return $ret;
-}
-my $gnat = init_start 'gnat';
-my $flea = init_start 'flea';
-=======
 # Node setup.
 my $gnat = PostgresNode->get_new_node('gnat');
 $gnat->init;
@@ -120,7 +65,6 @@ log_ipcs();
 
 $gnat->restart;    # should keep same shmem key
 log_ipcs();
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 
 # Upon postmaster death, postmaster children exit automatically.
 $gnat->kill9;
