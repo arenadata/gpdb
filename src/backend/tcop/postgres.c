@@ -3801,7 +3801,7 @@ ProcessInterrupts(const char* filename, int lineno)
 	{
 		ProcDiePending = false;
 		QueryCancelPending = false;		/* ProcDie trumps QueryCancel */
-		QueryCancelCleanup = false;  /* no cancel request means no error */
+		QueryCancelCleanup = false;		/* no cancel request means no error */
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		ImmediateDieOK = false;		/* prevent re-entry */
 		LockErrorCleanup();
@@ -3875,7 +3875,7 @@ ProcessInterrupts(const char* filename, int lineno)
 	if (ClientConnectionLost)
 	{
 		QueryCancelPending = false;		/* lost connection trumps QueryCancel */
-		QueryCancelCleanup = false;
+		QueryCancelCleanup = false;		/* no cancel request means no error */
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		LockErrorCleanup();
 		DisableNotifyInterrupt();
@@ -3897,7 +3897,7 @@ ProcessInterrupts(const char* filename, int lineno)
 	if (RecoveryConflictPending && DoingCommandRead)
 	{
 		QueryCancelPending = false;			/* this trumps QueryCancel */
-		QueryCancelCleanup = false;
+		QueryCancelCleanup = false;			/* no cancel request means no error */
 		ImmediateInterruptOK = false;		/* not idle anymore */
 		RecoveryConflictPending = false;
 		LockErrorCleanup();
