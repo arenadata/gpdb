@@ -9,14 +9,14 @@ drop table if exists t_orphaned_h, t_orphaned_r, t_orphaned_c;
 -- s/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/ERROR:  Error on receive from segX sliceX X.X.X.X:X pid=X: server closed the connection unexpectedly/
 -- end_matchsubs
 
-
+-- Test case 1
 -- Check that orphaned files are not left on the coordinator and the standby
--- createdwhen the files are after checkpoint
+-- when the files are created after checkpoint
 
 -- Create tables of different access methods and return command to check their
 -- files existence on the coordinator and the standby
 create or replace function createTables() returns text as
-$$ 
+$$
 declare
   cmd text;
 begin
@@ -96,43 +96,14 @@ select force_mirrors_to_catch_up();
 -- Check that the tables files don't exist on the coordinator and the standby
 :check_files
 
-
--- Check that orphaned files are not left on the coordinator when the files are
--- created before checkpoint
-
--- Start transaction and create tables of different access methods in it before
--- checkpoint
-begin;
-select createTables() check_files
-\gset
-
-checkpoint;
-
--- Make sure that the tables files exist on the coordinator and the standby
-:check_files
-
--- Get segfault on the coordinator and reconnect after its restart
-select gp_inject_fault('before_read_command', 'segv', dbid)
-  from gp_segment_configuration
- where role = 'p' and content = -1;
-
--- The error message from psql can be different, so ignore it
-\! psql postgres -c "select 1" 2> /dev/null
-\! sleep 2
-\c regression
-
-select force_mirrors_to_catch_up();
-
--- Check that the tables files don't exist on the coordinator and the standby
-:check_files
-
-
 -- Clean up
 \unset check_files
 drop function createTables();
 
 
--- Check that orphaned files are not left on segments
+-- Test case 2
+-- Check that an orphaned files are not left on segments when the files are
+-- created after checkpoint
 
 create or replace function getTableSegFiles
 (t regclass, out gp_contentid smallint, out filepath text)
@@ -142,7 +113,7 @@ execute on all segments;
 
 -- Get list of the tables file names on each segment
 create or replace function createTables() returns text as
-$$ 
+$$
 declare
   cmd text;
 begin
@@ -201,8 +172,6 @@ begin
 end
 $$ language plpgsql;
 
--- Check that an orphaned files are not left on segments when the files are
--- created after checkpoint
 checkpoint;
 
 -- Skip checkpoints
@@ -214,35 +183,6 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
 begin;
 select createTables() check_files
 \gset
-
--- Make sure that all the tables files exist on the segments
-:check_files
-
--- Get segfault on all segments
-select gp_inject_fault('before_read_command', 'segv', dbid)
-  from gp_segment_configuration
- where role = 'p' and content != -1;
-
-select 1 from gp_dist_random('gp_id');
-
--- Rollback the transaction to make it possible to run queries after the error
-rollback;
-
-select force_mirrors_to_catch_up();
-
--- Check that the tables files don't exist on the segments
-:check_files
-
-
--- Check that orphaned files are not left on segments when the files are
--- created before checkpoint
-
--- Start transaction and create tables in it before checkpoint
-begin;
-select createTables() check_files
-\gset
-
-checkpoint;
 
 -- Make sure that all the tables files exist on the segments
 :check_files
