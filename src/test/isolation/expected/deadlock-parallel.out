@@ -38,7 +38,6 @@ step e1l: <... completed>
 lock_excl      
 
 1              
-step e1c: COMMIT;
 step d2a1: <... completed>
 sum            
 
@@ -46,6 +45,7 @@ sum
 lock_share     
 
 1              
+step e1c: COMMIT;
 step d2c: COMMIT;
 step e2l: <... completed>
 lock_excl      
