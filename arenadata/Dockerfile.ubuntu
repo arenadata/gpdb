@@ -4,6 +4,10 @@ COPY README.Ubuntu.bash ./
 
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt pool main restricted universe multiverse" >>/etc/apt/sources.list; \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt pool-updates main restricted universe multiverse" >>/etc/apt/sources.list; \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt pool-backports main restricted universe multiverse" >>/etc/apt/sources.list; \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt pool-security main restricted universe multiverse" >>/etc/apt/sources.list; \
     ./README.Ubuntu.bash; \
     rm README.Ubuntu.bash; \
 # The en_US.UTF-8 locale is needed to run GPDB
