@@ -4,7 +4,7 @@ COPY README.Ubuntu.bash ./
 
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
-    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy main restricted universe multiverse" >>/etc/apt/sources.list; \
+    echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy main restricted universe multiverse" >/etc/apt/sources.list; \
     echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy-updates main restricted universe multiverse" >>/etc/apt/sources.list; \
     echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy-backports main restricted universe multiverse" >>/etc/apt/sources.list; \
     echo "deb mirror://mirrors.ubuntu.com/mirrors.txt jammy-security main restricted universe multiverse" >>/etc/apt/sources.list; \
