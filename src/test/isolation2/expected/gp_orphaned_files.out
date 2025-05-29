@@ -75,7 +75,9 @@ CHECKPOINT
 
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files{1,2}.txt;
+! rm /tmp/gp_orphaned_files1.txt;
+
+! rm /tmp/gp_orphaned_files2.txt;
 
 1: drop function createTables(n text);
 DROP
@@ -170,7 +172,9 @@ ROLLBACK
 
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files{1,2}.txt;
+! rm /tmp/gp_orphaned_files1.txt;
+
+! rm /tmp/gp_orphaned_files2.txt;
 
 1: drop function createTables(n text);
 DROP

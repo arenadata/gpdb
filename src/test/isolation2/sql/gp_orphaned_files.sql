@@ -101,7 +101,8 @@ $$ language plpgsql;
 ! sh /tmp/gp_orphaned_files2.txt;
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files{1,2}.txt;
+! rm /tmp/gp_orphaned_files1.txt;
+! rm /tmp/gp_orphaned_files2.txt;
 1: drop function createTables(n text);
 
 
@@ -210,7 +211,8 @@ $$ language plpgsql;
 
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files{1,2}.txt;
+! rm /tmp/gp_orphaned_files1.txt;
+! rm /tmp/gp_orphaned_files2.txt;
 1: drop function createTables(n text);
 1: drop function getTableSegFiles
    (t regclass, out gp_contentid smallint, out filepath text);
