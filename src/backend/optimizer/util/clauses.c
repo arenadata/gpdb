@@ -75,6 +75,7 @@ typedef struct
 	bool		recurse_queries; /* recurse into query structures */
 	bool		recurse_sublink_testexpr; /* recurse into sublink test expressions */
 	Size        max_size; /* max constant binary size in bytes, 0: no restrictions */
+	char		prodataaccess;
 } eval_const_expressions_context;
 
 typedef struct
@@ -2358,6 +2359,7 @@ fold_constants(PlannerInfo *root, Query *q, ParamListInfo boundParams, Size max_
 	context.max_size = max_size;
 	
 	context.eval_stable_functions = should_eval_stable_functions(root);
+	context.prodataaccess = PRODATAACCESS_NONE;
 
 	return (Query *) query_or_expression_tree_mutator
 						(
@@ -2493,6 +2495,7 @@ eval_const_expressions(PlannerInfo *root, Node *node)
 	context.recurse_sublink_testexpr = true;
 	context.max_size = 0;
 	context.eval_stable_functions = should_eval_stable_functions(root);
+	context.prodataaccess = PRODATAACCESS_NONE;
 
 	saved_oid_assignments = SaveOidAssignments();
 	result = eval_const_expressions_mutator(node, &context);
@@ -2533,6 +2536,7 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 	context.recurse_sublink_testexpr = true;
 	context.max_size = 0;
 	context.eval_stable_functions = false;
+	context.prodataaccess = PRODATAACCESS_NONE;
 
 	return eval_const_expressions_mutator(node, &context);
 }
@@ -4269,12 +4273,20 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 	 */
 	if (process_args)
 	{
+		bool		isnull;
+		char		prodataaccess = context->prodataaccess;
+
+		context->prodataaccess = DatumGetChar(SysCacheGetAttr(
+			PROCOID, func_tuple, Anum_pg_proc_prodataaccess, &isnull));
+
 		args = expand_function_arguments(args, result_type, func_tuple);
 		args = (List *) expression_tree_mutator((Node *) args,
 												eval_const_expressions_mutator,
 												(void *) context);
 		/* Argument processing done, give it back to the caller */
 		*args_p = args;
+
+		context->prodataaccess = prodataaccess;
 	}
 
 	/* Now attempt simplification of the function call proper. */
@@ -4667,6 +4679,16 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 		 /* okay */ ;
 	else if (context->eval_stable_functions && funcform->provolatile == PROVOLATILE_STABLE)
 	{
+		bool		isnull;
+		char		prodataaccess = DatumGetChar(SysCacheGetAttr(
+			PROCOID, func_tuple, Anum_pg_proc_prodataaccess, &isnull));
+
+		if ((prodataaccess == PRODATAACCESS_NONE ||
+			 prodataaccess == PRODATAACCESS_CONTAINS) &&
+			(context->prodataaccess == PRODATAACCESS_NONE ||
+			 context->prodataaccess == PRODATAACCESS_CONTAINS))
+			return NULL;
+
 		/* okay, but we cannot reuse this plan */
 		context->root->glob->oneoffPlan = true;
 	}
