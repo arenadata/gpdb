@@ -154,6 +154,10 @@ RESET
 4q: ... <quitting>
 
 -- TEST 4: make sure GUC sync failure doesn't leave broken temp tables
+-- start_matchsubs
+-- m/^ERROR:  failed to synchronize GUC settings across segments \(postgres\.c:\d+\)/
+-- s/^ERROR:  failed to synchronize GUC settings across segments \(postgres\.c:\d+\)/ERROR:  failed to synchronize GUC settings across segments/
+-- end_matchsubs
 1: create temp table sync_temp_table(a int) distributed by (a);
 CREATE TABLE
 -- Cause panic on segment from another session
@@ -171,12 +175,11 @@ ERROR:  fault triggered, fault name:'create_function_fail' fault type:'panic'  (
 !\retcode gpstop -u;
 (exited with code 0)
 
--- Query to execute GUC sync (GUC sync fails, query succeeds)
+-- Query to execute GUC sync (GUC sync fails)
 1: select 1;
- ?column? 
-----------
- 1        
-(1 row)
+ERROR:  failed to synchronize GUC settings across segments
+DETAIL:  Query aborted due to GUC synchronization failure
+HINT:  Check segment logs for more details
 -- Should fail with "relation does not exist"
 1: select * from sync_temp_table;
 ERROR:  relation "sync_temp_table" does not exist
