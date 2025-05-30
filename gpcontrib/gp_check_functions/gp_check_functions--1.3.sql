@@ -283,39 +283,35 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql AS $$
 BEGIN
-    BEGIN
-        -- lock pg_class so that no one will be adding/altering relfilenodes
-        LOCK TABLE pg_class IN SHARE MODE NOWAIT;
+    -- lock pg_class so that no one will be adding/altering relfilenodes
+    -- NOTE: This operation may pause and wait if pg_class is already locked
+    -- by another transaction! We intentionally do not use NOWAIT here.
+    -- In GPDB, NOWAIT inside PL/pgSQL does not behave as expected: 
+    -- instead of throwing exception when the lock is unavailable, 
+    -- it may silently wait due to distributed planning and segment involvement.
+    LOCK TABLE pg_class IN SHARE MODE;
 
-        -- make sure no other active/idle transaction is running
-        IF EXISTS (
-            SELECT 1
-            FROM (SELECT * from pg_stat_activity UNION ALL SELECT * FROM gp_dist_random('pg_stat_activity'))q
-            WHERE
-            sess_id <> -1
-            AND sess_id <> current_setting('gp_session_id')::int -- Exclude the current session
-            AND state <> 'idle' -- Exclude idle session like GDD
-        ) THEN
-            RAISE EXCEPTION 'There is a client session running on one or more segment. Aborting...';
-        END IF;
+    -- make sure no other active/idle transaction is running
+    IF EXISTS (
+        SELECT 1
+        FROM (SELECT * from pg_stat_activity UNION ALL SELECT * FROM gp_dist_random('pg_stat_activity'))q
+        WHERE
+        sess_id <> -1
+        AND sess_id <> current_setting('gp_session_id')::int -- Exclude the current session
+        AND state <> 'idle' -- Exclude idle session like GDD
+    ) THEN
+        RAISE EXCEPTION 'There is a client session running on one or more segment. Aborting...';
+    END IF;
 
-        -- force checkpoint to make sure we do not include files that are normally pending delete
-        CHECKPOINT;
+    -- force checkpoint to make sure we do not include files that are normally pending delete
+    CHECKPOINT;
 
-        RETURN QUERY 
-        SELECT v.gp_segment_id, v.tablespace, v.filename, v.filepath
-        FROM gp_dist_random('__check_orphaned_files') v
-        UNION ALL
-        SELECT -1 AS gp_segment_id, v.tablespace, v.filename, v.filepath
-        FROM __check_orphaned_files v;
-    EXCEPTION
-        WHEN lock_not_available THEN
-            RAISE EXCEPTION 'cannot obtain SHARE lock on pg_class';
-        WHEN OTHERS THEN
-            RAISE;
-    END;
-
-    RETURN;
+    RETURN QUERY 
+    SELECT v.gp_segment_id, v.tablespace, v.filename, v.filepath
+    FROM gp_dist_random('__check_orphaned_files') v
+    UNION ALL
+    SELECT -1 AS gp_segment_id, v.tablespace, v.filename, v.filepath
+    FROM __check_orphaned_files v;
 END;
 $$;
 
