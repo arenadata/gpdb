@@ -190,6 +190,7 @@ proc_exit_prepare(int code)
 	InterruptPending = false;
 	ProcDiePending = false;
 	QueryCancelPending = false;
+	QueryCancelCleanup = false;
 	InterruptHoldoffCount = 1;
 	CritSectionCount = 0;
 
