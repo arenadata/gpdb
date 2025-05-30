@@ -4582,6 +4582,35 @@ large_const(Expr *expr, Size max_size)
 }
 
 /*
+ * the list of stable functions which prorettype==ANY
+ */
+static inline bool
+in_stable_retany_funclist(Oid procid)
+{
+	switch (procid)
+	{
+	case F_JSONB_POPULATE_RECORD:		/* jsonb_populate_record */
+	case F_JSONB_POPULATE_RECORDSET:	/* jsonb_populate_recordset */
+	case F_JSON_POPULATE_RECORD:		/* json_populate_record */
+	case F_JSON_POPULATE_RECORDSET:		/* json_populate_recordset */
+		return true;
+		break;
+	default:
+		/*
+		 * only 4 functions now, let's use Assert() to help to notice
+		 * more functions in future.
+		 */
+		/*
+		 * GPDB_MERGE_FIXME: this Assert may impact UDFs,
+		 * we need a better solution here.
+		 */
+		Assert(false);
+		break;
+	}
+	return false;
+}
+
+/*
  * evaluate_function: try to pre-evaluate a function call
  *
  * We can do this if the function is strict and has any constant-null inputs
@@ -4624,6 +4653,20 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 	 */
 	if (funcform->prorettype == RECORDOID)
 		return NULL;
+
+	/*
+	 * https://github.com/greenplum-db/gpdb/issues/14499
+	 * Don't pre-evaluate when it's a stable function which prorettype==ANY
+	 * If it's in the FROM clause, pre-evaluting it will cause an ERROR, example:
+	 * ```
+	 * 	demo=# SELECT * FROM  json_populate_record(null::record, '{"x": 776}') AS (x int, y int);
+	 *	psql: ERROR:  could not determine row type for result of json_populate_record
+	 *	HINT:  Provide a non-null record argument, or call the function in the FROM clause using a column definition list.
+	 * ```
+	 */
+	if (funcform->prorettype == ANYELEMENTOID && funcform->provolatile == PROVOLATILE_STABLE)
+		if (in_stable_retany_funclist(funcform->oid))
+			return NULL;
 
 	/*
 	 * Check for constant inputs and especially constant-NULL inputs.
