@@ -623,12 +623,9 @@ optimizer_analyze_root_partition = on # stats collection on root partitions
 #search_path = '"$user", public'	# schema names
 #row_security = on
 #default_tablespace = ''		# a tablespace name, '' uses the default
-<<<<<<< HEAD
-=======
 #temp_tablespaces = ''			# a list of tablespace names, '' uses
 					# only default tablespace
 #default_table_access_method = 'heap'
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
 #check_function_bodies = on
 #default_transaction_isolation = 'read committed'
 #default_transaction_read_only = off
@@ -787,14 +784,9 @@ gp_vmem_protect_limit = 8192  #Virtual memory limit (in MB).
 
 #include_dir = '...'			# include files ending in '.conf' from
 					# a directory, e.g., 'conf.d'
-<<<<<<< HEAD
-#include_if_exists = ''			# include file only if it exists
-#include = 'special.conf'				# include file
-include = 'internal.auto.conf'		# GP_INTERNAL_AUTO_CONF_FILE_NAME which sets the gp_dbid
-=======
 #include_if_exists = '...'		# include file only if it exists
-#include = '...'			# include file
->>>>>>> eb57bd9c1d83a20eaff559a53b2f584dcd0668a8
+#include = 'special.conf'		# include file
+include = 'internal.auto.conf'		# GP_INTERNAL_AUTO_CONF_FILE_NAME which sets the gp_dbid
 
 
 #------------------------------------------------------------------------------
