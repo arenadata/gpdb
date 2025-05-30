@@ -493,13 +493,13 @@ reset optimizer;
 --
 explain (verbose, costs off)
   select x, x from
-    (select (select current_database()) as x from (values(1),(2)) v(y)) ss;
+    (select (select now()) as x from (values(1),(2)) v(y)) ss;
 explain (verbose, costs off)
   select x, x from
     (select (select random()) as x from (values(1),(2)) v(y)) ss;
 explain (verbose, costs off)
   select x, x from
-    (select (select current_database() where y=y) as x from (values(1),(2)) v(y)) ss;
+    (select (select now() where y=y) as x from (values(1),(2)) v(y)) ss;
 explain (verbose, costs off)
   select x, x from
     (select (select random() where y=y) as x from (values(1),(2)) v(y)) ss;
@@ -704,7 +704,7 @@ select * from x where f1 = 1;
 
 -- Stable functions are safe to inline
 explain (verbose, costs off)
-with x as (select * from (select f1, current_database() from subselect_tbl) ss)
+with x as (select * from (select f1, now() from subselect_tbl) ss)
 select * from x where f1 = 1;
 
 
@@ -734,11 +734,11 @@ select * from x where f1 = 1;
 
 -- Multiply-referenced CTEs are inlined only when requested
 explain (verbose, costs off)
-with x as (select * from (select f1, current_database() as n from subselect_tbl) ss)
+with x as (select * from (select f1, now() as n from subselect_tbl) ss)
 select * from x, x x2 where x.n = x2.n;
 
 explain (verbose, costs off)
-with x as not materialized (select * from (select f1, current_database() as n from subselect_tbl) ss)
+with x as not materialized (select * from (select f1, now() as n from subselect_tbl) ss)
 select * from x, x x2 where x.n = x2.n;
 
 -- Multiply-referenced CTEs can't be inlined if they contain outer self-refs

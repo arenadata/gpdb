@@ -4683,10 +4683,8 @@ evaluate_function(Oid funcid, Oid result_type, int32 result_typmod,
 		char		prodataaccess = DatumGetChar(SysCacheGetAttr(
 			PROCOID, func_tuple, Anum_pg_proc_prodataaccess, &isnull));
 
-		if ((prodataaccess == PRODATAACCESS_NONE ||
-			 prodataaccess == PRODATAACCESS_CONTAINS) &&
-			(context->prodataaccess == PRODATAACCESS_NONE ||
-			 context->prodataaccess == PRODATAACCESS_CONTAINS))
+		if (prodataaccess == PRODATAACCESS_NONE &&
+			context->prodataaccess == PRODATAACCESS_NONE)
 			return NULL;
 
 		/* okay, but we cannot reuse this plan */
