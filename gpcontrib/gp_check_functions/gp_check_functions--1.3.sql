@@ -148,7 +148,7 @@ WITH Tablespaces AS (
     WHERE d.datname = current_database()
     UNION
 -- 2. The global tablespace
-    SELECT 1664 AS tablespace, 'global/' AS dirname
+    SELECT 1664 AS tablespace, 'global' AS dirname
     UNION
 -- 3. The user-defined tablespaces
     SELECT ts.oid AS tablespace,
