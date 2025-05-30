@@ -4589,10 +4589,10 @@ in_stable_retany_funclist(Oid procid)
 {
 	switch (procid)
 	{
-	case 3209: /* jsonb_populate_record */
-	case 3475: /* jsonb_populate_recordset */
-	case 3960: /* json_populate_record */
-	case 3961: /* json_populate_recordset */
+	case F_JSONB_POPULATE_RECORD:		/* jsonb_populate_record */
+	case F_JSONB_POPULATE_RECORDSET:	/* jsonb_populate_recordset */
+	case F_JSON_POPULATE_RECORD:		/* json_populate_record */
+	case F_JSON_POPULATE_RECORDSET:		/* json_populate_recordset */
 		return true;
 		break;
 	default:
