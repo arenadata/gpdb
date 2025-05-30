@@ -317,36 +317,74 @@ $$;
 
 GRANT EXECUTE ON FUNCTION __gp_check_orphaned_files_func() TO public;
 
+CREATE TYPE __gp_move_orphaned_files_pairs AS (
+    spc_oid        oid,        -- tablespace oid
+    target_path    text        -- directory to move orphaned files to
+);
+
+GRANT USAGE ON TYPE __gp_move_orphaned_files_pairs TO public;
+
 --------------------------------------------------------------------------------
 -- @function:
---        gp_move_orphaned_files
+--        __gp_move_orphaned_files
 --
 -- @in:
---        target_location text - directory where we move the orphaned files to
+--        tablespace_location_pairs __gp_move_orphaned_files_pairs
+--                array of pairs {tablespace_oid, target_path}. When
+--                process_all_tablespaces = TRUE the array must contain
+--                exactly one element; its tablespace_oid component is
+--                ignored and its target_path component designates the
+--                directory into which all orphaned files are moved.
+--
+--        process_all_tablespaces boolean default false
+--                if TRUE, operate on orphaned files belonging to every
+--                tablespace found on the segment; otherwise move files only
+--                for the OIDs explicitly listed in tablespace_location_pairs.
 --
 -- @out:
 --        gp_segment_id int - segment content ID
---        move_success bool - whether the move attempt succeeded
---        oldpath text - filepath (name included) of the orphaned file before moving
---        newpath text - filepath (name included) of the orphaned file after moving
+--        move_success bool - TRUE if the move succeeded
+--        oldpath text - absolute pathname before the move
+--        newpath text - absolute pathname after the move
 --
 -- @doc:
---        UDF to move orphaned files to a designated location
+--        Internal helper invoked by the user‑facing wrappers. It repeats the
+--        same catalog locks and safety checks as __gp_check_orphaned_files_func
+--        and then renames each orphaned file to the designated target_path.
+--
+--        Because the move relies on the rename syscall, the target
+--        directory must reside on the same filesystem as the source file or
+--        the operation will fail with "Invalid cross‑device link".
 --
 --------------------------------------------------------------------------------
-
--- NOTE: this function does the same lock and checks as __gp_check_orphaned_files_func(),
--- and it needs to be that way. 
-CREATE FUNCTION gp_move_orphaned_files(target_location TEXT) RETURNS TABLE (
-    gp_segment_id INT,
-    move_success BOOL,
-    oldpath TEXT,
-    newpath TEXT
+CREATE OR REPLACE FUNCTION __gp_move_orphaned_files(
+        tablespace_location_pairs __gp_move_orphaned_files_pairs[],
+        process_all_tablespaces bool DEFAULT false)
+RETURNS TABLE (
+    gp_segment_id int,
+    move_success bool,
+    oldpath text,
+    newpath text
 )
 LANGUAGE plpgsql AS $$
+DECLARE
+    pair __gp_move_orphaned_files_pairs;
 BEGIN
+    -- if process_all_tablespaces is true, tablespace_location_pairs should contain only one element
+    -- with directory where we move the orphaned files from all tablespaces.
+    IF process_all_tablespaces THEN
+        IF array_length(tablespace_location_pairs, 1) <> 1 THEN
+            RAISE EXCEPTION 'When process_all_tablespaces is true, tablespace_location_pairs must contain exactly one element.';
+        END IF;
+    END IF;
+
     -- lock pg_class so that no one will be adding/altering relfilenodes
-    LOCK TABLE pg_class IN SHARE MODE NOWAIT;
+    -- NOTE: This operation may pause and wait if pg_class is already locked
+    -- by another transaction! We intentionally do not use NOWAIT here.
+    -- In GPDB, NOWAIT inside PL/pgSQL does not behave as expected: 
+    -- instead of throwing exception when the lock is unavailable, 
+    -- it may silently wait due to distributed planning and segment involvement.
+    LOCK TABLE pg_class IN SHARE MODE;
 
     -- make sure no other active/idle transaction is running
     IF EXISTS (
@@ -363,45 +401,222 @@ BEGIN
     -- force checkpoint to make sure we do not include files that are normally pending delete
     CHECKPOINT;
 
-    RETURN QUERY
-    SELECT
-        q.gp_segment_id,
-        q.move_success,
-        q.oldpath,
-        q.newpath
-    FROM (
-        SELECT s1.gp_segment_id, s1.oldpath, s1.newpath, pg_file_rename(s1.oldpath, s1.newpath, NULL) AS move_success
-        FROM
+    -- process each (tablespace oid -> target_path) pair
+    FOREACH pair IN ARRAY tablespace_location_pairs LOOP
+        RETURN QUERY
+        SELECT
+            q.gp_segment_id,
+            q.move_success,
+            q.oldpath,
+            q.newpath
+        FROM 
         (
-            SELECT
-                o.gp_segment_id,
-                s.setting || '/' || o.filepath as oldpath,
-                target_location || '/seg' || o.gp_segment_id::text || '_' || REPLACE(o.filepath, '/', '_') as newpath
-            FROM __check_orphaned_files o, pg_settings s
-            WHERE s.name = 'data_directory'
-        ) s1
-        UNION ALL
-        -- Segments
-        SELECT s2.gp_segment_id, s2.oldpath, s2.newpath, pg_file_rename(s2.oldpath, s2.newpath, NULL) AS move_success
-        FROM
-        (
-            SELECT
-                o.gp_segment_id,
-                s.setting || '/' || o.filepath as oldpath,
-                target_location || '/seg' || o.gp_segment_id::text || '_' || REPLACE(o.filepath, '/', '_') as newpath
-            FROM gp_dist_random('__check_orphaned_files') o
-            JOIN (SELECT gp_execution_segment() as gp_segment_id, * FROM gp_dist_random('pg_settings')) s on o.gp_segment_id = s.gp_segment_id
-            WHERE s.name = 'data_directory'
-        ) s2
-    ) q
-    ORDER BY q.gp_segment_id, q.oldpath;
+            SELECT s1.gp_segment_id, s1.oldpath, s1.newpath, pg_file_rename(s1.oldpath, s1.newpath, NULL) AS move_success
+            FROM
+            (
+                SELECT
+                    o.gp_segment_id,
+                    s.setting || '/' || o.filepath AS oldpath,
+                    pair.target_path || '/seg' || o.gp_segment_id::text || '_' || REPLACE(o.filepath, '/', '_') AS newpath
+                FROM __check_orphaned_files o, pg_settings s
+                WHERE s.name = 'data_directory' AND (o.tablespace = pair.spc_oid OR process_all_tablespaces)
+            ) s1
+            UNION ALL
+            -- segments
+            SELECT s2.gp_segment_id, s2.oldpath, s2.newpath, pg_file_rename(s2.oldpath, s2.newpath, NULL) AS move_success
+            FROM
+            (
+                SELECT
+                    o.gp_segment_id,
+                    s.setting || '/' || o.filepath AS oldpath,
+                    pair.target_path || '/seg' || o.gp_segment_id::text || '_' || REPLACE(o.filepath, '/', '_') AS newpath
+                FROM gp_dist_random('__check_orphaned_files') o
+                JOIN (SELECT gp_execution_segment() AS gp_segment_id, * FROM gp_dist_random('pg_settings')) s ON o.gp_segment_id = s.gp_segment_id
+                WHERE s.name = 'data_directory' AND (o.tablespace = pair.spc_oid OR process_all_tablespaces)
+            ) s2
+        ) AS q
+        ORDER BY q.gp_segment_id, q.oldpath;
+    END LOOP;
+
 EXCEPTION
-    WHEN lock_not_available THEN
-        RAISE EXCEPTION 'cannot obtain SHARE lock on pg_class';
     WHEN OTHERS THEN
-        RAISE;
+        DECLARE
+            original_msg text;
+            original_hint text;
+            original_detail text;
+            original_code text;
+        BEGIN
+            GET STACKED DIAGNOSTICS
+                original_msg    = MESSAGE_TEXT,
+                original_hint   = PG_EXCEPTION_HINT,
+                original_detail = PG_EXCEPTION_DETAIL,
+                original_code   = RETURNED_SQLSTATE;
+
+            RAISE EXCEPTION '%', original_msg
+            USING
+                ERRCODE = original_code,
+                DETAIL  = original_detail,
+                HINT    = CASE WHEN original_hint IS NOT NULL AND original_hint <> ''
+                              THEN original_hint || E'\n'
+                              ELSE ''
+                          END ||
+                            'Operation was interrupted with an error. Only some or no files were renamed. ' ||
+                            'Use gp_check_orphaned_files to see remaining files. Then call ' ||
+                            'gp_move_orphaned_files_by_tablespace_location(tablespace_oid, /path) or ' ||
+                            'gp_move_orphaned_files_by_tablespace_location(ARRAY[''{tablespace_oid, /path}'', ...]) ' ||
+                            'to move files for specific tablespaces.';
+        END;
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION __gp_move_orphaned_files(
+    __gp_move_orphaned_files_pairs[], bool) TO public;
+
+--------------------------------------------------------------------------------
+-- @function:
+--        gp_move_orphaned_files
+--
+-- @in:
+--        target_location text
+--                Absolute path of the directory to which all orphaned files
+--                should be moved. The directory must be located on the same
+--                filesystem as each orphaned file on the segment; otherwise
+--                rename will fail.
+--
+-- @out:
+--        gp_segment_id int - segment content ID
+--        move_success bool - TRUE if the move succeeded
+--        oldpath text - absolute pathname before the move
+--        newpath text - absolute pathname after the move
+--
+-- @doc:
+--        Moves all orphaned files detected on a segment
+--        to a single target directory. If tablespaces reside on
+--        multiple filesystems, use
+--        gp_move_orphaned_files_by_tablespace_location instead.
+--
+--------------------------------------------------------------------------------
+-- NOTE: lock pg_class in shared mode and ensure no one transactions are running
+CREATE OR REPLACE FUNCTION gp_move_orphaned_files(target_location text) RETURNS TABLE (
+    gp_segment_id int,
+    move_success bool,
+    oldpath text,
+    newpath text
+)
+LANGUAGE SQL AS $$
+SELECT * FROM __gp_move_orphaned_files(
+    ARRAY[ROW(0, target_location)::__gp_move_orphaned_files_pairs],
+    process_all_tablespaces := TRUE
+);
+$$;
+
+GRANT EXECUTE ON FUNCTION gp_move_orphaned_files(text) TO public;
+
+--------------------------------------------------------------------------------
+-- @function:
+--        gp_move_orphaned_files_by_tablespace_location
+--
+-- @in:
+--        tablespace_oid oid
+--                OID of the tablespace whose orphaned files should be moved.
+--        target_location text
+--                Absolute path of the directory that will receive the files.
+--                Must be on the same filesystem as the tablespace location.
+--
+-- @out:
+--        gp_segment_id int - segment content ID
+--        move_success bool - TRUE if the move succeeded
+--        oldpath text - absolute pathname before the move
+--        newpath text - absolute pathname after the move
+--
+-- @doc:
+--        Moves orphaned files belonging to a specific tablespace
+--        to the supplied target directory.
+--
+--------------------------------------------------------------------------------
+-- NOTE: lock pg_class in shared mode and ensure no one transactions are running
+CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
+        tablespace_oid  oid,
+        target_location text
+)
+RETURNS TABLE (
+        gp_segment_id  int,
+        move_success   bool,
+        oldpath        text,
+        newpath        text
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF target_location IS NULL OR target_location = '' THEN
+        RAISE EXCEPTION 'target_location cannot be NULL or empty';
+    ELSIF NOT target_location LIKE '/%' THEN
+        RAISE EXCEPTION 'target_location must be an absolute path, got: "%"', target_location;
+    END IF;
+
+    RETURN QUERY
+    SELECT * FROM __gp_move_orphaned_files(
+        ARRAY[ROW(tablespace_oid, target_location)::__gp_move_orphaned_files_pairs]
+    );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(oid, text) TO public;
+
+--------------------------------------------------------------------------------
+-- @function:
+--        gp_move_orphaned_files_by_tablespace_location
+--        (overloaded variant)
+--
+-- @in:
+--        tablespace_location_pairs text[]
+--                Array of text pairs formatted as
+--                ARRAY['{tablespace_oid, /absolute/target/path}', ...]. Each
+--                pair identifies a tablespace and the directory on the same
+--                filesystem where its orphaned files will be moved.
+--
+-- @out:
+--        gp_segment_id int - segment content ID
+--        move_success bool - TRUE if the move succeeded
+--        oldpath text - absolute pathname before the move
+--        newpath text - absolute pathname after the move
+--
+-- @doc:
+--        Moves orphaned files from multiple tablespaces to their
+--        specified target directories.
+--
+--------------------------------------------------------------------------------
+-- NOTE: lock pg_class in shared mode and ensure no one transactions are running
+CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
+        tablespace_location_pairs text[]
+)
+RETURNS TABLE (
+        gp_segment_id  int,
+        move_success   bool,
+        oldpath        text,
+        newpath        text
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    raw_entry text;
+    m text[];
+    parsed __gp_move_orphaned_files_pairs[] := ARRAY[]::__gp_move_orphaned_files_pairs[];
+BEGIN
+    FOREACH raw_entry IN ARRAY tablespace_location_pairs LOOP
+        -- Use SELECT INTO since regexp_matches() returns SETOF text[]
+        SELECT regexp_matches(raw_entry, '^\{\s*(\d+)\s*,\s*(/.+?)\s*\}$') INTO m;
+
+        IF m IS NULL THEN
+            RAISE EXCEPTION 'invalid format: "%". Expected format: {oid, /path}', raw_entry;
+        END IF;
+
+        parsed := parsed || ROW(m[1]::oid, m[2])::__gp_move_orphaned_files_pairs;
+    END LOOP;
+    RETURN QUERY
+    SELECT * FROM __gp_move_orphaned_files(parsed);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(text[]) TO public;
 
 --------------------------------------------------------------------------------
 -- @view:
