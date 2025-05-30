@@ -1113,12 +1113,12 @@ explain (verbose, costs off)
 select * from
   (select 9 as x, unnest(array[1,2,3,11,12,13]) as u) ss
   where tattle(x, 8);
-NOTICE:  x = 9, y = 8
                      QUERY PLAN                     
 ----------------------------------------------------
  ProjectSet
    Output: 9, unnest('{1,2,3,11,12,13}'::integer[])
    ->  Result
+         One-Time Filter: tattle(9, 8)
 (4 rows)
 
 select * from
