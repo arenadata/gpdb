@@ -530,6 +530,8 @@ SELECT count(*) FROM test_tsvector WHERE a @@ to_tsquery('345&qwerty');
 -- Test inlining of immutable constant functions
 
 -- to_tsquery(text) is not immutable, so it won't be inlined
+-- GPDB: Stable function inlining is performed for to_tsquery.
+-- Thus, we carry a few EXPLAIN diffs from upstream.
 explain (costs off)
 select * from test_tsquery, to_tsquery('new') q where txtsample @@ q;
 
