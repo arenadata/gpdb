@@ -158,7 +158,7 @@ WITH Tablespaces AS (
     WHERE ts.oid > 1664
 )
 SELECT tablespace, files.filename, dirname || '/' || files.filename AS filepath
-FROM Tablespaces, pg_ls_dir(dirname) AS files(filename);
+FROM Tablespaces, pg_ls_dir(dirname, true, false) AS files(filename);
 
 GRANT SELECT ON __get_exist_files TO public;
 
