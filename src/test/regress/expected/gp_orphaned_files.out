@@ -230,3 +230,5 @@ select force_mirrors_to_catch_up();
 \unset check_files
 drop function createTables();
 drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepath text);
+-- start_ignore
+-- end_ignore

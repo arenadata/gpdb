@@ -2,6 +2,9 @@
 create extension if not exists gp_inject_fault;
 drop index if exists t_orphaned_r_i, t_orphaned_c_i;
 drop table if exists t_orphaned_h, t_orphaned_r, t_orphaned_c;
+\! gpconfig -c gp_gang_creation_retry_timer -v 1000 --skipvalidation --masteronly
+\! gpconfig -c gp_gang_creation_retry_count -v 120 --skipvalidation --masteronly
+\! gpstop -u
 -- end_ignore
 
 -- start_matchsubs
@@ -207,3 +210,8 @@ select force_mirrors_to_catch_up();
 \unset check_files
 drop function createTables();
 drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepath text);
+-- start_ignore
+\! gpconfig -r gp_gang_creation_retry_timer --skipvalidation --masteronly
+\! gpconfig -r gp_gang_creation_retry_count --skipvalidation --masteronly
+\! gpstop -u
+-- end_ignore
