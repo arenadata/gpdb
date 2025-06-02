@@ -66,6 +66,7 @@
 #include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/reinit.h"
+#include "storage/sinvaladt.h"
 #include "storage/smgr.h"
 #include "storage/spin.h"
 #include "storage/sync.h"
@@ -2163,9 +2164,7 @@ AdvanceXLInsertBuffer(XLogRecPtr upto, bool opportunistic)
 	XLogRecPtr	NewPageEndPtr = InvalidXLogRecPtr;
 	XLogRecPtr	NewPageBeginPtr;
 	XLogPageHeader NewPage;
-#ifdef WAL_DEBUG
-	int			npages = 0;
-#endif
+	int			npages pg_attribute_unused() = 0;
 
 	LWLockAcquire(WALBufMappingLock, LW_EXCLUSIVE);
 
@@ -4409,12 +4408,18 @@ ReadRecord(XLogReaderState *xlogreader, XLogRecPtr RecPtr, int emode,
 		if (record == NULL)
 		{
 			/*
-			 * When not in standby mode we find that WAL ends in an incomplete
-			 * record, keep track of that record.  After recovery is done,
-			 * we'll write a record to indicate downstream WAL readers that
-			 * that portion is to be ignored.
+			 * When we find that WAL ends in an incomplete record, keep track
+			 * of that record.  After recovery is done, we'll write a record to
+			 * indicate to downstream WAL readers that that portion is to be
+			 * ignored.
+			 *
+			 * However, when ArchiveRecoveryRequested = true, we're going to
+			 * switch to a new timeline at the end of recovery. We will only
+			 * copy WAL over to the new timeline up to the end of the last
+			 * complete record, so if we did this, we would later create an
+			 * overwrite contrecord in the wrong place, breaking everything.
 			 */
-			if (!StandbyMode &&
+			if (!ArchiveRecoveryRequested &&
 				!XLogRecPtrIsInvalid(xlogreader->abortedRecPtr))
 			{
 				abortedRecPtr = xlogreader->abortedRecPtr;
@@ -5847,8 +5852,13 @@ recoveryStopsBefore(XLogReaderState *record)
 		stopsHere = (recordXid == recoveryTargetXid);
 	}
 
-	if (recoveryTarget == RECOVERY_TARGET_TIME &&
-		getRecordTimestamp(record, &recordXtime))
+	/*
+	 * Note: we must fetch recordXtime regardless of recoveryTarget setting.
+	 * We don't expect getRecordTimestamp ever to fail, since we already know
+	 * this is a commit or abort record; but test its result anyway.
+	 */
+	if (getRecordTimestamp(record, &recordXtime) &&
+		recoveryTarget == RECOVERY_TARGET_TIME)
 	{
 		/*
 		 * There can be many transactions that share the same commit time, so
@@ -7358,6 +7368,9 @@ StartupXLOG(void)
 				RunningTransactionsData running;
 				TransactionId latestCompletedXid;
 
+				/* Update pg_subtrans entries for any prepared transactions */
+				StandbyRecoverPreparedTransactions();
+
 				/*
 				 * Construct a RunningTransactions snapshot representing a
 				 * shut down server, with only prepared transactions still
@@ -7366,7 +7379,7 @@ StartupXLOG(void)
 				 */
 				running.xcnt = nxids;
 				running.subxcnt = 0;
-				running.subxid_overflow = false;
+				running.subxid_status = SUBXIDS_IN_SUBTRANS;
 				running.nextXid = XidFromFullTransactionId(checkPoint.nextFullXid);
 				running.oldestRunningXid = oldestActiveXID;
 				latestCompletedXid = XidFromFullTransactionId(checkPoint.nextFullXid);
@@ -7376,8 +7389,6 @@ StartupXLOG(void)
 				running.xids = xids;
 
 				ProcArrayApplyRecoveryInfo(&running);
-
-				StandbyRecoverPreparedTransactions();
 			}
 		}
 
@@ -7997,6 +8008,14 @@ StartupXLOG(void)
 	 */
 	if (!XLogRecPtrIsInvalid(missingContrecPtr))
 	{
+		/*
+		 * We should only have a missingContrecPtr if we're not switching to
+		 * a new timeline. When a timeline switch occurs, WAL is copied from
+		 * the old timeline to the new only up to the end of the last complete
+		 * record, so there can't be an incomplete WAL record that we need to
+		 * disregard.
+		 */
+		Assert(ThisTimeLineID == PrevTimeLineID);
 		Assert(!XLogRecPtrIsInvalid(abortedRecPtr));
 		EndOfLog = missingContrecPtr;
 	}
@@ -8231,6 +8250,30 @@ StartupXLOG(void)
 			}
 		}
 	}
+
+	/*
+	 * Invalidate all sinval-managed caches before READ WRITE transactions
+	 * begin.  The xl_heap_inplace WAL record doesn't store sufficient data
+	 * for invalidations.  The commit record, if any, has the invalidations.
+	 * However, the inplace update is permanent, whether or not we reach a
+	 * commit record.  Fortunately, read-only transactions tolerate caches not
+	 * reflecting the latest inplace updates.  Read-only transactions
+	 * experience the notable inplace updates as follows:
+	 *
+	 * - relhasindex=true affects readers only after the CREATE INDEX
+	 * transaction commit makes an index fully available to them.
+	 *
+	 * - datconnlimit=DATCONNLIMIT_INVALID_DB affects readers only at
+	 * InitPostgres() time, and that read does not use a cache.
+	 *
+	 * - relfrozenxid, datfrozenxid, relminmxid, and datminmxid have no effect
+	 * on readers.
+	 *
+	 * Hence, hot standby queries (all READ ONLY) function correctly without
+	 * the missing invalidations.  This avoided changing the WAL format in
+	 * back branches.
+	 */
+	SIResetAll();
 
 	/*
 	 * Preallocate additional log files, if wanted.
@@ -10777,6 +10820,9 @@ xlog_redo(XLogReaderState *record)
 
 			oldestActiveXID = PrescanPreparedTransactions(&xids, &nxids);
 
+			/* Update pg_subtrans entries for any prepared transactions */
+			StandbyRecoverPreparedTransactions();
+
 			/*
 			 * Construct a RunningTransactions snapshot representing a shut
 			 * down server, with only prepared transactions still alive. We're
@@ -10785,7 +10831,7 @@ xlog_redo(XLogReaderState *record)
 			 */
 			running.xcnt = nxids;
 			running.subxcnt = 0;
-			running.subxid_overflow = false;
+			running.subxid_status = SUBXIDS_IN_SUBTRANS;
 			running.nextXid = XidFromFullTransactionId(checkPoint.nextFullXid);
 			running.oldestRunningXid = oldestActiveXID;
 			latestCompletedXid = XidFromFullTransactionId(checkPoint.nextFullXid);
@@ -10795,8 +10841,6 @@ xlog_redo(XLogReaderState *record)
 			running.xids = xids;
 
 			ProcArrayApplyRecoveryInfo(&running);
-
-			StandbyRecoverPreparedTransactions();
 		}
 
 		/* ControlFile->checkPointCopy always tracks the latest ckpt XID */
@@ -13236,6 +13280,9 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 						wait_time = wal_retrieve_retry_interval -
 							TimestampDifferenceMilliseconds(last_fail_time, now);
 
+						/* Do background tasks that might benefit us later. */
+						KnownAssignedTransactionIdsIdleMaintenance();
+
 						(void) WaitLatch(&XLogCtl->recoveryWakeupLatch,
 										 WL_LATCH_SET | WL_TIMEOUT |
 										 WL_EXIT_ON_PM_DEATH,
@@ -13450,6 +13497,9 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 						WalRcvForceReply();
 						streaming_reply_sent = true;
 					}
+
+					/* Do any background tasks that might benefit us later. */
+					KnownAssignedTransactionIdsIdleMaintenance();
 
 					/*
 					 * Wait for more WAL to arrive. Time out after 5 seconds

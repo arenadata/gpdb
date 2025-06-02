@@ -2827,7 +2827,7 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-PG_PACKAGE_VERSION=12.12
+PG_PACKAGE_VERSION=12.22
 
 
 
@@ -5207,6 +5207,8 @@ fi
   if echo $pgac_llvm_version | $AWK -F '.' '{ if ($1 >= 4 || ($1 == 3 && $2 >= 9)) exit 1; else exit 0;}';then
     as_fn_error $? "$LLVM_CONFIG version is $pgac_llvm_version but at least 3.9 is required" "$LINENO" 5
   fi
+  { $as_echo "$as_me:${as_lineno-$LINENO}: using llvm $pgac_llvm_version" >&5
+$as_echo "$as_me: using llvm $pgac_llvm_version" >&6;}
 
   # need clang to create some bitcode files
 
@@ -10282,7 +10284,7 @@ fi
   { $as_echo "$as_me:${as_lineno-$LINENO}: checking whether it is possible to strip libraries" >&5
 $as_echo_n "checking whether it is possible to strip libraries... " >&6; }
   if test x"$STRIP" != x"" && "$STRIP" -V 2>&1 | grep "GNU strip" >/dev/null; then
-    STRIP_STATIC_LIB="$STRIP -x"
+    STRIP_STATIC_LIB="$STRIP --strip-unneeded"
     STRIP_SHARED_LIB="$STRIP --strip-unneeded"
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
@@ -13799,7 +13801,11 @@ fi
 fi
 
 if test "$with_openssl" = yes ; then
-    if test "$PORTNAME" != "win32"; then
+    # Minimum required OpenSSL version is 0.9.8
+
+$as_echo "#define OPENSSL_API_COMPAT 0x00908000L" >>confdefs.h
+
+  if test "$PORTNAME" != "win32"; then
      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for CRYPTO_new_ex_data in -lcrypto" >&5
 $as_echo_n "checking for CRYPTO_new_ex_data in -lcrypto... " >&6; }
 if ${ac_cv_lib_crypto_CRYPTO_new_ex_data+:} false; then :
@@ -14029,7 +14035,7 @@ done
   # defines OPENSSL_VERSION_NUMBER to claim version 2.0.0, even though it
   # doesn't have these OpenSSL 1.1.0 functions. So check for individual
   # functions.
-  for ac_func in OPENSSL_init_ssl BIO_get_data BIO_meth_new ASN1_STRING_get0_data
+  for ac_func in OPENSSL_init_ssl BIO_meth_new ASN1_STRING_get0_data
 do :
   as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
 ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
@@ -14050,6 +14056,19 @@ do :
 if test "x$ac_cv_func_CRYPTO_lock" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_CRYPTO_LOCK 1
+_ACEOF
+
+fi
+done
+
+  # Function introduced in OpenSSL 1.1.1.
+  for ac_func in X509_get_signature_info SSL_CTX_set_num_tickets
+do :
+  as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
+ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
+if eval test \"x\$"$as_ac_var"\" = x"yes"; then :
+  cat >>confdefs.h <<_ACEOF
+#define `$as_echo "HAVE_$ac_func" | $as_tr_cpp` 1
 _ACEOF
 
 fi
@@ -15029,7 +15048,7 @@ $as_echo "#define HAVE_STDBOOL_H 1" >>confdefs.h
 fi
 
 
-for ac_header in atomic.h copyfile.h crypt.h fp_class.h getopt.h ieeefp.h ifaddrs.h langinfo.h mbarrier.h poll.h sys/epoll.h sys/ipc.h sys/prctl.h sys/procctl.h sys/pstat.h sys/resource.h sys/select.h sys/sem.h sys/shm.h sys/sockio.h sys/tas.h sys/un.h termios.h ucred.h utime.h wchar.h wctype.h
+for ac_header in atomic.h copyfile.h crypt.h fp_class.h getopt.h ieeefp.h ifaddrs.h langinfo.h mbarrier.h poll.h sys/epoll.h sys/ipc.h sys/personality.h sys/prctl.h sys/procctl.h sys/pstat.h sys/resource.h sys/select.h sys/sem.h sys/shm.h sys/sockio.h sys/tas.h sys/un.h termios.h ucred.h utime.h wchar.h wctype.h
 do :
   as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
 ac_fn_c_check_header_mongrel "$LINENO" "$ac_header" "$as_ac_Header" "$ac_includes_default"
