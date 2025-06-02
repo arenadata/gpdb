@@ -2602,6 +2602,12 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 									   scanjoin_target_parallel_safe,
 									   scanjoin_target_same_exprs);
 
+		/*
+		 * If the TL of the subquery contains a volatile function and the data is available
+		 * on all segments, we should change the path locus to SingleQE in order to get a
+		 * single dataset on all segments. We do not take this into account if the final
+		 * locus is Replicated (this case is processed later).
+		*/
 		if (contain_volatile_functions((Node *) scanjoin_target->exprs) && !CdbPathLocus_IsReplicated(root->final_locus))
 		{
 			foreach(lc, current_rel->pathlist)
@@ -2613,6 +2619,10 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 				}
 			}
 		}
+		/*
+		 * If the subquery contains parameterized operators (correlated), the locus should be
+		 * changed to OuterQuery. We do it here, instead of bring_to_outer_query().
+		*/
 		if (root->is_correlated_subplan && !CdbPathLocus_IsReplicated(root->final_locus))
 		{
 			foreach(lc, current_rel->pathlist)
