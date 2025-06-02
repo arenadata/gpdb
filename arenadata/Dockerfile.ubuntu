@@ -1,9 +1,15 @@
 FROM ubuntu:22.04 AS base
 
+ARG MIRROR=http://mirror.adsw.io/ubuntu
+
 COPY README.Ubuntu.bash ./
 
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
+    echo "deb $MIRROR/jammy/jammy/ jammy main restricted universe multiverse" >/etc/apt/sources.list; \
+    echo "deb $MIRROR/jammy/jammy-updates/ jammy-updates main restricted universe multiverse" >>/etc/apt/sources.list; \
+    echo "deb $MIRROR/jammy/jammy-backports/ jammy-backports main restricted universe multiverse" >>/etc/apt/sources.list; \
+    echo "deb $MIRROR/jammy/jammy-security/ jammy-security main restricted universe multiverse" >>/etc/apt/sources.list; \
     ./README.Ubuntu.bash; \
     rm README.Ubuntu.bash; \
 # The en_US.UTF-8 locale is needed to run GPDB
