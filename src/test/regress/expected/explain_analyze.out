@@ -139,9 +139,8 @@ explain (analyze, timing off, costs off)
    InitPlan 2 (returns $1)
      ->  Result (actual rows=1 loops=1)
    SubPlan 1
-     ->  Materialize (actual rows=1 loops=2)
-           ->  Result (actual rows=1 loops=2)
-                 One-Time Filter: ((x.x)::integer = 0)
+     ->  Result (actual rows=1 loops=2)
+           One-Time Filter: ((x.x)::integer = 0)
  Optimizer: Postgres-based planner
  Planning Time: 0.245 ms
    (slice0)    Executor memory: 19K bytes.

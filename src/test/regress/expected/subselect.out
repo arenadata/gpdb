@@ -1061,14 +1061,12 @@ explain (verbose, costs off)
    ->  Values Scan on "*VALUES*"
          Output: (SubPlan 1)
          SubPlan 1
-           ->  Materialize
-                 Output: (random())
-                 ->  Result
-                       Output: random()
-                       One-Time Filter: ("*VALUES*".column1 = "*VALUES*".column1)
+           ->  Result
+                 Output: random()
+                 One-Time Filter: ("*VALUES*".column1 = "*VALUES*".column1)
  Optimizer: Postgres-based planner
  Settings: optimizer = 'off'
-(12 rows)
+(10 rows)
 
 --
 -- Test rescan of a hashed subplan (the use of random() is to prevent the
