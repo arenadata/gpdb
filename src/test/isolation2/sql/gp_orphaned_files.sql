@@ -6,11 +6,6 @@
                         t_orphaned_h2, t_orphaned_r2, t_orphaned_c2;
 -- end_ignore
 
--- start_matchsubs
--- m/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/
--- s/ERROR:  Error on receive from seg\d+ slice\d+ \d+.\d+.\d+.\d+:\d+ pid=\d+: server closed the connection unexpectedly/ERROR:  Error on receive from segX sliceX X.X.X.X:X pid=X: server closed the connection unexpectedly/
--- end_matchsubs
-
 
 -- Test case 1
 -- Check that orphaned files are not left on the coordinator and the standby
@@ -88,8 +83,8 @@ $$ language plpgsql;
      from gp_segment_configuration
     where role = 'p' and content = -1;
 
--- The error message from psql can be different, so ignore it
-! psql postgres -c "select 1" 2> /dev/null;
+-- The error message can be different, so ignore it
+1: @post_run 'echo ""' : select 1;
 ! sleep 2;
 1q:
 2q:
@@ -198,7 +193,8 @@ $$ language plpgsql;
      from gp_segment_configuration
     where role = 'p' and content != -1;
 
-1: select 1 from gp_dist_random('gp_id');
+-- The error message can be different, so ignore it
+1: @post_run 'echo ""' : select 1 from gp_dist_random('gp_id');
 
 -- Rollback the transaction to make it possible to run queries after the error
 1: rollback;
