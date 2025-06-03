@@ -65,18 +65,17 @@ $$ language plpgsql;
 
 -- Start transaction and create tables in it before checkpoint
 1: begin;
-1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' :
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files.sh' :
              select createTables('1') check_files;
 
 2: begin;
-2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' :
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files.sh' :
              select createTables('2') check_files;
 
 1: checkpoint;
 
 -- Make sure that the tables files exist on the coordinator and the standby
-1: ! sh /tmp/gp_orphaned_files1.txt;
-1: ! sh /tmp/gp_orphaned_files2.txt;
+1: ! sh /tmp/gp_orphaned_files.sh;
 
 -- Get segfault on the coordinator and reconnect after its restart
 1: select gp_inject_fault('before_read_command', 'segv', dbid)
@@ -92,12 +91,10 @@ $$ language plpgsql;
 1: select force_mirrors_to_catch_up();
 
 -- Check that the tables files don't exist on the coordinator and the standby
-! sh /tmp/gp_orphaned_files1.txt;
-! sh /tmp/gp_orphaned_files2.txt;
+! sh /tmp/gp_orphaned_files.sh;
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files1.txt;
-! rm /tmp/gp_orphaned_files2.txt;
+! rm /tmp/gp_orphaned_files.sh;
 1: drop function createTables(n text);
 
 
@@ -178,18 +175,17 @@ $$ language plpgsql;
 
 -- Start transaction and create tables in it before checkpoint
 1: begin;
-1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' :
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files.sh' :
              select createTables('1') check_files;
 
 2: begin;
-2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' :
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files.sh' :
              select createTables('2') check_files;
 
 1: checkpoint;
 
 -- Make sure that all the tables files exist on the segments
-1: ! sh /tmp/gp_orphaned_files1.txt;
-1: ! sh /tmp/gp_orphaned_files2.txt;
+1: ! sh /tmp/gp_orphaned_files.sh;
 
 -- Get segfault on all segments
 1: select gp_inject_fault('before_read_command', 'segv', dbid)
@@ -206,8 +202,7 @@ $$ language plpgsql;
 1: select force_mirrors_to_catch_up();
 
 -- Check that the tables files don't exist on the segments
-! sh /tmp/gp_orphaned_files1.txt;
-! sh /tmp/gp_orphaned_files2.txt;
+! sh /tmp/gp_orphaned_files.sh;
 
 
 -- Test case 2.2
@@ -215,18 +210,17 @@ $$ language plpgsql;
 
 -- Start transaction and create tables in it before checkpoint
 1: begin;
-1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' :
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files.sh' :
              select createTables('1') check_files;
 
 2: begin;
-2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' :
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files.sh' :
              select createTables('2') check_files;
 
 1: checkpoint;
 
 -- Make sure that all the tables files exist on the segments
-1: ! sh /tmp/gp_orphaned_files1.txt;
-1: ! sh /tmp/gp_orphaned_files2.txt;
+1: ! sh /tmp/gp_orphaned_files.sh;
 
 -- Get segfault on a segment
 1: select gp_inject_fault('before_read_command', 'segv', dbid)
@@ -250,13 +244,11 @@ $$ language plpgsql;
 1: checkpoint;
 
 -- Check that the tables files don't exist on the segments
-! sh /tmp/gp_orphaned_files1.txt;
-! sh /tmp/gp_orphaned_files2.txt;
+! sh /tmp/gp_orphaned_files.sh;
 
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files1.txt;
-! rm /tmp/gp_orphaned_files2.txt;
+! rm /tmp/gp_orphaned_files.sh;
 1: drop function createTables(n text);
 1: drop function getTableSegFiles
    (t regclass, out gp_contentid smallint, out filepath text);

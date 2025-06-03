@@ -19,21 +19,19 @@ CREATE
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 BEGIN
-1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' : select createTables('1') check_files;
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files.sh' : select createTables('1') check_files;
 
 2: begin;
 BEGIN
-2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' : select createTables('2') check_files;
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files.sh' : select createTables('2') check_files;
 
 1: checkpoint;
 CHECKPOINT
 
 -- Make sure that the tables files exist on the coordinator and the standby
-1: ! sh /tmp/gp_orphaned_files1.txt;
+1: ! sh /tmp/gp_orphaned_files.sh;
 15
 15
-
-1: ! sh /tmp/gp_orphaned_files2.txt;
 15
 15
 
@@ -60,19 +58,15 @@ CHECKPOINT
 (1 row)
 
 -- Check that the tables files don't exist on the coordinator and the standby
-! sh /tmp/gp_orphaned_files1.txt;
+! sh /tmp/gp_orphaned_files.sh;
 0
 0
-
-! sh /tmp/gp_orphaned_files2.txt;
 0
 0
 
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files1.txt;
-
-! rm /tmp/gp_orphaned_files2.txt;
+! rm /tmp/gp_orphaned_files.sh;
 
 1: drop function createTables(n text);
 DROP
@@ -99,25 +93,23 @@ CREATE
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 BEGIN
-1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' : select createTables('1') check_files;
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files.sh' : select createTables('1') check_files;
 
 2: begin;
 BEGIN
-2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' : select createTables('2') check_files;
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files.sh' : select createTables('2') check_files;
 
 1: checkpoint;
 CHECKPOINT
 
 -- Make sure that all the tables files exist on the segments
-1: ! sh /tmp/gp_orphaned_files1.txt;
+1: ! sh /tmp/gp_orphaned_files.sh;
 9
 9
 9
 9
 9
 9
-
-1: ! sh /tmp/gp_orphaned_files2.txt;
 9
 9
 9
@@ -152,15 +144,13 @@ ROLLBACK
 (1 row)
 
 -- Check that the tables files don't exist on the segments
-! sh /tmp/gp_orphaned_files1.txt;
+! sh /tmp/gp_orphaned_files.sh;
 0
 0
 0
 0
 0
 0
-
-! sh /tmp/gp_orphaned_files2.txt;
 0
 0
 0
@@ -176,25 +166,23 @@ ROLLBACK
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 BEGIN
-1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' : select createTables('1') check_files;
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files.sh' : select createTables('1') check_files;
 
 2: begin;
 BEGIN
-2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' : select createTables('2') check_files;
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files.sh' : select createTables('2') check_files;
 
 1: checkpoint;
 CHECKPOINT
 
 -- Make sure that all the tables files exist on the segments
-1: ! sh /tmp/gp_orphaned_files1.txt;
+1: ! sh /tmp/gp_orphaned_files.sh;
 9
 9
 9
 9
 9
 9
-
-1: ! sh /tmp/gp_orphaned_files2.txt;
 9
 9
 9
@@ -239,15 +227,13 @@ ROLLBACK
 CHECKPOINT
 
 -- Check that the tables files don't exist on the segments
-! sh /tmp/gp_orphaned_files1.txt;
+! sh /tmp/gp_orphaned_files.sh;
 0
 0
 0
 0
 0
 0
-
-! sh /tmp/gp_orphaned_files2.txt;
 0
 0
 0
@@ -258,9 +244,7 @@ CHECKPOINT
 
 
 -- Cleanup
-! rm /tmp/gp_orphaned_files1.txt;
-
-! rm /tmp/gp_orphaned_files2.txt;
+! rm /tmp/gp_orphaned_files.sh;
 
 1: drop function createTables(n text);
 DROP
