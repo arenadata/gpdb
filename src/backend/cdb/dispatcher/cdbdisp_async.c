@@ -830,7 +830,7 @@ handlePollError(CdbDispatchCmdAsync *pParms)
  * memory allocations by abusing libpq state-machine hacks.
  */
 static void
-resetConnAndResult(CdbDispatchResult *dispatchResult)
+resetConnAndResult(CdbDispatchResult *dispatchResult, bool shouldConsume)
 {
 	PGresult   *res;
 	PGnotify   *notify;
@@ -839,14 +839,19 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	/* Replace current result with a fatal error dummy one. */
 	pqSaveErrorResult(conn);
 
+	/* Make sure PQgetResult() doesn't block. */
+	if (shouldConsume)
+	{
+		PQconsumeInput(conn);
+	}
+
 	/*
 	 * Discard anything that is unread. Since our result contains a fatal
 	 * error, we'll just consume the entire message without actually parsing
 	 * it.
 	 */
-	conn->asyncStatus = PGASYNC_BUSY;
-
-	while ((res = PQgetResult(conn)) != NULL)
+	while (!PQisBusy(conn) &&
+		   (res = PQgetResult(conn)) != NULL)
 	{
 		switch (PQresultStatus(res))
 		{
@@ -866,10 +871,7 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	while ((notify = PQnotifies(conn)) != NULL)
 		PQfreemem(notify);
 
-	/*
-	 * Nullify this connection's result as well as we don't need the fatal
-	 * error status anymore.
-	 */
+	/* The result will not be needed anymore. */
 	pqClearAsyncResult(conn);
 
 	dispatchResult->stillRunning = false;
@@ -927,15 +929,12 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 		 */
 		if (pParms->waitMode == DISPATCH_WAIT_CANCEL)
 		{
-			/* Make QE come to its sense. */
-			signalQE(dispatchResult, DISPATCH_WAIT_CANCEL);
-
 			/*
 			 * If we're cancelling the transaction due to an OOM, there
 			 * might not be enough memory to discard the result properly.
 			 * Let's get the big guns out.
 			 */
-			resetConnAndResult(dispatchResult);
+			resetConnAndResult(dispatchResult, pParms->ackMessage != NULL);
 
 			forwardQENotices();
 

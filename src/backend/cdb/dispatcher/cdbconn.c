@@ -352,8 +352,11 @@ cdbconn_discardResults(SegmentDatabaseDescriptor *segdbDesc,
 	int			i = 0;
 	bool retval = true;
 
+	PQconsumeInput(segdbDesc->conn);
+
 	/* PQstatus() is smart enough to handle NULL */
-	while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
+	while (!PQisBusy(segdbDesc->conn) &&
+		   NULL != (pRes = PQgetResult(segdbDesc->conn)))
 	{
 		stat = PQresultStatus(pRes);
 		PQclear(pRes);
