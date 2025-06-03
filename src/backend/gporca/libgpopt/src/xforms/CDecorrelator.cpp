@@ -428,7 +428,8 @@ CDecorrelator::FProcessGbAgg(CMemoryPool *mp, CExpression *pexpr,
 
 	// fail if agg has no grouping columns and a count() aggregate
 	// this is a temporary fix for the "count bug".
-	if (0 == popAggOriginal->Pdrgpcr()->Size()) {
+	if (0 == popAggOriginal->Pdrgpcr()->Size())
+	{
 		CColRef *pcrCount = nullptr;
 		if (CUtils::FHasCountAgg((*pexpr)[1], &pcrCount))
 		{
