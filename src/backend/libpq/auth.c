@@ -3871,7 +3871,7 @@ check_auth_time_constraints_internal(char *rolname, TimestampTz timestamp)
 
 	ReleaseSysCache(roleTup);
 	/* Walk pg_auth_time_constraint for entries belonging to this user. */
-	reltimeconstr = heap_open(AuthTimeConstraintRelationId, AccessShareLock);
+	reltimeconstr = table_open(AuthTimeConstraintRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
 				Anum_pg_auth_time_constraint_authid,
@@ -3930,7 +3930,7 @@ check_auth_time_constraints_internal(char *rolname, TimestampTz timestamp)
 
 	/* Clean up. */
 	systable_endscan(scan);
-	heap_close(reltimeconstr, AccessShareLock);
+	table_close(reltimeconstr, AccessShareLock);
 
 	/* Time constraints shouldn't be added to superuser roles */
 	if (found && isRoleSuperuser)
