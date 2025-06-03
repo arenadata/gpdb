@@ -562,6 +562,7 @@ void		old_9_6_check_for_unknown_data_type_usage(ClusterInfo *cluster);
 void		old_9_6_invalidate_hash_indexes(ClusterInfo *cluster,
 											bool check_mode);
 
+<<<<<<< HEAD
 /* version_old_8_3.c */
 
 void		old_8_3_check_for_name_data_type_usage(ClusterInfo *cluster);
@@ -572,6 +573,9 @@ void		old_8_3_invalidate_hash_gin_indexes(ClusterInfo *cluster, bool check_mode)
 void old_8_3_invalidate_bpchar_pattern_ops_indexes(ClusterInfo *cluster,
 											  bool check_mode);
 char	   *old_8_3_create_sequence_script(ClusterInfo *cluster);
+=======
+void		old_11_check_for_sql_identifier_data_type_usage(ClusterInfo *cluster);
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 /* parallel.c */
 void		parallel_exec_prog(const char *log_file, const char *opt_log_file,

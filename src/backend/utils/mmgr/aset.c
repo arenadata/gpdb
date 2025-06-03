@@ -557,6 +557,7 @@ AllocSetContextCreateInternal(MemoryContext parent,
 								parent,
 								name);
 
+<<<<<<< HEAD
 			if (parent)
 				set->accountingParent = ((AllocSet) parent)->accountingParent;
 			else
@@ -565,6 +566,8 @@ AllocSetContextCreateInternal(MemoryContext parent,
 			set->currentAllocated = 0;
 			set->peakAllocated = 0;
 
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 			((MemoryContext) set)->mem_allocated =
 				set->keeper->endptr - ((char *) set);
 
@@ -660,6 +663,7 @@ AllocSetContextCreateInternal(MemoryContext parent,
 						parent,
 						name);
 
+<<<<<<< HEAD
 	if (parent)
 		set->accountingParent = ((AllocSet) parent)->accountingParent;
 	else
@@ -668,6 +672,8 @@ AllocSetContextCreateInternal(MemoryContext parent,
 	set->currentAllocated = 0;
 	set->peakAllocated = 0;
 
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 	((MemoryContext) set)->mem_allocated = firstBlockSize;
 
 	return (MemoryContext) set;
@@ -690,7 +696,12 @@ AllocSetReset(MemoryContext context)
 {
 	AllocSet	set = (AllocSet) context;
 	AllocBlock	block;
+<<<<<<< HEAD
 	Size		keepersize PG_USED_FOR_ASSERTS_ONLY = set->keeper->endptr - ((char *) set);
+=======
+	Size		keepersize PG_USED_FOR_ASSERTS_ONLY
+		= set->keeper->endptr - ((char *) set);
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	AssertArg(AllocSetIsValid(set));
 
@@ -764,7 +775,12 @@ AllocSetDelete(MemoryContext context, MemoryContext parent)
 {
 	AllocSet	set = (AllocSet) context;
 	AllocBlock	block = set->blocks;
+<<<<<<< HEAD
 	Size		keepersize PG_USED_FOR_ASSERTS_ONLY = set->keeper->endptr - ((char *) set);
+=======
+	Size		keepersize PG_USED_FOR_ASSERTS_ONLY
+		= set->keeper->endptr - ((char *) set);
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	AssertArg(AllocSetIsValid(set));
 
@@ -1349,9 +1365,16 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		chksize = MAXALIGN(chksize);
 
 		/* Do the realloc */
+<<<<<<< HEAD
 		oldblksize = UserPtr_GetUserPtrSize(block);
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
 		block = (AllocBlock) gp_realloc(block, blksize);
+=======
+		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
+		oldblksize = block->endptr - ((char *)block);
+
+		block = (AllocBlock) realloc(block, blksize);
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		if (block == NULL)
 		{
 			/* Disallow external access to private part of chunk header. */
@@ -1359,7 +1382,13 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			return NULL;
 		}
 
+<<<<<<< HEAD
 		context->mem_allocated += blksize - oldblksize;
+=======
+		/* updated separately, not to underflow when (oldblksize > blksize) */
+		context->mem_allocated -= oldblksize;
+		context->mem_allocated += blksize;
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 		block->freeptr = block->endptr = ((char *) block) + blksize;
 
@@ -1414,11 +1443,14 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		/* Disallow external access to private part of chunk header. */
 		VALGRIND_MAKE_MEM_NOACCESS(chunk, ALLOCCHUNK_PRIVATE_LEN);
 
+<<<<<<< HEAD
 		if (chksize > oldsize)
 			MEMORY_ACCOUNT_INC_ALLOCATED(set, chksize - oldsize);
 		else
 			MEMORY_ACCOUNT_DEC_ALLOCATED(set, oldsize - chksize);
 
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		return pointer;
 	}
 
@@ -1469,11 +1501,14 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		/* Disallow external access to private part of chunk header. */
 		VALGRIND_MAKE_MEM_NOACCESS(chunk, ALLOCCHUNK_PRIVATE_LEN);
 
+<<<<<<< HEAD
 		/*
 		 * no need to update memory accounting summaries, since chunk->size
 		 * didn't change
 		 */
 
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		return pointer;
 	}
 	else
@@ -1750,7 +1785,11 @@ AllocSetCheck(MemoryContext context)
 	const char *name = set->header.name;
 	AllocBlock	prevblock;
 	AllocBlock	block;
+<<<<<<< HEAD
 	int64		total_allocated = 0;
+=======
+	Size		total_allocated = 0;
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	for (prevblock = NULL, block = set->blocks;
 		 block != NULL;

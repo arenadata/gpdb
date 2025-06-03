@@ -499,6 +499,7 @@ MemoryContextIsEmpty(MemoryContext context)
 }
 
 /*
+<<<<<<< HEAD
  * MemoryContextError
  *		Report failure of a memory context operation.  Does not return.
  */
@@ -631,6 +632,15 @@ int64
 MemoryContextMemAllocated(MemoryContext context, bool recurse)
 {
 	int64 total = context->mem_allocated;
+=======
+ * Find the memory allocated to blocks for this memory context. If recurse is
+ * true, also include children.
+ */
+Size
+MemoryContextMemAllocated(MemoryContext context, bool recurse)
+{
+	Size	total = context->mem_allocated;
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	AssertArg(MemoryContextIsValid(context));
 

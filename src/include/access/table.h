@@ -26,6 +26,7 @@ extern Relation table_openrv_extended(const RangeVar *relation,
 extern Relation try_table_open(Oid relationId, LOCKMODE lockmode, bool noWait);
 extern void table_close(Relation relation, LOCKMODE lockmode);
 
+<<<<<<< HEAD
 /* CDB */
 extern Relation CdbOpenTable(Oid relid, LOCKMODE reqmode, bool *lockUpgraded);
 extern Relation CdbTryOpenTable(Oid relid, LOCKMODE reqmode,
@@ -41,4 +42,6 @@ extern Relation CdbTryOpenTable(Oid relid, LOCKMODE reqmode,
 #define heap_openrv_extended(r, l, m)	table_openrv_extended(r, l, m)
 #define heap_close(r, l)				table_close(r, l)
 
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 #endif							/* TABLE_H */

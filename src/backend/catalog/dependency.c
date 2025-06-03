@@ -2261,17 +2261,21 @@ find_expr_references_walker(Node *node,
 							   context->addrs);
 		}
 
+<<<<<<< HEAD
 		/* query_tree_walker ignores ORDER BY etc, but we need those opers */
 		find_expr_references_walker((Node *) query->sortClause, context);
 		find_expr_references_walker((Node *) query->groupClause, context);
 		find_expr_references_walker((Node *) query->distinctClause, context);
 
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		/* Examine substructure of query */
 		context->rtables = lcons(query->rtable, context->rtables);
 		result = query_tree_walker(query,
 								   find_expr_references_walker,
 								   (void *) context,
-								   QTW_IGNORE_JOINALIASES);
+								   QTW_IGNORE_JOINALIASES |
+								   QTW_EXAMINE_SORTGROUP);
 		context->rtables = list_delete_first(context->rtables);
 		return result;
 	}

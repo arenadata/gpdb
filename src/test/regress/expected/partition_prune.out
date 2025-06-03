@@ -1,6 +1,7 @@
 --
 -- Test partitioning planner code
 --
+<<<<<<< HEAD
 -- GPDB:
 -- One of the queries EXPLAINed in this file executes on one or two segments,
 -- depending on random choice by the planner. Accept either plan.
@@ -32,6 +33,8 @@
 -- m/segment \d+/
 -- s/segment \d+/segment ###/
 -- end_matchsubs
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 -- Force generic plans to be used for all prepared statements in this file.
 set plan_cache_mode = force_generic_plan;
 create table lp (a char) partition by list (a);
@@ -2173,9 +2176,14 @@ explain (analyze, costs off, summary off, timing off) select * from list_part wh
 rollback;
 drop table list_part;
 -- Parallel append
--- Suppress the number of loops each parallel node runs for.  This is because
--- more than one worker may run the same parallel node if timing conditions
--- are just right, which destabilizes the test.
+-- Parallel queries won't necessarily get as many workers as the planner
+-- asked for.  This affects not only the "Workers Launched:" field of EXPLAIN
+-- results, but also row counts and loop counts for parallel scans, Gathers,
+-- and everything in between.  This function filters out the values we can't
+-- rely on to be stable.
+-- This removes enough info that you might wonder why bother with EXPLAIN
+-- ANALYZE at all.  The answer is that we need to see '(never executed)'
+-- notations because that's the only way to verify runtime pruning.
 create function explain_parallel_append(text) returns setof text
 language plpgsql as
 $$
@@ -2186,9 +2194,8 @@ begin
         execute format('explain (analyze, costs off, summary off, timing off) %s',
             $1)
     loop
-        if ln like '%Parallel%' then
-            ln := regexp_replace(ln, 'loops=\d*',  'loops=N');
-        end if;
+        ln := regexp_replace(ln, 'Workers Launched: \d+', 'Workers Launched: N');
+        ln := regexp_replace(ln, 'actual rows=\d+ loops=\d+', 'actual rows=N loops=N');
         return next ln;
     end loop;
 end;
@@ -2201,6 +2208,7 @@ set parallel_tuple_cost = 0;
 set min_parallel_table_scan_size = 0;
 set max_parallel_workers_per_gather = 2;
 select explain_parallel_append('execute ab_q4 (2, 2)');
+<<<<<<< HEAD
                          explain_parallel_append                         
 -------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -2213,6 +2221,22 @@ select explain_parallel_append('execute ab_q4 (2, 2)');
                      ->  Seq Scan on ab_a2_b2 (actual rows=0 loops=1)
                            Filter: ((a >= $1) AND (a <= $2) AND (b < 4))
                      ->  Seq Scan on ab_a2_b3 (actual rows=0 loops=1)
+=======
+                            explain_parallel_append                            
+-------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 2
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Parallel Append (actual rows=N loops=N)
+                     Subplans Removed: 6
+                     ->  Parallel Seq Scan on ab_a2_b1 (actual rows=N loops=N)
+                           Filter: ((a >= $1) AND (a <= $2) AND (b < 4))
+                     ->  Parallel Seq Scan on ab_a2_b2 (actual rows=N loops=N)
+                           Filter: ((a >= $1) AND (a <= $2) AND (b < 4))
+                     ->  Parallel Seq Scan on ab_a2_b3 (actual rows=N loops=N)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
                            Filter: ((a >= $1) AND (a <= $2) AND (b < 4))
  Optimizer: Postgres query optimizer
 (12 rows)
@@ -2223,6 +2247,7 @@ select avg(a) from ab where a in($1,$2,$3) and b < 4;
 select explain_parallel_append('execute ab_q5 (1, 1, 1)');
                             explain_parallel_append                            
 -------------------------------------------------------------------------------
+<<<<<<< HEAD
  Finalize Aggregate (actual rows=1 loops=1)
    ->  Gather Motion 3:1  (slice1; segments: 3) (actual rows=3 loops=1)
          ->  Partial Aggregate (actual rows=1 loops=1)
@@ -2233,6 +2258,20 @@ select explain_parallel_append('execute ab_q5 (1, 1, 1)');
                      ->  Seq Scan on ab_a1_b2 (actual rows=0 loops=1)
                            Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
                      ->  Seq Scan on ab_a1_b3 (actual rows=0 loops=1)
+=======
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 2
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Parallel Append (actual rows=N loops=N)
+                     Subplans Removed: 6
+                     ->  Parallel Seq Scan on ab_a1_b1 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a1_b2 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a1_b3 (actual rows=N loops=N)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
                            Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
  Optimizer: Postgres query optimizer
 (12 rows)
@@ -2240,6 +2279,7 @@ select explain_parallel_append('execute ab_q5 (1, 1, 1)');
 select explain_parallel_append('execute ab_q5 (2, 3, 3)');
                             explain_parallel_append                            
 -------------------------------------------------------------------------------
+<<<<<<< HEAD
  Finalize Aggregate (actual rows=1 loops=1)
    ->  Gather Motion 3:1  (slice1; segments: 3) (actual rows=3 loops=1)
          ->  Partial Aggregate (actual rows=1 loops=1)
@@ -2256,6 +2296,26 @@ select explain_parallel_append('execute ab_q5 (2, 3, 3)');
                      ->  Seq Scan on ab_a3_b2 (actual rows=0 loops=1)
                            Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
                      ->  Seq Scan on ab_a3_b3 (actual rows=0 loops=1)
+=======
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 2
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Parallel Append (actual rows=N loops=N)
+                     Subplans Removed: 3
+                     ->  Parallel Seq Scan on ab_a2_b1 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a2_b2 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a2_b3 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a3_b1 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a3_b2 (actual rows=N loops=N)
+                           Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
+                     ->  Parallel Seq Scan on ab_a3_b3 (actual rows=N loops=N)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
                            Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
  Optimizer: Postgres query optimizer
 (18 rows)
@@ -2265,10 +2325,19 @@ select explain_parallel_append('execute ab_q5 (2, 3, 3)');
 select explain_parallel_append('execute ab_q5 (33, 44, 55)');
                             explain_parallel_append                            
 -------------------------------------------------------------------------------
+<<<<<<< HEAD
  Finalize Aggregate (actual rows=1 loops=1)
    ->  Gather Motion 3:1  (slice1; segments: 3) (actual rows=3 loops=1)
          ->  Partial Aggregate (actual rows=1 loops=1)
                ->  Append (actual rows=0 loops=1)
+=======
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 2
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Parallel Append (actual rows=N loops=N)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
                      Subplans Removed: 8
                      ->  Seq Scan on ab_a1_b1 (never executed)
                            Filter: ((b < 4) AND (a = ANY (ARRAY[$1, $2, $3])))
@@ -2277,6 +2346,7 @@ select explain_parallel_append('execute ab_q5 (33, 44, 55)');
 
 -- Test Parallel Append with PARAM_EXEC Params
 select explain_parallel_append('select count(*) from ab where (a = (select 1) or a = (select 3)) and b = 2');
+<<<<<<< HEAD
                         explain_parallel_append                         
 ------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -2295,6 +2365,27 @@ select explain_parallel_append('select count(*) from ab where (a = (select 1) or
                            Filter: ((b = 2) AND ((a = $0) OR (a = $1)))
  Optimizer: Postgres query optimizer
 (15 rows)
+=======
+                         explain_parallel_append                         
+-------------------------------------------------------------------------
+ Aggregate (actual rows=N loops=N)
+   InitPlan 1 (returns $0)
+     ->  Result (actual rows=N loops=N)
+   InitPlan 2 (returns $1)
+     ->  Result (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 2
+         Params Evaluated: $0, $1
+         Workers Launched: N
+         ->  Parallel Append (actual rows=N loops=N)
+               ->  Parallel Seq Scan on ab_a1_b2 (actual rows=N loops=N)
+                     Filter: ((b = 2) AND ((a = $0) OR (a = $1)))
+               ->  Parallel Seq Scan on ab_a2_b2 (never executed)
+                     Filter: ((b = 2) AND ((a = $0) OR (a = $1)))
+               ->  Parallel Seq Scan on ab_a3_b2 (actual rows=N loops=N)
+                     Filter: ((b = 2) AND ((a = $0) OR (a = $1)))
+(16 rows)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 -- Test pruning during parallel nested loop query
 create table lprt_a (a int not null);
@@ -2315,6 +2406,7 @@ create index ab_a3_b3_a_idx on ab_a3_b3 (a);
 set enable_hashjoin = 0;
 set enable_mergejoin = 0;
 select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on ab.a = a.a where a.a in(0, 0, 1)');
+<<<<<<< HEAD
                                         explain_parallel_append                                        
 -------------------------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -2349,12 +2441,45 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
                                        Filter: (a = ANY ('{0,0,1}'::integer[]))
  Optimizer: Postgres query optimizer
 (31 rows)
+=======
+                                      explain_parallel_append                                      
+---------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 1
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Nested Loop (actual rows=N loops=N)
+                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
+                           Filter: (a = ANY ('{0,0,1}'::integer[]))
+                     ->  Append (actual rows=N loops=N)
+                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b2_a_idx on ab_a2_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b3_a_idx on ab_a2_b3 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b1_a_idx on ab_a3_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b2_a_idx on ab_a3_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b3_a_idx on ab_a3_b3 (never executed)
+                                 Index Cond: (a = a.a)
+(27 rows)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 -- Ensure the same partitions are pruned when we make the nested loop
 -- parameter an Expr rather than a plain Param.
 select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on ab.a = a.a + 0 where a.a in(0, 0, 1)');
                                       explain_parallel_append                                      
 ---------------------------------------------------------------------------------------------------
+<<<<<<< HEAD
  Finalize Aggregate (actual rows=1 loops=1)
    ->  Gather Motion 3:1  (slice1; segments: 3) (actual rows=3 loops=1)
          ->  Partial Aggregate (actual rows=1 loops=1)
@@ -2365,10 +2490,22 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
                                  Filter: (a = ANY ('{0,0,1}'::integer[]))
                      ->  Append (actual rows=0 loops=102)
                            ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=0 loops=2)
+=======
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 1
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Nested Loop (actual rows=N loops=N)
+                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
+                           Filter: (a = ANY ('{0,0,1}'::integer[]))
+                     ->  Append (actual rows=N loops=N)
+                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=N loops=N)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
                                  Index Cond: (a = (a.a + 0))
-                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=0 loops=2)
+                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=N loops=N)
                                  Index Cond: (a = (a.a + 0))
-                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=0 loops=2)
+                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=N loops=N)
                                  Index Cond: (a = (a.a + 0))
                            ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
                                  Index Cond: (a = (a.a + 0))
@@ -2387,6 +2524,7 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
 
 insert into lprt_a values(3),(3);
 select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on ab.a = a.a where a.a in(1, 0, 3)');
+<<<<<<< HEAD
                                         explain_parallel_append                                        
 -------------------------------------------------------------------------------------------------------
  Finalize Aggregate (actual rows=1 loops=1)
@@ -2506,6 +2644,105 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
                                        Filter: (a = ANY ('{1,0,0}'::integer[]))
  Optimizer: Postgres query optimizer
 (31 rows)
+=======
+                                      explain_parallel_append                                      
+---------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 1
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Nested Loop (actual rows=N loops=N)
+                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
+                           Filter: (a = ANY ('{1,0,3}'::integer[]))
+                     ->  Append (actual rows=N loops=N)
+                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b2_a_idx on ab_a2_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b3_a_idx on ab_a2_b3 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b1_a_idx on ab_a3_b1 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b2_a_idx on ab_a3_b2 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b3_a_idx on ab_a3_b3 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+(27 rows)
+
+select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on ab.a = a.a where a.a in(1, 0, 0)');
+                                      explain_parallel_append                                      
+---------------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 1
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Nested Loop (actual rows=N loops=N)
+                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
+                           Filter: (a = ANY ('{1,0,0}'::integer[]))
+                           Rows Removed by Filter: 1
+                     ->  Append (actual rows=N loops=N)
+                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=N loops=N)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b2_a_idx on ab_a2_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b3_a_idx on ab_a2_b3 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b1_a_idx on ab_a3_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b2_a_idx on ab_a3_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b3_a_idx on ab_a3_b3 (never executed)
+                                 Index Cond: (a = a.a)
+(28 rows)
+
+delete from lprt_a where a = 1;
+select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on ab.a = a.a where a.a in(1, 0, 0)');
+                                  explain_parallel_append                                   
+--------------------------------------------------------------------------------------------
+ Finalize Aggregate (actual rows=N loops=N)
+   ->  Gather (actual rows=N loops=N)
+         Workers Planned: 1
+         Workers Launched: N
+         ->  Partial Aggregate (actual rows=N loops=N)
+               ->  Nested Loop (actual rows=N loops=N)
+                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
+                           Filter: (a = ANY ('{1,0,0}'::integer[]))
+                           Rows Removed by Filter: 1
+                     ->  Append (actual rows=N loops=N)
+                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b2_a_idx on ab_a2_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a2_b3_a_idx on ab_a2_b3 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b1_a_idx on ab_a3_b1 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b2_a_idx on ab_a3_b2 (never executed)
+                                 Index Cond: (a = a.a)
+                           ->  Index Scan using ab_a3_b3_a_idx on ab_a3_b3 (never executed)
+                                 Index Cond: (a = a.a)
+(28 rows)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 reset enable_hashjoin;
 reset enable_mergejoin;

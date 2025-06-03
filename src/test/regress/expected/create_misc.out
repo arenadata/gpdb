@@ -132,6 +132,10 @@ INSERT INTO f_star (class, e) VALUES ('f', '-12'::int2);
 INSERT INTO f_star (class, f)
    VALUES ('f', '(11111111,33333333),(22222222,44444444)'::polygon);
 INSERT INTO f_star (class) VALUES ('f');
+<<<<<<< HEAD
+=======
+-- Analyze the X_star tables for better plan stability in later tests
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 ANALYZE a_star;
 ANALYZE b_star;
 ANALYZE c_star;

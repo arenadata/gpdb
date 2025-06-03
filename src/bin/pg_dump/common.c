@@ -461,7 +461,13 @@ flagInhIndexes(Archive *fout, TableInfo tblinfo[], int numTables)
 								parentidx->indextable->dobj.dumpId);
 
 			/* keep track of the list of partitions in the parent index */
+<<<<<<< HEAD
 			simple_ptr_list_append(&parentidx->partattaches, &attachinfo->dobj);
+=======
+			simple_ptr_list_append(&parentidx->partattaches, &attachinfo[k].dobj);
+
+			k++;
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		}
 	}
 }

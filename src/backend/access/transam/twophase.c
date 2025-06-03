@@ -1416,11 +1416,15 @@ ParsePrepareRecord(uint8 info, char *xlrec, xl_xact_parsed_prepare *parsed)
  * twophase files and ReadTwoPhaseFile should be used instead.
  *
  * Note clearly that this function can access WAL during normal operation,
+<<<<<<< HEAD
  * similarly to the way WALSender or Logical Decoding would do.  While
  * accessing WAL, read_local_xlog_page() may change ThisTimeLineID,
  * particularly if this routine is called for the end-of-recovery checkpoint
  * in the checkpointer itself, so save the current timeline number value
  * and restore it once done.
+=======
+ * similarly to the way WALSender or Logical Decoding would do.
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
  */
 static void
 XlogReadTwoPhaseData(XLogRecPtr lsn, char **buf, int *len)
@@ -1430,8 +1434,8 @@ XlogReadTwoPhaseData(XLogRecPtr lsn, char **buf, int *len)
 	char	   *errormsg;
 	TimeLineID	save_currtli = ThisTimeLineID;
 
-	xlogreader = XLogReaderAllocate(wal_segment_size, &read_local_xlog_page,
-									NULL);
+	xlogreader = XLogReaderAllocate(wal_segment_size, NULL,
+									&read_local_xlog_page, NULL);
 	if (!xlogreader)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),

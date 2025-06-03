@@ -197,11 +197,16 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 		output.value = NULL;
 		output.length = 0;
 
+<<<<<<< HEAD
 		/*
 		 * Create the next encrypted packet.  Any failure here is considered a
 		 * hard failure, so we return -1 even if bytes_sent > 0.
 		 */
 		major = gss_wrap(&minor, gctx, 1, GSS_C_QOP_DEFAULT,
+=======
+		/* Create the next encrypted packet */
+		major = gss_wrap(&minor, conn->gctx, 1, GSS_C_QOP_DEFAULT,
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 						 &input, &conf_state, &output);
 		if (major != GSS_S_COMPLETE)
 		{
@@ -209,12 +214,19 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 			errno = EIO;		/* for lack of a better idea */
 			goto cleanup;
 		}
+<<<<<<< HEAD
 
 		if (conf_state == 0)
 		{
 			printfPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("outgoing GSSAPI message would not use confidentiality\n"));
 			errno = EIO;		/* for lack of a better idea */
+=======
+		else if (conf_state == 0)
+		{
+			printfPQExpBuffer(&conn->errorMessage,
+							  libpq_gettext("outgoing GSSAPI message would not use confidentiality\n"));
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 			goto cleanup;
 		}
 
@@ -224,7 +236,10 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 							  libpq_gettext("client tried to send oversize GSSAPI packet (%zu > %zu)\n"),
 							  (size_t) output.length,
 							  PQ_GSS_SEND_BUFFER_SIZE - sizeof(uint32));
+<<<<<<< HEAD
 			errno = EIO;		/* for lack of a better idea */
+=======
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 			goto cleanup;
 		}
 
@@ -361,8 +376,13 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 							  libpq_gettext("oversize GSSAPI packet sent by the server (%zu > %zu)\n"),
 							  (size_t) input.length,
 							  PQ_GSS_RECV_BUFFER_SIZE - sizeof(uint32));
+<<<<<<< HEAD
 			errno = EIO;		/* for lack of a better idea */
 			return -1;
+=======
+			ret = -1;
+			goto cleanup;
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		}
 
 		/*
@@ -394,7 +414,11 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 		output.length = 0;
 		input.value = PqGSSRecvBuffer + sizeof(uint32);
 
+<<<<<<< HEAD
 		major = gss_unwrap(&minor, gctx, &input, &output, &conf_state, NULL);
+=======
+		major = gss_unwrap(&minor, conn->gctx, &input, &output, &conf_state, NULL);
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		if (major != GSS_S_COMPLETE)
 		{
 			pg_GSS_error(libpq_gettext("GSSAPI unwrap error"), conn,
@@ -403,8 +427,12 @@ pg_GSS_read(PGconn *conn, void *ptr, size_t len)
 			errno = EIO;		/* for lack of a better idea */
 			goto cleanup;
 		}
+<<<<<<< HEAD
 
 		if (conf_state == 0)
+=======
+		else if (conf_state == 0)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		{
 			printfPQExpBuffer(&conn->errorMessage,
 							  libpq_gettext("incoming GSSAPI message did not use confidentiality\n"));

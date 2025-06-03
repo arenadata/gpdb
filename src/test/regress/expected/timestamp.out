@@ -1584,6 +1584,7 @@ SELECT '' AS to_char_11, to_char(d1, 'FMIYYY FMIYY FMIY FMI FMIW FMIDDD FMID')
             | 2001 1 1 1 1 1 1
 (65 rows)
 
+<<<<<<< HEAD
 -- TO_TIMESTAMP()
 SELECT '' AS to_timestamp_1, to_timestamp('0097/Feb/16 --> 08:14:30', 'YYYY/Mon/DD --> HH:MI:SS');
  to_timestamp_1 |         to_timestamp         
@@ -1714,6 +1715,22 @@ SELECT '' AS to_timestamp_21, to_timestamp('2005364', 'IYYYIDDD');
 -----------------+------------------------------
                  | Sun Jan 01 00:00:00 2006 PST
 (1 row)
+=======
+SELECT '' AS to_char_12, to_char(d, 'FF1 FF2 FF3 FF4 FF5 FF6  ff1 ff2 ff3 ff4 ff5 ff6  MS US')
+   FROM (VALUES
+       ('2018-11-02 12:34:56'::timestamp),
+       ('2018-11-02 12:34:56.78'),
+       ('2018-11-02 12:34:56.78901'),
+       ('2018-11-02 12:34:56.78901234')
+   ) d(d);
+ to_char_12 |                              to_char                               
+------------+--------------------------------------------------------------------
+            | 0 00 000 0000 00000 000000  0 00 000 0000 00000 000000  000 000000
+            | 7 78 780 7800 78000 780000  7 78 780 7800 78000 780000  780 780000
+            | 7 78 789 7890 78901 789010  7 78 789 7890 78901 789010  789 789010
+            | 7 78 789 7890 78901 789012  7 78 789 7890 78901 789012  789 789012
+(4 rows)
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 -- timestamp numeric fields constructor
 SELECT make_timestamp(2014,12,28,6,30,45.887);

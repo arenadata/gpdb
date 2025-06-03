@@ -150,7 +150,7 @@ sub start_master
 
 	# Create custom role which is used to run pg_rewind, and adjust its
 	# permissions to the minimum necessary.
-	$node_master->psql(
+	$node_master->safe_psql(
 		'postgres', "
 		CREATE ROLE rewind_user LOGIN;
 		GRANT EXECUTE ON function pg_catalog.pg_ls_dir(text, boolean, boolean)
@@ -258,6 +258,7 @@ sub run_pg_rewind
 	# Append the rewind-specific role to the connection string.
 	$standby_connstr = "$standby_connstr user=rewind_user";
 
+<<<<<<< HEAD
 	# Stop the master and be ready to perform the rewind
 	if ($params{stop_master_mode})
 	{
@@ -267,6 +268,12 @@ sub run_pg_rewind
 	{
 		$node_master->stop;
 	}
+=======
+	# Stop the master and be ready to perform the rewind.  The cluster
+	# needs recovery to finish once, and pg_rewind makes sure that it
+	# happens automatically.
+	$node_master->stop('immediate');
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	# At this point, the rewind processing is ready to run.
 	# We now have a very simple scenario with a few diverged WAL record.
@@ -303,12 +310,13 @@ sub run_pg_rewind
 	}
 	elsif ($test_mode eq "remote")
 	{
-
-		# Do rewind using a remote connection as source
+		# Do rewind using a remote connection as source, generating
+		# recovery configuration automatically.
 		command_ok(
 			[
 				'pg_rewind',                      "--debug",
 				"--source-server",                $standby_connstr,
+<<<<<<< HEAD
 				"--target-pgdata=$master_pgdata", "-R",
 				"--no-sync"
 			],
@@ -316,6 +324,17 @@ sub run_pg_rewind
 
 		# Check that standby.signal has been created.
 		ok(-e "$master_pgdata/standby.signal");
+=======
+				"--target-pgdata=$master_pgdata", "--no-sync",
+				"--write-recovery-conf"
+			],
+			'pg_rewind remote');
+
+		# Check that standby.signal is here as recovery configuration
+		# was requested.
+		ok( -e "$master_pgdata/standby.signal",
+			'standby.signal created after pg_rewind');
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 		# Now, when pg_rewind apparently succeeded with minimal permissions,
 		# add REPLICATION privilege.  So we could test that new standby

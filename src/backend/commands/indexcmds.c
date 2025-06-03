@@ -495,12 +495,14 @@ WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
 
 		if (VirtualTransactionIdIsValid(old_snapshots[i]))
 		{
+			/* If requested, publish who we're going to wait for. */
 			if (progress)
 			{
 				PGPROC	   *holder = BackendIdGetProc(old_snapshots[i].backendId);
 
-				pgstat_progress_update_param(PROGRESS_WAITFOR_CURRENT_PID,
-											 holder->pid);
+				if (holder)
+					pgstat_progress_update_param(PROGRESS_WAITFOR_CURRENT_PID,
+												 holder->pid);
 			}
 			VirtualXactLock(old_snapshots[i], true);
 		}
@@ -2706,6 +2708,7 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 			 persistence != RELPERSISTENCE_TEMP)
 		ReindexRelationConcurrently(indOid, options);
 	else
+<<<<<<< HEAD
 		reindex_index(indOid, false, persistence, options);
 
 	/*
@@ -2729,6 +2732,10 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 									GetAssignedOidsForDispatch(),
 									NULL);
 	}
+=======
+		reindex_index(indOid, false, persistence,
+					  options | REINDEXOPT_REPORT_PROGRESS);
+>>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 }
 
 /*
@@ -2858,7 +2865,7 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 		result = reindex_relation(heapOid,
 								  REINDEX_REL_PROCESS_TOAST |
 								  REINDEX_REL_CHECK_CONSTRAINTS,
-								  options);
+								  options | REINDEXOPT_REPORT_PROGRESS);
 		if (!result)
 			ereport(NOTICE,
 					(errmsg("table \"%s\" has no indexes to reindex",
@@ -3275,7 +3282,7 @@ ReindexMultipleInternal(List *relids, int options, bool concurrent)
 			result = reindex_relation(relid,
 									  REINDEX_REL_PROCESS_TOAST |
 									  REINDEX_REL_CHECK_CONSTRAINTS,
-									  options);
+									  options | REINDEXOPT_REPORT_PROGRESS);
 
 			if (result && (options & REINDEXOPT_VERBOSE))
 				ereport(INFO,
@@ -3377,7 +3384,7 @@ ReindexRelationConcurrently(Oid relationOid, int options)
 
 	/*
 	 * Extract the list of indexes that are going to be rebuilt based on the
-	 * list of relation Oids given by caller.
+	 * relation Oid given by caller.
 	 */
 	switch (relkind)
 	{
