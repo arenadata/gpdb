@@ -175,6 +175,8 @@ begin
 end
 $$ language plpgsql;
 
+-- Test case 2.1
+-- Segfault on all segments
 checkpoint;
 
 -- Skip checkpoints
@@ -201,6 +203,45 @@ select 1 from gp_dist_random('gp_id');
 rollback;
 
 select force_mirrors_to_catch_up();
+
+-- Check that the tables files don't exist on the segments
+:check_files
+
+-- Test case 2.2
+-- Segfault on one segment
+checkpoint;
+
+-- Skip checkpoints
+select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content > -1;
+
+-- Start transaction and create tables in it
+begin;
+select createTables() check_files
+\gset
+
+-- Make sure that all the tables files exist on the segments
+:check_files
+
+-- Get segfault on a segment
+select gp_inject_fault('before_read_command', 'segv', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content = 1;
+
+select 1 from gp_dist_random('gp_id');
+
+-- Rollback the transaction to make it possible to run queries after the error
+rollback;
+
+select force_mirrors_to_catch_up();
+
+-- Make a checkpoint to remove orphaned files from segments where segfault did
+-- not happen
+select gp_inject_fault_infinite('checkpoint', 'reset', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content > -1;
+checkpoint;
 
 -- Check that the tables files don't exist on the segments
 :check_files
