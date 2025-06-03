@@ -93,6 +93,9 @@ execute 'create table t_orphaned_r'||n||'(i int) with (appendonly=true, orientat
 return cmd; /**/ end $$ language plpgsql;
 CREATE
 
+-- Test case 2.1
+-- Segfault on all segments
+
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 BEGIN
@@ -139,12 +142,101 @@ CHECKPOINT
 -- Rollback the transaction to make it possible to run queries after the error
 1: rollback;
 ROLLBACK
+2: rollback;
+ROLLBACK
 
 1: select force_mirrors_to_catch_up();
  force_mirrors_to_catch_up 
 ---------------------------
                            
 (1 row)
+
+-- Check that the tables files don't exist on the segments
+! sh /tmp/gp_orphaned_files1.txt;
+0
+0
+0
+0
+0
+0
+
+! sh /tmp/gp_orphaned_files2.txt;
+0
+0
+0
+0
+0
+0
+
+
+
+-- Test case 2.2
+-- Segfault on one segment
+
+-- Start transaction and create tables in it before checkpoint
+1: begin;
+BEGIN
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' : select createTables('1') check_files;
+
+2: begin;
+BEGIN
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' : select createTables('2') check_files;
+
+1: checkpoint;
+CHECKPOINT
+
+-- Make sure that all the tables files exist on the segments
+1: ! sh /tmp/gp_orphaned_files1.txt;
+9
+9
+9
+9
+9
+9
+
+1: ! sh /tmp/gp_orphaned_files2.txt;
+9
+9
+9
+9
+9
+9
+
+
+-- Get segfault on a segment
+1: select gp_inject_fault('before_read_command', 'segv', dbid) from gp_segment_configuration where role = 'p' and content = 1;
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
+-- The error message can be different, so ignore it
+1: @post_run 'echo ""' : select 1 from gp_dist_random('gp_id');
+
+
+-- Rollback the transaction to make it possible to run queries after the error
+1: rollback;
+ROLLBACK
+2: rollback;
+ROLLBACK
+
+1: select force_mirrors_to_catch_up();
+ force_mirrors_to_catch_up 
+---------------------------
+                           
+(1 row)
+
+-- Make a checkpoint to remove orphaned files from segments where segfault did
+-- not happen
+1: select gp_inject_fault_infinite('checkpoint', 'reset', dbid) from gp_segment_configuration where role = 'p' and content > -1;
+ gp_inject_fault_infinite 
+--------------------------
+ Success:                 
+ Success:                 
+ Success:                 
+(3 rows)
+1: checkpoint;
+CHECKPOINT
 
 -- Check that the tables files don't exist on the segments
 ! sh /tmp/gp_orphaned_files1.txt;

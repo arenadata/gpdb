@@ -173,6 +173,9 @@ begin
 end
 $$ language plpgsql;
 
+-- Test case 2.1
+-- Segfault on all segments
+
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' :
@@ -198,8 +201,53 @@ $$ language plpgsql;
 
 -- Rollback the transaction to make it possible to run queries after the error
 1: rollback;
+2: rollback;
 
 1: select force_mirrors_to_catch_up();
+
+-- Check that the tables files don't exist on the segments
+! sh /tmp/gp_orphaned_files1.txt;
+! sh /tmp/gp_orphaned_files2.txt;
+
+
+-- Test case 2.2
+-- Segfault on one segment
+
+-- Start transaction and create tables in it before checkpoint
+1: begin;
+1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files1.txt' :
+             select createTables('1') check_files;
+
+2: begin;
+2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files2.txt' :
+             select createTables('2') check_files;
+
+1: checkpoint;
+
+-- Make sure that all the tables files exist on the segments
+1: ! sh /tmp/gp_orphaned_files1.txt;
+1: ! sh /tmp/gp_orphaned_files2.txt;
+
+-- Get segfault on a segment
+1: select gp_inject_fault('before_read_command', 'segv', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+
+-- The error message can be different, so ignore it
+1: @post_run 'echo ""' : select 1 from gp_dist_random('gp_id');
+
+-- Rollback the transaction to make it possible to run queries after the error
+1: rollback;
+2: rollback;
+
+1: select force_mirrors_to_catch_up();
+
+-- Make a checkpoint to remove orphaned files from segments where segfault did
+-- not happen
+1: select gp_inject_fault_infinite('checkpoint', 'reset', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content > -1;
+1: checkpoint;
 
 -- Check that the tables files don't exist on the segments
 ! sh /tmp/gp_orphaned_files1.txt;
