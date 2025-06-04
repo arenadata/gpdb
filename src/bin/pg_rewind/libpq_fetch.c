@@ -24,11 +24,8 @@
 #include "fe_utils/connect.h"
 #include "port/pg_bswap.h"
 
-<<<<<<< HEAD
 #include "pqexpbuffer.h"
 
-=======
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 PGconn *conn = NULL;
 
 /*
