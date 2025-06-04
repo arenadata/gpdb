@@ -694,7 +694,7 @@ cdb_estimate_partitioned_numtuples(Relation rel)
 		totaltuples += childtuples;
 
 		if (childrel != rel)
-			heap_close(childrel, NoLock);
+			table_close(childrel, NoLock);
 	}
 	return totaltuples;
 }

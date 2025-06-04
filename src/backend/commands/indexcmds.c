@@ -183,7 +183,7 @@ cdb_sync_indcheckxmin_with_segments(Oid indexRelationId)
 		HeapTuple	indexTuple;
 		Form_pg_index indexForm;
 
-		pg_index = heap_open(IndexRelationId, RowExclusiveLock);
+		pg_index = table_open(IndexRelationId, RowExclusiveLock);
 
 		indexTuple = SearchSysCacheCopy1(INDEXRELID, ObjectIdGetDatum(indexRelationId));
 		if (!HeapTupleIsValid(indexTuple))
@@ -197,7 +197,7 @@ cdb_sync_indcheckxmin_with_segments(Oid indexRelationId)
 		}
 
 		heap_freetuple(indexTuple);
-		heap_close(pg_index, RowExclusiveLock);
+		table_close(pg_index, RowExclusiveLock);
 	}
 }
 
