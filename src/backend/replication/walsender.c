@@ -2552,26 +2552,18 @@ XLogRead(WALSegmentContext *segcxt, char *buf, XLogRecPtr startptr, Size count)
 		/* Need to seek in the file? */
 		if (sendSeg->ws_off != startoff)
 		{
-<<<<<<< HEAD
-			if (lseek(sendFile, (off_t) startoff, SEEK_SET) < 0)
+			if (lseek(sendSeg->ws_file, (off_t) startoff, SEEK_SET) < 0)
 			{
 				WalSndCtl->error = WALSNDERROR_WALREAD;
 
-=======
-			if (lseek(sendSeg->ws_file, (off_t) startoff, SEEK_SET) < 0)
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("could not seek in log segment %s to offset %u: %m",
 								XLogFileNameP(sendSeg->ws_tli, sendSeg->ws_segno),
 								startoff)));
-<<<<<<< HEAD
 			}
 
-			sendOff = startoff;
-=======
 			sendSeg->ws_off = startoff;
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		}
 
 		/* How many bytes are within this segment? */
@@ -2624,23 +2616,7 @@ XLogRead(WALSegmentContext *segcxt, char *buf, XLogRecPtr startptr, Size count)
 	// still need the 'error' field?
 	//WalSndCtl->error = WALSNDERROR_WALREAD;
 
-<<<<<<< HEAD
 	WalSndCtl->error = WALSNDERROR_NONE;
-=======
-		SpinLockAcquire(&walsnd->mutex);
-		reload = walsnd->needreload;
-		walsnd->needreload = false;
-		SpinLockRelease(&walsnd->mutex);
-
-		if (reload && sendSeg->ws_file >= 0)
-		{
-			close(sendSeg->ws_file);
-			sendSeg->ws_file = -1;
-
-			goto retry;
-		}
-	}
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 }
 
 /*
