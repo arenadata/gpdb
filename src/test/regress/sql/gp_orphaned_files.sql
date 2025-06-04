@@ -1,7 +1,8 @@
 -- start_ignore
 create extension if not exists gp_inject_fault;
 drop index if exists t_orphaned_r_i, t_orphaned_c_i;
-drop table if exists t_orphaned_h, t_orphaned_r, t_orphaned_c;
+drop table if exists t_orphaned_h, t_orphaned_r, t_orphaned_c,
+                     t_top, t_sub1, t_sub2;
 \! gpconfig -c gp_gang_creation_retry_timer -v 1000 --skipvalidation --masteronly
 \! gpconfig -c gp_gang_creation_retry_count -v 120 --skipvalidation --masteronly
 \! gpstop -u
@@ -74,6 +75,15 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
   from gp_segment_configuration
  where role = 'p' and content = -1;
 
+-- Create tables in subtransactions
+begin;
+create table t_top(i int) distributed by (i);
+savepoint sp1;
+create table t_sub1(i int) distributed by (i);
+savepoint sp2;
+create table t_sub2(i int) distributed by (i);
+commit;
+
 -- Start transaction and create tables in it
 begin;
 select createTables() check_files
@@ -99,7 +109,13 @@ select force_mirrors_to_catch_up();
 -- Check that the tables files don't exist on the coordinator and the standby
 :check_files
 
+-- Check that the coordinator recovery didn't remove files of the tables which
+-- were created in subtransactions
+table t_sub1;
+table t_sub2;
+
 -- Clean up
+drop table t_top, t_sub1, t_sub2;
 \unset check_files
 drop function createTables();
 
@@ -184,6 +200,15 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
   from gp_segment_configuration
  where role = 'p' and content > -1;
 
+-- Create tables in subtransactions
+begin;
+create table t_top(i int) distributed by (i);
+savepoint sp1;
+create table t_sub1(i int) distributed by (i);
+savepoint sp2;
+create table t_sub2(i int) distributed by (i);
+commit;
+
 -- Start transaction and create tables in it
 begin;
 select createTables() check_files
@@ -207,6 +232,15 @@ select force_mirrors_to_catch_up();
 -- Check that the tables files don't exist on the segments
 :check_files
 
+-- Check that the segments recovery didn't remove files of the tables which
+-- were created in subtransactions
+table t_sub1;
+table t_sub2;
+
+-- Clean up
+drop table t_top, t_sub1, t_sub2;
+
+
 -- Test case 2.2
 -- Segfault on one segment
 checkpoint;
@@ -215,6 +249,15 @@ checkpoint;
 select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
   from gp_segment_configuration
  where role = 'p' and content > -1;
+
+-- Create tables in subtransactions
+begin;
+create table t_top(i int) distributed by (i);
+savepoint sp1;
+create table t_sub1(i int) distributed by (i);
+savepoint sp2;
+create table t_sub2(i int) distributed by (i);
+commit;
 
 -- Start transaction and create tables in it
 begin;
@@ -246,9 +289,15 @@ checkpoint;
 -- Check that the tables files don't exist on the segments
 :check_files
 
+-- Check that the segment recovery didn't remove files of the tables which
+-- were created in subtransactions
+table t_sub1;
+table t_sub2;
+
 
 -- Clean up
 \unset check_files
+drop table t_top, t_sub1, t_sub2;
 drop function createTables();
 drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepath text);
 -- start_ignore

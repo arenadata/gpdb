@@ -67,6 +67,14 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
  Success:
 (1 row)
 
+-- Create tables in subtransactions
+begin;
+create table t_top(i int) distributed by (i);
+savepoint sp1;
+create table t_sub1(i int) distributed by (i);
+savepoint sp2;
+create table t_sub2(i int) distributed by (i);
+commit;
 -- Start transaction and create tables in it
 begin;
 select createTables() check_files
@@ -100,7 +108,20 @@ select force_mirrors_to_catch_up();
 :check_files
 0
 0
+-- Check that the coordinator recovery didn't remove files of the tables which
+-- were created in subtransactions
+table t_sub1;
+ i 
+---
+(0 rows)
+
+table t_sub2;
+ i 
+---
+(0 rows)
+
 -- Clean up
+drop table t_top, t_sub1, t_sub2;
 \unset check_files
 drop function createTables();
 -- Test case 2
@@ -185,6 +206,14 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
  Success:
 (3 rows)
 
+-- Create tables in subtransactions
+begin;
+create table t_top(i int) distributed by (i);
+savepoint sp1;
+create table t_sub1(i int) distributed by (i);
+savepoint sp2;
+create table t_sub2(i int) distributed by (i);
+commit;
 -- Start transaction and create tables in it
 begin;
 select createTables() check_files
@@ -228,6 +257,20 @@ select force_mirrors_to_catch_up();
 0
 0
 0
+-- Check that the segments recovery didn't remove files of the tables which
+-- were created in subtransactions
+table t_sub1;
+ i 
+---
+(0 rows)
+
+table t_sub2;
+ i 
+---
+(0 rows)
+
+-- Clean up
+drop table t_top, t_sub1, t_sub2;
 -- Test case 2.2
 -- Segfault on one segment
 checkpoint;
@@ -242,6 +285,14 @@ select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
  Success:
 (3 rows)
 
+-- Create tables in subtransactions
+begin;
+create table t_top(i int) distributed by (i);
+savepoint sp1;
+create table t_sub1(i int) distributed by (i);
+savepoint sp2;
+create table t_sub2(i int) distributed by (i);
+commit;
 -- Start transaction and create tables in it
 begin;
 select createTables() check_files
@@ -296,8 +347,21 @@ checkpoint;
 0
 0
 0
+-- Check that the segment recovery didn't remove files of the tables which
+-- were created in subtransactions
+table t_sub1;
+ i 
+---
+(0 rows)
+
+table t_sub2;
+ i 
+---
+(0 rows)
+
 -- Clean up
 \unset check_files
+drop table t_top, t_sub1, t_sub2;
 drop function createTables();
 drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepath text);
 -- start_ignore
