@@ -16,11 +16,8 @@
 
 static char *escape_quotes(const char *src);
 
-<<<<<<< HEAD
 #define GP_WALRECEIVER_APPNAME "gp_walreceiver"
 
-=======
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 /*
  * Write recovery configuration contents into a fresh PQExpBuffer, and
  * return it.
@@ -84,10 +81,7 @@ GenerateRecoveryConfig(PGconn *pgconn, char *replication_slot)
 		exit(1);
 	}
 
-<<<<<<< HEAD
 	appendPQExpBuffer(&conninfo_buf, " application_name=%s", GP_WALRECEIVER_APPNAME);
-=======
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 	/*
 	 * Escape the connection string, so that it can be put in the config file.
 	 * Note that this is different from the escaping of individual connection
