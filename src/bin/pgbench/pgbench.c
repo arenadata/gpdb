@@ -3771,20 +3771,15 @@ initCreateTables(PGconn *con)
 		/* Partition pgbench_accounts table */
 		if (partition_method != PART_NONE && strcmp(ddl->table, "pgbench_accounts") == 0)
 			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
-<<<<<<< HEAD
-					 " with (fillfactor=%d, %s)",
-					 fillfactor, storage_clause);
-		else
-			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
-					 " with (%s)",
-					 storage_clause);
-=======
 					 " partition by %s (aid)", PARTITION_METHOD[partition_method]);
 		else if (ddl->declare_fillfactor)
 			/* fillfactor is only expected on actual tables */
 			append_fillfactor(opts, sizeof(opts));
+		else
+			snprintf(opts + strlen(opts), sizeof(opts) - strlen(opts),
+					 " with (%s)",
+					 storage_clause);
 
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		if (tablespace != NULL)
 		{
 			char	   *escape_tablespace;
@@ -3821,7 +3816,8 @@ static void
 append_fillfactor(char *opts, int len)
 {
 	snprintf(opts + strlen(opts), len - strlen(opts),
-			 " with (fillfactor=%d)", fillfactor);
+			 " with (fillfactor=%d, %s)",
+			 fillfactor, storage_clause);
 }
 
 /*
