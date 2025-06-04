@@ -111,10 +111,11 @@ extern HeapTuple heap_toast_insert_or_update(Relation rel,
 										int toast_tuple_target,
 										bool isFrozen, int options);
 
-extern MemTuple heap_toast_insert_or_update_memtup(Relation rel,
-											  MemTuple newtup, MemTuple oldtup,
-											  MemTupleBinding *pbind, int toast_tuple_target,
-											  bool isFrozen, int options);
+extern MemTuple mem_toast_insert_or_update(Relation rel, MemTuple newtup,
+										   MemTuple oldtup,
+										   MemTupleBinding *pbind,
+										   int toast_tuple_target,
+										   bool isFrozen, int options);
 
 /* ----------
  * heap_toast_delete -

@@ -104,7 +104,7 @@ compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool hasnull, Dat
 
 
 static void *
-heap_toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
+toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
 							   MemTupleBinding *pbind, int toast_tuple_target,
 							   bool isFrozen, int options, bool ismemtuple)
 {
@@ -392,32 +392,31 @@ heap_toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
 
 HeapTuple
 heap_toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
-					   int toast_tuple_target,
-					   bool isFrozen, int options)
+						    int toast_tuple_target, bool isFrozen, int options)
 {
-	return (HeapTuple) heap_toast_insert_or_update_generic(rel,
-														   (void *) newtup,
-														   (void *) oldtup,
-														   NULL,
-														   toast_tuple_target,
-														   isFrozen,
-														   options,
-														   false);
+	return (HeapTuple) toast_insert_or_update_generic(rel,
+													  (void *) newtup,
+													  (void *) oldtup,
+													  NULL,
+													  toast_tuple_target,
+													  isFrozen,
+													  options,
+													  false);
 }
 
 MemTuple
-heap_toast_insert_or_update_memtup(Relation rel, MemTuple newtup, MemTuple oldtup,
-					   MemTupleBinding *pbind, int toast_tuple_target,
-					   bool isFrozen, int options)
+mem_toast_insert_or_update(Relation rel, MemTuple newtup, MemTuple oldtup,
+						   MemTupleBinding *pbind, int toast_tuple_target,
+						   bool isFrozen, int options)
 {
-	return (MemTuple) heap_toast_insert_or_update_generic(rel,
-														  (void *) newtup,
-														  (void *) oldtup,
-														  pbind,
-														  toast_tuple_target,
-														  isFrozen,
-														  options,
-														  true);
+	return (MemTuple) toast_insert_or_update_generic(rel,
+													 (void *) newtup,
+													 (void *) oldtup,
+													 pbind,
+													 toast_tuple_target,
+													 isFrozen,
+													 options,
+													 true);
 }
 
 /* ----------
