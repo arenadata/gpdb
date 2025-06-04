@@ -122,13 +122,10 @@ be_gssapi_write(Port *port, void *ptr, size_t len)
 	 */
 	while (bytes_to_encrypt || PqGSSSendLength)
 	{
-<<<<<<< HEAD
-=======
 		OM_uint32	major,
 					minor;
 		gss_buffer_desc input,
 					output;
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		int			conf_state = 0;
 		uint32		netlen;
 
@@ -196,11 +193,7 @@ be_gssapi_write(Port *port, void *ptr, size_t len)
 		output.length = 0;
 
 		/* Create the next encrypted packet */
-<<<<<<< HEAD
 		major = gss_wrap(&minor, gctx, 1, GSS_C_QOP_DEFAULT,
-=======
-		major = gss_wrap(&minor, gss->ctx, 1, GSS_C_QOP_DEFAULT,
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 						 &input, &conf_state, &output);
 		if (major != GSS_S_COMPLETE)
 			pg_GSS_error_be(FATAL, gettext_noop("GSSAPI wrap error"), major, minor);
@@ -258,12 +251,7 @@ be_gssapi_read(Port *port, void *ptr, size_t len)
 				output;
 	ssize_t		ret;
 	size_t		bytes_returned = 0;
-<<<<<<< HEAD
 	gss_ctx_id_t gctx = port->gss->ctx;
-=======
-	int			conf_state = 0;
-	pg_gssinfo *gss = port->gss;
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	/*
 	 * The plan here is to read one incoming encrypted packet into
@@ -375,11 +363,7 @@ be_gssapi_read(Port *port, void *ptr, size_t len)
 		output.length = 0;
 		input.value = PqGSSRecvBuffer + sizeof(uint32);
 
-<<<<<<< HEAD
 		major = gss_unwrap(&minor, gctx, &input, &output, &conf_state, NULL);
-=======
-		major = gss_unwrap(&minor, gss->ctx, &input, &output, &conf_state, NULL);
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		if (major != GSS_S_COMPLETE)
 			pg_GSS_error_be(FATAL, gettext_noop("GSSAPI unwrap error"),
 						 major, minor);
@@ -564,11 +548,7 @@ secure_open_gssapi(Port *port)
 									   NULL, NULL);
 		if (GSS_ERROR(major))
 		{
-<<<<<<< HEAD
 			pg_GSS_error_be(ERROR, gettext_noop("could not accept GSSAPI security context"),
-=======
-			pg_GSS_error(ERROR, gettext_noop("could not accept GSSAPI security context"),
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 						 major, minor);
 			gss_release_buffer(&minor, &output);
 			return -1;
