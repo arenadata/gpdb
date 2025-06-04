@@ -7550,7 +7550,6 @@ getConstraints(Archive *fout, TableInfo tblinfo[], int numTables)
 	}
 	appendPQExpBufferChar(tbloids, '}');
 
-<<<<<<< HEAD
 	appendPQExpBufferStr(query,
 						 "SELECT c.tableoid, c.oid, "
 						 "conrelid, conname, confrelid, ");
@@ -7569,40 +7568,10 @@ getConstraints(Archive *fout, TableInfo tblinfo[], int numTables)
 							 "AND conparentid = 0 ");
 	appendPQExpBufferStr(query,
 						 "ORDER BY conrelid, conname");
-=======
-		resetPQExpBuffer(query);
-		if (fout->remoteVersion >= 110000)
-			appendPQExpBuffer(query,
-							  "SELECT tableoid, oid, conname, confrelid, conindid, "
-							  "pg_catalog.pg_get_constraintdef(oid) AS condef "
-							  "FROM pg_catalog.pg_constraint "
-							  "WHERE conrelid = '%u'::pg_catalog.oid "
-							  "AND conparentid = 0 "
-							  "AND contype = 'f'",
-							  tbinfo->dobj.catId.oid);
-		else
-			appendPQExpBuffer(query,
-							  "SELECT tableoid, oid, conname, confrelid, 0 as conindid, "
-							  "pg_catalog.pg_get_constraintdef(oid) AS condef "
-							  "FROM pg_catalog.pg_constraint "
-							  "WHERE conrelid = '%u'::pg_catalog.oid "
-							  "AND contype = 'f'",
-							  tbinfo->dobj.catId.oid);
-		res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
-<<<<<<< HEAD
 	ntups = PQntuples(res);
-=======
-		i_contableoid = PQfnumber(res, "tableoid");
-		i_conoid = PQfnumber(res, "oid");
-		i_conname = PQfnumber(res, "conname");
-		i_confrelid = PQfnumber(res, "confrelid");
-		i_conindid = PQfnumber(res, "conindid");
-		i_condef = PQfnumber(res, "condef");
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	i_contableoid = PQfnumber(res, "tableoid");
 	i_conoid = PQfnumber(res, "oid");
@@ -7626,7 +7595,6 @@ getConstraints(Archive *fout, TableInfo tblinfo[], int numTables)
 		 */
 		if (tbinfo == NULL || tbinfo->dobj.catId.oid != conrelid)
 		{
-<<<<<<< HEAD
 			while (++curtblindx < numTables)
 			{
 				tbinfo = &tblinfo[curtblindx];
@@ -7635,59 +7603,6 @@ getConstraints(Archive *fout, TableInfo tblinfo[], int numTables)
 			}
 			if (curtblindx >= numTables)
 				fatal("unrecognized table OID %u", conrelid);
-=======
-			TableInfo *reftable;
-
-			constrinfo[j].dobj.objType = DO_FK_CONSTRAINT;
-			constrinfo[j].dobj.catId.tableoid = atooid(PQgetvalue(res, j, i_contableoid));
-			constrinfo[j].dobj.catId.oid = atooid(PQgetvalue(res, j, i_conoid));
-			AssignDumpId(&constrinfo[j].dobj);
-			constrinfo[j].dobj.name = pg_strdup(PQgetvalue(res, j, i_conname));
-			constrinfo[j].dobj.namespace = tbinfo->dobj.namespace;
-			constrinfo[j].contable = tbinfo;
-			constrinfo[j].condomain = NULL;
-			constrinfo[j].contype = 'f';
-			constrinfo[j].condef = pg_strdup(PQgetvalue(res, j, i_condef));
-			constrinfo[j].confrelid = atooid(PQgetvalue(res, j, i_confrelid));
-			constrinfo[j].conindex = 0;
-			constrinfo[j].condeferrable = false;
-			constrinfo[j].condeferred = false;
-			constrinfo[j].conislocal = true;
-			constrinfo[j].separate = true;
-
-			/*
-			 * Restoring an FK that points to a partitioned table requires
-			 * that all partition indexes have been attached beforehand.
-			 * Ensure that happens by making the constraint depend on each
-			 * index partition attach object.
-			 */
-			reftable = findTableByOid(constrinfo[j].confrelid);
-			if (reftable && reftable->relkind == RELKIND_PARTITIONED_TABLE)
-			{
-				IndxInfo   *refidx;
-				Oid			indexOid = atooid(PQgetvalue(res, j, i_conindid));
-
-				if (indexOid != InvalidOid)
-				{
-					for (int k = 0; k < reftable->numIndexes; k++)
-					{
-						SimplePtrListCell *cell;
-
-						/* not our index? */
-						if (reftable->indexes[k].dobj.catId.oid != indexOid)
-							continue;
-
-						refidx = &reftable->indexes[k];
-						for (cell = refidx->partattaches.head; cell;
-							 cell = cell->next)
-							addObjectDependency(&constrinfo[j].dobj,
-												((DumpableObject *)
-												 cell->ptr)->dumpId);
-						break;
-					}
-				}
-			}
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 		}
 
 		constrinfo[j].dobj.objType = DO_FK_CONSTRAINT;
