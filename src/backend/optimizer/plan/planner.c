@@ -2600,6 +2600,18 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 									   scanjoin_target_parallel_safe,
 									   scanjoin_target_same_exprs);
 
+		if (contain_volatile_functions((Node *) scanjoin_target->exprs) && !CdbPathLocus_IsReplicated(root->final_locus))
+		{
+			foreach(lc, current_rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(lc);
+				if (CdbPathLocus_IsGeneral(path->locus))
+				{
+					CdbPathLocus_MakeSingleQE(&(path->locus), getgpsegmentCount());
+				}
+			}
+		}
+
 		/*
 		 * Save the various upper-rel PathTargets we just computed into
 		 * root->upper_targets[].  The core code doesn't use this, but it
