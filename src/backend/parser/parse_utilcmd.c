@@ -2343,7 +2343,7 @@ transformDistributedBy(ParseState *pstate,
 			GpPolicy   *parentPolicy;
 			Relation	parentrel;
 
-			parentrel = heap_openrv(parent, AccessShareLock);
+			parentrel = table_openrv(parent, AccessShareLock);
 			parentPolicy = parentrel->rd_cdbpolicy;
 
 			if (parentrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
@@ -2396,12 +2396,12 @@ transformDistributedBy(ParseState *pstate,
 							 errmsg("table has parent, setting distribution columns to match parent table")));
 
 				distributedBy = make_distributedby_for_rel(parentrel);
-				heap_close(parentrel, AccessShareLock);
+				table_close(parentrel, AccessShareLock);
 
 				distributedBy->numsegments = numsegments;
 				return distributedBy;
 			}
-			heap_close(parentrel, AccessShareLock);
+			table_close(parentrel, AccessShareLock);
 		}
 	}
 
@@ -2552,7 +2552,7 @@ transformDistributedBy(ParseState *pstate,
 				int			count;
 
 				Assert(IsA(inh, RangeVar));
-				rel = heap_openrv(inh, AccessShareLock);
+				rel = table_openrv(inh, AccessShareLock);
 				/* check user requested inheritance from valid relkind */
 				if (rel->rd_rel->relkind != RELKIND_RELATION &&
 					rel->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
@@ -2591,7 +2591,7 @@ transformDistributedBy(ParseState *pstate,
 						break;
 					}
 				}
-				heap_close(rel, NoLock);
+				table_close(rel, NoLock);
 
 				if (distrkeys != NIL)
 					break;
@@ -2683,7 +2683,7 @@ transformDistributedBy(ParseState *pstate,
 					int			count;
 
 					Assert(IsA(inh, RangeVar));
-					rel = heap_openrv(inh, AccessShareLock);
+					rel = table_openrv(inh, AccessShareLock);
 					/* check user requested inheritance from valid relkind */
 					if (rel->rd_rel->relkind != RELKIND_RELATION &&
 						rel->rd_rel->relkind != RELKIND_FOREIGN_TABLE &&
@@ -2706,7 +2706,7 @@ transformDistributedBy(ParseState *pstate,
 							break;
 						}
 					}
-					heap_close(rel, NoLock);
+					table_close(rel, NoLock);
 					if (found)
 						elog(DEBUG1, "DISTRIBUTED BY clause refers to columns of inherited table");
 
