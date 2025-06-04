@@ -114,7 +114,6 @@ extern void MemoryContextSetParent(MemoryContext context,
 extern Size GetMemoryChunkSpace(void *pointer);
 extern MemoryContext MemoryContextGetParent(MemoryContext context);
 extern bool MemoryContextIsEmpty(MemoryContext context);
-<<<<<<< HEAD
 
 /* Statistics */
 extern void MemoryContextDeclareAccountingRoot(MemoryContext context);
@@ -125,10 +124,7 @@ extern Size MemoryContextSetPeakSpace(MemoryContext context, Size nbytes);
 #define MemoryContextDelete(context)    (MemoryContextDeleteImpl(context, __FILE__, PG_FUNCNAME_MACRO, __LINE__))
 extern void MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline);
 
-extern int64 MemoryContextMemAllocated(MemoryContext context, bool recurse);
-=======
 extern Size MemoryContextMemAllocated(MemoryContext context, bool recurse);
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 extern void MemoryContextStats(MemoryContext context);
 extern void MemoryContextStatsDetail(MemoryContext context, int max_children);
 extern void MemoryContextAllowInCriticalSection(MemoryContext context,
