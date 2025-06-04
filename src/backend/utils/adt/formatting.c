@@ -4404,7 +4404,6 @@ do_to_timestamp(text *date_txt, text *fmt, bool std,
 	{
 		if (tm->tm_hour < 1 || tm->tm_hour > HOURS_PER_DAY / 2)
 		{
-<<<<<<< HEAD
 			if (tm->tm_hour > HOURS_PER_DAY / 2 && !tmfc.pm)
 			{
 				ereport(WARNING,
@@ -4416,18 +4415,11 @@ do_to_timestamp(text *date_txt, text *fmt, bool std,
 				tm->tm_hour = tm->tm_hour - HOURS_PER_DAY / 2;
 			}
 			else
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-						 errmsg("hour \"%d\" is invalid for the 12-hour clock",
-								tm->tm_hour),
-						 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
-=======
-			RETURN_ERROR(ereport(ERROR,
-								 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
-								  errmsg("hour \"%d\" is invalid for the 12-hour clock",
-										 tm->tm_hour),
-								  errhint("Use the 24-hour clock, or give an hour between 1 and 12."))));
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
+				RETURN_ERROR(ereport(ERROR,
+									 (errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+									  errmsg("hour \"%d\" is invalid for the 12-hour clock",
+											 tm->tm_hour),
+									  errhint("Use the 24-hour clock, or give an hour between 1 and 12."))));
 		}
 
 		if (tmfc.pm && tm->tm_hour < HOURS_PER_DAY / 2)
