@@ -95,15 +95,11 @@ be_lo_open(PG_FUNCTION_ARGS)
 	LargeObjectDesc *lobjDesc;
 	int			fd;
 
-<<<<<<< HEAD
 	ereport(ERROR,
 		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 		 errmsg("large objects are not supported")));
 
-#if FSDB
-=======
 #ifdef FSDB
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 	elog(DEBUG4, "lo_open(%u,%d)", lobjId, mode);
 #endif
 
