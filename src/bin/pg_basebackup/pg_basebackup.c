@@ -1729,12 +1729,9 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 
 	if (basetablespace && writerecoveryconf)
 		WriteRecoveryConfig(conn, basedir, recoveryconfcontents);
-<<<<<<< HEAD
 
 	if (basetablespace)
 		WriteInternalConfFile();
-=======
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	/*
 	 * No data is synced here, everything is done for all tablespaces at the
@@ -1742,7 +1739,6 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 	 */
 }
 
-<<<<<<< HEAD
 static void
 add_to_exclude_list(PQExpBufferData *buf, const char *exclude)
 {
@@ -1816,8 +1812,6 @@ build_exclude_list(void)
 
 	return buf.data;
 }
-=======
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 static void
 BaseBackup(void)
