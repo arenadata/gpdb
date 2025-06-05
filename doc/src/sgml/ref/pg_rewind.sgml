@@ -166,8 +166,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
-<<<<<<< HEAD
-=======
       <term><option>--no-ensure-shutdown</option></term>
       <listitem>
        <para>
@@ -185,7 +183,6 @@ PostgreSQL documentation
      </varlistentry>
 
      <varlistentry>
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
       <term><option>-R</option></term>
       <term><option>--write-recovery-conf</option></term>
       <listitem>
