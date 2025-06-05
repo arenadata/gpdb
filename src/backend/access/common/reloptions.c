@@ -755,14 +755,8 @@ add_int_reloption(bits32 kinds, const char *name, const char *desc, int default_
  *		Add a new float reloption
  */
 void
-<<<<<<< HEAD
-add_real_reloption(bits32 kinds, const char *name, const char *desc,
-				   double default_val, double min_val, double max_val,
-				   LOCKMODE lockmode)
-=======
 add_real_reloption(bits32 kinds, const char *name, const char *desc, double default_val,
 				   double min_val, double max_val, LOCKMODE lockmode)
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 {
 	relopt_real *newoption;
 
@@ -813,14 +807,8 @@ add_enum_reloption(bits32 kinds, const char *name, const char *desc,
  * the validation.
  */
 void
-<<<<<<< HEAD
-add_string_reloption(bits32 kinds, const char *name, const char *desc,
-					 const char *default_val, validate_string_relopt validator,
-					 LOCKMODE lockmode)
-=======
 add_string_reloption(bits32 kinds, const char *name, const char *desc, const char *default_val,
 					 validate_string_relopt validator, LOCKMODE lockmode)
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 {
 	relopt_string *newoption;
 
