@@ -14,18 +14,12 @@
 #include "postgres.h"
 
 #include "catalog/pg_collation.h"
-<<<<<<< HEAD
+#include "catalog/pg_type.h"
 #include "common/hashfn.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
-=======
-#include "catalog/pg_type.h"
-#include "miscadmin.h"
-#include "utils/builtins.h"
 #include "utils/datetime.h"
-#include "utils/hashutils.h"
 #include "utils/jsonapi.h"
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 #include "utils/jsonb.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
