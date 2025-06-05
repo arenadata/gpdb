@@ -3392,17 +3392,13 @@ GetTupleForTrigger(EState *estate,
 {
 	Relation	relation = relinfo->ri_RelationDesc;
 
-<<<<<<< HEAD
 	/* these should be rejected when you try to create such triggers, but let's check */
 	if (RelationIsAppendOptimized(relation))
 		elog(ERROR, "UPDATE and DELETE triggers are not supported on append-only tables");
 
 	Assert(RelationIsHeap(relation));
 
-	if (newSlot != NULL)
-=======
 	if (epqslot != NULL)
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 	{
 		TM_Result	test;
 		TM_FailureData tmfd;
