@@ -4011,9 +4011,6 @@ SELECT i, b, bool_and(b) OVER w, bool_or(b) OVER w
  5 | t | t        | t
 (5 rows)
 
-<<<<<<< HEAD
-RESET optimizer_trace_fallback;
-=======
 -- Tests for problems with failure to walk or mutate expressions
 -- within window frame clauses.
 -- test walker (fails with collation error if expressions are not walked)
@@ -4041,6 +4038,7 @@ EXPLAIN (costs off) SELECT * FROM pg_temp.f(2);
 ------------------------------------------------------
  Subquery Scan on f
    ->  WindowAgg
+         Order By: s.s
          ->  Sort
                Sort Key: s.s
                ->  Function Scan on generate_series s
@@ -4056,4 +4054,4 @@ SELECT * FROM pg_temp.f(2);
  {5}
 (5 rows)
 
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
+RESET optimizer_trace_fallback;
