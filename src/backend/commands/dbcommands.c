@@ -130,24 +130,15 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	Relation	rel;
 	Oid			src_dboid = InvalidOid;
 	Oid			src_owner;
-<<<<<<< HEAD
-	int			src_encoding = 0;
-=======
 	int			src_encoding = -1;
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 	char	   *src_collate = NULL;
 	char	   *src_ctype = NULL;
 	bool		src_istemplate;
 	bool		src_allowconn;
 	Oid			src_lastsysoid = InvalidOid;
 	TransactionId src_frozenxid = InvalidTransactionId;
-<<<<<<< HEAD
-	MultiXactId src_minmxid = InvalidTransactionId;
-	Oid			src_deftablespace = InvalidOid;
-=======
 	MultiXactId src_minmxid = InvalidMultiXactId;
-	Oid			src_deftablespace;
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
+	Oid			src_deftablespace = InvalidOid;
 	volatile Oid dst_deftablespace;
 	Relation	pg_database_rel;
 	HeapTuple	tuple;
