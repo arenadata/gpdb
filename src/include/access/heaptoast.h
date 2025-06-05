@@ -106,20 +106,16 @@
  *	toasted data to be inserted frozen as well.
  * ----------
  */
-<<<<<<< HEAD
-extern HeapTuple toast_insert_or_update(Relation rel,
-										HeapTuple newtup, HeapTuple oldtup,
-										int toast_tuple_target,
-										bool isFrozen, int options);
-
-extern MemTuple toast_insert_or_update_memtup(Relation rel,
-											  MemTuple newtup, MemTuple oldtup,
-											  MemTupleBinding *pbind, int toast_tuple_target,
-											  bool isFrozen, int options);
-=======
 extern HeapTuple heap_toast_insert_or_update(Relation rel, HeapTuple newtup,
-											 HeapTuple oldtup, int options);
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
+											 HeapTuple oldtup,
+											 int toast_tuple_target,
+											 bool isFrozen, int options);
+
+extern MemTuple mem_toast_insert_or_update(Relation rel, MemTuple newtup,
+										   MemTuple oldtup,
+										   MemTupleBinding *pbind,
+										   int toast_tuple_target,
+										   bool isFrozen, int options);
 
 /* ----------
  * heap_toast_delete -

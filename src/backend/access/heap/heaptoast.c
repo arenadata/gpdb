@@ -90,14 +90,8 @@ heap_toast_delete(Relation rel, HeapTuple oldtup, bool is_speculative)
  * from the pre-8.1 API of this routine.
  * ----------
  */
-<<<<<<< HEAD
 static int
 compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool hasnull, Datum *d, bool *isnull)
-=======
-HeapTuple
-heap_toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
-							int options)
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 {
 	if(pbind)
 	{
@@ -397,9 +391,8 @@ toast_insert_or_update_generic(Relation rel, void *newtup, void *oldtup,
 }
 
 HeapTuple
-toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
-					   int toast_tuple_target,
-					   bool isFrozen, int options)
+heap_toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
+						    int toast_tuple_target, bool isFrozen, int options)
 {
 	return (HeapTuple) toast_insert_or_update_generic(rel,
 													  (void *) newtup,
@@ -412,9 +405,9 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 }
 
 MemTuple
-toast_insert_or_update_memtup(Relation rel, MemTuple newtup, MemTuple oldtup,
-					   MemTupleBinding *pbind, int toast_tuple_target,
-					   bool isFrozen, int options)
+mem_toast_insert_or_update(Relation rel, MemTuple newtup, MemTuple oldtup,
+						   MemTupleBinding *pbind, int toast_tuple_target,
+						   bool isFrozen, int options)
 {
 	return (MemTuple) toast_insert_or_update_generic(rel,
 													 (void *) newtup,
