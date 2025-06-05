@@ -2,7 +2,6 @@
 -- Test partitioning planner code
 --
 
-<<<<<<< HEAD
 -- GPDB:
 -- One of the queries EXPLAINed in this file executes on one or two segments,
 -- depending on random choice by the planner. Accept either plan.
@@ -35,8 +34,6 @@
 -- s/segment \d+/segment ###/
 -- end_matchsubs
 
-=======
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 -- Force generic plans to be used for all prepared statements in this file.
 set plan_cache_mode = force_generic_plan;
 
