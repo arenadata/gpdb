@@ -224,7 +224,6 @@ SELECT '' AS to_char_10, to_char(d1, 'IYYY IYY IY I IW IDDD ID')
 SELECT '' AS to_char_11, to_char(d1, 'FMIYYY FMIYY FMIY FMI FMIW FMIDDD FMID')
    FROM TIMESTAMP_TBL;
 
-<<<<<<< HEAD
 -- TO_TIMESTAMP()
 SELECT '' AS to_timestamp_1, to_timestamp('0097/Feb/16 --> 08:14:30', 'YYYY/Mon/DD --> HH:MI:SS');
 
@@ -269,7 +268,7 @@ SELECT '' AS to_timestamp_19, to_timestamp('05527', 'IYIWID');
 SELECT '' AS to_timestamp_20, to_timestamp('5527', 'IIWID');
 
 SELECT '' AS to_timestamp_21, to_timestamp('2005364', 'IYYYIDDD');
-=======
+
 SELECT '' AS to_char_12, to_char(d, 'FF1 FF2 FF3 FF4 FF5 FF6  ff1 ff2 ff3 ff4 ff5 ff6  MS US')
    FROM (VALUES
        ('2018-11-02 12:34:56'::timestamp),
@@ -277,7 +276,6 @@ SELECT '' AS to_char_12, to_char(d, 'FF1 FF2 FF3 FF4 FF5 FF6  ff1 ff2 ff3 ff4 ff
        ('2018-11-02 12:34:56.78901'),
        ('2018-11-02 12:34:56.78901234')
    ) d(d);
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 -- timestamp numeric fields constructor
 SELECT make_timestamp(2014,12,28,6,30,45.887);
