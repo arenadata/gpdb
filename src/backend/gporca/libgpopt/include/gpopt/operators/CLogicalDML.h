@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,7 +28,7 @@ class CTableDescriptor;
 //		Logical DML operator
 //
 //---------------------------------------------------------------------------
-class CLogicalDML : public CLogical
+class CLogicalDML : public CLogicalReturning
 {
 public:
 	// enum of DML operators
@@ -45,9 +45,6 @@ public:
 private:
 	// dml operator
 	EDMLOperator m_edmlop;
-
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
 
 	// source columns
 	CColRefArray *m_pdrgpcrSource;
@@ -81,9 +78,9 @@ public:
 	// ctor
 	CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 				CTableDescriptor *ptabdesc, CColRefArray *colref_array,
-				CBitSet *pbsModified, CColRef *pcrAction, CColRef *pcrCtid,
-				CColRef *pcrSegmentId, CColRef *pcrTupleOid,
-				CColRef *pcrTableOid);
+				CColRefArray *pdrgpcrOutput, CBitSet *pbsModified,
+				CColRef *pcrAction, CColRef *pcrCtid, CColRef *pcrSegmentId,
+				CColRef *pcrTupleOid, CColRef *pcrTableOid);
 
 	// dtor
 	virtual ~CLogicalDML();
@@ -151,13 +148,6 @@ public:
 		return m_pcrSegmentId;
 	}
 
-	// return table's descriptor
-	CTableDescriptor *
-	Ptabdesc() const
-	{
-		return m_ptabdesc;
-	}
-
 	// tuple oid column
 	CColRef *
 	PcrTupleOid() const
@@ -223,10 +213,6 @@ public:
 
 	// candidate set of xforms
 	virtual CXformSet *PxfsCandidates(CMemoryPool *mp) const;
-
-	// derive key collections
-	virtual CKeyCollection *DeriveKeyCollection(
-		CMemoryPool *mp, CExpressionHandle &exprhdl) const;
 
 	// derive statistics
 	virtual IStatistics *PstatsDerive(CMemoryPool *mp,

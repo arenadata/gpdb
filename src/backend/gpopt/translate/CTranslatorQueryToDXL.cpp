@@ -492,11 +492,6 @@ CTranslatorQueryToDXL::TranslateSelectQueryToDXL()
 	// We therefore need to check permissions before we go into optimization for all RTEs, including the ones not explicitly referred in the query, e.g. views.
 	CTranslatorUtils::CheckRTEPermissions(m_query->rtable);
 
-	// RETURNING is not supported yet.
-	if (m_query->returningList)
-		GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
-				   GPOS_WSZ_LIT("RETURNING clause"));
-
 	CDXLNode *child_dxlnode = NULL;
 	IntToUlongMap *sort_group_attno_to_colid_mapping =
 		GPOS_NEW(m_mp) IntToUlongMap(m_mp);
@@ -817,7 +812,12 @@ CTranslatorQueryToDXL::TranslateInsertQueryToDXL()
 		query_dxlnode = project_dxlnode;
 	}
 
-	return GPOS_NEW(m_mp) CDXLNode(m_mp, insert_dxlnode, query_dxlnode);
+	CDXLNode *log_insert_dxlnode =
+		GPOS_NEW(m_mp) CDXLNode(m_mp, insert_dxlnode, query_dxlnode);
+
+	log_insert_dxlnode = ProcessReturningList(log_insert_dxlnode, table_descr);
+
+	return log_insert_dxlnode;
 }
 
 //---------------------------------------------------------------------------
@@ -833,6 +833,16 @@ CTranslatorQueryToDXL::TranslateCTASToDXL()
 {
 	GPOS_ASSERT(CMD_SELECT == m_query->commandType);
 	//GPOS_ASSERT(NULL != m_query->intoClause);
+
+	if (m_query->hasModifyingCTE)
+	{
+		// GPDB cannot have two writer segworker groups for one query.
+		// Furtherly, during execution stage an error will be thrown.
+		// However, showing the error early during translating stage would be more effective
+		GPOS_RAISE(
+			gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
+			GPOS_WSZ_LIT("cannot create plan with several writing gangs"));
+	}
 
 	m_is_ctas_query = true;
 	CDXLNode *query_dxlnode = TranslateSelectQueryToDXL();
@@ -1139,6 +1149,60 @@ CTranslatorQueryToDXL::GetSystemColId(INT attribute_number)
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorQueryToDXL::ProcessReturningList
+//
+//	@doc: Wrap dxl node in logical project with return columns from returningList
+//
+//---------------------------------------------------------------------------
+CDXLNode *
+CTranslatorQueryToDXL::ProcessReturningList(CDXLNode *dml_dxlnode,
+											CDXLTableDescr *table_descr)
+{
+	GPOS_ASSERT(dml_dxlnode != NULL);
+
+	CRefCount::SafeRelease(m_dxl_query_output_cols);
+
+	if (m_query->returningList != NULL)
+	{
+		IntToUlongMap *sort_group_attno_to_colid_mapping =
+			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
+		IntToUlongMap *output_attno_to_colid_mapping =
+			GPOS_NEW(m_mp) IntToUlongMap(m_mp);
+
+		// DML nodes output columns as in descriptor, temporary replace mapping
+		CMappingVarColId *var_to_colid_map_saved = m_var_to_colid_map;
+		m_var_to_colid_map = GPOS_NEW(m_mp) CMappingVarColId(m_mp);
+		m_var_to_colid_map->LoadTblColumns(
+			m_query_level, m_query->resultRelation, table_descr);
+
+		dml_dxlnode = TranslateTargetListToDXLProject(
+			m_query->returningList, dml_dxlnode,
+			sort_group_attno_to_colid_mapping, output_attno_to_colid_mapping,
+			m_query->groupClause);
+
+		// this array is filled earlier with target list and was used to get colids by their indices earlier
+		// now fill it with what will truly be returned
+		m_dxl_query_output_cols = CreateDXLOutputCols(
+			m_query->returningList, output_attno_to_colid_mapping);
+
+		GPOS_DELETE(m_var_to_colid_map);
+		m_var_to_colid_map = var_to_colid_map_saved;
+
+		output_attno_to_colid_mapping->Release();
+		sort_group_attno_to_colid_mapping->Release();
+	}
+	else
+	{
+		// we can safely set it to empty array here as we aren't outputting in this path
+		m_dxl_query_output_cols = GPOS_NEW(m_mp) CDXLNodeArray(m_mp);
+	}
+
+	// return project_dxlnode;
+	return dml_dxlnode;
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorQueryToDXL::TranslateDeleteQueryToDXL
 //
 //	@doc:
@@ -1214,7 +1278,12 @@ CTranslatorQueryToDXL::TranslateDeleteQueryToDXL()
 		CDXLLogicalDelete(m_mp, table_descr, ctid_colid, segid_colid,
 						  delete_colid_array, tableoid_colid);
 
-	return GPOS_NEW(m_mp) CDXLNode(m_mp, delete_dxlop, query_dxlnode);
+	CDXLNode *log_delete_dxlnode =
+		GPOS_NEW(m_mp) CDXLNode(m_mp, delete_dxlop, query_dxlnode);
+
+	log_delete_dxlnode = ProcessReturningList(log_delete_dxlnode, table_descr);
+
+	return log_delete_dxlnode;
 }
 
 //---------------------------------------------------------------------------
@@ -1328,7 +1397,12 @@ CTranslatorQueryToDXL::TranslateUpdateQueryToDXL()
 		m_mp, table_descr, ctid_colid, segmentid_colid, delete_colid_array,
 		insert_colid_array, has_oids, tuple_oid_colid, tableoid_colid);
 
-	return GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopupdate, query_dxlnode);
+	CDXLNode *log_update_dxlnode =
+		GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopupdate, query_dxlnode);
+
+	log_update_dxlnode = ProcessReturningList(log_update_dxlnode, table_descr);
+
+	return log_update_dxlnode;
 }
 
 //---------------------------------------------------------------------------
@@ -4606,7 +4680,7 @@ CTranslatorQueryToDXL::ConstructCTEProducerList(List *cte_list,
 
 		// translate query representing the cte table to its DXL representation
 		CDXLNode *cte_child_dxlnode =
-			query_to_dxl_translator.TranslateSelectQueryToDXL();
+			query_to_dxl_translator.TranslateQueryToDXL();
 
 		// get the output columns of the cte table
 		CDXLNodeArray *cte_query_output_colds_dxlnode_array =

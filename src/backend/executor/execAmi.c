@@ -24,6 +24,7 @@
 #include "executor/nodeDynamicBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeCtescan.h"
+#include "executor/nodeDML.h"
 #include "executor/nodeForeignscan.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeHash.h"
@@ -617,6 +618,10 @@ ExecSquelchNode(PlanState *node)
 
 		case T_ModifyTableState:
 			ExecSquelchModifyTable((ModifyTableState *) node);
+			return;
+
+		case T_DMLState:
+			ExecSquelchDML((DMLState *) node);
 			return;
 
 			/*

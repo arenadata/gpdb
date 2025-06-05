@@ -1499,7 +1499,8 @@ CNormalizer::FLocalColsSubsetOfInputCols(CMemoryPool *mp, CExpression *pexpr)
 	BOOL fValid = true;
 	if (pexpr->Pop()->FLogical())
 	{
-		if (0 == exprhdl.UlNonScalarChildren())
+		if (0 == exprhdl.UlNonScalarChildren() ||
+			CUtils::FLogicalDML(pexpr->Pop()))
 		{
 			return true;
 		}

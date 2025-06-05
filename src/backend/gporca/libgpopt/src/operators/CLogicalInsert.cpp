@@ -30,7 +30,8 @@ using namespace gpopt;
 //
 //---------------------------------------------------------------------------
 CLogicalInsert::CLogicalInsert(CMemoryPool *mp)
-	: CLogical(mp), m_ptabdesc(NULL), m_pdrgpcrSource(NULL)
+	: CLogicalReturning(mp), m_pdrgpcrSource(NULL)
+
 {
 	m_fPattern = true;
 }
@@ -45,13 +46,28 @@ CLogicalInsert::CLogicalInsert(CMemoryPool *mp)
 //---------------------------------------------------------------------------
 CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 							   CColRefArray *pdrgpcrSource)
-	: CLogical(mp), m_ptabdesc(ptabdesc), m_pdrgpcrSource(pdrgpcrSource)
+	: CLogicalReturning(mp, ptabdesc), m_pdrgpcrSource(pdrgpcrSource)
 
 {
-	GPOS_ASSERT(NULL != ptabdesc);
-	GPOS_ASSERT(NULL != pdrgpcrSource);
+	InitUsedColumns();
+}
 
-	m_pcrsLocalUsed->Include(m_pdrgpcrSource);
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalInsert::CLogicalInsert
+//
+//	@doc:
+//		Ctor
+//
+//---------------------------------------------------------------------------
+CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+							   CColRefArray *pdrgpcrSource,
+							   CColRefArray *pdrgpcrOutput)
+	: CLogicalReturning(mp, ptabdesc, pdrgpcrOutput),
+	  m_pdrgpcrSource(pdrgpcrSource)
+
+{
+	InitUsedColumns();
 }
 
 //---------------------------------------------------------------------------
@@ -64,8 +80,23 @@ CLogicalInsert::CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 //---------------------------------------------------------------------------
 CLogicalInsert::~CLogicalInsert()
 {
-	CRefCount::SafeRelease(m_ptabdesc);
 	CRefCount::SafeRelease(m_pdrgpcrSource);
+}
+
+//---------------------------------------------------------------------------
+//	@function:
+//		CLogicalInsert::InitUsedColumns
+//
+//	@doc:
+//		Initialize locally used columns
+//
+//---------------------------------------------------------------------------
+void
+CLogicalInsert::InitUsedColumns()
+{
+	GPOS_ASSERT(NULL != m_pdrgpcrSource);
+
+	m_pcrsLocalUsed->Include(m_pdrgpcrSource);
 }
 
 //---------------------------------------------------------------------------
@@ -86,7 +117,7 @@ CLogicalInsert::Matches(COperator *pop) const
 
 	CLogicalInsert *popInsert = CLogicalInsert::PopConvert(pop);
 
-	return m_ptabdesc->MDId()->Equals(popInsert->Ptabdesc()->MDId()) &&
+	return CLogicalReturning::MatchesReturning(popInsert) &&
 		   m_pdrgpcrSource->Equals(popInsert->PdrgpcrSource());
 }
 
@@ -101,8 +132,8 @@ CLogicalInsert::Matches(COperator *pop) const
 ULONG
 CLogicalInsert::HashValue() const
 {
-	ULONG ulHash = gpos::CombineHashes(COperator::HashValue(),
-									   m_ptabdesc->MDId()->HashValue());
+	ULONG ulHash = CLogicalReturning::HashValue();
+
 	ulHash =
 		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrSource));
 
@@ -124,9 +155,15 @@ CLogicalInsert::PopCopyWithRemappedColumns(CMemoryPool *mp,
 {
 	CColRefArray *colref_array =
 		CUtils::PdrgpcrRemap(mp, m_pdrgpcrSource, colref_mapping, must_exist);
+
+	CColRefArray *pdrgpcrOutput =
+		CLogicalReturning::CopyRemappedColumns(mp, colref_mapping, must_exist);
 	m_ptabdesc->AddRef();
 
-	return GPOS_NEW(mp) CLogicalInsert(mp, m_ptabdesc, colref_array);
+	CLogicalInsert *result = GPOS_NEW(mp)
+		CLogicalInsert(mp, m_ptabdesc, colref_array, pdrgpcrOutput);
+
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -144,22 +181,9 @@ CLogicalInsert::DeriveOutputColumns(CMemoryPool *mp,
 {
 	CColRefSet *pcrsOutput = GPOS_NEW(mp) CColRefSet(mp);
 	pcrsOutput->Include(m_pdrgpcrSource);
-	return pcrsOutput;
-}
+	pcrsOutput->Include(m_pdrgpcrOutput);
 
-//---------------------------------------------------------------------------
-//	@function:
-//		CLogicalInsert::PkcDeriveKeys
-//
-//	@doc:
-//		Derive key collection
-//
-//---------------------------------------------------------------------------
-CKeyCollection *
-CLogicalInsert::DeriveKeyCollection(CMemoryPool *,	// mp
-									CExpressionHandle &exprhdl) const
-{
-	return PkcDeriveKeysPassThru(exprhdl, 0 /* ulChild */);
+	return pcrsOutput;
 }
 
 //---------------------------------------------------------------------------
@@ -231,9 +255,9 @@ CLogicalInsert::OsPrint(IOstream &os) const
 	m_ptabdesc->Name().OsPrint(os);
 	os << "), Source Columns: [";
 	CUtils::OsPrintDrgPcr(os, m_pdrgpcrSource);
-	os << "]";
+	os << "], ";
 
-	return os;
+	return CLogicalReturning::OsPrint(os);
 }
 
 // EOF

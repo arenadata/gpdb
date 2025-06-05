@@ -3492,7 +3492,6 @@ explain (verbose, costs off) delete from test_1_prt_extra where j = 2;
                                                      QUERY PLAN                                                      
 ---------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0009, test_1_prt_extra.ctid
    ->  Result
          Output: test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, 0
          ->  Seq Scan on partition_pruning.test_1_prt_extra
@@ -3500,7 +3499,7 @@ explain (verbose, costs off) delete from test_1_prt_extra where j = 2;
                Filter: (test_1_prt_extra.j = 2)
  Optimizer: Pivotal Optimizer (GPORCA)
  Settings: enable_bitmapscan=on, enable_hashjoin=off, enable_indexscan=on, enable_mergejoin=on, enable_seqscan=off
-(9 rows)
+(8 rows)
 
 delete from test_1_prt_extra where j = 2;
 -- Check that deletion performed correctly
@@ -3558,7 +3557,6 @@ HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For 
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Delete
-   Output: "outer".ColRef_0025, test.ctid, test.tableoid
    ->  Result
          Output: test.ctid, test.tableoid, test.gp_segment_id, 0
          ->  Hash Anti Join
@@ -3578,7 +3576,7 @@ HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For 
                                  Output: test_in_predicate.i, test_in_predicate.j
  Optimizer: Pivotal Optimizer (GPORCA)
  Settings: enable_bitmapscan=on, enable_hashjoin=off, enable_indexscan=on, enable_mergejoin=on, enable_seqscan=off
-(21 rows)
+(20 rows)
 
 delete from test where not exists(
   select 1 from test_in_predicate where test.i = test_in_predicate.i and test.j = test_in_predicate.j
@@ -3635,7 +3633,6 @@ explain (verbose, costs off) update test_1_prt_extra set k = 10 where j = 2;
                                                                   QUERY PLAN                                                                   
 -----------------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: test_1_prt_extra.i, test_1_prt_extra.j, test_1_prt_extra.k, (DMLAction), test_1_prt_extra.ctid
    ->  Split
          Output: test_1_prt_extra.i, test_1_prt_extra.j, test_1_prt_extra.k, test_1_prt_extra.ctid, test_1_prt_extra.gp_segment_id, DMLAction
          ->  Result
@@ -3645,7 +3642,7 @@ explain (verbose, costs off) update test_1_prt_extra set k = 10 where j = 2;
                      Filter: (test_1_prt_extra.j = 2)
  Optimizer: Pivotal Optimizer (GPORCA)
  Settings: enable_bitmapscan=on, enable_hashjoin=off, enable_indexscan=on, enable_mergejoin=on, enable_seqscan=off
-(11 rows)
+(10 rows)
 
 update test_1_prt_extra set k = 10 where j = 2;
 -- Check that update performed correctly and tuple moved to correct partition
@@ -3704,7 +3701,6 @@ HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For 
                                                     QUERY PLAN                                                     
 -------------------------------------------------------------------------------------------------------------------
  Update
-   Output: test.i, test.j, test.k, (DMLAction), test.ctid, test.tableoid
    ->  Split
          Output: test.i, test.j, test.k, test.ctid, test.tableoid, test.gp_segment_id, DMLAction
          ->  Result
@@ -3726,7 +3722,7 @@ HINT:  For non-partitioned tables, run analyze <table_name>(<column_list>). For 
                                        Output: test_in_predicate.i, test_in_predicate.j
  Optimizer: Pivotal Optimizer (GPORCA)
  Settings: enable_bitmapscan=on, enable_hashjoin=off, enable_indexscan=on, enable_mergejoin=on, enable_seqscan=off
-(23 rows)
+(22 rows)
 
 update test set k = 10  where not exists(
   select 1 from test_in_predicate where test.i = test_in_predicate.i and test.j = test_in_predicate.j

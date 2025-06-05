@@ -137,6 +137,12 @@ private:
 	// command type
 	CmdType m_cmd_type;
 
+	// does dml operation require returning
+	BOOL m_has_returning;
+
+	// has dml operation with returning on replicated table
+	BOOL m_returning_dml_on_replicated;
+
 	// is target table distributed, false when in non DML statements
 	BOOL m_is_tgt_tbl_distributed;
 

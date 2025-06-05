@@ -1,6 +1,7 @@
 --
 -- Extra GPDB tests on INSERT/UPDATE/DELETE RETURNING
 --
+SET optimizer_trace_fallback=ON;
 CREATE TABLE returning_parttab (distkey int4, partkey int4, i int, t text)
 DISTRIBUTED BY (distkey)
 PARTITION BY RANGE (partkey) (START (1) END (10));
@@ -64,7 +65,7 @@ update returning_parttab set partkey = 19 where partkey = 13 returning *;
        2 |      19 | multi2 3
 (1 row)
 
--- update that moves the tuple across partitions (not supported)
+-- update that moves the tuple across partitions
 update returning_parttab set partkey = 18 where partkey = 4 returning *;
 ERROR:  moving tuple from partition "returning_parttab_1_prt_1" to partition "returning_parttab_1_prt_newpart" not supported  (seg0 slice1 127.0.0.1:40000 pid=5753)
 -- delete
@@ -90,6 +91,37 @@ select * from returning_parttab;
        2 |      15 | multi2 5
        2 |      19 | multi2 3
 (11 rows)
+
+-- Test DML on partitioned table with RETURNING subquery with cte
+explain (costs off)
+with cte as (
+  select distkey from returning_parttab order by distkey limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice2; segments: 3)
+   ->  Insert on returning_parttab
+         InitPlan 1 (returns $0)  (slice3)
+           ->  Limit
+                 ->  Gather Motion 3:1  (slice1; segments: 3)
+                       Merge Key: returning_parttab_1_prt_1.distkey
+                       ->  Limit
+                             ->  Sort
+                                   Sort Key: returning_parttab_1_prt_1.distkey
+                                   ->  Append
+                                         ->  Seq Scan on returning_parttab_1_prt_1
+                                         ->  Seq Scan on returning_parttab_1_prt_newpart
+         ->  Result
+ Optimizer: Postgres query optimizer
+(14 rows)
+
+with cte as (
+  select distkey from returning_parttab order by distkey limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+ distkey 
+---------
+       1
+(1 row)
 
 --
 -- Test UPDATE RETURNING with a split update, i.e. an update of the distribution

@@ -2304,17 +2304,18 @@ with cte as (
 ) select count(*) from cte where i > 2;
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Aggregate
-   ->  Gather Motion 3:1  (slice2; segments: 3)
-         ->  Aggregate
-               ->  Subquery Scan on cte
-                     Filter: (cte.i > 2)
-                     ->  Insert on with_dml
-                           ->  Redistribute Motion 1:3  (slice1; segments: 1)
-                                 Hash Key: i.i
-                                 ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(10 rows)
+ Gather Motion 1:1  (slice2; segments: 1)
+   ->  Aggregate
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               ->  Aggregate
+                     ->  Result
+                           Filter: (i > 2)
+                           ->  Insert
+                                 ->  Result
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(11 rows)
 
 with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
@@ -2338,19 +2339,90 @@ with cte as (
     insert into with_dml select i, i * 100 from generate_series(1,5) i
     returning i
 ) select count(*) from cte where i < (select avg(i) from cte);
-ERROR:  Too much references to non-SELECT CTE (allpaths.c:2043)
+                                                       QUERY PLAN                                                       
+------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice5; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 5:0)
+               ->  Materialize
+                     ->  Insert
+                           ->  Result
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+         ->  Redistribute Motion 1:3  (slice4; segments: 1)
+               ->  Aggregate
+                     ->  Gather Motion 3:1  (slice3; segments: 3)
+                           ->  Aggregate
+                                 ->  Nested Loop
+                                       Join Filter: ((share0_ref2.i)::numeric < (pg_catalog.avg((avg(share0_ref3.i)))))
+                                       ->  Broadcast Motion 1:3  (slice2; segments: 1)
+                                             ->  Aggregate
+                                                   ->  Gather Motion 3:1  (slice1; segments: 3)
+                                                         ->  Aggregate
+                                                               ->  Shared Scan (share slice:id 1:0)
+                                       ->  Materialize
+                                             ->  Shared Scan (share slice:id 3:0)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(22 rows)
+
 explain (costs off)
 with cte as (
     update with_dml set j = j + 1
     returning i
 ) select count(*) from cte where i < (select avg(i) from cte);
-ERROR:  Too much references to non-SELECT CTE (allpaths.c:2043)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice4; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 4:0)
+               ->  Materialize
+                     ->  Update
+                           ->  Split
+                                 ->  Result
+                                       ->  Seq Scan on with_dml
+         ->  Redistribute Motion 1:3  (slice3; segments: 1)
+               ->  Aggregate
+                     ->  Nested Loop
+                           Join Filter: ((share0_ref2.i)::numeric < (pg_catalog.avg((avg(share0_ref3.i)))))
+                           ->  Aggregate
+                                 ->  Gather Motion 3:1  (slice2; segments: 3)
+                                       ->  Aggregate
+                                             ->  Shared Scan (share slice:id 2:0)
+                           ->  Materialize
+                                 ->  Gather Motion 3:1  (slice1; segments: 3)
+                                       ->  Shared Scan (share slice:id 1:0)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(20 rows)
+
 explain (costs off)
 with cte as (
     delete from with_dml where i > 0
     returning i
 ) select count(*) from cte where i < (select avg(i) from cte);
-ERROR:  Too much references to non-SELECT CTE (allpaths.c:2043)
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice4; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 4:0)
+               ->  Materialize
+                     ->  Delete
+                           ->  Result
+                                 ->  Seq Scan on with_dml
+                                       Filter: (i > 0)
+         ->  Redistribute Motion 1:3  (slice3; segments: 1)
+               ->  Aggregate
+                     ->  Nested Loop
+                           Join Filter: ((share0_ref2.i)::numeric < (pg_catalog.avg((avg(share0_ref3.i)))))
+                           ->  Aggregate
+                                 ->  Gather Motion 3:1  (slice2; segments: 3)
+                                       ->  Aggregate
+                                             ->  Shared Scan (share slice:id 2:0)
+                           ->  Materialize
+                                 ->  Gather Motion 3:1  (slice1; segments: 3)
+                                       ->  Shared Scan (share slice:id 1:0)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(20 rows)
+
 explain (costs off)
 with cte as (
     insert into with_dml
@@ -2359,7 +2431,24 @@ with cte as (
 cte2 as (
     select * from cte)
 select * from cte2 a join cte2 b using (i);
-ERROR:  Too much references to non-SELECT CTE (allpaths.c:2043)
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 1:1)
+               ->  Materialize
+                     ->  Insert
+                           ->  Result
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+         ->  Hash Join
+               Hash Cond: (share1_ref3.i = share1_ref2.i)
+               ->  Shared Scan (share slice:id 1:1)
+               ->  Hash
+                     ->  Shared Scan (share slice:id 1:1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(14 rows)
+
 create table with_dml_repl (i int, j int) distributed replicated;
 explain (costs off)
 with cte as (
@@ -2369,7 +2458,29 @@ with cte as (
 cte2 as (
     select * from cte)
 select * from cte2 a join cte2 b using (i);
-ERROR:  Too much references to non-SELECT CTE (allpaths.c:2043)
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Gather Motion 3:1  (slice3; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 3:1)
+               ->  Materialize
+                     ->  Result
+                           One-Time Filter: (gp_execution_segment() = 0)
+                           ->  Insert
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+         ->  Hash Join
+               Hash Cond: (share1_ref3.i = share1_ref2.i)
+               ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                     Hash Key: share1_ref3.i
+                     ->  Shared Scan (share slice:id 1:1)
+               ->  Hash
+                     ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                           Hash Key: share1_ref2.i
+                           ->  Shared Scan (share slice:id 2:1)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(19 rows)
+
 explain (costs off)
 with recursive cte as (
     select 1 as i from with_dml where with_dml.j = 2
@@ -2420,6 +2531,39 @@ create table t_new as (with cte as
 (delete from with_dml where i > 0 returning *)
 select * from cte);
 ERROR:  cannot create plan with several writing gangs
+-- Test usage of system columns returned from DML operations
+explain (costs off)
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i, gp_segment_id
+) select i from cte order by gp_segment_id;
+                              QUERY PLAN                              
+----------------------------------------------------------------------
+ Result
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Merge Key: gp_segment_id
+         ->  Sort
+               Sort Key: gp_segment_id
+               ->  Insert
+                     ->  Result
+                           ->  Result
+                                 ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(10 rows)
+
+with cte as (
+    insert into with_dml select i, i * 100 from generate_series(1,5) i
+    returning i, gp_segment_id
+) select i from cte order by gp_segment_id;
+ i 
+---
+ 3
+ 4
+ 2
+ 1
+ 5
+(5 rows)
+
 drop table with_dml;
 -- Test various SELECT statements from CTE with
 -- modifying DML operations over replicated tables
@@ -2440,10 +2584,11 @@ with cte as (
 ------------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
    ->  Aggregate
-         ->  Insert on with_dml_dr
-               ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(5 rows)
+         ->  Insert
+               ->  Result
+                     ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(6 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2513,16 +2658,17 @@ with cte as (
     select i, i * 100 from generate_series(1,5) i
     returning i
 ) select * from cte order by i;
-                      QUERY PLAN                      
-------------------------------------------------------
+                        QUERY PLAN                        
+----------------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: with_dml_dr.i
+   Merge Key: i
    ->  Sort
-         Sort Key: with_dml_dr.i
-         ->  Insert on with_dml_dr
-               ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(7 rows)
+         Sort Key: i
+         ->  Insert
+               ->  Result
+                     ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(8 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2559,13 +2705,14 @@ with cte as (
  Explicit Gather Motion 3:1  (slice1; segments: 3)
    ->  Aggregate
          ->  Hash Join
-               Hash Cond: (with_dml_dr.i = t_repl.i)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
+               Hash Cond: (i = t_repl.i)
+               ->  Insert
+                     ->  Result
+                           ->  Function Scan on generate_series
                ->  Hash
                      ->  Seq Scan on t_repl
- Optimizer: Postgres query optimizer
-(9 rows)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(10 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2733,16 +2880,21 @@ select count(*) from cte join
 (select a from generate_series(1,5) a) x on cte.i = x.a;
                          QUERY PLAN                         
 ------------------------------------------------------------
- Explicit Gather Motion 3:1  (slice1; segments: 3)
+ Gather Motion 1:1  (slice2; segments: 1)
    ->  Aggregate
-         ->  Hash Join
-               Hash Cond: (with_dml_dr.i = a.a)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-               ->  Hash
-                     ->  Function Scan on generate_series a
- Optimizer: Postgres query optimizer
-(9 rows)
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               ->  Aggregate
+                     ->  Hash Join
+                           Hash Cond: (i = generate_series_1.generate_series)
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                           ->  Hash
+                                 ->  Result
+                                       ->  Function Scan on generate_series generate_series_1
+ Optimizer: Pivotal Optimizer (GPORCA)
+(14 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2775,17 +2927,20 @@ with cte as (
 ) select count(*) from cte join t_hashed on cte.i = t_hashed.i;
                             QUERY PLAN                            
 ------------------------------------------------------------------
- Aggregate
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         ->  Aggregate
-               ->  Hash Join
-                     Hash Cond: (with_dml_dr.i = t_hashed.i)
-                     ->  Insert on with_dml_dr
-                           ->  Function Scan on generate_series i
-                     ->  Hash
-                           ->  Seq Scan on t_hashed
- Optimizer: Postgres query optimizer
-(10 rows)
+ Gather Motion 1:1  (slice2; segments: 1)
+   ->  Aggregate
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               ->  Aggregate
+                     ->  Hash Join
+                           Hash Cond: (i = t_hashed.i)
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                           ->  Hash
+                                 ->  Seq Scan on t_hashed
+ Optimizer: Pivotal Optimizer (GPORCA)
+(13 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2805,17 +2960,20 @@ with cte as (
 ) select count(*) from cte left join t_hashed on cte.i = t_hashed.i;
                           QUERY PLAN                           
 ---------------------------------------------------------------
- Aggregate
-   ->  Hash Left Join
-         Hash Cond: (with_dml_dr.i = t_hashed.i)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-         ->  Hash
-               ->  Gather Motion 3:1  (slice2; segments: 3)
-                     ->  Seq Scan on t_hashed
- Optimizer: Postgres query optimizer
-(10 rows)
+ Gather Motion 1:1  (slice2; segments: 1)
+   ->  Aggregate
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               ->  Aggregate
+                     ->  Hash Left Join
+                           Hash Cond: (i = t_hashed.i)
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                           ->  Hash
+                                 ->  Seq Scan on t_hashed
+ Optimizer: Pivotal Optimizer (GPORCA)
+(13 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2835,17 +2993,22 @@ with cte as (
 ) select count(*) from cte join t_strewn on cte.i = t_strewn.i;
                             QUERY PLAN                            
 ------------------------------------------------------------------
- Aggregate
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         ->  Aggregate
-               ->  Hash Join
-                     Hash Cond: (with_dml_dr.i = t_strewn.i)
-                     ->  Insert on with_dml_dr
-                           ->  Function Scan on generate_series i
-                     ->  Hash
-                           ->  Seq Scan on t_strewn
- Optimizer: Postgres query optimizer
-(10 rows)
+ Gather Motion 1:1  (slice3; segments: 1)
+   ->  Aggregate
+         ->  Gather Motion 3:1  (slice2; segments: 3)
+               ->  Aggregate
+                     ->  Hash Join
+                           Hash Cond: (i = t_strewn.i)
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                           ->  Hash
+                                 ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                       Hash Key: t_strewn.i
+                                       ->  Seq Scan on t_strewn
+ Optimizer: Pivotal Optimizer (GPORCA)
+(15 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2865,17 +3028,22 @@ with cte as (
 ) select count(*) from cte left join t_strewn on cte.i = t_strewn.i;
                           QUERY PLAN                           
 ---------------------------------------------------------------
- Aggregate
-   ->  Hash Left Join
-         Hash Cond: (with_dml_dr.i = t_strewn.i)
-         ->  Explicit Gather Motion 3:1  (slice1; segments: 3)
-               ->  Insert on with_dml_dr
-                     ->  Function Scan on generate_series i
-         ->  Hash
-               ->  Gather Motion 3:1  (slice2; segments: 3)
-                     ->  Seq Scan on t_strewn
- Optimizer: Postgres query optimizer
-(10 rows)
+ Gather Motion 1:1  (slice3; segments: 1)
+   ->  Aggregate
+         ->  Gather Motion 3:1  (slice2; segments: 3)
+               ->  Aggregate
+                     ->  Hash Left Join
+                           Hash Cond: (i = t_strewn.i)
+                           ->  Result
+                                 ->  Insert
+                                       ->  Result
+                                             ->  Function Scan on generate_series
+                           ->  Hash
+                                 ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                       Hash Key: t_strewn.i
+                                       ->  Seq Scan on t_strewn
+ Optimizer: Pivotal Optimizer (GPORCA)
+(15 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -2981,18 +3149,30 @@ with cte as (
 ) select count(*) from cte a join cte b using (i);
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Explicit Gather Motion 3:1  (slice1; segments: 3)
-   ->  Aggregate
-         ->  Hash Join
-               Hash Cond: (share0_ref2.i = share0_ref1.i)
-               ->  Shared Scan (share slice:id 1:0)
-               ->  Hash
-                     ->  Shared Scan (share slice:id 1:0)
-                           ->  Materialize
-                                 ->  Insert on with_dml_dr
-                                       ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(11 rows)
+ Gather Motion 3:1  (slice5; segments: 3)
+   ->  Sequence
+         ->  Shared Scan (share slice:id 5:0)
+               ->  Materialize
+                     ->  Result
+                           One-Time Filter: (gp_execution_segment() = 1)
+                           ->  Insert
+                                 ->  Result
+                                       ->  Function Scan on generate_series
+         ->  Redistribute Motion 1:3  (slice4; segments: 1)
+               ->  Aggregate
+                     ->  Gather Motion 3:1  (slice3; segments: 3)
+                           ->  Aggregate
+                                 ->  Hash Join
+                                       Hash Cond: (share0_ref3.i = share0_ref2.i)
+                                       ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                                             Hash Key: share0_ref3.i
+                                             ->  Shared Scan (share slice:id 1:0)
+                                       ->  Hash
+                                             ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                                                   Hash Key: share0_ref2.i
+                                                   ->  Shared Scan (share slice:id 2:0)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(23 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -3089,19 +3269,27 @@ where t1.i in (select i from cte)
 order by 1;
                                 QUERY PLAN                                
 --------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
+ Gather Motion 3:1  (slice2; segments: 3)
    Merge Key: t1.i
    ->  Sort
          Sort Key: t1.i
-         ->  Seq Scan on t1
-               Filter: (hashed SubPlan 1)
-               SubPlan 1  (slice1; segments: 3)
-                 ->  Materialize
-                       ->  Subquery Scan on cte
-                             ->  Insert on with_dml_dr
-                                   ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(12 rows)
+         ->  Hash Join
+               Hash Cond: (i = t1.i)
+               ->  HashAggregate
+                     Group Key: i
+                     ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                           Hash Key: i
+                           ->  HashAggregate
+                                 Group Key: i
+                                 ->  Result
+                                       One-Time Filter: (gp_execution_segment() = 1)
+                                       ->  Insert
+                                             ->  Result
+                                                   ->  Function Scan on generate_series
+               ->  Hash
+                     ->  Seq Scan on t1
+ Optimizer: Pivotal Optimizer (GPORCA)
+(20 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -3130,21 +3318,30 @@ where t1.i in (select i from cte where cte.i = t1.j)
 order by 1;
                                    QUERY PLAN                                   
 --------------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
+ Gather Motion 3:1  (slice3; segments: 3)
    Merge Key: t1.i
    ->  Sort
          Sort Key: t1.i
-         ->  Seq Scan on t1
-               Filter: (SubPlan 1)
-               SubPlan 1  (slice1; segments: 3)
-                 ->  Result
-                       Filter: (cte.i = t1.j)
-                       ->  Materialize
-                             ->  Subquery Scan on cte
-                                   ->  Insert on with_dml_dr
-                                         ->  Function Scan on generate_series i
- Optimizer: Postgres query optimizer
-(14 rows)
+         ->  Hash Join
+               Hash Cond: ((t1.j = i) AND (t1.i = i))
+               ->  Redistribute Motion 3:3  (slice1; segments: 3)
+                     Hash Key: t1.j
+                     ->  Seq Scan on t1
+                           Filter: (NOT (j IS NULL))
+               ->  Hash
+                     ->  HashAggregate
+                           Group Key: i
+                           ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                                 Hash Key: i
+                                 ->  HashAggregate
+                                       Group Key: i
+                                       ->  Result
+                                             One-Time Filter: (gp_execution_segment() = 0)
+                                             ->  Insert
+                                                   ->  Result
+                                                         ->  Function Scan on generate_series
+ Optimizer: Pivotal Optimizer (GPORCA)
+(23 rows)
 
 with cte as (
     insert into with_dml_dr
@@ -3233,15 +3430,16 @@ order by 1;
                     QUERY PLAN                     
 ---------------------------------------------------
  Explicit Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: with_dml_dr.i
+   Merge Key: i
    ->  Sort
-         Sort Key: with_dml_dr.i
+         Sort Key: i
          ->  Append
-               ->  Insert on with_dml_dr
+               ->  Insert
                      ->  Result
+                           ->  Result
                ->  Seq Scan on t_repl
- Optimizer: Postgres query optimizer
-(9 rows)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(10 rows)
 
 with cte as (
     insert into with_dml_dr

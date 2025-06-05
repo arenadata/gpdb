@@ -351,6 +351,12 @@ private:
 	// comparator used in sorting arrays of project elements based on the column id of the first entry
 	static INT ICmpPrjElemsArr(const void *pvFst, const void *pvSnd);
 
+	// private warehouse for checking triggers on the
+	// given table that match the given DML operation
+	static BOOL FTriggersExistInner(CLogicalDML::EDMLOperator edmlop,
+									CTableDescriptor *ptabdesc,
+									BOOL shouldCheck, BOOL fBefore);
+
 public:
 	// helper function for implementation xforms on binary operators
 	// with predicates (e.g. joins)
@@ -423,13 +429,18 @@ public:
 	static CExpression *PexprLogicalDMLOverProject(
 		CMemoryPool *mp, CExpression *pexprChild,
 		CLogicalDML::EDMLOperator edmlop, CTableDescriptor *ptabdesc,
-		CColRefArray *colref_array, CColRef *pcrCtid, CColRef *pcrSegmentId,
-		CColRef *pcrTableOid);
+		CColRefArray *colref_array, CColRefArray *pdrgpcrOutput,
+		CColRef *pcrCtid, CColRef *pcrSegmentId, CColRef *pcrTableOid);
 
 	// check whether there are any BEFORE or AFTER triggers on the
 	// given table that match the given DML operation
 	static BOOL FTriggersExist(CLogicalDML::EDMLOperator edmlop,
 							   CTableDescriptor *ptabdesc, BOOL fBefore);
+
+	// check whether there are any triggers on the
+	// given table that match the given DML operation
+	static BOOL FTriggersExist(CLogicalDML::EDMLOperator edmlop,
+							   CTableDescriptor *ptabdesc);
 
 	// does the given trigger type match the given logical DML type
 	static BOOL FTriggerApplies(CLogicalDML::EDMLOperator edmlop,

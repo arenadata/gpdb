@@ -28,6 +28,15 @@ ULONG CDMLTest::m_ulDMLTestCounter = 0;	 // start from first test
 // minidump files
 const CHAR *rgszDMLFileNames[] = {
 	"../data/dxl/minidump/Insert.mdp",
+	"../data/dxl/minidump/InsertIntoReturning.mdp",
+	"../data/dxl/minidump/DeleteReturning.mdp",
+	"../data/dxl/minidump/UpdateReturning.mdp",
+	"../data/dxl/minidump/InsertIntoReturningProjection.mdp",
+	"../data/dxl/minidump/DeleteReturningProjection.mdp",
+	"../data/dxl/minidump/UpdateReturningProjection.mdp",
+	"../data/dxl/minidump/InsertInCTE.mdp",
+	"../data/dxl/minidump/DeleteInCTE.mdp",
+	"../data/dxl/minidump/UpdateInCTE.mdp",
 	"../data/dxl/minidump/MultipleUpdateWithJoinOnDistCol.mdp",
 	"../data/dxl/minidump/UpdatingNonDistributionColumnFunc.mdp",
 	"../data/dxl/minidump/UpdatingMultipleColumn.mdp",

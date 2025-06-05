@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,12 +28,9 @@ class CTableDescriptor;
 //		Logical Delete operator
 //
 //---------------------------------------------------------------------------
-class CLogicalDelete : public CLogical
+class CLogicalDelete : public CLogicalReturning
 {
 private:
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
-
 	// columns to delete
 	CColRefArray *m_pdrgpcr;
 
@@ -49,6 +46,9 @@ private:
 	// private copy ctor
 	CLogicalDelete(const CLogicalDelete &);
 
+	// initialize locally used columns
+	void InitUsedColumns();
+
 public:
 	// ctor
 	explicit CLogicalDelete(CMemoryPool *mp);
@@ -57,6 +57,12 @@ public:
 	CLogicalDelete(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 				   CColRefArray *colref_array, CColRef *pcrCtid,
 				   CColRef *pcrSegmentId, CColRef *pcrTableOid);
+
+	// ctor
+	CLogicalDelete(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+				   CColRefArray *colref_array, CColRef *pcrCtid,
+				   CColRef *pcrSegmentId, CColRef *pcrTableOid,
+				   CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalDelete();
@@ -101,13 +107,6 @@ public:
 	PcrTableOid() const
 	{
 		return m_pcrTableOid;
-	}
-
-	// return table's descriptor
-	CTableDescriptor *
-	Ptabdesc() const
-	{
-		return m_ptabdesc;
 	}
 
 	// operator specific hash function
@@ -173,10 +172,6 @@ public:
 
 	// candidate set of xforms
 	virtual CXformSet *PxfsCandidates(CMemoryPool *mp) const;
-
-	// derive key collections
-	virtual CKeyCollection *DeriveKeyCollection(
-		CMemoryPool *mp, CExpressionHandle &exprhdl) const;
 
 	// derive statistics
 	virtual IStatistics *PstatsDerive(CMemoryPool *mp,

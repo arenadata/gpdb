@@ -34,8 +34,7 @@ const WCHAR CLogicalDML::m_rgwszDml[EdmlSentinel][10] = {
 //
 //---------------------------------------------------------------------------
 CLogicalDML::CLogicalDML(CMemoryPool *mp)
-	: CLogical(mp),
-	  m_ptabdesc(NULL),
+	: CLogicalReturning(mp),
 	  m_pdrgpcrSource(NULL),
 	  m_pbsModified(NULL),
 	  m_pcrAction(NULL),
@@ -57,13 +56,13 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp)
 //---------------------------------------------------------------------------
 CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 						 CTableDescriptor *ptabdesc,
-						 CColRefArray *pdrgpcrSource, CBitSet *pbsModified,
+						 CColRefArray *pdrgpcrSource,
+						 CColRefArray *pdrgpcrOutput, CBitSet *pbsModified,
 						 CColRef *pcrAction, CColRef *pcrCtid,
 						 CColRef *pcrSegmentId, CColRef *pcrTupleOid,
 						 CColRef *pcrTableOid)
-	: CLogical(mp),
+	: CLogicalReturning(mp, ptabdesc, pdrgpcrOutput),
 	  m_edmlop(edmlop),
-	  m_ptabdesc(ptabdesc),
 	  m_pdrgpcrSource(pdrgpcrSource),
 	  m_pbsModified(pbsModified),
 	  m_pcrAction(pcrAction),
@@ -73,7 +72,6 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 	  m_pcrTupleOid(pcrTupleOid)
 {
 	GPOS_ASSERT(EdmlSentinel != edmlop);
-	GPOS_ASSERT(NULL != ptabdesc);
 	GPOS_ASSERT(NULL != pdrgpcrSource);
 	GPOS_ASSERT(NULL != pbsModified);
 	GPOS_ASSERT(NULL != pcrAction);
@@ -114,7 +112,6 @@ CLogicalDML::CLogicalDML(CMemoryPool *mp, EDMLOperator edmlop,
 //---------------------------------------------------------------------------
 CLogicalDML::~CLogicalDML()
 {
-	CRefCount::SafeRelease(m_ptabdesc);
 	CRefCount::SafeRelease(m_pdrgpcrSource);
 	CRefCount::SafeRelease(m_pbsModified);
 }
@@ -137,12 +134,12 @@ CLogicalDML::Matches(COperator *pop) const
 
 	CLogicalDML *popDML = CLogicalDML::PopConvert(pop);
 
-	return m_pcrAction == popDML->PcrAction() &&
+	return CLogicalReturning::MatchesReturning(popDML) &&
+		   m_pcrAction == popDML->PcrAction() &&
 		   m_pcrTableOid == popDML->PcrTableOid() &&
 		   m_pcrCtid == popDML->PcrCtid() &&
 		   m_pcrSegmentId == popDML->PcrSegmentId() &&
 		   m_pcrTupleOid == popDML->PcrTupleOid() &&
-		   m_ptabdesc->MDId()->Equals(popDML->Ptabdesc()->MDId()) &&
 		   m_pdrgpcrSource->Equals(popDML->PdrgpcrSource());
 }
 
@@ -157,8 +154,8 @@ CLogicalDML::Matches(COperator *pop) const
 ULONG
 CLogicalDML::HashValue() const
 {
-	ULONG ulHash = gpos::CombineHashes(COperator::HashValue(),
-									   m_ptabdesc->MDId()->HashValue());
+	ULONG ulHash = CLogicalReturning::HashValue();
+
 	ulHash = gpos::CombineHashes(ulHash, gpos::HashPtr<CColRef>(m_pcrAction));
 	ulHash =
 		gpos::CombineHashes(ulHash, CUtils::UlHashColArray(m_pdrgpcrSource));
@@ -189,6 +186,9 @@ CLogicalDML::PopCopyWithRemappedColumns(CMemoryPool *mp,
 {
 	CColRefArray *colref_array =
 		CUtils::PdrgpcrRemap(mp, m_pdrgpcrSource, colref_mapping, must_exist);
+
+	CColRefArray *pdrgpcrOutput =
+		CLogicalReturning::CopyRemappedColumns(mp, colref_mapping, must_exist);
 	CColRef *pcrAction =
 		CUtils::PcrRemap(m_pcrAction, colref_mapping, must_exist);
 
@@ -225,9 +225,11 @@ CLogicalDML::PopCopyWithRemappedColumns(CMemoryPool *mp,
 
 	m_ptabdesc->AddRef();
 
-	return GPOS_NEW(mp)
-		CLogicalDML(mp, m_edmlop, m_ptabdesc, colref_array, m_pbsModified,
-					pcrAction, pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid);
+	CLogicalDML *result = GPOS_NEW(mp) CLogicalDML(
+		mp, m_edmlop, m_ptabdesc, colref_array, pdrgpcrOutput, m_pbsModified,
+		pcrAction, pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid);
+
+	return result;
 }
 
 //---------------------------------------------------------------------------
@@ -245,6 +247,7 @@ CLogicalDML::DeriveOutputColumns(CMemoryPool *mp,
 {
 	CColRefSet *pcrsOutput = GPOS_NEW(mp) CColRefSet(mp);
 	pcrsOutput->Include(m_pdrgpcrSource);
+	pcrsOutput->Include(m_pdrgpcrOutput);
 	if (NULL != m_pcrCtid)
 	{
 		GPOS_ASSERT(NULL != m_pcrSegmentId);
@@ -276,25 +279,11 @@ CLogicalDML::DerivePropertyConstraint(CMemoryPool *mp,
 {
 	CColRefSet *pcrsOutput = GPOS_NEW(mp) CColRefSet(mp);
 	pcrsOutput->Include(m_pdrgpcrSource);
+	pcrsOutput->Include(m_pdrgpcrOutput);
 	CPropConstraint *ppc = PpcDeriveConstraintRestrict(mp, exprhdl, pcrsOutput);
 	pcrsOutput->Release();
 
 	return ppc;
-}
-
-//---------------------------------------------------------------------------
-//	@function:
-//		CLogicalDML::PkcDeriveKeys
-//
-//	@doc:
-//		Derive key collection
-//
-//---------------------------------------------------------------------------
-CKeyCollection *
-CLogicalDML::DeriveKeyCollection(CMemoryPool *,	 // mp
-								 CExpressionHandle &exprhdl) const
-{
-	return PkcDeriveKeysPassThru(exprhdl, 0 /* ulChild */);
 }
 
 //---------------------------------------------------------------------------
@@ -386,7 +375,9 @@ CLogicalDML::OsPrint(IOstream &os) const
 		m_pcrSegmentId->OsPrint(os);
 	}
 
-	return os;
+	os << ", ";
+
+	return CLogicalReturning::OsPrint(os);
 }
 
 // EOF

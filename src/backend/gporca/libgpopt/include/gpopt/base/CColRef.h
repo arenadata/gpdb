@@ -198,6 +198,12 @@ public:
 	}
 
 	void
+	MarkUsage(EUsedStatus used)
+	{
+		m_used = used;
+	}
+
+	void
 	MarkAsUnknown()
 	{
 		m_used = EUnknown;

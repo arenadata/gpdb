@@ -173,7 +173,7 @@ SplitUpdateState*
 ExecInitSplitUpdate(SplitUpdate *node, EState *estate, int eflags)
 {
 	/* Check for unsupported flags */
-	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK | EXEC_FLAG_REWIND)));
+	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
 
 	bool    has_oids;
 

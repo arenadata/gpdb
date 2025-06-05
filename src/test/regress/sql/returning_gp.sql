@@ -2,6 +2,8 @@
 -- Extra GPDB tests on INSERT/UPDATE/DELETE RETURNING
 --
 
+SET optimizer_trace_fallback=ON;
+
 CREATE TABLE returning_parttab (distkey int4, partkey int4, i int, t text)
 DISTRIBUTED BY (distkey)
 PARTITION BY RANGE (partkey) (START (1) END (10));
@@ -31,7 +33,7 @@ returning distkey, partkey, t;
 update returning_parttab set partkey = 9 where partkey = 3 returning *;
 update returning_parttab set partkey = 19 where partkey = 13 returning *;
 
--- update that moves the tuple across partitions (not supported)
+-- update that moves the tuple across partitions
 update returning_parttab set partkey = 18 where partkey = 4 returning *;
 
 -- delete
@@ -40,6 +42,16 @@ delete from returning_parttab where partkey = 14 returning *;
 
 -- Check table contents, to be sure that all the commands did what they claimed.
 select * from returning_parttab;
+
+-- Test DML on partitioned table with RETURNING subquery with cte
+explain (costs off)
+with cte as (
+  select distkey from returning_parttab order by distkey limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
+
+with cte as (
+  select distkey from returning_parttab order by distkey limit 1
+) insert into returning_parttab values (1, 5, 'test') returning (select * from cte);
 
 --
 -- Test UPDATE RETURNING with a split update, i.e. an update of the distribution

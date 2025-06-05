@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,12 +28,9 @@ class CTableDescriptor;
 //		Logical Update operator
 //
 //---------------------------------------------------------------------------
-class CLogicalUpdate : public CLogical
+class CLogicalUpdate : public CLogicalReturning
 {
 private:
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
-
 	// columns to delete
 	CColRefArray *m_pdrgpcrDelete;
 
@@ -55,6 +52,9 @@ private:
 	// private copy ctor
 	CLogicalUpdate(const CLogicalUpdate &);
 
+	// initialize locally used columns
+	void InitUsedColumns();
+
 public:
 	// ctor
 	explicit CLogicalUpdate(CMemoryPool *mp);
@@ -64,6 +64,13 @@ public:
 				   CColRefArray *pdrgpcrDelete, CColRefArray *pdrgpcrInsert,
 				   CColRef *pcrCtid, CColRef *pcrSegmentId,
 				   CColRef *pcrTupleOid, CColRef *pcrTableOid);
+
+	// ctor
+	CLogicalUpdate(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+				   CColRefArray *pdrgpcrDelete, CColRefArray *pdrgpcrInsert,
+				   CColRef *pcrCtid, CColRef *pcrSegmentId,
+				   CColRef *pcrTupleOid, CColRef *pcrTableOid,
+				   CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalUpdate();
@@ -122,13 +129,6 @@ public:
 	PcrTableOid() const
 	{
 		return m_pcrTableOid;
-	}
-
-	// return table's descriptor
-	CTableDescriptor *
-	Ptabdesc() const
-	{
-		return m_ptabdesc;
 	}
 
 	// operator specific hash function
@@ -194,10 +194,6 @@ public:
 
 	// candidate set of xforms
 	virtual CXformSet *PxfsCandidates(CMemoryPool *mp) const;
-
-	// derive key collections
-	virtual CKeyCollection *DeriveKeyCollection(
-		CMemoryPool *mp, CExpressionHandle &exprhdl) const;
 
 	// derive statistics
 	virtual IStatistics *PstatsDerive(CMemoryPool *mp,

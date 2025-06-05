@@ -1542,7 +1542,7 @@ CExpressionPreprocessor::PexprAddEqualityPreds(CMemoryPool *mp,
 
 	CExpression *pexprPred = NULL;
 	COperator *pop = pexpr->Pop();
-	if (CUtils::FLogicalDML(pop))
+	if (CUtils::FHasLogicalDML(mp, pexpr))
 	{
 		pexprPred = CUtils::PexprScalarConstBool(mp, true);
 	}
@@ -1943,7 +1943,7 @@ CExpressionPreprocessor::PexprPruneEmptySubtrees(CMemoryPool *mp,
 	GPOS_ASSERT(NULL != pexpr);
 
 	COperator *pop = pexpr->Pop();
-	if (pop->FLogical() && !CUtils::FLogicalDML(pop))
+	if (pop->FLogical() && !CUtils::FHasLogicalDML(mp, pexpr))
 	{
 		// if maxcard = 0: return a const table get with same output columns and zero tuples
 		if (0 == pexpr->DeriveMaxCard())

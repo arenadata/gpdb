@@ -361,47 +361,43 @@ CTranslatorExprToDXL::PdxlnTranslate(CExpression *pexpr,
 									  &ulNonGatherMotions, &fDML,
 									  true /*fRemap*/, true /*fRoot*/);
 
-	if (fDML)
-	{
-		pdrgpdsBaseTables->Release();
-		return dxlnode;
-	}
-
-	CDXLNode *pdxlnPrL = (*dxlnode)[0];
-	GPOS_ASSERT(EdxlopScalarProjectList ==
-				pdxlnPrL->GetOperator()->GetDXLOperator());
-
 	const ULONG length = pdrgpmdname->Size();
-	GPOS_ASSERT(length == colref_array->Size());
-	GPOS_ASSERT(length == pdxlnPrL->Arity());
-	for (ULONG ul = 0; ul < length; ul++)
+
+	if (length > 0)
 	{
-		// desired output column name
-		CMDName *mdname =
-			GPOS_NEW(m_mp) CMDName(m_mp, (*pdrgpmdname)[ul]->GetMDName());
+		CDXLNode *pdxlnPrL = (*dxlnode)[0];
+		GPOS_ASSERT(EdxlopScalarProjectList ==
+					pdxlnPrL->GetOperator()->GetDXLOperator());
 
-		// get the old project element for the ColId
-		CDXLNode *pdxlnPrElOld = (*pdxlnPrL)[ul];
-		CDXLScalarProjElem *pdxlopPrElOld =
-			CDXLScalarProjElem::Cast(pdxlnPrElOld->GetOperator());
-		GPOS_ASSERT(1 == pdxlnPrElOld->Arity());
-		CDXLNode *child_dxlnode = (*pdxlnPrElOld)[0];
-		const ULONG colid = pdxlopPrElOld->Id();
+		GPOS_ASSERT(length == colref_array->Size());
+		GPOS_ASSERT(length == pdxlnPrL->Arity());
+		for (ULONG ul = 0; ul < length; ul++)
+		{
+			// desired output column name
+			CMDName *mdname =
+				GPOS_NEW(m_mp) CMDName(m_mp, (*pdrgpmdname)[ul]->GetMDName());
 
-		// create a new project element node with the col id and new column name
-		// and add the scalar child
-		CDXLNode *pdxlnPrElNew = GPOS_NEW(m_mp) CDXLNode(
-			m_mp, GPOS_NEW(m_mp) CDXLScalarProjElem(m_mp, colid, mdname));
-		child_dxlnode->AddRef();
-		pdxlnPrElNew->AddChild(child_dxlnode);
+			// get the old project element for the ColId
+			CDXLNode *pdxlnPrElOld = (*pdxlnPrL)[ul];
+			CDXLScalarProjElem *pdxlopPrElOld =
+				CDXLScalarProjElem::Cast(pdxlnPrElOld->GetOperator());
+			GPOS_ASSERT(1 == pdxlnPrElOld->Arity());
+			CDXLNode *child_dxlnode = (*pdxlnPrElOld)[0];
+			const ULONG colid = pdxlopPrElOld->Id();
 
-		// replace the project element
-		pdxlnPrL->ReplaceChild(ul, pdxlnPrElNew);
+			// create a new project element node with the col id and new column name
+			// and add the scalar child
+			CDXLNode *pdxlnPrElNew = GPOS_NEW(m_mp) CDXLNode(
+				m_mp, GPOS_NEW(m_mp) CDXLScalarProjElem(m_mp, colid, mdname));
+			child_dxlnode->AddRef();
+			pdxlnPrElNew->AddChild(child_dxlnode);
+
+			// replace the project element
+			pdxlnPrL->ReplaceChild(ul, pdxlnPrElNew);
+		}
 	}
 
-
-
-	if (0 == ulNonGatherMotions)
+	if (!fDML && 0 == ulNonGatherMotions)
 	{
 		CTranslatorExprToDXLUtils::SetDirectDispatchInfo(
 			m_mp, m_pmda, dxlnode, pexpr, pdrgpdsBaseTables);
@@ -4559,6 +4555,44 @@ CTranslatorExprToDXL::PdxlnMotion(CExpression *pexprMotion,
 		CTranslatorExprToDXLUtils::PdxlnProjListFromChildProjList(
 			m_mp, m_pcf, m_phmcrdxln, pdxlnProjListChild);
 
+	// load unhandled subplans required by child to motion them too
+	CDXLNode *pdxlnPrLstSplan = NULL;
+	CColRefSetIter reqColRefIter(*pexprMotion->Prpp()->PcrsRequired());
+	while (reqColRefIter.Advance())
+	{
+		CColRef *colref = reqColRefIter.Pcr();
+		CDXLNode *dxlnode = m_phmcrdxln->Find(colref);
+
+		if (NULL != dxlnode &&
+			EdxlopScalarSubPlan == dxlnode->GetOperator()->GetDXLOperator())
+		{
+			if (pdxlnPrLstSplan == NULL)
+			{
+				// make a copy of motion's proj list
+				pdxlnPrLstSplan =
+					CTranslatorExprToDXLUtils::PdxlnProjListFromChildProjList(
+						m_mp, m_pcf, m_phmcrdxln, pdxlnProjListChild);
+			}
+
+			CDXLNode *pdxlnPrElSplan = CTranslatorExprToDXLUtils::PdxlnProjElem(
+				m_mp, m_phmcrdxln, colref);
+			pdxlnPrLstSplan->AddChild(pdxlnPrElSplan);
+
+			// also add new proj elem referencing created subplan to motion's proj list
+			CDXLNode *pdxlnPrEl = CTranslatorExprToDXLUtils::PdxlnProjElem(
+				m_mp, m_phmcrdxln, colref);
+			proj_list_dxlnode->AddChild(pdxlnPrEl);
+		}
+	}
+
+	// if there are any leftover subplans wrap them in extra Result node
+	if (pdxlnPrLstSplan != NULL)
+	{
+		child_dxlnode = PdxlnResult(
+			CTranslatorExprToDXLUtils::PdxlpropCopy(m_mp, child_dxlnode),
+			pdxlnPrLstSplan, child_dxlnode);
+	}
+
 	// set input and output segment information
 	motion->SetSegmentInfo(GetInputSegIdsArray(pexprMotion),
 						   GetOutputSegIdsArray(pexprMotion));
@@ -5796,6 +5830,7 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 	CExpression *pexprChild = (*pexpr)[0];
 	CTableDescriptor *ptabdesc = popDML->Ptabdesc();
 	CColRefArray *pdrgpcrSource = popDML->PdrgpcrSource();
+	CColRefArray *pdrgpcrOutput = popDML->PdrgpcrOutput();
 
 	CColRef *pcrAction = popDML->PcrAction();
 	GPOS_ASSERT(NULL != pcrAction);
@@ -5829,8 +5864,8 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 		pexprChild, pdrgpcrSource, pdrgpdsBaseTables, pulNonGatherMotions,
 		pfDML, false /*fRemap*/, false /*fRoot*/);
 
-	CDXLTableDescr *table_descr = MakeDXLTableDescr(
-		ptabdesc, NULL /*pdrgpcrOutput*/, NULL /*requiredProperties*/);
+	CDXLTableDescr *table_descr =
+		MakeDXLTableDescr(ptabdesc, pdrgpcrOutput, pexpr->Prpp());
 	ULongPtrArray *pdrgpul = CUtils::Pdrgpul(m_mp, pdrgpcrSource);
 
 	CDXLDirectDispatchInfo *dxl_direct_dispatch_info =
@@ -5840,14 +5875,48 @@ CTranslatorExprToDXL::PdxlnDML(CExpression *pexpr,
 						ctid_colid, segid_colid, preserve_oids, tuple_oid,
 						tableoid_colid, dxl_direct_dispatch_info);
 
+	// if dml node has triggers we should also output source columns
+	if (popDML->HasTriggers())
+	{
+		pdrgpcrOutput->AppendArray(pdrgpcrSource);
+	}
+
 	// project list
-	CColRefSet *pcrsOutput = pexpr->Prpp()->PcrsRequired();
-	CDXLNode *pdxlnPrL = PdxlnProjList(pcrsOutput, pdrgpcrSource);
+	CDXLNode *pdxlnPrL = PdxlnProjList(NULL, pdrgpcrSource);
+
+	// configure output project list for used columns
+	CDXLNode *pdxlnPrLOutput;
+	ULongPtrArray *usedColsIndexes = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
+
+	for (ULONG outputColIndex = 0; outputColIndex < pdrgpcrOutput->Size();
+		 outputColIndex++)
+	{
+		CColRef *colref = (*pdrgpcrOutput)[outputColIndex];
+		if (colref->GetUsage(true, true) == CColRef::EUsed)
+		{
+			usedColsIndexes->Append(GPOS_NEW(m_mp) ULONG(outputColIndex));
+		}
+	}
+
+	if (pdrgpcrOutput->Size() == usedColsIndexes->Size())
+	{
+		pdxlnPrLOutput = PdxlnProjList(NULL, pdrgpcrOutput);
+	}
+	else
+	{
+		CColRefArray *reducedOutput =
+			pdrgpcrOutput->CreateReducedArray(usedColsIndexes);
+		pdxlnPrLOutput = PdxlnProjList(NULL, reducedOutput);
+		reducedOutput->Release();
+	}
+
+	usedColsIndexes->Release();
 
 	CDXLNode *pdxlnDML = GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopDML);
 	CDXLPhysicalProperties *dxl_properties = GetProperties(pexpr);
 	pdxlnDML->SetProperties(dxl_properties);
 
+	pdxlnDML->AddChild(pdxlnPrLOutput);
 	pdxlnDML->AddChild(pdxlnPrL);
 	pdxlnDML->AddChild(child_dxlnode);
 
@@ -7748,7 +7817,7 @@ CDXLNode *
 CTranslatorExprToDXL::PdxlnProjList(const CColRefSet *pcrsOutput,
 									CColRefArray *colref_array)
 {
-	GPOS_ASSERT(NULL != pcrsOutput);
+	GPOS_ASSERT_IMP(NULL == pcrsOutput, colref_array != NULL);
 
 	CDXLScalarProjList *pdxlopPrL = GPOS_NEW(m_mp) CDXLScalarProjList(m_mp);
 	CDXLNode *pdxlnPrL = GPOS_NEW(m_mp) CDXLNode(m_mp, pdxlopPrL);
@@ -7767,18 +7836,22 @@ CTranslatorExprToDXL::PdxlnProjList(const CColRefSet *pcrsOutput,
 			pcrs->Include(colref);
 		}
 
-		// add the remaining required columns
-		CColRefSetIter crsi(*pcrsOutput);
-		while (crsi.Advance())
+		if (pcrsOutput != NULL)
 		{
-			CColRef *colref = crsi.Pcr();
-
-			if (!pcrs->FMember(colref))
+			// add the remaining required columns
+			CColRefSetIter crsi(*pcrsOutput);
+			while (crsi.Advance())
 			{
-				CDXLNode *pdxlnPrEl = CTranslatorExprToDXLUtils::PdxlnProjElem(
-					m_mp, m_phmcrdxln, colref);
-				pdxlnPrL->AddChild(pdxlnPrEl);
-				pcrs->Include(colref);
+				CColRef *colref = crsi.Pcr();
+
+				if (!pcrs->FMember(colref))
+				{
+					CDXLNode *pdxlnPrEl =
+						CTranslatorExprToDXLUtils::PdxlnProjElem(
+							m_mp, m_phmcrdxln, colref);
+					pdxlnPrL->AddChild(pdxlnPrEl);
+					pcrs->Include(colref);
+				}
 			}
 		}
 		pcrs->Release();

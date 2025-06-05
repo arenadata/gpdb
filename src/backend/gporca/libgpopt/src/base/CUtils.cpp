@@ -10,6 +10,7 @@
 //---------------------------------------------------------------------------
 #include "gpopt/base/CUtils.h"
 
+#include "gpos/common/CDynamicPtrArray.h"
 #include "gpos/common/clibwrapper.h"
 #include "gpos/common/syslibwrapper.h"
 #include "gpos/io/CFileDescriptor.h"
@@ -3276,6 +3277,55 @@ CUtils::FLogicalDML(COperator *pop)
 		   COperator::EopLogicalUpdate == op_id;
 }
 
+BOOL
+CUtils::FCTAS(COperator *pop)
+{
+	GPOS_ASSERT(NULL != pop);
+
+	if (COperator::EopLogicalInsert != pop->Eopid())
+	{
+		return false;
+	}
+
+	CLogicalInsert *popInsert = CLogicalInsert::PopConvert(pop);
+
+	GPOS_ASSERT(NULL != popInsert->Ptabdesc());
+	GPOS_ASSERT(NULL != popInsert->Ptabdesc()->MDId());
+
+	return IMDId::EmdidGPDBCtas == popInsert->Ptabdesc()->MDId()->MdidType();
+}
+
+// recursively checks if the given expression has logical DML operator
+BOOL
+CUtils::FHasLogicalDML(CMemoryPool *mp, CExpression *pexpr)
+{
+	GPOS_ASSERT(NULL != mp);
+	GPOS_ASSERT(NULL != pexpr);
+
+	CDynamicPtrArray<CExpression, CleanupNULL> *exprsToCheck =
+		GPOS_NEW(mp) CDynamicPtrArray<CExpression, CleanupNULL>(mp);
+	exprsToCheck->Append(pexpr);
+
+	while (exprsToCheck->Size() > 0)
+	{
+		CExpression *pexprCurrent = exprsToCheck->RemoveLast();
+
+		if (FLogicalDML(pexprCurrent->Pop()))
+		{
+			exprsToCheck->Release();
+			return true;
+		}
+
+		for (ULONG ul = 0; ul < pexprCurrent->Arity(); ++ul)
+		{
+			exprsToCheck->Append((*pexprCurrent)[ul]);
+		}
+	}
+
+	exprsToCheck->Release();
+	return false;
+}
+
 // return regular string from wide-character string
 CHAR *
 CUtils::CreateMultiByteCharStringFromWCString(CMemoryPool *mp, WCHAR *wsz)
@@ -3440,6 +3490,7 @@ CUtils::PdrgpcrRemapAndCreate(CMemoryPool *mp, CColRefArray *colref_array,
 		{
 			// not found in hashmap, so create a new colref and add to hashmap
 			pcrMapped = col_factory->PcrCopy(colref);
+			pcrMapped->MarkUsage(colref->GetUsage(true, true));
 
 #ifdef GPOS_DEBUG
 			BOOL result =

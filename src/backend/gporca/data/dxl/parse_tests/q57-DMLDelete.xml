@@ -6,6 +6,7 @@
         <dxl:Cost StartupCost="0" TotalCost="100.000000" Rows="1" Width="1"/>
       </dxl:Properties>
       <dxl:DirectDispatchInfo/>
+      <dxl:ProjList/>
       <dxl:ProjList>
         <dxl:ProjElem ColId="3" Alias="ctid">
           <dxl:Ident ColId="3" ColName="ctid" TypeMdid="0.27.1.0"/>

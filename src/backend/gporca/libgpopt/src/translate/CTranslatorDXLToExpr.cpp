@@ -272,9 +272,6 @@ CTranslatorDXLToExpr::Pexpr(const CDXLNode *dxlnode,
 	m_pdrgpulOutputColRefs = GPOS_NEW(m_mp) ULongPtrArray(m_mp);
 	m_pdrgpmdname = GPOS_NEW(m_mp) CMDNameArray(m_mp);
 
-	BOOL fGenerateRequiredColumns =
-		COperator::EopLogicalUpdate != pexpr->Pop()->Eopid();
-
 	const ULONG length = query_output_dxlnode_array->Size();
 	for (ULONG ul = 0; ul < length; ul++)
 	{
@@ -292,18 +289,15 @@ CTranslatorDXLToExpr::Pexpr(const CDXLNode *dxlnode,
 		// get its column reference from the hash map
 		const CColRef *colref = LookupColRef(m_phmulcr, colid);
 
-		if (fGenerateRequiredColumns)
-		{
-			const ULONG ulColRefId = colref->Id();
-			ULONG *pulCopy = GPOS_NEW(m_mp) ULONG(ulColRefId);
-			// add to the array of output column reference ids
-			m_pdrgpulOutputColRefs->Append(pulCopy);
+		const ULONG ulColRefId = colref->Id();
+		ULONG *pulCopy = GPOS_NEW(m_mp) ULONG(ulColRefId);
+		// add to the array of output column reference ids
+		m_pdrgpulOutputColRefs->Append(pulCopy);
 
-			// get the column names and add it to the array of output column names
-			CMDName *mdname =
-				GPOS_NEW(m_mp) CMDName(m_mp, dxl_colref->MdName()->GetMDName());
-			m_pdrgpmdname->Append(mdname);
-		}
+		// get the column names and add it to the array of output column names
+		CMDName *mdname =
+			GPOS_NEW(m_mp) CMDName(m_mp, dxl_colref->MdName()->GetMDName());
+		m_pdrgpmdname->Append(mdname);
 	}
 
 	return pexpr;
@@ -1398,9 +1392,15 @@ CTranslatorDXLToExpr::PexprLogicalInsert(const CDXLNode *dxlnode)
 	CColRefArray *colref_array =
 		CTranslatorDXLToExprUtils::Pdrgpcr(m_mp, m_phmulcr, pdrgpulSourceCols);
 
-	return GPOS_NEW(m_mp) CExpression(
-		m_mp, GPOS_NEW(m_mp) CLogicalInsert(m_mp, ptabdesc, colref_array),
-		pexprChild);
+	CLogicalInsert *pexprLogInsert =
+		GPOS_NEW(m_mp) CLogicalInsert(m_mp, ptabdesc, colref_array);
+
+	// add mapping between the DXL ColId and CColRef to m_phmulcr
+	ConstructDXLColId2ColRefMapping(
+		pdxlopInsert->GetDXLTableDescr()->GetColumnDescr(),
+		pexprLogInsert->PdrgpcrOutput());
+
+	return GPOS_NEW(m_mp) CExpression(m_mp, pexprLogInsert, pexprChild);
 }
 
 //---------------------------------------------------------------------------
@@ -1447,11 +1447,15 @@ CTranslatorDXLToExpr::PexprLogicalDelete(const CDXLNode *dxlnode)
 	CColRefArray *colref_array =
 		CTranslatorDXLToExprUtils::Pdrgpcr(m_mp, m_phmulcr, pdrgpulCols);
 
-	return GPOS_NEW(m_mp) CExpression(
-		m_mp,
-		GPOS_NEW(m_mp) CLogicalDelete(m_mp, ptabdesc, colref_array, pcrCtid,
-									  pcrSegmentId, pcrTableOid),
-		pexprChild);
+	CLogicalDelete *pexprLogDelete = GPOS_NEW(m_mp) CLogicalDelete(
+		m_mp, ptabdesc, colref_array, pcrCtid, pcrSegmentId, pcrTableOid);
+
+	// add mapping between the DXL ColId and CColRef to m_phmulcr
+	ConstructDXLColId2ColRefMapping(
+		pdxlopDelete->GetDXLTableDescr()->GetColumnDescr(),
+		pexprLogDelete->PdrgpcrOutput());
+
+	return GPOS_NEW(m_mp) CExpression(m_mp, pexprLogDelete, pexprChild);
 }
 
 //---------------------------------------------------------------------------
@@ -1509,12 +1513,16 @@ CTranslatorDXLToExpr::PexprLogicalUpdate(const CDXLNode *dxlnode)
 		pcrTupleOid = LookupColRef(m_phmulcr, tuple_oid);
 	}
 
-	return GPOS_NEW(m_mp) CExpression(
-		m_mp,
-		GPOS_NEW(m_mp)
-			CLogicalUpdate(m_mp, ptabdesc, pdrgpcrDelete, pdrgpcrInsert,
-						   pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid),
-		pexprChild);
+	CLogicalUpdate *pexprLogUpdate = GPOS_NEW(m_mp)
+		CLogicalUpdate(m_mp, ptabdesc, pdrgpcrDelete, pdrgpcrInsert, pcrCtid,
+					   pcrSegmentId, pcrTupleOid, pcrTableOid);
+
+	// add mapping between the DXL ColId and CColRef to m_phmulcr
+	ConstructDXLColId2ColRefMapping(
+		pdxlopUpdate->GetDXLTableDescr()->GetColumnDescr(),
+		pexprLogUpdate->PdrgpcrOutput());
+
+	return GPOS_NEW(m_mp) CExpression(m_mp, pexprLogUpdate, pexprChild);
 }
 
 //---------------------------------------------------------------------------

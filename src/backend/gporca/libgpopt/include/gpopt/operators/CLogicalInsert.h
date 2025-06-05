@@ -13,7 +13,7 @@
 
 #include "gpos/base.h"
 
-#include "gpopt/operators/CLogical.h"
+#include "gpopt/operators/CLogicalReturning.h"
 
 namespace gpopt
 {
@@ -28,17 +28,17 @@ class CTableDescriptor;
 //		Logical Insert operator
 //
 //---------------------------------------------------------------------------
-class CLogicalInsert : public CLogical
+class CLogicalInsert : public CLogicalReturning
 {
 private:
-	// table descriptor
-	CTableDescriptor *m_ptabdesc;
-
 	// source columns
 	CColRefArray *m_pdrgpcrSource;
 
 	// private copy ctor
 	CLogicalInsert(const CLogicalInsert &);
+
+	// initialize locally used columns
+	void InitUsedColumns();
 
 public:
 	// ctor
@@ -47,6 +47,10 @@ public:
 	// ctor
 	CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
 				   CColRefArray *colref_array);
+
+	// ctor
+	CLogicalInsert(CMemoryPool *mp, CTableDescriptor *ptabdesc,
+				   CColRefArray *colref_array, CColRefArray *pdrgpcrOutput);
 
 	// dtor
 	virtual ~CLogicalInsert();
@@ -70,13 +74,6 @@ public:
 	PdrgpcrSource() const
 	{
 		return m_pdrgpcrSource;
-	}
-
-	// return table's descriptor
-	CTableDescriptor *
-	Ptabdesc() const
-	{
-		return m_ptabdesc;
 	}
 
 	// operator specific hash function
@@ -142,10 +139,6 @@ public:
 
 	// candidate set of xforms
 	virtual CXformSet *PxfsCandidates(CMemoryPool *mp) const;
-
-	// derive key collections
-	virtual CKeyCollection *DeriveKeyCollection(
-		CMemoryPool *mp, CExpressionHandle &exprhdl) const;
 
 	// derive statistics
 	virtual IStatistics *PstatsDerive(CMemoryPool *mp,
