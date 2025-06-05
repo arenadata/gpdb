@@ -229,8 +229,9 @@ ON seq.n = idx.n
 WHERE seq.dist IS DISTINCT FROM idx.dist;
 
 -- check ORDER BY distance to NULL
-SELECT (SELECT p FROM kd_point_tbl ORDER BY p <-> pt, p <-> '0,0' LIMIT 1)
-FROM (VALUES (point '1,2'), (NULL), ('1234,5678')) pts(pt);
+SELECT DISTINCT ON (i) p FROM kd_point_tbl,
+    (VALUES (1, point '1,2'), (2, NULL), (3, '1234,5678')) pts(i, pt)
+ORDER BY i, p <-> pt, p <-> '0,0';
 
 
 EXPLAIN (COSTS OFF)
