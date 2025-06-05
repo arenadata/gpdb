@@ -117,10 +117,57 @@ table t_sub2;
 -- Clean up
 drop table t_top, t_sub1, t_sub2;
 \unset check_files
-drop function createTables();
 
 
 -- Test case 2
+-- Check that files are leaving untouched on the coordinator and the standby
+-- when the corresponding distributed commit record exists in WAL
+select gp_inject_fault('dtm_xlog_distributed_commit', 'segv', dbid)
+  from gp_segment_configuration
+ where role = 'p' and content = -1;
+
+-- Create tables in a transaction. Get segfault right after the distributed
+-- commit record is flushed
+\! psql regression -c "begin; select createTables(); commit;"
+\! sleep 2
+\c regression
+
+select force_mirrors_to_catch_up();
+
+-- Check that all the tables and its indexes files exist
+select '\! ' ||
+       string_agg('cd ' || datadir || '&&' || lswc, ';' order by datadir) lswc
+  from (
+    select 'ls ' || string_agg(pg_relation_filepath(a.unnest), ' ')
+                 || ' 2>/dev/null | wc -l' lswc
+    from (
+      select unnest(array['t_orphaned_h'::regclass,
+                          't_orphaned_r'::regclass, 't_orphaned_r_i'::regclass,
+                          't_orphaned_c'::regclass, 't_orphaned_c_i'::regclass])
+      union all
+      select unnest(array[segrelid,
+                          blkdirrelid, blkdiridxid,
+                          visimaprelid, visimapidxid])
+        from pg_catalog.pg_appendonly
+       where relid in ('t_orphaned_r'::regclass, 't_orphaned_c'::regclass)
+    ) a
+  ) f,
+  (select datadir from gp_segment_configuration where content = -1) d
+\gset
+
+:lswc
+
+-- Check that we can read data from the tables
+table t_orphaned_h;
+table t_orphaned_r;
+table t_orphaned_c;
+
+-- Clean up
+drop table t_orphaned_h, t_orphaned_r, t_orphaned_c;
+drop function createTables();
+
+
+-- Test case 3
 -- Check that an orphaned files are not left on segments when the files are
 -- created after checkpoint
 
@@ -191,7 +238,7 @@ begin
 end
 $$ language plpgsql;
 
--- Test case 2.1
+-- Test case 3.1
 -- Segfault on all segments
 checkpoint;
 
@@ -241,7 +288,7 @@ table t_sub2;
 drop table t_top, t_sub1, t_sub2;
 
 
--- Test case 2.2
+-- Test case 3.2
 -- Segfault on one segment
 checkpoint;
 
