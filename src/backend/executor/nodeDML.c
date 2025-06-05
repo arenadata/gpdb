@@ -100,6 +100,7 @@ ExecDML(DMLState *node)
 
 		Assert(action == DML_INSERT || action == DML_DELETE);
 
+
 		/*
 		* Reset per-tuple memory context to free any expression evaluation
 		* storage allocated in the previous tuple cycle.
