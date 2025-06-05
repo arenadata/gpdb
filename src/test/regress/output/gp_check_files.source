@@ -14,10 +14,6 @@
 -- s/seg1_pg_tblspc_.*/seg1_pg_tblspc_XXX/g
 -- m/seg1_base_.*/
 -- s/seg1_base_.*/seg1_base_XXX/g
--- m/base\/\d+\/\d+(\.\d+)?/
--- s/base\/\d+\/\d+(\.\d+)?/base\/XXX/g
--- m/pg_tblspc\/\d+\/GPDB_6_\d+\/\d+\/\d+(\.\d+)?/
--- s/pg_tblspc\/\d+\/GPDB_6_\d+\/\d+\/\d+(\.\d+)?/pg_tblspc\/XXX/g
 -- m/ERROR\:  could not rename .*/
 -- s/ERROR\:  could not rename .*/ERROR\:  could not rename XXX/g
 -- m/ERROR\:  cannot rename .*/
@@ -28,6 +24,10 @@
 -- m/PL\/pgSQL function .*/
 -- s/PL\/pgSQL function .*/PL\/pgSQL function XXX/g
 -- end_matchsubs
+--start_ignore
+-- send sighup to reread configuration, otherwise dtx recovery sometimes blocks run_with_retry
+\! gpstop -u
+--end_ignore
 -- we'll use a specific tablespace and database to test
 CREATE TABLESPACE checkfile_ts LOCATION '@testtablespace@';
 CREATE DATABASE checkfile_db TABLESPACE checkfile_ts;
@@ -95,7 +95,9 @@ CREATE OR REPLACE FUNCTION run_orphaned_files_view()
 RETURNS TABLE(gp_segment_id int, filename text, filepath text) AS $$
 BEGIN
     RETURN QUERY
-    SELECT *
+    SELECT t.gp_segment_id,
+           t.filename,
+           regexp_replace(t.filepath, '^([^/]+)/.*/([^/]+)$', '\1/XXX/\2') AS filepath
     FROM   run_with_retry(
                'SELECT gp_segment_id, filename, filepath FROM gp_check_orphaned_files')
            AS t(gp_segment_id int, filename text, filepath text);
@@ -108,7 +110,13 @@ RETURNS TABLE(gp_segment_id int,
               newpath       text) AS $$
 BEGIN
     RETURN QUERY
-    SELECT *
+    SELECT t.gp_segment_id,
+           t.move_success,
+           regexp_replace(t.oldpath, '^.*/(.+)$', '\1') as oldpath,
+           regexp_replace(
+               regexp_replace(t.newpath, '^.*/(.+)$', '\1'),
+               '^(([^_]+_){2}).*_([^_/]+)$',
+               '\1XXX_\3') AS newpath
     FROM   run_with_retry(
                'SELECT * FROM gp_move_orphaned_files(''' || target_location || ''')')
            AS t(gp_segment_id int, move_success bool,
@@ -124,7 +132,13 @@ RETURNS TABLE(gp_segment_id int,
               newpath       text) AS $$
 BEGIN
     RETURN QUERY
-    SELECT *
+    SELECT t.gp_segment_id,
+           t.move_success,
+           regexp_replace(t.oldpath, '^.*/(.+)$', '\1') as oldpath,
+           regexp_replace(
+               regexp_replace(t.newpath, '^.*/(.+)$', '\1'),
+               '^(([^_]+_){2}).*_([^_/]+)$',
+               '\1XXX_\3') AS newpath
     FROM   run_with_retry(
                'SELECT * FROM gp_move_orphaned_files_by_tablespace_location('
                || tablespace_oid || ', ''' || target_location || ''')')
@@ -140,7 +154,13 @@ RETURNS TABLE(gp_segment_id int,
               newpath       text) AS $$
 BEGIN
     RETURN QUERY
-    SELECT *
+    SELECT t.gp_segment_id,
+           t.move_success,
+           regexp_replace(t.oldpath, '^.*/(.+)$', '\1') as oldpath,
+           regexp_replace(
+               regexp_replace(t.newpath, '^.*/(.+)$', '\1'),
+               '^(([^_]+_){2}).*_([^_/]+)$',
+               '\1XXX_\3') AS newpath
     FROM   run_with_retry(
                'SELECT * FROM gp_move_orphaned_files_by_tablespace_location(ARRAY['''
                || array_to_string(tablespace_location_pairs, ''',''') || ''']::text[])')
@@ -161,8 +181,8 @@ reset client_min_messages;
 --
 -- Test for checking orphaned files
 --
--- create a tables that we'll delete the files to test missing files
--- heap table inside checkfile_ts this creates database directory 
+-- create tables that we'll delete the files to test missing files
+-- heap table inside checkfile_ts, this creates database directory 
 create table checkmissing_heap_usr_ts(a int, b int, c int);
 insert into checkmissing_heap_usr_ts select i,i,i from generate_series(1,100)i;
 -- heap table inside pg_default this creates database directory
@@ -218,34 +238,26 @@ select oid from pg_database where datname = current_database() \gset
 -- check orphaned files, note that this forces a checkpoint internally.
 set client_min_messages = ERROR;
 select * from run_orphaned_files_view();
- gp_segment_id |   filename    |                       filepath                       
----------------+---------------+------------------------------------------------------
-             1 | 4000000000.42 | global/4000000000.42
+ gp_segment_id |   filename    |          filepath           
+---------------+---------------+-----------------------------
+             1 | 4000000002.42 | pg_tblspc/XXX/4000000002.42
+             1 | 4000000002    | pg_tblspc/XXX/4000000002
+             1 | 4000000001    | base/XXX/4000000001
+             1 | 4000000001.42 | base/XXX/4000000001.42
              1 | 4000000000    | global/4000000000
-             1 | 4000000002.42 | pg_tblspc/XXX
-             1 | 4000000002    | pg_tblspc/XXX
-             1 | 4000000001.42 | base/XXX
-             1 | 4000000001    | base/XXX
-            -1 | 4000000000.3  | global/4000000000.3
+             1 | 4000000000.42 | global/4000000000.42
+            -1 | 4000000002    | pg_tblspc/XXX/4000000002
+            -1 | 4000000002.3  | pg_tblspc/XXX/4000000002.3
+            -1 | 4000000001    | base/XXX/4000000001
+            -1 | 4000000001.3  | base/XXX/4000000001.3
             -1 | 4000000000    | global/4000000000
-            -1 | 4000000002    | pg_tblspc/XXX
-            -1 | 4000000002.3  | pg_tblspc/XXX
-            -1 | 4000000001    | base/XXX
-            -1 | 4000000001.3  | base/XXX
+            -1 | 4000000000.3  | global/4000000000.3
 (12 rows)
 
 reset client_min_messages;
 --
 -- Test error cases for moving orphaned files
 --
--- store oids, so that we can use them in the tests
--- We have to use temp tables since in this regression test not expanded psql variables
-create temp table pg_global_oid(oid oid);
-insert into pg_global_oid select oid from pg_tablespace where spcname = 'pg_global';
-create temp table pg_default_oid(oid oid);
-insert into pg_default_oid select oid from pg_tablespace where spcname = 'pg_default';
-create temp table checkfile_ts_oid(oid oid);
-insert into checkfile_ts_oid select oid from pg_tablespace where spcname = 'checkfile_ts';
 -- firstly, should not move anything if the target directory doesn't exist
 select * from mv_files_wrp('@testtablespace@/non_exist_dir');
 ERROR:  could not rename XXX
@@ -253,13 +265,13 @@ HINT:  Operation was interrupted XXX
 CONTEXT: XXX
 PL/pgSQL function XXX
 PL/pgSQL function XXX
-select * from mv_files_by_ts_wrp((select oid from checkfile_ts_oid), '@testtablespace@/non_exist_dir');
+select * from mv_files_by_ts_wrp((select oid from pg_tablespace where spcname = 'checkfile_ts'), '@testtablespace@/non_exist_dir');
 ERROR:  could not rename XXX
 HINT:  Operation was interrupted XXX
 CONTEXT: XXX
 PL/pgSQL function XXX
 PL/pgSQL function XXX
-select * from mv_files_by_ts_wrp(array[format('{%s,%s}', (select oid from checkfile_ts_oid), '@testtablespace@/non_exist_dir')]);
+select * from mv_files_by_ts_wrp(array[format('{%s,%s}', (select oid from pg_tablespace where spcname = 'checkfile_ts'), '@testtablespace@/non_exist_dir')]);
 ERROR:  could not rename XXX
 HINT:  Operation was interrupted XXX
 CONTEXT: XXX
@@ -274,13 +286,13 @@ HINT:  Operation was interrupted XXX
 CONTEXT: XXX
 PL/pgSQL function XXX
 PL/pgSQL function XXX
-select * from mv_files_by_ts_wrp((select oid from checkfile_ts_oid), '@testtablespace@/moving_orphaned_file_test');
+select * from mv_files_by_ts_wrp((select oid from pg_tablespace where spcname = 'checkfile_ts'), '@testtablespace@/moving_orphaned_file_test');
 ERROR:  cannot rename XXX
 HINT:  Operation was interrupted XXX
 CONTEXT: XXX
 PL/pgSQL function XXX
 PL/pgSQL function XXX
-select * from mv_files_by_ts_wrp(array[format('{%s,%s}', (select oid from checkfile_ts_oid), '@testtablespace@/moving_orphaned_file_test')]);
+select * from mv_files_by_ts_wrp(array[format('{%s,%s}', (select oid from pg_tablespace where spcname = 'checkfile_ts'), '@testtablespace@/moving_orphaned_file_test')]);
 ERROR:  cannot rename XXX
 HINT:  Operation was interrupted XXX
 CONTEXT: XXX
@@ -301,20 +313,20 @@ reset role;
 drop role check_file_test_role;
 -- check that orphaned files are still there
 select * from run_orphaned_files_view();
- gp_segment_id |   filename    |                       filepath                       
----------------+---------------+------------------------------------------------------
-             1 | 4000000000.42 | global/4000000000.42
+ gp_segment_id |   filename    |          filepath           
+---------------+---------------+-----------------------------
+             1 | 4000000002.42 | pg_tblspc/XXX/4000000002.42
+             1 | 4000000002    | pg_tblspc/XXX/4000000002
+             1 | 4000000001    | base/XXX/4000000001
+             1 | 4000000001.42 | base/XXX/4000000001.42
              1 | 4000000000    | global/4000000000
-             1 | 4000000002.42 | pg_tblspc/XXX
-             1 | 4000000002    | pg_tblspc/XXX
-             1 | 4000000001.42 | base/XXX
-             1 | 4000000001    | base/XXX
-            -1 | 4000000000.3  | global/4000000000.3
+             1 | 4000000000.42 | global/4000000000.42
+            -1 | 4000000002    | pg_tblspc/XXX/4000000002
+            -1 | 4000000002.3  | pg_tblspc/XXX/4000000002.3
+            -1 | 4000000001    | base/XXX/4000000001
+            -1 | 4000000001.3  | base/XXX/4000000001.3
             -1 | 4000000000    | global/4000000000
-            -1 | 4000000002    | pg_tblspc/XXX
-            -1 | 4000000002.3  | pg_tblspc/XXX
-            -1 | 4000000001    | base/XXX
-            -1 | 4000000001.3  | base/XXX
+            -1 | 4000000000.3  | global/4000000000.3
 (12 rows)
 
 --
@@ -329,26 +341,25 @@ select datadir from gp_segment_configuration where content = -1 and role = 'p' \
 create temp table masterdir(dir text);
 insert into masterdir select datadir || '/moving_orphaned_file_test' from gp_segment_configuration where content = -1 and role = 'p';
 -- should correctly move the orphaned files, filter out exact paths as that could vary
-select gp_segment_id, move_success, regexp_replace(oldpath, '^.*/(.+)$', '\1') as oldpath, regexp_replace(newpath, '^.*/(.+)$', '\1') as newpath
-from mv_files_by_ts_wrp(array[
-   format('{%s,%s}', (select oid from pg_global_oid), (select dir from masterdir)),
-   format('{%s,%s}', (select oid from pg_default_oid), (select dir from masterdir)),
-   format('{%s,%s}', (select oid from checkfile_ts_oid), '@testtablespace@/moving_orphaned_file_test')
+select * from mv_files_by_ts_wrp(array[
+   format('{%s,%s}', (select oid from pg_tablespace where spcname = 'pg_global'), (select dir from masterdir)),
+   format('{%s,%s}', (select oid from pg_tablespace where spcname = 'pg_default'), (select dir from masterdir)),
+   format('{%s,%s}', (select oid from pg_tablespace where spcname = 'checkfile_ts'), '@testtablespace@/moving_orphaned_file_test')
 ]);
- gp_segment_id | move_success |    oldpath    |                          newpath                          
----------------+--------------+---------------+-----------------------------------------------------------
+ gp_segment_id | move_success |    oldpath    |           newpath           
+---------------+--------------+---------------+-----------------------------
             -1 | t            | 4000000000    | seg-1_global_4000000000
             -1 | t            | 4000000000.3  | seg-1_global_4000000000.3
              1 | t            | 4000000000    | seg1_global_4000000000
              1 | t            | 4000000000.42 | seg1_global_4000000000.42
-            -1 | t            | 4000000001    | seg-1_base_XXX
-            -1 | t            | 4000000001.3  | seg-1_base_XXX
-             1 | t            | 4000000001    | seg1_base_XXX
-             1 | t            | 4000000001.42 | seg1_base_XXX
-            -1 | t            | 4000000002    | seg-1_pg_tblspc_XXX
-            -1 | t            | 4000000002.3  | seg-1_pg_tblspc_XXX
-             1 | t            | 4000000002    | seg1_pg_tblspc_XXX
-             1 | t            | 4000000002.42 | seg1_pg_tblspc_XXX
+            -1 | t            | 4000000001    | seg-1_base_XXX_4000000001
+            -1 | t            | 4000000001.3  | seg-1_base_XXX_4000000001.3
+             1 | t            | 4000000001    | seg1_base_XXX_4000000001
+             1 | t            | 4000000001.42 | seg1_base_XXX_4000000001.42
+            -1 | t            | 4000000002    | seg-1_pg_XXX_4000000002
+            -1 | t            | 4000000002.3  | seg-1_pg_XXX_4000000002.3
+             1 | t            | 4000000002    | seg1_pg_XXX_4000000002
+             1 | t            | 4000000002.42 | seg1_pg_XXX_4000000002.42
 (12 rows)
 
 -- no orphaned files can be found now
@@ -414,44 +425,43 @@ select oid from pg_database where datname = current_database() \gset
 \cd :oid
 \! touch 4000000002 4000000002.42
 select * from run_orphaned_files_view();
- gp_segment_id |   filename    |                       filepath                       
----------------+---------------+------------------------------------------------------
-             1 | 4000000000.42 | global/4000000000.42
+ gp_segment_id |   filename    |          filepath           
+---------------+---------------+-----------------------------
+             1 | 4000000002.42 | pg_tblspc/XXX/4000000002.42
+             1 | 4000000002    | pg_tblspc/XXX/4000000002
+             1 | 4000000001    | base/XXX/4000000001
+             1 | 4000000001.42 | base/XXX/4000000001.42
              1 | 4000000000    | global/4000000000
-             1 | 4000000002.42 | pg_tblspc/XXX
-             1 | 4000000002    | pg_tblspc/XXX
-             1 | 4000000001.42 | base/XXX
-             1 | 4000000001    | base/XXX
-            -1 | 4000000000.3  | global/4000000000.3
+             1 | 4000000000.42 | global/4000000000.42
+            -1 | 4000000002    | pg_tblspc/XXX/4000000002
+            -1 | 4000000002.3  | pg_tblspc/XXX/4000000002.3
+            -1 | 4000000001    | base/XXX/4000000001
+            -1 | 4000000001.3  | base/XXX/4000000001.3
             -1 | 4000000000    | global/4000000000
-            -1 | 4000000002    | pg_tblspc/XXX
-            -1 | 4000000002.3  | pg_tblspc/XXX
-            -1 | 4000000001    | base/XXX
-            -1 | 4000000001.3  | base/XXX
+            -1 | 4000000000.3  | global/4000000000.3
 (12 rows)
 
 -- move orphaned files from checkfile_ts at first
-select gp_segment_id, move_success, regexp_replace(oldpath, '^.*/(.+)$', '\1') as oldpath, regexp_replace(newpath, '^.*/(.+)$', '\1') as newpath
-from mv_files_by_ts_wrp((select oid from checkfile_ts_oid), '@testtablespace@/moving_orphaned_file_test');
- gp_segment_id | move_success |    oldpath    |                          newpath                          
----------------+--------------+---------------+-----------------------------------------------------------
-            -1 | t            | 4000000002    | seg-1_pg_tblspc_XXX
-            -1 | t            | 4000000002.3  | seg-1_pg_tblspc_XXX
-             1 | t            | 4000000002    | seg1_pg_tblspc_XXX
-             1 | t            | 4000000002.42 | seg1_pg_tblspc_XXX
+select * from mv_files_by_ts_wrp((select oid from pg_tablespace where spcname = 'checkfile_ts'),
+                                 '@testtablespace@/moving_orphaned_file_test');
+ gp_segment_id | move_success |    oldpath    |          newpath          
+---------------+--------------+---------------+---------------------------
+            -1 | t            | 4000000002    | seg-1_pg_XXX_4000000002
+            -1 | t            | 4000000002.3  | seg-1_pg_XXX_4000000002.3
+             1 | t            | 4000000002    | seg1_pg_XXX_4000000002
+             1 | t            | 4000000002.42 | seg1_pg_XXX_4000000002.42
 (4 rows)
 
 -- move remaining orphaned files from pg_global and pg_default
-select gp_segment_id, move_success, regexp_replace(oldpath, '^.*/(.+)$', '\1') as oldpath, regexp_replace(newpath, '^.*/(.+)$', '\1') as newpath
-from mv_files_wrp((select dir from masterdir));
- gp_segment_id | move_success |    oldpath    |            newpath            
----------------+--------------+---------------+-------------------------------
-            -1 | t            | 4000000001    | seg-1_base_XXX
-            -1 | t            | 4000000001.3  | seg-1_base_XXX
+select * from mv_files_wrp((select dir from masterdir));
+ gp_segment_id | move_success |    oldpath    |           newpath           
+---------------+--------------+---------------+-----------------------------
+            -1 | t            | 4000000001    | seg-1_base_XXX_4000000001
+            -1 | t            | 4000000001.3  | seg-1_base_XXX_4000000001.3
             -1 | t            | 4000000000    | seg-1_global_4000000000
             -1 | t            | 4000000000.3  | seg-1_global_4000000000.3
-             1 | t            | 4000000001    | seg1_base_XXX
-             1 | t            | 4000000001.42 | seg1_base_XXX
+             1 | t            | 4000000001    | seg1_base_XXX_4000000001
+             1 | t            | 4000000001.42 | seg1_base_XXX_4000000001.42
              1 | t            | 4000000000    | seg1_global_4000000000
              1 | t            | 4000000000.42 | seg1_global_4000000000.42
 (8 rows)
@@ -480,7 +490,6 @@ seg-1_pg_tblspc_XXX
 seg-1_pg_tblspc_XXX
 seg1_pg_tblspc_XXX
 seg1_pg_tblspc_XXX
-\! rm -rf moving_orphaned_file_test/*
 -- should not affect existing tables
 select count(*) from checkmissing_heap_usr_ts;
  count 
@@ -518,10 +527,7 @@ select count(*) from checkmissing_co_def_ts;
    100
 (1 row)
 
--- remove temp tables; otherwise, gp_check_missing_files will show false results =)
-drop table pg_global_oid;
-drop table pg_default_oid;
-drop table checkfile_ts_oid;
+-- remove temp table; otherwise, gp_check_missing_files will show false results =)
 drop table masterdir;
 --
 -- Tests for missing files
@@ -688,24 +694,27 @@ drop table checknormal_co_def_ts;
 -- remove masterdir used to store moved orphaned files
 select datadir from gp_segment_configuration where content = -1 and role = 'p' \gset
 \cd :datadir
-\! rm -rf moving_orphaned_file_test
--- cleanup orphaned files in pg_global and pg_default if they still exist
+\! rm -r moving_orphaned_file_test
+-- cleanup testtablespace dirrectory
+\! rm @testtablespace@/rm_files.sh
+\! rm -r @testtablespace@/moving_orphaned_file_test
+-- cleanup orphaned files if they still exist
 select datadir from gp_segment_configuration where content = -1 and role = 'p' \gset
 \cd :datadir/global
-\! rm -rf 4000000000 4000000000.3
+\! rm -f 4000000000 4000000000.3
 select datadir from gp_segment_configuration where content =  1 and role = 'p' \gset
 \cd :datadir/global
-\! rm -rf 4000000000 4000000000.42
+\! rm -f 4000000000 4000000000.42
 select datadir from gp_segment_configuration where content = -1 and role = 'p' \gset
 \cd :datadir/base
 select oid from pg_database where datname = current_database() \gset
 \cd :oid
-\! rm -rf 4000000001 4000000001.3
+\! rm -f 4000000001 4000000001.3
 select datadir from gp_segment_configuration where content =  1 and role = 'p' \gset
 \cd :datadir/base
 select oid from pg_database where datname = current_database() \gset
 \cd :oid
-\! rm -rf 4000000001 4000000001.42
+\! rm -f 4000000001 4000000001.42
 \cd @testtablespace@
 select dbid from gp_segment_configuration where content = -1 and role = 'p' \gset
 \cd :dbid
@@ -713,7 +722,7 @@ select get_tablespace_version_directory_name() as version_dir \gset
 \cd :version_dir
 select oid from pg_database where datname = current_database() \gset
 \cd :oid
-\! rm -rf 4000000002 4000000002.3
+\! rm -f 4000000002 4000000002.3
 \cd @testtablespace@
 select dbid from gp_segment_configuration where content =  1 and role = 'p' \gset
 \cd :dbid
@@ -721,10 +730,9 @@ select get_tablespace_version_directory_name() as version_dir \gset
 \cd :version_dir
 select oid from pg_database where datname = current_database() \gset
 \cd :oid
-\! rm -rf 4000000002 4000000002.42
+\! rm -f 4000000002 4000000002.42
 -- drop extension, database and tablespace
 DROP EXTENSION gp_check_functions;
 \c regression
-\! rm -rf @testtablespace@/*;
 DROP DATABASE checkfile_db;
 DROP TABLESPACE checkfile_ts;
