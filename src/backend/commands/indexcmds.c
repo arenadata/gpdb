@@ -2708,8 +2708,8 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 			 persistence != RELPERSISTENCE_TEMP)
 		ReindexRelationConcurrently(indOid, options);
 	else
-<<<<<<< HEAD
-		reindex_index(indOid, false, persistence, options);
+		reindex_index(indOid, false, persistence,
+					  options | REINDEXOPT_REPORT_PROGRESS);
 
 	/*
 	 * Reindex on partitioned index will do the reindex for each index in
@@ -2732,10 +2732,6 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 									GetAssignedOidsForDispatch(),
 									NULL);
 	}
-=======
-		reindex_index(indOid, false, persistence,
-					  options | REINDEXOPT_REPORT_PROGRESS);
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 }
 
 /*
