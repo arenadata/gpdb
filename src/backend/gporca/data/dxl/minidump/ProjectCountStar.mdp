@@ -829,7 +829,7 @@ SELECT (SELECT 1 + count(*) FROM x) FROM y;
                         <dxl:ProjElem ColId="18" Alias="count">
                           <dxl:AggFunc AggMdid="0.2803.1.0" AggDistinct="false" AggStage="Final" AggKind="n" AggArgTypes="">
                             <dxl:ValuesList ParamType="aggargs">
-                              <dxl:Ident ColId="22" ColName="ColRef_0022" TypeMdid="0.20.1.0"/>
+                            <dxl:Ident ColId="22" ColName="ColRef_0022" TypeMdid="0.20.1.0"/>
                             </dxl:ValuesList>
                             <dxl:ValuesList ParamType="aggdirectargs"/>
                             <dxl:ValuesList ParamType="aggorder"/>

@@ -795,7 +795,7 @@
                       <dxl:ProjElem ColId="18" Alias="count">
                         <dxl:AggFunc AggMdid="0.2803.1.0" AggDistinct="false" AggStage="Final" AggKind="n" AggArgTypes="">
                           <dxl:ValuesList ParamType="aggargs">
-                            <dxl:Ident ColId="21" ColName="ColRef_0021" TypeMdid="0.20.1.0"/>
+                          <dxl:Ident ColId="21" ColName="ColRef_0021" TypeMdid="0.20.1.0"/>
                           </dxl:ValuesList>
                           <dxl:ValuesList ParamType="aggdirectargs"/>
                           <dxl:ValuesList ParamType="aggorder"/>
