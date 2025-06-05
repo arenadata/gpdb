@@ -1,11 +1,7 @@
 use strict;
 use warnings;
 use TestLib;
-<<<<<<< HEAD
-use Test::More tests => 11;
-=======
 use Test::More tests => 15;
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 use FindBin;
 use lib $FindBin::RealBin;
