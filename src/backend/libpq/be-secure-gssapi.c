@@ -122,10 +122,6 @@ be_gssapi_write(Port *port, void *ptr, size_t len)
 	 */
 	while (bytes_to_encrypt || PqGSSSendLength)
 	{
-		OM_uint32	major,
-					minor;
-		gss_buffer_desc input,
-					output;
 		int			conf_state = 0;
 		uint32		netlen;
 
