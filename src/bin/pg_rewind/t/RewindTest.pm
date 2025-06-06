@@ -252,28 +252,15 @@ sub run_pg_rewind
 	my $standby_connstr = $node_standby->connstr('postgres');
 	my $tmp_folder      = TestLib::tempdir;
 
-	$params{stop_master_mode} = 0 unless defined $params{stop_master_mode};
 	$params{do_not_start_master} = 0 unless defined $params{do_not_start_master};
 
 	# Append the rewind-specific role to the connection string.
 	$standby_connstr = "$standby_connstr user=rewind_user";
 
-<<<<<<< HEAD
-	# Stop the master and be ready to perform the rewind
-	if ($params{stop_master_mode})
-	{
-		$node_master->stop($params{stop_master_mode});
-	}
-	else
-	{
-		$node_master->stop;
-	}
-=======
 	# Stop the master and be ready to perform the rewind.  The cluster
 	# needs recovery to finish once, and pg_rewind makes sure that it
 	# happens automatically.
 	$node_master->stop('immediate');
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 	# At this point, the rewind processing is ready to run.
 	# We now have a very simple scenario with a few diverged WAL record.
@@ -316,15 +303,6 @@ sub run_pg_rewind
 			[
 				'pg_rewind',                      "--debug",
 				"--source-server",                $standby_connstr,
-<<<<<<< HEAD
-				"--target-pgdata=$master_pgdata", "-R",
-				"--no-sync"
-			],
-			'pg_rewind remote');
-
-		# Check that standby.signal has been created.
-		ok(-e "$master_pgdata/standby.signal");
-=======
 				"--target-pgdata=$master_pgdata", "--no-sync",
 				"--write-recovery-conf"
 			],
@@ -334,7 +312,6 @@ sub run_pg_rewind
 		# was requested.
 		ok( -e "$master_pgdata/standby.signal",
 			'standby.signal created after pg_rewind');
->>>>>>> 80831bcdbe80a6ca7f22105e32c2cbb54e125c4c
 
 		# Now, when pg_rewind apparently succeeded with minimal permissions,
 		# add REPLICATION privilege.  So we could test that new standby
