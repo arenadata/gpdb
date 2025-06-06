@@ -234,6 +234,9 @@ INSERT INTO clstr_expression(a, b) SELECT g.i % 42, 'prefix'||g.i FROM generate_
 CREATE INDEX clstr_expression_minus_a ON clstr_expression ((-a), b);
 CREATE INDEX clstr_expression_upper_b ON clstr_expression ((upper(b)));
 
+-- GPDB: analyze table to make plan closer to upstream
+ANALYZE clstr_expression;
+
 -- verify indexes work before cluster
 BEGIN;
 SET LOCAL enable_seqscan = false;
