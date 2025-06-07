@@ -86,7 +86,7 @@ $$;
 
 -- NOTE: this function does the same lock and checks as __gp_check_orphaned_files_func(),
 -- and it needs to be that way. 
-CREATE OR REPLACE FUNCTION gp_move_orphaned_files(target_location TEXT) RETURNS TABLE (
+CREATE FUNCTION gp_move_orphaned_files(target_location TEXT) RETURNS TABLE (
     gp_segment_id INT,
     move_success BOOL,
     oldpath TEXT,
