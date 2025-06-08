@@ -286,9 +286,8 @@ BEGIN
     -- lock pg_class so that no one will be adding/altering relfilenodes
     -- NOTE: This operation may pause and wait if pg_class is already locked
     -- by another transaction! We intentionally do not use NOWAIT here.
-    -- In GPDB, NOWAIT inside PL/pgSQL does not behave as expected: 
-    -- instead of throwing exception when the lock is unavailable, 
-    -- it may silently wait due to distributed planning and segment involvement.
+    -- NOWAIT inside PL/pgSQL does not behave as expected: instead of throwing
+    -- exception when the lock is unavailable, it silently waits.
     LOCK TABLE pg_class IN SHARE MODE;
 
     -- make sure no other active/idle transaction is running
@@ -381,9 +380,8 @@ BEGIN
     -- lock pg_class so that no one will be adding/altering relfilenodes
     -- NOTE: This operation may pause and wait if pg_class is already locked
     -- by another transaction! We intentionally do not use NOWAIT here.
-    -- In GPDB, NOWAIT inside PL/pgSQL does not behave as expected: 
-    -- instead of throwing exception when the lock is unavailable, 
-    -- it may silently wait due to distributed planning and segment involvement.
+    -- NOWAIT inside PL/pgSQL does not behave as expected: instead of throwing
+    -- exception when the lock is unavailable, it silently waits.
     LOCK TABLE pg_class IN SHARE MODE;
 
     -- make sure no other active/idle transaction is running
