@@ -4206,7 +4206,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 		TranslateDXLProjList(project_list_output_dxlnode, &base_table_context,
 							 child_contexts, output_context);
 
-	m_has_returning = m_has_returning || plan->targetlist != NIL;
+	m_has_returning |= plan->targetlist != NIL;
 
 	if (plan->targetlist != NIL &&
 		md_rel->GetRelDistribution() == IMDRelation::EreldistrReplicated)
