@@ -225,11 +225,9 @@ CLogicalDML::PopCopyWithRemappedColumns(CMemoryPool *mp,
 
 	m_ptabdesc->AddRef();
 
-	CLogicalDML *result = GPOS_NEW(mp) CLogicalDML(
+	return GPOS_NEW(mp) CLogicalDML(
 		mp, m_edmlop, m_ptabdesc, colref_array, pdrgpcrOutput, m_pbsModified,
 		pcrAction, pcrCtid, pcrSegmentId, pcrTupleOid, pcrTableOid);
-
-	return result;
 }
 
 //---------------------------------------------------------------------------
