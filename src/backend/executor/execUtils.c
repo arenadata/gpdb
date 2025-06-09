@@ -686,9 +686,6 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 	if (tlist_item)
 		return false;			/* tlist too long */
 
-	if (IsA(ps->plan, DynamicSeqScan))
-		return false;
-
 	return true;
 }
 
