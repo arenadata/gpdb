@@ -28,7 +28,8 @@
 -- end_matchsubs
 
 --start_ignore
--- send sighup to reread configuration, otherwise dtx recovery sometimes blocks run_with_retry
+-- Workaround: send SIGHUP to avoid rare dtx recovery blocking issue in run_with_retry.
+-- Blocker is always a long-running pg_prepared_xacts scan; see log for details.
 \! gpstop -u
 --end_ignore
 
@@ -72,8 +73,8 @@ BEGIN
                             FROM (
                             SELECT -1 AS gp_segment_id, * FROM pg_stat_activity
                             UNION ALL
-                            SELECT b.gp_segment_id, a.*
-                            FROM gp_dist_random('pg_stat_activity') AS a, gp_dist_random('gp_id') AS b
+                            SELECT gp_execution_segment() AS gp_segment_id, *
+                            FROM gp_dist_random('pg_stat_activity')
                             ) AS all_sessions
                             WHERE sess_id <> -1                                   -- exclude the system session
                             AND sess_id <> current_setting('gp_session_id')::int  -- exclude the current one
