@@ -16,14 +16,14 @@
 CREATE OR REPLACE VIEW __get_exist_files AS
 WITH Tablespaces AS (
 -- 1. The default tablespace
-    SELECT (SELECT oid FROM pg_tablespace WHERE spcname = 'pg_default') AS tablespace,
-           'base/' || d.oid::text AS dirname
-    FROM pg_database d
-    WHERE d.datname = current_database()
+    SELECT t.oid AS tablespace, 'base/' || d.oid::text AS dirname
+    FROM pg_tablespace t, pg_database d 
+    WHERE t.spcname = 'pg_default' AND d.datname = current_database()
     UNION
 -- 2. The global tablespace
-    SELECT (SELECT oid FROM pg_tablespace WHERE spcname = 'pg_global') AS tablespace,
-           'global' AS dirname
+    SELECT oid AS tablespace, 'global' AS dirname
+    FROM pg_tablespace
+    WHERE spcname = 'pg_global'
     UNION
 -- 3. The user-defined tablespaces
     SELECT ts.oid AS tablespace,
