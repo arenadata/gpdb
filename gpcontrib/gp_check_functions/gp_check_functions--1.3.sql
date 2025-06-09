@@ -268,12 +268,12 @@ GRANT SELECT ON __check_orphaned_files TO public;
 --
 -- @doc:
 --        (Internal UDF, shouldn't be exposed)
---        UDF to retrieve orphaned files and their paths
+--        UDF to retrieve orphaned files and their paths.
+--
+--        Locks pg_class in shared mode and ensures no transactions are running.
+--        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-
--- NOTE: this function does the same lock and checks as gp_move_orphaned_files(),
--- and it needs to be that way. 
 CREATE OR REPLACE FUNCTION __gp_check_orphaned_files_func()
 RETURNS TABLE (
     gp_segment_id int,
@@ -347,13 +347,14 @@ GRANT USAGE ON TYPE __gp_move_orphaned_files_pairs TO public;
 --        newpath text - absolute pathname after the move
 --
 -- @doc:
---        Internal helper invoked by the user‑facing wrappers. It repeats the
---        same catalog locks and safety checks as __gp_check_orphaned_files_func
---        and then renames each orphaned file to the designated target_path.
+--        Internal helper invoked by the user‑facing wrappers.
 --
 --        Because the move relies on the rename syscall, the target
 --        directory must reside on the same filesystem as the source file or
 --        the operation will fail with "Invalid cross‑device link".
+--
+--        Locks pg_class in shared mode and ensures no transactions are running.
+--        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION __gp_move_orphaned_files(
@@ -493,8 +494,10 @@ GRANT EXECUTE ON FUNCTION __gp_move_orphaned_files(
 --        multiple filesystems, use
 --        gp_move_orphaned_files_by_tablespace_location instead.
 --
+--        Locks pg_class in shared mode and ensures no transactions are running.
+--        May pause and wait if pg_class is already locked by another process.
+--
 --------------------------------------------------------------------------------
--- NOTE: lock pg_class in shared mode and ensure no one transactions are running
 CREATE OR REPLACE FUNCTION gp_move_orphaned_files(target_location text) RETURNS TABLE (
     gp_segment_id int,
     move_success bool,
@@ -531,8 +534,10 @@ GRANT EXECUTE ON FUNCTION gp_move_orphaned_files(text) TO public;
 --        Moves orphaned files belonging to a specific tablespace
 --        to the supplied target directory.
 --
+--        Locks pg_class in shared mode and ensures no transactions are running.
+--        May pause and wait if pg_class is already locked by another process.
+--
 --------------------------------------------------------------------------------
--- NOTE: lock pg_class in shared mode and ensure no one transactions are running
 CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
         tablespace_oid  oid,
         target_location text
@@ -582,8 +587,10 @@ GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(oid, tex
 --        Moves orphaned files from multiple tablespaces to their
 --        specified target directories.
 --
+--        Locks pg_class in shared mode and ensures no transactions are running.
+--        May pause and wait if pg_class is already locked by another process.
+--
 --------------------------------------------------------------------------------
--- NOTE: lock pg_class in shared mode and ensure no one transactions are running
 CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
         tablespace_location_pairs text[]
 )
