@@ -3519,12 +3519,12 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		else
 		{
 			ExplainPropertyText("Sort Method", sortMethod, es);
-			ExplainPropertyInteger("Sort Space Used", "kB", (int64) kb(totalSpaceUsed), es);
+			ExplainPropertyInteger("Sort Space Used", "kB", totalSpaceUsed, es);
 			ExplainPropertyText("Sort Space Type", spaceType, es);
 			if (es->verbose)
 			{
-				ExplainPropertyInteger("Sort Max Segment Memory", "kB", (int64) kb(peakSpaceUsed), es);
-				ExplainPropertyInteger("Sort Avg Segment Memory", "kB", (int64) kb(avgSpaceUsed), es);
+				ExplainPropertyInteger("Sort Max Segment Memory", "kB", peakSpaceUsed, es);
+				ExplainPropertyInteger("Sort Avg Segment Memory", "kB", avgSpaceUsed, es);
 				ExplainPropertyInteger("Sort Segments", NULL, sortstate->shared_info->num_workers, es);
 			}
 		}
@@ -3667,7 +3667,7 @@ show_hashagg_info(AggState *aggstate, ExplainState *es)
 	if (aggstate->hash_batches_used > 0)
 	{
 		ExplainPropertyInteger("Disk Usage", "kB",
-							   (int64) kb(aggstate->hash_disk_used), es);
+							   aggstate->hash_disk_used, es);
 		ExplainPropertyInteger("HashAgg Batches", NULL,
 							   aggstate->hash_batches_used, es);
 	}
