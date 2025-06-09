@@ -164,7 +164,8 @@ initNextTableToScan(DynamicSeqScanState *node)
 	node->seqScanState = ExecInitSeqScanForPartition(&plan->seqscan, estate,
 													 currentRelation);
 
-	if (!node->seqScanState->ss.ps.ps_ResultTupleSlot)
+	if (node->seqScanState->ss.ps.resultops != &TTSOpsVirtual &&
+		!node->seqScanState->ss.ps.ps_ResultTupleSlot)
 		return false;
 
 	return true;
