@@ -252,3 +252,73 @@ $$ language plpgsql;
 1: drop function createTables(n text);
 1: drop function getTableSegFiles
    (t regclass, out gp_contentid smallint, out filepath text);
+
+
+-- Test case 3
+-- Check that table files are not deleted in the case of prepared transaction
+
+-- Don't create checkpoints on the segment number 1
+1: select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+
+-- Stop after `MyPgXact->delayChkpt = false` and before `PostPrepare_smgr()`
+-- Stop at the beginning of the checkpointer loop
+1: select gp_inject_fault_infinite('end_prepare_two_phase', 'suspend', dbid),
+          gp_inject_fault_infinite('ckpt_loop_begin', 'suspend', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+
+1&: select gp_wait_until_triggered_fault('end_prepare_two_phase', 1, dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+
+2&: create table t(i int) distributed by (i);
+1<:
+
+1&: select gp_wait_until_triggered_fault('ckpt_loop_begin', 1, dbid)
+      from gp_segment_configuration
+     where role = 'p' and content = 1;
+
+-- Create a checkpoint and the XLOG_PENDING_DELETE WAL record with RelFileNode
+-- of the created table. No more creating checkpoint
+3: select gp_inject_fault_infinite('checkpoint', 'reset', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+3&: checkpoint;
+1<:
+1: select gp_inject_fault_infinite('ckpt_loop_end', 'suspend', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+1: select gp_inject_fault_infinite('ckpt_loop_begin', 'reset', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+1: select gp_wait_until_triggered_fault('ckpt_loop_end', 1, dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+3<:
+3q:
+1: select gp_inject_fault_infinite('checkpoint', 'skip', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+1: select gp_inject_fault_infinite('ckpt_loop_end', 'reset', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+
+-- Get a segfault on the segment number 1 at the beginning of the prepared
+-- transaction commit
+1: select gp_inject_fault_infinite('finish_prepared_start_of_function', 'segv', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+1: select gp_inject_fault_infinite('end_prepare_two_phase', 'resume', dbid)
+     from gp_segment_configuration
+    where role = 'p' and content = 1;
+1q:
+2<:
+2q:
+
+-- Check that the table files are not removed
+1: select * from t;
+
+-- Cleanup
+1: drop table t;
