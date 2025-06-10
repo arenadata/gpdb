@@ -170,9 +170,6 @@ initNextTableToScan(DynamicSeqScanState *node)
 		!equalTupleDescs(lastTupDesc, partTupDesc, false))
 	{
 		ExecInitResultSlot(planstate, &TTSOpsVirtual);
-		planstate->resultops = &TTSOpsVirtual;
-		planstate->resultopsfixed = true;
-		planstate->resultopsset = true;
 		ExecAssignProjectionInfo(planstate, partTupDesc);
 	}
 
