@@ -164,7 +164,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 		if (partTupDesc->natts < lastTupDesc->natts)
 		{
 			Plan	   *plan = scanState->ps.plan;
-			Const	   *fake = makeConst(INT4OID, -1, InvalidOid, sizeof(int32), (Datum) 0, true, true);
+			Const	   *fake = makeNullConst(INT4OID, -1, InvalidOid);
 			TargetEntry *tle = makeTargetEntry((Expr *) fake, list_length(plan->targetlist) + 1, NULL, false);
 			plan->targetlist = lappend(plan->targetlist, tle);
 		}
