@@ -167,7 +167,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 	PlanState *planstate = &node->seqScanState->ss.ps;
 
 	if (!planstate->ps_ResultTupleSlot &&
-		!equalTupleDescs(lastTupDesc, partTupDesc, false))
+		partTupDesc->natts < lastTupDesc->natts)
 	{
 		ExecInitResultSlot(planstate, &TTSOpsVirtual);
 		ExecAssignProjectionInfo(planstate, partTupDesc);
