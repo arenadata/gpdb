@@ -3,7 +3,7 @@
 1: drop index if exists t_orphaned_r1_i, t_orphaned_c1_i,
                         t_orphaned_r2_i, t_orphaned_c2_i;
 1: drop table if exists t_orphaned_h1, t_orphaned_r1, t_orphaned_c1,
-                        t_orphaned_h2, t_orphaned_r2, t_orphaned_c2;
+                        t_orphaned_h2, t_orphaned_r2, t_orphaned_c2, t;
 -- end_ignore
 
 
