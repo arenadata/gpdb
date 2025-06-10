@@ -164,12 +164,13 @@ initNextTableToScan(DynamicSeqScanState *node)
 	node->seqScanState = ExecInitSeqScanForPartition(&plan->seqscan, estate,
 													 currentRelation);
 
-	PlanState *planstate = &node->seqScanState->ss.ps;
-
-	if (!planstate->ps_ResultTupleSlot &&
-		partTupDesc->natts < lastTupDesc->natts)
+	if (partTupDesc->natts < lastTupDesc->natts)
 	{
-		ExecInitResultSlot(planstate, &TTSOpsVirtual);
+		PlanState *planstate = &node->seqScanState->ss.ps;
+
+		if (!planstate->ps_ResultTupleSlot)
+			ExecInitResultSlot(planstate, &TTSOpsVirtual);
+
 		ExecAssignProjectionInfo(planstate, partTupDesc);
 	}
 
