@@ -102,7 +102,7 @@ select gp_inject_fault('before_read_command', 'segv', dbid)
 \! sleep 2
 \c regression
 
--- All the inject faults has been reset after the coordinator restart
+-- All the inject faults have been reset after the coordinator restart
 
 select force_mirrors_to_catch_up();
 
@@ -168,7 +168,7 @@ drop function createTables();
 
 
 -- Test case 3
--- Check that an orphaned files are not left on segments when the files are
+-- Check that orphaned files are not left on segments when the files are
 -- created after checkpoint
 
 create or replace function getTableSegFiles
