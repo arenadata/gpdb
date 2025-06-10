@@ -171,9 +171,10 @@ initNextTableToScan(DynamicSeqScanState *node)
 		PlanState  *planstate = &node->seqScanState->ss.ps;
 
 		if (!planstate->ps_ResultTupleSlot)
+		{
 			ExecInitResultSlot(planstate, &TTSOpsVirtual);
-
-		ExecAssignProjectionInfo(planstate, partTupDesc);
+			ExecAssignProjectionInfo(planstate, partTupDesc);
+		}
 	}
 
 	return true;
