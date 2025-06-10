@@ -219,13 +219,20 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 	 */
 	estate->es_result_relation_info = estate->es_result_relations;
 
+	/*
+	 * Functions which are settings up the projection of child node
+	 * use plan's targetlist to get types of modifying tuples. So
+	 * set this field here and restore before end of initialization
+	 */
+	node->plan.targetlist = node->targetListProj;
+
 	CmdType operation = estate->es_plannedstmt->commandType;
 	ResultRelInfo *resultRelInfo = estate->es_result_relation_info;
 
 	ExecInitResultTupleSlot(estate, &dmlstate->ps);
 
 	dmlstate->ps.targetlist = (List *)
-						ExecInitExpr((Expr *) node->plan.targetlist,
+						ExecInitExpr((Expr *) node->targetListProj,
 						(PlanState *) dmlstate);
 
 	Plan *outerPlan  = outerPlan(node);
@@ -261,6 +268,9 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 	TupleTableSlot *childResultSlot = outerPlanState(dmlstate)->ps_ResultTupleSlot;
 	ExecAssignProjectionInfo(&dmlstate->ps, childResultSlot->tts_tupleDescriptor);
 
+	/* restore targetlist to emply list as DML node doesn't output */
+	node->plan.targetlist = NULL;
+
 	/*
 	 * Initialize slot to insert/delete using output relation descriptor.
 	 */
@@ -271,7 +281,7 @@ ExecInitDML(DML *node, EState *estate, int eflags)
 	 * the junk filter doesn't need to do anything special there about them
 	 */
 
-	dmlstate->junkfilter = ExecInitJunkFilter(node->plan.targetlist,
+	dmlstate->junkfilter = ExecInitJunkFilter(node->targetListProj,
 			dmlstate->ps.state->es_result_relation_info->ri_RelationDesc->rd_att->tdhasoid,
 			dmlstate->cleanedUpSlot);
 
