@@ -1,10 +1,21 @@
 FROM ubuntu:22.04
 
+ARG UBUNTU_MAIN_MIRROR=http://archive.ubuntu.com/ubuntu
+ARG UBUNTU_UPDATES_MIRROR=http://archive.ubuntu.com/ubuntu
+ARG UBUNTU_BACKPORTS_MIRROR=http://archive.ubuntu.com/ubuntu
+ARG UBUNTU_SECURITY_MIRROR=http://security.ubuntu.com/ubuntu
+
 ARG GPDB_SRC="/home/gpadmin/gpdb_src/"
 
 COPY ./README.Ubuntu.bash $GPDB_SRC
 # Set frontend to avoid kerberos prompt.
-RUN DEBIAN_FRONTEND=noninteractive $GPDB_SRC/README.Ubuntu.bash
+RUN sed -i \
+      -e "s|http://archive.ubuntu.com/ubuntu/ jammy |${UBUNTU_MAIN_MIRROR}/ jammy |g" \
+      -e "s|http://archive.ubuntu.com/ubuntu/ jammy-updates |${UBUNTU_UPDATES_MIRROR}/ jammy-updates |g" \
+      -e "s|http://archive.ubuntu.com/ubuntu/ jammy-backports |${UBUNTU_BACKPORTS_MIRROR}/ jammy-backports |g" \
+      -e "s|http://security.ubuntu.com/ubuntu/ jammy-security |${UBUNTU_SECURITY_MIRROR}/ jammy-security |g" \
+      /etc/apt/sources.list; \
+    DEBIAN_FRONTEND=noninteractive $GPDB_SRC/README.Ubuntu.bash
 RUN apt install -y libxslt1-dev
 
 COPY ./ $GPDB_SRC
