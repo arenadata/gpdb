@@ -140,7 +140,7 @@ GRANT EXECUTE ON FUNCTION __get_aoco_segno_list() TO public;
 --
 --------------------------------------------------------------------------------
 -- return the list of existing files in the database
-CREATE OR REPLACE VIEW __get_exist_files AS
+CREATE VIEW __get_exist_files AS
 WITH Tablespaces AS (
 -- 1. The default tablespace
     SELECT t.oid AS tablespace, 'base/' || d.oid::text AS dirname
@@ -175,7 +175,7 @@ GRANT SELECT ON __get_exist_files TO public;
 --        foreign or virtual tables.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE VIEW __get_expect_files AS
+CREATE VIEW __get_expect_files AS
 SELECT CASE WHEN s.reltablespace = 0 THEN
             (SELECT dattablespace FROM pg_database WHERE datname = current_database())
             ELSE s.reltablespace END AS tablespace, 
@@ -203,7 +203,7 @@ GRANT SELECT ON __get_expect_files TO public;
 --        can handle them gracefully.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE VIEW __get_expect_files_ext AS
+CREATE VIEW __get_expect_files_ext AS
 WITH class_info AS (
   SELECT oid, relname, relstorage, relfilenode,
     CASE WHEN reltablespace = 0 THEN 
@@ -276,7 +276,7 @@ GRANT SELECT ON __check_orphaned_files TO public;
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION __gp_check_orphaned_files_func()
+CREATE FUNCTION __gp_check_orphaned_files_func()
 RETURNS TABLE (
     gp_segment_id int,
     tablespace oid,
@@ -359,7 +359,7 @@ GRANT USAGE ON TYPE __gp_move_orphaned_files_pairs TO public;
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION __gp_move_orphaned_files(
+CREATE FUNCTION __gp_move_orphaned_files(
         tablespace_location_pairs __gp_move_orphaned_files_pairs[],
         process_all_tablespaces bool DEFAULT false)
 RETURNS TABLE (
@@ -500,7 +500,7 @@ GRANT EXECUTE ON FUNCTION __gp_move_orphaned_files(
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION gp_move_orphaned_files(target_location text) RETURNS TABLE (
+CREATE FUNCTION gp_move_orphaned_files(target_location text) RETURNS TABLE (
     gp_segment_id int,
     move_success bool,
     oldpath text,
@@ -540,7 +540,7 @@ GRANT EXECUTE ON FUNCTION gp_move_orphaned_files(text) TO public;
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
+CREATE FUNCTION gp_move_orphaned_files_by_tablespace_location(
         tablespace_oid  oid,
         target_location text
 )
@@ -593,7 +593,7 @@ GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(oid, tex
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
+CREATE FUNCTION gp_move_orphaned_files_by_tablespace_location(
         tablespace_location_pairs text[]
 )
 RETURNS TABLE (

@@ -200,7 +200,7 @@ CREATE TYPE __gp_move_orphaned_files_pairs AS (
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION __gp_move_orphaned_files(
+CREATE FUNCTION __gp_move_orphaned_files(
         tablespace_location_pairs __gp_move_orphaned_files_pairs[],
         process_all_tablespaces bool DEFAULT false)
 RETURNS TABLE (
@@ -381,7 +381,7 @@ GRANT EXECUTE ON FUNCTION gp_move_orphaned_files(text) TO public;
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
+CREATE FUNCTION gp_move_orphaned_files_by_tablespace_location(
         tablespace_oid  oid,
         target_location text
 )
@@ -434,7 +434,7 @@ GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(oid, tex
 --        May pause and wait if pg_class is already locked by another process.
 --
 --------------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION gp_move_orphaned_files_by_tablespace_location(
+CREATE FUNCTION gp_move_orphaned_files_by_tablespace_location(
         tablespace_location_pairs text[]
 )
 RETURNS TABLE (
