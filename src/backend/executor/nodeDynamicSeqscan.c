@@ -163,8 +163,8 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 		if (partTupDesc->natts < lastTupDesc->natts)
 		{
-			Var		   *var = makeVar(list_length(scanState->ps.plan->targetlist) + 1, SelfItemPointerAttributeNumber, OIDOID, -1, InvalidOid, 0);
-			TargetEntry *tle = makeTargetEntry((Expr *) var, list_length(scanState->ps.plan->targetlist) + 1, NULL, false);
+			Const	   *zconst = makeConst(INT4OID, -1, InvalidOid, sizeof(int32), (Datum) 0, true, true);
+			TargetEntry *tle = makeTargetEntry((Expr *) zconst, list_length(scanState->ps.plan->targetlist) + 1, NULL, false);
 			scanState->ps.plan->targetlist = lappend(scanState->ps.plan->targetlist, tle);
 		}
 
