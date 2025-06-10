@@ -93,7 +93,7 @@ select createTables() check_files
 :check_files
 
 -- Get segfault on the coordinator and reconnect after its restart
-select gp_inject_fault('before_read_command', 'segv', dbid)
+select gp_inject_fault('exec_simple_query_start', 'segv', dbid)
   from gp_segment_configuration
  where role = 'p' and content = -1;
 
@@ -265,7 +265,7 @@ select createTables() check_files
 :check_files
 
 -- Get segfault on all segments
-select gp_inject_fault('before_read_command', 'segv', dbid)
+select gp_inject_fault('qe_exec_finished', 'segv', dbid)
   from gp_segment_configuration
  where role = 'p' and content != -1;
 
@@ -315,7 +315,7 @@ select createTables() check_files
 :check_files
 
 -- Get segfault on a segment
-select gp_inject_fault('before_read_command', 'segv', dbid)
+select gp_inject_fault('qe_exec_finished', 'segv', dbid)
   from gp_segment_configuration
  where role = 'p' and content = 1;
 

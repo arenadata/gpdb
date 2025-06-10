@@ -78,7 +78,7 @@ $$ language plpgsql;
 1: ! sh /tmp/gp_orphaned_files.sh;
 
 -- Get segfault on the coordinator and reconnect after its restart
-1: select gp_inject_fault('before_read_command', 'segv', dbid)
+1: select gp_inject_fault('exec_simple_query_start', 'segv', dbid)
      from gp_segment_configuration
     where role = 'p' and content = -1;
 
@@ -188,7 +188,7 @@ $$ language plpgsql;
 1: ! sh /tmp/gp_orphaned_files.sh;
 
 -- Get segfault on all segments
-1: select gp_inject_fault('before_read_command', 'segv', dbid)
+1: select gp_inject_fault('qe_exec_finished', 'segv', dbid)
      from gp_segment_configuration
     where role = 'p' and content != -1;
 
@@ -223,7 +223,7 @@ $$ language plpgsql;
 1: ! sh /tmp/gp_orphaned_files.sh;
 
 -- Get segfault on a segment
-1: select gp_inject_fault('before_read_command', 'segv', dbid)
+1: select gp_inject_fault('qe_exec_finished', 'segv', dbid)
      from gp_segment_configuration
     where role = 'p' and content = 1;
 
