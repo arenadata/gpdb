@@ -163,11 +163,11 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 		if (partTupDesc->natts < lastTupDesc->natts)
 		{
-			Const	   *zconst = makeConst(INT4OID, -1, InvalidOid, sizeof(int32), (Datum) 0, true, true);
-			TargetEntry *tle = makeTargetEntry((Expr *) zconst, list_length(scanState->ps.plan->targetlist) + 1, NULL, false);
-			scanState->ps.plan->targetlist = lappend(scanState->ps.plan->targetlist, tle);
+			Plan	   *plan = scanState->ps.plan;
+			Const	   *fake = makeConst(INT4OID, -1, InvalidOid, sizeof(int32), (Datum) 0, true, true);
+			TargetEntry *tle = makeTargetEntry((Expr *) fake, list_length(plan->targetlist) + 1, NULL, false);
+			plan->targetlist = lappend(plan->targetlist, tle);
 		}
-
 	}
 
 	node->seqScanState = ExecInitSeqScanForPartition(&plan->seqscan, estate,
