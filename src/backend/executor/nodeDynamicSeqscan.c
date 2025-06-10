@@ -116,6 +116,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 	AttrNumber *attMap;
 	Oid		   *pid;
 	Relation	currentRelation;
+	bool		isEqualTupleDescs;
 
 	if (++node->whichPart < node->nOids)
 		pid = &node->partOids[node->whichPart];
@@ -140,6 +141,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 	lastScannedRel = table_open(node->lastRelOid, AccessShareLock);
 	lastTupDesc = RelationGetDescr(lastScannedRel);
 	partTupDesc = RelationGetDescr(scanState->ss_currentRelation);
+	isEqualTupleDescs = equalTupleDescs(lastTupDesc, partTupDesc, true);
 	/*
 	 * FIXME: should we use execute_attr_map_tuple instead? Seems like a
 	 * higher level abstraction that fits the bill
@@ -166,8 +168,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 	PlanState *planstate = &node->seqScanState->ss.ps;
 
-	if (!planstate->ps_ResultTupleSlot &&
-		!equalTupleDescs(lastTupDesc, partTupDesc, false))
+	if (!planstate->ps_ResultTupleSlot && !isEqualTupleDescs)
 	{
 		ExecInitResultSlot(planstate, &TTSOpsVirtual);
 		ExecAssignProjectionInfo(planstate, partTupDesc);
