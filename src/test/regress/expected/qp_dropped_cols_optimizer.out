@@ -16572,7 +16572,6 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
                                                                QUERY PLAN                                                               
 ----------------------------------------------------------------------------------------------------------------------------------------
  Update
-   Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, (DMLAction), t_part.ctid, t_part.tableoid
    ->  Redistribute Motion 3:3  (slice1; segments: 3)
          Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, t_part.ctid, t_part.tableoid, t_part.gp_segment_id, (DMLAction)
          Hash Key: t_part.c1
@@ -16587,7 +16586,7 @@ EXPLAIN (COSTS OFF, VERBOSE) UPDATE t_part SET c1 = 3;
                            ->  Dynamic Seq Scan on public.t_part (dynamic scan id: 1)
                                  Output: t_part.c1, t_part.c2, t_part.c3, t_part.c4, t_part.ctid, t_part.tableoid, t_part.gp_segment_id
  Optimizer: Pivotal Optimizer (GPORCA)
-(16 rows)
+(15 rows)
 
 UPDATE t_part SET c1 = 3;
 SELECT * FROM t_part_1_prt_p2;
