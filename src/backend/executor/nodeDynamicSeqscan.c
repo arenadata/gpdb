@@ -28,6 +28,7 @@
 #include "executor/executor.h"
 #include "executor/instrument.h"
 #include "nodes/execnodes.h"
+#include "nodes/makefuncs.h"
 #include "executor/execPartition.h"
 #include "executor/nodeDynamicSeqscan.h"
 #include "executor/nodeSeqscan.h"
@@ -159,22 +160,18 @@ initNextTableToScan(DynamicSeqScanState *node)
 		 */
 		node->lastRelOid = *pid;
 		pfree(attMap);
+
+		if (partTupDesc->natts < lastTupDesc->natts)
+		{
+			Var		   *var = makeVar(list_length(scanState->ps.plan->targetlist) + 1, SelfItemPointerAttributeNumber, OIDOID, -1, InvalidOid, 0);
+			TargetEntry *tle = makeTargetEntry((Expr *) var, list_length(scanState->ps.plan->targetlist) + 1, NULL, false);
+			scanState->ps.plan->targetlist = lappend(scanState->ps.plan->targetlist, tle);
+		}
+
 	}
 
 	node->seqScanState = ExecInitSeqScanForPartition(&plan->seqscan, estate,
 													 currentRelation);
-
-	PlanState *planstate = &node->seqScanState->ss.ps;
-
-	if (!planstate->ps_ResultTupleSlot &&
-		!equalTupleDescs(lastTupDesc, partTupDesc, false))
-	{
-		ExecInitResultSlot(planstate, &TTSOpsVirtual);
-		planstate->resultops = &TTSOpsVirtual;
-		planstate->resultopsfixed = true;
-		planstate->resultopsset = true;
-		ExecAssignProjectionInfo(planstate, partTupDesc);
-	}
 
 	return true;
 }
