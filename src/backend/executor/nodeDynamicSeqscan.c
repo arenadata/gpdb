@@ -166,23 +166,10 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 	PlanState  *planstate = &node->seqScanState->ss.ps;
 
-	if (!planstate->ps_ResultTupleSlot)
+	if (!planstate->ps_ProjInfo && scanState->ps.resultops == &TTSOpsVirtual)
 	{
-		Relation	firstRelation = table_open(list_nth_oid(plan->partOids, 0),
-											   AccessShareLock);
-		Form_pg_class firstForm = RelationGetForm(firstRelation);
-		Form_pg_class currentForm = RelationGetForm(currentRelation);
-		bool		isCompatibleRelations =
-					firstForm->relnatts == currentForm->relnatts &&
-					firstForm->relam == currentForm->relam;
-
-		table_close(firstRelation, AccessShareLock);
-
-		if (!isCompatibleRelations)
-		{
-			ExecInitResultSlot(planstate, &TTSOpsVirtual);
-			ExecAssignProjectionInfo(planstate, partTupDesc);
-		}
+		ExecInitResultSlot(planstate, &TTSOpsVirtual);
+		ExecAssignProjectionInfo(planstate, partTupDesc);
 	}
 
 	return true;
