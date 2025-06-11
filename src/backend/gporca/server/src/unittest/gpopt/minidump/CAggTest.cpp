@@ -101,6 +101,7 @@ const CHAR *rgszAggFileNames[] = {
 	"../data/dxl/minidump/SelectHavingFalse.mdp",
 	"../data/dxl/minidump/SelectHavingCount.mdp",
 	"../data/dxl/minidump/SelectHavingSubquery.mdp",
+	"../data/dxl/minidump/SelectHavingCountIsNull.mdp",
 };
 
 
