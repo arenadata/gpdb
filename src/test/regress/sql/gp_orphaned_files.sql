@@ -3,6 +3,10 @@ create extension if not exists gp_inject_fault;
 drop index if exists t_orphaned_r_i, t_orphaned_c_i;
 drop table if exists t_orphaned_h, t_orphaned_r, t_orphaned_c,
                      t_top, t_sub1, t_sub2;
+-- Increase the number of connection attempts to a segment to 120, reduce
+-- the interval between attempts to 1 second. So the segments will have 120
+-- seconds to recover after segfault.  The demo cluser don't fail over to 
+-- a mirror if 120 second is enough for recovery
 \! gpconfig -c gp_gang_creation_retry_timer -v 1000 --skipvalidation --masteronly
 \! gpconfig -c gp_gang_creation_retry_count -v 120 --skipvalidation --masteronly
 \! gpstop -u
@@ -120,7 +124,7 @@ drop table t_top, t_sub1, t_sub2;
 
 
 -- Test case 2
--- Check that files are leaving untouched on the coordinator and the standby
+-- Check that files are left untouched on the coordinator and the standby
 -- when the corresponding distributed commit record exists in WAL
 select gp_inject_fault('dtm_xlog_distributed_commit', 'segv', dbid)
   from gp_segment_configuration

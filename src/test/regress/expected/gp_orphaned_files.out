@@ -124,7 +124,7 @@ table t_sub2;
 drop table t_top, t_sub1, t_sub2;
 \unset check_files
 -- Test case 2
--- Check that files are leaving untouched on the coordinator and the standby
+-- Check that files are left untouched on the coordinator and the standby
 -- when the corresponding distributed commit record exists in WAL
 select gp_inject_fault('dtm_xlog_distributed_commit', 'segv', dbid)
   from gp_segment_configuration
