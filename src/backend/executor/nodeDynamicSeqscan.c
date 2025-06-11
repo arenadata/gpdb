@@ -116,7 +116,6 @@ initNextTableToScan(DynamicSeqScanState *node)
 	AttrNumber *attMap;
 	Oid		   *pid;
 	Relation	currentRelation;
-	bool		isEqualTupleDescs;
 
 	if (++node->whichPart < node->nOids)
 		pid = &node->partOids[node->whichPart];
@@ -141,7 +140,6 @@ initNextTableToScan(DynamicSeqScanState *node)
 	lastScannedRel = table_open(node->lastRelOid, AccessShareLock);
 	lastTupDesc = RelationGetDescr(lastScannedRel);
 	partTupDesc = RelationGetDescr(scanState->ss_currentRelation);
-	isEqualTupleDescs = equalTupleDescs(lastTupDesc, partTupDesc, true);
 	/*
 	 * FIXME: should we use execute_attr_map_tuple instead? Seems like a
 	 * higher level abstraction that fits the bill
@@ -166,11 +164,21 @@ initNextTableToScan(DynamicSeqScanState *node)
 	node->seqScanState = ExecInitSeqScanForPartition(&plan->seqscan, estate,
 													 currentRelation);
 
-	if (!isEqualTupleDescs)
-	{
-		PlanState  *planstate = &node->seqScanState->ss.ps;
+	PlanState  *planstate = &node->seqScanState->ss.ps;
 
-		if (!planstate->ps_ResultTupleSlot)
+	if (!planstate->ps_ResultTupleSlot)
+	{
+		Relation	firstRelation = table_open(node->partOids[0], AccessShareLock);
+		bool		isIncompatibleRelations =
+			((RelationGetNumberOfAttributes(firstRelation) !=
+			RelationGetNumberOfAttributes(currentRelation)) ||
+			(RelationIsHeap(firstRelation) != RelationIsHeap(currentRelation)) ||
+			(RelationIsAoRows(firstRelation) != RelationIsAoRows(currentRelation)) ||
+			(RelationIsAoCols(firstRelation) != RelationIsAoCols(currentRelation)));
+
+		table_close(firstRelation, AccessShareLock);
+
+		if (isIncompatibleRelations)
 		{
 			ExecInitResultSlot(planstate, &TTSOpsVirtual);
 			ExecAssignProjectionInfo(planstate, partTupDesc);
