@@ -166,7 +166,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 	PlanState  *planstate = &node->seqScanState->ss.ps;
 
-	if (!planstate->ps_ProjInfo && scanState->ps.resultops == &TTSOpsVirtual)
+	if (!planstate->ps_ProjInfo && planstate->scanops != &TTSOpsVirtual)
 	{
 		ExecInitResultSlot(planstate, &TTSOpsVirtual);
 		ExecAssignProjectionInfo(planstate, partTupDesc);
