@@ -103,7 +103,8 @@ select gp_inject_fault('exec_simple_query_start', 'segv', dbid)
 
 -- The error message from psql can be different, so ignore it
 \! psql postgres -c "select 1" 2> /dev/null
-\! sleep 2
+-- Wait for the coordinator to be recovered
+\! while [ `psql -tc "select 1;" postgres 2>/dev/null | wc -l` != '2' ]; do sleep 1; done;
 \c regression
 
 -- All the inject faults have been reset after the coordinator restart
@@ -133,7 +134,8 @@ select gp_inject_fault('dtm_xlog_distributed_commit', 'segv', dbid)
 -- Create tables in a transaction. Get segfault right after the distributed
 -- commit record is flushed
 \! psql regression -c "begin; select createTables(); commit;"
-\! sleep 2
+-- Wait for the coordinator to be recovered
+\! while [ `psql -tc "select 1;" postgres 2>/dev/null | wc -l` != '2' ]; do sleep 1; done;
 \c regression
 
 select force_mirrors_to_catch_up();

@@ -84,7 +84,8 @@ $$ language plpgsql;
 
 -- The error message can be different, so ignore it
 1: @post_run 'echo ""' : select 1;
-! sleep 2;
+-- Wait for the coordinator to be recovered
+! while [ `psql -tc "select 1;" postgres 2>/dev/null | wc -l` != '2' ]; do sleep 1; done;
 1q:
 2q:
 
