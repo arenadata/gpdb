@@ -168,17 +168,17 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 	if (!planstate->ps_ResultTupleSlot)
 	{
-		Relation	firstRelation = table_open(list_nth_oid(plan->partOids, 0), AccessShareLock);
-		bool		isIncompatibleRelations =
-			((RelationGetNumberOfAttributes(firstRelation) !=
-			RelationGetNumberOfAttributes(currentRelation)) ||
-			(RelationIsHeap(firstRelation) != RelationIsHeap(currentRelation)) ||
-			(RelationIsAoRows(firstRelation) != RelationIsAoRows(currentRelation)) ||
-			(RelationIsAoCols(firstRelation) != RelationIsAoCols(currentRelation)));
+		Relation	firstRelation = table_open(list_nth_oid(plan->partOids, 0),
+											   AccessShareLock);
+		Form_pg_class firstForm = RelationGetForm(firstRelation);
+		Form_pg_class currentForm = RelationGetForm(currentRelation);
+		bool		isCompatibleRelations =
+					firstForm->relnatts == currentForm->relnatts &&
+					firstForm->relam == currentForm->relam;
 
 		table_close(firstRelation, AccessShareLock);
 
-		if (isIncompatibleRelations)
+		if (!isCompatibleRelations)
 		{
 			ExecInitResultSlot(planstate, &TTSOpsVirtual);
 			ExecAssignProjectionInfo(planstate, partTupDesc);
