@@ -2048,8 +2048,7 @@ FCountAggMatchingColumn(CExpression *pexprPrjElem, const CColRef *colref)
 BOOL
 CUtils::FHasCountAggMatchingColumn(const CExpression *pexpr,
 								   const CColRef *colref,
-								   const CLogicalGbAgg **ppgbAgg,
-								   CExpressionArray *pdrgpexprPredicates)
+								   const CLogicalGbAgg **ppgbAgg)
 {
 	COperator *pop = pexpr->Pop();
 	// base case, we have a logical agg operator
@@ -2077,17 +2076,8 @@ CUtils::FHasCountAggMatchingColumn(const CExpression *pexpr,
 		for (ULONG ul = 0; ul < arity; ul++)
 		{
 			const CExpression *pexprChild = (*pexpr)[ul];
-			if (FHasCountAggMatchingColumn(pexprChild, colref, ppgbAgg,
-										   pdrgpexprPredicates))
+			if (FHasCountAggMatchingColumn(pexprChild, colref, ppgbAgg))
 			{
-				if (nullptr != pdrgpexprPredicates &&
-					COperator::EopLogicalSelect == pop->Eopid())
-				{
-					GPOS_ASSERT(2 == arity);
-					CExpression *pexprPred = (*pexpr)[1];
-					pexprPred->AddRef();
-					pdrgpexprPredicates->Append(pexprPred);
-				}
 				return true;
 			}
 		}
