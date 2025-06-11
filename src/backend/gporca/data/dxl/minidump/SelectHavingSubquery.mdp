@@ -307,14 +307,7 @@
             <dxl:Ident ColId="0" ColName="column1" TypeMdid="0.16.1.0" />
           </dxl:ProjElem>
           <dxl:ProjElem ColId="10" Alias="count">
-            <dxl:If TypeMdid="0.20.1.0">
-              <dxl:Ident ColId="0" ColName="column1" TypeMdid="0.16.1.0" />
-              <dxl:Coalesce TypeMdid="0.20.1.0">
-                <dxl:Ident ColId="11" ColName="ColRef_0011" TypeMdid="0.20.1.0" />
-                <dxl:ConstValue TypeMdid="0.20.1.0" Value="0" />
-              </dxl:Coalesce>
-              <dxl:ConstValue TypeMdid="0.20.1.0" IsNull="true" />
-            </dxl:If>
+            <dxl:Ident ColId="11" ColName="ColRef_0011" TypeMdid="0.20.1.0" />
           </dxl:ProjElem>
         </dxl:ProjList>
         <dxl:Filter />
