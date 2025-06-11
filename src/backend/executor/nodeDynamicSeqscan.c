@@ -168,7 +168,7 @@ initNextTableToScan(DynamicSeqScanState *node)
 
 	if (!planstate->ps_ResultTupleSlot)
 	{
-		Relation	firstRelation = table_open(node->partOids[0], AccessShareLock);
+		Relation	firstRelation = table_open(list_nth_oid(plan->partOids, 0), AccessShareLock);
 		bool		isIncompatibleRelations =
 			((RelationGetNumberOfAttributes(firstRelation) !=
 			RelationGetNumberOfAttributes(currentRelation)) ||
