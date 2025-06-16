@@ -229,14 +229,9 @@ extern void errcontext_msg(const char *fmt,...) pg_attribute_printf(1, 2);
 extern void errhidestmt(bool hide_stmt);
 extern void errhidecontext(bool hide_ctx);
 
-<<<<<<< HEAD
 extern int	errprintstack(bool printstack);
-=======
-extern int	errbacktrace(void);
 
-extern int	errfunction(const char *funcname);
-extern int	errposition(int cursorpos);
->>>>>>> BISECT_HEAD
+extern int	errbacktrace(void);
 
 extern void errfunction(const char *funcname);
 extern void errposition(int cursorpos);
