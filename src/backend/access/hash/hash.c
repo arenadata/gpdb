@@ -43,11 +43,7 @@ typedef struct
 } HashBuildState;
 
 static void hashbuildCallback(Relation index,
-<<<<<<< HEAD
-							  ItemPointer tupleId,
-=======
 							  ItemPointer tid,
->>>>>>> BISECT_HEAD
 							  Datum *values,
 							  bool *isnull,
 							  bool tupleIsAlive,
@@ -209,7 +205,6 @@ hashbuildCallback(Relation index,
 				  ItemPointer tupleId,
 =======
 				  ItemPointer tid,
->>>>>>> BISECT_HEAD
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -228,22 +223,13 @@ hashbuildCallback(Relation index,
 
 	/* Either spool the tuple for sorting, or just put it into the index */
 	if (buildstate->spool)
-<<<<<<< HEAD
-		_h_spool(buildstate->spool, tupleId,
-				 index_values, index_isnull);
-=======
 		_h_spool(buildstate->spool, tid, index_values, index_isnull);
->>>>>>> BISECT_HEAD
 	else
 	{
 		/* form an index tuple and point it at the heap tuple */
 		itup = index_form_tuple(RelationGetDescr(index),
 								index_values, index_isnull);
-<<<<<<< HEAD
-		itup->t_tid = *tupleId;
-=======
 		itup->t_tid = *tid;
->>>>>>> BISECT_HEAD
 		_hash_doinsert(index, itup, buildstate->heapRel);
 		pfree(itup);
 	}
