@@ -201,9 +201,6 @@ hashbuildempty(Relation index)
  */
 static void
 hashbuildCallback(Relation index,
-<<<<<<< HEAD
-				  ItemPointer tupleId,
-=======
 				  ItemPointer tid,
 				  Datum *values,
 				  bool *isnull,
