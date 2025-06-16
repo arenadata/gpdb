@@ -830,28 +830,23 @@ handlePollError(CdbDispatchCmdAsync *pParms)
  * memory allocations by abusing libpq state-machine hacks.
  */
 static void
-resetConnAndResult(CdbDispatchResult *dispatchResult, bool shouldConsume)
+resetConnAndResult(CdbDispatchResult *dispatchResult)
 {
 	PGresult   *res;
 	PGnotify   *notify;
 	PGconn	   *conn = dispatchResult->segdbDesc->conn;
 
-	/* Replace current result with a fatal error dummy one. */
+	/* Free some memory and replace current result with a fatal error dummy. */
 	pqSaveErrorResult(conn);
 
-	/* Make sure PQgetResult() doesn't block. */
-	if (shouldConsume)
-	{
-		PQconsumeInput(conn);
-	}
+	PQconsumeInput(conn);
 
 	/*
 	 * Discard anything that is unread. Since our result contains a fatal
 	 * error, we'll just consume the entire message without actually parsing
 	 * it.
 	 */
-	while (!PQisBusy(conn) &&
-		   (res = PQgetResult(conn)) != NULL)
+	while (!PQisBusy(conn) && (res = PQgetResult(conn)) != NULL)
 	{
 		switch (PQresultStatus(res))
 		{
@@ -870,6 +865,12 @@ resetConnAndResult(CdbDispatchResult *dispatchResult, bool shouldConsume)
 	/* Free notices. */
 	while ((notify = PQnotifies(conn)) != NULL)
 		PQfreemem(notify);
+
+	if (PQisBusy(conn))
+	{
+		/* Some work is still remaining until we can die. */
+		return;
+	}
 
 	/* The result will not be needed anymore. */
 	pqClearAsyncResult(conn);
@@ -934,7 +935,7 @@ handlePollSuccess(CdbDispatchCmdAsync *pParms,
 			 * might not be enough memory to discard the result properly.
 			 * Let's get the big guns out.
 			 */
-			resetConnAndResult(dispatchResult, pParms->ackMessage != NULL);
+			resetConnAndResult(dispatchResult);
 
 			forwardQENotices();
 
