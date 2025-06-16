@@ -276,13 +276,8 @@ ginHeapTupleBulkInsert(GinBuildState *buildstate, OffsetNumber attnum,
 }
 
 static void
-<<<<<<< HEAD
-ginBuildCallback(Relation index, ItemPointer tupleId, Datum *values,
-				 bool *isnull, bool tupleIsAlive pg_attribute_unused(), void *state)
-=======
 ginBuildCallback(Relation index, ItemPointer tid, Datum *values,
 				 bool *isnull, bool tupleIsAlive, void *state)
->>>>>>> BISECT_HEAD
 {
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
@@ -292,12 +287,7 @@ ginBuildCallback(Relation index, ItemPointer tid, Datum *values,
 
 	for (i = 0; i < buildstate->ginstate.origTupdesc->natts; i++)
 		ginHeapTupleBulkInsert(buildstate, (OffsetNumber) (i + 1),
-<<<<<<< HEAD
-							   values[i], isnull[i],
-							   tupleId);
-=======
 							   values[i], isnull[i], tid);
->>>>>>> BISECT_HEAD
 
 	/* If we've maxed out our available memory, dump everything to the index */
 	if (buildstate->accum.allocatedMemory >= (Size) maintenance_work_mem * 1024L)
