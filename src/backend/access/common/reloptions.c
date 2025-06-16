@@ -1605,27 +1605,10 @@ view_reloptions(Datum reloptions, bool validate)
 		offsetof(ViewOptions, check_option)}
 	};
 
-<<<<<<< HEAD
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_VIEW, &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	vopts = allocateReloptStruct(sizeof(ViewOptions), options, numoptions);
-
-	fillRelOptions((void *) vopts, sizeof(ViewOptions), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	free_options_deep(options, numoptions);
-
-	return (bytea *) vopts;
-=======
 	return (bytea *) build_reloptions(reloptions, validate,
 									  RELOPT_KIND_VIEW,
 									  sizeof(ViewOptions),
 									  tab, lengthof(tab));
->>>>>>> BISECT_HEAD
 }
 
 /*
@@ -1696,28 +1679,10 @@ attribute_reloptions(Datum reloptions, bool validate)
 		{"n_distinct_inherited", RELOPT_TYPE_REAL, offsetof(AttributeOpts, n_distinct_inherited)}
 	};
 
-<<<<<<< HEAD
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_ATTRIBUTE,
-							  &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	aopts = allocateReloptStruct(sizeof(AttributeOpts), options, numoptions);
-
-	fillRelOptions((void *) aopts, sizeof(AttributeOpts), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	free_options_deep(options, numoptions);
-
-	return (bytea *) aopts;
-=======
 	return (bytea *) build_reloptions(reloptions, validate,
 									  RELOPT_KIND_ATTRIBUTE,
 									  sizeof(AttributeOpts),
 									  tab, lengthof(tab));
->>>>>>> BISECT_HEAD
 }
 
 /*
@@ -1732,28 +1697,10 @@ tablespace_reloptions(Datum reloptions, bool validate)
 		{"effective_io_concurrency", RELOPT_TYPE_INT, offsetof(TableSpaceOpts, effective_io_concurrency)}
 	};
 
-<<<<<<< HEAD
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_TABLESPACE,
-							  &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	tsopts = allocateReloptStruct(sizeof(TableSpaceOpts), options, numoptions);
-
-	fillRelOptions((void *) tsopts, sizeof(TableSpaceOpts), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	free_options_deep(options, numoptions);
-
-	return (bytea *) tsopts;
-=======
 	return (bytea *) build_reloptions(reloptions, validate,
 									  RELOPT_KIND_TABLESPACE,
 									  sizeof(TableSpaceOpts),
 									  tab, lengthof(tab));
->>>>>>> BISECT_HEAD
 }
 
 /*
