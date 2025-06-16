@@ -34,6 +34,7 @@
 #include "parser/parse_coerce.h"
 #include "parser/parse_type.h"
 #include "parser/scansup.h"
+#include "plpgsql.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
@@ -48,11 +49,14 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 
 #include "plpgsql.h"
 
 
+=======
+>>>>>>> BISECT_HEAD
 typedef struct
 {
 	int			nargs;			/* number of arguments */

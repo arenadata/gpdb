@@ -34,15 +34,21 @@
 #include <ctype.h>
 
 #include "parser/scansup.h"
+#include "pgcrypto.h"
+#include "px-crypt.h"
+#include "px.h"
 #include "utils/builtins.h"
 #include "utils/uuid.h"
 #include "utils/guc.h"
 
+<<<<<<< HEAD
 #include "px.h"
 #include "px-crypt.h"
 #include "pgcrypto.h"
 #include "pgp.h"
 
+=======
+>>>>>>> BISECT_HEAD
 PG_MODULE_MAGIC;
 
 static void pgcrypto_fips_assign(bool newval, void *extra);

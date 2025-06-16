@@ -1,8 +1,20 @@
 # contrib/pageinspect/Makefile
 
 MODULE_big	= pageinspect
+<<<<<<< HEAD
 OBJS		= rawpage.o heapfuncs.o bmfuncs.o btreefuncs.o fsmfuncs.o \
 		  brinfuncs.o ginfuncs.o hashfuncs.o $(WIN32RES)
+=======
+OBJS = \
+	$(WIN32RES) \
+	brinfuncs.o \
+	btreefuncs.o \
+	fsmfuncs.o \
+	ginfuncs.o \
+	hashfuncs.o \
+	heapfuncs.o \
+	rawpage.o
+>>>>>>> BISECT_HEAD
 
 EXTENSION = pageinspect
 DATA = pageinspect--1.7--1.8.sql pageinspect--1.6--1.7.sql \

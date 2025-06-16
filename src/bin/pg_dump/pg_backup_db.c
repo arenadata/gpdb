@@ -11,6 +11,7 @@
  */
 #include "postgres_fe.h"
 
+<<<<<<< HEAD
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
 
@@ -21,12 +22,21 @@
 #include "pg_backup_utils.h"
 #include "parallel.h"
 
+=======
+>>>>>>> BISECT_HEAD
 #include <unistd.h>
 #include <ctype.h>
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
 
+#include "dumputils.h"
+#include "fe_utils/connect.h"
+#include "fe_utils/string_utils.h"
+#include "parallel.h"
+#include "pg_backup_archiver.h"
+#include "pg_backup_db.h"
+#include "pg_backup_utils.h"
 
 static void _check_database_version(ArchiveHandle *AH);
 static PGconn *_connectDB(ArchiveHandle *AH, const char *newdbname, const char *newUser);

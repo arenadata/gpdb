@@ -55,7 +55,12 @@
  * catalog versions from Greenplum.
  */
 
+<<<<<<< HEAD
 /*							3yyymmddN */
 #define CATALOG_VERSION_NO	302506031
+=======
+/*							yyyymmddN */
+#define CATALOG_VERSION_NO	201910251
+>>>>>>> BISECT_HEAD
 
 #endif

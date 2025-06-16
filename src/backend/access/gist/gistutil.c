@@ -908,14 +908,12 @@ gistPageRecyclable(Page page)
 bytea *
 gistoptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	GiSTOptions *rdopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"fillfactor", RELOPT_TYPE_INT, offsetof(GiSTOptions, fillfactor)},
 		{"buffering", RELOPT_TYPE_ENUM, offsetof(GiSTOptions, buffering_mode)}
 	};
 
+<<<<<<< HEAD
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_GIST,
 							  &numoptions);
 
@@ -931,6 +929,12 @@ gistoptions(Datum reloptions, bool validate)
 	free_options_deep(options, numoptions);
 
 	return (bytea *) rdopts;
+=======
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_GIST,
+									  sizeof(GiSTOptions),
+									  tab, lengthof(tab));
+>>>>>>> BISECT_HEAD
 }
 
 /*

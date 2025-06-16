@@ -13,11 +13,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "pg_rewind.h"
-#include "fetch.h"
-#include "file_ops.h"
-#include "filemap.h"
-
 #include "access/timeline.h"
 #include "access/xlog_internal.h"
 #include "catalog/catversion.h"
@@ -27,9 +22,16 @@
 #include "common/file_utils.h"
 #include "common/restricted_token.h"
 #include "fe_utils/recovery_gen.h"
+#include "fetch.h"
+#include "file_ops.h"
+#include "filemap.h"
 #include "getopt_long.h"
+<<<<<<< HEAD
 #include "common/restricted_token.h"
 #include "utils/palloc.h"
+=======
+#include "pg_rewind.h"
+>>>>>>> BISECT_HEAD
 #include "storage/bufpage.h"
 
 static void usage(const char *progname);

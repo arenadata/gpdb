@@ -719,7 +719,11 @@ brinendscan(IndexScanDesc scan)
  */
 static void
 brinbuildCallback(Relation index,
+<<<<<<< HEAD
 				  ItemPointer tupleId,
+=======
+				  ItemPointer tid,
+>>>>>>> BISECT_HEAD
 				  Datum *values,
 				  bool *isnull,
 				  bool tupleIsAlive,
@@ -729,7 +733,11 @@ brinbuildCallback(Relation index,
 	BlockNumber thisblock;
 	int			i;
 
+<<<<<<< HEAD
 	thisblock = ItemPointerGetBlockNumber(tupleId);
+=======
+	thisblock = ItemPointerGetBlockNumber(tid);
+>>>>>>> BISECT_HEAD
 
 	/*
 	 * If we're in a block that belongs to a future range, summarize what
@@ -952,14 +960,12 @@ brinvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 bytea *
 brinoptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	BrinOptions *rdopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"pages_per_range", RELOPT_TYPE_INT, offsetof(BrinOptions, pagesPerRange)},
 		{"autosummarize", RELOPT_TYPE_BOOL, offsetof(BrinOptions, autosummarize)}
 	};
 
+<<<<<<< HEAD
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_BRIN,
 							  &numoptions);
 
@@ -975,6 +981,12 @@ brinoptions(Datum reloptions, bool validate)
 	free_options_deep(options, numoptions);
 
 	return (bytea *) rdopts;
+=======
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_BRIN,
+									  sizeof(BrinOptions),
+									  tab, lengthof(tab));
+>>>>>>> BISECT_HEAD
 }
 
 /*

@@ -9,12 +9,14 @@
 
 #include "postgres_fe.h"
 
-#include "common/username.h"
-#include "pg_upgrade.h"
-
 #include <signal.h>
 
+<<<<<<< HEAD
 #include "greenplum/pg_upgrade_greenplum.h"
+=======
+#include "common/username.h"
+#include "pg_upgrade.h"
+>>>>>>> BISECT_HEAD
 
 LogOpts		log_opts;
 

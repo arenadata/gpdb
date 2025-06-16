@@ -14,6 +14,10 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = \
 	dynahash.o \
+<<<<<<< HEAD
+=======
+	hashfn.o \
+>>>>>>> BISECT_HEAD
 	pg_crc.o
 
 include $(top_srcdir)/src/backend/common.mk

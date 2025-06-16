@@ -1483,9 +1483,6 @@ fillRelOptions(void *rdopts, Size basesize,
 bytea *
 default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 {
-	relopt_value *options;
-	StdRdOptions *rdopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"fillfactor", RELOPT_TYPE_INT, offsetof(StdRdOptions, fillfactor)},
 
@@ -1540,22 +1537,59 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 
 	};
 
+	return (bytea *) build_reloptions(reloptions, validate, kind,
+									  sizeof(StdRdOptions),
+									  tab, lengthof(tab));
+}
+
+/*
+ * build_reloptions
+ *
+ * Parses "reloptions" provided by the caller, returning them in a
+ * structure containing the parsed options.  The parsing is done with
+ * the help of a parsing table describing the allowed options, defined
+ * by "relopt_elems" of length "num_relopt_elems".
+ *
+ * "validate" must be true if reloptions value is freshly built by
+ * transformRelOptions(), as opposed to being read from the catalog, in which
+ * case the values contained in it must already be valid.
+ *
+ * NULL is returned if the passed-in options did not match any of the options
+ * in the parsing table, unless validate is true in which case an error would
+ * be reported.
+ */
+void *
+build_reloptions(Datum reloptions, bool validate,
+				 relopt_kind kind,
+				 Size relopt_struct_size,
+				 const relopt_parse_elt *relopt_elems,
+				 int num_relopt_elems)
+{
+	int			numoptions;
+	relopt_value *options;
+	void	   *rdopts;
+
+	/* parse options specific to given relation option kind */
 	options = parseRelOptions(reloptions, validate, kind, &numoptions);
+	Assert(numoptions <= num_relopt_elems);
 
 	/* if none set, we're done */
 	if (numoptions == 0)
+	{
+		Assert(options == NULL);
 		return NULL;
+	}
 
-	rdopts = allocateReloptStruct(sizeof(StdRdOptions), options, numoptions);
-
-	fillRelOptions((void *) rdopts, sizeof(StdRdOptions), options, numoptions,
-				   validate, tab, lengthof(tab));
+	/* allocate and fill the structure */
+	rdopts = allocateReloptStruct(relopt_struct_size, options, numoptions);
+	fillRelOptions(rdopts, relopt_struct_size, options, numoptions,
+				   validate, relopt_elems, num_relopt_elems);
 
 	validate_and_refill_options(rdopts, options, numoptions, kind, validate);
 
 	free_options_deep(options, numoptions);
 
-	return (bytea *) rdopts;
+	return rdopts;
 }
 
 /*
@@ -1564,9 +1598,6 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 bytea *
 view_reloptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	ViewOptions *vopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"security_barrier", RELOPT_TYPE_BOOL,
 		offsetof(ViewOptions, security_barrier)},
@@ -1574,6 +1605,7 @@ view_reloptions(Datum reloptions, bool validate)
 		offsetof(ViewOptions, check_option)}
 	};
 
+<<<<<<< HEAD
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_VIEW, &numoptions);
 
 	/* if none set, we're done */
@@ -1588,6 +1620,12 @@ view_reloptions(Datum reloptions, bool validate)
 	free_options_deep(options, numoptions);
 
 	return (bytea *) vopts;
+=======
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_VIEW,
+									  sizeof(ViewOptions),
+									  tab, lengthof(tab));
+>>>>>>> BISECT_HEAD
 }
 
 /*
@@ -1653,14 +1691,12 @@ index_reloptions(amoptions_function amoptions, Datum reloptions, bool validate)
 bytea *
 attribute_reloptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	AttributeOpts *aopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"n_distinct", RELOPT_TYPE_REAL, offsetof(AttributeOpts, n_distinct)},
 		{"n_distinct_inherited", RELOPT_TYPE_REAL, offsetof(AttributeOpts, n_distinct_inherited)}
 	};
 
+<<<<<<< HEAD
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_ATTRIBUTE,
 							  &numoptions);
 
@@ -1676,6 +1712,12 @@ attribute_reloptions(Datum reloptions, bool validate)
 	free_options_deep(options, numoptions);
 
 	return (bytea *) aopts;
+=======
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_ATTRIBUTE,
+									  sizeof(AttributeOpts),
+									  tab, lengthof(tab));
+>>>>>>> BISECT_HEAD
 }
 
 /*
@@ -1684,15 +1726,13 @@ attribute_reloptions(Datum reloptions, bool validate)
 bytea *
 tablespace_reloptions(Datum reloptions, bool validate)
 {
-	relopt_value *options;
-	TableSpaceOpts *tsopts;
-	int			numoptions;
 	static const relopt_parse_elt tab[] = {
 		{"random_page_cost", RELOPT_TYPE_REAL, offsetof(TableSpaceOpts, random_page_cost)},
 		{"seq_page_cost", RELOPT_TYPE_REAL, offsetof(TableSpaceOpts, seq_page_cost)},
 		{"effective_io_concurrency", RELOPT_TYPE_INT, offsetof(TableSpaceOpts, effective_io_concurrency)}
 	};
 
+<<<<<<< HEAD
 	options = parseRelOptions(reloptions, validate, RELOPT_KIND_TABLESPACE,
 							  &numoptions);
 
@@ -1708,6 +1748,12 @@ tablespace_reloptions(Datum reloptions, bool validate)
 	free_options_deep(options, numoptions);
 
 	return (bytea *) tsopts;
+=======
+	return (bytea *) build_reloptions(reloptions, validate,
+									  RELOPT_KIND_TABLESPACE,
+									  sizeof(TableSpaceOpts),
+									  tab, lengthof(tab));
+>>>>>>> BISECT_HEAD
 }
 
 /*

@@ -13,18 +13,20 @@
 
 #include <unistd.h>
 
-#include "pg_rewind.h"
-#include "filemap.h"
-
 #include "access/rmgr.h"
 #include "access/xlog_internal.h"
 #include "access/xlogreader.h"
 #include "catalog/pg_control.h"
 #include "catalog/storage_xlog.h"
 #include "commands/dbcommands_xlog.h"
+<<<<<<< HEAD
 
 /* GPDB specific headers */
 #include "cdb/cdbappendonlyxlog.h"
+=======
+#include "filemap.h"
+#include "pg_rewind.h"
+>>>>>>> BISECT_HEAD
 
 /*
  * RmgrNames is an array of resource manager names, to make error messages

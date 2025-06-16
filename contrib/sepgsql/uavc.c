@@ -14,7 +14,10 @@
 
 #include "catalog/pg_proc.h"
 #include "commands/seclabel.h"
+<<<<<<< HEAD
 #include "common/hashfn.h"
+=======
+>>>>>>> BISECT_HEAD
 #include "sepgsql.h"
 #include "storage/ipc.h"
 #include "utils/guc.h"
@@ -181,14 +184,11 @@ sepgsql_avc_unlabeled(void)
 		{
 			avc_unlabeled = MemoryContextStrdup(avc_mem_cxt, unlabeled);
 		}
-		PG_CATCH();
+		PG_FINALLY();
 		{
 			freecon(unlabeled);
-			PG_RE_THROW();
 		}
 		PG_END_TRY();
-
-		freecon(unlabeled);
 	}
 	return avc_unlabeled;
 }

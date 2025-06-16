@@ -25,15 +25,17 @@
 
 #include "postgres.h"
 
-#include "pageinspect.h"
-
 #include "access/htup_details.h"
 #include "access/relation.h"
-#include "funcapi.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_type.h"
+<<<<<<< HEAD
 #include "mb/pg_wchar.h"
+=======
+#include "funcapi.h"
+>>>>>>> BISECT_HEAD
 #include "miscadmin.h"
+#include "pageinspect.h"
 #include "port/pg_bitutils.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
