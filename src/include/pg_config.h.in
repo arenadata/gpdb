@@ -223,12 +223,9 @@
 /* Define to 1 if you have the <editline/readline.h> header file. */
 #undef HAVE_EDITLINE_READLINE_H
 
-<<<<<<< HEAD
 /* Define to 1 if you have the <event.h> header file. */
 #undef HAVE_EVENT_H
 
-=======
->>>>>>> BISECT_HEAD
 /* Define to 1 if you have the <execinfo.h> header file. */
 #undef HAVE_EXECINFO_H
 
