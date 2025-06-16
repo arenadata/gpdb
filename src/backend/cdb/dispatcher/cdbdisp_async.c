@@ -839,6 +839,7 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	/* Free some memory and replace current result with a fatal error dummy. */
 	pqSaveErrorResult(conn);
 
+	/* Make sure PQgetResult() calls are not blocking. */
 	PQconsumeInput(conn);
 
 	/*
@@ -866,14 +867,14 @@ resetConnAndResult(CdbDispatchResult *dispatchResult)
 	while ((notify = PQnotifies(conn)) != NULL)
 		PQfreemem(notify);
 
-	if (PQisBusy(conn))
+	/* The result is not needed anymore. */
+	pqClearAsyncResult(conn);
+
+	if (PQisBusy(conn) && PQstatus(conn) != CONNECTION_BAD)
 	{
 		/* Some work is still remaining until we can die. */
 		return;
 	}
-
-	/* The result will not be needed anymore. */
-	pqClearAsyncResult(conn);
 
 	dispatchResult->stillRunning = false;
 }
