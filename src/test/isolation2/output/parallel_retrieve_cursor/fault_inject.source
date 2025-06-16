@@ -782,11 +782,7 @@ SELECT gp_inject_fault('alloc_endpoint_slot_full_reset', 'reset', 2);
  Success:        
 (1 row)
 
--- Test 8.
-
--- QE encounters an error when declaring a parallel cursor. QD cancels the
--- query by polling QEs. No deadlock shall occur, QD shall send ACKs even in
--- case of a cancel.
+-- Test 8: QD shouldn't hang waiting.
 
 DROP TABLE IF EXISTS t3;
 DROP

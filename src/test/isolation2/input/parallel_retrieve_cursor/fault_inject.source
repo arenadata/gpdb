@@ -253,11 +253,7 @@ DROP TABLE t2;
 SELECT gp_inject_fault('alloc_endpoint_slot_full', 'reset', 2);
 SELECT gp_inject_fault('alloc_endpoint_slot_full_reset', 'reset', 2);
 
--- Test 8.
-
--- QE encounters an error when declaring a parallel cursor. QD cancels the
--- query by polling QEs. No deadlock shall occur, QD shall send ACKs even in
--- case of a cancel.
+-- Test 8: QD shouldn't hang waiting.
 
 DROP TABLE IF EXISTS t3;
 CREATE TABLE t3 AS SELECT generate_series(1, 10) AS a DISTRIBUTED by (a);
