@@ -12876,11 +12876,7 @@ if test "$ac_res" != no; then :
 
 fi
 
-<<<<<<< HEAD
-# *BSD
-=======
 # *BSD:
->>>>>>> BISECT_HEAD
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing backtrace_symbols" >&5
 $as_echo_n "checking for library containing backtrace_symbols... " >&6; }
 if ${ac_cv_search_backtrace_symbols+:} false; then :
