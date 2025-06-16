@@ -246,17 +246,18 @@ cdbpath_create_motion_path(PlannerInfo *root,
 		if (CdbPathLocus_IsSingleQE(subpath->locus))
 		{
 			/*
-			 * Optimization, which allows not to add extra Motion node.
-			 * If there is just one Motion node in the path, we may just change
+			 * Optimization, which allows not to add extra Motion node. If
+			 * there is just one Motion node in the path, we may just change
 			 * locus to OuterQuery and add Materialize node. If there is
-			 * ProjectionPath, we can add Materialize between ProjectionPath and
-			 * Motion. It is correct if locus is changed from SingleQE to
-			 * OuterQuery. For other cases one more Motion and Materialize nodes
-			 * will be added at the end of this function.
+			 * ProjectionPath, we can add Materialize between ProjectionPath
+			 * and Motion. It is correct if locus is changed from SingleQE to
+			 * OuterQuery. For other cases one more Motion and Materialize
+			 * nodes will be added at the end of this function.
 			 */
 
 			/*
-			 * Just one Motion node. Change locus to Outer and add Materialize.
+			 * Just one Motion node. Change locus to Outer and add
+			 * Materialize.
 			 */
 			if (IsA(subpath, CdbMotionPath))
 			{
@@ -264,13 +265,14 @@ cdbpath_create_motion_path(PlannerInfo *root,
 				return (Path *) create_material_path(root, subpath->parent,
 													 subpath);
 			}
+
 			/*
 			 * Projection Path and Motion. Change locus to Outer and add
 			 * Materialize between Projection and Motion.
 			 */
 			else if (IsA(subpath, ProjectionPath))
 			{
-				ProjectionPath* projection_path = (ProjectionPath *) subpath;
+				ProjectionPath *projection_path = (ProjectionPath *) subpath;
 
 				if (PointerIsValid(projection_path->subpath) &&
 					IsA(projection_path->subpath, CdbMotionPath))
