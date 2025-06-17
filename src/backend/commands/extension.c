@@ -994,22 +994,14 @@ execute_extension_script(Node *stmt,
 		 */
 		creating_extension = false;
 		CurrentExtensionObject = InvalidOid;
-<<<<<<< HEAD
 
 		/*
 		 * Restore the GUC variables we set above.
 		 */
 		AtEOXact_GUC(true, save_nestlevel);
-		PG_RE_THROW();
-=======
->>>>>>> BISECT_HEAD
 	}
 	PG_END_TRY();
 
-	/*
-	 * Restore the GUC variables we set above.
-	 */
-	AtEOXact_GUC(true, save_nestlevel);
 	if (Gp_role == GP_ROLE_DISPATCH && stmt != NULL)
 	{
 		/* We must reset QE CurrentExtensionObject to InvalidOid */
