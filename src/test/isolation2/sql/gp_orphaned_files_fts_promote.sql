@@ -1,4 +1,10 @@
 -- start_ignore
+-- Increase the number of connection attempts to a segment to 120, reduce
+-- the interval between attempts to 1 second. So the segments will have 120
+-- seconds to recover after segfault.
+! gpconfig -c gp_gang_creation_retry_timer -v 1000 --skipvalidation --masteronly;
+! gpconfig -c gp_gang_creation_retry_count -v 120 --skipvalidation --masteronly;
+! gpstop -u;
 1: create extension if not exists gp_inject_fault;
 -- end_ignore
 
@@ -299,3 +305,8 @@ drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepa
 ! rm /tmp/gp_orphaned_files_tx1.sh;
 ! rm /tmp/gp_orphaned_files_tx2.sh;
 ! rm /tmp/gp_orphaned_files_tx3.sh;
+-- start_ignore
+! gpconfig -r gp_gang_creation_retry_timer --skipvalidation --masteronly;
+! gpconfig -r gp_gang_creation_retry_count --skipvalidation --masteronly;
+! gpstop -u;
+-- end_ignore
