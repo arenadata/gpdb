@@ -9,12 +9,7 @@
 
 #include "postgres_fe.h"
 
-<<<<<<< HEAD
-#include "pg_upgrade.h"
 #include "greenplum/pg_upgrade_greenplum.h"
-
-=======
->>>>>>> BISECT_HEAD
 #include <ctype.h>
 
 #include "pg_upgrade.h"
