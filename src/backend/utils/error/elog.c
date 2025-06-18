@@ -1091,8 +1091,6 @@ errmsg(const char *fmt,...)
 	errno = edata->saved_errno; /*CDB*/
 }
 
-<<<<<<< HEAD
-=======
 /*
  * Add a backtrace to the containing ereport() call.  This is intended to be
  * added temporarily during debugging.
@@ -1153,7 +1151,6 @@ set_backtrace(ErrorData *edata, int num_skip)
 	edata->backtrace = errtrace.data;
 }
 
->>>>>>> BISECT_HEAD
 /*
  * errmsg_internal --- add a primary error message text to the current error
  *
@@ -1625,31 +1622,7 @@ errFatalReturn(bool fatalReturn)
 
 	edata->fatal_return = fatalReturn;
 
-<<<<<<< HEAD
 	return 0;					/* return value does not matter */
-=======
-	/*
-	 * Format error message just like errmsg_internal().
-	 */
-	recursion_depth++;
-	oldcontext = MemoryContextSwitchTo(edata->assoc_context);
-
-	if (!edata->backtrace &&
-		edata->funcname &&
-		matches_backtrace_functions(edata->funcname))
-		set_backtrace(edata, 2);
-
-	edata->message_id = fmt;
-	EVALUATE_MESSAGE(edata->domain, message, false, false);
-
-	MemoryContextSwitchTo(oldcontext);
-	recursion_depth--;
-
-	/*
-	 * And let errfinish() finish up.
-	 */
-	errfinish(0);
->>>>>>> BISECT_HEAD
 }
 
 
