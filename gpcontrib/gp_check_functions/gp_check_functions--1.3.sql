@@ -283,6 +283,7 @@ RETURNS TABLE (
     filename text,
     filepath text
 )
+SET search_path = pg_catalog
 LANGUAGE plpgsql AS $$
 BEGIN
     -- lock pg_class so that no one will be adding/altering relfilenodes
@@ -309,10 +310,10 @@ BEGIN
 
     RETURN QUERY 
     SELECT v.gp_segment_id, v.tablespace, v.filename, v.filepath
-    FROM gp_dist_random('__check_orphaned_files') v
+    FROM gp_dist_random('@extschema@.__check_orphaned_files') v
     UNION ALL
     SELECT -1 AS gp_segment_id, v.tablespace, v.filename, v.filepath
-    FROM __check_orphaned_files v;
+    FROM @extschema@.__check_orphaned_files v;
 END;
 $$;
 
@@ -322,8 +323,6 @@ CREATE TYPE __gp_move_orphaned_files_pairs AS (
     spc_oid        oid,        -- tablespace oid
     target_path    text        -- directory to move orphaned files to
 );
-
-GRANT USAGE ON TYPE __gp_move_orphaned_files_pairs TO public;
 
 --------------------------------------------------------------------------------
 -- @function:
@@ -360,7 +359,7 @@ GRANT USAGE ON TYPE __gp_move_orphaned_files_pairs TO public;
 --
 --------------------------------------------------------------------------------
 CREATE FUNCTION __gp_move_orphaned_files(
-        tablespace_location_pairs __gp_move_orphaned_files_pairs[],
+        tablespace_location_pairs @extschema@.__gp_move_orphaned_files_pairs[],
         process_all_tablespaces bool DEFAULT false)
 RETURNS TABLE (
     gp_segment_id int,
@@ -368,9 +367,10 @@ RETURNS TABLE (
     oldpath text,
     newpath text
 )
+SET search_path = pg_catalog
 LANGUAGE plpgsql AS $$
 DECLARE
-    pair __gp_move_orphaned_files_pairs;
+    pair @extschema@.__gp_move_orphaned_files_pairs;
 BEGIN
     -- if process_all_tablespaces is true, tablespace_location_pairs should contain only one element
     -- with directory where we move the orphaned files from all tablespaces.
@@ -419,7 +419,7 @@ BEGIN
                     o.gp_segment_id,
                     s.setting || '/' || o.filepath AS oldpath,
                     pair.target_path || '/seg' || o.gp_segment_id::text || '_' || REPLACE(o.filepath, '/', '_') AS newpath
-                FROM __check_orphaned_files o, pg_settings s
+                FROM @extschema@.__check_orphaned_files o, pg_settings s
                 WHERE s.name = 'data_directory' AND (o.tablespace = pair.spc_oid OR process_all_tablespaces)
             ) s1
             UNION ALL
@@ -431,7 +431,7 @@ BEGIN
                     o.gp_segment_id,
                     s.setting || '/' || o.filepath AS oldpath,
                     pair.target_path || '/seg' || o.gp_segment_id::text || '_' || REPLACE(o.filepath, '/', '_') AS newpath
-                FROM gp_dist_random('__check_orphaned_files') o
+                FROM gp_dist_random('@extschema@.__check_orphaned_files') o
                 JOIN (SELECT gp_execution_segment() AS gp_segment_id, * FROM gp_dist_random('pg_settings')) s ON o.gp_segment_id = s.gp_segment_id
                 WHERE s.name = 'data_directory' AND (o.tablespace = pair.spc_oid OR process_all_tablespaces)
             ) s2
@@ -470,9 +470,6 @@ EXCEPTION
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION __gp_move_orphaned_files(
-    __gp_move_orphaned_files_pairs[], bool) TO public;
-
 --------------------------------------------------------------------------------
 -- @function:
 --        gp_move_orphaned_files
@@ -506,14 +503,13 @@ CREATE FUNCTION gp_move_orphaned_files(target_location text) RETURNS TABLE (
     oldpath text,
     newpath text
 )
+SET search_path = pg_catalog
 LANGUAGE SQL AS $$
-SELECT * FROM __gp_move_orphaned_files(
-    ARRAY[ROW(0, target_location)::__gp_move_orphaned_files_pairs],
-    process_all_tablespaces := TRUE
+SELECT * FROM @extschema@.__gp_move_orphaned_files(
+    ARRAY[ROW(0, target_location)::@extschema@.__gp_move_orphaned_files_pairs],
+    process_all_tablespaces := TRUE::bool
 );
 $$;
-
-GRANT EXECUTE ON FUNCTION gp_move_orphaned_files(text) TO public;
 
 --------------------------------------------------------------------------------
 -- @function:
@@ -550,6 +546,7 @@ RETURNS TABLE (
         oldpath        text,
         newpath        text
 )
+SET search_path = pg_catalog
 LANGUAGE plpgsql AS $$
 BEGIN
     IF target_location IS NULL OR target_location = '' THEN
@@ -559,13 +556,12 @@ BEGIN
     END IF;
 
     RETURN QUERY
-    SELECT * FROM __gp_move_orphaned_files(
-        ARRAY[ROW(tablespace_oid, target_location)::__gp_move_orphaned_files_pairs]
+    SELECT * FROM @extschema@.__gp_move_orphaned_files(
+        ARRAY[ROW(tablespace_oid, target_location)::@extschema@.__gp_move_orphaned_files_pairs],
+        process_all_tablespaces := FALSE::bool
     );
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(oid, text) TO public;
 
 --------------------------------------------------------------------------------
 -- @function:
@@ -602,11 +598,13 @@ RETURNS TABLE (
         oldpath        text,
         newpath        text
 )
+SET search_path = pg_catalog
 LANGUAGE plpgsql AS $$
 DECLARE
     raw_entry text;
     m text[];
-    parsed __gp_move_orphaned_files_pairs[] := ARRAY[]::__gp_move_orphaned_files_pairs[];
+    parsed @extschema@.__gp_move_orphaned_files_pairs[] :=
+        ARRAY[]::@extschema@.__gp_move_orphaned_files_pairs[];
 BEGIN
     FOREACH raw_entry IN ARRAY tablespace_location_pairs LOOP
         -- Use SELECT INTO since regexp_matches() returns SETOF text[]
@@ -616,14 +614,12 @@ BEGIN
             RAISE EXCEPTION 'invalid format: "%". Expected format: {oid, /path}', raw_entry;
         END IF;
 
-        parsed := parsed || ROW(m[1]::oid, m[2])::__gp_move_orphaned_files_pairs;
+        parsed := parsed || ROW(m[1]::oid, m[2])::@extschema@.__gp_move_orphaned_files_pairs;
     END LOOP;
     RETURN QUERY
-    SELECT * FROM __gp_move_orphaned_files(parsed);
+    SELECT * FROM @extschema@.__gp_move_orphaned_files(parsed, process_all_tablespaces := FALSE::bool);
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION gp_move_orphaned_files_by_tablespace_location(text[]) TO public;
 
 --------------------------------------------------------------------------------
 -- @view:
