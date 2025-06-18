@@ -60,12 +60,9 @@
 #include "catalog/pg_type_d.h"
 #include "dumputils.h"
 #include "fe_utils/connect.h"
-<<<<<<< HEAD
-=======
 #include "fe_utils/string_utils.h"
 #include "getopt_long.h"
 #include "libpq/libpq-fs.h"
->>>>>>> BISECT_HEAD
 #include "parallel.h"
 #include "pg_backup_db.h"
 #include "pg_backup_utils.h"
