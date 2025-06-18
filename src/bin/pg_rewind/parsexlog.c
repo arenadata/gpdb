@@ -19,14 +19,10 @@
 #include "catalog/pg_control.h"
 #include "catalog/storage_xlog.h"
 #include "commands/dbcommands_xlog.h"
-<<<<<<< HEAD
-
-/* GPDB specific headers */
-#include "cdb/cdbappendonlyxlog.h"
-=======
 #include "filemap.h"
 #include "pg_rewind.h"
->>>>>>> BISECT_HEAD
+/* GPDB specific headers */
+#include "cdb/cdbappendonlyxlog.h"
 
 /*
  * RmgrNames is an array of resource manager names, to make error messages
