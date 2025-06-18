@@ -56,10 +56,7 @@
 #include "libpq-int.h"
 #include "mb/pg_wchar.h"
 #include "pg_config_paths.h"
-<<<<<<< HEAD
-=======
 #include "port/pg_bswap.h"
->>>>>>> BISECT_HEAD
 
 static int	pqPutMsgBytes(const void *buf, size_t len, PGconn *conn);
 static int	pqSendSome(PGconn *conn, int len);
