@@ -16,12 +16,13 @@ OBJS = \
 	analyzejoins.o \
 	createplan.o \
 	initsplan.o \
+	joinpartprune.o \
 	planagg.o \
 	planmain.o \
 	planner.o \
+	planshare.o \
 	setrefs.o \
 	subselect.o \
-	joinpartprune.o \
 	transform.o
 
 ifeq ($(enable_orca),yes)
