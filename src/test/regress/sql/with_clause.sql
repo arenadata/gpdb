@@ -6,6 +6,9 @@
 -- m/ERROR:  could not parallelize SubPlan \([a-z]+\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  could not build Motion path \([a-z]+\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 -- start_ignore
 create extension if not exists gp_debug_numsegments;
