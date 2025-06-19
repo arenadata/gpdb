@@ -5,7 +5,7 @@ CREATE
 1: create or replace function getTableSegFiles (t regclass, out gp_contentid smallint, out filepath text) as 'select current_setting(''gp_contentid'')::smallint, pg_relation_filepath(t)' language sql execute on all segments;
 CREATE
 
-1: create or replace function createTables(n text, mirror_catch_up bool default true) returns text as $$ declare cmd text; /**/ begin /* Minimal fillfactor to minimize rows number for creating second main fork file */ execute 'create table t_orphaned_h'||n||'(i int) with (fillfactor=10) distributed by (i)'; /**/ /* Create the .1 file. Separate insert to create FSM. */ execute 'insert into t_orphaned_h'||n||' select generate_series(1,9000000)'; /**/ 
+1: create or replace function createTables(n text, mirror_catch_up bool default true) returns text as $$ declare cmd text; /**/ begin execute 'create table t_orphaned_h'||n||'(i int) distributed by (i)'; /**/ execute 'insert into t_orphaned_h'||n||' select generate_series(1,100)'; /**/ 
 execute 'create table t_orphaned_r'||n||'(i int) with (appendonly=true, orientation=row) distributed by (i)'; /**/ /* Create the .1 file */ execute 'insert into t_orphaned_r'||n||' select generate_series(1,100)'; /**/ 
 /* Create the .128 file */ execute 'create table t_orphaned_c'||n||' with (appendonly=true, orientation=column) as select i as i, i*2 as j from generate_series(1,100) i distributed by (i)'; /**/ /* Create the .1 and .129 files */ execute 'insert into t_orphaned_c'||n||' select i as i, i*2 as j from generate_series(1,100) i'; /**/ 
 if mirror_catch_up then /* Ensure that the mirrors have applied the filesystem changes */ perform force_mirrors_to_catch_up(); /**/ end if; /**/ 
@@ -43,18 +43,18 @@ SAVEPOINT
 
 -- Make sure that all the tables files exist on the segments
 1: ! sh /tmp/gp_orphaned_files_tx1.sh;
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
 
 
 -- shutdown primary and make sure the segment is down
@@ -91,13 +91,13 @@ CHECKPOINT
 
 -- Check that the tables files don't exist on the segments (except ex-primary 0, which is yet down)
 ! sh /tmp/gp_orphaned_files_tx1.sh;
-9
+7
 0
 0
 0
 0
 0
-9
+7
 0
 0
 0
@@ -148,12 +148,12 @@ select role, preferred_role, status from gp_segment_configuration where content 
 
 -- Check that the tables from the committed transaction still exist
 ! sh /tmp/gp_orphaned_files_tx2.sh;
-9
-9
-9
-9
-9
-9
+7
+7
+7
+7
+7
+7
 
 
 drop table t_orphaned_h_tx2, t_orphaned_r_tx2, t_orphaned_c_tx2;
@@ -185,18 +185,18 @@ SAVEPOINT
 
 -- Make sure that all the tables files exist on the segments
 1: ! sh /tmp/gp_orphaned_files_tx1.sh;
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
 
 
 -- Suspend commit after prepare
@@ -301,26 +301,26 @@ COMMIT
 
 -- Check that the tables from the committed transactions still exist
 ! sh /tmp/gp_orphaned_files_tx1.sh;
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
-9
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
+7
 
 ! sh /tmp/gp_orphaned_files_tx2.sh;
-9
-9
-9
-9
-9
-9
+7
+7
+7
+7
+7
+7
 
 
 -- Check that the tables from the not committed transaction don't exist

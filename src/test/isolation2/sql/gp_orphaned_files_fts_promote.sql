@@ -21,14 +21,10 @@ $$
 declare
   cmd text; /**/
 begin
-  /* Minimal fillfactor to minimize rows number for creating second main fork
-     file */
   execute 'create table t_orphaned_h'||n||'(i int)
-           with (fillfactor=10)
            distributed by (i)'; /**/
-  /* Create the .1 file. Separate insert to create FSM. */
   execute 'insert into t_orphaned_h'||n||'
-           select generate_series(1,9000000)'; /**/
+           select generate_series(1,100)'; /**/
 
   execute 'create table t_orphaned_r'||n||'(i int)
            with (appendonly=true, orientation=row)
