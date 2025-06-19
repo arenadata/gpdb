@@ -102,19 +102,19 @@ $$ language plpgsql;
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files_tx1.sh' :
-             select createTables('_tx1') check_files;
+             select createTables('_tx1');
 
 -- Let 2nd transaction to commit
 2: begin;
 2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files_tx2.sh' :
-             select createTables('_tx2') check_files;
+             select createTables('_tx2');
 2: commit;
 1: checkpoint;
 
 -- Create another bunch of tables after savepoint
 1: savepoint sp1;
 1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files_tx1.sh' :
-             select createTables('_tx1_sp1') check_files;
+             select createTables('_tx1_sp1');
 
 -- Make sure that all the tables files exist on the segments
 1: ! sh /tmp/gp_orphaned_files_tx1.sh;
@@ -162,19 +162,19 @@ drop table t_orphaned_h_tx2, t_orphaned_r_tx2, t_orphaned_c_tx2;
 -- Start transaction and create tables in it before checkpoint
 1: begin;
 1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files_tx1.sh' :
-             select createTables('_tx1') check_files;
+             select createTables('_tx1');
 
 -- Let 2nd transaction to commit
 2: begin;
 2: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files_tx2.sh' :
-             select createTables('_tx2') check_files;
+             select createTables('_tx2');
 2: commit;
 1: checkpoint;
 
 -- Create another bunch of tables after savepoint
 1: savepoint sp1;
 1: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' >> /tmp/gp_orphaned_files_tx1.sh' :
-             select createTables('_tx1_sp1') check_files;
+             select createTables('_tx1_sp1');
 
 -- Make sure that all the tables files exist on the segments
 1: ! sh /tmp/gp_orphaned_files_tx1.sh;
@@ -195,7 +195,7 @@ select role, preferred_role, status from gp_segment_configuration where content 
 
 3: begin;
 3: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files_tx3.sh' :
-             select createTables('_tx3', false) check_files;
+             select createTables('_tx3', false);
 
 -- Get segfault on a segment
 3: select gp_inject_fault('qe_exec_finished', 'segv', dbid)
