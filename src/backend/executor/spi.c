@@ -1337,10 +1337,9 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	{
 		foreach(lc, stmt_list)
 		{
-			Node	   *stmt = (Node *) lfirst(lc);
-
+			Node *stmt = (Node *) lfirst(lc);
 			if (IsA(stmt, PlannedStmt))
-				((PlannedStmt *) stmt)->metricsQueryType = SPI_INNER_QUERY;
+				((PlannedStmt*)stmt)->metricsQueryType = SPI_INNER_QUERY;
 		}
 	}
 
@@ -2237,7 +2236,6 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 			{
 				PlannedStmt* pstmt = (PlannedStmt *) stmt;
 				canSetTag = pstmt->canSetTag;
-
 				/*
 				 * GPDB: Mark all queries as SPI inner queries for extension
 				 * usage. But make sure that SPI is not top level itself.
