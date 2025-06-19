@@ -525,15 +525,12 @@ XLogDumpDisplayRecord(XLogDumpConfig *config, XLogReaderState *record)
 		   (uint32) (record->ReadRecPtr >> 32), (uint32) record->ReadRecPtr,
 		   (uint32) (xl_prev >> 32), (uint32) xl_prev);
 
-<<<<<<< HEAD
-=======
 	id = desc->rm_identify(info);
 	if (id == NULL)
 		printf("desc: UNKNOWN (%x) ", info & ~XLR_INFO_MASK);
 	else
 		printf("desc: %s ", id);
 
->>>>>>> BISECT_HEAD
 	initStringInfo(&s);
 	desc->rm_desc(&s, record);
 	printf("%s", s.data);
