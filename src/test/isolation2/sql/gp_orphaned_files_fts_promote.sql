@@ -16,7 +16,7 @@ as 'select current_setting(''gp_contentid'')::smallint, pg_relation_filepath(t)'
 language sql
 execute on all segments;
 
-1: create or replace function createTables(n text) returns text as
+1: create or replace function createTables(n text, mirror_catch_up bool default true) returns text as
 $$
 declare
   cmd text; /**/
@@ -46,8 +46,10 @@ begin
   execute 'insert into t_orphaned_c'||n||'
            select i as i, i*2 as j from generate_series(1,100) i'; /**/
 
-  /* Ensure that the mirrors have applied the filesystem changes */
-  perform force_mirrors_to_catch_up(); /**/
+  if mirror_catch_up then
+	/* Ensure that the mirrors have applied the filesystem changes */
+	perform force_mirrors_to_catch_up(); /**/
+  end if; /**/
 
   /* The command do not output PGDATA directories to make it possible to run
      the test without docker */
@@ -126,8 +128,7 @@ select role, preferred_role, status from gp_segment_configuration where content 
 -- Rollback the transaction to make it possible to run queries after the error
 1: rollback;
 
--- Make a checkpoint to remove orphaned files from segments where segfault did
--- not happen
+-- Make a checkpoint to remove orphaned files from segments that are still up
 1: checkpoint;
 
 1: select force_mirrors_to_catch_up_with_exception(0);
@@ -192,70 +193,9 @@ select gp_wait_until_triggered_fault('dtm_broadcast_prepare', 1, dbid)
 select gp_request_fts_probe_scan();
 select role, preferred_role, status from gp_segment_configuration where content = 0;
 
--- Update the function to avoid calling 'force_mirrors_to_catch_up()', which will
--- fail as one of the mirrors is down
-3: create or replace function createTables(n text) returns text as
-$$
-declare
-  cmd text; /**/
-begin
-  /* Minimal fillfactor to minimize rows number for creating second main fork
-     file */
-  execute 'create table t_orphaned_h'||n||'(i int)
-           with (fillfactor=10)
-           distributed by (i)'; /**/
-  /* Create the .1 file. Separate insert to create FSM. */
-  execute 'insert into t_orphaned_h'||n||'
-           select generate_series(1,9000000)'; /**/
-
-  execute 'create table t_orphaned_r'||n||'(i int)
-           with (appendonly=true, orientation=row)
-           distributed by (i)'; /**/
-  /* Create the .1 file */
-  execute 'insert into t_orphaned_r'||n||'
-           select generate_series(1,100)'; /**/
-
-  /* Create the .128 file */
-  execute 'create table t_orphaned_c'||n||'
-           with (appendonly=true, orientation=column) as
-           select i as i, i*2 as j from generate_series(1,100) i
-           distributed by (i)'; /**/
-  /* Create the .1 and .129 files */
-  execute 'insert into t_orphaned_c'||n||'
-           select i as i, i*2 as j from generate_series(1,100) i'; /**/
-
-  /* The command do not output PGDATA directories to make it possible to run
-     the test without docker */
-  select string_agg('cd ' || datadir || '&&' || lswc, ';' order by datadir)
-  into cmd
-  from (
-    select gp_contentid,
-           'ls ' || string_agg(f, ' ') || ' 2>/dev/null | wc -l' lswc
-    from (
-      select gp_contentid, filepath || suf f
-        from getTableSegFiles('t_orphaned_h'||n),
-             (values(''), ('.1'), ('_fsm')) v(suf)
-      union all
-      select gp_contentid, filepath || suf
-        from getTableSegFiles('t_orphaned_r'||n),
-             (values(''), ('.1')) v(suf)
-      union all
-      select gp_contentid, filepath || suf
-        from getTableSegFiles('t_orphaned_c'||n),
-             (values(''), ('.1'), ('.128'), ('.129')) v(suf)
-    ) a
-    group by gp_contentid
-  ) f,
-  (select content, datadir from gp_segment_configuration where content > -1) d
-  where f.gp_contentid = d.content; /**/
-
-  return cmd; /**/
-end
-$$ language plpgsql;
-
 3: begin;
 3: @post_run 'echo "${RAW_STR}" | awk \'NR==3\' > /tmp/gp_orphaned_files_tx3.sh' :
-             select createTables('_tx3') check_files;
+             select createTables('_tx3', false) check_files;
 
 -- Get segfault on a segment
 3: select gp_inject_fault('qe_exec_finished', 'segv', dbid)
@@ -299,7 +239,7 @@ drop table t_orphaned_h_tx1_sp1, t_orphaned_r_tx1_sp1, t_orphaned_c_tx1_sp1;
 drop table t_orphaned_h_tx2, t_orphaned_r_tx2, t_orphaned_c_tx2;
 
 drop function force_mirrors_to_catch_up_with_exception(excluded_content int);
-drop function createTables(n text);
+drop function createTables(n text, mirror_catch_up bool);
 drop function getTableSegFiles(t regclass, out gp_contentid smallint, out filepath text);
 
 ! rm /tmp/gp_orphaned_files_tx1.sh;
