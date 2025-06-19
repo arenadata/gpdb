@@ -10,12 +10,8 @@
 #include "postgres_fe.h"
 
 #include "fe_utils/string_utils.h"
-<<<<<<< HEAD
-
 #include "greenplum/pg_upgrade_greenplum.h"
-=======
 #include "pg_upgrade.h"
->>>>>>> BISECT_HEAD
 
 void
 generate_old_dump(void)
