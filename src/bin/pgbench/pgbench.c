@@ -631,12 +631,8 @@ usage(void)
 		   "  %s [OPTION]... [DBNAME]\n"
 		   "\nInitialization options:\n"
 		   "  -i, --initialize         invokes initialization mode\n"
-<<<<<<< HEAD
 		   "  -x STRING    append this string to the storage clause e.g. 'appendonly=true, orientation=column'\n"
-		   "  -I, --init-steps=[dtgvpf]+ (default \"dtgvp\")\n"
-=======
 		   "  -I, --init-steps=[" ALL_INIT_STEPS "]+ (default \"" DEFAULT_INIT_STEPS "\")\n"
->>>>>>> BISECT_HEAD
 		   "                           run selected initialization steps\n"
 		   "  -F, --fillfactor=NUM     set fill factor\n"
 		   "  -n, --no-vacuum          do not run VACUUM during initialization\n"
