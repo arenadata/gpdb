@@ -28,12 +28,9 @@
 #include "settings.h"
 #include "variables.h"
 
-<<<<<<< HEAD
 #include "catalog/gp_distribution_policy.h"
 #include "catalog/pg_foreign_server.h"
 
-=======
->>>>>>> BISECT_HEAD
 static bool describeOneTableDetails(const char *schemaname,
 									const char *relationname,
 									const char *oid,
