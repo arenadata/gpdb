@@ -107,6 +107,7 @@
 
 #include "utils/session_state.h"
 #include "utils/vmem_tracker.h"
+#include "utils/elog.h"
 
 /* ----------------
  *		global variables
@@ -1627,7 +1628,6 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 {
 	Assert(Gp_role == GP_ROLE_DISPATCH && guc_list);
 	ListCell *lc;
-	MemoryContext oldcontext = CurrentMemoryContext;
 
 	start_xact_command();
 
@@ -1651,12 +1651,19 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		}
 		PG_CATCH();
 		{
+			/*
+			 * report error as warning 
+			*/
+			if (!elog_dismiss(WARNING))
+			{
+				elog(LOG, "failed to synchronize GUC settings across segments");
+				PG_RE_THROW();
+			}
+
 			/* if some guc can not restore successful
 			 * we can not keep alive gang anymore.
 			 */
 			DisconnectAndDestroyAllGangs(true);
-			GpResetSessionIfNeeded();
-			GpDropTempTables();
 			/*
 			 * when qe elog an error, qd will use ReThrowError to
 			 * re throw the error, the errordata_stack_depth will ++,
@@ -1664,11 +1671,13 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 			 * by FlushErrorState.
 			 */
 			FlushErrorState();
-			/*
-			 * this is a top-level catch block and we are responsible for
-			 * restoring the right memory context.
-			 */
-			MemoryContextSwitchTo(oldcontext);
+
+			ereport(
+				ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+					errmsg("failed to synchronize GUC settings across segments"),
+					errdetail("Query aborted due to GUC synchronization failure"),
+					errhint("Check segment logs for more details")));
 		}
 		PG_END_TRY();
 	}

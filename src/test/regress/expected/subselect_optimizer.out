@@ -935,23 +935,23 @@ rollback;  -- to get rid of the bogus operator
 explain (costs off)
 select count(*) from tenk1 t
 where (exists(select 1 from tenk1 k where k.unique1 = t.unique2) or ten < 0);
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-               ->  Result
-                     Filter: ((COALESCE((count()), '0'::bigint) > '0'::bigint) OR (t.ten < 0))
-                     ->  Hash Left Join
-                           Hash Cond: (t.unique2 = k.unique1)
-                           ->  Redistribute Motion 3:3  (slice2; segments: 3)
-                                 Hash Key: t.unique2
-                                 ->  Seq Scan on tenk1 t
-                           ->  Hash
-                                 ->  HashAggregate
-                                       Group Key: k.unique1
+               ->  HashAggregate
+                     Group Key: t.unique1, t.unique2, t.ten, t.ctid, t.gp_segment_id, (true)
+                     ->  Result
+                           Filter: (CASE WHEN (NOT ((true) IS NULL)) THEN true ELSE false END OR (t.ten < 0))
+                           ->  Hash Left Join
+                                 Hash Cond: (t.unique2 = k.unique1)
+                                 ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                                       Hash Key: t.unique2
+                                       ->  Seq Scan on tenk1 t
+                                 ->  Hash
                                        ->  Seq Scan on tenk1 k
- Optimizer: Pivotal Optimizer (GPORCA)
+ Optimizer: GPORCA
 (15 rows)
 
 select count(*) from tenk1 t
@@ -1003,26 +1003,27 @@ analyze exists_tbl;
 explain (costs off)
 select count(*) from exists_tbl t1
   where (exists(select 1 from exists_tbl t2 where t1.c1 = t2.c2) or c3 < 0);
-                                              QUERY PLAN                                               
--------------------------------------------------------------------------------------------------------
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-               ->  Result
-                     Filter: ((COALESCE((count()), '0'::bigint) > '0'::bigint) OR (t1.c3 < 0))
-                     ->  Hash Left Join
-                           Hash Cond: (t1.c1 = t2.c2)
-                           ->  Dynamic Seq Scan on exists_tbl t1
-                                 Number of partitions to scan: 2 (out of 2)
-                           ->  Hash
-                                 ->  HashAggregate
-                                       Group Key: t2.c2
-                                       ->  Redistribute Motion 3:3  (slice2; segments: 3)
-                                             Hash Key: t2.c2
-                                             ->  Dynamic Seq Scan on exists_tbl t2
-                                                   Number of partitions to scan: 2 (out of 2)
- Optimizer: Pivotal Optimizer (GPORCA)
-(17 rows)
+               ->  HashAggregate
+                     Group Key: t1.c1, t1.c3, t1.ctid, t1.tableoid, t1.gp_segment_id, (true)
+                     ->  Result
+                           Filter: (CASE WHEN (NOT ((true) IS NULL)) THEN true ELSE false END OR (t1.c3 < 0))
+                           ->  Hash Left Join
+                                 Hash Cond: (t1.c1 = t2.c2)
+                                 ->  Dynamic Seq Scan on exists_tbl t1
+                                       Number of partitions to scan: 2 (out of 2)
+                                 ->  Hash
+                                       ->  Result
+                                             ->  Redistribute Motion 3:3  (slice2; segments: 3)
+                                                   Hash Key: t2.c2
+                                                   ->  Dynamic Seq Scan on exists_tbl t2
+                                                         Number of partitions to scan: 2 (out of 2)
+ Optimizer: GPORCA
+(18 rows)
 
 select count(*) from exists_tbl t1
   where (exists(select 1 from exists_tbl t2 where t1.c1 = t2.c2) or c3 < 0);
