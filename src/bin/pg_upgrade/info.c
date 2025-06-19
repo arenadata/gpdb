@@ -11,12 +11,8 @@
 
 #include "access/transam.h"
 #include "catalog/pg_class_d.h"
-<<<<<<< HEAD
-
 #include "greenplum/pg_upgrade_greenplum.h"
-=======
 #include "pg_upgrade.h"
->>>>>>> BISECT_HEAD
 
 static void create_rel_filename_map(const char *old_data, const char *new_data,
 									const DbInfo *old_db, const DbInfo *new_db,
