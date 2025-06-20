@@ -12,28 +12,21 @@ subdir = src/backend/optimizer/plan
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-<<<<<<< HEAD
-BLD_TOP = $(top_builddir)/..
-
-OBJS = analyzejoins.o createplan.o initsplan.o planagg.o planmain.o planner.o \
-	setrefs.o subselect.o \
-	planshare.o \
+OBJS = \
+	analyzejoins.o \
+	createplan.o \
+	initsplan.o \
 	joinpartprune.o \
+	planagg.o \
+	planmain.o \
+	planner.o \
+	planshare.o \
+	setrefs.o \
+	subselect.o \
 	transform.o
 
 ifeq ($(enable_orca),yes)
 OBJS += orca.o
 endif
-=======
-OBJS = \
-	analyzejoins.o \
-	createplan.o \
-	initsplan.o \
-	planagg.o \
-	planmain.o \
-	planner.o \
-	setrefs.o \
-	subselect.o
->>>>>>> BISECT_HEAD
 
 include $(top_srcdir)/src/backend/common.mk
