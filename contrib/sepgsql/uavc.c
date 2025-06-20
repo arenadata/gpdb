@@ -14,10 +14,7 @@
 
 #include "catalog/pg_proc.h"
 #include "commands/seclabel.h"
-<<<<<<< HEAD
 #include "common/hashfn.h"
-=======
->>>>>>> BISECT_HEAD
 #include "sepgsql.h"
 #include "storage/ipc.h"
 #include "utils/guc.h"
