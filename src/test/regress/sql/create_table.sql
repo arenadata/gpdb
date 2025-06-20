@@ -908,12 +908,11 @@ insert into defcheck_def values (0, 0);
 create table defcheck_0 partition of defcheck for values in (0);
 drop table defcheck;
 
-<<<<<<< HEAD
 -- Test github issue #7340. truncating a toast unlogged table fails.
 -- Leave the table on purpose for pg_dump and gp_replica_check tests.
 CREATE UNLOGGED TABLE unlogged_toast (a text);
 TRUNCATE unlogged_toast;
-=======
+
 -- tests of column drop with partition tables and indexes using
 -- predicates and expressions.
 create table part_column_drop (
@@ -936,4 +935,3 @@ create table part_column_drop_1_10 partition of
 \d part_column_drop
 \d part_column_drop_1_10
 drop table part_column_drop;
->>>>>>> BISECT_HEAD
