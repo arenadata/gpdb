@@ -29,11 +29,8 @@
 #include "access/relation.h"
 #include "catalog/pg_am_d.h"
 #include "catalog/pg_type.h"
-<<<<<<< HEAD
-#include "mb/pg_wchar.h"
-=======
 #include "funcapi.h"
->>>>>>> BISECT_HEAD
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pageinspect.h"
 #include "port/pg_bitutils.h"
