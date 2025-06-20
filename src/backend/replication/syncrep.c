@@ -809,15 +809,12 @@ cmp_lsn(const void *a, const void *b)
 List *
 SyncRepGetSyncStandbys(bool *am_sync)
 {
-<<<<<<< HEAD
 	List	   *result = NIL;
 	bool		syncStandbyPresent;
 	int			i;
 	volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
 								 * rearrangement */
-=======
 	Assert(LWLockHeldByMe(SyncRepLock));
->>>>>>> BISECT_HEAD
 
 	/* Set default result */
 	if (am_sync != NULL)
