@@ -72,11 +72,7 @@ initCachedPage(BloomBuildState *buildstate)
  * Per-tuple callback for table_index_build_scan.
  */
 static void
-<<<<<<< HEAD
-bloomBuildCallback(Relation index, ItemPointer tupleId, Datum *values,
-=======
 bloomBuildCallback(Relation index, ItemPointer tid, Datum *values,
->>>>>>> BISECT_HEAD
 				   bool *isnull, bool tupleIsAlive, void *state)
 {
 	BloomBuildState *buildstate = (BloomBuildState *) state;
@@ -85,11 +81,7 @@ bloomBuildCallback(Relation index, ItemPointer tid, Datum *values,
 
 	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
-<<<<<<< HEAD
-	itup = BloomFormTuple(&buildstate->blstate, tupleId, values, isnull);
-=======
 	itup = BloomFormTuple(&buildstate->blstate, tid, values, isnull);
->>>>>>> BISECT_HEAD
 
 	/* Try to add next item to cached page */
 	if (BloomPageAddItem(&buildstate->blstate, buildstate->data.data, itup))
