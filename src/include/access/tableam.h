@@ -143,11 +143,7 @@ typedef struct TM_FailureData
 /* GPDB: This takes an ItemPointer, rather than HeapTuple, because this is also
  * used with AO/AOCO tables */
 typedef void (*IndexBuildCallback) (Relation index,
-<<<<<<< HEAD
-									ItemPointer tupleid,
-=======
 									ItemPointer tid,
->>>>>>> BISECT_HEAD
 									Datum *values,
 									bool *isnull,
 									bool tupleIsAlive,
