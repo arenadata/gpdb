@@ -7,13 +7,6 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 
-<<<<<<< HEAD
-#include "_int.h"
-
-#include "miscadmin.h"
-
-=======
->>>>>>> BISECT_HEAD
 PG_FUNCTION_INFO_V1(bqarr_in);
 PG_FUNCTION_INFO_V1(bqarr_out);
 PG_FUNCTION_INFO_V1(boolop);
