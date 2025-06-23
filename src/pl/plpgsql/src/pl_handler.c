@@ -18,6 +18,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "plpgsql.h"
@@ -27,14 +28,6 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
-<<<<<<< HEAD
-#include "plpgsql.h"
-
-#include "cdb/cdbvars.h"
-
-
-=======
->>>>>>> BISECT_HEAD
 static bool plpgsql_extra_checks_check_hook(char **newvalue, void **extra, GucSource source);
 static void plpgsql_extra_warnings_assign_hook(const char *newvalue, void *extra);
 static void plpgsql_extra_errors_assign_hook(const char *newvalue, void *extra);
