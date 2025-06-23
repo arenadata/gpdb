@@ -23,6 +23,7 @@
 #include "access/tupconvert.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "executor/execExpr.h"
 #include "executor/spi.h"
@@ -49,14 +50,6 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-<<<<<<< HEAD
-#include "cdb/cdbvars.h"
-
-#include "plpgsql.h"
-
-
-=======
->>>>>>> BISECT_HEAD
 typedef struct
 {
 	int			nargs;			/* number of arguments */
