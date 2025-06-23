@@ -26,13 +26,9 @@
 #include "file_ops.h"
 #include "filemap.h"
 #include "getopt_long.h"
-<<<<<<< HEAD
-#include "common/restricted_token.h"
-#include "utils/palloc.h"
-=======
 #include "pg_rewind.h"
->>>>>>> BISECT_HEAD
 #include "storage/bufpage.h"
+#include "utils/palloc.h"
 
 static void usage(const char *progname);
 
