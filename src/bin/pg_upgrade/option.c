@@ -17,12 +17,8 @@
 #include "common/string.h"
 #include "getopt_long.h"
 #include "pg_upgrade.h"
-<<<<<<< HEAD
 #include "greenplum/pg_upgrade_greenplum.h"
-
-=======
 #include "utils/pidfile.h"
->>>>>>> BISECT_HEAD
 
 static void usage(void);
 static void check_required_directory(char **dirpath,
