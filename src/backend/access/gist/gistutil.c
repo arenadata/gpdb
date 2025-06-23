@@ -913,28 +913,10 @@ gistoptions(Datum reloptions, bool validate)
 		{"buffering", RELOPT_TYPE_ENUM, offsetof(GiSTOptions, buffering_mode)}
 	};
 
-<<<<<<< HEAD
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_GIST,
-							  &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	rdopts = allocateReloptStruct(sizeof(GiSTOptions), options, numoptions);
-
-	fillRelOptions((void *) rdopts, sizeof(GiSTOptions), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	free_options_deep(options, numoptions);
-
-	return (bytea *) rdopts;
-=======
 	return (bytea *) build_reloptions(reloptions, validate,
 									  RELOPT_KIND_GIST,
 									  sizeof(GiSTOptions),
 									  tab, lengthof(tab));
->>>>>>> BISECT_HEAD
 }
 
 /*

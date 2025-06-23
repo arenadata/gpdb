@@ -608,28 +608,10 @@ ginoptions(Datum reloptions, bool validate)
 															 pendingListCleanupSize)}
 	};
 
-<<<<<<< HEAD
-	options = parseRelOptions(reloptions, validate, RELOPT_KIND_GIN,
-							  &numoptions);
-
-	/* if none set, we're done */
-	if (numoptions == 0)
-		return NULL;
-
-	rdopts = allocateReloptStruct(sizeof(GinOptions), options, numoptions);
-
-	fillRelOptions((void *) rdopts, sizeof(GinOptions), options, numoptions,
-				   validate, tab, lengthof(tab));
-
-	free_options_deep(options, numoptions);
-
-	return (bytea *) rdopts;
-=======
 	return (bytea *) build_reloptions(reloptions, validate,
 									  RELOPT_KIND_GIN,
 									  sizeof(GinOptions),
 									  tab, lengthof(tab));
->>>>>>> BISECT_HEAD
 }
 
 /*
