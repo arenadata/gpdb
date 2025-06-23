@@ -13,18 +13,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "catalog/catalog.h"
 #include "catalog/pg_tablespace_d.h"
 #include "common/string.h"
 #include "datapagemap.h"
 #include "filemap.h"
 #include "pg_rewind.h"
-<<<<<<< HEAD
-
-#include "catalog/catalog.h"
-#include "common/string.h"
-#include "catalog/pg_tablespace_d.h"
-=======
->>>>>>> BISECT_HEAD
 #include "storage/fd.h"
 
 filemap_t  *filemap = NULL;
