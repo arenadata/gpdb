@@ -28,11 +28,7 @@ typedef struct timeout_params
 	TimeoutId	index;			/* identifier of timeout reason */
 
 	/* volatile because these may be changed from the signal handler */
-<<<<<<< HEAD
-	volatile bool active;       /* true if timeout is in active_timeouts[] */
-=======
 	volatile bool active;		/* true if timeout is in active_timeouts[] */
->>>>>>> BISECT_HEAD
 	volatile bool indicator;	/* true if timeout has occurred */
 
 	/* callback function for timeout, or NULL if timeout not registered */
@@ -535,10 +531,6 @@ enable_timeouts(const EnableTimeoutParams *timeouts, int count)
 void
 disable_timeout(TimeoutId id, bool keep_indicator)
 {
-<<<<<<< HEAD
-
-=======
->>>>>>> BISECT_HEAD
 	/* Assert request is sane */
 	Assert(all_timeouts_initialized);
 	Assert(all_timeouts[id].timeout_handler != NULL);
@@ -605,11 +597,7 @@ disable_timeouts(const DisableTimeoutParams *timeouts, int count)
 void
 disable_all_timeouts(bool keep_indicators)
 {
-<<<<<<< HEAD
-	int i;
-=======
 	int			i;
->>>>>>> BISECT_HEAD
 
 	disable_alarm();
 
