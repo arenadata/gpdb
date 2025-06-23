@@ -1799,10 +1799,6 @@ pg_SSPI_recvauth(Port *port)
 		outbuf.pBuffers = OutBuffers;
 		outbuf.ulVersion = SECBUFFER_VERSION;
 
-<<<<<<< HEAD
-
-=======
->>>>>>> BISECT_HEAD
 		elog(DEBUG4, "processing received SSPI token of length %u",
 			 (unsigned int) buf.len);
 
@@ -2401,21 +2397,17 @@ auth_peer(hbaPort *port)
 	/* Make a copy of static getpw*() result area. */
 	peer_user = pstrdup(pw->pw_name);
 
-<<<<<<< HEAD
 	/*
 	 * GPDB: check for port->hba == NULL here, because auth_peer is used
 	 * without an HBA entry in the short-circuited QD->QE authentication,
 	 * from internal_client_authentication().
 	 */
-	return check_usermap(port->hba ? port->hba->usermap : NULL,
-						 port->user_name, ident_user, false);
-=======
-	ret = check_usermap(port->hba->usermap, port->user_name, peer_user, false);
+	ret = check_usermap(port->hba ? port->hba->usermap : NULL, port->user_name,
+						peer_user, false);
 
 	pfree(peer_user);
 
 	return ret;
->>>>>>> BISECT_HEAD
 }
 #endif							/* HAVE_UNIX_SOCKETS */
 
