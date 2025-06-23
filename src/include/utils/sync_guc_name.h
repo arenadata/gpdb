@@ -1,6 +1,6 @@
 /* items in this file should be ordered */
-		"bytea_output",
 		"backtrace_functions",
+		"bytea_output",
 		"client_min_messages",
 		"commit_delay",
 		"commit_siblings",
