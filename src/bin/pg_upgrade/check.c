@@ -13,10 +13,7 @@
 #include "fe_utils/string_utils.h"
 #include "mb/pg_wchar.h"
 #include "pg_upgrade.h"
-<<<<<<< HEAD
 #include "greenplum/pg_upgrade_greenplum.h"
-=======
->>>>>>> BISECT_HEAD
 
 static void check_new_cluster_is_empty(void);
 static void check_databases_are_compatible(void);
