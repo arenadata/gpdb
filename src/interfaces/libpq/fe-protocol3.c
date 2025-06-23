@@ -26,16 +26,6 @@
 #include <ctype.h>
 #include <fcntl.h>
 
-<<<<<<< HEAD
-#include "libpq-fe.h"
-#include "libpq-int.h"
-#include "nodes/pg_list.h"
-
-#include "mb/pg_wchar.h"
-#include "port/pg_bswap.h"
-
-=======
->>>>>>> BISECT_HEAD
 #ifdef WIN32
 #include "win32.h"
 #else
@@ -48,6 +38,7 @@
 #include "libpq-fe.h"
 #include "libpq-int.h"
 #include "mb/pg_wchar.h"
+#include "nodes/pg_list.h"
 #include "port/pg_bswap.h"
 
 /*
