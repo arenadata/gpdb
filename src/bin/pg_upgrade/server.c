@@ -11,13 +11,9 @@
 
 #include "fe_utils/connect.h"
 #include "fe_utils/string_utils.h"
+#include "greenplum/pg_upgrade_greenplum.h"
 #include "pg_upgrade.h"
 
-<<<<<<< HEAD
-#include "greenplum/pg_upgrade_greenplum.h"
-
-=======
->>>>>>> BISECT_HEAD
 static PGconn *get_db_conn(ClusterInfo *cluster, const char *db_name);
 
 
