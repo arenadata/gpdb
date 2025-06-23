@@ -11,12 +11,9 @@
 
 #include <signal.h>
 
-<<<<<<< HEAD
-#include "greenplum/pg_upgrade_greenplum.h"
-=======
 #include "common/username.h"
+#include "greenplum/pg_upgrade_greenplum.h"
 #include "pg_upgrade.h"
->>>>>>> BISECT_HEAD
 
 LogOpts		log_opts;
 
