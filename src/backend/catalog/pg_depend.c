@@ -24,6 +24,7 @@
 #include "catalog/pg_extension.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
+#include "storage/lmgr.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -91,6 +92,12 @@ recordMultipleDependencies(const ObjectAddress *depender,
 		 */
 		if (!isObjectPinned(referenced, dependDesc))
 		{
+			if (behavior == DEPENDENCY_NORMAL)
+				LockDatabaseObject(referenced->classId,
+								   referenced->objectId,
+								   referenced->objectSubId,
+								   AccessShareLock);
+
 			/*
 			 * Record the Dependency.  Note we don't bother to check for
 			 * duplicate dependencies; there's no harm in them.
