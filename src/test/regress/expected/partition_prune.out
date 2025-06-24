@@ -2445,7 +2445,6 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
  Finalize Aggregate (actual rows=N loops=N)
    ->  Gather Motion 1:1  (slice1; segments: 1) (actual rows=N loops=N)
          ->  Partial Aggregate (actual rows=N loops=N)
-<<<<<<< HEAD
                ->  Merge Join (actual rows=N loops=N)
                      Merge Cond: (ab_a1_b1.a = a.a)
                      ->  Sort (actual rows=N loops=N)
@@ -2475,32 +2474,6 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
                                        Filter: (a = ANY ('{1,0,0}'::integer[]))
  Optimizer: Postgres query optimizer
 (31 rows)
-=======
-               ->  Nested Loop (actual rows=N loops=N)
-                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
-                           Filter: (a = ANY ('{1,0,0}'::integer[]))
-                           Rows Removed by Filter: N
-                     ->  Append (actual rows=N loops=N)
-                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (actual rows=N loops=N)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (actual rows=N loops=N)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (actual rows=N loops=N)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a2_b2_a_idx on ab_a2_b2 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a2_b3_a_idx on ab_a2_b3 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a3_b1_a_idx on ab_a3_b1 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a3_b2_a_idx on ab_a3_b2 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a3_b3_a_idx on ab_a3_b3 (never executed)
-                                 Index Cond: (a = a.a)
-(28 rows)
->>>>>>> BISECT_HEAD
 
 delete from lprt_a where a = 1;
 select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on ab.a = a.a where a.a in(1, 0, 0)');
@@ -2509,7 +2482,6 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
  Finalize Aggregate (actual rows=N loops=N)
    ->  Gather Motion 1:1  (slice1; segments: 1) (actual rows=N loops=N)
          ->  Partial Aggregate (actual rows=N loops=N)
-<<<<<<< HEAD
                ->  Merge Join (actual rows=N loops=N)
                      Merge Cond: (ab_a1_b1.a = a.a)
                      ->  Sort (actual rows=N loops=N)
@@ -2539,32 +2511,6 @@ select explain_parallel_append('select avg(ab.a) from ab inner join lprt_a a on 
                                        Filter: (a = ANY ('{1,0,0}'::integer[]))
  Optimizer: Postgres query optimizer
 (31 rows)
-=======
-               ->  Nested Loop (actual rows=N loops=N)
-                     ->  Parallel Seq Scan on lprt_a a (actual rows=N loops=N)
-                           Filter: (a = ANY ('{1,0,0}'::integer[]))
-                           Rows Removed by Filter: N
-                     ->  Append (actual rows=N loops=N)
-                           ->  Index Scan using ab_a1_b1_a_idx on ab_a1_b1 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a1_b2_a_idx on ab_a1_b2 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a1_b3_a_idx on ab_a1_b3 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a2_b1_a_idx on ab_a2_b1 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a2_b2_a_idx on ab_a2_b2 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a2_b3_a_idx on ab_a2_b3 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a3_b1_a_idx on ab_a3_b1 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a3_b2_a_idx on ab_a3_b2 (never executed)
-                                 Index Cond: (a = a.a)
-                           ->  Index Scan using ab_a3_b3_a_idx on ab_a3_b3 (never executed)
-                                 Index Cond: (a = a.a)
-(28 rows)
->>>>>>> BISECT_HEAD
 
 reset enable_hashjoin;
 reset enable_mergejoin;
