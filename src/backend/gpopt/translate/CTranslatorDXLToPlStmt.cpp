@@ -4238,7 +4238,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDml(
 
 	GPOS_ASSERT(0 != dml->actionColIdx);
 
-	plan->targetlist = dml_target_list;
+	dml->targetListProj = dml_target_list;
 
 	plan->lefttree = child_plan;
 	plan->nMotionNodes = child_plan->nMotionNodes;
