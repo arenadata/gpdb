@@ -13093,11 +13093,8 @@ wait_to_avoid_large_repl_lag(void)
 	if (rep_lag_avoidance_threshold &&
 		wal_bytes_written > (rep_lag_avoidance_threshold * 1024))
 	{
-		/* holdoff interruptions to prevent out of sync with the mirror. */
-		HOLD_INTERRUPTS();
 		/* we use local cached copy of LogwrtResult here */
 		SyncRepWaitForLSN(LogwrtResult.Flush, false);
-		RESUME_INTERRUPTS();
 		wal_bytes_written = 0;
 	}
 }
@@ -13114,9 +13111,7 @@ wait_for_mirror()
     SpinLockRelease(&xlogctl->info_lck);
 
     /* holdoff interruptions to prevent out of sync with the mirror. */
-    HOLD_INTERRUPTS();
     SyncRepWaitForLSN(tmpLogwrtResult.Flush, false);
-    RESUME_INTERRUPTS();
 }
 
 /*
