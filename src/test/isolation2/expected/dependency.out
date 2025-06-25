@@ -1,0 +1,411 @@
+-- Test different cases when a parallel transaction drops a dependency object
+-- before current transaction is committed.
+
+-- start_matchsubs
+-- m/cache lookup failed for type \d+/
+-- s/cache lookup failed for type \d+/cache lookup failed for type XXXXX/
+-- m/cache lookup failed for language \d+/
+-- s/cache lookup failed for language \d+/cache lookup failed for language XXXXX/
+-- m/cache lookup failed for function \d+/
+-- s/cache lookup failed for function \d+/cache lookup failed for function XXXXX/
+-- m/format_type.c:\d+/
+-- s/format_type.c:\d+/format_type.c:XXX/
+-- m/lsyscache.c:\d+/
+-- s/lsyscache.c:\d+/lsyscache.c:XXX/
+-- m/fmgr.c:\d+/
+-- s/fmgr.c:\d+/fmgr.c:XXX/
+-- m/ruleutils.c:\d+/
+-- s/ruleutils.c:\d+/ruleutils.c:XXX/
+-- end_matchsubs
+
+-- Case 1. Dependency on the schema.
+create schema test_1_schema;
+CREATE
+
+1: begin;
+BEGIN
+1: create function test_1_schema.test_1_function() returns text as $$ select 'test'::text; /**/ $$ language sql;
+CREATE
+
+2&: drop schema test_1_schema;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop schema test_1_schema because other objects depend on it
+DETAIL:  function test_1_schema.test_1_function() depends on schema test_1_schema
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select test_1_schema.test_1_function();
+ test_1_function 
+-----------------
+ test            
+(1 row)
+
+drop schema test_1_schema cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create schema test_1_schema;
+CREATE
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop schema test_1_schema;
+DROP
+1&: create function test_1_schema.test_1_function() returns text as $$ select 'test'::text; /**/ $$ language sql;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  schema "test_1_schema" does not exist  (seg0 127.0.1.1:6002 pid=2715327)
+1: end;
+END
+
+-- Case 2. Dependency on the return type.
+create type test_2_type as (a int);
+CREATE
+
+1: begin;
+BEGIN
+1: create function test_2_function() returns setof test_2_type as $$ select i from generate_series(1,5)i; /**/ $$ language sql;
+CREATE
+
+2&: drop type test_2_type;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop type test_2_type because other objects depend on it
+DETAIL:  function test_2_function() depends on type test_2_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select test_2_function();
+ test_2_function 
+-----------------
+ (1)             
+ (2)             
+ (3)             
+ (4)             
+ (5)             
+(5 rows)
+
+drop type test_2_type cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create type test_2_type as (a int);
+CREATE
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop type test_2_type;
+DROP
+1&: create function test_2_function() returns setof test_2_type as $$ select i from generate_series(1,5)i; /**/ $$ language sql;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  cache lookup failed for type XXXXX (format_type.c:XXX)
+CONTEXT:  SQL function "test_2_function"
+1: end;
+END
+
+-- Case 3. Dependency on the parameter type.
+create type test_3_type as enum ('one', 'two');
+CREATE
+
+1: begin;
+BEGIN
+1: create function test_3_function(a test_3_type) returns text as $$ select 'Return ' || a; /**/ $$ language sql;
+CREATE
+
+2&: drop type test_3_type;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop type test_3_type because other objects depend on it
+DETAIL:  function test_3_function(test_3_type) depends on type test_3_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select test_3_function('one');
+ test_3_function 
+-----------------
+ Return one      
+(1 row)
+
+drop type test_3_type cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create type test_3_type as enum ('one', 'two');
+CREATE
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop type test_3_type;
+DROP
+1&: create function test_3_function(a test_3_type) returns text as $$ select 'Return ' || a; /**/ $$ language sql;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  cache lookup failed for type XXXXX (lsyscache.c:XXX)
+CONTEXT:  SQL function "test_3_function"
+1: end;
+END
+
+-- Case 4. Dependency on the language.
+-- start_ignore
+create or replace language plpythonu;
+CREATE
+-- end_ignore
+
+1: begin;
+BEGIN
+1: create function test_4_function() returns text as $$ return "test" $$ language plpythonu;
+CREATE
+
+2&: drop language plpythonu;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop language plpythonu because other objects depend on it
+DETAIL:  function test_4_function() depends on language plpythonu
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select test_4_function();
+ test_4_function 
+-----------------
+ test            
+(1 row)
+
+drop language plpythonu cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+-- start_ignore
+create or replace language plpythonu;
+CREATE
+-- end_ignore
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop language plpythonu;
+DROP
+1&: create function test_4_function() returns text as $$ return "test" $$ language plpythonu;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  cache lookup failed for language XXXXX (fmgr.c:XXX)
+1: end;
+END
+
+-- Case 5. Dependency on the parameter default expression.
+create function test5_default_value_function() returns text as $$ select 'test'::text; /**/ $$ language sql;
+CREATE
+
+1: begin;
+BEGIN
+1: create function test_5_function(a text default test5_default_value_function()) returns text as $$ begin return a; /**/ end $$ language plpgsql;
+CREATE
+
+2&: drop function test5_default_value_function();  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop function test5_default_value_function() because other objects depend on it
+DETAIL:  function test_5_function(text) depends on function test5_default_value_function()
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select test_5_function();
+ test_5_function 
+-----------------
+ test            
+(1 row)
+
+drop function test5_default_value_function() cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create function test5_default_value_function() returns text as $$ select 'test'::text; /**/ $$ language sql;
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop function test5_default_value_function();
+DROP
+1&: create function test_5_function(a text default test5_default_value_function()) returns text as $$ begin return a; /**/ end $$ language plpgsql;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  function test5_default_value_function() does not exist  (seg0 127.0.1.1:6002 pid=2718914)
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+1: end;
+END
+
+-- Case 6. Dependency on the column default expression.
+create function test_6_default_value_function() returns text as $$ select 'test'::text; /**/ $$ language sql;
+CREATE
+
+1: begin;
+BEGIN
+1: create table test_6_table(a text default test_6_default_value_function());
+CREATE
+
+2&: drop function test_6_default_value_function();  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop function test_6_default_value_function() because other objects depend on it
+DETAIL:  default for table test_6_table column a depends on function test_6_default_value_function()
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: insert into test_6_table default values;
+INSERT 1
+1: select * from test_6_table;
+ a    
+------
+ test 
+(1 row)
+
+drop function test_6_default_value_function() cascade;
+DROP
+drop table test_6_table;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create function test_6_default_value_function() returns text as $$ select 'test'::text; /**/ $$ language sql;
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop function test_6_default_value_function();
+DROP
+1&: create table test_6_table(a text default test_6_default_value_function());  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  cache lookup failed for function XXXXX (ruleutils.c:10062)  (seg2 127.0.1.1:6004 pid=2718915) (ruleutils.c:10062)
+1: end;
+END
+
+-- Case 7. Dependency on the column type.
+create type test_7_type as enum ('one', 'two');
+CREATE
+
+1: begin;
+BEGIN
+1: create table test_7_table(a test_7_type);
+CREATE
+
+2&: drop type test_7_type;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop type test_7_type because other objects depend on it
+DETAIL:  table test_7_table column a depends on type test_7_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select * from test_7_table;
+ a 
+---
+(0 rows)
+
+drop type test_7_type cascade;
+DROP
+drop table test_7_table;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create type test_7_type as enum ('one', 'two');
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop type test_7_type;
+DROP
+1&: create table test_7_table(a test_7_type);  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  type "test_7_type" does not exist  (seg0 127.0.1.1:6002 pid=2718914)
+1: end;
+END
+
+-- Case 8. Table dependency on the collation.
+create collation test_8_collation (locale="en_US.utf8");
+CREATE
+
+1: begin;
+BEGIN
+1: create table test_8_table(a text collate test_8_collation);
+CREATE
+1: insert into test_8_table values('data');
+INSERT 1
+
+2&: drop collation test_8_collation;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop collation test_8_collation because other objects depend on it
+DETAIL:  table test_8_table column a depends on collation test_8_collation
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select * from test_8_table where a < 'test';
+ a    
+------
+ data 
+(1 row)
+
+drop collation test_8_collation cascade;
+DROP
+drop table test_8_table;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create collation test_8_collation (locale="en_US.utf8");
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop collation test_8_collation;
+DROP
+1&: create table test_8_table(a text collate test_8_collation);  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  collation "test_8_collation" for encoding "UTF8" does not exist  (seg0 127.0.1.1:6002 pid=2718914)
+1: end;
+END
