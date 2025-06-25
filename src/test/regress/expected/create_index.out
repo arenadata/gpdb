@@ -2160,7 +2160,7 @@ WHERE classid = 'pg_class'::regclass AND
  index concur_reindex_ind1                | constraint concur_reindex_ind1 on table concur_reindex_tab | i
  index concur_reindex_ind2                | column c2 of table concur_reindex_tab                      | a
  index concur_reindex_ind3                | column c1 of table concur_reindex_tab                      | a
- index concur_reindex_ind3                | table concur_reindex_tab                                   | a
+ index concur_reindex_ind3                | column c1 of table concur_reindex_tab                      | a
  index concur_reindex_ind4                | column c1 of table concur_reindex_tab                      | a
  index concur_reindex_ind4                | column c1 of table concur_reindex_tab                      | a
  index concur_reindex_ind4                | column c2 of table concur_reindex_tab                      | a
@@ -2173,9 +2173,7 @@ ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_tab;
 ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_matview;
-<<<<<<< HEAD
 ERROR:  REINDEX CONCURRENTLY is not supported
-=======
 SELECT pg_describe_object(classid, objid, objsubid) as obj,
        pg_describe_object(refclassid,refobjid,refobjsubid) as objref,
        deptype
@@ -2193,7 +2191,7 @@ WHERE classid = 'pg_class'::regclass AND
  index concur_reindex_ind1                | constraint concur_reindex_ind1 on table concur_reindex_tab | i
  index concur_reindex_ind2                | column c2 of table concur_reindex_tab                      | a
  index concur_reindex_ind3                | column c1 of table concur_reindex_tab                      | a
- index concur_reindex_ind3                | table concur_reindex_tab                                   | a
+ index concur_reindex_ind3                | column c1 of table concur_reindex_tab                      | a
  index concur_reindex_ind4                | column c1 of table concur_reindex_tab                      | a
  index concur_reindex_ind4                | column c1 of table concur_reindex_tab                      | a
  index concur_reindex_ind4                | column c2 of table concur_reindex_tab                      | a
@@ -2201,7 +2199,6 @@ WHERE classid = 'pg_class'::regclass AND
  table concur_reindex_tab                 | schema public                                              | n
 (9 rows)
 
->>>>>>> BISECT_HEAD
 -- Check that comments are preserved
 CREATE TABLE testcomment (i int);
 CREATE INDEX testcomment_idx1 ON testcomment (i);
@@ -2329,9 +2326,7 @@ SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_ind
 REINDEX TABLE CONCURRENTLY concur_reindex_part_0_1;
 ERROR:  REINDEX CONCURRENTLY is not supported
 REINDEX TABLE CONCURRENTLY concur_reindex_part_0_2;
-<<<<<<< HEAD
 ERROR:  REINDEX CONCURRENTLY is not supported
-=======
 SELECT pg_describe_object(classid, objid, objsubid) as obj,
        pg_describe_object(refclassid,refobjid,refobjsubid) as objref,
        deptype
@@ -2369,7 +2364,6 @@ WHERE classid = 'pg_class'::regclass AND
  table concur_reindex_part_0_2            | table concur_reindex_part_0                | a
 (19 rows)
 
->>>>>>> BISECT_HEAD
 SELECT relid, parentrelid, level FROM pg_partition_tree('concur_reindex_part_index')
   ORDER BY relid, level;
              relid             |         parentrelid         | level 
