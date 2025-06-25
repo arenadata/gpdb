@@ -13110,7 +13110,6 @@ wait_for_mirror()
     tmpLogwrtResult = xlogctl->LogwrtResult;
     SpinLockRelease(&xlogctl->info_lck);
 
-    /* holdoff interruptions to prevent out of sync with the mirror. */
     SyncRepWaitForLSN(tmpLogwrtResult.Flush, false);
 }
 

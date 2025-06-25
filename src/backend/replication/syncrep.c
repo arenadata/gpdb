@@ -253,7 +253,7 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	Assert(SyncRepQueueIsOrderedByLSN(mode));
 	LWLockRelease(SyncRepLock);
 
-	/* holdoff interrupters to prevent interrupt */
+	/* holdoff interrupters to prevent cancellation of sync with the mirror */
 	HOLD_INTERRUPTS();
 
 	elogif(debug_walrepl_syncrep, LOG,
