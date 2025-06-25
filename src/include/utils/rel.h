@@ -363,9 +363,12 @@ typedef struct ViewOptions
  * RelationIsSecurityView
  *		Returns whether the relation is security view, or not.  Note multiple
  *		eval of argument!
+ *	GPDB
+ *		In GPDB, we also use this macro for materialized views.
  */
-#define RelationIsSecurityView(relation)									\
-	(AssertMacro(relation->rd_rel->relkind == RELKIND_VIEW),				\
+#define RelationIsSecurityView(relation, parseTree)							 \
+	(AssertMacro(relation->rd_rel->relkind == RELKIND_VIEW ||				 \
+(relation->rd_rel->relkind == RELKIND_MATVIEW && parsetree->expandMatViews)),\
 	 (relation)->rd_options ?												\
 	  ((ViewOptions *) (relation)->rd_options)->security_barrier : false)
 
