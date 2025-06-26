@@ -92,6 +92,10 @@ recordMultipleDependencies(const ObjectAddress *depender,
 		 */
 		if (!isObjectPinned(referenced, dependDesc))
 		{
+			/*
+			 * Lock the referenced object to protect it from dropping by
+			 * another transaction.
+			 */
 			if (behavior == DEPENDENCY_NORMAL)
 				LockDatabaseObject(referenced->classId,
 								   referenced->objectId,
