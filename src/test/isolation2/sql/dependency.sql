@@ -113,8 +113,9 @@ $$ language sql;
 
 -- Case 4. Dependency on the language.
 -- start_ignore
-create or replace language plpythonu;
+drop language if exists plpythonu cascade;
 -- end_ignore
+create language plpythonu;
 
 1: begin;
 1: create function test_4_function() returns text as $$
@@ -132,9 +133,8 @@ $$ language plpythonu;
 drop language plpythonu cascade;
 
 -- Check if dependency is dropped before the creation of the dependent object.
--- start_ignore
-create or replace language plpythonu;
--- end_ignore
+create language plpythonu;
+
 1: begin;
 2: begin;
 2: drop language plpythonu;

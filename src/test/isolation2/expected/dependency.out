@@ -163,10 +163,8 @@ CONTEXT:  SQL function "test_3_function"
 END
 
 -- Case 4. Dependency on the language.
--- start_ignore
-create or replace language plpythonu;
+create language plpythonu;
 CREATE
--- end_ignore
 
 1: begin;
 BEGIN
@@ -193,10 +191,9 @@ drop language plpythonu cascade;
 DROP
 
 -- Check if dependency is dropped before the creation of the dependent object.
--- start_ignore
-create or replace language plpythonu;
+create language plpythonu;
 CREATE
--- end_ignore
+
 1: begin;
 BEGIN
 2: begin;
