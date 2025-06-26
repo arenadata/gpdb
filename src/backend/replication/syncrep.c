@@ -158,13 +158,6 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	const char *old_status;
 	int			mode;
 
-	/*
-	 * This should be called while holding interrupts during a transaction
-	 * commit to prevent the follow-up shared memory queue cleanups to be
-	 * influenced by external interruptions.
-	 */
-	Assert(InterruptHoldoffCount > 0);
-
 	/* Cap the level for anything other than commit to remote flush only. */
 	if (commit)
 		mode = SyncRepWaitMode;
@@ -259,6 +252,9 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 	SyncRepQueueInsert(mode);
 	Assert(SyncRepQueueIsOrderedByLSN(mode));
 	LWLockRelease(SyncRepLock);
+
+	/* holdoff interrupters to prevent cancellation of sync with the mirror */
+	HOLD_INTERRUPTS();
 
 	elogif(debug_walrepl_syncrep, LOG,
 			"syncrep wait -- This backend is now inserted in the syncrep queue.");
@@ -407,6 +403,8 @@ SyncRepWaitForLSN(XLogRecPtr lsn, bool commit)
 		set_ps_display(new_status, false);
 		pfree(new_status);
 	}
+
+	RESUME_INTERRUPTS();
 }
 
 /*
