@@ -1,5 +1,5 @@
--- Test different cases when a parallel transaction drops a dependency object
--- before current transaction is committed.
+-- Test cases when a parallel transaction drops a dependency object
+-- while current transaction is yet not committed.
 
 -- start_matchsubs
 -- m/cache lookup failed for type \d+/
@@ -18,7 +18,7 @@
 -- s/ruleutils.c:\d+/ruleutils.c:XXX/
 -- end_matchsubs
 
--- Case 1. Dependency on the schema.
+-- Case 1. Function dependency on the schema.
 create schema test_1_schema;
 
 1: begin;
@@ -49,7 +49,7 @@ $$ language sql;
 1<:
 1: end;
 
--- Case 2. Dependency on the return type.
+-- Case 2. Function dependency on the return type.
 create type test_2_type as (a int);
 
 1: begin;
@@ -80,7 +80,7 @@ $$ language sql;
 1<:
 1: end;
 
--- Case 3. Dependency on the parameter type.
+-- Case 3. Function dependency on the parameter type.
 create type test_3_type as enum ('one', 'two');
 
 1: begin;
@@ -111,7 +111,7 @@ $$ language sql;
 1<:
 1: end;
 
--- Case 4. Dependency on the language.
+-- Case 4. Function dependency on the language.
 -- start_ignore
 drop language if exists plpythonu cascade;
 -- end_ignore
@@ -146,7 +146,7 @@ $$ language plpythonu;
 1<:
 1: end;
 
--- Case 5. Dependency on the parameter default expression.
+-- Case 5. Function dependency on the parameter default expression.
 create function test5_default_value_function() returns text as $$
     select 'test'::text; /**/
 $$ language sql;
@@ -188,7 +188,7 @@ $$ language plpgsql;
 1<:
 1: end;
 
--- Case 6. Dependency on the column default expression.
+-- Case 6. Table dependency on the column default expression.
 create function test_6_default_value_function() returns text as $$
     select 'test'::text; /**/
 $$ language sql;
@@ -222,7 +222,7 @@ $$ language sql;
 1<:
 1: end;
 
--- Case 7. Dependency on the column type.
+-- Case 7. Table dependency on the column type.
 create type test_7_type as enum ('one', 'two');
 
 1: begin;
