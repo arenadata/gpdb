@@ -172,6 +172,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1 RIGHT JOIN prt2 t2 ON t1.a = t2.b WHE
 -- full outer join, with placeholder vars
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0) t1 FULL JOIN (SELECT 75 phv, * FROM prt2 WHERE prt2.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
+<<<<<<< HEAD
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -211,6 +212,38 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0)
                                        Filter: (a = 0)
  Optimizer: Postgres query optimizer
 (36 rows)
+=======
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Sort
+   Sort Key: prt1.a, prt2.b
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: (prt1.a = prt2.b)
+               Filter: (((50) = prt1.a) OR ((75) = prt2.b))
+               ->  Seq Scan on prt1_p1 prt1
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_p1 prt2
+                           Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: (prt1_1.a = prt2_1.b)
+               Filter: (((50) = prt1_1.a) OR ((75) = prt2_1.b))
+               ->  Seq Scan on prt1_p2 prt1_1
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_p2 prt2_1
+                           Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: (prt1_2.a = prt2_2.b)
+               Filter: (((50) = prt1_2.a) OR ((75) = prt2_2.b))
+               ->  Seq Scan on prt1_p3 prt1_2
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_p3 prt2_2
+                           Filter: (a = 0)
+(27 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0) t1 FULL JOIN (SELECT 75 phv, * FROM prt2 WHERE prt2.a = 0) t2 ON (t1.a = t2.b) WHERE t1.phv = t1.a OR t2.phv = t2.b ORDER BY t1.a, t2.b;
  a  |  c   | b  |  c   
@@ -248,6 +281,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1 t1, prt2 t2 WHERE t1.a = t2.b AND t1.a <
 -- Currently we can't do partitioned join if nullable-side partitions are pruned
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+<<<<<<< HEAD
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -271,6 +305,26 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JO
                                  Filter: ((a < 450) AND (b = 0))
  Optimizer: Postgres query optimizer
 (20 rows)
+=======
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Sort
+   Sort Key: prt1.a, prt2.b
+   ->  Hash Right Join
+         Hash Cond: (prt2.b = prt1.a)
+         ->  Append
+               ->  Seq Scan on prt2_p2 prt2
+                     Filter: (b > 250)
+               ->  Seq Scan on prt2_p3 prt2_1
+                     Filter: (b > 250)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt1_p1 prt1
+                           Filter: ((a < 450) AND (b = 0))
+                     ->  Seq Scan on prt1_p2 prt1_1
+                           Filter: ((a < 450) AND (b = 0))
+(15 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
@@ -289,6 +343,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JO
 -- Currently we can't do partitioned join if nullable-side partitions are pruned
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 OR t2.a = 0 ORDER BY t1.a, t2.b;
+<<<<<<< HEAD
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -313,6 +368,27 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JO
                                        Filter: (b > 250)
  Optimizer: Postgres query optimizer
 (21 rows)
+=======
+                     QUERY PLAN                     
+----------------------------------------------------
+ Sort
+   Sort Key: prt1.a, prt2.b
+   ->  Hash Full Join
+         Hash Cond: (prt1.a = prt2.b)
+         Filter: ((prt1.b = 0) OR (prt2.a = 0))
+         ->  Append
+               ->  Seq Scan on prt1_p1 prt1
+                     Filter: (a < 450)
+               ->  Seq Scan on prt1_p2 prt1_1
+                     Filter: (a < 450)
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on prt2_p2 prt2
+                           Filter: (b > 250)
+                     ->  Seq Scan on prt2_p3 prt2_1
+                           Filter: (b > 250)
+(16 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1 WHERE a < 450) t1 FULL JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 OR t2.a = 0 ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
@@ -504,6 +580,7 @@ EXPLAIN (COSTS OFF)
 SELECT a, b FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b)
   WHERE a BETWEEN 490 AND 510
   GROUP BY 1, 2 ORDER BY 1, 2;
+<<<<<<< HEAD
                                                        QUERY PLAN                                                        
 -------------------------------------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -549,6 +626,53 @@ SELECT a, b FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b)
                                              Hash Key: p2_2.a
                                              ->  Seq Scan on prt2_p3 p2_2
  Optimizer: Postgres query optimizer
+=======
+                                                   QUERY PLAN                                                    
+-----------------------------------------------------------------------------------------------------------------
+ Group
+   Group Key: (COALESCE(prt1.a, p2.a)), (COALESCE(prt1.b, p2.b))
+   ->  Merge Append
+         Sort Key: (COALESCE(prt1.a, p2.a)), (COALESCE(prt1.b, p2.b))
+         ->  Group
+               Group Key: (COALESCE(prt1.a, p2.a)), (COALESCE(prt1.b, p2.b))
+               ->  Sort
+                     Sort Key: (COALESCE(prt1.a, p2.a)), (COALESCE(prt1.b, p2.b))
+                     ->  Merge Full Join
+                           Merge Cond: ((prt1.a = p2.a) AND (prt1.b = p2.b))
+                           Filter: ((COALESCE(prt1.a, p2.a) >= 490) AND (COALESCE(prt1.a, p2.a) <= 510))
+                           ->  Sort
+                                 Sort Key: prt1.a, prt1.b
+                                 ->  Seq Scan on prt1_p1 prt1
+                           ->  Sort
+                                 Sort Key: p2.a, p2.b
+                                 ->  Seq Scan on prt2_p1 p2
+         ->  Group
+               Group Key: (COALESCE(prt1_1.a, p2_1.a)), (COALESCE(prt1_1.b, p2_1.b))
+               ->  Sort
+                     Sort Key: (COALESCE(prt1_1.a, p2_1.a)), (COALESCE(prt1_1.b, p2_1.b))
+                     ->  Merge Full Join
+                           Merge Cond: ((prt1_1.a = p2_1.a) AND (prt1_1.b = p2_1.b))
+                           Filter: ((COALESCE(prt1_1.a, p2_1.a) >= 490) AND (COALESCE(prt1_1.a, p2_1.a) <= 510))
+                           ->  Sort
+                                 Sort Key: prt1_1.a, prt1_1.b
+                                 ->  Seq Scan on prt1_p2 prt1_1
+                           ->  Sort
+                                 Sort Key: p2_1.a, p2_1.b
+                                 ->  Seq Scan on prt2_p2 p2_1
+         ->  Group
+               Group Key: (COALESCE(prt1_2.a, p2_2.a)), (COALESCE(prt1_2.b, p2_2.b))
+               ->  Sort
+                     Sort Key: (COALESCE(prt1_2.a, p2_2.a)), (COALESCE(prt1_2.b, p2_2.b))
+                     ->  Merge Full Join
+                           Merge Cond: ((prt1_2.a = p2_2.a) AND (prt1_2.b = p2_2.b))
+                           Filter: ((COALESCE(prt1_2.a, p2_2.a) >= 490) AND (COALESCE(prt1_2.a, p2_2.a) <= 510))
+                           ->  Sort
+                                 Sort Key: prt1_2.a, prt1_2.b
+                                 ->  Seq Scan on prt1_p3 prt1_2
+                           ->  Sort
+                                 Sort Key: p2_2.a, p2_2.b
+                                 ->  Seq Scan on prt2_p3 p2_2
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 (43 rows)
 
 SELECT a, b FROM prt1 FULL JOIN prt2 p2(b,a,c) USING(a,b)
@@ -846,6 +970,7 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2
 -- make sure these go to null as expected
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.phv, t2.b, t2.phv, t3.a + t3.b, t3.phv FROM ((SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0) t1 FULL JOIN (SELECT 75 phv, * FROM prt2 WHERE prt2.a = 0) t2 ON (t1.a = t2.b)) FULL JOIN (SELECT 50 phv, * FROM prt1_e WHERE prt1_e.c = 0) t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t1.a = t1.phv OR t2.b = t2.phv OR (t3.a + t3.b)/2 = t3.phv ORDER BY t1.a, t2.b, t3.a + t3.b;
+<<<<<<< HEAD
                                                       QUERY PLAN                                                      
 ----------------------------------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -906,6 +1031,53 @@ SELECT t1.a, t1.phv, t2.b, t2.phv, t3.a + t3.b, t3.phv FROM ((SELECT 50 phv, * F
                                        Filter: (c = 0)
  Optimizer: Postgres query optimizer
 (57 rows)
+=======
+                                                 QUERY PLAN                                                 
+------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: prt1.a, prt2.b, ((prt1_e.a + prt1_e.b))
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: (prt1.a = ((prt1_e.a + prt1_e.b) / 2))
+               Filter: ((prt1.a = (50)) OR (prt2.b = (75)) OR (((prt1_e.a + prt1_e.b) / 2) = (50)))
+               ->  Hash Full Join
+                     Hash Cond: (prt1.a = prt2.b)
+                     ->  Seq Scan on prt1_p1 prt1
+                           Filter: (b = 0)
+                     ->  Hash
+                           ->  Seq Scan on prt2_p1 prt2
+                                 Filter: (a = 0)
+               ->  Hash
+                     ->  Seq Scan on prt1_e_p1 prt1_e
+                           Filter: (c = 0)
+         ->  Hash Full Join
+               Hash Cond: (prt1_1.a = ((prt1_e_1.a + prt1_e_1.b) / 2))
+               Filter: ((prt1_1.a = (50)) OR (prt2_1.b = (75)) OR (((prt1_e_1.a + prt1_e_1.b) / 2) = (50)))
+               ->  Hash Full Join
+                     Hash Cond: (prt1_1.a = prt2_1.b)
+                     ->  Seq Scan on prt1_p2 prt1_1
+                           Filter: (b = 0)
+                     ->  Hash
+                           ->  Seq Scan on prt2_p2 prt2_1
+                                 Filter: (a = 0)
+               ->  Hash
+                     ->  Seq Scan on prt1_e_p2 prt1_e_1
+                           Filter: (c = 0)
+         ->  Hash Full Join
+               Hash Cond: (prt1_2.a = ((prt1_e_2.a + prt1_e_2.b) / 2))
+               Filter: ((prt1_2.a = (50)) OR (prt2_2.b = (75)) OR (((prt1_e_2.a + prt1_e_2.b) / 2) = (50)))
+               ->  Hash Full Join
+                     Hash Cond: (prt1_2.a = prt2_2.b)
+                     ->  Seq Scan on prt1_p3 prt1_2
+                           Filter: (b = 0)
+                     ->  Hash
+                           ->  Seq Scan on prt2_p3 prt2_2
+                                 Filter: (a = 0)
+               ->  Hash
+                     ->  Seq Scan on prt1_e_p3 prt1_e_2
+                           Filter: (c = 0)
+(42 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 SELECT t1.a, t1.phv, t2.b, t2.phv, t3.a + t3.b, t3.phv FROM ((SELECT 50 phv, * FROM prt1 WHERE prt1.b = 0) t1 FULL JOIN (SELECT 75 phv, * FROM prt2 WHERE prt2.a = 0) t2 ON (t1.a = t2.b)) FULL JOIN (SELECT 50 phv, * FROM prt1_e WHERE prt1_e.c = 0) t3 ON (t1.a = (t3.a + t3.b)/2) WHERE t1.a = t1.phv OR t2.b = t2.phv OR (t3.a + t3.b)/2 = t3.phv ORDER BY t1.a, t2.b, t3.a + t3.b;
  a  | phv | b  | phv | ?column? | phv 
@@ -1255,6 +1427,7 @@ SELECT t1.a, t1.c, t2.b, t2.c, t3.a + t3.b, t3.c FROM (prt1 t1 LEFT JOIN prt2 t2
 -- This should generate a partitionwise join, but currently fails to
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
+<<<<<<< HEAD
                                QUERY PLAN                               
 ------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -1281,6 +1454,29 @@ SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT *
                                        Filter: (b > 250)
  Optimizer: Postgres query optimizer
 (23 rows)
+=======
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Sort
+   Sort Key: prt1.a, prt2.b
+   ->  Merge Left Join
+         Merge Cond: (prt1.a = prt2.b)
+         ->  Sort
+               Sort Key: prt1.a
+               ->  Append
+                     ->  Seq Scan on prt1_p1 prt1
+                           Filter: ((a < 450) AND (b = 0))
+                     ->  Seq Scan on prt1_p2 prt1_1
+                           Filter: ((a < 450) AND (b = 0))
+         ->  Sort
+               Sort Key: prt2.b
+               ->  Append
+                     ->  Seq Scan on prt2_p2 prt2
+                           Filter: (b > 250)
+                     ->  Seq Scan on prt2_p3 prt2_1
+                           Filter: (b > 250)
+(18 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 SELECT t1.a, t2.b FROM (SELECT * FROM prt1 WHERE a < 450) t1 LEFT JOIN (SELECT * FROM prt2 WHERE b > 250) t2 ON t1.a = t2.b WHERE t1.b = 0 ORDER BY t1.a, t2.b;
   a  |  b  
@@ -1356,6 +1552,7 @@ INSERT INTO prt2_m SELECT i, i, i % 25 FROM generate_series(0, 599, 3) i;
 ANALYZE prt2_m;
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_m WHERE prt1_m.c = 0) t1 FULL JOIN (SELECT * FROM prt2_m WHERE prt2_m.c = 0) t2 ON (t1.a = (t2.b + t2.a)/2 AND t2.b = (t1.a + t1.b)/2) ORDER BY t1.a, t2.b;
+<<<<<<< HEAD
                                                                 QUERY PLAN                                                                
 ------------------------------------------------------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -1384,6 +1581,33 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_m WHERE prt1_m.c = 0) t1 
                ->  Hash Full Join
                      Hash Cond: ((prt1_m_p3.a = ((prt2_m_p3.b + prt2_m_p3.a) / 2)) AND (((prt1_m_p3.a + prt1_m_p3.b) / 2) = prt2_m_p3.b))
                      ->  Seq Scan on prt1_m_p3
+=======
+                                                          QUERY PLAN                                                          
+------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: prt1_m.a, prt2_m.b
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((prt1_m.a = ((prt2_m.b + prt2_m.a) / 2)) AND (((prt1_m.a + prt1_m.b) / 2) = prt2_m.b))
+               ->  Seq Scan on prt1_m_p1 prt1_m
+                     Filter: (c = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_m_p1 prt2_m
+                           Filter: (c = 0)
+         ->  Hash Full Join
+               Hash Cond: ((prt1_m_1.a = ((prt2_m_1.b + prt2_m_1.a) / 2)) AND (((prt1_m_1.a + prt1_m_1.b) / 2) = prt2_m_1.b))
+               ->  Seq Scan on prt1_m_p2 prt1_m_1
+                     Filter: (c = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_m_p2 prt2_m_1
+                           Filter: (c = 0)
+         ->  Hash Full Join
+               Hash Cond: ((prt1_m_2.a = ((prt2_m_2.b + prt2_m_2.a) / 2)) AND (((prt1_m_2.a + prt1_m_2.b) / 2) = prt2_m_2.b))
+               ->  Seq Scan on prt1_m_p3 prt1_m_2
+                     Filter: (c = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_m_p3 prt2_m_2
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
                            Filter: (c = 0)
                      ->  Hash
                            ->  Redistribute Motion 3:3  (slice4; segments: 3)
@@ -1957,6 +2181,7 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM prt1_l t1 RIGHT JOIN prt2_l t2 ON t1.a = t2.b
 -- full join
 EXPLAIN (COSTS OFF)
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 FULL JOIN (SELECT * FROM prt2_l WHERE prt2_l.a = 0) t2 ON (t1.a = t2.b AND t1.c = t2.c) ORDER BY t1.a, t2.b;
+<<<<<<< HEAD
                                                         QUERY PLAN                                                        
 --------------------------------------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -2002,6 +2227,42 @@ SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 
                                  Filter: (a = 0)
  Optimizer: Postgres query optimizer
 (42 rows)
+=======
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: prt1_l.a, prt2_l.b
+   ->  Append
+         ->  Hash Full Join
+               Hash Cond: ((prt1_l.a = prt2_l.b) AND ((prt1_l.c)::text = (prt2_l.c)::text))
+               ->  Seq Scan on prt1_l_p1 prt1_l
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_l_p1 prt2_l
+                           Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: ((prt1_l_1.a = prt2_l_1.b) AND ((prt1_l_1.c)::text = (prt2_l_1.c)::text))
+               ->  Seq Scan on prt1_l_p2_p1 prt1_l_1
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_l_p2_p1 prt2_l_1
+                           Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: ((prt1_l_2.a = prt2_l_2.b) AND ((prt1_l_2.c)::text = (prt2_l_2.c)::text))
+               ->  Seq Scan on prt1_l_p2_p2 prt1_l_2
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_l_p2_p2 prt2_l_2
+                           Filter: (a = 0)
+         ->  Hash Full Join
+               Hash Cond: ((prt1_l_3.a = prt2_l_3.b) AND ((prt1_l_3.c)::text = (prt2_l_3.c)::text))
+               ->  Seq Scan on prt1_l_p3_p1 prt1_l_3
+                     Filter: (b = 0)
+               ->  Hash
+                     ->  Seq Scan on prt2_l_p3_p1 prt2_l_3
+                           Filter: (a = 0)
+(31 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 SELECT t1.a, t1.c, t2.b, t2.c FROM (SELECT * FROM prt1_l WHERE prt1_l.b = 0) t1 FULL JOIN (SELECT * FROM prt2_l WHERE prt2_l.a = 0) t2 ON (t1.a = t2.b AND t1.c = t2.c) ORDER BY t1.a, t2.b;
   a  |  c   |  b  |  c   
@@ -2070,6 +2331,7 @@ WHERE EXISTS (
                                               QUERY PLAN                                               
 -------------------------------------------------------------------------------------------------------
  Delete on prt1_l
+<<<<<<< HEAD
    Delete on prt1_l_p1
    Delete on prt1_l_p3_p1
    Delete on prt1_l_p3_p2
@@ -2123,6 +2385,36 @@ WHERE EXISTS (
                                                                ->  Seq Scan on int8_tbl int8_tbl_2
  Optimizer: Postgres query optimizer
 (53 rows)
+=======
+   Delete on prt1_l_p1 prt1_l_1
+   Delete on prt1_l_p3_p1 prt1_l_2
+   Delete on prt1_l_p3_p2 prt1_l_3
+   ->  Nested Loop Semi Join
+         ->  Seq Scan on prt1_l_p1 prt1_l_1
+               Filter: (c IS NULL)
+         ->  Nested Loop
+               ->  Seq Scan on int4_tbl
+               ->  Subquery Scan on ss
+                     ->  Limit
+                           ->  Seq Scan on int8_tbl
+   ->  Nested Loop Semi Join
+         ->  Seq Scan on prt1_l_p3_p1 prt1_l_2
+               Filter: (c IS NULL)
+         ->  Nested Loop
+               ->  Seq Scan on int4_tbl
+               ->  Subquery Scan on ss_1
+                     ->  Limit
+                           ->  Seq Scan on int8_tbl int8_tbl_1
+   ->  Nested Loop Semi Join
+         ->  Seq Scan on prt1_l_p3_p2 prt1_l_3
+               Filter: (c IS NULL)
+         ->  Nested Loop
+               ->  Seq Scan on int4_tbl
+               ->  Subquery Scan on ss_2
+                     ->  Limit
+                           ->  Seq Scan on int8_tbl int8_tbl_2
+(28 rows)
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 --
 -- negative testcases

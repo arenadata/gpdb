@@ -49,9 +49,12 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
-#include "catalog/pg_authid.h"
 #include "catalog/pg_auth_members.h"
+<<<<<<< HEAD
 #include "catalog/pg_auth_time_constraint.h"
+=======
+#include "catalog/pg_authid.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
@@ -93,6 +96,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
+<<<<<<< HEAD
 #include "access/transam.h"
 #include "catalog/gp_distribution_policy.h"         /* GpPolicy */
 #include "catalog/heap.h"
@@ -103,6 +107,9 @@
 
 
 #define RELCACHE_INIT_FILEMAGIC		0x773266	/* version ID value */
+=======
+#define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * Default policy for whether to apply RECOVER_RELATION_BUILD_MEMORY:
@@ -4815,6 +4822,57 @@ RelationGetIndexExpressions(Relation relation)
 	oldcxt = MemoryContextSwitchTo(relation->rd_indexcxt);
 	relation->rd_indexprs = copyObject(result);
 	MemoryContextSwitchTo(oldcxt);
+
+	return result;
+}
+
+/*
+ * RelationGetDummyIndexExpressions -- get dummy expressions for an index
+ *
+ * Return a list of dummy expressions (just Const nodes) with the same
+ * types/typmods/collations as the index's real expressions.  This is
+ * useful in situations where we don't want to run any user-defined code.
+ */
+List *
+RelationGetDummyIndexExpressions(Relation relation)
+{
+	List	   *result;
+	Datum		exprsDatum;
+	bool		isnull;
+	char	   *exprsString;
+	List	   *rawExprs;
+	ListCell   *lc;
+
+	/* Quick exit if there is nothing to do. */
+	if (relation->rd_indextuple == NULL ||
+		heap_attisnull(relation->rd_indextuple, Anum_pg_index_indexprs, NULL))
+		return NIL;
+
+	/* Extract raw node tree(s) from index tuple. */
+	exprsDatum = heap_getattr(relation->rd_indextuple,
+							  Anum_pg_index_indexprs,
+							  GetPgIndexDescriptor(),
+							  &isnull);
+	Assert(!isnull);
+	exprsString = TextDatumGetCString(exprsDatum);
+	rawExprs = (List *) stringToNode(exprsString);
+	pfree(exprsString);
+
+	/* Construct null Consts; the typlen and typbyval are arbitrary. */
+	result = NIL;
+	foreach(lc, rawExprs)
+	{
+		Node	   *rawExpr = (Node *) lfirst(lc);
+
+		result = lappend(result,
+						 makeConst(exprType(rawExpr),
+								   exprTypmod(rawExpr),
+								   exprCollation(rawExpr),
+								   1,
+								   (Datum) 0,
+								   true,
+								   true));
+	}
 
 	return result;
 }

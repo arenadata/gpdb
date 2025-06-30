@@ -7,14 +7,14 @@
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "utils/memutils.h"
-
-#include "plpython.h"
-
-#include "plpy_subxactobject.h"
-
 #include "plpy_elog.h"
+<<<<<<< HEAD
 #include "plpy_main.h"
+=======
+#include "plpy_subxactobject.h"
+#include "plpython.h"
+#include "utils/memutils.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 List	   *explicit_subtransactions = NIL;
 

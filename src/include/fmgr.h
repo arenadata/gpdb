@@ -449,7 +449,6 @@ typedef struct
 	int			funcmaxargs;	/* FUNC_MAX_ARGS */
 	int			indexmaxkeys;	/* INDEX_MAX_KEYS */
 	int			namedatalen;	/* NAMEDATALEN */
-	int			float4byval;	/* FLOAT4PASSBYVAL */
 	int			float8byval;	/* FLOAT8PASSBYVAL */
 	int         product;        /* magic product code */
 } Pg_magic_struct;
@@ -476,9 +475,13 @@ typedef enum {
 	FUNC_MAX_ARGS, \
 	INDEX_MAX_KEYS, \
 	NAMEDATALEN, \
+<<<<<<< HEAD
 	FLOAT4PASSBYVAL, \
 	FLOAT8PASSBYVAL, \
 	PgMagicProductGreenplum \
+=======
+	FLOAT8PASSBYVAL \
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 }
 
 #ifndef FLOAT4PASSBYVAL

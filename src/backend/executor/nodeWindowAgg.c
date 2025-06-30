@@ -48,9 +48,12 @@
 #include "parser/parse_oper.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/expandeddatum.h"
 #include "utils/datum.h"
+<<<<<<< HEAD
 #include "utils/faultinjector.h"
+=======
+#include "utils/expandeddatum.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/regproc.h"

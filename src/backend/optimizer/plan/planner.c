@@ -33,10 +33,10 @@
 #include "executor/executor.h"
 #include "executor/nodeAgg.h"
 #include "foreign/fdwapi.h"
-#include "miscadmin.h"
 #include "jit/jit.h"
 #include "lib/bipartite_match.h"
 #include "lib/knapsack.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/print.h"
@@ -56,19 +56,23 @@
 #include "optimizer/transform.h"
 #include "optimizer/tlist.h"
 #include "parser/analyze.h"
+<<<<<<< HEAD
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "parser/parse_agg.h"
+#include "parser/parsetree.h"
 #include "partitioning/partdesc.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/dsm_impl.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/selfuncs.h"
-#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+<<<<<<< HEAD
 #include "catalog/pg_proc.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbllize.h"
@@ -87,6 +91,8 @@
 #include "utils/guc.h"
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* GUC parameters */
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;

@@ -43,10 +43,10 @@
 #include "catalog/pg_authid.h"
 #include "commands/async.h"
 #include "commands/prepare.h"
+#include "commands/trigger.h"
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/variable.h"
-#include "commands/trigger.h"
 #include "common/string.h"
 #include "funcapi.h"
 #include "jit/jit.h"
@@ -71,25 +71,30 @@
 #include "postmaster/syslogger.h"
 #include "postmaster/walwriter.h"
 #include "replication/logicallauncher.h"
+#include "replication/reorderbuffer.h"
 #include "replication/slot.h"
 #include "replication/syncrep.h"
 #include "replication/walreceiver.h"
 #include "replication/walsender.h"
 #include "storage/bufmgr.h"
 #include "storage/dsm_impl.h"
-#include "storage/standby.h"
 #include "storage/fd.h"
 #include "storage/large_object.h"
 #include "storage/pg_shmem.h"
-#include "storage/proc.h"
 #include "storage/predicate.h"
+#include "storage/proc.h"
+#include "storage/standby.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
+<<<<<<< HEAD
 #include "utils/faultinjector.h"
 #include "utils/guc_tables.h"
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "utils/float.h"
+#include "utils/guc_tables.h"
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/pg_lsn.h"
@@ -1839,7 +1844,11 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+<<<<<<< HEAD
 		{"allow_system_table_mods", PGC_USERSET, CUSTOM_OPTIONS,
+=======
+		{"allow_system_table_mods", PGC_SUSET, DEVELOPER_OPTIONS,
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 			gettext_noop("Allows modifications of the structure of system tables."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
@@ -2319,6 +2328,18 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&maintenance_work_mem,
 		65536, 1024, MAX_KILOBYTES,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"logical_decoding_work_mem", PGC_USERSET, RESOURCES_MEM,
+			gettext_noop("Sets the maximum memory to be used for logical decoding."),
+			gettext_noop("This much memory can be used by each internal "
+						 "reorder buffer before spilling to disk."),
+			GUC_UNIT_KB
+		},
+		&logical_decoding_work_mem,
+		65536, 64, MAX_KILOBYTES,
 		NULL, NULL, NULL
 	},
 

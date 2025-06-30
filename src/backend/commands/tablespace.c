@@ -61,8 +61,8 @@
 #include <utils/faultinjector.h>
 
 #include "access/heapam.h"
-#include "access/reloptions.h"
 #include "access/htup_details.h"
+#include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/xact.h"
@@ -98,6 +98,7 @@
 #include "utils/tarrable.h"
 #include "utils/varlena.h"
 
+<<<<<<< HEAD
 #include "catalog/heap.h"
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbdisp_query.h"
@@ -106,6 +107,8 @@
 #include "miscadmin.h"
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* GUC variables */
 char	   *default_tablespace = NULL;
 char	   *temp_tablespaces = NULL;

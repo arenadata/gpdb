@@ -21,7 +21,6 @@
 #include "commands/async.h"
 #include "miscadmin.h"
 #include "replication/walsender.h"
-#include "storage/latch.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/proc.h"
@@ -30,8 +29,11 @@
 #include "tcop/tcopprot.h"
 #include "utils/resgroup.h"
 
+<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * The SIGUSR1 signal is multiplexed to support signalling multiple event
  * types. The specific reason is communicated via flags in shared memory.

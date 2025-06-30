@@ -57,9 +57,9 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
+#include "storage/proc.h"
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
-#include "storage/proc.h"
 #include "storage/sinvaladt.h"
 #include "storage/smgr.h"
 #include "storage/sync.h"
@@ -80,10 +80,13 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
+<<<<<<< HEAD
 #include "utils/resource_manager.h"
 #include "utils/session_state.h"
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
 static void PerformAuthentication(Port *port);

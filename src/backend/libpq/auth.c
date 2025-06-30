@@ -39,6 +39,7 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
+<<<<<<< HEAD
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "catalog/indexing.h"
@@ -62,6 +63,8 @@ extern bool gp_reject_internal_tcp_conn;
 int     getpeereid(int, uid_t *__restrict__, gid_t *__restrict__);
 #endif
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*----------------------------------------------------------------
  * Global authentication functions
  *----------------------------------------------------------------

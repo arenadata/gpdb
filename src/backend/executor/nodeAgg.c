@@ -270,7 +270,10 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+<<<<<<< HEAD
 #include "utils/dynahash.h"
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "utils/expandeddatum.h"
 #include "utils/faultinjector.h"
 #include "utils/logtape.h"
@@ -278,6 +281,7 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
+<<<<<<< HEAD
 #include "utils/datum.h"
 
 #include "cdb/cdbexplain.h"
@@ -377,6 +381,8 @@ typedef struct HashAggBatch
 	int				 input_tapenum;	/* input partition tape */
 	int64			 input_tuples;	/* number of tuples in this batch */
 } HashAggBatch;
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 static void select_current_set(AggState *aggstate, int setno, bool is_hash);
 static void initialize_phase(AggState *aggstate, int newphase);

@@ -30,6 +30,10 @@
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGather.h"
 #include "executor/nodeGatherMerge.h"
+<<<<<<< HEAD
+=======
+#include "executor/nodeGroup.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "executor/nodeHash.h"
 #include "executor/nodeHashjoin.h"
 #include "executor/nodeIndexonlyscan.h"
@@ -72,8 +76,11 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+<<<<<<< HEAD
 
 static bool TargetListSupportsBackwardScan(List *targetlist);
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static bool IndexSupportsBackwardScan(Oid indexid);
 
 

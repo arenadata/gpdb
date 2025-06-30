@@ -29,10 +29,10 @@
 #include "funcapi.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "parser/parsetree.h"
 #include "parser/parse_enr.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
+#include "parser/parsetree.h"
 #include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -40,9 +40,12 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #define MAX_FUZZY_DISTANCE				3
 
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,

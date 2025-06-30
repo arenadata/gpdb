@@ -49,7 +49,6 @@
 #include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/condition_variable.h"
-#include "storage/standby.h"
 #include "storage/ipc.h"
 #include "storage/spin.h"
 #include "storage/sinval.h"
@@ -59,6 +58,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "storage/spin.h"
+<<<<<<< HEAD
 #include "utils/faultinjector.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
@@ -74,6 +74,12 @@
 #include "utils/resscheduler.h"
 #include "utils/session_state.h"
 
+=======
+#include "storage/standby.h"
+#include "utils/timeout.h"
+#include "utils/timestamp.h"
+
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* GUC variables */
 int			DeadlockTimeout = 1000;
 int			StatementTimeout = 0;

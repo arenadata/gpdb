@@ -73,6 +73,7 @@
    MSVC and with C++ compilers. */
 #undef FLEXIBLE_ARRAY_MEMBER
 
+<<<<<<< HEAD
 /* float4 values are passed by value if 'true', by reference if 'false'
    (always true in GPDB) */
 #undef FLOAT4PASSBYVAL
@@ -81,6 +82,8 @@
    reference if 'false' (always true in GPDB) */
 #undef FLOAT8PASSBYVAL
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* Define to 1 if gettimeofday() takes only 1 argument. */
 #undef GETTIMEOFDAY_1ARG
 
@@ -899,7 +902,14 @@
 /* Define to best printf format archetype, usually gnu_printf if available. */
 #undef PG_PRINTF_ATTRIBUTE
 
+<<<<<<< HEAD
 /* Postgres version Greenplum Database is based on */
+=======
+/* Define to 1 to use <stdbool.h> to define type bool. */
+#undef PG_USE_STDBOOL
+
+/* PostgreSQL version as a string */
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #undef PG_VERSION
 
 /* PostgreSQL version as a number */
@@ -971,6 +981,7 @@
 /* Define to use /dev/urandom for random number generation */
 #undef USE_DEV_URANDOM
 
+<<<<<<< HEAD
 /* Define to 1 if you want float4 values to be passed by value. (Always
    defined in GPDB) */
 #undef USE_FLOAT4_BYVAL
@@ -982,6 +993,8 @@
 /* Define to 1 to build with gpcloud (--enable-gpcloud) */
 #undef USE_GPCLOUD
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* Define to build with ICU support. (--with-icu) */
 #undef USE_ICU
 

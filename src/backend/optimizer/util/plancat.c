@@ -22,9 +22,9 @@
 #include "access/genam.h"
 #include "access/htup_details.h"
 #include "access/nbtree.h"
-#include "access/tableam.h"
 #include "access/sysattr.h"
 #include "access/table.h"
+#include "access/tableam.h"
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
@@ -43,9 +43,9 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/plancat.h"
 #include "optimizer/prep.h"
-#include "partitioning/partdesc.h"
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
+#include "partitioning/partdesc.h"
 #include "rewrite/rewriteManip.h"
 #include "statistics/statistics.h"
 #include "storage/bufmgr.h"
@@ -53,8 +53,8 @@
 #include "utils/lsyscache.h"
 #include "utils/partcache.h"
 #include "utils/rel.h"
-#include "utils/syscache.h"
 #include "utils/snapmgr.h"
+<<<<<<< HEAD
 
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbrelsize.h"
@@ -63,6 +63,9 @@
 #include "catalog/pg_inherits.h"
 #include "utils/guc.h"
 
+=======
+#include "utils/syscache.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /* GUC parameter */
 int			constraint_exclusion = CONSTRAINT_EXCLUSION_PARTITION;

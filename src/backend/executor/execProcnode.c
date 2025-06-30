@@ -117,8 +117,8 @@
 #include "executor/nodeValuesscan.h"
 #include "executor/nodeWindowAgg.h"
 #include "executor/nodeWorktablescan.h"
-#include "nodes/nodeFuncs.h"
 #include "miscadmin.h"
+<<<<<<< HEAD
 
 #include "cdb/cdbvars.h"
 #include "cdb/ml_ipc.h"			/* interconnect context */
@@ -157,6 +157,9 @@ static CdbVisitOpt planstate_walk_kids(PlanState *planstate,
 				 CdbVisitOpt (*walker) (PlanState *planstate, void *context),
 					void *context,
 					int flags);
+=======
+#include "nodes/nodeFuncs.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 static TupleTableSlot *ExecProcNodeFirst(PlanState *node);
 #if 0

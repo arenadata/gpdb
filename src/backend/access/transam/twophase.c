@@ -85,8 +85,8 @@
 #include "access/xact.h"
 #include "access/xlog.h"
 #include "access/xloginsert.h"
-#include "access/xlogutils.h"
 #include "access/xlogreader.h"
+#include "access/xlogutils.h"
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
 #include "funcapi.h"
@@ -108,6 +108,7 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
+<<<<<<< HEAD
 #include "access/twophase_storage_tablespace.h"
 #include "access/twophase_xlog.h"
 #include "catalog/storage_database.h"
@@ -117,6 +118,8 @@
 #include "utils/faultinjector.h"
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Directory where Two-phase commit files reside within PGDATA
  */
@@ -947,6 +950,11 @@ TwoPhaseGetDummyProc(TransactionId xid, bool lock_held)
  */
 #define TWOPHASE_MAGIC	0x57F94534	/* format identifier */
 
+<<<<<<< HEAD
+=======
+typedef xl_xact_prepare TwoPhaseFileHeader;
+
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Header for each record in a state file
  *
@@ -1372,6 +1380,7 @@ ReadTwoPhaseFile(TransactionId xid, bool missing_ok)
 	return buf;
 }
 
+<<<<<<< HEAD
 /*
  * ParsePrepareRecord
  */
@@ -1410,6 +1419,8 @@ ParsePrepareRecord(uint8 info, char *xlrec, xl_xact_parsed_prepare *parsed)
 }
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * Reads 2PC data from xlog. During checkpoint this data will be moved to
@@ -2668,6 +2679,4 @@ PrepareRedoRemove(TransactionId xid, bool giveWarning)
 	if (gxact->ondisk)
 		RemoveTwoPhaseFile(xid, giveWarning);
 	RemoveGXact(gxact);
-
-	return;
 }

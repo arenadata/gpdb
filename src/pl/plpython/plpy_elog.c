@@ -7,15 +7,17 @@
 #include "postgres.h"
 
 #include "lib/stringinfo.h"
+<<<<<<< HEAD
 #include "miscadmin.h"
 
 #include "plpython.h"
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "plpy_elog.h"
-
 #include "plpy_main.h"
 #include "plpy_procedure.h"
-
+#include "plpython.h"
 
 PyObject   *PLy_exc_error = NULL;
 PyObject   *PLy_exc_fatal = NULL;

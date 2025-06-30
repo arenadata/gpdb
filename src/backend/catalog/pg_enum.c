@@ -22,10 +22,14 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_type.h"
+<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 #include "storage/lmgr.h"
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "miscadmin.h"
 #include "nodes/value.h"
+#include "storage/lmgr.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
 #include "utils/fmgroids.h"
@@ -33,8 +37,13 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 
+<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
 
+=======
+/* Potentially set by pg_upgrade_support functions */
+Oid			binary_upgrade_next_pg_enum_oid = InvalidOid;
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * Hash table of enum value OIDs created during the current transaction by

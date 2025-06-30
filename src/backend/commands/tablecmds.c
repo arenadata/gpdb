@@ -23,7 +23,6 @@
 #include "access/nbtree.h"
 #include "access/reloptions.h"
 #include "access/relscan.h"
-#include "access/tableam.h"
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/tupconvert.h"
@@ -120,6 +119,7 @@
 #include "utils/timestamp.h"
 #include "utils/typcache.h"
 
+<<<<<<< HEAD
 #include "access/appendonly_compaction.h"
 #include "access/bitmap_private.h"
 #include "access/external.h"
@@ -135,6 +135,8 @@
 
 const char *synthetic_sql = "(internally generated SQL command)";
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * ON COMMIT action list
  */
@@ -826,6 +828,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	reloptions = transformRelOptions((Datum) oldoptions, stmt->options, NULL, validnsps,
 									 true, false);
 
+<<<<<<< HEAD
 	/*
 	 * Greenplum: special case checks for reloptions that correspond to
 	 * appendonly relations. This check can not be performed earlier because it
@@ -858,6 +861,19 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		(void) view_reloptions(reloptions, true);
 	else
 		(void) heap_reloptions(relkind, reloptions, true);
+=======
+	switch (relkind)
+	{
+		case RELKIND_VIEW:
+			(void) view_reloptions(reloptions, true);
+			break;
+		case RELKIND_PARTITIONED_TABLE:
+			(void) partitioned_table_reloptions(reloptions, true);
+			break;
+		default:
+			(void) heap_reloptions(relkind, reloptions, true);
+	}
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 	if (stmt->ofTypename)
 	{
@@ -2442,6 +2458,8 @@ truncate_check_rel(Oid relid, Form_pg_class reltuple)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied: \"%s\" is a system catalog",
 						relname)));
+
+	InvokeObjectTruncateHook(relid);
 }
 
 /*
@@ -14402,6 +14420,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_MATVIEW:
+<<<<<<< HEAD
 		case RELKIND_PARTITIONED_TABLE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_AOBLOCKDIR:
@@ -14424,6 +14443,12 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 			}
 			else
 				(void) heap_reloptions(rel->rd_rel->relkind, newOptions, true);
+=======
+			(void) heap_reloptions(rel->rd_rel->relkind, newOptions, true);
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+			break;
+		case RELKIND_PARTITIONED_TABLE:
+			(void) partitioned_table_reloptions(newOptions, true);
 			break;
 		case RELKIND_VIEW:
 			(void) view_reloptions(newOptions, true);

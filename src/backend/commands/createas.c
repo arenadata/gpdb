@@ -25,8 +25,8 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "access/reloptions.h"
 #include "access/htup_details.h"
+#include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/xact.h"
@@ -52,6 +52,7 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
+<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
@@ -62,6 +63,8 @@
 #include "cdb/memquota.h"
 #include "utils/metrics_utils.h"
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 typedef struct
 {
 	DestReceiver pub;			/* publicly-known function pointers */

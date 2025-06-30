@@ -955,6 +955,7 @@ check_for_isn_and_int8_passing_mismatch(ClusterInfo *cluster)
 	if (found)
 	{
 		pg_log(PG_REPORT, "fatal\n");
+<<<<<<< HEAD
 		gp_fatal_log(
 				"| Your installation contains \"contrib/isn\" functions which rely on the\n"
 				"| bigint data type.  Your old and new clusters pass bigint values\n"
@@ -963,6 +964,15 @@ check_for_isn_and_int8_passing_mismatch(ClusterInfo *cluster)
 				"| \"contrib/isn\" from the old cluster and restart the upgrade.  A list of\n"
 				"| the problem functions is in the file:\n"
 				"|     %s\n\n", output_path);
+=======
+		pg_fatal("Your installation contains \"contrib/isn\" functions which rely on the\n"
+				 "bigint data type.  Your old and new clusters pass bigint values\n"
+				 "differently so this cluster cannot currently be upgraded.  You can\n"
+				 "manually dump databases in the old cluster that use \"contrib/isn\"\n"
+				 "facilities, drop them, perform the upgrade, and then restore them.  A\n"
+				 "list of the problem functions is in the file:\n"
+				 "    %s\n\n", output_path);
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	}
 	else
 		check_ok();
@@ -1035,12 +1045,20 @@ check_for_tables_with_oids(ClusterInfo *cluster)
 	if (found)
 	{
 		pg_log(PG_REPORT, "fatal\n");
+<<<<<<< HEAD
 		gp_fatal_log(
 				"| Your installation contains tables declared WITH OIDS, which is not supported\n"
 				"| anymore. Consider removing the oid column using\n"
 				"|     ALTER TABLE ... SET WITHOUT OIDS;\n"
 				"| A list of tables with the problem is in the file:\n"
 				"|     %s\n\n", output_path);
+=======
+		pg_fatal("Your installation contains tables declared WITH OIDS, which is not\n"
+				 "supported anymore.  Consider removing the oid column using\n"
+				 "    ALTER TABLE ... SET WITHOUT OIDS;\n"
+				 "A list of tables with the problem is in the file:\n"
+				 "    %s\n\n", output_path);
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	}
 	else
 		check_ok();
@@ -1145,6 +1163,7 @@ check_for_reg_data_type_usage(ClusterInfo *cluster)
 	if (found)
 	{
 		pg_log(PG_REPORT, "fatal\n");
+<<<<<<< HEAD
 		gp_fatal_log(
 				"| Your installation contains one of the reg* data types in user tables.\n"
 				"| These data types reference system OIDs that are not preserved by\n"
@@ -1152,6 +1171,14 @@ check_for_reg_data_type_usage(ClusterInfo *cluster)
 				"| remove the problem tables and restart the upgrade.  A list of the problem\n"
 				"| columns is in the file:\n"
 				"|     %s\n\n", output_path);
+=======
+		pg_fatal("Your installation contains one of the reg* data types in user tables.\n"
+				 "These data types reference system OIDs that are not preserved by\n"
+				 "pg_upgrade, so this cluster cannot currently be upgraded.  You can\n"
+				 "remove the problem tables and restart the upgrade.  A list of the\n"
+				 "problem columns is in the file:\n"
+				 "    %s\n\n", output_path);
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	}
 	else
 		check_ok();
@@ -1237,12 +1264,21 @@ check_for_jsonb_9_4_usage(ClusterInfo *cluster)
 	if (found)
 	{
 		pg_log(PG_REPORT, "fatal\n");
+<<<<<<< HEAD
 		gp_fatal_log(
 				"| Your installation contains the \"jsonb\" data type in user tables.\n"
 				"| The internal format of \"jsonb\" changed during 9.4 beta so this cluster cannot currently\n"
 				"| be upgraded.  You can remove the problem tables and restart the upgrade.  A list\n"
 				"| of the problem columns is in the file:\n"
 				"|     %s\n\n", output_path);
+=======
+		pg_fatal("Your installation contains the \"jsonb\" data type in user tables.\n"
+				 "The internal format of \"jsonb\" changed during 9.4 beta so this\n"
+				 "cluster cannot currently be upgraded.  You can remove the problem\n"
+				 "tables and restart the upgrade.  A list of the problem columns is\n"
+				 "in the file:\n"
+				 "    %s\n\n", output_path);
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	}
 	else
 		check_ok();

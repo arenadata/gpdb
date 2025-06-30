@@ -45,19 +45,22 @@
 
 #include "postgres.h"
 
-#include "miscadmin.h"
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "miscadmin.h"
 #include "storage/shmem.h"
 #include "utils/combocid.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 #include "storage/proc.h"
 #include "storage/dsm.h"
 #include "utils/resowner.h"
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* Hash table to lookup combo cids by cmin and cmax */
 static HTAB *comboHash = NULL;
 

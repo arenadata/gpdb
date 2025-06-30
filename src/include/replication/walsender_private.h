@@ -101,11 +101,18 @@ typedef struct WalSnd
 	 */
 	TimestampTz replyTime;
 
+<<<<<<< HEAD
 	/*
 	 * Indicates whether the WalSnd represents a connection with a Greenplum
 	 * mirror in streaming mode
 	 */
 	bool 		is_for_gp_walreceiver;
+=======
+	/* Statistics for transactions spilled to disk. */
+	int64		spillTxns;
+	int64		spillCount;
+	int64		spillBytes;
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 } WalSnd;
 
 extern WalSnd *MyWalSnd;

@@ -25,22 +25,25 @@
 #include "access/reloptions.h"
 #include "access/relscan.h"
 #include "access/tableam.h"
-#include "access/transam.h"
 #include "access/toast_internals.h"
+#include "access/transam.h"
 #include "access/xact.h"
 #include "access/xlog.h"
-#include "catalog/pg_am.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
+<<<<<<< HEAD
 #include "catalog/pg_appendonly.h"
 #include "catalog/pg_attribute_encoding.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
+=======
+#include "catalog/pg_am.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "catalog/toasting.h"
 #include "commands/cluster.h"
 #include "commands/progress.h"
@@ -65,6 +68,7 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
+<<<<<<< HEAD
 #include "catalog/aocatalog.h"
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbvars.h"
@@ -72,6 +76,8 @@
 #include "cdb/cdboidsync.h"
 #include "libpq/pqformat.h"
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * This struct is used to pass around the information on tables to be
  * clustered. We need this so we can make a list of them when invoked without

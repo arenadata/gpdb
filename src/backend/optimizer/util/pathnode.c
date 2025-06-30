@@ -18,8 +18,8 @@
 
 #include <math.h>
 
-#include "miscadmin.h"
 #include "foreign/fdwapi.h"
+#include "miscadmin.h"
 #include "nodes/extensible.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/appendinfo.h"
@@ -38,6 +38,7 @@
 #include "utils/selfuncs.h"
 #include "optimizer/tlist.h"
 
+<<<<<<< HEAD
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "cdb/cdbhash.h"        /* cdb_default_distribution_opfamily_for_type() */
@@ -49,6 +50,8 @@
 #include "executor/nodeHash.h"
 #include "utils/guc.h"
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 typedef enum
 {
 	COSTS_EQUAL,				/* path costs are fuzzily equal */

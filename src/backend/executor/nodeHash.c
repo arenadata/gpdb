@@ -41,8 +41,8 @@
 #include "pgstat.h"
 #include "port/atomics.h"
 #include "utils/dynahash.h"
-#include "utils/memutils.h"
 #include "utils/lsyscache.h"
+<<<<<<< HEAD
 #include "utils/faultinjector.h"
 #include "utils/syscache.h"
 
@@ -50,6 +50,11 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 
+=======
+#include "utils/memutils.h"
+#include "utils/syscache.h"
+
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static void ExecHashIncreaseNumBatches(HashJoinTable hashtable);
 static void ExecHashIncreaseNumBuckets(HashJoinTable hashtable);
 static void ExecParallelHashIncreaseNumBatches(HashJoinTable hashtable);

@@ -19,11 +19,15 @@
 #include "access/htup_details.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_authid.h"
 #include "catalog/pg_auth_members.h"
+<<<<<<< HEAD
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"
+=======
+#include "catalog/pg_authid.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "catalog/pg_class.h"
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/proclang.h"
 #include "commands/tablespace.h"
@@ -41,7 +45,6 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-
 
 typedef struct
 {

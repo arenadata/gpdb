@@ -56,12 +56,12 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_tablespace.h"
-#include "catalog/pg_type.h"
+#include "catalog/pg_transform.h"
 #include "catalog/pg_ts_config.h"
 #include "catalog/pg_ts_dict.h"
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
-#include "catalog/pg_transform.h"
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
 #include "commands/extension.h"
@@ -82,6 +82,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+<<<<<<< HEAD
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
 
@@ -91,6 +92,8 @@
  */
 bool		revoked_something = false;
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Internal format used by ALTER DEFAULT PRIVILEGES.
  */
@@ -4206,7 +4209,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 
 	/*
 	 * Deny anyone permission to update a system catalog unless
-	 * pg_authid.rolsuper is set.  Also allow it if allowSystemTableMods.
+	 * pg_authid.rolsuper is set.
 	 *
 	 * As of 7.4 we have some updatable system views; those shouldn't be
 	 * protected in this way.  Assume the view rules can take care of
@@ -4215,8 +4218,7 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 	if ((mask & (ACL_INSERT | ACL_UPDATE | ACL_DELETE | ACL_TRUNCATE | ACL_USAGE)) &&
 		IsSystemClass(table_oid, classForm) &&
 		classForm->relkind != RELKIND_VIEW &&
-		!superuser_arg(roleid) &&
-		!allowSystemTableMods)
+		!superuser_arg(roleid))
 	{
 #ifdef ACLDEBUG
 		elog(DEBUG2, "permission denied for system catalog update");

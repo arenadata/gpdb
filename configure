@@ -17070,6 +17070,12 @@ _ACEOF
 
 
 
+if test "$ac_cv_header_stdbool_h" = yes -a "$ac_cv_sizeof_bool" = 1; then
+
+$as_echo "#define PG_USE_STDBOOL 1" >>confdefs.h
+
+fi
+
 
 ##
 ## Functions, global variables
@@ -19080,6 +19086,7 @@ _ACEOF
 
 
 
+<<<<<<< HEAD
 # In GPDB, float4 and float8 are always passed by value. There is
 # GPDB-specific code that assumes that in various places, so it's not
 # configurable.
@@ -19104,6 +19111,8 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 # Determine memory alignment requirements for the basic C data types.
 
 # The cast to long int works around a bug in the HP C Compiler,

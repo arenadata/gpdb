@@ -30,8 +30,8 @@
 #include "commands/alter.h"
 #include "commands/async.h"
 #include "commands/cluster.h"
-#include "commands/comment.h"
 #include "commands/collationcmds.h"
+#include "commands/comment.h"
 #include "commands/conversioncmds.h"
 #include "commands/copy.h"
 #include "commands/createas.h"
@@ -41,9 +41,13 @@
 #include "commands/event_trigger.h"
 #include "commands/explain.h"
 #include "commands/extension.h"
+<<<<<<< HEAD
 #include "commands/extprotocolcmds.h"
 #include "commands/matview.h"
+=======
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "commands/lockcmds.h"
+#include "commands/matview.h"
 #include "commands/policy.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
@@ -73,14 +77,17 @@
 #include "utils/acl.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 #include "utils/rel.h"
+<<<<<<< HEAD
 
 #include "access/table.h"
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbendpoint.h"
 #include "cdb/cdbvars.h"
+=======
+#include "utils/syscache.h"
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /* Hook for plugins to get control in ProcessUtility() */
 ProcessUtility_hook_type ProcessUtility_hook = NULL;
@@ -668,6 +675,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_DropdbStmt:
+<<<<<<< HEAD
 			{
 				DropdbStmt *stmt = (DropdbStmt *) parsetree;
 
@@ -682,6 +690,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 				}
 				dropdb(stmt->dbname, stmt->missing_ok);
 			}
+=======
+			/* no event triggers for global objects */
+			PreventInTransactionBlock(isTopLevel, "DROP DATABASE");
+			DropDatabase(pstate, (DropdbStmt *) parsetree);
+>>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 			break;
 
 			/* Query-level asynchronous notification */
