@@ -73,13 +73,8 @@
    MSVC and with C++ compilers. */
 #undef FLEXIBLE_ARRAY_MEMBER
 
-/* In GPDB, float4 and float8 are always passed by value. There is
-   GPDB-specific code that assumes that in various places, so it's not
-   configurable. */
-
-/* float4 values are passed by value if 'true', by reference if 'false'
-   (always true in GPDB) */
-#define FLOAT4PASSBYVAL true
+/* In GPDB, float8 are always passed by value. There is GPDB-specific code that
+   assumes that in various places, so it's not configurable. */
 
 /* float8, int8, and related values are passed by value if 'true', by
    reference if 'false' (always true in GPDB) */
@@ -977,10 +972,6 @@
 
 /* Define to use /dev/urandom for random number generation */
 #undef USE_DEV_URANDOM
-
-/* Define to 1 if you want float4 values to be passed by value. (Always
-   defined in GPDB) */
-#define USE_FLOAT4_BYVAL 1
 
 /* Define to 1 if you want float8, int8, etc values to be passed by value.
    (Always defined in GPDB) */

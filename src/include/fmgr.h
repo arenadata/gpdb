@@ -475,18 +475,10 @@ typedef enum {
 	FUNC_MAX_ARGS, \
 	INDEX_MAX_KEYS, \
 	NAMEDATALEN, \
-<<<<<<< HEAD
-	FLOAT4PASSBYVAL, \
 	FLOAT8PASSBYVAL, \
 	PgMagicProductGreenplum \
-=======
-	FLOAT8PASSBYVAL \
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 }
 
-#ifndef FLOAT4PASSBYVAL
-#define FLOAT4PASSBYVAL 1
-#endif
 #ifndef FLOAT8PASSBYVAL
 #define FLOAT8PASSBYVAL 1
 #endif
