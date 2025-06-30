@@ -73,7 +73,7 @@
    MSVC and with C++ compilers. */
 #undef FLEXIBLE_ARRAY_MEMBER
 
-/* In GPDB, float8 are always passed by value. There is GPDB-specific code that
+/* In GPDB, float8 is always passed by value. There is GPDB-specific code that
    assumes that in various places, so it's not configurable. */
 
 /* float8, int8, and related values are passed by value if 'true', by
