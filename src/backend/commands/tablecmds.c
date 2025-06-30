@@ -4800,6 +4800,7 @@ AlterTableGetLockLevel(List *cmds)
 			case AT_ExpandTable:
 			case AT_ExpandPartitionTablePrepare:
 			case AT_SetDistributedBy:
+			case AT_Rebalance:
 				cmd_lockmode = AccessExclusiveLock;
 				break;
 			case AT_RepackTable: /* GPDB: REPACK TABLE */ 
@@ -5293,6 +5294,13 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
 			pass = AT_PASS_MISC;
 			break;
+		case AT_Rebalance:
+			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE | ATT_MATVIEW);
+
+			elog(WARNING, "[prep] not yet implemented");
+			pass = AT_PASS_MISC;
+			break;
+
 		case AT_RepackTable: /* GPDB: REPACK TABLE */
 			ATSimplePermissions(rel, ATT_TABLE);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
@@ -5843,6 +5851,9 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			break;
 		case AT_ExpandTable:	/* EXPAND TABLE */
 			ATExecExpandTable(wqueue, rel, cmd);
+			break;
+		case AT_Rebalance:	/* REBALANCE */
+			elog(WARNING, "not yet implemented");
 			break;
 		case AT_RepackTable: 
 			for (int i = 0; i < AT_NUM_PASSES; ++i)
