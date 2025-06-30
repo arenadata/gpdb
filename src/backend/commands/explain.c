@@ -1859,7 +1859,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 
 	if (ResManagerPrintOperatorMemoryLimits())
 	{
-		ExplainPropertyInteger("operatorMem", PlanStateOperatorMemKB(planstate), es);
+		ExplainPropertyLong("operatorMem", PlanStateOperatorMemKB(planstate), es);
 	}
 	/*
 	 * We have to forcibly clean up the instrumentation state because we

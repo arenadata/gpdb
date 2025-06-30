@@ -5618,12 +5618,20 @@ flatten_join_alias_var_optimizer(Query *query, int queryLevel)
 }
 
 /* 
- * Does grp contain GroupingClause or not? Useful for indentifying use of
- * ROLLUP, CUBE and grouping sets.
+ * Does grp contain empty grouping set / GroupingClause or not? Useful for
+ * indentifying use of empty grouping set, ROLLUP, CUBE and grouping sets.
  */
 bool
 contain_extended_grouping(List *grp)
 {
+	ListCell   *lc;
+
+	foreach(lc, (List *) grp)
+	{
+		if (lfirst(lc) == NULL) /* the empty grouping set */
+			return true;
+	}
+
 	return contain_grouping_clause_walker((Node *)grp, NULL);
 }
 
