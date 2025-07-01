@@ -49,15 +49,11 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbpath.h"
 #include "cdb/cdbsetop.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static bool find_minmax_aggs_walker(Node *node, List **context);
 static bool build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 							  Oid eqop, Oid sortop, bool nulls_first);
