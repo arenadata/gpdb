@@ -19086,33 +19086,6 @@ _ACEOF
 
 
 
-<<<<<<< HEAD
-# In GPDB, float4 and float8 are always passed by value. There is
-# GPDB-specific code that assumes that in various places, so it's not
-# configurable.
-float4passbyval=true
-
-$as_echo "#define USE_FLOAT4_BYVAL 1" >>confdefs.h
-
-
-cat >>confdefs.h <<_ACEOF
-#define FLOAT4PASSBYVAL $float4passbyval
-_ACEOF
-
-
-# Note: this setting also controls int8 and related types such as timestamp.
-float8passbyval=true
-
-$as_echo "#define USE_FLOAT8_BYVAL 1" >>confdefs.h
-
-
-cat >>confdefs.h <<_ACEOF
-#define FLOAT8PASSBYVAL $float8passbyval
-_ACEOF
-
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 # Determine memory alignment requirements for the basic C data types.
 
 # The cast to long int works around a bug in the HP C Compiler,
