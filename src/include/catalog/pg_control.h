@@ -21,18 +21,13 @@
 #include "port/pg_crc32c.h"
 
 
-<<<<<<< HEAD
 /*
  * Version identifier for this pg_control format.
  *
  * The first four digits is the PostgreSQL version number. The last
  * four digits indicates the GPDB version.
  */
-#define PG_CONTROL_VERSION	12010700
-=======
-/* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	1300
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+#define PG_CONTROL_VERSION	13000800
 
 /* Nonce key length, see below */
 #define MOCK_AUTH_NONCE_LEN		32
