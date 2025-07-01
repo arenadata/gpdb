@@ -77,13 +77,9 @@
 #include "utils/typcache.h"
 #include "utils/xml.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 #include "utils/fmgroids.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Use computed-goto-based opcode dispatch when computed gotos are available.
  * But use a separate symbol so that it's easy to adjust locally in this file
