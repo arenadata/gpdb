@@ -82,7 +82,6 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
 
@@ -92,8 +91,6 @@
  */
 bool		revoked_something = false;
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Internal format used by ALTER DEFAULT PRIVILEGES.
  */
