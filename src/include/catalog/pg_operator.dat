@@ -1178,12 +1178,7 @@
   oprname => '@@', oprkind => 'l', oprleft => '0', oprright => 'polygon',
   oprresult => 'point', oprcode => 'poly_center' },
 
-<<<<<<< HEAD
-{ oid => '1054', descr => 'equal',
-  oid_symbol => 'BPCharEqualOperator',
-=======
 { oid => '1054', oid_symbol => 'BpcharEqualOperator', descr => 'equal',
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
   oprname => '=', oprcanmerge => 't', oprcanhash => 't', oprleft => 'bpchar',
   oprright => 'bpchar', oprresult => 'bool', oprcom => '=(bpchar,bpchar)',
   oprnegate => '<>(bpchar,bpchar)', oprcode => 'bpchareq', oprrest => 'eqsel',
@@ -2368,12 +2363,7 @@
   oprresult => 'numeric', oprcode => 'numeric_uplus' },
 
 # bytea operators
-<<<<<<< HEAD
-{ oid => '1955', descr => 'equal',
-  oid_symbol => 'ByteaEqualOperator',
-=======
 { oid => '1955', oid_symbol => 'ByteaEqualOperator', descr => 'equal',
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
   oprname => '=', oprcanmerge => 't', oprcanhash => 't', oprleft => 'bytea',
   oprright => 'bytea', oprresult => 'bool', oprcom => '=(bytea,bytea)',
   oprnegate => '<>(bytea,bytea)', oprcode => 'byteaeq', oprrest => 'eqsel',
