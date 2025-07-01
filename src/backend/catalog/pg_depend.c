@@ -26,6 +26,7 @@
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_ts_parser.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
@@ -837,6 +838,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case ProcedureRelationId:
 			cacheId = PROCOID;
 			objName = "procedure";
+			break;
+		case TSParserRelationId:
+			cacheId = TSPARSEROID;
+			objName = "text search parser";
 			break;
 		default:
 	}

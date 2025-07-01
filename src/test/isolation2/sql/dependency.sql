@@ -263,3 +263,31 @@ create collation test_8_collation (locale="en_US.utf8");
 2: commit;
 1<:
 1: end;
+
+-- Case 9. Text search configuration dependency on the parser.
+create text search parser test_9_parser(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+
+1: begin;
+1: create text search configuration test_9_configuration(parser = test_9_parser);
+
+2&: drop text search parser test_9_parser;
+
+1: commit;
+
+2<:
+
+1: select count(1) from ts_debug('public.test_9_configuration', 'test');
+
+drop text search parser test_9_parser cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create text search parser test_9_parser(start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+
+1: begin;
+2: begin;
+2: drop text search parser test_9_parser;
+1&: create text search configuration test_9_configuration(parser = test_9_parser);
+
+2: commit;
+1<:
+1: end;
