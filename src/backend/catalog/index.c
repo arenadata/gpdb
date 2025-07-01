@@ -51,11 +51,7 @@
 #include "catalog/pg_depend.h"
 #include "catalog/pg_description.h"
 #include "catalog/pg_inherits.h"
-<<<<<<< HEAD
 #include "catalog/pg_namespace.h"
-#include "catalog/pg_operator.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_tablespace.h"
@@ -86,12 +82,10 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_rusage.h"
-<<<<<<< HEAD
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
-#include "utils/snapmgr.h"
 
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbappendonlyam.h"
@@ -99,11 +93,6 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdboidsync.h"
 #include "utils/faultinjector.h"
-=======
-#include "utils/snapmgr.h"
-#include "utils/syscache.h"
-#include "utils/tuplesort.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_index_pg_class_oid = InvalidOid;
