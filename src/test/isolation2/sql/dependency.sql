@@ -291,3 +291,31 @@ create text search parser test_9_parser(start = prsd_start, gettoken = prsd_next
 2: commit;
 1<:
 1: end;
+
+-- Case 10. Text search dictionary dependency on the template.
+create text search template test_10_template(init = dsimple_init, lexize = dsimple_lexize);
+
+1: begin;
+1: create text search dictionary test_10_dictionary(template = test_10_template);
+
+2&: drop text search template test_10_template;
+
+1: commit;
+
+2<:
+
+1: select ts_lexize('public.test_10_dictionary', 'test');
+
+drop text search template test_10_template cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create text search template test_10_template(init = dsimple_init, lexize = dsimple_lexize);
+
+1: begin;
+2: begin;
+2: drop text search template test_10_template;
+1&: create text search dictionary test_10_dictionary(template = test_10_template);
+
+2: commit;
+1<:
+1: end;

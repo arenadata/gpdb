@@ -433,3 +433,50 @@ COMMIT
 ERROR:  text search parser ##### was concurrently dropped
 1: end;
 END
+
+-- Case 10. Text search dictionary dependency on the template.
+create text search template test_10_template(init = dsimple_init, lexize = dsimple_lexize);
+CREATE
+
+1: begin;
+BEGIN
+1: create text search dictionary test_10_dictionary(template = test_10_template);
+CREATE
+
+2&: drop text search template test_10_template;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop text search template test_10_template because other objects depend on it
+DETAIL:  text search dictionary test_10_dictionary depends on text search template test_10_template
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select ts_lexize('public.test_10_dictionary', 'test');
+ ts_lexize 
+-----------
+ {test}    
+(1 row)
+
+drop text search template test_10_template cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create text search template test_10_template(init = dsimple_init, lexize = dsimple_lexize);
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop text search template test_10_template;
+DROP
+1&: create text search dictionary test_10_dictionary(template = test_10_template);  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  text search template ##### was concurrently dropped
+1: end;
+END

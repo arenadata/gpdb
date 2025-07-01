@@ -27,6 +27,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_ts_parser.h"
+#include "catalog/pg_ts_template.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
@@ -842,6 +843,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case TSParserRelationId:
 			cacheId = TSPARSEROID;
 			objName = "text search parser";
+			break;
+		case TSTemplateRelationId:
+			cacheId = TSTEMPLATEOID;
+			objName = "text search template";
 			break;
 		default:
 	}
