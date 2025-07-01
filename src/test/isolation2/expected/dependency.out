@@ -643,3 +643,54 @@ drop function write_to_file();
 DROP
 drop function read_from_file();
 DROP
+
+-- Case 14. Text search configuration dependency on the text search dictionary
+create text search dictionary test_14_dict ( template = simple );
+CREATE
+
+1: begin;
+BEGIN
+1: create text search configuration test_14_config (parser = default);
+CREATE
+1: alter text search configuration test_14_config alter mapping for asciiword with test_14_dict;
+ALTER
+
+2&: drop text search dictionary test_14_dict;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop text search dictionary test_14_dict because other objects depend on it
+DETAIL:  text search configuration test_14_config depends on text search dictionary test_14_dict
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select count(1) from ts_debug('public.test_14_config', 'test');
+ count 
+-------
+ 1     
+(1 row)
+
+drop text search dictionary test_14_dict cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create text search dictionary test_14_dict ( template = simple );
+CREATE
+
+1: begin;
+BEGIN
+1: create text search configuration test_14_config (parser = default);
+CREATE
+2: begin;
+BEGIN
+2: drop text search dictionary test_14_dict;
+DROP
+1&: alter text search configuration test_14_config alter mapping for asciiword with test_14_dict;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  text search dictionary ##### was concurrently dropped
+1: end;
+END

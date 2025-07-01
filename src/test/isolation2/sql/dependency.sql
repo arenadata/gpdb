@@ -415,3 +415,33 @@ create protocol demoprot (readfunc = 'read_from_file', writefunc = 'write_to_fil
 
 drop function write_to_file();
 drop function read_from_file();
+
+-- Case 14. Text search configuration dependency on the text search dictionary
+create text search dictionary test_14_dict ( template = simple );
+
+1: begin;
+1: create text search configuration test_14_config (parser = default);
+1: alter text search configuration test_14_config alter mapping for asciiword with test_14_dict;
+
+2&: drop text search dictionary test_14_dict;
+
+1: commit;
+
+2<:
+
+1: select count(1) from ts_debug('public.test_14_config', 'test');
+
+drop text search dictionary test_14_dict cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create text search dictionary test_14_dict ( template = simple );
+
+1: begin;
+1: create text search configuration test_14_config (parser = default);
+2: begin;
+2: drop text search dictionary test_14_dict;
+1&: alter text search configuration test_14_config alter mapping for asciiword with test_14_dict;
+
+2: commit;
+1<:
+1: end;

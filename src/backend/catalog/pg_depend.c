@@ -29,6 +29,7 @@
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
+#include "catalog/pg_ts_dict.h"
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "commands/extension.h"
@@ -862,6 +863,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case ExtprotocolRelationId:
 			cacheId = EXTPROTOCOLOID;
 			objName = "protocol";
+			break;
+		case TSDictionaryRelationId:
+			cacheId = TSDICTOID;
+			objName = "text search dictionary";
 			break;
 		default:
 	}
