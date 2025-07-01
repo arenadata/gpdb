@@ -23,6 +23,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_extprotocol.h"
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
@@ -857,6 +858,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case ForeignServerRelationId:
 			cacheId = FOREIGNSERVEROID;
 			objName = "server";
+			break;
+		case ExtprotocolRelationId:
+			cacheId = EXTPROTOCOLOID;
+			objName = "protocol";
 			break;
 		default:
 	}

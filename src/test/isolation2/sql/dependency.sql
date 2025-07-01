@@ -378,3 +378,40 @@ create server test_12_server foreign data wrapper test_12_fdw;
 1: end;
 
 drop foreign data wrapper test_12_fdw;
+
+-- Case 13. External table dependency on the protocol.
+create or replace function write_to_file() returns integer as '$libdir/gpextprotocol.so', 'demoprot_export' language c stable no sql;
+create or replace function read_from_file() returns integer as '$libdir/gpextprotocol.so', 'demoprot_import' language c stable no sql;
+
+create protocol demoprot (readfunc = 'read_from_file', writefunc = 'write_to_file');
+! echo 1 > /tmp/test_13.txt;
+
+1: begin;
+1: create readable external table test_13_ext_table(a int) location('demoprot:///tmp/test_13.txt') format 'text';
+
+2&: drop protocol demoprot;
+
+1: commit;
+
+2<:
+
+1: select * from test_13_ext_table;
+
+! rm /tmp/test_13.txt;
+
+drop protocol demoprot cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create protocol demoprot (readfunc = 'read_from_file', writefunc = 'write_to_file');
+
+1: begin;
+2: begin;
+2: drop protocol demoprot;
+1&: create readable external table test_13_ext_table(a int) location('demoprot://test.txt') format 'text';
+
+2: commit;
+1<:
+1: end;
+
+drop function write_to_file();
+drop function read_from_file();
