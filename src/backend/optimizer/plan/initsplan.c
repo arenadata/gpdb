@@ -36,15 +36,11 @@
 #include "rewrite/rewriteManip.h"
 #include "utils/lsyscache.h"
 
-<<<<<<< HEAD
 #include "access/heapam.h"
 #include "cdb/cdbmutate.h"
 #include "nodes/makefuncs.h"
 #include "parser/parsetree.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* These parameters are set by GUC */
 int			from_collapse_limit;
 int			join_collapse_limit;
