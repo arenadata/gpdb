@@ -87,13 +87,9 @@ static void pull_up_union_leaf_queries(Node *setOp, PlannerInfo *root,
 									   int parentRTindex, Query *setOpQuery,
 									   int childRToffset);
 static void make_setop_translation_list(Query *query, Index newvarno,
-<<<<<<< HEAD
-										List **translated_vars);
-=======
 										AppendRelInfo *appinfo);
 static bool is_simple_subquery(Query *subquery, RangeTblEntry *rte,
 							   JoinExpr *lowest_outer_join);
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static Node *pull_up_simple_values(PlannerInfo *root, Node *jtnode,
 								   RangeTblEntry *rte);
 static bool is_simple_values(PlannerInfo *root, RangeTblEntry *rte);
