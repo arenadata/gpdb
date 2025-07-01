@@ -19,12 +19,17 @@
 #include "access/htup_details.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_language.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
+#include "utils/syscache.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
@@ -32,6 +37,7 @@
 
 
 static bool isObjectPinned(const ObjectAddress *object, Relation rel);
+static void depLockAndCheckObject(const ObjectAddress *referenced);
 
 
 /*
@@ -97,10 +103,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 			 * another transaction.
 			 */
 			if (behavior == DEPENDENCY_NORMAL)
-				LockDatabaseObject(referenced->classId,
-								   referenced->objectId,
-								   referenced->objectSubId,
-								   AccessShareLock);
+				depLockAndCheckObject(referenced);
 
 			/*
 			 * Record the Dependency.  Note we don't bother to check for
@@ -797,4 +800,59 @@ get_index_constraint(Oid indexId)
 	heap_close(depRel, AccessShareLock);
 
 	return constraintId;
+}
+
+/*
+ * depLockAndCheckObject
+ *
+ * Lock the object that we are about to record a dependency on.
+ * After it's locked, verify that it hasn't been dropped while we
+ * weren't looking.  If the object has been dropped, this function
+ * does not return!
+ */
+static void
+depLockAndCheckObject(const ObjectAddress *referenced)
+{
+	int			cacheId = -1;
+	char	   *objName;
+
+	switch (referenced->classId)
+	{
+		case NamespaceRelationId:
+			cacheId = NAMESPACEOID;
+			objName = "namespace";
+			break;
+		case TypeRelationId:
+			cacheId = TYPEOID;
+			objName = "type";
+			break;
+		case CollationRelationId:
+			cacheId = COLLOID;
+			objName = "collation";
+			break;
+		case LanguageRelationId:
+			cacheId = LANGOID;
+			objName = "language";
+			break;
+		case ProcedureRelationId:
+			cacheId = PROCOID;
+			objName = "procedure";
+			break;
+		default:
+	}
+
+	if (cacheId >= 0)
+	{
+		/* AccessShareLock should be OK, since we are not modifying the object */
+		LockDatabaseObject(referenced->classId,
+						   referenced->objectId,
+						   referenced->objectSubId,
+						   AccessShareLock);
+
+		if (!SearchSysCacheExists1(cacheId, ObjectIdGetDatum(referenced->objectId)))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("%s %u was concurrently dropped",
+							objName, referenced->objectId)));
+	}
 }

@@ -1,23 +1,6 @@
 -- Test cases when a parallel transaction drops a dependency object
 -- while current transaction is yet not committed.
 
--- start_matchsubs
--- m/cache lookup failed for type \d+/
--- s/cache lookup failed for type \d+/cache lookup failed for type XXXXX/
--- m/cache lookup failed for language \d+/
--- s/cache lookup failed for language \d+/cache lookup failed for language XXXXX/
--- m/cache lookup failed for function \d+/
--- s/cache lookup failed for function \d+/cache lookup failed for function XXXXX/
--- m/format_type.c:\d+/
--- s/format_type.c:\d+/format_type.c:XXX/
--- m/lsyscache.c:\d+/
--- s/lsyscache.c:\d+/lsyscache.c:XXX/
--- m/fmgr.c:\d+/
--- s/fmgr.c:\d+/fmgr.c:XXX/
--- m/ruleutils.c:\d+/
--- s/ruleutils.c:\d+/ruleutils.c:XXX/
--- end_matchsubs
-
 -- Case 1. Function dependency on the schema.
 create schema test_1_schema;
 
