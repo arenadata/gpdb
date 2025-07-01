@@ -524,3 +524,58 @@ COMMIT
 ERROR:  foreign data wrapper ##### was concurrently dropped
 1: end;
 END
+
+-- Case 12. User mapping dependency on the server.
+create foreign data wrapper test_12_fdw;
+CREATE
+create server test_12_server foreign data wrapper test_12_fdw;
+CREATE
+
+1: begin;
+BEGIN
+1: create user mapping for public server test_12_server;
+CREATE
+
+2&: drop server test_12_server;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop server test_12_server because other objects depend on it
+DETAIL:  user mapping for public on server test_12_server depends on server test_12_server
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+! psql isolation2test -c '\deu';
+   List of user mappings
+     Server     | User name 
+----------------+-----------
+ test_12_server | public
+(1 row)
+
+
+
+drop server test_12_server cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create server test_12_server foreign data wrapper test_12_fdw;
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop server test_12_server;
+DROP
+1&: create user mapping for public server test_12_server;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  server ##### was concurrently dropped
+1: end;
+END
+
+drop foreign data wrapper test_12_fdw;
+DROP

@@ -24,6 +24,7 @@
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_foreign_data_wrapper.h"
+#include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
@@ -852,6 +853,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case ForeignDataWrapperRelationId:
 			cacheId = FOREIGNDATAWRAPPEROID;
 			objName = "foreign data wrapper";
+			break;
+		case ForeignServerRelationId:
+			cacheId = FOREIGNSERVEROID;
+			objName = "server";
 			break;
 		default:
 	}

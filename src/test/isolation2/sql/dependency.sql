@@ -347,3 +347,34 @@ create foreign data wrapper test_11_fdw;
 2: commit;
 1<:
 1: end;
+
+-- Case 12. User mapping dependency on the server.
+create foreign data wrapper test_12_fdw;
+create server test_12_server foreign data wrapper test_12_fdw;
+
+1: begin;
+1: create user mapping for public server test_12_server;
+
+2&: drop server test_12_server;
+
+1: commit;
+
+2<:
+
+! psql isolation2test -c '\deu';
+
+drop server test_12_server cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create server test_12_server foreign data wrapper test_12_fdw;
+
+1: begin;
+2: begin;
+2: drop server test_12_server;
+1&: create user mapping for public server test_12_server;
+
+2: commit;
+1<:
+1: end;
+
+drop foreign data wrapper test_12_fdw;
