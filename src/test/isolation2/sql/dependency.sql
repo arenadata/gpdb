@@ -319,3 +319,31 @@ create text search template test_10_template(init = dsimple_init, lexize = dsimp
 2: commit;
 1<:
 1: end;
+
+-- Case 11. Server dependency on the foreigh data wrapper.
+create foreign data wrapper test_11_fdw;
+
+1: begin;
+1: create server test_11_server foreign data wrapper test_11_fdw;
+
+2&: drop foreign data wrapper test_11_fdw;
+
+1: commit;
+
+2<:
+
+1: alter server test_11_server options (servername 'test_server');
+
+drop foreign data wrapper test_11_fdw cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create foreign data wrapper test_11_fdw;
+
+1: begin;
+2: begin;
+2: drop foreign data wrapper test_11_fdw;
+1&: create server test_11_server foreign data wrapper test_11_fdw;
+
+2: commit;
+1<:
+1: end;

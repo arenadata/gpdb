@@ -480,3 +480,47 @@ COMMIT
 ERROR:  text search template ##### was concurrently dropped
 1: end;
 END
+
+-- Case 11. Server dependency on the foreigh data wrapper.
+create foreign data wrapper test_11_fdw;
+CREATE
+
+1: begin;
+BEGIN
+1: create server test_11_server foreign data wrapper test_11_fdw;
+CREATE
+
+2&: drop foreign data wrapper test_11_fdw;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop foreign-data wrapper test_11_fdw because other objects depend on it
+DETAIL:  server test_11_server depends on foreign-data wrapper test_11_fdw
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: alter server test_11_server options (servername 'test_server');
+ALTER
+
+drop foreign data wrapper test_11_fdw cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create foreign data wrapper test_11_fdw;
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop foreign data wrapper test_11_fdw;
+DROP
+1&: create server test_11_server foreign data wrapper test_11_fdw;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  foreign data wrapper ##### was concurrently dropped
+1: end;
+END

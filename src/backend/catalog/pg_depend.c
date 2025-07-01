@@ -23,6 +23,7 @@
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
+#include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
@@ -847,6 +848,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case TSTemplateRelationId:
 			cacheId = TSTEMPLATEOID;
 			objName = "text search template";
+			break;
+		case ForeignDataWrapperRelationId:
+			cacheId = FOREIGNDATAWRAPPEROID;
+			objName = "foreign data wrapper";
 			break;
 		default:
 	}
