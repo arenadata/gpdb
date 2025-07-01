@@ -470,7 +470,6 @@ static inline CommandId DatumGetCommandId(Datum d) { return (CommandId) d; }
 static inline Datum CommandIdGetDatum(CommandId cid) { return (Datum) cid; } 
 
 /*
-<<<<<<< HEAD
  * DatumGetPointer
  *		Returns pointer value of a datum.
  */
@@ -507,46 +506,14 @@ static inline Datum ItemPointerGetDatum(ItemPointer i) { return PointerGetDatum(
 
 
 static inline bool IsAligned(void *p, int align)
-=======
- * DatumGetFloat4
- *		Returns 4-byte floating point value of a datum.
- */
-static inline float4
-DatumGetFloat4(Datum X)
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 {
         int64 i = (int64) PointerGetDatum(p);
         return ((i & (align-1)) == 0);
 }
 
-<<<<<<< HEAD
 /* ----------------------------------------------------------------
  *				Section 3:	exception handling backend support
  * ----------------------------------------------------------------
-=======
-/*
- * Float4GetDatum
- *		Returns datum representation for a 4-byte floating point number.
- */
-static inline Datum
-Float4GetDatum(float4 X)
-{
-	union
-	{
-		float4		value;
-		int32		retval;
-	}			myunion;
-
-	myunion.value = X;
-	return Int32GetDatum(myunion.retval);
-}
-
-/*
- * DatumGetFloat8
- *		Returns 8-byte floating point value of a datum.
- *
- * Note: this macro hides whether float8 is pass by value or by reference.
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
  */
 
 #define COMPILE_ASSERT(e) ((void)sizeof(char[1-2*!(e)]))
@@ -557,50 +524,8 @@ Float4GetDatum(float4 X)
  *
  * ExceptionalCondition must be present even when assertions are not enabled.
  */
-<<<<<<< HEAD
 extern void ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 			   const char *fileName, int lineNumber) pg_attribute_noreturn();
-=======
-
-#ifdef USE_FLOAT8_BYVAL
-static inline Datum
-Float8GetDatum(float8 X)
-{
-	union
-	{
-		float8		value;
-		int64		retval;
-	}			myunion;
-
-	myunion.value = X;
-	return Int64GetDatum(myunion.retval);
-}
-#else
-extern Datum Float8GetDatum(float8 X);
-#endif
-
-
-/*
- * Int64GetDatumFast
- * Float8GetDatumFast
- *
- * These macros are intended to allow writing code that does not depend on
- * whether int64 and float8 are pass-by-reference types, while not
- * sacrificing performance when they are.  The argument must be a variable
- * that will exist and have the same value for as long as the Datum is needed.
- * In the pass-by-ref case, the address of the variable is taken to use as
- * the Datum.  In the pass-by-val case, these will be the same as the non-Fast
- * macros.
- */
-
-#ifdef USE_FLOAT8_BYVAL
-#define Int64GetDatumFast(X)  Int64GetDatum(X)
-#define Float8GetDatumFast(X) Float8GetDatum(X)
-#else
-#define Int64GetDatumFast(X)  PointerGetDatum(&(X))
-#define Float8GetDatumFast(X) PointerGetDatum(&(X))
-#endif
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 #endif							/* POSTGRES_H */
