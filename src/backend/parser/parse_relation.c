@@ -40,12 +40,8 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #define MAX_FUZZY_DISTANCE				3
 
 static RangeTblEntry *scanNameSpaceForRefname(ParseState *pstate,
