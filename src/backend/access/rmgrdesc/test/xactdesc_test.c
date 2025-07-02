@@ -12,6 +12,8 @@
 /* Actual function body */
 #include "../xactdesc.c"
 
+typedef xl_xact_prepare TwoPhaseFileHeader;
+
 static void
 test_xactdescprepareCommit(void **state)
 {
