@@ -807,3 +807,53 @@ drop function test_16_eq(int, int);
 DROP
 drop table test_16_table;
 DROP
+
+-- Case 17. Operator class dependency on the operator family.
+create function test_17_eq(int, int) returns int as $$ begin return 1;  /**/ end;  /**/ $$ language plpgsql immutable;
+CREATE
+
+create operator family test_17_op_family using btree;
+CREATE
+
+1: begin;
+BEGIN
+1: create operator class test_17_op_class for type int using btree family test_17_op_family as operator 1 =(int, int), function 1 test_17_eq(int, int);
+CREATE
+
+2&: drop operator family test_17_op_family using btree;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+DROP
+
+-- Count below should be 0, as 'drop operator family' automatically drops
+-- all its operator classes.
+1: select count(*) from pg_opclass where opcname = 'test_17_op_class';
+ count 
+-------
+ 0     
+(1 row)
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create operator family test_17_op_family using btree;
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop operator family test_17_op_family using btree;
+DROP
+1&: create operator class test_17_op_class for type int using btree family test_17_op_family as operator 1 =(int, int), function 1 test_17_eq(int, int);  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  operator family ##### was concurrently dropped
+1: end;
+END
+
+drop function test_17_eq(int, int);
+DROP

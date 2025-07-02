@@ -98,7 +98,7 @@ recordMultipleDependencies(const ObjectAddress *depender,
 			 * Lock the referenced object to protect it from dropping by
 			 * another transaction.
 			 */
-			if (behavior == DEPENDENCY_NORMAL)
+			if (behavior == DEPENDENCY_NORMAL || behavior == DEPENDENCY_AUTO)
 				depLockAndCheckObject(referenced);
 
 			/*
@@ -874,6 +874,17 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case OCLASS_OPCLASS:
 			cacheId = CLAOID;
 			objName = "operator class";
+			break;
+		case OCLASS_OPFAMILY:
+			cacheId = OPFAMILYOID;
+			objName = "operator family";
+			/*
+			 * Op family can be not defined yet, if the op class was created
+			 * without specification of a family.
+			 */
+			if (!SearchSysCacheExists1(cacheId,
+									 ObjectIdGetDatum(referenced->objectId)))
+				return;
 			break;
 		default:
 	}
