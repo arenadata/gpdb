@@ -19,21 +19,9 @@
 #include "access/htup_details.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_collation.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
 #include "catalog/pg_extension.h"
-#include "catalog/pg_extprotocol.h"
-#include "catalog/pg_foreign_data_wrapper.h"
-#include "catalog/pg_foreign_server.h"
-#include "catalog/pg_language.h"
-#include "catalog/pg_namespace.h"
-#include "catalog/pg_opclass.h"
-#include "catalog/pg_operator.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_ts_dict.h"
-#include "catalog/pg_ts_parser.h"
-#include "catalog/pg_ts_template.h"
 #include "commands/extension.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
@@ -824,57 +812,57 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 	int			cacheId = -1;
 	char	   *objName;
 
-	switch (referenced->classId)
+	switch (getObjectClass(referenced))
 	{
-		case NamespaceRelationId:
+		case OCLASS_SCHEMA:
 			cacheId = NAMESPACEOID;
 			objName = "namespace";
 			break;
-		case TypeRelationId:
+		case OCLASS_TYPE:
 			cacheId = TYPEOID;
 			objName = "type";
 			break;
-		case CollationRelationId:
+		case OCLASS_COLLATION:
 			cacheId = COLLOID;
 			objName = "collation";
 			break;
-		case LanguageRelationId:
+		case OCLASS_LANGUAGE:
 			cacheId = LANGOID;
 			objName = "language";
 			break;
-		case ProcedureRelationId:
+		case OCLASS_PROC:
 			cacheId = PROCOID;
 			objName = "procedure";
 			break;
-		case TSParserRelationId:
+		case OCLASS_TSPARSER:
 			cacheId = TSPARSEROID;
 			objName = "text search parser";
 			break;
-		case TSTemplateRelationId:
+		case OCLASS_TSTEMPLATE:
 			cacheId = TSTEMPLATEOID;
 			objName = "text search template";
 			break;
-		case ForeignDataWrapperRelationId:
+		case OCLASS_FDW:
 			cacheId = FOREIGNDATAWRAPPEROID;
 			objName = "foreign data wrapper";
 			break;
-		case ForeignServerRelationId:
+		case OCLASS_FOREIGN_SERVER:
 			cacheId = FOREIGNSERVEROID;
 			objName = "server";
 			break;
-		case ExtprotocolRelationId:
+		case OCLASS_EXTPROTOCOL:
 			cacheId = EXTPROTOCOLOID;
 			objName = "protocol";
 			break;
-		case TSDictionaryRelationId:
+		case OCLASS_TSDICT:
 			cacheId = TSDICTOID;
 			objName = "text search dictionary";
 			break;
-		case OperatorRelationId:
+		case OCLASS_OPERATOR:
 			cacheId = OPEROID;
 			objName = "operator";
 			break;
-		case OperatorClassRelationId:
+		case OCLASS_OPCLASS:
 			cacheId = CLAOID;
 			objName = "operator class";
 			break;
