@@ -2765,14 +2765,10 @@ relation_is_updatable(Oid reloid,
 
 #define ALL_EVENTS ((1 << CMD_INSERT) | (1 << CMD_UPDATE) | (1 << CMD_DELETE))
 
-<<<<<<< HEAD
-	rel = try_relation_open(reloid, AccessShareLock, false);
-=======
 	/* Since this function recurses, it could be driven to stack overflow */
 	check_stack_depth();
 
-	rel = try_relation_open(reloid, AccessShareLock);
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+	rel = try_relation_open(reloid, AccessShareLock, false);
 
 	/*
 	 * If the relation doesn't exist, return zero rather than throwing an
