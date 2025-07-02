@@ -435,6 +435,12 @@ xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec)
 	standby_desc_invalidations(
 						buf, parsed.nmsgs, parsed.msgs, parsed.dbId, parsed.tsId,
 						xlrec->initfileinval);
+
+	if (xlrec->tablespace_oid_to_delete_on_commit != InvalidOid)
+		appendStringInfo(buf, "; tablespace_oid_to_delete_on_commit = %u", xlrec->tablespace_oid_to_delete_on_commit);
+
+	if (xlrec->tablespace_oid_to_delete_on_abort != InvalidOid)
+		appendStringInfo(buf, "; tablespace_oid_to_delete_on_abort = %u", xlrec->tablespace_oid_to_delete_on_abort);
 }
 
 static void
