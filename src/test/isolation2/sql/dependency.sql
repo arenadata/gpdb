@@ -445,3 +445,50 @@ create text search dictionary test_14_dict ( template = simple );
 2: commit;
 1<:
 1: end;
+
+-- Case 15. Table dependency on the operator.
+create function test_15_function(text, text) returns text as $$
+begin
+	return $1 || $2;  /**/
+end;  /**/
+$$ language plpgsql;
+
+create operator ~*~ (
+    procedure = test_15_function,
+    leftarg = text,
+    rightarg = text,
+    commutator = ~*~
+);
+
+1: begin;
+1: create table test_15_table(a text default 'a' ~*~ 'b');
+
+2&: drop operator ~*~ (text, text);
+
+1: commit;
+
+2<:
+
+1: insert into test_15_table values (default);
+
+drop operator ~*~ (text, text) cascade;
+drop table test_15_table;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create operator ~*~ (
+    procedure = test_15_function,
+    leftarg = text,
+    rightarg = text,
+    commutator = ~*~
+);
+
+1: begin;
+2: begin;
+2: drop operator ~*~ (text, text);
+1&: create table test_15_table(a text default 'a' ~*~ 'b');
+
+2: commit;
+1<:
+1: end;
+
+drop function test_15_function(text, text);

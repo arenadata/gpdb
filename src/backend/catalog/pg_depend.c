@@ -28,6 +28,7 @@
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_ts_dict.h"
 #include "catalog/pg_ts_parser.h"
@@ -867,6 +868,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case TSDictionaryRelationId:
 			cacheId = TSDICTOID;
 			objName = "text search dictionary";
+			break;
+		case OperatorRelationId:
+			cacheId = OPEROID;
+			objName = "operator";
 			break;
 		default:
 	}
