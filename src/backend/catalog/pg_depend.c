@@ -887,6 +887,7 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 				return;
 			break;
 		default:
+			break;
 	}
 
 	if (cacheId >= 0)
