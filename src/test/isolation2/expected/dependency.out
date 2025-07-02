@@ -746,3 +746,64 @@ END
 
 drop function test_15_function(text, text);
 DROP
+
+-- Case 16. Index dependency on the operator class.
+create function test_16_eq(int, int) returns int as $$ begin return 1;  /**/ end;  /**/ $$ language plpgsql immutable;
+CREATE
+
+create operator class test_16_op_class for type int using btree as operator 1 =(int, int), function 1 test_16_eq(int, int);
+CREATE
+
+create table test_16_table(a int);
+CREATE
+
+1: begin;
+BEGIN
+1: create index idx_test_16_table on test_16_table using btree (a test_16_op_class);
+CREATE
+
+2&: drop operator class test_16_op_class using btree;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop operator class test_16_op_class for access method btree because other objects depend on it
+DETAIL:  index idx_test_16_table depends on operator class test_16_op_class for access method btree
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: explain (costs off) select * from test_16_table where a = 1;
+ QUERY PLAN                                                
+-----------------------------------------------------------
+ Gather Motion 1:1  (slice1; segments: 1)                  
+   ->  Index Scan using idx_test_16_table on test_16_table 
+         Index Cond: (a = 1)                               
+ Optimizer: Pivotal Optimizer (GPORCA)                     
+(4 rows)
+
+drop operator class test_16_op_class using btree cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create operator class test_16_op_class for type int using btree as operator 1 =(int, int), function 1 test_16_eq(int, int);
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop operator class test_16_op_class using btree;
+DROP
+1&: create index idx_test_16_table on test_16_table using btree (a test_16_op_class);  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  operator class ##### was concurrently dropped
+1: end;
+END
+
+drop function test_16_eq(int, int);
+DROP
+drop table test_16_table;
+DROP
