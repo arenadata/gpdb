@@ -254,13 +254,8 @@ typedef struct xl_xact_subxacts
 
 typedef struct xl_xact_relfilenodes
 {
-<<<<<<< HEAD
-	int			nrels;			/* number of subtransaction XIDs */
-	RelFileNodePendingDelete xnodes[FLEXIBLE_ARRAY_MEMBER];
-=======
 	int			nrels;			/* number of relations */
-	RelFileNode xnodes[FLEXIBLE_ARRAY_MEMBER];
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+	RelFileNodePendingDelete xnodes[FLEXIBLE_ARRAY_MEMBER];
 } xl_xact_relfilenodes;
 #define MinSizeOfXactRelfilenodes offsetof(xl_xact_relfilenodes, xnodes)
 
