@@ -494,15 +494,15 @@ create operator ~*~ (
 drop function test_15_function(text, text);
 
 -- Case 16. Index dependency on the operator class.
-create function test_16_eq(int, int) returns int as $$
+create function test_16_idx_func(int, int) returns int as $$
 begin
-    return 1;  /**/
+    return $1 - $2;  /**/
 end;  /**/
 $$ language plpgsql immutable;
 
 create operator class test_16_op_class for type int using btree as
     operator 1 =(int, int),
-    function 1 test_16_eq(int, int);
+    function 1 test_16_idx_func(int, int);
 
 create table test_16_table(a int);
 
@@ -515,14 +515,14 @@ create table test_16_table(a int);
 
 2<:
 
-1: explain (costs off) select * from test_16_table where a = 1;
+1: select * from test_16_table where a = 0;
 
 drop operator class test_16_op_class using btree cascade;
 
 -- Check if dependency is dropped before the creation of the dependent object.
 create operator class test_16_op_class for type int using btree as
     operator 1 =(int, int),
-    function 1 test_16_eq(int, int);
+    function 1 test_16_idx_func(int, int);
 
 1: begin;
 2: begin;
@@ -533,7 +533,7 @@ create operator class test_16_op_class for type int using btree as
 1<:
 1: end;
 
-drop function test_16_eq(int, int);
+drop function test_16_idx_func(int, int);
 drop table test_16_table;
 
 -- Case 17. Operator class dependency on the operator family.
