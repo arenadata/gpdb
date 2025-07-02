@@ -1160,7 +1160,7 @@ extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
  * returned array.  Values of type string are allocated separately and must
  * be freed by the caller.
  */
-static relopt_value *
+relopt_value *
 parseRelOptions(Datum options, bool validate, relopt_kind kind,
 				int *numrelopts)
 {
@@ -1608,12 +1608,10 @@ bytea *
 partitioned_table_reloptions(Datum reloptions, bool validate)
 {
 	/*
-	 * There are no options for partitioned tables yet, but this is able to do
-	 * some validation.
+	 * GPDB: we maintain reloptions for partition roots to support reloption
+	 * inheritance and hierarchy wide ALTER TABLE SET().
 	 */
-	return (bytea *) build_reloptions(reloptions, validate,
-									  RELOPT_KIND_PARTITIONED,
-									  0, NULL, 0);
+	return default_reloptions(reloptions, validate, RELOPT_KIND_HEAP);
 }
 
 /*
@@ -1658,19 +1656,7 @@ heap_reloptions(char relkind, Datum reloptions, bool validate)
 			return (bytea *) rdopts;
 		case RELKIND_RELATION:
 		case RELKIND_MATVIEW:
-<<<<<<< HEAD
-				return default_reloptions(reloptions, validate,
-										  RELOPT_KIND_HEAP);
-		case RELKIND_PARTITIONED_TABLE:
-			/*
-			 * GPDB: we maintain reloptions for partition roots to support reloption
-			 * inheritance and hierarchy wide ALTER TABLE SET().
-			 */
-			return default_reloptions(reloptions, validate,
-									  RELOPT_KIND_HEAP);
-=======
 			return default_reloptions(reloptions, validate, RELOPT_KIND_HEAP);
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 		default:
 			/* other relkinds are not supported */
 			return NULL;

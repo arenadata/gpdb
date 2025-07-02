@@ -78,8 +78,6 @@
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
-<<<<<<< HEAD
-#include "pg_trace.h"
 
 #include "access/distributedlog.h"
 #include "catalog/oid_dispatch.h"
@@ -93,8 +91,6 @@
 #include "utils/vmem_tracker.h"
 #include "cdb/cdbdisp.h"
 #include "postmaster/autovacuum.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  *	User-tweakable parameters
@@ -2827,14 +2823,6 @@ CommitTransaction(void)
 	if (!is_parallel_worker)
 		PreCommit_CheckForSerializationFailure();
 
-<<<<<<< HEAD
-	/*
-	 * Insert notifications sent by NOTIFY commands into the queue.  This
-	 * should be late in the pre-commit sequence to minimize time spent
-	 * holding the notify-insertion lock.
-	 */
-	PreCommit_Notify();
-
 	/*
 	 * Prepare all QE.
 	 */
@@ -2859,8 +2847,6 @@ CommitTransaction(void)
 				 errmsg("Raise an error as directed by Debug_abort_after_distributed_prepared")));
 	}
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
