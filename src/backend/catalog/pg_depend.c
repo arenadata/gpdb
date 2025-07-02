@@ -821,6 +821,15 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case OCLASS_TYPE:
 			cacheId = TYPEOID;
 			objName = "type";
+
+			/*
+			 * Type can be not defined, when we define the I/O procs for a new
+			 * type. Do not lock in this case.
+			 */
+			if (!SearchSysCacheExists1(cacheId,
+									 ObjectIdGetDatum(referenced->objectId)))
+				return;
+
 			break;
 		case OCLASS_COLLATION:
 			cacheId = COLLOID;
