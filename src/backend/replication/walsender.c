@@ -832,7 +832,7 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 				 &errinfo))
 		{
 			/*
-			 * GPDB: Report xlog missing failure to
+			 * GPDB: Report xlog read failure to
 			 * gp_stat_replication view (67d4843).
 			 */
 			WalSndCtl->error = WALSNDERROR_WALREAD;
@@ -2810,7 +2810,7 @@ retry:
 				 &errinfo))
 		{
 			/*
-			 * GPDB: Report xlog missing failure to
+			 * GPDB: Report xlog read failure to
 			 * gp_stat_replication view (67d4843).
 			 */
 			WalSndCtl->error = WALSNDERROR_WALREAD;
