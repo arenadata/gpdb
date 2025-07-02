@@ -109,7 +109,6 @@
 #include "utils/timestamp.h"
 
 #include "access/twophase_storage_tablespace.h"
-#include "access/twophase_xlog.h"
 #include "catalog/storage_database.h"
 #include "catalog/storage_tablespace.h"
 #include "cdb/cdbvars.h"

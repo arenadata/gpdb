@@ -20,7 +20,6 @@
 #include "storage/sinval.h"
 #include "storage/standbydefs.h"
 #include "utils/timestamp.h"
-#include "access/twophase_xlog.h"
 
 /*
  * Parse the WAL format of an xact commit and abort records into an easier to
