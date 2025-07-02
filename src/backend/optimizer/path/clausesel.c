@@ -29,12 +29,9 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/selfuncs.h"
-<<<<<<< HEAD
 #include "statistics/statistics.h"
 
 #include "cdb/cdbvars.h"        /* cdb GUCs */
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * Data structure for accumulating info about possible range-query

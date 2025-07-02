@@ -39,14 +39,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
 
 /*---------------------------------------------------------------------

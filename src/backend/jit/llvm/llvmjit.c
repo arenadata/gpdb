@@ -34,8 +34,6 @@
 #include <llvm-c/Transforms/Utils.h>
 #endif
 
-<<<<<<< HEAD
-=======
 #include "jit/llvmjit.h"
 #include "jit/llvmjit_emit.h"
 #include "miscadmin.h"
@@ -44,7 +42,6 @@
 #include "utils/memutils.h"
 #include "utils/resowner_private.h"
 
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* Handle of a module emitted via ORC JIT */
 typedef struct LLVMJitHandle
 {

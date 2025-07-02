@@ -77,11 +77,8 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbhash.h"
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* ----------
  * Pretty formatting constants
  * ----------

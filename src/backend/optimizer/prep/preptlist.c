@@ -54,7 +54,6 @@
 #include "rewrite/rewriteHandler.h"
 #include "utils/rel.h"
 
-<<<<<<< HEAD
 #include "catalog/gp_distribution_policy.h"     /* CDB: POLICYTYPE_PARTITIONED */
 #include "catalog/pg_inherits.h"
 #include "optimizer/plancat.h"
@@ -62,9 +61,6 @@
 #include "utils/lsyscache.h"
 
 static List *expand_targetlist(PlannerInfo *root, List *tlist, int command_type,
-=======
-static List *expand_targetlist(List *tlist, int command_type,
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 							   Index result_relation, Relation rel);
 static List *supplement_simply_updatable_targetlist(PlannerInfo *root,
 													List *range_table,

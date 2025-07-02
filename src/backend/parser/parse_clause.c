@@ -52,15 +52,12 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
-<<<<<<< HEAD
+#include "utils/syscache.h"
 
 #include "catalog/pg_operator.h"
 #include "cdb/cdbvars.h"
 #include "utils/builtins.h"
 #include "utils/regproc.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
-#include "utils/syscache.h"
 
 /* Convenience macro for the most common makeNamespaceItem() case */
 #define makeDefaultNSItem(rte)	makeNamespaceItem(rte, true, true, false, true)

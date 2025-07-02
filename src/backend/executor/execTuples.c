@@ -69,11 +69,8 @@
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static TupleDesc ExecTypeFromTLInternal(List *targetList,
 										bool skipjunk);
 static pg_attribute_always_inline void slot_deform_heap_tuple(TupleTableSlot *slot, HeapTuple tuple, uint32 *offp,

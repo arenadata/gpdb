@@ -80,13 +80,9 @@
 #include "utils/syscache.h"
 #include "utils/timeout.h"
 
-<<<<<<< HEAD
 #include "utils/resource_manager.h"
 #include "utils/session_state.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
 static void PerformAuthentication(Port *port);

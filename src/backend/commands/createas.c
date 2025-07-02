@@ -52,7 +52,6 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
-<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbaocsam.h"
@@ -63,8 +62,6 @@
 #include "cdb/memquota.h"
 #include "utils/metrics_utils.h"
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 typedef struct
 {
 	DestReceiver pub;			/* publicly-known function pointers */

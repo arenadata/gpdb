@@ -17,13 +17,6 @@
 
 #include <unistd.h>
 
-<<<<<<< HEAD
-#include "fmgr.h"
-#include "funcapi.h"
-#include "miscadmin.h"
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "access/xact.h"
 #include "access/xlog_internal.h"
 #include "access/xlogutils.h"

@@ -50,11 +50,8 @@
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
-<<<<<<< HEAD
 #include "catalog/pg_auth_time_constraint.h"
-=======
 #include "catalog/pg_authid.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_namespace.h"
@@ -96,7 +93,6 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "access/transam.h"
 #include "catalog/gp_distribution_policy.h"         /* GpPolicy */
 #include "catalog/heap.h"
@@ -105,11 +101,7 @@
 #include "cdb/cdbvars.h"        /* Gp_role */
 #include "cdb/cdbsreh.h"
 
-
 #define RELCACHE_INIT_FILEMAGIC		0x773266	/* version ID value */
-=======
-#define RELCACHE_INIT_FILEMAGIC		0x573266	/* version ID value */
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * Default policy for whether to apply RECOVER_RELATION_BUILD_MEMORY:
