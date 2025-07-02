@@ -204,6 +204,8 @@ extern Datum transformRelOptions(Datum oldOptions, List *defList,
 extern List *untransformRelOptions(Datum options);
 extern bytea *extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
 								amoptions_function amoptions);
+extern relopt_value *parseRelOptions(Datum options, bool validate,
+									 relopt_kind kind, int *numrelopts);
 extern void *build_reloptions(Datum reloptions, bool validate,
 							  relopt_kind kind,
 							  Size relopt_struct_size,

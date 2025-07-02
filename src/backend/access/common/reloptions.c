@@ -1160,7 +1160,7 @@ extractRelOptions(HeapTuple tuple, TupleDesc tupdesc,
  * returned array.  Values of type string are allocated separately and must
  * be freed by the caller.
  */
-static relopt_value *
+relopt_value *
 parseRelOptions(Datum options, bool validate, relopt_kind kind,
 				int *numrelopts)
 {
