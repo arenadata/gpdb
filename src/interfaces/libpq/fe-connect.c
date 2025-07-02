@@ -388,7 +388,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Target-Session-Attrs", "", 11, /* sizeof("read-write") = 11 */
 	offsetof(struct pg_conn, target_session_attrs)},
 
-<<<<<<< HEAD
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
 	{"gpqeid", NULL, "", NULL,
 		"gp-debug-qeid", "D", 40,
@@ -401,11 +400,10 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 	{"diff_options", NULL, NULL, NULL,
 		"updated synced GUCs", "D", 80,
 	offsetof(struct pg_conn, diffoptions)},
-=======
+
 	{"sslpassword", NULL, NULL, NULL,
 		"SSL-Client-Key-Password", "*", 20,
 	offsetof(struct pg_conn, sslpassword)},
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,

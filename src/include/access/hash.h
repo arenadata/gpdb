@@ -20,11 +20,8 @@
 #include "access/amapi.h"
 #include "access/itup.h"
 #include "access/sdir.h"
-<<<<<<< HEAD
-#include "common/hashfn.h"
-=======
 #include "catalog/pg_am_d.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+#include "common/hashfn.h"
 #include "lib/stringinfo.h"
 #include "storage/bufmgr.h"
 #include "storage/lockdefs.h"
