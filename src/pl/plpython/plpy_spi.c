@@ -13,18 +13,6 @@
 #include "catalog/pg_type.h"
 #include "executor/spi.h"
 #include "mb/pg_wchar.h"
-#include "parser/parse_type.h"
-<<<<<<< HEAD
-#include "utils/memutils.h"
-#include "utils/syscache.h"
-#include "utils/faultinjector.h"
-
-#include "plpython.h"
-
-#include "plpy_spi.h"
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "plpy_elog.h"
 #include "plpy_main.h"
 #include "plpy_planobject.h"
@@ -35,6 +23,9 @@
 #include "plpython.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+
+#include "parser/parse_type.h"
+#include "utils/faultinjector.h"
 
 static PyObject *PLy_spi_execute_query(char *query, long limit);
 static PyObject *PLy_spi_execute_fetch_result(SPITupleTable *tuptable,
