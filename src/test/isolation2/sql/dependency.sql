@@ -590,6 +590,38 @@ create operator family test_17_op_family using btree;
 
 drop function test_17_eq(int, int);
 
+-- Case 18. View dependency on the function.
+create function test_18_function() returns text as $$
+    select 'test'::text;  /**/
+$$ language sql;
+
+1: begin;
+1: create view test_18_view as select test_18_function();
+
+2&: drop function test_18_function();
+
+1: commit;
+
+2<:
+
+1: select * from test_18_view;
+
+drop function test_18_function()cascade;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create function test_18_function() returns text as $$
+    select 'test'::text;  /**/
+$$ language sql;
+
+1: begin;
+2: begin;
+2: drop function test_18_function();
+1&: create view test_18_view as select test_18_function();
+
+2: commit;
+1<:
+1: end;
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 create type test_type as enum ('one', 'two');

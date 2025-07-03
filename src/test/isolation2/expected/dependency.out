@@ -876,6 +876,53 @@ END
 drop function test_17_eq(int, int);
 DROP
 
+-- Case 18. View dependency on the function.
+create function test_18_function() returns text as $$ select 'test'::text;  /**/ $$ language sql;
+CREATE
+
+1: begin;
+BEGIN
+1: create view test_18_view as select test_18_function();
+CREATE
+
+2&: drop function test_18_function();  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop function test_18_function() because other objects depend on it
+DETAIL:  view test_18_view depends on function test_18_function()
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select * from test_18_view;
+ test_18_function 
+------------------
+ test             
+(1 row)
+
+drop function test_18_function()cascade;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create function test_18_function() returns text as $$ select 'test'::text;  /**/ $$ language sql;
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop function test_18_function();
+DROP
+1&: create view test_18_view as select test_18_function();  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  procedure ##### was concurrently dropped
+1: end;
+END
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 CREATE
