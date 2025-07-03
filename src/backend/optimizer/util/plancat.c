@@ -54,7 +54,7 @@
 #include "utils/partcache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-<<<<<<< HEAD
+#include "utils/syscache.h"
 
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbrelsize.h"
@@ -62,10 +62,6 @@
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_inherits.h"
 #include "utils/guc.h"
-
-=======
-#include "utils/syscache.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /* GUC parameter */
 int			constraint_exclusion = CONSTRAINT_EXCLUSION_PARTITION;

@@ -51,13 +51,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp_query.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static void AlterOpFamilyAdd(AlterOpFamilyStmt *stmt,
 							 Oid amoid, Oid opfamilyoid,
 							 int maxOpNumber, int maxProcNumber,

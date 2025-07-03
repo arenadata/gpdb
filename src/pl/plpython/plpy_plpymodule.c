@@ -16,14 +16,9 @@
 #include "plpy_resultobject.h"
 #include "plpy_spi.h"
 #include "plpy_subxactobject.h"
-<<<<<<< HEAD
-#include "plpy_main.h"
-
-=======
 #include "plpython.h"
 #include "utils/builtins.h"
 #include "utils/snapmgr.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 HTAB	   *PLy_spi_exceptions = NULL;
 

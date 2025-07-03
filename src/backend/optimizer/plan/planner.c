@@ -56,13 +56,9 @@
 #include "optimizer/transform.h"
 #include "optimizer/tlist.h"
 #include "parser/analyze.h"
-<<<<<<< HEAD
 #include "parser/parse_oper.h"
-#include "parser/parse_relation.h"
-#include "parser/parsetree.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "parser/parse_agg.h"
+#include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "partitioning/partdesc.h"
 #include "rewrite/rewriteManip.h"
@@ -72,7 +68,6 @@
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "catalog/pg_proc.h"
 #include "cdb/cdbhash.h"
 #include "cdb/cdbllize.h"
@@ -90,9 +85,6 @@
 #include "storage/lmgr.h"
 #include "utils/guc.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* GUC parameters */
 double		cursor_tuple_fraction = DEFAULT_CURSOR_TUPLE_FRACTION;
 int			force_parallel_mode = FORCE_PARALLEL_OFF;

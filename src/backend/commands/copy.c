@@ -63,7 +63,6 @@
 #include "utils/rls.h"
 #include "utils/snapmgr.h"
 
-<<<<<<< HEAD
 #include "access/external.h"
 #include "access/url.h"
 #include "catalog/catalog.h"
@@ -84,9 +83,6 @@
 #include "utils/resscheduler.h"
 #include "utils/string_utils.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
 

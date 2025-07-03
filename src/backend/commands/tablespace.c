@@ -98,7 +98,6 @@
 #include "utils/tarrable.h"
 #include "utils/varlena.h"
 
-<<<<<<< HEAD
 #include "catalog/heap.h"
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbdisp_query.h"
@@ -106,9 +105,6 @@
 #include "cdb/cdbutil.h"
 #include "miscadmin.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* GUC variables */
 char	   *default_tablespace = NULL;
 char	   *temp_tablespaces = NULL;

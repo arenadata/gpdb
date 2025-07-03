@@ -87,8 +87,6 @@
 #include "utils/snapmgr.h"
 #include "utils/timeout.h"
 #include "utils/timestamp.h"
-<<<<<<< HEAD
-#include "mb/pg_wchar.h"
 
 #include "cdb/cdbutil.h"
 #include "cdb/cdbvars.h"
@@ -104,11 +102,8 @@
 #include "access/twophase.h"
 #include "postmaster/backoff.h"
 #include "utils/resource_manager.h"
-
 #include "utils/session_state.h"
 #include "utils/vmem_tracker.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /* ----------------
  *		global variables

@@ -24,10 +24,6 @@
 #include "common/hashfn.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
-<<<<<<< HEAD
-=======
-#include "utils/hashutils.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 

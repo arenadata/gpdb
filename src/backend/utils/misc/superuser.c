@@ -25,12 +25,8 @@
 #include "miscadmin.h"
 #include "utils/inval.h"
 #include "utils/syscache.h"
-<<<<<<< HEAD
-#include "storage/proc.h"
-#include "miscadmin.h"
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+#include "storage/proc.h"
 
 /*
  * In common cases the same roleid (ie, the session or current ID) will

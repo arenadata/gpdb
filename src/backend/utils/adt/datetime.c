@@ -32,7 +32,6 @@
 #include "utils/memutils.h"
 #include "utils/tzparser.h"
 
-<<<<<<< HEAD
 /*
  * We don't support locale-aware month names or day-of-week names, or non-arabic numbers,
  * and we know the only alpha or numeric chars we can handle are in the ASCII7 set.
@@ -46,8 +45,6 @@
 #undef isalnum
 #define isalnum(x) (isalpha(x) || isdigit(x))
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static int	DecodeNumber(int flen, char *field, bool haveTextMonth,
 						 int fmask, int *tmask,
 						 struct pg_tm *tm, fsec_t *fsec, bool *is2digits);
