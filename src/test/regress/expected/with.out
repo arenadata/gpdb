@@ -2237,54 +2237,9 @@ SELECT * FROM parent;
 EXPLAIN (VERBOSE, COSTS OFF)
 WITH wcte AS ( INSERT INTO int8_tbl VALUES ( 42, 47 ) RETURNING q2 )
 DELETE FROM a USING wcte WHERE aa = q2;
-<<<<<<< HEAD
 ERROR:  writable CTE queries cannot be themselves writable
 DETAIL:  Greenplum Database currently only support CTEs with one writable clause, called in a non-writable context.
 HINT:  Rewrite the query to only include one writable clause.
-=======
-                     QUERY PLAN                     
-----------------------------------------------------
- Delete on public.a
-   Delete on public.a
-   Delete on public.b a_1
-   Delete on public.c a_2
-   Delete on public.d a_3
-   CTE wcte
-     ->  Insert on public.int8_tbl
-           Output: int8_tbl.q2
-           ->  Result
-                 Output: '42'::bigint, '47'::bigint
-   ->  Nested Loop
-         Output: a.ctid, wcte.*
-         Join Filter: (a.aa = wcte.q2)
-         ->  Seq Scan on public.a
-               Output: a.ctid, a.aa
-         ->  CTE Scan on wcte
-               Output: wcte.*, wcte.q2
-   ->  Nested Loop
-         Output: a_1.ctid, wcte.*
-         Join Filter: (a_1.aa = wcte.q2)
-         ->  Seq Scan on public.b a_1
-               Output: a_1.ctid, a_1.aa
-         ->  CTE Scan on wcte
-               Output: wcte.*, wcte.q2
-   ->  Nested Loop
-         Output: a_2.ctid, wcte.*
-         Join Filter: (a_2.aa = wcte.q2)
-         ->  Seq Scan on public.c a_2
-               Output: a_2.ctid, a_2.aa
-         ->  CTE Scan on wcte
-               Output: wcte.*, wcte.q2
-   ->  Nested Loop
-         Output: a_3.ctid, wcte.*
-         Join Filter: (a_3.aa = wcte.q2)
-         ->  Seq Scan on public.d a_3
-               Output: a_3.ctid, a_3.aa
-         ->  CTE Scan on wcte
-               Output: wcte.*, wcte.q2
-(38 rows)
-
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 -- error cases
 -- data-modifying WITH tries to use its own output
 WITH RECURSIVE t AS (
