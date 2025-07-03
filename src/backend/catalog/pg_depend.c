@@ -821,15 +821,6 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case OCLASS_TYPE:
 			cacheId = TYPEOID;
 			objName = "type";
-
-			/*
-			 * Type can be not defined, when we define the I/O procs for a new
-			 * type. Do not lock in this case.
-			 */
-			if (!SearchSysCacheExists1(cacheId,
-									 ObjectIdGetDatum(referenced->objectId)))
-				return;
-
 			break;
 		case OCLASS_COLLATION:
 			cacheId = COLLOID;
@@ -878,13 +869,6 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		case OCLASS_OPFAMILY:
 			cacheId = OPFAMILYOID;
 			objName = "operator family";
-			/*
-			 * Op family can be not defined yet, if the op class was created
-			 * without specification of a family.
-			 */
-			if (!SearchSysCacheExists1(cacheId,
-									 ObjectIdGetDatum(referenced->objectId)))
-				return;
 			break;
 		default:
 			break;
@@ -892,13 +876,26 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 
 	if (cacheId >= 0)
 	{
+		/*
+		 * Type and op family can be not defined at this point. It is normal
+		 * situation. Type can be not defined, if we define the I/O procs for
+		 * a new type. Op family can be not defined yet, if the op class is
+		 * created without specification of a family. We do not lock in this
+		 * case.
+		 */
+		if ((cacheId == TYPEOID || cacheId == OPFAMILYOID) &&
+			!SearchSysCacheExists1(cacheId,
+								   ObjectIdGetDatum(referenced->objectId)))
+			return;
+
 		/* AccessShareLock should be OK, since we are not modifying the object */
 		LockDatabaseObject(referenced->classId,
 						   referenced->objectId,
 						   referenced->objectSubId,
 						   AccessShareLock);
 
-		if (!SearchSysCacheExists1(cacheId, ObjectIdGetDatum(referenced->objectId)))
+		if (!SearchSysCacheExists1(cacheId,
+								   ObjectIdGetDatum(referenced->objectId)))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("%s %u was concurrently dropped",
