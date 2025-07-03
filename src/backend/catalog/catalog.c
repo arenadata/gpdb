@@ -35,11 +35,8 @@
 #include "catalog/pg_auth_time_constraint.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
-<<<<<<< HEAD
-#include "catalog/pg_largeobject.h"
-=======
 #include "catalog/pg_db_role_setting.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+#include "catalog/pg_largeobject.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_pltemplate.h"
 #include "catalog/pg_replication_origin.h"
@@ -58,7 +55,6 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "catalog/gp_configuration_history.h"
 #include "catalog/gp_id.h"
 #include "catalog/gp_version_at_initdb.h"
@@ -135,8 +131,6 @@ aorelpathbackend(RelFileNode node, BackendId backend, int32 segno)
 	return fullpath;
 }
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * IsSystemRelation
  *		True iff the relation is either a system catalog or a toast table.
