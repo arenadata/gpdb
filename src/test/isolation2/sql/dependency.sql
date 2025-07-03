@@ -654,6 +654,37 @@ $$ language sql;
 1<:
 1: end;
 
+-- Case 20. Table dependency on the column type (with ALTER COLUMN).
+create type test_20_type as enum ('one', 'two');
+create table test_20_table(a text);
+
+1: begin;
+1: alter table test_20_table alter column a set data type test_20_type using a::test_20_type;
+
+2&: drop type test_20_type;
+
+1: commit;
+
+2<:
+
+1: select * from test_20_table;
+
+drop type test_20_type cascade;
+drop table test_20_table;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create type test_20_type as enum ('one', 'two');
+create table test_20_table(a text);
+
+1: begin;
+2: begin;
+2: drop type test_20_type;
+1&: alter table test_20_table alter column a set data type test_20_type using a::test_20_type;
+
+2: commit;
+1<:
+1: end;
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 create type test_type as enum ('one', 'two');

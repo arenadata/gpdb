@@ -970,6 +970,58 @@ ERROR:  procedure ##### was concurrently dropped
 1: end;
 END
 
+-- Case 20. Table dependency on the column type (with ALTER COLUMN).
+create type test_20_type as enum ('one', 'two');
+CREATE
+create table test_20_table(a text);
+CREATE
+
+1: begin;
+BEGIN
+1: alter table test_20_table alter column a set data type test_20_type using a::test_20_type;
+ALTER
+
+2&: drop type test_20_type;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop type test_20_type because other objects depend on it
+DETAIL:  table test_20_table column a depends on type test_20_type
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: select * from test_20_table;
+ a 
+---
+(0 rows)
+
+drop type test_20_type cascade;
+DROP
+drop table test_20_table;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create type test_20_type as enum ('one', 'two');
+CREATE
+create table test_20_table(a text);
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop type test_20_type;
+DROP
+1&: alter table test_20_table alter column a set data type test_20_type using a::test_20_type;  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  type ##### was concurrently dropped
+1: end;
+END
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 CREATE
