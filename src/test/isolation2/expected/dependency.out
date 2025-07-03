@@ -1022,6 +1022,59 @@ ERROR:  type ##### was concurrently dropped
 1: end;
 END
 
+-- Case 21. Rule dependency on the table.
+create table test_21_table_1(a int);
+CREATE
+create table test_21_table_2(a int);
+CREATE
+
+1: begin;
+BEGIN
+1: create rule test_21_rule as on insert to test_21_table_1 do instead insert into test_21_table_2 values (1);
+CREATE
+
+2&: drop table test_21_table_2;  <waiting ...>
+
+1: commit;
+COMMIT
+
+2<:  <... completed>
+ERROR:  cannot drop table test_21_table_2 because other objects depend on it
+DETAIL:  rule test_21_rule on table test_21_table_1 depends on table test_21_table_2
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+
+1: insert into test_21_table_1 values (0);
+INSERT 1
+1: select * from test_21_table_2;
+ a 
+---
+ 1 
+(1 row)
+
+drop rule test_21_rule on test_21_table_1;
+DROP
+
+-- Check if dependency is dropped before the creation of the dependent object.
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+2: drop table test_21_table_2;
+DROP
+1&: create rule test_21_rule as on insert to test_21_table_1 do instead insert into test_21_table_2 values (1);  <waiting ...>
+
+2: commit;
+COMMIT
+1<:  <... completed>
+ERROR:  relation "test_21_table_2" does not exist
+LINE 1: ... insert to test_21_table_1 do instead insert into test_21_ta...
+                                                             ^
+1: end;
+END
+
+drop table test_21_table_1;
+DROP
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 CREATE

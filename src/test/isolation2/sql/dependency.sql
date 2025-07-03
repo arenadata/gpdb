@@ -685,6 +685,36 @@ create table test_20_table(a text);
 1<:
 1: end;
 
+-- Case 21. Rule dependency on the table.
+create table test_21_table_1(a int);
+create table test_21_table_2(a int);
+
+1: begin;
+1: create rule test_21_rule as on insert to test_21_table_1 do instead insert into test_21_table_2 values (1);
+
+2&: drop table test_21_table_2;
+
+1: commit;
+
+2<:
+
+1: insert into test_21_table_1 values (0);
+1: select * from test_21_table_2;
+
+drop rule test_21_rule on test_21_table_1;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+1: begin;
+2: begin;
+2: drop table test_21_table_2;
+1&: create rule test_21_rule as on insert to test_21_table_1 do instead insert into test_21_table_2 values (1);
+
+2: commit;
+1<:
+1: end;
+
+drop table test_21_table_1;
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 create type test_type as enum ('one', 'two');
