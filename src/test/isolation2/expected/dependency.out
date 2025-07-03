@@ -875,3 +875,30 @@ END
 
 drop function test_17_eq(int, int);
 DROP
+
+-- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
+create schema test_schema;
+CREATE
+create type test_type as enum ('one', 'two');
+CREATE
+
+1: begin;
+BEGIN
+2: begin;
+BEGIN
+
+2: drop type test_type;
+DROP
+1&: create function test_schema.test_function(a test_type) returns text as $$ select 'Return ' || a;  /**/ $$ language sql;  <waiting ...>
+2&: drop schema test_schema;  <waiting ...>
+
+
+1: rollback;
+ROLLBACK
+2: rollback;
+ROLLBACK
+
+drop schema test_schema;
+DROP
+drop type test_type;
+DROP

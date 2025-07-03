@@ -589,3 +589,27 @@ create operator family test_17_op_family using btree;
 1: end;
 
 drop function test_17_eq(int, int);
+
+-- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
+create schema test_schema;
+create type test_type as enum ('one', 'two');
+
+1: begin;
+2: begin;
+
+2: drop type test_type;
+1&: create function test_schema.test_function(a test_type) returns text as $$
+    select 'Return ' || a;  /**/
+$$ language sql;
+2&: drop schema test_schema;
+
+-- start_ignore
+1<:
+2<:
+-- end_ignore
+
+1: rollback;
+2: rollback;
+
+drop schema test_schema;
+drop type test_type;
