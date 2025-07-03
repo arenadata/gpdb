@@ -830,8 +830,14 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 				 sendCxt,
 				 WalSndSegmentOpen,
 				 &errinfo))
-		WALReadRaiseError(&errinfo);
-
+		{
+			/*
+			 * GPDB: Report xlog read failure to
+			 * gp_stat_replication view (67d4843).
+			 */
+			WalSndCtl->error = WALSNDERROR_WALREAD;
+			WALReadRaiseError(&errinfo);
+		}
 	/*
 	 * After reading into the buffer, check that what we read was valid. We do
 	 * this after reading, because even though the segment was present when we
@@ -841,6 +847,8 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 	 */
 	XLByteToSeg(targetPagePtr, segno, sendCxt->ws_segsize);
 	CheckXLogRemoved(segno, sendSeg->ws_tli);
+
+	WalSndCtl->error = WALSNDERROR_NONE;
 
 	return count;
 }
@@ -2486,13 +2494,6 @@ WalSndSegmentOpen(XLogSegNo nextSegNo, WALSegmentContext *segcxt,
 	char		path[MAXPGPATH];
 	int			fd;
 
-<<<<<<< HEAD
-	p = buf;
-	recptr = startptr;
-	nbytes = count;
-
-	while (nbytes > 0)
-=======
 	/*-------
 	 * When reading from a historic timeline, and there is a timeline switch
 	 * within this segment, read from the WAL segment belonging to the new
@@ -2519,155 +2520,21 @@ WalSndSegmentOpen(XLogSegNo nextSegNo, WALSegmentContext *segcxt,
 	 */
 	*tli_p = sendTimeLine;
 	if (sendTimeLineIsHistoric)
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	{
 		XLogSegNo	endSegNo;
 
-<<<<<<< HEAD
-		startoff = XLogSegmentOffset(recptr, segcxt->ws_segsize);
-
-		if (sendSeg->ws_file < 0 ||
-			!XLByteInSeg(recptr, sendSeg->ws_segno, segcxt->ws_segsize))
-		{
-			char		path[MAXPGPATH];
-
-			/* Switch to another logfile segment */
-			if (sendSeg->ws_file >= 0)
-				close(sendSeg->ws_file);
-
-			XLByteToSeg(recptr, sendSeg->ws_segno, segcxt->ws_segsize);
-
-			/*-------
-			 * When reading from a historic timeline, and there is a timeline
-			 * switch within this segment, read from the WAL segment belonging
-			 * to the new timeline.
-			 *
-			 * For example, imagine that this server is currently on timeline
-			 * 5, and we're streaming timeline 4. The switch from timeline 4
-			 * to 5 happened at 0/13002088. In pg_wal, we have these files:
-			 *
-			 * ...
-			 * 000000040000000000000012
-			 * 000000040000000000000013
-			 * 000000050000000000000013
-			 * 000000050000000000000014
-			 * ...
-			 *
-			 * In this situation, when requested to send the WAL from
-			 * segment 0x13, on timeline 4, we read the WAL from file
-			 * 000000050000000000000013. Archive recovery prefers files from
-			 * newer timelines, so if the segment was restored from the
-			 * archive on this server, the file belonging to the old timeline,
-			 * 000000040000000000000013, might not exist. Their contents are
-			 * equal up to the switchpoint, because at a timeline switch, the
-			 * used portion of the old segment is copied to the new file.
-			 *-------
-			 */
-			sendSeg->ws_tli = sendTimeLine;
-			if (sendTimeLineIsHistoric)
-			{
-				XLogSegNo	endSegNo;
-
-				XLByteToSeg(sendTimeLineValidUpto, endSegNo, segcxt->ws_segsize);
-				if (sendSeg->ws_segno == endSegNo)
-					sendSeg->ws_tli = sendTimeLineNextTLI;
-			}
-
-			XLogFilePath(path, sendSeg->ws_tli, sendSeg->ws_segno, segcxt->ws_segsize);
-
-			sendSeg->ws_file = BasicOpenFile(path, O_RDONLY | PG_BINARY);
-			if (sendSeg->ws_file < 0)
-			{
-				WalSndCtl->error = WALSNDERROR_WALREAD;
-				/*
-				 * If the file is not found, assume it's because the standby
-				 * asked for a too old WAL segment that has already been
-				 * removed or recycled.
-				 */
-				if (errno == ENOENT)
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("requested WAL segment %s has already been removed",
-									XLogFileNameP(sendSeg->ws_tli, sendSeg->ws_segno))));
-				else
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not open file \"%s\": %m",
-									path)));
-			}
-			sendSeg->ws_off = 0;
-		}
-
-		/* Need to seek in the file? */
-		if (sendSeg->ws_off != startoff)
-		{
-			if (lseek(sendSeg->ws_file, (off_t) startoff, SEEK_SET) < 0)
-			{
-				WalSndCtl->error = WALSNDERROR_WALREAD;
-
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not seek in log segment %s to offset %u: %m",
-								XLogFileNameP(sendSeg->ws_tli, sendSeg->ws_segno),
-								startoff)));
-			}
-
-			sendSeg->ws_off = startoff;
-		}
-
-		/* How many bytes are within this segment? */
-		if (nbytes > (segcxt->ws_segsize - startoff))
-			segbytes = segcxt->ws_segsize - startoff;
-		else
-			segbytes = nbytes;
-
-		pgstat_report_wait_start(WAIT_EVENT_WAL_READ);
-		readbytes = read(sendSeg->ws_file, p, segbytes);
-		pgstat_report_wait_end();
-		if (readbytes < 0)
-		{
-			WalSndCtl->error = WALSNDERROR_WALREAD;
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not read from log segment %s, offset %u, length %zu: %m",
-							XLogFileNameP(sendSeg->ws_tli, sendSeg->ws_segno),
-							sendSeg->ws_off, (Size) segbytes)));
-		}
-		else if (readbytes == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg("could not read from log segment %s, offset %u: read %d of %zu",
-							XLogFileNameP(sendSeg->ws_tli, sendSeg->ws_segno),
-							sendSeg->ws_off, readbytes, (Size) segbytes)));
-		}
-
-		/* Update state for read */
-		recptr += readbytes;
-
-		sendSeg->ws_off += readbytes;
-		nbytes -= readbytes;
-		p += readbytes;
-=======
 		XLByteToSeg(sendTimeLineValidUpto, endSegNo, segcxt->ws_segsize);
 		if (sendSeg->ws_segno == endSegNo)
 			*tli_p = sendTimeLineNextTLI;
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	}
 
 	XLogFilePath(path, *tli_p, nextSegNo, segcxt->ws_segsize);
 	fd = BasicOpenFile(path, O_RDONLY | PG_BINARY);
 	if (fd >= 0)
 		return fd;
-
-<<<<<<< HEAD
-	// GPDB_93_MERGE_FIXME: This used to happen, when the "has already been removed"
-	// error was thrown. But that's not checked in CheckXLogRemoved(). Do we
-	// still need the 'error' field?
-	//WalSndCtl->error = WALSNDERROR_WALREAD;
-
-	WalSndCtl->error = WALSNDERROR_NONE;
-=======
+	
+	/* Report xlog missing failure to gp_stat_replication view (67d4843). */
+	WalSndCtl->error = WALSNDERROR_WALREAD;
 	/*
 	 * If the file is not found, assume it's because the standby asked for a
 	 * too old WAL segment that has already been removed or recycled.
@@ -2683,7 +2550,6 @@ WalSndSegmentOpen(XLogSegNo nextSegNo, WALSegmentContext *segcxt,
 				 errmsg("could not open file \"%s\": %m",
 						path)));
 	return -1;					/* keep compiler quiet */
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 }
 
 /*
@@ -2942,11 +2808,19 @@ retry:
 				 sendCxt,
 				 WalSndSegmentOpen,
 				 &errinfo))
-		WALReadRaiseError(&errinfo);
-
+		{
+			/*
+			 * GPDB: Report xlog read failure to
+			 * gp_stat_replication view (67d4843).
+			 */
+			WalSndCtl->error = WALSNDERROR_WALREAD;
+			WALReadRaiseError(&errinfo);
+		}
 	/* See logical_read_xlog_page(). */
 	XLByteToSeg(startptr, segno, sendCxt->ws_segsize);
 	CheckXLogRemoved(segno, sendSeg->ws_tli);
+
+	WalSndCtl->error = WALSNDERROR_NONE;
 
 	/*
 	 * During recovery, the currently-open WAL file might be replaced with the
@@ -3010,7 +2884,6 @@ retry:
 				 (uint32) (sentPtr >> 32), (uint32) sentPtr);
 		set_ps_display(activitymsg, false);
 	}
-<<<<<<< HEAD
 
 	elogif(debug_walrepl_snd, LOG,
 			"walsnd xlogsend -- "
@@ -3028,8 +2901,6 @@ retry:
 			WalSndCaughtUp ? "true" : "false");
 
 	return;
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 }
 
 /*
