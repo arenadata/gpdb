@@ -10,6 +10,17 @@ BEGIN
 1: create function test_1_schema.test_1_function() returns text as $$ select 'test'::text; /**/ $$ language sql;
 CREATE
 
+-- Check that we didn't add extra locks. Here we lock only namespace, so the count is 1.
+-- Do this check only for the first couple of tests in order not to overcomplicate the remaining.
+1:  with cte as (select * from pg_locks where pid = pg_backend_pid() and locktype = 'object') select count(1), gp_segment_id from pg_locks where classid in (select classid from cte) and objid in (select objid from cte) group by gp_segment_id order by gp_segment_id;
+ count | gp_segment_id 
+-------+---------------
+ 1     | -1            
+ 1     | 0             
+ 1     | 1             
+ 1     | 2             
+(4 rows)
+
 2&: drop schema test_1_schema;  <waiting ...>
 
 1: commit;
@@ -55,6 +66,17 @@ CREATE
 BEGIN
 1: create function test_2_function() returns setof test_2_type as $$ select i from generate_series(1,5)i; /**/ $$ language sql;
 CREATE
+
+-- Check that we didn't add extra locks. Here we lock namespace ('public') and type, so the count is 2.
+-- Do this check only for the first couple of tests in order not to overcomplicate the remaining.
+1:  with cte as (select * from pg_locks where pid = pg_backend_pid() and locktype = 'object') select count(1), gp_segment_id from pg_locks where classid in (select classid from cte) and objid in (select objid from cte) group by gp_segment_id order by gp_segment_id;
+ count | gp_segment_id 
+-------+---------------
+ 2     | -1            
+ 2     | 0             
+ 2     | 1             
+ 2     | 2             
+(4 rows)
 
 2&: drop type test_2_type;  <waiting ...>
 
