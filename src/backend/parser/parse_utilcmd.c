@@ -3060,6 +3060,11 @@ getPolicyForDistributedBy(DistributedBy *distributedBy, TupleDesc tupdesc)
 	if (!distributedBy)
 		return NULL; /* XXX or should we complain? */
 
+	int numsegments = distributedBy->numsegments;
+	if (gp_target_numsegments > 0)
+		numsegments = gp_target_numsegments;
+
+
 	switch(distributedBy->ptype)
 	{
 		case POLICYTYPE_PARTITIONED:
@@ -3096,14 +3101,14 @@ getPolicyForDistributedBy(DistributedBy *distributedBy, TupleDesc tupdesc)
 
 			return createHashPartitionedPolicy(policykeys,
 											   policyopclasses,
-											   distributedBy->numsegments);;
+											   numsegments);
 
 		case POLICYTYPE_ENTRY:
 			elog(ERROR, "unexpected entry distribution policy");
 			return NULL;
 
 		case POLICYTYPE_REPLICATED:
-			return createReplicatedGpPolicy(distributedBy->numsegments);
+			return createReplicatedGpPolicy(numsegments);
 	}
 	elog(ERROR, "unrecognized policy type %d", distributedBy->ptype);
 	return NULL;
