@@ -2702,7 +2702,6 @@ ExecutePlan(EState *estate,
 		 * process so we just end the loop...
 		 */
 		if (TupIsNull(slot))
-<<<<<<< HEAD
 		{
 			/*
 			 * We got end-of-stream. We need to mark it since with a cursor
@@ -2711,11 +2710,8 @@ ExecutePlan(EState *estate,
 			 * received in order to do the right cleanup.
 			 */
 			estate->es_got_eos = true;
-			/* Allow nodes to release or shut down resources. */
-			(void) ExecShutdownNode(planstate);
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 			break;
+		}
 
 		/*
 		 * If we have a junk filter, then project a new tuple with the junk
