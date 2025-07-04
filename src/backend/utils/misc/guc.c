@@ -88,11 +88,7 @@
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
 #include "utils/bytea.h"
-<<<<<<< HEAD
 #include "utils/faultinjector.h"
-#include "utils/guc_tables.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "utils/float.h"
 #include "utils/guc_tables.h"
 #include "utils/memutils.h"
@@ -1844,11 +1840,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-<<<<<<< HEAD
 		{"allow_system_table_mods", PGC_USERSET, CUSTOM_OPTIONS,
-=======
-		{"allow_system_table_mods", PGC_SUSET, DEVELOPER_OPTIONS,
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 			gettext_noop("Allows modifications of the structure of system tables."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
