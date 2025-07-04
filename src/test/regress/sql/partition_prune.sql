@@ -232,11 +232,11 @@ explain (costs off) select * from coercepart where a = all (null::text[]);
 
 drop table coercepart;
 
-CREATE TABLE part (a INT, b INT) PARTITION BY LIST (a);
+CREATE TABLE part (a INT, b INT) DISTRIBUTED BY (a) PARTITION BY LIST (a);
 CREATE TABLE part_p1 PARTITION OF part FOR VALUES IN (-2,-1,0,1,2);
 CREATE TABLE part_p2 PARTITION OF part DEFAULT PARTITION BY RANGE(a);
 CREATE TABLE part_p2_p1 PARTITION OF part_p2 DEFAULT;
-CREATE TABLE part_rev (b INT, c INT, a INT);
+CREATE TABLE part_rev (b INT, c INT, a INT) DISTRIBUTED BY (a);
 ALTER TABLE part ATTACH PARTITION part_rev FOR VALUES IN (3);  -- fail
 ALTER TABLE part_rev DROP COLUMN c;
 ALTER TABLE part ATTACH PARTITION part_rev FOR VALUES IN (3);  -- now it's ok
