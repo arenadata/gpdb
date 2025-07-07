@@ -1,23 +1,81 @@
+-- Check 'ALTER TABLE ... REBALANCE' command and 'gp_target_numsegments' GUC
+-- Create hashed distributed tables
 create table table_distr_hashed(a int) distributed by (a);
-create table table_distr_hashed_ao_row(a int) with (appendonly=true, orientation=row) distributed by (a);
-create table table_distr_hashed_ao_col(a int) with (appendonly=true, orientation=column) distributed by (a);
-create table table_distr_random(a int) distributed randomly;
-create table table_distr_random_ao_row(a int) with (appendonly=true, orientation=row) distributed randomly;
-create table table_distr_random_ao_col(a int) with (appendonly=true, orientation=column) distributed randomly;
-create table table_distr_replicated(a int) distributed replicated;
-create table table_distr_replicated_ao_row(a int) with (appendonly=true, orientation=row) distributed replicated;
-create table table_distr_replicated_ao_col(a int) with (appendonly=true, orientation=column) distributed replicated;
 insert into table_distr_hashed select generate_series(1, 20);
+create table table_distr_hashed_ao_row(a int) with (appendonly=true, orientation=row) distributed by (a);
 insert into table_distr_hashed_ao_row select generate_series(1, 20);
+create table table_distr_hashed_ao_col(a int) with (appendonly=true, orientation=column) distributed by (a);
 insert into table_distr_hashed_ao_col select generate_series(1, 20);
+-- Create randomly distributed tables
+create table table_distr_random(a int) distributed randomly;
 insert into table_distr_random select generate_series(1, 20);
+create table table_distr_random_ao_row(a int) with (appendonly=true, orientation=row) distributed randomly;
 insert into table_distr_random_ao_row select generate_series(1, 20);
+create table table_distr_random_ao_col(a int) with (appendonly=true, orientation=column) distributed randomly;
 insert into table_distr_random_ao_col select generate_series(1, 20);
+-- Create replicated distributed tables
+create table table_distr_replicated(a int) distributed replicated;
 insert into table_distr_replicated select generate_series(1, 20);
+create table table_distr_replicated_ao_row(a int) with (appendonly=true, orientation=row) distributed replicated;
 insert into table_distr_replicated_ao_row select generate_series(1, 20);
+create table table_distr_replicated_ao_col(a int) with (appendonly=true, orientation=column) distributed replicated;
 insert into table_distr_replicated_ao_col select generate_series(1, 20);
+-- Create part tables
+create table part_range_table_distr_hashed (a int, b date) distributed by (a)
+partition by range (b) (
+    start (date '2023-01-01') inclusive
+    end (date '2024-01-01') exclusive
+    every (interval '1 month'),
+    default partition other_vals
+);
+insert into part_range_table_distr_hashed select i, '2023-01-02' from generate_series(1, 20)i;
+insert into part_range_table_distr_hashed select i, '2023-05-02' from generate_series(1, 20)i;
+insert into part_range_table_distr_hashed select i, '2020-05-02' from generate_series(1, 20)i;
+create table part_range_table_distr_random (a int, b date) distributed randomly
+partition by range (b) (
+    start (date '2023-01-01') inclusive
+    end (date '2024-01-01') exclusive
+    every (interval '1 month'),
+    default partition other_vals
+);
+insert into part_range_table_distr_random select i, '2023-01-02' from generate_series(1, 20)i;
+insert into part_range_table_distr_random select i, '2023-05-02' from generate_series(1, 20)i;
+insert into part_range_table_distr_random select i, '2020-05-02' from generate_series(1, 20)i;
+create table part_list_table_distr_hashed(a int, b text) distributed by (a)
+partition by list (b) (
+    partition part1 values ('test1'),
+    partition part2 values ('test2'),
+    default partition other_vals
+);
+insert into part_list_table_distr_hashed select i, 'test1' from generate_series(1, 20)i;
+insert into part_list_table_distr_hashed select i, 'test2' from generate_series(1, 20)i;
+insert into part_list_table_distr_hashed select i, 'test3' from generate_series(1, 20)i;
+create table part_list_table_distr_random(a int, b text) distributed randomly
+partition by list (b) (
+    partition part1 values ('test1'),
+    partition part2 values ('test2'),
+    default partition other_vals
+);
+insert into part_list_table_distr_random select i, 'test1' from generate_series(1, 20)i;
+insert into part_list_table_distr_random select i, 'test2' from generate_series(1, 20)i;
+insert into part_list_table_distr_random select i, 'test3' from generate_series(1, 20)i;
+create table multi_part_table_distr_hashed(a int, b date, c text) distributed by (a)
+partition by range (b)
+subpartition by list (c) subpartition template
+(
+    subpartition subpart1 values ('test1'),
+    subpartition subpart2 values ('test2')
+)
+(
+    partition part1 start (date '2023-01-01'),
+    partition part2 start (date '2023-02-01'),
+	partition part3 start (date '2023-03-01') end (date '2024-01-01')
+);
+insert into multi_part_table_distr_hashed select i, '2023-01-05', 'test1' from generate_series(1, 20)i;
+insert into multi_part_table_distr_hashed select i, '2023-02-05', 'test2' from generate_series(1, 20)i;
+insert into multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from generate_series(1, 20)i;
+-- Now check shrink of the created tables into 2 segments
 set gp_target_numsegments = 2;
--- Check shrink of old tables
 alter table table_distr_hashed rebalance;
 alter table table_distr_hashed_ao_row rebalance;
 alter table table_distr_hashed_ao_col rebalance;
@@ -27,6 +85,12 @@ alter table table_distr_random_ao_col rebalance;
 alter table table_distr_replicated rebalance;
 alter table table_distr_replicated_ao_row rebalance;
 alter table table_distr_replicated_ao_col rebalance;
+alter table part_range_table_distr_hashed rebalance;
+alter table part_range_table_distr_random rebalance;
+alter table part_list_table_distr_hashed rebalance;
+alter table part_list_table_distr_random rebalance;
+alter table multi_part_table_distr_hashed rebalance; 
+-- Verify that data is presented only on segments #0 and #1
 select a, gp_segment_id from table_distr_hashed order by a;
  a  | gp_segment_id 
 ----+---------------
@@ -252,6 +316,332 @@ select a from table_distr_replicated_ao_col order by a;
  20
 (20 rows)
 
+select *, gp_segment_id from part_range_table_distr_hashed order by a, b;
+ a  |     b      | gp_segment_id 
+----+------------+---------------
+  1 | 05-02-2020 |             1
+  1 | 01-02-2023 |             1
+  1 | 05-02-2023 |             1
+  2 | 05-02-2020 |             0
+  2 | 01-02-2023 |             0
+  2 | 05-02-2023 |             0
+  3 | 05-02-2020 |             0
+  3 | 01-02-2023 |             0
+  3 | 05-02-2023 |             0
+  4 | 05-02-2020 |             0
+  4 | 01-02-2023 |             0
+  4 | 05-02-2023 |             0
+  5 | 05-02-2020 |             1
+  5 | 01-02-2023 |             1
+  5 | 05-02-2023 |             1
+  6 | 05-02-2020 |             0
+  6 | 01-02-2023 |             0
+  6 | 05-02-2023 |             0
+  7 | 05-02-2020 |             0
+  7 | 01-02-2023 |             0
+  7 | 05-02-2023 |             0
+  8 | 05-02-2020 |             0
+  8 | 01-02-2023 |             0
+  8 | 05-02-2023 |             0
+  9 | 05-02-2020 |             0
+  9 | 01-02-2023 |             0
+  9 | 05-02-2023 |             0
+ 10 | 05-02-2020 |             0
+ 10 | 01-02-2023 |             0
+ 10 | 05-02-2023 |             0
+ 11 | 05-02-2020 |             1
+ 11 | 01-02-2023 |             1
+ 11 | 05-02-2023 |             1
+ 12 | 05-02-2020 |             1
+ 12 | 01-02-2023 |             1
+ 12 | 05-02-2023 |             1
+ 13 | 05-02-2020 |             0
+ 13 | 01-02-2023 |             0
+ 13 | 05-02-2023 |             0
+ 14 | 05-02-2020 |             1
+ 14 | 01-02-2023 |             1
+ 14 | 05-02-2023 |             1
+ 15 | 05-02-2020 |             1
+ 15 | 01-02-2023 |             1
+ 15 | 05-02-2023 |             1
+ 16 | 05-02-2020 |             0
+ 16 | 01-02-2023 |             0
+ 16 | 05-02-2023 |             0
+ 17 | 05-02-2020 |             1
+ 17 | 01-02-2023 |             1
+ 17 | 05-02-2023 |             1
+ 18 | 05-02-2020 |             0
+ 18 | 01-02-2023 |             0
+ 18 | 05-02-2023 |             0
+ 19 | 05-02-2020 |             0
+ 19 | 01-02-2023 |             0
+ 19 | 05-02-2023 |             0
+ 20 | 05-02-2020 |             1
+ 20 | 01-02-2023 |             1
+ 20 | 05-02-2023 |             1
+(60 rows)
+
+select *, (gp_segment_id < 2) as correct_segment_id from part_range_table_distr_random order by a, b;
+ a  |     b      | correct_segment_id 
+----+------------+--------------------
+  1 | 05-02-2020 | t
+  1 | 01-02-2023 | t
+  1 | 05-02-2023 | t
+  2 | 05-02-2020 | t
+  2 | 01-02-2023 | t
+  2 | 05-02-2023 | t
+  3 | 05-02-2020 | t
+  3 | 01-02-2023 | t
+  3 | 05-02-2023 | t
+  4 | 05-02-2020 | t
+  4 | 01-02-2023 | t
+  4 | 05-02-2023 | t
+  5 | 05-02-2020 | t
+  5 | 01-02-2023 | t
+  5 | 05-02-2023 | t
+  6 | 05-02-2020 | t
+  6 | 01-02-2023 | t
+  6 | 05-02-2023 | t
+  7 | 05-02-2020 | t
+  7 | 01-02-2023 | t
+  7 | 05-02-2023 | t
+  8 | 05-02-2020 | t
+  8 | 01-02-2023 | t
+  8 | 05-02-2023 | t
+  9 | 05-02-2020 | t
+  9 | 01-02-2023 | t
+  9 | 05-02-2023 | t
+ 10 | 05-02-2020 | t
+ 10 | 01-02-2023 | t
+ 10 | 05-02-2023 | t
+ 11 | 05-02-2020 | t
+ 11 | 01-02-2023 | t
+ 11 | 05-02-2023 | t
+ 12 | 05-02-2020 | t
+ 12 | 01-02-2023 | t
+ 12 | 05-02-2023 | t
+ 13 | 05-02-2020 | t
+ 13 | 01-02-2023 | t
+ 13 | 05-02-2023 | t
+ 14 | 05-02-2020 | t
+ 14 | 01-02-2023 | t
+ 14 | 05-02-2023 | t
+ 15 | 05-02-2020 | t
+ 15 | 01-02-2023 | t
+ 15 | 05-02-2023 | t
+ 16 | 05-02-2020 | t
+ 16 | 01-02-2023 | t
+ 16 | 05-02-2023 | t
+ 17 | 05-02-2020 | t
+ 17 | 01-02-2023 | t
+ 17 | 05-02-2023 | t
+ 18 | 05-02-2020 | t
+ 18 | 01-02-2023 | t
+ 18 | 05-02-2023 | t
+ 19 | 05-02-2020 | t
+ 19 | 01-02-2023 | t
+ 19 | 05-02-2023 | t
+ 20 | 05-02-2020 | t
+ 20 | 01-02-2023 | t
+ 20 | 05-02-2023 | t
+(60 rows)
+
+select *, gp_segment_id from part_list_table_distr_hashed order by a, b;
+ a  |   b   | gp_segment_id 
+----+-------+---------------
+  1 | test1 |             1
+  1 | test2 |             1
+  1 | test3 |             1
+  2 | test1 |             0
+  2 | test2 |             0
+  2 | test3 |             0
+  3 | test1 |             0
+  3 | test2 |             0
+  3 | test3 |             0
+  4 | test1 |             0
+  4 | test2 |             0
+  4 | test3 |             0
+  5 | test1 |             1
+  5 | test2 |             1
+  5 | test3 |             1
+  6 | test1 |             0
+  6 | test2 |             0
+  6 | test3 |             0
+  7 | test1 |             0
+  7 | test2 |             0
+  7 | test3 |             0
+  8 | test1 |             0
+  8 | test2 |             0
+  8 | test3 |             0
+  9 | test1 |             0
+  9 | test2 |             0
+  9 | test3 |             0
+ 10 | test1 |             0
+ 10 | test2 |             0
+ 10 | test3 |             0
+ 11 | test1 |             1
+ 11 | test2 |             1
+ 11 | test3 |             1
+ 12 | test1 |             1
+ 12 | test2 |             1
+ 12 | test3 |             1
+ 13 | test1 |             0
+ 13 | test2 |             0
+ 13 | test3 |             0
+ 14 | test1 |             1
+ 14 | test2 |             1
+ 14 | test3 |             1
+ 15 | test1 |             1
+ 15 | test2 |             1
+ 15 | test3 |             1
+ 16 | test1 |             0
+ 16 | test2 |             0
+ 16 | test3 |             0
+ 17 | test1 |             1
+ 17 | test2 |             1
+ 17 | test3 |             1
+ 18 | test1 |             0
+ 18 | test2 |             0
+ 18 | test3 |             0
+ 19 | test1 |             0
+ 19 | test2 |             0
+ 19 | test3 |             0
+ 20 | test1 |             1
+ 20 | test2 |             1
+ 20 | test3 |             1
+(60 rows)
+
+select *, (gp_segment_id < 2) as correct_segment_id from part_list_table_distr_random order by a, b;
+ a  |   b   | correct_segment_id 
+----+-------+--------------------
+  1 | test1 | t
+  1 | test2 | t
+  1 | test3 | t
+  2 | test1 | t
+  2 | test2 | t
+  2 | test3 | t
+  3 | test1 | t
+  3 | test2 | t
+  3 | test3 | t
+  4 | test1 | t
+  4 | test2 | t
+  4 | test3 | t
+  5 | test1 | t
+  5 | test2 | t
+  5 | test3 | t
+  6 | test1 | t
+  6 | test2 | t
+  6 | test3 | t
+  7 | test1 | t
+  7 | test2 | t
+  7 | test3 | t
+  8 | test1 | t
+  8 | test2 | t
+  8 | test3 | t
+  9 | test1 | t
+  9 | test2 | t
+  9 | test3 | t
+ 10 | test1 | t
+ 10 | test2 | t
+ 10 | test3 | t
+ 11 | test1 | t
+ 11 | test2 | t
+ 11 | test3 | t
+ 12 | test1 | t
+ 12 | test2 | t
+ 12 | test3 | t
+ 13 | test1 | t
+ 13 | test2 | t
+ 13 | test3 | t
+ 14 | test1 | t
+ 14 | test2 | t
+ 14 | test3 | t
+ 15 | test1 | t
+ 15 | test2 | t
+ 15 | test3 | t
+ 16 | test1 | t
+ 16 | test2 | t
+ 16 | test3 | t
+ 17 | test1 | t
+ 17 | test2 | t
+ 17 | test3 | t
+ 18 | test1 | t
+ 18 | test2 | t
+ 18 | test3 | t
+ 19 | test1 | t
+ 19 | test2 | t
+ 19 | test3 | t
+ 20 | test1 | t
+ 20 | test2 | t
+ 20 | test3 | t
+(60 rows)
+
+select *, gp_segment_id from multi_part_table_distr_hashed order by a, b, c;
+ a  |     b      |   c   | gp_segment_id 
+----+------------+-------+---------------
+  1 | 01-05-2023 | test1 |             1
+  1 | 02-05-2023 | test2 |             1
+  1 | 03-05-2023 | test1 |             1
+  2 | 01-05-2023 | test1 |             0
+  2 | 02-05-2023 | test2 |             0
+  2 | 03-05-2023 | test1 |             0
+  3 | 01-05-2023 | test1 |             0
+  3 | 02-05-2023 | test2 |             0
+  3 | 03-05-2023 | test1 |             0
+  4 | 01-05-2023 | test1 |             0
+  4 | 02-05-2023 | test2 |             0
+  4 | 03-05-2023 | test1 |             0
+  5 | 01-05-2023 | test1 |             1
+  5 | 02-05-2023 | test2 |             1
+  5 | 03-05-2023 | test1 |             1
+  6 | 01-05-2023 | test1 |             0
+  6 | 02-05-2023 | test2 |             0
+  6 | 03-05-2023 | test1 |             0
+  7 | 01-05-2023 | test1 |             0
+  7 | 02-05-2023 | test2 |             0
+  7 | 03-05-2023 | test1 |             0
+  8 | 01-05-2023 | test1 |             0
+  8 | 02-05-2023 | test2 |             0
+  8 | 03-05-2023 | test1 |             0
+  9 | 01-05-2023 | test1 |             0
+  9 | 02-05-2023 | test2 |             0
+  9 | 03-05-2023 | test1 |             0
+ 10 | 01-05-2023 | test1 |             0
+ 10 | 02-05-2023 | test2 |             0
+ 10 | 03-05-2023 | test1 |             0
+ 11 | 01-05-2023 | test1 |             1
+ 11 | 02-05-2023 | test2 |             1
+ 11 | 03-05-2023 | test1 |             1
+ 12 | 01-05-2023 | test1 |             1
+ 12 | 02-05-2023 | test2 |             1
+ 12 | 03-05-2023 | test1 |             1
+ 13 | 01-05-2023 | test1 |             0
+ 13 | 02-05-2023 | test2 |             0
+ 13 | 03-05-2023 | test1 |             0
+ 14 | 01-05-2023 | test1 |             1
+ 14 | 02-05-2023 | test2 |             1
+ 14 | 03-05-2023 | test1 |             1
+ 15 | 01-05-2023 | test1 |             1
+ 15 | 02-05-2023 | test2 |             1
+ 15 | 03-05-2023 | test1 |             1
+ 16 | 01-05-2023 | test1 |             0
+ 16 | 02-05-2023 | test2 |             0
+ 16 | 03-05-2023 | test1 |             0
+ 17 | 01-05-2023 | test1 |             1
+ 17 | 02-05-2023 | test2 |             1
+ 17 | 03-05-2023 | test1 |             1
+ 18 | 01-05-2023 | test1 |             0
+ 18 | 02-05-2023 | test2 |             0
+ 18 | 03-05-2023 | test1 |             0
+ 19 | 01-05-2023 | test1 |             0
+ 19 | 02-05-2023 | test2 |             0
+ 19 | 03-05-2023 | test1 |             0
+ 20 | 01-05-2023 | test1 |             1
+ 20 | 02-05-2023 | test2 |             1
+ 20 | 03-05-2023 | test1 |             1
+(60 rows)
+
+-- And do some cleanup
 drop table table_distr_hashed;
 drop table table_distr_hashed_ao_row;
 drop table table_distr_hashed_ao_col;
@@ -261,25 +651,83 @@ drop table table_distr_random_ao_col;
 drop table table_distr_replicated;
 drop table table_distr_replicated_ao_row;
 drop table table_distr_replicated_ao_col;
--- Check newly created tables
+drop table part_range_table_distr_hashed;
+drop table part_range_table_distr_random;
+drop table part_list_table_distr_hashed;
+drop table part_list_table_distr_random;
+drop table multi_part_table_distr_hashed;
+-- Check that all newly created tables have data only on segments #0 and #1
 create table new_table_distr_hashed(a int) distributed by (a);
-create table new_table_distr_hashed_ao_row(a int) with (appendonly=true, orientation=row) distributed by (a);
-create table new_table_distr_hashed_ao_col(a int) with (appendonly=true, orientation=column) distributed by (a);
-create table new_table_distr_random(a int) distributed randomly;
-create table new_table_distr_random_ao_row(a int) with (appendonly=true, orientation=row) distributed randomly;
-create table new_table_distr_random_ao_col(a int) with (appendonly=true, orientation=column) distributed randomly;
-create table new_table_distr_replicated(a int) distributed replicated;
-create table new_table_distr_replicated_ao_row(a int) with (appendonly=true, orientation=row) distributed replicated;
-create table new_table_distr_replicated_ao_col(a int) with (appendonly=true, orientation=column) distributed replicated;
 insert into new_table_distr_hashed select generate_series(1, 20);
+create table new_table_distr_hashed_ao_row(a int) with (appendonly=true, orientation=row) distributed by (a);
 insert into new_table_distr_hashed_ao_row select generate_series(1, 20);
+create table new_table_distr_hashed_ao_col(a int) with (appendonly=true, orientation=column) distributed by (a);
 insert into new_table_distr_hashed_ao_col select generate_series(1, 20);
+create table new_table_distr_random(a int) distributed randomly;
 insert into new_table_distr_random select generate_series(1, 20);
+create table new_table_distr_random_ao_row(a int) with (appendonly=true, orientation=row) distributed randomly;
 insert into new_table_distr_random_ao_row select generate_series(1, 20);
+create table new_table_distr_random_ao_col(a int) with (appendonly=true, orientation=column) distributed randomly;
 insert into new_table_distr_random_ao_col select generate_series(1, 20);
+create table new_table_distr_replicated(a int) distributed replicated;
 insert into new_table_distr_replicated select generate_series(1, 20);
+create table new_table_distr_replicated_ao_row(a int) with (appendonly=true, orientation=row) distributed replicated;
 insert into new_table_distr_replicated_ao_row select generate_series(1, 20);
+create table new_table_distr_replicated_ao_col(a int) with (appendonly=true, orientation=column) distributed replicated;
 insert into new_table_distr_replicated_ao_col select generate_series(1, 20);
+create table new_part_range_table_distr_hashed (a int, b date) distributed by (a)
+partition by range (b) (
+    start (date '2023-01-01') inclusive
+    end (date '2024-01-01') exclusive
+    every (interval '1 month'),
+    default partition other_vals
+);
+insert into new_part_range_table_distr_hashed select i, '2023-01-02' from generate_series(1, 20)i;
+insert into new_part_range_table_distr_hashed select i, '2023-05-02' from generate_series(1, 20)i;
+insert into new_part_range_table_distr_hashed select i, '2020-05-02' from generate_series(1, 20)i;
+create table new_part_range_table_distr_random (a int, b date) distributed randomly
+partition by range (b) (
+    start (date '2023-01-01') inclusive
+    end (date '2024-01-01') exclusive
+    every (interval '1 month'),
+    default partition other_vals
+);
+insert into new_part_range_table_distr_random select i, '2023-01-02' from generate_series(1, 20)i;
+insert into new_part_range_table_distr_random select i, '2023-05-02' from generate_series(1, 20)i;
+insert into new_part_range_table_distr_random select i, '2020-05-02' from generate_series(1, 20)i;
+create table new_part_list_table_distr_hashed(a int, b text) distributed by (a)
+partition by list (b) (
+    partition part1 values ('test1'),
+    partition part2 values ('test2'),
+    default partition other_vals
+);
+insert into new_part_list_table_distr_hashed select i, 'test1' from generate_series(1, 20)i;
+insert into new_part_list_table_distr_hashed select i, 'test2' from generate_series(1, 20)i;
+insert into new_part_list_table_distr_hashed select i, 'test3' from generate_series(1, 20)i;
+create table new_part_list_table_distr_random(a int, b text) distributed randomly
+partition by list (b) (
+    partition part1 values ('test1'),
+    partition part2 values ('test2'),
+    default partition other_vals
+);
+insert into new_part_list_table_distr_random select i, 'test1' from generate_series(1, 20)i;
+insert into new_part_list_table_distr_random select i, 'test2' from generate_series(1, 20)i;
+insert into new_part_list_table_distr_random select i, 'test3' from generate_series(1, 20)i;
+create table new_multi_part_table_distr_hashed(a int, b date, c text) distributed by (a)
+partition by range (b)
+subpartition by list (c) subpartition template
+(
+    subpartition subpart1 values ('test1'),
+    subpartition subpart2 values ('test2')
+)
+(
+    partition part1 start (date '2023-01-01'),
+    partition part2 start (date '2023-02-01'),
+	partition part3 start (date '2023-03-01') end (date '2024-01-01')
+);
+insert into new_multi_part_table_distr_hashed select i, '2023-01-05', 'test1' from generate_series(1, 20)i;
+insert into new_multi_part_table_distr_hashed select i, '2023-02-05', 'test2' from generate_series(1, 20)i;
+insert into new_multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from generate_series(1, 20)i;
 select a, gp_segment_id from new_table_distr_hashed order by a;
  a  | gp_segment_id 
 ----+---------------
@@ -505,4 +953,344 @@ select a from new_table_distr_replicated_ao_col order by a;
  20
 (20 rows)
 
+select *, gp_segment_id from new_part_range_table_distr_hashed order by a, b;
+ a  |     b      | gp_segment_id 
+----+------------+---------------
+  1 | 05-02-2020 |             1
+  1 | 01-02-2023 |             1
+  1 | 05-02-2023 |             1
+  2 | 05-02-2020 |             0
+  2 | 01-02-2023 |             0
+  2 | 05-02-2023 |             0
+  3 | 05-02-2020 |             0
+  3 | 01-02-2023 |             0
+  3 | 05-02-2023 |             0
+  4 | 05-02-2020 |             0
+  4 | 01-02-2023 |             0
+  4 | 05-02-2023 |             0
+  5 | 05-02-2020 |             1
+  5 | 01-02-2023 |             1
+  5 | 05-02-2023 |             1
+  6 | 05-02-2020 |             0
+  6 | 01-02-2023 |             0
+  6 | 05-02-2023 |             0
+  7 | 05-02-2020 |             0
+  7 | 01-02-2023 |             0
+  7 | 05-02-2023 |             0
+  8 | 05-02-2020 |             0
+  8 | 01-02-2023 |             0
+  8 | 05-02-2023 |             0
+  9 | 05-02-2020 |             0
+  9 | 01-02-2023 |             0
+  9 | 05-02-2023 |             0
+ 10 | 05-02-2020 |             0
+ 10 | 01-02-2023 |             0
+ 10 | 05-02-2023 |             0
+ 11 | 05-02-2020 |             1
+ 11 | 01-02-2023 |             1
+ 11 | 05-02-2023 |             1
+ 12 | 05-02-2020 |             1
+ 12 | 01-02-2023 |             1
+ 12 | 05-02-2023 |             1
+ 13 | 05-02-2020 |             0
+ 13 | 01-02-2023 |             0
+ 13 | 05-02-2023 |             0
+ 14 | 05-02-2020 |             1
+ 14 | 01-02-2023 |             1
+ 14 | 05-02-2023 |             1
+ 15 | 05-02-2020 |             1
+ 15 | 01-02-2023 |             1
+ 15 | 05-02-2023 |             1
+ 16 | 05-02-2020 |             0
+ 16 | 01-02-2023 |             0
+ 16 | 05-02-2023 |             0
+ 17 | 05-02-2020 |             1
+ 17 | 01-02-2023 |             1
+ 17 | 05-02-2023 |             1
+ 18 | 05-02-2020 |             0
+ 18 | 01-02-2023 |             0
+ 18 | 05-02-2023 |             0
+ 19 | 05-02-2020 |             0
+ 19 | 01-02-2023 |             0
+ 19 | 05-02-2023 |             0
+ 20 | 05-02-2020 |             1
+ 20 | 01-02-2023 |             1
+ 20 | 05-02-2023 |             1
+(60 rows)
+
+select *, (gp_segment_id < 2) as correct_segment_id from new_part_range_table_distr_random order by a, b;
+ a  |     b      | correct_segment_id 
+----+------------+--------------------
+  1 | 05-02-2020 | t
+  1 | 01-02-2023 | t
+  1 | 05-02-2023 | t
+  2 | 05-02-2020 | t
+  2 | 01-02-2023 | t
+  2 | 05-02-2023 | t
+  3 | 05-02-2020 | t
+  3 | 01-02-2023 | t
+  3 | 05-02-2023 | t
+  4 | 05-02-2020 | t
+  4 | 01-02-2023 | t
+  4 | 05-02-2023 | t
+  5 | 05-02-2020 | t
+  5 | 01-02-2023 | t
+  5 | 05-02-2023 | t
+  6 | 05-02-2020 | t
+  6 | 01-02-2023 | t
+  6 | 05-02-2023 | t
+  7 | 05-02-2020 | t
+  7 | 01-02-2023 | t
+  7 | 05-02-2023 | t
+  8 | 05-02-2020 | t
+  8 | 01-02-2023 | t
+  8 | 05-02-2023 | t
+  9 | 05-02-2020 | t
+  9 | 01-02-2023 | t
+  9 | 05-02-2023 | t
+ 10 | 05-02-2020 | t
+ 10 | 01-02-2023 | t
+ 10 | 05-02-2023 | t
+ 11 | 05-02-2020 | t
+ 11 | 01-02-2023 | t
+ 11 | 05-02-2023 | t
+ 12 | 05-02-2020 | t
+ 12 | 01-02-2023 | t
+ 12 | 05-02-2023 | t
+ 13 | 05-02-2020 | t
+ 13 | 01-02-2023 | t
+ 13 | 05-02-2023 | t
+ 14 | 05-02-2020 | t
+ 14 | 01-02-2023 | t
+ 14 | 05-02-2023 | t
+ 15 | 05-02-2020 | t
+ 15 | 01-02-2023 | t
+ 15 | 05-02-2023 | t
+ 16 | 05-02-2020 | t
+ 16 | 01-02-2023 | t
+ 16 | 05-02-2023 | t
+ 17 | 05-02-2020 | t
+ 17 | 01-02-2023 | t
+ 17 | 05-02-2023 | t
+ 18 | 05-02-2020 | t
+ 18 | 01-02-2023 | t
+ 18 | 05-02-2023 | t
+ 19 | 05-02-2020 | t
+ 19 | 01-02-2023 | t
+ 19 | 05-02-2023 | t
+ 20 | 05-02-2020 | t
+ 20 | 01-02-2023 | t
+ 20 | 05-02-2023 | t
+(60 rows)
+
+select *, gp_segment_id from new_part_list_table_distr_hashed order by a, b;
+ a  |   b   | gp_segment_id 
+----+-------+---------------
+  1 | test1 |             1
+  1 | test2 |             1
+  1 | test3 |             1
+  2 | test1 |             0
+  2 | test2 |             0
+  2 | test3 |             0
+  3 | test1 |             0
+  3 | test2 |             0
+  3 | test3 |             0
+  4 | test1 |             0
+  4 | test2 |             0
+  4 | test3 |             0
+  5 | test1 |             1
+  5 | test2 |             1
+  5 | test3 |             1
+  6 | test1 |             0
+  6 | test2 |             0
+  6 | test3 |             0
+  7 | test1 |             0
+  7 | test2 |             0
+  7 | test3 |             0
+  8 | test1 |             0
+  8 | test2 |             0
+  8 | test3 |             0
+  9 | test1 |             0
+  9 | test2 |             0
+  9 | test3 |             0
+ 10 | test1 |             0
+ 10 | test2 |             0
+ 10 | test3 |             0
+ 11 | test1 |             1
+ 11 | test2 |             1
+ 11 | test3 |             1
+ 12 | test1 |             1
+ 12 | test2 |             1
+ 12 | test3 |             1
+ 13 | test1 |             0
+ 13 | test2 |             0
+ 13 | test3 |             0
+ 14 | test1 |             1
+ 14 | test2 |             1
+ 14 | test3 |             1
+ 15 | test1 |             1
+ 15 | test2 |             1
+ 15 | test3 |             1
+ 16 | test1 |             0
+ 16 | test2 |             0
+ 16 | test3 |             0
+ 17 | test1 |             1
+ 17 | test2 |             1
+ 17 | test3 |             1
+ 18 | test1 |             0
+ 18 | test2 |             0
+ 18 | test3 |             0
+ 19 | test1 |             0
+ 19 | test2 |             0
+ 19 | test3 |             0
+ 20 | test1 |             1
+ 20 | test2 |             1
+ 20 | test3 |             1
+(60 rows)
+
+select *, (gp_segment_id < 2) as correct_segment_id from new_part_list_table_distr_random order by a, b;
+ a  |   b   | correct_segment_id 
+----+-------+--------------------
+  1 | test1 | t
+  1 | test2 | t
+  1 | test3 | t
+  2 | test1 | t
+  2 | test2 | t
+  2 | test3 | t
+  3 | test1 | t
+  3 | test2 | t
+  3 | test3 | t
+  4 | test1 | t
+  4 | test2 | t
+  4 | test3 | t
+  5 | test1 | t
+  5 | test2 | t
+  5 | test3 | t
+  6 | test1 | t
+  6 | test2 | t
+  6 | test3 | t
+  7 | test1 | t
+  7 | test2 | t
+  7 | test3 | t
+  8 | test1 | t
+  8 | test2 | t
+  8 | test3 | t
+  9 | test1 | t
+  9 | test2 | t
+  9 | test3 | t
+ 10 | test1 | t
+ 10 | test2 | t
+ 10 | test3 | t
+ 11 | test1 | t
+ 11 | test2 | t
+ 11 | test3 | t
+ 12 | test1 | t
+ 12 | test2 | t
+ 12 | test3 | t
+ 13 | test1 | t
+ 13 | test2 | t
+ 13 | test3 | t
+ 14 | test1 | t
+ 14 | test2 | t
+ 14 | test3 | t
+ 15 | test1 | t
+ 15 | test2 | t
+ 15 | test3 | t
+ 16 | test1 | t
+ 16 | test2 | t
+ 16 | test3 | t
+ 17 | test1 | t
+ 17 | test2 | t
+ 17 | test3 | t
+ 18 | test1 | t
+ 18 | test2 | t
+ 18 | test3 | t
+ 19 | test1 | t
+ 19 | test2 | t
+ 19 | test3 | t
+ 20 | test1 | t
+ 20 | test2 | t
+ 20 | test3 | t
+(60 rows)
+
+select *, gp_segment_id from new_multi_part_table_distr_hashed order by a, b, c;
+ a  |     b      |   c   | gp_segment_id 
+----+------------+-------+---------------
+  1 | 01-05-2023 | test1 |             1
+  1 | 02-05-2023 | test2 |             1
+  1 | 03-05-2023 | test1 |             1
+  2 | 01-05-2023 | test1 |             0
+  2 | 02-05-2023 | test2 |             0
+  2 | 03-05-2023 | test1 |             0
+  3 | 01-05-2023 | test1 |             0
+  3 | 02-05-2023 | test2 |             0
+  3 | 03-05-2023 | test1 |             0
+  4 | 01-05-2023 | test1 |             0
+  4 | 02-05-2023 | test2 |             0
+  4 | 03-05-2023 | test1 |             0
+  5 | 01-05-2023 | test1 |             1
+  5 | 02-05-2023 | test2 |             1
+  5 | 03-05-2023 | test1 |             1
+  6 | 01-05-2023 | test1 |             0
+  6 | 02-05-2023 | test2 |             0
+  6 | 03-05-2023 | test1 |             0
+  7 | 01-05-2023 | test1 |             0
+  7 | 02-05-2023 | test2 |             0
+  7 | 03-05-2023 | test1 |             0
+  8 | 01-05-2023 | test1 |             0
+  8 | 02-05-2023 | test2 |             0
+  8 | 03-05-2023 | test1 |             0
+  9 | 01-05-2023 | test1 |             0
+  9 | 02-05-2023 | test2 |             0
+  9 | 03-05-2023 | test1 |             0
+ 10 | 01-05-2023 | test1 |             0
+ 10 | 02-05-2023 | test2 |             0
+ 10 | 03-05-2023 | test1 |             0
+ 11 | 01-05-2023 | test1 |             1
+ 11 | 02-05-2023 | test2 |             1
+ 11 | 03-05-2023 | test1 |             1
+ 12 | 01-05-2023 | test1 |             1
+ 12 | 02-05-2023 | test2 |             1
+ 12 | 03-05-2023 | test1 |             1
+ 13 | 01-05-2023 | test1 |             0
+ 13 | 02-05-2023 | test2 |             0
+ 13 | 03-05-2023 | test1 |             0
+ 14 | 01-05-2023 | test1 |             1
+ 14 | 02-05-2023 | test2 |             1
+ 14 | 03-05-2023 | test1 |             1
+ 15 | 01-05-2023 | test1 |             1
+ 15 | 02-05-2023 | test2 |             1
+ 15 | 03-05-2023 | test1 |             1
+ 16 | 01-05-2023 | test1 |             0
+ 16 | 02-05-2023 | test2 |             0
+ 16 | 03-05-2023 | test1 |             0
+ 17 | 01-05-2023 | test1 |             1
+ 17 | 02-05-2023 | test2 |             1
+ 17 | 03-05-2023 | test1 |             1
+ 18 | 01-05-2023 | test1 |             0
+ 18 | 02-05-2023 | test2 |             0
+ 18 | 03-05-2023 | test1 |             0
+ 19 | 01-05-2023 | test1 |             0
+ 19 | 02-05-2023 | test2 |             0
+ 19 | 03-05-2023 | test1 |             0
+ 20 | 01-05-2023 | test1 |             1
+ 20 | 02-05-2023 | test2 |             1
+ 20 | 03-05-2023 | test1 |             1
+(60 rows)
+
+-- And do some cleanup
+drop table new_table_distr_hashed;
+drop table new_table_distr_hashed_ao_row;
+drop table new_table_distr_hashed_ao_col;
+drop table new_table_distr_random;
+drop table new_table_distr_random_ao_row;
+drop table new_table_distr_random_ao_col;
+drop table new_table_distr_replicated;
+drop table new_table_distr_replicated_ao_row;
+drop table new_table_distr_replicated_ao_col;
+drop table new_part_range_table_distr_hashed;
+drop table new_part_range_table_distr_random;
+drop table new_part_list_table_distr_hashed;
+drop table new_part_list_table_distr_random;
+drop table new_multi_part_table_distr_hashed;
 reset gp_target_numsegments;
