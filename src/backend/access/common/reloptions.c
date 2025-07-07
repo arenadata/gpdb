@@ -1594,8 +1594,7 @@ build_reloptions(Datum reloptions, bool validate,
 	fillRelOptions(rdopts, relopt_struct_size, options, numoptions,
 				   validate, relopt_elems, num_relopt_elems);
 
-	if (kind == RELOPT_KIND_APPENDOPTIMIZED || kind == RELOPT_KIND_BITMAP ||
-		kind == RELOPT_KIND_HEAP || kind == RELOPT_KIND_TOAST)
+	if (kind == RELOPT_KIND_APPENDOPTIMIZED)
 	{
 		/* ensure we allocated anougth memory for StdRdOptions */
 		Assert(relopt_struct_size == sizeof(StdRdOptions));
