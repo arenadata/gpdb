@@ -433,6 +433,8 @@ extern int gp_udpic_network_disable_ipv6;
  */
 extern uint32 gp_interconnect_id;
 
+extern bool gp_table_shrink_in_progress;
+
 /* --------------------------------------------------------------------------------------------------
  * Logging
  */

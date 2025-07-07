@@ -5406,6 +5406,16 @@ adjust_modifytable_subpaths(PlannerInfo *root, CmdType operation,
 		targetPolicy = GpPolicyFetch(rte->relid);
 		targetPolicyType = targetPolicy->ptype;
 
+		/*
+		 * Limit the number of segments to the target value that we want
+		 * to achieve by the shrink operation.
+		 */
+		if (targetPolicyType == POLICYTYPE_PARTITIONED &&
+		   gp_table_shrink_in_progress &&
+		   gp_target_numsegments != 0)
+			targetPolicy->numsegments =
+				Min(targetPolicy->numsegments, gp_target_numsegments);
+
 		numsegments = Max(targetPolicy->numsegments, numsegments);
 
 		if (targetPolicyType == POLICYTYPE_PARTITIONED)

@@ -78,6 +78,7 @@
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "executor/instrument.h"
+#include "executor/spi.h"
 #include "foreign/foreign.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -507,6 +508,9 @@ static void RangeVarCallbackForAlterRelation(const RangeVar *rv, Oid relid,
 											 Oid oldrelid, void *arg);
 
 static void ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd);
+
+static void ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd);
+
 static void ATRepackTable(Relation origTable, AlteredTableInfo *tab);
 static void ATExecExpandPartitionTablePrepare(Relation rel);
 static void ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd);
@@ -5297,7 +5301,20 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_Rebalance:
 			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE | ATT_MATVIEW);
 
-			elog(WARNING, "[prep] not yet implemented");
+			if (!recursing)
+			{
+				if (rel->rd_rel->relispartition)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("cannot rebalance leaf or interior partition \"%s\"",
+									RelationGetRelationName(rel)),
+							 errdetail("Root/leaf/interior partitions need to have same numsegments"),
+							 errhint("Call ALTER TABLE REBALANCE on the root table instead")));
+				}
+			}
+
+			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
 			pass = AT_PASS_MISC;
 			break;
 
@@ -5853,7 +5870,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			ATExecExpandTable(wqueue, rel, cmd);
 			break;
 		case AT_Rebalance:	/* REBALANCE */
-			elog(WARNING, "not yet implemented");
+			ATExecRebalanceTable(wqueue, rel, cmd);
 			break;
 		case AT_RepackTable: 
 			for (int i = 0; i < AT_NUM_PASSES; ++i)
@@ -17468,6 +17485,154 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 
 	/* Update numsegments to cluster size */
 	newPolicy->numsegments = getgpsegmentCount();
+	GpPolicyReplace(relid, newPolicy);
+}
+
+
+static void
+ATExecShrinkTable(Relation rel, GpPolicy *policy)
+{
+	if (Gp_role == GP_ROLE_DISPATCH && GpPolicyIsPartitioned(policy))
+	{
+		volatile bool connected = false;
+		StringInfoData sqlstmtInsert;
+		initStringInfo(&sqlstmtInsert);
+		char *nsp = get_namespace_name(RelationGetNamespace(rel));
+		char *relname = RelationGetRelationName(rel);
+
+		if (GpPolicyIsRandomPartitioned(policy))
+			appendStringInfo(&sqlstmtInsert, "insert into %s.%s select * from %s.%s where gp_segment_id >= %d",
+						 nsp, relname,
+						 nsp, relname,
+						 policy->numsegments);
+		else
+			appendStringInfo(&sqlstmtInsert, "insert into %s.%s select * from gp_dist_random('%s.%s') where gp_segment_id >= %d",
+						 nsp, relname,
+						 nsp, relname,
+						 policy->numsegments);
+
+		//elog(WARNING, "[query insert]: %s", sqlstmtInsert.data);
+
+		bool		save_optimizer_guc_value = optimizer;
+		bool		save_redistribute_guc_value = gp_force_random_redistribution;
+
+		gp_force_random_redistribution = true;
+		optimizer = false;
+		gp_table_shrink_in_progress = true;
+
+		PG_TRY();
+		{
+			if (SPI_OK_CONNECT != SPI_connect())
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("unable shrink table"),
+						 errdetail("SPI_connect failed in %s.", __func__)));
+
+			connected = true;
+
+			if (SPI_execute(sqlstmtInsert.data, false, 0) <= 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_INTERNAL_ERROR),
+						 errmsg("unable shrink table"),
+						 errdetail("SPI_execute failed in %s.", __func__)));
+
+			connected = false;
+			SPI_finish();
+		}
+
+		/* Clean up in case of error. */
+		PG_CATCH();
+		{
+			if (connected)
+				SPI_finish();
+
+			pfree(sqlstmtInsert.data);
+
+			optimizer = save_optimizer_guc_value;
+			gp_force_random_redistribution = save_redistribute_guc_value;
+
+			/* Carry on with error handling. */
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		pfree(sqlstmtInsert.data);
+
+		optimizer = save_optimizer_guc_value;
+		gp_force_random_redistribution = save_redistribute_guc_value;
+		gp_table_shrink_in_progress = false;
+	}
+}
+
+static void
+ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
+{
+	MemoryContext		oldContext;
+	Oid					relid = RelationGetRelid(rel);
+	GpPolicy			*newPolicy;
+	GpPolicy			*policy = rel->rd_cdbpolicy;
+	int targetNumSegments = gp_target_numsegments;
+
+	//elog(WARNING, "[RELOG] %s: %s", __FUNCTION__,RelationGetRelationName(rel));
+
+	if (Gp_role == GP_ROLE_UTILITY)
+		ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("REBALANCE not supported in utility mode")));
+
+	/* Permissions checks */
+	if (!pg_class_ownercheck(relid, GetUserId()))
+		aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_TABLE,
+					   RelationGetRelationName(rel));
+
+	if (IsSystemRelation(rel))
+		ereport(ERROR,
+			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+			errmsg("permission denied: \"%s\" is a system catalog", RelationGetRelationName(rel))));
+
+	if (targetNumSegments <= 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED),
+			errmsg("'gp_target_numsegments' is not set")));
+
+	oldContext = MemoryContextSwitchTo(GetMemoryChunkContext(rel));
+	newPolicy = GpPolicyCopy(policy);
+	MemoryContextSwitchTo(oldContext);
+	newPolicy->numsegments = targetNumSegments;
+
+	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+	{
+		/*
+		 * Nothing to do on a partitioned table. But we better recurse to the
+		 * child partitions.
+		 */
+	}
+	else if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+	{
+		if (rel_is_external_table(relid))
+		{
+			ExtTableEntry *ext = GetExtTableEntry(relid);
+
+			if (!ext->iswritable)
+			{
+				/*
+				 * Skip expanding readable external table, since data is not
+				 * located inside gpdb
+				 */
+				return;
+			}
+		}
+		else
+		{
+			/* Skip expanding foreign table, since data is not located inside gpdb */
+			return;
+		}
+	}
+	else
+	{
+		ATExecShrinkTable(rel, newPolicy);
+	}
+
 	GpPolicyReplace(relid, newPolicy);
 }
 

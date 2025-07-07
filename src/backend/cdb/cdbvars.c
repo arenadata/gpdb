@@ -334,6 +334,8 @@ bool		log_autostats = true;
 /* GUC to toggle JIT instrumentation output for EXPLAIN */
 bool		gp_explain_jit = true;
 
+bool		gp_table_shrink_in_progress = false;
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */
