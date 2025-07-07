@@ -282,3 +282,19 @@ drop table new_part_list_table_distr_random;
 drop table new_multi_part_table_distr_hashed;
 
 reset gp_target_numsegments;
+
+-- Check rollback of alter rebalance operation
+create table table_distr_hashed(a int) distributed by (a);
+insert into table_distr_hashed select generate_series(1, 20);
+
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+
+begin;
+set gp_target_numsegments = 2;
+alter table table_distr_hashed rebalance;
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+rollback;
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+
+reset gp_target_numsegments;
+drop table table_distr_hashed;
