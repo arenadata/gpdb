@@ -9,15 +9,12 @@ setup
 	CREATE TABLE part1 PARTITION OF parted FOR VALUES IN (1);
 	ALTER TABLE part1 SET (autovacuum_enabled = false);
 	CREATE TABLE part2 PARTITION OF parted FOR VALUES IN (2);
-<<<<<<< HEAD
+	ALTER TABLE part2 SET (autovacuum_enabled = false);
 
 	CREATE TABLE parted_ao (a INT) using ao_column
 		distributed by (a) PARTITION BY LIST (a);
 	CREATE TABLE part1_ao PARTITION OF parted_ao FOR VALUES IN (1);
 	CREATE TABLE part2_ao PARTITION OF parted_ao FOR VALUES IN (2);
-=======
-	ALTER TABLE part2 SET (autovacuum_enabled = false);
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 }
 
 teardown
