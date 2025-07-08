@@ -1594,7 +1594,12 @@ build_reloptions(Datum reloptions, bool validate,
 	fillRelOptions(rdopts, relopt_struct_size, options, numoptions,
 				   validate, relopt_elems, num_relopt_elems);
 
-	validate_and_refill_options(rdopts, options, numoptions, kind, validate);
+	if (kind == RELOPT_KIND_APPENDOPTIMIZED)
+	{
+		/* ensure we allocated anougth memory for StdRdOptions */
+		Assert(relopt_struct_size == sizeof(StdRdOptions));
+		validate_and_refill_options(rdopts, options, numoptions, kind, validate);
+	}
 
 	free_options_deep(options, numoptions);
 
