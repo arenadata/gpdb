@@ -870,6 +870,10 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 			cacheId = OPFAMILYOID;
 			objName = "operator family";
 			break;
+		case OCLASS_CLASS:
+			cacheId = RELOID;
+			objName = "relation";
+			break;
 		default:
 			break;
 	}
@@ -888,11 +892,17 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 								   ObjectIdGetDatum(referenced->objectId)))
 			return;
 
-		/* AccessShareLock should be OK, since we are not modifying the object */
-		LockDatabaseObject(referenced->classId,
-						   referenced->objectId,
-						   referenced->objectSubId,
-						   AccessShareLock);
+		/*
+		 * AccessShareLock should be OK, since we are not modifying the
+		 * object.
+		 */
+		if (cacheId == RELOID)
+			LockRelationOid(referenced->objectId, AccessShareLock);
+		else
+			LockDatabaseObject(referenced->classId,
+							   referenced->objectId,
+							   referenced->objectSubId,
+							   AccessShareLock);
 
 		if (!SearchSysCacheExists1(cacheId,
 								   ObjectIdGetDatum(referenced->objectId)))

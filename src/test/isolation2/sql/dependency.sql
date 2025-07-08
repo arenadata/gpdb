@@ -715,6 +715,35 @@ drop rule test_21_rule on test_21_table_1;
 
 drop table test_21_table_1;
 
+-- Case 22. Table dependency on the sequence.
+create sequence test_22_seq;
+
+1: begin;
+1: create table test_22_table(id int default nextval('test_22_seq'));
+
+2&: drop sequence test_22_seq;
+
+1: commit;
+
+2<:
+
+1: insert into test_22_table default values;
+
+drop sequence test_22_seq cascade;
+drop table test_22_table;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create sequence test_22_seq;
+
+1: begin;
+2: begin;
+2: drop sequence test_22_seq;
+1&: create table test_22_table(id int default nextval('test_22_seq'));
+
+2: commit;
+1<:
+1: end;
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 create type test_type as enum ('one', 'two');
