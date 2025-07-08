@@ -123,6 +123,8 @@ select percentile_cont(1.00) within group( order by b::float8 + (110 / 13)::floa
 
 select percentile_cont(0.95) within group( order by c) from perctnum;
 
+select gp_percentile_disc('0'::numeric, 0, 0, 0);
+
 --SQL with <> operator with IDF in HAVING clause
 
 select count(*),median(a) from perct group by b having median(b) <> 33 order by median(a);
