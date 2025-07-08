@@ -2021,7 +2021,7 @@ typedef enum AlterTableType
 	/* kept at end for ABI hygiene */
 	AT_RepackTable,				/* REPACK TABLE */
 
-	AT_Rebalance
+	AT_Rebalance				/* REBALANCE */
 } AlterTableType;
 
 typedef struct ReplicaIdentityStmt

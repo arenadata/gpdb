@@ -17573,8 +17573,6 @@ ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 	GpPolicy			*policy = rel->rd_cdbpolicy;
 	int targetNumSegments = gp_target_numsegments;
 
-	//elog(WARNING, "[RELOG] %s: %s", __FUNCTION__,RelationGetRelationName(rel));
-
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
