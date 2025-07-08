@@ -5299,19 +5299,52 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_MISC;
 			break;
 		case AT_Rebalance:
+			Assert(IsA(cmd->def, Integer));
+			int targetNumSegments = intVal(cmd->def);
+
+			if (targetNumSegments <= 0)
+			{
+				targetNumSegments = gp_target_numsegments;
+				pfree(cmd->def);
+				cmd->def = (Node *) makeInteger(targetNumSegments);
+			}
+
+			if (targetNumSegments <= 0)
+				ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED),
+					errmsg("'gp_target_numsegments' is not set")));
+
 			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE | ATT_MATVIEW);
 
 			if (!recursing)
 			{
-				if (rel->rd_rel->relispartition)
+				if (Gp_role == GP_ROLE_DISPATCH &&
+					rel->rd_cdbpolicy->numsegments < targetNumSegments &&
+					targetNumSegments != getgpsegmentCount())
 				{
+					targetNumSegments = getgpsegmentCount();
+					elog(NOTICE,
+			 			 "REBALANCE currently supports expand only to total cluster "
+						 "segments number, so target number of segments is forced to %d",
+			 			 targetNumSegments);
+				}
+
+				if (Gp_role == GP_ROLE_DISPATCH &&
+					rel->rd_cdbpolicy->numsegments == targetNumSegments)
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("cannot rebalance table \"%s\"",
+									RelationGetRelationName(rel)),
+							 errdetail("table has already been rebalanced")));
+
+				if (rel->rd_rel->relispartition)
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("cannot rebalance leaf or interior partition \"%s\"",
 									RelationGetRelationName(rel)),
 							 errdetail("Root/leaf/interior partitions need to have same numsegments"),
 							 errhint("Call ALTER TABLE REBALANCE on the root table instead")));
-				}
+
 			}
 
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
@@ -17511,14 +17544,14 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 						 nsp, relname,
 						 policy->numsegments);
 
-		//elog(WARNING, "[query insert]: %s", sqlstmtInsert.data);
-
 		bool		save_optimizer_guc_value = optimizer;
 		bool		save_redistribute_guc_value = gp_force_random_redistribution;
+		int			save_gp_target_numsegments = gp_target_numsegments;
 
 		gp_force_random_redistribution = true;
 		optimizer = false;
 		gp_table_shrink_in_progress = true;
+		gp_target_numsegments = policy->numsegments;
 
 		PG_TRY();
 		{
@@ -17550,6 +17583,8 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 
 			optimizer = save_optimizer_guc_value;
 			gp_force_random_redistribution = save_redistribute_guc_value;
+			gp_table_shrink_in_progress = false;
+			gp_target_numsegments = save_gp_target_numsegments;
 
 			/* Carry on with error handling. */
 			PG_RE_THROW();
@@ -17561,6 +17596,7 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 		optimizer = save_optimizer_guc_value;
 		gp_force_random_redistribution = save_redistribute_guc_value;
 		gp_table_shrink_in_progress = false;
+		gp_target_numsegments = save_gp_target_numsegments;
 	}
 }
 
@@ -17571,7 +17607,7 @@ ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 	Oid					relid = RelationGetRelid(rel);
 	GpPolicy			*newPolicy;
 	GpPolicy			*policy = rel->rd_cdbpolicy;
-	int targetNumSegments = gp_target_numsegments;
+	int					targetNumSegments = intVal(cmd->def);
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		ereport(ERROR,
@@ -17586,12 +17622,14 @@ ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 	if (IsSystemRelation(rel))
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			errmsg("permission denied: \"%s\" is a system catalog", RelationGetRelationName(rel))));
+			errmsg("permission denied: \"%s\" is a system catalog",
+				   RelationGetRelationName(rel))));
 
-	if (targetNumSegments <= 0)
-		ereport(ERROR,
-			(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED),
-			errmsg("'gp_target_numsegments' is not set")));
+	if (targetNumSegments > policy->numsegments)
+	{
+		ATExecExpandTable(wqueue, rel, cmd);
+		return;
+	}
 
 	oldContext = MemoryContextSwitchTo(GetMemoryChunkContext(rel));
 	newPolicy = GpPolicyCopy(policy);

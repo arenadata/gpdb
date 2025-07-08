@@ -3337,6 +3337,15 @@ alter_table_cmd:
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_Rebalance;
+					n->def = (Node *) makeInteger(0);
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> REBALANCE <SignedIconst>*/
+			| REBALANCE SignedIconst
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_Rebalance;
+					n->def = (Node *) makeInteger($2);
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> OF <type_name> */

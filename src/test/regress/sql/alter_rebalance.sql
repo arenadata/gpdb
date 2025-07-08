@@ -298,3 +298,25 @@ select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id or
 
 reset gp_target_numsegments;
 drop table table_distr_hashed;
+
+-- Check rebalance with parameter
+create table table_distr_hashed(a int) distributed by (a);
+insert into table_distr_hashed select generate_series(1, 20);
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+
+-- Shrink to 2 segments
+alter table table_distr_hashed rebalance 2;
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+
+-- Shrink to 1 segment
+alter table table_distr_hashed rebalance 1;
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+
+-- Expand back to 3 segments
+alter table table_distr_hashed rebalance 3;
+select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
+
+-- Try to expand to 4 segments - should do nothing
+alter table table_distr_hashed rebalance 3;
+
+drop table table_distr_hashed;
