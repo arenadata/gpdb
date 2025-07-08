@@ -1656,6 +1656,10 @@ gp_percentile_disc_transition(PG_FUNCTION_ARGS)
 	{
 		return_state = val;
 	}
+	else if (PG_ARGISNULL(0))
+	{
+		fcinfo->isnull = true;
+	}
 
 	*cnt = *cnt + peer_count;
 
