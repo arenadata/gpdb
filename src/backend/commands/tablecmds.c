@@ -17521,7 +17521,19 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 	GpPolicyReplace(relid, newPolicy);
 }
 
-
+/*
+ * Move data as needed from the excessive segments into the reduced number of
+ * segments.
+ *
+ * We do it only for hashed or randomly distributed tables. There is no need for
+ * the replicated tables.
+ *
+ * Moving is done by inserting values from the excessive segments. The plan for
+ * the query is forced to treat the table as randonly distributed and force
+ * redistribute motion for the insert action. Distribution policy for the insert
+ * action is adjusted at the planning stage to consider only the target number
+ * of segments.
+ */
 static void
 ATExecShrinkTable(Relation rel, GpPolicy *policy)
 {
@@ -17533,13 +17545,10 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 		char *nsp = get_namespace_name(RelationGetNamespace(rel));
 		char *relname = RelationGetRelationName(rel);
 
-		if (GpPolicyIsRandomPartitioned(policy))
-			appendStringInfo(&sqlstmtInsert, "insert into %s.%s select * from %s.%s where gp_segment_id >= %d",
-						 nsp, relname,
-						 nsp, relname,
-						 policy->numsegments);
-		else
-			appendStringInfo(&sqlstmtInsert, "insert into %s.%s select * from gp_dist_random('%s.%s') where gp_segment_id >= %d",
+		appendStringInfo(&sqlstmtInsert,
+						 "insert into %s.%s select * "
+						 "from gp_dist_random('%s.%s') "
+						 "where gp_segment_id >= %d",
 						 nsp, relname,
 						 nsp, relname,
 						 policy->numsegments);
@@ -17600,6 +17609,14 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 	}
 }
 
+/*
+ * ALTER TABLE REBALANCE
+ *
+ * In case the target number of segments is more than the number of segments in
+ * the table's distribution policy, we invoke the expand functionality.
+ * Otherwise we shrink the table and update table's "numsegments" value to the
+ * target number of segments.
+ */
 static void
 ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 {
