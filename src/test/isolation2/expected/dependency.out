@@ -1117,7 +1117,7 @@ DROP
 2: commit;
 COMMIT
 1<:  <... completed>
-ERROR:  relation ##### was concurrently dropped
+ERROR:  sequence ##### was concurrently dropped
 1: end;
 END
 

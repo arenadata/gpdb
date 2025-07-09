@@ -871,8 +871,11 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 			objName = "operator family";
 			break;
 		case OCLASS_CLASS:
-			cacheId = RELOID;
-			objName = "relation";
+			if (get_rel_relkind(referenced->objectId) == RELKIND_SEQUENCE)
+			{
+				cacheId = RELOID;
+				objName = "sequence";
+			}
 			break;
 		default:
 			break;
