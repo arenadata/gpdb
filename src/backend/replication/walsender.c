@@ -835,7 +835,7 @@ logical_read_xlog_page(XLogReaderState *state, XLogRecPtr targetPagePtr, int req
 			 * GPDB: Report xlog read failure to
 			 * gp_stat_replication view (67d4843).
 			 */
-			WalSndCtl->error = WALSNDERROR_WALREAD;
+			// WalSndCtl->error = WALSNDERROR_WALREAD;
 			WALReadRaiseError(&errinfo);
 		}
 	/*
@@ -2813,7 +2813,7 @@ retry:
 			 * GPDB: Report xlog read failure to
 			 * gp_stat_replication view (67d4843).
 			 */
-			WalSndCtl->error = WALSNDERROR_WALREAD;
+			// WalSndCtl->error = WALSNDERROR_WALREAD;
 			WALReadRaiseError(&errinfo);
 		}
 	/* See logical_read_xlog_page(). */

@@ -32,6 +32,7 @@
 #include "utils/hsearch.h"
 #include "utils/rel.h"
 
+#include "replication/gp_replication.h"
 
 /*
  * During XLOG replay, we may see XLOG records for incremental updates of
@@ -958,6 +959,7 @@ WALReadRaiseError(WALReadError *errinfo)
 
 	if (errinfo->wre_read < 0)
 	{
+		WalSndCtl->error = WALSNDERROR_WALREAD;
 		errno = errinfo->wre_errno;
 		ereport(ERROR,
 				(errcode_for_file_access(),
