@@ -95,6 +95,7 @@ static void assign_gp_default_storage_options(const char *newval, void *extra);
 static bool check_pljava_classpath_insecure(bool *newval, void **extra, GucSource source);
 static void assign_pljava_classpath_insecure(bool newval, void *extra);
 static bool check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source);
+static bool check_gp_target_numsegments(int *newval, void **extra, GucSource source);
 static int guc_array_compare(const void *a, const void *b);
 
 extern struct config_generic *find_option(const char *name, bool create_placeholders, int elevel);
@@ -4416,7 +4417,7 @@ struct config_int ConfigureNamesInt_gp[] =
 		},
 		&gp_target_numsegments,
 		0, 0, INT_MAX,
-		NULL, NULL, NULL
+		check_gp_target_numsegments, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -5167,6 +5168,22 @@ check_gp_resource_group_bypass(bool *newval, void **extra, GucSource source)
 	GUC_check_errmsg("SET gp_resource_group_bypass cannot run inside a transaction block");
 	return false;
 }
+
+static bool
+check_gp_target_numsegments(int *newval, void **extra, GucSource source)
+{
+	int max_segment_number = getgpsegmentCount();
+	if (*newval > max_segment_number)
+	{
+		elog(WARNING,
+			 "Can't set value more than maximum segment number, "
+			 "force 'gp_target_numsegments' to %d",
+			 max_segment_number);
+		*newval = max_segment_number;
+	}
+	return true;
+}
+
 
 static bool
 check_optimizer(bool *newval, void **extra, GucSource source)

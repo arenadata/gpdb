@@ -240,6 +240,10 @@ insert into new_multi_part_table_distr_hashed select i, '2023-01-05', 'test1' fr
 insert into new_multi_part_table_distr_hashed select i, '2023-02-05', 'test2' from generate_series(1, 20)i;
 insert into new_multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from generate_series(1, 20)i;
 
+-- Also check CTAS statement
+create table new_table_ctas as select a from generate_series(1, 20)a distributed by(a);
+select * into new_table_into from generate_series(1, 20)a;
+
 select a, gp_segment_id from new_table_distr_hashed order by a;
 select a, gp_segment_id from new_table_distr_hashed_ao_row order by a;
 select a, gp_segment_id from new_table_distr_hashed_ao_col order by a;
@@ -259,6 +263,15 @@ select *, gp_segment_id from new_part_list_table_distr_hashed order by a, b;
 select *, (gp_segment_id < 2) as correct_segment_id from new_part_list_table_distr_random order by a, b;
 
 select *, gp_segment_id from new_multi_part_table_distr_hashed order by a, b, c;
+
+select a, gp_segment_id from new_table_ctas order by a;
+select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by a;
+
+-- Validate the insertion works fine on the CTAS tables
+insert into new_table_ctas select generate_series(21, 40);
+insert into new_table_into select generate_series(21, 40);
+select a, gp_segment_id from new_table_ctas order by a;
+select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by a;
 
 -- And do some cleanup
 drop table new_table_distr_hashed;
@@ -280,6 +293,9 @@ drop table new_part_list_table_distr_hashed;
 drop table new_part_list_table_distr_random;
 
 drop table new_multi_part_table_distr_hashed;
+
+drop table new_table_ctas;
+drop table new_table_into;
 
 reset gp_target_numsegments;
 

@@ -59,7 +59,8 @@ typedef FormData_gp_distribution_policy *Form_gp_distribution_policy;
  * gp_create_table_default_numsegments.
  */
 #define GP_POLICY_DEFAULT_NUMSEGMENTS()		\
-( gp_create_table_default_numsegments == GP_DEFAULT_NUMSEGMENTS_FULL    ? getgpsegmentCount() \
+( gp_target_numsegments > 0 ? gp_target_numsegments \
+: gp_create_table_default_numsegments == GP_DEFAULT_NUMSEGMENTS_FULL    ? getgpsegmentCount() \
 : gp_create_table_default_numsegments == GP_DEFAULT_NUMSEGMENTS_RANDOM  ? (1 + random() % getgpsegmentCount()) \
 : gp_create_table_default_numsegments == GP_DEFAULT_NUMSEGMENTS_MINIMAL ? 1 \
 : gp_create_table_default_numsegments )

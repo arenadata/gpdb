@@ -1088,7 +1088,12 @@ gpdb::GetGPSegmentCount(void)
 {
 	GP_WRAP_START;
 	{
-		return getgpsegmentCount();
+		int numsegments = getgpsegmentCount();
+		if (gp_target_numsegments > 0)
+		{
+			numsegments = gp_target_numsegments;
+		}
+		return numsegments;
 	}
 	GP_WRAP_END;
 	return 0;

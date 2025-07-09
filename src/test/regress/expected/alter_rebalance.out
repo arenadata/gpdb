@@ -728,6 +728,10 @@ subpartition by list (c) subpartition template
 insert into new_multi_part_table_distr_hashed select i, '2023-01-05', 'test1' from generate_series(1, 20)i;
 insert into new_multi_part_table_distr_hashed select i, '2023-02-05', 'test2' from generate_series(1, 20)i;
 insert into new_multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from generate_series(1, 20)i;
+-- Also check CTAS statement
+create table new_table_ctas as select a from generate_series(1, 20)a distributed by(a);
+select * into new_table_into from generate_series(1, 20)a;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause. Creating a NULL policy entry.
 select a, gp_segment_id from new_table_distr_hashed order by a;
  a  | gp_segment_id 
 ----+---------------
@@ -1278,6 +1282,149 @@ select *, gp_segment_id from new_multi_part_table_distr_hashed order by a, b, c;
  20 | 03-05-2023 | test1 |             1
 (60 rows)
 
+select a, gp_segment_id from new_table_ctas order by a;
+ a  | gp_segment_id 
+----+---------------
+  1 |             1
+  2 |             0
+  3 |             0
+  4 |             0
+  5 |             1
+  6 |             0
+  7 |             0
+  8 |             0
+  9 |             0
+ 10 |             0
+ 11 |             1
+ 12 |             1
+ 13 |             0
+ 14 |             1
+ 15 |             1
+ 16 |             0
+ 17 |             1
+ 18 |             0
+ 19 |             0
+ 20 |             1
+(20 rows)
+
+select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by a;
+ a  | correct_segment_id 
+----+--------------------
+  1 | t
+  2 | t
+  3 | t
+  4 | t
+  5 | t
+  6 | t
+  7 | t
+  8 | t
+  9 | t
+ 10 | t
+ 11 | t
+ 12 | t
+ 13 | t
+ 14 | t
+ 15 | t
+ 16 | t
+ 17 | t
+ 18 | t
+ 19 | t
+ 20 | t
+(20 rows)
+
+-- Validate the insertion works fine on the CTAS tables
+insert into new_table_ctas select generate_series(21, 40);
+insert into new_table_into select generate_series(21, 40);
+select a, gp_segment_id from new_table_ctas order by a;
+ a  | gp_segment_id 
+----+---------------
+  1 |             1
+  2 |             0
+  3 |             0
+  4 |             0
+  5 |             1
+  6 |             0
+  7 |             0
+  8 |             0
+  9 |             0
+ 10 |             0
+ 11 |             1
+ 12 |             1
+ 13 |             0
+ 14 |             1
+ 15 |             1
+ 16 |             0
+ 17 |             1
+ 18 |             0
+ 19 |             0
+ 20 |             1
+ 21 |             0
+ 22 |             0
+ 23 |             1
+ 24 |             0
+ 25 |             1
+ 26 |             1
+ 27 |             0
+ 28 |             0
+ 29 |             0
+ 30 |             1
+ 31 |             1
+ 32 |             0
+ 33 |             0
+ 34 |             0
+ 35 |             1
+ 36 |             1
+ 37 |             0
+ 38 |             1
+ 39 |             0
+ 40 |             1
+(40 rows)
+
+select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by a;
+ a  | correct_segment_id 
+----+--------------------
+  1 | t
+  2 | t
+  3 | t
+  4 | t
+  5 | t
+  6 | t
+  7 | t
+  8 | t
+  9 | t
+ 10 | t
+ 11 | t
+ 12 | t
+ 13 | t
+ 14 | t
+ 15 | t
+ 16 | t
+ 17 | t
+ 18 | t
+ 19 | t
+ 20 | t
+ 21 | t
+ 22 | t
+ 23 | t
+ 24 | t
+ 25 | t
+ 26 | t
+ 27 | t
+ 28 | t
+ 29 | t
+ 30 | t
+ 31 | t
+ 32 | t
+ 33 | t
+ 34 | t
+ 35 | t
+ 36 | t
+ 37 | t
+ 38 | t
+ 39 | t
+ 40 | t
+(40 rows)
+
 -- And do some cleanup
 drop table new_table_distr_hashed;
 drop table new_table_distr_hashed_ao_row;
@@ -1293,6 +1440,8 @@ drop table new_part_range_table_distr_random;
 drop table new_part_list_table_distr_hashed;
 drop table new_part_list_table_distr_random;
 drop table new_multi_part_table_distr_hashed;
+drop table new_table_ctas;
+drop table new_table_into;
 reset gp_target_numsegments;
 -- Check rollback of alter rebalance operation
 create table table_distr_hashed(a int) distributed by (a);
