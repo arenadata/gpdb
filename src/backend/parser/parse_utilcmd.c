@@ -3096,7 +3096,7 @@ getPolicyForDistributedBy(DistributedBy *distributedBy, TupleDesc tupdesc)
 
 			return createHashPartitionedPolicy(policykeys,
 											   policyopclasses,
-											   distributedBy->numsegments);
+											   distributedBy->numsegments);;
 
 		case POLICYTYPE_ENTRY:
 			elog(ERROR, "unexpected entry distribution policy");
