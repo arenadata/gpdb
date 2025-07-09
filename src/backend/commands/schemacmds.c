@@ -24,11 +24,8 @@
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
-<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
-=======
 #include "catalog/pg_authid.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "catalog/pg_namespace.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
@@ -41,14 +38,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsreh.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
 
 /*

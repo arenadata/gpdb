@@ -40,16 +40,12 @@
 #include "utils/ruleutils.h"
 #include "utils/timestamp.h"
 
-<<<<<<< HEAD
 #include "catalog/pg_authid.h"
 #include "postmaster/fts.h"
 #include "storage/pmsignal.h"
 #include "storage/procarray.h"
 #include "utils/backend_cancel.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Common subroutine for num_nulls() and num_nonnulls().
  * Returns true if successful, false if function should return NULL.

@@ -73,7 +73,6 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbdispatchresult.h"
@@ -83,8 +82,6 @@
 
 #include "utils/pg_rusage.h"
 
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 typedef struct
 {
 	Oid			src_dboid;		/* source (template) DB */
@@ -1559,25 +1556,11 @@ movedb(const char *dbname, const char *tblspcname)
 
 	if (Gp_role == GP_ROLE_EXECUTE)
 	{
-<<<<<<< HEAD
 		/*
 		 * QE needs to release session level locks as can't Prepare Transaction
 		 * with session locks.
 		 */
 		MoveDbSessionLockRelease();
-=======
-		xl_dbase_drop_rec xlrec;
-
-		xlrec.db_id = db_id;
-		xlrec.ntablespaces = 1;
-
-		XLogBeginInsert();
-		XLogRegisterData((char *) &xlrec, sizeof(xl_dbase_drop_rec));
-		XLogRegisterData((char *) &src_tblspcoid, sizeof(Oid));
-
-		(void) XLogInsert(RM_DBASE_ID,
-						  XLOG_DBASE_DROP | XLR_SPECIAL_REL_UPDATE);
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 	}
 
 	/*
@@ -1605,9 +1588,7 @@ movedb_failure_callback(int code, Datum arg)
 
 	(void) rmtree(dstpath, true);
 }
-<<<<<<< HEAD
 #endif
-=======
 
 /*
  * Process options and call dropdb function.
@@ -1633,7 +1614,6 @@ DropDatabase(ParseState *pstate, DropdbStmt *stmt)
 
 	dropdb(stmt->dbname, stmt->missing_ok, force);
 }
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * ALTER DATABASE name ...

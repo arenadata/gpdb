@@ -42,7 +42,6 @@
 #include "utils/relcache.h"
 #include "utils/timestamp.h"
 
-<<<<<<< HEAD
 #include "access/genam.h"
 #include "access/hash.h"
 #include "access/xact.h"
@@ -60,9 +59,6 @@
 #include "utils/snapmgr.h"
 #include "utils/tarrable.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 typedef struct
 {
 	const char *label;

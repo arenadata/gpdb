@@ -14,7 +14,6 @@
  */
 #include "postgres.h"
 
-<<<<<<< HEAD
 #include <sys/mman.h>
 
 #ifdef MPROTECT_BUFFERS
@@ -22,9 +21,6 @@
 #include "miscadmin.h"
 #endif
 
-#include "storage/bufmgr.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 

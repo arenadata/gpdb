@@ -96,21 +96,10 @@
 #include "utils/workfile_mgr.h"
 #include "utils/faultinjector.h"
 
-<<<<<<< HEAD
 // Provide some indirection here in case we have problems with lseek and
 // 64 bits on some platforms
 #define pg_lseek64(a,b,c) (int64)lseek(a,b,c)
 
-
-/* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
-#if defined(HAVE_SYNC_FILE_RANGE)
-#define PG_FLUSH_DATA_WORKS 1
-#elif defined(USE_POSIX_FADVISE) && defined(POSIX_FADV_DONTNEED)
-#define PG_FLUSH_DATA_WORKS 1
-#endif
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
 #if defined(HAVE_SYNC_FILE_RANGE)
 #define PG_FLUSH_DATA_WORKS 1

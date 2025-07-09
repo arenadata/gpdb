@@ -108,18 +108,13 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
-<<<<<<< HEAD
 #include "access/twophase_storage_tablespace.h"
-#include "access/twophase_xlog.h"
 #include "catalog/storage_database.h"
 #include "catalog/storage_tablespace.h"
 #include "cdb/cdbvars.h"
 #include "access/distributedlog.h"
 #include "utils/faultinjector.h"
 
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Directory where Two-phase commit files reside within PGDATA
  */
@@ -950,11 +945,8 @@ TwoPhaseGetDummyProc(TransactionId xid, bool lock_held)
  */
 #define TWOPHASE_MAGIC	0x57F94534	/* format identifier */
 
-<<<<<<< HEAD
-=======
 typedef xl_xact_prepare TwoPhaseFileHeader;
 
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 /*
  * Header for each record in a state file
  *
@@ -1380,47 +1372,6 @@ ReadTwoPhaseFile(TransactionId xid, bool missing_ok)
 	return buf;
 }
 
-<<<<<<< HEAD
-/*
- * ParsePrepareRecord
- */
-void
-ParsePrepareRecord(uint8 info, char *xlrec, xl_xact_parsed_prepare *parsed)
-{
-	TwoPhaseFileHeader *hdr;
-	char	   *bufptr;
-
-	hdr = (TwoPhaseFileHeader *) xlrec;
-	bufptr = xlrec + MAXALIGN(sizeof(TwoPhaseFileHeader));
-
-	parsed->origin_lsn = hdr->origin_lsn;
-	parsed->origin_timestamp = hdr->origin_timestamp;
-	parsed->twophase_xid = hdr->xid;
-	parsed->dbId = hdr->database;
-	parsed->nsubxacts = hdr->nsubxacts;
-	parsed->nrels = hdr->ncommitrels;
-	parsed->nabortrels = hdr->nabortrels;
-	parsed->nmsgs = hdr->ninvalmsgs;
-
-	strncpy(parsed->twophase_gid, bufptr, hdr->gidlen);
-	bufptr += MAXALIGN(hdr->gidlen);
-
-	parsed->subxacts = (TransactionId *) bufptr;
-	bufptr += MAXALIGN(hdr->nsubxacts * sizeof(TransactionId));
-
-	parsed->xnodes = (RelFileNodePendingDelete *) bufptr;
-	bufptr += MAXALIGN(hdr->ncommitrels * sizeof(RelFileNodePendingDelete));
-
-	parsed->abortnodes = (RelFileNodePendingDelete *) bufptr;
-	bufptr += MAXALIGN(hdr->nabortrels * sizeof(RelFileNodePendingDelete));
-
-	parsed->msgs = (SharedInvalidationMessage *) bufptr;
-	bufptr += MAXALIGN(hdr->ninvalmsgs * sizeof(SharedInvalidationMessage));
-}
-
-
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 /*
  * Reads 2PC data from xlog. During checkpoint this data will be moved to

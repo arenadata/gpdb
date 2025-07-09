@@ -27,14 +27,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-<<<<<<< HEAD
-#include "access/aomd.h"
-#include "access/htup_details.h"
-#include "catalog/catalog.h"
-#include "miscadmin.h"
 #include "access/xlogutils.h"
-=======
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 #include "access/xlog.h"
 #include "access/xlogutils.h"
 #include "commands/tablespace.h"
@@ -51,6 +44,9 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 
+#include "access/aomd.h"
+#include "access/htup_details.h"
+#include "catalog/catalog.h"
 #include "catalog/pg_tablespace.h"
 #include "utils/faultinjector.h"
 

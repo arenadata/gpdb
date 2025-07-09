@@ -22,12 +22,9 @@
 #include "nodes/nodeFuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/pathnodes.h"
-<<<<<<< HEAD
-#include "parser/parsetree.h"
-=======
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
+#include "parser/parsetree.h"
 #include "statistics/extended_stats_internal.h"
 #include "statistics/statistics.h"
 #include "utils/bytea.h"

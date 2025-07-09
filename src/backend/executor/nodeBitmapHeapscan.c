@@ -58,12 +58,9 @@
 #include "nodes/tidbitmap.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
-<<<<<<< HEAD
+#include "utils/spccache.h"
 
 #include "cdb/cdbvars.h" /* gp_select_invisible */
-=======
-#include "utils/spccache.h"
->>>>>>> 55a1954da16e041f895e5c3a6abff13c5e3a4a2f
 
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static inline void BitmapDoneInitializingSharedState(ParallelBitmapHeapState *pstate);
