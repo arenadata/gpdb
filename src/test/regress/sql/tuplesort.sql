@@ -221,8 +221,6 @@ COMMIT;
 ---
 
 -- memory based
--- FIXME: Disable ORCA to avoid assertion until fixed.
-SET optimizer = off;
 SELECT
     -- fixed-width by-value datum
     (array_agg(id ORDER BY id DESC NULLS FIRST))[0:5],
@@ -264,7 +262,6 @@ FROM (
     SELECT NULL, NULL, NULL, NULL, NULL, NULL) s;
 
 ROLLBACK;
-RESET optimizer;
 
 
 ----

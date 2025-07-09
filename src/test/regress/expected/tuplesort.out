@@ -512,8 +512,6 @@ COMMIT;
 -- test tuplesort using both in-memory and disk sort
 ---
 -- memory based
--- FIXME: Disable ORCA to avoid assertion until fixed.
-SET optimizer = off;
 SELECT
     -- fixed-width by-value datum
     (array_agg(id ORDER BY id DESC NULLS FIRST))[0:5],
@@ -563,7 +561,6 @@ FROM (
 (1 row)
 
 ROLLBACK;
-RESET optimizer;
 ----
 -- test tuplesort mark/restore
 ---
