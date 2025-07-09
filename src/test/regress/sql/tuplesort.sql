@@ -13,7 +13,9 @@ CREATE TABLE abbrev_abort_uuids (
     abort_increasing uuid,
     abort_decreasing uuid,
     noabort_increasing uuid,
-    noabort_decreasing uuid);
+    noabort_decreasing uuid,
+    i int
+) DISTRIBUTED BY (i);
 
 INSERT INTO abbrev_abort_uuids (abort_increasing, abort_decreasing, noabort_increasing, noabort_decreasing)
     SELECT
@@ -165,19 +167,19 @@ FETCH NEXT FROM c;
 FETCH NEXT FROM c;
 
 -- scroll beyond beginning
-FETCH BACKWARD FROM c;
-FETCH BACKWARD FROM c;
-FETCH BACKWARD FROM c;
-FETCH BACKWARD FROM c;
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
 FETCH NEXT FROM c;
 
 -- scroll beyond end end
-FETCH LAST FROM c;
-FETCH BACKWARD FROM c;
+-- FETCH LAST FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
 FETCH NEXT FROM c;
 FETCH NEXT FROM c;
 FETCH NEXT FROM c;
-FETCH BACKWARD FROM c;
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
 FETCH NEXT FROM c;
 
 COMMIT;
@@ -196,19 +198,19 @@ FETCH NEXT FROM c;
 FETCH NEXT FROM c;
 
 -- scroll beyond beginning
-FETCH BACKWARD FROM c;
-FETCH BACKWARD FROM c;
-FETCH BACKWARD FROM c;
-FETCH BACKWARD FROM c;
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
 FETCH NEXT FROM c;
 
 -- scroll beyond end end
-FETCH LAST FROM c;
-FETCH BACKWARD FROM c;
+-- FETCH LAST FROM c; -- backwards scans not supported in GPDB
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
 FETCH NEXT FROM c;
 FETCH NEXT FROM c;
 FETCH NEXT FROM c;
-FETCH BACKWARD FROM c;
+-- FETCH BACKWARD FROM c; -- backwards scans not supported in GPDB
 FETCH NEXT FROM c;
 
 COMMIT;
@@ -239,7 +241,7 @@ SELECT
 FROM (
     SELECT * FROM abbrev_abort_uuids
     UNION ALL
-    SELECT NULL, NULL, NULL, NULL, NULL) s;
+    SELECT NULL, NULL, NULL, NULL, NULL, NULL) s;
 
 -- disk based (see also above)
 BEGIN;
@@ -257,7 +259,7 @@ SELECT
 FROM (
     SELECT * FROM abbrev_abort_uuids
     UNION ALL
-    SELECT NULL, NULL, NULL, NULL, NULL) s;
+    SELECT NULL, NULL, NULL, NULL, NULL, NULL) s;
 
 ROLLBACK;
 

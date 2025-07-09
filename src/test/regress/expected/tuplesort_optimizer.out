@@ -146,15 +146,16 @@ CREATE INDEX abbrev_abort_uuids__noabort_decreasing_idx ON abbrev_abort_uuids (n
 -- verify
 EXPLAIN (COSTS OFF)
 SELECT id, noabort_increasing, noabort_decreasing FROM abbrev_abort_uuids ORDER BY noabort_increasing LIMIT 5;
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Limit
    ->  Gather Motion 3:1  (slice1; segments: 3)
          Merge Key: noabort_increasing
-         ->  Limit
-               ->  Index Scan using abbrev_abort_uuids__noabort_increasing_idx on abbrev_abort_uuids
- Optimizer: Postgres query optimizer
-(6 rows)
+         ->  Sort
+               Sort Key: noabort_increasing
+               ->  Seq Scan on abbrev_abort_uuids
+ Optimizer: Pivotal Optimizer (GPORCA)
+(7 rows)
 
 SELECT id, noabort_increasing, noabort_decreasing FROM abbrev_abort_uuids ORDER BY noabort_increasing LIMIT 5;
   id   |          noabort_increasing          |          noabort_decreasing          
@@ -163,26 +164,27 @@ SELECT id, noabort_increasing, noabort_decreasing FROM abbrev_abort_uuids ORDER 
  10010 | 00000000-0000-0000-0000-000000010009 | 00009991-0000-0000-0000-000000009991
      2 | 00000001-0000-0000-0000-000000000001 | 00009990-0000-0000-0000-000000019999
  10011 | 00000001-0000-0000-0000-000000010010 | 00009990-0000-0000-0000-000000009990
-     3 | 00000002-0000-0000-0000-000000000002 | 00009989-0000-0000-0000-000000019998
+ 20004 | 00000002-0000-0000-0000-000000000002 | 00009989-0000-0000-0000-000000019998
 (5 rows)
 
 EXPLAIN (COSTS OFF)
 SELECT id, noabort_increasing, noabort_decreasing FROM abbrev_abort_uuids ORDER BY noabort_decreasing LIMIT 5;
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Limit
    ->  Gather Motion 3:1  (slice1; segments: 3)
          Merge Key: noabort_decreasing
-         ->  Limit
-               ->  Index Scan using abbrev_abort_uuids__noabort_decreasing_idx on abbrev_abort_uuids
- Optimizer: Postgres query optimizer
-(6 rows)
+         ->  Sort
+               Sort Key: noabort_decreasing
+               ->  Seq Scan on abbrev_abort_uuids
+ Optimizer: Pivotal Optimizer (GPORCA)
+(7 rows)
 
 SELECT id, noabort_increasing, noabort_decreasing FROM abbrev_abort_uuids ORDER BY noabort_decreasing LIMIT 5;
   id   |          noabort_increasing          |          noabort_decreasing          
 -------+--------------------------------------+--------------------------------------
- 20001 | 00009991-0000-0000-0000-000000020000 | 00000000-0000-0000-0000-000000000000
  20010 | 00009991-0000-0000-0000-000000020000 | 00000000-0000-0000-0000-000000000000
+ 20001 | 00009991-0000-0000-0000-000000020000 | 00000000-0000-0000-0000-000000000000
   9992 | 00009991-0000-0000-0000-000000009991 | 00000000-0000-0000-0000-000000010009
  20000 | 00009990-0000-0000-0000-000000019999 | 00000001-0000-0000-0000-000000000001
   9991 | 00009990-0000-0000-0000-000000009990 | 00000001-0000-0000-0000-000000010010
@@ -194,15 +196,16 @@ CREATE INDEX abbrev_abort_uuids__abort_decreasing_idx ON abbrev_abort_uuids (abo
 -- verify
 EXPLAIN (COSTS OFF)
 SELECT id, abort_increasing, abort_decreasing FROM abbrev_abort_uuids ORDER BY abort_increasing LIMIT 5;
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Limit
    ->  Gather Motion 3:1  (slice1; segments: 3)
          Merge Key: abort_increasing
-         ->  Limit
-               ->  Index Scan using abbrev_abort_uuids__abort_increasing_idx on abbrev_abort_uuids
- Optimizer: Postgres query optimizer
-(6 rows)
+         ->  Sort
+               Sort Key: abort_increasing
+               ->  Seq Scan on abbrev_abort_uuids
+ Optimizer: Pivotal Optimizer (GPORCA)
+(7 rows)
 
 SELECT id, abort_increasing, abort_decreasing FROM abbrev_abort_uuids ORDER BY abort_increasing LIMIT 5;
   id   |           abort_increasing           |           abort_decreasing           
@@ -216,24 +219,25 @@ SELECT id, abort_increasing, abort_decreasing FROM abbrev_abort_uuids ORDER BY a
 
 EXPLAIN (COSTS OFF)
 SELECT id, abort_increasing, abort_decreasing FROM abbrev_abort_uuids ORDER BY abort_decreasing LIMIT 5;
-                                            QUERY PLAN                                             
----------------------------------------------------------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Limit
    ->  Gather Motion 3:1  (slice1; segments: 3)
          Merge Key: abort_decreasing
-         ->  Limit
-               ->  Index Scan using abbrev_abort_uuids__abort_decreasing_idx on abbrev_abort_uuids
- Optimizer: Postgres query optimizer
-(6 rows)
+         ->  Sort
+               Sort Key: abort_decreasing
+               ->  Seq Scan on abbrev_abort_uuids
+ Optimizer: Pivotal Optimizer (GPORCA)
+(7 rows)
 
 SELECT id, abort_increasing, abort_decreasing FROM abbrev_abort_uuids ORDER BY abort_decreasing LIMIT 5;
   id   |           abort_increasing           |           abort_decreasing           
 -------+--------------------------------------+--------------------------------------
- 20001 | 00000000-0000-0000-0000-000000020000 | 00000000-0000-0000-0000-000000000000
  20010 | 00000000-0000-0000-0000-000000020000 | 00000000-0000-0000-0000-000000000000
+ 20001 | 00000000-0000-0000-0000-000000020000 | 00000000-0000-0000-0000-000000000000
  20000 | 00000000-0000-0000-0000-000000019999 | 00000000-0000-0000-0000-000000000001
  19999 | 00000000-0000-0000-0000-000000019998 | 00000000-0000-0000-0000-000000000002
- 19998 | 00000000-0000-0000-0000-000000019997 | 00000000-0000-0000-0000-000000000003
+ 20009 | 00000000-0000-0000-0000-000000019997 | 00000000-0000-0000-0000-000000000003
 (5 rows)
 
 ----
@@ -379,7 +383,7 @@ EXPLAIN (COSTS OFF) DECLARE c SCROLL CURSOR FOR SELECT noabort_decreasing FROM a
    ->  Sort
          Sort Key: noabort_decreasing
          ->  Seq Scan on abbrev_abort_uuids
- Optimizer: Postgres query optimizer
+ Optimizer: Pivotal Optimizer (GPORCA)
 (6 rows)
 
 DECLARE c SCROLL CURSOR FOR SELECT noabort_decreasing FROM abbrev_abort_uuids ORDER BY noabort_decreasing;
@@ -451,7 +455,7 @@ EXPLAIN (COSTS OFF) DECLARE c SCROLL CURSOR FOR SELECT noabort_decreasing FROM a
    ->  Sort
          Sort Key: noabort_decreasing
          ->  Seq Scan on abbrev_abort_uuids
- Optimizer: Postgres query optimizer
+ Optimizer: Pivotal Optimizer (GPORCA)
 (6 rows)
 
 DECLARE c SCROLL CURSOR FOR SELECT noabort_decreasing FROM abbrev_abort_uuids ORDER BY noabort_decreasing;
