@@ -744,6 +744,38 @@ create sequence test_22_seq;
 1<:
 1: end;
 
+-- Case 23. Table dependency on the column type with REPEATABLE READ isolation level.
+create type test_23_type as enum ('one', 'two');
+
+1: begin;
+1: set transaction isolation level repeatable read;
+1: create table test_23_table(a test_23_type);
+
+2&: drop type test_23_type;
+
+1: commit;
+
+2<:
+
+1: select * from test_23_table;
+
+drop type test_23_type cascade;
+drop table test_23_table;
+
+-- Check if dependency is dropped before the creation of the dependent object.
+create type test_23_type as enum ('one', 'two');
+
+1: begin;
+1: set transaction isolation level repeatable read;
+2: begin;
+2: set transaction isolation level repeatable read;
+2: drop type test_23_type;
+1&: create table test_23_table(a test_23_type);
+
+2: commit;
+1<:
+1: end;
+
 -- Test deadlock scenario. It should be resolved by the deadlock detection algorithm.
 create schema test_schema;
 create type test_type as enum ('one', 'two');
