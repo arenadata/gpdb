@@ -875,43 +875,41 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 			{
 				cacheId = RELOID;
 				objName = "sequence";
+				break;
 			}
-			break;
-		default:
-			break;
-	}
-
-	if (cacheId >= 0)
-	{
-		/*
-		 * Type and op family can be not defined at this point. It is normal
-		 * situation. Type can be not defined, if we define the I/O procs for
-		 * a new type. Op family can be not defined yet, if the op class is
-		 * created without specification of a family. We do not lock in this
-		 * case.
-		 */
-		if ((cacheId == TYPEOID || cacheId == OPFAMILYOID) &&
-			!SearchSysCacheExists1(cacheId,
-								   ObjectIdGetDatum(referenced->objectId)))
 			return;
-
-		/*
-		 * AccessShareLock should be OK, since we are not modifying the
-		 * object.
-		 */
-		if (cacheId == RELOID)
-			LockRelationOid(referenced->objectId, AccessShareLock);
-		else
-			LockDatabaseObject(referenced->classId,
-							   referenced->objectId,
-							   referenced->objectSubId,
-							   AccessShareLock);
-
-		if (!SearchSysCacheExists1(cacheId,
-								   ObjectIdGetDatum(referenced->objectId)))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("%s %u was concurrently dropped",
-							objName, referenced->objectId)));
+		default:
+			return;
 	}
+
+	Assert(cacheId >= 0);
+
+	/*
+	 * Type and op family can be not defined at this point. It is normal
+	 * situation. Type can be not defined, if we define the I/O procs for a
+	 * new type. Op family can be not defined yet, if the op class is created
+	 * without specification of a family. We do not lock in this case.
+	 */
+	if ((cacheId == TYPEOID || cacheId == OPFAMILYOID) &&
+		!SearchSysCacheExists1(cacheId,
+							   ObjectIdGetDatum(referenced->objectId)))
+		return;
+
+	/*
+	 * AccessShareLock should be OK, since we are not modifying the object.
+	 */
+	if (cacheId == RELOID)
+		LockRelationOid(referenced->objectId, AccessShareLock);
+	else
+		LockDatabaseObject(referenced->classId,
+						   referenced->objectId,
+						   referenced->objectSubId,
+						   AccessShareLock);
+
+	if (!SearchSysCacheExists1(cacheId,
+							   ObjectIdGetDatum(referenced->objectId)))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("%s %u was concurrently dropped",
+						objName, referenced->objectId)));
 }
