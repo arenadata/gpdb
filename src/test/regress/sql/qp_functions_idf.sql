@@ -119,6 +119,8 @@ select c, percentile_cont(0.9999) within group (order by ((days1 + days2) * 1.2)
 
 select percentile_cont(0.9999) within group (order by days1) from perctint;
 
+select gp_percentile_cont('0 hour'::interval, 0, 0, 0);
+
 select gp_percentile_cont_interval_transition(NULL::interval, '1 hour'::interval, 1, 1, 1);
 
 --numeric types

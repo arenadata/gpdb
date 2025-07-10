@@ -499,6 +499,12 @@ select percentile_cont(0.9999) within group (order by days1) from perctint;
  @ 99 days 124 hours 5 mins 8.8812 secs
 (1 row)
 
+select gp_percentile_cont('0 hour'::interval, 0, 0, 0);
+ gp_percentile_cont 
+--------------------
+ 
+(1 row)
+
 select gp_percentile_cont_interval_transition(NULL::interval, '1 hour'::interval, 1, 1, 1);
  gp_percentile_cont_interval_transition 
 ----------------------------------------
