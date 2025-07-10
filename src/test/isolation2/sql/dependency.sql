@@ -377,7 +377,7 @@ create server test_12_server foreign data wrapper test_12_fdw;
 
 2<:
 
-! psql isolation2test -c '\deu';
+SELECT srvname, usename FROM pg_user_mappings ORDER BY 1, 2;
 
 drop server test_12_server cascade;
 

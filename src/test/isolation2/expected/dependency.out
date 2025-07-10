@@ -568,14 +568,11 @@ ERROR:  cannot drop server test_12_server because other objects depend on it
 DETAIL:  user mapping for public on server test_12_server depends on server test_12_server
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 
-! psql isolation2test -c '\deu';
-   List of user mappings
-     Server     | User name 
-----------------+-----------
- test_12_server | public
+SELECT srvname, usename FROM pg_user_mappings ORDER BY 1, 2;
+ srvname        | usename 
+----------------+---------
+ test_12_server | public  
 (1 row)
-
-
 
 drop server test_12_server cascade;
 DROP
