@@ -503,7 +503,7 @@ ERROR:  text search template ##### was concurrently dropped
 1: end;
 END
 
--- Case 11. Server dependency on the foreigh data wrapper.
+-- Case 11. Server dependency on the foreign data wrapper.
 create foreign data wrapper test_11_fdw;
 CREATE
 

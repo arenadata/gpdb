@@ -336,7 +336,7 @@ create text search template test_10_template(init = dsimple_init, lexize = dsimp
 1<:
 1: end;
 
--- Case 11. Server dependency on the foreigh data wrapper.
+-- Case 11. Server dependency on the foreign data wrapper.
 create foreign data wrapper test_11_fdw;
 
 1: begin;
