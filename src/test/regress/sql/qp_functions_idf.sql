@@ -53,7 +53,7 @@ select c , median( tstz2 - tstz1 ) from perctint group by c order by c limit 10 
 
 select c, percentile_cont(0.9999) within group (order by ts2::timestamptz -ts1:: timestamptz) from perctint group by c order by 2 limit 10;
 
-select gp_percentile_cont_timestamptz_transition('2006-01-01 13:10:13'::timestamptz, '2006-01-01 13:10:13'::timestamptz, 1, 1, 1);
+select gp_percentile_cont_timestamptz_transition(NULL::timestamptz, '2006-01-01 13:10:13'::timestamptz, 1, 1, 1);
 
 -- DATE
 
@@ -95,7 +95,7 @@ select median(ts2::timestamp + time '   12:00'), percentile_cont(0.9999) within 
 
 select c, percentile_cont(0.9999) within group (order by ts2::timestamp - time '10:11:26' ) from perctint group by c  order by c limit 10;
 
-select gp_percentile_cont_timestamp_transition('2006-01-01 13:10:13'::timestamp, '2006-01-01 13:10:13'::timestamp, 1, 1, 1);
+select gp_percentile_cont_timestamp_transition(NULL::timestamp, '2006-01-01 13:10:13'::timestamp, 1, 1, 1);
 
 -- TIME
 
@@ -117,7 +117,7 @@ select c, percentile_cont(0.9999) within group (order by ((days1 -days2) / doubl
 
 select c, percentile_cont(0.9999) within group (order by ((days1 + days2) * 1.2) ) from perctint group by c order by c limit 10;
 
-select gp_percentile_cont_interval_transition('1 hour'::interval, '1 hour'::interval, 1, 1, 1);
+select gp_percentile_cont_interval_transition(NULL::interval, '1 hour'::interval, 1, 1, 1);
 
 --numeric types
 
@@ -129,13 +129,13 @@ select percentile_cont(1.00) within group( order by b::float8 + (110 / 13)::floa
 
 select percentile_cont(0.95) within group( order by c) from perctnum;
 
-select gp_percentile_cont_float8_transition(1::float8, 1::float8, 1, 1, 1);
+select gp_percentile_cont_float8_transition(NULL::float8, 1::float8, 1, 1, 1);
 
 select percentile_disc(0.95) within group( order by c) from perctnum;
 
 select gp_percentile_disc(0::numeric, 0, 0, 0);
 
-select gp_percentile_disc_transition(1::numeric, 1::numeric, 1, 1, 1);
+select gp_percentile_disc_transition(NULL::numeric, 1::numeric, 1, 1, 1);
 
 --SQL with <> operator with IDF in HAVING clause
 
