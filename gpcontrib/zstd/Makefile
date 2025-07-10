@@ -5,6 +5,9 @@ OBJS = zstd_compression.o
 
 REGRESS = zstd_column_compression compression_zstd zstd_abort_leak AOCO_zstd AORO_zstd
 
+# Avoid building LLVM Bitcode for zstd module.
+with_llvm = no
+
 ifdef USE_PGXS
   PGXS := $(shell pg_config --pgxs)
   include $(PGXS)

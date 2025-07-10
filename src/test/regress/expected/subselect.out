@@ -2158,3 +2158,34 @@ drop table tl1;
 drop table tl2;
 drop table tl3;
 drop table tl4;
+--Test case for subquery, which returns more than one rows
+create table table1 as
+    select * from (values (1, 0), (1, 0)) v(a, b) distributed by (a);
+create table table2 as
+    select * from (values (0, 10), (0, 10)) v(a, b) distributed by (a);
+explain (costs off)
+select * from table1 where 10 in
+    (select b from table2 where table2.a = 0 or table1.b = table2.b);
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on table1
+         Filter: (SubPlan 1)
+         SubPlan 1
+           ->  Result
+                 Filter: ((table2.a = 0) OR (table1.b = table2.b))
+                 ->  Materialize
+                       ->  Broadcast Motion 3:3  (slice2; segments: 3)
+                             ->  Seq Scan on table2
+ Optimizer: Postgres-based planner
+(10 rows)
+
+select * from table1 where 10 in
+    (select b from table2 where table2.a = 0 or table1.b = table2.b);
+ a | b 
+---+---
+ 1 | 0
+ 1 | 0
+(2 rows)
+
+drop table table1, table2;
