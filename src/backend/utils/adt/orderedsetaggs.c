@@ -1560,6 +1560,10 @@ gp_percentile_cont_transition(FunctionCallInfo fcinfo,
 	{
 		return_state = lerpfunc(prev_state, val, proportion);
 	}
+	else if (PG_ARGISNULL(0))
+	{
+		fcinfo->isnull = true;
+	}
 	*cnt = *cnt + peer_count;
 
 	if(*cnt > total_rows)

@@ -117,6 +117,8 @@ select c, percentile_cont(0.9999) within group (order by ((days1 -days2) / doubl
 
 select c, percentile_cont(0.9999) within group (order by ((days1 + days2) * 1.2) ) from perctint group by c order by c limit 10;
 
+select percentile_cont(0.9999) within group (order by days1) from perctint;
+
 select gp_percentile_cont_interval_transition(NULL::interval, '1 hour'::interval, 1, 1, 1);
 
 --numeric types
