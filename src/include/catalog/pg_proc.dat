@@ -11125,7 +11125,7 @@
   proname => 'gp_percentile_disc_transition',
   proisstrict => 'f',
   prorettype => 'anyelement',
-  proargtypes => 'anyelement float8 int8 int8',
+  proargtypes => 'anyelement anyelement float8 int8 int8',
   prosrc => 'gp_percentile_disc_transition' },
 { oid => 7194, descr => 'unordered percentile discrete aggregate',
    proname => 'gp_percentile_disc', prokind => 'a', proisstrict => 'f', prorettype => 'anyelement', proargtypes => 'anyelement float8 int8 int8', prosrc => 'aggregate_dummy' },
