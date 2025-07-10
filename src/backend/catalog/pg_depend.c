@@ -809,8 +809,8 @@ get_index_constraint(Oid indexId)
 static void
 depLockAndCheckObject(const ObjectAddress *referenced)
 {
-	int			cacheId = -1;
-	char	   *objName;
+	enum SysCacheIdentifier cacheId;
+	const char *objName;
 
 	switch (getObjectClass(referenced))
 	{
@@ -881,8 +881,6 @@ depLockAndCheckObject(const ObjectAddress *referenced)
 		default:
 			return;
 	}
-
-	Assert(cacheId >= 0);
 
 	/*
 	 * Type and op family can be not defined at this point. It is normal
