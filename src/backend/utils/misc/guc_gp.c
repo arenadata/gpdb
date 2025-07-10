@@ -456,8 +456,6 @@ double		optimizer_jit_optimize_above_cost;
 /* Switch to toggle block-directory based sampling for AO/CO tables */
 bool		gp_enable_blkdir_sampling;
 
-int			gp_target_numsegments;
-
 static const struct config_enum_entry gp_log_format_options[] = {
 	{"text", 0},
 	{"csv", 1},
@@ -4411,12 +4409,16 @@ struct config_int ConfigureNamesInt_gp[] =
 
 	{
 		{"gp_target_numsegments", PGC_SUSET, GP_ARRAY_CONFIGURATION,
-			gettext_noop("Target number of segments to use when a new table is created"
-						 " or an old one is rebalanced"),
-			NULL, GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			gettext_noop("Target number of segments to use when a new table "
+						 "is created or an old one is rebalanced."),
+			gettext_noop("Special values:\n"
+						 "-1 - use all available segments\n"
+						 "-2 - use random number of segments\n"
+						 "-3 - use minimal possible number of segment\n" ),
+			GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
-		&gp_target_numsegments,
-		0, 0, INT_MAX,
+		&gp_create_table_default_numsegments,
+		GP_DEFAULT_NUMSEGMENTS_FULL, GP_DEFAULT_NUMSEGMENTS_MINIMAL, INT_MAX,
 		check_gp_target_numsegments, NULL, NULL
 	},
 

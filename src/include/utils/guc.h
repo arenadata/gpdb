@@ -623,8 +623,6 @@ extern bool gp_allow_date_field_width_5digits;
 
 extern bool gp_enable_blkdir_sampling;
 
-extern int gp_target_numsegments;
-
 typedef enum
 {
 	INDEX_CHECK_NONE,

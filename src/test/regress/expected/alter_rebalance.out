@@ -77,19 +77,33 @@ insert into multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from g
 -- Now check shrink of the created tables into 2 segments
 set gp_target_numsegments = 2;
 alter table table_distr_hashed rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_hashed_ao_row rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_hashed_ao_col rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_random rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_random_ao_row rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_random_ao_col rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_replicated rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_replicated_ao_row rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table table_distr_replicated_ao_col rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table part_range_table_distr_hashed rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table part_range_table_distr_random rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table part_list_table_distr_hashed rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table part_list_table_distr_random rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 alter table multi_part_table_distr_hashed rebalance; 
+NOTICE:  REBALANCE to current default target number of segments 2
 -- Verify that data is presented only on segments #0 and #1
 select a, gp_segment_id from table_distr_hashed order by a;
  a  | gp_segment_id 
@@ -1457,6 +1471,7 @@ select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id or
 begin;
 set gp_target_numsegments = 2;
 alter table table_distr_hashed rebalance;
+NOTICE:  REBALANCE to current default target number of segments 2
 select count(1), gp_segment_id from table_distr_hashed group by gp_segment_id order by gp_segment_id;
  count | gp_segment_id 
 -------+---------------

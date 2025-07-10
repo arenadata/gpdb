@@ -5411,10 +5411,9 @@ adjust_modifytable_subpaths(PlannerInfo *root, CmdType operation,
 		 * to achieve by the shrink operation.
 		 */
 		if (targetPolicyType == POLICYTYPE_PARTITIONED &&
-		   gp_table_shrink_in_progress &&
-		   gp_target_numsegments != 0)
+		   gp_segment_number_for_table_shrink > 0)
 			targetPolicy->numsegments =
-				Min(targetPolicy->numsegments, gp_target_numsegments);
+				Min(targetPolicy->numsegments, gp_segment_number_for_table_shrink);
 
 		numsegments = Max(targetPolicy->numsegments, numsegments);
 

@@ -5299,22 +5299,22 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_MISC;
 			break;
 		case AT_Rebalance:
+			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE | ATT_MATVIEW);
+
 			Assert(IsA(cmd->def, Integer));
 			int targetNumSegments = intVal(cmd->def);
 
 			if (targetNumSegments <= 0)
 			{
-				targetNumSegments = gp_target_numsegments;
+				targetNumSegments = GP_POLICY_DEFAULT_NUMSEGMENTS();
+
+				elog(NOTICE,
+					 "REBALANCE to current default target number of segments %d",
+					 targetNumSegments);
+
 				pfree(cmd->def);
 				cmd->def = (Node *) makeInteger(targetNumSegments);
 			}
-
-			if (targetNumSegments <= 0)
-				ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_CONFIGURED),
-					errmsg("'gp_target_numsegments' is not set")));
-
-			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE | ATT_MATVIEW);
 
 			if (!recursing)
 			{
@@ -17545,6 +17545,10 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 		char *nsp = get_namespace_name(RelationGetNamespace(rel));
 		char *relname = RelationGetRelationName(rel);
 
+		/*
+		 * 'gp_dist_random' will cause fallback to Postgres planner,
+		 * so no need to tweak 'optimizer' value.
+		 */
 		appendStringInfo(&sqlstmtInsert,
 						 "insert into %s.%s select * "
 						 "from gp_dist_random('%s.%s') "
@@ -17553,14 +17557,7 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 						 nsp, relname,
 						 policy->numsegments);
 
-		bool		save_optimizer_guc_value = optimizer;
-		bool		save_redistribute_guc_value = gp_force_random_redistribution;
-		int			save_gp_target_numsegments = gp_target_numsegments;
-
-		gp_force_random_redistribution = true;
-		optimizer = false;
-		gp_table_shrink_in_progress = true;
-		gp_target_numsegments = policy->numsegments;
+		gp_segment_number_for_table_shrink = policy->numsegments;
 
 		PG_TRY();
 		{
@@ -17590,10 +17587,7 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 
 			pfree(sqlstmtInsert.data);
 
-			optimizer = save_optimizer_guc_value;
-			gp_force_random_redistribution = save_redistribute_guc_value;
-			gp_table_shrink_in_progress = false;
-			gp_target_numsegments = save_gp_target_numsegments;
+			gp_segment_number_for_table_shrink = 0;
 
 			/* Carry on with error handling. */
 			PG_RE_THROW();
@@ -17602,10 +17596,7 @@ ATExecShrinkTable(Relation rel, GpPolicy *policy)
 
 		pfree(sqlstmtInsert.data);
 
-		optimizer = save_optimizer_guc_value;
-		gp_force_random_redistribution = save_redistribute_guc_value;
-		gp_table_shrink_in_progress = false;
-		gp_target_numsegments = save_gp_target_numsegments;
+		gp_segment_number_for_table_shrink = 0;
 	}
 }
 
