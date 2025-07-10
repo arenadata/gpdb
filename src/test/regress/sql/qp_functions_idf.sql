@@ -127,7 +127,7 @@ select percentile_disc(0.95) within group( order by c) from perctnum;
 
 select gp_percentile_disc(0::numeric, 0, 0, 0);
 
-select gp_percentile_disc_transition('1'::numeric, '1'::numeric, 1, 1, 1);
+select gp_percentile_disc_transition(1::numeric, 1::numeric, 1, 1, 1);
 
 --SQL with <> operator with IDF in HAVING clause
 

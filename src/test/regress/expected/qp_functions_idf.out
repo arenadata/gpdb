@@ -525,7 +525,7 @@ select gp_percentile_disc(0::numeric, 0, 0, 0);
                    
 (1 row)
 
-select gp_percentile_disc_transition('1'::numeric, '1'::numeric, 1, 1, 1);
+select gp_percentile_disc_transition(1::numeric, 1::numeric, 1, 1, 1);
  gp_percentile_disc_transition 
 -------------------------------
                              1
