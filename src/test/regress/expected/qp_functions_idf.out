@@ -180,6 +180,12 @@ select c, percentile_cont(0.9999) within group (order by ts2::timestamptz -ts1::
  10 | @ 1469 days 19 hours 59 mins 50 secs
 (10 rows)
 
+select gp_percentile_cont_timestamptz_transition('2006-01-01 13:10:13'::timestamptz, '2006-01-01 13:10:13'::timestamptz, 1, 1, 1);
+ gp_percentile_cont_timestamptz_transition 
+-------------------------------------------
+ 2006-01-01 13:10:13-08
+(1 row)
+
 -- DATE
 -- The test frame work now does not sort the output of
 -- `select ... order by` statement. This is not enough.
@@ -395,6 +401,12 @@ select c, percentile_cont(0.9999) within group (order by ts2::timestamp - time '
  10 | 2010-01-19 22:58:37
 (10 rows)
 
+select gp_percentile_cont_timestamp_transition('2006-01-01 13:10:13'::timestamp, '2006-01-01 13:10:13'::timestamp, 1, 1, 1);
+ gp_percentile_cont_timestamp_transition 
+-----------------------------------------
+ 2006-01-01 13:10:13
+(1 row)
+
 -- TIME
 select median(  time '01:00' + interval '3 hours') ;
   median   
@@ -481,6 +493,12 @@ select c, percentile_cont(0.9999) within group (order by ((days1 + days2) * 1.2)
  10 | @ 12 days 20 hours 28 mins 24 secs
 (10 rows)
 
+select gp_percentile_cont_interval_transition('1 hour'::interval, '1 hour'::interval, 1, 1, 1);
+ gp_percentile_cont_interval_transition 
+----------------------------------------
+ @ 1 hour
+(1 row)
+
 --numeric types
 select b, percentile_cont(0.9876) within group( order by c::numeric - 2.8765::numeric) from perctnum group by b order by b limit 10;
  b | percentile_cont 
@@ -511,6 +529,12 @@ select percentile_cont(0.95) within group( order by c) from perctnum;
  percentile_cont 
 -----------------
       190.090495
+(1 row)
+
+select gp_percentile_cont_float8_transition(1::float8, 1::float8, 1, 1, 1);
+ gp_percentile_cont_float8_transition 
+--------------------------------------
+                                    1
 (1 row)
 
 select percentile_disc(0.95) within group( order by c) from perctnum;
