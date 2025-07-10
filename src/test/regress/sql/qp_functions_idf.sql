@@ -53,6 +53,8 @@ select c , median( tstz2 - tstz1 ) from perctint group by c order by c limit 10 
 
 select c, percentile_cont(0.9999) within group (order by ts2::timestamptz -ts1:: timestamptz) from perctint group by c order by 2 limit 10;
 
+select gp_percentile_cont('2006-01-01 13:10:13'::timestamptz, 0, 0, 0);
+
 select gp_percentile_cont_timestamptz_transition(NULL::timestamptz, '2006-01-01 13:10:13'::timestamptz, 1, 1, 1);
 
 -- DATE
@@ -95,6 +97,8 @@ select median(ts2::timestamp + time '   12:00'), percentile_cont(0.9999) within 
 
 select c, percentile_cont(0.9999) within group (order by ts2::timestamp - time '10:11:26' ) from perctint group by c  order by c limit 10;
 
+select gp_percentile_cont('2006-01-01 13:10:13'::timestamp, 0, 0, 0);
+
 select gp_percentile_cont_timestamp_transition(NULL::timestamp, '2006-01-01 13:10:13'::timestamp, 1, 1, 1);
 
 -- TIME
@@ -132,6 +136,8 @@ select median( c::numeric + (0.2*0.99):: numeric) from perctnum;
 select percentile_cont(1.00) within group( order by b::float8 + (110 / 13)::float8) from perctnum; 
 
 select percentile_cont(0.95) within group( order by c) from perctnum;
+
+select gp_percentile_cont(0::float8, 0, 0, 0);
 
 select gp_percentile_cont_float8_transition(NULL::float8, 1::float8, 1, 1, 1);
 
