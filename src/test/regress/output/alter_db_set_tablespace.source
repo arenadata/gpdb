@@ -1069,7 +1069,7 @@ ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 1802)
 ERROR:  fault triggered, fault name:'start_prepare' fault type:'panic'  (seg0 127.0.0.1:25432 pid=61308)
 -- Wait for primary on segment 0 to recover after panics
-\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -Xc 'SELECT true AS ready'; do sleep 1; done"
+\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready'; do sleep 1; done"
  ready 
 -------
  t
@@ -1212,7 +1212,7 @@ ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 3078)
 ERROR:  fault triggered, fault name:'after_xlog_xact_prepare_flushed' fault type:'panic'  (seg0 127.0.0.1:25432 pid=78007)
 -- Wait for primary on segment 0 to recover after panics
-\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -Xc 'SELECT true AS ready'; do sleep 1; done"
+\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready'; do sleep 1; done"
  ready 
 -------
  t
