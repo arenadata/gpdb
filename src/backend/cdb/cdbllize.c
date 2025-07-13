@@ -112,6 +112,7 @@ typedef struct decorate_subplans_with_motions_context
 	/* Current position in the tree. */
 	int			sliceDepth;
 	Flow	   *currentPlanFlow;
+	bool		shouldOmitMaterial;
 } decorate_subplans_with_motions_context;
 
 /* State for the recursive build_slice_table() function. */
@@ -725,6 +726,7 @@ cdbllize_decorate_subplans_with_motions(PlannerInfo *root, Plan *plan)
 	planner_init_plan_tree_base(&context.base, root);
 	context.sliceDepth = 0;
 	context.subplan_workingQueue = NIL;
+	context.shouldOmitMaterial = false;
 
 	nsubplans = list_length(root->glob->subplans);
 	context.subplans = (decorate_subplan_info *)
@@ -989,10 +991,10 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
 		 * For non-top slice, if this motion is QE singleton and subplan's locus
 		 * is CdbLocusType_SegmentGeneral, omit this motion.
 		 */
-		shouldOmit |= context->sliceDepth > 0 &&
-					  context->currentPlanFlow->flotype == FLOW_SINGLETON &&
+		shouldOmit |= context->currentPlanFlow->flotype == FLOW_SINGLETON &&
 					  context->currentPlanFlow->segindex == 0 &&
-					  motion->plan.lefttree->flow->locustype == CdbLocusType_SegmentGeneral;
+					  (motion->plan.lefttree->flow->locustype == CdbLocusType_SegmentGeneral ||
+					   motion->plan.lefttree->flow->locustype == CdbLocusType_SingleQE);
 
 		if (shouldOmit)
 		{
@@ -1006,6 +1008,7 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
 			child->initPlan = list_concat(child->initPlan, motion->plan.initPlan);
 
 			newnode = (Node *) child;
+			context->shouldOmitMaterial = true;
 		}
 		else
 		{
@@ -1023,6 +1026,16 @@ fix_outer_query_motions_mutator(Node *node, decorate_subplans_with_motions_conte
 		if (plan->flow != NULL && plan->flow->locustype != CdbLocusType_OuterQuery)
 			context->currentPlanFlow = plan->flow;
 		newnode = plan_tree_mutator(node, fix_outer_query_motions_mutator, context, false);
+
+		/* If the underlying node was Motion, then omit Matierilze */
+		if (IsA(newnode, Material) && context->shouldOmitMaterial)
+		{
+			Plan *materialPlan = (Plan *) newnode;
+			materialPlan->initPlan = list_concat(materialPlan->initPlan, materialPlan->lefttree->initPlan);			
+			materialPlan = materialPlan->lefttree;
+			newnode = (Node *) materialPlan;
+		}
+		context->shouldOmitMaterial = false;
 		context->currentPlanFlow = saveCurrentPlanFlow;
 	}
 

@@ -393,3 +393,38 @@ select sum(tenthous) as s1, sum(tenthous) + random()*0 as s2
  45020 | 45020
 (3 rows)
 
+-- Check the operation of the parameterized Limit in a subquery with a volatile function
+create table limit_tbl(i int) distributed by (i);
+insert into limit_tbl select * from generate_series(1, 3) i;
+create function f(i int) returns int language plpgsql as $$ begin return i; end; $$;
+explain (verbose, costs off)
+select (select f(a) from generate_series(1, 4) a limit 1 offset limit_tbl.i) as r from limit_tbl;
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Result
+   Output: (SubPlan 1)
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         Output: limit_tbl.i
+         ->  Seq Scan on public.limit_tbl
+               Output: limit_tbl.i
+   SubPlan 1
+     ->  Result
+           Output: f(generate_series.generate_series)
+           ->  Limit
+                 Output: generate_series.generate_series
+                 ->  Function Scan on pg_catalog.generate_series
+                       Output: generate_series.generate_series
+                       Function Call: generate_series(1, 4)
+ Optimizer: GPORCA
+(15 rows)
+
+select (select f(a) from generate_series(1, 4) a limit 1 offset limit_tbl.i) as r from limit_tbl;
+ r 
+---
+ 2
+ 3
+ 4
+(3 rows)
+
+drop function f(int);
+drop table limit_tbl;

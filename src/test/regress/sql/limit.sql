@@ -147,3 +147,19 @@ select sum(tenthous) as s1, sum(tenthous) + random()*0 as s2
 
 select sum(tenthous) as s1, sum(tenthous) + random()*0 as s2
   from tenk1 group by thousand order by thousand limit 3;
+
+-- Check the operation of the parameterized Limit in a subquery with a volatile function
+-- start_ignore
+drop table if exists limit_tbl;
+drop function if exists f(int);
+-- end_ignore
+create table limit_tbl(i int) distributed by (i);
+insert into limit_tbl select * from generate_series(1, 3) i;
+create function f(i int) returns int language plpgsql as $$ begin return i; end; $$;
+
+explain (verbose, costs off)
+select (select f(a) from generate_series(1, 4) a limit 1 offset limit_tbl.i) as r from limit_tbl;
+select (select f(a) from generate_series(1, 4) a limit 1 offset limit_tbl.i) as r from limit_tbl;
+
+drop function f(int);
+drop table limit_tbl;

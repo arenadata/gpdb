@@ -522,9 +522,21 @@ bring_to_outer_query(PlannerInfo *root, RelOptInfo *rel, List *outer_quals)
 		Path	   *path;
 		CdbPathLocus outerquery_locus;
 
-		if (CdbPathLocus_IsGeneral(origpath->locus) ||
-			CdbPathLocus_IsOuterQuery(origpath->locus))
+		/*
+		 * We can change the locus and add Motion here if we need OuterQuery.
+		 * However, if there is a volatile function in TL, we should do this
+		 * later. The reason for this is that the volatile function in this
+		 * case can be in the Result node (for each segment). We want the
+		 * volatile function to be executed once if possible. So, the locus
+		 * change and Motion addition occurs later after the scan/join path
+		 * is generated (see cdbpath_create_motion_to_outer_query()).
+		*/
+		if (CdbPathLocus_IsGeneral(origpath->locus) || CdbPathLocus_IsOuterQuery(origpath->locus) ||
+		   ((CdbPathLocus_IsSegmentGeneral(origpath->locus) || CdbPathLocus_IsSingleQE(origpath->locus))
+		     && contain_volatile_functions((Node *) root->processed_tlist)))
+		{
 			path = origpath;
+		}
 		else
 		{
 			/*

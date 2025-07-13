@@ -3836,8 +3836,8 @@ with cte as (
 ) select * from t1
 where t1.i in (select i from cte where cte.i = t1.j)
 order by 1;
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    Merge Key: t1.i
    ->  Sort
@@ -3847,13 +3847,12 @@ order by 1;
                SubPlan 1
                  ->  Result
                        Filter: (cte.i = t1.j)
-                       ->  Materialize
-                             ->  Subquery Scan on cte
-                                   ->  Shared Scan (share slice:id 1:0)
-                                         ->  Insert on with_dml_dr
-                                               ->  Function Scan on generate_series i
+                       ->  Subquery Scan on cte
+                             ->  Shared Scan (share slice:id 1:0)
+                                   ->  Insert on with_dml_dr
+                                         ->  Function Scan on generate_series i
  Optimizer: Postgres-based planner
-(15 rows)
+(14 rows)
 
 with cte as (
     insert into with_dml_dr

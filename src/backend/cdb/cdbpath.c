@@ -2405,6 +2405,15 @@ try_redistribute(PlannerInfo *root, CdbpathMfjRel *g, CdbpathMfjRel *o,
 	return false;
 }
 
+Path *
+cdbpath_create_motion_to_outer_query(PlannerInfo *root,
+									 Path *subpath)
+{
+	CdbPathLocus outerQueryLocus;
+	CdbPathLocus_MakeOuterQuery(&outerQueryLocus);
+	return (Path *) make_motion_path(root, subpath, outerQueryLocus, false, NULL);
+}
+
 /*
  * Add a suitable Motion Path so that the input tuples from 'subpath' are
  * distributed correctly for insertion into target table.

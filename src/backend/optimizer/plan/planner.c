@@ -2601,6 +2601,42 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 									   scanjoin_target_same_exprs);
 
 		/*
+		 * If the TL of the subquery contains a volatile function and the data is available
+		 * on all segments, we should change the path locus to SingleQE in order to get a
+		 * single dataset on all segments. We do not take this into account if the final
+		 * locus is Replicated (this case is processed later).
+		*/
+		if (contain_volatile_functions((Node *) scanjoin_target->exprs) && !CdbPathLocus_IsReplicated(root->final_locus))
+		{
+			foreach(lc, current_rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(lc);
+				if (CdbPathLocus_IsGeneral(path->locus) || CdbPathLocus_IsSegmentGeneral(path->locus))
+				{
+					CdbPathLocus_MakeSingleQE(&(path->locus), getgpsegmentCount());
+				}
+			}
+		}
+		/*
+		 * If the subquery contains parameterized operators (correlated), the locus should be
+		 * changed to OuterQuery. We do it here, instead of bring_to_outer_query().
+		*/
+		if (root->is_correlated_subplan && !CdbPathLocus_IsReplicated(root->final_locus))
+		{
+			foreach(lc, current_rel->pathlist)
+			{
+				Path *path = (Path *) lfirst(lc);
+
+				if (CdbPathLocus_IsSingleQE(path->locus))
+				{
+					Path *motion_path = cdbpath_create_motion_to_outer_query(root, path);
+					Path *material_path = (Path *) create_material_path(root, motion_path->parent, motion_path);
+					lfirst(lc) = material_path;
+				}
+			}
+			set_cheapest(current_rel);
+		}
+		/*
 		 * Save the various upper-rel PathTargets we just computed into
 		 * root->upper_targets[].  The core code doesn't use this, but it
 		 * provides a convenient place for extensions to get at the info.  For
