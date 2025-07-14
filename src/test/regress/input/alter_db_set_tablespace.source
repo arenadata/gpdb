@@ -656,7 +656,7 @@ SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configura
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
 -- Wait for primary on segment 0 to recover after panics
-\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready'; do sleep 1; done"
+\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready' 2>/dev/null; do sleep 1; done"
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
@@ -728,7 +728,7 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
 -- Wait for primary on segment 0 to recover after panics
-\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready'; do sleep 1; done"
+\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready' 2>/dev/null; do sleep 1; done"
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
