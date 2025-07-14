@@ -4,13 +4,9 @@
  * External declarations pertaining to backend/utils/misc/guc.c and
  * backend/utils/misc/guc-file.l
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2007-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Copyright (c) 2000-2019, PostgreSQL Global Development Group
-=======
  * Copyright (c) 2000-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * src/include/utils/guc.h
