@@ -29,7 +29,8 @@
 #include "storage/lock.h"
 #include "utils/relcache.h"
 
-<<<<<<< HEAD
+struct AlterTableUtilityContext;	/* avoid including tcop/utility.h here */
+
 /* Convenient macro for checking AO AMs */
 #define IsAccessMethodAO(am_oid) \
 	(am_oid == AO_ROW_TABLE_AM_OID || am_oid == AO_COLUMN_TABLE_AM_OID)
@@ -37,10 +38,6 @@
 extern const char *synthetic_sql;
 
 extern void	DefineExternalRelation(CreateExternalStmt *stmt);
-=======
-struct AlterTableUtilityContext;	/* avoid including tcop/utility.h here */
-
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 extern ObjectAddress DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 									ObjectAddress *typaddress, const char *queryString, bool dispatch,
