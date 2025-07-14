@@ -23,9 +23,7 @@
 #include "storage/buf.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
-<<<<<<< HEAD
 #include "utils/snapshot.h"
-=======
 
 /*
  * Flags for amparallelvacuumoptions to control the participation of bulkdelete
@@ -65,7 +63,6 @@
 
 /* value for checking vacuum flags */
 #define VACUUM_OPTION_MAX_VALID_VALUE		((1 << 3) - 1)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 /*----------
  * ANALYZE builds one of these structs for each attribute (column) that is
