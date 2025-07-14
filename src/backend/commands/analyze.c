@@ -3,6 +3,7 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
+<<<<<<< HEAD
  *
  * There are a few things in Greenplum that make this more complicated
  * than in upstream:
@@ -54,6 +55,9 @@
  * TODO: explain how this works.
  *
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
+=======
+ * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -85,6 +89,7 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_statistic_ext.h"
 #include "commands/dbcommands.h"
+#include "commands/progress.h"
 #include "commands/tablecmds.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
@@ -393,6 +398,8 @@ analyze_rel_internal(Oid relid, RangeVar *relation,
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 	MyPgXact->vacuumFlags |= PROC_IN_ANALYZE;
 	LWLockRelease(ProcArrayLock);
+	pgstat_progress_start_command(PROGRESS_COMMAND_ANALYZE,
+								  RelationGetRelid(onerel));
 
 	/*
 	 * Do the normal non-recursive ANALYZE.  We can skip this for partitioned
@@ -438,6 +445,8 @@ analyze_rel_internal(Oid relid, RangeVar *relation,
 	 * expose us to concurrent-update failures in update_attstats.)
 	 */
 	relation_close(onerel, NoLock);
+
+	pgstat_progress_end_command();
 
 	/*
 	 * Reset my PGXACT flag.  Note: we need this here, and not in vacuum_rel,
@@ -682,6 +691,7 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	/*
 	 * Maintain information if the row of a column exceeds WIDTH_THRESHOLD
 	 */
+<<<<<<< HEAD
 	colLargeRowIndexes = (Bitmapset **) palloc0(sizeof(Bitmapset *) * onerel->rd_att->natts);
 	colLargeRowLength = (double *)palloc0(sizeof(double) * onerel->rd_att->natts);
 
@@ -730,6 +740,16 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		if (ctx)
 			MemoryContextSwitchTo(anl_context);
 	}
+=======
+	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
+	pgstat_progress_update_param(PROGRESS_ANALYZE_PHASE,
+								 inh ? PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS_INH :
+								 PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS);
+	if (inh)
+		numrows = acquire_inherited_sample_rows(onerel, elevel,
+												rows, targrows,
+												&totalrows, &totaldeadrows);
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	else
 	{
 		/* If we're just merging stats from leafs, these are not needed either */
@@ -766,6 +786,9 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		MemoryContext col_context,
 					old_context;
 		bool		build_ext_stats;
+
+		pgstat_progress_update_param(PROGRESS_ANALYZE_PHASE,
+									 PROGRESS_ANALYZE_PHASE_COMPUTE_STATS);
 
 		col_context = AllocSetContextCreate(anl_context,
 											"Analyze Column",
@@ -959,6 +982,9 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 			BuildRelationExtStatistics(onerel, totalrows, numrows, rows,
 									   attr_cnt, vacattrstats);
 	}
+
+	pgstat_progress_update_param(PROGRESS_ANALYZE_PHASE,
+								 PROGRESS_ANALYZE_PHASE_FINALIZE_ANALYZE);
 
 	/*
 	 * Update pages/tuples stats in pg_class ... but not if we're doing
@@ -1450,6 +1476,8 @@ acquire_sample_rows(Relation onerel, int elevel,
 	ReservoirStateData rstate;
 	TupleTableSlot *slot;
 	TableScanDesc scan;
+	BlockNumber nblocks;
+	BlockNumber blksdone = 0;
 
 	Assert(targrows > 0);
 
@@ -1493,7 +1521,12 @@ acquire_sample_rows(Relation onerel, int elevel,
 	OldestXmin = GetOldestXmin(onerel, PROCARRAY_FLAGS_VACUUM);
 
 	/* Prepare for sampling block numbers */
-	BlockSampler_Init(&bs, totalblocks, targrows, random());
+	nblocks = BlockSampler_Init(&bs, totalblocks, targrows, random());
+
+	/* Report sampling block numbers */
+	pgstat_progress_update_param(PROGRESS_ANALYZE_BLOCKS_TOTAL,
+								 nblocks);
+
 	/* Prepare for sampling rows */
 	reservoir_init_selection_state(&rstate, targrows);
 
@@ -1554,6 +1587,9 @@ acquire_sample_rows(Relation onerel, int elevel,
 
 			samplerows += 1;
 		}
+
+		pgstat_progress_update_param(PROGRESS_ANALYZE_BLOCKS_DONE,
+									 ++blksdone);
 	}
 
 	ExecDropSingleTupleTableSlot(slot);
@@ -1815,6 +1851,8 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 	 * rels have radically different free-space percentages, but it's not
 	 * clear that it's worth working harder.)
 	 */
+	pgstat_progress_update_param(PROGRESS_ANALYZE_CHILD_TABLES_TOTAL,
+								 nrels);
 	numrows = 0;
 	*totalrows = 0;
 	*totaldeadrows = 0;
@@ -1823,6 +1861,9 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 		Relation	childrel = rels[i];
 		AcquireSampleRowsFunc acquirefunc = acquirefuncs[i];
 		double		childblocks = relblocks[i];
+
+		pgstat_progress_update_param(PROGRESS_ANALYZE_CURRENT_CHILD_TABLE_RELID,
+									 RelationGetRelid(childrel));
 
 		if (childblocks > 0)
 		{
@@ -1880,6 +1921,8 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
 		 * pointers to their TOAST tables in the sampled rows.
 		 */
 		table_close(childrel, NoLock);
+		pgstat_progress_update_param(PROGRESS_ANALYZE_CHILD_TABLES_DONE,
+									 i + 1);
 	}
 
 	return numrows;

@@ -24,7 +24,7 @@
  * should be killed by SIGQUIT and then a recovery cycle started.
  *
  *
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -34,16 +34,13 @@
  */
 #include "postgres.h"
 
-#include <signal.h>
-#include <sys/time.h>
-#include <unistd.h>
-
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
+#include "postmaster/interrupt.h"
 #include "storage/buf_internals.h"
 #include "storage/bufmgr.h"
 #include "storage/condition_variable.h"
@@ -87,18 +84,6 @@ int			BgWriterDelay = 200;
 static TimestampTz last_snapshot_ts;
 static XLogRecPtr last_snapshot_lsn = InvalidXLogRecPtr;
 
-/*
- * Flags set by interrupt handlers for later service in the main loop.
- */
-static volatile sig_atomic_t got_SIGHUP = false;
-static volatile sig_atomic_t shutdown_requested = false;
-
-/* Signal handlers */
-
-static void bg_quickdie(SIGNAL_ARGS);
-static void BgSigHupHandler(SIGNAL_ARGS);
-static void ReqShutdownHandler(SIGNAL_ARGS);
-
 
 /*
  * Main entry point for bgwriter process
@@ -117,10 +102,10 @@ BackgroundWriterMain(void)
 	/*
 	 * Properly accept or ignore signals that might be sent to us.
 	 */
-	pqsignal(SIGHUP, BgSigHupHandler);	/* set flag to read config file */
+	pqsignal(SIGHUP, SignalHandlerForConfigReload);
 	pqsignal(SIGINT, SIG_IGN);
-	pqsignal(SIGTERM, ReqShutdownHandler);	/* shutdown */
-	pqsignal(SIGQUIT, bg_quickdie); /* hard crash time */
+	pqsignal(SIGTERM, SignalHandlerForShutdownRequest);
+	pqsignal(SIGQUIT, SignalHandlerForCrashExit);
 	pqsignal(SIGALRM, SIG_IGN);
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, procsignal_sigusr1_handler);
@@ -244,21 +229,7 @@ BackgroundWriterMain(void)
 		/* Clear any already-pending wakeups */
 		ResetLatch(MyLatch);
 
-		if (got_SIGHUP)
-		{
-			got_SIGHUP = false;
-			ProcessConfigFile(PGC_SIGHUP);
-		}
-		if (shutdown_requested)
-		{
-			/*
-			 * From here on, elog(ERROR) should end with exit(1), not send
-			 * control back to the sigsetjmp block above
-			 */
-			ExitOnAnyError = true;
-			/* Normal exit from the bgwriter is here */
-			proc_exit(0);		/* done */
-		}
+		HandleMainLoopInterrupts();
 
 		/*
 		 * Do one cycle of dirty-buffer writing.
@@ -371,6 +342,7 @@ BackgroundWriterMain(void)
 		prev_hibernate = can_hibernate;
 	}
 }
+<<<<<<< HEAD
 
 
 /* --------------------------------
@@ -429,3 +401,5 @@ ReqShutdownHandler(SIGNAL_ARGS)
 
 	errno = save_errno;
 }
+=======
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268

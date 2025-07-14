@@ -3,8 +3,12 @@
 /*
  *	pg_upgrade.h
  *
+<<<<<<< HEAD
  *	Portions Copyright (c) 2016-Present, VMware, Inc. or its affiliates
  *	Copyright (c) 2010-2019, PostgreSQL Global Development Group
+=======
+ *	Copyright (c) 2010-2020, PostgreSQL Global Development Group
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  *	src/bin/pg_upgrade/pg_upgrade.h
  */
 

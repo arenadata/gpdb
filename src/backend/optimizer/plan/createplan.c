@@ -5,9 +5,13 @@
  *	  Planning is complete, we just need to convert the selected
  *	  Path into a Plan.
  *
+<<<<<<< HEAD
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
+=======
+ * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1231,6 +1235,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 	plan->plan.qual = NIL;
 	plan->plan.lefttree = NULL;
 	plan->plan.righttree = NULL;
+	plan->apprelids = rel->relids;
 
 	if (pathkeys != NIL)
 	{
@@ -1421,6 +1426,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
 	plan->qual = NIL;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
+	node->apprelids = rel->relids;
 
 	/*
 	 * Compute sort column info, and adjust MergeAppend's tlist as needed.

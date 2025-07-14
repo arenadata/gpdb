@@ -3,7 +3,11 @@
  * be-secure-gssapi.c
  *  GSSAPI encryption support
  *
+<<<<<<< HEAD
  * Portions Copyright (c) 2018-2019, PostgreSQL Global Development Group
+=======
+ * Portions Copyright (c) 2018-2020, PostgreSQL Global Development Group
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  *
  * IDENTIFICATION
  *  src/backend/libpq/be-secure-gssapi.c
@@ -215,9 +219,12 @@ be_gssapi_write(Port *port, void *ptr, size_t len)
 
 		memcpy(PqGSSSendBuffer + PqGSSSendLength, output.value, output.length);
 		PqGSSSendLength += output.length;
+<<<<<<< HEAD
 
 		/* Release buffer storage allocated by GSSAPI */
 		gss_release_buffer(&minor, &output);
+=======
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	}
 
 	/* If we get here, our counters should all match up. */
@@ -594,10 +601,14 @@ secure_open_gssapi(Port *port)
 				 */
 				if (ret < 0 &&
 					!(errno == EWOULDBLOCK || errno == EAGAIN || errno == EINTR))
+<<<<<<< HEAD
 				{
 					gss_release_buffer(&minor, &output);
 					return -1;
 				}
+=======
+					return -1;
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 				/* Wait and retry if we couldn't write yet */
 				if (ret <= 0)

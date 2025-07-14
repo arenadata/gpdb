@@ -3,7 +3,7 @@
  * detoast.c
  *	  Retrieve compressed or external variable size attributes.
  *
- * Copyright (c) 2000-2019, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2020, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/access/common/detoast.c
@@ -14,18 +14,17 @@
 #include "postgres.h"
 
 #include "access/detoast.h"
-#include "access/genam.h"
-#include "access/heaptoast.h"
 #include "access/table.h"
+#include "access/tableam.h"
 #include "access/toast_internals.h"
 #include "common/pg_lzcompress.h"
 #include "utils/expandeddatum.h"
-#include "utils/fmgroids.h"
 #include "utils/rel.h"
 
 static struct varlena *toast_fetch_datum(struct varlena *attr);
 static struct varlena *toast_fetch_datum_slice(struct varlena *attr,
-											   int32 sliceoffset, int32 length);
+											   int32 sliceoffset,
+											   int32 slicelength);
 static struct varlena *toast_decompress_datum(struct varlena *attr);
 static struct varlena *toast_decompress_datum_slice(struct varlena *attr, int32 slicelength);
 
@@ -432,24 +431,9 @@ static struct varlena *
 toast_fetch_datum(struct varlena *attr)
 {
 	Relation	toastrel;
-	Relation   *toastidxs;
-	ScanKeyData toastkey;
-	SysScanDesc toastscan;
-	HeapTuple	ttup;
-	TupleDesc	toasttupDesc;
 	struct varlena *result;
 	struct varatt_external toast_pointer;
-	int32		ressize;
-	int32		residx,
-				nextidx;
-	int32		numchunks;
-	Pointer		chunk;
-	bool		isnull;
-	char	   *chunkdata;
-	int32		chunksize;
-	int			num_indexes;
-	int			validIndex;
-	SnapshotData SnapshotToast;
+	int32		attrsize;
 
 	if (!VARATT_IS_EXTERNAL_ONDISK(attr))
 		elog(ERROR, "toast_fetch_datum shouldn't be called for non-ondisk datums");
@@ -464,28 +448,33 @@ toast_fetch_datum(struct varlena *attr)
 	/* Must copy to access aligned fields */
 	VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr);
 
+<<<<<<< HEAD
 	ressize = toast_pointer.va_extsize;
 	numchunks = ((ressize - 1) / actual_max_chunk_size) + 1;
+=======
+	attrsize = toast_pointer.va_extsize;
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
-	result = (struct varlena *) palloc(ressize + VARHDRSZ);
+	result = (struct varlena *) palloc(attrsize + VARHDRSZ);
 
 	if (VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer))
-		SET_VARSIZE_COMPRESSED(result, ressize + VARHDRSZ);
+		SET_VARSIZE_COMPRESSED(result, attrsize + VARHDRSZ);
 	else
-		SET_VARSIZE(result, ressize + VARHDRSZ);
+		SET_VARSIZE(result, attrsize + VARHDRSZ);
+
+	if (attrsize == 0)
+		return result;		/* Probably shouldn't happen, but just in case. */
 
 	/*
 	 * Open the toast relation and its indexes
 	 */
 	toastrel = table_open(toast_pointer.va_toastrelid, AccessShareLock);
-	toasttupDesc = toastrel->rd_att;
 
-	/* Look for the valid index of the toast relation */
-	validIndex = toast_open_indexes(toastrel,
-									AccessShareLock,
-									&toastidxs,
-									&num_indexes);
+	/* Fetch all chunks */
+	table_relation_fetch_toast_slice(toastrel, toast_pointer.va_valueid,
+									 attrsize, 0, attrsize, result);
 
+<<<<<<< HEAD
 	/*
 	 * Setup a scan key to fetch from the index by va_valueid
 	 */
@@ -625,6 +614,9 @@ toast_fetch_datum(struct varlena *attr)
 	 */
 	systable_endscan_ordered(toastscan);
 	toast_close_indexes(toastidxs, num_indexes, AccessShareLock);
+=======
+	/* Close toast table */
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	table_close(toastrel, AccessShareLock);
 
 	return result;
@@ -642,35 +634,13 @@ toast_fetch_datum(struct varlena *attr)
  * ----------
  */
 static struct varlena *
-toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
+toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset,
+						int32 slicelength)
 {
 	Relation	toastrel;
-	Relation   *toastidxs;
-	ScanKeyData toastkey[3];
-	int			nscankeys;
-	SysScanDesc toastscan;
-	HeapTuple	ttup;
-	TupleDesc	toasttupDesc;
 	struct varlena *result;
 	struct varatt_external toast_pointer;
 	int32		attrsize;
-	int32		residx;
-	int32		nextidx;
-	int			numchunks;
-	int			startchunk;
-	int			endchunk;
-	int32		startoffset;
-	int32		endoffset;
-	int			totalchunks;
-	Pointer		chunk;
-	bool		isnull;
-	char	   *chunkdata;
-	int32		chunksize;
-	int32		chcpystrt;
-	int32		chcpyend;
-	int			num_indexes;
-	int			validIndex;
-	SnapshotData SnapshotToast;
 
 	/*
 	 * GPDB: start with the assumption that chunks max out at
@@ -697,7 +667,7 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	if (sliceoffset >= attrsize)
 	{
 		sliceoffset = 0;
-		length = 0;
+		slicelength = 0;
 	}
 
 	/*
@@ -705,34 +675,37 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	 * rawsize tracking amount of raw data, which is stored at the beginning
 	 * as an int32 value).
 	 */
-	if (VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer) && length > 0)
-		length = length + sizeof(int32);
+	if (VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer) && slicelength > 0)
+		slicelength = slicelength + sizeof(int32);
 
-	if (((sliceoffset + length) > attrsize) || length < 0)
-		length = attrsize - sliceoffset;
+	if (((sliceoffset + slicelength) > attrsize) || slicelength < 0)
+		slicelength = attrsize - sliceoffset;
 
-	result = (struct varlena *) palloc(length + VARHDRSZ);
+	result = (struct varlena *) palloc(slicelength + VARHDRSZ);
 
 	if (VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer))
-		SET_VARSIZE_COMPRESSED(result, length + VARHDRSZ);
+		SET_VARSIZE_COMPRESSED(result, slicelength + VARHDRSZ);
 	else
-		SET_VARSIZE(result, length + VARHDRSZ);
+		SET_VARSIZE(result, slicelength + VARHDRSZ);
 
-	if (length == 0)
+	if (slicelength == 0)
 		return result;			/* Can save a lot of work at this point! */
 
+<<<<<<< HEAD
 	/*
 	 * Open the toast relation and its indexes
 	 */
+=======
+	/* Open the toast relation */
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	toastrel = table_open(toast_pointer.va_toastrelid, AccessShareLock);
-	toasttupDesc = toastrel->rd_att;
 
-	/* Look for the valid index of toast relation */
-	validIndex = toast_open_indexes(toastrel,
-									AccessShareLock,
-									&toastidxs,
-									&num_indexes);
+	/* Fetch all chunks */
+	table_relation_fetch_toast_slice(toastrel, toast_pointer.va_valueid,
+									 attrsize, sliceoffset, slicelength,
+									 result);
 
+<<<<<<< HEAD
 	{
 		/*
 		 * GPDB: because we allow upgrades from clusters with different
@@ -940,6 +913,9 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset, int32 length)
 	 */
 	systable_endscan_ordered(toastscan);
 	toast_close_indexes(toastidxs, num_indexes, AccessShareLock);
+=======
+	/* Close toast table */
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	table_close(toastrel, AccessShareLock);
 
 	return result;

@@ -7,7 +7,7 @@
  * collation-sensitive, so the code in this file has no support for passing
  * collation settings through from callers.  That may have to change someday.
  *
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -417,6 +417,11 @@ FindTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 }
 
 /*
+<<<<<<< HEAD
+=======
+ * Compute the hash value for a tuple
+ *
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * If tuple is NULL, use the input slot instead. This convention avoids the
  * need to materialize virtual input tuples unless they actually need to get
  * copied into the table.
@@ -534,8 +539,6 @@ LookupTupleHashEntry_internal(TupleHashTable hashtable, TupleTableSlot *slot,
 
 /*
  * See whether two tuples (presumably of the same hash value) match
- *
- * As above, the passed pointers are pointers to TupleHashEntryData.
  */
 static int
 TupleHashTableMatch(struct tuplehash_hash *tb, const MinimalTuple tuple1, const MinimalTuple tuple2)

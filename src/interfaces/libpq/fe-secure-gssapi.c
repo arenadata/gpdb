@@ -3,7 +3,7 @@
  * fe-secure-gssapi.c
  *   The front-end (client) encryption support for GSSAPI
  *
- * Portions Copyright (c) 2016-2019, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2020, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *  src/interfaces/libpq/fe-secure-gssapi.c
@@ -239,9 +239,12 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 
 		memcpy(PqGSSSendBuffer + PqGSSSendLength, output.value, output.length);
 		PqGSSSendLength += output.length;
+<<<<<<< HEAD
 
 		/* Release buffer storage allocated by GSSAPI */
 		gss_release_buffer(&minor, &output);
+=======
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	}
 
 	/* If we get here, our counters should all match up. */
@@ -702,6 +705,11 @@ pqsecure_open_gss(PGconn *conn)
 
 	memcpy(PqGSSSendBuffer + PqGSSSendLength, output.value, output.length);
 	PqGSSSendLength += output.length;
+<<<<<<< HEAD
+=======
+
+	/* We don't bother with PqGSSSendConsumed here */
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/* We don't bother with PqGSSSendConsumed here */
 

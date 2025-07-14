@@ -4,7 +4,7 @@
  *	  prototypes for catalog/index.c.
  *
  *
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/index.h
@@ -117,7 +117,12 @@ extern IndexInfo *BuildDummyIndexInfo(Relation index);
 extern bool CompareIndexInfo(IndexInfo *info1, IndexInfo *info2,
 							 Oid *collations1, Oid *collations2,
 							 Oid *opfamilies1, Oid *opfamilies2,
+<<<<<<< HEAD
 							 AttrNumber *attmap, int maplen);
+=======
+							 AttrMap *attmap);
+
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 extern void BuildSpeculativeIndexInfo(Relation index, IndexInfo *ii);
 extern void FormIndexDatum(IndexInfo *indexInfo,
 						   TupleTableSlot *slot,

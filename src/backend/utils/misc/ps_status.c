@@ -7,9 +7,13 @@
  *
  * src/backend/utils/misc/ps_status.c
  *
+<<<<<<< HEAD
  * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
  * Copyright (c) 2000-2019, PostgreSQL Global Development Group
+=======
+ * Copyright (c) 2000-2020, PostgreSQL Global Development Group
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * various details abducted from various places
  *--------------------------------------------------------------------
  */
@@ -94,6 +98,8 @@ bool		update_process_title = true;
 #endif
 
 
+#ifndef PS_USE_NONE
+
 #ifndef PS_USE_CLOBBER_ARGV
 /* all but one option need a buffer to write their ps line in */
 #define PS_BUFFER_SIZE 256
@@ -109,6 +115,8 @@ static size_t ps_buffer_cur_len;	/* nominal strlen(ps_buffer) */
 
 static size_t ps_buffer_fixed_size; /* size of the constant prefix */
 static char     ps_username[NAMEDATALEN];        /*CDB*/
+
+#endif							/* not PS_USE_NONE */
 
 /* save the original argv[] location here */
 static int	save_argc;
@@ -474,6 +482,7 @@ get_ps_display_from_position(size_t pos, int *displen)
 	}
 #endif
 
+<<<<<<< HEAD
 	*displen = (int) (ps_buffer_cur_len - real_act_prefix_size);
 
 	return ps_buffer + pos;
@@ -509,4 +518,13 @@ const char *
 get_real_act_ps_display(int *displen)
 {
 	return get_ps_display_from_position(real_act_prefix_size, displen);
+=======
+#ifndef PS_USE_NONE
+	*displen = (int) (ps_buffer_cur_len - ps_buffer_fixed_size);
+
+	return ps_buffer + ps_buffer_fixed_size;
+#else
+	return "";
+#endif
+>>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
