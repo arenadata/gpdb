@@ -1088,6 +1088,17 @@ gpdb::GetGPSegmentCount(void)
 {
 	GP_WRAP_START;
 	{
+		return getgpsegmentCount();
+	}
+	GP_WRAP_END;
+	return 0;
+}
+
+int
+gpdb::GetGPTargetSegmentCount(void)
+{
+	GP_WRAP_START;
+	{
 		return GP_POLICY_DEFAULT_NUMSEGMENTS();
 	}
 	GP_WRAP_END;

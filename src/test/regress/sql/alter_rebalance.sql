@@ -323,11 +323,59 @@ select *, gp_segment_id from new_multi_part_table_distr_hashed order by a, b, c;
 select a, gp_segment_id from new_table_ctas order by a;
 select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by a;
 
--- Validate the insertion works fine on the CTAS tables
+-- Validate the insertion works fine with the new tables
+-- after 'gp_target_numsegments' reset
+reset gp_target_numsegments;
+
 insert into new_table_ctas select generate_series(21, 40);
 insert into new_table_into select generate_series(21, 40);
+
+insert into new_table_distr_hashed select generate_series(21, 40);
+insert into new_table_distr_hashed_ao_row select generate_series(21, 40);
+insert into new_table_distr_hashed_ao_col select generate_series(21, 40);
+
+insert into new_table_distr_random select generate_series(21, 40);
+insert into new_table_distr_random_ao_row select generate_series(21, 40);
+insert into new_table_distr_random_ao_col select generate_series(21, 40);
+
+insert into new_part_range_table_distr_hashed select i, '2023-01-02' from generate_series(21, 40)i;
+insert into new_part_range_table_distr_hashed select i, '2023-05-02' from generate_series(21, 40)i;
+insert into new_part_range_table_distr_hashed select i, '2020-05-02' from generate_series(21, 40)i;
+
+insert into new_part_range_table_distr_random select i, '2023-01-02' from generate_series(21, 40)i;
+insert into new_part_range_table_distr_random select i, '2023-05-02' from generate_series(21, 40)i;
+insert into new_part_range_table_distr_random select i, '2020-05-02' from generate_series(21, 40)i;
+
+insert into new_part_list_table_distr_hashed select i, 'test1' from generate_series(21, 40)i;
+insert into new_part_list_table_distr_hashed select i, 'test2' from generate_series(21, 40)i;
+insert into new_part_list_table_distr_hashed select i, 'test3' from generate_series(21, 40)i;
+
+insert into new_part_list_table_distr_random select i, 'test1' from generate_series(21, 40)i;
+insert into new_part_list_table_distr_random select i, 'test2' from generate_series(21, 40)i;
+insert into new_part_list_table_distr_random select i, 'test3' from generate_series(21, 40)i;
+
+insert into new_multi_part_table_distr_hashed select i, '2023-01-05', 'test1' from generate_series(21, 40)i;
+insert into new_multi_part_table_distr_hashed select i, '2023-02-05', 'test2' from generate_series(21, 40)i;
+insert into new_multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from generate_series(21, 40)i;
+
 select a, gp_segment_id from new_table_ctas order by a;
 select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by a;
+
+select a, gp_segment_id from new_table_distr_hashed order by a;
+select a, gp_segment_id from new_table_distr_hashed_ao_row order by a;
+select a, gp_segment_id from new_table_distr_hashed_ao_col order by a;
+
+select a, (gp_segment_id < 2) as correct_segment_id from new_table_distr_random order by a;
+select a, (gp_segment_id < 2) as correct_segment_id from new_table_distr_random_ao_row order by a;
+select a, (gp_segment_id < 2) as correct_segment_id from new_table_distr_random_ao_col order by a;
+
+select *, gp_segment_id from new_part_range_table_distr_hashed order by a, b;
+select *, (gp_segment_id < 2) as correct_segment_id from new_part_range_table_distr_random order by a, b;
+
+select *, gp_segment_id from new_part_list_table_distr_hashed order by a, b;
+select *, (gp_segment_id < 2) as correct_segment_id from new_part_list_table_distr_random order by a, b;
+
+select *, gp_segment_id from new_multi_part_table_distr_hashed order by a, b, c;
 
 -- And do some cleanup
 drop table new_table_distr_hashed;
@@ -352,8 +400,6 @@ drop table new_multi_part_table_distr_hashed;
 
 drop table new_table_ctas;
 drop table new_table_into;
-
-reset gp_target_numsegments;
 
 -- Check rollback of alter rebalance operation
 create table table_distr_hashed(a int) distributed by (a);
