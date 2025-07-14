@@ -65,7 +65,7 @@ typedef struct Instrumentation
 	BufferUsage	bufusage_start;	/* buffer usage at start */
 	/* Accumulated statistics across all completed cycles: */
 	double		startup;		/* total startup time (in seconds) */
-	double		total;			/* total total time (in seconds) */
+	double		total;			/* total time (in seconds) */
 	uint64		ntuples;		/* total tuples produced */
 	double		ntuples2;		/* secondary node-specific tuple counter */
 	uint64		nloops;			/* # of run cycles for this node */
