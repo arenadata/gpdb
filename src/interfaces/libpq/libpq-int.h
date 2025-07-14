@@ -9,12 +9,8 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/interfaces/libpq/libpq-int.h
@@ -413,15 +409,12 @@ struct pg_conn
 	char	   *requirepeer;	/* required peer credentials for local sockets */
 	char	   *gssencmode;		/* GSS mode (require,prefer,disable) */
 	char	   *krbsrvname;		/* Kerberos service name */
-<<<<<<< HEAD
-#endif
+	char	   *gsslib;			/* What GSS library to use ("gssapi" or
+								 * "sspi") */
+
     char       *gpconntype; /* type of connection */
     char       *gpqeid;        /* MPP: session id & startup info for qExec */
     char       *diffoptions;  /* MPP: transfer changed GUCs(require sync) from QD to QEs */
-=======
-	char	   *gsslib;			/* What GSS library to use ("gssapi" or
-								 * "sspi") */
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/* Type of connection to make.  Possible values: any, read-write. */
 	char	   *target_session_attrs;
