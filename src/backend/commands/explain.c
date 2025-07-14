@@ -3,13 +3,9 @@
  * explain.c
  *	  Explain query execution plans
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1113,12 +1109,11 @@ ExplainPrintJIT(ExplainState *es, int jit_flags,
 	if (!ji || ji->created_functions == 0)
 		return;
 
-<<<<<<< HEAD
 	if (!gp_explain_jit)
-=======
+		return;
+
 	/* don't print per-worker info if we're supposed to hide that */
 	if (for_workers && es->hide_workers)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		return;
 
 	/* calculate total time */
@@ -4337,7 +4332,6 @@ ExplainSubPlans(List *plans, List *ancestors,
 		es->printed_subplans = bms_add_member(es->printed_subplans,
 											  sp->plan_id);
 
-<<<<<<< HEAD
 		/* Subplan might have its own root slice */
 		if (sliceTable && qDispSliceId > 0)
 		{
@@ -4355,7 +4349,7 @@ ExplainSubPlans(List *plans, List *ancestors,
 			appendStringInfo(es->str, "\n");
 		}
 		else
-=======
+		{
 		/*
 		 * Treat the SubPlan node as an ancestor of the plan node(s) within
 		 * it, so that ruleutils.c can find the referents of subplan
@@ -4363,11 +4357,11 @@ ExplainSubPlans(List *plans, List *ancestors,
 		 */
 		ancestors = lcons(sp, ancestors);
 
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		ExplainNode(sps->planstate, ancestors,
 					relationship, sp->plan_name, es);
 
 		ancestors = list_delete_first(ancestors);
+		}
 	}
 
 	es->currentSlice = saved_slice;
