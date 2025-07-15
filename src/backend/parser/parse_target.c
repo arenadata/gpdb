@@ -388,21 +388,7 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 			}
 			break;
 		case RTE_JOIN:
-<<<<<<< HEAD
-			/* Join RTE --- recursively inspect the alias variable */
-			if (attnum != InvalidAttrNumber)
-			{
-				Var		   *aliasvar;
-
-				Assert(attnum > 0 && attnum <= list_length(rte->joinaliasvars));
-				aliasvar = (Var *) list_nth(rte->joinaliasvars, attnum - 1);
-				/* We intentionally don't strip implicit coercions here */
-				markTargetListOrigin(pstate, tle, aliasvar, netlevelsup);
-			}
-			break;
 		case RTE_TABLEFUNCTION:
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		case RTE_FUNCTION:
 		case RTE_VALUES:
 		case RTE_TABLEFUNC:
