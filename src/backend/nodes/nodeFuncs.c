@@ -2540,51 +2540,6 @@ range_table_walker(List *rtable,
 	return false;
 }
 
-<<<<<<< HEAD
-		switch (rte->rtekind)
-		{
-			case RTE_RELATION:
-				if (walker(rte->tablesample, context))
-					return true;
-				break;
-			case RTE_SUBQUERY:
-				if (!(flags & QTW_IGNORE_RT_SUBQUERIES))
-					if (walker(rte->subquery, context))
-						return true;
-				break;
-			case RTE_JOIN:
-				if (!(flags & QTW_IGNORE_JOINALIASES))
-					if (walker(rte->joinaliasvars, context))
-						return true;
-				break;
-			case RTE_FUNCTION:
-				if (walker(rte->functions, context))
-					return true;
-				break;
-			case RTE_TABLEFUNCTION:
-				if (walker(rte->subquery, context))
-					return true;
-				if (walker(rte->functions, context))
-					return true;
-				break;
-			case RTE_TABLEFUNC:
-				if (walker(rte->tablefunc, context))
-					return true;
-				break;
-			case RTE_VALUES:
-				if (walker(rte->values_lists, context))
-					return true;
-				break;
-			case RTE_CTE:
-			case RTE_NAMEDTUPLESTORE:
-			case RTE_RESULT:
-			case RTE_VOID:
-				/* nothing to do */
-				break;
-		}
-
-		if (walker(rte->securityQuals, context))
-=======
 /*
  * Some callers even want to scan the expressions in individual RTEs.
  */
@@ -2601,7 +2556,6 @@ range_table_entry_walker(RangeTblEntry *rte,
 	 */
 	if (flags & QTW_EXAMINE_RTES_BEFORE)
 		if (walker(rte, context))
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			return true;
 
 	switch (rte->rtekind)
@@ -2624,6 +2578,12 @@ range_table_entry_walker(RangeTblEntry *rte,
 			if (walker(rte->functions, context))
 				return true;
 			break;
+		case RTE_TABLEFUNCTION:
+			if (walker(rte->subquery, context))
+				return true;
+			if (walker(rte->functions, context))
+				return true;
+			break;
 		case RTE_TABLEFUNC:
 			if (walker(rte->tablefunc, context))
 				return true;
@@ -2635,6 +2595,7 @@ range_table_entry_walker(RangeTblEntry *rte,
 		case RTE_CTE:
 		case RTE_NAMEDTUPLESTORE:
 		case RTE_RESULT:
+		case RTE_VOID:
 			/* nothing to do */
 			break;
 	}
