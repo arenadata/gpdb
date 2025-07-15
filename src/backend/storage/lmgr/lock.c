@@ -1039,7 +1039,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	lock = proclock->tag.myLock;
 	locallock->lock = lock;
 
-<<<<<<< HEAD
 	if (MyProc == lockHolderProcPtr)
 	{
 		/*
@@ -1053,9 +1052,9 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		 * (That's last because most complex check.)
 		 */
 		if (lockMethodTable->conflictTab[lockmode] & lock->waitMask)
-			status = STATUS_FOUND;
+			found_conflict = true;
 		else
-			status = LockCheckConflicts(lockMethodTable, lockmode,
+			found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
 										lock, proclock);
 	}
 	else
@@ -1089,7 +1088,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		if (found && writerProcLock->holdMask)
 		{
 			/* Writer holds the same lock, bypass waitMask check. */
-			status = LockCheckConflicts(lockMethodTable, lockmode,
+			found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
 										lock, proclock);
 		}
 		else
@@ -1103,24 +1102,12 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			 * prior to this change, which is to let the reader wait.
 			 */
 			if (lockMethodTable->conflictTab[lockmode] & lock->waitMask)
-				status = STATUS_FOUND;
+				found_conflict = true;
 			else
-				status = LockCheckConflicts(lockMethodTable, lockmode,
+				found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
 											lock, proclock);
 		}
 	}
-=======
-	/*
-	 * If lock requested conflicts with locks requested by waiters, must join
-	 * wait queue.  Otherwise, check for conflict with already-held locks.
-	 * (That's last because most complex check.)
-	 */
-	if (lockMethodTable->conflictTab[lockmode] & lock->waitMask)
-		found_conflict = true;
-	else
-		found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
-									lock, proclock);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	if (!found_conflict)
 	{
@@ -1564,55 +1551,7 @@ LockCheckConflicts(LockMethod lockMethodTable,
 		myLocks = proclock->holdMask;
 		for (i = 1; i <= numLockModes; i++)
 		{
-<<<<<<< HEAD
 			if ((conflictMask & LOCKBIT_ON(i)) == 0)
-=======
-			conflictsRemaining[i] = 0;
-			continue;
-		}
-		conflictsRemaining[i] = lock->granted[i];
-		if (myLocks & LOCKBIT_ON(i))
-			--conflictsRemaining[i];
-		totalConflictsRemaining += conflictsRemaining[i];
-	}
-
-	/* If no conflicts remain, we get the lock. */
-	if (totalConflictsRemaining == 0)
-	{
-		PROCLOCK_PRINT("LockCheckConflicts: resolved (simple)", proclock);
-		return false;
-	}
-
-	/* If no group locking, it's definitely a conflict. */
-	if (proclock->groupLeader == MyProc && MyProc->lockGroupLeader == NULL)
-	{
-		Assert(proclock->tag.myProc == MyProc);
-		PROCLOCK_PRINT("LockCheckConflicts: conflicting (simple)",
-					   proclock);
-		return true;
-	}
-
-	/*
-	 * Locks held in conflicting modes by members of our own lock group are
-	 * not real conflicts; we can subtract those out and see if we still have
-	 * a conflict.  This is O(N) in the number of processes holding or
-	 * awaiting locks on this object.  We could improve that by making the
-	 * shared memory state more complex (and larger) but it doesn't seem worth
-	 * it.
-	 */
-	procLocks = &(lock->procLocks);
-	otherproclock = (PROCLOCK *)
-		SHMQueueNext(procLocks, procLocks, offsetof(PROCLOCK, lockLink));
-	while (otherproclock != NULL)
-	{
-		if (proclock != otherproclock &&
-			proclock->groupLeader == otherproclock->groupLeader &&
-			(otherproclock->holdMask & conflictMask) != 0)
-		{
-			int			intersectMask = otherproclock->holdMask & conflictMask;
-
-			for (i = 1; i <= numLockModes; i++)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			{
 				conflictsRemaining[i] = 0;
 				continue;
@@ -1627,7 +1566,7 @@ LockCheckConflicts(LockMethod lockMethodTable,
 		if (totalConflictsRemaining == 0)
 		{
 			PROCLOCK_PRINT("LockCheckConflicts: resolved (simple)", proclock);
-			return STATUS_OK;
+			return false;
 		}
 
 		/* If no group locking, it's definitely a conflict. */
@@ -1636,7 +1575,7 @@ LockCheckConflicts(LockMethod lockMethodTable,
 			Assert(proclock->tag.myProc == MyProc);
 			PROCLOCK_PRINT("LockCheckConflicts: conflicting (simple)",
 						   proclock);
-			return STATUS_FOUND;
+			return true;
 		}
 
 		/*
@@ -1673,25 +1612,14 @@ LockCheckConflicts(LockMethod lockMethodTable,
 				{
 					PROCLOCK_PRINT("LockCheckConflicts: resolved (group)",
 								   proclock);
-					return STATUS_OK;
+					return false;
 				}
 			}
-<<<<<<< HEAD
 			otherproclock = (PROCLOCK *)
 				SHMQueueNext(procLocks, &otherproclock->lockLink,
 							 offsetof(PROCLOCK, lockLink));
-=======
-
-			if (totalConflictsRemaining == 0)
-			{
-				PROCLOCK_PRINT("LockCheckConflicts: resolved (group)",
-							   proclock);
-				return false;
-			}
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		}
 
-<<<<<<< HEAD
 		/* Nope, it's a real conflict. */
 		PROCLOCK_PRINT("LockCheckConflicts: conflicting (group)", proclock);
 	 }
@@ -1744,18 +1672,13 @@ LockCheckConflicts(LockMethod lockMethodTable,
 		{
 			/* no conflict. OK to get the lock */
 			PROCLOCK_PRINT("LockCheckConflicts: resolved", proclock);
-			return STATUS_OK;
+			return false;
 		}
 
 		PROCLOCK_PRINT("LockCheckConflicts: conflicting", proclock);
 	 }
 
-	return STATUS_FOUND;
-=======
-	/* Nope, it's a real conflict. */
-	PROCLOCK_PRINT("LockCheckConflicts: conflicting (group)", proclock);
 	return true;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
 
 /*
