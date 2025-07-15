@@ -1,0 +1,475 @@
+#!/usr/bin/env python3
+
+from gppylib.mainUtils import getProgramName
+
+import psycopg2
+import yaml
+import datetime
+from psycopg2 import DatabaseError, OperationalError
+try:
+    from gppylib.commands.unix import *
+    from gppylib.commands.gp import *
+    from gppylib.gparray import GpArray, Segment
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib.userinput import *
+    from gppylib.system.environment import GpCoordinatorEnvironment
+    from gppylib.system import configurationInterface, configurationImplGpdb
+    from gppylib.programs.clsRecoverSegment_triples import get_segments_with_running_basebackup
+    from gppylib.parseutils import line_reader, check_values, canonicalize_address
+    from gppylib.operations.update_pg_hba_on_segments import update_pg_hba_on_segments
+    from gprebalance_modules.rebalance import GPRebalance, MirrorStrategy
+    from gprebalance_modules.rebalance_validator import ClusterValidator, StateValidationError
+except ImportError as e:
+    sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+
+DBNAME = 'postgres'
+
+_description = ("""
+Rebalances the existing segments configuration for getting
+optimal performance of whole cluster.
+""")
+
+_help = ["""
+[-m spread|grouped]
+Mode is the desirable mirroring strategy after rebalance. Makes sense only when mirroring
+is enabled for the cluster. Default value is "grouped".
+[-f <hosts_file>]
+The hosts configuration file (YAML format) defines the target hosts on which
+the rebalance procedure will distribute segments from existing configuration.
+Existing info can be generated from gp_segment_configuration through -g option.
+hosts:
+- hostname: <host_name>      # Machine hostname
+  address: <address>         # Network address for connections
+  primary_datadirs:          # Directories for primary segments
+    - /datadir1
+    - /datadir1
+  mirror_datadirs:           # Directories for mirror segments
+    - /mdatadir1
+    - /mdatadir2
+You can include empty hosts in the configuration or shrink the existing number
+of hosts, the utility will try to balance the segments strictly across hosts
+from the file.
+"""]
+
+_usage = """
+ gprebalance -g
+
+ gprebalance [-m <mode>] [-c] [-f <hosts_file>] [-s] [-v]
+
+ gprebalance [-d duration[hh][:mm[:ss]] | [-e 'YYYY-MM-DD hh:mm:ss']]
+
+ gprebalance -r
+
+ gprebalance -c
+
+ gprebalance -p
+
+ gprebalance -? | -h | --help | --verbose | -v
+"""
+
+EXECNAME = os.path.split(__file__)[-1]
+MAX_BATCH_SIZE = 128
+MAX_PARALLEL_WORKERS = 96
+
+
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                       description=' '.join(_description.split()),
+                       version='%prog version $Revision$')
+    parser.setHelp(_help)
+    parser.set_usage('%prog ' + _usage)
+    parser.remove_option('-h')
+
+    parser.add_option('-m', '--mirror-mode', dest='mirroring',
+                      help='desirable mirroring strategy')
+    parser.add_option('-c', '--clean', action='store_true',
+                      help='remove the rebalance schema.')
+    parser.add_option('-f', '--target-hosts', metavar='<hosts_file>', dest='filename',
+                      help='yaml containing target hosts configuration')
+    parser.add_option('-r', '--rollback', action='store_true',
+                      help='bring the cluster back to the state before rebalance')
+    parser.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
+                      help='duration from beginning to end.')
+    parser.add_option('-e', '--end', type='datetime', metavar='datetime',
+                      help="ending date and time in the format 'YYYY-MM-DD hh:mm:ss'.")
+    parser.add_option('-n', '--parallel', type="int", default=4, metavar="<parallel_processes>",
+                      help='number of workerks performing segment movements at a time. Valid values are 1-%d.' % MAX_PARALLEL_WORKERS)
+    parser.add_option('--allow-mirrorless', dest='allow_mirrorless', action='store_true',
+                      help='Allow to rebalance a cluster without mirrors', default=False)
+    parser.add_option('-g', '--gen-hosts', action='store_true', dest='genconf',
+                      help='dump cluster hosts configuration in yaml format')
+    parser.add_option('-s', '--silent', action='store_true', default=False,
+                      help='Do not prompt for confirmation to proceed on warnings')
+    parser.add_option('-p', '--show-plan', dest='show_plan', action='store_true', default=False,
+                      help='show rebalance plan')
+    parser.add_option('-v', '--verbose', action='store_true',
+                      help='debug output.')
+    parser.add_option('-h', '-?', '--help', action='help',
+                      help='show this help message and exit.')
+    parser.add_option('-B', '--batch-size', type='int', default=16, metavar="<batch_size>",
+                      help='Rebalance configuration batch size. Valid values are 1-%d' % MAX_BATCH_SIZE)
+    parser.add_option('--usage', action="briefhelp")
+    parser.add_option('-S', '--simple-progress', action='store_true',
+                      help='show simple progress.')
+    parser.add_option('', '--hba-hostnames', action='store_true', default=False, dest='hba_hostnames',
+                      help='use hostnames instead of CIDR in pg_hba.conf')
+    parser.add_option('--allow-intermediate-mixture', dest='allow_mixture', action='store_true',
+                      help='Allow primary and mirror from one pair to be at the same host during balancing', default=False)
+
+    parser.set_defaults(verbose=False)
+
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    return options, args, parser
+
+
+def validate_options(options, args, parser):
+    if len(args) > 0:
+        logger.error(f'Unknown argument {args[0]}')
+        parser.exit(1)
+
+    if options.mirroring and options.mirroring not in ('grouped', 'spread'):
+        logger.error('Mirroring strategy %s is not supported' %
+                     options.mirroring)
+        parser.print_help()
+        parser.exit(1)
+
+    try:
+        options.coordinator_data_directory = get_coordinatordatadir()
+        options.gphome = get_gphome()
+    except GpError as msg:
+        logger.error(msg)
+        parser.exit(1)
+
+    if not os.path.exists(options.coordinator_data_directory):
+        logger.error('Coordinator data directory %s does not exist.' %
+                     options.coordinator_data_directory)
+        parser.exit(1)
+
+    if options.genconf:
+        for arg in sys.argv[1:]:
+            if arg not in ('-g', '--gen-hosts'):
+                logger.error('-g or --gen-hosts flag must be used alone')
+                parser.print_usage()
+                parser.exit(1)
+
+    if options.parallel > MAX_PARALLEL_WORKERS or options.parallel < 1:
+        logger.error(
+            'Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_WORKERS)
+        parser.print_help()
+        parser.exit(1)
+
+    if options.end:
+        if not isinstance(options.end, datetime.datetime):
+            options.end = datetime.datetime.combine(
+                options.end, datetime.time(0))
+        if options.end < datetime.datetime.now():
+            logger.error('End time occurs in the past')
+            parser.print_help()
+            parser.exit(1)
+        if options.duration:
+            if options.end > datetime.datetime.now() + options.duration:
+                options.end = datetime.datetime.now() + options.duration
+    elif options.duration:
+        options.end = datetime.datetime.now() + options.duration
+
+    if options.rollback and options.clean:
+        rollbackOpt = "--rollback" if "--rollback" in sys.argv else "-r"
+        cleanOpt = "--clean" if "--clean" in sys.argv else "-c"
+        logger.error("%s and %s options cannot be specified together." %
+                     (rollbackOpt, cleanOpt))
+        parser.exit(1)
+
+    return options, args
+
+
+def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
+    """
+    Checks if there are any running instances of
+    gprebalance/gpbackup/gpexpand/gpshrink/gpresize
+    """
+    for util in ('gprebalance', 'gpexpand', 'gpshrink', 'gpresize'):
+        try:
+            with open(f'{coordinator_data_directory}/{util}.pid', 'r') as fp:
+                pid = int(fp.readline().strip())
+                if check_pid(pid):
+                    logger.error(f'{util} is already running.')
+                    sys.exit(1)
+        except IOError:
+            pass
+
+    with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+        cursor = dbconn.query(conn, '''SELECT datid
+                    FROM pg_stat_activity
+                    WHERE application_name LIKE 'gpbackup%' OR
+                    application_name LIKE 'gprestore%' ''')
+        if cursor.rowcount > 0:
+            logger.error(
+                '''gpbackup/gprestore utility is already running.''')
+            sys.exit(1)
+
+    if is_gprecoverseg_running():
+        logger.error(
+            '''gprecoverseg is already running.''')
+        sys.exit(1)
+
+
+def create_pid_file(coordinator_data_directory: str):
+    """
+    Creates gprebalance pid file
+    """
+    with open(coordinator_data_directory + '/gprebalance.pid', 'w') as fp:
+        fp.write(str(os.getpid()))
+
+
+def remove_pid_file(coordinator_data_directory: str):
+    """
+    Removes gprebalance pid file
+    """
+    try:
+        os.unlink(coordinator_data_directory + '/gprebalance.pid')
+    except IOError:
+        pass
+
+
+def dump_hosts_info(hosts):
+    """
+      Converts info about hosts to YAML format
+    """
+    yaml_entries = []
+    for (hostname, address), val in hosts.items():
+        host_entry = {
+            'hostname': hostname,
+            'address': address,
+            'primary_datadirs': list(val.primary_datadirs),
+            'mirror_datadirs': list(val.mirror_datadirs),
+        }
+        yaml_entries.append(host_entry)
+
+    yaml_entries.sort(key=lambda x: x['hostname'])
+    config = {'hosts': yaml_entries}
+    config_yaml = yaml.dump(config, default_flow_style=False, sort_keys=False)
+    outputfile = os.getcwd() + "/gprebalance_hosts.yaml"
+    with open('gprebalance_hosts.yaml', 'w') as fp:
+        fp.write(config_yaml)
+    logger.info('Generating hosts config in %s' % outputfile)
+
+
+def possibility_checks(gpreb: GPRebalance):
+    logger.info('Validation of rebalance possibility...')
+
+    hosts_list = gpreb.current_hosts
+
+    startup_validator = ClusterValidator(
+        hosts_list,
+        gpreb.target_hosts,
+        gpreb.original_gparray.getSegmentsAsLoadedFromDb(),
+        gpreb.original_gparray.get_mirroring_enabled(),
+        gpreb.target_strategy)
+    try:
+        startup_validator.validate_segment_status()
+    except StateValidationError as e:
+        if not gpreb.options.silent and not ask_yesno('', " %s Are you sure you want "
+                                                      "to continue with this gprebalance session?" % str(e), "N"):
+            logger.error('User Aborted. Exiting...')
+            sys.exit(1)
+        elif gpreb.options.silent:
+            logger.error(f'{str(e)} Exiting...')
+            sys.exit(1)
+    if gpreb.unpreferred_segments:
+        logger.error(
+            "Current role does not match preferred role for several segments. "
+            "Call gprecoverseg -r to restore the original roles")
+        sys.exit(1)
+    if not gpreb.original_gparray.get_mirroring_enabled() and not gpreb.options.allow_mirrorless:
+        if not gpreb.options.silent and not ask_yesno('',
+                                                      "Mirroring is disabled. \n"
+                                                      "During rebalance the whole cluster may "
+                                                      "be not available. \n"
+                                                      "Are you sure you want "
+                                                      "to continue with this gprebalance session?", "N"):
+            logger.error('User Aborted. Exiting...')
+            sys.exit(1)
+        elif gpreb.options.silent:
+            logger.error('Mirroring is disabled. Exiting...')
+            sys.exit(1)
+
+    if gpreb.original_gparray.get_mirroring_enabled() and startup_validator.mirror_strategy == MirrorStrategy.MIRRORLESS:
+        if not gpreb.options.silent:
+            mirror_type = ask_string(
+                "\nYou haven't specified desirable mirroring strategy.  Spread mirroring places\n"
+                "a given hosts mirrored segments each on a separate host.  You must be \n"
+                "using more hosts than the number of segments per host for spread mirroring. \n"
+                "Grouped mirroring places all of a given hosts segments on a single \n"
+                "mirrored host.  You must be using at least 2 hosts for grouped strategy.\n\n",
+                "What type of mirroring strategy would you like?",
+                'grouped', ['spread', 'grouped'])
+        else:
+            mirror_type = 'grouped'
+        strat = MirrorStrategy.SPREAD if mirror_type == 'spread' else MirrorStrategy.GROUPED
+        gpreb.setMirroringStrategy(strat)
+        startup_validator.mirror_strategy = strat
+
+    already_bal, _ = startup_validator.validate_existing_configuration()
+    if already_bal:
+        # case of hosts shrinkage, expansion
+        if len(startup_validator.existing_hosts &
+               startup_validator.target_hosts) < len(startup_validator.existing_hosts) or \
+                len(startup_validator.target_hosts) > len(startup_validator.existing_hosts):
+            try:
+                startup_validator.prevalidate_segment_distribution()
+                startup_validator.prevalidate_mirror_strategy()
+            except StateValidationError:
+                logger.error(
+                    'Cluster is already balanced. Cannot additionally rebalance to newly added hosts')
+                sys.exit(1)
+        else:
+            logger.info('Cluster is already balanced')
+            sys.exit(0)
+    else:
+        startup_validator.prevalidate_segment_distribution()
+        startup_validator.prevalidate_mirror_strategy()
+
+
+gprebalance = None
+
+
+def sig_handler(sig, arg):
+    if gprebalance is not None:
+        gprebalance.shutdown()
+        if gprebalance.executor is None:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            signal.signal(signal.SIGHUP, signal.SIG_DFL)
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            os.kill(os.getpid(), sig)
+
+
+def main(options, args, parser):
+    try:
+        signal.signal(signal.SIGTERM, sig_handler)
+        signal.signal(signal.SIGHUP, sig_handler)
+        signal.signal(signal.SIGINT, sig_handler)
+
+        logger = get_default_logger()
+        setup_tool_logging(EXECNAME, getLocalHostname(), getUserName())
+
+        options, args = validate_options(options, args, parser)
+
+        if options.verbose:
+            enable_verbose_logging()
+
+        gpEnv = GpCoordinatorEnvironment(
+            options.coordinator_data_directory, True)
+        configurationInterface.registerConfigurationProvider(
+            configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
+        configurationInterface.getConfigurationProvider(
+        ).initializeProvider(gpEnv.getCoordinatorPort())
+
+        dburl = dbconn.DbURL(dbname=DBNAME, port=gpEnv.getCoordinatorPort())
+
+        try:
+            # check parallel execution of other cluster utilities
+            check_running_gputils(dburl, options.coordinator_data_directory)
+            gparray = GpArray.initFromCatalog(dburl, utility=True)
+        except DatabaseError as ex:
+            logger.error("Failed to connect to database.  Make sure the"
+                         " Greenplum instance you wish to expand is running"
+                         " and that your environment is correct, then rerun"
+                         " gprebalance" + ' '.join(sys.argv[1:]))
+            sys.exit(1)
+        except ConnectionError as ex:
+            logger.error(f"{str(ex)}")
+            sys.exit(1)
+        
+        # create pid file
+        create_pid_file(options.coordinator_data_directory)
+        
+        global gprebalance
+        gprebalance = GPRebalance(logger, gparray, dburl, options, gpEnv)
+
+        # dump existing hosts configuration
+        if options.genconf:
+            dump_hosts_info(gprebalance.getHostsFromGpArray())
+            sys.exit(0)
+
+        gprebalance_file_status = gprebalance.get_state_from_file()
+
+        if options.clean:
+            gprebalance.remove_status_file()
+            gprebalance.cleanup_directory()
+            logger.info('Cleanup Finished.  exiting...')
+            sys.exit(0)
+
+        from gprebalance_modules.rebalance_status import RebalanceStatus  # nopep8
+
+        if gprebalance_file_status == RebalanceStatus.DONE and not options.rollback:
+            logger.info('Rebalance has already completed')
+            logger.info(
+                'If you want to rebalance again, run gprebalance -c to perform cleanup')
+        elif options.rollback and gprebalance_file_status == RebalanceStatus.ROLLBACK_DONE:
+            logger.info('Rollback has already completed')
+            logger.info(
+                'If you want to rebalance again, run gprebalance -c to perform cleanup')
+        elif gprebalance_file_status is None or gprebalance_file_status == RebalanceStatus.UNINITIALIZED:
+            if options.rollback:
+                logger.error("Cannot perform rollback operation. Rebalance session status files are absent.")
+                sys.exit(1)
+            gprebalance.statusManager.create_status_file()
+            possibility_checks(gprebalance)
+            logger.info('Validation passed. Preparing rebalance...')
+            gprebalance.statusManager.set_status(RebalanceStatus.VALIDATED, os.path.abspath(
+                options.filename) if options.filename else None)
+            plan = gprebalance.createPlan()
+            gprebalance.save_plan(plan)
+            if options.show_plan:
+                logger.info(f"Resulting plan: \n{str(plan)}")
+                # should be removed when state machine will be ready
+                gprebalance.statusManager.set_status(RebalanceStatus.UNINITIALIZED)
+                sys.exit(0)
+            gprebalance.execute_plan(plan)
+        elif gprebalance.statusManager.conf_dir:
+            plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, False)
+            if options.show_plan:
+                logger.info(f"Resulting plan: \n{str(plan)}")
+                sys.exit(0)
+            if gprebalance_file_status == RebalanceStatus.PREPARED:
+                gprebalance.execute_plan(plan)
+                sys.exit(0)
+            elif gprebalance_file_status == RebalanceStatus.ROLLBACK_FAILED:
+                logger.info('Previous rollback session was interrupted due to an error. Trying to resume...')
+                plan = gprebalance.load_plan(gprebalance.statusManager.conf_dir, True)
+                gprebalance.resume(plan)
+                sys.exit(0)
+            elif gprebalance_file_status == RebalanceStatus.FAILED:
+                if not options.rollback:
+                    logger.info('Previous rebalance session was interrupted due to an error. Trying to resume...')
+                    gprebalance.resume(plan)
+                    sys.exit(0)
+            elif gprebalance_file_status == RebalanceStatus.STOPPED:
+                if not options.rollback:
+                    logger.info('Previous rebalance session was interrupted due to an timeout or user signal. Trying to resume...')
+                    gprebalance.resume(plan)
+                    sys.exit(0)
+            if options.rollback:
+                gprebalance.rollback(plan)            
+        sys.exit(0)
+    except Exception as e:
+        if options and options.verbose:
+            logger.exception('gprebalance failed. exiting...')
+        else:
+            logger.error(f'gprebalance failed: {e} \n\nExiting...')
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit('\nUser Interrupted')
+    finally:
+        if gprebalance:
+            gprebalance.shutdown()
+        remove_pid_file(get_coordinatordatadir())
+
+
+if __name__ == '__main__':
+    options, args, parser = parseargs()
+    main(options, args, parser)

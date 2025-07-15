@@ -363,4 +363,5 @@ test: hba_conf
 
 test: gp_query_id
 
+test: alter_rebalance
 # end of tests
