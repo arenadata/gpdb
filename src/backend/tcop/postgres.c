@@ -64,11 +64,7 @@
 #include "pg_trace.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
-<<<<<<< HEAD
-#include "postmaster/fts.h"
-=======
 #include "postmaster/interrupt.h"
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
@@ -106,6 +102,7 @@
 #include "utils/guc.h"
 #include "access/twophase.h"
 #include "postmaster/backoff.h"
+#include "postmaster/fts.h"
 #include "utils/resource_manager.h"
 #include "utils/session_state.h"
 #include "utils/vmem_tracker.h"
