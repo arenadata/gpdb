@@ -77,11 +77,8 @@
 #include "storage/pg_shmem.h"
 #include "storage/shmem.h"
 #include "storage/spin.h"
-<<<<<<< HEAD
 #include <unistd.h>
-=======
 #include "utils/builtins.h"
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 static void *ShmemAllocRaw(Size size, Size *allocated_size);
 
