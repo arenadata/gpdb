@@ -509,7 +509,6 @@ CheckProcSignal(ProcSignalReason reason)
 }
 
 /*
-<<<<<<< HEAD
  * Query-finish signal from QD.  The executor will deliverately try
  * to finish execution as quickly as possible.
  */
@@ -523,7 +522,9 @@ QueryFinishHandler(void)
 	{
 		QueryFinishPending = true;
 	}
-=======
+}
+
+/*
  * CheckProcSignalBarrier - check for new barriers we need to absorb
  */
 static bool
@@ -542,7 +543,6 @@ CheckProcSignalBarrier(void)
 	}
 
 	return false;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
 
 /*
@@ -583,19 +583,17 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
 
-<<<<<<< HEAD
 	if (CheckProcSignal(PROCSIG_QUERY_FINISH))
 		QueryFinishHandler();
 
 	if (CheckProcSignal(PROCSIG_RESOURCE_GROUP_MOVE_QUERY))
 		HandleMoveResourceGroup();
-=======
+
 	if (CheckProcSignalBarrier())
 	{
 		InterruptPending = true;
 		ProcSignalBarrierPending = true;
 	}
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	SetLatch(MyLatch);
 
