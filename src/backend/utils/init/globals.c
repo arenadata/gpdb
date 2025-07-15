@@ -36,7 +36,7 @@ volatile sig_atomic_t ProcDiePending = false;
 volatile sig_atomic_t CheckClientConnectionPending = false;
 volatile sig_atomic_t ClientConnectionLost = false;
 volatile sig_atomic_t IdleInTransactionSessionTimeoutPending = false;
-<<<<<<< HEAD
+volatile sig_atomic_t ProcSignalBarrierPending = false;
 volatile sig_atomic_t IdleGangTimeoutPending = false;
 volatile sig_atomic_t ConfigReloadPending = false;
 /*
@@ -46,12 +46,6 @@ volatile sig_atomic_t ConfigReloadPending = false;
 volatile int32 InterruptHoldoffCount = 0;
 volatile int32 QueryCancelHoldoffCount = 0;
 volatile int32 CritSectionCount = 0;
-=======
-volatile sig_atomic_t ProcSignalBarrierPending = false;
-volatile uint32 InterruptHoldoffCount = 0;
-volatile uint32 QueryCancelHoldoffCount = 0;
-volatile uint32 CritSectionCount = 0;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 int			MyProcPid;
 pg_time_t	MyStartTime;
