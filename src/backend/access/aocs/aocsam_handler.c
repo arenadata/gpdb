@@ -2158,6 +2158,7 @@ static const TableAmRoutine ao_column_methods = {
 	.relation_size = aoco_relation_size,
 	.relation_needs_toast_table = aoco_relation_needs_toast_table,
 	.relation_toast_am = aoco_relation_toast_am,
+	.relation_fetch_toast_slice = heap_fetch_toast_slice,
 
 	.relation_estimate_size = aoco_estimate_rel_size,
 

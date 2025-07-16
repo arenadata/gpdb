@@ -2166,6 +2166,7 @@ static const TableAmRoutine ao_row_methods = {
 	.relation_size = appendonly_relation_size,
 	.relation_needs_toast_table = appendonly_relation_needs_toast_table,
 	.relation_toast_am = appendonly_relation_toast_am,
+	.relation_fetch_toast_slice = heap_fetch_toast_slice,
 
 	.relation_estimate_size = appendonly_estimate_rel_size,
 
