@@ -3,12 +3,8 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -387,7 +383,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"Target-Session-Attrs", "", 11, /* sizeof("read-write") = 11 */
 	offsetof(struct pg_conn, target_session_attrs)},
 
-<<<<<<< HEAD
     /* CDB: qExec wants some info from qDisp before GUCs are processed */
 	{"gpqeid", NULL, "", NULL,
 		"gp-debug-qeid", "D", 40,
@@ -401,12 +396,6 @@ static const internalPQconninfoOption PQconninfoOptions[] = {
 		"updated synced GUCs", "D", 80,
 	offsetof(struct pg_conn, diffoptions)},
 
-	{"sslpassword", NULL, NULL, NULL,
-		"SSL-Client-Key-Password", "*", 20,
-	offsetof(struct pg_conn, sslpassword)},
-
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
 	NULL, NULL, 0}
@@ -4129,15 +4118,8 @@ freePGconn(PGconn *conn)
 		conn->gctx = NULL;
 	}
 #endif
-<<<<<<< HEAD
-#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
-	if (conn->gsslib)
-		free(conn->gsslib);
-#endif
 	if (conn->gpqeid)			/* CDB */
 		free(conn->gpqeid);
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)
 		free(conn->last_query);
