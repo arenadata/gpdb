@@ -1476,8 +1476,9 @@ ReceiveAndUnpackTarFile(PGconn *conn, PGresult *res, int rownum)
 		/* 
 		 * Construct the new tablespace path using the given target gp dbid
 		 */
-		snprintf(state.gp_tablespace_filename, sizeof(state.filename),
-				 "%s/%d/%s", state.current_path, target_gp_dbid,
+		snprintf(state.gp_tablespace_filename, sizeof(state.filename), "%s/%d/%s",
+				state.current_path,
+				target_gp_dbid,
 				GP_TABLESPACE_VERSION_DIRECTORY);
 	}
 
