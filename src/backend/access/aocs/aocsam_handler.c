@@ -1899,6 +1899,16 @@ aoco_relation_needs_toast_table(Relation rel)
 	return false;
 }
 
+static Oid
+aoco_relation_toast_am(Relation rel)
+{
+	/*
+	 * AO_COLUMN never used the toasting, don't create the toast table from
+	 * GPDB
+	 */
+	return InvalidOid;
+}
+
 /* ------------------------------------------------------------------------
  * Planner related callbacks for the heap AM
  * ------------------------------------------------------------------------
@@ -2147,6 +2157,7 @@ static const TableAmRoutine ao_column_methods = {
 
 	.relation_size = aoco_relation_size,
 	.relation_needs_toast_table = aoco_relation_needs_toast_table,
+	.relation_toast_am = aoco_relation_toast_am,
 
 	.relation_estimate_size = aoco_estimate_rel_size,
 

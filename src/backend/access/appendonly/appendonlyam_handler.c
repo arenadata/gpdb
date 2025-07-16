@@ -1927,6 +1927,12 @@ appendonly_relation_needs_toast_table(Relation rel)
 	return (tuple_length > TOAST_TUPLE_THRESHOLD);
 }
 
+static Oid
+appendonly_relation_toast_am(Relation rel)
+{
+	return HEAP_TABLE_AM_OID;
+}
+
 /* ------------------------------------------------------------------------
  * Planner related callbacks for the appendonly AM
  * ------------------------------------------------------------------------
@@ -2159,6 +2165,7 @@ static const TableAmRoutine ao_row_methods = {
 
 	.relation_size = appendonly_relation_size,
 	.relation_needs_toast_table = appendonly_relation_needs_toast_table,
+	.relation_toast_am = appendonly_relation_toast_am,
 
 	.relation_estimate_size = appendonly_estimate_rel_size,
 
