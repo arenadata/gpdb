@@ -5750,11 +5750,19 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	atstmt->missing_ok = false;
 
 	/* Transform the AlterTableStmt */
-	atstmt = transformAlterTableStmt(RelationGetRelid(rel),
-									 atstmt,
-									 context->queryString,
-									 &beforeStmts,
-									 &afterStmts);
+
+	/*
+	 * GPDB: Like for CREATE TABLE, only do parse analysis in the Query
+	 * Dispatcher.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		atstmt = list_make1(context->pstmt->utilityStmt);
+	else
+		atstmt = transformAlterTableStmt(RelationGetRelid(rel),
+										 atstmt,
+										 context->queryString,
+										 &beforeStmts,
+										 &afterStmts);
 
 	/* Execute any statements that should happen before these subcommand(s) */
 	foreach(lc, beforeStmts)
