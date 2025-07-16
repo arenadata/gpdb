@@ -23,11 +23,7 @@ standard_targets = all install installdirs uninstall distprep clean distclean ma
 # these targets should recurse even into subdirectories not being built:
 standard_always_targets = distprep clean distclean maintainer-clean
 
-<<<<<<< HEAD
-.PHONY: $(standard_targets) install-strip html man installcheck-parallel installcheck-good
-=======
-.PHONY: $(standard_targets) install-strip html man installcheck-parallel update-unicode
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+.PHONY: $(standard_targets) install-strip html man installcheck-parallel update-unicode installcheck-good
 
 # make `all' the default target
 all:
