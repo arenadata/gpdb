@@ -1622,14 +1622,14 @@ ReceiveTarAndUnpackCopyChunk(size_t r, char *copybuf, void *callback_data)
 		if (!state->basetablespace)
 		{
 			/*
-				* Append relfile path to --target-gp-dbid tablespace path.
-				*
-				* For example, copybuf can be
-				* "<GP_TABLESPACE_VERSION_DIRECTORY>_db<dbid>/16384/16385".
-				* We create a pointer to the dbid and relfile "/16384/16385",
-				* construct the new tablespace with provided dbid, and append
-				* the dbid and relfile on top.
-				*/
+			 * Append relfile path to --target-gp-dbid tablespace path.
+			 *
+			 * For example, copybuf can be
+			 * "<GP_TABLESPACE_VERSION_DIRECTORY>_db<dbid>/16384/16385".
+			 * We create a pointer to the dbid and relfile "/16384/16385",
+			 * construct the new tablespace with provided dbid, and append
+			 * the dbid and relfile on top.
+			 */
 			char *copybuf_dbid_relfile = strstr(copybuf, "/");
 
 			snprintf(state->filename, sizeof(state->filename), "%s%s",
