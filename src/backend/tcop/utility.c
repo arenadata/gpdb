@@ -1380,18 +1380,6 @@ ProcessUtilitySlow(ParseState *pstate,
 
 					if (OidIsValid(relid))
 					{
-<<<<<<< HEAD
-						/* Run parse analysis ... */
-						/*
-						 * GPDB: Like for CREATE TABLE, only do parse analysis
-						 * in the Query Dispatcher.
-						 */
-						if (Gp_role == GP_ROLE_EXECUTE)
-							stmts = list_make1(parsetree);
-						else
-							stmts = transformAlterTableStmt(relid, atstmt,
-															queryString);
-=======
 						AlterTableUtilityContext atcontext;
 
 						/* Set up info needed for recursive callbacks ... */
@@ -1400,7 +1388,6 @@ ProcessUtilitySlow(ParseState *pstate,
 						atcontext.relid = relid;
 						atcontext.params = params;
 						atcontext.queryEnv = queryEnv;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 						/* ... ensure we have an event trigger context ... */
 						EventTriggerAlterTableStart(parsetree);
