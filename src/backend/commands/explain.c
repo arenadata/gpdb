@@ -4350,17 +4350,17 @@ ExplainSubPlans(List *plans, List *ancestors,
 		}
 		else
 		{
-		/*
-		 * Treat the SubPlan node as an ancestor of the plan node(s) within
-		 * it, so that ruleutils.c can find the referents of subplan
-		 * parameters.
-		 */
-		ancestors = lcons(sp, ancestors);
+			/*
+			* Treat the SubPlan node as an ancestor of the plan node(s) within
+			* it, so that ruleutils.c can find the referents of subplan
+			* parameters.
+			*/
+			ancestors = lcons(sp, ancestors);
 
-		ExplainNode(sps->planstate, ancestors,
-					relationship, sp->plan_name, es);
+			ExplainNode(sps->planstate, ancestors,
+						relationship, sp->plan_name, es);
 
-		ancestors = list_delete_first(ancestors);
+			ancestors = list_delete_first(ancestors);
 		}
 	}
 
