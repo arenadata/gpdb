@@ -3,13 +3,9 @@
  * tablecmds.c
  *	  Commands for creating and altering table structures and settings
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -167,80 +163,6 @@ static List *on_commits = NIL;
  * In GPDB, these are in nodes/altertablenodes.h
  */
 
-<<<<<<< HEAD
-=======
-#define AT_PASS_UNSET			-1	/* UNSET will cause ERROR */
-#define AT_PASS_DROP			0	/* DROP (all flavors) */
-#define AT_PASS_ALTER_TYPE		1	/* ALTER COLUMN TYPE */
-#define AT_PASS_OLD_INDEX		2	/* re-add existing indexes */
-#define AT_PASS_OLD_CONSTR		3	/* re-add existing constraints */
-/* We could support a RENAME COLUMN pass here, but not currently used */
-#define AT_PASS_ADD_COL			4	/* ADD COLUMN */
-#define AT_PASS_ADD_CONSTR		5	/* ADD constraints (initial examination) */
-#define AT_PASS_COL_ATTRS		6	/* set column attributes, eg NOT NULL */
-#define AT_PASS_ADD_INDEXCONSTR	7	/* ADD index-based constraints */
-#define AT_PASS_ADD_INDEX		8	/* ADD indexes */
-#define AT_PASS_ADD_OTHERCONSTR	9	/* ADD other constraints, defaults */
-#define AT_PASS_MISC			10	/* other stuff */
-#define AT_NUM_PASSES			11
-
-typedef struct AlteredTableInfo
-{
-	/* Information saved before any work commences: */
-	Oid			relid;			/* Relation to work on */
-	char		relkind;		/* Its relkind */
-	TupleDesc	oldDesc;		/* Pre-modification tuple descriptor */
-	/* Information saved by Phase 1 for Phase 2: */
-	List	   *subcmds[AT_NUM_PASSES]; /* Lists of AlterTableCmd */
-	/* Information saved by Phases 1/2 for Phase 3: */
-	List	   *constraints;	/* List of NewConstraint */
-	List	   *newvals;		/* List of NewColumnValue */
-	List	   *afterStmts;		/* List of utility command parsetrees */
-	bool		verify_new_notnull; /* T if we should recheck NOT NULL */
-	int			rewrite;		/* Reason for forced rewrite, if any */
-	Oid			newTableSpace;	/* new tablespace; 0 means no change */
-	bool		chgPersistence; /* T if SET LOGGED/UNLOGGED is used */
-	char		newrelpersistence;	/* if above is true */
-	Expr	   *partition_constraint;	/* for attach partition validation */
-	/* true, if validating default due to some other attach/detach */
-	bool		validate_default;
-	/* Objects to rebuild after completing ALTER TYPE operations */
-	List	   *changedConstraintOids;	/* OIDs of constraints to rebuild */
-	List	   *changedConstraintDefs;	/* string definitions of same */
-	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
-	List	   *changedIndexDefs;	/* string definitions of same */
-} AlteredTableInfo;
-
-/* Struct describing one new constraint to check in Phase 3 scan */
-/* Note: new NOT NULL constraints are handled elsewhere */
-typedef struct NewConstraint
-{
-	char	   *name;			/* Constraint name, or NULL if none */
-	ConstrType	contype;		/* CHECK or FOREIGN */
-	Oid			refrelid;		/* PK rel, if FOREIGN */
-	Oid			refindid;		/* OID of PK's index, if FOREIGN */
-	Oid			conid;			/* OID of pg_constraint entry, if FOREIGN */
-	Node	   *qual;			/* Check expr or CONSTR_FOREIGN Constraint */
-	ExprState  *qualstate;		/* Execution state for CHECK expr */
-} NewConstraint;
-
-/*
- * Struct describing one new column value that needs to be computed during
- * Phase 3 copy (this could be either a new column with a non-null default, or
- * a column that we're changing the type of).  Columns without such an entry
- * are just copied from the old table during ATRewriteTable.  Note that the
- * expr is an expression over *old* table values, except when is_generated
- * is true; then it is an expression over columns of the *new* tuple.
- */
-typedef struct NewColumnValue
-{
-	AttrNumber	attnum;			/* which column */
-	Expr	   *expr;			/* expression to compute */
-	ExprState  *exprstate;		/* execution state */
-	bool		is_generated;	/* is it a GENERATED expression? */
-} NewColumnValue;
-
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 /*
  * Error-reporting support for RemoveRelations
  */
@@ -425,14 +347,11 @@ static void ATPrepAddColumn(List **wqueue, Relation rel, bool recurse, bool recu
 static ObjectAddress ATExecAddColumn(List **wqueue, AlteredTableInfo *tab,
 									 Relation rel, AlterTableCmd **cmd,
 									 bool recurse, bool recursing,
-<<<<<<< HEAD
+									 LOCKMODE lockmode, int cur_pass,
+									 AlterTableUtilityContext *context);
 									 bool if_not_exists, LOCKMODE lockmode);
 static void ATExecSetColumnEncoding(AlteredTableInfo *tab, Relation rel,
 									AlterTableCmd *cmd);
-=======
-									 LOCKMODE lockmode, int cur_pass,
-									 AlterTableUtilityContext *context);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 static bool check_for_column_name_collision(Relation rel, const char *colname,
 											bool if_not_exists);
 static void add_column_datatype_dependency(Oid relid, int32 attnum, Oid typid);
@@ -1474,9 +1393,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 										   RelationGetDescr(parent));
 			idxstmt =
 				generateClonedIndexStmt(NULL, idxRel,
-<<<<<<< HEAD
-										attmap, RelationGetDescr(parent)->natts,
-										&constraintOid);
+										attmap, &constraintOid);
 
 			/*
 			 * In QE, we cannot independently choose index names. We must use
@@ -1504,9 +1421,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 						 RelationGetRelationName(rel));
 			}
 
-=======
-										attmap, &constraintOid);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			DefineIndex(RelationGetRelid(rel),
 						idxstmt,
 						InvalidOid,
@@ -4196,8 +4110,7 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 	if (!stmt->is_internal)
 		CheckTableNotInUse(rel, "ALTER TABLE");
 
-<<<<<<< HEAD
-	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode);
+	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
@@ -4316,9 +4229,6 @@ static void populate_rel_col_encodings(Relation rel, List *stenc, List *withOpti
 							false /*explicitOnly*/,
 							false /*errorOnEncodingClause*/);
 	AddRelationAttributeEncodings(RelationGetRelid(rel), attr_encodings);
-=======
-	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
 
 /*
@@ -4332,17 +4242,15 @@ static void populate_rel_col_encodings(Relation rel, List *stenc, List *withOpti
  * existing query plans.  On the assumption it's not used for such, we
  * don't have to reject pending AFTER triggers, either.
  *
-<<<<<<< HEAD
  * It is also unsafe to use this function for any Alter Table subcommand that
  * requires rewriting the table or creating toast tables, because that requires
  * creating relfilenodes outside of a context that understands dispatch.
  * Commands that rewrite the table include: adding or altering columns, changing
  * the tablespace, etc.
-=======
+ * 
  * Also, since we don't have an AlterTableUtilityContext, this cannot be
  * used for any subcommand types that require parse transformation or
  * could generate subcommands that have to be passed to ProcessUtility.
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  */
 void
 AlterTableInternal(Oid relid, List *cmds, bool recurse)
@@ -4688,7 +4596,6 @@ ATController(AlterTableStmt *parsetree,
 
 	cdb_sync_oid_to_segments();
 
-<<<<<<< HEAD
 	/* Phase 1: preliminary examination of commands, create work queue */
 	/*
 	 * In QE, we receive an already-prepped work queue from the QD.
@@ -4720,11 +4627,8 @@ ATController(AlterTableStmt *parsetree,
 		{
 			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
 
-			ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode);
+			ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode, context);
 		}
-=======
-		ATPrepCmd(&wqueue, rel, cmd, recurse, false, lockmode, context);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	}
 
 	/* Close the relation, but keep lock until commit */
@@ -4733,9 +4637,8 @@ ATController(AlterTableStmt *parsetree,
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode, context);
 
-<<<<<<< HEAD
 	/* Phase 3: scan/rewrite tables as needed */
-	ATRewriteTables(parsetree, &wqueue, lockmode);
+	ATRewriteTables(parsetree, &wqueue, lockmode, context);
 
 	/*
 	 * In QD, include the work queue in the command for dispatching,
@@ -4745,10 +4648,6 @@ ATController(AlterTableStmt *parsetree,
 		parsetree->lockmode = lockmode;
 		parsetree->wqueue = wqueue;
 	}
-=======
-	/* Phase 3: scan/rewrite tables as needed, and run afterStmts */
-	ATRewriteTables(parsetree, &wqueue, lockmode, context);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
 
 /*
@@ -4854,13 +4753,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_CheckNotNull:	/* check column is already marked NOT NULL */
 			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE);
-<<<<<<< HEAD
-			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
-				/* No command-specific prep needed */
-=======
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			/* No command-specific prep needed */
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			pass = AT_PASS_COL_ATTRS;
 			break;
 		case AT_DropExpression: /* ALTER COLUMN DROP EXPRESSION */
@@ -7891,7 +7785,6 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		{
 			NewColumnValue *newval;
 
-<<<<<<< HEAD
 			/* If QE, AlteredTableInfo streamed from QD already contains newvals */
 			if (Gp_role != GP_ROLE_EXECUTE)
 			{
@@ -7899,12 +7792,6 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 				newval->attnum = attribute.attnum;
 				newval->expr = expression_planner(defval);
 				newval->is_generated = (colDef->generated != '\0');
-=======
-			newval = (NewColumnValue *) palloc0(sizeof(NewColumnValue));
-			newval->attnum = attribute.attnum;
-			newval->expr = expression_planner(defval);
-			newval->is_generated = (colDef->generated != '\0');
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 				/*
 				 * tab is null if this is called by "create or replace view" which
