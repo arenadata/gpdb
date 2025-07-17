@@ -14,13 +14,9 @@
  * contain optimizable statements, which we should transform.
  *
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2005-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/parser/analyze.c
@@ -1133,12 +1129,9 @@ transformOnConflictClause(ParseState *pstate,
 	if (onConflictClause->action == ONCONFLICT_UPDATE)
 	{
 		Relation	targetrel = pstate->p_target_relation;
-<<<<<<< HEAD
 		RangeTblEntry    *rte = pstate->p_target_rangetblentry;
-=======
 		ParseNamespaceItem *exclNSItem;
 		RangeTblEntry *exclRte;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 		/*
 		 * All INSERT expressions have been parsed, get ready for potentially
@@ -1152,27 +1145,19 @@ transformOnConflictClause(ParseState *pstate,
 		 * relation, and no permission checks are required on it.  (We'll
 		 * check the actual target relation, instead.)
 		 */
-<<<<<<< HEAD
 		/*
 		 * GPDB spec. The lockmode of actual target relation might be upgraded.
 		 * The pseudo one should follow it to avoid involving another lockmode
 		 * which is not the appropriate.
 		 */
-		exclRte = addRangeTableEntryForRelation(pstate,
-												targetrel,
-												rte->rellockmode, /* GPDB */
-												makeAlias("excluded", NIL),
-												false, false);
-=======
 		exclNSItem = addRangeTableEntryForRelation(pstate,
 												   targetrel,
-												   RowExclusiveLock,
+												   rte->rellockmode, /* GPDB */
 												   makeAlias("excluded", NIL),
 												   false, false);
 		exclRte = exclNSItem->p_rte;
 		exclRelIndex = exclNSItem->p_rtindex;
 
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		exclRte->relkind = RELKIND_COMPOSITE_TYPE;
 		exclRte->requiredPerms = 0;
 		/* other permissions fields in exclRte are already empty */
