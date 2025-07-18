@@ -4,13 +4,9 @@
  *	  definitions for executor state nodes
  *
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/execnodes.h
@@ -1287,11 +1283,7 @@ typedef struct ModifyTableState
 	List	  **mt_arowmarks;	/* per-subplan ExecAuxRowMark lists */
 	EPQState	mt_epqstate;	/* for evaluating EvalPlanQual rechecks */
 	bool		fireBSTriggers; /* do we need to fire stmt triggers? */
-<<<<<<< HEAD
 	bool	   *mt_isSplitUpdates; /* per-subplan flag to indicate if it's a split update */
-	List	   *mt_excludedtlist;	/* the excluded pseudo relation's tlist  */
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/*
 	 * Slot for storing tuples in the root partitioned table's rowtype during

@@ -2070,8 +2070,6 @@ heapam_relation_needs_toast_table(Relation rel)
 	return (tuple_length > TOAST_TUPLE_THRESHOLD);
 }
 
-<<<<<<< HEAD
-=======
 /*
  * TOAST tables for heap relations are just heap relations.
  */
@@ -2082,7 +2080,6 @@ heapam_relation_toast_am(Relation rel)
 }
 
 
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 /* ------------------------------------------------------------------------
  * Planner related callbacks for the heap AM
  * ------------------------------------------------------------------------
