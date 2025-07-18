@@ -49,7 +49,7 @@ typedef struct ExplainState
 	List	   *rtable_names;	/* alias names for RTEs */
 	List	   *deparse_cxt;	/* context list for deparsing expressions */
 	Bitmapset  *printed_subplans;	/* ids of SubPlans we've printed */
-<<<<<<< HEAD
+	bool		hide_workers;	/* set if we find an invisible Gather */
 
     /* CDB */
     struct CdbExplain_ShowStatCtx  *showstatctx;    /* EXPLAIN ANALYZE info */
@@ -57,9 +57,6 @@ typedef struct ExplainState
 	bool		subplanDispatchedSeparately;
 
 	PlanState  *parentPlanState;
-=======
-	bool		hide_workers;	/* set if we find an invisible Gather */
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */
