@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "access/detoast.h"
+#include "access/heaptoast.h"
 #include "access/table.h"
 #include "access/tableam.h"
 #include "access/toast_internals.h"
@@ -443,7 +444,6 @@ toast_fetch_datum(struct varlena *attr)
 	 * TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
 	 * from GPDB 4.3), in which case we'll readjust numchunks later.
 	 */
-	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
 
 	/* Must copy to access aligned fields */
 	VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr);
@@ -494,13 +494,6 @@ toast_fetch_datum_slice(struct varlena *attr, int32 sliceoffset,
 	struct varlena *result;
 	struct varatt_external toast_pointer;
 	int32		attrsize;
-
-	/*
-	 * GPDB: start with the assumption that chunks max out at
-	 * TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
-	 * from GPDB 4.3), in which case we'll readjust everything later.
-	 */
-	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
 
 	if (!VARATT_IS_EXTERNAL_ONDISK(attr))
 		elog(ERROR, "toast_fetch_datum_slice shouldn't be called for non-ondisk datums");
