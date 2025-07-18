@@ -20,35 +20,11 @@
 	"specified number of columns in WITH query \"%s\" must not " \
 	"exceed the number of available columns"
 
-<<<<<<< HEAD
-/*
- * Support for fuzzily matching column.
- *
- * This is for building diagnostic messages, where non-exact matching
- * attributes are suggested to the user.  The struct's fields may be facets of
- * a particular RTE, or of an entire range table, depending on context.
- */
-typedef struct
-{
-	int			distance;		/* Weighted distance (lowest so far) */
-	RangeTblEntry *rfirst;		/* RTE of first */
-	AttrNumber	first;			/* Closest attribute so far */
-	RangeTblEntry *rsecond;		/* RTE of second */
-	AttrNumber	second;			/* Second closest attribute so far */
-} FuzzyAttrMatchState;
-
-extern RangeTblEntry *refnameRangeTblEntry(ParseState *pstate,
-										   const char *schemaname,
-										   const char *refname,
-										   int location,
-										   int *sublevels_up);
-=======
 extern ParseNamespaceItem *refnameNamespaceItem(ParseState *pstate,
 												const char *schemaname,
 												const char *refname,
 												int location,
 												int *sublevels_up);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 extern CommonTableExpr *scanNameSpaceForCTE(ParseState *pstate,
 											const char *refname,
 											Index *ctelevelsup);
@@ -71,43 +47,7 @@ extern Node *colNameToVar(ParseState *pstate, const char *colname, bool localonl
 extern void markVarForSelectPriv(ParseState *pstate, Var *var,
 								 RangeTblEntry *rte);
 extern Relation parserOpenTable(ParseState *pstate, const RangeVar *relation,
-<<<<<<< HEAD
 								int lockmode, bool *lockUpgraded);
-extern RangeTblEntry *addRangeTableEntry(ParseState *pstate,
-										 RangeVar *relation,
-										 Alias *alias,
-										 bool inh,
-										 bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForRelation(ParseState *pstate,
-													Relation rel,
-													int lockmode,
-													Alias *alias,
-													bool inh,
-													bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForSubquery(ParseState *pstate,
-													Query *subquery,
-													Alias *alias,
-													bool lateral,
-													bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForFunction(ParseState *pstate,
-													List *funcnames,
-													List *funcexprs,
-													List *coldeflists,
-													RangeFunction *rangefunc,
-													bool lateral,
-													bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForValues(ParseState *pstate,
-												  List *exprs,
-												  List *coltypes,
-												  List *coltypmods,
-												  List *colcollations,
-												  Alias *alias,
-												  bool lateral,
-												  bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForTableFunc(ParseState *pstate,
-													 TableFunc *tf,
-=======
-								int lockmode);
 extern ParseNamespaceItem *addRangeTableEntry(ParseState *pstate,
 											  RangeVar *relation,
 											  Alias *alias,
@@ -152,26 +92,8 @@ extern ParseNamespaceItem *addRangeTableEntryForJoin(ParseState *pstate,
 													 List *aliasvars,
 													 List *leftcols,
 													 List *rightcols,
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 													 Alias *alias,
 													 bool inFromCl);
-<<<<<<< HEAD
-extern RangeTblEntry *addRangeTableEntryForJoin(ParseState *pstate,
-												List *colnames,
-												JoinType jointype,
-												List *aliasvars,
-												Alias *alias,
-												bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForCTE(ParseState *pstate,
-											   CommonTableExpr *cte,
-											   Index levelsup,
-											   RangeVar *rv,
-											   bool inFromCl);
-extern RangeTblEntry *addRangeTableEntryForENR(ParseState *pstate,
-											   RangeVar *rv,
-											   bool inFromCl);
-extern LockingClause *getLockedRefname(ParseState *pstate, const char *refname);
-=======
 extern ParseNamespaceItem *addRangeTableEntryForCTE(ParseState *pstate,
 													CommonTableExpr *cte,
 													Index levelsup,
@@ -180,7 +102,7 @@ extern ParseNamespaceItem *addRangeTableEntryForCTE(ParseState *pstate,
 extern ParseNamespaceItem *addRangeTableEntryForENR(ParseState *pstate,
 													RangeVar *rv,
 													bool inFromCl);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+extern LockingClause *getLockedRefname(ParseState *pstate, const char *refname);
 extern bool isLockedRefname(ParseState *pstate, const char *refname);
 extern void addNSItemToQuery(ParseState *pstate, ParseNamespaceItem *nsitem,
 							 bool addToJoinList,
