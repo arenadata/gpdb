@@ -2555,10 +2555,11 @@ set_splitupdate_tlist_references(Plan *plan, int rtoffset)
 						 exprTypmod((Node *) oldvar),
 						 exprCollation((Node *) oldvar),
 						 0);
-		if (IsA(oldvar, Var))
+		if (IsA(oldvar, Var) &&
+			oldvar->varnosyn > 0)
 		{
-			newvar->varnosyn = oldvar->varno + rtoffset;
-			newvar->varattnosyn = oldvar->varattno;
+			newvar->varnosyn = oldvar->varnosyn + rtoffset;
+			newvar->varattnosyn = oldvar->varattnosyn;
 		}
 		else
 		{
