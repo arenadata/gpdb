@@ -149,20 +149,20 @@ sub GenerateFiles
 	  || confess("Could not open configure.in for reading\n");
 	while (<$c>)
 	{
-		if (/^AC_INIT\(\[Greenplum Database\], \[([^\]]+)\]/)
+		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\]/)
 		{
 			$self->{gpdbver} = $1;
 			$self->{gpdbmajorver} = substr $1, 0, 1;
-		}
-		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\]/)
-		{
 			$package_name      = $1;
-			$package_version   = $2;
 			$package_bugreport = $3;
+		}
+		if (/\[PG_PACKAGE_VERSION=([^\]]+)\]/)
+		{
+			$package_version   = $1;
 
 			if ($package_version !~ /^(\d+)(?:\.(\d+))?/)
 			{
-				confess "Bad format of version: $self->{strver}\n";
+				confess "Bad format of version: $package_version\n";
 			}
 			$self->{numver} = sprintf("%d%04d", $1, $2 ? $2 : 0);
 			$self->{majorver} = sprintf("%d", $1);
