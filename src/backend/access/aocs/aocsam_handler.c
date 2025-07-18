@@ -1906,7 +1906,20 @@ aoco_relation_toast_am(Relation rel)
 	 * AO_COLUMN never used the toasting, don't create the toast table from
 	 * GPDB
 	 */
-	return InvalidOid;
+	Assert(0);
+	return InvalidOid;		/* keep compiler quiet */
+}
+
+static void
+aoco_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
+					   int32 sliceoffset, int32 slicelength,
+					   struct varlena *result)
+{
+	/*
+	 * AO_COLUMN never used the toasting, don't create the toast table from
+	 * GPDB
+	 */
+	Assert(0);
 }
 
 /* ------------------------------------------------------------------------
@@ -2158,7 +2171,7 @@ static const TableAmRoutine ao_column_methods = {
 	.relation_size = aoco_relation_size,
 	.relation_needs_toast_table = aoco_relation_needs_toast_table,
 	.relation_toast_am = aoco_relation_toast_am,
-	.relation_fetch_toast_slice = heap_fetch_toast_slice,
+	.relation_fetch_toast_slice = aoco_fetch_toast_slice,
 
 	.relation_estimate_size = aoco_estimate_rel_size,
 

@@ -1930,7 +1930,18 @@ appendonly_relation_needs_toast_table(Relation rel)
 static Oid
 appendonly_relation_toast_am(Relation rel)
 {
+	Assert(table_relation_needs_toast_table(rel));
+
 	return HEAP_TABLE_AM_OID;
+}
+
+static void
+appendonly_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
+							 int32 sliceoffset, int32 slicelength,
+							 struct varlena *result)
+{
+	return heap_fetch_toast_slice(toastrel, valueid, attrsize, sliceoffset,
+								  slicelength, result);
 }
 
 /* ------------------------------------------------------------------------
@@ -2166,7 +2177,7 @@ static const TableAmRoutine ao_row_methods = {
 	.relation_size = appendonly_relation_size,
 	.relation_needs_toast_table = appendonly_relation_needs_toast_table,
 	.relation_toast_am = appendonly_relation_toast_am,
-	.relation_fetch_toast_slice = heap_fetch_toast_slice,
+	.relation_fetch_toast_slice = appendonly_fetch_toast_slice,
 
 	.relation_estimate_size = appendonly_estimate_rel_size,
 
