@@ -22,16 +22,11 @@ struct AttrMap;					/* avoid including attmap.h here */
 
 
 extern List *transformCreateStmt(CreateStmt *stmt, const char *queryString);
-<<<<<<< HEAD
 extern List *transformCreateExternalStmt(CreateExternalStmt *stmt, const char *queryString);
-extern List *transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
-									 const char *queryString);
-=======
 extern AlterTableStmt *transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 											   const char *queryString,
 											   List **beforeStmts,
 											   List **afterStmts);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 extern IndexStmt *transformIndexStmt(Oid relid, IndexStmt *stmt,
 									 const char *queryString);
 extern void transformRuleStmt(RuleStmt *stmt, const char *queryString,
