@@ -43,20 +43,14 @@ typedef struct IsoConnInfo
 static IsoConnInfo *conns = NULL;
 static int	nconns = 0;
 
-<<<<<<< HEAD
 /* Flag indicating some new NOTICE has arrived */
 static bool any_new_notice = false;
 
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 /* Maximum time to wait before giving up on a step (in usec) */
 static int64 max_step_wait = 300 * USECS_PER_SEC;
 
 
-<<<<<<< HEAD
 static void check_testspec(TestSpec *testspec);
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 static void run_testspec(TestSpec *testspec);
 static void run_all_permutations(TestSpec *testspec);
 static void run_all_permutations_recurse(TestSpec *testspec, int nsteps,
