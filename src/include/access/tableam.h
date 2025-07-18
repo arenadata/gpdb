@@ -616,8 +616,6 @@ typedef struct TableAmRoutine
 	 */
 	bool		(*relation_needs_toast_table) (Relation rel);
 
-<<<<<<< HEAD
-=======
 	/*
 	 * This callback should return the OID of the table AM that implements
 	 * TOAST tables for this AM.  If the relation_needs_toast_table callback
@@ -637,7 +635,6 @@ typedef struct TableAmRoutine
 											   struct varlena *result);
 
 
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	/* ------------------------------------------------------------------------
 	 * Planner related functions.
 	 * ------------------------------------------------------------------------
@@ -1752,8 +1749,6 @@ table_relation_needs_toast_table(Relation rel)
 	return rel->rd_tableam->relation_needs_toast_table(rel);
 }
 
-<<<<<<< HEAD
-=======
 /*
  * Return the OID of the AM that should be used to implement the TOAST table
  * for this relation.
@@ -1799,7 +1794,6 @@ table_relation_fetch_toast_slice(Relation toastrel, Oid valueid,
 }
 
 
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 /* ----------------------------------------------------------------------------
  * Planner related functionality
  * ----------------------------------------------------------------------------
