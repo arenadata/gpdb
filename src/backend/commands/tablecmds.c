@@ -349,7 +349,6 @@ static ObjectAddress ATExecAddColumn(List **wqueue, AlteredTableInfo *tab,
 									 bool recurse, bool recursing,
 									 LOCKMODE lockmode, int cur_pass,
 									 AlterTableUtilityContext *context);
-									 bool if_not_exists, LOCKMODE lockmode);
 static void ATExecSetColumnEncoding(AlteredTableInfo *tab, Relation rel,
 									AlterTableCmd *cmd);
 static bool check_for_column_name_collision(Relation rel, const char *colname,
@@ -4637,7 +4636,7 @@ ATController(AlterTableStmt *parsetree,
 	/* Phase 2: update system catalogs */
 	ATRewriteCatalogs(&wqueue, lockmode, context);
 
-	/* Phase 3: scan/rewrite tables as needed */
+	/* Phase 3: scan/rewrite tables as needed, and run afterStmts */
 	ATRewriteTables(parsetree, &wqueue, lockmode, context);
 
 	/*
@@ -4706,7 +4705,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 		case AT_SetColumnEncoding: /* ALTER COLUMN SET ENCODING */
 			ATSimplePermissions(rel,ATT_TABLE);
-			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_MISC;
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
@@ -4847,7 +4846,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			/* GPDB: we have historically been performing recurse by default for partition tables. */
 			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_MISC;
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
@@ -4901,7 +4900,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 						 errmsg("cannot have multiple SET ACCESS METHOD subcommands")));
 
 			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			ATPrepSetAccessMethod(tab, rel, cmd->name);
 			pass = AT_PASS_MISC;	/* does not matter; no work in Phase 2 */
 			break;
@@ -4912,7 +4911,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			 * GPDB: This command never recurses in upstream Postgres, however,
 			 * it recurses in Greenplum.
 			 */
-			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			ATPrepSetTableSpace(tab, rel, cmd->name, lockmode);
 			pass = AT_PASS_MISC;	/* doesn't actually matter */
 			break;
@@ -4922,7 +4921,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			ATSimplePermissions(rel, ATT_TABLE | ATT_VIEW | ATT_MATVIEW | ATT_INDEX);
 			/* GPDB: recurse when setting reloptions of root partition w/o 'ONLY' keyword. */
 			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			/* No command-specific prep needed */
 			pass = AT_PASS_MISC;
 			break;
@@ -4993,7 +4992,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					}
 				}
 			}
-			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_MISC;
 			break;
 		case AT_ExpandTable:
@@ -5020,7 +5019,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				}
 			}
 
-			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_MISC;
 			break;
 
@@ -5058,7 +5057,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				}
 			}
 
-			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_MISC;
 			break;
 
@@ -5102,7 +5101,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_DisableTrigUser:
 			ATSimplePermissions(rel, ATT_TABLE | ATT_FOREIGN_TABLE);
 			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode);
+				ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_MISC;
 			break;
 		case AT_EnableRule:		/* ENABLE/DISABLE RULE variants */
