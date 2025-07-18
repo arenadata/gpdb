@@ -9656,13 +9656,13 @@ get_dqa_expr(DQAExpr *dqa_expr,deparse_context *context)
 	StringInfo	buf = context->buf;
 	Bitmapset *bm = dqa_expr->agg_args_id_bms;
 	deparse_namespace *dnps = (deparse_namespace *) linitial(context->namespaces);
-	struct PlanState *planstate = dnps->planstate;
+	struct Plan *plan = dnps->plan;
 
 	resetStringInfo(buf);
 	appendStringInfoChar(buf, '(');
 	while ((id = bms_next_member(bm, id)) >= 0)
 	{
-		TargetEntry *te = get_sortgroupref_tle((Index)id, planstate->plan->targetlist);
+		TargetEntry *te = get_sortgroupref_tle((Index)id, plan->targetlist);
 		char	   *exprstr;
 
 		if (!te)
