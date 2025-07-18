@@ -226,8 +226,8 @@ static void set_plan_references_input_asserts(PlannerInfo *root, Plan *plan)
 
 #if 0
 		/* ModifyTable plans have a funny target list, set up just for EXPLAIN. */
-		if (!IsA(plan, ModifyTable) && var->varno != var->varnoold)
-			Assert(false && "Varno and varnoold do not agree!");
+		if (!IsA(plan, ModifyTable) && var->varno != var->varnosyn)
+			Assert(false && "Varno and varnosyn do not agree!");
 #endif
 	}
 }
@@ -2557,13 +2557,13 @@ set_splitupdate_tlist_references(Plan *plan, int rtoffset)
 						 0);
 		if (IsA(oldvar, Var))
 		{
-			newvar->varnoold = oldvar->varno + rtoffset;
-			newvar->varoattno = oldvar->varattno;
+			newvar->varnosyn = oldvar->varno + rtoffset;
+			newvar->varattnosyn = oldvar->varattno;
 		}
 		else
 		{
-			newvar->varnoold = 0;		/* wasn't ever a plain Var */
-			newvar->varoattno = 0;
+			newvar->varnosyn = 0;		/* wasn't ever a plain Var */
+			newvar->varattnosyn = 0;
 		}
 
 		tle = flatCopyTargetEntry(tle);

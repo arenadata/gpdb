@@ -1312,20 +1312,20 @@ fetch_targetlist_exprs(List *targetlist)
  *   BoolExpr [boolop=NOT_EXPR]
  *      BoolExpr [boolop=AND_EXPR]
  *        OpExpr [opno=96 opfuncid=65 opresulttype=16 opretset=false]
- *                Var [varno=1 varattno=1 vartype=23 varnoold=1 varoattno=1]
+ *                Var [varno=1 varattno=1 vartype=23 varnosyn=1 varattnosyn=1]
  *                Param [paramkind=PARAM_SUBLINK paramid=1 paramtype=23]
  *        OpExpr [opno=96 opfuncid=65 opresulttype=16 opretset=false]
- *                Var [varno=1 varattno=2 vartype=23 varnoold=1 varoattno=2]
+ *                Var [varno=1 varattno=2 vartype=23 varnosyn=1 varattnosyn=2]
  *                Param [paramkind=PARAM_SUBLINK paramid=2 paramtype=23]
  *
  *  For a two-col <> ALL query: select * from t1 where (a,b) <> (select a,b from t2)
  *  this testexpr should be:
  *  BoolExpr [boolop=OR_EXPR]
  *     OpExpr [opno=518 opfuncid=144 opresulttype=16 opretset=false]
- *              Var [varno=1 varattno=1 vartype=23 varnoold=1 varoattno=1]
+ *              Var [varno=1 varattno=1 vartype=23 varnosyn=1 varattnosyn=1]
  *              Param [paramkind=PARAM_SUBLINK paramid=1 paramtype=23]
  *      OpExpr [opno=518 opfuncid=144 opresulttype=16 opretset=false]
- *              Var [varno=1 varattno=2 vartype=23 varnoold=1 varoattno=2]
+ *              Var [varno=1 varattno=2 vartype=23 varnosyn=1 varattnosyn=2]
  *              Param [paramkind=PARAM_SUBLINK paramid=2 paramtype=23]
  *
  * This function fetches all the outer parts and put them in a list as the

@@ -2339,7 +2339,7 @@ change_varattnos_varno_walker(Node *node, const AttrMapContext *attrMapCxt)
 			 * currently.
 			 */
 			Assert(attrMapCxt->newattno[var->varattno - 1] > 0);
-			var->varattno = var->varoattno = attrMapCxt->newattno[var->varattno - 1];
+			var->varattno = var->varattnosyn = attrMapCxt->newattno[var->varattno - 1];
 		}
 		return false;
 	}
