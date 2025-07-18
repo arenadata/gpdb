@@ -439,12 +439,6 @@ toast_fetch_datum(struct varlena *attr)
 	if (!VARATT_IS_EXTERNAL_ONDISK(attr))
 		elog(ERROR, "toast_fetch_datum shouldn't be called for non-ondisk datums");
 
-	/*
-	 * GPDB: start with the assumption that chunks max out at
-	 * TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
-	 * from GPDB 4.3), in which case we'll readjust numchunks later.
-	 */
-
 	/* Must copy to access aligned fields */
 	VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr);
 
