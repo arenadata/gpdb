@@ -657,6 +657,7 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 					A_Const *arg_val;
 					List *qualified_name_list;
 					RangeVar *rel;
+					RangeTblEntry *rte;
 
 					arg_val = linitial(fc->args);
 					if (!IsA(&arg_val->val, String))
