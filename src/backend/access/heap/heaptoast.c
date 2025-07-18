@@ -717,13 +717,27 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	int			nscankeys;
 	SysScanDesc toastscan;
 	HeapTuple	ttup;
+	int32		curchunk;
 	int32		expectedchunk;
 	int32		totalchunks = ((attrsize - 1) / TOAST_MAX_CHUNK_SIZE) + 1;
+	int32		startoffset;
+	int32		endoffset;
+	Pointer		chunk;
+	bool		isnull;
+	int32		chunksize;
 	int			startchunk;
 	int			endchunk;
 	int			num_indexes;
 	int			validIndex;
 	SnapshotData SnapshotToast;
+
+	/*
+	* GPDB: start with the assumption that chunks max out at
+	* TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
+	* from GPDB 4.3), in which case we'll readjust everything later.
+	*/
+	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
+	int32		numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 
 	/* Look for the valid index of toast relation */
 	validIndex = toast_open_indexes(toastrel,
@@ -731,6 +745,74 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 									&toastidxs,
 									&num_indexes);
 
+	{
+		/*
+		 * GPDB: because we allow upgrades from clusters with different
+		 * TOAST_MAX_CHUNK_SIZEs, we can't compute our chunk offsets yet. Open
+		 * the first chunk and check its size.
+		 */
+		ScanKeyInit(&toastkey[0],
+					(AttrNumber) 1,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(valueid));
+		ScanKeyInit(&toastkey[1],
+					(AttrNumber) 2,
+					BTEqualStrategyNumber, F_INT4EQ,
+					Int32GetDatum(0));
+		nscankeys = 2;
+
+		init_toast_snapshot(&SnapshotToast);
+		toastscan = systable_beginscan_ordered(toastrel, toastidxs[validIndex],
+											   &SnapshotToast, nscankeys, toastkey);
+
+		if ((ttup = systable_getnext_ordered(toastscan, ForwardScanDirection)) != NULL)
+		{
+			/*
+			 * Have a chunk, extract the sequence number and the data
+			 */
+			curchunk = DatumGetInt32(fastgetattr(ttup, 2, toasttupDesc, &isnull));
+			Assert(!isnull);
+			chunk = DatumGetPointer(fastgetattr(ttup, 3, toasttupDesc, &isnull));
+			Assert(!isnull);
+
+			if (!VARATT_IS_EXTENDED(chunk))
+			{
+				chunksize = VARSIZE(chunk) - VARHDRSZ;
+			}
+			else if (VARATT_IS_SHORT(chunk))
+			{
+				/* could happen due to heap_form_tuple doing its thing */
+				chunksize = VARSIZE_SHORT(chunk) - VARHDRSZ_SHORT;
+			}
+			else
+			{
+				/* should never happen */
+				elog(ERROR, "found toasted toast chunk for toast value %u in %s",
+					 valueid,
+					 RelationGetRelationName(toastrel));
+				chunksize = 0;		/* keep compiler quiet */
+			}
+
+			if (chunksize < attrsize)
+			{
+				/*
+				 * Only adjust the max chunk size if this isn't the only chunk.
+				 */
+				actual_max_chunk_size = chunksize;
+			}
+		}
+
+		systable_endscan_ordered(toastscan);
+	}
+
+	totalchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
+
+	startchunk = sliceoffset / actual_max_chunk_size;
+	endchunk = (sliceoffset + slicelength - 1) / actual_max_chunk_size;
+	numchunks = (endchunk - startchunk) + 1;
+
+	startoffset = sliceoffset % actual_max_chunk_size;
+	endoffset = (sliceoffset + slicelength - 1) % actual_max_chunk_size;									
 	startchunk = sliceoffset / TOAST_MAX_CHUNK_SIZE;
 	endchunk = (sliceoffset + slicelength - 1) / TOAST_MAX_CHUNK_SIZE;
 	Assert(endchunk <= totalchunks);
@@ -781,7 +863,6 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	expectedchunk = startchunk;
 	while ((ttup = systable_getnext_ordered(toastscan, ForwardScanDirection)) != NULL)
 	{
-		int32		curchunk;
 		Pointer		chunk;
 		bool		isnull;
 		char	   *chunkdata;
@@ -826,30 +907,6 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 					 errmsg_internal("unexpected chunk number %d (expected %d) for toast value %u in %s",
 									 curchunk, expectedchunk, valueid,
 									 RelationGetRelationName(toastrel))));
-		if (curchunk > endchunk)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg_internal("unexpected chunk number %d (out of range %d..%d) for toast value %u in %s",
-									 curchunk,
-									 startchunk, endchunk, valueid,
-									 RelationGetRelationName(toastrel))));
-		expected_size = curchunk < totalchunks - 1 ? TOAST_MAX_CHUNK_SIZE
-			: attrsize - ((totalchunks - 1) * TOAST_MAX_CHUNK_SIZE);
-		if (chunksize != expected_size)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATA_CORRUPTED),
-					 errmsg_internal("unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s",
-									 chunksize, expected_size,
-									 curchunk, totalchunks, valueid,
-									 RelationGetRelationName(toastrel))));
-
-		/*
-		* GPDB: start with the assumption that chunks max out at
-		* TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
-		* from GPDB 4.3), in which case we'll readjust everything later.
-		*/
-		int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
-		int32 numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 
 		if ((curchunk == 0) && (chunksize < attrsize)
 			&& (chunksize != actual_max_chunk_size))
@@ -871,20 +928,62 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 			numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 		}
 		
+		if (curchunk < numchunks - 1)
+		{
+			if (chunksize != actual_max_chunk_size)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s",
+										 chunksize, (int) actual_max_chunk_size,
+										 curchunk, numchunks,
+										 valueid,
+										 RelationGetRelationName(toastrel))));
+		}
+		else if (curchunk == numchunks - 1)
+		{
+			if ((curchunk * actual_max_chunk_size + chunksize) != attrsize)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_CORRUPTED),
+						 errmsg_internal("unexpected chunk size %d (expected %d) in final chunk %d for toast value %u in %s",
+										 chunksize,
+										 (int) (attrsize - curchunk * actual_max_chunk_size),
+										 curchunk,
+										 valueid,
+										 RelationGetRelationName(toastrel))));
+		}
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg_internal("unexpected chunk number %d (out of range %d..%d) for toast value %u in %s",
+									 curchunk,
+									 startchunk, endchunk, valueid,
+									 RelationGetRelationName(toastrel))));
+
+		expected_size = curchunk < totalchunks - 1 ? TOAST_MAX_CHUNK_SIZE
+			: attrsize - ((totalchunks - 1) * TOAST_MAX_CHUNK_SIZE);
+		if (chunksize != expected_size)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg_internal("unexpected chunk size %d (expected %d) in chunk %d of %d for toast value %u in %s",
+									 chunksize, expected_size,
+									 curchunk, totalchunks, valueid,
+									 RelationGetRelationName(toastrel))));
+
 		/*
 		 * Copy the data into proper place in our result
 		 */
 		chcpystrt = 0;
 		chcpyend = chunksize - 1;
 		if (curchunk == startchunk)
-			chcpystrt = sliceoffset % TOAST_MAX_CHUNK_SIZE;
+			chcpystrt = startoffset;
 		if (curchunk == endchunk)
-			chcpyend = (sliceoffset + slicelength - 1) % TOAST_MAX_CHUNK_SIZE;
+			chcpyend = endoffset;
 
 		memcpy(VARDATA(result) +
-			   (curchunk * TOAST_MAX_CHUNK_SIZE - sliceoffset) + chcpystrt,
+			   (curchunk * actual_max_chunk_size - sliceoffset) + chcpystrt,
 			   chunkdata + chcpystrt,
 			   (chcpyend - chcpystrt) + 1);
+
 
 		expectedchunk++;
 	}
