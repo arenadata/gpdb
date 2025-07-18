@@ -1013,14 +1013,23 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr)
 
 		LogstreamResult.Write = recptr;
 
-		elogif(debug_walrepl_rcv, LOG,
-			   "walrcv write -- Wrote %d bytes in file %s, offset %d."
-			   "Latest write location is %X/%X.",
-			   byteswritten,
-			   XLogFileNameP(recvFileTLI, recvSegNo),
-			   startoff,
-			   (uint32) (LogstreamResult.Write >> 32),
-			   (uint32) LogstreamResult.Write);
+		if (debug_walrepl_rcv)
+		{
+			char		xlogfname[MAXFNAMELEN];
+			int			save_errno = errno;
+
+			XLogFileName(xlogfname, recvFileTLI, recvSegNo, wal_segment_size);
+			errno = save_errno;
+
+			elog(LOG,
+				 "walrcv write -- Wrote %d bytes in file %s, offset %d."
+				 "Latest write location is %X/%X.",
+				 byteswritten,
+				 xlogfname,
+				 startoff,
+				 (uint32) (LogstreamResult.Write >> 32),
+				 (uint32) LogstreamResult.Write);
+		}
 	}
 }
 
