@@ -2968,8 +2968,8 @@ show_tuple_split_keys(TupleSplitState *tstate, List *ancestors,
 	bool		useprefix;
 	List	   *result = NIL;
 	/* Set up deparsing context */
-	context = set_deparse_context_planstate(es->deparse_cxt,
-											(Node *) tstate,
+	context = set_deparse_context_plan(es->deparse_cxt,
+											tstate->ss.ps.plan,
 											ancestors);
 	useprefix = (list_length(es->rtable) > 1 || es->verbose);
 
