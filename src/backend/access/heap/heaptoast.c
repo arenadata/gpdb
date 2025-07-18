@@ -732,10 +732,10 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	SnapshotData SnapshotToast;
 
 	/*
-	* GPDB: start with the assumption that chunks max out at
-	* TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've upgraded
-	* from GPDB 4.3), in which case we'll readjust everything later.
-	*/
+	 * GPDB: start with the assumption that chunks max out at
+	 * TOAST_MAX_CHUNK_SIZE. This may later prove false (e.g. if we've
+	 * upgraded from GPDB 4.3), in which case we'll readjust everything later.
+	 */
 	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
 	int32		numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 
@@ -790,13 +790,14 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 				elog(ERROR, "found toasted toast chunk for toast value %u in %s",
 					 valueid,
 					 RelationGetRelationName(toastrel));
-				chunksize = 0;		/* keep compiler quiet */
+				chunksize = 0;	/* keep compiler quiet */
 			}
 
 			if (chunksize < attrsize)
 			{
 				/*
-				 * Only adjust the max chunk size if this isn't the only chunk.
+				 * Only adjust the max chunk size if this isn't the only
+				 * chunk.
 				 */
 				actual_max_chunk_size = chunksize;
 			}
@@ -812,7 +813,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	numchunks = (endchunk - startchunk) + 1;
 
 	startoffset = sliceoffset % actual_max_chunk_size;
-	endoffset = (sliceoffset + slicelength - 1) % actual_max_chunk_size;									
+	endoffset = (sliceoffset + slicelength - 1) % actual_max_chunk_size;
 	startchunk = sliceoffset / TOAST_MAX_CHUNK_SIZE;
 	endchunk = (sliceoffset + slicelength - 1) / TOAST_MAX_CHUNK_SIZE;
 	Assert(endchunk <= totalchunks);
@@ -927,7 +928,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 			actual_max_chunk_size = chunksize;
 			numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 		}
-		
+
 		if (curchunk < numchunks - 1)
 		{
 			if (chunksize != actual_max_chunk_size)
