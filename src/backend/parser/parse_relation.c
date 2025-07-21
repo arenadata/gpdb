@@ -1733,7 +1733,8 @@ addRangeTableEntryForSubquery(ParseState *pstate,
 	 * Build a ParseNamespaceItem, but don't add it to the pstate's namespace
 	 * list --- caller must do that if appropriate.
 	 */
-	return buildNSItemFromLists(rte, list_length(pstate->p_rtable),
+	return buildNSItemFromLists(rte,
+								pstate != NULL ? list_length(pstate->p_rtable) : 0,
 								coltypes, coltypmods, colcollations);
 }
 
