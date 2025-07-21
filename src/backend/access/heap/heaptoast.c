@@ -735,7 +735,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	 * upgraded from GPDB 4.3), in which case we'll readjust everything later.
 	 */
 	int32		actual_max_chunk_size = TOAST_MAX_CHUNK_SIZE;
-	int32		numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
+	int32		numchunks;
 
 	/* Look for the valid index of toast relation */
 	validIndex = toast_open_indexes(toastrel,
