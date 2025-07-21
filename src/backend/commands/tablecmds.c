@@ -5734,10 +5734,19 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					int cur_pass, AlterTableUtilityContext *context)
 {
 	AlterTableCmd *newcmd = NULL;
-	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
+	AlterTableStmt *atstmt;
 	List	   *beforeStmts;
 	List	   *afterStmts;
 	ListCell   *lc;
+
+	/*
+	 * GPDB: Like for CREATE TABLE, only do parse analysis in the Query
+	 * Dispatcher.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		atstmt = (AlterTableStmt *)context->pstmt->utilityStmt;
+	else
+		atstmt = makeNode(AlterTableStmt);
 
 	/* Gin up an AlterTableStmt with just this subcommand and this table */
 	atstmt->relation =
@@ -5749,16 +5758,9 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	atstmt->relkind = OBJECT_TABLE; /* needn't be picky here */
 	atstmt->missing_ok = false;
 
-	/* Transform the AlterTableStmt */
-
-	/*
-	 * GPDB: Like for CREATE TABLE, only do parse analysis in the Query
-	 * Dispatcher.
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE)
-		atstmt = list_make1(context->pstmt->utilityStmt);
-	else
+	if (Gp_role != GP_ROLE_EXECUTE)
 	{
+		/* Transform the AlterTableStmt */
 		atstmt = transformAlterTableStmt(RelationGetRelid(rel),
 										 atstmt,
 										 context->queryString,
@@ -5851,8 +5853,11 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		}
 	}
 
-	/* Queue up any after-statements to happen at the end */
-	tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		/* Queue up any after-statements to happen at the end */
+		tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
+	}
 
 	return newcmd;
 }
