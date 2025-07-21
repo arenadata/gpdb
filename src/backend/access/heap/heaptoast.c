@@ -902,7 +902,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 									 curchunk, expectedchunk, valueid,
 									 RelationGetRelationName(toastrel))));
 
-		if ((curchunk == 0) && (chunksize < attrsize)
+		if ((sliceoffset == 0) && (chunksize < attrsize)
 			&& (chunksize != actual_max_chunk_size))
 		{
 			/*
