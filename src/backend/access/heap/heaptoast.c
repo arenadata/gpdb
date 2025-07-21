@@ -743,6 +743,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 									&toastidxs,
 									&num_indexes);
 
+	if (sliceoffset != 0)
 	{
 		/*
 		 * GPDB: because we allow upgrades from clusters with different
