@@ -719,9 +719,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	HeapTuple	ttup;
 	int32		curchunk;
 	int32		expectedchunk;
-	int32		totalchunks = ((attrsize - 1) / TOAST_MAX_CHUNK_SIZE) + 1;
-	int32		startoffset;
-	int32		endoffset;
+	int32		totalchunks = ((attrsize - 1) / TOAST_MAX_CHUNK_SIZE) + 1;		
 	Pointer		chunk;
 	bool		isnull;
 	int32		chunksize;
@@ -804,18 +802,12 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 		}
 
 		systable_endscan_ordered(toastscan);
+		totalchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 	}
-
-	totalchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 
 	startchunk = sliceoffset / actual_max_chunk_size;
 	endchunk = (sliceoffset + slicelength - 1) / actual_max_chunk_size;
 	numchunks = (endchunk - startchunk) + 1;
-
-	startoffset = sliceoffset % actual_max_chunk_size;
-	endoffset = (sliceoffset + slicelength - 1) % actual_max_chunk_size;
-	startchunk = sliceoffset / TOAST_MAX_CHUNK_SIZE;
-	endchunk = (sliceoffset + slicelength - 1) / TOAST_MAX_CHUNK_SIZE;
 	Assert(endchunk <= totalchunks);
 
 	/* Set up a scan key to fetch from the index. */
@@ -976,9 +968,9 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 		chcpystrt = 0;
 		chcpyend = chunksize - 1;
 		if (curchunk == startchunk)
-			chcpystrt = startoffset;
+			chcpystrt = sliceoffset % actual_max_chunk_size;
 		if (curchunk == endchunk)
-			chcpyend = endoffset;
+			chcpyend = (sliceoffset + slicelength - 1) % actual_max_chunk_size;
 
 		memcpy(VARDATA(result) +
 			   (curchunk * actual_max_chunk_size - sliceoffset) + chcpystrt,
