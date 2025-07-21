@@ -5758,19 +5758,21 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	if (Gp_role == GP_ROLE_EXECUTE)
 		atstmt = list_make1(context->pstmt->utilityStmt);
 	else
+	{
 		atstmt = transformAlterTableStmt(RelationGetRelid(rel),
 										 atstmt,
 										 context->queryString,
 										 &beforeStmts,
 										 &afterStmts);
 
-	/* Execute any statements that should happen before these subcommand(s) */
-	foreach(lc, beforeStmts)
-	{
-		Node	   *stmt = (Node *) lfirst(lc);
+		/* Execute any statements that should happen before these subcommand(s) */
+		foreach(lc, beforeStmts)
+		{
+			Node	   *stmt = (Node *) lfirst(lc);
 
-		ProcessUtilityForAlterTable(stmt, context);
-		CommandCounterIncrement();
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
 	}
 
 	/* Examine the transformed subcommands and schedule them appropriately */
