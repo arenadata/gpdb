@@ -3,13 +3,9 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -58,16 +54,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "catalog/pg_operator.h"
 #include "cdb/cdbvars.h"
 #include "utils/builtins.h"
 #include "utils/regproc.h"
-
-/* Convenience macro for the most common makeNamespaceItem() case */
-#define makeDefaultNSItem(rte)	makeNamespaceItem(rte, true, true, false, true)
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 static int	extractRemainingColumns(ParseNamespaceColumn *src_nscolumns,
 									List *src_colnames,
@@ -157,14 +147,9 @@ transformFromClause(ParseState *pstate, List *frmList)
 	foreach(fl, frmList)
 	{
 		Node	   *n = lfirst(fl);
-<<<<<<< HEAD
-		RangeTblEntry *rte = NULL;
-		int			rtindex = 0;
-		List	   *namespace = NULL;
-=======
 		ParseNamespaceItem *nsitem;
+
 		List	   *namespace;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 		n = transformFromClauseItem(pstate, n,
 									&nsitem,
@@ -278,15 +263,10 @@ int
 setTargetTable(ParseState *pstate, RangeVar *relation,
 			   bool inh, bool alsoSource, AclMode requiredPerms)
 {
-<<<<<<< HEAD
-	RangeTblEntry *rte;
-	int			rtindex;
 	ParseCallbackState pcbstate;
 	bool lockUpgraded = false;
 	LOCKMODE    lockmode;
-=======
 	ParseNamespaceItem *nsitem;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/*
 	 * ENRs hide tables of the same name, so we need to check for them first.
@@ -360,16 +340,9 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	/*
 	 * Now build an RTE and a ParseNamespaceItem.
 	 */
-<<<<<<< HEAD
-	rte = addRangeTableEntryForRelation(pstate, pstate->p_target_relation,
-										lockmode, /* CDB */
-										relation->alias, inh, false);
-	pstate->p_target_rangetblentry = rte;
-=======
 	nsitem = addRangeTableEntryForRelation(pstate, pstate->p_target_relation,
-										   RowExclusiveLock,
+										   lockmode, /* CDB */
 										   relation->alias, inh, false);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/* remember the RTE/nsitem as being the query target */
 	pstate->p_target_nsitem = nsitem;

@@ -2787,9 +2787,6 @@ transformBooleanTest(ParseState *pstate, BooleanTest *b)
 static Node *
 transformCurrentOfExpr(ParseState *pstate, CurrentOfExpr *cexpr)
 {
-<<<<<<< HEAD
-	int			sublevels_up;
-
 	/*
 	 * The target RTE must be simply updatable. If not, we error out
 	 * early here to avoid having to deal with error cases later:
@@ -2798,8 +2795,6 @@ transformCurrentOfExpr(ParseState *pstate, CurrentOfExpr *cexpr)
 	Assert(pstate->p_target_rangetblentry != NULL);
 	(void) isSimplyUpdatableRelation(pstate->p_target_rangetblentry->relid, false);
 
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	/* CURRENT OF can only appear at top level of UPDATE/DELETE */
 	Assert(pstate->p_target_nsitem != NULL);
 	cexpr->cvarno = pstate->p_target_nsitem->p_rtindex;
