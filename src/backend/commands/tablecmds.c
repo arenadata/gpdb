@@ -5734,10 +5734,19 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					int cur_pass, AlterTableUtilityContext *context)
 {
 	AlterTableCmd *newcmd = NULL;
-	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
+	AlterTableStmt *atstmt;
 	List	   *beforeStmts;
 	List	   *afterStmts;
 	ListCell   *lc;
+
+	/*
+	 * GPDB: Like for CREATE TABLE, only do parse analysis in the Query
+	 * Dispatcher.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		atstmt = (AlterTableStmt *)context->pstmt->utilityStmt;
+	else
+		atstmt = makeNode(AlterTableStmt);
 
 	/* Gin up an AlterTableStmt with just this subcommand and this table */
 	atstmt->relation =
@@ -5749,20 +5758,23 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	atstmt->relkind = OBJECT_TABLE; /* needn't be picky here */
 	atstmt->missing_ok = false;
 
-	/* Transform the AlterTableStmt */
-	atstmt = transformAlterTableStmt(RelationGetRelid(rel),
-									 atstmt,
-									 context->queryString,
-									 &beforeStmts,
-									 &afterStmts);
-
-	/* Execute any statements that should happen before these subcommand(s) */
-	foreach(lc, beforeStmts)
+	if (Gp_role != GP_ROLE_EXECUTE)
 	{
-		Node	   *stmt = (Node *) lfirst(lc);
+		/* Transform the AlterTableStmt */
+		atstmt = transformAlterTableStmt(RelationGetRelid(rel),
+										 atstmt,
+										 context->queryString,
+										 &beforeStmts,
+										 &afterStmts);
 
-		ProcessUtilityForAlterTable(stmt, context);
-		CommandCounterIncrement();
+		/* Execute any statements that should happen before these subcommand(s) */
+		foreach(lc, beforeStmts)
+		{
+			Node	   *stmt = (Node *) lfirst(lc);
+
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
 	}
 
 	/* Examine the transformed subcommands and schedule them appropriately */
@@ -5778,6 +5790,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* Found the transformed version of our subcommand */
 			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
 			newcmd = cmd2;
+			cmd->def = newcmd->def;
 		}
 		else
 		{
@@ -5841,8 +5854,11 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		}
 	}
 
-	/* Queue up any after-statements to happen at the end */
-	tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
+		/* Queue up any after-statements to happen at the end */
+		tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
+	}
 
 	return newcmd;
 }
@@ -7624,17 +7640,10 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * currently happens only for AT_AddColumnToView; we expect that view.c
 	 * passed us a ColumnDef that doesn't need work.)
 	 */
-	/*
-	 * GPDB: Like for CREATE TABLE, only do parse analysis in the Query
-	 * Dispatcher.
-	 */
-	if (context != NULL && !recursing && Gp_role != GP_ROLE_EXECUTE)
+	if (context != NULL && !recursing)
 	{
-		AlterTableCmd *newcmd = ATParseTransformCmd(wqueue, tab, rel, *cmd, recurse, lockmode,
+		*cmd = ATParseTransformCmd(wqueue, tab, rel, *cmd, recurse, lockmode,
 								   cur_pass, context);
-
-		(*cmd)->def = newcmd->def;
-		*cmd = newcmd;
 		Assert(*cmd != NULL);
 		colDef = castNode(ColumnDef, (*cmd)->def);
 	}
