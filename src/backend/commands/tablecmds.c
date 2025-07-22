@@ -9798,6 +9798,7 @@ ATExecAddConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 		case CONSTR_PRIMARY:
 		case CONSTR_UNIQUE:
+		case CONSTR_EXCLUSION:
 			return address;
 
 		default:
