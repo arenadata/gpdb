@@ -9796,6 +9796,10 @@ ATExecAddConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 												lockmode);
 			break;
 
+		case CONSTR_PRIMARY:
+		case CONSTR_UNIQUE:
+			return address;
+
 		default:
 			elog(ERROR, "unrecognized constraint type: %d",
 				 (int) newConstraint->contype);
