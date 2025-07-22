@@ -5790,7 +5790,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* Found the transformed version of our subcommand */
 			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
 			newcmd = cmd2;
-			cmd->def = newcmd->def;
+			// cmd->def = newcmd->def;
 		}
 		else
 		{
@@ -7642,9 +7642,13 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 */
 	if (context != NULL && !recursing)
 	{
-		*cmd = ATParseTransformCmd(wqueue, tab, rel, *cmd, recurse, lockmode,
-								   cur_pass, context);
-		Assert(*cmd != NULL);
+		AlterTableCmd *newcmd = ATParseTransformCmd(wqueue, tab, rel, *cmd,
+													recurse, lockmode,
+													cur_pass, context);
+
+		Assert(newcmd != NULL);
+		(*cmd)->def = newcmd->def;
+		*cmd = newcmd;
 		colDef = castNode(ColumnDef, (*cmd)->def);
 	}
 
