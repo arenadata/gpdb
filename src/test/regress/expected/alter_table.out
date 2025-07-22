@@ -551,16 +551,15 @@ create table nv_child_2011 () inherits (nv_parent);
 alter table nv_child_2010 add check (d between '2010-01-01'::date and '2010-12-31'::date) not valid;
 alter table nv_child_2011 add check (d between '2011-01-01'::date and '2011-12-31'::date) not valid;
 explain (costs off) select * from nv_parent where d between '2011-08-01' and '2011-08-31';
-<<<<<<< HEAD
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2011 nv_parent_2
+         ->  Seq Scan on nv_child_2011 nv_parent_3
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
  Optimizer: Postgres query optimizer
 (9 rows)
@@ -571,11 +570,11 @@ explain (costs off) select * from nv_parent where d between '2011-08-01'::date a
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2011 nv_parent_2
+         ->  Seq Scan on nv_child_2011 nv_parent_3
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
  Optimizer: Postgres query optimizer
 (9 rows)
@@ -585,84 +584,32 @@ explain (costs off) select * from nv_parent where d between '2009-08-01'::date a
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2011 nv_parent_2
+         ->  Seq Scan on nv_child_2011 nv_parent_3
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2009 nv_parent_3
+         ->  Seq Scan on nv_child_2009 nv_parent_4
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
  Optimizer: Postgres query optimizer
 (11 rows)
-=======
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2011 nv_parent_3
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-(7 rows)
-
-create table nv_child_2009 (check (d between '2009-01-01'::date and '2009-12-31'::date)) inherits (nv_parent);
-explain (costs off) select * from nv_parent where d between '2011-08-01'::date and '2011-08-31'::date;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2011 nv_parent_3
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-(7 rows)
-
-explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2011 nv_parent_3
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2009 nv_parent_4
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-(9 rows)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 -- after validation, the constraint should be used
 alter table nv_child_2011 VALIDATE CONSTRAINT nv_child_2011_d_check;
 explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
-<<<<<<< HEAD
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2009 nv_parent_2
+         ->  Seq Scan on nv_child_2009 nv_parent_3
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
  Optimizer: Postgres query optimizer
 (9 rows)
-=======
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2009 nv_parent_3
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-(7 rows)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 -- add an inherited NOT VALID constraint
 alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::date) not valid;
@@ -2096,27 +2043,16 @@ select * from another;
 (3 rows)
 
 alter table another
-<<<<<<< HEAD
-  alter f1 type text using f2 || ' more',
-  alter f2 type bigint using f1 * 10;
-ERROR:  cannot alter type of a column used in a distribution policy
-select * from another;
- f1 |  f2   
-----+-------
-  1 | one
-  2 | two
-  3 | three
-=======
   alter f1 type text using f2 || ' and ' || f3 || ' more',
   alter f2 type bigint using f1 * 10,
   drop column f3;
+ERROR:  cannot alter type of a column used in a distribution policy
 select * from another;
-         f1         | f2 
---------------------+----
- one and uno more   | 10
- two and due more   | 20
- three and tre more | 30
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+ f1 |  f2   | f3  
+----+-------+-----
+  1 | one   | uno
+  2 | two   | due
+  3 | three | tre
 (3 rows)
 
 drop table another;
