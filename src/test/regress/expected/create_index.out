@@ -1353,14 +1353,14 @@ INSERT INTO func_index_heap VALUES('QWERTY');
  f1     | text |           |          | 
  f2     | text |           |          | 
 Indexes:
-    "func_index_index" UNIQUE, btree (textcat(f1, f2))
+    "func_index_index" btree (textcat(f1, f2))
 
 \d func_index_index
      Index "public.func_index_index"
  Column  | Type | Key? |   Definition    
 ---------+------+------+-----------------
  textcat | text | yes  | textcat(f1, f2)
-unique, btree, for table "public.func_index_heap"
+btree, for table "public.func_index_heap"
 
 --
 -- Same test, expressional index
@@ -1383,14 +1383,14 @@ INSERT INTO func_index_heap VALUES('QWERTY');
  f1     | text |           |          | 
  f2     | text |           |          | 
 Indexes:
-    "func_index_index" UNIQUE, btree ((f1 || f2))
+    "func_index_index" btree ((f1 || f2))
 
 \d func_index_index
   Index "public.func_index_index"
  Column | Type | Key? | Definition 
 --------+------+------+------------
  expr   | text | yes  | (f1 || f2)
-unique, btree, for table "public.func_index_heap"
+btree, for table "public.func_index_heap"
 
 -- this should fail because of unsafe column type (anonymous record)
 create index on func_index_heap ((f1 || f2), (row(f1, f2)));
@@ -1617,11 +1617,12 @@ LINE 1: ALTER TABLE cwi_test ADD UNIQUE USING INDEX cwi_uniq3_idx;
                                  ^
 DETAIL:  Cannot create a primary key or unique constraint using such an index.
 CREATE UNIQUE INDEX cwi_uniq4_idx ON cwi_test(b collate "POSIX");
+ERROR:  UNIQUE index must contain all columns in the table's distribution key
+DETAIL:  Distribution key column "a" is not included in the constraint.
 ALTER TABLE cwi_test ADD UNIQUE USING INDEX cwi_uniq4_idx;  -- fail
-ERROR:  index "cwi_uniq4_idx" column number 1 does not have default sorting behavior
+ERROR:  index "cwi_uniq4_idx" does not exist
 LINE 1: ALTER TABLE cwi_test ADD UNIQUE USING INDEX cwi_uniq4_idx;
                                  ^
-DETAIL:  Cannot create a primary key or unique constraint using such an index.
 DROP TABLE cwi_test;
 -- ADD CONSTRAINT USING INDEX is forbidden on partitioned tables
 CREATE TABLE cwi_test(a int) PARTITION BY hash (a);
