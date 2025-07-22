@@ -516,11 +516,13 @@ create table partitioned2
   partition of partitioned for values in ('(2,4)'::partitioned);
 explain (costs off)
 select * from partitioned where row(a,b)::partitioned = '(1,2)'::partitioned;
-                        QUERY PLAN                         
------------------------------------------------------------
- Seq Scan on partitioned1 partitioned
-   Filter: (ROW(a, b)::partitioned = '(1,2)'::partitioned)
-(2 rows)
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on partitioned1 partitioned
+         Filter: (ROW(a, b)::partitioned = '(1,2)'::partitioned)
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 drop table partitioned;
 -- whole-row Var in partition key works too
@@ -532,11 +534,13 @@ create table partitioned2
   partition of partitioned for values in ('(2,4)');
 explain (costs off)
 select * from partitioned where partitioned = '(1,2)'::partitioned;
-                           QUERY PLAN                            
------------------------------------------------------------------
- Seq Scan on partitioned1 partitioned
-   Filter: ((partitioned.*)::partitioned = '(1,2)'::partitioned)
-(2 rows)
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Gather Motion 3:1  (slice1; segments: 3)
+   ->  Seq Scan on partitioned1 partitioned
+         Filter: ((partitioned.*)::partitioned = '(1,2)'::partitioned)
+ Optimizer: Postgres query optimizer
+(4 rows)
 
 \d+ partitioned1
                                Table "public.partitioned1"
