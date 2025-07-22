@@ -409,10 +409,12 @@ CTranslatorRelcacheToDXL::RetrieveRel(CMemoryPool *mp, CMDAccessor *md_accessor,
 	{
 		// FIXME_GPDB_12_MERGE_FIXME: misestimate (most likely underestimate) the number of leaf partitions
 		// ORCA doesn't really care, except to determine whether to sort before inserting
-		num_leaf_partitions = gpdb::GPDBRelationGetPartitionDesc(rel.get())->nparts;
+		num_leaf_partitions =
+			gpdb::GPDBRelationGetPartitionDesc(rel.get())->nparts;
 		partition_oids = GPOS_NEW(mp) IMdIdArray(mp);
 
-		for (int i = 0; i < gpdb::GPDBRelationGetPartitionDesc(rel.get())->nparts; ++i)
+		for (int i = 0;
+			 i < gpdb::GPDBRelationGetPartitionDesc(rel.get())->nparts; ++i)
 		{
 			Oid oid = gpdb::GPDBRelationGetPartitionDesc(rel.get())->oids[i];
 			partition_oids->Append(GPOS_NEW(mp)
