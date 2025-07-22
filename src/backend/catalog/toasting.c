@@ -263,12 +263,9 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 										   toast_typid,
 										   InvalidOid,
 										   rel->rd_rel->relowner,
-<<<<<<< HEAD
 										   RelationIsAoRows(rel) ?
-										   HEAP_TABLE_AM_OID :rel->rd_rel->relam,
-=======
+										   HEAP_TABLE_AM_OID :
 										   table_relation_toast_am(rel),
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 										   tupdesc,
 										   NIL,
 										   RELKIND_TOASTVALUE,

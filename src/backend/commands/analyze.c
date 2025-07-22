@@ -3,7 +3,6 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
-<<<<<<< HEAD
  *
  * There are a few things in Greenplum that make this more complicated
  * than in upstream:
@@ -54,10 +53,7 @@
  *
  * TODO: explain how this works.
  *
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -691,7 +687,6 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 	/*
 	 * Maintain information if the row of a column exceeds WIDTH_THRESHOLD
 	 */
-<<<<<<< HEAD
 	colLargeRowIndexes = (Bitmapset **) palloc0(sizeof(Bitmapset *) * onerel->rd_att->natts);
 	colLargeRowLength = (double *)palloc0(sizeof(double) * onerel->rd_att->natts);
 
@@ -711,6 +706,9 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		if (ctx)
 			MemoryContextSwitchTo(caller_context);
 		rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
+		pgstat_progress_update_param(PROGRESS_ANALYZE_PHASE,
+									 inh ? PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS_INH :
+									 PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS);
 
 		/*
 		 * Acquire the sample rows
@@ -740,16 +738,6 @@ do_analyze_rel(Relation onerel, VacuumParams *params,
 		if (ctx)
 			MemoryContextSwitchTo(anl_context);
 	}
-=======
-	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
-	pgstat_progress_update_param(PROGRESS_ANALYZE_PHASE,
-								 inh ? PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS_INH :
-								 PROGRESS_ANALYZE_PHASE_ACQUIRE_SAMPLE_ROWS);
-	if (inh)
-		numrows = acquire_inherited_sample_rows(onerel, elevel,
-												rows, targrows,
-												&totalrows, &totaldeadrows);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	else
 	{
 		/* If we're just merging stats from leafs, these are not needed either */

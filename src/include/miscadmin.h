@@ -84,12 +84,9 @@ extern PGDLLIMPORT volatile sig_atomic_t QueryCancelCleanup; /* GPDB only */
 extern PGDLLIMPORT volatile sig_atomic_t QueryFinishPending;
 extern PGDLLIMPORT volatile sig_atomic_t ProcDiePending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleInTransactionSessionTimeoutPending;
-<<<<<<< HEAD
+extern PGDLLIMPORT volatile sig_atomic_t ProcSignalBarrierPending;
 extern PGDLLIMPORT volatile sig_atomic_t IdleGangTimeoutPending;
 extern PGDLLIMPORT volatile sig_atomic_t ConfigReloadPending;
-=======
-extern PGDLLIMPORT volatile sig_atomic_t ProcSignalBarrierPending;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 extern PGDLLIMPORT volatile sig_atomic_t ClientConnectionLost;
 extern PGDLLIMPORT volatile sig_atomic_t CheckClientConnectionPending;

@@ -6,13 +6,9 @@
  * gram.y
  *	  POSTGRESQL BISON rules/actions
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2006-2010, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -736,13 +732,8 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 	DETACH DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P
 	DOUBLE_P DROP
 
-<<<<<<< HEAD
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENDPOINT ENUM_P ESCAPE EVENT EXCEPT
-	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
-=======
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXPRESSION
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	EXTENSION EXTERNAL EXTRACT
 
 	FALSE_P FAMILY FETCH FILTER FIRST_P FLOAT_P FOLLOWING FOR
@@ -18422,11 +18413,7 @@ unreserved_keyword:
 			| TRUSTED
 			| TYPE_P
 			| TYPES_P
-<<<<<<< HEAD
-=======
 			| UESCAPE
-			| UNBOUNDED
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			| UNCOMMITTED
 			| UNENCRYPTED
 			| UNKNOWN
