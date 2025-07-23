@@ -5790,6 +5790,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* Found the transformed version of our subcommand */
 			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
 			newcmd = cmd2;
+			cmd->def = newcmd->def;
 		}
 		else
 		{
@@ -5859,7 +5860,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
 	}
 
-	cmd->def = newcmd->def;
 	return newcmd;
 }
 
