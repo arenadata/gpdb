@@ -1,0 +1,21 @@
+/* gpcontrib/gp_toolkit/gp_toolkit--1.6--1.7.sql */
+
+-- complain if script is sourced in psql, rather than via ALTER EXTENSION
+\echo Use "ALTER EXTENSION gp_toolkit UPDATE TO '1.7" to load this file. \quit
+
+-- This function set the numsegments when creating tables during rebalance operation.
+-- This form accepts an integer argument: [1, gp_num_contents_in_cluster].
+CREATE OR REPLACE FUNCTION gp_toolkit.gp_set_rebalance_numsegments(integer) RETURNS text
+AS 'gp_toolkit.so','gp_set_rebalance_numsegments'
+LANGUAGE C STRICT;
+
+-- This function reset the default numsegments.
+-- This function resets numsegments directly to default value INT_MAX
+CREATE OR REPLACE FUNCTION gp_toolkit.gp_reset_rebalance_numsegments() RETURNS void
+AS 'gp_toolkit.so','gp_reset_rebalance_numsegments'
+LANGUAGE C STRICT;
+
+-- This function get the default numsegments when creating tables.
+CREATE OR REPLACE FUNCTION gp_toolkit.gp_get_rebalance_numsegments() RETURNS text
+AS 'gp_toolkit.so','gp_get_rebalance_numsegments'
+LANGUAGE C STRICT;
