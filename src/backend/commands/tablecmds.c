@@ -4132,6 +4132,25 @@ AlterTableLookupRelation(AlterTableStmt *stmt, LOCKMODE lockmode)
 									(void *) stmt);
 }
 
+static void
+AlterTableRunAfterStmts(AlterTableStmt *stmt,
+						AlterTableUtilityContext *context)
+{
+	ListCell   *ltab;
+	foreach(ltab, stmt->wqueue)
+	{
+		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+		ListCell   *lc;
+
+		foreach(lc, tab->afterStmts)
+		{
+			Node	   *stmt = (Node *) lfirst(lc);
+
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
+	}
+}
 /*
  * AlterTable
  *		Execute ALTER TABLE, which can be a list of subcommands
@@ -4225,20 +4244,7 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 										NULL);
 
 		/* Finally, run any afterStmts that were queued up */
-		ListCell   *ltab;
-		foreach(ltab, stmt->wqueue)
-		{
-			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
-			ListCell   *lc;
-
-			foreach(lc, tab->afterStmts)
-			{
-				Node	   *stmt = (Node *) lfirst(lc);
-
-				ProcessUtilityForAlterTable(stmt, context);
-				CommandCounterIncrement();
-			}
-		}
+		AlterTableRunAfterStmts(stmt, context);
 	}
 }
 
@@ -6274,19 +6280,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 	if (Gp_role != GP_ROLE_DISPATCH && Gp_role != GP_ROLE_EXECUTE)
 	{
 		/* Finally, run any afterStmts that were queued up */
-		foreach(ltab, *wqueue)
-		{
-			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
-			ListCell   *lc;
-
-			foreach(lc, tab->afterStmts)
-			{
-				Node	   *stmt = (Node *) lfirst(lc);
-
-				ProcessUtilityForAlterTable(stmt, context);
-				CommandCounterIncrement();
-			}
-		}
+		AlterTableRunAfterStmts(parsetree, context);
 	}
 }
 
