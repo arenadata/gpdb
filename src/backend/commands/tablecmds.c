@@ -4223,6 +4223,22 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 										DF_NEED_TWO_PHASE,
 										GetAssignedOidsForDispatch(),
 										NULL);
+
+		/* Finally, run any afterStmts that were queued up */
+		ListCell   *ltab;
+		foreach(ltab, stmt->wqueue)
+		{
+			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+			ListCell   *lc;
+
+			foreach(lc, tab->afterStmts)
+			{
+				Node	   *stmt = (Node *) lfirst(lc);
+
+				ProcessUtilityForAlterTable(stmt, context);
+				CommandCounterIncrement();
+			}
+		}
 	}
 }
 
@@ -6255,18 +6271,21 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			table_close(rel, NoLock);
 	}
 
-	/* Finally, run any afterStmts that were queued up */
-	foreach(ltab, *wqueue)
+	if (Gp_role != GP_ROLE_DISPATCH && Gp_role != GP_ROLE_EXECUTE)
 	{
-		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
-		ListCell   *lc;
-
-		foreach(lc, tab->afterStmts)
+		/* Finally, run any afterStmts that were queued up */
+		foreach(ltab, *wqueue)
 		{
-			Node	   *stmt = (Node *) lfirst(lc);
+			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+			ListCell   *lc;
 
-			ProcessUtilityForAlterTable(stmt, context);
-			CommandCounterIncrement();
+			foreach(lc, tab->afterStmts)
+			{
+				Node	   *stmt = (Node *) lfirst(lc);
+
+				ProcessUtilityForAlterTable(stmt, context);
+				CommandCounterIncrement();
+			}
 		}
 	}
 }
