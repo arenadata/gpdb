@@ -1,1 +1,3 @@
 /results/
+/sql/gp_toolkit_skew.sql
+/expected/gp_toolkit_skew.out
