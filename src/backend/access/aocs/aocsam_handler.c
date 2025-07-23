@@ -1907,7 +1907,7 @@ aoco_relation_toast_am(Relation rel)
 	 * GPDB
 	 */
 	Assert(0);
-	return InvalidOid;		/* keep compiler quiet */
+	ereport(ERROR, (errmsg("AO_COLUMN never used the toasting")));
 }
 
 static void
@@ -1920,6 +1920,7 @@ aoco_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 	 * GPDB
 	 */
 	Assert(0);
+	ereport(ERROR, (errmsg("AO_COLUMN never used the toasting")));
 }
 
 /* ------------------------------------------------------------------------

@@ -1933,7 +1933,7 @@ appendonly_relation_toast_am(Relation rel)
 	Assert(table_relation_needs_toast_table(rel));
 
 	/*
-	 * AO_ROW toasts are stored in heap tables
+	 * Toasts for AO_ROW tables are stored in heap tables
 	 */
 	return HEAP_TABLE_AM_OID;
 }
@@ -1944,7 +1944,7 @@ appendonly_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 							 struct varlena *result)
 {
 	/*
-	 * AO_ROW toasts are stored in heap tables
+	 * Toasts for AO_ROW tables are stored in heap tables
 	 */
 	return heap_fetch_toast_slice(toastrel, valueid, attrsize, sliceoffset,
 								  slicelength, result);
