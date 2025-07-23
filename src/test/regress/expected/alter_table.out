@@ -3654,69 +3654,48 @@ ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN c3 integer primary key;
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+ERROR:  cannot add column with primary key constraint
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN IF NOT EXISTS c3 integer primary key; -- skipping because c3 already exists
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
-NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+ERROR:  cannot add column with primary key constraint
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
 	ADD COLUMN c4 integer REFERENCES test_add_column;
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
-NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+ERROR:  there is no primary key for referenced table "test_add_column"
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c4 integer REFERENCES test_add_column;
-NOTICE:  column "c4" of relation "test_add_column" already exists, skipping
+ERROR:  there is no primary key for referenced table "test_add_column"
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 8);
@@ -3726,17 +3705,9 @@ ALTER TABLE test_add_column
 --------+---------+-----------+----------+---------------------------------------------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
  c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Check constraints:
     "test_add_column_c5_check" CHECK (c5 > 8)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 10);
@@ -3747,29 +3718,15 @@ NOTICE:  column "c5" of relation "test_add_column" already exists, skipping
 --------+---------+-----------+----------+---------------------------------------------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
  c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Check constraints:
     "test_add_column_c5_check" CHECK (c5 > 8)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
                Sequence "public.test_add_column_c5_seq"
   Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
 ---------+-------+---------+------------+-----------+---------+-------
  integer |     1 |       1 | 2147483647 |         1 | no      |     1
 Owned by: public.test_add_column.c5
-
- Index "public.test_add_column_pkey"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- c3     | integer | yes  | c3
-primary key, btree, for table "public.test_add_column"
 
 DROP TABLE test_add_column;
 \d test_add_column*
@@ -3789,7 +3746,7 @@ Indexes:
     "ataddindexi0" PRIMARY KEY, btree (f1)
 
 DROP TABLE ataddindex;
-CREATE TABLE ataddindex(f1 VARCHAR(10));
+CREATE TABLE ataddindex(f1 VARCHAR(10)) DISTRIBUTED REPLICATED;
 INSERT INTO ataddindex(f1) VALUES ('foo'), ('a');
 ALTER TABLE ataddindex
   ALTER f1 SET DATA TYPE TEXT,
@@ -3801,6 +3758,7 @@ ALTER TABLE ataddindex
  f1     | text |           |          | 
 Indexes:
     "ataddindex_expr_excl" EXCLUDE USING btree ((f1 ~~ 'a'::text) WITH =)
+Distributed Replicated
 
 DROP TABLE ataddindex;
 -- unsupported constraint types for partitioned tables
