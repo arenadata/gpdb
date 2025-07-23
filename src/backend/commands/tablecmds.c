@@ -4137,6 +4137,7 @@ AlterTableRunAfterStmts(AlterTableStmt *stmt,
 						AlterTableUtilityContext *context)
 {
 	ListCell   *ltab;
+
 	foreach(ltab, stmt->wqueue)
 	{
 		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
