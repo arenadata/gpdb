@@ -4640,6 +4640,8 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	}
 	else if (IsA(plan, ModifyTable))
 		dpns->inner_plan = plan;
+	else if (IsA(plan, ShareInputScan))
+		dpns->inner_plan = outerPlan(plan);
 	else
 		dpns->inner_plan = innerPlan(plan);
 
