@@ -4267,17 +4267,6 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 						 (int) nodeTag(cmd->def));
 				break;
 
-<<<<<<< HEAD
-			case AT_ProcessedConstraint:
-
-				/*
-				 * Already-transformed ADD CONSTRAINT, so just make it look
-				 * like the standard case.
-				 */
-				cmd->subtype = AT_AddConstraint;
-				newcmds = lappend(newcmds, cmd);
-				break;
-
 				/* CDB: Partitioned Tables */
 
 			case AT_PartAdd:
@@ -4293,8 +4282,6 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 				newcmds = lappend(newcmds, cmd);
 				break;
 
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			case AT_AlterColumnType:
 				{
 					ColumnDef  *def = castNode(ColumnDef, cmd->def);
