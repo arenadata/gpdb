@@ -44,6 +44,10 @@ gp_segment_configuration WHERE role = 'p' AND content = -1;
 
 1<:
 
+-- And finally, make sure we don't enter error recursion on fail.
+ALTER RESOURCE GROUP rg_oom_test SET memory_shared_quota 0;
+1: SELECT count(*) FROM gp_mock_cdbdispatchcommand(10000000);
+
 DROP FUNCTION gp_mock_cdbdispatchcommand(amount int);
 DROP ROLE role_oom_test;
 DROP RESOURCE GROUP rg_oom_test;
