@@ -29,11 +29,8 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
-<<<<<<< HEAD
 #include "parser/parsetree.h"
-=======
 #include "pgstat.h"
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 #include "postmaster/autovacuum.h"
 #include "statistics/extended_stats_internal.h"
 #include "statistics/statistics.h"
@@ -1234,15 +1231,7 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 	ListCell   *l;
 	Bitmapset **list_attnums;
 	int			listidx;
-<<<<<<< HEAD
-	StatisticExtInfo *stat;
-	List	   *stat_clauses;
-	Selectivity simple_sel,
-				mcv_sel,
-				mcv_basesel,
-				mcv_totalsel,
-				other_sel,
-				sel;
+	Selectivity	sel = 1.0;
 	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 
 	/*
@@ -1254,9 +1243,6 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 	 */
 	if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
 		return 1.0;
-=======
-	Selectivity	sel = 1.0;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/* check if there's any stats that might be useful for us. */
 	if (!has_stats_of_kind(rel->statlist, STATS_EXT_MCV))
@@ -1344,7 +1330,8 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 		 * MCV list to improve it.
 		 */
 		simple_sel = clauselist_selectivity_simple(root, stat_clauses, varRelid,
-												jointype, sjinfo, NULL);
+												   jointype, sjinfo, NULL,
+												   false); /* no damping */
 
 		/*
 		 * Now compute the multi-column estimate from the MCV list, along with the
@@ -1370,39 +1357,6 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 		sel *= stat_sel;
 	}
 
-<<<<<<< HEAD
-	/*
-	 * First compute "simple" selectivity, i.e. without the extended
-	 * statistics, and essentially assuming independence of the
-	 * columns/clauses. We'll then use the various selectivities computed from
-	 * MCV list to improve it.
-	 */
-	simple_sel = clauselist_selectivity_simple(root, stat_clauses, varRelid,
-											   jointype, sjinfo, NULL,
-											   false); /* no damping */
-
-	/*
-	 * Now compute the multi-column estimate from the MCV list, along with the
-	 * other selectivities (base & total selectivity).
-	 */
-	mcv_sel = mcv_clauselist_selectivity(root, stat, stat_clauses, varRelid,
-										 jointype, sjinfo, rel,
-										 &mcv_basesel, &mcv_totalsel);
-
-	/* Estimated selectivity of values not covered by MCV matches */
-	other_sel = simple_sel - mcv_basesel;
-	CLAMP_PROBABILITY(other_sel);
-
-	/* The non-MCV selectivity can't exceed the 1 - mcv_totalsel. */
-	if (other_sel > 1.0 - mcv_totalsel)
-		other_sel = 1.0 - mcv_totalsel;
-
-	/* Overall selectivity is the combination of MCV and non-MCV estimates. */
-	sel = mcv_sel + other_sel;
-	CLAMP_PROBABILITY(sel);
-
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	return sel;
 }
 
