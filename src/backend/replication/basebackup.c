@@ -244,19 +244,6 @@ static const char *const noChecksumFiles[] = {
 	NULL,
 };
 
-<<<<<<< HEAD
-/*
- * Called when ERROR or FATAL happens in perform_base_backup() after
- * we have started the backup - make sure we end it!
- */
-static void
-base_backup_cleanup(int code, Datum arg)
-{
-	do_pg_abort_backup();
-}
-
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 /*
  * Actually do a base backup for the specified tablespaces.
  *
