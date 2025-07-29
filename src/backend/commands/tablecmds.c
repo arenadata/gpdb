@@ -4045,26 +4045,6 @@ AlterTableLookupRelation(AlterTableStmt *stmt, LOCKMODE lockmode)
 									(void *) stmt);
 }
 
-static void
-AlterTableRunAfterStmts(AlterTableStmt *stmt,
-						AlterTableUtilityContext *context)
-{
-	ListCell   *ltab;
-
-	foreach(ltab, stmt->wqueue)
-	{
-		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
-		ListCell   *lc;
-
-		foreach(lc, tab->afterStmts)
-		{
-			Node	   *stmt = (Node *) lfirst(lc);
-
-			ProcessUtilityForAlterTable(stmt, context);
-			CommandCounterIncrement();
-		}
-	}
-}
 /*
  * AlterTable
  *		Execute ALTER TABLE, which can be a list of subcommands
@@ -4130,35 +4110,6 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 		CheckTableNotInUse(rel, "ALTER TABLE");
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		/*
-		 * If a transaction is in progress, kill any idle QE backends. They
-		 * might be running with obsolete information in their relcaches. Any
-		 * relcache invalidation events sent by the ALTER TABLE subcommands
-		 * won't be sent to the other backend until the end of transaction, and
-		 * we don't have any better way of invalidating them. The primary
-		 * writer backends should be up-to-date, because we have used that to
-		 * execute all the subcommands, so they should've created local
-		 * invalidation events for themselves.
-		 */
-		if (IsTransactionBlock())
-			DisconnectAndDestroyUnusedQEs();
-
-		prepare_AlterTableStmt_for_dispatch(stmt);
-
-		if (stmt->cmds)
-			CdbDispatchUtilityStatement((Node *) stmt,
-										DF_CANCEL_ON_ERROR |
-										DF_WITH_SNAPSHOT |
-										DF_NEED_TWO_PHASE,
-										GetAssignedOidsForDispatch(),
-										NULL);
-
-		/* Finally, run any afterStmts that were queued up */
-		AlterTableRunAfterStmts(stmt, context);
-	}
 }
 
 /*
@@ -4661,15 +4612,6 @@ ATController(AlterTableStmt *parsetree,
 
 	/* Phase 3: scan/rewrite tables as needed, and run afterStmts */
 	ATRewriteTables(parsetree, &wqueue, lockmode, context);
-
-	/*
-	 * In QD, include the work queue in the command for dispatching,
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH && parsetree)
-	{
-		parsetree->lockmode = lockmode;
-		parsetree->wqueue = wqueue;
-	}
 }
 
 /*
@@ -6171,10 +6113,54 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			table_close(rel, NoLock);
 	}
 
-	if (Gp_role != GP_ROLE_DISPATCH && Gp_role != GP_ROLE_EXECUTE)
+	/*
+	 * In QD, include the work queue in the command for dispatching,
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && parsetree)
+	{
+		parsetree->lockmode = lockmode;
+		parsetree->wqueue = *wqueue;
+
+		/*
+		 * If a transaction is in progress, kill any idle QE backends. They
+		 * might be running with obsolete information in their relcaches. Any
+		 * relcache invalidation events sent by the ALTER TABLE subcommands
+		 * won't be sent to the other backend until the end of transaction, and
+		 * we don't have any better way of invalidating them. The primary
+		 * writer backends should be up-to-date, because we have used that to
+		 * execute all the subcommands, so they should've created local
+		 * invalidation events for themselves.
+		 */
+		if (IsTransactionBlock())
+			DisconnectAndDestroyUnusedQEs();
+
+		prepare_AlterTableStmt_for_dispatch(parsetree);
+
+		if (parsetree->cmds)
+			CdbDispatchUtilityStatement((Node *) parsetree,
+										DF_CANCEL_ON_ERROR |
+										DF_WITH_SNAPSHOT |
+										DF_NEED_TWO_PHASE,
+										GetAssignedOidsForDispatch(),
+										NULL);
+	}
+
+	if (Gp_role != GP_ROLE_EXECUTE)
 	{
 		/* Finally, run any afterStmts that were queued up */
-		AlterTableRunAfterStmts(parsetree, context);
+		foreach(ltab, *wqueue)
+		{
+			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+			ListCell   *lc;
+
+			foreach(lc, tab->afterStmts)
+			{
+				Node	   *stmt = (Node *) lfirst(lc);
+
+				ProcessUtilityForAlterTable(stmt, context);
+				CommandCounterIncrement();
+			}
+		}
 	}
 }
 
