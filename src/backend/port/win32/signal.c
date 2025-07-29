@@ -262,21 +262,8 @@ pg_signal_thread(LPVOID param)
 		fConnected = ConnectNamedPipe(pipe, NULL) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
 		if (fConnected)
 		{
-<<<<<<< HEAD
-			HANDLE newpipe;
-
-			/*
-			 * We have a connected pipe. Pass this off to a separate thread that will do the actual
-			 * processing of the pipe.
-			 *
-			 * We must also create a new instance of the pipe *before* we start running the new
-			 * thread. If we don't, there is a race condition whereby the dispatch thread might
-			 * run CloseHandle() before we have created a new instance, thereby causing a small
-			 * window of time where we will miss incoming requests.
-=======
 			/*
 			 * We have a connection from a would-be signal sender. Process it.
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 			 */
 			BYTE		sigNum;
 			DWORD		bytes;
@@ -285,11 +272,6 @@ pg_signal_thread(LPVOID param)
 				bytes == 1)
 			{
 				/*
-<<<<<<< HEAD
-				 * This really should never fail. Just retry in case it does, even though we have
-				 * a small race window in that case. There is nothing else we can do other than
-				 * abort the whole process which will be even worse.
-=======
 				 * Queue the signal before responding to the client.  In this
 				 * way, it's guaranteed that once kill() has returned in the
 				 * signal sender, the next CHECK_FOR_INTERRUPTS() in the
@@ -297,15 +279,10 @@ pg_signal_thread(LPVOID param)
 				 * guarantee than POSIX makes; maybe we don't need it?  But
 				 * without it, we've seen timing bugs on Windows that do not
 				 * manifest on any known Unix.)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 				 */
 				pg_queue_signal(sigNum);
 
 				/*
-<<<<<<< HEAD
-				 * Keep going so we at least dispatch this signal. Hopefully, the call will succeed
-				 * when retried in the loop soon after.
-=======
 				 * Write something back to the client, allowing its
 				 * CallNamedPipe() call to terminate.
 				 */
@@ -326,7 +303,6 @@ pg_signal_thread(LPVOID param)
 				 * If we fail to read a byte from the client, assume it's the
 				 * client's problem and do nothing.  Perhaps it'd be better to
 				 * force a pipe close and reopen?
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 				 */
 			}
 

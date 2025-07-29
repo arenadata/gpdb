@@ -259,15 +259,7 @@ RelationBuildPartitionDesc(Relation rel)
 	/* If there are no partitions, the rest of the partdesc can stay zero */
 	if (nparts > 0)
 	{
-<<<<<<< HEAD
-		/* Create PartitionBoundInfo, using the temporary context. */
-		boundinfo = partition_bounds_create(boundspecs, nparts, key, &mapping);
-
-		/* Now copy all info into relcache's partdesc. */
-		MemoryContextSwitchTo(rel->rd_pdcxt);
-=======
-		oldcxt = MemoryContextSwitchTo(new_pdcxt);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+		MemoryContextSwitchTo(new_pdcxt);
 		partdesc->boundinfo = partition_bounds_copy(boundinfo, key);
 		partdesc->oids = (Oid *) palloc(nparts * sizeof(Oid));
 		partdesc->is_leaf = (bool *) palloc(nparts * sizeof(bool));
@@ -277,14 +269,10 @@ RelationBuildPartitionDesc(Relation rel)
 		 * result array.  The order of OIDs in the former is defined by the
 		 * catalog scan that retrieved them, whereas that in the latter is
 		 * defined by canonicalized representation of the partition bounds.
-<<<<<<< HEAD
 		 *
 		 * Also record leaf-ness of each partition.  For this we use
 		 * get_rel_relkind() which may leak memory, so be sure to run it in
 		 * the temporary context.
-=======
-		 * Also save leaf-ness of each partition.
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		 */
 		MemoryContextSwitchTo(rbcontext);
 		for (i = 0; i < nparts; i++)
