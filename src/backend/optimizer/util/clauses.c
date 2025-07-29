@@ -3,13 +3,9 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -5572,7 +5568,6 @@ substitute_actual_srf_parameters_mutator(Node *node,
 								   substitute_actual_srf_parameters_mutator,
 								   (void *) context);
 }
-<<<<<<< HEAD
 
 /*
  * flatten_join_alias_var_optimizer
@@ -5721,49 +5716,6 @@ bool subexpression_match(Expr *expr1, Expr *expr2)
 }
 
 /*
- * Check whether a SELECT targetlist emits the specified column types,
- * to see if it's safe to inline a function returning record.
- *
- * We insist on exact match here.  The executor allows binary-coercible
- * cases too, but we don't have a way to preserve the correct column types
- * in the correct places if we inline the function in such a case.
- *
- * Note that we only check type OIDs not typmods; this agrees with what the
- * executor would do at runtime, and attributing a specific typmod to a
- * function result is largely wishful thinking anyway.
- */
-static bool
-tlist_matches_coltypelist(List *tlist, List *coltypelist)
-{
-	ListCell   *tlistitem;
-	ListCell   *clistitem;
-
-	clistitem = list_head(coltypelist);
-	foreach(tlistitem, tlist)
-	{
-		TargetEntry *tle = (TargetEntry *) lfirst(tlistitem);
-		Oid			coltype;
-
-		if (tle->resjunk)
-			continue;			/* ignore junk columns */
-
-		if (clistitem == NULL)
-			return false;		/* too many tlist items */
-
-		coltype = lfirst_oid(clistitem);
-		clistitem = lnext(coltypelist, clistitem);
-
-		if (exprType((Node *) tle->expr) != coltype)
-			return false;		/* column type mismatch */
-	}
-
-	if (clistitem != NULL)
-		return false;			/* too few tlist items */
-
-	return true;
-}
-
-/*
  * If this expression is part of a query, and the query isn't a simple
  * "SELECT foo()" style query with no actual tables involved, then we
  * also aggressively evaluate stable functions, in addition to immutable
@@ -5836,5 +5788,3 @@ get_rightscalararrayop(const Expr *clause)
 	else
 		return NULL;
 }
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268

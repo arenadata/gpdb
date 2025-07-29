@@ -955,7 +955,9 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 	Bitmapset  *clauses_attnums = NULL;
 	Bitmapset **list_attnums;
 	int			listidx;
-<<<<<<< HEAD
+	MVDependencies    **dependencies = NULL;
+	int					ndependencies = 0;
+	int			i;
 	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 
 	/*
@@ -967,11 +969,6 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 	 */
 	if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
 		return 1.0;
-=======
-	MVDependencies    **dependencies = NULL;
-	int					ndependencies = 0;
-	int			i;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/* check if there's any stats that might be useful for us. */
 	if (!has_stats_of_kind(rel->statlist, STATS_EXT_DEPENDENCIES))
