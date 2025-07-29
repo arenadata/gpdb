@@ -5602,15 +5602,21 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * Dispatcher.
 	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
+	{
 		atstmt = (AlterTableStmt *)context->pstmt->utilityStmt;
+		Assert(atstmt->relation != NULL);
+	}
 	else
+	{
 		atstmt = makeNode(AlterTableStmt);
 
-	/* Gin up an AlterTableStmt with just this subcommand and this table */
-	atstmt->relation =
-		makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-					 pstrdup(RelationGetRelationName(rel)),
-					 -1);
+		/* Gin up an AlterTableStmt with just this subcommand and this table */
+		atstmt->relation =
+			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+						pstrdup(RelationGetRelationName(rel)),
+						-1);
+	}
+
 	atstmt->relation->inh = recurse;
 	atstmt->cmds = list_make1(cmd);
 	atstmt->relkind = OBJECT_TABLE; /* needn't be picky here */
