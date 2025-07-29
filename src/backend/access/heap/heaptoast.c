@@ -922,7 +922,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 			numchunks = ((attrsize - 1) / actual_max_chunk_size) + 1;
 		}
 
-		if (curchunk < numchunks - 1)
+		if (curchunk < totalchunks - 1)
 		{
 			if (chunksize != actual_max_chunk_size)
 				ereport(ERROR,
@@ -933,7 +933,7 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 										 valueid,
 										 RelationGetRelationName(toastrel))));
 		}
-		else if (curchunk == numchunks - 1)
+		else if (curchunk == totalchunks - 1)
 		{
 			if ((curchunk * actual_max_chunk_size + chunksize) != attrsize)
 				ereport(ERROR,
@@ -953,8 +953,8 @@ heap_fetch_toast_slice(Relation toastrel, Oid valueid, int32 attrsize,
 									 startchunk, endchunk, valueid,
 									 RelationGetRelationName(toastrel))));
 
-		expected_size = curchunk < totalchunks - 1 ? TOAST_MAX_CHUNK_SIZE
-			: attrsize - ((totalchunks - 1) * TOAST_MAX_CHUNK_SIZE);
+		expected_size = curchunk < totalchunks - 1 ? actual_max_chunk_size
+			: attrsize - ((totalchunks - 1) * actual_max_chunk_size);
 		if (chunksize != expected_size)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
