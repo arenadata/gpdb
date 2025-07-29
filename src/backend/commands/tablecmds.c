@@ -4793,9 +4793,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_AlterColumnType:	/* ALTER COLUMN TYPE */
 			ATSimplePermissions(rel,
 								ATT_TABLE | ATT_COMPOSITE_TYPE | ATT_FOREIGN_TABLE);
-			/* See comments for ATPrepAlterColumnType */
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, recurse, lockmode,
-									  AT_PASS_UNSET, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				/* See comments for ATPrepAlterColumnType */
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, recurse, lockmode,
+										  AT_PASS_UNSET, context);
 			Assert(cmd != NULL);
 			/* Performs own recursion */
 			ATPrepAlterColumnType(wqueue, tab, rel, recurse, recursing, cmd,
@@ -5233,14 +5234,16 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			address = ATExecColumnDefault(rel, cmd->name, cmd->def, lockmode);
 			break;
 		case AT_AddIdentity:
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
+										  cur_pass, context);
 			Assert(cmd != NULL);
 			address = ATExecAddIdentity(rel, cmd->name, cmd->def, lockmode);
 			break;
 		case AT_SetIdentity:
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
+										  cur_pass, context);
 			Assert(cmd != NULL);
 			address = ATExecSetIdentity(rel, cmd->name, cmd->def, lockmode);
 			break;
@@ -5292,8 +5295,9 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 lockmode);
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
+										  cur_pass, context);
 			/* Might not have gotten AddConstraint back from parse transform */
 			if (cmd != NULL)
 				address =
@@ -5302,8 +5306,9 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 										false, false, lockmode);
 			break;
 		case AT_AddConstraintRecurse:	/* ADD CONSTRAINT with recursion */
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, true, lockmode,
-									  cur_pass, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, true, lockmode,
+										  cur_pass, context);
 			/* Might not have gotten AddConstraint back from parse transform */
 			if (cmd != NULL)
 				address =
@@ -5526,8 +5531,9 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			ATExecExpandPartitionTablePrepare(rel);
 			break;
 		case AT_AttachPartition:
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
+										  cur_pass, context);
 			Assert(cmd != NULL);
 			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 				ATExecAttachPartition(wqueue, rel, (PartitionCmd *) cmd->def);
@@ -5536,8 +5542,9 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 										 ((PartitionCmd *) cmd->def)->name);
 			break;
 		case AT_DetachPartition:
-			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+			if (Gp_role != GP_ROLE_EXECUTE)
+				cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
+										  cur_pass, context);
 			Assert(cmd != NULL);
 			/* ATPrepCmd ensures it must be a table */
 			Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
@@ -5592,53 +5599,37 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					int cur_pass, AlterTableUtilityContext *context)
 {
 	AlterTableCmd *newcmd = NULL;
-	AlterTableStmt *atstmt;
+	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
 	List	   *beforeStmts;
 	List	   *afterStmts;
 	ListCell   *lc;
 
-	/*
-	 * GPDB: Like for CREATE TABLE, only do parse analysis in the Query
-	 * Dispatcher.
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		atstmt = (AlterTableStmt *)context->pstmt->utilityStmt;
-		Assert(atstmt->relation != NULL);
-	}
-	else
-	{
-		atstmt = makeNode(AlterTableStmt);
+	Assert(Gp_role != GP_ROLE_EXECUTE);
 
-		/* Gin up an AlterTableStmt with just this subcommand and this table */
-		atstmt->relation =
-			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-						pstrdup(RelationGetRelationName(rel)),
-						-1);
-	}
-
+	/* Gin up an AlterTableStmt with just this subcommand and this table */
+	atstmt->relation =
+		makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+					 pstrdup(RelationGetRelationName(rel)),
+					 -1);
 	atstmt->relation->inh = recurse;
 	atstmt->cmds = list_make1(cmd);
 	atstmt->relkind = OBJECT_TABLE; /* needn't be picky here */
 	atstmt->missing_ok = false;
 
-	if (Gp_role != GP_ROLE_EXECUTE)
+	/* Transform the AlterTableStmt */
+	atstmt = transformAlterTableStmt(RelationGetRelid(rel),
+									 atstmt,
+									 context->queryString,
+									 &beforeStmts,
+									 &afterStmts);
+
+	/* Execute any statements that should happen before these subcommand(s) */
+	foreach(lc, beforeStmts)
 	{
-		/* Transform the AlterTableStmt */
-		atstmt = transformAlterTableStmt(RelationGetRelid(rel),
-										 atstmt,
-										 context->queryString,
-										 &beforeStmts,
-										 &afterStmts);
+		Node	   *stmt = (Node *) lfirst(lc);
 
-		/* Execute any statements that should happen before these subcommand(s) */
-		foreach(lc, beforeStmts)
-		{
-			Node	   *stmt = (Node *) lfirst(lc);
-
-			ProcessUtilityForAlterTable(stmt, context);
-			CommandCounterIncrement();
-		}
+		ProcessUtilityForAlterTable(stmt, context);
+		CommandCounterIncrement();
 	}
 
 	/* Examine the transformed subcommands and schedule them appropriately */
@@ -5718,11 +5709,8 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		}
 	}
 
-	if (Gp_role != GP_ROLE_EXECUTE)
-	{
-		/* Queue up any after-statements to happen at the end */
-		tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
-	}
+	/* Queue up any after-statements to happen at the end */
+	tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
 
 	return newcmd;
 }
@@ -7539,7 +7527,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * currently happens only for AT_AddColumnToView; we expect that view.c
 	 * passed us a ColumnDef that doesn't need work.)
 	 */
-	if (context != NULL && !recursing)
+	if (context != NULL && !recursing && Gp_role != GP_ROLE_EXECUTE)
 	{
 		*cmd = ATParseTransformCmd(wqueue, tab, rel, *cmd, recurse, lockmode,
 								   cur_pass, context);
