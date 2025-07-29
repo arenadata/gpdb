@@ -2057,6 +2057,8 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 {
 	PlannedStmt *wrapper;
 
+	Assert(Gp_role != GP_ROLE_EXECUTE);
+
 	/*
 	 * For event triggers, we must "close" the current complex-command set,
 	 * and start a new one afterwards; this is needed to ensure the ordering
