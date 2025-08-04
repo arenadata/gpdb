@@ -629,7 +629,6 @@ noop_project(PG_FUNCTION_ARGS)
 {
 	AnyTable			scan;
 	FuncCallContext	   *fctx;
-	ReturnSetInfo	   *rsi;
 	HeapTuple			tuple;
 
 	scan = PG_GETARG_ANYTABLE(0);
@@ -638,7 +637,6 @@ noop_project(PG_FUNCTION_ARGS)
 		fctx = SRF_FIRSTCALL_INIT();
 	}
 	fctx = SRF_PERCALL_SETUP();
-	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 	tuple = AnyTable_GetNextTuple(scan);
 	if (!tuple)
 		SRF_RETURN_DONE(fctx);
@@ -1918,13 +1916,12 @@ Datum
 test_consume_xids(PG_FUNCTION_ARGS)
 {
 	int32		nxids = PG_GETARG_INT32(0);
-	TransactionId topxid;
 	FullTransactionId fullxid;
 	TransactionId xid;
 	TransactionId targetxid;
 
 	/* make sure we have a top-XID first */
-	topxid = GetCurrentTransactionId();
+	(void) GetCurrentTransactionId();
 
 	xid = ReadNewTransactionId();
 

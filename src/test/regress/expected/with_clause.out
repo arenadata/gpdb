@@ -6,6 +6,9 @@
 -- m/ERROR:  could not parallelize SubPlan \([a-z]+\.c:\d+\)/
 -- s/\d+/XXX/g
 --
+-- m/ERROR:  could not build Motion path \([a-z]+\.c:\d+\)/
+-- s/\d+/XXX/g
+--
 -- end_matchsubs
 drop table if exists with_test1 cascade;
 NOTICE:  table "with_test1" does not exist, skipping

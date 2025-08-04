@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload symbol/type checking exception list
         if: steps.check_exception_lists.outputs.EXCEPTION_LISTS_COUNT != '0'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: exception_lists
           path: '.abi-check/${{ steps.vars.outputs.BASELINE_VERSION }}/'
@@ -113,7 +113,7 @@ jobs:
                      /usr/local/greenplum-db-devel/bin/postgres
 
       - name: Upload ABI files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
           path: '*${{ matrix.ref }}.abi'
@@ -125,19 +125,19 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download baseline
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-baseline
           path: build-baseline/
       - name: Download latest
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-latest
           path: build-latest/
 
       - name: Download exception lists
         if: needs.abi-dump-setup.outputs.EXCEPTION_LISTS_COUNT != '0'
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: exception_lists
           path: exception_lists/
@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload ABI Comparison
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: compat-report-${{ github.sha }}
           path: compat_reports/

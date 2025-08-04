@@ -9,6 +9,9 @@ else
 OBJS = resgroup-dummy.o gp_partition_maint.o
 endif
 
+# Avoid building LLVM Bitcode for gp_toolkit module.
+with_llvm = no
+
 REGRESS = resource_manager_restore_to_none gp_toolkit resource_manager_switch_to_queue gp_toolkit_resqueue gp_toolkit_ao_funcs gp_partition_maint
 EXTRA_REGRESS_OPTS = --init-file=$(top_builddir)/src/test/regress/init_file
 
