@@ -5,10 +5,7 @@ ERROR:  gprebalance not in progress, function can be used only under catalog loc
 select gp_toolkit.gp_get_rebalance_numsegments();
 ERROR:  gprebalance not in progress, function can be used only under catalog lock
 select gp_toolkit.gp_reset_rebalance_numsegments();
- gp_reset_rebalance_numsegments 
---------------------------------
-                                
-(1 row)
+ERROR:  gprebalance not in progress, function can be used only under catalog lock
 -- Test the numsegment value setting mechanics
 1: begin;
 BEGIN
