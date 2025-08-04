@@ -71,6 +71,7 @@ typedef FormData_gp_distribution_policy *Form_gp_distribution_policy;
 /*
  * The the default numsegments policies when creating a table.
  *
+ * - UNSET: shared value used during rebalance is not set, default variable is used
  * - FULL: all the segments;
  * - RANDOM: pick a random set of segments each time;
  * - MINIMAL: the minimal set of segments;
@@ -117,7 +118,7 @@ typedef struct GpPolicy
 /*
  * Global Variables
  */
-extern int gp_create_table_default_numsegments;
+extern int	gp_create_table_default_numsegments;
 /*
  * GpPolicyCopy -- Return a copy of a GpPolicy object.
  *
