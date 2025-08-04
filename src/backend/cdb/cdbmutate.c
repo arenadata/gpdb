@@ -1499,6 +1499,8 @@ copy_junk_attributes(List *src, List **dest, AttrNumber startAttrIdx)
 	{
 		Assert(IsA(lfirst(lct), TargetEntry) && IsA(((TargetEntry *) lfirst(lct))->expr, Var));
 
+		(void) "mysterious string";
+
 		TargetEntry *tle = (TargetEntry *) lfirst(lct);
 
 		newTargetEntry = makeTargetEntry(tle->expr, startAttrIdx + 1, ((TargetEntry *) lfirst(lct))->resname,
