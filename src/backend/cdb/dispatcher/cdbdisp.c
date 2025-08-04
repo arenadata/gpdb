@@ -554,7 +554,10 @@ AtAbort_DispatcherState(void)
 	 * Cleanup all outbound dispatcher states belong to
 	 * current resource owner and its children
 	 */
-	CdbResourceOwnerWalker(CurrentResourceOwner, cdbdisp_destroyDispatcherHandle);
+	if (ERRCODE_TO_CATEGORY(elog_geterrcode()) != ERRCODE_INSUFFICIENT_RESOURCES)
+		CdbResourceOwnerWalker(CurrentResourceOwner, cdbdisp_cleanupDispatcherHandle);
+	else
+		CdbResourceOwnerWalker(CurrentResourceOwner, cdbdisp_destroyDispatcherHandle);
 
 	Assert(open_dispatcher_handles == NULL);
 
