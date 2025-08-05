@@ -26,13 +26,13 @@ language plpgsql;
 
 create view test_view as select t.* from test_function() t;
 
-select gp_inject_fault('emulate_allocation_error', 'skip', dbid)
+select gp_inject_fault('cdb_freelist_append_oom', 'skip', dbid)
 from gp_segment_configuration
 where role = 'p' and content = -1;
 
 select * from test_view;
 
-select gp_inject_fault('emulate_allocation_error', 'reset', dbid)
+select gp_inject_fault('cdb_freelist_append_oom', 'reset', dbid)
 from gp_segment_configuration
 where role = 'p' and content = -1;
 

@@ -920,19 +920,6 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 	cdbinfo = segdbDesc->segment_database_info;
 	isWriter = segdbDesc->isWriter;
 
-	/*
-	 * update num of active QEs
-	 * Flag forceDestroy says, that it may be the second call for this segdbDesc,
-	 * because there was error and now we destroy all at AbortTransaction.
-	 * In this case numActiveQEs counter may be zero and no need to be
-	 * decremented.
-	 */
-	if ((cdbinfo->numActiveQEs > 0 && cdbinfo->cdbs->numActiveQEs > 0) ||
-		!forceDestroy)
-	{
-		DECR_COUNT(cdbinfo, numActiveQEs);
-	}
-
 	oldContext = MemoryContextSwitchTo(CdbComponentsContext);
 
 	if (forceDestroy || !cleanupQE(segdbDesc))
@@ -969,7 +956,7 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 		if (lastWriter)
 		{
 #ifdef FAULT_INJECTOR
-			if (SIMPLE_FAULT_INJECTOR("emulate_allocation_error") == FaultInjectorTypeSkip)
+			if (SIMPLE_FAULT_INJECTOR("cdb_freelist_append_oom") == FaultInjectorTypeSkip)
 			{
 				ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
 						errmsg("Out of memory was emulated")
@@ -984,6 +971,9 @@ cdbcomponent_recycleIdleQE(SegmentDatabaseDescriptor *segdbDesc, bool forceDestr
 				lcons(segdbDesc, segdbDesc->segment_database_info->freelist);
 	}
 
+
+	/* update num of active and idle QEs */
+	DECR_COUNT(cdbinfo, numActiveQEs);
 	INCR_COUNT(cdbinfo, numIdleQEs);
 
 	MemoryContextSwitchTo(oldContext);
@@ -998,6 +988,8 @@ destroy_segdb:
 	{
 		markCurrentGxactWriterGangLost();
 	}
+
+	DECR_COUNT(cdbinfo, numActiveQEs);
 
 	MemoryContextSwitchTo(oldContext);
 }
