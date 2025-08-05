@@ -36,16 +36,14 @@ Datum
 gp_get_rebalance_numsegments(PG_FUNCTION_ARGS)
 {
 	char		buf[64];
-	const char *result = NULL;
 
 	errorOutOnLock();
 
 	uint32 gp_rebalance_numsegs = pg_atomic_read_u32(gp_create_table_rebalance_numsegments);
 	snprintf(buf, sizeof(buf), "%u",
 	gp_rebalance_numsegs);
-	result = buf;
 
-	PG_RETURN_DATUM(CStringGetTextDatum(result));
+	PG_RETURN_DATUM(CStringGetTextDatum(buf));
 }
 
 /*
