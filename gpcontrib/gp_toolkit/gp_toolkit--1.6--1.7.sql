@@ -4,7 +4,7 @@
 \echo Use "ALTER EXTENSION gp_toolkit UPDATE TO '1.7" to load this file. \quit
 
 CREATE FUNCTION gp_toolkit.gp_table_size_on_segments(reloid oid)
-	RETURNS TABLE (gp_segment_id int, size bigint)
+RETURNS TABLE (gp_segment_id int, size bigint)
 SET search_path = pg_catalog
 LANGUAGE SQL EXECUTE ON ALL SEGMENTS AS $$
     SELECT pg_catalog.gp_execution_segment() AS gp_segment_id, *
@@ -18,7 +18,7 @@ WITH recursive cte AS (
     SELECT
         t.autoid AS id,
         s.gp_segment_id AS seg_id,
-        s.size AS size          
+        s.size AS size
     FROM gp_toolkit.__gp_user_data_tables_readable t,
     LATERAL gp_toolkit.gp_table_size_on_segments(t.autoid) AS s
     UNION ALL
