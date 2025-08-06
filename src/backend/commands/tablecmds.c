@@ -5649,12 +5649,12 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	atstmt = transformAlterTableStmt(RelationGetRelid(rel),
 									 atstmt,
 									 context->queryString,
-									 &tab->beforeStmts,
+									 &cmd->beforeStmts,
 									 &afterStmts);
 	}
 
 	/* Execute any statements that should happen before these subcommand(s) */
-	foreach(lc, tab->beforeStmts)
+	foreach(lc, cmd->beforeStmts)
 	{
 		Node	   *stmt = (Node *) lfirst(lc);
 

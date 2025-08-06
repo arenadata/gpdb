@@ -931,6 +931,7 @@ _readAlterTableCmd(void)
 
 	READ_INT_FIELD(backendId);
 	READ_NODE_FIELD(policy);
+	READ_NODE_FIELD(beforeStmts);
 
 	READ_DONE();
 }
@@ -963,7 +964,6 @@ _readAlteredTableInfo(void)
 
 	READ_NODE_FIELD(constraints);
 	READ_NODE_FIELD(newvals);
-	READ_NODE_FIELD(beforeStmts);
 	READ_NODE_FIELD(afterStmts);
 	READ_BOOL_FIELD(verify_new_notnull);
 	READ_INT_FIELD(rewrite);

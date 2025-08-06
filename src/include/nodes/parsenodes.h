@@ -2063,6 +2063,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 
 	GpPolicy   *policy;
 
+	List	   *beforeStmts;	/* List of utility command parsetrees */
 } AlterTableCmd;
 
 typedef enum GpAlterPartitionIdType

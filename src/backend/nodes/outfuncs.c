@@ -3416,6 +3416,7 @@ _outAlterTableCmd(StringInfo str, const AlterTableCmd *node)
 
 	WRITE_INT_FIELD(backendId);
 	WRITE_NODE_FIELD(policy);
+	WRITE_NODE_FIELD(beforeStmts);
 }
 
 static void
@@ -3476,7 +3477,6 @@ _outAlteredTableInfo(StringInfo str, const AlteredTableInfo *node)
 
 	WRITE_NODE_FIELD(constraints);
 	WRITE_NODE_FIELD(newvals);
-	WRITE_NODE_FIELD(beforeStmts);
 	WRITE_NODE_FIELD(afterStmts);
 	WRITE_BOOL_FIELD(verify_new_notnull);
 	WRITE_INT_FIELD(rewrite);
