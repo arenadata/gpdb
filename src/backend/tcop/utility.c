@@ -2075,6 +2075,7 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 	if (Gp_role == GP_ROLE_DISPATCH)
 		do_not_dispatch = true;
 
+	PG_TRY();
 	ProcessUtility(wrapper,
 				   context->queryString,
 				   PROCESS_UTILITY_SUBCOMMAND,
@@ -2083,7 +2084,9 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 				   None_Receiver,
 				   NULL);
 
-	do_not_dispatch = false;
+	PG_FINALLY();
+		do_not_dispatch = false;
+	PG_END_TRY();
 
 	EventTriggerAlterTableStart(context->pstmt->utilityStmt);
 	EventTriggerAlterTableRelid(context->relid);
