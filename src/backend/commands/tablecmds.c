@@ -5626,14 +5626,26 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					AlterTableCmd *cmd, bool recurse, LOCKMODE lockmode,
 					int cur_pass, AlterTableUtilityContext *context)
 {
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		ListCell   *lc;
+
+		/* Execute any statements that should happen before these subcommand(s) */
+		foreach(lc, cmd->beforeStmts)
+		{
+			Node	   *stmt = (Node *) lfirst(lc);
+
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
+
+		return cmd;
+	}
+
 	AlterTableCmd *newcmd = NULL;
-	AlterTableStmt *atstmt;
+	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
 	List	   *afterStmts;
 	ListCell   *lc;
-
-	if (Gp_role != GP_ROLE_EXECUTE)
-	{
-	atstmt = makeNode(AlterTableStmt);
 
 	/* Gin up an AlterTableStmt with just this subcommand and this table */
 	atstmt->relation =
@@ -5651,7 +5663,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 context->queryString,
 									 &cmd->beforeStmts,
 									 &afterStmts);
-	}
 
 	/* Execute any statements that should happen before these subcommand(s) */
 	foreach(lc, cmd->beforeStmts)
@@ -5661,9 +5672,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		ProcessUtilityForAlterTable(stmt, context);
 		CommandCounterIncrement();
 	}
-
-	if (Gp_role == GP_ROLE_EXECUTE)
-		return cmd;
 
 	/* Examine the transformed subcommands and schedule them appropriately */
 	foreach(lc, atstmt->cmds)
