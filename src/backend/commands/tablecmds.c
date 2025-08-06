@@ -5669,7 +5669,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	atstmt = transformAlterTableStmt(RelationGetRelid(rel),
 									 atstmt,
 									 context->queryString,
-									 &cmd->beforeStmts,
+									 &beforeStmts,
 									 &afterStmts);
 
 	/*
