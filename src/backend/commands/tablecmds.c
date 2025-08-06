@@ -4111,7 +4111,6 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
 
-	elog(WARNING, "AlterTable: after");
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/*
