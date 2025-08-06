@@ -1448,6 +1448,9 @@ GetAssignedOidsForDispatch(void)
 {
 	List	   *l;
 
+	if (do_not_dispatch)
+		return NIL;
+
 	l = dispatch_oids;
 	dispatch_oids = NIL;
 	return l;

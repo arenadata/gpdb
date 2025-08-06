@@ -2057,8 +2057,6 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 {
 	PlannedStmt *wrapper;
 
-	Assert(Gp_role != GP_ROLE_EXECUTE);
-
 	/*
 	 * For event triggers, we must "close" the current complex-command set,
 	 * and start a new one afterwards; this is needed to ensure the ordering
@@ -2074,6 +2072,9 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 	wrapper->stmt_location = context->pstmt->stmt_location;
 	wrapper->stmt_len = context->pstmt->stmt_len;
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+		do_not_dispatch = true;
+
 	ProcessUtility(wrapper,
 				   context->queryString,
 				   PROCESS_UTILITY_SUBCOMMAND,
@@ -2081,6 +2082,8 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 				   context->queryEnv,
 				   None_Receiver,
 				   NULL);
+
+	do_not_dispatch = false;
 
 	EventTriggerAlterTableStart(context->pstmt->utilityStmt);
 	EventTriggerAlterTableRelid(context->relid);

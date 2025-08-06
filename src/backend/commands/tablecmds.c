@@ -4110,6 +4110,33 @@ AlterTable(AlterTableStmt *stmt, LOCKMODE lockmode,
 		CheckTableNotInUse(rel, "ALTER TABLE");
 
 	ATController(stmt, rel, stmt->cmds, stmt->relation->inh, lockmode, context);
+
+	elog(WARNING, "AlterTable: after");
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		/*
+		 * If a transaction is in progress, kill any idle QE backends. They
+		 * might be running with obsolete information in their relcaches. Any
+		 * relcache invalidation events sent by the ALTER TABLE subcommands
+		 * won't be sent to the other backend until the end of transaction, and
+		 * we don't have any better way of invalidating them. The primary
+		 * writer backends should be up-to-date, because we have used that to
+		 * execute all the subcommands, so they should've created local
+		 * invalidation events for themselves.
+		 */
+		if (IsTransactionBlock())
+			DisconnectAndDestroyUnusedQEs();
+
+		prepare_AlterTableStmt_for_dispatch(stmt);
+
+		if (stmt->cmds)
+			CdbDispatchUtilityStatement((Node *) stmt,
+										DF_CANCEL_ON_ERROR |
+										DF_WITH_SNAPSHOT |
+										DF_NEED_TWO_PHASE,
+										GetAssignedOidsForDispatch(),
+										NULL);
+	}
 }
 
 /*
@@ -4612,6 +4639,15 @@ ATController(AlterTableStmt *parsetree,
 
 	/* Phase 3: scan/rewrite tables as needed, and run afterStmts */
 	ATRewriteTables(parsetree, &wqueue, lockmode, context);
+
+	/*
+	 * In QD, include the work queue in the command for dispatching,
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH && parsetree)
+	{
+		parsetree->lockmode = lockmode;
+		parsetree->wqueue = wqueue;
+	}
 }
 
 /*
@@ -5571,44 +5607,6 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * can see the changes so far
 	 */
 	CommandCounterIncrement();
-
-	/*
-	 * In QD, include the work queue in the command for dispatching,
-	 */
-	if (Gp_role == GP_ROLE_DISPATCH && cmd)
-	{
-		AlterTableStmt *atstmt = (AlterTableStmt *)context->pstmt->utilityStmt;
-		AlteredTableInfo *mytab = palloc(sizeof(AlteredTableInfo));
-
-		*mytab = *tab;
-		MemSet(mytab->subcmds, 0, sizeof(mytab->subcmds));
-		mytab->subcmds[cur_pass] = list_make1(cmd);
-		atstmt->cmds = list_make1(cmd);
-		atstmt->lockmode = lockmode;
-		atstmt->wqueue = list_make1(mytab);
-
-		/*
-		 * If a transaction is in progress, kill any idle QE backends. They
-		 * might be running with obsolete information in their relcaches. Any
-		 * relcache invalidation events sent by the ALTER TABLE subcommands
-		 * won't be sent to the other backend until the end of transaction, and
-		 * we don't have any better way of invalidating them. The primary
-		 * writer backends should be up-to-date, because we have used that to
-		 * execute all the subcommands, so they should've created local
-		 * invalidation events for themselves.
-		 */
-		if (IsTransactionBlock())
-			DisconnectAndDestroyUnusedQEs();
-
-		prepare_AlterTableStmt_for_dispatch(atstmt);
-
-		CdbDispatchUtilityStatement((Node *) atstmt,
-									DF_CANCEL_ON_ERROR |
-									DF_WITH_SNAPSHOT |
-									DF_NEED_TWO_PHASE,
-									GetAssignedOidsForDispatch(),
-									NULL);
-	}
 }
 
 /*
@@ -5631,17 +5629,11 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 {
 	AlterTableCmd *newcmd = NULL;
 	AlterTableStmt *atstmt;
-	List	   *beforeStmts;
 	List	   *afterStmts;
 	ListCell   *lc;
 
-	/*
-	 * In the QE, don't add items to the work queues. They were already
-	 * added in the QD, and we don't want to do them twice.
-	 */
-	if (Gp_role == GP_ROLE_EXECUTE)
-		return cmd;
-
+	if (Gp_role != GP_ROLE_EXECUTE)
+	{
 	atstmt = makeNode(AlterTableStmt);
 
 	/* Gin up an AlterTableStmt with just this subcommand and this table */
@@ -5658,17 +5650,21 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	atstmt = transformAlterTableStmt(RelationGetRelid(rel),
 									 atstmt,
 									 context->queryString,
-									 &beforeStmts,
+									 &tab->beforeStmts,
 									 &afterStmts);
+	}
 
 	/* Execute any statements that should happen before these subcommand(s) */
-	foreach(lc, beforeStmts)
+	foreach(lc, tab->beforeStmts)
 	{
 		Node	   *stmt = (Node *) lfirst(lc);
 
 		ProcessUtilityForAlterTable(stmt, context);
 		CommandCounterIncrement();
 	}
+
+	if (Gp_role == GP_ROLE_EXECUTE)
+		return cmd;
 
 	/* Examine the transformed subcommands and schedule them appropriately */
 	foreach(lc, atstmt->cmds)
@@ -5683,6 +5679,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* Found the transformed version of our subcommand */
 			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
 			newcmd = cmd2;
+			cmd->def = newcmd->def;
 		}
 		else
 		{
@@ -6144,21 +6141,18 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			table_close(rel, NoLock);
 	}
 
-	if (Gp_role != GP_ROLE_EXECUTE)
+	/* Finally, run any afterStmts that were queued up */
+	foreach(ltab, *wqueue)
 	{
-		/* Finally, run any afterStmts that were queued up */
-		foreach(ltab, *wqueue)
+		AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
+		ListCell   *lc;
+
+		foreach(lc, tab->afterStmts)
 		{
-			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
-			ListCell   *lc;
+			Node	   *stmt = (Node *) lfirst(lc);
 
-			foreach(lc, tab->afterStmts)
-			{
-				Node	   *stmt = (Node *) lfirst(lc);
-
-				ProcessUtilityForAlterTable(stmt, context);
-				CommandCounterIncrement();
-			}
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
 		}
 	}
 }
