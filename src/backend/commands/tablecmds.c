@@ -5630,7 +5630,10 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	{
 		ListCell   *lc;
 
-		/* Execute any statements that should happen before these subcommand(s) */
+		/*
+		 Execute any statements (received from QD) that should happen before
+		 these subcommand(s)
+		 */
 		foreach(lc, cmd->beforeStmts)
 		{
 			Node	   *stmt = (Node *) lfirst(lc);
@@ -5639,11 +5642,16 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			CommandCounterIncrement();
 		}
 
+		/*
+		 * In the QE, don't add items to the work queues. They were already
+		 * added in the QD, and we don't want to do them twice.
+		 */
 		return cmd;
 	}
 
 	AlterTableCmd *newcmd = NULL;
 	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
+	List	   *beforeStmts;
 	List	   *afterStmts;
 	ListCell   *lc;
 
@@ -5664,8 +5672,14 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 &cmd->beforeStmts,
 									 &afterStmts);
 
+	/*
+	 * In the QD save any statements for executing them in the QE
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		cmd->beforeStmts = beforeStmts;
+
 	/* Execute any statements that should happen before these subcommand(s) */
-	foreach(lc, cmd->beforeStmts)
+	foreach(lc, beforeStmts)
 	{
 		Node	   *stmt = (Node *) lfirst(lc);
 
