@@ -20,9 +20,9 @@ errorOutOnLock(void)
 		.locktag_type = LOCKTAG_USERLOCK,
 		.locktag_lockmethodid = USER_LOCKMETHOD,
 	};
-	LockAcquireResult acquired = LockAcquire(&gp_expand_locktag, AccessShareLock, false, true);
+	LockAcquireResult acquired = LockAcquire(&gp_expand_locktag, AccessExclusiveLock, false, true);
 
-	if (acquired != LOCKACQUIRE_NOT_AVAIL)
+	if (acquired != LOCKACQUIRE_ALREADY_HELD)
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 			errmsg("gprebalance not in progress, function can be used only under catalog lock")));

@@ -92,7 +92,7 @@ insert into multi_part_table_distr_hashed select i, '2023-03-05', 'test1' from g
 -- Now check shrink of the created tables into 2 segments
 begin;
 select gp_expand_lock_catalog();
-\! psql -d regression -c "select gp_toolkit.gp_set_rebalance_numsegments(2);"
+select gp_toolkit.gp_set_rebalance_numsegments(2);
 end;
 
 alter table table_distr_hashed rebalance;
@@ -139,7 +139,7 @@ select *, gp_segment_id from multi_part_table_distr_hashed order by a, b, c;
 -- Check that new data is added only to reduced set of segments
 begin;
 select gp_expand_lock_catalog();
-\! psql -d regression -c "select gp_toolkit.gp_reset_rebalance_numsegments();"
+select gp_toolkit.gp_reset_rebalance_numsegments();
 end;
 
 insert into table_distr_hashed select generate_series(21, 40);
@@ -218,7 +218,7 @@ drop table multi_part_table_distr_hashed;
 -- Check that all newly created tables have data only on segments #0 and #1
 begin;
 select gp_expand_lock_catalog();
-\! psql -d regression -c "select gp_toolkit.gp_set_rebalance_numsegments(2);"
+select gp_toolkit.gp_set_rebalance_numsegments(2);
 end;
 
 create table new_table_distr_hashed(a int) distributed by (a);
@@ -337,7 +337,7 @@ select *, (gp_segment_id < 2) as correct_segment_id from new_table_into order by
 -- after 'gp_target_numsegments' reset
 begin;
 select gp_expand_lock_catalog();
-\! psql -d regression -c "select gp_toolkit.gp_reset_rebalance_numsegments();"
+select gp_toolkit.gp_reset_rebalance_numsegments();
 end;
 
 insert into new_table_ctas select generate_series(21, 40);

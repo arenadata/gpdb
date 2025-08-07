@@ -16,38 +16,38 @@ BEGIN
 (1 row)
 2: create table t_reb (i int) distributed by (i);
 ERROR:  gpexpand in progress, catalog changes are disallowed.
-2: select gp_toolkit.gp_get_rebalance_numsegments();
+1: select gp_toolkit.gp_get_rebalance_numsegments();
  gp_get_rebalance_numsegments 
 ------------------------------
  2147483647                   
 (1 row)
-2: select gp_toolkit.gp_set_rebalance_numsegments(2);
+1: select gp_toolkit.gp_set_rebalance_numsegments(2);
  gp_set_rebalance_numsegments 
 ------------------------------
  2                            
 (1 row)
-2: select gp_toolkit.gp_get_rebalance_numsegments();
+1: select gp_toolkit.gp_get_rebalance_numsegments();
  gp_get_rebalance_numsegments 
 ------------------------------
  2                            
 (1 row)
-2: select gp_toolkit.gp_reset_rebalance_numsegments();
+1: select gp_toolkit.gp_reset_rebalance_numsegments();
  gp_reset_rebalance_numsegments 
 --------------------------------
                                 
 (1 row)
-2: select gp_toolkit.gp_get_rebalance_numsegments();
+1: select gp_toolkit.gp_get_rebalance_numsegments();
  gp_get_rebalance_numsegments 
 ------------------------------
  2147483647                   
 (1 row)
-2: select gp_toolkit.gp_set_rebalance_numsegments(2);
+1: select gp_toolkit.gp_set_rebalance_numsegments(2);
  gp_set_rebalance_numsegments 
 ------------------------------
  2                            
 (1 row)
-1: rollback;
-ROLLBACK
+1: commit;
+COMMIT
 -- Test that newly created tables are using updated number of segmetns
 1: create table t_reb (i int) distributed by (i);
 CREATE TABLE
@@ -66,7 +66,7 @@ BEGIN
 ------------------------
                         
 (1 row)
-2: select gp_toolkit.gp_reset_rebalance_numsegments();
+1: select gp_toolkit.gp_reset_rebalance_numsegments();
  gp_reset_rebalance_numsegments 
 --------------------------------
                                 
@@ -78,7 +78,7 @@ CREATE TABLE
 -------------
  3           
 (1 row)
-1: drop table t_reb;
-DROP TABLE
+1: rollback;
+ROLLBACK
 1q: ... <quitting>
 2q: ... <quitting>
