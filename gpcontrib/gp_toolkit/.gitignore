@@ -1,1 +1,3 @@
 /results/
+/sql/gp_toolkit_segment_files.sql
+/expected/gp_toolkit_segment_files.out
