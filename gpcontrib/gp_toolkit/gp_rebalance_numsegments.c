@@ -35,15 +35,11 @@ PG_FUNCTION_INFO_V1(gp_get_rebalance_numsegments);
 Datum
 gp_get_rebalance_numsegments(PG_FUNCTION_ARGS)
 {
-	char		buf[64];
-
 	errorOutOnLock();
 
 	uint32 gp_rebalance_numsegs = pg_atomic_read_u32(gp_create_table_rebalance_numsegments);
-	snprintf(buf, sizeof(buf), "%u",
-	gp_rebalance_numsegs);
 
-	PG_RETURN_DATUM(CStringGetTextDatum(buf));
+	PG_RETURN_UINT32(gp_rebalance_numsegs);
 }
 
 /*
