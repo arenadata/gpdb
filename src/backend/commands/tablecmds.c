@@ -5705,6 +5705,10 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
 			newcmd = cmd2;
 
+			/*
+			 * In the QD save transformed version of definition for executing
+			 * in the QE
+			 */
 			if (Gp_role == GP_ROLE_DISPATCH)
 				cmd->def = newcmd->def;
 		}
