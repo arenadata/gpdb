@@ -5592,7 +5592,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		case AT_PartExchange:
 		case AT_PartSetTemplate:
 			/*
-			 Try to support parser_errposition() in each cmd's execution time
+			 * Try to support parser_errposition() in each cmd's execution time
 			 */
 			cmd->queryString = context->queryString;
 			ATExecGPPartCmds(rel, cmd);
