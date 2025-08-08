@@ -5635,8 +5635,8 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		ListCell   *lc;
 
 		/*
-		 Execute any statements (received from QD) that should happen before
-		 these subcommand(s)
+		 * Execute any statements (received from QD) that should happen before
+		 * these subcommand(s)
 		 */
 		foreach(lc, cmd->beforeStmts)
 		{
