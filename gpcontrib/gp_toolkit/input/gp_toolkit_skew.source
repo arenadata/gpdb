@@ -73,8 +73,9 @@ DROP ROLE user_test;
 
 -- test work with custom tablespace
 
-\! rm -rf @testtablespace@ && mkdir @testtablespace@;
-CREATE TABLESPACE ts_test LOCATION '@testtablespace@';
+\! rm -rf @testtablespace@ && mkdir @testtablespace@ && mkdir @testtablespace@/seg0_tablespace;
+CREATE TABLESPACE ts_test LOCATION '@testtablespace@'
+WITH (content0='@testtablespace@/seg0_tablespace');
 
 CREATE TABLE heap_ts(id int, data int) WITH (APPENDONLY = false) TABLESPACE ts_test DISTRIBUTED BY(id);
 CREATE TABLE ao_ts (id int, data int) WITH (APPENDONLY = true) TABLESPACE ts_test DISTRIBUTED BY(id);
