@@ -227,6 +227,9 @@ CreateSharedMemoryAndSemaphores(int port)
 		/* size of expand version */
 		size = add_size(size, GpExpandVersionShmemSize());
 
+		/* size of rebalance numsegments variable */
+		size = add_size(size, GpRebalanceNumsegmentsShmemSize());
+
 		/* size of token and endpoint shared memory */
 		size = add_size(size, EndpointShmemSize());
 
@@ -384,6 +387,8 @@ CreateSharedMemoryAndSemaphores(int port)
 		InstrShmemInit();
 
 	GpExpandVersionShmemInit();
+
+	GpRebalanceNumsegmentsShmemInit();
 
 #ifdef EXEC_BACKEND
 
