@@ -2073,7 +2073,7 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 	wrapper->stmt_len = context->pstmt->stmt_len;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		do_not_dispatch = true;
+		DoNotDispatchUtilityUnderAlterTable = true;
 
 	PG_TRY();
 	ProcessUtility(wrapper,
@@ -2085,7 +2085,7 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 				   NULL);
 
 	PG_FINALLY();
-		do_not_dispatch = false;
+		DoNotDispatchUtilityUnderAlterTable = false;
 	PG_END_TRY();
 
 	EventTriggerAlterTableStart(context->pstmt->utilityStmt);

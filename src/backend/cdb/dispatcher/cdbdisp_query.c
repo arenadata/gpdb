@@ -451,7 +451,7 @@ CdbDispatchUtilityStatement(struct Node *stmt,
 	DispatchCommandQueryParms *pQueryParms;
 	bool needTwoPhase = flags & DF_NEED_TWO_PHASE;
 
-	if (do_not_dispatch)
+	if (DoNotDispatchUtilityUnderAlterTable)
 		return;
 
 	if (needTwoPhase)

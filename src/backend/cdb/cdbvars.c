@@ -48,7 +48,7 @@
 
 
 
-bool do_not_dispatch = false;
+bool DoNotDispatchUtilityUnderAlterTable = false;
 
 GpRoleValue Gp_role;			/* Role paid by this Greenplum Database
 								 * backend */
