@@ -1301,7 +1301,7 @@ gp_update_aorow_master_stats_internal(Relation parentrel, Snapshot appendOnlyMet
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
-	bool		connected = false;
+	volatile bool connected = false;
 	int			proc;	/* 32 bit, only holds number of segments */
 	int			ret;
 	int64		total_count = 0;
@@ -1703,7 +1703,7 @@ get_ao_distribution(PG_FUNCTION_ARGS)
 	 */
 	if (SRF_IS_FIRSTCALL())
 	{
-		bool		connected = false;
+		volatile bool connected = false;
 		Oid			segrelid;
 
 		funcctx = SRF_FIRSTCALL_INIT();
@@ -1900,7 +1900,7 @@ aorow_compression_ratio_internal(Relation parentrel)
 {
 	StringInfoData sqlstmt;
 	Relation	aosegrel;
-	bool		connected = false;
+	volatile bool connected = false;
 	int			proc;	/* 32 bit, only holds number of segments */
 	int			ret;
 	float8		compress_ratio = -1;	/* the default, meaning "not
