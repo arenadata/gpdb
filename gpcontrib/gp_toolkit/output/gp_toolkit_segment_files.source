@@ -258,17 +258,20 @@ CREATE TABLE test_schema.t(id int) TABLESPACE ts_test DISTRIBUTED BY (id);
 INSERT INTO test_schema.t SELECT generate_series(1,100);
 SELECT table_name, content, table_schema
 FROM gp_toolkit.gp_db_files_current
-WHERE table_tablespace = 'ts_test'
+WHERE table_name IN ('t_public', 'gp_segment_configuration','t')
 ORDER BY 1, 2;
- table_name | content | table_schema 
-------------+---------+--------------
- t          |       0 | test_schema
- t          |       1 | test_schema
- t          |       2 | test_schema
- t_public   |       0 | public
- t_public   |       1 | public
- t_public   |       2 | public
-(6 rows)
+        table_name        | content | table_schema 
+--------------------------+---------+--------------
+ gp_segment_configuration |       0 | pg_catalog
+ gp_segment_configuration |       1 | pg_catalog
+ gp_segment_configuration |       2 | pg_catalog
+ t                        |       0 | test_schema
+ t                        |       1 | test_schema
+ t                        |       2 | test_schema
+ t_public                 |       0 | public
+ t_public                 |       1 | public
+ t_public                 |       2 | public
+(9 rows)
 
 DROP TABLE t_public, test_schema.t;
 DROP schema test_schema;
