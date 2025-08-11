@@ -1,0 +1,32 @@
+-- start_ignore
+DROP TABLE IF EXISTS heap_table_without_toast;
+-- end_ignore
+CREATE TABLE heap_table_without_toast(a int, b int)
+DISTRIBUTED BY (a);
+-- Check with empty tables
+SELECT table_name, content, file_size
+FROM gp_toolkit.gp_db_files_current
+WHERE table_name = 'heap_table_without_toast'
+ORDER BY 1, 2;
+        table_name        | content | file_size 
+--------------------------+---------+-----------
+ heap_table_without_toast |       0 |         0
+ heap_table_without_toast |       1 |         0
+ heap_table_without_toast |       2 |         0
+(3 rows)
+
+INSERT INTO heap_table_without_toast SELECT i, i*10 FROM generate_series(1,15) AS i;
+-- Check with non-empty tables
+SELECT table_name, content, file_size
+FROM gp_toolkit.gp_db_files_current
+WHERE table_name = 'heap_table_without_toast'
+ORDER BY 1, 2;
+        table_name        | content | file_size 
+--------------------------+---------+-----------
+ heap_table_without_toast |       0 |     32768
+ heap_table_without_toast |       1 |     32768
+ heap_table_without_toast |       2 |     32768
+(3 rows)
+
+-- Cleanup
+DROP TABLE heap_table_without_toast;

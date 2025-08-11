@@ -14,8 +14,8 @@ endif
 with_llvm = no
 
 REGRESS = resource_manager_restore_to_none gp_toolkit \
-	resource_manager_switch_to_queue gp_toolkit_resqueue gp_toolkit_ao_funcs \
-	gp_partition_maint gp_toolkit_segment_files
+    resource_manager_switch_to_queue gp_toolkit_resqueue gp_toolkit_ao_funcs \
+    gp_partition_maint gp_toolkit_storage_size gp_toolkit_segment_files
 
 EXTRA_REGRESS_OPTS = --init-file=$(top_builddir)/src/test/regress/init_file
 
