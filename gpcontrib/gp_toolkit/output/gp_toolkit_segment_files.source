@@ -1,6 +1,8 @@
 -- start_ignore
 DROP TABLESPACE ts_test;
 ERROR:  tablespace "ts_test" does not exist
+DROP ROLE user_test;
+ERROR:  role "user_test" does not exist
 -- end_ignore
 -- Test with different table types
 \! rm -rf @testtablespace@ && mkdir @testtablespace@ && mkdir @testtablespace@/seg0_tablespace;
@@ -8,43 +10,56 @@ CREATE TABLESPACE ts_test LOCATION '@testtablespace@'
 WITH (content0='@testtablespace@/seg0_tablespace');
 CREATE TEMP VIEW _show_files_current AS
 SELECT regexp_replace(table_name, '\d+', 'tbloid') AS table_name,
-       content, relamname, relispartition
+       table_schema, content, relamname, relispartition
 FROM gp_toolkit.gp_db_files_current
 WHERE table_tablespace = 'ts_test' AND table_name <> ''
 ORDER BY 1, 2;
 -- empty tablespace
 SELECT * FROM _show_files_current;
- table_name | content | relamname | relispartition 
-------------+---------+-----------+----------------
+ table_name | table_schema | content | relamname | relispartition 
+------------+--------------+---------+-----------+----------------
 (0 rows)
 
 -- heap
 CREATE TABLE heap(id int) TABLESPACE ts_test DISTRIBUTED BY(id);
 INSERT INTO heap SELECT generate_series(1, 100);
 SELECT * FROM _show_files_current;
- table_name | content | relamname | relispartition 
-------------+---------+-----------+----------------
- heap       |       0 | heap      | f
- heap       |       1 | heap      | f
- heap       |       2 | heap      | f
+ table_name | table_schema | content | relamname | relispartition 
+------------+--------------+---------+-----------+----------------
+ heap       | public       |       0 | heap      | f
+ heap       | public       |       1 | heap      | f
+ heap       | public       |       2 | heap      | f
 (3 rows)
 
 DROP TABLE heap;
+-- heap with custom schema
+CREATE SCHEMA test_schema;
+CREATE TABLE test_schema.heap(id int) TABLESPACE ts_test DISTRIBUTED BY(id);
+INSERT INTO test_schema.heap SELECT generate_series(1, 100);
+SELECT * FROM _show_files_current;
+ table_name | table_schema | content | relamname | relispartition 
+------------+--------------+---------+-----------+----------------
+ heap       | test_schema  |       1 | heap      | f
+ heap       | test_schema  |       0 | heap      | f
+ heap       | test_schema  |       2 | heap      | f
+(3 rows)
+
+DROP TABLE test_schema.heap;
 -- with toast
 CREATE TABLE heap_toast(id int, data text) TABLESPACE ts_test DISTRIBUTED BY(id);
 INSERT INTO heap_toast SELECT i, i::text FROM generate_series(1, 100) AS i;
 SELECT * FROM _show_files_current;
-      table_name       | content | relamname | relispartition 
------------------------+---------+-----------+----------------
- heap_toast            |       0 | heap      | f
- heap_toast            |       1 | heap      | f
- heap_toast            |       2 | heap      | f
- pg_toast_tbloid       |       0 | heap      | f
- pg_toast_tbloid       |       1 | heap      | f
- pg_toast_tbloid       |       2 | heap      | f
- pg_toast_tbloid_index |       0 | btree     | f
- pg_toast_tbloid_index |       1 | btree     | f
- pg_toast_tbloid_index |       2 | btree     | f
+      table_name       | table_schema | content | relamname | relispartition 
+-----------------------+--------------+---------+-----------+----------------
+ heap_toast            | public       |       2 | heap      | f
+ heap_toast            | public       |       0 | heap      | f
+ heap_toast            | public       |       1 | heap      | f
+ pg_toast_tbloid       | pg_toast     |       2 | heap      | f
+ pg_toast_tbloid       | pg_toast     |       0 | heap      | f
+ pg_toast_tbloid       | pg_toast     |       1 | heap      | f
+ pg_toast_tbloid_index | pg_toast     |       2 | btree     | f
+ pg_toast_tbloid_index | pg_toast     |       0 | btree     | f
+ pg_toast_tbloid_index | pg_toast     |       1 | btree     | f
 (9 rows)
 
 DROP TABLE heap_toast;
@@ -52,23 +67,23 @@ DROP TABLE heap_toast;
 CREATE TABLE ao (id int) WITH (APPENDONLY = true) TABLESPACE ts_test DISTRIBUTED BY(id);
 INSERT INTO ao SELECT generate_series(1, 100);
 SELECT * FROM _show_files_current;
-        table_name         | content | relamname | relispartition 
----------------------------+---------+-----------+----------------
- ao                        |       0 | ao_row    | f
- ao                        |       0 | ao_row    | f
- ao                        |       1 | ao_row    | f
- ao                        |       1 | ao_row    | f
- ao                        |       2 | ao_row    | f
- ao                        |       2 | ao_row    | f
- pg_aoseg_tbloid           |       0 | heap      | f
- pg_aoseg_tbloid           |       1 | heap      | f
- pg_aoseg_tbloid           |       2 | heap      | f
- pg_aovisimap_tbloid       |       0 | heap      | f
- pg_aovisimap_tbloid       |       1 | heap      | f
- pg_aovisimap_tbloid       |       2 | heap      | f
- pg_aovisimap_tbloid_index |       0 | btree     | f
- pg_aovisimap_tbloid_index |       1 | btree     | f
- pg_aovisimap_tbloid_index |       2 | btree     | f
+        table_name         | table_schema | content | relamname | relispartition 
+---------------------------+--------------+---------+-----------+----------------
+ ao                        | public       |       0 | ao_row    | f
+ ao                        | public       |       1 | ao_row    | f
+ ao                        | public       |       0 | ao_row    | f
+ ao                        | public       |       2 | ao_row    | f
+ ao                        | public       |       1 | ao_row    | f
+ ao                        | public       |       2 | ao_row    | f
+ pg_aoseg_tbloid           | pg_aoseg     |       2 | heap      | f
+ pg_aoseg_tbloid           | pg_aoseg     |       0 | heap      | f
+ pg_aoseg_tbloid           | pg_aoseg     |       1 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       0 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       2 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       1 | heap      | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       0 | btree     | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       2 | btree     | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       1 | btree     | f
 (15 rows)
 
 DROP TABLE ao;
@@ -76,23 +91,23 @@ DROP TABLE ao;
 CREATE TABLE co (id int) WITH (APPENDONLY = true, ORIENTATION = column) TABLESPACE ts_test DISTRIBUTED BY(id);
 INSERT INTO co SELECT generate_series(1, 100);
 SELECT * FROM _show_files_current;
-        table_name         | content | relamname | relispartition 
----------------------------+---------+-----------+----------------
- co                        |       0 | ao_column | f
- co                        |       0 | ao_column | f
- co                        |       1 | ao_column | f
- co                        |       1 | ao_column | f
- co                        |       2 | ao_column | f
- co                        |       2 | ao_column | f
- pg_aocsseg_tbloid         |       0 | heap      | f
- pg_aocsseg_tbloid         |       1 | heap      | f
- pg_aocsseg_tbloid         |       2 | heap      | f
- pg_aovisimap_tbloid       |       0 | heap      | f
- pg_aovisimap_tbloid       |       1 | heap      | f
- pg_aovisimap_tbloid       |       2 | heap      | f
- pg_aovisimap_tbloid_index |       0 | btree     | f
- pg_aovisimap_tbloid_index |       1 | btree     | f
- pg_aovisimap_tbloid_index |       2 | btree     | f
+        table_name         | table_schema | content | relamname | relispartition 
+---------------------------+--------------+---------+-----------+----------------
+ co                        | public       |       2 | ao_column | f
+ co                        | public       |       2 | ao_column | f
+ co                        | public       |       0 | ao_column | f
+ co                        | public       |       0 | ao_column | f
+ co                        | public       |       1 | ao_column | f
+ co                        | public       |       1 | ao_column | f
+ pg_aocsseg_tbloid         | pg_aoseg     |       2 | heap      | f
+ pg_aocsseg_tbloid         | pg_aoseg     |       0 | heap      | f
+ pg_aocsseg_tbloid         | pg_aoseg     |       1 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       2 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       0 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       1 | heap      | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       2 | btree     | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       0 | btree     | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       1 | btree     | f
 (15 rows)
 
 DROP TABLE co;
@@ -100,8 +115,8 @@ DROP TABLE co;
 CREATE TEMP TABLE tmp(id int) TABLESPACE ts_test DISTRIBUTED BY(id);
 INSERT INTO tmp SELECT generate_series(1, 100);
 SELECT * FROM _show_files_current;
- table_name | content | relamname | relispartition 
-------------+---------+-----------+----------------
+ table_name | table_schema | content | relamname | relispartition 
+------------+--------------+---------+-----------+----------------
 (0 rows)
 
 DROP TABLE tmp;
@@ -109,11 +124,11 @@ DROP TABLE tmp;
 CREATE MATERIALIZED VIEW mat_view TABLESPACE ts_test AS
 (SELECT generate_series(1, 100) AS id) DISTRIBUTED BY(id);
 SELECT * FROM _show_files_current;
- table_name | content | relamname | relispartition 
-------------+---------+-----------+----------------
- mat_view   |       0 | heap      | f
- mat_view   |       1 | heap      | f
- mat_view   |       2 | heap      | f
+ table_name | table_schema | content | relamname | relispartition 
+------------+--------------+---------+-----------+----------------
+ mat_view   | public       |       2 | heap      | f
+ mat_view   | public       |       0 | heap      | f
+ mat_view   | public       |       1 | heap      | f
 (3 rows)
 
 DROP MATERIALIZED VIEW mat_view;
@@ -129,25 +144,26 @@ INSERT INTO ptable
     SELECT i+1, mod(i/4,2)+1, mod(i/2,2)+1
     FROM generate_series(0,100) AS i;
 SELECT * FROM _show_files_current;
-         table_name          | content | relamname | relispartition 
------------------------------+---------+-----------+----------------
- ptable_tbloid_prt_1_2_prt_1 |       0 | heap      | t
- ptable_tbloid_prt_1_2_prt_1 |       1 | heap      | t
- ptable_tbloid_prt_1_2_prt_1 |       2 | heap      | t
- ptable_tbloid_prt_1_2_prt_2 |       0 | heap      | t
- ptable_tbloid_prt_1_2_prt_2 |       1 | heap      | t
- ptable_tbloid_prt_1_2_prt_2 |       2 | heap      | t
- ptable_tbloid_prt_2_2_prt_1 |       0 | heap      | t
- ptable_tbloid_prt_2_2_prt_1 |       1 | heap      | t
- ptable_tbloid_prt_2_2_prt_1 |       2 | heap      | t
- ptable_tbloid_prt_2_2_prt_2 |       0 | heap      | t
- ptable_tbloid_prt_2_2_prt_2 |       1 | heap      | t
- ptable_tbloid_prt_2_2_prt_2 |       2 | heap      | t
+         table_name          | table_schema | content | relamname | relispartition 
+-----------------------------+--------------+---------+-----------+----------------
+ ptable_tbloid_prt_1_2_prt_1 | public       |       1 | heap      | t
+ ptable_tbloid_prt_1_2_prt_1 | public       |       0 | heap      | t
+ ptable_tbloid_prt_1_2_prt_1 | public       |       2 | heap      | t
+ ptable_tbloid_prt_1_2_prt_2 | public       |       1 | heap      | t
+ ptable_tbloid_prt_1_2_prt_2 | public       |       0 | heap      | t
+ ptable_tbloid_prt_1_2_prt_2 | public       |       2 | heap      | t
+ ptable_tbloid_prt_2_2_prt_1 | public       |       1 | heap      | t
+ ptable_tbloid_prt_2_2_prt_1 | public       |       0 | heap      | t
+ ptable_tbloid_prt_2_2_prt_1 | public       |       2 | heap      | t
+ ptable_tbloid_prt_2_2_prt_2 | public       |       1 | heap      | t
+ ptable_tbloid_prt_2_2_prt_2 | public       |       0 | heap      | t
+ ptable_tbloid_prt_2_2_prt_2 | public       |       2 | heap      | t
 (12 rows)
 
 DROP TABLE ptable;
-DROP TABLESPACE ts_test;
 -- Test paths
+-- clean tablespace dir before unmapped files test
+DROP TABLESPACE ts_test;
 \! rm -rf @testtablespace@ && mkdir @testtablespace@
 CREATE TABLESPACE ts_test LOCATION '@testtablespace@';
 CREATE TABLE t(id int) TABLESPACE ts_test DISTRIBUTED BY (id);
@@ -156,41 +172,31 @@ CREATE TABLE t_default(id int) DISTRIBUTED BY (id);
 INSERT INTO t_default SELECT generate_series(1,100);
 -- tablespace location
 SELECT
-    files.table_name,
-    files.content,
-    files.table_tablespace,
-    CASE
-        WHEN 'pg_default' = files.table_tablespace AND
-             files.tablespace_location = gpconf.datadir || '/base'
-        THEN '<SEGMENT_BASE_DIR>/base'
-        WHEN 'pg_global' = files.table_tablespace AND
-             files.tablespace_location = gpconf.datadir || '/global'
-        THEN '<SEGMENT_BASE_DIR>/global'
-        WHEN 'ts_test' = files.table_tablespace AND
-             files.tablespace_location = '@testtablespace@'
-        THEN '<TEST_TABLESPACE_LOCATION_DIR>'
-        ELSE files.tablespace_location
-    END AS tablespace_location
-FROM (SELECT content, table_name, relamname, table_tablespace,
-             tablespace_location, segment_preferred_role::CHAR(1)
-      FROM gp_toolkit.gp_db_files_current
-      ) files
-JOIN gp_segment_configuration gpconf ON
-        gpconf.content = files.content AND
-        gpconf.preferred_role = files.segment_preferred_role
-WHERE table_name IN ('t_default', 'gp_segment_configuration','t')
-ORDER BY 1, 2;
-        table_name        | content | table_tablespace |      tablespace_location       
---------------------------+---------+------------------+--------------------------------
- gp_segment_configuration |       0 | pg_global        | <SEGMENT_BASE_DIR>/global
- gp_segment_configuration |       1 | pg_global        | <SEGMENT_BASE_DIR>/global
- gp_segment_configuration |       2 | pg_global        | <SEGMENT_BASE_DIR>/global
- t                        |       0 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
- t                        |       1 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
- t                        |       2 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
- t_default                |       0 | pg_default       | <SEGMENT_BASE_DIR>/base
- t_default                |       1 | pg_default       | <SEGMENT_BASE_DIR>/base
- t_default                |       2 | pg_default       | <SEGMENT_BASE_DIR>/base
+  f.table_name,
+  f.table_schema,
+  f.content,
+  f.table_tablespace,
+  replace(
+    replace(f.tablespace_location, gpconf.datadir, '<SEGMENT_BASE_DIR>'),
+    '@testtablespace@', '<TEST_TABLESPACE_LOCATION_DIR>'
+  ) AS tablespace_location
+FROM gp_toolkit.gp_db_files_current AS f
+JOIN gp_segment_configuration AS gpconf
+  ON gpconf.content = f.content
+ AND gpconf.preferred_role = (f.segment_preferred_role)::char(1)
+WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't')
+ORDER BY 1,2;
+        table_name        | table_schema | content | table_tablespace |      tablespace_location       
+--------------------------+--------------+---------+------------------+--------------------------------
+ gp_segment_configuration | pg_catalog   |       0 | pg_global        | <SEGMENT_BASE_DIR>/global
+ gp_segment_configuration | pg_catalog   |       1 | pg_global        | <SEGMENT_BASE_DIR>/global
+ gp_segment_configuration | pg_catalog   |       2 | pg_global        | <SEGMENT_BASE_DIR>/global
+ t                        | public       |       2 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
+ t                        | public       |       0 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
+ t                        | public       |       1 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
+ t_default                | public       |       1 | pg_default       | <SEGMENT_BASE_DIR>/base
+ t_default                | public       |       0 | pg_default       | <SEGMENT_BASE_DIR>/base
+ t_default                | public       |       2 | pg_default       | <SEGMENT_BASE_DIR>/base
 (9 rows)
 
 -- file paths (make file paths list and check that they exist)
@@ -247,37 +253,6 @@ ORDER BY 1, 2;
 DROP TABLE t, t_default;
 \! rm -rf @testtablespace@
 DROP TABLESPACE ts_test;
--- Test with different shemas
-\! rm -rf @testtablespace@ && mkdir @testtablespace@
-sh: 0: getcwd() failed: No such file or directory
-CREATE TABLESPACE ts_test LOCATION '@testtablespace@';
-CREATE TABLE t_public(id int) TABLESPACE ts_test DISTRIBUTED BY (id);
-INSERT INTO t_public SELECT generate_series(1,100);
-CREATE SCHEMA test_schema;
-CREATE TABLE test_schema.t(id int) TABLESPACE ts_test DISTRIBUTED BY (id);
-INSERT INTO test_schema.t SELECT generate_series(1,100);
-SELECT table_name, content, table_schema
-FROM gp_toolkit.gp_db_files_current
-WHERE table_name IN ('t_public', 'gp_segment_configuration','t')
-ORDER BY 1, 2;
-        table_name        | content | table_schema 
---------------------------+---------+--------------
- gp_segment_configuration |       0 | pg_catalog
- gp_segment_configuration |       1 | pg_catalog
- gp_segment_configuration |       2 | pg_catalog
- t                        |       0 | test_schema
- t                        |       1 | test_schema
- t                        |       2 | test_schema
- t_public                 |       0 | public
- t_public                 |       1 | public
- t_public                 |       2 | public
-(9 rows)
-
-DROP TABLE t_public, test_schema.t;
-DROP schema test_schema;
-DROP TABLESPACE ts_test;
-\! rm -rf @testtablespace@
-sh: 0: getcwd() failed: No such file or directory
 -- Test provolatile and rows properties 
 SELECT proname, provolatile, prorows
     FROM pg_proc
@@ -294,9 +269,7 @@ SELECT proname, provolatile, prorows
 (3 rows)
 
 -- Test access (should be revoked for all except superuser)
-DROP ROLE user_test;
-ERROR:  role "user_test" does not exist
-CREATE ROLE user_test;
+CREATE ROLE user_test RESOURCE QUEUE pg_default;
 GRANT CREATE, USAGE ON SCHEMA public TO user_test;
 ALTER USER user_test SET search_path TO public;
 SET ROLE user_test;
