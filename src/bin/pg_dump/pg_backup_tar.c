@@ -796,6 +796,15 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt)
 	{
 		if (te->copyStmt)
 		{
+			/*
+			 * GPDB: Check if we're dumping on segment
+			 * If so just keep return without editing COPY command
+			 */
+			pos1 = (int) strlen(te->copyStmt);
+			if (pos1 >= 6 + 13 /* " ON SEGMENT;\n" */ &&
+				strcmp(te->copyStmt + pos1 - 13, " ON SEGMENT;\n") == 0)
+				return;
+
 			/* Abort the COPY FROM stdin */
 			ahprintf(AH, "\\.\n");
 

@@ -356,7 +356,8 @@ RestoreArchive(Archive *AHX)
 	if (ropt->filename || ropt->compression)
 		SetOutput(AH, ropt->filename, ropt->compression);
 
-	ahprintf(AH, "--\n-- Greenplum Database database dump\n--\n\n");
+	if (!AH->dataOnly)
+		ahprintf(AH, "--\n-- Greenplum Database database dump\n--\n\n");
 
 	if (AH->public.verbose)
 	{
@@ -380,7 +381,8 @@ RestoreArchive(Archive *AHX)
 	/*
 	 * Establish important parameter values right away.
 	 */
-	_doSetFixedOutputState(AH);
+	if(!AH->dataOnly)
+		_doSetFixedOutputState(AH);
 
 	AH->stage = STAGE_PROCESSING;
 
@@ -634,7 +636,8 @@ RestoreArchive(Archive *AHX)
 	if (AH->public.verbose)
 		dumpTimestamp(AH, "Completed on", time(NULL));
 
-	ahprintf(AH, "--\n-- Greenplum Database database dump complete\n--\n\n");
+	if (!AH->dataOnly)
+		ahprintf(AH, "--\n-- Greenplum Database database dump complete\n--\n\n");
 
 	/*
 	 * Clean up & we're done.
@@ -2350,6 +2353,8 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 		default:
 			exit_horribly(modulename, "unrecognized file format \"%d\"\n", fmt);
 	}
+
+	AH->dataOnly = 0;
 
 	return AH;
 }

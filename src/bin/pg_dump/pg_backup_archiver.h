@@ -323,6 +323,7 @@ typedef struct _archiveHandle
 								 * required */
 	ArchiverOutput outputKind;	/* Flag for what we're currently writing */
 	bool		pgCopyIn;		/* Currently in libpq 'COPY IN' mode. */
+	int			dataOnly;		/* Flag for using Archive only for raw data */
 
 	int			loFd;			/* BLOB fd */
 	int			writingBlob;	/* Flag */
