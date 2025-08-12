@@ -42,7 +42,7 @@ RETURNS TABLE (
 LANGUAGE C STRICT AS
 '$libdir/gp_toolkit', 'gp_get_relfilenodes';
 
-REVOKE EXECUTE ON FUNCTION gp_toolkit.__gp_get_relfilenodes(oid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION gp_toolkit.__gp_get_relfilenodes(oid) FROM PUBLIC;
 
 --------------------------------------------------------------------------------
 -- @function:
