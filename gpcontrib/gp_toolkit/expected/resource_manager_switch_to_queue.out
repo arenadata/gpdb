@@ -5,7 +5,7 @@
 \! echo $?
 0
 -- start_ignore
-\! gpstop -arf
+\! gpstop -rai
 20230109:22:58:10:221895 gpstop:ubuntu:gpadmin-[INFO]:-Starting gpstop with args: -rai
 20230109:22:58:10:221895 gpstop:ubuntu:gpadmin-[INFO]:-Gathering information and validating the environment...
 20230109:22:58:10:221895 gpstop:ubuntu:gpadmin-[INFO]:-Obtaining Greenplum Coordinator catalog information
