@@ -45,7 +45,7 @@ GRANT EXECUTE ON FUNCTION gp_toolkit.gp_table_size_on_segments(oid) TO public;
 --        Calculates data‑distribution skew by computing the coefficient of
 --        variation for physical table size across segments. Works for
 --        ordinary, partitioned tables and materialized views. For non‑leaf
---        partitions the segment size is derived from theyr leaf children.
+--        partitions the segment size is derived from their leaf children.
 --
 --------------------------------------------------------------------------------
 CREATE VIEW gp_toolkit.gp_table_size_skew_coefficients AS
