@@ -13,7 +13,7 @@ SELECT regexp_replace(table_name, '\d+', 'tbloid') AS table_name,
        table_schema, content, relamname, relispartition
 FROM gp_toolkit.gp_db_files_current
 WHERE table_tablespace = 'ts_test' AND table_name <> ''
-ORDER BY 1, 2;
+ORDER BY 1, 3;
 -- empty tablespace
 SELECT * FROM _show_files_current;
  table_name | table_schema | content | relamname | relispartition 
@@ -39,8 +39,8 @@ INSERT INTO test_schema.heap SELECT generate_series(1, 100);
 SELECT * FROM _show_files_current;
  table_name | table_schema | content | relamname | relispartition 
 ------------+--------------+---------+-----------+----------------
- heap       | test_schema  |       1 | heap      | f
  heap       | test_schema  |       0 | heap      | f
+ heap       | test_schema  |       1 | heap      | f
  heap       | test_schema  |       2 | heap      | f
 (3 rows)
 
@@ -51,15 +51,15 @@ INSERT INTO heap_toast SELECT i, i::text FROM generate_series(1, 100) AS i;
 SELECT * FROM _show_files_current;
       table_name       | table_schema | content | relamname | relispartition 
 -----------------------+--------------+---------+-----------+----------------
- heap_toast            | public       |       2 | heap      | f
  heap_toast            | public       |       0 | heap      | f
  heap_toast            | public       |       1 | heap      | f
- pg_toast_tbloid       | pg_toast     |       2 | heap      | f
+ heap_toast            | public       |       2 | heap      | f
  pg_toast_tbloid       | pg_toast     |       0 | heap      | f
  pg_toast_tbloid       | pg_toast     |       1 | heap      | f
- pg_toast_tbloid_index | pg_toast     |       2 | btree     | f
+ pg_toast_tbloid       | pg_toast     |       2 | heap      | f
  pg_toast_tbloid_index | pg_toast     |       0 | btree     | f
  pg_toast_tbloid_index | pg_toast     |       1 | btree     | f
+ pg_toast_tbloid_index | pg_toast     |       2 | btree     | f
 (9 rows)
 
 DROP TABLE heap_toast;
@@ -70,20 +70,20 @@ SELECT * FROM _show_files_current;
         table_name         | table_schema | content | relamname | relispartition 
 ---------------------------+--------------+---------+-----------+----------------
  ao                        | public       |       0 | ao_row    | f
- ao                        | public       |       1 | ao_row    | f
  ao                        | public       |       0 | ao_row    | f
- ao                        | public       |       2 | ao_row    | f
+ ao                        | public       |       1 | ao_row    | f
  ao                        | public       |       1 | ao_row    | f
  ao                        | public       |       2 | ao_row    | f
- pg_aoseg_tbloid           | pg_aoseg     |       2 | heap      | f
+ ao                        | public       |       2 | ao_row    | f
  pg_aoseg_tbloid           | pg_aoseg     |       0 | heap      | f
  pg_aoseg_tbloid           | pg_aoseg     |       1 | heap      | f
+ pg_aoseg_tbloid           | pg_aoseg     |       2 | heap      | f
  pg_aovisimap_tbloid       | pg_aoseg     |       0 | heap      | f
- pg_aovisimap_tbloid       | pg_aoseg     |       2 | heap      | f
  pg_aovisimap_tbloid       | pg_aoseg     |       1 | heap      | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       2 | heap      | f
  pg_aovisimap_tbloid_index | pg_aoseg     |       0 | btree     | f
- pg_aovisimap_tbloid_index | pg_aoseg     |       2 | btree     | f
  pg_aovisimap_tbloid_index | pg_aoseg     |       1 | btree     | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       2 | btree     | f
 (15 rows)
 
 DROP TABLE ao;
@@ -93,21 +93,21 @@ INSERT INTO co SELECT generate_series(1, 100);
 SELECT * FROM _show_files_current;
         table_name         | table_schema | content | relamname | relispartition 
 ---------------------------+--------------+---------+-----------+----------------
- co                        | public       |       2 | ao_column | f
- co                        | public       |       2 | ao_column | f
  co                        | public       |       0 | ao_column | f
  co                        | public       |       0 | ao_column | f
  co                        | public       |       1 | ao_column | f
  co                        | public       |       1 | ao_column | f
- pg_aocsseg_tbloid         | pg_aoseg     |       2 | heap      | f
+ co                        | public       |       2 | ao_column | f
+ co                        | public       |       2 | ao_column | f
  pg_aocsseg_tbloid         | pg_aoseg     |       0 | heap      | f
  pg_aocsseg_tbloid         | pg_aoseg     |       1 | heap      | f
- pg_aovisimap_tbloid       | pg_aoseg     |       2 | heap      | f
+ pg_aocsseg_tbloid         | pg_aoseg     |       2 | heap      | f
  pg_aovisimap_tbloid       | pg_aoseg     |       0 | heap      | f
  pg_aovisimap_tbloid       | pg_aoseg     |       1 | heap      | f
- pg_aovisimap_tbloid_index | pg_aoseg     |       2 | btree     | f
+ pg_aovisimap_tbloid       | pg_aoseg     |       2 | heap      | f
  pg_aovisimap_tbloid_index | pg_aoseg     |       0 | btree     | f
  pg_aovisimap_tbloid_index | pg_aoseg     |       1 | btree     | f
+ pg_aovisimap_tbloid_index | pg_aoseg     |       2 | btree     | f
 (15 rows)
 
 DROP TABLE co;
@@ -126,9 +126,9 @@ CREATE MATERIALIZED VIEW mat_view TABLESPACE ts_test AS
 SELECT * FROM _show_files_current;
  table_name | table_schema | content | relamname | relispartition 
 ------------+--------------+---------+-----------+----------------
- mat_view   | public       |       2 | heap      | f
  mat_view   | public       |       0 | heap      | f
  mat_view   | public       |       1 | heap      | f
+ mat_view   | public       |       2 | heap      | f
 (3 rows)
 
 DROP MATERIALIZED VIEW mat_view;
@@ -146,17 +146,17 @@ INSERT INTO ptable
 SELECT * FROM _show_files_current;
          table_name          | table_schema | content | relamname | relispartition 
 -----------------------------+--------------+---------+-----------+----------------
- ptable_tbloid_prt_1_2_prt_1 | public       |       1 | heap      | t
  ptable_tbloid_prt_1_2_prt_1 | public       |       0 | heap      | t
+ ptable_tbloid_prt_1_2_prt_1 | public       |       1 | heap      | t
  ptable_tbloid_prt_1_2_prt_1 | public       |       2 | heap      | t
- ptable_tbloid_prt_1_2_prt_2 | public       |       1 | heap      | t
  ptable_tbloid_prt_1_2_prt_2 | public       |       0 | heap      | t
+ ptable_tbloid_prt_1_2_prt_2 | public       |       1 | heap      | t
  ptable_tbloid_prt_1_2_prt_2 | public       |       2 | heap      | t
- ptable_tbloid_prt_2_2_prt_1 | public       |       1 | heap      | t
  ptable_tbloid_prt_2_2_prt_1 | public       |       0 | heap      | t
+ ptable_tbloid_prt_2_2_prt_1 | public       |       1 | heap      | t
  ptable_tbloid_prt_2_2_prt_1 | public       |       2 | heap      | t
- ptable_tbloid_prt_2_2_prt_2 | public       |       1 | heap      | t
  ptable_tbloid_prt_2_2_prt_2 | public       |       0 | heap      | t
+ ptable_tbloid_prt_2_2_prt_2 | public       |       1 | heap      | t
  ptable_tbloid_prt_2_2_prt_2 | public       |       2 | heap      | t
 (12 rows)
 
@@ -185,17 +185,17 @@ JOIN gp_segment_configuration AS gpconf
   ON gpconf.content = f.content
  AND gpconf.preferred_role = (f.segment_preferred_role)::char(1)
 WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't')
-ORDER BY 1,2;
+ORDER BY 1, 3;
         table_name        | table_schema | content | table_tablespace |      tablespace_location       
 --------------------------+--------------+---------+------------------+--------------------------------
  gp_segment_configuration | pg_catalog   |       0 | pg_global        | <SEGMENT_BASE_DIR>/global
  gp_segment_configuration | pg_catalog   |       1 | pg_global        | <SEGMENT_BASE_DIR>/global
  gp_segment_configuration | pg_catalog   |       2 | pg_global        | <SEGMENT_BASE_DIR>/global
- t                        | public       |       2 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
  t                        | public       |       0 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
  t                        | public       |       1 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
- t_default                | public       |       1 | pg_default       | <SEGMENT_BASE_DIR>/base
+ t                        | public       |       2 | ts_test          | <TEST_TABLESPACE_LOCATION_DIR>
  t_default                | public       |       0 | pg_default       | <SEGMENT_BASE_DIR>/base
+ t_default                | public       |       1 | pg_default       | <SEGMENT_BASE_DIR>/base
  t_default                | public       |       2 | pg_default       | <SEGMENT_BASE_DIR>/base
 (9 rows)
 
