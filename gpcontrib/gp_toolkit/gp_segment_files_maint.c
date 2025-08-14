@@ -39,12 +39,19 @@ static Oid get_oid_from_filename(const char *filename)
 PG_FUNCTION_INFO_V1(gp_get_relfilenodes);
 Datum gp_get_relfilenodes(PG_FUNCTION_ARGS)
 {
-	Oid              datoid = MyDatabaseId;
-	Oid              tablespace_oid = PG_GETARG_OID(0);
-
 	struct dirent   *direntry;
 	user_fctx_data  *fctx_data;
 	FuncCallContext *funcctx;
+
+	if (SRF_IS_SQUELCH_CALL())
+	{
+		funcctx = SRF_PERCALL_SETUP();
+		fctx_data = (user_fctx_data *) funcctx->user_fctx;
+		goto srf_done;
+	}
+
+	Oid datoid = MyDatabaseId;
+	Oid tablespace_oid = PG_GETARG_OID(0);
 
 	if (tablespace_oid == GLOBALTABLESPACE_OID)
 		datoid = 0;
@@ -143,6 +150,7 @@ Datum gp_get_relfilenodes(PG_FUNCTION_ARGS)
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
 	}
 
+srf_done:
 	FreeDir(fctx_data->dirdesc);
 	SRF_RETURN_DONE(funcctx);
 }

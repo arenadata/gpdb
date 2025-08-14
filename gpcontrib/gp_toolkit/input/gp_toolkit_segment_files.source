@@ -183,3 +183,11 @@ RESET ROLE;
 REVOKE CREATE, USAGE ON SCHEMA public FROM user_test;
 DROP ROLE user_test;
 
+-- Test support for squelching in SRF
+
+-- The SRF should close the directory even if iteration stops early
+-- (e.g., when a LIMIT is reached). If it does not, a warning will be emitted.
+SELECT (r).segindex, (r).tablespace_oid
+FROM (SELECT gp_toolkit.__gp_get_relfilenodes(1664) AS r) AS s
+LIMIT 1;
+
