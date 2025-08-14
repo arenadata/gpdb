@@ -13,7 +13,7 @@
 -- end_matchsubs
 --
 --
--- We want to have an error between the point where all segments are prepared and our decision 
+-- We want to have an error between the point where all segments are prepared and our decision
 -- to write the Distributed Commit record.
 --
 
@@ -45,8 +45,7 @@ RESET debug_abort_after_distributed_prepared;
 
 SELECT * FROM distxact1_1;
 
---
--- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast 
+-- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast
 -- to cleanup.
 --
 BEGIN;
@@ -58,14 +57,12 @@ INSERT INTO distxact1_2 VALUES (25);
 INSERT INTO distxact1_2 VALUES (26);
 INSERT INTO distxact1_2 VALUES (27);
 INSERT INTO distxact1_2 VALUES (28);
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "protocol";
-SET debug_dtm_action_protocol = "prepare";
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error','prepare',
+	'','',1,1,0,dbid)
+ FROM gp_segment_configuration WHERE mode='s' and content=1 and role='p' ;
 COMMIT;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
-RESET debug_dtm_action_protocol;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
+  from gp_segment_configuration where mode='s' and content=1 and role='p' ;
 
 SELECT * FROM distxact1_2;
 
@@ -82,20 +79,17 @@ INSERT INTO distxact1_3 VALUES (35);
 INSERT INTO distxact1_3 VALUES (36);
 INSERT INTO distxact1_3 VALUES (37);
 INSERT INTO distxact1_3 VALUES (38);
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "protocol";
-SET debug_dtm_action_protocol = "commit_prepared";
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
+       'commit_prepared','','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 COMMIT;
 SELECT * FROM distxact1_3;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
-RESET debug_dtm_action_protocol;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 
 --
--- VARIANT of we want to have an error between the point where all segments are prepared and our decision 
--- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.  
+-- VARIANT of we want to have an error between the point where all segments are prepared and our decision
+-- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.
 --
 BEGIN;
 INSERT INTO distxact1_4 VALUES (41);
@@ -106,37 +100,31 @@ INSERT INTO distxact1_4 VALUES (45);
 INSERT INTO distxact1_4 VALUES (46);
 INSERT INTO distxact1_4 VALUES (47);
 INSERT INTO distxact1_4 VALUES (48);
-SET debug_dtm_action_segment=1;
 SET debug_abort_after_distributed_prepared = true;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "protocol";
-SET debug_dtm_action_protocol = "abort_prepared";
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
+       'abort_prepared','','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 COMMIT;
 SELECT * FROM distxact1_4;
-RESET debug_dtm_action_segment;
 RESET debug_abort_after_distributed_prepared;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
-RESET debug_dtm_action_protocol;
 
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 --
 -- Fail general commands
 --
 
 
 --
--- Invoke a failure during a CREATE TABLE command.  
+-- Invoke a failure during a CREATE TABLE command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
+SELECT gp_inject_fault('dtm_exec_mpp_query_start','error','MPPEXEC UTILITY',
+        '','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 CREATE TABLE distxact2_1 (a int);
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_mpp_query_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 
 SELECT * FROM distxact2_1;
 
@@ -146,18 +134,15 @@ DROP TABLE distxact2_1;
 
 
 --
--- Invoke a failure during a CREATE TABLE command.  
+-- Invoke a failure during a CREATE TABLE command.
 -- Action_Target = 2 is SQL.
 --
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_end_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
+SELECT gp_inject_fault('dtm_exec_mpp_query_end','error','MPPEXEC UTILITY',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 CREATE TABLE distxact2_2 (a int);
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_mpp_query_end','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 
 SELECT * FROM distxact2_2;
 
@@ -171,21 +156,18 @@ DROP TABLE distxact2_2;
 --
 
 --
--- Invoke a failure during a SAVEPOINT command.  
+-- Invoke a failure during a SAVEPOINT command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "SAVEPOINT";
+SELECT gp_inject_fault('dtm_exec_simple_query_start','error','SAVEPOINT',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 BEGIN;
 CREATE TABLE distxact3_1 (a int);
 SAVEPOINT s;
 ROLLBACK;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_simple_query_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 
 SELECT * FROM distxact3_1;
 
@@ -195,13 +177,12 @@ DROP TABLE distxact3_1;
 
 
 --
--- Invoke a failure during a RELEASE SAVEPOINT command.  
+-- Invoke a failure during a RELEASE SAVEPOINT command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "RELEASE";
+SELECT gp_inject_fault('dtm_exec_simple_query_start','error','RELEASE',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 BEGIN;
 CREATE TABLE distxact3_2 (a int);
 SAVEPOINT s;
@@ -215,10 +196,9 @@ INSERT INTO distxact3_2 VALUES (27);
 INSERT INTO distxact3_2 VALUES (28);
 RELEASE SAVEPOINT s;
 ROLLBACK;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_simple_query_start','reset','RELEASE',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 
 SELECT * FROM distxact3_2;
 
@@ -229,13 +209,13 @@ DROP TABLE distxact3_2;
 
 
 --
--- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
+-- Invoke a failure during a ROLLBACK TO SAVEPOINT command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "ROLLBACK";
+SELECT gp_inject_fault('dtm_exec_simple_query_start','error','ROLLBACK',
+    '','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+
 BEGIN;
 CREATE TABLE distxact3_3 (a int);
 SAVEPOINT s;
@@ -249,10 +229,8 @@ INSERT INTO distxact3_3 VALUES (37);
 INSERT INTO distxact3_3 VALUES (38);
 ROLLBACK TO SAVEPOINT s;
 ROLLBACK;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_simple_query_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
 
 SELECT * FROM distxact3_3;
 
@@ -660,7 +638,7 @@ ROLLBACK AND CHAIN;  -- error
 SELECT * FROM abc ORDER BY 1;
 
 RESET default_transaction_read_only;
- 
+
 DROP TABLE abc;
 
 -- Explicit transaction block will send Distributed Commit, even if there is only SET command in it.
@@ -690,7 +668,7 @@ set optimizer=false;
 
 -- 3. still implicit transaction block, but with UPDATE that will send DTX protocol command to *some* QEs
 -- due to direct dispatch. Planner needs to be used for direct dispatch here.
--- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command 
+-- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command
 -- that they are not supposed to see.
 select dtx_set_bug();
 
