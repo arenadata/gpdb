@@ -90,7 +90,7 @@ GRANT SELECT ON TABLE gp_toolkit.gp_table_size_skew_coefficients TO public;
 --
 -- @out:
 --        segindex int2 – segment id
---        dbid int2 – db instance id
+--        dbid int2 – database instance id
 --        datoid oid – database oid
 --        tablespace_oid oid – input tablespace oid
 --        relfilepath text – relative file path
@@ -102,7 +102,8 @@ GRANT SELECT ON TABLE gp_toolkit.gp_table_size_skew_coefficients TO public;
 --
 -- @doc:
 --        Scan the data directory of the specified tablespace on the current
---        segment and return a row for each regular file that is found.
+--        segment and return a row for each table file (whose name matches
+--        the standard pattern "XXX.X" or "XXX").
 --
 --------------------------------------------------------------------------------
 CREATE FUNCTION gp_toolkit.__gp_get_relfilenodes(tablespace_oid oid)
