@@ -259,9 +259,6 @@ static void drop_unnamed_stmt(void);
 static void log_disconnections(int code, Datum arg);
 static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
-static bool CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag);
-static bool CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand,
-					DtxContextInfo *contextInfo);
 static bool renice_current_process(int nice_level);
 
 /*
@@ -1351,16 +1348,7 @@ exec_mpp_query(const char *query_string,
 		{
 			renice_current_process(PostmasterPriority + gp_segworker_relative_priority);
 		}
-
-		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FAULT_INJECT),
-					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
-		}
-
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_mpp_query_start",commandTag,0);
 		/*
 		 * If we are in an aborted transaction, reject all commands except
 		 * COMMIT/ABORT.  It is important that this test occur before we try
@@ -1467,14 +1455,7 @@ exec_mpp_query(const char *query_string,
 		 */
 		finish_xact_command();
 
-		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FAULT_INJECT),
-					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
-		}
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_mpp_query_end",commandTag,0);
 
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
@@ -1520,24 +1501,6 @@ exec_mpp_query(const char *query_string,
 	debug_query_string = NULL;
 }
 
-static bool
-CheckDebugDtmActionProtocol(DtxProtocolCommand dtxProtocolCommand,
-				DtxContextInfo *contextInfo)
-{
-	if (Debug_dtm_action_nestinglevel == 0)
-	{
-		return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
-			Debug_dtm_action_protocol == dtxProtocolCommand &&
-			Debug_dtm_action_segment == GpIdentity.segindex);
-	}
-	else
-	{
-		return (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_PROTOCOL &&
-			Debug_dtm_action_protocol == dtxProtocolCommand &&
-			Debug_dtm_action_segment == GpIdentity.segindex &&
-			Debug_dtm_action_nestinglevel == contextInfo->nestingLevel);
-	}
-}
 
 static void
 exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
@@ -1555,26 +1518,9 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 		 dtxProtocolCommand, loggingStr, gid);
 
 	set_ps_display(commandTag, false);
-
-	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FAULT_INJECT),
-				 errmsg("Raise ERROR for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
-						Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand))));
-	}
-	if (Debug_dtm_action == DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND &&
-		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
-	{
-		/*
-		 * Avoid core file generation for this PANIC. It helps to avoid
-		 * filling up disks during tests and also saves time.
-		 */
-		AvoidCorefileGeneration();
-		elog(PANIC,"PANIC for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
-			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
-	}
+	FaultInjector_InjectFaultIfSet_DTX("exec_mpp_dtx_protocol_command_start",
+	                              dtxProtocolCommand,
+								  contextInfo->nestingLevel);
 
 	BeginCommand(commandTag, dest);
 
@@ -1583,14 +1529,9 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command calling EndCommand for dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_FAULT_INJECT),
-				 errmsg("Raise error for debug_dtm_action = %d, debug_dtm_action_protocol = %s",
-						Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand))));
-	}
+	FaultInjector_InjectFaultIfSet_DTX("exec_mpp_dtx_protocol_command_end",
+	                              dtxProtocolCommand,
+								  contextInfo->nestingLevel);
 
 	/*
 	 * GPDB: There is a corner case that we need to delay connection
@@ -1605,23 +1546,6 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 	EndCommand(commandTag, dest);
 }
 
-static bool
-CheckDebugDtmActionSqlCommandTag(const char *sqlCommandTag)
-{
-	bool result;
-
-	result = (Debug_dtm_action_target == DEBUG_DTM_ACTION_TARGET_SQL &&
-			  strcmp(Debug_dtm_action_sql_command_tag, sqlCommandTag) == 0 &&
-			  Debug_dtm_action_segment == GpIdentity.segindex);
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"CheckDebugDtmActionSqlCommandTag Debug_dtm_action_target = %d, Debug_dtm_action_sql_command_tag = '%s' check '%s', Debug_dtm_action_segment = %d, Debug_dtm_action_primary = %s, result = %s.",
-		Debug_dtm_action_target,
-		Debug_dtm_action_sql_command_tag, (sqlCommandTag == NULL ? "<NULL>" : sqlCommandTag),
-		Debug_dtm_action_segment, (Debug_dtm_action_primary ? "true" : "false"),
-		(result ? "true" : "false"));
-
-	return result;
-}
 
 static void
 send_guc_to_QE(List *guc_list, bool is_restore)
@@ -1652,7 +1576,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		PG_CATCH();
 		{
 			/*
-			 * report error as warning 
+			 * report error as warning
 			*/
 			if (!elog_dismiss(WARNING))
 			{
@@ -1802,15 +1726,7 @@ exec_simple_query(const char *query_string)
 		set_ps_display(commandTag, false);
 
 		BeginCommand(commandTag, dest);
-
-		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FAULT_INJECT),
-					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
-		}
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_simple_query_start",commandTag,0);
 
 		/*
 		 * GPDB: If we are connected in utility mode, disallow PREPARE
@@ -2002,15 +1918,7 @@ exec_simple_query(const char *query_string)
 			 */
 			CommandCounterIncrement();
 		}
-
-		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FAULT_INJECT),
-					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
-		}
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_simple_query_end",commandTag,0);
 
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
