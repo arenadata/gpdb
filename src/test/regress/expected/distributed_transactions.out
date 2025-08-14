@@ -13,7 +13,7 @@
 -- end_matchsubs
 --
 --
--- We want to have an error between the point where all segments are prepared and our decision 
+-- We want to have an error between the point where all segments are prepared and our decision
 -- to write the Distributed Commit record.
 --
 -- start_ignore
@@ -51,8 +51,7 @@ SELECT * FROM distxact1_1;
 ---
 (0 rows)
 
---
--- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast 
+-- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast
 -- to cleanup.
 --
 BEGIN;
@@ -64,15 +63,23 @@ INSERT INTO distxact1_2 VALUES (25);
 INSERT INTO distxact1_2 VALUES (26);
 INSERT INTO distxact1_2 VALUES (27);
 INSERT INTO distxact1_2 VALUES (28);
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "protocol";
-SET debug_dtm_action_protocol = "prepare";
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error','prepare',
+	'','',1,1,0,dbid)
+ FROM gp_segment_configuration WHERE mode='s' and content=1 and role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 COMMIT;
-ERROR:  Raise ERROR for debug_dtm_action = 2, debug_dtm_action_protocol = Distributed Prepare  (seg1 127.0.0.1:40001 pid=25677)
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
-RESET debug_dtm_action_protocol;
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133732)
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
+  from gp_segment_configuration where mode='s' and content=1 and role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 SELECT * FROM distxact1_2;
  a 
 ---
@@ -91,34 +98,41 @@ INSERT INTO distxact1_3 VALUES (35);
 INSERT INTO distxact1_3 VALUES (36);
 INSERT INTO distxact1_3 VALUES (37);
 INSERT INTO distxact1_3 VALUES (38);
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "protocol";
-SET debug_dtm_action_protocol = "commit_prepared";
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
+       'commit_prepared','','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 COMMIT;
 WARNING:  the distributed transaction 'Commit Prepared' broadcast failed to one or more segments. Retrying ... try 1
-DETAIL:  gid=66802167, state=Retry Commit Prepared
+DETAIL:  gid=16281, state=Retry Commit Prepared
 NOTICE:  Releasing segworker group to retry broadcast.
 SELECT * FROM distxact1_3;
  a  
 ----
- 38
- 32
- 31
- 33
  34
+ 37
+ 32
+ 33
+ 31
  35
  36
- 37
+ 38
 (8 rows)
 
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
-RESET debug_dtm_action_protocol;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 --
--- VARIANT of we want to have an error between the point where all segments are prepared and our decision 
--- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.  
+-- VARIANT of we want to have an error between the point where all segments are prepared and our decision
+-- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.
 --
 BEGIN;
 INSERT INTO distxact1_4 VALUES (41);
@@ -129,44 +143,58 @@ INSERT INTO distxact1_4 VALUES (45);
 INSERT INTO distxact1_4 VALUES (46);
 INSERT INTO distxact1_4 VALUES (47);
 INSERT INTO distxact1_4 VALUES (48);
-SET debug_dtm_action_segment=1;
 SET debug_abort_after_distributed_prepared = true;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "protocol";
-SET debug_dtm_action_protocol = "abort_prepared";
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
+       'abort_prepared','','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 COMMIT;
 WARNING:  the distributed transaction broadcast failed to one or more segments
-DETAIL:  gid=66802193, state=Notifying Abort Prepared
+DETAIL:  gid=16282, state=Notifying Abort Prepared
 ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared
 SELECT * FROM distxact1_4;
  a 
 ---
 (0 rows)
 
-RESET debug_dtm_action_segment;
 RESET debug_abort_after_distributed_prepared;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
-RESET debug_dtm_action_protocol;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 --
 -- Fail general commands
 --
 --
--- Invoke a failure during a CREATE TABLE command.  
+-- Invoke a failure during a CREATE TABLE command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
+SELECT gp_inject_fault('dtm_exec_mpp_query_start','error','MPPEXEC UTILITY',
+        '','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 CREATE TABLE distxact2_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = MPPEXEC UTILITY  (seg1 127.0.1.1:25433 pid=1127)
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+ERROR:  fault triggered, fault name:'dtm_exec_mpp_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+SELECT gp_inject_fault('dtm_exec_mpp_query_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 SELECT * FROM distxact2_1;
 ERROR:  relation "distxact2_1" does not exist
 LINE 1: SELECT * FROM distxact2_1;
@@ -177,21 +205,28 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact2_1;
 --
--- Invoke a failure during a CREATE TABLE command.  
+-- Invoke a failure during a CREATE TABLE command.
 -- Action_Target = 2 is SQL.
 --
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_end_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
+SELECT gp_inject_fault('dtm_exec_mpp_query_end','error','MPPEXEC UTILITY',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 CREATE TABLE distxact2_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Raise ERROR for debug_dtm_action = 3, commandTag = MPPEXEC UTILITY  (seg1 127.0.1.1:25433 pid=1127)
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+ERROR:  fault triggered, fault name:'dtm_exec_mpp_query_end' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+SELECT gp_inject_fault('dtm_exec_mpp_query_end','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 SELECT * FROM distxact2_2;
 ERROR:  relation "distxact2_2" does not exist
 LINE 1: SELECT * FROM distxact2_2;
@@ -205,24 +240,31 @@ DROP TABLE distxact2_2;
 -- xact.c DTM related dispatches
 --
 --
--- Invoke a failure during a SAVEPOINT command.  
+-- Invoke a failure during a SAVEPOINT command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "SAVEPOINT";
+SELECT gp_inject_fault('dtm_exec_simple_query_start','error','SAVEPOINT',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 BEGIN;
 CREATE TABLE distxact3_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SAVEPOINT s;
-ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = SAVEPOINT  (seg1 127.0.1.1:25433 pid=1127)
+ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
 ROLLBACK;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_simple_query_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 SELECT * FROM distxact3_1;
 ERROR:  relation "distxact3_1" does not exist
 LINE 1: SELECT * FROM distxact3_1;
@@ -233,13 +275,17 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact3_1;
 --
--- Invoke a failure during a RELEASE SAVEPOINT command.  
+-- Invoke a failure during a RELEASE SAVEPOINT command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "RELEASE";
+SELECT gp_inject_fault('dtm_exec_simple_query_start','error','RELEASE',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 BEGIN;
 CREATE TABLE distxact3_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -254,12 +300,16 @@ INSERT INTO distxact3_2 VALUES (26);
 INSERT INTO distxact3_2 VALUES (27);
 INSERT INTO distxact3_2 VALUES (28);
 RELEASE SAVEPOINT s;
-ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = RELEASE  (seg1 127.0.1.1:25433 pid=1127)
+ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
 ROLLBACK;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_simple_query_start','reset','RELEASE',
+	'','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 SELECT * FROM distxact3_2;
 ERROR:  relation "distxact3_2" does not exist
 LINE 1: SELECT * FROM distxact3_2;
@@ -270,13 +320,17 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact3_2;
 --
--- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
+-- Invoke a failure during a ROLLBACK TO SAVEPOINT command.
 --
 --SET debug_print_full_dtm=true;
-SET debug_dtm_action_segment=1;
-SET debug_dtm_action = "fail_begin_command";
-SET debug_dtm_action_target = "sql";
-SET debug_dtm_action_sql_command_tag = "ROLLBACK";
+SELECT gp_inject_fault('dtm_exec_simple_query_start','error','ROLLBACK',
+    '','',1,1,0,dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 BEGIN;
 CREATE TABLE distxact3_3 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -291,12 +345,15 @@ INSERT INTO distxact3_3 VALUES (36);
 INSERT INTO distxact3_3 VALUES (37);
 INSERT INTO distxact3_3 VALUES (38);
 ROLLBACK TO SAVEPOINT s;
-ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = ROLLBACK  (seg1 127.0.1.1:25433 pid=1127)
+ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
 ROLLBACK;
-RESET debug_dtm_action_segment;
-RESET debug_dtm_action_sql_command_tag;
-RESET debug_dtm_action;
-RESET debug_dtm_action_target;
+SELECT gp_inject_fault('dtm_exec_simple_query_start','reset',dbid)
+  FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 SELECT * FROM distxact3_3;
 ERROR:  relation "distxact3_3" does not exist
 LINE 1: SELECT * FROM distxact3_3;
@@ -364,7 +421,7 @@ DROP TABLE
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 WARNING:  the distributed transaction 'Commit Prepared' broadcast failed to one or more segments. Retrying ... try 1
-DETAIL:  gid=66802449, state=Retry Commit Prepared
+DETAIL:  gid=16314, state=Retry Commit Prepared
 NOTICE:  Releasing segworker group to retry broadcast.
 result: INSERT 0 2
 --
@@ -812,6 +869,8 @@ commit;
 --
 BEGIN;
 CREATE TEMPORARY TABLE foo (i integer);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DO $$
 declare
   i int;
@@ -1042,7 +1101,6 @@ SELECT * FROM abc ORDER BY 1;
 (4 rows)
 
 RESET default_transaction_read_only;
- 
 DROP TABLE abc;
 -- Explicit transaction block will send Distributed Commit, even if there is only SET command in it.
 -- On the other hand, implicit transaction block involving only SET command will not send it.
@@ -1067,7 +1125,7 @@ INFO:  Distributed transaction command 'Distributed Commit (one-phase)' to ALL c
 set optimizer=false;
 -- 3. still implicit transaction block, but with UPDATE that will send DTX protocol command to *some* QEs
 -- due to direct dispatch. Planner needs to be used for direct dispatch here.
--- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command 
+-- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command
 -- that they are not supposed to see.
 select dtx_set_bug();
 INFO:  (slice 0) Dispatch command to SINGLE content
