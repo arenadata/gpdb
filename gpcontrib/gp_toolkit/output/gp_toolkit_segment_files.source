@@ -210,17 +210,39 @@ ORDER BY content;
 \o
 \pset tuples_only off
 \pset format aligned
-\! bash -c 'missing=0; while IFS= read -r f; do if [ -f "$f" ]; then printf "File exists\n"; else printf "MISSING: %s\n" "$f"; missing=1; fi; done < "@testtablespace@/.expected_files"; [ $missing -eq 0 ] && echo "FS CHECK: OK" || (echo "FS CHECK: FAIL"; exit 1)'
-File exists
-File exists
-File exists
-File exists
-File exists
-File exists
-File exists
-File exists
-File exists
-FS CHECK: OK
+DROP EXTERNAL TABLE IF EXISTS ext_fs_check_local;
+NOTICE:  foreign table "ext_fs_check_local" does not exist, skipping
+CREATE EXTERNAL WEB TABLE ext_fs_check_local (
+  file text,
+  conclusion text
+)
+EXECUTE $$
+bash -c '
+while IFS= read -r f; do
+  if [ -f "$f" ]; then
+    printf "%s|file exists\n" "$f"
+  else
+    printf "%s|file %s does not exists\n" "$f" "$f"
+  fi
+done < "@testtablespace@/.expected_files"
+'
+$$ ON COORDINATOR
+FORMAT 'csv' (DELIMITER '|');
+SELECT conclusion from ext_fs_check_local;
+ conclusion  
+-------------
+ file exists
+ file exists
+ file exists
+ file exists
+ file exists
+ file exists
+ file exists
+ file exists
+ file exists
+(9 rows)
+
+DROP EXTERNAL TABLE IF EXISTS ext_fs_check_local;
 -- unmapped files (produce unmapped files and check that they are listed)
 \cd @testtablespace@
 select dbid from gp_segment_configuration where content = 0 and role = 'p' \gset
