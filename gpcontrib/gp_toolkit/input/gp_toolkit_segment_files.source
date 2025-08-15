@@ -13,8 +13,7 @@ CREATE TEMP VIEW _show_files_current AS
 SELECT regexp_replace(table_name, '\d+', 'tbloid') AS table_name,
        table_schema, content, relamname, relispartition
 FROM gp_toolkit.gp_db_files_current
-WHERE table_tablespace = 'ts_test' AND table_name <> ''
-ORDER BY 1, 3;
+WHERE table_tablespace = 'ts_test' AND table_name <> '';
 
 -- empty tablespace
 SELECT * FROM _show_files_current;
@@ -103,8 +102,7 @@ FROM gp_toolkit.gp_db_files_current AS f
 JOIN gp_segment_configuration AS gpconf
   ON gpconf.content = f.content
  AND gpconf.preferred_role = (f.segment_preferred_role)::char(1)
-WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't')
-ORDER BY 1, 3;
+WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't');
 
 -- Check that returned files are exist
 CREATE view expected_files AS SELECT table_name, content, file
@@ -124,9 +122,7 @@ SELECT
         ELSE ('file does not exist: ' || e.file)
     END AS conclusion
 FROM expected_files AS e
-LEFT JOIN fl
-    ON e.file = fl.line
-ORDER BY 1, 2;
+LEFT JOIN fl ON e.file = fl.line;
 
 DROP VIEW expected_files;
 DROP EXTERNAL WEB TABLE file_list;
@@ -151,8 +147,7 @@ select oid from pg_database where datname = current_database() \gset
 
 SELECT content, regexp_replace(file, '^.*/', 'XXX/') AS short_path
 FROM gp_toolkit.gp_db_files_current_unmapped
-WHERE table_tablespace = 'ts_test'
-ORDER BY 1, 2;
+WHERE table_tablespace = 'ts_test';
 
 DROP TABLE t, t_default;
 \! rm -rf @testtablespace@

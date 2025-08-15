@@ -12,8 +12,7 @@ CREATE TEMP VIEW _show_files_current AS
 SELECT regexp_replace(table_name, '\d+', 'tbloid') AS table_name,
        table_schema, content, relamname, relispartition
 FROM gp_toolkit.gp_db_files_current
-WHERE table_tablespace = 'ts_test' AND table_name <> ''
-ORDER BY 1, 3;
+WHERE table_tablespace = 'ts_test' AND table_name <> '';
 -- empty tablespace
 SELECT * FROM _show_files_current;
  table_name | table_schema | content | relamname | relispartition 
@@ -184,8 +183,7 @@ FROM gp_toolkit.gp_db_files_current AS f
 JOIN gp_segment_configuration AS gpconf
   ON gpconf.content = f.content
  AND gpconf.preferred_role = (f.segment_preferred_role)::char(1)
-WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't')
-ORDER BY 1, 3;
+WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't');
         table_name        | table_schema | content | table_tablespace |      tablespace_location       
 --------------------------+--------------+---------+------------------+--------------------------------
  gp_segment_configuration | pg_catalog   |       0 | pg_global        | <SEGMENT_BASE_DIR>/global
@@ -215,9 +213,7 @@ SELECT
         ELSE ('file does not exist: ' || e.file)
     END AS conclusion
 FROM expected_files AS e
-LEFT JOIN fl
-    ON e.file = fl.line
-ORDER BY 1, 2;
+LEFT JOIN fl ON e.file = fl.line;
         table_name        | content | conclusion  
 --------------------------+---------+-------------
  gp_segment_configuration |       0 | file exists
@@ -252,8 +248,7 @@ select oid from pg_database where datname = current_database() \gset
 \! touch 4000000001 4000000001.42
 SELECT content, regexp_replace(file, '^.*/', 'XXX/') AS short_path
 FROM gp_toolkit.gp_db_files_current_unmapped
-WHERE table_tablespace = 'ts_test'
-ORDER BY 1, 2;
+WHERE table_tablespace = 'ts_test';
  content |    short_path     
 ---------+-------------------
        0 | XXX/4000000000
