@@ -106,40 +106,30 @@ JOIN gp_segment_configuration AS gpconf
 WHERE f.table_name IN ('t_default', 'gp_segment_configuration', 't')
 ORDER BY 1, 3;
 
--- file paths (make file paths list and check that they exist)
-\pset tuples_only on
-\pset format unaligned
-\o @testtablespace@/.expected_files
-SELECT file
+-- Check that returned files are exist
+CREATE view expected_files AS SELECT table_name, content, file
 FROM gp_toolkit.gp_db_files_current
-WHERE table_name IN ('t_default', 'gp_segment_configuration','t')
-ORDER BY content;
-\o
-\pset tuples_only off
-\pset format aligned
+WHERE table_name IN ('t_default', 'gp_segment_configuration', 't');
 
-DROP EXTERNAL TABLE IF EXISTS ext_fs_check_local;
+CREATE EXTERNAL WEB TABLE file_list (line text)
+EXECUTE 'find -L $GP_SEG_DATADIR -type f'
+FORMAT 'TEXT';
 
-CREATE EXTERNAL WEB TABLE ext_fs_check_local (
-  file text,
-  conclusion text
-)
-EXECUTE $$
-bash -c '
-while IFS= read -r f; do
-  if [ -f "$f" ]; then
-    printf "%s|file exists\n" "$f"
-  else
-    printf "%s|file %s does not exists\n" "$f" "$f"
-  fi
-done < "@testtablespace@/.expected_files"
-'
-$$ ON COORDINATOR
-FORMAT 'csv' (DELIMITER '|');
+WITH fl AS (SELECT * FROM file_list)
+SELECT
+    e.table_name,
+    e.content,
+    CASE
+        WHEN fl.line IS NOT NULL THEN 'file exists'
+        ELSE ('file does not exist: ' || e.file)
+    END AS conclusion
+FROM expected_files AS e
+LEFT JOIN fl
+    ON e.file = fl.line
+ORDER BY 1, 2;
 
-SELECT conclusion from ext_fs_check_local;
-
-DROP EXTERNAL TABLE IF EXISTS ext_fs_check_local;
+DROP VIEW expected_files;
+DROP EXTERNAL WEB TABLE file_list;
 
 -- unmapped files (produce unmapped files and check that they are listed)
 \cd @testtablespace@
