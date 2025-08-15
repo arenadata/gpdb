@@ -158,7 +158,7 @@ DROP TABLE t, t_default;
 \! rm -rf @testtablespace@
 DROP TABLESPACE ts_test;
 
--- Test provolatile and rows properties 
+-- Test provolatile and rows properties
 
 SELECT proname, provolatile, prorows
     FROM pg_proc
