@@ -31,6 +31,11 @@ FROM (VALUES ('ao_table_with_toast'), ('ao_table_without_toast'),
      gp_toolkit.gp_table_size_on_segments(tables.relname::regclass)
 ORDER BY 1, 2;
 
+SELECT table_name, content, file_size
+FROM gp_toolkit.gp_db_files_current
+WHERE table_name = 'heap_table_without_toast'
+ORDER BY 1, 2;
+
 -- Insert initial data to tables
 INSERT INTO heap_table_with_toast SELECT i, 'short_text' FROM generate_series(1,15) AS i;
 INSERT INTO heap_table_without_toast SELECT i, i*10 FROM generate_series(1,15) AS i;
@@ -53,6 +58,11 @@ SELECT relname, gp_segment_id, size
 FROM (VALUES ('ao_table_with_toast'), ('ao_table_without_toast'),
              ('heap_table_with_toast'), ('heap_table_without_toast')) AS tables(relname),
      gp_toolkit.gp_table_size_on_segments(tables.relname::regclass)
+ORDER BY 1, 2;
+
+SELECT table_name, content, file_size
+FROM gp_toolkit.gp_db_files_current
+WHERE table_name = 'heap_table_without_toast'
 ORDER BY 1, 2;
 
 -- Add random large data to get non-zero toast table's size

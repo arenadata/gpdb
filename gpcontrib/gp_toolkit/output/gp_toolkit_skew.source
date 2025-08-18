@@ -1,5 +1,6 @@
 -- start_ignore
 DROP DATABASE IF EXISTS gp_toolkit_skew_test;
+DROP TABLESPACE ts_test;
 -- end_ignore
 -- Use a separate database to avoid artifacts from previous tests
 CREATE DATABASE gp_toolkit_skew_test;
