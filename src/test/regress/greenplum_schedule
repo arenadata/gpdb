@@ -363,4 +363,6 @@ test: hba_conf
 
 test: gp_query_id
 
+test: cancel_cleanup
+
 # end of tests
