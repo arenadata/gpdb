@@ -1911,8 +1911,16 @@ gpdb::CreateForeignScan(Oid rel_oid, Index scanrelid, List *qual,
 {
 	GP_WRAP_START;
 	{
-		return BuildForeignScan(rel_oid, scanrelid, qual, targetlist, query,
-								rte);
+		ForeignScan *foreign_scan = BuildForeignScan(rel_oid, scanrelid, qual, targetlist, query,
+													 rte);
+		// BuildForeignScan can return NULL if execution location of the plan doesn't
+		// match the expected exec_location. Fallback to Postgres in this case.
+		if (!foreign_scan)
+		{
+			GPOS_RAISE(gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
+					GPOS_WSZ_LIT("FDWs with unknown execution locations (adb_fdw)"));
+		}
+		return foreign_scan;
 	}
 	GP_WRAP_END;
 	return nullptr;

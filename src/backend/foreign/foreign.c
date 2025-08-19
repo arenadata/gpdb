@@ -989,6 +989,9 @@ GetExistingLocalJoinPath(RelOptInfo *joinrel)
  * fields for the fdw. We only need 1 entry here, as we process only 1
  * scan. However, we need to create the simple_array_size large enough for the relid
  * that we pass in, as later function calls access the array using this index
+ * 
+ * Might return NULL in case of an error, the intended way to handle it is to fallback
+ * to Postgres.
  */
 
 ForeignScan *
@@ -1033,6 +1036,20 @@ BuildForeignScan(Oid relid, Index scanrelid, List *qual, List *targetlist, Query
 
 	// Use any path, we really just care about the fdw_private field here
 	ForeignPath *path = (ForeignPath*) linitial(rel->pathlist);
+
+	ForeignTable *ftable = GetForeignTable(relid);
+
+	// Special edge case for adb_fdw.
+	// adb_fdw specifies exec_location = FTEXECLOCATION_COORDINATOR,
+	// but actually means that the location is unknown, and uses Strewn locus
+	// for SELECTS, and Entry for INSERTs to specify the real location.
+	// Postgres optimizer handles this mismatch properly, but ORCA can't yet,
+	// so just give up here and fallback to Postgres.
+	if (CdbPathLocus_IsStrewn(path->path.locus) &&
+		ftable->exec_location != FTEXECLOCATION_ALL_SEGMENTS)
+	{
+		return NULL;
+	}
 
 	// We need to call GetForeignPlan as some FDWs (eg: the postgres fdw) populate fdw_private in this function
 	ForeignScan *fscan = rel->fdwroutine->GetForeignPlan(root, rel, relid,
