@@ -39,7 +39,7 @@
 extern Datum pg_options_to_table(PG_FUNCTION_ARGS);
 extern Datum postgresql_fdw_validator(PG_FUNCTION_ARGS);
 
-/* Get and separate out the mpp_execute option. */
+/* Get and separate out the mpp_execute and execute_on options. */
 char
 SeparateOutMppExecute(List **options)
 {
@@ -73,6 +73,22 @@ SeparateOutMppExecute(List **options)
 			}
 
 			*options = list_delete_cell(*options, lc, prev);
+			break;
+		}
+		else if (strcmp(def->defname, "execute_on") == 0)
+		{
+			mpp_execute = defGetString(def);
+
+			// Default location is ALL_SEGMENTS.
+			// This is bogus for more complicated execute_on options,
+			// however it shouldn't matter since we only care about
+			// COORDINATOR_ONLY.
+			if (pg_strcasecmp(mpp_execute, "COORDINATOR_ONLY") == 0)
+				exec_location = FTEXECLOCATION_COORDINATOR;
+			else
+				exec_location = FTEXECLOCATION_ALL_SEGMENTS;
+
+			// Do not delete this option since other places read it too.
 			break;
 		}
 		prev = lc;
