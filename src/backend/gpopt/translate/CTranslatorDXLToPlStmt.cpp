@@ -580,6 +580,59 @@ CTranslatorDXLToPlStmt::TranslateJoinPruneParamids(
 
 //---------------------------------------------------------------------------
 //	@function:
+//		CTranslatorDXLToPlStmt::CheckForeignScanDistributionMismatch
+//
+//	@doc:
+//		Checks foreign scan's locus to ensure it matches expected
+//		distribution policy
+//
+//---------------------------------------------------------------------------
+void
+CTranslatorDXLToPlStmt::CheckForeignScanDistributionMismatch(
+	const ForeignScan *fscan, const IMDRelation *md_rel)
+{
+	IMDRelation::Ereldistrpolicy rel_distr_policy =
+		md_rel->GetRelDistribution();
+	IMDRelation::Ereldistrpolicy rel_distr_policy_expected =
+		IMDRelation::Ereldistrpolicy::EreldistrSentinel;
+	CdbLocusType locus_type = fscan->scan.plan.flow->locustype;
+	switch (locus_type)
+	{
+		case CdbLocusType_Entry:
+			rel_distr_policy_expected =
+				IMDRelation::Ereldistrpolicy::EreldistrCoordinatorOnly;
+			break;
+		case CdbLocusType_General:
+			rel_distr_policy_expected =
+				IMDRelation::Ereldistrpolicy::EreldistrUniversal;
+			break;
+		case CdbLocusType_Replicated:
+			rel_distr_policy_expected =
+				IMDRelation::Ereldistrpolicy::EreldistrReplicated;
+			break;
+		case CdbLocusType_Hashed:
+			rel_distr_policy_expected =
+				IMDRelation::Ereldistrpolicy::EreldistrHash;
+			break;
+		case CdbLocusType_Strewn:
+			rel_distr_policy_expected =
+				IMDRelation::Ereldistrpolicy::EreldistrRandom;
+			break;
+		default:  // Shouldn't happen
+			GPOS_ASSERT(!"Unrecognized locus type");
+	}
+
+	if (rel_distr_policy != rel_distr_policy_expected)
+	{
+		GPOS_RAISE(
+			gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
+			GPOS_WSZ_LIT(
+				"FDWs with custom execution locations (for example adb_fdw)"));
+	}
+}
+
+//---------------------------------------------------------------------------
+//	@function:
 //		CTranslatorDXLToPlStmt::TranslateDXLTblScan
 //
 //	@doc:
@@ -640,6 +693,7 @@ CTranslatorDXLToPlStmt::TranslateDXLTblScan(
 		ForeignScan *foreign_scan =
 			gpdb::CreateForeignScan(oidRel, index, query_quals, targetlist,
 									m_dxl_to_plstmt_context->m_orig_query, rte);
+		CheckForeignScanDistributionMismatch(foreign_scan, md_rel);
 		foreign_scan->scan.scanrelid = index;
 		plan = &(foreign_scan->scan.plan);
 		plan_return = (Plan *) foreign_scan;
@@ -4553,6 +4607,10 @@ CTranslatorDXLToPlStmt::TranslateDXLDynForeignScan(
 	ForeignScan *foreign_scan_first_part =
 		gpdb::CreateForeignScan(oid_first_child, index, qual, targetlist,
 								m_dxl_to_plstmt_context->m_orig_query, rte);
+	const IMDRelation *md_rel_first_part =
+		m_md_accessor->RetrieveRel((*parts)[0]);
+	CheckForeignScanDistributionMismatch(foreign_scan_first_part,
+										 md_rel_first_part);
 
 	// Set the plan fields to the first partition. We still want the plan type to be
 	// a dynamic foreign scan
@@ -4585,6 +4643,8 @@ CTranslatorDXLToPlStmt::TranslateDXLDynForeignScan(
 		ForeignScan *foreign_scan =
 			gpdb::CreateForeignScan(rte->relid, index, qual, targetlist,
 									m_dxl_to_plstmt_context->m_orig_query, rte);
+		const IMDRelation *md_rel = m_md_accessor->RetrieveRel((*parts)[ul]);
+		CheckForeignScanDistributionMismatch(foreign_scan, md_rel);
 
 		dyn_foreign_scan->fdw_private_list = gpdb::LAppend(
 			dyn_foreign_scan->fdw_private_list, foreign_scan->fdw_private);

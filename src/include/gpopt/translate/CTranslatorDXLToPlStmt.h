@@ -162,6 +162,9 @@ private:
 
 	static BOOL SetSecurityQualsVarnoWalker(Node *node, Index *index);
 
+	static void CheckForeignScanDistributionMismatch(const ForeignScan *fscan,
+													 const IMDRelation *md_rel);
+
 public:
 	// ctor
 	CTranslatorDXLToPlStmt(CMemoryPool *mp, CMDAccessor *md_accessor,

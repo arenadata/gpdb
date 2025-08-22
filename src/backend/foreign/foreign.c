@@ -35,11 +35,12 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbpathtoplan.h"
 
 extern Datum pg_options_to_table(PG_FUNCTION_ARGS);
 extern Datum postgresql_fdw_validator(PG_FUNCTION_ARGS);
 
-/* Get and separate out the mpp_execute and execute_on options. */
+/* Get and separate out the mpp_execute option. */
 char
 SeparateOutMppExecute(List **options)
 {
@@ -73,22 +74,6 @@ SeparateOutMppExecute(List **options)
 			}
 
 			*options = list_delete_cell(*options, lc, prev);
-			break;
-		}
-		else if (strcmp(def->defname, "execute_on") == 0)
-		{
-			mpp_execute = defGetString(def);
-
-			// Default location is ALL_SEGMENTS.
-			// This is bogus for more complicated execute_on options,
-			// however it shouldn't matter since we only care about
-			// COORDINATOR_ONLY.
-			if (pg_strcasecmp(mpp_execute, "COORDINATOR_ONLY") == 0)
-				exec_location = FTEXECLOCATION_COORDINATOR;
-			else
-				exec_location = FTEXECLOCATION_ALL_SEGMENTS;
-
-			// Do not delete this option since other places read it too.
 			break;
 		}
 		prev = lc;
@@ -1005,9 +990,6 @@ GetExistingLocalJoinPath(RelOptInfo *joinrel)
  * fields for the fdw. We only need 1 entry here, as we process only 1
  * scan. However, we need to create the simple_array_size large enough for the relid
  * that we pass in, as later function calls access the array using this index
- * 
- * Might return NULL in case of an error, the intended way to handle it is to fallback
- * to Postgres.
  */
 
 ForeignScan *
@@ -1053,19 +1035,6 @@ BuildForeignScan(Oid relid, Index scanrelid, List *qual, List *targetlist, Query
 	// Use any path, we really just care about the fdw_private field here
 	ForeignPath *path = (ForeignPath*) linitial(rel->pathlist);
 
-	ForeignTable *ftable = GetForeignTable(relid);
-
-	// Special edge case for mismatching distribution.
-	// Some FDWs can use Strewn locus to specify execution location,
-	// even though they use exec_location = FTEXECLOCATION_COORDINATOR.
-	// Postgres optimizer handles this mismatch properly, but ORCA can't yet,
-	// so just give up here and fallback to Postgres.
-	if (CdbPathLocus_IsStrewn(path->path.locus) &&
-		ftable->exec_location != FTEXECLOCATION_ALL_SEGMENTS)
-	{
-		return NULL;
-	}
-
 	// We need to call GetForeignPlan as some FDWs (eg: the postgres fdw) populate fdw_private in this function
 	ForeignScan *fscan = rel->fdwroutine->GetForeignPlan(root, rel, relid,
 												path,
@@ -1073,6 +1042,8 @@ BuildForeignScan(Oid relid, Index scanrelid, List *qual, List *targetlist, Query
 												NULL /*outer_plan*/);
 
 	fscan->fs_server = rel->serverid;
+
+	fscan->scan.plan.flow = cdbpathtoplan_create_flow(root, path->path.locus);
 
 	// Set fsSystemCol if any system attributes are projected
 	fscan->fsSystemCol = false;
