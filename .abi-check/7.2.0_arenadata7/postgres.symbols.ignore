@@ -3,10 +3,11 @@ ConfigureNamesEnum_gp
 ConfigureNamesString_gp
 ConfigureNamesBool_gp
 transformCreateSchemaStmt
+FaultInjector_InjectFaultIfSet_out_of_line
 FaultInjector_InjectFaultIfSet_out_of_line_DTX
 FaultInjector_InjectFaultIfSet_out_of_line_SQL
 InjectFault
-Debug_dtm_action [data]
+Debug_dtm_action
 Debug_dtm_action_nestinglevel
 Debug_dtm_action_primary
 Debug_dtm_action_protocol
