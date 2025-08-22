@@ -1055,10 +1055,9 @@ BuildForeignScan(Oid relid, Index scanrelid, List *qual, List *targetlist, Query
 
 	ForeignTable *ftable = GetForeignTable(relid);
 
-	// Special edge case for adb_fdw.
-	// adb_fdw specifies exec_location = FTEXECLOCATION_COORDINATOR,
-	// but actually means that the location is unknown, and uses Strewn locus
-	// for SELECTS, and Entry for INSERTs to specify the real location.
+	// Special edge case for mismatching distribution.
+	// Some FDWs can use Strewn locus to specify execution location,
+	// even though they use exec_location = FTEXECLOCATION_COORDINATOR.
 	// Postgres optimizer handles this mismatch properly, but ORCA can't yet,
 	// so just give up here and fallback to Postgres.
 	if (CdbPathLocus_IsStrewn(path->path.locus) &&
