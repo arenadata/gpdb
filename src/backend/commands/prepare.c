@@ -657,14 +657,18 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	/* Evaluate parameters, if any */
 	if (entry->plansource->num_params)
 	{
+		ParseState *pstate;
+
+		pstate = make_parsestate(NULL);
+		pstate->p_sourcetext = queryString;
+
 		/*
 		 * Need an EState to evaluate parameters; must not delete it till end
 		 * of query, in case parameters are pass-by-reference.
 		 */
 		estate = CreateExecutorState();
 		estate->es_param_list_info = params;
-		paramLI = EvaluateParams(entry, execstmt->params,
-								 queryString, estate);
+		paramLI = EvaluateParams(pstate, entry, execstmt->params, estate);
 	}
 
 	query_string = entry->plansource->query_string;
