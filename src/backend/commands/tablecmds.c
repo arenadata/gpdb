@@ -5652,7 +5652,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * added in the QD, and we don't want to do them twice.
 	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
-		return cmd;
+		return cmd->newcmd_is_null ? NULL : cmd;
 
 	AlterTableCmd *newcmd = NULL;
 	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
@@ -5777,6 +5777,12 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/* Queue up any after-statements to happen at the end */
 	tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
+
+	/*
+	 * In the QD save newcmd is NULL or not for using it in the QE
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		cmd->newcmd_is_null = newcmd == NULL;
 
 	return newcmd;
 }
@@ -9722,11 +9728,6 @@ ATExecAddConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 												recurse, false,
 												lockmode);
 			break;
-
-		case CONSTR_PRIMARY:
-		case CONSTR_UNIQUE:
-		case CONSTR_EXCLUSION:
-			return address;
 
 		default:
 			elog(ERROR, "unrecognized constraint type: %d",

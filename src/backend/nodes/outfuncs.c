@@ -3417,6 +3417,7 @@ _outAlterTableCmd(StringInfo str, const AlterTableCmd *node)
 	WRITE_INT_FIELD(backendId);
 	WRITE_NODE_FIELD(policy);
 	WRITE_NODE_FIELD(beforeStmts);
+	WRITE_BOOL_FIELD(newcmd_is_null);
 }
 
 static void
