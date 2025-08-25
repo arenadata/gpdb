@@ -19,11 +19,7 @@ use Test::More;
 
 if ($ENV{with_gssapi} eq 'yes')
 {
-<<<<<<< HEAD
 	plan tests => 19;
-=======
-	plan tests => 18;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
 else
 {
