@@ -282,6 +282,11 @@ drop table if exists dtmcurse_bar;
 -- Test two phase commit for extended query
 \! ./twophase_pqexecparams dbname=regression
 
+-- Clean up fault, inserted within twophase_pgexecpartams
+-- We do it from calling script to be sure that fault is resetted regardless
+-- of program return status
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  from gp_segment_configuration WHERE mode='s' and content='0' and role='p';
 --
 -- Subtransactions with partition table DDLs.
 --

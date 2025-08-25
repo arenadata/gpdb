@@ -72,7 +72,7 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error','prepare',
 (1 row)
 
 COMMIT;
-ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133732)
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=248156)
 SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
   from gp_segment_configuration where mode='s' and content=1 and role='p' ;
  gp_inject_fault 
@@ -108,15 +108,15 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
 
 COMMIT;
 WARNING:  the distributed transaction 'Commit Prepared' broadcast failed to one or more segments. Retrying ... try 1
-DETAIL:  gid=16281, state=Retry Commit Prepared
+DETAIL:  gid=43080, state=Retry Commit Prepared
 NOTICE:  Releasing segworker group to retry broadcast.
 SELECT * FROM distxact1_3;
  a  
 ----
- 34
- 37
  32
  33
+ 34
+ 37
  31
  35
  36
@@ -154,7 +154,7 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
 
 COMMIT;
 WARNING:  the distributed transaction broadcast failed to one or more segments
-DETAIL:  gid=16282, state=Notifying Abort Prepared
+DETAIL:  gid=43081, state=Notifying Abort Prepared
 ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared
 SELECT * FROM distxact1_4;
  a 
@@ -187,7 +187,7 @@ SELECT gp_inject_fault('dtm_exec_mpp_query_start','error','MPPEXEC UTILITY',
 CREATE TABLE distxact2_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  fault triggered, fault name:'dtm_exec_mpp_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+ERROR:  fault triggered, fault name:'dtm_exec_mpp_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=248179)
 SELECT gp_inject_fault('dtm_exec_mpp_query_start','reset',dbid)
   FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
  gp_inject_fault 
@@ -219,7 +219,7 @@ SELECT gp_inject_fault('dtm_exec_mpp_query_end','error','MPPEXEC UTILITY',
 CREATE TABLE distxact2_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  fault triggered, fault name:'dtm_exec_mpp_query_end' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+ERROR:  fault triggered, fault name:'dtm_exec_mpp_query_end' fault type:'error'  (seg1 127.0.1.1:7003 pid=248179)
 SELECT gp_inject_fault('dtm_exec_mpp_query_end','reset',dbid)
   FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
  gp_inject_fault 
@@ -256,7 +256,7 @@ CREATE TABLE distxact3_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SAVEPOINT s;
-ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=248179)
 ROLLBACK;
 SELECT gp_inject_fault('dtm_exec_simple_query_start','reset',dbid)
   FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
@@ -300,7 +300,7 @@ INSERT INTO distxact3_2 VALUES (26);
 INSERT INTO distxact3_2 VALUES (27);
 INSERT INTO distxact3_2 VALUES (28);
 RELEASE SAVEPOINT s;
-ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=248179)
 ROLLBACK;
 SELECT gp_inject_fault('dtm_exec_simple_query_start','reset','RELEASE',
 	'','',1,1,0,dbid)
@@ -345,7 +345,7 @@ INSERT INTO distxact3_3 VALUES (36);
 INSERT INTO distxact3_3 VALUES (37);
 INSERT INTO distxact3_3 VALUES (38);
 ROLLBACK TO SAVEPOINT s;
-ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=1133755)
+ERROR:  fault triggered, fault name:'dtm_exec_simple_query_start' fault type:'error'  (seg1 127.0.1.1:7003 pid=248179)
 ROLLBACK;
 SELECT gp_inject_fault('dtm_exec_simple_query_start','reset',dbid)
   FROM gp_segment_configuration WHERE mode='s' AND content=1 AND role='p' ;
@@ -418,12 +418,23 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 DROP TABLE
 -- Test two phase commit for extended query
 \! ./twophase_pqexecparams dbname=regression
+NOTICE:  table "test1" does not exist, skipping
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 WARNING:  the distributed transaction 'Commit Prepared' broadcast failed to one or more segments. Retrying ... try 1
-DETAIL:  gid=16314, state=Retry Commit Prepared
+DETAIL:  gid=43113, state=Retry Commit Prepared
 NOTICE:  Releasing segworker group to retry broadcast.
 result: INSERT 0 2
+-- Clean up fault, inserted within twophase_pgexecpartams
+-- We do it from calling script to be sure that fault is resetted regardless
+-- of program return status
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  from gp_segment_configuration WHERE mode='s' and content='0' and role='p';
+ gp_inject_fault 
+-----------------
+ Success:
+(1 row)
+
 --
 -- Subtransactions with partition table DDLs.
 --
