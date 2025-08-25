@@ -5248,6 +5248,23 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 {
 	ObjectAddress address = InvalidObjectAddress;
 
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		ListCell   *lc;
+
+		/*
+		 * Execute any statements (received from QD) that should happen before
+		 * this subcommand
+		 */
+		foreach(lc, cmd->beforeStmts)
+		{
+			Node	   *stmt = (Node *) lfirst(lc);
+
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
+	}
+
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
@@ -5630,28 +5647,12 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					AlterTableCmd *cmd, bool recurse, LOCKMODE lockmode,
 					int cur_pass, AlterTableUtilityContext *context)
 {
+	/*
+	 * In the QE, don't add items to the work queues. They were already
+	 * added in the QD, and we don't want to do them twice.
+	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		ListCell   *lc;
-
-		/*
-		 * Execute any statements (received from QD) that should happen before
-		 * these subcommand(s)
-		 */
-		foreach(lc, cmd->beforeStmts)
-		{
-			Node	   *stmt = (Node *) lfirst(lc);
-
-			ProcessUtilityForAlterTable(stmt, context);
-			CommandCounterIncrement();
-		}
-
-		/*
-		 * In the QE, don't add items to the work queues. They were already
-		 * added in the QD, and we don't want to do them twice.
-		 */
 		return cmd;
-	}
 
 	AlterTableCmd *newcmd = NULL;
 	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
