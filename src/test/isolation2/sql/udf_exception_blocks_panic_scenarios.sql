@@ -1,9 +1,9 @@
 -- Tests exception handling of GPDB PL/PgSQL UDF
 -- It exercises:
---  1. Several transaction control SQL stateement
+--  1. Several transaction control SQL statement
 --  2. Various levels of sub-transactions
 --  3. dtx protocol command: subtransaction_begin, subtransaction_rollback or subtransaction_release
---  4. Errors are teseted at beginning and end of command, panic only on
+--  4. Errors are tested at beginning and end of command, panic only on
 --- beginning
 --
 --

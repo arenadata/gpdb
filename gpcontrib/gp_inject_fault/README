@@ -163,20 +163,20 @@ Following parameters can be used for fault injection function:
    you don't want limit injection by particular operator. See
    `faultinjector_lists.h` for list of allowed operators. This
    parameter makes sense only if injection point in the code was defined
-   by macro which accepts `ddlStatement` parameter and sime meaningful
+   by macro which accepts `ddlStatement` parameter and some meaningful
    value is passed to it.
-* database text - database name which should be processed. Makes sense
-    only if you know that database name was passed to injection point in
-	the code
+*  database text - database name which should be processed. Makes sense
+   only if you know that database name was passed to injection point in
+   the code
 *  tablename text - table name which should be processed. Same
    conditions as in previous case stands.
-* start_occurrence int4 - number of times injection point is hit when
+*  start_occurrence int4 - number of times injection point is hit when
    first fault is injected.
 *  end_occurrence int4 - number of times injection point is hit when
    last fault is injected. Use -1 if you don't want to limit number of
    hits.
 *  extra_arg int4 - use of this argument depends on fault type. For type
-  'sleep' it is number of seconds to sleep,
+   'sleep' it is number of seconds to sleep,
 *  db_id int4 - db id (from dbid column of gp_segment_configuration table)
    mandatory. See above for examples of SQL queries.
 *  gp_session_id int4 - value of global variable gp_session_id (see 
@@ -190,7 +190,7 @@ Following parameters can be used for fault injection function:
 Fault Injection Macros
 ----------------------
 
-In the C code fault injection point is marked by adding one on macros,
+In the C code fault injection point is marked by adding one of macros,
 defined in the faultinjector.h. All macros end up with call of single
 function FaultInjector_InjectFaultIfSet_out_of_line, but this function
 is always wrapped with some macro to avoid function call overhead if no
@@ -235,7 +235,7 @@ Already discussed in the introduction section.
 NOTES
 -----
 
- A fault point applies to ALL callers of a function.  So special care
+ A fault point applies to ALL callers of a function. So special care
 must be used if you are setting fault points in code shared amongst
 many backends, such as in parallel regress tests.
 
