@@ -2792,14 +2792,14 @@ transformCurrentOfExpr(ParseState *pstate, CurrentOfExpr *cexpr)
 	 * early here to avoid having to deal with error cases later:
 	 * rewriting/planning against views, for example.
 	 */
-	Assert(pstate->p_target_rangetblentry != NULL);
-	(void) isSimplyUpdatableRelation(pstate->p_target_rangetblentry->relid, false);
+	Assert(pstate->p_target_nsitem->p_rte != NULL);
+	(void) isSimplyUpdatableRelation(pstate->p_target_nsitem->p_rte->relid, false);
 
 	/* CURRENT OF can only appear at top level of UPDATE/DELETE */
 	Assert(pstate->p_target_nsitem != NULL);
 	cexpr->cvarno = pstate->p_target_nsitem->p_rtindex;
 
-	cexpr->target_relid = pstate->p_target_rangetblentry->relid;
+	cexpr->target_relid = pstate->p_target_nsitem->p_rte->relid;
 
 	/*
 	 * Check to see if the cursor name matches a parameter of type REFCURSOR.
