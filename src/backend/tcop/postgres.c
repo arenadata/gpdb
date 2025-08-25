@@ -3868,6 +3868,7 @@ ProcessInterrupts(const char* filename, int lineno)
 	{
 		ProcDiePending = false;
 		QueryCancelPending = false; /* ProcDie trumps QueryCancel */
+		QueryCancelCleanup = false; /* no cancel request means no error */
 		LockErrorCleanup();
 		/* As in quickdie, don't risk sending to client during auth */
 		if (ClientAuthInProgress && whereToSendOutput == DestRemote)
@@ -3955,6 +3956,7 @@ ProcessInterrupts(const char* filename, int lineno)
 	if (ClientConnectionLost)
 	{
 		QueryCancelPending = false; /* lost connection trumps QueryCancel */
+		QueryCancelCleanup = false; /* no cancel request means no error */
 		LockErrorCleanup();
 		/* don't send to client, we already know the connection to be dead. */
 		whereToSendOutput = DestNone;
@@ -3972,6 +3974,7 @@ ProcessInterrupts(const char* filename, int lineno)
 	if (RecoveryConflictPending && DoingCommandRead)
 	{
 		QueryCancelPending = false; /* this trumps QueryCancel */
+		QueryCancelCleanup = false; /* no cancel request means no error */
 		RecoveryConflictPending = false;
 		LockErrorCleanup();
 		pgstat_report_recovery_conflict(RecoveryConflictReason);
@@ -4104,6 +4107,11 @@ ProcessInterrupts(const char* filename, int lineno)
 						break;
 				}
 			}
+		}
+		else
+		{
+			/* Skip cleanup as far as we forget a cancel request */
+			QueryCancelCleanup = false;
 		}
 	}
 
@@ -5167,6 +5175,7 @@ PostgresMain(int argc, char *argv[],
 		 */
 		disable_all_timeouts(false);	/* do first to avoid race condition */
 		QueryCancelPending = false;
+		QueryCancelCleanup = false;
 		QueryFinishPending = false;
 		stmt_timeout_active = false;
 		idle_in_transaction_timeout_enabled = false;
