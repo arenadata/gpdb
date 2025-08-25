@@ -594,12 +594,8 @@ CTranslatorDXLToPlStmt::CreateForeignScanCheckDistributionMismatch(
 {
 	ForeignScan *fscan = gpdb::CreateForeignScan(rel_oid, scanrelid, qual,
 												 targetlist, query, rte);
-	IMDRelation::Ereldistrpolicy rel_distr_policy =
-		md_rel->GetRelDistribution();
-	IMDRelation::Ereldistrpolicy rel_distr_policy_expected =
-		IMDRelation::Ereldistrpolicy::EreldistrSentinel;
-	CdbLocusType locus_type = fscan->scan.plan.flow->locustype;
-	switch (locus_type)
+	IMDRelation::Ereldistrpolicy rel_distr_policy_expected;
+	switch (fscan->scan.plan.flow->locustype)
 	{
 		case CdbLocusType_Entry:
 			rel_distr_policy_expected =
@@ -625,7 +621,7 @@ CTranslatorDXLToPlStmt::CreateForeignScanCheckDistributionMismatch(
 			GPOS_ASSERT(!"Unrecognized locus type");
 	}
 
-	if (rel_distr_policy != rel_distr_policy_expected)
+	if (md_rel->GetRelDistribution() != rel_distr_policy_expected)
 	{
 		GPOS_RAISE(
 			gpdxl::ExmaDXL, gpdxl::ExmiQuery2DXLUnsupportedFeature,
