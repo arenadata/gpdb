@@ -7,13 +7,9 @@
  *
  * src/backend/utils/misc/ps_status.c
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2005-2009, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Copyright (c) 2000-2019, PostgreSQL Global Development Group
-=======
  * Copyright (c) 2000-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * various details abducted from various places
  *--------------------------------------------------------------------
  */
@@ -482,10 +478,13 @@ get_ps_display_from_position(size_t pos, int *displen)
 	}
 #endif
 
-<<<<<<< HEAD
+#ifndef PS_USE_NONE
 	*displen = (int) (ps_buffer_cur_len - real_act_prefix_size);
 
 	return ps_buffer + pos;
+#else
+	return "";
+#endif
 }
 
 /*
@@ -518,13 +517,4 @@ const char *
 get_real_act_ps_display(int *displen)
 {
 	return get_ps_display_from_position(real_act_prefix_size, displen);
-=======
-#ifndef PS_USE_NONE
-	*displen = (int) (ps_buffer_cur_len - ps_buffer_fixed_size);
-
-	return ps_buffer + ps_buffer_fixed_size;
-#else
-	return "";
-#endif
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 }
