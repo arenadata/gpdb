@@ -580,7 +580,7 @@ CTranslatorDXLToPlStmt::TranslateJoinPruneParamids(
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CTranslatorDXLToPlStmt::CheckForeignScanDistributionMismatch
+//		CTranslatorDXLToPlStmt::CreateForeignScanCheckDistributionMismatch
 //
 //	@doc:
 //		Creates a ForeignScan while also checking its locus to ensure it
