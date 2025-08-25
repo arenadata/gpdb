@@ -580,7 +580,7 @@ CTranslatorDXLToPlStmt::TranslateJoinPruneParamids(
 
 //---------------------------------------------------------------------------
 //	@function:
-//		CTranslatorDXLToPlStmt::CreateForeignScanCheckDistributionMismatch
+//		CTranslatorDXLToPlStmt::CreateForeignScan
 //
 //	@doc:
 //		Creates a ForeignScan while also checking its locus to ensure it
@@ -588,9 +588,10 @@ CTranslatorDXLToPlStmt::TranslateJoinPruneParamids(
 //
 //---------------------------------------------------------------------------
 ForeignScan *
-CTranslatorDXLToPlStmt::CreateForeignScanCheckDistributionMismatch(
-	Oid rel_oid, Index scanrelid, List *qual, List *targetlist, Query *query,
-	RangeTblEntry *rte, const IMDRelation *md_rel)
+CTranslatorDXLToPlStmt::CreateForeignScan(Oid rel_oid, Index scanrelid,
+										  List *qual, List *targetlist,
+										  Query *query, RangeTblEntry *rte,
+										  const IMDRelation *md_rel)
 {
 	ForeignScan *fscan = gpdb::CreateForeignScan(rel_oid, scanrelid, qual,
 												 targetlist, query, rte);
@@ -691,7 +692,7 @@ CTranslatorDXLToPlStmt::TranslateDXLTblScan(
 
 		// The postgres_fdw wrapper does not support row level security. So
 		// passing only the query_quals while creating the foreign scan node.
-		ForeignScan *foreign_scan = CreateForeignScanCheckDistributionMismatch(
+		ForeignScan *foreign_scan = CreateForeignScan(
 			oidRel, index, query_quals, targetlist,
 			m_dxl_to_plstmt_context->m_orig_query, rte, md_rel);
 		foreign_scan->scan.scanrelid = index;
@@ -4606,10 +4607,9 @@ CTranslatorDXLToPlStmt::TranslateDXLDynForeignScan(
 
 	const IMDRelation *md_rel_first_part =
 		m_md_accessor->RetrieveRel((*parts)[0]);
-	ForeignScan *foreign_scan_first_part =
-		CreateForeignScanCheckDistributionMismatch(
-			oid_first_child, index, qual, targetlist,
-			m_dxl_to_plstmt_context->m_orig_query, rte, md_rel_first_part);
+	ForeignScan *foreign_scan_first_part = CreateForeignScan(
+		oid_first_child, index, qual, targetlist,
+		m_dxl_to_plstmt_context->m_orig_query, rte, md_rel_first_part);
 
 	// Set the plan fields to the first partition. We still want the plan type to be
 	// a dynamic foreign scan
@@ -4640,7 +4640,7 @@ CTranslatorDXLToPlStmt::TranslateDXLDynForeignScan(
 			rte->relid, dyn_foreign_scan_dxlop->GetDXLTableDescr()->LockMode());
 
 		const IMDRelation *md_rel = m_md_accessor->RetrieveRel((*parts)[ul]);
-		ForeignScan *foreign_scan = CreateForeignScanCheckDistributionMismatch(
+		ForeignScan *foreign_scan = CreateForeignScan(
 			rte->relid, index, qual, targetlist,
 			m_dxl_to_plstmt_context->m_orig_query, rte, md_rel);
 

@@ -162,9 +162,10 @@ private:
 
 	static BOOL SetSecurityQualsVarnoWalker(Node *node, Index *index);
 
-	static ForeignScan *CreateForeignScanCheckDistributionMismatch(
-		Oid rel_oid, Index scanrelid, List *qual, List *targetlist,
-		Query *query, RangeTblEntry *rte, const IMDRelation *md_rel);
+	static ForeignScan *CreateForeignScan(Oid rel_oid, Index scanrelid,
+										  List *qual, List *targetlist,
+										  Query *query, RangeTblEntry *rte,
+										  const IMDRelation *md_rel);
 
 public:
 	// ctor
