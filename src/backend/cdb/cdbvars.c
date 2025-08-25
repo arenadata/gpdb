@@ -48,6 +48,8 @@
 
 
 
+bool DoNotDispatchUtilityUnderAlterTable = false;
+
 GpRoleValue Gp_role;			/* Role paid by this Greenplum Database
 								 * backend */
 char	   *gp_role_string;		/* Staging area for guc.c */

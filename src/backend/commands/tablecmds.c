@@ -5248,6 +5248,23 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 {
 	ObjectAddress address = InvalidObjectAddress;
 
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		ListCell   *lc;
+
+		/*
+		 * Execute any statements (received from QD) that should happen before
+		 * this subcommand
+		 */
+		foreach(lc, cmd->beforeStmts)
+		{
+			Node	   *stmt = (Node *) lfirst(lc);
+
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
+	}
+
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
@@ -5591,6 +5608,10 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		case AT_PartTruncate:
 		case AT_PartExchange:
 		case AT_PartSetTemplate:
+			/*
+			 * Try to support parser_errposition() in each cmd's execution time
+			 */
+			cmd->queryString = context->queryString;
 			ATExecGPPartCmds(rel, cmd);
 			break;
 	}
@@ -5626,6 +5647,13 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					AlterTableCmd *cmd, bool recurse, LOCKMODE lockmode,
 					int cur_pass, AlterTableUtilityContext *context)
 {
+	/*
+	 * In the QE, don't add items to the work queues. They were already
+	 * added in the QD, and we don't want to do them twice.
+	 */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		return cmd->newcmd_is_null ? NULL : cmd;
+
 	AlterTableCmd *newcmd = NULL;
 	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
 	List	   *beforeStmts;
@@ -5649,6 +5677,12 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 &beforeStmts,
 									 &afterStmts);
 
+	/*
+	 * In the QD save any statements for executing them in the QE
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		cmd->beforeStmts = beforeStmts;
+
 	/* Execute any statements that should happen before these subcommand(s) */
 	foreach(lc, beforeStmts)
 	{
@@ -5671,6 +5705,13 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* Found the transformed version of our subcommand */
 			cmd2->subtype = cmd->subtype;	/* copy recursion flag */
 			newcmd = cmd2;
+
+			/*
+			 * In the QD save transformed version of definition for executing
+			 * in the QE
+			 */
+			if (Gp_role == GP_ROLE_DISPATCH)
+				cmd->def = newcmd->def;
 		}
 		else
 		{
@@ -5736,6 +5777,12 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/* Queue up any after-statements to happen at the end */
 	tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
+
+	/*
+	 * In the QD save newcmd is NULL or not for using it in the QE
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		cmd->newcmd_is_null = newcmd == NULL;
 
 	return newcmd;
 }

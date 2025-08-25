@@ -1448,6 +1448,9 @@ GetAssignedOidsForDispatch(void)
 {
 	List	   *l;
 
+	if (DoNotDispatchUtilityUnderAlterTable)
+		return NIL;
+
 	l = dispatch_oids;
 	dispatch_oids = NIL;
 	return l;
