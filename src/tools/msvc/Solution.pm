@@ -149,24 +149,20 @@ sub GenerateFiles
 	  || confess("Could not open configure.in for reading\n");
 	while (<$c>)
 	{
-<<<<<<< HEAD
-		if (/^AC_INIT\(\[Greenplum Database\], \[([^\]]+)\]/)
+		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\]/)
 		{
 			$self->{gpdbver} = $1;
 			$self->{gpdbmajorver} = substr $1, 0, 1;
+			$package_name      = $1;
+			$package_bugreport = $3;
 		}
 		if (/\[PG_PACKAGE_VERSION=([^\]]+)\]/)
-=======
-		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\]/)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 		{
-			$package_name      = $1;
-			$package_version   = $2;
-			$package_bugreport = $3;
+			$package_version   = $1;
 
 			if ($package_version !~ /^(\d+)(?:\.(\d+))?/)
 			{
-				confess "Bad format of version: $self->{strver}\n";
+				confess "Bad format of version: $package_version\n";
 			}
 			$self->{numver} = sprintf("%d%04d", $1, $2 ? $2 : 0);
 			$self->{majorver} = sprintf("%d", $1);
@@ -450,6 +446,8 @@ sub GenerateFiles
 		PG_INT128_TYPE      => undef,
 		PG_INT64_TYPE       => 'long long int',
 		PG_KRB_SRVNAM       => qq{"postgres"},
+		GP_VERSION          => qq{"$self->{gpdbver}"},
+		GP_MAJORVERSION     => qq{"$self->{gpdbmajorver}"},
 		PG_MAJORVERSION     => qq{"$self->{majorver}"},
 		PG_PRINTF_ATTRIBUTE => undef,
 		PG_USE_STDBOOL      => 1,
@@ -510,34 +508,6 @@ sub GenerateFiles
 
 	if ($self->{options}->{uuid})
 	{
-<<<<<<< HEAD
-		print "Generating pg_config.h...\n";
-		open(my $i, '<', "src/include/pg_config.h.win32")
-		  || confess "Could not open pg_config.h.win32\n";
-		open(my $o, '>', "src/include/pg_config.h")
-		  || confess "Could not write to pg_config.h\n";
-		my $extraver = $self->{options}->{extraver};
-		$extraver = '' unless defined $extraver;
-		while (<$i>)
-		{
-			s{PG_VERSION "[^"]+"}{PG_VERSION "$self->{strver}$extraver"};
-			s{PG_VERSION_NUM \d+}{PG_VERSION_NUM $self->{numver}};
-			s{PG_VERSION_STR "[^"]+"}{PG_VERSION_STR "PostgreSQL $self->{strver}$extraver, compiled by Visual C++ build " CppAsString2(_MSC_VER) ", $bits-bit"};
-			print $o $_;
-		}
-		print $o "#define GP_VERSION \"$self->{gpdbver}\"\n";
-		print $o "#define GP_MAJORVERSION \"$self->{gpdbmajorver}\"\n";
-		print $o "#define PG_MAJORVERSION \"$self->{majorver}\"\n";
-		print $o "#define LOCALEDIR \"/share/locale\"\n"
-		  if ($self->{options}->{nls});
-		print $o "/* defines added by config steps */\n";
-		print $o "#ifndef IGNORE_CONFIGURED_SETTINGS\n";
-		print $o "#define USE_ASSERT_CHECKING 1\n"
-		  if ($self->{options}->{asserts});
-		print $o "#define USE_LDAP 1\n"   if ($self->{options}->{ldap});
-		print $o "#define HAVE_LIBZ 1\n"  if ($self->{options}->{zlib});
-		print $o "#define ENABLE_NLS 1\n" if ($self->{options}->{nls});
-=======
 		$define{HAVE_UUID_OSSP} = 1;
 		$define{HAVE_UUID_H}    = 1;
 	}
@@ -554,7 +524,6 @@ sub GenerateFiles
 	if ($self->{options}->{openssl})
 	{
 		$define{USE_OPENSSL} = 1;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 		my ($digit1, $digit2, $digit3) = $self->GetOpenSSLVersion();
 
