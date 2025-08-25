@@ -1348,7 +1348,7 @@ exec_mpp_query(const char *query_string,
 		{
 			renice_current_process(PostmasterPriority + gp_segworker_relative_priority);
 		}
-		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_mpp_query_start",commandTag,0);
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_mpp_query_start", commandTag, 0);
 		/*
 		 * If we are in an aborted transaction, reject all commands except
 		 * COMMIT/ABORT.  It is important that this test occur before we try
@@ -1455,7 +1455,7 @@ exec_mpp_query(const char *query_string,
 		 */
 		finish_xact_command();
 
-		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_mpp_query_end",commandTag,0);
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_mpp_query_end", commandTag, 0);
 
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
@@ -1519,8 +1519,8 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 
 	set_ps_display(commandTag, false);
 	FaultInjector_InjectFaultIfSet_DTX("exec_mpp_dtx_protocol_command_start",
-	                              dtxProtocolCommand,
-								  contextInfo->nestingLevel);
+									   dtxProtocolCommand,
+									   contextInfo->nestingLevel);
 
 	BeginCommand(commandTag, dest);
 
@@ -1530,8 +1530,8 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 		 dtxProtocolCommand, loggingStr, gid);
 
 	FaultInjector_InjectFaultIfSet_DTX("exec_mpp_dtx_protocol_command_end",
-	                              dtxProtocolCommand,
-								  contextInfo->nestingLevel);
+									   dtxProtocolCommand, 
+									   contextInfo->nestingLevel);
 
 	/*
 	 * GPDB: There is a corner case that we need to delay connection
@@ -1726,7 +1726,7 @@ exec_simple_query(const char *query_string)
 		set_ps_display(commandTag, false);
 
 		BeginCommand(commandTag, dest);
-		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_simple_query_start",commandTag,0);
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_simple_query_start", commandTag, 0);
 
 		/*
 		 * GPDB: If we are connected in utility mode, disallow PREPARE
@@ -1918,7 +1918,7 @@ exec_simple_query(const char *query_string)
 			 */
 			CommandCounterIncrement();
 		}
-		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_simple_query_end",commandTag,0);
+		FaultInjector_InjectFaultIfSet_SQL("dtm_exec_simple_query_end", commandTag, 0);
 
 		/*
 		 * Tell client that we're done with this query.  Note we emit exactly
