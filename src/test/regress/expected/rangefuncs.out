@@ -1932,12 +1932,17 @@ select testrngfunc();
 
 explain (verbose, costs off)
 select * from testrngfunc();
-             QUERY PLAN              
--------------------------------------
- Function Scan on public.testrngfunc
-   Output: f1, f2
-   Function Call: testrngfunc()
-(3 rows)
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Subquery Scan on sirvf_sq
+   Output: (sirvf_sq.testrngfunc).f1, (sirvf_sq.testrngfunc).f2
+   ->  Result
+         Output: $0
+         InitPlan 1 (returns $0)
+           ->  Result
+                 Output: testrngfunc()
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 select * from testrngfunc();
     f1    |  f2  
