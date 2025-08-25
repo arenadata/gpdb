@@ -239,12 +239,9 @@ pg_GSS_write(PGconn *conn, const void *ptr, size_t len)
 
 		memcpy(PqGSSSendBuffer + PqGSSSendLength, output.value, output.length);
 		PqGSSSendLength += output.length;
-<<<<<<< HEAD
 
 		/* Release buffer storage allocated by GSSAPI */
 		gss_release_buffer(&minor, &output);
-=======
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	}
 
 	/* If we get here, our counters should all match up. */
@@ -705,11 +702,6 @@ pqsecure_open_gss(PGconn *conn)
 
 	memcpy(PqGSSSendBuffer + PqGSSSendLength, output.value, output.length);
 	PqGSSSendLength += output.length;
-<<<<<<< HEAD
-=======
-
-	/* We don't bother with PqGSSSendConsumed here */
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 	/* We don't bother with PqGSSSendConsumed here */
 
