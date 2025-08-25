@@ -9,13 +9,9 @@
  * storage management for portals (but doesn't run any queries in them).
  *
  *
-<<<<<<< HEAD
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 2012-Present VMware, Inc. or its affiliates.
- * Portions Copyright (c) 1996-2019, PostgreSQL Global Development Group
-=======
  * Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -116,7 +112,6 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 	plan = pg_plan_query(query, cstmt->options, params);
 
 	/*
-<<<<<<< HEAD
 	 * Allow using the SCROLL keyword even though we don't support its
 	 * functionality (backward scrolling). Silently accept it and instead
 	 * of reporting an error like before, override it to NO SCROLL.
@@ -137,10 +132,7 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 	Assert(!(cstmt->options & CURSOR_OPT_SCROLL && cstmt->options & CURSOR_OPT_NO_SCROLL));
 
 	/*
-	 * Create a portal and copy the plan and queryString into its memory.
-=======
 	 * Create a portal and copy the plan and query string into its memory.
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	 */
 	portal = CreatePortal(cstmt->portalname, false, false);
 
