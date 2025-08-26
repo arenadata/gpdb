@@ -68,7 +68,6 @@ typedef enum
 
 extern GpRoleValue Gp_role;	/* GUC var - server operating mode.  */
 extern char *gp_role_string;	/* Use by guc.c as staging area for value. */
-extern bool DoNotDispatchUtilityUnderAlterTable;
 
 extern bool gp_reraise_signal; /* try to force a core dump ?*/
 
@@ -780,5 +779,7 @@ extern const char * lookup_autostats_mode_by_value(GpAutoStatsModeValue val);
  * for parallel retrieve cursor.
  */
 #define CDB_NOTIFY_ENDPOINT_ACK "ack_notify"
+
+extern bool gp_dispatch_utility_statement;
 
 #endif   /* CDBVARS_H */
