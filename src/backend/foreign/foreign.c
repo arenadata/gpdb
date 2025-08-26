@@ -35,6 +35,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbpathtoplan.h"
 
 extern Datum pg_options_to_table(PG_FUNCTION_ARGS);
 extern Datum postgresql_fdw_validator(PG_FUNCTION_ARGS);
@@ -1041,6 +1042,8 @@ BuildForeignScan(Oid relid, Index scanrelid, List *qual, List *targetlist, Query
 												NULL /*outer_plan*/);
 
 	fscan->fs_server = rel->serverid;
+
+	fscan->scan.plan.flow = cdbpathtoplan_create_flow(root, path->path.locus);
 
 	// Set fsSystemCol if any system attributes are projected
 	fscan->fsSystemCol = false;
