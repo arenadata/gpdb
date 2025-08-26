@@ -4588,10 +4588,10 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	 * first child plan is the OUTER referent; this is to support RETURNING
 	 * lists containing references to non-target relations.
 	 */
-<<<<<<< HEAD
-	if (IsA(ps, AppendState))
-		dpns->outer_planstate = ((AppendState *) ps)->appendplans[0];
-	else if (IsA(ps, SequenceState))
+	if (IsA(plan, Append))
+		dpns->outer_plan = linitial(((Append *) plan)->appendplans);
+	else if (IsA(plan, Sequence))
+	{
 		/*
 		 * A Sequence node returns tuples from the *last* child node only.
 		 * The other subplans can even have a different, incompatible tuple
@@ -4599,19 +4599,13 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 		 * as the first subplan, and the Dynamic Table Scan as the second
 		 * subplan.
 		 */
-		dpns->outer_planstate = ((SequenceState *) ps)->subplans[1];
-	else if (IsA(ps, MergeAppendState))
-		dpns->outer_planstate = ((MergeAppendState *) ps)->mergeplans[0];
-	else if (IsA(ps, ModifyTableState))
-		dpns->outer_planstate = ((ModifyTableState *) ps)->mt_plans[0];
-=======
-	if (IsA(plan, Append))
-		dpns->outer_plan = linitial(((Append *) plan)->appendplans);
+		Assert(list_length(((Sequence *) plan)->subplans) == 2);
+		dpns->outer_plan = llast(((Sequence *) plan)->subplans);
+	}
 	else if (IsA(plan, MergeAppend))
 		dpns->outer_plan = linitial(((MergeAppend *) plan)->mergeplans);
 	else if (IsA(plan, ModifyTable))
 		dpns->outer_plan = linitial(((ModifyTable *) plan)->plans);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 	else
 		dpns->outer_plan = outerPlan(plan);
 
@@ -4629,29 +4623,25 @@ set_deparse_plan(deparse_namespace *dpns, Plan *plan)
 	 * to reuse OUTER, it's used for RETURNING in some modify table cases,
 	 * although not INSERT .. CONFLICT).
 	 */
-<<<<<<< HEAD
-	if (IsA(ps, SubqueryScanState))
-		dpns->inner_planstate = ((SubqueryScanState *) ps)->subplan;
-	else if (IsA(ps, CteScanState))
-		dpns->inner_planstate = ((CteScanState *) ps)->cteplanstate;
-	else if (IsA(ps, SequenceState))
-		/*
-		 * Set the inner_plan to a sequences first child only if it is a
-		 * partition selector. This is a specific fix to enable Explain’s of
-		 * query plans that have a Partition Selector
-		 */
-		dpns->inner_planstate = ((SequenceState *) ps)->subplans[0];
-	else if (IsA(ps, ModifyTableState))
-		dpns->inner_planstate = ps;
-=======
 	if (IsA(plan, SubqueryScan))
 		dpns->inner_plan = ((SubqueryScan *) plan)->subplan;
 	else if (IsA(plan, CteScan))
 		dpns->inner_plan = list_nth(dpns->subplans,
 									((CteScan *) plan)->ctePlanId - 1);
+	else if (IsA(plan, Sequence))
+	{
+		/*
+		 * Set the inner_plan to a sequences first child only if it is a
+		 * partition selector. This is a specific fix to enable Explain’s of
+		 * query plans that have a Partition Selector
+		 */
+		Assert(list_length(((Sequence *) plan)->subplans) == 2);
+		dpns->inner_plan = linitial(((Sequence *) plan)->subplans);
+	}
 	else if (IsA(plan, ModifyTable))
 		dpns->inner_plan = plan;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+	else if (IsA(plan, ShareInputScan))
+		dpns->inner_plan = outerPlan(plan);
 	else
 		dpns->inner_plan = innerPlan(plan);
 
@@ -7137,14 +7127,7 @@ get_name_for_var_field(Var *var, int fieldno,
 
 		tle = get_tle_by_resno(dpns->outer_tlist, varattno);
 		if (!tle)
-<<<<<<< HEAD
-		{
-			elog(ERROR, "bogus varattno for OUTER_VAR var: %d", var->varattno);
-			return NULL;
-		}
-=======
 			elog(ERROR, "bogus varattno for OUTER_VAR var: %d", varattno);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 		Assert(netlevelsup == 0);
 		push_child_plan(dpns, dpns->outer_plan, &save_dpns);
@@ -7192,13 +7175,8 @@ get_name_for_var_field(Var *var, int fieldno,
 	}
 	else
 	{
-<<<<<<< HEAD
-		elog(WARNING, "bogus varno: %d", var->varno);
-		return psprintf("<BOGUS %d>", var->varattno);
-=======
-		elog(ERROR, "bogus varno: %d", varno);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
-		return NULL;			/* keep compiler quiet */
+		elog(WARNING, "bogus varno: %d", varno);
+		return psprintf("<BOGUS %d>", varattno);
 	}
 
     if (rte == NULL)
@@ -9680,13 +9658,13 @@ get_dqa_expr(DQAExpr *dqa_expr,deparse_context *context)
 	StringInfo	buf = context->buf;
 	Bitmapset *bm = dqa_expr->agg_args_id_bms;
 	deparse_namespace *dnps = (deparse_namespace *) linitial(context->namespaces);
-	struct PlanState *planstate = dnps->planstate;
+	struct Plan *plan = dnps->plan;
 
 	resetStringInfo(buf);
 	appendStringInfoChar(buf, '(');
 	while ((id = bms_next_member(bm, id)) >= 0)
 	{
-		TargetEntry *te = get_sortgroupref_tle((Index)id, planstate->plan->targetlist);
+		TargetEntry *te = get_sortgroupref_tle((Index)id, plan->targetlist);
 		char	   *exprstr;
 
 		if (!te)
