@@ -320,7 +320,8 @@ static AlterTableCmd *ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab,
 										  Relation rel, AlterTableCmd *cmd,
 										  bool recurse, LOCKMODE lockmode,
 										  int cur_pass,
-										  AlterTableUtilityContext *context);
+										  AlterTableUtilityContext *context,
+										  List **beforePrepOrExecStmts);
 static void ATRewriteTables(AlterTableStmt *parsetree,
 							List **wqueue, LOCKMODE lockmode,
 							AlterTableUtilityContext *context);
@@ -4628,7 +4629,7 @@ ATController(AlterTableStmt *parsetree,
 			 * Execute any statements (received from QD) that should happen
 			 * before this subcommand
 			 */
-			foreach(lc, cmd->beforeStmts)
+			foreach(lc, cmd->beforePrepStmts)
 			{
 				Node	   *stmt = (Node *) lfirst(lc);
 
@@ -4847,7 +4848,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 								ATT_TABLE | ATT_COMPOSITE_TYPE | ATT_FOREIGN_TABLE);
 			/* See comments for ATPrepAlterColumnType */
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, recurse, lockmode,
-									  AT_PASS_UNSET, context);
+									  AT_PASS_UNSET, context,
+									  &cmd->beforePrepStmts);
 			Assert(cmd != NULL);
 			/* Performs own recursion */
 			ATPrepAlterColumnType(wqueue, tab, rel, recurse, recursing, cmd,
@@ -5265,6 +5267,23 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 {
 	ObjectAddress address = InvalidObjectAddress;
 
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		ListCell   *lc;
+
+		/*
+		 * Execute any statements (received from QD) that should happen before
+		 * this subcommand
+		 */
+		foreach(lc, cmd->beforeExecStmts)
+		{
+			Node       *stmt = (Node *) lfirst(lc);
+
+			ProcessUtilityForAlterTable(stmt, context);
+			CommandCounterIncrement();
+		}
+	}
+
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
@@ -5286,13 +5305,15 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			break;
 		case AT_AddIdentity:
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+									  cur_pass, context,
+									  &cmd->beforeExecStmts);
 			Assert(cmd != NULL);
 			address = ATExecAddIdentity(rel, cmd->name, cmd->def, lockmode);
 			break;
 		case AT_SetIdentity:
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+									  cur_pass, context,
+									  &cmd->beforeExecStmts);
 			Assert(cmd != NULL);
 			address = ATExecSetIdentity(rel, cmd->name, cmd->def, lockmode);
 			break;
@@ -5345,7 +5366,8 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			break;
 		case AT_AddConstraint:	/* ADD CONSTRAINT */
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+									  cur_pass, context,
+									  &cmd->beforeExecStmts);
 			/* Might not have gotten AddConstraint back from parse transform */
 			if (cmd != NULL)
 				address =
@@ -5355,7 +5377,8 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			break;
 		case AT_AddConstraintRecurse:	/* ADD CONSTRAINT with recursion */
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, true, lockmode,
-									  cur_pass, context);
+									  cur_pass, context,
+									  &cmd->beforeExecStmts);
 			/* Might not have gotten AddConstraint back from parse transform */
 			if (cmd != NULL)
 				address =
@@ -5579,7 +5602,8 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			break;
 		case AT_AttachPartition:
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+									  cur_pass, context,
+									  &cmd->beforeExecStmts);
 			Assert(cmd != NULL);
 			if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 				ATExecAttachPartition(wqueue, rel, (PartitionCmd *) cmd->def);
@@ -5589,7 +5613,8 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			break;
 		case AT_DetachPartition:
 			cmd = ATParseTransformCmd(wqueue, tab, rel, cmd, false, lockmode,
-									  cur_pass, context);
+									  cur_pass, context,
+									  &cmd->beforeExecStmts);
 			Assert(cmd != NULL);
 			/* ATPrepCmd ensures it must be a table */
 			Assert(rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE);
@@ -5645,7 +5670,8 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 static AlterTableCmd *
 ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 					AlterTableCmd *cmd, bool recurse, LOCKMODE lockmode,
-					int cur_pass, AlterTableUtilityContext *context)
+					int cur_pass, AlterTableUtilityContext *context,
+					List **beforePrepOrExecStmts)
 {
 	/*
 	 * In the QE, don't add items to the work queues. They were already
@@ -5679,7 +5705,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/* In the QD save any statements for executing them in the QE */
 	if (Gp_role == GP_ROLE_DISPATCH)
-		cmd->beforeStmts = beforeStmts;
+		*beforePrepOrExecStmts = beforeStmts;
 
 	/* Execute any statements that should happen before these subcommand(s) */
 	foreach(lc, beforeStmts)
@@ -5711,7 +5737,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				cmd->def = newcmd->def;
-				newcmd->beforeStmts = beforeStmts;
+				// newcmd->beforeStmts = beforeStmts;
 			}
 		}
 		else
@@ -7566,7 +7592,8 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	if (context != NULL && !recursing)
 	{
 		*cmd = ATParseTransformCmd(wqueue, tab, rel, *cmd, recurse, lockmode,
-								   cur_pass, context);
+								   cur_pass, context,
+								   &(*cmd)->beforeExecStmts);
 		Assert(*cmd != NULL);
 		colDef = castNode(ColumnDef, (*cmd)->def);
 	}
