@@ -5731,14 +5731,11 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			newcmd = cmd2;
 
 			/*
-			 * In the QD save transformed version of definition and before
-			 * statements for executing them in the QE
+			 * In the QD save transformed version of definition for executing
+			 * in the QE
 			 */
 			if (Gp_role == GP_ROLE_DISPATCH)
-			{
 				cmd->def = newcmd->def;
-				// newcmd->beforeStmts = beforeStmts;
-			}
 		}
 		else
 		{
