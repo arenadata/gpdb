@@ -931,8 +931,8 @@ _readAlterTableCmd(void)
 
 	READ_INT_FIELD(backendId);
 	READ_NODE_FIELD(policy);
-	READ_NODE_FIELD(beforePrepStmts);
-	READ_NODE_FIELD(beforeExecStmts);
+	READ_NODE_FIELD(prepStmts);
+	READ_NODE_FIELD(execStmts);
 	READ_BOOL_FIELD(newcmd_is_null);
 
 	READ_DONE();
