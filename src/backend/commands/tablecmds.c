@@ -5703,11 +5703,13 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 &beforeStmts,
 									 &afterStmts);
 
-	/* In the QD save any statements for executing them in the QE */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		/* In the QD save any statements for executing them in the QE */
 		*beforePrepOrExecStmts = beforeStmts;
-		DoNotDispatchUtilityUnderAlterTable = true;
+
+		/* Do not dispatch utility statement under alter table */
+		gp_dispatch_utility_statement = false;
 	}
 
 	PG_TRY();
@@ -5720,7 +5722,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		CommandCounterIncrement();
 	}
 	PG_FINALLY();
-		DoNotDispatchUtilityUnderAlterTable = false;
+		gp_dispatch_utility_statement = true;
 	PG_END_TRY();
 
 	/* Examine the transformed subcommands and schedule them appropriately */
@@ -6208,8 +6210,9 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			table_close(rel, NoLock);
 	}
 
+	/* Do not dispatch utility statement under alter table */
 	if (Gp_role == GP_ROLE_DISPATCH)
-		DoNotDispatchUtilityUnderAlterTable = true;
+		gp_dispatch_utility_statement = false;
 
 	PG_TRY();
 	/* Finally, run any afterStmts that were queued up */
@@ -6227,7 +6230,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		}
 	}
 	PG_FINALLY();
-		DoNotDispatchUtilityUnderAlterTable = false;
+		gp_dispatch_utility_statement = true;
 	PG_END_TRY();
 }
 
