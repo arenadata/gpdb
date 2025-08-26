@@ -5705,8 +5705,12 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/* In the QD save any statements for executing them in the QE */
 	if (Gp_role == GP_ROLE_DISPATCH)
+	{
 		*beforePrepOrExecStmts = beforeStmts;
+		DoNotDispatchUtilityUnderAlterTable = true;
+	}
 
+	PG_TRY();
 	/* Execute any statements that should happen before these subcommand(s) */
 	foreach(lc, beforeStmts)
 	{
@@ -5715,6 +5719,9 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		ProcessUtilityForAlterTable(stmt, context);
 		CommandCounterIncrement();
 	}
+	PG_FINALLY();
+		DoNotDispatchUtilityUnderAlterTable = false;
+	PG_END_TRY();
 
 	/* Examine the transformed subcommands and schedule them appropriately */
 	foreach(lc, atstmt->cmds)
@@ -6201,6 +6208,10 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			table_close(rel, NoLock);
 	}
 
+	if (Gp_role == GP_ROLE_DISPATCH)
+		DoNotDispatchUtilityUnderAlterTable = true;
+
+	PG_TRY();
 	/* Finally, run any afterStmts that were queued up */
 	foreach(ltab, *wqueue)
 	{
@@ -6215,6 +6226,9 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			CommandCounterIncrement();
 		}
 	}
+	PG_FINALLY();
+		DoNotDispatchUtilityUnderAlterTable = false;
+	PG_END_TRY();
 }
 
 /*
