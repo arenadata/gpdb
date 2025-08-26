@@ -2063,8 +2063,8 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 
 	GpPolicy   *policy;
 
-	List	   *beforePrepStmts;
-	List	   *beforeExecStmts;
+	List	   *prepStmts;
+	List	   *execStmts;
 	bool		newcmd_is_null;
 } AlterTableCmd;
 
