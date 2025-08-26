@@ -5677,9 +5677,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 &beforeStmts,
 									 &afterStmts);
 
-	/*
-	 * In the QD save any statements for executing them in the QE
-	 */
+	/* In the QD save any statements for executing them in the QE */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		cmd->beforeStmts = beforeStmts;
 
@@ -5707,11 +5705,14 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			newcmd = cmd2;
 
 			/*
-			 * In the QD save transformed version of definition for executing
-			 * in the QE
+			 * In the QD save transformed version of definition and before
+			 * statements for executing them in the QE
 			 */
 			if (Gp_role == GP_ROLE_DISPATCH)
+			{
 				cmd->def = newcmd->def;
+				newcmd->beforeStmts = beforeStmts;
+			}
 		}
 		else
 		{
@@ -5778,9 +5779,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	/* Queue up any after-statements to happen at the end */
 	tab->afterStmts = list_concat(tab->afterStmts, afterStmts);
 
-	/*
-	 * In the QD save newcmd is NULL or not for using it in the QE
-	 */
+	/* In the QD save newcmd is NULL or not for using it in the QE */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		cmd->newcmd_is_null = newcmd == NULL;
 
