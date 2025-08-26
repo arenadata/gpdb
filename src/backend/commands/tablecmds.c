@@ -4619,6 +4619,23 @@ ATController(AlterTableStmt *parsetree,
 			tab->oldDesc = CreateTupleDescCopyConstr(RelationGetDescr(rel));
 			relation_close(rel, NoLock);
 		}
+
+		foreach(lcmd, cmds)
+		{
+			AlterTableCmd *cmd = (AlterTableCmd *) lfirst(lcmd);
+
+			/*
+			 * Execute any statements (received from QD) that should happen
+			 * before this subcommand
+			 */
+			foreach(lc, cmd->beforeStmts)
+			{
+				Node	   *stmt = (Node *) lfirst(lc);
+
+				ProcessUtilityForAlterTable(stmt, context);
+				CommandCounterIncrement();
+			}
+		}
 	}
 	else
 	{
@@ -5247,23 +5264,6 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		  AlterTableUtilityContext *context)
 {
 	ObjectAddress address = InvalidObjectAddress;
-
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		ListCell   *lc;
-
-		/*
-		 * Execute any statements (received from QD) that should happen before
-		 * this subcommand
-		 */
-		foreach(lc, cmd->beforeStmts)
-		{
-			Node	   *stmt = (Node *) lfirst(lc);
-
-			ProcessUtilityForAlterTable(stmt, context);
-			CommandCounterIncrement();
-		}
-	}
 
 	switch (cmd->subtype)
 	{
