@@ -420,9 +420,11 @@ FaultInjector_InjectFaultIfSet_out_of_line(
 		if (strlen(entryShared->tableName) > 0 && strcmp(entryShared->tableName, tableNameLocal) != 0)
 			/* fault injection is not set for the specified table name */
 			break;
+		
 		if (entryShared->nestingLevel != 0 && entryShared->nestingLevel != nestingLevel)
 			/* fault injection is set for another nesting level */
 			break;
+
 		if (entryShared->faultInjectorState == FaultInjectorStateCompleted ||
 			entryShared->faultInjectorState == FaultInjectorStateFailed) {
 			/* fault injection was already executed */
