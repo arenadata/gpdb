@@ -2065,7 +2065,7 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 
 	List	   *prepStmts;
 	List	   *execStmts;
-	bool		newcmd_is_null;
+	bool		isNULL;
 } AlterTableCmd;
 
 typedef enum GpAlterPartitionIdType

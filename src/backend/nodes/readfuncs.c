@@ -933,7 +933,7 @@ _readAlterTableCmd(void)
 	READ_NODE_FIELD(policy);
 	READ_NODE_FIELD(prepStmts);
 	READ_NODE_FIELD(execStmts);
-	READ_BOOL_FIELD(newcmd_is_null);
+	READ_BOOL_FIELD(isNULL);
 
 	READ_DONE();
 }

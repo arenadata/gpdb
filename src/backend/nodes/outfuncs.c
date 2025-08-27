@@ -3418,7 +3418,7 @@ _outAlterTableCmd(StringInfo str, const AlterTableCmd *node)
 	WRITE_NODE_FIELD(policy);
 	WRITE_NODE_FIELD(prepStmts);
 	WRITE_NODE_FIELD(execStmts);
-	WRITE_BOOL_FIELD(newcmd_is_null);
+	WRITE_BOOL_FIELD(isNULL);
 }
 
 static void

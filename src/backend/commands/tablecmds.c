@@ -5671,7 +5671,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	 * added in the QD, and we don't want to do them twice.
 	 */
 	if (Gp_role == GP_ROLE_EXECUTE)
-		return cmd->newcmd_is_null ? NULL : cmd;
+		return cmd->isNULL ? NULL : cmd;
 
 	AlterTableCmd *newcmd = NULL;
 	AlterTableStmt *atstmt = makeNode(AlterTableStmt);
@@ -5792,7 +5792,7 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/* In the QD save newcmd is NULL or not for using it in the QE */
 	if (Gp_role == GP_ROLE_DISPATCH)
-		cmd->newcmd_is_null = newcmd == NULL;
+		cmd->isNULL = newcmd == NULL;
 
 	return newcmd;
 }
