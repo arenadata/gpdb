@@ -401,6 +401,9 @@ set_plan_references(PlannerInfo *root, Plan *plan)
 	{
 		AppendRelInfo *appinfo = lfirst_node(AppendRelInfo, lc);
 
+		if (list_member_ptr(glob->appendRelations, appinfo))
+			continue;
+
 		/* adjust RT indexes */
 		appinfo->parent_relid += rtoffset;
 		appinfo->child_relid += rtoffset;
