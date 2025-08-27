@@ -13,7 +13,7 @@
 -- end_matchsubs
 --
 --
--- We want to have an error between the point where all segments are prepared and our decision
+-- We want to have an error between the point where all segments are prepared and our decision 
 -- to write the Distributed Commit record.
 --
 -- start_ignore
@@ -51,7 +51,8 @@ SELECT * FROM distxact1_1;
 ---
 (0 rows)
 
--- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast
+--
+-- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast 
 -- to cleanup.
 --
 BEGIN;
@@ -131,8 +132,8 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
 (1 row)
 
 --
--- VARIANT of we want to have an error between the point where all segments are prepared and our decision
--- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.
+-- VARIANT of we want to have an error between the point where all segments are prepared and our decision 
+-- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.  
 --
 BEGIN;
 INSERT INTO distxact1_4 VALUES (41);
@@ -173,7 +174,7 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
 -- Fail general commands
 --
 --
--- Invoke a failure during a CREATE TABLE command.
+-- Invoke a failure during a CREATE TABLE command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_mpp_query_start', 'error', 'MPPEXEC UTILITY',
@@ -205,7 +206,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact2_1;
 --
--- Invoke a failure during a CREATE TABLE command.
+-- Invoke a failure during a CREATE TABLE command.  
 -- Action_Target = 2 is SQL.
 --
 SELECT gp_inject_fault('dtm_exec_mpp_query_end', 'error', 'MPPEXEC UTILITY',
@@ -240,7 +241,7 @@ DROP TABLE distxact2_2;
 -- xact.c DTM related dispatches
 --
 --
--- Invoke a failure during a SAVEPOINT command.
+-- Invoke a failure during a SAVEPOINT command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_simple_query_start', 'error', 'SAVEPOINT',
@@ -275,7 +276,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact3_1;
 --
--- Invoke a failure during a RELEASE SAVEPOINT command.
+-- Invoke a failure during a RELEASE SAVEPOINT command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_simple_query_start', 'error', 'RELEASE',
@@ -319,7 +320,7 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact3_2;
 --
--- Invoke a failure during a ROLLBACK TO SAVEPOINT command.
+-- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_simple_query_start', 'error', 'ROLLBACK',
@@ -1111,6 +1112,7 @@ SELECT * FROM abc ORDER BY 1;
 (4 rows)
 
 RESET default_transaction_read_only;
+ 
 DROP TABLE abc;
 -- Explicit transaction block will send Distributed Commit, even if there is only SET command in it.
 -- On the other hand, implicit transaction block involving only SET command will not send it.
@@ -1135,7 +1137,7 @@ INFO:  Distributed transaction command 'Distributed Commit (one-phase)' to ALL c
 set optimizer=false;
 -- 3. still implicit transaction block, but with UPDATE that will send DTX protocol command to *some* QEs
 -- due to direct dispatch. Planner needs to be used for direct dispatch here.
--- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command
+-- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command 
 -- that they are not supposed to see.
 select dtx_set_bug();
 INFO:  (slice 0) Dispatch command to SINGLE content

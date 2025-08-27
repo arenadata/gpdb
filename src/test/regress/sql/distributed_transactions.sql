@@ -13,7 +13,7 @@
 -- end_matchsubs
 --
 --
--- We want to have an error between the point where all segments are prepared and our decision
+-- We want to have an error between the point where all segments are prepared and our decision 
 -- to write the Distributed Commit record.
 --
 
@@ -45,7 +45,8 @@ RESET debug_abort_after_distributed_prepared;
 
 SELECT * FROM distxact1_1;
 
--- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast
+--
+-- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast 
 -- to cleanup.
 --
 BEGIN;
@@ -88,8 +89,8 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
   FROM gp_segment_configuration WHERE content=1 AND role='p' ;
 
 --
--- VARIANT of we want to have an error between the point where all segments are prepared and our decision
--- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.
+-- VARIANT of we want to have an error between the point where all segments are prepared and our decision 
+-- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.  
 --
 BEGIN;
 INSERT INTO distxact1_4 VALUES (41);
@@ -116,7 +117,7 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
 
 
 --
--- Invoke a failure during a CREATE TABLE command.
+-- Invoke a failure during a CREATE TABLE command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_mpp_query_start', 'error', 'MPPEXEC UTILITY',
@@ -134,7 +135,7 @@ DROP TABLE distxact2_1;
 
 
 --
--- Invoke a failure during a CREATE TABLE command.
+-- Invoke a failure during a CREATE TABLE command.  
 -- Action_Target = 2 is SQL.
 --
 SELECT gp_inject_fault('dtm_exec_mpp_query_end', 'error', 'MPPEXEC UTILITY',
@@ -156,7 +157,7 @@ DROP TABLE distxact2_2;
 --
 
 --
--- Invoke a failure during a SAVEPOINT command.
+-- Invoke a failure during a SAVEPOINT command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_simple_query_start', 'error', 'SAVEPOINT',
@@ -177,7 +178,7 @@ DROP TABLE distxact3_1;
 
 
 --
--- Invoke a failure during a RELEASE SAVEPOINT command.
+-- Invoke a failure during a RELEASE SAVEPOINT command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_simple_query_start', 'error', 'RELEASE',
@@ -208,7 +209,7 @@ DROP TABLE distxact3_2;
 
 
 --
--- Invoke a failure during a ROLLBACK TO SAVEPOINT command.
+-- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
 --
 --SET debug_print_full_dtm=true;
 SELECT gp_inject_fault('dtm_exec_simple_query_start', 'error', 'ROLLBACK',
@@ -642,7 +643,7 @@ ROLLBACK AND CHAIN;  -- error
 SELECT * FROM abc ORDER BY 1;
 
 RESET default_transaction_read_only;
-
+ 
 DROP TABLE abc;
 
 -- Explicit transaction block will send Distributed Commit, even if there is only SET command in it.
@@ -672,7 +673,7 @@ set optimizer=false;
 
 -- 3. still implicit transaction block, but with UPDATE that will send DTX protocol command to *some* QEs
 -- due to direct dispatch. Planner needs to be used for direct dispatch here.
--- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command
+-- This is to verify that the QEs that are not involved in the UDPATE won't receive DTX protocol command 
 -- that they are not supposed to see.
 select dtx_set_bug();
 
