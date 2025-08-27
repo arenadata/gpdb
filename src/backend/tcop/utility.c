@@ -2072,6 +2072,11 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 	wrapper->stmt_location = context->pstmt->stmt_location;
 	wrapper->stmt_len = context->pstmt->stmt_len;
 
+	/* Do not dispatch utility statement under alter table */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		gp_dispatch_utility_statement = false;
+
+	PG_TRY();
 	ProcessUtility(wrapper,
 				   context->queryString,
 				   PROCESS_UTILITY_SUBCOMMAND,
@@ -2079,6 +2084,9 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 				   context->queryEnv,
 				   None_Receiver,
 				   NULL);
+	PG_FINALLY();
+		gp_dispatch_utility_statement = true;
+	PG_END_TRY();
 
 	EventTriggerAlterTableStart(context->pstmt->utilityStmt);
 	EventTriggerAlterTableRelid(context->relid);

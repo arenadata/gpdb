@@ -5695,11 +5695,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 									 beforeStmts,
 									 &afterStmts);
 
-	/* Do not dispatch utility statement under alter table */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		gp_dispatch_utility_statement = false;
-
-	PG_TRY();
 	/* Execute any statements that should happen before these subcommand(s) */
 	foreach(lc, *beforeStmts)
 	{
@@ -5708,9 +5703,6 @@ ATParseTransformCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		ProcessUtilityForAlterTable(stmt, context);
 		CommandCounterIncrement();
 	}
-	PG_FINALLY();
-		gp_dispatch_utility_statement = true;
-	PG_END_TRY();
 
 	/* Examine the transformed subcommands and schedule them appropriately */
 	foreach(lc, atstmt->cmds)
@@ -6197,11 +6189,6 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			table_close(rel, NoLock);
 	}
 
-	/* Do not dispatch utility statement under alter table */
-	if (Gp_role == GP_ROLE_DISPATCH)
-		gp_dispatch_utility_statement = false;
-
-	PG_TRY();
 	/* Finally, run any afterStmts that were queued up */
 	foreach(ltab, *wqueue)
 	{
@@ -6216,9 +6203,6 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 			CommandCounterIncrement();
 		}
 	}
-	PG_FINALLY();
-		gp_dispatch_utility_statement = true;
-	PG_END_TRY();
 }
 
 /*
