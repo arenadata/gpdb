@@ -330,7 +330,6 @@ extern bool gp_enable_statement_trigger;
 
 extern bool gp_ignore_error_table;
 
-extern bool	Debug_dtm_action_primary;
 extern bool Debug_shareinput_xslice;
 
 extern bool gp_log_optimization_time;
@@ -400,14 +399,6 @@ typedef enum
 	DEBUG_DTM_ACTION_TARGET_LAST = 2
 }	DebugDtmActionTarget;
 
-extern char *Debug_dtm_action_sql_command_tag;
-extern char *Debug_dtm_action_str;
-extern char *Debug_dtm_action_target_str;
-extern int Debug_dtm_action;
-extern int Debug_dtm_action_target;
-extern int Debug_dtm_action_protocol;
-extern int Debug_dtm_action_segment;
-extern int Debug_dtm_action_nestinglevel;
 
 
 /* Enable check for compatibility of encoding and locale in createdb */
