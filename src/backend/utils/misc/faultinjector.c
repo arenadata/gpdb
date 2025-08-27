@@ -281,59 +281,67 @@ checkBgProcessSkipFault(const char* faultName)
 	return false;
 }
 
-struct dtx2ddl {
+struct dtx2ddl
+{
 	DtxProtocolCommand cmd;
 	DDLStatement_e val;
 };
 
 static const struct dtx2ddl dtxcmdmap[] = {
-	{DTX_PROTOCOL_COMMAND_NONE,DDLNotSpecified},
-	{DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED,AbortNoPrepared},
-	{DTX_PROTOCOL_COMMAND_PREPARE,Prepare},
-	{DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED,AbortSomePrepared},
-	{DTX_PROTOCOL_COMMAND_COMMIT_ONEPHASE,CommitOnePhase},
-	{DTX_PROTOCOL_COMMAND_COMMIT_PREPARED,CommitPrepared},
-	{DTX_PROTOCOL_COMMAND_ABORT_PREPARED,AbortPrepared},
-	{DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED,RetryCommitPrepared},
-	{DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED,RetryAbortPrepared},
-	{DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED,RecoveryCommitPrepared},
-	{DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED,RecoveryAbortPrepared},
-	{DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL,SubtransactionBegin},
-	{DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL,SubtransactionRelease},
-	{DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL,SubtransactionRollback},
+	{DTX_PROTOCOL_COMMAND_NONE, DDLNotSpecified},
+	{DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, AbortNoPrepared},
+	{DTX_PROTOCOL_COMMAND_PREPARE, Prepare},
+	{DTX_PROTOCOL_COMMAND_ABORT_SOME_PREPARED, AbortSomePrepared},
+	{DTX_PROTOCOL_COMMAND_COMMIT_ONEPHASE, CommitOnePhase},
+	{DTX_PROTOCOL_COMMAND_COMMIT_PREPARED, CommitPrepared},
+	{DTX_PROTOCOL_COMMAND_ABORT_PREPARED, AbortPrepared},
+	{DTX_PROTOCOL_COMMAND_RETRY_COMMIT_PREPARED, RetryCommitPrepared},
+	{DTX_PROTOCOL_COMMAND_RETRY_ABORT_PREPARED, RetryAbortPrepared},
+	{DTX_PROTOCOL_COMMAND_RECOVERY_COMMIT_PREPARED, RecoveryCommitPrepared},
+	{DTX_PROTOCOL_COMMAND_RECOVERY_ABORT_PREPARED, RecoveryAbortPrepared},
+	{DTX_PROTOCOL_COMMAND_SUBTRANSACTION_BEGIN_INTERNAL, SubtransactionBegin},
+	{DTX_PROTOCOL_COMMAND_SUBTRANSACTION_RELEASE_INTERNAL, SubtransactionRelease},
+	{DTX_PROTOCOL_COMMAND_SUBTRANSACTION_ROLLBACK_INTERNAL, SubtransactionRollback},
 	{0, DDLMax}
 };
 
 
-FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_DTX(
-	const char* 		faultName,
-	DtxProtocolCommand	dtxProtocolCommand,
-	int					nestingLevel)
+FaultInjectorType_e
+FaultInjector_InjectFaultIfSet_out_of_line_DTX(
+											   const char *faultName,
+											   DtxProtocolCommand dtxProtocolCommand,
+											   int nestingLevel)
 {
 	const struct dtx2ddl *cmd;
 	DDLStatement_e stmt = DDLNotSpecified;
-	for (cmd=dtxcmdmap;cmd->val < DDLMax;cmd++) {
-		if (cmd->cmd == dtxProtocolCommand) {
+
+	for (cmd = dtxcmdmap; cmd->val < DDLMax; cmd++)
+	{
+		if (cmd->cmd == dtxProtocolCommand)
+		{
 			stmt = cmd->val;
 			break;
 		}
 	}
-	return FaultInjector_InjectFaultIfSet_out_of_line(faultName,stmt,"","",
-                                                      nestingLevel);
+	return FaultInjector_InjectFaultIfSet_out_of_line(faultName, stmt, "", "",
+													  nestingLevel);
 }
 
-FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_SQL(
-	const char*		faultName,
-	const char*		statement,
-	int 			nestingLevel)
+FaultInjectorType_e
+FaultInjector_InjectFaultIfSet_out_of_line_SQL(
+											   const char *faultName,
+											   const char *statement,
+											   int nestingLevel)
 {
 	DDLStatement_e ddlStatement = FaultInjectorDDLStringToEnum(statement);
+
 	if (ddlStatement == DDLMax)
 		return FaultInjectorTypeNotSpecified;
 	return FaultInjector_InjectFaultIfSet_out_of_line(faultName, ddlStatement, "", "",
-											   nestingLevel);
+													  nestingLevel);
 
 }
+
 FaultInjectorType_e
 FaultInjector_InjectFaultIfSet_out_of_line(
 							   const char*				 faultName,
@@ -412,8 +420,8 @@ FaultInjector_InjectFaultIfSet_out_of_line(
 		if (strlen(entryShared->tableName) > 0 && strcmp(entryShared->tableName, tableNameLocal) != 0)
 			/* fault injection is not set for the specified table name */
 			break;
-		if (entryShared->nestingLevel !=0 && entryShared->nestingLevel != nestingLevel)
-		    /* fault injection is set for another nesting level */
+		if (entryShared->nestingLevel != 0 && entryShared->nestingLevel != nestingLevel)
+			/* fault injection is set for another nesting level */
 			break;
 		if (entryShared->faultInjectorState == FaultInjectorStateCompleted ||
 			entryShared->faultInjectorState == FaultInjectorStateFailed) {
