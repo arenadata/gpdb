@@ -4097,7 +4097,7 @@ attrMap(TupleConversionMap *map, AttrNumber anum)
 	{
 		for (int i = 0; i < map->outdesc->natts; i++)
 		{
-			if (map->attrMap[i] == anum)
+			if (map->attrMap->attnums[i] == anum)
 				return i + 1;
 		}
 	}
