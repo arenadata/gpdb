@@ -1129,7 +1129,7 @@ transformOnConflictClause(ParseState *pstate,
 	if (onConflictClause->action == ONCONFLICT_UPDATE)
 	{
 		Relation	targetrel = pstate->p_target_relation;
-		RangeTblEntry    *rte = pstate->p_target_rangetblentry;
+		RangeTblEntry    *rte = pstate->p_target_nsitem->p_rte; /* GPDB */
 		ParseNamespaceItem *exclNSItem;
 		RangeTblEntry *exclRte;
 
