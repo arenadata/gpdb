@@ -3044,6 +3044,7 @@ _outSpecialJoinInfo(StringInfo str, const SpecialJoinInfo *node)
 	WRITE_NODE_FIELD(semi_operators);
 	WRITE_NODE_FIELD(semi_rhs_exprs);
 }
+#endif /* COMPILING_BINARY_FUNCS */
 
 static void
 _outAppendRelInfo(StringInfo str, const AppendRelInfo *node)
@@ -3060,6 +3061,7 @@ _outAppendRelInfo(StringInfo str, const AppendRelInfo *node)
 	WRITE_OID_FIELD(parent_reloid);
 }
 
+#ifndef COMPILING_BINARY_FUNCS
 static void
 _outPlaceHolderInfo(StringInfo str, const PlaceHolderInfo *node)
 {
