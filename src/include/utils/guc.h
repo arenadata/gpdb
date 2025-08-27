@@ -377,28 +377,6 @@ extern bool execute_pruned_plan;
 extern int gp_max_partition_level;
 extern bool gp_enable_relsize_collection;
 
-/* Debug DTM Action */
-typedef enum
-{
-	DEBUG_DTM_ACTION_NONE = 0,
-	DEBUG_DTM_ACTION_DELAY = 1,
-	DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND = 2,
-	DEBUG_DTM_ACTION_FAIL_END_COMMAND = 3,
-	DEBUG_DTM_ACTION_PANIC_BEGIN_COMMAND = 4,
-
-	DEBUG_DTM_ACTION_LAST = 4
-}	DebugDtmAction;
-
-/* Debug DTM Action */
-typedef enum
-{
-	DEBUG_DTM_ACTION_TARGET_NONE = 0,
-	DEBUG_DTM_ACTION_TARGET_PROTOCOL = 1,
-	DEBUG_DTM_ACTION_TARGET_SQL = 2,
-
-	DEBUG_DTM_ACTION_TARGET_LAST = 2
-}	DebugDtmActionTarget;
-
 
 
 /* Enable check for compatibility of encoding and locale in createdb */
