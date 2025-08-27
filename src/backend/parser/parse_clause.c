@@ -657,6 +657,7 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 					A_Const *arg_val;
 					List *qualified_name_list;
 					RangeVar *rel;
+					ParseNamespaceItem *nsitem;
 
 					arg_val = linitial(fc->args);
 					if (!IsA(&arg_val->val, String))
@@ -669,12 +670,12 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 					rel = makeRangeVarFromNameList(qualified_name_list);
 					rel->location = arg_val->location;
 
-					rte = addRangeTableEntry(pstate, rel, r->alias, false, true);
+					nsitem = addRangeTableEntry(pstate, rel, r->alias, false, true);
 
 					/* Now we set our special attribute in the rte. */
-					rte->forceDistRandom = true;
+					nsitem->p_rte->forceDistRandom = true;
 
-					return rte;
+					return nsitem;
 				}
 				else
 				{
