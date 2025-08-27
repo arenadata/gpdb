@@ -235,7 +235,7 @@ Already discussed in the introduction section.
 NOTES
 -----
 
- A fault point applies to ALL callers of a function. So special care
+* A fault point applies to ALL callers of a function.  So special care
 must be used if you are setting fault points in code shared amongst
 many backends, such as in parallel regress tests.
 
