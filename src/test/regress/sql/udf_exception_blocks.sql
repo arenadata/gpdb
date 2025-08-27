@@ -554,122 +554,122 @@ $$
 LANGUAGE plpgsql;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error','subtransaction_rollback',
-	'','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+					'subtransaction_rollback', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p';
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_release', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_release', '','',1,-1,0,dbid,-1,4)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid, -1, 4)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	'subtransaction_begin', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error', 
+	'subtransaction_begin', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_release', '','',1,-1,0,dbid,-1,4)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error', 
+	               'subtransaction_release',  '', '', 1, -1, 0, dbid, -1, 4)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_begin', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error', 
+	               'subtransaction_begin', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_rollback', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+	               'subtransaction_rollback', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_release', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_begin', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_begin', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_rollback', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_rollback', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_rollback', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_rollback', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_begin', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+	               'subtransaction_begin', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;

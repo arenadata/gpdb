@@ -229,8 +229,8 @@ SELECT insert_db(1, 'david');
 SELECT * from test_loop_tab;
  a |   b   
 ---+-------
- 2 | dummy
  1 | david
+ 2 | dummy
 (2 rows)
 
 INSERT INTO test_loop_tab select *,'abcdefghijklmnopqrstuvwxyz' from generate_series(1, 100);
@@ -708,9 +708,9 @@ $$
 LANGUAGE plpgsql;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error','subtransaction_rollback',
-	'','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+					'subtransaction_rollback', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p';
  gp_inject_fault 
 -----------------
  Success:
@@ -719,14 +719,14 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error','subtransacti
 DROP TABLE IF EXISTS employees;
 NOTICE:  table "employees" does not exist, skipping
 select test_protocol_allseg(1, 2,'f');
-ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_end' fault type:'error'  (seg0 127.0.1.1:7002 pid=238508)
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_end' fault type:'error'  (seg0 127.0.1.1:7002 pid=146235)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p';
  gp_inject_fault 
 -----------------
  Success:
@@ -734,9 +734,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_release', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -746,14 +746,14 @@ DROP TABLE IF EXISTS employees;
 NOTICE:  table "employees" does not exist, skipping
 select test_protocol_allseg(1, 2,'f');
 NOTICE:  catching the exception ...2
-ERROR:  transaction 42015 at level 1 already processed (current level 1) (cdbtm.c:2376)  (seg1 127.0.1.1:7003 pid=238507) (cdbtm.c:2376)
+ERROR:  transaction 41615890 at level 1 already processed (current level 1) (cdbtm.c:2299)  (seg2 192.168.235.128:7004 pid=654) (cdbtm.c:2299)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -761,9 +761,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_release', '','',1,-1,0,dbid,-1,4)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid, -1, 4)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -784,8 +784,8 @@ select * from employees;
   0 |       1 | m
 (1 row)
 
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -793,9 +793,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	'subtransaction_begin', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error', 
+	'subtransaction_begin', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -803,14 +803,14 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
 
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
-ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg0 127.0.1.1:7002 pid=238508)
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg0 127.0.1.1:7002 pid=146235)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during statement block entry
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -818,9 +818,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_release', '','',1,-1,0,dbid,-1,4)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error', 
+	               'subtransaction_release',  '', '', 1, -1, 0, dbid, -1, 4)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -841,8 +841,8 @@ select * from employees;
   0 |       1 | m
 (1 row)
 
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -850,9 +850,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_begin', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error', 
+	               'subtransaction_begin', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p';
  gp_inject_fault 
 -----------------
  Success:
@@ -860,14 +860,14 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
 
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
-ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_end' fault type:'error'  (seg0 127.0.1.1:7002 pid=238508)
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_end' fault type:'error'  (seg0 127.0.1.1:7002 pid=146235)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during statement block entry
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -875,9 +875,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_rollback', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+	               'subtransaction_rollback', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -898,8 +898,8 @@ select * from employees;
   0 |       1 | m
 (1 row)
 
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -907,9 +907,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_release', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -918,14 +918,14 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 NOTICE:  catching the exception ...2
-ERROR:  transaction 42027 at level 1 already processed (current level 1) (cdbtm.c:2376)  (seg1 127.0.1.1:7003 pid=238507) (cdbtm.c:2376)
+ERROR:  transaction 41615928 at level 1 already processed (current level 1) (cdbtm.c:2299)  (seg1 192.168.235.128:7003 pid=648) (cdbtm.c:2299)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -933,9 +933,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_begin', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_begin', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -956,8 +956,8 @@ select * from employees;
   0 |       1 | m
 (1 row)
 
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -965,9 +965,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_rollback', '','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_rollback', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -975,14 +975,14 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
 
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
-ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg0 127.0.1.1:7002 pid=238508)
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'error'  (seg0 127.0.1.1:7002 pid=146235)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
 select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -990,9 +990,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','error',
-	               'subtransaction_rollback', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'error',
+	               'subtransaction_rollback', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -1013,8 +1013,8 @@ select * from employees;
   0 |       1 | m
 (1 row)
 
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -1022,9 +1022,9 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
 
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','error',
-	               'subtransaction_begin', '','',1,-1,0,dbid,-1,3)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'error',
+	               'subtransaction_begin', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
@@ -1044,8 +1044,8 @@ select * from employees;
   0 |       1 | m
 (1 row)
 
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end','reset',dbid)
-  FROM gp_segment_configuration WHERE mode='s' and content=0 and role='p' ;
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_end', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content=0 and role='p' ;
  gp_inject_fault 
 -----------------
  Success:
