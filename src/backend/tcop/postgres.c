@@ -1576,7 +1576,7 @@ send_guc_to_QE(List *guc_list, bool is_restore)
 		PG_CATCH();
 		{
 			/*
-			 * report error as warning
+			 * report error as warning 
 			*/
 			if (!elog_dismiss(WARNING))
 			{
