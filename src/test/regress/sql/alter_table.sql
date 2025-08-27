@@ -2288,7 +2288,7 @@ ALTER TABLE ataddindex
 \d ataddindex
 DROP TABLE ataddindex;
 
-CREATE TABLE ataddindex(f1 VARCHAR(10));
+CREATE TABLE ataddindex(f1 VARCHAR(10)) DISTRIBUTED REPLICATED;
 INSERT INTO ataddindex(f1) VALUES ('foo'), ('a');
 ALTER TABLE ataddindex
   ALTER f1 SET DATA TYPE TEXT,

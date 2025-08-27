@@ -551,16 +551,15 @@ create table nv_child_2011 () inherits (nv_parent);
 alter table nv_child_2010 add check (d between '2010-01-01'::date and '2010-12-31'::date) not valid;
 alter table nv_child_2011 add check (d between '2011-01-01'::date and '2011-12-31'::date) not valid;
 explain (costs off) select * from nv_parent where d between '2011-08-01' and '2011-08-31';
-<<<<<<< HEAD
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2011 nv_parent_2
+         ->  Seq Scan on nv_child_2011 nv_parent_3
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
  Optimizer: Postgres query optimizer
 (9 rows)
@@ -571,11 +570,11 @@ explain (costs off) select * from nv_parent where d between '2011-08-01'::date a
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-         ->  Seq Scan on nv_child_2011 nv_parent_2
+         ->  Seq Scan on nv_child_2011 nv_parent_3
                Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
  Optimizer: Postgres query optimizer
 (9 rows)
@@ -585,84 +584,32 @@ explain (costs off) select * from nv_parent where d between '2009-08-01'::date a
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2011 nv_parent_2
+         ->  Seq Scan on nv_child_2011 nv_parent_3
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2009 nv_parent_3
+         ->  Seq Scan on nv_child_2009 nv_parent_4
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
  Optimizer: Postgres query optimizer
 (11 rows)
-=======
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2011 nv_parent_3
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-(7 rows)
-
-create table nv_child_2009 (check (d between '2009-01-01'::date and '2009-12-31'::date)) inherits (nv_parent);
-explain (costs off) select * from nv_parent where d between '2011-08-01'::date and '2011-08-31'::date;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-   ->  Seq Scan on nv_child_2011 nv_parent_3
-         Filter: ((d >= '08-01-2011'::date) AND (d <= '08-31-2011'::date))
-(7 rows)
-
-explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2011 nv_parent_3
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2009 nv_parent_4
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-(9 rows)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 -- after validation, the constraint should be used
 alter table nv_child_2011 VALIDATE CONSTRAINT nv_child_2011_d_check;
 explain (costs off) select * from nv_parent where d between '2009-08-01'::date and '2009-08-31'::date;
-<<<<<<< HEAD
                                    QUERY PLAN                                    
 ---------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
    ->  Append
-         ->  Seq Scan on nv_parent
+         ->  Seq Scan on nv_parent nv_parent_1
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2010 nv_parent_1
+         ->  Seq Scan on nv_child_2010 nv_parent_2
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-         ->  Seq Scan on nv_child_2009 nv_parent_2
+         ->  Seq Scan on nv_child_2009 nv_parent_3
                Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
  Optimizer: Postgres query optimizer
 (9 rows)
-=======
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
- Append
-   ->  Seq Scan on nv_parent nv_parent_1
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2010 nv_parent_2
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-   ->  Seq Scan on nv_child_2009 nv_parent_3
-         Filter: ((d >= '08-01-2009'::date) AND (d <= '08-31-2009'::date))
-(7 rows)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 -- add an inherited NOT VALID constraint
 alter table nv_parent add check (d between '2001-01-01'::date and '2099-12-31'::date) not valid;
@@ -2096,27 +2043,16 @@ select * from another;
 (3 rows)
 
 alter table another
-<<<<<<< HEAD
-  alter f1 type text using f2 || ' more',
-  alter f2 type bigint using f1 * 10;
-ERROR:  cannot alter type of a column used in a distribution policy
-select * from another;
- f1 |  f2   
-----+-------
-  1 | one
-  2 | two
-  3 | three
-=======
   alter f1 type text using f2 || ' and ' || f3 || ' more',
   alter f2 type bigint using f1 * 10,
   drop column f3;
+ERROR:  cannot alter type of a column used in a distribution policy
 select * from another;
-         f1         | f2 
---------------------+----
- one and uno more   | 10
- two and due more   | 20
- three and tre more | 30
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+ f1 |  f2   | f3  
+----+-------+-----
+  1 | one   | uno
+  2 | two   | due
+  3 | three | tre
 (3 rows)
 
 drop table another;
@@ -3718,69 +3654,48 @@ ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN c3 integer primary key;
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
+ERROR:  cannot add column with primary key constraint
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN IF NOT EXISTS c3 integer primary key; -- skipping because c3 already exists
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
-NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+ERROR:  cannot add column with primary key constraint
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer, -- skipping because c2 already exists
 	ADD COLUMN IF NOT EXISTS c3 integer, -- skipping because c3 already exists
 	ADD COLUMN c4 integer REFERENCES test_add_column;
 NOTICE:  column "c2" of relation "test_add_column" already exists, skipping
-NOTICE:  column "c3" of relation "test_add_column" already exists, skipping
+ERROR:  there is no primary key for referenced table "test_add_column"
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c4 integer REFERENCES test_add_column;
-NOTICE:  column "c4" of relation "test_add_column" already exists, skipping
+ERROR:  there is no primary key for referenced table "test_add_column"
 \d test_add_column
           Table "public.test_add_column"
  Column |  Type   | Collation | Nullable | Default 
 --------+---------+-----------+----------+---------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 8);
@@ -3790,17 +3705,9 @@ ALTER TABLE test_add_column
 --------+---------+-----------+----------+---------------------------------------------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
  c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Check constraints:
     "test_add_column_c5_check" CHECK (c5 > 8)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
 ALTER TABLE test_add_column
 	ADD COLUMN IF NOT EXISTS c5 SERIAL CHECK (c5 > 10);
@@ -3811,29 +3718,15 @@ NOTICE:  column "c5" of relation "test_add_column" already exists, skipping
 --------+---------+-----------+----------+---------------------------------------------
  c1     | integer |           |          | 
  c2     | integer |           |          | 
- c3     | integer |           | not null | 
- c4     | integer |           |          | 
  c5     | integer |           | not null | nextval('test_add_column_c5_seq'::regclass)
-Indexes:
-    "test_add_column_pkey" PRIMARY KEY, btree (c3)
 Check constraints:
     "test_add_column_c5_check" CHECK (c5 > 8)
-Foreign-key constraints:
-    "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
-Referenced by:
-    TABLE "test_add_column" CONSTRAINT "test_add_column_c4_fkey" FOREIGN KEY (c4) REFERENCES test_add_column(c3)
 
                Sequence "public.test_add_column_c5_seq"
   Type   | Start | Minimum |  Maximum   | Increment | Cycles? | Cache 
 ---------+-------+---------+------------+-----------+---------+-------
  integer |     1 |       1 | 2147483647 |         1 | no      |     1
 Owned by: public.test_add_column.c5
-
- Index "public.test_add_column_pkey"
- Column |  Type   | Key? | Definition 
---------+---------+------+------------
- c3     | integer | yes  | c3
-primary key, btree, for table "public.test_add_column"
 
 DROP TABLE test_add_column;
 \d test_add_column*
@@ -3853,7 +3746,7 @@ Indexes:
     "ataddindexi0" PRIMARY KEY, btree (f1)
 
 DROP TABLE ataddindex;
-CREATE TABLE ataddindex(f1 VARCHAR(10));
+CREATE TABLE ataddindex(f1 VARCHAR(10)) DISTRIBUTED REPLICATED;
 INSERT INTO ataddindex(f1) VALUES ('foo'), ('a');
 ALTER TABLE ataddindex
   ALTER f1 SET DATA TYPE TEXT,
@@ -3865,6 +3758,7 @@ ALTER TABLE ataddindex
  f1     | text |           |          | 
 Indexes:
     "ataddindex_expr_excl" EXCLUDE USING btree ((f1 ~~ 'a'::text) WITH =)
+Distributed Replicated
 
 DROP TABLE ataddindex;
 -- unsupported constraint types for partitioned tables

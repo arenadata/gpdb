@@ -23,24 +23,14 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-<<<<<<< HEAD
                ->  Append
-                     ->  Seq Scan on a_star
-                     ->  Seq Scan on b_star a_star_1
-                     ->  Seq Scan on c_star a_star_2
-                     ->  Seq Scan on d_star a_star_3
-                     ->  Seq Scan on e_star a_star_4
-                     ->  Seq Scan on f_star a_star_5
+                     ->  Seq Scan on a_star a_star_1
+                     ->  Seq Scan on b_star a_star_2
+                     ->  Seq Scan on c_star a_star_3
+                     ->  Seq Scan on d_star a_star_4
+                     ->  Seq Scan on e_star a_star_5
+                     ->  Seq Scan on f_star a_star_6
  Optimizer: Postgres query optimizer
-=======
-               ->  Parallel Append
-                     ->  Parallel Seq Scan on d_star a_star_4
-                     ->  Parallel Seq Scan on f_star a_star_6
-                     ->  Parallel Seq Scan on e_star a_star_5
-                     ->  Parallel Seq Scan on b_star a_star_2
-                     ->  Parallel Seq Scan on c_star a_star_3
-                     ->  Parallel Seq Scan on a_star a_star_1
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 (11 rows)
 
 select round(avg(aa)), sum(aa) from a_star a1;
@@ -59,24 +49,14 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-<<<<<<< HEAD
                ->  Append
-                     ->  Seq Scan on a_star
-                     ->  Seq Scan on b_star a_star_1
-                     ->  Seq Scan on c_star a_star_2
-                     ->  Seq Scan on d_star a_star_3
-                     ->  Seq Scan on e_star a_star_4
-                     ->  Seq Scan on f_star a_star_5
- Optimizer: Postgres query optimizer
-=======
-               ->  Parallel Append
-                     ->  Seq Scan on d_star a_star_4
+                     ->  Seq Scan on a_star a_star_1
+                     ->  Seq Scan on b_star a_star_2
                      ->  Seq Scan on c_star a_star_3
-                     ->  Parallel Seq Scan on f_star a_star_6
-                     ->  Parallel Seq Scan on e_star a_star_5
-                     ->  Parallel Seq Scan on b_star a_star_2
-                     ->  Parallel Seq Scan on a_star a_star_1
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+                     ->  Seq Scan on d_star a_star_4
+                     ->  Seq Scan on e_star a_star_5
+                     ->  Seq Scan on f_star a_star_6
+ Optimizer: Postgres query optimizer
 (11 rows)
 
 select round(avg(aa)), sum(aa) from a_star a2;
@@ -97,24 +77,14 @@ explain (costs off)
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-<<<<<<< HEAD
                ->  Append
-                     ->  Seq Scan on a_star
-                     ->  Seq Scan on b_star a_star_1
-                     ->  Seq Scan on c_star a_star_2
-                     ->  Seq Scan on d_star a_star_3
-                     ->  Seq Scan on e_star a_star_4
-                     ->  Seq Scan on f_star a_star_5
- Optimizer: Postgres query optimizer
-=======
-               ->  Parallel Append
-                     ->  Seq Scan on d_star a_star_4
-                     ->  Seq Scan on f_star a_star_6
-                     ->  Seq Scan on e_star a_star_5
+                     ->  Seq Scan on a_star a_star_1
                      ->  Seq Scan on b_star a_star_2
                      ->  Seq Scan on c_star a_star_3
-                     ->  Seq Scan on a_star a_star_1
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
+                     ->  Seq Scan on d_star a_star_4
+                     ->  Seq Scan on e_star a_star_5
+                     ->  Seq Scan on f_star a_star_6
+ Optimizer: Postgres query optimizer
 (11 rows)
 
 select round(avg(aa)), sum(aa) from a_star a3;
@@ -139,22 +109,13 @@ explain (costs off)
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Append
-<<<<<<< HEAD
-                     ->  Seq Scan on a_star
-                     ->  Seq Scan on b_star a_star_1
-                     ->  Seq Scan on c_star a_star_2
-                     ->  Seq Scan on d_star a_star_3
-                     ->  Seq Scan on e_star a_star_4
-                     ->  Seq Scan on f_star a_star_5
+                     ->  Seq Scan on a_star a_star_1
+                     ->  Seq Scan on b_star a_star_2
+                     ->  Seq Scan on c_star a_star_3
+                     ->  Seq Scan on d_star a_star_4
+                     ->  Seq Scan on e_star a_star_5
+                     ->  Seq Scan on f_star a_star_6
  Optimizer: Postgres query optimizer
-=======
-                     ->  Parallel Seq Scan on a_star a_star_1
-                     ->  Parallel Seq Scan on b_star a_star_2
-                     ->  Parallel Seq Scan on c_star a_star_3
-                     ->  Parallel Seq Scan on d_star a_star_4
-                     ->  Parallel Seq Scan on e_star a_star_5
-                     ->  Parallel Seq Scan on f_star a_star_6
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 (11 rows)
 
 select round(avg(aa)), sum(aa) from a_star a4;
@@ -182,46 +143,26 @@ create table part_pa_test_p2 partition of part_pa_test for values from (0) to (m
 explain (costs off)
 	select (select max((select pa1.b from part_pa_test pa1 where pa1.a = pa2.a)))
 	from part_pa_test pa2;
-<<<<<<< HEAD
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
                ->  Append
-                     ->  Seq Scan on part_pa_test_p1 pa2
-                     ->  Seq Scan on part_pa_test_p2 pa2_1
+                     ->  Seq Scan on part_pa_test_p1 pa2_1
+                     ->  Seq Scan on part_pa_test_p2 pa2_2
                SubPlan 1
                  ->  Result
                        Filter: (pa1.a = pa2.a)
                        ->  Materialize
                              ->  Broadcast Motion 3:3  (slice2; segments: 3)
                                    ->  Append
-                                         ->  Seq Scan on part_pa_test_p1 pa1
-                                         ->  Seq Scan on part_pa_test_p2 pa1_1
+                                         ->  Seq Scan on part_pa_test_p1 pa1_1
+                                         ->  Seq Scan on part_pa_test_p2 pa1_2
    SubPlan 2
      ->  Result
  Optimizer: Postgres query optimizer
 (17 rows)
-=======
-                          QUERY PLAN                          
---------------------------------------------------------------
- Aggregate
-   ->  Gather
-         Workers Planned: 3
-         ->  Parallel Append
-               ->  Parallel Seq Scan on part_pa_test_p1 pa2_1
-               ->  Parallel Seq Scan on part_pa_test_p2 pa2_2
-   SubPlan 2
-     ->  Result
-   SubPlan 1
-     ->  Append
-           ->  Seq Scan on part_pa_test_p1 pa1_1
-                 Filter: (a = pa2.a)
-           ->  Seq Scan on part_pa_test_p2 pa1_2
-                 Filter: (a = pa2.a)
-(14 rows)
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 drop table part_pa_test;
 -- test with leader participation disabled
