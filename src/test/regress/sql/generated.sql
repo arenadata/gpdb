@@ -337,12 +337,8 @@ CREATE TABLE gtest27 (
     b int,
     x int GENERATED ALWAYS AS ((a + b) * 2) STORED
 );
-<<<<<<< HEAD
 ALTER TABLE gtest27 SET DISTRIBUTED RANDOMLY;
-INSERT INTO gtest27 (a) VALUES (3), (4);
-=======
 INSERT INTO gtest27 (a, b) VALUES (3, 7), (4, 11);
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 ALTER TABLE gtest27 ALTER COLUMN a TYPE text;  -- error
 ALTER TABLE gtest27 ALTER COLUMN x TYPE numeric;
 \d gtest27
