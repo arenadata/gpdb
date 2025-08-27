@@ -106,8 +106,7 @@ extern FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line(
 							   int						 nestingLevel);
 /* 
  * Version of fault injection function which receives string tag
- * instead of DDLStatement_e enumeration value
- *
+ * instead of DDLStatement_e enumeration value.
  */
 
 FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_SQL(
@@ -115,8 +114,9 @@ FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_SQL(
 	const char*		statement,
 	int 			nestingLevel);
 
-/* Version of fault Inlectio funticion whict receives DTXProtocolCommand
- * and translates it inti DDLStatement_e enumeratuoj value
+/* 
+ * Version of fault injection function which receives DTXProtocolCommand
+ * and translates it into DDLStatement_e enumeratuon value.
  */
 FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_DTX(
 	const char* 		faultName,
@@ -124,7 +124,7 @@ FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_DTX(
 	int					nestingLevel);
 #define FaultInjector_InjectFaultIfSet(faultName, ddlStatement, databaseName, tableName) \
 	(((*numActiveFaults_ptr) > 0) ? \
-	 FaultInjector_InjectFaultIfSet_out_of_line(faultName, ddlStatement, databaseName, tableName,0) : \
+	 FaultInjector_InjectFaultIfSet_out_of_line(faultName, ddlStatement, databaseName, tableName, 0) : \
 	 FaultInjectorTypeNotSpecified)
 
 #define FaultInjector_InjectFaultIfSet_DTX(faultName, ddlStatement, nestingLevel) \
@@ -141,7 +141,7 @@ extern int *numActiveFaults_ptr;
 
 extern char *InjectFault(
 	char *faultName, char *type, char *ddlStatement, char *databaseName,
-	char *tableName, int startOccurrence, int endOccurrence, int extraArg, int gpSessionid,int nestingLevel);
+	char *tableName, int startOccurrence, int endOccurrence, int extraArg, int gpSessionid, int nestingLevel);
 
 extern void HandleFaultMessage(const char* msg);
 
