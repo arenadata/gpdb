@@ -2078,13 +2078,13 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 
 	PG_TRY();
 	{
-	ProcessUtility(wrapper,
-				   context->queryString,
-				   PROCESS_UTILITY_SUBCOMMAND,
-				   context->params,
-				   context->queryEnv,
-				   None_Receiver,
-				   NULL);
+		ProcessUtility(wrapper,
+					   context->queryString,
+					   PROCESS_UTILITY_SUBCOMMAND,
+					   context->params,
+					   context->queryEnv,
+					   None_Receiver,
+					   NULL);
 	}
 	PG_FINALLY();
 	{
