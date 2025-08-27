@@ -20,7 +20,7 @@ RETURNS text
 AS 'MODULE_PATHNAME'
 LANGUAGE C VOLATILE STRICT NO SQL;
 
--- simpler versiion without nesting level
+-- simpler version without nesting level
 
 CREATE FUNCTION @extschema@.gp_inject_fault(
   faultname text,
