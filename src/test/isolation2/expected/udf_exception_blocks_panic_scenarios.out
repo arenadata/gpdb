@@ -51,7 +51,7 @@ SELECT role, preferred_role, content, mode, status FROM gp_segment_configuration
 (8 rows)
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic','subtransaction_begin','','',1,-1,0,dbid) FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_begin', '', '', 1, -1, 0, dbid) FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
  gp_inject_fault 
 -----------------
  Success:        
@@ -59,7 +59,7 @@ SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic','subtransac
 DROP TABLE IF EXISTS employees;
 DROP TABLE
 select test_protocol_allseg(1, 2,'f');
-ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'panic'  (seg0 127.0.1.1:7002 pid=124941)
+ERROR:  fault triggered, fault name:'exec_mpp_dtx_protocol_command_start' fault type:'panic'  (seg0 127.0.1.1:7002 pid=186982)
 CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 9 during statement block entry
 -- make sure segment recovery is complete after panic.
 0U: select 1;
@@ -72,42 +72,14 @@ select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid) FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid) FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
  gp_inject_fault 
 -----------------
  Success:        
 (1 row)
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic', 'subtransaction_release','','',1,-1,0,dbid) FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
- gp_inject_fault 
------------------
- Success:        
-(1 row)
-DROP TABLE IF EXISTS employees;
-DROP TABLE
-select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
-CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 19 during exception cleanup
--- make sure segment recovery is complete after panic.
-0U: select 1;
- ?column? 
-----------
- 1        
-(1 row)
-0Uq: ... <quitting>
-select * from employees;
-ERROR:  relation "employees" does not exist
-LINE 1: select * from employees;
-                      ^
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid) FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
- gp_inject_fault 
------------------
- Success:        
-(1 row)
---
---
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic', 'subtransaction_release','','',1,-1,0,dbid,-1,4) from gp_segment_configuration where role = 'p' and mode = 's' AND content='0';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_release', '', '', 1, -1, 0, dbid) FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
  gp_inject_fault 
 -----------------
  Success:        
@@ -128,14 +100,42 @@ select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid) from gp_segment_configuration where role = 'p' and mode = 's' AND content='0';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid) FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
  gp_inject_fault 
 -----------------
  Success:        
 (1 row)
 --
 --
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic', 'subtransaction_rollback','','',1,-1,0,dbid,-1,3) from gp_segment_configuration where role='p' and mode='s' and content='0';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_release', '', '', 1, -1, 0, dbid, -1, 4) FROM gp_segment_configuration WHERE role = 'p' AND content = '0';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+DROP TABLE IF EXISTS employees;
+DROP TABLE
+select test_protocol_allseg(1, 2,'f');
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
+CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 19 during exception cleanup
+-- make sure segment recovery is complete after panic.
+0U: select 1;
+ ?column? 
+----------
+ 1        
+(1 row)
+0Uq: ... <quitting>
+select * from employees;
+ERROR:  relation "employees" does not exist
+LINE 1: select * from employees;
+                      ^
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid) FROM gp_segment_configuration where role = 'p' AND content = '0';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+--
+--
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_rollback', '', '', 1, -1, 0, dbid, -1, 3) FROM gp_segment_configuration where role = 'p' and content = '0';
  gp_inject_fault 
 -----------------
  Success:        
@@ -156,41 +156,14 @@ select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset', dbid) from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = '0';
  gp_inject_fault 
 -----------------
  Success:        
 (1 row)
 --
 --
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic', 'subtransaction_rollback','','',1,-1,0,dbid) from gp_segment_configuration where role='p' and mode='s' and content='0';
- gp_inject_fault 
------------------
- Success:        
-(1 row)
-DROP TABLE IF EXISTS employees;
-DROP TABLE
-select test_protocol_allseg(1, 2,'f');
-ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
-CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
--- make sure segment recovery is complete after panic.
-0U: select 1;
- ?column? 
-----------
- 1        
-(1 row)
-0Uq: ... <quitting>
-select * from employees;
-ERROR:  relation "employees" does not exist
-LINE 1: select * from employees;
-                      ^
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid) from gp_segment_configuration where role='p' and mode='is' and content='0';
- gp_inject_fault 
------------------
-(0 rows)
---
---
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic', 'subtransaction_begin','','',1,-1,0,dbid,-1,3) from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_rollback', '', '', 1, -1, 0, dbid) from gp_segment_configuration where role = 'p' and content = '0';
  gp_inject_fault 
 -----------------
  Success:        
@@ -211,7 +184,35 @@ select * from employees;
 ERROR:  relation "employees" does not exist
 LINE 1: select * from employees;
                       ^
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid) from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = '0';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+--
+--
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_begin', '', '', 1, -1, 0, dbid, -1, 3) from gp_segment_configuration where role = 'p' and content = '0';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+DROP TABLE IF EXISTS employees;
+DROP TABLE
+select test_protocol_allseg(1, 2,'f');
+ERROR:  DTX RollbackAndReleaseCurrentSubTransaction dispatch failed
+CONTEXT:  PL/pgSQL function test_protocol_allseg(integer,integer,character) line 18 during exception cleanup
+-- make sure segment recovery is complete after panic.
+0U: select 1;
+ ?column? 
+----------
+ 1        
+(1 row)
+0Uq: ... <quitting>
+select * from employees;
+ERROR:  relation "employees" does not exist
+LINE 1: select * from employees;
+                      ^
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid) from gp_segment_configuration where role = 'p' and content = '0';
  gp_inject_fault 
 -----------------
  Success:        

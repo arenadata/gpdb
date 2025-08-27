@@ -74,80 +74,80 @@ LANGUAGE plpgsql;
 SELECT role, preferred_role, content, mode, status FROM gp_segment_configuration;
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic','subtransaction_begin','','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic', 'subtransaction_begin', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 -- make sure segment recovery is complete after panic.
 0U: select 1;
 0Uq:
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
 --
 --
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic',
-                       'subtransaction_release','','',1,-1,0,dbid)
-  FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic',
+                       'subtransaction_release', '', '', 1, -1, 0, dbid)
+  FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 -- make sure segment recovery is complete after panic.
 0U: select 1;
 0Uq:
 select * from employees;
-SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  FROM gp_segment_configuration WHERE content='0' AND mode='s' AND role='p';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  FROM gp_segment_configuration WHERE content = '0' AND role = 'p';
 --
 --
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic',
-	               'subtransaction_release','','',1,-1,0,dbid,-1,4)
-       from gp_segment_configuration where role = 'p' and mode = 's' AND content='0';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic',
+	               'subtransaction_release', '', '', 1, -1, 0, dbid, -1, 4)
+       FROM gp_segment_configuration WHERE role = 'p' AND content = '0';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 -- make sure segment recovery is complete after panic.
 0U: select 1;
 0Uq:
 select * from employees;
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-       from gp_segment_configuration where role = 'p' and mode = 's' AND content='0';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+       FROM gp_segment_configuration where role = 'p' AND content = '0';
 --
 --
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic',
-                       'subtransaction_rollback','','',1,-1,0,dbid,-1,3)
-  from gp_segment_configuration where role='p' and mode='s' and content='0';
+SELECT gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic',
+                       'subtransaction_rollback', '', '', 1, -1, 0, dbid, -1, 3)
+  FROM gp_segment_configuration where role = 'p' and content = '0';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 -- make sure segment recovery is complete after panic.
 0U: select 1;
 0Uq:
 select * from employees;
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset', dbid)
-  from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  from gp_segment_configuration where role = 'p' and content = '0';
 --
 --
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic',
-                       'subtransaction_rollback','','',1,-1,0,dbid)
-  from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic',
+                       'subtransaction_rollback', '', '', 1, -1, 0, dbid)
+  from gp_segment_configuration where role = 'p' and content = '0';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 -- make sure segment recovery is complete after panic.
 0U: select 1;
 0Uq:
 select * from employees;
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  from gp_segment_configuration where role='p' and mode='is' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  from gp_segment_configuration where role = 'p' and content = '0';
 --
 --
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','panic',
-                       'subtransaction_begin','','',1,-1,0,dbid,-1,3)
-  from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'panic',
+                       'subtransaction_begin', '', '', 1, -1, 0, dbid, -1, 3)
+  from gp_segment_configuration where role = 'p' and content = '0';
 DROP TABLE IF EXISTS employees;
 select test_protocol_allseg(1, 2,'f');
 -- make sure segment recovery is complete after panic.
 0U: select 1;
 0Uq:
 select * from employees;
-select gp_inject_fault('exec_mpp_dtx_protocol_command_start','reset',dbid)
-  from gp_segment_configuration where role='p' and mode='s' and content='0';
+select gp_inject_fault('exec_mpp_dtx_protocol_command_start', 'reset', dbid)
+  from gp_segment_configuration where role = 'p' and content = '0';
 
 SELECT gp_inject_fault('fts_probe', 'reset', 1);
