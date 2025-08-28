@@ -1380,18 +1380,6 @@ ProcessUtilitySlow(ParseState *pstate,
 
 					if (OidIsValid(relid))
 					{
-<<<<<<< HEAD
-						/* Run parse analysis ... */
-						/*
-						 * GPDB: Like for CREATE TABLE, only do parse analysis
-						 * in the Query Dispatcher.
-						 */
-						if (Gp_role == GP_ROLE_EXECUTE)
-							stmts = list_make1(parsetree);
-						else
-							stmts = transformAlterTableStmt(relid, atstmt,
-															queryString);
-=======
 						AlterTableUtilityContext atcontext;
 
 						/* Set up info needed for recursive callbacks ... */
@@ -1400,7 +1388,6 @@ ProcessUtilitySlow(ParseState *pstate,
 						atcontext.relid = relid;
 						atcontext.params = params;
 						atcontext.queryEnv = queryEnv;
->>>>>>> 1281a5c907b41e992a66deb13c3aa61888a62268
 
 						/* ... ensure we have an event trigger context ... */
 						EventTriggerAlterTableStart(parsetree);
@@ -2085,13 +2072,25 @@ ProcessUtilityForAlterTable(Node *stmt, AlterTableUtilityContext *context)
 	wrapper->stmt_location = context->pstmt->stmt_location;
 	wrapper->stmt_len = context->pstmt->stmt_len;
 
-	ProcessUtility(wrapper,
-				   context->queryString,
-				   PROCESS_UTILITY_SUBCOMMAND,
-				   context->params,
-				   context->queryEnv,
-				   None_Receiver,
-				   NULL);
+	/* Do not dispatch utility statement under alter table */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		gp_dispatch_utility_statement = false;
+
+	PG_TRY();
+	{
+		ProcessUtility(wrapper,
+					   context->queryString,
+					   PROCESS_UTILITY_SUBCOMMAND,
+					   context->params,
+					   context->queryEnv,
+					   None_Receiver,
+					   NULL);
+	}
+	PG_FINALLY();
+	{
+		gp_dispatch_utility_statement = true;
+	}
+	PG_END_TRY();
 
 	EventTriggerAlterTableStart(context->pstmt->utilityStmt);
 	EventTriggerAlterTableRelid(context->relid);
