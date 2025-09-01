@@ -104,11 +104,11 @@ extern FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line(
 							   const char*				 databaseName,
 							   const char*				 tableName,
 							   int						 nestingLevel);
+
 /* 
  * Version of fault injection function which receives string tag
  * instead of DDLStatement_e enumeration value.
  */
-
 FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_SQL(
 	const char*		faultName,
 	const char*		statement,
@@ -141,7 +141,8 @@ extern int *numActiveFaults_ptr;
 
 extern char *InjectFault(
 	char *faultName, char *type, char *ddlStatement, char *databaseName,
-	char *tableName, int startOccurrence, int endOccurrence, int extraArg, int gpSessionid, int nestingLevel);
+	char *tableName, int startOccurrence, int endOccurrence, int extraArg,
+	int gpSessionid, int nestingLevel);
 
 extern void HandleFaultMessage(const char* msg);
 

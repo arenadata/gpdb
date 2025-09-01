@@ -287,7 +287,8 @@ struct dtx2ddl
 	DDLStatement_e val;
 };
 
-static const struct dtx2ddl dtxcmdmap[] = {
+static const struct dtx2ddl dtxcmdmap[] = 
+{
 	{DTX_PROTOCOL_COMMAND_NONE, DDLNotSpecified},
 	{DTX_PROTOCOL_COMMAND_ABORT_NO_PREPARED, AbortNoPrepared},
 	{DTX_PROTOCOL_COMMAND_PREPARE, Prepare},
@@ -307,8 +308,7 @@ static const struct dtx2ddl dtxcmdmap[] = {
 
 
 FaultInjectorType_e
-FaultInjector_InjectFaultIfSet_out_of_line_DTX(
-											   const char *faultName,
+FaultInjector_InjectFaultIfSet_out_of_line_DTX(const char *faultName,
 											   DtxProtocolCommand dtxProtocolCommand,
 											   int nestingLevel)
 {
