@@ -1,0 +1,624 @@
+#!/usr/bin/env python3
+
+from gppylib.mainUtils import getProgramName
+
+import psycopg2
+import yaml
+import datetime
+from psycopg2 import DatabaseError, OperationalError
+from transitions import Machine
+try:
+    from gppylib.commands.unix import *
+    from gppylib.commands.gp import *
+    from gppylib.gparray import GpArray, Segment
+    from gppylib.gpparseopts import OptParser, OptChecker
+    from gppylib.gplog import *
+    from gppylib.db import dbconn
+    from gppylib.userinput import *
+    from gppylib.commands import base
+    from gppylib.commands.gp import SEGMENT_STOP_TIMEOUT_DEFAULT, SegmentStop, GpSegStopCmd
+    from gppylib.system.environment import GpCoordinatorEnvironment
+    from gppylib.system import configurationInterface, configurationImplGpdb
+    from gppylib.programs.clsRecoverSegment_triples import get_segments_with_running_basebackup
+    from gppylib.parseutils import line_reader, check_values, canonicalize_address
+    from gppylib.operations.update_pg_hba_on_segments import update_pg_hba_on_segments
+except ImportError as e:
+    sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
+
+
+DBNAME = 'postgres'
+
+_description = ("""
+Minimum shrink implementation
+""")
+
+_help = ["""
+TBD
+"""]
+
+_usage = """
+ ggrebalance TBD
+"""
+
+EXECNAME = os.path.split(__file__)[-1]
+MAX_BATCH_SIZE = 128
+
+
+def parseargs():
+    parser = OptParser(option_class=OptChecker,
+                       description=' '.join(_description.split()),
+                       version='%prog version $Revision$')
+    parser.setHelp(_help)
+    parser.set_usage('%prog ' + _usage)
+    parser.remove_option('-h')
+
+    parser.add_option('-x', '--target-segment-count', dest='target_segment_count',
+                      help='Target segments number of the whole cluster')
+    parser.add_option('-B', '--batch-size', type="int", default=4, dest="batch_size",
+                      help='Max worker number in WorkerPool instance. Valid values are 1-%d.' % MAX_BATCH_SIZE)
+    parser.add_option('-h', '-?', '--help', action='help',
+                      help='show this help message and exit.')
+
+    parser.set_defaults(verbose=False)
+
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    return options, args, parser
+
+
+def validate_options(options, args, parser):
+    if len(args) > 0:
+        logger.error(f'Unknown argument {args[0]}')
+        parser.exit(1)
+
+    try:
+        options.coordinator_data_directory = get_coordinatordatadir()
+        options.gphome = get_gphome()
+    except GpError as msg:
+        logger.error(msg)
+        parser.exit(1)
+
+    if not os.path.exists(options.coordinator_data_directory):
+        logger.error('Coordinator data directory %s does not exist.' %
+                     options.coordinator_data_directory)
+        parser.exit(1)
+
+    if options.batch_size < 1 or options.batch_size > MAX_BATCH_SIZE:
+        logger.error(
+            'Invalid argument.  batch-size value must be >= 1 and <= %d' % MAX_BATCH_SIZE)
+        parser.exit(1)
+
+    return options, args
+
+
+def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
+    """
+    Checks if there are any running instances of
+    gprebalance/gpbackup/gpexpand/gpshrink/gpresize
+    """
+    for util in ('ggrebalance', 'gprebalance', 'gpexpand', 'gpshrink', 'gpresize'):
+        try:
+            with open(f'{coordinator_data_directory}/{util}.pid', 'r') as fp:
+                pid = int(fp.readline().strip())
+                if check_pid(pid):
+                    logger.error(f'{util} is already running.')
+                    sys.exit(1)
+        except IOError:
+            pass
+
+    with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+        cursor = dbconn.query(conn, '''SELECT datid
+                    FROM pg_stat_activity
+                    WHERE application_name LIKE 'gpbackup%' OR
+                    application_name LIKE 'gprestore%' ''')
+        if cursor.rowcount > 0:
+            logger.error(
+                '''gpbackup/gprestore utility is already running.''')
+            sys.exit(1)
+
+    if is_gprecoverseg_running():
+        logger.error(
+            '''gprecoverseg is already running.''')
+        sys.exit(1)
+
+
+def create_pid_file(coordinator_data_directory: str):
+    """
+    Creates ggrebalance pid file
+    """
+    with open(coordinator_data_directory + '/ggrebalance.pid', 'w') as fp:
+        print("Create " + coordinator_data_directory + '/ggrebalance.pid')
+        fp.write(str(os.getpid()))
+
+
+def remove_pid_file(coordinator_data_directory: str):
+    """
+    Removes gprebalance pid file
+    """
+    try:
+        os.unlink(coordinator_data_directory + '/ggrebalance.pid')
+    except IOError:
+        pass
+
+ggshrink = None
+
+def sig_handler(sig, arg):
+    if ggshrink is not None:
+        ggshrink.shutdown()
+
+class GGShrink:
+    timeout = SEGMENT_STOP_TIMEOUT_DEFAULT
+    stop_mode = 'smart'
+
+    rebalance_schema_name = "ggrebalance"
+    rebalance_table_shrink_status_details = "shrink_status_detail"
+    states = [
+        'STATE_START', 'STATE_OPTIONS_VALIDATION', 
+        'STATE_UNKNOWN', 'STATE_UNINITIALIZED',
+        'STATE_BACKUP_CATALOG_STARTED', 'STATE_BACKUP_CATALOG_DONE',
+        'STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED', 'STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE',
+        'STATE_SETUP_SHRINK_SCHEMA_STARTED', 'STATE_SETUP_SHRINK_SCHEMA_DONE',
+        'STATE_PREPARE_SHRINK_SCHEMA_STARTED', 'STATE_PREPARE_SHRINK_SCHEMA_DONE',
+        'STATE_SHRINK_TABLES_STARTED', 
+            'STATE_SHRINK_TABLE_COMPLETE', 'STATE_SHRINK_TABLE_ERROR', 'STATE_SHRINK_STOPPED', # not implemented yet
+        'STATE_SHRINK_TABLES_DONE',
+        'STATE_SHRINK_CATALOG_STARTED', 'STATE_SHRINK_CATALOG_DONE',
+        'STATE_SHRINK_SEGMENTS_STOP_STARTED',
+            'STATE_SHRINK_SINGLE_SEGMENT_STOP_STARTED', 'STATE_SHRINK_SINGLE_SEGMENT_STOP_DONE', 'STATE_SHRINK_SINGLE_SEGMENT_STOP_ERROR',  # not implemented yet
+        'STATE_SHRINK_SEGMENTS_STOP_DONE', 'STATE_SHRINK_SEGMENTS_STOP_FAILED', # STATE_SHRINK_SEGMENTS_STOP_FAILED is not implemented yet
+        'STATE_SHRINK_DONE', 'STATE_SHRINK_INCOMPLETE', # STATE_SHRINK_INCOMPLETE is not implemented yet
+        'STATE_ERROR',
+        # below items are for future implementation
+        'STATE_CLEANUP', 'STATE_ROLLBACK',
+    ]
+
+    transitions = [
+        {
+            'trigger': 'start',
+            'source': 'STATE_START',
+            'dest': 'STATE_OPTIONS_VALIDATION'
+        },
+        {
+            'trigger': 'to_STATE_UNKNOWN',
+            'source': 'STATE_OPTIONS_VALIDATION',
+            'dest': 'STATE_UNKNOWN'
+        },
+        {
+            'trigger': 'to_STATE_UNINITIALIZED',
+            'source': 'STATE_UNKNOWN',
+            'dest': 'STATE_UNINITIALIZED'
+        },
+        {
+            'trigger': 'to_STATE_BACKUP_CATALOG_STARTED',
+            'source': 'STATE_UNINITIALIZED',
+            'dest': 'STATE_BACKUP_CATALOG_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_BACKUP_CATALOG_DONE',
+            'source': 'STATE_BACKUP_CATALOG_STARTED',
+            'dest': 'STATE_BACKUP_CATALOG_DONE'
+        },
+        {
+            'trigger': 'to_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
+            'source': 'STATE_BACKUP_CATALOG_DONE',
+            'dest': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE',
+            'source': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
+            'dest': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE'
+        },
+        {
+            'trigger': 'to_STATE_SETUP_SHRINK_SCHEMA_STARTED',
+            'source': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE',
+            'dest': 'STATE_SETUP_SHRINK_SCHEMA_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_SETUP_SHRINK_SCHEMA_DONE',
+            'source': 'STATE_SETUP_SHRINK_SCHEMA_STARTED',
+            'dest': 'STATE_SETUP_SHRINK_SCHEMA_DONE'
+        },
+        {
+            'trigger': 'to_STATE_PREPARE_SHRINK_SCHEMA_STARTED',
+            'source': 'STATE_SETUP_SHRINK_SCHEMA_DONE',
+            'dest': 'STATE_PREPARE_SHRINK_SCHEMA_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_PREPARE_SHRINK_SCHEMA_DONE',
+            'source': 'STATE_PREPARE_SHRINK_SCHEMA_STARTED',
+            'dest': 'STATE_PREPARE_SHRINK_SCHEMA_DONE'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_TABLES_STARTED',
+            'source': 'STATE_PREPARE_SHRINK_SCHEMA_DONE',
+            'dest': 'STATE_SHRINK_TABLES_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_TABLES_DONE',
+            'source': 'STATE_SHRINK_TABLES_STARTED',
+            'dest': 'STATE_SHRINK_TABLES_DONE'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_CATALOG_STARTED',
+            'source': 'STATE_SHRINK_TABLES_DONE',
+            'dest': 'STATE_SHRINK_CATALOG_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_CATALOG_DONE',
+            'source': 'STATE_SHRINK_CATALOG_STARTED',
+            'dest': 'STATE_SHRINK_CATALOG_DONE'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_SEGMENTS_STOP_STARTED',
+            'source': 'STATE_SHRINK_CATALOG_DONE',
+            'dest': 'STATE_SHRINK_SEGMENTS_STOP_STARTED'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_SEGMENTS_STOP_DONE',
+            'source': 'STATE_SHRINK_SEGMENTS_STOP_STARTED',
+            'dest': 'STATE_SHRINK_SEGMENTS_STOP_DONE'
+        },
+        {
+            'trigger': 'to_STATE_SHRINK_DONE',
+            'source': 'STATE_SHRINK_SEGMENTS_STOP_DONE',
+            'dest': 'STATE_SHRINK_DONE'
+        },
+        {
+            'trigger': 'to_STATE_ERROR',
+            'source': '*',
+            'dest': 'STATE_ERROR'
+        }
+    ]
+
+    def __init__(self, logger, gparray, dburl, options, gpEnv):
+        print("[RE] GGShrink CTOR")
+        self.logger = logger
+        self.gparray = gparray
+        self.dburl = dburl
+        self.options = options
+        self.gpEnv = gpEnv
+        self.conn = dbconn.connect(
+            self.dburl, encoding='UTF8', allowSystemTableMods=True)
+
+        self.machine = Machine(model = self, states = self.states, transitions = self.transitions, initial = 'STATE_START')
+
+        print(self.state)
+        self.trigger('start')
+
+    # state callbacks start here
+    def on_enter_STATE_OPTIONS_VALIDATION(self):
+        print("[RE] on_enter_STATE_OPTIONS_VALIDATION")
+        print('[RE] curr segment cnt %s, requested segment cnt %s' % (self.gparray.get_segment_count(), self.options.target_segment_count))
+        if self.gparray.get_segment_count() < int(self.options.target_segment_count):
+            self.trigger('to_STATE_ERROR')
+        else:
+            self.trigger('to_STATE_UNKNOWN')
+
+    def on_enter_STATE_UNKNOWN(self):
+        print("[RE] on_enter_STATE_UNKNOWN")
+        self.trigger('to_STATE_UNINITIALIZED')
+
+    def on_enter_STATE_UNINITIALIZED(self):
+        print("[RE] on_enter_STATE_UNINITIALIZED")
+        self.trigger('to_STATE_BACKUP_CATALOG_STARTED')
+
+    def on_enter_STATE_BACKUP_CATALOG_STARTED(self):
+        print("[RE] on_enter_STATE_BACKUP_CATALOG_STARTED")
+        self.trigger('to_STATE_BACKUP_CATALOG_DONE')
+
+    def on_enter_STATE_BACKUP_CATALOG_DONE(self):
+        print("[RE] on_enter_STATE_BACKUP_CATALOG_DONE")
+        self.trigger('to_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
+
+    def on_enter_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED(self):
+        print("[RE] on_enter_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED")
+
+        dbconn.execSQL(self.conn, 'BEGIN;')
+
+        cursor = dbconn.query(self.conn, 'SELECT gp_expand_lock_catalog();')
+        print('[RE] gp_expand_lock_catalog() %s' % cursor.rowcount)
+
+        q = 'SELECT gp_toolkit.gp_set_rebalance_numsegments(%s);' % self.options.target_segment_count
+        cursor = dbconn.query(self.conn, q)
+        print('[RE] ' + q + ' %s' % cursor.rowcount)
+
+        dbconn.execSQL(self.conn, 'COMMIT;')
+
+        self.trigger('to_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE')
+
+    def on_enter_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE(self):
+        print("[RE] on_enter_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE")
+        self.trigger('to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
+
+    def on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED(self):
+        print("[RE] on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED")
+
+        # Create schema
+        dbconn.execSQL(self.conn, 'BEGIN;')
+        dbconn.execSQL(self.conn, 'CREATE SCHEMA %s;' % self.rebalance_schema_name)
+        dbconn.execSQL(self.conn, 
+                       '''
+                       CREATE TABLE %s.%s
+                       (db_name TEXT, schema_name TEXT, rel_name TEXT, status TEXT,
+                       CONSTRAINT unique_fqn UNIQUE (db_name, schema_name, rel_name))
+                       DISTRIBUTED REPLICATED;
+                       ''' % (self.rebalance_schema_name, self.rebalance_table_shrink_status_details))
+        dbconn.execSQL(self.conn, 'COMMIT;')
+
+        self.trigger('to_STATE_SETUP_SHRINK_SCHEMA_DONE')
+
+    def on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE(self):
+        print("[RE] on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE")
+        self.trigger('to_STATE_PREPARE_SHRINK_SCHEMA_STARTED')
+
+    def on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED(self):
+        print("[RE] on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED")
+
+        # collect databases and tables that require 'ALTER TABLE REBALANCE'
+        cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database;')
+        databases_to_process = []
+        for record in cursor:
+            database_name = record[0]
+            if database_name != 'template0':
+                databases_to_process.append(database_name)
+
+        for db in databases_to_process:
+            dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
+            conn = dbconn.connect(dburl, encoding='UTF8')
+            cursor = dbconn.query(conn, '''
+                SELECT n.nspname, c.relname 
+                FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid 
+                WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND n.nspname NOT IN ('pg_catalog', 'information_schema');
+                ''')
+            for record in cursor:
+                schema_name = record[0]
+                rel_name = record[1]
+                if db == DBNAME and schema_name == self.rebalance_schema_name and rel_name == self.rebalance_table_shrink_status_details:
+                    continue
+                dbconn.execSQL(self.conn,
+                               '''
+                               INSERT INTO %s.%s
+                               VALUES ('%s', '%s', '%s', 'none');
+                               ''' % (self.rebalance_schema_name, self.rebalance_table_shrink_status_details, db, schema_name, rel_name));
+            conn.close()
+
+        self.trigger('to_STATE_PREPARE_SHRINK_SCHEMA_DONE')
+
+    def on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE(self):
+        print("[RE] on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE")
+        self.trigger('to_STATE_SHRINK_TABLES_STARTED')
+
+    class TableRebalanceTask(SQLCommand):
+        def __init__(self,
+                     shrink,
+                     db_name,
+                     schema_name,
+                     rel_name):
+            self.shrink = shrink
+            self.db_name = db_name
+            self.schema_name = schema_name
+            self.rel_name = rel_name
+            SQLCommand.__init__(self, "task rebalance for %s.%s.%s" % (self.db_name, self.schema_name, self.rel_name))
+
+        def run(self, validateAfter=False):
+            print(">> TASK REBALANCE [%s] '%s'.'%s'" % (self.db_name, self.schema_name, self.rel_name))
+            dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
+            conn = dbconn.connect(dburl, encoding='UTF8')
+            dbconn.execSQL(conn, 'BEGIN;')
+            dbconn.execSQL(conn,
+                           '''
+                           ALTER TABLE "%s"."%s" REBALANCE %s;
+                           ''' % (self.schema_name, self.rel_name, self.shrink.options.target_segment_count))
+            dbconn.execSQL(self.shrink.conn,
+                           '''
+                           UPDATE %s.%s SET status = 'done'
+                           WHERE db_name = '%s' AND schema_name = '%s' AND rel_name = '%s';
+                           ''' % (self.shrink.rebalance_schema_name, self.shrink.rebalance_table_shrink_status_details,
+                                  self.db_name, self.schema_name, self.rel_name))
+            dbconn.execSQL(conn, 'COMMIT;')
+            conn.close()
+            self.set_results(CommandResult(0, b'', b'', True, False))
+
+    def on_enter_STATE_SHRINK_TABLES_STARTED(self):
+        print("[RE] on_enter_STATE_SHRINK_TABLES_STARTED")
+
+        # perform 'ALTER TABLE REBALANCE' for all not yet processed tables
+        cursor = dbconn.query(self.conn,
+                              '''
+                              SELECT * FROM %s.%s WHERE status = 'none';
+                              ''' % (self.rebalance_schema_name, self.rebalance_table_shrink_status_details))
+
+        pool = WorkerPool(numWorkers=min(cursor.rowcount, self.options.batch_size))
+
+        for record in cursor:
+            db_name = record[0]
+            schema_name = record[1]
+            rel_name = record[2]
+            task = self.TableRebalanceTask(self,
+                                           db_name,
+                                           schema_name,
+                                           rel_name)
+            pool.addCommand(task)
+
+        pool.join()
+
+        pool.haltWork()
+        pool.joinWorkers()
+
+        for task in pool.getCompletedItems():
+            if not task.was_successful():
+                raise Exception("Failed to do ALTER REBALANCE: {}" .format(
+                    task.get_results().stderr))
+
+        self.trigger('to_STATE_SHRINK_TABLES_DONE')
+
+    def on_enter_STATE_SHRINK_TABLE_COMPLETE(self):
+        pass
+
+    def on_enter_STATE_SHRINK_TABLE_ERROR(self):
+        pass
+
+    def on_enter_STATE_SHRINK_STOPPED(self):
+        pass
+
+    def on_enter_STATE_SHRINK_TABLES_DONE(self):
+        print("[RE] on_enter_STATE_SHRINK_TABLES_DONE")
+        self.trigger('to_STATE_SHRINK_CATALOG_STARTED')
+
+    def on_enter_STATE_SHRINK_CATALOG_STARTED(self):
+        print("[RE] on_enter_STATE_SHRINK_CATALOG_STARTED")
+
+        ## Shrink catalog
+        print("[RE] SHRINK catalog")
+        dbconn.execSQL(self.conn, 'BEGIN;')
+        cursor = dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog();')
+        ## TODO: repopulate?
+        dbconn.execSQL(self.conn, 'DELETE FROM gp_segment_configuration WHERE content >= %s;' % self.options.target_segment_count)
+        dbconn.execSQL(self.conn, 'CHECKPOINT;')
+        dbconn.execSQL(self.conn, 'SELECT gp_expand_bump_version();')
+        cursor = dbconn.query(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments();')
+        dbconn.execSQL(self.conn, 'COMMIT;')
+
+        dbconn.execSQL(self.conn, 'DROP SCHEMA %s CASCADE;' % self.rebalance_schema_name)
+
+        self.conn.close();
+
+        self.trigger('to_STATE_SHRINK_CATALOG_DONE')
+
+    def on_enter_STATE_SHRINK_CATALOG_DONE(self):
+        print("[RE] on_enter_STATE_SHRINK_CATALOG_DONE")
+        self.trigger('to_STATE_SHRINK_SEGMENTS_STOP_STARTED')
+
+    def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self):
+        print("[RE] on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED")
+
+        print("[RE] STOP segments")
+
+        for seg_pair in self.gparray.getSegmentList():
+            if seg_pair.primaryDB.getSegmentContentId() >= int(self.options.target_segment_count):
+
+                if seg_pair.mirrorDB != None:
+                    print('''[MIRROR] Need to stop content = %s, HOST= '%s', ADDR = '%s', data dir = '%s' ''' % 
+                          (seg_pair.mirrorDB.getSegmentContentId(), 
+                           seg_pair.mirrorDB.getSegmentHostName(),
+                           seg_pair.mirrorDB.getSegmentAddress(),
+                           seg_pair.mirrorDB.getSegmentDataDirectory()))
+                    try:
+                        cmd = SegmentStop("stopping mirror segment (content %s, dbid %s)" % 
+                                          (seg_pair.mirrorDB.getSegmentContentId(),
+                                           seg_pair.mirrorDB.getSegmentDbId()),
+                                           seg_pair.mirrorDB.getSegmentDataDirectory(),
+                                           mode=self.stop_mode,
+                                           timeout=self.timeout,
+                                           ctxt=base.REMOTE,
+                                           remoteHost=seg_pair.mirrorDB.getSegmentHostName())
+                        cmd.run(validateAfter=True)
+                    except base.ExecutionError as e:
+                        print("Error occured while stopping the mirror segment: %s" % e)
+
+                print('''[PRIMARY] Need to stop content = %s, HOST= '%s', ADDR = '%s', data dir = '%s' ''' % 
+                      (seg_pair.primaryDB.getSegmentContentId(), 
+                       seg_pair.primaryDB.getSegmentHostName(),
+                       seg_pair.primaryDB.getSegmentAddress(),
+                       seg_pair.primaryDB.getSegmentDataDirectory()))
+                try:
+                    cmd = SegmentStop("stopping primary segment (content %s, dbid %s)" % 
+                                      (seg_pair.primaryDB.getSegmentContentId(),
+                                       seg_pair.primaryDB.getSegmentDbId()),
+                                       seg_pair.primaryDB.getSegmentDataDirectory(),
+                                       mode=self.stop_mode,
+                                       timeout=self.timeout,
+                                       ctxt=base.REMOTE,
+                                       remoteHost=seg_pair.primaryDB.getSegmentHostName())
+                    cmd.run(validateAfter=True)
+                except base.ExecutionError as e:
+                    print("Error occured while stopping the primary segment: %s" % e)
+
+        self.trigger('to_STATE_SHRINK_SEGMENTS_STOP_DONE')
+
+    def on_enter_STATE_SHRINK_SINGLE_SEGMENT_STOP_STARTED(self):
+        pass
+
+    def on_enter_STATE_SHRINK_SINGLE_SEGMENT_STOP_DONE(self):
+        pass
+
+    def on_enter_STATE_SHRINK_SINGLE_SEGMENT_STOP_ERROR(self):
+        pass
+
+    def on_enter_STATE_SHRINK_SEGMENTS_STOP_DONE(self):
+        self.trigger('to_STATE_SHRINK_DONE')
+
+    def on_enter_STATE_SHRINK_SEGMENTS_STOP_FAILED(self):
+        pass
+
+    def on_enter_STATE_SHRINK_DONE(self):
+        print("[RE] on_enter_STATE_SHRINK_DONE")
+
+    def on_enter_STATE_SHRINK_INCOMPLETE(self):
+        pass
+
+    def on_enter_STATE_ERROR(self):
+        print("[RE] on_enter_STATE_ERROR")
+    # state callbacks end here
+
+    def shutdown():
+        print("[RE] SHUTDOWN")
+
+def main(options, args, parser):
+    try:
+        signal.signal(signal.SIGTERM, sig_handler)
+        signal.signal(signal.SIGHUP, sig_handler)
+        signal.signal(signal.SIGINT, sig_handler)
+
+        logger = get_default_logger()
+        setup_tool_logging(EXECNAME, getLocalHostname(), getUserName())
+
+        options, args = validate_options(options, args, parser)
+
+        if options.verbose:
+            enable_verbose_logging()
+
+        gpEnv = GpCoordinatorEnvironment(
+            options.coordinator_data_directory, True)
+        configurationInterface.registerConfigurationProvider(
+            configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
+        configurationInterface.getConfigurationProvider(
+        ).initializeProvider(gpEnv.getCoordinatorPort())
+
+        dburl = dbconn.DbURL(dbname=DBNAME, port=gpEnv.getCoordinatorPort())
+
+        try:
+            # check parallel execution of other cluster utilities
+            check_running_gputils(dburl, options.coordinator_data_directory)
+            gparray = GpArray.initFromCatalog(dburl, utility=True)
+        except DatabaseError as ex:
+            logger.error("Failed to connect to database.  Make sure the"
+                         " Greenplum instance you wish to expand is running"
+                         " and that your environment is correct, then rerun"
+                         " gprebalance" + ' '.join(sys.argv[1:]))
+            sys.exit(1)
+        except ConnectionError as ex:
+            logger.error(f"{str(ex)}")
+            sys.exit(1)
+        
+        # create pid file
+        create_pid_file(options.coordinator_data_directory)
+        
+        global ggshrink
+        ggshrink = GGShrink(logger, gparray, dburl, options, gpEnv)
+       
+        sys.exit(0)
+    except Exception as e:
+        if options and options.verbose:
+            logger.exception('ggrebalance failed. exiting...')
+        else:
+            logger.error(f'ggrebalance failed: {e} \n\nExiting...')
+        sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit('\nUser Interrupted')
+    finally:
+        remove_pid_file(get_coordinatordatadir())
+
+if __name__ == '__main__':
+    options, args, parser = parseargs()
+    main(options, args, parser)
