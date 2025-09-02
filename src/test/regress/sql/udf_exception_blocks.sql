@@ -425,7 +425,7 @@ CREATE VIEW test_invalid_schema_creation_tab_v1 AS SELECT f1 FROM test_invalid_s
   -- Should not throw ERROR:  relation "test_exception_block_v1" already exists
 
 -- Tests truncate table success and failure case in function with exception
---
+-- 
 
 DROP FUNCTION IF EXISTS test_plpgsql() CASCADE;
 

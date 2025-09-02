@@ -14,7 +14,6 @@
 -- s/session id \=\s*\d+/session id \= DUMMY/gm
 -- end_matchsubs
 
-
 CREATE TABLE foo(a int, b int);
 -- 1
 CREATE TEMP TABLE foo_stg AS SELECT * FROM foo;
