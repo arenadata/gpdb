@@ -42,6 +42,7 @@ _usage = """
 
 EXECNAME = os.path.split(__file__)[-1]
 MAX_BATCH_SIZE = 128
+MAX_PARALLEL_WORKERS = 96
 
 
 def parseargs():
@@ -56,6 +57,8 @@ def parseargs():
                       help='Target segments number of the whole cluster')
     parser.add_option('-B', '--batch-size', type="int", default=4, dest="batch_size",
                       help='Max worker number in WorkerPool instance. Valid values are 1-%d.' % MAX_BATCH_SIZE)
+    parser.add_option('-n', '--parallel', type="int", default=4, metavar="parallel",
+                      help='number of workerks at a time. Valid values are 1-%d.' % MAX_PARALLEL_WORKERS)
     parser.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit.')
 
@@ -86,6 +89,11 @@ def validate_options(options, args, parser):
     if options.batch_size < 1 or options.batch_size > MAX_BATCH_SIZE:
         logger.error(
             'Invalid argument.  batch-size value must be >= 1 and <= %d' % MAX_BATCH_SIZE)
+        parser.exit(1)
+
+    if options.parallel < 1 or options.parallel > MAX_PARALLEL_WORKERS:
+        logger.error(
+            'Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_WORKERS)
         parser.exit(1)
 
     return options, args
@@ -147,9 +155,31 @@ def sig_handler(sig, arg):
     else:
         sys.exit(1)
 
+def print_progress(pool, interval=10):
+    """
+    Waits for a WorkerPool to complete, printing a progress percentage marker
+    once at the beginning of the call, and thereafter at the provided interval
+    (default ten seconds). A final 100% marker is printed upon completion.
+    """
+    def print_completed_percentage():
+        # pool.completed can change asynchronously; save its value.
+        completed = pool.completed
+
+        pct = 0
+        if pool.assigned:
+            pct = float(completed) / pool.assigned
+
+        pool.logger.info('%0.2f%% of jobs completed' % (pct * 100))
+        return completed >= pool.assigned
+
+    # print_completed_percentage() returns True if we're done.
+    while not print_completed_percentage():
+        if pool.join(interval):
+            return
+
 class GGShrink:
     timeout = SEGMENT_STOP_TIMEOUT_DEFAULT
-    stop_mode = 'smart'
+    stop_mode = 'fast'
 
     rebalance_schema_name = "ggrebalance"
     rebalance_table_shrink_status_details = "shrink_status_detail"
@@ -280,7 +310,8 @@ class GGShrink:
         self.conn = dbconn.connect(
             self.dburl, encoding='UTF8', allowSystemTableMods=True)
         self.shutdown_requested = False
-        self.pool = None
+        self.workers_for_tables_rebalance = None
+        self.workers_for_segment_stop = None
 
         self.machine = Machine(model = self,
                                states = self.states,
@@ -299,7 +330,7 @@ class GGShrink:
     # state callbacks start here
     def on_enter_STATE_OPTIONS_VALIDATION(self):
         self.logger.info('[RE] curr segment cnt %s, requested segment cnt %s' % (self.gparray.get_segment_count(), self.options.target_segment_count))
-        if self.gparray.get_segment_count() < self.options.target_segment_count:
+        if self.gparray.get_segment_count() <= self.options.target_segment_count:
             self.trigger('to_STATE_ERROR')
         else:
             self.trigger('to_STATE_UNKNOWN')
@@ -400,11 +431,12 @@ class GGShrink:
             SQLCommand.__init__(self, "task rebalance for %s.%s.%s" % (self.db_name, self.schema_name, self.rel_name))
 
         def run(self, validateAfter=False):
-            self.logger.info("[DB %s] processing table '%s'.'%s'" % (self.db_name, self.schema_name, self.rel_name))
+            # self.logger.info("[DB %s] processing table '%s'.'%s'" % (self.db_name, self.schema_name, self.rel_name))
             dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
             conn = dbconn.connect(dburl, encoding='UTF8')
             dbconn.execSQL(conn, 'BEGIN;')
             # TODO: handle the case when the table is already rebalanced (for ex. manually)
+            # TODO: verify carefully the atomicity of ALTER TABLE and reflecting the right status of the table in 'rebalance_table_shrink_status_details' table
             dbconn.execSQL(conn,
                            '''
                            ALTER TABLE "%s"."%s" REBALANCE %s;
@@ -431,7 +463,7 @@ class GGShrink:
         self.logger.info("Tables to process %s" % cursor.rowcount)
 
         if cursor.rowcount > 0:
-            self.pool = WorkerPool(numWorkers=min(cursor.rowcount, self.options.batch_size))
+            self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
 
             for record in cursor:
                 db_name = record[0]
@@ -441,19 +473,20 @@ class GGShrink:
                                                db_name,
                                                schema_name,
                                                rel_name)
-                self.pool.addCommand(task)
+                self.workers_for_tables_rebalance.addCommand(task)
 
-            self.pool.join()
+            print_progress(self.workers_for_tables_rebalance, interval=1)
+            #self.workers_for_tables_rebalance.join()
 
-            self.pool.haltWork()
-            self.pool.joinWorkers()
+            self.workers_for_tables_rebalance.haltWork()
+            self.workers_for_tables_rebalance.joinWorkers()
 
-            for task in self.pool.getCompletedItems():
+            for task in self.workers_for_tables_rebalance.getCompletedItems():
                 if not task.was_successful():
                     raise Exception("Failed to do ALTER REBALANCE: {}" .format(
                         task.get_results().stderr))
 
-            self.pool = None
+            self.workers_for_tables_rebalance = None
 
         self.trigger('to_STATE_SHRINK_TABLES_DONE')
 
@@ -496,45 +529,44 @@ class GGShrink:
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self):
         self.logger.info("Stopping shrinked segments...")
 
+        # TODO: elaborate more what to do if some segments (mirrors) are marked as down
+        segments_to_stop = self.gparray.get_segment_count() - self.options.target_segment_count
+        segments_to_stop = segments_to_stop * 2 # consider mirrors
+        self.workers_for_segment_stop = WorkerPool(numWorkers=min(segments_to_stop, self.options.batch_size))
+
         for seg_pair in self.gparray.getSegmentList():
             if seg_pair.primaryDB.getSegmentContentId() >= self.options.target_segment_count:
+                cmd = SegmentStop("stop primary (content %s, dbid %s)" %
+                                  (seg_pair.primaryDB.getSegmentContentId(),
+                                   seg_pair.primaryDB.getSegmentDbId()),
+                                   seg_pair.primaryDB.getSegmentDataDirectory(),
+                                   mode=self.stop_mode,
+                                   timeout=self.timeout,
+                                   ctxt=base.REMOTE,
+                                   remoteHost=seg_pair.primaryDB.getSegmentHostName())
+                self.workers_for_segment_stop.addCommand(cmd)
 
                 if seg_pair.mirrorDB != None:
-                    self.logger.info('''Stopping mirror for content = %s, host = '%s', addr = '%s', data dir = '%s' ''' %
-                          (seg_pair.mirrorDB.getSegmentContentId(),
-                           seg_pair.mirrorDB.getSegmentHostName(),
-                           seg_pair.mirrorDB.getSegmentAddress(),
-                           seg_pair.mirrorDB.getSegmentDataDirectory()))
-                    try:
-                        cmd = SegmentStop("stopping mirror segment (content %s, dbid %s)" %
-                                          (seg_pair.mirrorDB.getSegmentContentId(),
-                                           seg_pair.mirrorDB.getSegmentDbId()),
-                                           seg_pair.mirrorDB.getSegmentDataDirectory(),
-                                           mode=self.stop_mode,
-                                           timeout=self.timeout,
-                                           ctxt=base.REMOTE,
-                                           remoteHost=seg_pair.mirrorDB.getSegmentHostName())
-                        cmd.run(validateAfter=True)
-                    except base.ExecutionError as e:
-                        self.logger.error("Error occured while stopping the mirror segment: %s" % e)
-
-                self.logger.info('''Stopping primary for content = %s, hoat = '%s', addr = '%s', data dir = '%s' ''' %
-                      (seg_pair.primaryDB.getSegmentContentId(), 
-                       seg_pair.primaryDB.getSegmentHostName(),
-                       seg_pair.primaryDB.getSegmentAddress(),
-                       seg_pair.primaryDB.getSegmentDataDirectory()))
-                try:
-                    cmd = SegmentStop("stopping primary segment (content %s, dbid %s)" %
-                                      (seg_pair.primaryDB.getSegmentContentId(),
-                                       seg_pair.primaryDB.getSegmentDbId()),
-                                       seg_pair.primaryDB.getSegmentDataDirectory(),
+                    cmd = SegmentStop("stop mirror (content %s, dbid %s)" %
+                                      (seg_pair.mirrorDB.getSegmentContentId(),
+                                       seg_pair.mirrorDB.getSegmentDbId()),
+                                       seg_pair.mirrorDB.getSegmentDataDirectory(),
                                        mode=self.stop_mode,
                                        timeout=self.timeout,
                                        ctxt=base.REMOTE,
-                                       remoteHost=seg_pair.primaryDB.getSegmentHostName())
-                    cmd.run(validateAfter=True)
-                except base.ExecutionError as e:
-                    self.logger.error("Error occured while stopping the primary segment: %s" % e)
+                                       remoteHost=seg_pair.mirrorDB.getSegmentHostName())
+                    self.workers_for_segment_stop.addCommand(cmd)
+
+        print_progress(self.workers_for_segment_stop, interval=1)
+
+        self.workers_for_segment_stop.haltWork()
+        self.workers_for_segment_stop.joinWorkers()
+
+        for task in self.workers_for_segment_stop.getCompletedItems():
+            if not task.was_successful():
+                raise Exception("Failed to stop segments")
+
+        self.workers_for_segment_stop = None
 
         self.trigger('to_STATE_SHRINK_SEGMENTS_STOP_DONE')
 
@@ -562,9 +594,14 @@ class GGShrink:
     # state callbacks end here
 
     def shutdown(self):
-        if self.pool != None:
-            self.pool.haltWork()
-            self.pool.joinWorkers()
+        if self.workers_for_tables_rebalance != None:
+            self.workers_for_tables_rebalance.haltWork()
+            self.workers_for_tables_rebalance.joinWorkers()
+
+        if self.workers_for_segment_stop != None:
+            self.workers_for_segment_stop.haltWork()
+            self.workers_for_segment_stop.joinWorkers()
+
         self.shutdown_requested = True
 
 def main(options, args, parser):
