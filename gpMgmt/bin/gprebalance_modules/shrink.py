@@ -190,18 +190,24 @@ class GGShrink:
         self.shutdown_requested = False
         self.workers_for_tables_rebalance = None
         self.workers_for_segment_stop = None
+        self.gparray_dump_file = options.coordinator_data_directory + '/gparraydump'
 
-        try:
-            self.gparray = GpArray.initFromCatalog(dburl, utility=True)
-        except DatabaseError as ex:
-            logger.error("Failed to connect to database.  Make sure the"
-                         " Greengage instance you wish to expand is running"
-                         " and that your environment is correct, then rerun"
-                         " gprebalance" + ' '.join(sys.argv[1:]))
-            sys.exit(1)
-        except ConnectionError as ex:
-            logger.error(f"{str(ex)}")
-            sys.exit(1)
+        if os.path.exists(self.gparray_dump_file):
+            self.logger.info('Init gparray from file %s' % self.gparray_dump_file)
+            self.gparray = GpArray.initFromFile(self.gparray_dump_file)
+        else:
+            self.logger.info('Init gparray from catalog')
+            try:
+                self.gparray = GpArray.initFromCatalog(dburl, utility=True)
+            except DatabaseError as ex:
+                logger.error("Failed to connect to database.  Make sure the"
+                             " Greengage instance you wish to expand is running"
+                             " and that your environment is correct, then rerun"
+                             " gprebalance" + ' '.join(sys.argv[1:]))
+                sys.exit(1)
+            except ConnectionError as ex:
+                logger.error(f"{str(ex)}")
+                sys.exit(1)
 
         self.machine = Machine(model = self,
                                queued=True,
@@ -259,6 +265,7 @@ class GGShrink:
                                  'Currently only shrink is supported (target segment count < current segment count).'
                                   % (self.options.target_segment_count, self.gparray.get_segment_count()))
                 self.trigger('move_to_STATE_ERROR')
+                # self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
             else:
                 self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
@@ -328,6 +335,8 @@ class GGShrink:
         dbconn.execSQL(self.conn, 'BEGIN;')
         dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog();')
         dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_set_rebalance_numsegments(%s);' % self.options.target_segment_count)
+
+        self.gparray.dumpToFile(self.gparray_dump_file)
 
         # Rebalance the status tables we've created previously right here before we start to rebalance all other tables.
         # Before that check if the tables are already rebalanced
@@ -496,9 +505,6 @@ class GGShrink:
 
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self):
         self.logger.info("Stopping shrinked segments...")
-
-        # TODO: if we re-enter, need to restore gparray from the backup, not from catalog
-
         # TODO: elaborate more what to do if some segments (mirrors) are marked as down
         segments_to_stop = self.gparray.get_segment_count() - self.options.target_segment_count
         segments_to_stop = segments_to_stop * 2 # consider mirrors
@@ -545,6 +551,7 @@ class GGShrink:
         self.trigger('move_to_STATE_SHRINK_DONE')
 
     def on_enter_STATE_SHRINK_DONE(self):
+        os.remove(self.gparray_dump_file)
         self.logger.info("Shrink is complete")
         self.trigger('move_to_STATE_END')
 
