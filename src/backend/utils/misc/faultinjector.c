@@ -307,6 +307,10 @@ static const struct dtx2ddl dtxcmdmap[] =
 };
 
 
+/* 
+ * Version of fault injection function which receives DTXProtocolCommand
+ * and translates it into DDLStatement_e enumeration value.
+ */
 FaultInjectorType_e
 FaultInjector_InjectFaultIfSet_out_of_line_DTX(const char *faultName,
 											   DtxProtocolCommand dtxProtocolCommand,
@@ -327,6 +331,13 @@ FaultInjector_InjectFaultIfSet_out_of_line_DTX(const char *faultName,
 													  nestingLevel);
 }
 
+/* 
+ * Version of fault injection function which receives string statement tag
+ * instead of DDLStatement_e enumeration value.
+ * statement is descriptive string returned by createCommandTag() 
+ * function for usial SQL statements, and value of local commandTag
+ * variable for exec_mpp_query function.
+ */
 FaultInjectorType_e
 FaultInjector_InjectFaultIfSet_out_of_line_SQL(
 											   const char *faultName,
@@ -337,9 +348,9 @@ FaultInjector_InjectFaultIfSet_out_of_line_SQL(
 
 	if (ddlStatement == DDLMax)
 		return FaultInjectorTypeNotSpecified;
-	return FaultInjector_InjectFaultIfSet_out_of_line(faultName, ddlStatement, "", "",
-													  nestingLevel);
 
+	return FaultInjector_InjectFaultIfSet_out_of_line(faultName, ddlStatement,
+													  "", "", nestingLevel);
 }
 
 FaultInjectorType_e

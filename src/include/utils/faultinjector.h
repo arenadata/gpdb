@@ -106,8 +106,8 @@ extern FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line(
 							   int						 nestingLevel);
 
 /* 
- * Version of fault injection function which receives string tag
- * instead of DDLStatement_e enumeration value.
+ * Use macro FaultInjector_InjectFaultIfSet_SQL instead of direct call
+ * of this function
  */
 FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_SQL(
 	const char*		faultName,
@@ -115,8 +115,8 @@ FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_SQL(
 	int 			nestingLevel);
 
 /* 
- * Version of fault injection function which receives DTXProtocolCommand
- * and translates it into DDLStatement_e enumeratuon value.
+ * Use macro FaultInjector_InjectFaultIfSet_DTX instead of direct call
+ * of this function
  */
 FaultInjectorType_e FaultInjector_InjectFaultIfSet_out_of_line_DTX(
 	const char* 		faultName,
