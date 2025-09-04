@@ -552,7 +552,7 @@ SELECT relname FROM pg_class WHERE relname IN ('test_invalid_schema_creation_tab
 CREATE VIEW test_invalid_schema_creation_tab_v1 AS SELECT f1 FROM test_invalid_schema_creation_tab;
   -- Should not throw ERROR:  relation "test_exception_block_v1" already exists
 -- Tests truncate table success and failure case in function with exception
---
+-- 
 DROP FUNCTION IF EXISTS test_plpgsql() CASCADE;
 CREATE TABLE test_truncate_tab (a INTEGER NOT NULL);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
