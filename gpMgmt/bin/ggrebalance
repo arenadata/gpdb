@@ -8,6 +8,7 @@ try:
     from gppylib.commands.gp import *
     from gppylib.gpparseopts import OptParser, OptChecker
     from gppylib.gplog import *
+    from gppylib.gparray import GpArray
     from gppylib.db import dbconn
     from gppylib.userinput import *
     from gppylib.system.environment import GpCoordinatorEnvironment
@@ -160,22 +161,50 @@ def main(options, args, parser):
         if options.verbose:
             enable_verbose_logging()
 
-        gpEnv = GpCoordinatorEnvironment(
+        gpenv = GpCoordinatorEnvironment(
             options.coordinator_data_directory, True)
+
+        # can we remove it?
         configurationInterface.registerConfigurationProvider(
             configurationImplGpdb.GpConfigurationProviderUsingGpdbCatalog())
-        configurationInterface.getConfigurationProvider(
-        ).initializeProvider(gpEnv.getCoordinatorPort())
 
-        dburl = dbconn.DbURL(dbname=DBNAME, port=gpEnv.getCoordinatorPort())
+        configurationInterface.getConfigurationProvider(
+        ).initializeProvider(gpenv.getCoordinatorPort())
+
+        dburl = dbconn.DbURL(dbname=DBNAME, port=gpenv.getCoordinatorPort())
 
         check_running_gputils(dburl, options.coordinator_data_directory)
 
         create_pid_file(options.coordinator_data_directory)
 
-        global gg_shrink
-        gg_shrink = GGShrink(logger, dburl, options, gpEnv)
-        gg_shrink.run()
+        gparray_dump_filename = options.coordinator_data_directory + '/gparraydump'
+
+        if os.path.exists(gparray_dump_filename):
+            logger.info('Init gparray from file %s' % gparray_dump_filename)
+            gparray = GpArray.initFromFile(gparray_dump_filename)
+        else:
+            logger.info('Init gparray from catalog')
+            try:
+                gparray = GpArray.initFromCatalog(dburl, utility=True)
+            except DatabaseError as ex:
+                logger.error("Failed to connect to database.  Make sure the"
+                             " Greengage instance you wish to expand is running"
+                             " and that your environment is correct, then rerun"
+                             " gprebalance" + ' '.join(sys.argv[1:]))
+                sys.exit(1)
+            except ConnectionError as ex:
+                logger.error(f"{str(ex)}")
+                sys.exit(1)
+
+        if options.target_segment_count != None and gparray.get_segment_count() <= options.target_segment_count:
+            logger.error('Target segment count (%s) >= current segment count (%s).\n'
+                         'Currently only shrink is supported (target segment count < current segment count).'
+                          % (options.target_segment_count, gparray.get_segment_count()))
+            sys.exit(1)
+        else:
+            global gg_shrink
+            gg_shrink = GGShrink(logger, dburl, options, gpenv, gparray, gparray_dump_filename)
+            gg_shrink.run()
        
         sys.exit(0)
     except Exception as e:
@@ -184,8 +213,6 @@ def main(options, args, parser):
         else:
             logger.error(f'ggrebalance failed: {e} \n\nExiting...')
         sys.exit(1)
-    except KeyboardInterrupt:
-        sys.exit('\nUser Interrupted')
     finally:
         remove_pid_file(get_coordinatordatadir())
 

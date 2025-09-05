@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
 from transitions import Machine
-from psycopg2 import DatabaseError
 try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
-    from gppylib.gparray import GpArray
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib.userinput import *
@@ -62,10 +60,8 @@ class GGShrink:
     states_main_shrink_flow = [
         'STATE_SETUP_SHRINK_SCHEMA_STARTED',
         'STATE_SETUP_SHRINK_SCHEMA_DONE',
-        'STATE_BACKUP_CATALOG_STARTED',
-        'STATE_BACKUP_CATALOG_DONE',
-        'STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
-        'STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE',
+        'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
+        'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE',
         'STATE_PREPARE_SHRINK_SCHEMA_STARTED',
         'STATE_PREPARE_SHRINK_SCHEMA_DONE',
         'STATE_SHRINK_TABLES_STARTED',
@@ -104,28 +100,18 @@ class GGShrink:
             'dest': 'STATE_SETUP_SHRINK_SCHEMA_DONE'
         },
         {
-            'trigger': 'move_to_STATE_BACKUP_CATALOG_STARTED',
+            'trigger': 'move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
             'source': 'STATE_SETUP_SHRINK_SCHEMA_DONE',
-            'dest':  'STATE_BACKUP_CATALOG_STARTED'
+            'dest':  'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
         },
         {
-            'trigger': 'move_to_STATE_BACKUP_CATALOG_DONE',
-            'source': 'STATE_BACKUP_CATALOG_STARTED',
-            'dest': 'STATE_BACKUP_CATALOG_DONE'
-        },
-        {
-            'trigger': 'move_to_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
-            'source': 'STATE_BACKUP_CATALOG_DONE',
-            'dest': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
-        },
-        {
-            'trigger': 'move_to_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE',
-            'source': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
-            'dest': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE'
+            'trigger': 'move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE',
+            'source': 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED',
+            'dest': 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE'
         },
         {
             'trigger': 'move_to_STATE_PREPARE_SHRINK_SCHEMA_STARTED',
-            'source': 'STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE',
+            'source': 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE',
             'dest': 'STATE_PREPARE_SHRINK_SCHEMA_STARTED'
         },
         {
@@ -180,7 +166,7 @@ class GGShrink:
         }
     ]
 
-    def __init__(self, logger, dburl, options, gpEnv):
+    def __init__(self, logger, dburl, options, gpEnv, gpArray, gpArrayDumpFilename):
         self.logger = logger
         self.dburl = dburl
         self.options = options
@@ -190,24 +176,8 @@ class GGShrink:
         self.shutdown_requested = False
         self.workers_for_tables_rebalance = None
         self.workers_for_segment_stop = None
-        self.gparray_dump_file = options.coordinator_data_directory + '/gparraydump'
-
-        if os.path.exists(self.gparray_dump_file):
-            self.logger.info('Init gparray from file %s' % self.gparray_dump_file)
-            self.gparray = GpArray.initFromFile(self.gparray_dump_file)
-        else:
-            self.logger.info('Init gparray from catalog')
-            try:
-                self.gparray = GpArray.initFromCatalog(dburl, utility=True)
-            except DatabaseError as ex:
-                logger.error("Failed to connect to database.  Make sure the"
-                             " Greengage instance you wish to expand is running"
-                             " and that your environment is correct, then rerun"
-                             " gprebalance" + ' '.join(sys.argv[1:]))
-                sys.exit(1)
-            except ConnectionError as ex:
-                logger.error(f"{str(ex)}")
-                sys.exit(1)
+        self.gparray = gpArray
+        self.gparray_dump_file = gpArrayDumpFilename
 
         self.machine = Machine(model = self,
                                queued=True,
@@ -243,7 +213,6 @@ class GGShrink:
             self.logger.info("Shrink was interrupted")
             sys.exit(1)
 
-        # self.logger.info('on_every_state %s' % (self.state))
         # insert status if the schema already exists
         if self.state in self.states_main_shrink_flow:
             if self.ggrebalance_schema_exists():
@@ -260,19 +229,16 @@ class GGShrink:
         if self.options.clean_required:
             self.trigger('move_to_STATE_CLEANUP')
         else:
-            if self.gparray.get_segment_count() <= self.options.target_segment_count:
-                self.logger.error('Target segment count (%s) >= current segment count (%s).\n'
-                                 'Currently only shrink is supported (target segment count < current segment count).'
-                                  % (self.options.target_segment_count, self.gparray.get_segment_count()))
-                self.trigger('move_to_STATE_ERROR')
-                # self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
-            else:
-                self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
+            self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
     def on_enter_STATE_CHECK_PREVIOUS_RUN(self):
+        # check if rebalance schema exists
+        # and whether we can get the state where we stopped in previous run
+        # in order to proceed from the same point
         if self.ggrebalance_schema_exists():
             self.logger.info("Rebalance schema already exists")
             state_from_prev_run = self.get_state_from_previous_run()
+            # check maybe the state is the final one
             if state_from_prev_run == self.states_main_shrink_flow[len(self.states_main_shrink_flow) - 1]:
                 self.logger.info("Previous run was completed successfully. Please execute cleanup before a new run.")
                 self.trigger('move_to_STATE_END')
@@ -291,7 +257,7 @@ class GGShrink:
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED(self):
-        # Create schema
+        # Create schema and status tables
         dbconn.execSQL(self.conn, 'BEGIN;')
         dbconn.execSQL(self.conn, 'DROP SCHEMA IF EXISTS %s CASCADE;' % self.rebalance_schema_name)
         dbconn.execSQL(self.conn, 'CREATE SCHEMA %s;' % self.rebalance_schema_name)
@@ -314,13 +280,7 @@ class GGShrink:
 
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE(self):
         self.logger.info("Created shrink schema %s" % self.rebalance_schema_name)
-        self.trigger('move_to_STATE_BACKUP_CATALOG_STARTED')
-
-    def on_enter_STATE_BACKUP_CATALOG_STARTED(self):
-        self.trigger('move_to_STATE_BACKUP_CATALOG_DONE')
-
-    def on_enter_STATE_BACKUP_CATALOG_DONE(self):
-        self.trigger('move_to_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
+        self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
 
     def get_table_distr_segment_count(self, conn, schema_name, table_name) -> int:
         row = dbconn.queryRow(conn, '''
@@ -331,9 +291,10 @@ class GGShrink:
                               ''' % (schema_name, table_name))
         return int(row[0])
 
-    def on_enter_STATE_UPDATE_TARGET_SEGMENT_COUNT_STARTED(self):
+    def on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED(self):
         dbconn.execSQL(self.conn, 'BEGIN;')
         dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog();')
+        dbconn.execSQL(self.conn, 'CHECKPOINT;')
         dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_set_rebalance_numsegments(%s);' % self.options.target_segment_count)
 
         self.gparray.dumpToFile(self.gparray_dump_file)
@@ -357,9 +318,9 @@ class GGShrink:
 
         dbconn.execSQL(self.conn, 'COMMIT;')
 
-        self.trigger('move_to_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE')
+        self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE')
 
-    def on_enter_STATE_UPDATE_TARGET_SEGMENT_COUNT_DONE(self):
+    def on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE(self):
         self.logger.info("Updated target segment count to %s", self.options.target_segment_count)
         self.trigger('move_to_STATE_PREPARE_SHRINK_SCHEMA_STARTED')
 
@@ -383,14 +344,14 @@ class GGShrink:
             dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
             conn = dbconn.connect(dburl, encoding='UTF8')
             cursor = dbconn.query(conn, '''
-                SELECT n.nspname, c.relname
-                FROM pg_class c
-                JOIN pg_namespace n ON c.relnamespace = n.oid
-                JOIN gp_distribution_policy p ON c.oid = p.localoid
-                WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
-                      p.numsegments > %s AND
-                      n.nspname NOT IN ('pg_catalog', 'information_schema', '%s');
-                ''' % (self.options.target_segment_count, self.rebalance_schema_name))
+                                  SELECT n.nspname, c.relname
+                                  FROM pg_class c
+                                  JOIN pg_namespace n ON c.relnamespace = n.oid
+                                  JOIN gp_distribution_policy p ON c.oid = p.localoid
+                                  WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
+                                  p.numsegments > %s AND
+                                  n.nspname NOT IN ('pg_catalog', 'information_schema', '%s');
+                                  ''' % (self.options.target_segment_count, self.rebalance_schema_name))
             for record in cursor:
                 schema_name = record[0]
                 rel_name = record[1]
@@ -464,7 +425,6 @@ class GGShrink:
                 self.workers_for_tables_rebalance.addCommand(task)
 
             print_progress(self.workers_for_tables_rebalance, interval=1)
-            #self.workers_for_tables_rebalance.join()
 
             self.workers_for_tables_rebalance.haltWork()
             self.workers_for_tables_rebalance.joinWorkers()
@@ -488,7 +448,6 @@ class GGShrink:
         ## Shrink catalog
         dbconn.execSQL(self.conn, 'BEGIN;')
         cursor = dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog();')
-        ## TODO: repopulate?
         dbconn.execSQL(self.conn, 'DELETE FROM gp_segment_configuration WHERE content >= %s;' % self.options.target_segment_count)
         dbconn.execSQL(self.conn, 'CHECKPOINT;')
         dbconn.execSQL(self.conn, 'SELECT gp_expand_bump_version();')
@@ -505,32 +464,35 @@ class GGShrink:
 
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self):
         self.logger.info("Stopping shrinked segments...")
-        # TODO: elaborate more what to do if some segments (mirrors) are marked as down
+
         segments_to_stop = self.gparray.get_segment_count() - self.options.target_segment_count
         segments_to_stop = segments_to_stop * 2 # consider mirrors
         self.workers_for_segment_stop = WorkerPool(numWorkers=min(segments_to_stop, self.options.batch_size))
 
         for seg_pair in self.gparray.getSegmentList():
-            if seg_pair.primaryDB.getSegmentContentId() >= self.options.target_segment_count:
-                cmd = SegmentStop("stop primary (content %s, dbid %s)" %
-                                  (seg_pair.primaryDB.getSegmentContentId(),
-                                   seg_pair.primaryDB.getSegmentDbId()),
-                                   seg_pair.primaryDB.getSegmentDataDirectory(),
-                                   mode=self.stop_mode,
-                                   timeout=self.timeout,
-                                   ctxt=base.REMOTE,
-                                   remoteHost=seg_pair.primaryDB.getSegmentHostName())
-                self.workers_for_segment_stop.addCommand(cmd)
-
-                if seg_pair.mirrorDB != None:
-                    cmd = SegmentStop("stop mirror (content %s, dbid %s)" %
-                                      (seg_pair.mirrorDB.getSegmentContentId(),
-                                       seg_pair.mirrorDB.getSegmentDbId()),
-                                       seg_pair.mirrorDB.getSegmentDataDirectory(),
+            primary_seg = seg_pair.primaryDB
+            mirror_seq = seg_pair.mirrorDB
+            if primary_seg.getSegmentContentId() >= self.options.target_segment_count:
+                if primary_seg.isSegmentUp():
+                    cmd = SegmentStop("stop primary (content %s, dbid %s)" %
+                                      (primary_seg.getSegmentContentId(),
+                                       primary_seg.getSegmentDbId()),
+                                       primary_seg.getSegmentDataDirectory(),
                                        mode=self.stop_mode,
                                        timeout=self.timeout,
                                        ctxt=base.REMOTE,
-                                       remoteHost=seg_pair.mirrorDB.getSegmentHostName())
+                                       remoteHost=primary_seg.getSegmentHostName())
+                    self.workers_for_segment_stop.addCommand(cmd)
+
+                if mirror_seq != None and mirror_seq.isSegmentUp():
+                    cmd = SegmentStop("stop mirror (content %s, dbid %s)" %
+                                      (mirror_seq.getSegmentContentId(),
+                                       mirror_seq.getSegmentDbId()),
+                                       mirror_seq.getSegmentDataDirectory(),
+                                       mode=self.stop_mode,
+                                       timeout=self.timeout,
+                                       ctxt=base.REMOTE,
+                                       remoteHost=mirror_seq.getSegmentHostName())
                     self.workers_for_segment_stop.addCommand(cmd)
 
         print_progress(self.workers_for_segment_stop, interval=1)
