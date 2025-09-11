@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from transitions import Machine
+from contextlib import closing
 try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
@@ -29,7 +30,7 @@ def print_progress(pool, interval=10):
         if pool.assigned:
             pct = float(completed) / pool.assigned
 
-        pool.logger.info('%0.2f%% of jobs completed' % (pct * 100))
+        pool.logger.info(f'{pct:.2%} of jobs completed')
         return completed >= pool.assigned
 
     # print_completed_percentage() returns True if we're done.
@@ -55,8 +56,12 @@ class GGShrink:
         'STATE_ROLLBACK'
     ]
 
-    # Note: order of states in the list above is important,
+    # Note: order of states in the list below is important,
     # as we rely on it when recover from an interrupted state.
+    # These states are separated from 'states' above, because
+    # these states exist after the shrink schema is created,
+    # so they are reflected in the status table inside the schema,
+    # and we can re-enter the interrupted state.
     states_main_shrink_flow = [
         'STATE_SETUP_SHRINK_SCHEMA_STARTED',
         'STATE_SETUP_SHRINK_SCHEMA_DONE',
@@ -190,39 +195,32 @@ class GGShrink:
         self.trigger('start')
 
     def ggrebalance_schema_exists(self) -> bool:
-        conn = dbconn.connect(self.dburl, encoding='UTF8')
-        row = dbconn.queryRow(conn, "SELECT COUNT(1) FROM pg_namespace WHERE nspname = '%s';" % self.rebalance_schema_name)
-        result = (int(row[0]) == 1)
-        conn.close()
+        result = False
+        with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
+            row = dbconn.queryRow(conn, f"SELECT COUNT(1) FROM pg_namespace WHERE nspname = '{self.rebalance_schema_name}'")
+            result = (int(row[0]) == 1)
         return result
 
     def get_state_from_previous_run(self) -> str:
-        conn = dbconn.connect(self.dburl, encoding='UTF8')
-        cursor = dbconn.query(conn,
-                              '''
-                              SELECT status FROM %s.%s order by updated DESC limit 1;
-                              ''' % (self.rebalance_schema_name, self.rebalance_status))
         result = 'not defined'
-        if cursor.rowcount > 0:
-            result = str(cursor.fetchone()[0])
-        conn.close()
+        with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
+            cursor = dbconn.query(conn, f'SELECT status FROM {self.rebalance_schema_name}.{self.rebalance_status} order by updated DESC limit 1')
+            if cursor.rowcount > 0:
+                result = str(cursor.fetchone()[0])
         return result
 
     def on_every_state(self):
         if self.shutdown_requested:
-            self.logger.info("Shrink was interrupted")
+            self.logger.info('Shrink was interrupted')
             sys.exit(1)
 
         # insert status if the schema already exists
         if self.state in self.states_main_shrink_flow:
             if self.ggrebalance_schema_exists():
-                conn = dbconn.connect(self.dburl, encoding='UTF8')
-                dbconn.execSQL(conn,
-                               '''
-                                INSERT INTO %s.%s
-                                VALUES ('%s', NOW());
-                               ''' % (self.rebalance_schema_name, self.rebalance_status, self.state))
-                conn.close()
+                with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
+                    dbconn.execSQL(conn,
+                                   f'''INSERT INTO {self.rebalance_schema_name}.{self.rebalance_status}
+                                   VALUES ('{self.state}', NOW())''')
 
     # state callbacks start here
     def on_enter_STATE_OPTIONS_VALIDATION(self):
@@ -236,14 +234,14 @@ class GGShrink:
         # and whether we can get the state where we stopped in previous run
         # in order to proceed from the same point
         if self.ggrebalance_schema_exists():
-            self.logger.info("Rebalance schema already exists")
+            self.logger.info('Rebalance schema already exists')
             state_from_prev_run = self.get_state_from_previous_run()
             # check maybe the state is the final one
             if state_from_prev_run == self.states_main_shrink_flow[len(self.states_main_shrink_flow) - 1]:
-                self.logger.info("Previous run was completed successfully. Please execute cleanup before a new run.")
+                self.logger.info('Previous run was completed successfully. Please execute cleanup before a new run.')
                 self.trigger('move_to_STATE_END')
             else:
-                self.logger.info("Previous run stopped after state '%s', trying to continue from the next state..." % state_from_prev_run)
+                self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
                 try:
                     next_state = self.states_main_shrink_flow[ self.states_main_shrink_flow.index(state_from_prev_run) + 1 ]
                 except:
@@ -258,44 +256,39 @@ class GGShrink:
 
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED(self):
         # Create schema and status tables
-        dbconn.execSQL(self.conn, 'BEGIN;')
-        dbconn.execSQL(self.conn, 'DROP SCHEMA IF EXISTS %s CASCADE;' % self.rebalance_schema_name)
-        dbconn.execSQL(self.conn, 'CREATE SCHEMA %s;' % self.rebalance_schema_name)
+        dbconn.execSQL(self.conn, 'BEGIN')
+        dbconn.execSQL(self.conn, f'DROP SCHEMA IF EXISTS {self.rebalance_schema_name} CASCADE')
+        dbconn.execSQL(self.conn, f'CREATE SCHEMA {self.rebalance_schema_name}')
         dbconn.execSQL(self.conn,
-                       '''
-                       CREATE TABLE %s.%s
+                       f'''CREATE TABLE {self.rebalance_schema_name}.{self.rebalance_status}
                        (status TEXT, updated TIMESTAMP WITH TIME ZONE)
-                       DISTRIBUTED REPLICATED;
-                       ''' % (self.rebalance_schema_name, self.rebalance_status))
+                       DISTRIBUTED REPLICATED''')
         dbconn.execSQL(self.conn,
-                       '''
-                       CREATE TABLE %s.%s
+                       f'''CREATE TABLE {self.rebalance_schema_name}.{self.table_rebalance_status_detail}
                        (db_name TEXT, schema_name TEXT, rel_name TEXT, status TEXT,
                        CONSTRAINT unique_fqn UNIQUE (db_name, schema_name, rel_name))
-                       DISTRIBUTED REPLICATED;
-                       ''' % (self.rebalance_schema_name, self.table_rebalance_status_detail))
-        dbconn.execSQL(self.conn, 'COMMIT;')
+                       DISTRIBUTED REPLICATED''')
+        dbconn.execSQL(self.conn, 'COMMIT')
 
         self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_DONE')
 
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE(self):
-        self.logger.info("Created shrink schema %s" % self.rebalance_schema_name)
+        self.logger.info(f'Created shrink schema {self.rebalance_schema_name}')
         self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
 
     def get_table_distr_segment_count(self, conn, schema_name, table_name) -> int:
-        row = dbconn.queryRow(conn, '''
-                              SELECT p.numsegments
+        row = dbconn.queryRow(conn,
+                              f'''SELECT p.numsegments
                               FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid
                               JOIN gp_distribution_policy p ON c.oid = p.localoid
-                              WHERE n.nspname='%s' AND c.relname='%s';
-                              ''' % (schema_name, table_name))
+                              WHERE n.nspname='{schema_name}' AND c.relname='{table_name}';''')
         return int(row[0])
 
     def on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED(self):
-        dbconn.execSQL(self.conn, 'BEGIN;')
-        dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog();')
-        dbconn.execSQL(self.conn, 'CHECKPOINT;')
-        dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_set_rebalance_numsegments(%s);' % self.options.target_segment_count)
+        dbconn.execSQL(self.conn, 'BEGIN')
+        dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
+        dbconn.execSQL(self.conn, 'CHECKPOINT')
+        dbconn.execSQL(self.conn, f'SELECT gp_toolkit.gp_set_rebalance_numsegments({self.options.target_segment_count})')
 
         self.gparray.dumpToFile(self.gparray_dump_file)
 
@@ -306,34 +299,34 @@ class GGShrink:
                                               self.rebalance_schema_name,
                                               self.rebalance_status) > self.options.target_segment_count:
             dbconn.execSQL(self.conn,
-                           '''ALTER TABLE "%s"."%s" REBALANCE %s;'''
-                           % (self.rebalance_schema_name, self.rebalance_status, self.options.target_segment_count))
+                           f'''ALTER TABLE "{self.rebalance_schema_name}"."{self.rebalance_status}"
+                           REBALANCE {self.options.target_segment_count}''')
 
         if self.get_table_distr_segment_count(self.conn,
                                               self.rebalance_schema_name,
                                               self.table_rebalance_status_detail) > self.options.target_segment_count:
             dbconn.execSQL(self.conn,
-                           '''ALTER TABLE "%s"."%s" REBALANCE %s;'''
-                           % (self.rebalance_schema_name, self.table_rebalance_status_detail, self.options.target_segment_count))
+                           f'''ALTER TABLE "{self.rebalance_schema_name}"."{self.table_rebalance_status_detail}"
+                           REBALANCE {self.options.target_segment_count}''')
 
-        dbconn.execSQL(self.conn, 'COMMIT;')
+        dbconn.execSQL(self.conn, 'COMMIT')
 
         self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE')
 
     def on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE(self):
-        self.logger.info("Updated target segment count to %s", self.options.target_segment_count)
+        self.logger.info(f'Updated target segment count to {self.options.target_segment_count}')
         self.trigger('move_to_STATE_PREPARE_SHRINK_SCHEMA_STARTED')
 
     def on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED(self):
         # collect databases and tables that require 'ALTER TABLE REBALANCE'
         # and store in 'table_rebalance_status_detail' table
 
-        dbconn.execSQL(self.conn, "BEGIN;");
+        dbconn.execSQL(self.conn, 'BEGIN')
 
         # cleanup table_rebalance_status_detail for the case we re-enter this state after we were interrupted right after it
-        dbconn.execSQL(self.conn,"TRUNCATE %s.%s;" % (self.rebalance_schema_name, self.table_rebalance_status_detail));
+        dbconn.execSQL(self.conn, f'TRUNCATE {self.rebalance_schema_name}.{self.table_rebalance_status_detail}')
 
-        cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database;')
+        cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database')
         databases_to_process = []
         for record in cursor:
             database_name = record[0]
@@ -342,32 +335,26 @@ class GGShrink:
 
         for db in databases_to_process:
             dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
-            conn = dbconn.connect(dburl, encoding='UTF8')
-            cursor = dbconn.query(conn, '''
-                                  SELECT n.nspname, c.relname
-                                  FROM pg_class c
-                                  JOIN pg_namespace n ON c.relnamespace = n.oid
-                                  JOIN gp_distribution_policy p ON c.oid = p.localoid
-                                  WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
-                                  p.numsegments > %s AND
-                                  n.nspname NOT IN ('pg_catalog', 'information_schema', '%s');
-                                  ''' % (self.options.target_segment_count, self.rebalance_schema_name))
-            for record in cursor:
-                schema_name = record[0]
-                rel_name = record[1]
-                dbconn.execSQL(self.conn,
-                               '''
-                               INSERT INTO %s.%s
-                               VALUES ('%s', '%s', '%s', 'none');
-                               ''' % (self.rebalance_schema_name, self.table_rebalance_status_detail, db, schema_name, rel_name));
-            conn.close()
+            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+                cursor = dbconn.query(conn,
+                                      f'''SELECT n.nspname, c.relname
+                                      FROM pg_class c
+                                      JOIN pg_namespace n ON c.relnamespace = n.oid
+                                      JOIN gp_distribution_policy p ON c.oid = p.localoid
+                                      WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
+                                      p.numsegments > {self.options.target_segment_count} AND
+                                      n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema_name}')''')
+                for schema_name, rel_name in cursor:
+                    dbconn.execSQL(self.conn,
+                                   f'''INSERT INTO {self.rebalance_schema_name}.{self.table_rebalance_status_detail}
+                                   VALUES ('{db}', '{schema_name}', '{rel_name}', 'none')''')
 
-        dbconn.execSQL(self.conn, "COMMIT;");
+        dbconn.execSQL(self.conn, 'COMMIT')
 
         self.trigger('move_to_STATE_PREPARE_SHRINK_SCHEMA_DONE')
 
     def on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE(self):
-        self.logger.info("Initiated %s.%s" % (self.rebalance_schema_name, self.table_rebalance_status_detail))
+        self.logger.info(f'Initiated {self.rebalance_schema_name}.{self.table_rebalance_status_detail}')
         self.trigger('move_to_STATE_SHRINK_TABLES_STARTED')
 
     class TableRebalanceTask(SQLCommand):
@@ -380,36 +367,29 @@ class GGShrink:
             self.db_name = db_name
             self.schema_name = schema_name
             self.rel_name = rel_name
-            SQLCommand.__init__(self, "task rebalance for %s.%s.%s" % (self.db_name, self.schema_name, self.rel_name))
+            SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
 
         def run(self, validateAfter=False):
             dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
-            conn = dbconn.connect(dburl, encoding='UTF8')
-            dbconn.execSQL(conn, 'BEGIN;')
-            dbconn.execSQL(conn,
-                           '''
-                           ALTER TABLE "%s"."%s" REBALANCE %s;
-                           ''' % (self.schema_name, self.rel_name, self.shrink.options.target_segment_count))
-            dbconn.execSQL(self.shrink.conn,
-                           '''
-                           UPDATE %s.%s SET status = 'done'
-                           WHERE db_name = '%s' AND schema_name = '%s' AND rel_name = '%s';
-                           ''' % (self.shrink.rebalance_schema_name, self.shrink.table_rebalance_status_detail,
-                                  self.db_name, self.schema_name, self.rel_name))
-            dbconn.execSQL(conn, 'COMMIT;')
-            conn.close()
+            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+                dbconn.execSQL(conn, 'BEGIN')
+                dbconn.execSQL(conn,
+                               f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
+                               REBALANCE {self.shrink.options.target_segment_count}''')
+                dbconn.execSQL(self.shrink.conn,
+                               f'''UPDATE {self.shrink.rebalance_schema_name}.{self.shrink.table_rebalance_status_detail} SET status = 'done'
+                               WHERE db_name = '{self.db_name}' AND schema_name = '{self.schema_name}' AND rel_name = '{self.rel_name}';''')
+                dbconn.execSQL(conn, 'COMMIT')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
     def on_enter_STATE_SHRINK_TABLES_STARTED(self):
-        self.logger.info("Start tables rebalance")
+        self.logger.info('Start tables rebalance')
 
         # perform 'ALTER TABLE REBALANCE' for all not yet processed tables
         cursor = dbconn.query(self.conn,
-                              '''
-                              SELECT * FROM %s.%s WHERE status = 'none';
-                              ''' % (self.rebalance_schema_name, self.table_rebalance_status_detail))
+                              f"SELECT * FROM {self.rebalance_schema_name}.{self.table_rebalance_status_detail} WHERE status = 'none'")
 
-        self.logger.info("Tables to process %s" % cursor.rowcount)
+        self.logger.info(f'Tables to process {cursor.rowcount}')
 
         if cursor.rowcount > 0:
             self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
@@ -431,39 +411,38 @@ class GGShrink:
 
             for task in self.workers_for_tables_rebalance.getCompletedItems():
                 if not task.was_successful():
-                    raise Exception("Failed to do ALTER REBALANCE: {}" .format(
-                        task.get_results().stderr))
+                    raise Exception(f'Failed to do ALTER REBALANCE: {task.get_results().stderr}')
 
             self.workers_for_tables_rebalance = None
 
         self.trigger('move_to_STATE_SHRINK_TABLES_DONE')
 
     def on_enter_STATE_SHRINK_TABLES_DONE(self):
-        self.logger.info("Tables rebalance complete")
+        self.logger.info('Tables rebalance complete')
         self.trigger('move_to_STATE_SHRINK_CATALOG_STARTED')
 
     def on_enter_STATE_SHRINK_CATALOG_STARTED(self):
-        self.logger.info("Start catalog shrink")
+        self.logger.info('Start catalog shrink')
 
         ## Shrink catalog
-        dbconn.execSQL(self.conn, 'BEGIN;')
-        cursor = dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog();')
-        dbconn.execSQL(self.conn, 'DELETE FROM gp_segment_configuration WHERE content >= %s;' % self.options.target_segment_count)
-        dbconn.execSQL(self.conn, 'CHECKPOINT;')
-        dbconn.execSQL(self.conn, 'SELECT gp_expand_bump_version();')
-        cursor = dbconn.query(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments();')
-        dbconn.execSQL(self.conn, 'COMMIT;')
+        dbconn.execSQL(self.conn, 'BEGIN')
+        cursor = dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
+        dbconn.execSQL(self.conn, f'DELETE FROM gp_segment_configuration WHERE content >= {self.options.target_segment_count}')
+        dbconn.execSQL(self.conn, 'CHECKPOINT')
+        dbconn.execSQL(self.conn, 'SELECT gp_expand_bump_version()')
+        cursor = dbconn.query(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments()')
+        dbconn.execSQL(self.conn, 'COMMIT')
 
-        self.conn.close();
+        self.conn.close()
 
         self.trigger('move_to_STATE_SHRINK_CATALOG_DONE')
 
     def on_enter_STATE_SHRINK_CATALOG_DONE(self):
-        self.logger.info("Catalog shrink complete")
+        self.logger.info('Catalog shrink complete')
         self.trigger('move_to_STATE_SHRINK_SEGMENTS_STOP_STARTED')
 
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self):
-        self.logger.info("Stopping shrinked segments...")
+        self.logger.info('Stopping shrinked segments...')
 
         segments_to_stop = self.gparray.get_segment_count() - self.options.target_segment_count
         segments_to_stop = segments_to_stop * 2 # consider mirrors
@@ -474,9 +453,7 @@ class GGShrink:
             mirror_seq = seg_pair.mirrorDB
             if primary_seg.getSegmentContentId() >= self.options.target_segment_count:
                 if primary_seg.isSegmentUp():
-                    cmd = SegmentStop("stop primary (content %s, dbid %s)" %
-                                      (primary_seg.getSegmentContentId(),
-                                       primary_seg.getSegmentDbId()),
+                    cmd = SegmentStop(f'stop primary (content {primary_seg.getSegmentContentId()}, dbid {primary_seg.getSegmentDbId()})',
                                        primary_seg.getSegmentDataDirectory(),
                                        mode=self.stop_mode,
                                        timeout=self.timeout,
@@ -485,9 +462,7 @@ class GGShrink:
                     self.workers_for_segment_stop.addCommand(cmd)
 
                 if mirror_seq != None and mirror_seq.isSegmentUp():
-                    cmd = SegmentStop("stop mirror (content %s, dbid %s)" %
-                                      (mirror_seq.getSegmentContentId(),
-                                       mirror_seq.getSegmentDbId()),
+                    cmd = SegmentStop(f'stop mirror (content {mirror_seq.getSegmentContentId()}, dbid {mirror_seq.getSegmentDbId()})',
                                        mirror_seq.getSegmentDataDirectory(),
                                        mode=self.stop_mode,
                                        timeout=self.timeout,
@@ -502,26 +477,25 @@ class GGShrink:
 
         for task in self.workers_for_segment_stop.getCompletedItems():
             if not task.was_successful():
-                raise Exception("Failed to stop segments")
+                raise Exception('Failed to stop segments')
 
         self.workers_for_segment_stop = None
 
         self.trigger('move_to_STATE_SHRINK_SEGMENTS_STOP_DONE')
 
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_DONE(self):
-        self.logger.info("Shrinked segments were stopped")
+        self.logger.info('Shrinked segments were stopped')
         self.trigger('move_to_STATE_SHRINK_DONE')
 
     def on_enter_STATE_SHRINK_DONE(self):
         os.remove(self.gparray_dump_file)
-        self.logger.info("Shrink is complete")
+        self.logger.info('Shrink is complete')
         self.trigger('move_to_STATE_END')
 
     def on_enter_STATE_CLEANUP(self):
-        conn = dbconn.connect(self.dburl, encoding='UTF8')
-        dbconn.execSQL(conn, 'DROP SCHEMA %s CASCADE;' % self.rebalance_schema_name)
-        conn.close()
-        self.logger.info("Cleanup is complete")
+        with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
+            dbconn.execSQL(conn, f'DROP SCHEMA {self.rebalance_schema_name} CASCADE')
+        self.logger.info('Cleanup is complete')
 
     def on_enter_STATE_ERROR(self):
         sys.exit(1)
