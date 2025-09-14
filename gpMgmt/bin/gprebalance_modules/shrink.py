@@ -195,19 +195,17 @@ class GGShrink:
         self.trigger('start')
 
     def ggrebalance_schema_exists(self) -> bool:
-        result = False
         with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
             row = dbconn.queryRow(conn, f"SELECT COUNT(1) FROM pg_namespace WHERE nspname = '{self.rebalance_schema_name}'")
-            result = (int(row[0]) == 1)
-        return result
+            return int(row[0]) == 1
+        return False
 
     def get_state_from_previous_run(self) -> str:
-        result = 'not defined'
         with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
             cursor = dbconn.query(conn, f'SELECT status FROM {self.rebalance_schema_name}.{self.rebalance_status} order by updated DESC limit 1')
             if cursor.rowcount > 0:
-                result = str(cursor.fetchone()[0])
-        return result
+                return str(cursor.fetchone()[0])
+        return 'not defined'
 
     def on_every_state(self):
         if self.shutdown_requested:
@@ -237,7 +235,7 @@ class GGShrink:
             self.logger.info('Rebalance schema already exists')
             state_from_prev_run = self.get_state_from_previous_run()
             # check maybe the state is the final one
-            if state_from_prev_run == self.states_main_shrink_flow[len(self.states_main_shrink_flow) - 1]:
+            if state_from_prev_run == self.states_main_shrink_flow[-1]:
                 self.logger.info('Previous run was completed successfully. Please execute cleanup before a new run.')
                 self.trigger('move_to_STATE_END')
             else:
@@ -387,17 +385,14 @@ class GGShrink:
 
         # perform 'ALTER TABLE REBALANCE' for all not yet processed tables
         cursor = dbconn.query(self.conn,
-                              f"SELECT * FROM {self.rebalance_schema_name}.{self.table_rebalance_status_detail} WHERE status = 'none'")
+                              f"SELECT db_name, schema_name, rel_name FROM {self.rebalance_schema_name}.{self.table_rebalance_status_detail} WHERE status = 'none'")
 
         self.logger.info(f'Tables to process {cursor.rowcount}')
 
         if cursor.rowcount > 0:
             self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
 
-            for record in cursor:
-                db_name = record[0]
-                schema_name = record[1]
-                rel_name = record[2]
+            for db_name, schema_name, rel_name in cursor:
                 task = self.TableRebalanceTask(self,
                                                db_name,
                                                schema_name,

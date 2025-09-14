@@ -57,7 +57,7 @@ def parseargs():
     parser.set_defaults(verbose=False)
 
     # Parse the command line arguments
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
     return options, args, parser
 
 
