@@ -390,8 +390,16 @@ main(int argc, char **argv)
 			rewind_needed = false;
 
 			memcpy(&ControlFile_new, &ControlFile_target, sizeof(ControlFileData));
+
+			/*
+			 * minRecoveryPoint is the minimum end of WAL that is considered
+			 * valid. In some cases checkpoint might be the first WAL record
+			 * on the new timeline, so to ensure minRecoveryPoint includes
+			 * records after the switch, we have to set minRecoveryPoint to
+			 * some point *after* the checkpoint, for example checkPoint + 1.
+			 */
 			ControlFile_new.minRecoveryPoint = Max(ControlFile_source.minRecoveryPoint,
-												   ControlFile_source.checkPoint);
+												   ControlFile_source.checkPoint + 1);
 			ControlFile_new.minRecoveryPointTLI = ControlFile_source.checkPointCopy.ThisTimeLineID;
 			pg_log_info("no rewind required, updating target to source's timeline");
 			if (!dry_run)

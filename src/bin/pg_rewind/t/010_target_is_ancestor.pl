@@ -57,6 +57,12 @@ $node_2->start;
 $node_2->promote;
 $node_2->safe_psql('postgres', "INSERT INTO test_tab VALUES ('in node')");
 
+# Restore backup B in recovery mode to create Timeline 2
+my $node_3 = PostgreSQL::Test::Cluster->new('node_3');
+$node_3->init_from_backup($orig_node, 'backup_B', has_restoring => 1, standby => 0);
+$node_3->start;
+$node_3->safe_psql('postgres', "INSERT INTO test_tab VALUES ('in node')");
+
 $orig_node->start;
 $orig_node->safe_psql('postgres',
 	"INSERT INTO test_tab VALUES ('this will be lost on rewind')");
@@ -126,6 +132,13 @@ rewind_from_backup('backup_C',
 rewind_from_backup('backup_B', [qr/pg_rewind: no rewind required/], $node_2);
 rewind_from_backup('backup_A', [qr/pg_rewind: no rewind required/], $node_2);
 
+rewind_from_backup('backup_C',
+	[qr/pg_rewind: rewinding from last common checkpoint at .* on timeline 1/],
+	$node_3);
+rewind_from_backup('backup_B', [qr/pg_rewind: no rewind required/], $node_3);
+rewind_from_backup('backup_A', [qr/pg_rewind: no rewind required/], $node_3);
+
 $node_2->stop;
+$node_3->stop;
 
 done_testing();
