@@ -42,7 +42,9 @@ static void digestControlFile(ControlFileData *ControlFile, char *source,
 							  size_t size);
 static void syncTargetDirectory(void);
 static void sanityChecks(void);
-static void findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex);
+static void findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex,
+									   char **sourceHistfileName,
+									   char **sourceHistfile);
 static void ensureCleanShutdown(const char *argv0);
 static int32 get_target_dbid(const char *argv0);
 static void disconnect_atexit(void);
@@ -129,7 +131,9 @@ main(int argc, char **argv)
 	TimeLineID	endtli;
 	ControlFileData ControlFile_new;
 	bool		writerecoveryconf = false;
-	char		*replication_slot = NULL;
+	char	   *replication_slot = NULL;
+	char	   *sourceHistfile;
+	char	   *sourceHistfileName;
 
 	pg_logging_init(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_rewind"));
@@ -332,7 +336,7 @@ main(int argc, char **argv)
 	 */
 	if (ControlFile_target.checkPointCopy.ThisTimeLineID == ControlFile_source.checkPointCopy.ThisTimeLineID)
 	{
-		pg_log_info("source and target cluster are on the same timeline: %u",
+		pg_log_info("no rewind required, source and target cluster are on the same timeline: %u",
 			   ControlFile_source.checkPointCopy.ThisTimeLineID);
 		rewind_needed = false;
 		target_wal_endrec = 0;
@@ -341,7 +345,8 @@ main(int argc, char **argv)
 	{
 		XLogRecPtr	chkptendrec;
 
-		findCommonAncestorTimeline(&divergerec, &lastcommontliIndex);
+		findCommonAncestorTimeline(&divergerec, &lastcommontliIndex,
+								   &sourceHistfileName, &sourceHistfile);
 		pg_log_info("servers diverged at WAL location %X/%X on timeline %u",
 					(uint32) (divergerec >> 32), (uint32) divergerec,
 					targetHistory[lastcommontliIndex].tli);
@@ -372,12 +377,38 @@ main(int argc, char **argv)
 		/*
 		 * Check for the possibility that the target is in fact a direct
 		 * ancestor of the source. In that case, there is no divergent history
-		 * in the target that needs rewinding.
+		 * in the target that needs rewinding, but we still update the
+		 * target's minRecoveryPoint, so that when you start it up, it will
+		 * recover to that timeline. (Otherwise, if it has more WAL locally in
+		 * pg_wal or available from the archive, it might choose to follow
+		 * some other timeline.)
 		 */
 		if (target_wal_endrec > divergerec)
 			rewind_needed = true;
 		else
+		{
 			rewind_needed = false;
+
+			memcpy(&ControlFile_new, &ControlFile_target, sizeof(ControlFileData));
+			ControlFile_new.minRecoveryPoint = Max(ControlFile_source.minRecoveryPoint,
+												   ControlFile_source.checkPoint);
+			ControlFile_new.minRecoveryPointTLI = ControlFile_source.checkPointCopy.ThisTimeLineID;
+			pg_log_info("no rewind required, updating target to source's timeline");
+			if (!dry_run)
+			{
+				update_controlfile(datadir_target, &ControlFile_new, do_sync);
+
+				/*
+				 * Make the timeline history file available to the target.
+				 * Avoids having to fetch it immediately at startup, and
+				 * ensures that it has the same idea of what the timeline is
+				 * as we did.
+				 */
+				open_target_file(sourceHistfileName, true);
+				write_target_range(sourceHistfile, 0, strlen(sourceHistfile));
+				close_target_file();
+			}
+		}
 	}
 
 	if (!rewind_needed)
@@ -626,7 +657,8 @@ MinXLogRecPtr(XLogRecPtr a, XLogRecPtr b)
  * either source or target.
  */
 static TimeLineHistoryEntry *
-getTimelineHistory(ControlFileData *controlFile, int *nentries)
+getTimelineHistory(ControlFileData *controlFile, int *nentries,
+				   char **histfileName, char **histfileOut)
 {
 	TimeLineHistoryEntry *history;
 	TimeLineID	tli;
@@ -658,6 +690,11 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
 			histfile = slurpFile(datadir_target, path, NULL);
 		else
 			pg_fatal("invalid control file");
+
+		if (histfileName)
+			*histfileName = pstrdup(path);
+		if (histfileOut)
+			*histfileOut = pstrdup(histfile);
 
 		history = rewind_parseTimeLineHistory(histfile, tli, nentries);
 		pg_free(histfile);
@@ -701,7 +738,8 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
  * before calling this routine.
  */
 static void
-findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex)
+findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex,
+						   char **sourceHistfileName, char **sourceHistfile)
 {
 	TimeLineHistoryEntry *sourceHistory;
 	int			sourceNentries;
@@ -709,8 +747,9 @@ findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex)
 				n;
 
 	/* Retrieve timelines for both source and target */
-	sourceHistory = getTimelineHistory(&ControlFile_source, &sourceNentries);
-	targetHistory = getTimelineHistory(&ControlFile_target, &targetNentries);
+	sourceHistory = getTimelineHistory(&ControlFile_source, &sourceNentries,
+									   sourceHistfileName, sourceHistfile);
+	targetHistory = getTimelineHistory(&ControlFile_target, &targetNentries, NULL, NULL);
 
 	/*
 	 * Trace the history forward, until we hit the timeline diverge. It may

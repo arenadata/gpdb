@@ -95,6 +95,13 @@ sub rewind_from_backup
 	# Now move back postgresql.conf with old settings
 	move("$tmp_folder/postgresql.conf.tmp", "$target_pgdata/postgresql.conf");
 
+	# Make the more recent WAL from timeline 1 available to the
+	# restored server.  It doesn't need it, the point of this is to
+	# test that the server ignores this extra WAL.
+	copy($orig_node->data_dir . "/pg_wal/000000010000000000000001",
+	  $target_node->data_dir . "/pg_wal/000000010000000000000001")
+	  || die "copying 000000010000000000000001: $!";
+
 	# Configure it to connect to the new primary
 	$target_node->append_conf(
 		'postgresql.conf', qq(
