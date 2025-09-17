@@ -1534,19 +1534,12 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	cplan = GetCachedPlan(plansource, paramLI, false, _SPI_current->queryEnv, NULL);
 	stmt_list = cplan->stmt_list;
 
-	/*
-	 * GPDB: Mark all queries as SPI inner queries for extension usage. But
-	 * make sure that SPI is not top level itself.
-	 */
-	if (already_under_executor_run())
+	/* GPDB: Mark all queries as SPI inner queries for extension usage */
+	foreach(lc, stmt_list)
 	{
-		foreach(lc, stmt_list)
-		{
-			Node	   *stmt = (Node *) lfirst(lc);
-
-			if (IsA(stmt, PlannedStmt))
-				((PlannedStmt *) stmt)->metricsQueryType = SPI_INNER_QUERY;
-		}
+		Node *stmt = (Node *) lfirst(lc);
+		if (IsA(stmt, PlannedStmt))
+			((PlannedStmt*)stmt)->metricsQueryType = SPI_INNER_QUERY;
 	}
 
 	if (!plan->saved)
@@ -2492,12 +2485,8 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 			_SPI_current->processed = 0;
 			_SPI_current->tuptable = NULL;
 
-			/*
-			 * GPDB: Mark all queries as SPI inner query for extension usage
-			 * But make sure that SPI is not top level itself.
-			 */
-			if (already_under_executor_run())
-				stmt->metricsQueryType = SPI_INNER_QUERY;
+			/* GPDB: Mark all queries as SPI inner query for extension usage */
+			stmt->metricsQueryType = SPI_INNER_QUERY;
 
 			/* Check for unsupported cases. */
 			if (stmt->utilityStmt)
