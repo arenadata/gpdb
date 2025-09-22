@@ -202,7 +202,7 @@ class GGShrink:
 
     def get_state_from_previous_run(self) -> str:
         with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
-            cursor = dbconn.query(conn, f'SELECT status FROM {self.rebalance_schema_name}.{self.rebalance_status} order by updated DESC limit 1')
+            cursor = dbconn.query(conn, f'SELECT status FROM {self.rebalance_schema_name}.{self.rebalance_status} ORDER BY updated DESC LIMIT 1')
             if cursor.rowcount > 0:
                 return str(cursor.fetchone()[0])
         return 'not defined'
@@ -247,8 +247,7 @@ class GGShrink:
                     self.trigger('move_to_STATE_ERROR')
                     return
                 # use auto to_«state» method to recover
-                trigger_name = 'to_' + next_state
-                self.trigger(trigger_name)
+                self.trigger(f'to_{next_state}')
         else:
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
@@ -274,8 +273,8 @@ class GGShrink:
         self.logger.info(f'Created shrink schema {self.rebalance_schema_name}')
         self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
 
-    def get_table_distr_segment_count(self, conn, schema_name, table_name) -> int:
-        row = dbconn.queryRow(conn,
+    def get_table_distr_segment_count(self, schema_name, table_name) -> int:
+        row = dbconn.queryRow(self.conn,
                               f'''SELECT p.numsegments
                               FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid
                               JOIN gp_distribution_policy p ON c.oid = p.localoid
@@ -293,15 +292,13 @@ class GGShrink:
         # Rebalance the status tables we've created previously right here before we start to rebalance all other tables.
         # Before that check if the tables are already rebalanced
         # (in case we re-enter after interruption that happened after COMMIT but before new state)
-        if self.get_table_distr_segment_count(self.conn,
-                                              self.rebalance_schema_name,
+        if self.get_table_distr_segment_count(self.rebalance_schema_name,
                                               self.rebalance_status) > self.options.target_segment_count:
             dbconn.execSQL(self.conn,
                            f'''ALTER TABLE "{self.rebalance_schema_name}"."{self.rebalance_status}"
                            REBALANCE {self.options.target_segment_count}''')
 
-        if self.get_table_distr_segment_count(self.conn,
-                                              self.rebalance_schema_name,
+        if self.get_table_distr_segment_count(self.rebalance_schema_name,
                                               self.table_rebalance_status_detail) > self.options.target_segment_count:
             dbconn.execSQL(self.conn,
                            f'''ALTER TABLE "{self.rebalance_schema_name}"."{self.table_rebalance_status_detail}"
