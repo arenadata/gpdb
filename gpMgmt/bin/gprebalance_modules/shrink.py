@@ -164,7 +164,7 @@ class GGShrink:
         },
         {
             'trigger': 'move_to_STATE_END',
-            'source': ['STATE_SHRINK_DONE', 'STATE_CHECK_PREVIOUS_RUN'],
+            'source': ['STATE_SHRINK_DONE', 'STATE_CHECK_PREVIOUS_RUN', 'STATE_CLEANUP'],
             'dest': 'STATE_END'
         },
         {
@@ -198,16 +198,13 @@ class GGShrink:
         self.trigger('start')
 
     def ggrebalance_schema_exists(self) -> bool:
-        with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
-            row = dbconn.queryRow(conn, f"SELECT COUNT(1) FROM pg_namespace WHERE nspname = '{self.rebalance_schema_name}'")
-            return int(row[0]) == 1
-        return False
+        row = dbconn.queryRow(self.conn, f"SELECT COUNT(1) FROM pg_namespace WHERE nspname = '{self.rebalance_schema_name}'")
+        return int(row[0]) == 1
 
     def get_state_from_previous_run(self) -> str:
-        with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
-            cursor = dbconn.query(conn, f'SELECT status FROM {self.rebalance_schema_name}.{self.rebalance_status} ORDER BY updated DESC LIMIT 1')
-            if cursor.rowcount > 0:
-                return str(cursor.fetchone()[0])
+        cursor = dbconn.query(self.conn, f'SELECT status FROM {self.rebalance_schema_name}.{self.rebalance_status} ORDER BY updated DESC LIMIT 1')
+        if cursor.rowcount > 0:
+            return str(cursor.fetchone()[0])
         return 'not defined'
 
     def on_every_state(self) -> None:
@@ -218,10 +215,9 @@ class GGShrink:
         # insert status if the schema already exists
         if self.state in self.states_main_shrink_flow:
             if self.ggrebalance_schema_exists():
-                with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
-                    dbconn.execSQL(conn,
-                                   f'''INSERT INTO {self.rebalance_schema_name}.{self.rebalance_status}
-                                   VALUES ('{self.state}', NOW())''')
+                dbconn.execSQL(self.conn,
+                               f'''INSERT INTO {self.rebalance_schema_name}.{self.rebalance_status}
+                               VALUES ('{self.state}', NOW())''')
 
     # state callbacks start here
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
@@ -428,8 +424,6 @@ class GGShrink:
         cursor = dbconn.query(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments()')
         dbconn.execSQL(self.conn, 'COMMIT')
 
-        self.conn.close()
-
         self.trigger('move_to_STATE_SHRINK_CATALOG_DONE')
 
     def on_enter_STATE_SHRINK_CATALOG_DONE(self) -> None:
@@ -488,9 +482,12 @@ class GGShrink:
         self.trigger('move_to_STATE_END')
 
     def on_enter_STATE_CLEANUP(self) -> None:
-        with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
-            dbconn.execSQL(conn, f'DROP SCHEMA {self.rebalance_schema_name} CASCADE')
+        dbconn.execSQL(self.conn, f'DROP SCHEMA {self.rebalance_schema_name} CASCADE')
         self.logger.info('Cleanup is complete')
+        self.trigger('move_to_STATE_END')
+
+    def on_enter_STATE_END(self) -> None:
+        self.conn.close()
 
     def on_enter_STATE_ERROR(self) -> None:
         sys.exit(1)
