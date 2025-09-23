@@ -43,6 +43,7 @@ apt-get install -y \
 	python3-psycopg2 \
 	python3-psutil \
 	python3-yaml \
+	python3-transitions \
 	zlib1g-dev
 
 tee -a /etc/sysctl.conf << EOF

@@ -3,7 +3,7 @@
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-PROGRAMS= __init__.py rebalance_validator.py rebalance.py rebalance_plan.py rebalance_executor.py rebalance_status.py
+PROGRAMS= __init__.py rebalance_validator.py rebalance.py rebalance_plan.py rebalance_executor.py rebalance_status.py shrink.py
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)/gprebalance_modules'
