@@ -212,6 +212,8 @@ class GGShrink:
             self.logger.info('Shrink was interrupted')
             sys.exit(1)
 
+        assert self.state in self.states + self.states_main_shrink_flow
+
         # insert status if the schema already exists
         if self.state in self.states_main_shrink_flow:
             if self.ggrebalance_schema_exists():
