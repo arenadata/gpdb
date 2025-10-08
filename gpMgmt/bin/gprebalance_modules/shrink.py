@@ -10,6 +10,7 @@ try:
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib import userinput
+    from gppylib.gparray import GpArray
     from gppylib.userinput import *
     from gppylib.commands import base
     from gppylib.commands.gp import SEGMENT_STOP_TIMEOUT_DEFAULT, SegmentStop
@@ -54,7 +55,8 @@ class GGShrink:
         'STATE_CHECK_PREVIOUS_RUN',
         'STATE_END',
         'STATE_CLEANUP',
-        'STATE_ROLLBACK'
+        'STATE_ROLLBACK',
+        'STATE_END_FROM_ROLLBACK'
     ]
 
     # Note: order of states in the list below is important,
@@ -79,6 +81,28 @@ class GGShrink:
         'STATE_SHRINK_DONE'
     ]
 
+    def state_can_rollback(self, state: str) -> bool:
+        if (state in self.states_main_shrink_flow):
+            if self.states_main_shrink_flow.index(state) <= self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE'):
+                return True
+        return False
+
+
+    # Note: order of states in the list below is important,
+    # as we rely on it when recover from an interrupted state.
+    # These states are separated from 'states' and 'states_main_shrink_flow'
+    # above in order to TBD
+    states_rollback_flow = [
+        'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START',
+        'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE',
+        'STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START',
+        'STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE',
+        'STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START',
+        'STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE',
+        'STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START',
+        'STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE'
+    ]
+
     transitions = [
         {
             'trigger': 'start',
@@ -89,6 +113,11 @@ class GGShrink:
             'trigger': 'move_to_STATE_CLEANUP',
             'source': 'STATE_OPTIONS_VALIDATION',
             'dest': 'STATE_CLEANUP'
+        },
+        {
+            'trigger': 'move_to_STATE_ROLLBACK',
+            'source': 'STATE_OPTIONS_VALIDATION',
+            'dest': 'STATE_ROLLBACK'
         },
         {
             'trigger': 'move_to_STATE_CHECK_PREVIOUS_RUN',
@@ -162,8 +191,53 @@ class GGShrink:
         },
         {
             'trigger': 'move_to_STATE_END',
-            'source': ['STATE_SHRINK_DONE', 'STATE_CHECK_PREVIOUS_RUN', 'STATE_CLEANUP'],
+            'source': ['STATE_SHRINK_DONE', 'STATE_CHECK_PREVIOUS_RUN', 'STATE_CLEANUP', 'STATE_END_FROM_ROLLBACK'],
             'dest': 'STATE_END'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START',
+            'source': 'STATE_ROLLBACK',
+            'dest': 'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE',
+            'source': 'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START',
+            'dest': 'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START',
+            'source': 'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE',
+            'dest': 'STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE',
+            'source': 'STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START',
+            'dest': 'STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START',
+            'source': 'STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE',
+            'dest': 'STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE',
+            'source': 'STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START',
+            'dest': 'STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START',
+            'source': 'STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE',
+            'dest': 'STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START'
+        },
+        {
+            'trigger': 'move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE',
+            'source': 'STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START',
+            'dest': 'STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE'
+        },
+        {
+            'trigger': 'move_to_STATE_END_FROM_ROLLBACK',
+            'source': ['STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE', 'STATE_ROLLBACK'],
+            'dest': 'STATE_END_FROM_ROLLBACK'
         }
     ]
 
@@ -185,7 +259,7 @@ class GGShrink:
 
         self.machine = Machine(model = self,
                                queued=True,
-                               states = self.states + self.states_main_shrink_flow,
+                               states = self.states + self.states_main_shrink_flow + self.states_rollback_flow,
                                transitions = self.transitions,
                                initial = 'STATE_START',
                                before_state_change = 'on_every_state')
@@ -199,22 +273,22 @@ class GGShrink:
             self.logger.info('Shrink was interrupted')
             sys.exit(1)
 
-        assert self.state in self.states + self.states_main_shrink_flow
+        assert self.state in self.states + self.states_main_shrink_flow + self.states_rollback_flow
 
-        if self.state in self.states_main_shrink_flow:
+        if self.state in self.states_main_shrink_flow + self.states_rollback_flow:
             self.rebalance_schema.storeState(self.state)
 
     # state callbacks start here
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
         if self.options.clean_required:
-            if self.shrink_plan != None:
-                self.logger.error('Cleanup should be started without an explicit plan')
-                sys.exit(1)
             self.trigger('move_to_STATE_CLEANUP')
+        elif self.options.rollback_required:
+            self.trigger('move_to_STATE_ROLLBACK')
         elif self.shrink_plan == None:
             self.logger.info('Continue interrupted operation...')
             self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
         else:
+            # TODO: can we use move_to_STATE_CHECK_PREVIOUS_RUN as before?...
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
     def on_enter_STATE_CHECK_PREVIOUS_RUN(self) -> None:
@@ -257,7 +331,6 @@ class GGShrink:
                               "Please try to launch again without a plan to continue from the interrupted state, "
                               "or use '--rollback' or '--cleanup' options.")
             sys.exit(1)
-            return
 
         # Create schema and status tables
         self.rebalance_schema.createSchema()
@@ -319,7 +392,7 @@ class GGShrink:
                                       p.numsegments > {self.shrink_plan.getTargetSegmentCount()} AND
                                       n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema.getSchemaName()}')''')
                 for schema_name, rel_name in cursor:
-                    self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name)
+                    self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name, 'none')
 
         dbconn.execSQL(self.conn, 'COMMIT')
 
@@ -334,11 +407,15 @@ class GGShrink:
                      shrink: 'GGShrink',
                      db_name: str,
                      schema_name: str,
-                     rel_name: str) -> None:
+                     rel_name: str,
+                     target_segment_count: int,
+                     table_status_after_rebalance: str) -> None:
             self.shrink = shrink
             self.db_name = db_name
             self.schema_name = schema_name
             self.rel_name = rel_name
+            self.target_segment_count = target_segment_count
+            self.table_status_after_rebalance = table_status_after_rebalance
             SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
 
         def run(self) -> None:
@@ -347,8 +424,8 @@ class GGShrink:
                 dbconn.execSQL(conn, 'BEGIN')
                 dbconn.execSQL(conn,
                                f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
-                               REBALANCE {self.shrink.shrink_plan.getTargetSegmentCount()}''')
-                self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, 'done')
+                               REBALANCE {self.target_segment_count}''')
+                self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
                 dbconn.execSQL(conn, 'COMMIT')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
@@ -367,7 +444,9 @@ class GGShrink:
                 task = self.TableRebalanceTask(self,
                                                db_name,
                                                schema_name,
-                                               rel_name)
+                                               rel_name,
+                                               self.shrink_plan.getTargetSegmentCount(),
+                                               'done')
                 self.workers_for_tables_rebalance.addCommand(task)
 
             print_progress(self.workers_for_tables_rebalance, interval=1)
@@ -460,6 +539,7 @@ class GGShrink:
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Cleanup is not required.")
         else:
+            # TBD - wrap these 2 lines in a function?
             state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
             if state_from_prev_run != self.states_main_shrink_flow[-1]:
                 self.logger.warning("ggrebalance hasn't finished shrink process properly. Previous run was interrupted. "
@@ -492,10 +572,106 @@ class GGShrink:
             self.logger.info('Cleanup is complete')
         self.trigger('move_to_STATE_END')
 
+    def on_enter_STATE_ROLLBACK(self) -> None:
+        if not self.rebalance_schema.schemaExists():
+            self.logger.info(f"Rebalance schema doesn't exist. Can't perform rollback.")
+            self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+            return
+        else:
+            state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
+            #TODO: handle the case when state_from_prev_run is 'not defined'
+
+            # check maybe the state is the final one
+            if state_from_prev_run == self.states_main_shrink_flow[-1]:
+                self.logger.info(f"Previous run was completed successfully. Can't perform rollback.")
+                self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                return
+
+            if not self.state_can_rollback(state_from_prev_run):
+                self.logger.info("Can't perform rollback as the catalog is already updated")
+                self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                return
+
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START(self) -> None:
+        if self.is_gp_segment_configuration_shrinked():
+            self.logger.info("Can't perform rollback as the catalog is already updated")
+            self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+            return
+
+        dbconn.execSQL(self.conn, 'BEGIN')
+        dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
+        dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments()')
+        dbconn.execSQL(self.conn, 'COMMIT')
+
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE(self) -> None:
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START(self) -> None:
+        # TODO: fill the tables that could be created after interruption
+
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE(self) -> None:
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START(self) -> None:
+        # TODO: move in a function tables rebalance and rollback
+        cursor = self.rebalance_schema.getTablesToRebalanceWithStatus('done')
+
+        self.logger.info(f'Tables to rollback {cursor.rowcount}')
+
+        if cursor.rowcount > 0:
+            self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
+
+            for db_name, schema_name, rel_name in cursor:
+                task = self.TableRebalanceTask(self,
+                                               db_name,
+                                               schema_name,
+                                               rel_name,
+                                               self.gparray.get_segment_count(), # maybe better to use default of ALTER TABLE?
+                                               'none')
+                self.workers_for_tables_rebalance.addCommand(task)
+
+            print_progress(self.workers_for_tables_rebalance, interval=1)
+
+            self.workers_for_tables_rebalance.haltWork()
+            self.workers_for_tables_rebalance.joinWorkers()
+
+            for task in self.workers_for_tables_rebalance.getCompletedItems():
+                if not task.was_successful():
+                    raise Exception(f'Failed to do ALTER REBALANCE at rollback: {task.get_results().stderr}')
+
+            self.workers_for_tables_rebalance = None
+
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE(self) -> None:
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START(self) -> None:
+        self.rebalance_schema.dropSchema()
+        self.trigger('move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE')
+
+    def on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE(self) -> None:
+        self.logger.info('Rollback is complete.')
+        self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+
+    def on_enter_STATE_END_FROM_ROLLBACK(self) -> None:
+        self.trigger('move_to_STATE_END')
+
     def on_enter_STATE_END(self) -> None:
         self.conn.close()
 
     # state callbacks end here
+
+    def is_gp_segment_configuration_shrinked(self) -> bool:
+        gparray_from_file = GpArray.initFromFile(self.gparray_dump_file)
+        gparray_from_catalog = GpArray.initFromCatalog(self.dburl, utility=True)
+        return gparray_from_file.get_segment_count() != gparray_from_catalog.get_segment_count()
 
     def shutdown(self) -> None:
         if self.workers_for_tables_rebalance != None:

@@ -52,6 +52,8 @@ def parseargs():
                       help='Max number of workers at a time. Valid values are 1-%d.' % MAX_PARALLEL_WORKERS)
     parser.add_option('-c', '--clean', action='store_true', dest="clean_required",
                       help='remove the rebalance schema.')
+    parser.add_option('-r', '--rollback', action='store_true', dest="rollback_required",
+                      help='performs rebalance rollback if possible.')
     parser.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit.')
 
@@ -87,6 +89,15 @@ def validate_options(options, args, parser):
     if options.parallel < 1 or options.parallel > MAX_PARALLEL_WORKERS:
         logger.error(
             'Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_WORKERS)
+        parser.exit(1)
+
+    if options.clean_required and options.rollback_required:
+        logger.error("Can't use together options '--clean' and '--rollback'")
+        parser.exit(1)
+
+    if ((options.clean_required or options.rollback_required) and
+        options.target_segment_count != None):
+        logger.error("Can't use '--target-segment-count' together option '--clean' or '--rollback'")
         parser.exit(1)
 
     return options, args
