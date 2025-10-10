@@ -127,7 +127,7 @@ class GGShrink:
         },
         {
             'trigger': 'move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED',
-            'source': 'STATE_OPTIONS_VALIDATION',
+            'source': 'STATE_CHECK_PREVIOUS_RUN',
             'dest': 'STATE_SETUP_SHRINK_SCHEMA_STARTED'
         },
         {
@@ -295,12 +295,8 @@ class GGShrink:
             self.trigger('move_to_STATE_CLEANUP')
         elif self.options.rollback_required:
             self.trigger('move_to_STATE_ROLLBACK')
-        elif self.shrink_plan == None:
-            self.logger.info('Continue interrupted operation...')
-            self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
         else:
-            # TODO: can we use move_to_STATE_CHECK_PREVIOUS_RUN as before?...
-            self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
+            self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_CHECK_PREVIOUS_RUN(self) -> None:
@@ -314,7 +310,13 @@ class GGShrink:
             if state_from_prev_run == self.states_main_shrink_flow[-1]:
                 self.logger.error('Previous run was completed successfully. Please execute cleanup before a new run.')
                 sys.exit(1)
+            elif self.shrink_plan != None:
+                self.logger.error("Can't start a new operation, because the previous one was interrupted. "
+                                  "Please try to launch again without a plan to continue from the interrupted state, "
+                                  "or use '--rollback' or '--cleanup' options.")
+                sys.exit(1)
             else:
+                self.logger.info('Continue interrupted operation...')
                 self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
                 if self.shrink_plan == None:
                     self.logger.error('No saved plan found. Try to execute cleanup.')
@@ -329,28 +331,14 @@ class GGShrink:
                 # use auto to_«state» method to recover
                 self.trigger(f'to_{next_state}')
         else:
-            self.logger.error("Rebalance schema doesn't exist. Try to launch a new run with new params...")
-            sys.exit(1)
+            self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED(self) -> None:
-        if self.rebalance_schema.schemaExists():
-            state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
-            # check maybe the state is the final one
-            if state_from_prev_run == self.states_main_shrink_flow[-1]:
-                self.logger.error('Previous run was completed successfully. Please execute cleanup before a new run.')
-                sys.exit(1)
-            self.logger.error("Can't start a new operation, because the previous one was interrupted. "
-                              "Please try to launch again without a plan to continue from the interrupted state, "
-                              "or use '--rollback' or '--cleanup' options.")
-            sys.exit(1)
-
         # Create schema and status tables
         self.rebalance_schema.createSchema()
-
         # Save plan in order to use it for recovering after interruption
         self.rebalance_schema.savePlan(self.shrink_plan)
-
         self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_DONE')
 
     @wrap_state_func_with_faults
