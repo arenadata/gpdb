@@ -11,6 +11,7 @@ try:
     from gppylib.db import dbconn
     from gppylib import userinput
     from gppylib.gparray import GpArray
+    from gppylib.fault_injection import *
     from gppylib.userinput import *
     from gppylib.commands import base
     from gppylib.commands.gp import SEGMENT_STOP_TIMEOUT_DEFAULT, SegmentStop
@@ -279,6 +280,16 @@ class GGShrink:
             self.rebalance_schema.storeState(self.state)
 
     # state callbacks start here
+
+    # decorator for test purposes
+    def wrap_state_func_with_faults(fun):
+        def func_with_faults(self):
+            inject_fault(f'on_enter_{self.state}_begin')
+            fun(self)
+            inject_fault(f'on_enter_{self.state}_end')
+        return func_with_faults
+
+    @wrap_state_func_with_faults
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
         if self.options.clean_required:
             self.trigger('move_to_STATE_CLEANUP')
@@ -291,6 +302,7 @@ class GGShrink:
             # TODO: can we use move_to_STATE_CHECK_PREVIOUS_RUN as before?...
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_CHECK_PREVIOUS_RUN(self) -> None:
         # check if rebalance schema exists
         # and whether we can get the state where we stopped in previous run
@@ -320,6 +332,7 @@ class GGShrink:
             self.logger.error("Rebalance schema doesn't exist. Try to launch a new run with new params...")
             sys.exit(1)
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED(self) -> None:
         if self.rebalance_schema.schemaExists():
             state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
@@ -340,10 +353,12 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE(self) -> None:
         self.logger.info('Created rebalance schema')
         self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED(self) -> None:
         dbconn.execSQL(self.conn, 'BEGIN')
         dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
@@ -359,10 +374,12 @@ class GGShrink:
 
         self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE(self) -> None:
         self.logger.info(f'Updated target segment count to {self.shrink_plan.getTargetSegmentCount()}')
         self.trigger('move_to_STATE_PREPARE_SHRINK_SCHEMA_STARTED')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED(self) -> None:
         # collect databases and tables that require 'ALTER TABLE REBALANCE'
         # and store in 'table_rebalance_status_detail' table
@@ -398,6 +415,7 @@ class GGShrink:
 
         self.trigger('move_to_STATE_PREPARE_SHRINK_SCHEMA_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE(self) -> None:
         self.logger.info(f'Initiated list of tables to rebalance')
         self.trigger('move_to_STATE_SHRINK_TABLES_STARTED')
@@ -429,6 +447,7 @@ class GGShrink:
                 dbconn.execSQL(conn, 'COMMIT')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_TABLES_STARTED(self) -> None:
         self.logger.info('Start tables rebalance')
 
@@ -462,10 +481,12 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SHRINK_TABLES_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_TABLES_DONE(self) -> None:
         self.logger.info('Tables rebalance complete')
         self.trigger('move_to_STATE_SHRINK_CATALOG_STARTED')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_CATALOG_STARTED(self) -> None:
         self.logger.info('Start catalog shrink')
 
@@ -480,10 +501,12 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SHRINK_CATALOG_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_CATALOG_DONE(self) -> None:
         self.logger.info('Catalog shrink complete')
         self.trigger('move_to_STATE_SHRINK_SEGMENTS_STOP_STARTED')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self) -> None:
         self.logger.info('Stopping shrinked segments...')
 
@@ -526,15 +549,18 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SHRINK_SEGMENTS_STOP_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_DONE(self) -> None:
         self.logger.info('Shrinked segments were stopped')
         self.trigger('move_to_STATE_SHRINK_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_DONE(self) -> None:
         os.remove(self.gparray_dump_file)
         self.logger.info('Shrink is complete')
         self.trigger('move_to_STATE_END')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_CLEANUP(self) -> None:
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Cleanup is not required.")
@@ -572,6 +598,7 @@ class GGShrink:
             self.logger.info('Cleanup is complete')
         self.trigger('move_to_STATE_END')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_ROLLBACK(self) -> None:
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Can't perform rollback.")
@@ -594,6 +621,7 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START(self) -> None:
         if self.is_gp_segment_configuration_shrinked():
             self.logger.info("Can't perform rollback as the catalog is already updated")
@@ -607,17 +635,21 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE(self) -> None:
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START(self) -> None:
         # TODO: fill the tables that could be created after interruption
 
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE(self) -> None:
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START(self) -> None:
         # TODO: move in a function tables rebalance and rollback
         cursor = self.rebalance_schema.getTablesToRebalanceWithStatus('done')
@@ -649,20 +681,25 @@ class GGShrink:
 
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE(self) -> None:
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START(self) -> None:
         self.rebalance_schema.dropSchema()
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE(self) -> None:
         self.logger.info('Rollback is complete.')
         self.trigger('move_to_STATE_END_FROM_ROLLBACK')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_END_FROM_ROLLBACK(self) -> None:
         self.trigger('move_to_STATE_END')
 
+    @wrap_state_func_with_faults
     def on_enter_STATE_END(self) -> None:
         self.conn.close()
 
