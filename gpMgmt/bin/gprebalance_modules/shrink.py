@@ -408,65 +408,11 @@ class GGShrink:
         self.logger.info(f'Initiated list of tables to rebalance')
         self.trigger('move_to_STATE_SHRINK_TABLES_STARTED')
 
-    class TableRebalanceTask(SQLCommand):
-        def __init__(self,
-                     shrink: 'GGShrink',
-                     db_name: str,
-                     schema_name: str,
-                     rel_name: str,
-                     target_segment_count: int,
-                     table_status_after_rebalance: str) -> None:
-            self.shrink = shrink
-            self.db_name = db_name
-            self.schema_name = schema_name
-            self.rel_name = rel_name
-            self.target_segment_count = target_segment_count
-            self.table_status_after_rebalance = table_status_after_rebalance
-            SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
-
-        def run(self) -> None:
-            dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
-            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
-                dbconn.execSQL(conn, 'BEGIN')
-                dbconn.execSQL(conn,
-                               f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
-                               REBALANCE {self.target_segment_count}''')
-                self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
-                dbconn.execSQL(conn, 'COMMIT')
-            self.set_results(CommandResult(0, b'', b'', True, False))
-
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_TABLES_STARTED(self) -> None:
-        self.logger.info('Start tables rebalance')
-
+        self.logger.info('Start tables rebalance for shrink')
         # perform 'ALTER TABLE REBALANCE' for all not yet processed tables
-        cursor = self.rebalance_schema.getTablesToRebalanceWithStatus('none')
-
-        self.logger.info(f'Tables to process {cursor.rowcount}')
-
-        if cursor.rowcount > 0:
-            self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
-
-            for db_name, schema_name, rel_name in cursor:
-                task = self.TableRebalanceTask(self,
-                                               db_name,
-                                               schema_name,
-                                               rel_name,
-                                               self.shrink_plan.getTargetSegmentCount(),
-                                               'done')
-                self.workers_for_tables_rebalance.addCommand(task)
-
-            print_progress(self.workers_for_tables_rebalance, interval=1)
-
-            self.workers_for_tables_rebalance.haltWork()
-            self.workers_for_tables_rebalance.joinWorkers()
-
-            for task in self.workers_for_tables_rebalance.getCompletedItems():
-                if not task.was_successful():
-                    raise Exception(f'Failed to do ALTER REBALANCE: {task.get_results().stderr}')
-
-            self.workers_for_tables_rebalance = None
-
+        self.rebalance_tables('none', 'done', self.shrink_plan.getTargetSegmentCount())
         self.trigger('move_to_STATE_SHRINK_TABLES_DONE')
 
     @wrap_state_func_with_faults
@@ -639,34 +585,9 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START(self) -> None:
-        # TODO: move in a function tables rebalance and rollback
-        cursor = self.rebalance_schema.getTablesToRebalanceWithStatus('done')
-
-        self.logger.info(f'Tables to rollback {cursor.rowcount}')
-
-        if cursor.rowcount > 0:
-            self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
-
-            for db_name, schema_name, rel_name in cursor:
-                task = self.TableRebalanceTask(self,
-                                               db_name,
-                                               schema_name,
-                                               rel_name,
-                                               self.gparray.get_segment_count(), # maybe better to use default of ALTER TABLE?
-                                               'none')
-                self.workers_for_tables_rebalance.addCommand(task)
-
-            print_progress(self.workers_for_tables_rebalance, interval=1)
-
-            self.workers_for_tables_rebalance.haltWork()
-            self.workers_for_tables_rebalance.joinWorkers()
-
-            for task in self.workers_for_tables_rebalance.getCompletedItems():
-                if not task.was_successful():
-                    raise Exception(f'Failed to do ALTER REBALANCE at rollback: {task.get_results().stderr}')
-
-            self.workers_for_tables_rebalance = None
-
+        self.logger.info('Start tables rebalance for rollback')
+        # perform 'ALTER TABLE REBALANCE' for all not yet processed tables
+        self.rebalance_tables('done', 'none', self.gparray.get_segment_count())
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE')
 
     @wrap_state_func_with_faults
@@ -692,6 +613,61 @@ class GGShrink:
         self.conn.close()
 
     # state callbacks end here
+
+    class TableRebalanceTask(SQLCommand):
+        def __init__(self,
+                     shrink: 'GGShrink',
+                     db_name: str,
+                     schema_name: str,
+                     rel_name: str,
+                     target_segment_count: int,
+                     table_status_after_rebalance: str) -> None:
+            self.shrink = shrink
+            self.db_name = db_name
+            self.schema_name = schema_name
+            self.rel_name = rel_name
+            self.target_segment_count = target_segment_count
+            self.table_status_after_rebalance = table_status_after_rebalance
+            SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
+
+        def run(self) -> None:
+            dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
+            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+                dbconn.execSQL(conn, 'BEGIN')
+                dbconn.execSQL(conn,
+                               f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
+                               REBALANCE {self.target_segment_count}''')
+                self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
+                dbconn.execSQL(conn, 'COMMIT')
+            self.set_results(CommandResult(0, b'', b'', True, False))
+
+    def rebalance_tables(self, original_status: str, target_status: str, target_segment_count: int) -> None:
+        cursor = self.rebalance_schema.getTablesToRebalanceWithStatus(original_status)
+
+        self.logger.info(f'Tables to process {cursor.rowcount}')
+
+        if cursor.rowcount > 0:
+            self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
+
+            for db_name, schema_name, rel_name in cursor:
+                task = self.TableRebalanceTask(self,
+                                               db_name,
+                                               schema_name,
+                                               rel_name,
+                                               target_segment_count,
+                                               target_status)
+                self.workers_for_tables_rebalance.addCommand(task)
+
+            print_progress(self.workers_for_tables_rebalance, interval=1)
+
+            self.workers_for_tables_rebalance.haltWork()
+            self.workers_for_tables_rebalance.joinWorkers()
+
+            for task in self.workers_for_tables_rebalance.getCompletedItems():
+                if not task.was_successful():
+                    raise Exception(f'Failed to do ALTER REBALANCE: {task.get_results().stderr}')
+
+            self.workers_for_tables_rebalance = None
 
     def is_gp_segment_configuration_shrinked(self) -> bool:
         gparray_from_file = GpArray.initFromFile(self.gparray_dump_file)
