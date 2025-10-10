@@ -56,6 +56,7 @@ class GGShrink:
         'STATE_CHECK_PREVIOUS_RUN',
         'STATE_END',
         'STATE_CLEANUP',
+        'STATE_ERROR',
         'STATE_ROLLBACK',
         'STATE_END_FROM_ROLLBACK'
     ]
@@ -92,7 +93,7 @@ class GGShrink:
     # Note: order of states in the list below is important,
     # as we rely on it when recover from an interrupted state.
     # These states are separated from 'states' and 'states_main_shrink_flow'
-    # above in order to TBD
+    # above in order to TODO:
     states_rollback_flow = [
         'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START',
         'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE',
@@ -239,6 +240,11 @@ class GGShrink:
             'trigger': 'move_to_STATE_END_FROM_ROLLBACK',
             'source': ['STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE', 'STATE_ROLLBACK'],
             'dest': 'STATE_END_FROM_ROLLBACK'
+        },
+        {
+            'trigger': 'move_to_STATE_ERROR',
+            'source': '*',
+            'dest': 'STATE_ERROR'
         }
     ]
 
@@ -309,25 +315,29 @@ class GGShrink:
             # check maybe the state is the final one
             if state_from_prev_run == self.states_main_shrink_flow[-1]:
                 self.logger.error('Previous run was completed successfully. Please execute cleanup before a new run.')
-                sys.exit(1)
+                self.trigger('move_to_STATE_ERROR')
+                return
             elif self.shrink_plan != None:
                 self.logger.error("Can't start a new operation, because the previous one was interrupted. "
                                   "Please try to launch again without a plan to continue from the interrupted state, "
                                   "or use '--rollback' or '--cleanup' options.")
-                sys.exit(1)
+                self.trigger('move_to_STATE_ERROR')
+                return
             else:
                 self.logger.info('Continue interrupted operation...')
                 self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
                 if self.shrink_plan == None:
                     self.logger.error('No saved plan found. Try to execute cleanup.')
-                    sys.exit(1)
+                    self.trigger('move_to_STATE_ERROR')
+                    return
 
                 self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
                 try:
                     next_state = self.states_main_shrink_flow[ self.states_main_shrink_flow.index(state_from_prev_run) + 1 ]
                 except:
                     self.logger.error("Can't determine next state")
-                    sys.exit(1)
+                    self.trigger('move_to_STATE_ERROR')
+                    return
                 # use auto to_«state» method to recover
                 self.trigger(f'to_{next_state}')
         else:
@@ -611,6 +621,10 @@ class GGShrink:
     @wrap_state_func_with_faults
     def on_enter_STATE_END(self) -> None:
         self.conn.close()
+
+    @wrap_state_func_with_faults
+    def on_enter_STATE_ERROR(self) -> None:
+        sys.exit(1)
 
     # state callbacks end here
 
