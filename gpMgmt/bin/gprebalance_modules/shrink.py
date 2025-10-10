@@ -123,7 +123,7 @@ class GGShrink:
         },
         {
             'trigger': 'move_to_STATE_CHECK_PREVIOUS_RUN',
-            'source': 'STATE_OPTIONS_VALIDATION',
+            'source': ['STATE_OPTIONS_VALIDATION', 'STATE_ROLLBACK'],
             'dest': 'STATE_CHECK_PREVIOUS_RUN'
         },
         {
@@ -198,7 +198,7 @@ class GGShrink:
         },
         {
             'trigger': 'move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START',
-            'source': 'STATE_ROLLBACK',
+            'source': 'STATE_CHECK_PREVIOUS_RUN',
             'dest': 'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START'
         },
         {
@@ -238,7 +238,7 @@ class GGShrink:
         },
         {
             'trigger': 'move_to_STATE_END_FROM_ROLLBACK',
-            'source': ['STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE', 'STATE_ROLLBACK'],
+            'source': ['STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE', 'STATE_ROLLBACK', 'STATE_CHECK_PREVIOUS_RUN'],
             'dest': 'STATE_END_FROM_ROLLBACK'
         },
         {
@@ -314,8 +314,12 @@ class GGShrink:
             state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
             # check maybe the state is the final one
             if state_from_prev_run == self.states_main_shrink_flow[-1]:
-                self.logger.error('Previous run was completed successfully. Please execute cleanup before a new run.')
-                self.trigger('move_to_STATE_ERROR')
+                if self.options.rollback_required:
+                    self.logger.info(f"Previous run was completed successfully. Can't perform rollback.")
+                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                else:
+                    self.logger.error('Previous run was completed successfully. Please execute cleanup before a new run.')
+                    self.trigger('move_to_STATE_ERROR')
                 return
             elif self.shrink_plan != None:
                 self.logger.error("Can't start a new operation, because the previous one was interrupted. "
@@ -324,20 +328,33 @@ class GGShrink:
                 self.trigger('move_to_STATE_ERROR')
                 return
             else:
-                self.logger.info('Continue interrupted operation...')
-                self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
-                if self.shrink_plan == None:
-                    self.logger.error('No saved plan found. Try to execute cleanup.')
-                    self.trigger('move_to_STATE_ERROR')
-                    return
+                if state_from_prev_run in self.states_rollback_flow:
+                    self.logger.info('Continue interrupted rollback operation...')
+                    self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
+                    try:
+                        next_state = self.states_rollback_flow[ self.states_rollback_flow.index(state_from_prev_run) + 1 ]
+                    except:
+                        self.logger.error("Can't determine next rollback state")
+                        self.trigger('move_to_STATE_ERROR')
+                        return
+                else:
+                    if self.options.rollback_required:
+                        self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START')
+                        return
+                    self.logger.info('Continue interrupted operation...')
+                    self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
+                    if self.shrink_plan == None:
+                        self.logger.error('No saved plan found. Try to execute cleanup.')
+                        self.trigger('move_to_STATE_ERROR')
+                        return
 
-                self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
-                try:
-                    next_state = self.states_main_shrink_flow[ self.states_main_shrink_flow.index(state_from_prev_run) + 1 ]
-                except:
-                    self.logger.error("Can't determine next state")
-                    self.trigger('move_to_STATE_ERROR')
-                    return
+                    self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
+                    try:
+                        next_state = self.states_main_shrink_flow[ self.states_main_shrink_flow.index(state_from_prev_run) + 1 ]
+                    except:
+                        self.logger.error("Can't determine next state")
+                        self.trigger('move_to_STATE_ERROR')
+                        return
                 # use auto to_«state» method to recover
                 self.trigger(f'to_{next_state}')
         else:
@@ -563,7 +580,7 @@ class GGShrink:
                 self.trigger('move_to_STATE_END_FROM_ROLLBACK')
                 return
 
-        self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START')
+        self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START(self) -> None:
@@ -575,6 +592,9 @@ class GGShrink:
         dbconn.execSQL(self.conn, 'BEGIN')
         dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
         dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments()')
+        # Store state here in case we fail before we enter 'on_every_state()'
+        # because after COMMIT we are on a one-way road of rollback.
+        self.rebalance_schema.storeState(self.state)
         dbconn.execSQL(self.conn, 'COMMIT')
 
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE')
