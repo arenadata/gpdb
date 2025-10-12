@@ -358,6 +358,10 @@ class GGShrink:
                 # use auto to_«state» method to recover
                 self.trigger(f'to_{next_state}')
         else:
+            if self.shrink_plan == None:
+                self.logger.error("Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan.")
+                self.trigger('move_to_STATE_ERROR')
+                return
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
     @wrap_state_func_with_faults

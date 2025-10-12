@@ -245,6 +245,46 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
+
+    Scenario Outline: ggrebalance - check continue after interrupted rollback state (interruption is done after rebalance schema is dropped)
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And set fault inject "<fault_name_shrink>"
+         And database "test_db_1" exists
+         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And database "test_db_2" exists
+         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
+         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
+         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+         And set fault inject "<fault_name_rollback>"
+        When the user runs "ggrebalance -r"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+        When the user runs "ggrebalance"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan." to logfile with latest timestamp
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
+        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
+
+    Examples:
+        | fault_name_shrink                       | fault_name_rollback                                                     |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_end                    |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_begin                   |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_end                     |
