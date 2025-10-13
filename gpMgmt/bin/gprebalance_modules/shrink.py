@@ -570,23 +570,22 @@ class GGShrink:
     @wrap_state_func_with_faults
     def on_enter_STATE_ROLLBACK(self) -> None:
         if not self.rebalance_schema.schemaExists():
-            self.logger.info(f"Rebalance schema doesn't exist. Can't perform rollback.")
+            self.logger.info("Rebalance schema doesn't exist. Can't perform rollback.")
             self.trigger('move_to_STATE_END_FROM_ROLLBACK')
             return
         else:
             state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
-            #TODO: handle the case when state_from_prev_run is 'not defined'
+            if state_from_prev_run != 'not defined':
+                # check maybe the state is the final one
+                if state_from_prev_run == self.states_main_shrink_flow[-1]:
+                    self.logger.info("Previous run was completed successfully. Can't perform rollback.")
+                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                    return
 
-            # check maybe the state is the final one
-            if state_from_prev_run == self.states_main_shrink_flow[-1]:
-                self.logger.info(f"Previous run was completed successfully. Can't perform rollback.")
-                self.trigger('move_to_STATE_END_FROM_ROLLBACK')
-                return
-
-            if not self.state_can_rollback(state_from_prev_run):
-                self.logger.info("Can't perform rollback as the catalog is already updated")
-                self.trigger('move_to_STATE_END_FROM_ROLLBACK')
-                return
+                if not self.state_can_rollback(state_from_prev_run):
+                    self.logger.info("Can't perform rollback as the catalog is already updated")
+                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                    return
 
         self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
@@ -712,6 +711,8 @@ class GGShrink:
             self.workers_for_tables_rebalance = None
 
     def is_gp_segment_configuration_shrinked(self) -> bool:
+        if not os.path.exists(self.gparray_dump_file):
+            return False
         gparray_from_file = GpArray.initFromFile(self.gparray_dump_file)
         gparray_from_catalog = GpArray.initFromCatalog(self.dburl, utility=True)
         return gparray_from_file.get_segment_count() != gparray_from_catalog.get_segment_count()
