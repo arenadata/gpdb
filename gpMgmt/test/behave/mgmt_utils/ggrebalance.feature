@@ -2,7 +2,7 @@
 Feature: ggrebalance behave tests
 
     @demo_cluster
-    Scenario: test ggrebalance simple scenarious
+    Scenario: test 1. ggrebalance simple scenarious
         Given the database is running
         When the user runs "ggrebalance -x 3"
         Then ggrebalance should return a return code of 1
@@ -34,8 +34,79 @@ Feature: ggrebalance behave tests
 
 # TODO: add tables creation after shrink or rollback interruption
 
+    Scenario: test 2. shrink - check continue after interrupted state, if interruption is done before the rebalance schema creation
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
+         And database "test_db_1" exists
+         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And database "test_db_2" exists
+         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
+         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
+         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+        When the user runs "ggrebalance"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan." to logfile with latest timestamp
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
+        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
-    Scenario Outline: ggrebalance - check continue after interrupted state
+    Scenario: test 3. shrink - check continue after interrupted state, if interruption is done after the rebalance schema creation, but before any state is saved there
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end"
+         And database "test_db_1" exists
+         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And database "test_db_2" exists
+         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
+         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
+         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+        When the user runs "ggrebalance"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "Can't determine next state. Try to execute cleanup." to logfile with latest timestamp
+        When the user runs "ggrebalance -c -a"
+        Then ggrebalance should return a return code of 0
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
+        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
+         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
+
+    Scenario Outline: test 4. shrink - check continue after interrupted state
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
@@ -75,29 +146,27 @@ Feature: ggrebalance behave tests
 
     Examples:
         | fault_name                                                                  |
-#   NOT WORKING     | STATE_SETUP_SHRINK_SCHEMA_STARTED_begin                                     |
-#   NOT WORKING     | STATE_SETUP_SHRINK_SCHEMA_STARTED_end                                       |
         | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_begin                               |
         | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_end                                 |
-#        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
-#        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
-#        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
-#        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_end      |
-#        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_begin                          |
-#        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end                            |
-#        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE_begin                             |
-#        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE_end                               |
-#        | on_enter_STATE_SHRINK_TABLES_STARTED_begin                                  |
-#        | on_enter_STATE_SHRINK_TABLES_STARTED_end                                    |
-#        | on_enter_STATE_SHRINK_TABLES_DONE_begin                                     |
-#        | on_enter_STATE_SHRINK_TABLES_DONE_end                                       |
-#        | on_enter_STATE_SHRINK_CATALOG_STARTED_begin                                 |
-#        | on_enter_STATE_SHRINK_CATALOG_STARTED_end                                   |
-#        | on_enter_STATE_SHRINK_CATALOG_DONE_begin                                    |
-#        | on_enter_STATE_SHRINK_CATALOG_DONE_end                                      |
+        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
+        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
+        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
+        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_end      |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_begin                          |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end                            |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE_begin                             |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE_end                               |
+        | on_enter_STATE_SHRINK_TABLES_STARTED_begin                                  |
+        | on_enter_STATE_SHRINK_TABLES_STARTED_end                                    |
+        | on_enter_STATE_SHRINK_TABLES_DONE_begin                                     |
+        | on_enter_STATE_SHRINK_TABLES_DONE_end                                       |
+        | on_enter_STATE_SHRINK_CATALOG_STARTED_begin                                 |
+        | on_enter_STATE_SHRINK_CATALOG_STARTED_end                                   |
+        | on_enter_STATE_SHRINK_CATALOG_DONE_begin                                    |
+        | on_enter_STATE_SHRINK_CATALOG_DONE_end                                      |
 
 # TODO: replace distr check with the existing one
-    Scenario Outline: ggrebalance - check rollback after interrupted state
+    Scenario Outline: test 5. shrink - check rollback after interrupted state
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
@@ -153,7 +222,7 @@ Feature: ggrebalance behave tests
 #        | on_enter_STATE_SHRINK_CATALOG_DONE_end                                      |
 
 # TODO: move this test to the end
-    Scenario Outline: ggrebalance - check continue after interrupted rollback state. In this case we fail in rollback to early, and normal shrink will be complete.
+    Scenario Outline: test 6. shrink - check continue after interrupted rollback state. In this case we fail in rollback too early, and normal shrink will be complete.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
@@ -194,7 +263,7 @@ Feature: ggrebalance behave tests
         | fault_name_shrink                       | fault_name_rollback                                                     |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_begin |
 
-    Scenario Outline: ggrebalance - check continue after interrupted rollback state
+    Scenario Outline: test 7. shrink - check continue after interrupted rollback state
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
@@ -246,7 +315,7 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
 
-    Scenario Outline: ggrebalance - check continue after interrupted rollback state (interruption is done after rebalance schema is dropped)
+    Scenario Outline: test 8. shrink - check continue after interrupted rollback state (interruption is done after rebalance schema is dropped)
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"

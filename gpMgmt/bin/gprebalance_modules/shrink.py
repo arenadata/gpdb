@@ -352,7 +352,7 @@ class GGShrink:
                     try:
                         next_state = self.states_main_shrink_flow[ self.states_main_shrink_flow.index(state_from_prev_run) + 1 ]
                     except:
-                        self.logger.error("Can't determine next state")
+                        self.logger.error("Can't determine next state. Try to execute cleanup.")
                         self.trigger('move_to_STATE_ERROR')
                         return
                 # use auto to_«state» method to recover
@@ -548,16 +548,20 @@ class GGShrink:
                     # TODO: do we need the suggestion below if we ask for reset just after it... I guess it can confuse the user.
                     self.logger.info('Suggestion: explicitly reset the value before cleanup. Note: cluster restart will implicitly reset the value.')
 
-                if not userinput.ask_yesno(None, "\nContinue with cleanup?", 'N'):
+                if (self.options.interactive and
+                    not userinput.ask_yesno(None, "\nContinue with cleanup?", 'N')):
                     self.logger.info('Cleanup was interrupted...')
                     self.trigger('move_to_STATE_END')
                     return
 
-                if current_num_segments != 0x7FFFFFFF and userinput.ask_yesno(None, "\nReset numsegments to default?", 'Y'):
+                # TODO: test this branch
+                if (current_num_segments != 0x7FFFFFFF and
+                    (not self.options.interactive or userinput.ask_yesno(None, "\nReset numsegments to default?", 'Y'))):
                     dbconn.execSQL(self.conn, 'BEGIN')
                     dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
                     dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments()')
                     dbconn.execSQL(self.conn, 'COMMIT')
+                    self.logger.info('Reset numsegments to default is done.')
 
             self.rebalance_schema.dropSchema()
             self.logger.info('Cleanup is complete')
