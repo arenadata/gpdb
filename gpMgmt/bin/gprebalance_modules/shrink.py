@@ -484,21 +484,25 @@ class GGShrink:
             mirror_seq = seg_pair.mirrorDB
             if primary_seg.getSegmentContentId() >= self.shrink_plan.getTargetSegmentCount():
                 if primary_seg.isSegmentUp():
-                    cmd = SegmentStop(f'stop primary (content {primary_seg.getSegmentContentId()}, dbid {primary_seg.getSegmentDbId()})',
-                                       primary_seg.getSegmentDataDirectory(),
-                                       mode=self.stop_mode,
-                                       timeout=self.timeout,
-                                       ctxt=base.REMOTE,
-                                       remoteHost=primary_seg.getSegmentHostName())
+                    cmd = self.SegmentStopAfterShrink(
+                        self.logger,
+                        f'stop primary (content {primary_seg.getSegmentContentId()}, dbid {primary_seg.getSegmentDbId()})',
+                        primary_seg.getSegmentDataDirectory(),
+                        mode=self.stop_mode,
+                        timeout=self.timeout,
+                        ctxt=base.REMOTE,
+                        remoteHost=primary_seg.getSegmentHostName())
                     self.workers_for_segment_stop.addCommand(cmd)
 
                 if mirror_seq != None and mirror_seq.isSegmentUp():
-                    cmd = SegmentStop(f'stop mirror (content {mirror_seq.getSegmentContentId()}, dbid {mirror_seq.getSegmentDbId()})',
-                                       mirror_seq.getSegmentDataDirectory(),
-                                       mode=self.stop_mode,
-                                       timeout=self.timeout,
-                                       ctxt=base.REMOTE,
-                                       remoteHost=mirror_seq.getSegmentHostName())
+                    cmd = self.SegmentStopAfterShrink(
+                        self.logger,
+                        f'stop mirror (content {mirror_seq.getSegmentContentId()}, dbid {mirror_seq.getSegmentDbId()})',
+                        mirror_seq.getSegmentDataDirectory(),
+                        mode=self.stop_mode,
+                        timeout=self.timeout,
+                        ctxt=base.REMOTE,
+                        remoteHost=mirror_seq.getSegmentHostName())
                     self.workers_for_segment_stop.addCommand(cmd)
 
         print_progress(self.workers_for_segment_stop, interval=1)
@@ -582,7 +586,7 @@ class GGShrink:
                     self.trigger('move_to_STATE_END_FROM_ROLLBACK')
                     return
 
-                if not self.state_can_rollback(state_from_prev_run):
+                if not self.state_can_rollback(state_from_prev_run) or self.is_gp_segment_configuration_shrinked():
                     self.logger.info("Can't perform rollback as the catalog is already updated")
                     self.trigger('move_to_STATE_END_FROM_ROLLBACK')
                     return
@@ -591,11 +595,6 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START(self) -> None:
-        if self.is_gp_segment_configuration_shrinked():
-            self.logger.info("Can't perform rollback as the catalog is already updated")
-            self.trigger('move_to_STATE_END_FROM_ROLLBACK')
-            return
-
         dbconn.execSQL(self.conn, 'BEGIN')
         dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
         dbconn.execSQL(self.conn, 'SELECT gp_toolkit.gp_reset_rebalance_numsegments()')
@@ -654,6 +653,24 @@ class GGShrink:
         sys.exit(1)
 
     # state callbacks end here
+
+    class SegmentStopAfterShrink(SegmentStop):
+        def __init__(self, logger, name, dataDir, mode='smart', nowait=False, ctxt=LOCAL,
+                 remoteHost=None, timeout=SEGMENT_STOP_TIMEOUT_DEFAULT) -> None:
+            self.logger = logger
+            self.dataDir = dataDir
+            self.checkRunningSegment = SegmentIsShutDown(name, dataDir, ctxt, remoteHost)
+            SegmentStop.__init__(self, name, dataDir, mode, nowait, ctxt, remoteHost, timeout)
+
+        def run(self) -> None:
+            self.logger.info(f'Stopping shrinked segment @ host={self.remoteHost}, datadir={self.dataDir}')
+            self.checkRunningSegment.run()
+            if self.checkRunningSegment.is_shutdown():
+                self.logger.info(f'Segment is already down @ host={self.remoteHost}, datadir={self.dataDir} ')
+                self.set_results(CommandResult(0, b'', b'', True, False))
+            else:
+                SegmentStop.run(self)
+                self.logger.info(f'Stopped shrinked segment @ host={self.remoteHost}, datadir={self.dataDir}')
 
     class TableRebalanceTask(SQLCommand):
         def __init__(self,
