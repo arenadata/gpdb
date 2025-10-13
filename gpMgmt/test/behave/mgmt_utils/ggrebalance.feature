@@ -93,7 +93,7 @@ Feature: ggrebalance behave tests
         When the user runs "ggrebalance"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "Can't determine next state. Try to execute cleanup." to logfile with latest timestamp
-        When the user runs "ggrebalance -c -a"
+        When the user runs "ggrebalance -c -y"
         Then ggrebalance should return a return code of 0
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 0

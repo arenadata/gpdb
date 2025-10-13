@@ -534,7 +534,7 @@ class GGShrink:
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Cleanup is not required.")
         else:
-            # TBD - wrap these 2 lines in a function?
+            # TODO - wrap these 2 lines in a function?
             state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
             if state_from_prev_run != self.states_main_shrink_flow[-1]:
                 self.logger.warning("ggrebalance hasn't finished shrink process properly. Previous run was interrupted. "
@@ -553,7 +553,7 @@ class GGShrink:
                     self.logger.info('Suggestion: explicitly reset the value before cleanup. Note: cluster restart will implicitly reset the value.')
 
                 if (self.options.interactive and
-                    not userinput.ask_yesno(None, "\nContinue with cleanup?", 'N')):
+                    not userinput.ask_yesno(None, "\nContinue with cleanup?", 'Y')):
                     self.logger.info('Cleanup was interrupted...')
                     self.trigger('move_to_STATE_END')
                     return

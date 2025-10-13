@@ -56,8 +56,8 @@ def parseargs():
                       help='performs rebalance rollback if possible.')
     parser.add_option('-h', '-?', '--help', action='help',
                       help='show this help message and exit.')
-    parser.add_option('-a', dest="interactive", action='store_false', default=True,
-                         help="quiet mode, do not require user input for confirmations.")
+    parser.add_option('-y', '--non-interactive-mode', dest="interactive", action='store_false', default=True,
+                         help="non-interactive mode, do not require user input for confirmations, use defaults.")
 
     parser.set_defaults(verbose=False)
 
