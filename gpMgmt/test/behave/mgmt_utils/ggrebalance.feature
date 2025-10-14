@@ -4,6 +4,7 @@ Feature: ggrebalance behave tests
     @demo_cluster
     Scenario: test 1. ggrebalance simple scenarious
         Given the database is running
+         And all files in gpAdminLogs directory are deleted
         When the user runs "ggrebalance -x 3"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "Target segment count (3) >= current segment count (3)." to logfile with latest timestamp
@@ -38,6 +39,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -73,6 +75,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -110,6 +113,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -123,17 +127,17 @@ Feature: ggrebalance behave tests
          And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
          And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
          And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
-        When the user runs "ggrebalance -x 1"
+        When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
          And unset fault inject
-        When the user runs "ggrebalance -x 1"
+        When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "Can't start a new operation, because the previous one was interrupted" to logfile with latest timestamp
-        When the user runs "ggrebalance -x 1"
+        When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "Can't start a new operation, because the previous one was interrupted" to logfile with latest timestamp
-        When the user runs "ggrebalance"
+        When the user runs "ggrebalance --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
@@ -166,13 +170,14 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_CATALOG_DONE_end                                      |
         | on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED_begin                           |
         | on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED_end                             |
-
-# TODO: replace distr check with the existing one
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1                  |
+        | fault_segment_stop_dbid_3                                                   |
 
     Scenario: test 3.1. shrink - check rollback after interrupted state, if interruption is done before the rebalance schema creation
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -207,6 +212,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -220,7 +226,7 @@ Feature: ggrebalance behave tests
          And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
          And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
          And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
-        When the user runs "ggrebalance -x 1"
+        When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
          And unset fault inject
@@ -253,11 +259,13 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_TABLES_DONE_begin                                     |
         | on_enter_STATE_SHRINK_TABLES_DONE_end                                       |
         | on_enter_STATE_SHRINK_CATALOG_STARTED_begin                                 |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1                  |
 
     Scenario Outline: test 3.3. shrink - check rollback after interrupted state (interruption is done after the point of no return). Rollback fails. So just continue shrink.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -296,11 +304,13 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_CATALOG_DONE_end                                      |
         | on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED_begin                           |
         | on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED_end                             |
+        | fault_segment_stop_dbid_3                                                   |
 
     Scenario Outline: test 4.1. shrink - check continue after interrupted rollback state. In this case we fail in rollback too early, and normal shrink will be complete.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -342,6 +352,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
@@ -394,6 +405,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
          And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"

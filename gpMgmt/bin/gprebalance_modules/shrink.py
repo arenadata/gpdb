@@ -10,7 +10,7 @@ try:
     from gppylib.gplog import *
     from gppylib.db import dbconn
     from gppylib import userinput
-    from gppylib.gparray import GpArray
+    from gppylib.gparray import GpArray, Segment
     from gppylib.fault_injection import *
     from gppylib.userinput import *
     from gppylib.commands import base
@@ -82,13 +82,6 @@ class GGShrink:
         'STATE_SHRINK_SEGMENTS_STOP_DONE',
         'STATE_SHRINK_DONE'
     ]
-
-    def state_can_rollback(self, state: str) -> bool:
-        if (state in self.states_main_shrink_flow):
-            if self.states_main_shrink_flow.index(state) <= self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE'):
-                return True
-        return False
-
 
     # Note: order of states in the list below is important,
     # as we rely on it when recover from an interrupted state.
@@ -285,15 +278,15 @@ class GGShrink:
         if self.state in self.states_main_shrink_flow + self.states_rollback_flow:
             self.rebalance_schema.storeState(self.state)
 
-    # state callbacks start here
-
-    # decorator for test purposes
+    # decorator to inject a fault before or after the given 'on_enter_' state callback
     def wrap_state_func_with_faults(fun):
         def func_with_faults(self):
             inject_fault(f'on_enter_{self.state}_begin')
             fun(self)
             inject_fault(f'on_enter_{self.state}_end')
         return func_with_faults
+
+    # state callbacks start here
 
     @wrap_state_func_with_faults
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
@@ -481,28 +474,14 @@ class GGShrink:
 
         for seg_pair in self.gparray.getSegmentList():
             primary_seg = seg_pair.primaryDB
-            mirror_seq = seg_pair.mirrorDB
+            mirror_seg = seg_pair.mirrorDB
             if primary_seg.getSegmentContentId() >= self.shrink_plan.getTargetSegmentCount():
                 if primary_seg.isSegmentUp():
-                    cmd = self.SegmentStopAfterShrink(
-                        self.logger,
-                        f'stop primary (content {primary_seg.getSegmentContentId()}, dbid {primary_seg.getSegmentDbId()})',
-                        primary_seg.getSegmentDataDirectory(),
-                        mode=self.stop_mode,
-                        timeout=self.timeout,
-                        ctxt=base.REMOTE,
-                        remoteHost=primary_seg.getSegmentHostName())
+                    cmd = self.SegmentStopAfterShrink(self, primary_seg)
                     self.workers_for_segment_stop.addCommand(cmd)
 
-                if mirror_seq != None and mirror_seq.isSegmentUp():
-                    cmd = self.SegmentStopAfterShrink(
-                        self.logger,
-                        f'stop mirror (content {mirror_seq.getSegmentContentId()}, dbid {mirror_seq.getSegmentDbId()})',
-                        mirror_seq.getSegmentDataDirectory(),
-                        mode=self.stop_mode,
-                        timeout=self.timeout,
-                        ctxt=base.REMOTE,
-                        remoteHost=mirror_seq.getSegmentHostName())
+                if mirror_seg != None and mirror_seg.isSegmentUp():
+                    cmd = self.SegmentStopAfterShrink(self, mirror_seg)
                     self.workers_for_segment_stop.addCommand(cmd)
 
         print_progress(self.workers_for_segment_stop, interval=1)
@@ -655,22 +634,40 @@ class GGShrink:
     # state callbacks end here
 
     class SegmentStopAfterShrink(SegmentStop):
-        def __init__(self, logger, name, dataDir, mode='smart', nowait=False, ctxt=LOCAL,
-                 remoteHost=None, timeout=SEGMENT_STOP_TIMEOUT_DEFAULT) -> None:
-            self.logger = logger
-            self.dataDir = dataDir
-            self.checkRunningSegment = SegmentIsShutDown(name, dataDir, ctxt, remoteHost)
-            SegmentStop.__init__(self, name, dataDir, mode, nowait, ctxt, remoteHost, timeout)
+        def __init__(self, shrink: 'GGShrink', segment: Segment) -> None:
+            self.shrink = shrink
+            self.segment = segment
+            if self.segment.isSegmentPrimary():
+                name = f'stop primary (content {self.segment.getSegmentContentId()}, dbid {self.segment.getSegmentDbId()})'
+            else:
+                name = f'stop mirror (content {self.segment.getSegmentContentId()}, dbid {self.segment.getSegmentDbId()})'
+            self.checkRunningSegment = SegmentIsShutDown(name, self.segment.getSegmentDataDirectory(), base.REMOTE, self.segment.getSegmentHostName())
+            SegmentStop.__init__(self,
+                                 name,
+                                 self.segment.getSegmentDataDirectory(),
+                                 self.shrink.stop_mode,
+                                 False,
+                                 base.REMOTE,
+                                 self.segment.getSegmentHostName(),
+                                 self.shrink.timeout)
 
+        # decorator to inject a fault before running SegmentStopAfterShrink for a specific dbid
+        def wrap_segment_stop_with_faults(fun):
+            def func_with_faults(self):
+                inject_fault(f'fault_segment_stop_dbid_{self.segment.getSegmentDbId()}')
+                fun(self)
+            return func_with_faults
+
+        @wrap_segment_stop_with_faults
         def run(self) -> None:
-            self.logger.info(f'Stopping shrinked segment @ host={self.remoteHost}, datadir={self.dataDir}')
+            self.shrink.logger.info(f'Stopping shrinked segment dbid {self.segment.getSegmentDbId()} @ host={self.remoteHost}, datadir={self.segment.getSegmentDataDirectory()}')
             self.checkRunningSegment.run()
             if self.checkRunningSegment.is_shutdown():
-                self.logger.info(f'Segment is already down @ host={self.remoteHost}, datadir={self.dataDir} ')
+                self.shrink.logger.info(f'Segment dbid {self.segment.getSegmentDbId()} is already down @ host={self.remoteHost}, datadir={self.segment.getSegmentDataDirectory()} ')
                 self.set_results(CommandResult(0, b'', b'', True, False))
             else:
                 SegmentStop.run(self)
-                self.logger.info(f'Stopped shrinked segment @ host={self.remoteHost}, datadir={self.dataDir}')
+                self.shrink.logger.info(f'Stopped shrinked segment dbid {self.segment.getSegmentDbId()} @ host={self.remoteHost}, datadir={self.segment.getSegmentDataDirectory()}')
 
     class TableRebalanceTask(SQLCommand):
         def __init__(self,
@@ -688,7 +685,16 @@ class GGShrink:
             self.table_status_after_rebalance = table_status_after_rebalance
             SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
 
+        # decorator to inject a fault before running TableRebalanceTask for a specific {db_name, schema_name, rel_name}
+        def wrap_table_rebalance_with_faults(fun):
+            def func_with_faults(self):
+                inject_fault(f'fault_rebalance_table_{self.db_name}.{self.schema_name}.{self.rel_name}')
+                fun(self)
+            return func_with_faults
+
+        @wrap_table_rebalance_with_faults
         def run(self) -> None:
+            self.shrink.logger.info(f'Start table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
             dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
             with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
                 dbconn.execSQL(conn, 'BEGIN')
@@ -697,6 +703,7 @@ class GGShrink:
                                REBALANCE {self.target_segment_count}''')
                 self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
                 dbconn.execSQL(conn, 'COMMIT')
+            self.shrink.logger.info(f'Complete table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
     def rebalance_tables(self, original_status: str, target_status: str, target_segment_count: int) -> None:
@@ -726,6 +733,12 @@ class GGShrink:
                     raise Exception(f'Failed to do ALTER REBALANCE: {task.get_results().stderr}')
 
             self.workers_for_tables_rebalance = None
+
+    def state_can_rollback(self, state: str) -> bool:
+        if (state in self.states_main_shrink_flow):
+            if self.states_main_shrink_flow.index(state) <= self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE'):
+                return True
+        return False
 
     def is_gp_segment_configuration_shrinked(self) -> bool:
         if not os.path.exists(self.gparray_dump_file):
