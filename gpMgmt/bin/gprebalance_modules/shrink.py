@@ -312,14 +312,16 @@ class GGShrink:
                     self.trigger('move_to_STATE_END_FROM_ROLLBACK')
                 else:
                     self.logger.error('Previous run was completed successfully. Please execute cleanup before a new run.')
-                    self.trigger('move_to_STATE_ERROR')
+                    self.trigger('move_to_STATE_END')
                 return
+
             elif self.shrink_plan != None:
                 self.logger.error("Can't start a new operation, because the previous one was interrupted. "
                                   "Please try to launch again without a plan to continue from the interrupted state, "
                                   "or use '--rollback' or '--cleanup' options.")
                 self.trigger('move_to_STATE_ERROR')
                 return
+
             else:
                 if state_from_prev_run in self.states_rollback_flow:
                     self.logger.info('Continue interrupted rollback operation...')
@@ -334,6 +336,7 @@ class GGShrink:
                     if self.options.rollback_required:
                         self.trigger('move_to_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START')
                         return
+
                     self.logger.info('Continue interrupted operation...')
                     self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
                     if self.shrink_plan == None:
@@ -348,6 +351,7 @@ class GGShrink:
                         self.logger.error("Can't determine next state. Try to execute cleanup.")
                         self.trigger('move_to_STATE_ERROR')
                         return
+
                 # use auto to_«state» method to recover
                 self.trigger(f'to_{next_state}')
         else:
@@ -355,14 +359,14 @@ class GGShrink:
                 self.logger.error("Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan.")
                 self.trigger('move_to_STATE_ERROR')
                 return
+
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED(self) -> None:
-        # Create schema and status tables
-        self.rebalance_schema.createSchema()
-        # Save plan in order to use it for recovering after interruption
-        self.rebalance_schema.savePlan(self.shrink_plan)
+        # Create schema and status tables.
+        # It will also save plan in order to use it for recovering after interruption
+        self.rebalance_schema.createSchema(self.shrink_plan)
         self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_DONE')
 
     @wrap_state_func_with_faults

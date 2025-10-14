@@ -21,7 +21,7 @@ class RebalanceSchema:
         self.saved_plan = 'saved_plan'
         self.conn = conn
 
-    def createSchema(self) -> None:
+    def createSchema(self, plan: planner.Plan) -> None:
         dbconn.execSQL(self.conn, 'BEGIN')
         dbconn.execSQL(self.conn, f'CREATE SCHEMA {self.schema_name}')
         dbconn.execSQL(self.conn,
@@ -37,6 +37,9 @@ class RebalanceSchema:
                        f'''CREATE TABLE {self.schema_name}.{self.saved_plan}
                        (plan BYTEA)
                        DISTRIBUTED REPLICATED''')
+
+        self.savePlan(plan)
+
         dbconn.execSQL(self.conn, 'COMMIT')
 
     def dropSchema(self) -> None:

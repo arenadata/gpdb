@@ -24,7 +24,7 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 0
         And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
         When the user runs "ggrebalance -x 1"
-        Then ggrebalance should return a return code of 1
+        Then ggrebalance should return a return code of 0
          And ggrebalance should print "Previous run was completed successfully. Please execute cleanup before a new run." to logfile with latest timestamp
         When the user runs "ggrebalance -r"
         Then ggrebalance should return a return code of 0
