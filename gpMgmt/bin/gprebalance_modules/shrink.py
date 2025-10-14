@@ -86,7 +86,7 @@ class GGShrink:
     # Note: order of states in the list below is important,
     # as we rely on it when recover from an interrupted state.
     # These states are separated from 'states' and 'states_main_shrink_flow'
-    # above in order to TODO:
+    # above in order to support re-enter the interrupted state of rollback.
     states_rollback_flow = [
         'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START',
         'STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE',
@@ -513,7 +513,6 @@ class GGShrink:
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Cleanup is not required.")
         else:
-            # TODO - wrap these 2 lines in a function?
             state_from_prev_run = self.rebalance_schema.getStateFromPreviousRun()
             if state_from_prev_run != self.states_main_shrink_flow[-1]:
                 self.logger.warning("ggrebalance hasn't finished shrink process properly. Previous run was interrupted. "
@@ -528,7 +527,6 @@ class GGShrink:
 
                 if current_num_segments != 0x7FFFFFFF:
                     self.logger.warning(f'Current numsegments {current_num_segments} is not equal to default value.')
-                    # TODO: do we need the suggestion below if we ask for reset just after it... I guess it can confuse the user.
                     self.logger.info('Suggestion: explicitly reset the value before cleanup. Note: cluster restart will implicitly reset the value.')
 
                 if (self.options.interactive and
@@ -537,7 +535,6 @@ class GGShrink:
                     self.trigger('move_to_STATE_END')
                     return
 
-                # TODO: test this branch
                 if (current_num_segments != 0x7FFFFFFF and
                     (not self.options.interactive or userinput.ask_yesno(None, "\nReset numsegments to default?", 'Y'))):
                     dbconn.execSQL(self.conn, 'BEGIN')

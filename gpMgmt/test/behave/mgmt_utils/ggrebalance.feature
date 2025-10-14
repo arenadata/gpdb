@@ -2,7 +2,7 @@
 Feature: ggrebalance behave tests
 
     @demo_cluster
-    Scenario: test 1. ggrebalance simple scenarious
+    Scenario: test 1.1 ggrebalance simple scenarious
         Given the database is running
          And all files in gpAdminLogs directory are deleted
         When the user runs "ggrebalance -x 3"
@@ -31,6 +31,21 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Previous run was completed successfully. Can't perform rollback." to logfile with latest timestamp
         When the user runs "ggrebalance -c"
         Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
+
+    Scenario: test 1.2. check cleanup after the target segment count was updated
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
+         And set fault inject "on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end"
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+        When the user runs "ggrebalance -c -y"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Reset numsegments to default is done." to logfile with latest timestamp
          And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
 
 # TODO: add tables creation after shrink or rollback interruption
