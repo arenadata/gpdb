@@ -192,8 +192,9 @@ def main(options, args, parser):
             logger.error(f"{str(ex)}")
             sys.exit(1)
 
-        if options.target_segment_count != None and gparray.get_segment_count() <= options.target_segment_count:
-            logger.error('Target segment count (%s) >= current segment count (%s).\n'
+        # the equality case is considered by shrink internally
+        if options.target_segment_count != None and gparray.get_segment_count() < options.target_segment_count:
+            logger.error('Target segment count (%s) > current segment count (%s).\n'
                          'Currently only shrink is supported (target segment count < current segment count).'
                           % (options.target_segment_count, gparray.get_segment_count()))
             sys.exit(1)

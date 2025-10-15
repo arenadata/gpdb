@@ -217,7 +217,7 @@ class GGShrink:
         if prev_idx >= lower and prev_idx <= upper:
 
             #if shrink is interrupted after catalog update and before the state is logged
-            if prev_idx == 'STATE_SHRINK_TABLES_DONE' and \
+            if prev_state == 'STATE_SHRINK_TABLES_DONE' and \
                 self.dumped_gparray is not None \
                 and self.gparray.get_segment_count() + self.options.target_segment_count == self.dumped_gparray.get_segment_count():
                 return 'STATE_SHRINK_CATALOG_DONE'
@@ -259,6 +259,12 @@ class GGShrink:
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
         if self.options.clean_required:
             self.trigger('move_to_STATE_CLEANUP')
+        elif not self.ggrebalance_schema_exists() and \
+            self.gparray.get_segment_count() == self.options.target_segment_count:
+            self.logger.error('Target segment count (%s) = current segment count (%s).\n'
+                         'Currently only shrink is supported (target segment count < current segment count).'
+                          % (self.options.target_segment_count, self.gparray.get_segment_count()))
+            raise ValueError("Wrong target segment count")
         else:
             self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
@@ -283,7 +289,7 @@ class GGShrink:
                     self.trigger('move_to_STATE_ERROR')
                     return
                 # use auto to_«state» method to recover
-                self.trigger(f'to_{next_state}')
+                self.trigger(f'to_{next_state}')            
         else:
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
@@ -483,11 +489,13 @@ class GGShrink:
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self) -> None:
         self.logger.info('Stopping shrinked segments...')
 
-        segments_to_stop = self.gparray.get_segment_count() - self.options.target_segment_count
+        assert(self.dumped_gparray is not None)
+
+        segments_to_stop = self.dumped_gparray.get_segment_count() - self.options.target_segment_count
         segments_to_stop = segments_to_stop * 2 # consider mirrors
         self.workers_for_segment_stop = WorkerPool(numWorkers=min(segments_to_stop, self.options.batch_size))
 
-        for seg_pair in self.gparray.getSegmentList():
+        for seg_pair in self.dumped_gparray.getSegmentList():
             primary_seg = seg_pair.primaryDB
             mirror_seq = seg_pair.mirrorDB
             if primary_seg.getSegmentContentId() >= self.options.target_segment_count:
