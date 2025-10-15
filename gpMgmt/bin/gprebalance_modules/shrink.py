@@ -489,13 +489,16 @@ class GGShrink:
     def on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED(self) -> None:
         self.logger.info('Stopping shrinked segments...')
 
-        assert(self.dumped_gparray is not None)
+        gp_array = self.dumped_gparray
 
-        segments_to_stop = self.dumped_gparray.get_segment_count() - self.options.target_segment_count
+        if gp_array is None:
+            gp_array = self.gparray
+        
+        segments_to_stop = gp_array.get_segment_count() - self.options.target_segment_count
         segments_to_stop = segments_to_stop * 2 # consider mirrors
         self.workers_for_segment_stop = WorkerPool(numWorkers=min(segments_to_stop, self.options.batch_size))
 
-        for seg_pair in self.dumped_gparray.getSegmentList():
+        for seg_pair in gp_array.getSegmentList():
             primary_seg = seg_pair.primaryDB
             mirror_seq = seg_pair.mirrorDB
             if primary_seg.getSegmentContentId() >= self.options.target_segment_count:
