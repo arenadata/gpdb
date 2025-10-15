@@ -93,5 +93,7 @@ PG_FUNCTION_INFO_V1(gp_rebalance_numsegments_is_set);
 Datum
 gp_rebalance_numsegments_is_set(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_BOOL(pg_atomic_read_u32(gp_create_table_rebalance_numsegments) != GP_DEFAULT_NUMSEGMENTS_SHARED_UNSET);
+	PG_RETURN_BOOL(
+			pg_atomic_read_u32(gp_create_table_rebalance_numsegments)
+			!= GP_DEFAULT_NUMSEGMENTS_SHARED_UNSET);
 }
