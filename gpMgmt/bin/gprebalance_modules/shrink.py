@@ -246,15 +246,6 @@ class GGShrink:
                                VALUES ('{self.state}', NOW())''')
 
     # state callbacks start here
-
-    # decorator for test purposes
-    def wrap_state_func_with_faults(fun):
-        def func_with_faults(self):
-            inject_fault(f'on_enter_{self.state}_begin')
-            fun(self)
-            inject_fault(f'on_enter_{self.state}_end')
-        return func_with_faults
-
     @wrap_state_func_with_faults
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
         if self.options.clean_required:
@@ -289,7 +280,7 @@ class GGShrink:
                     self.trigger('move_to_STATE_ERROR')
                     return
                 # use auto to_«state» method to recover
-                self.trigger(f'to_{next_state}')            
+                self.trigger(f'to_{next_state}')
         else:
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
