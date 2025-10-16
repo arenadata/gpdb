@@ -282,16 +282,6 @@ class GGShrink:
     # decorator to inject a fault before or after the given 'on_enter_' state callback
 
     # state callbacks start here
-
-    # decorator for test purposes
-    def wrap_state_func_with_faults(fun):
-        def func_with_faults(self):
-            inject_fault(f'on_enter_{self.state}_begin')
-            fun(self)
-            inject_fault(f'on_enter_{self.state}_end')
-        return func_with_faults
-
-
     @wrap_state_func_with_faults
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
         if self.options.clean_required:
@@ -357,7 +347,7 @@ class GGShrink:
                         return
 
                 # use auto to_«state» method to recover
-                self.trigger(f'to_{next_state}')            
+                self.trigger(f'to_{next_state}')
         else:
             if self.shrink_plan == None:
                 self.logger.error("Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan.")
