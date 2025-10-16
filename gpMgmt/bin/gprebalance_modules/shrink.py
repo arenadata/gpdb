@@ -298,12 +298,6 @@ class GGShrink:
             self.trigger('move_to_STATE_CLEANUP')
         elif self.options.rollback_required:
             self.trigger('move_to_STATE_ROLLBACK')
-        elif not self.ggrebalance_schema_exists() and \
-            self.gparray.get_segment_count() == self.options.target_segment_count:
-            self.logger.error('Target segment count (%s) = current segment count (%s).\n'
-                         'Currently only shrink is supported (target segment count < current segment count).'
-                          % (self.options.target_segment_count, self.gparray.get_segment_count()))
-            raise ValueError("Wrong target segment count")
         else:
             self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
@@ -369,6 +363,12 @@ class GGShrink:
                 self.logger.error("Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan.")
                 self.trigger('move_to_STATE_ERROR')
                 return
+            if self.gparray.get_segment_count() <= self.shrink_plan.target_segment_count:
+                logger.error('Target segment count (%s) >= current segment count (%s).\n'
+                             'Currently only shrink is supported (target segment count < current segment count).'
+                              % (self.shrink_plan.target_segment_count, self.gparray.get_segment_count()))
+                self.trigger('move_to_STATE_ERROR')
+                return
 
             self.trigger('move_to_STATE_SETUP_SHRINK_SCHEMA_STARTED')
 
@@ -414,11 +414,7 @@ class GGShrink:
 
         # cleanup list of tables that require rebalance
         # for the case we re-enter this state after we were interrupted right after it
-        self.rebalance_schema.clearListOfTablesToRebalance()
-        # cleanup table_rebalance_status_detail for the case we re-enter this state after we were interrupted
-        dbconn.execSQL(self.conn,
-                       f'''DELETE FROM {self.rebalance_schema_name}.{self.table_rebalance_status_detail}
-                       WHERE (status <> 'done')''')
+        self.rebalance_schema.clearTablesToRebalanceWithStatus('done')
 
         cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database')
         databases_to_process = []
@@ -557,7 +553,7 @@ class GGShrink:
                     self.logger.info('Cleanup was interrupted...')
                     self.trigger('move_to_STATE_END')
                     return
-
+                # TODO: use new api to avoid 0x7FFFFFFF
                 if (current_num_segments != 0x7FFFFFFF and
                     (not self.options.interactive or userinput.ask_yesno(None, "\nReset numsegments to default?", 'Y'))):
                     dbconn.execSQL(self.conn, 'BEGIN')
@@ -758,6 +754,27 @@ class GGShrink:
 
             self.workers_for_tables_rebalance = None
 
+    def get_state_after_interrupt(self, prev_state) -> str:
+        prev_idx = self.states_main_shrink_flow.index(prev_state)
+        lower = self.states_main_shrink_flow.index('STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
+        upper = self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE')
+        if prev_idx >= lower and prev_idx <= upper:
+
+            #if shrink is interrupted after catalog update and before the state is logged
+            if prev_state == 'STATE_SHRINK_TABLES_DONE' and \
+                self.dumped_gparray is not None \
+                and self.gparray.get_segment_count() + self.shrink_plan.target_segment_count == self.dumped_gparray.get_segment_count():
+                return 'STATE_SHRINK_CATALOG_DONE'
+
+            row = dbconn.queryRow(self.conn, 'SELECT gp_toolkit.gp_rebalance_numsegments_is_set();')
+            # means that target rebalance numsegments is reset, and new tables are created at old segment count
+            if bool(row[0]) is False:
+                self.logger.info("Cluster restarted after previous run, trying to repopulate the relation queue")
+                self.needs_repopulate = True
+                return 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
+        
+        return self.states_main_shrink_flow[prev_idx + 1]
+
     def state_can_rollback(self, state: str) -> bool:
         if (state in self.states_main_shrink_flow):
             if self.states_main_shrink_flow.index(state) <= self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE'):
@@ -765,6 +782,7 @@ class GGShrink:
         return False
 
     def is_gp_segment_configuration_shrinked(self) -> bool:
+        # TODO
         if not os.path.exists(self.gparray_dump_file):
             return False
         gparray_from_file = GpArray.initFromFile(self.gparray_dump_file)

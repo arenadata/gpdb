@@ -1,48 +1,14 @@
 @ggrebalance
 Feature: ggrebalance behave tests
 
-    Scenario Outline: test shrink continue after cluster restart
-    Given the database is not running
-    And a working directory of the test as '/data/gpdata/ggrebalance'
-    And a cluster is created with mirrors on "cdw" and "sdw1"
-    And all files in gpAdminLogs directory are deleted
-    And database "test_db_1" exists
-    And schema "test_schema_1" exists in "test_db_1"
-    And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
-    And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
-    And database "test_db_2" exists
-    And schema "test_schema_2" exists in "test_db_2"
-    And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
-    And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
-    When set fault inject "<fault_name>"
-    And the user runs "ggrebalance -x 1"
-    Then ggrebalance should return a return code of 1
-    And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
-    And unset fault inject
-    When the user runs "gpstop -arf"
-    Then gpstart should return a return code of 0
-    When there is a "heap" table "test_schema_2.test_table_3" in "test_db_2" with data
-    And the user runs "ggrebalance -x 1"
-    Then ggrebalance should print "Cluster restarted after previous run, trying to repopulate the relation queue" to logfile
-    And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
-    And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-    And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
-    And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 1, row count = 1094
-    And ggrebalance should return a return code of 0
-    Examples:
-        | fault_name                                                                  |
-        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
-        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE_begin                             |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin                                     |
-
-
-    @demo_cluster
     Scenario: test 1.1 ggrebalance simple scenarious
-        Given the database is running
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2"
          And all files in gpAdminLogs directory are deleted
-        When the user runs "ggrebalance -x 3"
+        When the user runs "ggrebalance -x 4"
         Then ggrebalance should return a return code of 1
-         And ggrebalance should print "Target segment count (3) >= current segment count (3)." to logfile with latest timestamp
+         And ggrebalance should print "Target segment count (4) >= current segment count (4)." to logfile with latest timestamp
         When the user runs "ggrebalance -c"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance schema doesn't exist. Cleanup is not required." to logfile with latest timestamp
@@ -84,6 +50,7 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
 
 # TODO: add tables creation after shrink or rollback interruption
+# TODO: use And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
 
     Scenario: test 2.1. shrink - check continue after interrupted state, if interruption is done before the rebalance schema creation
         Given the database is not running
@@ -222,6 +189,40 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_SEGMENTS_STOP_STARTED_end                             |
         | fault_rebalance_table_test_db_2.test_schema_2.test_table_1                  |
         | fault_segment_stop_dbid_3                                                   |
+
+    Scenario Outline: test 2.4. test shrink continue after cluster restart
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
+         And database "test_db_1" exists
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And database "test_db_2" exists
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
+        When set fault inject "<fault_name>"
+         And the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+        When the user runs "gpstop -arf"
+        Then gpstart should return a return code of 0
+        When there is a "heap" table "test_schema_2.test_table_3" in "test_db_2" with data
+         And the user runs "ggrebalance"
+        Then ggrebalance should print "Cluster restarted after previous run, trying to repopulate the relation queue" to logfile
+         And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 1, row count = 1094
+         And ggrebalance should return a return code of 0
+    Examples:
+        | fault_name                                                                  |
+        | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_DONE_begin                             |
+        | on_enter_STATE_SHRINK_TABLES_DONE_begin                                     |
 
     Scenario: test 3.1. shrink - check rollback after interrupted state, if interruption is done before the rebalance schema creation
         Given the database is not running

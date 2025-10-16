@@ -101,8 +101,10 @@ class RebalanceSchema:
                            f'''INSERT INTO {self.schema_name}.{self.rebalance_status}
                            VALUES ('{state}', NOW())''')
 
-    def clearListOfTablesToRebalance(self) -> None:
-        dbconn.execSQL(self.conn, f'TRUNCATE {self.schema_name}.{self.table_rebalance_status_detail}')
+    def clearTablesToRebalanceWithStatus(self, status: str) -> None:
+        dbconn.execSQL(self.conn,
+                       f'''DELETE FROM {self.schema_name}.{self.table_rebalance_status_detail}
+                       WHERE (status <> '{status}')''')
 
     def addTableToRebalance(self, db: str, schema_name: str, rel_name: str, status: str) -> None:
         dbconn.execSQL(self.conn,

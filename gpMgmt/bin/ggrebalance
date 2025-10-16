@@ -206,27 +206,20 @@ def main(options, args, parser):
             logger.error(f"{str(ex)}")
             sys.exit(1)
 
-        # the equality case is considered by shrink internally
-        if options.target_segment_count != None and gparray.get_segment_count() < options.target_segment_count:
-            logger.error('Target segment count (%s) > current segment count (%s).\n'
-                         'Currently only shrink is supported (target segment count < current segment count).'
-                          % (options.target_segment_count, gparray.get_segment_count()))
-            sys.exit(1)
-        else:
-            global gg_shrink
-            gg_shrink = GGShrink(logger, dburl, options, gpenv, gparray, gparray_dump_filename)
+        global gg_shrink
+        gg_shrink = GGShrink(logger, dburl, options, gpenv, gparray, gparray_dump_filename)
 
-            # Note: the plan for a shrink later will be provided by the planner component.
-            # But for now we simply create a Plan object from the options directly.
-            # We'll keep this stub till planner is ready.
-            # If shrink_plan is None, we assume that we need to continue previous operation
-            shrink_plan = None
-            if options.target_segment_count != None:
-                shrink_plan = Plan()
-                shrink_plan.setTargetSegmentCount(options.target_segment_count)
+        # Note: the plan for a shrink later will be provided by the planner component.
+        # But for now we simply create a Plan object from the options directly.
+        # We'll keep this stub till planner is ready.
+        # If shrink_plan is None, we assume that we need to continue previous operation
+        shrink_plan = None
+        if options.target_segment_count != None:
+            shrink_plan = Plan()
+            shrink_plan.setTargetSegmentCount(options.target_segment_count)
 
-            gg_shrink.run(shrink_plan)
-       
+        gg_shrink.run(shrink_plan)
+
         sys.exit(0)
     except Exception as e:
         if options and options.verbose:
