@@ -50,7 +50,6 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
 
 # TODO: add tables creation after shrink or rollback interruption
-# TODO: use And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
 
     Scenario: test 2.1. shrink - check continue after interrupted state, if interruption is done before the rebalance schema creation
         Given the database is not running
@@ -59,17 +58,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -84,8 +79,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
     Scenario: test 2.2. shrink - check continue after interrupted state, if interruption is done after the rebalance schema creation, but before any state is saved there
@@ -95,17 +89,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -122,8 +112,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
     Scenario Outline: test 2.3. shrink - check continue after interrupted state
@@ -133,17 +122,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -161,8 +146,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
     Examples:
@@ -231,17 +215,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -255,8 +235,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Scenario Outline: test 3.2. shrink - check rollback after interrupted state
@@ -266,17 +245,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -288,8 +263,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Examples:
@@ -319,17 +293,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -344,8 +314,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
     Examples:
@@ -364,17 +333,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -391,8 +356,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
     Examples:
@@ -406,17 +370,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -433,8 +393,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Examples:
@@ -459,17 +418,13 @@ Feature: ggrebalance behave tests
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_1'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_1"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_1"
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And database "test_db_2" exists
-         And the user runs psql with "-c 'CREATE SCHEMA test_schema_2'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_1 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_1 SELECT generate_series(1, 100)'" against database "test_db_2"
-         And the user runs psql with "-c 'CREATE TABLE test_schema_2.test_table_2 (a int) DISTRIBUTED BY(a)'" against database "test_db_2"
-         And the user runs psql with "-c 'INSERT INTO test_schema_2.test_table_2 SELECT generate_series(1, 100)'" against database "test_db_2"
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
@@ -486,8 +441,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
-        When the user runs psql with "-c 'CREATE TABLE test_schema_1.test_table_3 (a int) DISTRIBUTED BY(a)'" against database "test_db_1"
-         And the user runs psql with "-c 'INSERT INTO test_schema_1.test_table_3 SELECT generate_series(1, 100)'" against database "test_db_1"
+        When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Examples:
