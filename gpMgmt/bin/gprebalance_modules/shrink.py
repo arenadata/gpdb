@@ -547,6 +547,8 @@ class GGShrink:
                     dbconn.execSQL(self.conn, 'COMMIT')
                     self.logger.info('Reset numsegments to default is done.')
 
+            if os.path.exists(self.gparray_dump_file):
+                os.remove(self.gparray_dump_file)
             self.rebalance_schema.dropSchema()
             self.logger.info('Cleanup is complete')
         self.trigger('move_to_STATE_END')
@@ -612,6 +614,8 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START(self) -> None:
+        if os.path.exists(self.gparray_dump_file):
+            os.remove(self.gparray_dump_file)
         self.rebalance_schema.dropSchema()
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE')
 
