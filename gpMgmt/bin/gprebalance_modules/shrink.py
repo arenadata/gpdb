@@ -279,8 +279,6 @@ class GGShrink:
         if self.state in self.states_main_shrink_flow + self.states_rollback_flow:
             self.rebalance_schema.storeState(self.state)
 
-    # decorator to inject a fault before or after the given 'on_enter_' state callback
-
     # state callbacks start here
     @wrap_state_func_with_faults
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
