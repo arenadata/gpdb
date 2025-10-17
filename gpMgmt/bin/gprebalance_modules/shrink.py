@@ -317,6 +317,12 @@ class GGShrink:
                 return
 
             else:
+                self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
+                if self.shrink_plan == None:
+                    self.logger.error('No saved plan found. Try to execute cleanup.')
+                    self.trigger('move_to_STATE_ERROR')
+                    return
+
                 if state_from_prev_run in self.states_rollback_flow:
                     self.logger.info('Continue interrupted rollback operation...')
                     self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
@@ -332,12 +338,6 @@ class GGShrink:
                         return
 
                     self.logger.info('Continue interrupted operation...')
-                    self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
-                    if self.shrink_plan == None:
-                        self.logger.error('No saved plan found. Try to execute cleanup.')
-                        self.trigger('move_to_STATE_ERROR')
-                        return
-
                     self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
                     try:
                         next_state = self.get_state_after_interrupt(state_from_prev_run)
@@ -397,38 +397,7 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED(self) -> None:
-        # collect databases and tables that require 'ALTER TABLE REBALANCE'
-        # and store in 'table_rebalance_status_detail' table
-
-        dbconn.execSQL(self.conn, 'BEGIN')
-
-        # cleanup list of tables that require rebalance
-        # for the case we re-enter this state after we were interrupted right after it
-        self.rebalance_schema.clearTablesToRebalanceWithStatus('done')
-
-        cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database')
-        databases_to_process = []
-        for record in cursor:
-            database_name = record[0]
-            if database_name != 'template0':
-                databases_to_process.append(database_name)
-
-        for db in databases_to_process:
-            dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
-            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
-                cursor = dbconn.query(conn,
-                                      f'''SELECT n.nspname, c.relname
-                                      FROM pg_class c
-                                      JOIN pg_namespace n ON c.relnamespace = n.oid
-                                      JOIN gp_distribution_policy p ON c.oid = p.localoid
-                                      WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
-                                      p.numsegments > {self.shrink_plan.getTargetSegmentCount()} AND
-                                      n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema.getSchemaName()}')''')
-                for schema_name, rel_name in cursor:
-                    self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name, 'none')
-
-        dbconn.execSQL(self.conn, 'COMMIT')
-
+        self.prepare_shrink_schema(False)
         self.trigger('move_to_STATE_PREPARE_SHRINK_SCHEMA_DONE')
 
     @wrap_state_func_with_faults
@@ -598,8 +567,7 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START(self) -> None:
-        # TODO: fill the tables that could be created after interruption
-
+        self.prepare_shrink_schema(True)
         self.trigger('move_to_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE')
 
     @wrap_state_func_with_faults
@@ -715,6 +683,39 @@ class GGShrink:
                 dbconn.execSQL(conn, 'COMMIT')
             self.shrink.logger.info(f'Complete table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
+
+    def prepare_shrink_schema(self, is_rollback: bool) -> None:
+        status = 'done' if is_rollback else 'none'
+        cmp = '<=' if is_rollback else '>'
+
+        dbconn.execSQL(self.conn, 'BEGIN')
+
+        # cleanup list of tables that require rebalance
+        # for the case we re-enter this state after we were interrupted right after it
+        self.rebalance_schema.clearTablesToRebalanceWithStatus(status)
+
+        cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database')
+        databases_to_process = []
+        for record in cursor:
+            database_name = record[0]
+            if database_name != 'template0':
+                databases_to_process.append(database_name)
+
+        for db in databases_to_process:
+            dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
+            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+                cursor = dbconn.query(conn,
+                                      f'''SELECT n.nspname, c.relname
+                                      FROM pg_class c
+                                      JOIN pg_namespace n ON c.relnamespace = n.oid
+                                      JOIN gp_distribution_policy p ON c.oid = p.localoid
+                                      WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
+                                      p.numsegments {cmp} {self.shrink_plan.getTargetSegmentCount()} AND
+                                      n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema.getSchemaName()}')''')
+                for schema_name, rel_name in cursor:
+                    self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name, status)
+
+        dbconn.execSQL(self.conn, 'COMMIT')
 
     def rebalance_tables(self, original_status: str, target_status: str, target_segment_count: int) -> None:
         cursor = self.rebalance_schema.getTablesToRebalanceWithStatus(original_status)

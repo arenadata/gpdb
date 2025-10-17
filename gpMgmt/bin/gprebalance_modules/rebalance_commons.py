@@ -104,7 +104,7 @@ class RebalanceSchema:
     def clearTablesToRebalanceWithStatus(self, status: str) -> None:
         dbconn.execSQL(self.conn,
                        f'''DELETE FROM {self.schema_name}.{self.table_rebalance_status_detail}
-                       WHERE (status <> '{status}')''')
+                       WHERE (status = '{status}')''')
 
     def addTableToRebalance(self, db: str, schema_name: str, rel_name: str, status: str) -> None:
         dbconn.execSQL(self.conn,
