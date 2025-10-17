@@ -530,12 +530,12 @@ class GGShrink:
                 # get default num segments
                 dbconn.execSQL(self.conn, 'BEGIN')
                 dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
-                row = dbconn.queryRow(self.conn, 'SELECT gp_toolkit.gp_get_rebalance_numsegments()')
-                current_num_segments = int(row[0])
+                row = dbconn.queryRow(self.conn, 'SELECT gp_toolkit.gp_rebalance_numsegments_is_set()')
+                numsegments_is_set = bool(row[0])
                 dbconn.execSQL(self.conn, 'END')
 
-                if current_num_segments != 0x7FFFFFFF:
-                    self.logger.warning(f'Current numsegments {current_num_segments} is not equal to default value.')
+                if numsegments_is_set:
+                    self.logger.warning('Current numsegments is not equal to default value.')
                     self.logger.info('Suggestion: explicitly reset the value before cleanup. Note: cluster restart will implicitly reset the value.')
 
                 if (self.options.interactive and
@@ -543,8 +543,8 @@ class GGShrink:
                     self.logger.info('Cleanup was interrupted...')
                     self.trigger('move_to_STATE_END')
                     return
-                # TODO: use new api to avoid 0x7FFFFFFF
-                if (current_num_segments != 0x7FFFFFFF and
+
+                if (numsegments_is_set and
                     (not self.options.interactive or userinput.ask_yesno(None, "\nReset numsegments to default?", 'Y'))):
                     dbconn.execSQL(self.conn, 'BEGIN')
                     dbconn.execSQL(self.conn, 'SELECT gp_expand_lock_catalog()')
