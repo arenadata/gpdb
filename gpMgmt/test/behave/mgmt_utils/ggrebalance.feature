@@ -5,6 +5,9 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1, sdw2"
+         And segment information for content 1 is saved in context
+         And segment information for content 2 is saved in context
+         And segment information for content 3 is saved in context
          And all files in gpAdminLogs directory are deleted
         When the user runs "ggrebalance -x 4"
         Then ggrebalance should return a return code of 1
@@ -23,7 +26,8 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Rebalance schema doesn't exist. Can't perform rollback." to logfile with latest timestamp
         When the user runs "ggrebalance -x 2"
         Then ggrebalance should return a return code of 0
-        And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Previous run was completed successfully. Please execute cleanup before a new run." to logfile with latest timestamp
@@ -49,12 +53,11 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Reset numsegments to default is done." to logfile with latest timestamp
          And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
 
-# TODO: add tables creation after shrink or rollback interruption
-
     Scenario: test 2.1. shrink - check continue after interrupted state, if interruption is done before the rebalance schema creation
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
@@ -75,6 +78,7 @@ Feature: ggrebalance behave tests
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
@@ -86,6 +90,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
          And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end"
          And database "test_db_1" exists
@@ -108,6 +113,7 @@ Feature: ggrebalance behave tests
         When the user runs "ggrebalance -x 1"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
@@ -119,6 +125,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
@@ -142,6 +149,7 @@ Feature: ggrebalance behave tests
         When the user runs "ggrebalance --parallel 1 --batch-size 1"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
@@ -178,6 +186,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
          And database "test_db_1" exists
          And schema "test_schema_1" exists in "test_db_1"
@@ -198,6 +207,7 @@ Feature: ggrebalance behave tests
          And the user runs "ggrebalance"
         Then ggrebalance should print "Cluster restarted after previous run, trying to repopulate the relation queue" to logfile
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 1, row count = 1094
@@ -290,6 +300,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
          And database "test_db_1" exists
@@ -310,6 +321,7 @@ Feature: ggrebalance behave tests
         When the user runs "ggrebalance"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
@@ -382,6 +394,7 @@ Feature: ggrebalance behave tests
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name_shrink>"
          And database "test_db_1" exists
@@ -404,6 +417,7 @@ Feature: ggrebalance behave tests
         When the user runs "ggrebalance"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100

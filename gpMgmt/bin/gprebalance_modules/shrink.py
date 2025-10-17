@@ -773,12 +773,9 @@ class GGShrink:
         return False
 
     def is_gp_segment_configuration_shrinked(self) -> bool:
-        # TODO
-        if not os.path.exists(self.gparray_dump_file):
+        if self.dumped_gparray is None:
             return False
-        gparray_from_file = GpArray.initFromFile(self.gparray_dump_file)
-        gparray_from_catalog = GpArray.initFromCatalog(self.dburl, utility=True)
-        return gparray_from_file.get_segment_count() != gparray_from_catalog.get_segment_count()
+        return self.dumped_gparray.get_segment_count() != self.gparray.get_segment_count()
 
     def shutdown(self) -> None:
         if self.workers_for_tables_rebalance != None:
