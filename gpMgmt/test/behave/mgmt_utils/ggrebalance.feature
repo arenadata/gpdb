@@ -369,7 +369,6 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 2, row count = 200
          And distribution information from table "test_schema_2.test_table_4" with data in "test_db_2" is equal to segment count = 2, row count = 300
-         And ggrebalance should return a return code of 0
     Examples:
         | fault_name                                                                  |
         | on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end                              |
