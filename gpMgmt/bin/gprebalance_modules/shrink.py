@@ -269,6 +269,27 @@ class GGShrink:
         self.shrink_plan = shrinkPlan
         self.trigger('start')
 
+    def get_state_after_interrupt(self, prev_state) -> str:
+        prev_idx = self.states_main_shrink_flow.index(prev_state)
+        lower = self.states_main_shrink_flow.index('STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
+        upper = self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE')
+        if prev_idx >= lower and prev_idx <= upper:
+
+            #if shrink is interrupted after catalog update and before the state is logged
+            if prev_state == 'STATE_SHRINK_TABLES_DONE' and \
+                self.dumped_gparray is not None \
+                and self.gparray.get_segment_count() + self.shrink_plan.target_segment_count == self.dumped_gparray.get_segment_count():
+                return 'STATE_SHRINK_CATALOG_DONE'
+
+            row = dbconn.queryRow(self.conn, 'SELECT gp_toolkit.gp_rebalance_numsegments_is_set();')
+            # means that target rebalance numsegments is reset, and new tables are created at old segment count
+            if bool(row[0]) is False:
+                self.logger.info("Cluster restarted after previous run, trying to repopulate the relation queue")
+                self.needs_repopulate = True
+                return 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
+
+        return self.states_main_shrink_flow[prev_idx + 1]
+
     def on_every_state(self) -> None:
         if self.shutdown_requested:
             self.logger.info('Shrink was interrupted')
@@ -742,27 +763,6 @@ class GGShrink:
                     raise Exception(f'Failed to do ALTER REBALANCE: {task.get_results().stderr}')
 
             self.workers_for_tables_rebalance = None
-
-    def get_state_after_interrupt(self, prev_state) -> str:
-        prev_idx = self.states_main_shrink_flow.index(prev_state)
-        lower = self.states_main_shrink_flow.index('STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
-        upper = self.states_main_shrink_flow.index('STATE_SHRINK_TABLES_DONE')
-        if prev_idx >= lower and prev_idx <= upper:
-
-            #if shrink is interrupted after catalog update and before the state is logged
-            if prev_state == 'STATE_SHRINK_TABLES_DONE' and \
-                self.dumped_gparray is not None \
-                and self.gparray.get_segment_count() + self.shrink_plan.target_segment_count == self.dumped_gparray.get_segment_count():
-                return 'STATE_SHRINK_CATALOG_DONE'
-
-            row = dbconn.queryRow(self.conn, 'SELECT gp_toolkit.gp_rebalance_numsegments_is_set();')
-            # means that target rebalance numsegments is reset, and new tables are created at old segment count
-            if bool(row[0]) is False:
-                self.logger.info("Cluster restarted after previous run, trying to repopulate the relation queue")
-                self.needs_repopulate = True
-                return 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
-        
-        return self.states_main_shrink_flow[prev_idx + 1]
 
     def state_can_rollback(self, state: str) -> bool:
         if (state in self.states_main_shrink_flow):
