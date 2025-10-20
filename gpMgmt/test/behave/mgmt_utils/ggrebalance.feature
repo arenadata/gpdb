@@ -425,8 +425,9 @@ Feature: ggrebalance behave tests
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
     Examples:
-        | fault_name_shrink                       | fault_name_rollback                                                     |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_begin |
+        | fault_name_shrink                                          | fault_name_rollback                                                     |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_begin |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_begin |
 
     Scenario Outline: test 4.2. shrink - check continue after interrupted rollback state
         Given the database is not running
@@ -462,20 +463,32 @@ Feature: ggrebalance behave tests
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Examples:
-        | fault_name_shrink                       | fault_name_rollback                                                     |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_end   |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_begin  |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_end    |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_begin               |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_end                 |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_begin                |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_end                  |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_begin              |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_end                |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | fault_rebalance_table_test_db_2.test_schema_2.test_table_1              |
+        | fault_name_shrink                                          | fault_name_rollback                                                     |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_end   |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_begin  |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_end    |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_begin               |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_end                 |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_begin                |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_end                  |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_begin              |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_end                |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_end   |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_begin  |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_end    |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_begin               |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_end                 |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_begin                |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_end                  |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_begin              |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_end                |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
+        | on_enter_STATE_SHRINK_TABLES_DONE_begin                    | fault_rebalance_table_test_db_2.test_schema_2.test_table_1              |
 
     Scenario Outline: test 4.3. shrink - check continue after interrupted rollback state (interruption is done after rebalance schema is dropped)
         Given the database is not running
@@ -511,10 +524,13 @@ Feature: ggrebalance behave tests
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Examples:
-        | fault_name_shrink                       | fault_name_rollback                                                     |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_end                    |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_begin                   |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_end                     |
+        | fault_name_shrink                                          | fault_name_rollback                                                     |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_end                    |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_begin                   |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_end                     |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_end                    |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_begin                   |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_DONE_end                     |
 
     Scenario Outline: test 4.4. shrink - check continue after interrupted rollback state and cluster restart
         Given the database is not running
@@ -556,17 +572,29 @@ Feature: ggrebalance behave tests
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 2, row count = 100
 
     Examples:
-        | fault_name_shrink                       | fault_name_rollback                                                     |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_end   |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_begin  |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_end    |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_begin               |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_end                 |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_begin                |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_end                  |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_begin              |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_end                |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
-        | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
+        | fault_name_shrink                                          | fault_name_rollback                                                     |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_end   |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_begin  |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_end    |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_begin               |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_end                 |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_begin                |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_end                  |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_begin              |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_end                |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
+        | on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end           | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_START_end   |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_begin  |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_RESTORE_TARGET_SEGMENT_COUNT_DONE_end    |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_begin               |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_START_end                 |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_begin                |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_PREPARE_SCHEMA_DONE_end                  |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_begin              |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_START_end                |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
+        | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
 
