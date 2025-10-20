@@ -1,7 +1,7 @@
 @ggrebalance
 Feature: ggrebalance behave tests
 
-    Scenario: test 1.1 ggrebalance simple scenarious
+    Scenario: test 1.1 ggrebalance simple scenarios
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1, sdw2"
