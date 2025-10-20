@@ -475,6 +475,7 @@ Feature: ggrebalance behave tests
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_begin               |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
         | on_enter_STATE_SHRINK_TABLES_DONE_begin | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
+        | on_enter_STATE_SHRINK_TABLES_DONE_begin | fault_rebalance_table_test_db_2.test_schema_2.test_table_1              |
 
     Scenario Outline: test 4.3. shrink - check continue after interrupted rollback state (interruption is done after rebalance schema is dropped)
         Given the database is not running
