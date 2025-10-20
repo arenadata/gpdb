@@ -287,7 +287,7 @@ class GGShrink:
                 self.logger.info("Cluster restarted after previous run, trying to repopulate the relation queue")
                 self.needs_repopulate = True
                 return 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
-
+        
         return self.states_main_shrink_flow[prev_idx + 1]
 
     def on_every_state(self) -> None:
@@ -390,7 +390,7 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE(self) -> None:
-        self.logger.info('Created rebalance schema')
+        self.logger.info(f'Created "{self.rebalance_schema.getSchemaName()}" schema')
         self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
 
     @wrap_state_func_with_faults
