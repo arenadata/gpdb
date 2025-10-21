@@ -293,7 +293,7 @@ class GGShrink:
     def on_every_state(self) -> None:
         if self.shutdown_requested:
             self.logger.info('Shrink was interrupted')
-            sys.exit(1)
+            raise Exception('Shrink was interrupted')
 
         assert self.state in self.states + self.states_main_shrink_flow + self.states_rollback_flow
 
@@ -626,7 +626,7 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_ERROR(self) -> None:
-        sys.exit(1)
+        raise Exception('Shrink entered STATE_ERROR')
 
     # state callbacks end here
 
