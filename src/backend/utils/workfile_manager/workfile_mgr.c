@@ -647,9 +647,9 @@ workfile_mgr_create_set_internal(const char *operator_name, const char *prefix)
 	dlist_push_tail(&localCtl.localList, &work_set->local_node);
 
 	if (operator_name)
-		strlcpy(work_set->operator, operator_name, sizeof(work_set->operator));
+		strlcpy(work_set->operator_name, operator_name, sizeof(work_set->operator_name));
 	else
-		work_set->operator[0] = '\0';
+		work_set->operator_name[0] = '\0';
 
 	if (prefix)
 	{
@@ -908,7 +908,7 @@ gp_workfile_mgr_cache_entries_internal(PG_FUNCTION_ARGS)
 		values[0] = Int32GetDatum(GpIdentity.segindex);
 		values[1] = CStringGetTextDatum(work_set->prefix);
 		values[2] = Int64GetDatum(work_set->total_bytes);
-		values[3] = CStringGetTextDatum(work_set->operator);
+		values[3] = CStringGetTextDatum(work_set->operator_name);
 		values[4] = UInt32GetDatum(work_set->slice_id);
 		values[5] = UInt32GetDatum(work_set->session_id);
 		values[6] = UInt32GetDatum(work_set->command_count);

@@ -71,7 +71,7 @@ typedef struct workfile_set
 	char		prefix[WORKFILE_PREFIX_LEN];
 
 	/* Type of operator creating the workfile set */
-	char		operator[NAMEDATALEN];
+	char		operator_name[NAMEDATALEN];
 
 	/* Slice in which the spilling operator was */
 	int			slice_id;
