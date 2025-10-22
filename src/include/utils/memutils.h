@@ -120,7 +120,7 @@ extern void MemoryContextDeclareAccountingRoot(MemoryContext context);
 extern Size MemoryContextGetCurrentSpace(MemoryContext context);
 extern Size MemoryContextGetPeakSpace(MemoryContext context);
 extern Size MemoryContextSetPeakSpace(MemoryContext context, Size nbytes);
-
+extern void MemoryContextDeleteGPDB(MemoryContext context);
 #define MemoryContextDelete(context)    (MemoryContextDeleteImpl(context, __FILE__, PG_FUNCNAME_MACRO, __LINE__))
 extern void MemoryContextDeleteImpl(MemoryContext context, const char* sfile, const char *func, int sline);
 

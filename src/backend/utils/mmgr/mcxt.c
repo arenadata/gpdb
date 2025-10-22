@@ -223,6 +223,12 @@ MemoryContextResetChildren(MemoryContext context)
 	}
 }
 
+void
+MemoryContextDeleteGPDB(MemoryContext context)
+{
+	MemoryContextDelete(context);
+}
+
 /*
  * MemoryContextDelete
  *		Delete a context and its descendants, and release all space
