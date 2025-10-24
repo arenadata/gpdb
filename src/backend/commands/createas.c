@@ -467,7 +467,7 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 
 		/* save the rowcount if we're given a qc to fill */
 		if (qc)
-			SetQueryCompletion(qc, CMDTAG_SELECT, queryDesc->estate->es_processed);
+			SetQueryCompletion(qc, CMDTAG_SELECT, queryDesc->es_processed);
 
 		/* MPP-14001: Running auto_stats */
 		if (Gp_role == GP_ROLE_DISPATCH)

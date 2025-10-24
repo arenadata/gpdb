@@ -17,6 +17,7 @@
 #include "storage/s_lock.h"
 #endif
 #include "nodes/plannodes.h"
+#include "tcop/cmdtag.h"
 
 struct Gang;
 
@@ -282,6 +283,7 @@ extern volatile int *shmNumCommittedGxacts;
 
 extern char *DtxStateToString(DtxState state);
 extern char *DtxProtocolCommandToString(DtxProtocolCommand command);
+extern CommandTag DtxProtocolCommandToCmdtag(DtxProtocolCommand command);
 extern char *DtxContextToString(DtxContext context);
 extern void dtxDeformGid(const char	*gid,
 							DistributedTransactionId		*distribXid);
