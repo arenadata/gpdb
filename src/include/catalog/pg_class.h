@@ -22,17 +22,11 @@
 #include "catalog/pg_class_d.h"
 
 /* ----------------
-<<<<<<< HEAD
- *		postgres.h contains the system type definitions and the
- *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
- *		can be read by both genbki.sh and the C compiler.
-=======
  *		pg_class definition.  cpp turns this into
  *		typedef struct FormData_pg_class
  *
  * Note that the BKI_DEFAULT values below are only used for rows describing
  * BKI_BOOTSTRAP catalogs, since only those rows appear in pg_class.dat.
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
  * ----------------
  */
 CATALOG(pg_class,1259,RelationRelationId) BKI_BOOTSTRAP BKI_ROWTYPE_OID(83,RelationRelation_Rowtype_Id) BKI_SCHEMA_MACRO
