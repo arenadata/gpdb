@@ -265,19 +265,12 @@ extern struct XLogRecord *XLogReadRecord(XLogReaderState *state,
 extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
 										 XLogRecPtr recptr, char *phdr);
 
-<<<<<<< HEAD
-/* Validate a page */
-extern bool XLogReaderValidatePageHeader(XLogReaderState *state,
-					XLogRecPtr recptr, char *phdr);
-
 /* In GPDB, this is needed in the backend, too, for WAL replication tests. */
 /* #ifdef FRONTEND */
 #if 1
 extern XLogRecPtr XLogFindNextRecord(XLogReaderState *state, XLogRecPtr RecPtr);
 #endif							/* FRONTEND */
 
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 /*
  * Error information from WALRead that both backend and frontend caller can
  * process.  Currently only errors from pg_pread can be reported.
