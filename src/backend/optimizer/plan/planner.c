@@ -5496,7 +5496,17 @@ create_distinct_paths(PlannerInfo *root,
 	else if (parse->hasDistinctOn || !enable_hashagg)
 		allow_hash = false;		/* policy-based decision not to hash */
 	else
+<<<<<<< HEAD
 		allow_hash = true;		/* default */
+=======
+	{
+		Size		hashentrysize = hash_agg_entry_size(
+			0, cheapest_input_path->pathtarget->width, 0);
+
+		/* Allow hashing only if hashtable is predicted to fit in work_mem */
+		allow_hash = (hashentrysize * numDistinctRows <= work_mem * 1024L);
+	}
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 	if (allow_hash && grouping_is_hashable(parse->distinctClause))
 	{

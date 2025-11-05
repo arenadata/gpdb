@@ -13,14 +13,9 @@
  */
 #include "postgres.h"
 
-#include "access/htup_details.h"
-#include "access/transam.h"
 #include "catalog/pg_type.h"
-#include "executor/spi.h"
 #include "funcapi.h"
-#include "lib/stringinfo.h"
 #include "libpq/pqformat.h"
-#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "parser/parse_coerce.h"
 #include "utils/array.h"
@@ -28,28 +23,9 @@
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/json.h"
-#include "utils/jsonapi.h"
+#include "utils/jsonfuncs.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 #include "utils/typcache.h"
-
-/*
- * The context of the parser is maintained by the recursive descent
- * mechanism, but is passed explicitly to the error reporting routine
- * for better diagnostics.
- */
-typedef enum					/* contexts of JSON parser */
-{
-	JSON_PARSE_VALUE,			/* expecting a value */
-	JSON_PARSE_STRING,			/* expecting a string (for a field name) */
-	JSON_PARSE_ARRAY_START,		/* saw '[', expecting value or ']' */
-	JSON_PARSE_ARRAY_NEXT,		/* saw array element, expecting ',' or ']' */
-	JSON_PARSE_OBJECT_START,	/* saw '{', expecting label or '}' */
-	JSON_PARSE_OBJECT_LABEL,	/* saw object label, expecting ':' */
-	JSON_PARSE_OBJECT_NEXT,		/* saw object value, expecting ',' or '}' */
-	JSON_PARSE_OBJECT_COMMA,	/* saw object ',', expecting next label */
-	JSON_PARSE_END				/* saw the end of a document, expect nothing */
-} JsonParseContext;
 
 typedef enum					/* type categories for datum_to_json */
 {
@@ -75,19 +51,6 @@ typedef struct JsonAggState
 	Oid			val_output_func;
 } JsonAggState;
 
-static inline void json_lex(JsonLexContext *lex);
-static inline void json_lex_string(JsonLexContext *lex);
-static inline void json_lex_number(JsonLexContext *lex, char *s,
-								   bool *num_err, int *total_len);
-static inline void parse_scalar(JsonLexContext *lex, JsonSemAction *sem);
-static void parse_object_field(JsonLexContext *lex, JsonSemAction *sem);
-static void parse_object(JsonLexContext *lex, JsonSemAction *sem);
-static void parse_array_element(JsonLexContext *lex, JsonSemAction *sem);
-static void parse_array(JsonLexContext *lex, JsonSemAction *sem);
-static void report_parse_error(JsonParseContext ctx, JsonLexContext *lex) pg_attribute_noreturn();
-static void report_invalid_token(JsonLexContext *lex) pg_attribute_noreturn();
-static int	report_json_context(JsonLexContext *lex);
-static char *extract_mb_char(char *s);
 static void composite_to_json(Datum composite, StringInfo result,
 							  bool use_line_feeds);
 static void array_dim_to_json(StringInfo result, int dim, int ndims, int *dims,
@@ -106,121 +69,6 @@ static void add_json(Datum val, bool is_null, StringInfo result,
 					 Oid val_type, bool key_scalar);
 static text *catenate_stringinfo_string(StringInfo buffer, const char *addon);
 
-/* the null action object used for pure validation */
-static JsonSemAction nullSemAction =
-{
-	NULL, NULL, NULL, NULL, NULL,
-	NULL, NULL, NULL, NULL, NULL
-};
-
-/* Recursive Descent parser support routines */
-
-/*
- * lex_peek
- *
- * what is the current look_ahead token?
-*/
-static inline JsonTokenType
-lex_peek(JsonLexContext *lex)
-{
-	return lex->token_type;
-}
-
-/*
- * lex_accept
- *
- * accept the look_ahead token and move the lexer to the next token if the
- * look_ahead token matches the token parameter. In that case, and if required,
- * also hand back the de-escaped lexeme.
- *
- * returns true if the token matched, false otherwise.
- */
-static inline bool
-lex_accept(JsonLexContext *lex, JsonTokenType token, char **lexeme)
-{
-	if (lex->token_type == token)
-	{
-		if (lexeme != NULL)
-		{
-			if (lex->token_type == JSON_TOKEN_STRING)
-			{
-				if (lex->strval != NULL)
-					*lexeme = pstrdup(lex->strval->data);
-			}
-			else
-			{
-				int			len = (lex->token_terminator - lex->token_start);
-				char	   *tokstr = palloc(len + 1);
-
-				memcpy(tokstr, lex->token_start, len);
-				tokstr[len] = '\0';
-				*lexeme = tokstr;
-			}
-		}
-		json_lex(lex);
-		return true;
-	}
-	return false;
-}
-
-/*
- * lex_accept
- *
- * move the lexer to the next token if the current look_ahead token matches
- * the parameter token. Otherwise, report an error.
- */
-static inline void
-lex_expect(JsonParseContext ctx, JsonLexContext *lex, JsonTokenType token)
-{
-	if (!lex_accept(lex, token, NULL))
-		report_parse_error(ctx, lex);
-}
-
-/* chars to consider as part of an alphanumeric token */
-#define JSON_ALPHANUMERIC_CHAR(c)  \
-	(((c) >= 'a' && (c) <= 'z') || \
-	 ((c) >= 'A' && (c) <= 'Z') || \
-	 ((c) >= '0' && (c) <= '9') || \
-	 (c) == '_' || \
-	 IS_HIGHBIT_SET(c))
-
-/*
- * Utility function to check if a string is a valid JSON number.
- *
- * str is of length len, and need not be null-terminated.
- */
-bool
-IsValidJsonNumber(const char *str, int len)
-{
-	bool		numeric_error;
-	int			total_len;
-	JsonLexContext dummy_lex;
-
-	if (len <= 0)
-		return false;
-
-	/*
-	 * json_lex_number expects a leading  '-' to have been eaten already.
-	 *
-	 * having to cast away the constness of str is ugly, but there's not much
-	 * easy alternative.
-	 */
-	if (*str == '-')
-	{
-		dummy_lex.input = unconstify(char *, str) +1;
-		dummy_lex.input_length = len - 1;
-	}
-	else
-	{
-		dummy_lex.input = unconstify(char *, str);
-		dummy_lex.input_length = len;
-	}
-
-	json_lex_number(&dummy_lex, dummy_lex.input, &numeric_error, &total_len);
-
-	return (!numeric_error) && (total_len == dummy_lex.input_length);
-}
-
 /*
  * Input.
  */
@@ -233,7 +81,7 @@ json_in(PG_FUNCTION_ARGS)
 
 	/* validate it */
 	lex = makeJsonLexContext(result, false);
-	pg_parse_json(lex, &nullSemAction);
+	pg_parse_json_or_ereport(lex, &nullSemAction);
 
 	/* Internal representation is the same as text, for now */
 	PG_RETURN_TEXT_P(result);
@@ -279,13 +127,14 @@ json_recv(PG_FUNCTION_ARGS)
 	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
 
 	/* Validate it. */
-	lex = makeJsonLexContextCstringLen(str, nbytes, false);
-	pg_parse_json(lex, &nullSemAction);
+	lex = makeJsonLexContextCstringLen(str, nbytes, GetDatabaseEncoding(), false);
+	pg_parse_json_or_ereport(lex, &nullSemAction);
 
 	PG_RETURN_TEXT_P(cstring_to_text_with_len(str, nbytes));
 }
 
 /*
+<<<<<<< HEAD
  * makeJsonLexContext
  *
  * lex constructor, with or without StringInfo object
@@ -1340,6 +1189,8 @@ extract_mb_char(char *s)
 }
 
 /*
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
  * Determine how we want to print values of a given type in datum_to_json.
  *
  * Given the datatype OID, return its JsonTypeCategory, as well as the type's
@@ -2543,13 +2394,16 @@ json_typeof(PG_FUNCTION_ARGS)
 	JsonLexContext *lex;
 	JsonTokenType tok;
 	char	   *type;
+	JsonParseErrorType	result;
 
 	json = PG_GETARG_TEXT_PP(0);
 	lex = makeJsonLexContext(json, false);
 
 	/* Lex exactly one token from the input and check its type. */
-	json_lex(lex);
-	tok = lex_peek(lex);
+	result = json_lex(lex);
+	if (result != JSON_SUCCESS)
+		json_ereport_error(result, lex);
+	tok = lex->token_type;
 	switch (tok)
 	{
 		case JSON_TOKEN_OBJECT_START:

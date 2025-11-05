@@ -223,7 +223,10 @@ static long ltsGetPreallocBlock(LogicalTapeSet *lts, LogicalTape *lt);
 static void ltsReleaseBlock(LogicalTapeSet *lts, long blocknum);
 static void ltsConcatWorkerTapes(LogicalTapeSet *lts, TapeShare *shared,
 								 SharedFileSet *fileset);
+<<<<<<< HEAD
 static void ltsInitTape(LogicalTape *lt);
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 static void ltsInitReadBuffer(LogicalTapeSet *lts, LogicalTape *lt);
 
 char *
@@ -382,9 +385,15 @@ parent_offset(unsigned long i)
 static long
 ltsGetFreeBlock(LogicalTapeSet *lts)
 {
+<<<<<<< HEAD
 	long	   *heap = lts->freeBlocks;
 	long		blocknum;
 	int			heapsize;
+=======
+	long	*heap = lts->freeBlocks;
+	long	 blocknum;
+	int		 heapsize;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	unsigned long pos;
 
 	/* freelist empty; allocate a new block */
@@ -408,7 +417,11 @@ ltsGetFreeBlock(LogicalTapeSet *lts)
 	heapsize = lts->nFreeBlocks;
 	while (true)
 	{
+<<<<<<< HEAD
 		unsigned long left = left_offset(pos);
+=======
+		unsigned long left  = left_offset(pos);
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		unsigned long right = right_offset(pos);
 		unsigned long min_child;
 
@@ -429,6 +442,7 @@ ltsGetFreeBlock(LogicalTapeSet *lts)
 	}
 
 	return blocknum;
+<<<<<<< HEAD
 }
 
 /*
@@ -468,6 +482,8 @@ ltsGetPreallocBlock(LogicalTapeSet *lts, LogicalTape *lt)
 	}
 
 	return lt->prealloc[--lt->nprealloc];
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 }
 
 /*
@@ -476,7 +492,11 @@ ltsGetPreallocBlock(LogicalTapeSet *lts, LogicalTape *lt)
 static void
 ltsReleaseBlock(LogicalTapeSet *lts, long blocknum)
 {
+<<<<<<< HEAD
 	long	   *heap;
+=======
+	long	*heap;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	unsigned long pos;
 
 	/*
@@ -513,7 +533,10 @@ ltsReleaseBlock(LogicalTapeSet *lts, long blocknum)
 	while (pos != 0)
 	{
 		unsigned long parent = parent_offset(pos);
+<<<<<<< HEAD
 
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		if (heap[parent] < heap[pos])
 			break;
 
@@ -612,6 +635,7 @@ ltsConcatWorkerTapes(LogicalTapeSet *lts, TapeShare *shared,
 }
 
 /*
+<<<<<<< HEAD
  * Initialize per-tape struct.  Note we allocate the I/O buffer lazily.
  */
 static void
@@ -636,6 +660,8 @@ ltsInitTape(LogicalTape *lt)
 }
 
 /*
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
  * Lazily allocate and initialize the read buffer. This avoids waste when many
  * tapes are open at once, but not all are active between rewinding and
  * reading.
@@ -921,6 +947,7 @@ LogicalTapeRewindForRead(LogicalTapeSet *lts, int tapenum, size_t buffer_size)
 	/* the buffer is lazily allocated, but set the size here */
 	lt->buffer = NULL;
 	lt->buffer_size = buffer_size;
+<<<<<<< HEAD
 
 	/* free the preallocation list, and return unused block numbers */
 	if (lt->prealloc != NULL)
@@ -932,6 +959,8 @@ LogicalTapeRewindForRead(LogicalTapeSet *lts, int tapenum, size_t buffer_size)
 		lt->nprealloc = 0;
 		lt->prealloc_size = 0;
 	}
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 }
 
 /*

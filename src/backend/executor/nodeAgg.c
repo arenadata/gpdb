@@ -413,6 +413,7 @@ static Bitmapset *find_unaggregated_cols(AggState *aggstate);
 static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static void build_hash_tables(AggState *aggstate);
 static void build_hash_table(AggState *aggstate, int setno, long nbuckets);
+<<<<<<< HEAD
 static void hashagg_recompile_expressions(AggState *aggstate, bool minslot,
 										  bool nullcheck);
 static long hash_choose_num_buckets(double hashentrysize,
@@ -425,6 +426,9 @@ static int hash_choose_num_partitions(AggState *aggstate,
 									  int *log2_npartittions);
 static AggStatePerGroup lookup_hash_entry(AggState *aggstate, uint32 hash,
 										  bool *in_hash_table);
+=======
+static AggStatePerGroup lookup_hash_entry(AggState *aggstate, uint32 hash);
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 static void lookup_hash_entries(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static void agg_fill_hash_table(AggState *aggstate);
@@ -652,8 +656,7 @@ initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
 	{
 		MemoryContext oldContext;
 
-		oldContext = MemoryContextSwitchTo(
-										   aggstate->curaggcontext->ecxt_per_tuple_memory);
+		oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 		pergroupstate->transValue = datumCopy(pertrans->initValue,
 											  pertrans->transtypeByVal,
 											  pertrans->transtypeLen);
@@ -759,8 +762,7 @@ advance_transition_function(AggState *aggstate,
 			 * We must copy the datum into aggcontext if it is pass-by-ref. We
 			 * do not need to pfree the old transValue, since it's NULL.
 			 */
-			oldContext = MemoryContextSwitchTo(
-											   aggstate->curaggcontext->ecxt_per_tuple_memory);
+			oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 			pergroupstate->transValue = datumCopy(fcinfo->args[1].value,
 												  pertrans->transtypeByVal,
 												  pertrans->transtypeLen);
@@ -1490,6 +1492,7 @@ build_hash_tables(AggState *aggstate)
 	for (setno = 0; setno < aggstate->num_hashes; ++setno)
 	{
 		AggStatePerHash perhash = &aggstate->perhash[setno];
+<<<<<<< HEAD
 		long			nbuckets;
 		Size			memory;
 
@@ -1508,6 +1511,15 @@ build_hash_tables(AggState *aggstate)
 			aggstate->hashentrysize, perhash->aggnode->numGroups, memory);
 
 		build_hash_table(aggstate, setno, nbuckets);
+=======
+
+		Assert(perhash->aggnode->numGroups > 0);
+
+		if (perhash->hashtable)
+			ResetTupleHashTable(perhash->hashtable);
+		else
+			build_hash_table(aggstate, setno, perhash->aggnode->numGroups);
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	}
 
 	aggstate->hash_ngroups_current = 0;
@@ -1521,6 +1533,45 @@ build_hash_table(AggState *aggstate, int setno, long nbuckets)
 {
 	AggStatePerHash perhash = &aggstate->perhash[setno];
 	MemoryContext	metacxt = aggstate->hash_metacxt;
+	MemoryContext	hashcxt = aggstate->hashcontext->ecxt_per_tuple_memory;
+	MemoryContext	tmpcxt	= aggstate->tmpcontext->ecxt_per_tuple_memory;
+	Size            additionalsize;
+
+	Assert(aggstate->aggstrategy == AGG_HASHED ||
+		   aggstate->aggstrategy == AGG_MIXED);
+
+	/*
+	 * Used to make sure initial hash table allocation does not exceed
+	 * work_mem. Note that the estimate does not include space for
+	 * pass-by-reference transition data values, nor for the representative
+	 * tuple of each group.
+	 */
+	additionalsize = aggstate->numtrans * sizeof(AggStatePerGroupData);
+
+	perhash->hashtable = BuildTupleHashTableExt(
+		&aggstate->ss.ps,
+		perhash->hashslot->tts_tupleDescriptor,
+		perhash->numCols,
+		perhash->hashGrpColIdxHash,
+		perhash->eqfuncoids,
+		perhash->hashfunctions,
+		perhash->aggnode->grpCollations,
+		nbuckets,
+		additionalsize,
+		metacxt,
+		hashcxt,
+		tmpcxt,
+		DO_AGGSPLIT_SKIPFINAL(aggstate->aggsplit));
+}
+
+/*
+ * Build a single hashtable for this grouping set.
+ */
+static void
+build_hash_table(AggState *aggstate, int setno, long nbuckets)
+{
+	AggStatePerHash perhash = &aggstate->perhash[setno];
+	MemoryContext	metacxt = aggstate->ss.ps.state->es_query_cxt;
 	MemoryContext	hashcxt = aggstate->hashcontext->ecxt_per_tuple_memory;
 	MemoryContext	tmpcxt	= aggstate->tmpcontext->ecxt_per_tuple_memory;
 	Size            additionalsize;
@@ -1693,6 +1744,7 @@ find_hash_columns(AggState *aggstate)
  * Estimate per-hash-table-entry overhead.
  */
 Size
+<<<<<<< HEAD
 hash_agg_entry_size(int numTrans, Size tupleWidth, Size transitionSpace)
 {
 	Size    tupleChunkSize;
@@ -2059,6 +2111,16 @@ hash_choose_num_partitions(AggState *aggstate, uint64 input_groups, double hashe
 	npartitions = 1L << partition_bits;
 
 	return npartitions;
+=======
+hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
+{
+	return
+		MAXALIGN(SizeofMinimalTupleHeader) +
+		MAXALIGN(tupleWidth) +
+		MAXALIGN(sizeof(TupleHashEntryData) +
+				 numAggs * sizeof(AggStatePerGroupData)) +
+		transitionSpace;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 }
 
 /*
@@ -2069,6 +2131,7 @@ hash_choose_num_partitions(AggState *aggstate, uint64 input_groups, double hashe
  *
  * When called, CurrentMemoryContext should be the per-query context. The
  * already-calculated hash value for the tuple must be specified.
+<<<<<<< HEAD
  *
  * If in "spill mode", then only find existing hashtable entries; don't create
  * new ones. If a tuple's group is not already present in the hash table for
@@ -2077,10 +2140,16 @@ hash_choose_num_partitions(AggState *aggstate, uint64 input_groups, double hashe
  */
 static AggStatePerGroup
 lookup_hash_entry(AggState *aggstate, uint32 hash, bool *in_hash_table)
+=======
+ */
+static AggStatePerGroup
+lookup_hash_entry(AggState *aggstate, uint32 hash)
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 {
 	AggStatePerHash perhash = &aggstate->perhash[aggstate->current_set];
 	TupleTableSlot *hashslot = perhash->hashslot;
 	TupleHashEntryData *entry;
+<<<<<<< HEAD
 	bool			isnew = false;
 	bool		   *p_isnew;
 
@@ -2098,6 +2167,13 @@ lookup_hash_entry(AggState *aggstate, uint32 hash, bool *in_hash_table)
 	}
 	else
 		*in_hash_table = true;
+=======
+	bool		isnew;
+
+	/* find or create the hashtable entry using the filtered tuple */
+	entry = LookupTupleHashEntryHash(perhash->hashtable, hashslot, &isnew,
+									 hash);
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 	if (isnew)
 	{
@@ -2159,13 +2235,19 @@ lookup_hash_entries(AggState *aggstate)
 
 	for (setno = 0; setno < aggstate->num_hashes; setno++)
 	{
+<<<<<<< HEAD
 		AggStatePerHash	perhash = &aggstate->perhash[setno];
 		uint32			hash;
 		bool			in_hash_table;
+=======
+		AggStatePerHash perhash = &aggstate->perhash[setno];
+		uint32			hash;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 		select_current_set(aggstate, setno, true);
 		prepare_hash_slot(aggstate);
 		hash = TupleHashTableHash(perhash->hashtable, perhash->hashslot);
+<<<<<<< HEAD
 		pergroup[setno] = lookup_hash_entry(aggstate, hash, &in_hash_table);
 
 		/* check to see if we need to spill the tuple for this grouping set */
@@ -2181,6 +2263,9 @@ lookup_hash_entries(AggState *aggstate)
 
 			hashagg_spill_tuple(spill, slot, hash);
 		}
+=======
+		pergroup[setno] = lookup_hash_entry(aggstate, hash);
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	}
 }
 
@@ -3418,8 +3503,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 * The output of the tuplesort, and the output from the outer child
 		 * might not use the same type of slot. In most cases the child will
 		 * be a Sort, and thus return a TTSOpsMinimalTuple type slot - but the
-		 * input can also be be presorted due an index, in which case it could
-		 * be a different type of slot.
+		 * input can also be presorted due an index, in which case it could be
+		 * a different type of slot.
 		 *
 		 * XXX: For efficiency it would be good to instead/additionally
 		 * generate expressions with corresponding settings of outerops* for
@@ -3717,11 +3802,15 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 							&aggstate->hash_ngroups_limit,
 							&aggstate->hash_planned_partitions);
 		find_hash_columns(aggstate);
+<<<<<<< HEAD
 
 		/* Skip massive memory allocation if we are just doing EXPLAIN */
 		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 			build_hash_tables(aggstate);
 
+=======
+		build_hash_tables(aggstate);
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		aggstate->table_filled = false;
 	}
 

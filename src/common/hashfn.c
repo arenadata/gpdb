@@ -23,11 +23,13 @@
  *	  It is expected that every bit of a hash function's 32-bit result is
  *	  as random as every other; failure to ensure this is likely to lead
  *	  to poor performance of hash tables.  In most cases a hash
- *	  function should use hash_any() or its variant hash_uint32().
+ *	  function should use hash_bytes() or its variant hash_bytes_uint32(),
+ *	  or the wrappers hash_any() and hash_uint32 defined in hashfn.h.
  *
  *-------------------------------------------------------------------------
  */
 
+<<<<<<< HEAD:src/common/hashfn.c
 /*
  * GPDB: We carry a dependency on pthread_win32.h in elog.h, which causes
  * compilation errors when building Windows clients (as elog.h is included by
@@ -40,6 +42,9 @@
 #endif
 
 #include "common/hashfn.h"
+=======
+#include "utils/hashutils.h"
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089:src/backend/utils/hash/hashfn.c
 
 
 /*
@@ -705,6 +710,7 @@ uint32_hash(const void *key, Size keysize)
 {
 	Assert(keysize == sizeof(uint32));
 	return hash_bytes_uint32(*((const uint32 *) key));
+<<<<<<< HEAD:src/common/hashfn.c
 }
 /*
  * int32_hash: hash function for int32: no-op
@@ -713,4 +719,6 @@ uint32
 int32_hash(const void *key, Size keysize)
 {
 	return *(uint32 *)key;
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089:src/backend/utils/hash/hashfn.c
 }

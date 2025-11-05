@@ -731,7 +731,11 @@ sub init_from_backup
 
 	$params{has_streaming} = 0 unless defined $params{has_streaming};
 	$params{has_restoring} = 0 unless defined $params{has_restoring};
+<<<<<<< HEAD
 	$params{standby}       = 1 unless defined $params{standby};
+=======
+	$params{standby} = 1 unless defined $params{standby};
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 	print
 	  "# Initializing node \"$node_name\" from backup \"$backup_name\" of node \"$root_name\"\n";
@@ -762,8 +766,12 @@ port = $port
 			"unix_socket_directories = '$host'");
 	}
 	$self->enable_streaming($root_node) if $params{has_streaming};
+<<<<<<< HEAD
 	$self->enable_restoring($root_node, $params{standby})
 	  if $params{has_restoring};
+=======
+	$self->enable_restoring($root_node, $params{standby}) if $params{has_restoring};
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	return;
 }
 
@@ -1040,10 +1048,17 @@ restore_command = '$copy_command'
 
 =pod
 
+<<<<<<< HEAD
 
 =item $node->set_recovery_mode()
 
 Place recovery.signal file.
+=======
+=item $node->set_recovery_mode()
+
+Place recovery.signal file.
+
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 =cut
 
 sub set_recovery_mode
@@ -1298,20 +1313,6 @@ sub can_bind
 	return $ret;
 }
 
-# Retain the errno on die() if set, else assume a generic errno of 1.
-# This will instruct the END handler on how to handle artifacts left
-# behind from tests.
-$SIG{__DIE__} = sub {
-	if ($!)
-	{
-		$died = $!;
-	}
-	else
-	{
-		$died = 1;
-	}
-};
-
 # Automatically shut down any still-running nodes when the test script exits.
 # Note that this just stops the postmasters (in the same order the nodes were
 # created in).  Any temporary directories are deleted, in an unspecified
@@ -1330,8 +1331,7 @@ END
 		next if defined $ENV{'PG_TEST_NOCLEAN'};
 
 		# clean basedir on clean test invocation
-		$node->clean_node
-		  if TestLib::all_tests_passing() && !defined $died && !$exit_code;
+		$node->clean_node if $exit_code == 0 && TestLib::all_tests_passing();
 	}
 
 	$? = $exit_code;

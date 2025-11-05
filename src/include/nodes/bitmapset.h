@@ -134,6 +134,7 @@ extern int	bms_prev_member(const Bitmapset *a, int prevbit);
 extern uint32 bms_hash_value(const Bitmapset *a);
 extern uint32 bitmap_hash(const void *key, Size keysize);
 extern int	bitmap_match(const void *key1, const void *key2, Size keysize);
+<<<<<<< HEAD
 
 /* 
  * returns true iff the bitmap is sufficently large that
@@ -147,5 +148,7 @@ extern bool bms_covers_member(const Bitmapset *a, int x);
  * is returned
  */
 extern Bitmapset *bms_resize(Bitmapset *a, int wc);
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 #endif							/* BITMAPSET_H */

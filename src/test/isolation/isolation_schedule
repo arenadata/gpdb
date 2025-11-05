@@ -86,12 +86,20 @@ test: deadlock-soft-2
 #test: lock-update-delete
 #test: lock-update-traversal
 test: inherit-temp
+<<<<<<< HEAD
 #test: insert-conflict-do-nothing
 #test: insert-conflict-do-nothing-2
 #test: insert-conflict-do-update
 #test: insert-conflict-do-update-2
 #test: insert-conflict-do-update-3
 test: insert-conflict-toast
+=======
+test: insert-conflict-do-nothing
+test: insert-conflict-do-nothing-2
+test: insert-conflict-do-update
+test: insert-conflict-do-update-2
+test: insert-conflict-do-update-3
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 test: insert-conflict-specconflict
 test: delete-abort-savept
 #test: delete-abort-savept-2

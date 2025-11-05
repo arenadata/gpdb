@@ -6,7 +6,11 @@ use File::Basename qw(basename dirname);
 use File::Path qw(rmtree);
 use PostgresNode;
 use TestLib;
+<<<<<<< HEAD
 use Test::More tests => 106 + 15;
+=======
+use Test::More tests => 107;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 program_help_ok('pg_basebackup');
 program_version_ok('pg_basebackup');
@@ -68,8 +72,8 @@ $node->restart;
 
 # Write some files to test that they are not copied.
 foreach my $filename (
-	qw(backup_label tablespace_map postgresql.auto.conf.tmp current_logfiles.tmp)
-  )
+	qw(backup_label tablespace_map postgresql.auto.conf.tmp
+	current_logfiles.tmp global/pg_internal.init.123))
 {
 	open my $file, '>>', "$pgdata/$filename";
 	print $file "DONOTCOPY";
@@ -138,7 +142,7 @@ foreach my $dirname (
 # These files should not be copied.
 foreach my $filename (
 	qw(postgresql.auto.conf.tmp postmaster.opts postmaster.pid tablespace_map current_logfiles.tmp
-	global/pg_internal.init))
+	global/pg_internal.init global/pg_internal.init.123))
 {
 	ok(!-f "$tempdir/backup/$filename", "$filename not copied");
 }

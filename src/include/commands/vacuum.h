@@ -283,7 +283,17 @@ typedef struct VacuumParams
 										 * default value depends on reloptions */
 	VacOptTernaryValue truncate;	/* Truncate empty pages at the end,
 									 * default value depends on reloptions */
+<<<<<<< HEAD
 	bool auto_stats;      /* invoked via automatic statistic collection */
+=======
+
+	/*
+	 * The number of parallel vacuum workers.  0 by default which means choose
+	 * based on the number of indexes.  -1 indicates a parallel vacuum is
+	 * disabled.
+	 */
+	int			nworkers;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 } VacuumParams;
 
 typedef struct
@@ -320,6 +330,11 @@ extern int	vacuum_freeze_min_age;
 extern int	vacuum_freeze_table_age;
 extern int	vacuum_multixact_freeze_min_age;
 extern int	vacuum_multixact_freeze_table_age;
+
+/* Variables for cost-based parallel vacuum */
+extern pg_atomic_uint32 *VacuumSharedCostBalance;
+extern pg_atomic_uint32 *VacuumActiveNWorkers;
+extern int	VacuumCostBalanceLocal;
 
 
 /* in commands/vacuum.c */

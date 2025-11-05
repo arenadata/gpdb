@@ -3748,6 +3748,7 @@ get_range_subtype(Oid rangeOid)
 }
 
 /*
+<<<<<<< HEAD
  * relation_exists
  *	  Is there a relation with the given oid
  */
@@ -3960,6 +3961,26 @@ get_check_constraint_relid(Oid oidCheckconstraint)
 		Oid			result;
 
 		result = contup->conrelid;
+=======
+ * get_range_collation
+ *		Returns the collation of a given range type
+ *
+ * Returns InvalidOid if the type is not a range type,
+ * or if its subtype is not collatable.
+ */
+Oid
+get_range_collation(Oid rangeOid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache1(RANGETYPE, ObjectIdGetDatum(rangeOid));
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_range rngtup = (Form_pg_range) GETSTRUCT(tp);
+		Oid			result;
+
+		result = rngtup->rngcollation;
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		ReleaseSysCache(tp);
 		return result;
 	}
@@ -3967,6 +3988,7 @@ get_check_constraint_relid(Oid oidCheckconstraint)
 		return InvalidOid;
 }
 
+<<<<<<< HEAD
 /*
  * get_check_constraint_oids
  *	 Extract all check constraint oid for a given relation.
@@ -4451,6 +4473,8 @@ child_triggers(Oid relationId, int32 triggerType)
 #endif
 }
 
+=======
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 /*				---------- PG_INDEX CACHE ----------				 */
 
 /*

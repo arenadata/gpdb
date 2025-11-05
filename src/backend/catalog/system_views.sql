@@ -324,7 +324,8 @@ CREATE VIEW pg_available_extensions AS
 
 CREATE VIEW pg_available_extension_versions AS
     SELECT E.name, E.version, (X.extname IS NOT NULL) AS installed,
-           E.superuser, E.relocatable, E.schema, E.requires, E.comment
+           E.superuser, E.trusted, E.relocatable,
+           E.schema, E.requires, E.comment
       FROM pg_available_extension_versions() AS E
            LEFT JOIN pg_extension AS X
              ON E.name = X.extname AND E.version = X.extversion;
@@ -851,7 +852,11 @@ CREATE VIEW pg_stat_activity AS
             S.datid AS datid,
             D.datname AS datname,
             S.pid,
+<<<<<<< HEAD
             S.sess_id,
+=======
+            S.leader_pid,
+>>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
             S.usesysid,
             U.rolname AS usename,
             S.application_name,
@@ -1652,6 +1657,15 @@ LANGUAGE INTERNAL
 STRICT IMMUTABLE PARALLEL SAFE
 AS 'jsonb_set';
 
+
+CREATE OR REPLACE FUNCTION
+  jsonb_set_lax(jsonb_in jsonb, path text[] , replacement jsonb,
+            create_if_missing boolean DEFAULT true,
+            null_value_treatment text DEFAULT 'use_json_null')
+RETURNS jsonb
+LANGUAGE INTERNAL
+CALLED ON NULL INPUT IMMUTABLE PARALLEL SAFE
+AS 'jsonb_set_lax';
 
 CREATE OR REPLACE FUNCTION
   parse_ident(str text, strict boolean DEFAULT true)
