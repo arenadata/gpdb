@@ -553,11 +553,7 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_activity(PG_FUNCTION_ARGS)
 {
-<<<<<<< HEAD
-#define PG_STAT_GET_ACTIVITY_COLS	32
-=======
-#define PG_STAT_GET_ACTIVITY_COLS	30
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+#define PG_STAT_GET_ACTIVITY_COLS	33
 	int			num_backends = pgstat_fetch_stat_numbackends();
 	int			curr_backend;
 	int			pid = PG_ARGISNULL(0) ? -1 : PG_GETARG_INT32(0);
@@ -701,30 +697,7 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 
 			proc = BackendPidGetProc(beentry->st_procpid);
 
-<<<<<<< HEAD
-				raw_wait_event = UINT32_ACCESS_ONCE(proc->wait_event_info);
-				wait_event_type = pgstat_get_wait_event_type(raw_wait_event);
-
-				/*
-				 * We don't pass details for resource groups via event id,
-				 * since it's an uint16 and resource group id is an Oid.
-				 *
-				 * Get it from the backend entry, waitOnGroup() had set the
-				 * information in it.
-				 */
-				if (wait_event_type && (pg_strcasecmp(wait_event_type, "ResourceGroup") == 0))
-				{
-					wait_event = GetResGroupNameForId(beentry->st_rsgid);
-				}
-				else
-				{
-					wait_event = pgstat_get_wait_event(raw_wait_event);
-				}
-			}
-			else if (beentry->st_backendType != B_BACKEND)
-=======
 			if (proc == NULL && (beentry->st_backendType != B_BACKEND))
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 			{
 				/*
 				 * For an auxiliary process, retrieve process info from
@@ -922,17 +895,17 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 													 * use */
 			}
 
-			values[29] = Int32GetDatum(beentry->st_session_id);  /* GPDB */
+			values[30] = Int32GetDatum(beentry->st_session_id);  /* GPDB */
 
 			{
 				char *groupName = GetResGroupNameForId(beentry->st_rsgid);
 
-				values[30] = ObjectIdGetDatum(beentry->st_rsgid);
+				values[31] = ObjectIdGetDatum(beentry->st_rsgid);
 
 				if (groupName != NULL)
-					values[31] = CStringGetTextDatum(groupName);
+					values[32] = CStringGetTextDatum(groupName);
 				else
-					nulls[31] = true;
+					nulls[32] = true;
 			}
 		}
 		else
@@ -961,14 +934,10 @@ pg_stat_get_activity(PG_FUNCTION_ARGS)
 			nulls[26] = true;
 			nulls[27] = true;
 			nulls[28] = true;
-<<<<<<< HEAD
-
-			values[29] = Int32GetDatum(beentry->st_session_id);
-			nulls[30] = true;
-			nulls[31] = true;
-=======
 			nulls[29] = true;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+			values[30] = Int32GetDatum(beentry->st_session_id);
+			nulls[31] = true;
+			nulls[32] = true;
 		}
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);

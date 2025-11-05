@@ -852,11 +852,8 @@ CREATE VIEW pg_stat_activity AS
             S.datid AS datid,
             D.datname AS datname,
             S.pid,
-<<<<<<< HEAD
-            S.sess_id,
-=======
             S.leader_pid,
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+            S.sess_id,
             S.usesysid,
             U.rolname AS usename,
             S.application_name,
