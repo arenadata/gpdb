@@ -17,7 +17,7 @@ try:
     from gppylib.commands.gp import SEGMENT_STOP_TIMEOUT_DEFAULT, SegmentStop
     from gppylib.system.environment import *
     from gprebalance_modules.planner import *
-    from gprebalance_modules.rebalance_commons import RebalanceSchema
+    from gprebalance_modules.rebalance_schema import RebalanceSchema
 except ImportError as e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -265,8 +265,10 @@ class GGShrink:
                                initial = 'STATE_START',
                                before_state_change = 'on_every_state')
 
-    def run(self, shrinkPlan: Plan) -> None:
+    def run(self, shrinkPlan: ShrinkPlan) -> None:
         self.shrink_plan = shrinkPlan
+        if self.shrink_plan and len(self.shrink_plan.shrinked_segments) == 0:
+            return
         self.trigger('start')
 
     def get_state_after_interrupt(self, prev_state) -> str:
@@ -372,8 +374,8 @@ class GGShrink:
                 self.logger.error("Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan.")
                 self.trigger('move_to_STATE_ERROR')
                 return
-            if self.gparray.get_segment_count() <= self.shrink_plan.target_segment_count:
-                logger.error('Target segment count (%s) >= current segment count (%s).\n'
+            if self.gparray.get_segment_count() < self.shrink_plan.target_segment_count:
+                logger.error('Target segment count (%s) > current segment count (%s).\n'
                              'Currently only shrink is supported (target segment count < current segment count).'
                               % (self.shrink_plan.target_segment_count, self.gparray.get_segment_count()))
                 self.trigger('move_to_STATE_ERROR')
