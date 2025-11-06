@@ -432,20 +432,14 @@ xact_desc_prepare(StringInfo buf, uint8 info, xl_xact_prepare *xlrec)
 						parsed.abortnodes);
 	xact_desc_subxacts(buf, parsed.nsubxacts, parsed.subxacts);
 
-<<<<<<< HEAD
-	standby_desc_invalidations(
-						buf, parsed.nmsgs, parsed.msgs, parsed.dbId, parsed.tsId,
-						xlrec->initfileinval);
+	standby_desc_invalidations(buf, parsed.nmsgs, parsed.msgs, parsed.dbId,
+							   parsed.tsId, xlrec->initfileinval);
 
 	if (xlrec->tablespace_oid_to_delete_on_commit != InvalidOid)
 		appendStringInfo(buf, "; tablespace_oid_to_delete_on_commit = %u", xlrec->tablespace_oid_to_delete_on_commit);
 
 	if (xlrec->tablespace_oid_to_delete_on_abort != InvalidOid)
 		appendStringInfo(buf, "; tablespace_oid_to_delete_on_abort = %u", xlrec->tablespace_oid_to_delete_on_abort);
-=======
-	standby_desc_invalidations(buf, parsed.nmsgs, parsed.msgs, parsed.dbId,
-							   parsed.tsId, xlrec->initfileinval);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 }
 
 static void
