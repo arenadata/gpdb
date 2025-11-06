@@ -1667,15 +1667,9 @@ heap_hot_search_buffer(ItemPointer tid, Relation relation, Buffer buffer,
 		if (!skip)
 		{
 			/* If it's visible per the snapshot, we must return it */
-<<<<<<< HEAD
 			valid = HeapTupleSatisfiesVisibility(relation, heapTuple, snapshot, buffer);
-			CheckForSerializableConflictOut(valid, relation, heapTuple,
-											buffer, snapshot);
-=======
-			valid = HeapTupleSatisfiesVisibility(heapTuple, snapshot, buffer);
 			HeapCheckForSerializableConflictOut(valid, relation, heapTuple,
 												buffer, snapshot);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 			if (valid)
 			{
@@ -1814,13 +1808,8 @@ heap_get_latest_tid(TableScanDesc sscan,
 		 * Check tuple visibility; if visible, set it as the new result
 		 * candidate.
 		 */
-<<<<<<< HEAD
 		valid = HeapTupleSatisfiesVisibility(relation, &tp, snapshot, buffer);
-		CheckForSerializableConflictOut(valid, relation, &tp, buffer, snapshot);
-=======
-		valid = HeapTupleSatisfiesVisibility(&tp, snapshot, buffer);
 		HeapCheckForSerializableConflictOut(valid, relation, &tp, buffer, snapshot);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		if (valid)
 			*tid = ctid;
 
