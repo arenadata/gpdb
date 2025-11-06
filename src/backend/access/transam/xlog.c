@@ -6538,22 +6538,6 @@ StartupXLOG(void)
 
 	/*----------
 	 * If we previously crashed, perform a couple of actions:
-<<<<<<< HEAD
-	 *	- The pg_wal directory may still include some temporary WAL segments
-	 * used when creating a new segment, so perform some clean up to not
-	 * bloat this path.  This is done first as there is no point to sync this
-	 * temporary data.
-	 *	- There might be data which we had written, intending to fsync it,
-	 * but which we had not actually fsync'd yet. Therefore, a power failure
-	 * in the near future might cause earlier unflushed writes to be lost,
-	 * even though more recent data written to disk from here on would be
-	 * persisted.  To avoid that, fsync the entire data directory.
-	 *
-	 * GPDB: We don't force to fsync the whole pgdata directory as upstream
-	 * code since that could be very slow in cases that the pgdata
-	 * directory has a lot of (e.g. millions of) files. See below for details.
-	 *---------
-=======
 	 *
 	 * - The pg_wal directory may still include some temporary WAL segments
 	 *   used when creating a new segment, so perform some clean up to not
@@ -6565,7 +6549,10 @@ StartupXLOG(void)
 	 *   the near future might cause earlier unflushed writes to be lost, even
 	 *   though more recent data written to disk from here on would be
 	 *   persisted.  To avoid that, fsync the entire data directory.
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+	 *
+	 * GPDB: We don't force to fsync the whole pgdata directory as upstream
+	 * code since that could be very slow in cases that the pgdata
+	 * directory has a lot of (e.g. millions of) files. See below for details.
 	 */
 	if (ControlFile->state != DB_SHUTDOWNED &&
 		ControlFile->state != DB_SHUTDOWNED_IN_RECOVERY)
