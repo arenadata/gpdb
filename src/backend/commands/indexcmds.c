@@ -698,8 +698,7 @@ DefineIndex(Oid relationId,
 	 * parallel workers under the control of certain particular ambuild
 	 * functions will need to be updated, too.
 	 */
-<<<<<<< HEAD
-	lockmode = stmt->concurrent ? ShareUpdateExclusiveLock : ShareLock;
+	lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
 
 	/*
 	 * Appendoptimized tables need block directory relation for index
@@ -724,9 +723,6 @@ DefineIndex(Oid relationId,
 	}
 	table_close(rel, NoLock);
 
-=======
-	lockmode = concurrent ? ShareUpdateExclusiveLock : ShareLock;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	rel = table_open(relationId, lockmode);
 
 	namespaceId = RelationGetNamespace(rel);
@@ -1570,7 +1566,6 @@ DefineIndex(Oid relationId,
 		return address;
 	}
 
-<<<<<<< HEAD
 	stmt->idxname = indexRelationName;
 	if (shouldDispatch)
 	{
@@ -1589,10 +1584,7 @@ DefineIndex(Oid relationId,
 			cdb_sync_indcheckxmin_with_segments(indexRelationId);
 	}
 
-	if (!stmt->concurrent)
-=======
 	if (!concurrent)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	{
 		/* Close the heap and we're done, in the non-concurrent case */
 		table_close(rel, NoLock);
@@ -2732,17 +2724,10 @@ ReindexIndex(ReindexStmt *stmt, bool isTopLevel)
 	relkind = get_rel_relkind(indOid);
 
 
-<<<<<<< HEAD
 	if (relkind == RELKIND_PARTITIONED_INDEX)
 		ReindexPartitions(indOid, options, concurrent, isTopLevel);
 	else if (concurrent &&
 			 persistence != RELPERSISTENCE_TEMP)
-=======
-	persistence = irel->rd_rel->relpersistence;
-	index_close(irel, NoLock);
-
-	if (concurrent && persistence != RELPERSISTENCE_TEMP)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		ReindexRelationConcurrently(indOid, options);
 	else
 		reindex_index(indOid, false, persistence,
@@ -2855,7 +2840,6 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 	bool		result;
 
 	/*
-<<<<<<< HEAD
 	 * On QE, we already know the table relation oid since we set it before
 	 * dispatch the reindex statement. reindex_relation will take care of the lock directly.
 	 * Other checks should already done on QD when calling RangeVarGetRelidExtended.
@@ -2870,8 +2854,6 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 	}
 
 	/*
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	 * The lock level used here should match reindex_relation().
 	 *
 	 * If it's a temporary table, we will perform a non-concurrent reindex,
@@ -2884,14 +2866,10 @@ ReindexTable(ReindexStmt *stmt, bool isTopLevel)
 									   0,
 									   RangeVarCallbackOwnsTable, NULL);
 
-<<<<<<< HEAD
 	if (get_rel_relkind(heapOid) == RELKIND_PARTITIONED_TABLE)
 		ReindexPartitions(heapOid, options, concurrent, isTopLevel);
 	else if (concurrent &&
 			 get_rel_persistence(heapOid) != RELPERSISTENCE_TEMP)
-=======
-	if (concurrent && get_rel_persistence(heapOid) != RELPERSISTENCE_TEMP)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	{
 		result = ReindexRelationConcurrently(heapOid, options);
 
@@ -3258,12 +3236,8 @@ ReindexMultipleInternal(List *relids, int options, bool concurrent)
 		/* functions in indexes may want a snapshot set */
 		PushActiveSnapshot(GetTransactionSnapshot());
 
-<<<<<<< HEAD
 		/* check if the relation still exists */
 		if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(relid)))
-=======
-		if (concurrent && get_rel_persistence(relid) != RELPERSISTENCE_TEMP)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		{
 			PopActiveSnapshot();
 			CommitTransactionCommand();
