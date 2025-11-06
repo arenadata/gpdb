@@ -317,8 +317,7 @@ extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);
 extern void ExecEndAgg(AggState *node);
 extern void ExecReScanAgg(AggState *node);
 
-<<<<<<< HEAD
-extern Size hash_agg_entry_size(int numTrans, Size tupleWidth,
+extern Size hash_agg_entry_size(int numAggs, Size tupleWidth,
 								Size transitionSpace);
 extern void hash_agg_set_limits(AggState *aggstate, double hashentrysize, uint64 input_groups,
 								int used_bits, Size *mem_limit,
@@ -326,9 +325,5 @@ extern void hash_agg_set_limits(AggState *aggstate, double hashentrysize, uint64
 
 extern void ExecSquelchAgg(AggState *aggstate);
 extern bool ReuseHashTable(AggState *node);
-=======
-extern Size hash_agg_entry_size(int numAggs, Size tupleWidth,
-								Size transitionSpace);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 #endif							/* NODEAGG_H */
