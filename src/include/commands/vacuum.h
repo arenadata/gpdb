@@ -283,7 +283,6 @@ typedef struct VacuumParams
 										 * default value depends on reloptions */
 	VacOptTernaryValue truncate;	/* Truncate empty pages at the end,
 									 * default value depends on reloptions */
-	bool auto_stats;      /* invoked via automatic statistic collection */
 
 	/*
 	 * The number of parallel vacuum workers.  0 by default which means choose
@@ -291,6 +290,8 @@ typedef struct VacuumParams
 	 * disabled.
 	 */
 	int			nworkers;
+
+	bool		auto_stats;		/* invoked via automatic statistic collection */
 } VacuumParams;
 
 typedef struct
