@@ -158,16 +158,13 @@ static void ExplainCloseWorker(int n, ExplainState *es);
 static void ExplainFlushWorkersState(ExplainState *es);
 static void ExplainProperty(const char *qlabel, const char *unit,
 							const char *value, bool numeric, ExplainState *es);
-<<<<<<< HEAD
 static void ExplainPropertyStringInfo(const char *qlabel, ExplainState *es,
 									  const char *fmt,...)
 									  pg_attribute_printf(3, 4);
-=======
 static void ExplainOpenSetAsideGroup(const char *objtype, const char *labelname,
 									 bool labeled, int depth, ExplainState *es);
 static void ExplainSaveGroup(ExplainState *es, int depth, int *state_save);
 static void ExplainRestoreGroup(ExplainState *es, int depth, int *state_save);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 static void ExplainDummyGroup(const char *objtype, const char *labelname,
 							  ExplainState *es);
 static void ExplainXMLTag(const char *tagname, int flags, ExplainState *es);
@@ -1115,16 +1112,9 @@ ExplainPrintJIT(ExplainState *es, int jit_flags, JitInstrumentation *ji)
 	if (!ji || ji->created_functions == 0)
 		return;
 
-<<<<<<< HEAD
 	if (!gp_explain_jit)
 		return;
 
-	/* don't print per-worker info if we're supposed to hide that */
-	if (for_workers && es->hide_workers)
-		return;
-
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	/* calculate total time */
 	INSTR_TIME_SET_ZERO(total_time);
 	INSTR_TIME_ADD(total_time, ji->generation_counter);
@@ -1444,21 +1434,15 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
  * optional name to be attached to the node.
  *
  * In text format, es->indent is controlled in this function since we only
-<<<<<<< HEAD
- * want it to change at plan-node boundaries.  In non-text formats, es->indent
- * corresponds to the nesting depth of logical output groups, and therefore
- * is controlled by ExplainOpenGroup/ExplainCloseGroup.
+ * want it to change at plan-node boundaries (but a few subroutines will
+ * transiently increment it).  In non-text formats, es->indent corresponds
+ * to the nesting depth of logical output groups, and therefore is controlled
+ * by ExplainOpenGroup/ExplainCloseGroup.
  *
  * es->parentPlanState points to the parent planstate node and can be used by
  * PartitionSelector to deparse its printablePredicate. (This is passed in
  * ExplainState rather than as a normal argument, to avoid changing the
  * function signature from upstream.)
-=======
- * want it to change at plan-node boundaries (but a few subroutines will
- * transiently increment it).  In non-text formats, es->indent corresponds
- * to the nesting depth of logical output groups, and therefore is controlled
- * by ExplainOpenGroup/ExplainCloseGroup.
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
  */
 static void
 ExplainNode(PlanState *planstate, List *ancestors,
@@ -1824,8 +1808,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 	{
 		if (plan_name)
 		{
-<<<<<<< HEAD
-			appendStringInfoSpaces(es->str, es->indent * 2);
+			ExplainIndentText(es);
 			appendStringInfo(es->str, "%s", plan_name);
 
 			/*
@@ -1840,10 +1823,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (es->subplanDispatchedSeparately)
 				show_dispatch_info(save_currentSlice, es, plan);
 			appendStringInfoChar(es->str, '\n');
-=======
-			ExplainIndentText(es);
-			appendStringInfo(es->str, "%s\n", plan_name);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 			es->indent++;
 		}
 		if (es->indent)
@@ -2628,11 +2607,6 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			break;
 	}
 
-<<<<<<< HEAD
-    /* Show executor statistics */
-	if (planstate->instrument && planstate->instrument->need_cdb)
-		cdbexplain_showExecStats(planstate, es);
-=======
 	/*
 	 * Prepare per-worker JIT instrumentation.  As with the overall JIT
 	 * summary, this is printed only if printing costs is enabled.
@@ -2652,7 +2626,10 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			}
 		}
 	}
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+
+	/* Show executor statistics */
+	if (planstate->instrument && planstate->instrument->need_cdb)
+		cdbexplain_showExecStats(planstate, es);
 
 	/* Show buffer usage */
 	if (es->buffers && planstate->instrument)
@@ -3441,8 +3418,7 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 
 		if (es->format == EXPLAIN_FORMAT_TEXT)
 		{
-<<<<<<< HEAD
-			appendStringInfoSpaces(es->str, es->indent * 2);
+			ExplainIndentText(es);
 			appendStringInfo(es->str, "Sort Method:  %s  %s: %ldkB",
 				sortMethod, spaceType, (long) agg->vsum);
 			if (es->verbose)
@@ -3453,11 +3429,6 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 								 agg->vcnt);
 			}
 			appendStringInfo(es->str, "\n");
-=======
-			ExplainIndentText(es);
-			appendStringInfo(es->str, "Sort Method: %s  %s: %ldkB\n",
-							 sortMethod, spaceType, spaceUsed);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		}
 		else
 		{
