@@ -808,11 +808,7 @@ build_vendor
 build_cpu
 build
 PG_MAJORVERSION
-<<<<<<< HEAD
-configure_args
 PG_PACKAGE_VERSION
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 target_alias
 host_alias
 build_alias
@@ -9578,6 +9574,7 @@ fi
 
 
 
+
 #
 # Assignments
 #
@@ -16234,7 +16231,6 @@ if test x"$pgac_cv__builtin_frame_address" = xyes ; then
 $as_echo "#define HAVE__BUILTIN_FRAME_ADDRESS 1" >>confdefs.h
 
 fi
-
 ac_fn_c_check_member "$LINENO" "struct tm" "tm_zone" "ac_cv_member_struct_tm_tm_zone" "#include <sys/types.h>
 #include <time.h>
 

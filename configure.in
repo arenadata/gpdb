@@ -31,13 +31,8 @@ dnl your responsibility whether the result works or not.])])
 AC_COPYRIGHT([Copyright (c) 1996-2020, PostgreSQL Global Development Group])
 AC_CONFIG_SRCDIR([src/backend/access/common/heaptuple.c])
 AC_CONFIG_AUX_DIR(config)
-<<<<<<< HEAD
 AC_PREFIX_DEFAULT(/usr/local/gpdb)
-AC_SUBST(configure_args, [$ac_configure_args])
-=======
-AC_PREFIX_DEFAULT(/usr/local/pgsql)
 AC_DEFINE_UNQUOTED(CONFIGURE_ARGS, ["$ac_configure_args"], [Saved arguments from configure])
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 [PG_MAJORVERSION=`expr "$PG_PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
 AC_SUBST(PG_MAJORVERSION)
