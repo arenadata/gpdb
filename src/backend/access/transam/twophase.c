@@ -1400,8 +1400,8 @@ XlogReadTwoPhaseData(XLogRecPtr lsn, char **buf, int *len)
 				 errmsg("out of memory"),
 				 errdetail("Failed while allocating a WAL reading processor.")));
 
-<<<<<<< HEAD
-	record = XLogReadRecord(xlogreader, lsn, &errormsg);
+	XLogBeginRead(xlogreader, lsn);
+	record = XLogReadRecord(xlogreader, &errormsg);
 
 	/*
 	 * Restore immediately the timeline where it was previously, as
@@ -1410,10 +1410,6 @@ XlogReadTwoPhaseData(XLogRecPtr lsn, char **buf, int *len)
 	 */
 	ThisTimeLineID = save_currtli;
 
-=======
-	XLogBeginRead(xlogreader, lsn);
-	record = XLogReadRecord(xlogreader, &errormsg);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	if (record == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
