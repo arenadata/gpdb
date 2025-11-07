@@ -4064,55 +4064,6 @@ CheckForSerializableConflictOut(Relation relation, TransactionId xid, Snapshot s
 				 errdetail_internal("Reason code: Canceled on identification as a pivot, during conflict out checking."),
 				 errhint("The transaction might succeed if retried.")));
 	}
-<<<<<<< HEAD
-
-	/*
-	 * Check to see whether the tuple has been written to by a concurrent
-	 * transaction, either to create it not visible to us, or to delete it
-	 * while it is visible to us.  The "visible" bool indicates whether the
-	 * tuple is visible to us, while HeapTupleSatisfiesVacuum checks what else
-	 * is going on with it.
-	 */
-	htsvResult = HeapTupleSatisfiesVacuum(relation, tuple, TransactionXmin, buffer);
-	switch (htsvResult)
-	{
-		case HEAPTUPLE_LIVE:
-			if (visible)
-				return;
-			xid = HeapTupleHeaderGetXmin(tuple->t_data);
-			break;
-		case HEAPTUPLE_RECENTLY_DEAD:
-			if (!visible)
-				return;
-			xid = HeapTupleHeaderGetUpdateXid(tuple->t_data);
-			break;
-		case HEAPTUPLE_DELETE_IN_PROGRESS:
-			xid = HeapTupleHeaderGetUpdateXid(tuple->t_data);
-			break;
-		case HEAPTUPLE_INSERT_IN_PROGRESS:
-			xid = HeapTupleHeaderGetXmin(tuple->t_data);
-			break;
-		case HEAPTUPLE_DEAD:
-			return;
-		default:
-
-			/*
-			 * The only way to get to this default clause is if a new value is
-			 * added to the enum type without adding it to this switch
-			 * statement.  That's a bug, so elog.
-			 */
-			elog(ERROR, "unrecognized return value from HeapTupleSatisfiesVacuum: %u", htsvResult);
-
-			/*
-			 * In spite of having all enum values covered and calling elog on
-			 * this default, some compilers think this is a code path which
-			 * allows xid to be used below without initialization. Silence
-			 * that warning.
-			 */
-			xid = InvalidTransactionId;
-	}
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	Assert(TransactionIdIsValid(xid));
 
 	if (TransactionIdEquals(xid, GetTopTransactionIdIfAny()))
