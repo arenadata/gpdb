@@ -39,8 +39,8 @@
 /*
  * CREATE LANGUAGE
  */
-static ObjectAddress
-CreateProceduralLanguage_internal(CreatePLangStmt *stmt)
+ObjectAddress
+CreateProceduralLanguage(CreatePLangStmt *stmt)
 {
 	const char *languageName = stmt->plname;
 	Oid			languageOwner = GetUserId();
@@ -238,16 +238,6 @@ CreateProceduralLanguage_internal(CreatePLangStmt *stmt)
 
 	table_close(rel, RowExclusiveLock);
 
-	return myself;
-}
-
-ObjectAddress
-CreateProceduralLanguage(CreatePLangStmt *stmt)
-{
-	ObjectAddress	result;
-
-	result = CreateProceduralLanguage_internal(stmt);
-
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt,
@@ -258,7 +248,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 									NULL);
 	}
 
-	return result;
+	return myself;
 }
 
 /*
