@@ -413,7 +413,6 @@ static Bitmapset *find_unaggregated_cols(AggState *aggstate);
 static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static void build_hash_tables(AggState *aggstate);
 static void build_hash_table(AggState *aggstate, int setno, long nbuckets);
-<<<<<<< HEAD
 static void hashagg_recompile_expressions(AggState *aggstate, bool minslot,
 										  bool nullcheck);
 static long hash_choose_num_buckets(double hashentrysize,
@@ -426,9 +425,6 @@ static int hash_choose_num_partitions(AggState *aggstate,
 									  int *log2_npartittions);
 static AggStatePerGroup lookup_hash_entry(AggState *aggstate, uint32 hash,
 										  bool *in_hash_table);
-=======
-static AggStatePerGroup lookup_hash_entry(AggState *aggstate, uint32 hash);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 static void lookup_hash_entries(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static void agg_fill_hash_table(AggState *aggstate);
@@ -1492,7 +1488,6 @@ build_hash_tables(AggState *aggstate)
 	for (setno = 0; setno < aggstate->num_hashes; ++setno)
 	{
 		AggStatePerHash perhash = &aggstate->perhash[setno];
-<<<<<<< HEAD
 		long			nbuckets;
 		Size			memory;
 
@@ -1511,15 +1506,6 @@ build_hash_tables(AggState *aggstate)
 			aggstate->hashentrysize, perhash->aggnode->numGroups, memory);
 
 		build_hash_table(aggstate, setno, nbuckets);
-=======
-
-		Assert(perhash->aggnode->numGroups > 0);
-
-		if (perhash->hashtable)
-			ResetTupleHashTable(perhash->hashtable);
-		else
-			build_hash_table(aggstate, setno, perhash->aggnode->numGroups);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	}
 
 	aggstate->hash_ngroups_current = 0;
@@ -1744,33 +1730,14 @@ find_hash_columns(AggState *aggstate)
  * Estimate per-hash-table-entry overhead.
  */
 Size
-<<<<<<< HEAD
-hash_agg_entry_size(int numTrans, Size tupleWidth, Size transitionSpace)
+hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
 {
-	Size    tupleChunkSize;
-	Size    pergroupChunkSize;
-	Size    transitionChunkSize;
-	Size    tupleSize	 = (MAXALIGN(SizeofMinimalTupleHeader) +
-							tupleWidth);
-	Size    pergroupSize = numTrans * sizeof(AggStatePerGroupData);
-
-	tupleChunkSize = CHUNKHDRSZ + tupleSize;
-
-	if (pergroupSize > 0)
-		pergroupChunkSize = CHUNKHDRSZ + pergroupSize;
-	else
-		pergroupChunkSize = 0;
-
-	if (transitionSpace > 0)
-		transitionChunkSize = CHUNKHDRSZ + transitionSpace;
-	else
-		transitionChunkSize = 0;
-
 	return
-		sizeof(TupleHashEntryData) +
-		tupleChunkSize +
-		pergroupChunkSize +
-		transitionChunkSize;
+		MAXALIGN(SizeofMinimalTupleHeader) +
+		MAXALIGN(tupleWidth) +
+		MAXALIGN(sizeof(TupleHashEntryData) +
+				 numAggs * sizeof(AggStatePerGroupData)) +
+		transitionSpace;
 }
 
 /*
@@ -2111,16 +2078,6 @@ hash_choose_num_partitions(AggState *aggstate, uint64 input_groups, double hashe
 	npartitions = 1L << partition_bits;
 
 	return npartitions;
-=======
-hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
-{
-	return
-		MAXALIGN(SizeofMinimalTupleHeader) +
-		MAXALIGN(tupleWidth) +
-		MAXALIGN(sizeof(TupleHashEntryData) +
-				 numAggs * sizeof(AggStatePerGroupData)) +
-		transitionSpace;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 }
 
 /*
@@ -2131,7 +2088,6 @@ hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
  *
  * When called, CurrentMemoryContext should be the per-query context. The
  * already-calculated hash value for the tuple must be specified.
-<<<<<<< HEAD
  *
  * If in "spill mode", then only find existing hashtable entries; don't create
  * new ones. If a tuple's group is not already present in the hash table for
@@ -2140,16 +2096,10 @@ hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
  */
 static AggStatePerGroup
 lookup_hash_entry(AggState *aggstate, uint32 hash, bool *in_hash_table)
-=======
- */
-static AggStatePerGroup
-lookup_hash_entry(AggState *aggstate, uint32 hash)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 {
 	AggStatePerHash perhash = &aggstate->perhash[aggstate->current_set];
 	TupleTableSlot *hashslot = perhash->hashslot;
 	TupleHashEntryData *entry;
-<<<<<<< HEAD
 	bool			isnew = false;
 	bool		   *p_isnew;
 
@@ -2167,13 +2117,6 @@ lookup_hash_entry(AggState *aggstate, uint32 hash)
 	}
 	else
 		*in_hash_table = true;
-=======
-	bool		isnew;
-
-	/* find or create the hashtable entry using the filtered tuple */
-	entry = LookupTupleHashEntryHash(perhash->hashtable, hashslot, &isnew,
-									 hash);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 	if (isnew)
 	{
@@ -2235,19 +2178,13 @@ lookup_hash_entries(AggState *aggstate)
 
 	for (setno = 0; setno < aggstate->num_hashes; setno++)
 	{
-<<<<<<< HEAD
 		AggStatePerHash	perhash = &aggstate->perhash[setno];
 		uint32			hash;
 		bool			in_hash_table;
-=======
-		AggStatePerHash perhash = &aggstate->perhash[setno];
-		uint32			hash;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 		select_current_set(aggstate, setno, true);
 		prepare_hash_slot(aggstate);
 		hash = TupleHashTableHash(perhash->hashtable, perhash->hashslot);
-<<<<<<< HEAD
 		pergroup[setno] = lookup_hash_entry(aggstate, hash, &in_hash_table);
 
 		/* check to see if we need to spill the tuple for this grouping set */
@@ -2263,9 +2200,6 @@ lookup_hash_entries(AggState *aggstate)
 
 			hashagg_spill_tuple(spill, slot, hash);
 		}
-=======
-		pergroup[setno] = lookup_hash_entry(aggstate, hash);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	}
 }
 
@@ -3802,15 +3736,11 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 							&aggstate->hash_ngroups_limit,
 							&aggstate->hash_planned_partitions);
 		find_hash_columns(aggstate);
-<<<<<<< HEAD
 
 		/* Skip massive memory allocation if we are just doing EXPLAIN */
 		if (!(eflags & EXEC_FLAG_EXPLAIN_ONLY))
 			build_hash_tables(aggstate);
 
-=======
-		build_hash_tables(aggstate);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		aggstate->table_filled = false;
 	}
 
