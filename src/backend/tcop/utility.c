@@ -157,13 +157,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterFdwStmt:
 		case T_AlterForeignServerStmt:
 		case T_AlterFunctionStmt:
-<<<<<<< HEAD
-		case T_AlterQueueStmt:
-		case T_AlterResourceGroupStmt:
-		case T_AlterRoleStmt:
-		case T_AlterRoleSetStmt:
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		case T_AlterObjectDependsStmt:
 		case T_AlterObjectSchemaStmt:
 		case T_AlterOpFamilyStmt:
@@ -171,6 +164,8 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterOwnerStmt:
 		case T_AlterPolicyStmt:
 		case T_AlterPublicationStmt:
+		case T_AlterQueueStmt:
+		case T_AlterResourceGroupStmt:
 		case T_AlterRoleSetStmt:
 		case T_AlterRoleStmt:
 		case T_AlterSeqStmt:
@@ -187,6 +182,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateAmStmt:
 		case T_CreateCastStmt:
 		case T_CreateConversionStmt:
+		case T_CreatedbStmt:
 		case T_CreateDomainStmt:
 		case T_CreateEnumStmt:
 		case T_CreateEventTrigStmt:
@@ -195,73 +191,36 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_CreateForeignServerStmt:
 		case T_CreateForeignTableStmt:
 		case T_CreateFunctionStmt:
-<<<<<<< HEAD
-		case T_CreateQueueStmt:
-		case T_CreateResourceGroupStmt:
-		case T_CreateRoleStmt:
-		case T_IndexStmt:
-		case T_CreatePLangStmt:
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		case T_CreateOpClassStmt:
 		case T_CreateOpFamilyStmt:
 		case T_CreatePLangStmt:
 		case T_CreatePolicyStmt:
 		case T_CreatePublicationStmt:
+		case T_CreateQueueStmt:
 		case T_CreateRangeStmt:
+		case T_CreateResourceGroupStmt:
 		case T_CreateRoleStmt:
 		case T_CreateSchemaStmt:
 		case T_CreateSeqStmt:
 		case T_CreateStatsStmt:
 		case T_CreateStmt:
-<<<<<<< HEAD
 		case T_CreateExternalStmt:
-=======
 		case T_CreateSubscriptionStmt:
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		case T_CreateTableAsStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
-<<<<<<< HEAD
-		case T_CompositeTypeStmt:
-		case T_CreateEnumStmt:
-		case T_CreateRangeStmt:
-		case T_AlterEnumStmt:
-		case T_ViewStmt:
-		case T_DropStmt:
+		case T_CreateUserMappingStmt:
+		case T_DefineStmt:
 		case T_DropdbStmt:
-		case T_DropTableSpaceStmt:
 		case T_DropQueueStmt:
 		case T_DropResourceGroupStmt:
-		case T_DropRoleStmt:
-		case T_GrantStmt:
-		case T_GrantRoleStmt:
-		case T_AlterDefaultPrivilegesStmt:
-		case T_TruncateStmt:
-		case T_DropOwnedStmt:
-		case T_ReassignOwnedStmt:
-		case T_AlterTSDictionaryStmt:
-		case T_AlterTSConfigurationStmt:
-		case T_CreateExtensionStmt:
-		case T_AlterExtensionStmt:
-		case T_AlterExtensionContentsStmt:
-		case T_CreateFdwStmt:
-		case T_AlterFdwStmt:
-		case T_CreateForeignServerStmt:
-		case T_AlterForeignServerStmt:
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
-		case T_CreateUserMappingStmt:
-		case T_CreatedbStmt:
-		case T_DefineStmt:
 		case T_DropOwnedStmt:
 		case T_DropRoleStmt:
 		case T_DropStmt:
 		case T_DropSubscriptionStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropUserMappingStmt:
-		case T_DropdbStmt:
 		case T_GrantRoleStmt:
 		case T_GrantStmt:
 		case T_ImportForeignSchemaStmt:
@@ -700,16 +659,12 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						break;
 
 					case TRANS_STMT_PREPARE:
-<<<<<<< HEAD
 						if (Gp_role == GP_ROLE_DISPATCH)
 						{
 							ereport(ERROR, (errcode(ERRCODE_GP_COMMAND_ERROR),
 									errmsg("PREPARE TRANSACTION is not yet supported in Greenplum Database")));
 
 						}
-						PreventCommandDuringRecovery("PREPARE TRANSACTION");
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 						if (!PrepareTransactionBlock(stmt->gid))
 						{
 							/* report unsuccessful commit in completionTag */
@@ -725,12 +680,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 									errmsg("COMMIT PREPARED is not yet supported in Greenplum Database")));
 						}
 						PreventInTransactionBlock(isTopLevel, "COMMIT PREPARED");
-<<<<<<< HEAD
-						PreventCommandDuringRecovery("COMMIT PREPARED");
 						FinishPreparedTransaction(stmt->gid, /* isCommit */ true, /* raiseErrorIfNotFound */ true);
-=======
-						FinishPreparedTransaction(stmt->gid, true);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 						break;
 
 					case TRANS_STMT_ROLLBACK_PREPARED:
@@ -740,12 +690,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 									errmsg("ROLLBACK PREPARED is not yet supported in Greenplum Database")));
 						}
 						PreventInTransactionBlock(isTopLevel, "ROLLBACK PREPARED");
-<<<<<<< HEAD
-						PreventCommandDuringRecovery("ROLLBACK PREPARED");
 						FinishPreparedTransaction(stmt->gid, /* isCommit */ false, /* raiseErrorIfNotFound */ true);
-=======
-						FinishPreparedTransaction(stmt->gid, false);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 						break;
 
 					case TRANS_STMT_ROLLBACK:
@@ -922,14 +867,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				NotifyStmt *stmt = (NotifyStmt *) parsetree;
 
-<<<<<<< HEAD
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (errcode(ERRCODE_GP_COMMAND_ERROR),
 							errmsg("notify command cannot run in a function running on a segDB")));
 
-				PreventCommandDuringRecovery("NOTIFY");
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 				Async_Notify(stmt->conditionname, stmt->payload);
 			}
 			break;
@@ -938,14 +879,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				ListenStmt *stmt = (ListenStmt *) parsetree;
 
-<<<<<<< HEAD
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR,(errcode(ERRCODE_GP_COMMAND_ERROR),
 							errmsg("listen command cannot run in a function running on a segDB")));
 
-				PreventCommandDuringRecovery("LISTEN");
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 				CheckRestrictedOperation("LISTEN");
 				Async_Listen(stmt->conditionname);
 			}
@@ -955,14 +892,10 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			{
 				UnlistenStmt *stmt = (UnlistenStmt *) parsetree;
 
-<<<<<<< HEAD
 				if (Gp_role == GP_ROLE_EXECUTE)
 					ereport(ERROR, (errcode(ERRCODE_GP_COMMAND_ERROR),
 							errmsg("unlisten command cannot run in a function running on a segDB")));
 
-				/* we allow UNLISTEN during recovery, as it's a noop */
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 				CheckRestrictedOperation("UNLISTEN");
 				if (stmt->conditionname)
 					Async_Unlisten(stmt->conditionname);
@@ -1004,19 +937,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_VacuumStmt:
-<<<<<<< HEAD
-			{
-				VacuumStmt *stmt = (VacuumStmt *) parsetree;
-
-				/* we choose to allow this during "read only" transactions */
-				PreventCommandDuringRecovery(stmt->is_vacuumcmd ?
-											 "VACUUM" : "ANALYZE");
-				/* forbidden in parallel mode due to CommandIsReadOnly */
-				ExecVacuum(pstate, stmt, isTopLevel, false);
-			}
-=======
-			ExecVacuum(pstate, (VacuumStmt *) parsetree, isTopLevel);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+			ExecVacuum(pstate, (VacuumStmt *) parsetree, isTopLevel, false);
 			break;
 
 		case T_ExplainStmt:
@@ -1159,20 +1080,11 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("must be superuser to do CHECKPOINT")));
 
-<<<<<<< HEAD
-			/*
-			 * You might think we should have a PreventCommandDuringRecovery()
-			 * here, but we interpret a CHECKPOINT command during recovery as
-			 * a request for a restartpoint instead. We allow this since it
-			 * can be a useful way of reducing switchover time when using
-			 * various forms of replication.
-			 */
 			if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				CdbDispatchCommand("CHECKPOINT", 0, NULL);
 			}
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+
 			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
 							  (RecoveryInProgress() ? 0 : CHECKPOINT_FORCE));
 			break;
