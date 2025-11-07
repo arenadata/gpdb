@@ -36,10 +36,6 @@
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
 #include "utils/dsa.h"
-<<<<<<< HEAD
-=======
-#include "utils/hashutils.h"
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 #include "utils/memutils.h"
 
 /*

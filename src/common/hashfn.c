@@ -29,7 +29,6 @@
  *-------------------------------------------------------------------------
  */
 
-<<<<<<< HEAD:src/common/hashfn.c
 /*
  * GPDB: We carry a dependency on pthread_win32.h in elog.h, which causes
  * compilation errors when building Windows clients (as elog.h is included by
@@ -42,9 +41,6 @@
 #endif
 
 #include "common/hashfn.h"
-=======
-#include "utils/hashutils.h"
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089:src/backend/utils/hash/hashfn.c
 
 
 /*
@@ -710,8 +706,8 @@ uint32_hash(const void *key, Size keysize)
 {
 	Assert(keysize == sizeof(uint32));
 	return hash_bytes_uint32(*((const uint32 *) key));
-<<<<<<< HEAD:src/common/hashfn.c
 }
+
 /*
  * int32_hash: hash function for int32: no-op
  */
@@ -719,6 +715,4 @@ uint32
 int32_hash(const void *key, Size keysize)
 {
 	return *(uint32 *)key;
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089:src/backend/utils/hash/hashfn.c
 }

@@ -55,10 +55,7 @@ hash_uint32_extended(uint32 k, uint64 seed)
 extern uint32 string_hash(const void *key, Size keysize);
 extern uint32 tag_hash(const void *key, Size keysize);
 extern uint32 uint32_hash(const void *key, Size keysize);
-<<<<<<< HEAD:src/include/common/hashfn.h
 extern uint32 int32_hash(const void *key, Size keysize);
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089:src/include/utils/hashutils.h
 
 #define oid_hash uint32_hash	/* Remove me eventually */
 
