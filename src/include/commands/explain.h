@@ -59,7 +59,8 @@ typedef struct ExplainState
 	List	   *deparse_cxt;	/* context list for deparsing expressions */
 	Bitmapset  *printed_subplans;	/* ids of SubPlans we've printed */
 	bool		hide_workers;	/* set if we find an invisible Gather */
-<<<<<<< HEAD
+	/* state related to the current plan node */
+	ExplainWorkersState *workers_state; /* needed if parallel plan */
 
     /* CDB */
     struct CdbExplain_ShowStatCtx  *showstatctx;    /* EXPLAIN ANALYZE info */
@@ -67,10 +68,6 @@ typedef struct ExplainState
 	bool		subplanDispatchedSeparately;
 
 	PlanState  *parentPlanState;
-=======
-	/* state related to the current plan node */
-	ExplainWorkersState *workers_state; /* needed if parallel plan */
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 } ExplainState;
 
 /* Hook for plugins to get control in ExplainOneQuery() */
