@@ -357,16 +357,10 @@ extern PGPROC *PreparedXactProcs;
 
 /* configurable options */
 extern PGDLLIMPORT int DeadlockTimeout;
-<<<<<<< HEAD
-extern int	StatementTimeout;
-extern int	LockTimeout;
-extern int	IdleInTransactionSessionTimeout;
-extern int	IdleSessionGangTimeout;
-=======
 extern PGDLLIMPORT int StatementTimeout;
 extern PGDLLIMPORT int LockTimeout;
 extern PGDLLIMPORT int IdleInTransactionSessionTimeout;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+extern PGDLLIMPORT int IdleSessionGangTimeout;
 extern bool log_lock_waits;
 
 
