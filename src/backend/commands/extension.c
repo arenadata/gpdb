@@ -1071,7 +1071,6 @@ execute_extension_script(Node *stmt,
 	}
 	PG_END_TRY();
 
-<<<<<<< HEAD
 	if (Gp_role == GP_ROLE_DISPATCH && stmt != NULL)
 	{
 		/* We must reset QE CurrentExtensionObject to InvalidOid */
@@ -1081,18 +1080,12 @@ execute_extension_script(Node *stmt,
 									GetAssignedOidsForDispatch(),
 									NULL);
 	}
-=======
-	/*
-	 * Restore the GUC variables we set above.
-	 */
-	AtEOXact_GUC(true, save_nestlevel);
 
 	/*
 	 * Restore authentication state if needed.
 	 */
 	if (switch_to_superuser)
 		SetUserIdAndSecContext(save_userid, save_sec_context);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 }
 
 /*
@@ -1646,7 +1639,6 @@ CreateExtensionInternal(char *extensionName,
 	 * the objects that are part of the extension. When we create those
 	 * objects in the QD, we will dispatch separate CREATE commands for each.
 	 */
-<<<<<<< HEAD
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		/*
@@ -1665,9 +1657,7 @@ CreateExtensionInternal(char *extensionName,
 		if (versionName)
 			stmt->options = lappend(stmt->options,
 									makeDefElem("new_version", (Node *) makeString(pstrdup(versionName)), -1));
-		if (oldVersionName)
-			stmt->options = lappend(stmt->options,
-									makeDefElem("old_version", (Node *) makeString(pstrdup(oldVersionName)), -1));
+
 		/*
 		 * no cascading in the QE. We'll cascade in the QD and dispatch separate
 		 * commands for each step.
@@ -1689,14 +1679,10 @@ CreateExtensionInternal(char *extensionName,
 
 	if (Gp_role != GP_ROLE_EXECUTE)
 	{
-		execute_extension_script((Node *) stmt, extensionOid, control,
-							 oldVersionName, versionName,
-=======
-	execute_extension_script(extensionOid, control,
-							 NULL, versionName,
-							 requiredSchemas,
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
-							 schemaName, schemaOid);
+		execute_extension_script((Node *) stmt,
+								 extensionOid, control,
+								 NULL, versionName,
+								 schemaName, schemaOid);
 
 		/*
 		 * If additional update scripts have to be executed, apply the updates as
