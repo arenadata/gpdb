@@ -108,13 +108,9 @@ static void vac_truncate_clog(TransactionId frozenXID,
 							  MultiXactId minMulti,
 							  TransactionId lastSaneFrozenXid,
 							  MultiXactId lastSaneMinMulti);
-<<<<<<< HEAD
 static bool vacuum_rel(Oid relid, RangeVar *relation, VacuumParams *params,
 					   bool recursing);
-=======
-static bool vacuum_rel(Oid relid, RangeVar *relation, VacuumParams *params);
 static double compute_parallel_delay(void);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 static VacOptTernaryValue get_vacopt_ternary_value(DefElem *def);
 
 static void dispatchVacuum(VacuumParams *params, Oid relid,
@@ -140,13 +136,10 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 	bool		freeze = false;
 	bool		full = false;
 	bool		disable_page_skipping = false;
-<<<<<<< HEAD
 	bool		rootonly = false;
 	bool		fullscan = false;
 	int			ao_phase = 0;
-=======
 	bool		parallel_option = false;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	ListCell   *lc;
 
 	/* Set default value */
@@ -189,12 +182,11 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 			params.index_cleanup = get_vacopt_ternary_value(opt);
 		else if (strcmp(opt->defname, "truncate") == 0)
 			params.truncate = get_vacopt_ternary_value(opt);
-<<<<<<< HEAD
 		else if (Gp_role == GP_ROLE_EXECUTE && strcmp(opt->defname, "ao_phase") == 0)
 		{
 			ao_phase = defGetInt32(opt);
 			Assert((ao_phase & VACUUM_AO_PHASE_MASK) == ao_phase);
-=======
+		}
 		else if (strcmp(opt->defname, "parallel") == 0)
 		{
 			parallel_option = true;
@@ -227,7 +219,6 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 				else
 					params.nworkers = nworkers;
 			}
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 		}
 		else
 			ereport(ERROR,

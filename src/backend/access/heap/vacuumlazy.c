@@ -56,11 +56,8 @@
 #include "access/heapam_xlog.h"
 #include "access/htup_details.h"
 #include "access/multixact.h"
-<<<<<<< HEAD
 #include "access/nbtree.h"
-=======
 #include "access/parallel.h"
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 #include "access/transam.h"
 #include "access/aosegfiles.h"
 #include "access/aocssegfiles.h"
@@ -2389,27 +2386,10 @@ lazy_cleanup_index(Relation indrel,
 	if (!(*stats))
 		return;
 
-<<<<<<< HEAD
-	/*
-	 * Now update statistics in pg_class, but only if the index says the count
-	 * is accurate.
-	 */
-	if (!stats->estimated_count)
-		vac_update_relstats(indrel,
-							stats->num_pages,
-							stats->num_index_tuples,
-							0,
-							false,
-							InvalidTransactionId,
-							InvalidMultiXactId,
-							false,
-							true /* isvacuum */);
-=======
 	if (IsParallelWorker())
 		msg = gettext_noop("index \"%s\" now contains %.0f row versions in %u pages as reported by parallel vacuum worker");
 	else
 		msg = gettext_noop("index \"%s\" now contains %.0f row versions in %u pages");
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 	ereport(elevel,
 			(errmsg(msg,
@@ -3084,7 +3064,8 @@ update_index_statistics(Relation *Irel, IndexBulkDeleteResult **stats,
 							false,
 							InvalidTransactionId,
 							InvalidMultiXactId,
-							false);
+							false,
+							true /* isvacuum */);
 		pfree(stats[i]);
 	}
 }
