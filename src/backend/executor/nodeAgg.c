@@ -1729,6 +1729,7 @@ find_hash_columns(AggState *aggstate)
 /*
  * Estimate per-hash-table-entry overhead.
  */
+Size
 hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
 {
 	return
