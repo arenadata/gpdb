@@ -1761,18 +1761,6 @@ RemoveRelations(DropStmt *drop)
 		}
 
 		/*
-<<<<<<< HEAD
-		 * If we're told to drop a partitioned index, we must acquire lock on
-		 * all the children of its parent partitioned table before proceeding.
-		 * Otherwise we'd try to lock the child index partitions before their
-		 * tables, leading to potential deadlock against other sessions that
-		 * will lock those objects in the other order.
-		 */
-		if (state.actual_relkind == RELKIND_PARTITIONED_INDEX)
-			(void) find_all_inheritors(state.heapOid,
-									   state.heap_lockmode,
-									   NULL);
-=======
 		 * Decide if concurrent mode needs to be used here or not.  The
 		 * relation persistence cannot be known without its OID.
 		 */
@@ -1783,7 +1771,18 @@ RemoveRelations(DropStmt *drop)
 				   drop->removeType == OBJECT_INDEX);
 			flags |= PERFORM_DELETION_CONCURRENTLY;
 		}
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+
+		/*
+		 * If we're told to drop a partitioned index, we must acquire lock on
+		 * all the children of its parent partitioned table before proceeding.
+		 * Otherwise we'd try to lock the child index partitions before their
+		 * tables, leading to potential deadlock against other sessions that
+		 * will lock those objects in the other order.
+		 */
+		if (state.actual_relkind == RELKIND_PARTITIONED_INDEX)
+			(void) find_all_inheritors(state.heapOid,
+									   state.heap_lockmode,
+									   NULL);
 
 		/* OK, we're ready to delete this one */
 		obj.classId = RelationRelationId;
