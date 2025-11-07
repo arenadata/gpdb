@@ -3208,12 +3208,7 @@ ExecBuildAggTrans(AggState *aggstate, AggStatePerPhase phase,
 	ExprState  *state = makeNode(ExprState);
 	PlanState  *parent = &aggstate->ss.ps;
 	ExprEvalStep scratch = {0};
-<<<<<<< HEAD
-	int			transno = 0;
-	int			setoff = 0;
-=======
 	bool		isCombine = DO_AGGSPLIT_COMBINE(aggstate->aggsplit);
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	LastAttnumInfo deform = {0, 0, 0};
 
 	state->expr = (Expr *) aggstate;
