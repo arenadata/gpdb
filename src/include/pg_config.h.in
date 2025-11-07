@@ -64,18 +64,8 @@
    (--enable-thread-safety) */
 #undef ENABLE_THREAD_SAFETY
 
-<<<<<<< HEAD
 /* Define to 1 to build with fault injector. (--enable-debug-extensions) */
 #undef FAULT_INJECTOR
-
-/* Define to nothing if C supports flexible array members, and to 1 if it does
-   not. That way, with a declaration like `struct s { int n; double
-   d[FLEXIBLE_ARRAY_MEMBER]; };', the struct hack can be used with pre-C99
-   compilers. When computing the size of such an object, don't use 'sizeof
-   (struct s)' as it overestimates the size. Use 'offsetof (struct s, d)'
-   instead. Don't use 'offsetof (struct s, d[0])', as this doesn't work with
-   MSVC and with C++ compilers. */
-#undef FLEXIBLE_ARRAY_MEMBER
 
 /* In GPDB, float8 is always passed by value. There is GPDB-specific code that
    assumes that in various places, so it's not configurable. */
@@ -84,8 +74,6 @@
    reference if 'false' (always true in GPDB) */
 #define FLOAT8PASSBYVAL true
 
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 /* Define to 1 if gettimeofday() takes only 1 argument. */
 #undef GETTIMEOFDAY_1ARG
 
