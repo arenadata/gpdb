@@ -18,11 +18,6 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/objectaccess.h"
-<<<<<<< HEAD
-#include "catalog/oid_dispatch.h"
-#include "catalog/pg_authid.h"
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_proc.h"
@@ -36,6 +31,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "catalog/oid_dispatch.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp_query.h"
 
@@ -43,8 +39,8 @@
 /*
  * CREATE LANGUAGE
  */
-static ObjectAddress
-CreateProceduralLanguage_internal(CreatePLangStmt *stmt)
+ObjectAddress
+CreateProceduralLanguage(CreatePLangStmt *stmt)
 {
 	const char *languageName = stmt->plname;
 	Oid			languageOwner = GetUserId();
@@ -53,296 +49,6 @@ CreateProceduralLanguage_internal(CreatePLangStmt *stmt)
 				valOid;
 	Oid			funcrettype;
 	Oid			funcargtypes[1];
-<<<<<<< HEAD
-
-	/*
-	 * If we have template information for the language, ignore the supplied
-	 * parameters (if any) and use the template information.
-	 */
-	if ((pltemplate = find_language_template(stmt->plname)) != NULL)
-	{
-		List	   *funcname;
-
-		/*
-		 * Give a notice if we are ignoring supplied parameters.
-		 */
-		if (stmt->plhandler)
-			if (Gp_role != GP_ROLE_EXECUTE)
-				ereport(NOTICE,
-						(errmsg("using pg_pltemplate information instead of "
-								"CREATE LANGUAGE parameters")));
-
-		/*
-		 * Check permission
-		 */
-		if (!superuser())
-		{
-			if (!pltemplate->tmpldbacreate)
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("must be superuser to create procedural language \"%s\"",
-								stmt->plname)));
-			if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
-				aclcheck_error(ACLCHECK_NOT_OWNER, OBJECT_DATABASE,
-							   get_database_name(MyDatabaseId));
-		}
-
-		/*
-		 * Find or create the handler function, which we force to be in the
-		 * pg_catalog schema.  If already present, it must have the correct
-		 * return type.
-		 */
-		funcname = SystemFuncName(pltemplate->tmplhandler);
-		handlerOid = LookupFuncName(funcname, 0, NULL, true);
-		if (OidIsValid(handlerOid))
-		{
-			funcrettype = get_func_rettype(handlerOid);
-			if (funcrettype != LANGUAGE_HANDLEROID)
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("function %s must return type %s",
-								NameListToString(funcname), "language_handler")));
-		}
-		else
-		{
-			tmpAddr = ProcedureCreate(pltemplate->tmplhandler,
-									  PG_CATALOG_NAMESPACE,
-									  false,	/* replace */
-									  false,	/* returnsSet */
-									  LANGUAGE_HANDLEROID,
-									  BOOTSTRAP_SUPERUSERID,
-									  ClanguageId,
-									  F_FMGR_C_VALIDATOR,
-									  InvalidOid, /* describeFuncOid */
-									  pltemplate->tmplhandler,
-									  pltemplate->tmpllibrary,
-									  PROKIND_FUNCTION,
-									  false,	/* security_definer */
-									  false,	/* isLeakProof */
-									  false,	/* isStrict */
-									  PROVOLATILE_VOLATILE,
-									  PROPARALLEL_UNSAFE,
-									  buildoidvector(funcargtypes, 0),
-									  PointerGetDatum(NULL),
-									  PointerGetDatum(NULL),
-									  PointerGetDatum(NULL),
-									  NIL,
-									  PointerGetDatum(NULL),
-									  PointerGetDatum(NULL),
-									  InvalidOid,
-									  1,
-									  0,
-									  PRODATAACCESS_NONE,
-									  PROEXECLOCATION_ANY);
-			handlerOid = tmpAddr.objectId;
-		}
-
-		/*
-		 * Likewise for the anonymous block handler, if required; but we don't
-		 * care about its return type.
-		 */
-		if (pltemplate->tmplinline)
-		{
-			funcname = SystemFuncName(pltemplate->tmplinline);
-			funcargtypes[0] = INTERNALOID;
-			inlineOid = LookupFuncName(funcname, 1, funcargtypes, true);
-			if (!OidIsValid(inlineOid))
-			{
-				tmpAddr = ProcedureCreate(pltemplate->tmplinline,
-										  PG_CATALOG_NAMESPACE,
-										  false,	/* replace */
-										  false,	/* returnsSet */
-										  VOIDOID,
-										  BOOTSTRAP_SUPERUSERID,
-										  ClanguageId,
-										  F_FMGR_C_VALIDATOR,
-										  InvalidOid, /* describeFuncOid */
-										  pltemplate->tmplinline,
-										  pltemplate->tmpllibrary,
-										  PROKIND_FUNCTION,
-										  false,	/* security_definer */
-										  false,	/* isLeakProof */
-										  true, /* isStrict */
-										  PROVOLATILE_VOLATILE,
-										  PROPARALLEL_UNSAFE,
-										  buildoidvector(funcargtypes, 1),
-										  PointerGetDatum(NULL),
-										  PointerGetDatum(NULL),
-										  PointerGetDatum(NULL),
-										  NIL,
-										  PointerGetDatum(NULL),
-										  PointerGetDatum(NULL),
-										  InvalidOid,
-										  1,
-										  0,
-										  PRODATAACCESS_NONE,
-										  PROEXECLOCATION_ANY);
-				inlineOid = tmpAddr.objectId;
-			}
-		}
-		else
-			inlineOid = InvalidOid;
-
-		/*
-		 * Likewise for the validator, if required; but we don't care about
-		 * its return type.
-		 */
-		if (pltemplate->tmplvalidator)
-		{
-			funcname = SystemFuncName(pltemplate->tmplvalidator);
-			funcargtypes[0] = OIDOID;
-			valOid = LookupFuncName(funcname, 1, funcargtypes, true);
-			if (!OidIsValid(valOid))
-			{
-				tmpAddr = ProcedureCreate(pltemplate->tmplvalidator,
-										  PG_CATALOG_NAMESPACE,
-										  false,	/* replace */
-										  false,	/* returnsSet */
-										  VOIDOID,
-										  BOOTSTRAP_SUPERUSERID,
-										  ClanguageId,
-										  F_FMGR_C_VALIDATOR,
-										  InvalidOid, /* describeFuncOid */
-										  pltemplate->tmplvalidator,
-										  pltemplate->tmpllibrary,
-										  PROKIND_FUNCTION,
-										  false,	/* security_definer */
-										  false,	/* isLeakProof */
-										  true, /* isStrict */
-										  PROVOLATILE_VOLATILE,
-										  PROPARALLEL_UNSAFE,
-										  buildoidvector(funcargtypes, 1),
-										  PointerGetDatum(NULL),
-										  PointerGetDatum(NULL),
-										  PointerGetDatum(NULL),
-										  NIL,
-										  PointerGetDatum(NULL),
-										  PointerGetDatum(NULL),
-										  InvalidOid,
-										  1,
-										  0,
-										  PRODATAACCESS_NONE,
-										  PROEXECLOCATION_ANY);
-				valOid = tmpAddr.objectId;
-			}
-		}
-		else
-			valOid = InvalidOid;
-
-		/* ok, create it */
-		return create_proc_lang(stmt->plname, stmt->replace, GetUserId(),
-								handlerOid, inlineOid,
-								valOid, pltemplate->tmpltrusted);
-	}
-	else
-	{
-		/*
-		 * No template, so use the provided information.  If there's no
-		 * handler clause, the user is trying to rely on a template that we
-		 * don't have, so complain accordingly.
-		 */
-		if (!stmt->plhandler)
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("unsupported language \"%s\"",
-							stmt->plname),
-					 errhint("The supported languages are listed in the pg_pltemplate system catalog.")));
-
-		/*
-		 * Check permission
-		 */
-		if (!superuser())
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to create custom procedural language")));
-
-		/*
-		 * Lookup the PL handler function and check that it is of the expected
-		 * return type
-		 */
-		handlerOid = LookupFuncName(stmt->plhandler, 0, NULL, false);
-		funcrettype = get_func_rettype(handlerOid);
-		if (funcrettype != LANGUAGE_HANDLEROID)
-		{
-			/*
-			 * We allow OPAQUE just so we can load old dump files.  When we
-			 * see a handler function declared OPAQUE, change it to
-			 * LANGUAGE_HANDLER.  (This is probably obsolete and removable?)
-			 */
-			if (funcrettype == OPAQUEOID)
-			{
-				if (Gp_role != GP_ROLE_EXECUTE)
-				ereport(WARNING,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("changing return type of function %s from %s to %s",
-								NameListToString(stmt->plhandler),
-								"opaque", "language_handler")));
-				SetFunctionReturnType(handlerOid, LANGUAGE_HANDLEROID);
-			}
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("function %s must return type %s",
-								NameListToString(stmt->plhandler), "language_handler")));
-		}
-
-		/* validate the inline function */
-		if (stmt->plinline)
-		{
-			funcargtypes[0] = INTERNALOID;
-			inlineOid = LookupFuncName(stmt->plinline, 1, funcargtypes, false);
-			/* return value is ignored, so we don't check the type */
-		}
-		else
-			inlineOid = InvalidOid;
-
-		/* validate the validator function */
-		if (stmt->plvalidator)
-		{
-			funcargtypes[0] = OIDOID;
-			valOid = LookupFuncName(stmt->plvalidator, 1, funcargtypes, false);
-			/* return value is ignored, so we don't check the type */
-		}
-		else
-			valOid = InvalidOid;
-
-		/* ok, create it */
-		return create_proc_lang(stmt->plname, stmt->replace, GetUserId(),
-								handlerOid, inlineOid,
-								valOid, stmt->pltrusted);
-	}
-}
-
-ObjectAddress
-CreateProceduralLanguage(CreatePLangStmt *stmt)
-{
-	ObjectAddress	result;
-
-	result = CreateProceduralLanguage_internal(stmt);
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt,
-									DF_CANCEL_ON_ERROR|
-									DF_WITH_SNAPSHOT|
-									DF_NEED_TWO_PHASE,
-									GetAssignedOidsForDispatch(),
-									NULL);
-	}
-
-	return result;
-}
-
-/*
- * Guts of language creation.
- */
-static ObjectAddress
-create_proc_lang(const char *languageName, bool replace,
-				 Oid languageOwner, Oid handlerOid, Oid inlineOid,
-				 Oid valOid, bool trusted)
-{
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 	Relation	rel;
 	TupleDesc	tupDesc;
 	Datum		values[Natts_pg_language];
@@ -380,6 +86,7 @@ create_proc_lang(const char *languageName, bool replace,
 		 */
 		if (funcrettype == OPAQUEOID)
 		{
+			if (Gp_role != GP_ROLE_EXECUTE)
 			ereport(WARNING,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("changing return type of function %s from %s to %s",
@@ -530,6 +237,16 @@ create_proc_lang(const char *languageName, bool replace,
 	InvokeObjectPostCreateHook(LanguageRelationId, myself.objectId, 0);
 
 	table_close(rel, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return myself;
 }
