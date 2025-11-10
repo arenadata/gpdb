@@ -90,7 +90,6 @@
 #include "storage/shmem.h"
 #include "storage/spin.h"
 #include "utils/dynahash.h"
-#include "utils/hashutils.h"
 #include "utils/memutils.h"
 
 
