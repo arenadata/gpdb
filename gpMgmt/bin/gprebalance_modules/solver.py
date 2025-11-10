@@ -3,6 +3,13 @@ from typing import Set, Dict, List, Tuple, Optional
 from collections import defaultdict
 import time
 
+import cProfile
+import pstats
+
+class TimeoutException(Exception):
+    """Raised when search time limit is exceeded"""
+    pass
+
 class GreedySolver:
     """
     Greedy algorithm to find first suitable solution in two phases:
@@ -374,8 +381,10 @@ class SearchNode:
     domains: SegmentDomain
     assignments: Dict[int, Tuple[int, int]]  # seg_id → (primary_host, mirror_host)
     depth: int
-    lower_bound: int = 0
+    min_costs: Dict[int, int]  # Cached min cost per segment
     host_load: List[int] = field(default_factory=list)  # host_load[host_id]
+    future_sum: int = 0  # Sum of all min costs
+    lower_bound: Optional[int] = None
     
     def is_complete(self, n_segments: int) -> bool:
         """Check if all segments are assigned"""
@@ -750,7 +759,9 @@ class BABSolver:
         self.nogood_prunes = 0
         self.bound_prunes = 0
         self.load_prunes = 0
-        
+        self.check_counter = 0
+        self.check_interval = 50
+
         # Best solution tracking
         self.initial_solution = GreedySolver(n_segments, n_hosts_target, n_hosts_initial,
                                       initial_primary, initial_mirror, strategy).solve()
@@ -758,7 +769,7 @@ class BABSolver:
         self.best_solution =  self.initial_solution[0]
         self.start_time = None
     
-    def solve(self, time_limit: float = 300) -> Tuple[Optional[Dict], int]:
+    def solve(self, time_limit: float = 120) -> Tuple[Optional[Dict], int]:
         """Solve the rebalancing problem"""
         self.start_time = time.time()
         
@@ -767,36 +778,37 @@ class BABSolver:
             domains=SegmentDomain(self.n_segments, self.n_hosts),
             assignments={},
             depth=0,
+            min_costs={},
             host_load=[0] * (self.n_hosts)
         )
-        
+
+        self._initialize_bounds(root)
+
         # Initial propagation
         propagator = ConstraintPropagator(self)
         if not propagator.propagate(root):
             return None, float('inf')
         
+        
         # Start search
-        self._branch_and_bound(root, time_limit)
+        try:
+            self._branch_and_bound(root, time_limit)
+        except TimeoutException:
+            if self.printing:
+                print(f"\n Time limit reached ({time_limit}s)")
 
         if self.printing:
             self._print_statistics()
                 
         return self.best_solution, self.best_cost
-    
+
     def _branch_and_bound(self, node: SearchNode, time_limit: float):
         """Main B&B recursive procedure"""
         
         self.nodes_explored += 1
         
         # Time limit check
-        if time.time() - self.start_time > time_limit:
-            return
-        
-        # Nogood check
-        if self.nogood_store.is_nogood(node.assignments):
-            self.nodes_pruned += 1
-            self.nogood_prunes += 1
-            return
+        self._check_timeout(time_limit)
         
         # Quick lower bound
         quick_lb = self._quick_lower_bound(node)
@@ -852,55 +864,58 @@ class BABSolver:
             if child:
                 self._branch_and_bound(child, time_limit)
     
+    def _check_timeout(self, time_limit: float):
+        """
+        Check timeout and raise exception if expired
+        
+        Raises TimeoutException to immediately exit recursion
+        """
+        self.check_counter += 1
+        
+        # Only check every N nodes
+        if self.check_counter % self.check_interval == 0:
+            if time.time() - self.start_time > time_limit:
+                raise TimeoutException()
+
     def _select_segment_smart(self, node: SearchNode) -> Optional[int]:
         """
         Smart variable selection
         
-        Priority:
-        1. Minimum Remaining Values (smallest domain first)
-        2. Maximum degree (most constrained by others)
-        3. Must-move segments (original placement unavailable)
+        Two-phase approach:
+        1. Finding Minimum Remaining Values (smallest domain first)
+        2. Prioritize must-move segments
         """
-        candidates = []
-        
+        min_domain = float('inf')
+        mrv_candidates = []
+
+        # Phase 1: Find all segments with minimum domain size
         for seg_id in range(self.n_segments):
             if seg_id not in node.assignments:
                 domain_size = len(node.domains.pairs[seg_id])
-                degree = self._count_degree(seg_id, node)
-                original = (self.initial_primary[seg_id], self.initial_mirror[seg_id])
-                original_available = original in node.domains.pairs[seg_id]
-                
-                score = (
-                    domain_size,         # Minimize (MRV)
-                    -degree,             # Maximize (negate)
-                    original_available   # False first
-                )
-                candidates.append((score, seg_id))
-        
-        if not candidates:
+
+                if domain_size < min_domain:
+                    min_domain = domain_size
+                    mrv_candidates = [seg_id]
+                elif domain_size == min_domain:
+                    mrv_candidates.append(seg_id)
+
+        if not mrv_candidates:
             return None
-        
-        candidates.sort()
-        return candidates[0][1]
-    
-    def _count_degree(self, seg_id: int, node: SearchNode) -> int:
-        """
-        Count unassigned segments that could be in same mirror group.
-        Higher degree = more constrained.
-        """
-        degree = 0
-        
-        # Possible primary hosts for this segment
-        possible_primary_hosts = {p for (p, m) in node.domains.pairs[seg_id]}
-        
-        # Count other unassigned segments with overlapping primaries
-        for other_seg in range(self.n_segments):
-            if other_seg != seg_id and other_seg not in node.assignments:
-                other_primaries = {p for (p, m) in node.domains.pairs[other_seg]}
-                if possible_primary_hosts & other_primaries:
-                    degree += 1
-        
-        return degree
+
+        if len(mrv_candidates) == 1:
+            return mrv_candidates[0]
+
+        # Phase 2: Break ties - prioritize must-move segments
+        must_move_candidates = []
+        for seg_id in mrv_candidates:
+            original = (self.initial_primary[seg_id], self.initial_mirror[seg_id])
+            if original not in node.domains.pairs[seg_id]:
+                must_move_candidates.append(seg_id)
+
+        if must_move_candidates:
+            return must_move_candidates[0]  # Return first must-move
+
+        return min(mrv_candidates)
     
     def _order_placements_smart(self, seg_id: int, 
                                node: SearchNode) -> List[Tuple[int, int]]:
@@ -956,7 +971,8 @@ class BABSolver:
             domains=parent.domains.copy(),
             assignments=parent.assignments.copy(),
             depth=parent.depth + 1,
-            host_load=parent.host_load.copy()
+            host_load=parent.host_load.copy(),
+            min_costs=parent.min_costs.copy()
         )
         
         child.assign_segment(seg_id, primary_host, mirror_host)
@@ -965,6 +981,16 @@ class BABSolver:
         if len(child.host_load) > max(primary_host, mirror_host):
             child.host_load[primary_host] += 1
             child.host_load[mirror_host] += 1
+        
+        # Update child bounds
+        if seg_id in child.min_costs:
+            removed_cost = child.min_costs[seg_id]
+            del child.min_costs[seg_id]
+            child.future_sum = parent.future_sum - removed_cost
+        else:
+            child.future_sum = parent.future_sum
+        
+        child.lower_bound = None 
         
         return child
     
@@ -987,27 +1013,42 @@ class BABSolver:
         
         return cost
     
-    def _compute_lower_bound(self, node: SearchNode) -> int:
-        """Tight lower bound: current + minimum future cost"""
-        # Current movements
-        current_cost = sum(
-            (1 if p != self.initial_primary[seg_id] else 0) + 
-            (1 if m != self.initial_mirror[seg_id] else 0)
-            for seg_id, (p, m) in node.assignments.items()
-        )
-        
-        # Minimum future movements
-        future_cost = 0
+    def _initialize_bounds(self, node: SearchNode):
+        """Initialize all minimum costs"""
+        node.future_sum = 0
         for seg_id in range(self.n_segments):
             if seg_id not in node.assignments:
-                min_cost = min(
-                    (1 if p != self.initial_primary[seg_id] else 0) + 
-                    (1 if m != self.initial_mirror[seg_id] else 0)
-                    for (p, m) in node.domains.pairs[seg_id]
-                )
-                future_cost += min_cost
+                min_cost = self._min_cost_for_segment(seg_id, node)
+                node.min_costs[seg_id] = min_cost
+                node.future_sum += min_cost
+    
+    def _min_cost_for_segment(self, seg_id: int, node: SearchNode) -> int:
+        """Minimum movement cost for one segment"""
+        domain = node.domains.pairs[seg_id]
+        if not domain:
+            return 999  # Not a solution
         
-        return current_cost + future_cost
+        orig_p, orig_m = self.initial_primary[seg_id], self.initial_mirror[seg_id]
+        
+        return min(
+            (0 if p == orig_p else 1) + (0 if m == orig_m else 1)
+            for p, m in domain
+        )
+    
+    def _compute_lower_bound(self, node: SearchNode) -> int:
+        """Tight lower bound: current + minimum future cost"""
+        if node.lower_bound is not None:
+            return node.lower_bound
+        
+        # Current cost
+        current = sum(
+            (0 if p == self.initial_primary[sid] else 1) +
+            (0 if m == self.initial_mirror[sid] else 1)
+            for sid, (p, m) in node.assignments.items()
+        )
+        
+        node.lower_bound = current + node.future_sum
+        return node.lower_bound
     
     def _compute_cost(self, assignments: Dict[int, Tuple[int, int]]) -> int:
         """Total movement cost"""
@@ -1061,3 +1102,105 @@ class BABSolver:
         
         print(f"  Primary moves: {primary_moves}, Mirror moves: {mirror_moves}")
         print(f"  Load: {host_loads}")
+
+import random
+
+class ConfigGenerator:
+    """Generate test configurations"""
+    
+    @staticmethod
+    def generate_balanced_grouped(n_segments: int, n_hosts: int) -> Tuple[List[int], List[int]]:
+        """Generate balanced GROUPED configuration"""
+        assert n_segments % n_hosts == 0, "Must be evenly divisible"
+        
+        segs_per_host = n_segments // n_hosts
+        
+        # Assign primaries round-robin
+        primaries = []
+        for host_id in range(n_hosts):
+            primaries.extend([host_id] * segs_per_host)
+        
+        # Assign mirrors (grouped: all primaries on host_i → mirrors on host_(i+1))
+        mirrors = []
+        for seg_id in range(n_segments):
+            p_host = primaries[seg_id]
+            m_host = (p_host + 1) % n_hosts
+            mirrors.append(m_host)
+        
+        return primaries, mirrors
+    
+    @staticmethod
+    def generate_balanced_spread(n_segments: int, n_hosts: int) -> Tuple[List[int], List[int]]:
+        """Generate balanced SPREAD configuration"""
+        assert n_segments % n_hosts == 0, "Must be evenly divisible"
+        
+        segs_per_host = n_segments // n_hosts
+        
+        # Assign primaries
+        primaries = []
+        for host_id in range(n_hosts):
+            primaries.extend([host_id] * segs_per_host)
+        
+        # Assign mirrors (spread: distribute across different hosts)
+        mirrors = []
+        for host_id in range(n_hosts):
+            # Get segments on this host
+            start_idx = host_id * segs_per_host
+            
+            # Available mirror hosts (not self)
+            available = [h for h in range(n_hosts) if h != host_id]
+            
+            for i in range(segs_per_host):
+                m_host = available[i % len(available)]
+                mirrors.append(m_host)
+        
+        return primaries, mirrors
+    
+    @staticmethod
+    def generate_unbalanced_grouped(n_segments: int, n_hosts: int, 
+                                   skew: float = 0.3) -> Tuple[List[int], List[int]]:
+        """Generate UNBALANCED GROUPED configuration"""
+        base = n_segments // n_hosts
+        
+        # Create skewed distribution
+        loads = [base] * n_hosts
+        
+        # Transfer segments from last hosts to first hosts
+        transfer = int(base * skew)
+        if transfer > 0 and n_hosts >= 2:
+            loads[0] += transfer
+            loads[-1] -= transfer
+        
+        # Assign primaries
+        primaries = []
+        for host_id in range(n_hosts):
+            primaries.extend([host_id] * loads[host_id])
+        
+        # Shuffle to randomize order
+        random.shuffle(primaries)
+        
+        # Assign mirrors (grouped)
+        mirrors = []
+        for seg_id in range(n_segments):
+            p_host = primaries[seg_id]
+            m_host = (p_host + 1) % n_hosts
+            mirrors.append(m_host)
+        
+        return primaries, mirrors
+
+
+if __name__=='__main__':
+    conf = ConfigGenerator.generate_unbalanced_grouped(1000, 50)
+    solver = BABSolver(1000, 40, 50, conf[0], conf[1],
+                       strategy='grouped', printing=True)
+    #conf = ConfigGenerator.generate_unbalanced_grouped(20, 5)
+    #solver = BABSolver(20, 5, 5, conf[0], conf[1],
+    #                   strategy='grouped', printing=True)
+    profiler = cProfile.Profile()
+    profiler.enable()
+    solution, cost = solver.solve()
+    profiler.disable()
+    stats = pstats.Stats(profiler)
+    stats.sort_stats('cumulative')
+    stats.print_stats(20)  # Top 20 functions
+    a = 5
