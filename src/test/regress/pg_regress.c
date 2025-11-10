@@ -90,13 +90,9 @@ char	   *exclude_tests_file = "";
 char	   *prehook = "";
 char	   *bindir = PGBINDIR;
 char	   *launcher = NULL;
-<<<<<<< HEAD
 bool        print_failure_diffs_is_enabled = false;
 bool 		optimizer_enabled = false;
 bool 		resgroup_enabled = false;
-static _stringlist *loadlanguage = NULL;
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 static _stringlist *loadextension = NULL;
 static int	max_connections = 0;
 static int	max_concurrent_tests = 0;
