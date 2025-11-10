@@ -2096,7 +2096,6 @@ explain (analyze, costs off, summary off, timing off) execute ab_q1 (2, 4);
 prepare ab_q2 (int, int) as
 select a from ab where a between $1 and $2 and b < (select 3);
 explain (analyze, costs off, summary off, timing off) execute ab_q2 (2, 2);
-<<<<<<< HEAD
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3) (actual rows=0 loops=1)
@@ -2112,27 +2111,11 @@ explain (analyze, costs off, summary off, timing off) execute ab_q2 (2, 2);
                Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
  Optimizer: Postgres query optimizer
 (12 rows)
-=======
-                       QUERY PLAN                        
----------------------------------------------------------
- Append (actual rows=0 loops=1)
-   Subplans Removed: 6
-   InitPlan 1 (returns $0)
-     ->  Result (actual rows=1 loops=1)
-   ->  Seq Scan on ab_a2_b1 ab_1 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
-   ->  Seq Scan on ab_a2_b2 ab_2 (actual rows=0 loops=1)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
-   ->  Seq Scan on ab_a2_b3 ab_3 (never executed)
-         Filter: ((a >= $1) AND (a <= $2) AND (b < $0))
-(10 rows)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 -- As above, but swap the PARAM_EXEC Param to the first partition level
 prepare ab_q3 (int, int) as
 select a from ab where b between $1 and $2 and a < (select 3);
 explain (analyze, costs off, summary off, timing off) execute ab_q3 (2, 2);
-<<<<<<< HEAD
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3) (actual rows=0 loops=1)
@@ -2148,21 +2131,6 @@ explain (analyze, costs off, summary off, timing off) execute ab_q3 (2, 2);
                Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
  Optimizer: Postgres query optimizer
 (12 rows)
-=======
-                       QUERY PLAN                        
----------------------------------------------------------
- Append (actual rows=0 loops=1)
-   Subplans Removed: 6
-   InitPlan 1 (returns $0)
-     ->  Result (actual rows=1 loops=1)
-   ->  Seq Scan on ab_a1_b2 ab_1 (actual rows=0 loops=1)
-         Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
-   ->  Seq Scan on ab_a2_b2 ab_2 (actual rows=0 loops=1)
-         Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
-   ->  Seq Scan on ab_a3_b2 ab_3 (never executed)
-         Filter: ((b >= $1) AND (b <= $2) AND (a < $0))
-(10 rows)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 -- Test a backwards Append scan
 create table list_part (a int) partition by list (a);
@@ -2749,7 +2717,6 @@ union all
 ) ab where a = $1 and b = (select -10);
 -- Ensure the xy_1 subplan is not pruned.
 explain (analyze, costs off, summary off, timing off) execute ab_q6(1);
-<<<<<<< HEAD
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3) (actual rows=0 loops=1)
@@ -2773,30 +2740,6 @@ explain (analyze, costs off, summary off, timing off) execute ab_q6(1);
                Filter: ((a = $1) AND (b = $0))
  Optimizer: Postgres query optimizer
 (20 rows)
-=======
-                    QUERY PLAN                    
---------------------------------------------------
- Append (actual rows=0 loops=1)
-   Subplans Removed: 12
-   InitPlan 1 (returns $0)
-     ->  Result (actual rows=1 loops=1)
-   ->  Seq Scan on ab_a1_b1 ab_1 (never executed)
-         Filter: ((a = $1) AND (b = $0))
-   ->  Seq Scan on ab_a1_b2 ab_2 (never executed)
-         Filter: ((a = $1) AND (b = $0))
-   ->  Seq Scan on ab_a1_b3 ab_3 (never executed)
-         Filter: ((a = $1) AND (b = $0))
-   ->  Seq Scan on xy_1 (actual rows=0 loops=1)
-         Filter: ((x = $1) AND (y = $0))
-         Rows Removed by Filter: 1
-   ->  Seq Scan on ab_a1_b1 ab_4 (never executed)
-         Filter: ((a = $1) AND (b = $0))
-   ->  Seq Scan on ab_a1_b2 ab_5 (never executed)
-         Filter: ((a = $1) AND (b = $0))
-   ->  Seq Scan on ab_a1_b3 ab_6 (never executed)
-         Filter: ((a = $1) AND (b = $0))
-(19 rows)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 -- Ensure we see just the xy_1 row.
 execute ab_q6(100);
@@ -3535,7 +3478,6 @@ prepare ps1 as
   select * from mc3p where a = $1 and abs(b) < (select 3);
 explain (analyze, costs off, summary off, timing off)
 execute ps1(1);
-<<<<<<< HEAD
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3) (actual rows=1 loops=1)
@@ -3547,24 +3489,12 @@ execute ps1(1);
                Filter: ((a = $1) AND (abs(b) < $0))
  Optimizer: Postgres query optimizer
 (8 rows)
-=======
-                       QUERY PLAN                       
---------------------------------------------------------
- Append (actual rows=1 loops=1)
-   Subplans Removed: 2
-   InitPlan 1 (returns $0)
-     ->  Result (actual rows=1 loops=1)
-   ->  Seq Scan on mc3p1 mc3p_1 (actual rows=1 loops=1)
-         Filter: ((a = $1) AND (abs(b) < $0))
-(6 rows)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 deallocate ps1;
 prepare ps2 as
   select * from mc3p where a <= $1 and abs(b) < (select 3);
 explain (analyze, costs off, summary off, timing off)
 execute ps2(1);
-<<<<<<< HEAD
                             QUERY PLAN                            
 ------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3) (actual rows=2 loops=1)
@@ -3578,19 +3508,6 @@ execute ps2(1);
                Filter: ((a <= $1) AND (abs(b) < $0))
  Optimizer: Postgres query optimizer
 (10 rows)
-=======
-                       QUERY PLAN                       
---------------------------------------------------------
- Append (actual rows=2 loops=1)
-   Subplans Removed: 1
-   InitPlan 1 (returns $0)
-     ->  Result (actual rows=1 loops=1)
-   ->  Seq Scan on mc3p0 mc3p_1 (actual rows=1 loops=1)
-         Filter: ((a <= $1) AND (abs(b) < $0))
-   ->  Seq Scan on mc3p1 mc3p_2 (actual rows=1 loops=1)
-         Filter: ((a <= $1) AND (abs(b) < $0))
-(8 rows)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 deallocate ps2;
 drop table mc3p;
@@ -4191,7 +4108,6 @@ from (
      ) s(a, b, c)
 where s.a = $1 and s.b = $2 and s.c = (select 1);
 explain (costs off) execute q (1, 1);
-<<<<<<< HEAD
                                 QUERY PLAN                                 
 ---------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -4209,21 +4125,6 @@ explain (costs off) execute q (1, 1);
                      One-Time Filter: ((1 = $1) AND (1 = $2) AND (1 = $0))
  Optimizer: Postgres query optimizer
 (14 rows)
-=======
-                          QUERY PLAN                           
----------------------------------------------------------------
- Append
-   Subplans Removed: 1
-   InitPlan 1 (returns $0)
-     ->  Result
-   ->  Seq Scan on p1 p
-         Filter: ((a = $1) AND (b = $2) AND (c = $0))
-   ->  Seq Scan on q111 q1
-         Filter: ((a = $1) AND (b = $2) AND (c = $0))
-   ->  Result
-         One-Time Filter: ((1 = $1) AND (1 = $2) AND (1 = $0))
-(10 rows)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 
 execute q (1, 1);
  a | b | c 
