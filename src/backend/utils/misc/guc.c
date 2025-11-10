@@ -817,7 +817,7 @@ const char *const config_group_names[] =
 	NULL
 };
 
-StaticAssertDecl(lengthof(config_group_names) == (DEVELOPER_OPTIONS + 2),
+StaticAssertDecl(lengthof(config_group_names) == (DEVELOPER_OPTIONS + 4),
 				 "array length mismatch");
 
 /*
