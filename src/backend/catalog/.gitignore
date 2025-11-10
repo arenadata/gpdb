@@ -1,10 +1,7 @@
 /postgres.bki
-<<<<<<< HEAD
 /postgres.description
 /postgres.shdescription
 /cdb_init.sql
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 /schemapg.h
 /pg_*_d.h
 /gp_*_d.h
