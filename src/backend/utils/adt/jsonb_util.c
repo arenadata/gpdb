@@ -15,20 +15,12 @@
 
 #include "catalog/pg_collation.h"
 #include "catalog/pg_type.h"
-<<<<<<< HEAD
 #include "common/hashfn.h"
-#include "miscadmin.h"
-#include "utils/builtins.h"
-#include "utils/datetime.h"
-#include "utils/jsonapi.h"
-=======
 #include "common/jsonapi.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
-#include "utils/hashutils.h"
 #include "utils/json.h"
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 #include "utils/jsonb.h"
 #include "utils/memutils.h"
 #include "utils/varlena.h"
