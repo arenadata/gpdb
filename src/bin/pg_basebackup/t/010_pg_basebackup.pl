@@ -6,11 +6,7 @@ use File::Basename qw(basename dirname);
 use File::Path qw(rmtree);
 use PostgresNode;
 use TestLib;
-<<<<<<< HEAD
-use Test::More tests => 106 + 15;
-=======
-use Test::More tests => 107;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+use Test::More tests => 107 + 15;
 
 program_help_ok('pg_basebackup');
 program_version_ok('pg_basebackup');
