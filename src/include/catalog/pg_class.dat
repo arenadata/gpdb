@@ -21,19 +21,7 @@
 { oid => '1249',
   relname => 'pg_attribute', reltype => 'pg_attribute' },
 { oid => '1255',
-<<<<<<< HEAD
-  relname => 'pg_proc', reltype => 'pg_proc', relam => 'heap',
-  relfilenode => '0', relpages => '0', reltuples => '0', relallvisible => '0',
-  reltoastrelid => '0', relhasindex => 'f', relisshared => 'f',
-  relpersistence => 'p', relkind => 'r', relnatts => '31', relchecks => '0',
-  relhasrules => 'f', relhastriggers => 'f', relhassubclass => 'f',
-  relrowsecurity => 'f', relforcerowsecurity => 'f', relispopulated => 't',
-  relreplident => 'n', relispartition => 'f', relfrozenxid => '3',
-  relminmxid => '1', relacl => '_null_', reloptions => '_null_',
-  relpartbound => '_null_' },
-=======
   relname => 'pg_proc', reltype => 'pg_proc' },
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 { oid => '1259',
   relname => 'pg_class', reltype => 'pg_class' },
 
