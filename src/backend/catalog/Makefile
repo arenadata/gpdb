@@ -44,7 +44,6 @@ OBJS = \
 	storage.o \
 	toasting.o
 
-<<<<<<< HEAD
 OBJS += pg_extprotocol.o \
        pg_proc_callback.o \
        aoseg.o aoblkdir.o gp_fastsequence.o gp_segment_config.o \
@@ -55,12 +54,8 @@ OBJS += pg_extprotocol.o \
        gp_partition_template.o
 
 
-BKIFILES = postgres.bki postgres.description postgres.shdescription
-
 CATALOG_JSON:= $(addprefix $(top_srcdir)/gpMgmt/bin/gppylib/data/, $(addsuffix .json,$(GP_MAJORVERSION)))
 
-=======
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 include $(top_srcdir)/src/backend/common.mk
 
 # Note: the order of this list determines the order in which the catalog
@@ -178,11 +173,7 @@ installdirs:
 
 .PHONY: uninstall-data
 uninstall-data:
-<<<<<<< HEAD
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, $(BKIFILES) system_views.sql information_schema.sql cdb_init.d/cdb_schema.sql sql_features.txt)
-=======
-	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki system_views.sql information_schema.sql sql_features.txt)
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/, postgres.bki system_views.sql information_schema.sql cdb_init.d/cdb_schema.sql sql_features.txt)
 
 # postgres.bki and the generated headers are in the distribution tarball,
 # so they are not cleaned here.
