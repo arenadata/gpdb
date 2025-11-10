@@ -1518,45 +1518,6 @@ static void
 build_hash_table(AggState *aggstate, int setno, long nbuckets)
 {
 	AggStatePerHash perhash = &aggstate->perhash[setno];
-	MemoryContext	metacxt = aggstate->hash_metacxt;
-	MemoryContext	hashcxt = aggstate->hashcontext->ecxt_per_tuple_memory;
-	MemoryContext	tmpcxt	= aggstate->tmpcontext->ecxt_per_tuple_memory;
-	Size            additionalsize;
-
-	Assert(aggstate->aggstrategy == AGG_HASHED ||
-		   aggstate->aggstrategy == AGG_MIXED);
-
-	/*
-	 * Used to make sure initial hash table allocation does not exceed
-	 * work_mem. Note that the estimate does not include space for
-	 * pass-by-reference transition data values, nor for the representative
-	 * tuple of each group.
-	 */
-	additionalsize = aggstate->numtrans * sizeof(AggStatePerGroupData);
-
-	perhash->hashtable = BuildTupleHashTableExt(
-		&aggstate->ss.ps,
-		perhash->hashslot->tts_tupleDescriptor,
-		perhash->numCols,
-		perhash->hashGrpColIdxHash,
-		perhash->eqfuncoids,
-		perhash->hashfunctions,
-		perhash->aggnode->grpCollations,
-		nbuckets,
-		additionalsize,
-		metacxt,
-		hashcxt,
-		tmpcxt,
-		DO_AGGSPLIT_SKIPFINAL(aggstate->aggsplit));
-}
-
-/*
- * Build a single hashtable for this grouping set.
- */
-static void
-build_hash_table(AggState *aggstate, int setno, long nbuckets)
-{
-	AggStatePerHash perhash = &aggstate->perhash[setno];
 	MemoryContext	metacxt = aggstate->ss.ps.state->es_query_cxt;
 	MemoryContext	hashcxt = aggstate->hashcontext->ecxt_per_tuple_memory;
 	MemoryContext	tmpcxt	= aggstate->tmpcontext->ecxt_per_tuple_memory;
