@@ -2887,7 +2887,6 @@ drop table at_test_sql_partop;
 drop operator class at_test_sql_partop using btree;
 drop function at_test_sql_partop;
 
-<<<<<<< HEAD
 -- Test that altering owner of partition root should recurse into the child tables.
 create role atown_r1;
 create role atown_r2 in role atown_r1;
@@ -2906,7 +2905,6 @@ drop table atown_part;
 reset role;
 drop role atown_r1;
 drop role atown_r2;
-=======
 
 /* Test case for bug #16242 */
 
@@ -2945,4 +2943,3 @@ create trigger xtrig
 update bar1 set a = a + 1;
 
 /* End test case for bug #16242 */
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
