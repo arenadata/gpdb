@@ -2748,8 +2748,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_Sequence:
 			ExplainMemberNodes(((SequenceState *) planstate)->subplans,
 							   ((SequenceState *) planstate)->numSubplans,
-							   list_length(((Sequence *) plan)->subplans),
-										   ancestors, es);
+							   ancestors, es);
 			break;
 		case T_BitmapAnd:
 			ExplainMemberNodes(((BitmapAndState *) planstate)->bitmapplans,
