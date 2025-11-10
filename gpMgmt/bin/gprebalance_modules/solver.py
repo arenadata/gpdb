@@ -1,10 +1,10 @@
+import array
 from dataclasses import dataclass, field
 from typing import Set, Dict, List, Tuple, Optional
 from collections import defaultdict
 import time
 
-import cProfile
-import pstats
+from gprebalance_modules.config_generator import ConfigGenerator
 
 class TimeoutException(Exception):
     """Raised when search time limit is exceeded"""
@@ -280,87 +280,366 @@ class GreedySolver:
         
         return valid
 
+class ChunkedBitset:
+    """
+    Bitset using array of 64-bit integers.
+    Used for encoding pairs of hosts for segment assignments.
+    """
+
+    __slots__ = ['chunks', 'n_chunks', 'universe_size']
+
+    def __init__(self, universe_size: int):
+        self.universe_size = universe_size
+        self.n_chunks = (universe_size + 63) // 64
+        # 'Q' = unsigned long long (64-bit)
+        self.chunks = array.array('Q', [0] * self.n_chunks)
+    
+    @classmethod
+    def from_chunks(cls, chunks: array.array, universe_size: int) -> 'ChunkedBitset':
+        """
+        Create bitset from existing chunk array (for copy operations)
+        """
+        bitset = cls.__new__(cls)
+        bitset.chunks = chunks
+        bitset.n_chunks = len(chunks)
+        bitset.universe_size = universe_size
+        return bitset
+    
+    def copy(self) -> 'ChunkedBitset':
+        """
+        Deep copy of bitset
+        """
+        new_chunks = array.array('Q', self.chunks)
+        return ChunkedBitset.from_chunks(new_chunks, self.universe_size)
+    
+    def shallow_copy(self) -> 'ChunkedBitset':
+        """
+        Shallow copy - shares chunk array (for COW)
+        """
+        return ChunkedBitset.from_chunks(self.chunks, self.universe_size)
+    
+    # -------------------------------------------------------------------------
+    # Bit manipulation
+    # -------------------------------------------------------------------------
+    
+    def set_bit(self, bit: int):
+        """
+        Set bit at position (0-indexed)
+        """
+        chunk_idx = bit >> 6  # bit // 64
+        bit_offset = bit & 63  # bit % 64
+        self.chunks[chunk_idx] |= 1 << bit_offset
+    
+    def clear_bit(self, bit: int):
+        """Clear bit at position"""
+        chunk_idx = bit >> 6
+        bit_offset = bit & 63
+        self.chunks[chunk_idx] &= ~(1 << bit_offset)
+    
+    def test_bit(self, bit: int) -> bool:
+        """Test if bit is set"""
+        if bit < 0 or bit >= self.universe_size:
+            return False
+        chunk_idx = bit >> 6
+        bit_offset = bit & 63
+        return bool(self.chunks[chunk_idx] & (1 << bit_offset))
+    
+    def set_all(self):
+        """Set all bits to 1"""
+        max_val = 0xFFFFFFFFFFFFFFFF
+        for i in range(self.n_chunks):
+            self.chunks[i] = max_val
+        
+        # Clear excess bits in last chunk
+        last_bits = self.universe_size & 63
+        if last_bits != 0:
+            self.chunks[-1] = (1 << last_bits) - 1
+    
+    def clear_all(self):
+        """Clear all bits to 0"""
+        for i in range(self.n_chunks):
+            self.chunks[i] = 0
+    
+    # -------------------------------------------------------------------------
+    # Bitwise operations (in-place)
+    # -------------------------------------------------------------------------
+    
+    def and_inplace(self, other: 'ChunkedBitset'):
+        """Bitwise AND: self &= other"""
+        for i in range(self.n_chunks):
+            self.chunks[i] &= other.chunks[i]
+    
+    def or_inplace(self, other: 'ChunkedBitset'):
+        """Bitwise OR: self |= other"""
+        for i in range(self.n_chunks):
+            self.chunks[i] |= other.chunks[i]
+    
+    def andnot_inplace(self, other: 'ChunkedBitset'):
+        """Bitwise AND-NOT: self &= ~other (remove bits in other)"""
+        for i in range(self.n_chunks):
+            self.chunks[i] &= ~other.chunks[i] & 0xFFFFFFFFFFFFFFFF
+    
+    def not_inplace(self):
+        """Bitwise NOT: self = ~self"""
+        for i in range(self.n_chunks):
+            self.chunks[i] = ~self.chunks[i] & 0xFFFFFFFFFFFFFFFF
+        
+        # Clear excess bits in last chunk
+        last_bits = self.universe_size & 63
+        if last_bits != 0:
+            self.chunks[-1] &= (1 << last_bits) - 1
+    
+    # -------------------------------------------------------------------------
+    # Bitwise operations (new instance)
+    # -------------------------------------------------------------------------
+    
+    def and_copy(self, other: 'ChunkedBitset') -> 'ChunkedBitset':
+        """Return new bitset: self & other"""
+        result = self.copy()
+        result.and_inplace(other)
+        return result
+    
+    def or_copy(self, other: 'ChunkedBitset') -> 'ChunkedBitset':
+        """Return new bitset: self | other"""
+        result = self.copy()
+        result.or_inplace(other)
+        return result
+    
+    def andnot_copy(self, other: 'ChunkedBitset') -> 'ChunkedBitset':
+        """Return new bitset: self & ~other"""
+        result = self.copy()
+        result.andnot_inplace(other)
+        return result
+    
+    # -------------------------------------------------------------------------
+    # Query operations
+    # -------------------------------------------------------------------------
+    
+    def count_ones(self) -> int:
+        """Count number of set bits (population count)"""
+        total = 0
+        for chunk in self.chunks:
+            # Use Brian Kernighan's algorithm for counting
+            count = 0
+            n = chunk
+            while n:
+                n &= n - 1
+                count += 1
+            total += count
+        return total
+    
+    def is_empty(self) -> bool:
+        """Check if bitset is empty (all zeros)"""
+        for chunk in self.chunks:
+            if chunk != 0:
+                return False
+        return True
+    
+    def is_nonempty(self) -> bool:
+        """Check if bitset has at least one bit set"""
+        return not self.is_empty()
+    
+    def find_first_set(self) -> int:
+        """Find position of first set bit, or -1 if empty"""
+        for chunk_idx, chunk in enumerate(self.chunks):
+            if chunk != 0:
+                # Find first set bit in this chunk using bit manipulation
+                # chunk & -chunk isolates rightmost set bit
+                rightmost = chunk & -chunk
+                bit_offset = (rightmost.bit_length() - 1) if rightmost else 0
+                return (chunk_idx << 6) + bit_offset
+        return -1
+    
+    def iter_set_bits(self):
+        """Iterator over positions of all set bits"""
+        for chunk_idx, chunk in enumerate(self.chunks):
+            if chunk == 0:
+                continue
+            base = chunk_idx << 6
+            bit_offset = 0
+            while chunk:
+                if chunk & 1:
+                    yield base + bit_offset
+                chunk >>= 1
+                bit_offset += 1
+    
+    def __eq__(self, other: 'ChunkedBitset') -> bool:
+        """Equality check"""
+        if self.n_chunks != other.n_chunks:
+            return False
+        for i in range(self.n_chunks):
+            if self.chunks[i] != other.chunks[i]:
+                return False
+        return True
+
+class BitsetUtils:
+    """Precompute bitset masks for fast domain operations using chunked bitsets"""
+    
+    def __init__(self, n_hosts: int):
+        self.n_hosts = n_hosts
+        self.universe_size = n_hosts * n_hosts
+        
+        # Precompute masks for each host (using ChunkedBitset)
+        self.primary_masks: List[ChunkedBitset] = []  # primary_masks[h] = all pairs with primary=h
+        self.mirror_masks: List[ChunkedBitset] = []   # mirror_masks[h] = all pairs with mirror=h
+        
+        for h in range(n_hosts):
+            primary_mask = ChunkedBitset(self.universe_size)
+            mirror_mask = ChunkedBitset(self.universe_size)
+            
+            for p in range(n_hosts):
+                for m in range(n_hosts):
+                    if p != m:  # valid pairs only
+                        bit = p * n_hosts + m
+                        if p == h:
+                            primary_mask.set_bit(bit)
+                        if m == h:
+                            mirror_mask.set_bit(bit)
+            
+            self.primary_masks.append(primary_mask)
+            self.mirror_masks.append(mirror_mask)
+        
+        # Full domain (all valid pairs)
+        self.full_domain = ChunkedBitset(self.universe_size)
+        for p in range(n_hosts):
+            for m in range(n_hosts):
+                if p != m:
+                    bit = p * n_hosts + m
+                    self.full_domain.set_bit(bit)
+    
+    def create_full_domain(self) -> ChunkedBitset:
+        """Create a new full domain bitset"""
+        return self.full_domain.copy()
+    
+    def create_empty_domain(self) -> ChunkedBitset:
+        """Create an empty domain bitset"""
+        return ChunkedBitset(self.universe_size)
+    
+    def pair_to_bit(self, primary: int, mirror: int) -> int:
+        """Convert (primary, mirror) to bit position"""
+        return primary * self.n_hosts + mirror
+    
+    def bit_to_pair(self, bit: int) -> Tuple[int, int]:
+        """Convert bit position to (primary, mirror)"""
+        primary = bit // self.n_hosts
+        mirror = bit % self.n_hosts
+        return primary, mirror
+    
+    def has_pair(self, bitset: ChunkedBitset, primary: int, mirror: int) -> bool:
+        """Check if bitset contains specific pair"""
+        bit = self.pair_to_bit(primary, mirror)
+        return bitset.test_bit(bit)
+    
+    def add_pair(self, bitset: ChunkedBitset, primary: int, mirror: int):
+        """Add pair to bitset"""
+        bit = self.pair_to_bit(primary, mirror)
+        bitset.set_bit(bit)
+    
+    def remove_pair(self, bitset: ChunkedBitset, primary: int, mirror: int):
+        """Remove pair from bitset"""
+        bit = self.pair_to_bit(primary, mirror)
+        bitset.clear_bit(bit)
+    
+    def bitset_to_pairs(self, bitset: ChunkedBitset) -> List[Tuple[int, int]]:
+        """Convert bitset to list of (primary, mirror) pairs"""
+        pairs = []
+        for bit in bitset.iter_set_bits():
+            primary, mirror = self.bit_to_pair(bit)
+            pairs.append((primary, mirror))
+        return pairs
+    
+    def pairs_to_bitset(self, pairs: List[Tuple[int, int]]) -> ChunkedBitset:
+        """Convert list of pairs to bitset"""
+        bitset = self.create_empty_domain()
+        for primary, mirror in pairs:
+            self.add_pair(bitset, primary, mirror)
+        return bitset
+    
+    def get_primary_mask(self, host: int) -> ChunkedBitset:
+        """Get precomputed mask for all pairs with primary=host"""
+        return self.primary_masks[host]
+    
+    def get_mirror_mask(self, host: int) -> ChunkedBitset:
+        """Get precomputed mask for all pairs with mirror=host"""
+        return self.mirror_masks[host]
+
 # ============================================================================
 # DOMAIN REPRESENTATION
 # ============================================================================
 @dataclass
 class SegmentDomain:
     """
-    Domain of valid (primary_host, mirror_host) pairs for each segment.
-    
-    Attributes:
-        pairs: List where pairs[seg_id] = {(primary_host, mirror_host), ...}
+    Copy-on-write domain representation using chunked bitsets.
+    Each segment has a ChunkedBitset representing valid 
+    primary host, mirror host) pairs.
     """
-    pairs: List[Set[Tuple[int, int]]]  # pairs[seg_id] → {(p_host, m_host)}
     
-    def __init__(self, n_segments: int, n_hosts: int):
-        """Initialize with all valid pairs (primary_host ≠ mirror_host)"""
-        self.pairs = []
-        for seg_id in range(n_segments):
-            valid_pairs = {
-                (primary_host, mirror_host) 
-                for primary_host in range(n_hosts) 
-                for mirror_host in range(n_hosts) 
-                if primary_host != mirror_host
-            }
-            self.pairs.append(valid_pairs)
+    def __init__(self, n_segments: int, bitset_utils: BitsetUtils):
+        self.n_segments = n_segments
+        self.bitset_utils = bitset_utils
+        
+        # Each segment starts with full domain
+        full = bitset_utils.full_domain
+        self.domains: List[ChunkedBitset] = [full.copy() for _ in range(n_segments)]
+        self._shared = [False] * n_segments  # Track which domains are shared
+        initial_size = full.count_ones()
+        self._sizes: List[int] = [initial_size] * n_segments
     
-    def copy(self):
+    def shallow_copy(self) -> "SegmentDomain":
+        """Shallow copy - share domain bitsets"""
         new_domain = SegmentDomain.__new__(SegmentDomain)
-        new_domain.pairs = [pair_set.copy() for pair_set in self.pairs]
+        new_domain.n_segments = self.n_segments
+        new_domain.bitset_utils = self.bitset_utils
+        new_domain.domains = self.domains[:]  # Share bitset references
+        new_domain._shared = [True] * self.n_segments  # All shared in child
+        new_domain._sizes = self._sizes[:]
+        
+        # Mark as shared in parent too
+        for i in range(self.n_segments):
+            self._shared[i] = True
+        
         return new_domain
     
+    def _detach(self, seg_id: int):
+        """
+        Copy-on-write: make segment domain private before mutation
+        """
+        if self._shared[seg_id]:
+            self.domains[seg_id] = self.domains[seg_id].copy()
+            self._shared[seg_id] = False
+    
+    def update_domain(self, seg_id: int, new_bitset: ChunkedBitset):
+        """Update domain for segment (COW)"""
+        self._detach(seg_id)
+        self.domains[seg_id] = new_bitset
+        self._sizes[seg_id] = new_bitset.count_ones()
+    
+    def update_domain_inplace(self, seg_id: int, operation, *args):
+        """
+        Update domain in-place with operation (COW first).
+        operation: callable like lambda d: d.and_inplace(mask)
+        """
+        self._detach(seg_id)
+        operation(self.domains[seg_id], *args)
+    
+    def get_domain(self, seg_id: int) -> ChunkedBitset:
+        """Get domain bitset for segment (may be shared)"""
+        return self.domains[seg_id]
+    
+    def domain_size(self, seg_id: int) -> int:
+        """Number of valid pairs for segment"""
+        return self._sizes[seg_id]
+    
     def is_consistent(self) -> bool:
-        """Check if all segments have at least one valid placement"""
-        return all(len(pair_set) > 0 for pair_set in self.pairs)
-
-# ============================================================================
-# NOGOOD STORE - Prune already-explored failing branches
-# ============================================================================
-class NogoodStore:
-    """
-    Store partial assignments that led to failure.
-    Avoids re-exploring equivalent subtrees.
-    """
+        """Check if all segments have at least one valid pair"""
+        for d in self.domains:
+            if d.is_empty():
+                return False
+        return True
     
-    def __init__(self, n_segments, max_size: int = 10000):
-        self.nogoods: Set[str] = set()
-        self.max_size = max_size
-        self.hits = 0
-        self.checks = 0
-        self.edge_depth = int(0.5 * n_segments)
-    
-    def add_nogood(self, assignments: Dict[int, Tuple[int, int]], depth: int):
-        """Add a failing partial assignment (only shallow nogoods)"""
-        if depth > self.edge_depth:  # Don't store very specific nogoods
-            return
-        
-        if len(self.nogoods) >= self.max_size:
-            self.nogoods.pop()
-        
-        nogood_hash = self._hash_assignment(assignments)
-        self.nogoods.add(nogood_hash)
-    
-    def is_nogood(self, assignments: Dict[int, Tuple[int, int]]) -> bool:
-        """Check if current assignment contains a known nogood"""
-        self.checks += 1
-        
-        # Check subsets up to size 5
-        import itertools
-        for subset_size in range(1, min(len(assignments) + 1, 6)):
-            for subset_keys in itertools.combinations(assignments.keys(), subset_size):
-                subset = {seg_id: assignments[seg_id] for seg_id in subset_keys}
-                subset_hash = self._hash_assignment(subset)
-                
-                if subset_hash in self.nogoods:
-                    self.hits += 1
-                    return True
-        
-        return False
-    
-    def _hash_assignment(self, assignments: Dict[int, Tuple[int, int]]) -> str:
-        """Hash a partial assignment for storage"""
-        return str(sorted(assignments.items()))
+    def get_domain_copy(self, seg_id: int) -> ChunkedBitset:
+        """Get a private copy of domain (for safe mutation)"""
+        return self.domains[seg_id].copy()
 
 # ============================================================================
 # SEARCH NODE - State in the Branch-and-Bound tree
@@ -379,12 +658,17 @@ class SearchNode:
         host_load: host_load[host_id] = number of segments on that host
     """
     domains: SegmentDomain
-    assignments: Dict[int, Tuple[int, int]]  # seg_id → (primary_host, mirror_host)
+    assignments: Dict[int, Tuple[int, int]]  # seg_id -> (primary_host, mirror_host)
+    unassigned: Set[int]
+    unassigned_by_ph: Dict[int, List[int]] # primary_host -> [seg_ids]
     depth: int
     min_costs: Dict[int, int]  # Cached min cost per segment
     host_load: List[int] = field(default_factory=list)  # host_load[host_id]
+    primary_load: List[int] = field(default_factory=list)
+    mirror_load: List[int] = field(default_factory=list)
     future_sum: int = 0  # Sum of all min costs
     lower_bound: Optional[int] = None
+
     
     def is_complete(self, n_segments: int) -> bool:
         """Check if all segments are assigned"""
@@ -393,75 +677,14 @@ class SearchNode:
     def assign_segment(self, seg_id: int, primary_host: int, mirror_host: int):
         """Assign a segment and update domain"""
         self.assignments[seg_id] = (primary_host, mirror_host)
-        self.domains.pairs[seg_id] = {(primary_host, mirror_host)}
-
-# ============================================================================
-# DYNAMIC MIRROR GROUPS - Groups computed from current assignments
-# ============================================================================
-
-class DynamicMirrorGroups:
-    """
-    Compute mirror groups dynamically based on CURRENT primary assignments.
-    Not based on initial mirroring, but on actual assigned primaries during search.
-    """
-    
-    @staticmethod
-    def get_groups(node: SearchNode, strategy: str) -> List[Dict]:
-        """
-        Build mirror groups from CURRENT assignments.
-        
-        Returns:
-            List of groups: [{'primary_host': h, 'seg_ids': [...], 'strategy': ...}, ...]
-        """
-        groups_by_primary = defaultdict(list)
-        
-        # Group ASSIGNED segments by their NEW primary_host
-        for seg_id, (primary_host, mirror_host) in node.assignments.items():
-            groups_by_primary[primary_host].append(seg_id)
-        
-        # Convert to group structures (only if 2+ segments share primary)
-        mirror_groups = []
-        for primary_host in sorted(groups_by_primary.keys()):
-            seg_ids = groups_by_primary[primary_host]
-            
-            if len(seg_ids) > 1:  # Only groups with 2+ segments
-                group = {
-                    'primary_host': primary_host,
-                    'seg_ids': seg_ids,
-                    'strategy': strategy
-                }
-                mirror_groups.append(group)
-        
-        return mirror_groups
-    
-    @staticmethod
-    def get_potential_groups(node: SearchNode, seg_id: int, 
-                            primary_host: int, strategy: str) -> List[Dict]:
-        """
-        Get groups that WOULD exist if we assign seg_id to primary_host.
-        Used for lookahead in constraint checking.
-        """
-        groups_by_primary = defaultdict(list)
-        
-        # Add existing assignments
-        for sid, (p_host, m_host) in node.assignments.items():
-            groups_by_primary[p_host].append(sid)
-        
-        # Add hypothetical assignment
-        groups_by_primary[primary_host].append(seg_id)
-        
-        # Convert to groups
-        mirror_groups = []
-        for p_host in sorted(groups_by_primary.keys()):
-            seg_list = groups_by_primary[p_host]
-            if len(seg_list) > 1:
-                mirror_groups.append({
-                    'primary_host': p_host,
-                    'seg_ids': seg_list,
-                    'strategy': strategy
-                })
-        
-        return mirror_groups
+        self.unassigned.discard(seg_id)
+        if primary_host in self.unassigned_by_ph:
+            if seg_id in self.unassigned_by_ph[primary_host]:
+                self.unassigned_by_ph[primary_host].remove(seg_id)
+        self.host_load[primary_host] += 1
+        self.host_load[mirror_host] += 1
+        self.primary_load[primary_host] += 1
+        self.mirror_load[mirror_host] += 1
 
 # ============================================================================
 # CONSTRAINT PROPAGATOR - Domain reduction engine
@@ -484,9 +707,7 @@ class ConstraintPropagator:
         self.n_hosts = solver.n_hosts
         self.strategy = solver.strategy
         self.L_target = solver.L_target
-        self.delta = 0
-        self.L_min = solver.L_target
-        self.L_max = solver.L_target
+        self.bitset_utils = solver.bitset_utils
     
     def propagate(self, node: SearchNode) -> bool:
         """
@@ -496,29 +717,18 @@ class ConstraintPropagator:
         if not node.domains.is_consistent():
             return False
         
-        changed = True
-        iterations = 0
-        max_iterations = self.n_segments * 3
+        # Rule 1: Singleton domains -> auto-assign
+        self._propagate_singletons(node)
         
-        while changed and iterations < max_iterations:
-            changed = False
-            iterations += 1
-            
-            # Rule 1: Singleton domains → auto-assign
-            result = self._propagate_singletons(node)
-            changed |= result
-            
-            # Rule 2: Load balance constraints
-            result = self._propagate_load_balance(node)
-            if result is None:
-                return False
-            changed |= result
-            
-            # Rule 3: Dynamic mirror group strategy constraints
-            result = self._propagate_strategy_constraints(node)
-            if result is None:
-                return False
-            changed |= result
+        # Rule 2: Load balance constraints
+        result = self._propagate_load_balance(node)
+        if result is None:
+            return False
+        
+        # Rule 3: Dynamic mirror group strategy constraints
+        result = self._propagate_strategy_constraints(node)
+        if result is None:
+            return False
         
         return node.domains.is_consistent()
     
@@ -526,16 +736,14 @@ class ConstraintPropagator:
         """Assign segments with only one valid pair"""
         changed = False
         
-        for seg_id in range(self.n_segments):
-            if seg_id not in node.assignments and len(node.domains.pairs[seg_id]) == 1:
-                primary_host, mirror_host = next(iter(node.domains.pairs[seg_id]))
+        for seg_id in node.unassigned:
+            domain = node.domains.get_domain(seg_id)
+            if node.domains.domain_size(seg_id) == 1:
+                # Extract the single pair
+                bit = domain.find_first_set()
+                primary_host, mirror_host = self.bitset_utils.bit_to_pair(bit)
+                
                 node.assign_segment(seg_id, primary_host, mirror_host)
-                
-                # Update load
-                if len(node.host_load) > max(primary_host, mirror_host):
-                    node.host_load[primary_host] += 1
-                    node.host_load[mirror_host] += 1
-                
                 changed = True
         
         return changed
@@ -544,50 +752,39 @@ class ConstraintPropagator:
         """Remove pairs that would violate load constraints"""
         changed = False
         
-        # Initialize auxilarry load
-        primary_load = [0] * (self.n_hosts)
-        mirror_load = [0] * (self.n_hosts)
-        for seg_id, (primary_host, mirror_host) in node.assignments.items():
-            primary_load[primary_host] += 1
-            mirror_load[mirror_host] += 1
+        # Calculate remaining capacity for each host
+        remaining_unassigned = len(node.unassigned)
+        if remaining_unassigned == 0:
+            return False
         
-        # Check each host
-        for host_id in range(self.n_hosts):            
-            # Host is full - remove all pairs using it
-            if primary_load[host_id] >= self.L_max // 2:
-                for seg_id in range(self.n_segments):
-                    if seg_id not in node.assignments:
-                        before_size = len(node.domains.pairs[seg_id])
-                        node.domains.pairs[seg_id] = {
-                            (p_host, m_host) 
-                            for (p_host, m_host) in node.domains.pairs[seg_id]
-                            if p_host != host_id
-                        }
-                        if len(node.domains.pairs[seg_id]) == 0:
-                            return None  # Inconsistent
-                        if len(node.domains.pairs[seg_id]) < before_size:
-                            changed = True
-            elif mirror_load[host_id] >= self.L_max // 2:
-                for seg_id in range(self.n_segments):
-                    if seg_id not in node.assignments:
-                        before_size = len(node.domains.pairs[seg_id])
-                        node.domains.pairs[seg_id] = {
-                            (p_host, m_host) 
-                            for (p_host, m_host) in node.domains.pairs[seg_id]
-                            if m_host != host_id
-                        }
-                        if len(node.domains.pairs[seg_id]) == 0:
-                            return None  # Inconsistent
-                        if len(node.domains.pairs[seg_id]) < before_size:
-                            changed = True
-
-            # Check if host can still reach minimum load
-            n_unassigned = sum(1 for seg in range(self.n_segments) 
-                             if seg not in node.assignments)
-            max_possible_load = node.host_load[host_id] + n_unassigned * 2
+        full_primary_hosts = []
+        full_mirror_hosts = []
+        # Initialize auxilarry load
+        for h in range(self.n_hosts):
+            if node.primary_load[h] >= self.L_target // 2:
+                # This host cannot take any more segments
+                full_primary_hosts.append(h)
+            elif node.mirror_load[h] >= self.L_target // 2:
+                full_mirror_hosts.append(h)
+        
+        if not full_primary_hosts and not full_mirror_hosts:
+            return False
+        
+        for seg_id in node.unassigned:
+            domain = node.domains.get_domain(seg_id)
+            original_count = node.domains.domain_size(seg_id)
+            new_domain = domain.copy()
+            for h in full_primary_hosts:
+                new_domain.andnot_inplace(self.bitset_utils.get_primary_mask(h))
+            for h in full_mirror_hosts:
+                new_domain.andnot_inplace(self.bitset_utils.get_mirror_mask(h))
             
-            if max_possible_load < self.L_min:
-                return None  # Cannot satisfy minimum load
+            if new_domain.is_empty():
+                return None
+            
+            if new_domain.count_ones() < original_count:
+                node.domains.update_domain(seg_id, new_domain)
+                changed = True
         
         return changed
     
@@ -596,26 +793,37 @@ class ConstraintPropagator:
         Propagate strategy constraints using DYNAMIC mirror groups.
         Groups are based on CURRENT primary assignments, not initial P0.
         """
+        if self.strategy == 'any':
+            return False
+        
+        groups_by_primary = defaultdict(list)
+        for seg_id, (p, m) in node.assignments.items():
+            groups_by_primary[p].append((seg_id, m))
+
         changed = False
         
-        # Get current mirror groups (dynamic!)
-        mirror_groups = DynamicMirrorGroups.get_groups(node, self.strategy)
-        
-        if self.strategy == 'grouped':
-            result = self._propagate_grouped(node, mirror_groups)
-        elif self.strategy == 'spread':
-            result = self._propagate_spread(node, mirror_groups)
-        else: # 'any'
-            result = False
-
-        if result is None:
-            return None
-        changed |= result
+        for primary_host, assigned_segs in groups_by_primary.items():
+            if len(assigned_segs) < 1:
+                continue
+            
+            if self.strategy == 'grouped':
+                result = self._propagate_grouped(
+                    node, primary_host, assigned_segs
+                )
+            else:  # 'spread'
+                result = self._propagate_spread(
+                    node, primary_host, assigned_segs
+                )
+            
+            if result is None:
+                return None
+            changed |= result
         
         return changed
-    
+            
     def _propagate_grouped(self, node: SearchNode, 
-                          mirror_groups: List[Dict]) -> Optional[bool]:
+                          primary_host: int,
+                          assigned_segs: List[Tuple[int, int]]) -> Optional[bool]:
         """
         Grouped strategy: All segments on same primary_host must share same mirror_host.
         
@@ -625,41 +833,42 @@ class ConstraintPropagator:
         """
         changed = False
         
-        for group in mirror_groups:
-            primary_host = group['primary_host']
-            seg_ids = group['seg_ids']
+        mirrors = set(m for _, m in assigned_segs)
+        if len(mirrors) > 1:
+            return None  # Conflict detected
+        if len(mirrors) == 0:
+            return False
+        
+        assigned_mirror = mirrors.pop()
+        
+        # Create mask for allowed pair: (primary_host, assigned_mirror)
+        allowed_bitset = self.bitset_utils.create_empty_domain()
+        self.bitset_utils.add_pair(allowed_bitset, primary_host, assigned_mirror)
+        
+        # Get mask for this primary
+        primary_mask = self.bitset_utils.get_primary_mask(primary_host)
+        
+        for seg_id in node.unassigned_by_ph[primary_host]:
+            domain = node.domains.get_domain(seg_id)
+            original_count = node.domains.domain_size(seg_id)
             
-            # Find assigned mirror host for this primary group
-            assigned_mirror_host = None
-            for seg_id in seg_ids:
-                if seg_id in node.assignments:
-                    p_host, m_host = node.assignments[seg_id]
-                    if p_host == primary_host:
-                        if assigned_mirror_host is None:
-                            assigned_mirror_host = m_host
-                        elif assigned_mirror_host != m_host:
-                            return None  # Conflict!
+            # Remove all (primary_host, *) except (primary_host, assigned_mirror)
+            new_domain = domain.copy()
+            new_domain.andnot_inplace(primary_mask)  # Remove all with this primary
+            new_domain.or_inplace(domain.and_copy(allowed_bitset))  # Add back the allowed one
             
-            # If mirror is determined, propagate to unassigned segments
-            if assigned_mirror_host is not None:
-                for seg_id in range(self.n_segments):
-                    if seg_id not in node.assignments:
-                        before_size = len(node.domains.pairs[seg_id])
-                        # Keep only (primary_host, assigned_mirror_host)
-                        node.domains.pairs[seg_id] = {
-                            (p_host, m_host) 
-                            for (p_host, m_host) in node.domains.pairs[seg_id]
-                            if p_host != primary_host or m_host == assigned_mirror_host
-                        }
-                        if len(node.domains.pairs[seg_id]) == 0:
-                            return None
-                        if len(node.domains.pairs[seg_id]) < before_size:
-                            changed = True
+            if new_domain.is_empty():
+                return None
+            
+            if new_domain.count_ones() < original_count:
+                node.domains.update_domain(seg_id, new_domain)
+                changed = True
         
         return changed
     
     def _propagate_spread(self, node: SearchNode, 
-                         mirror_groups: List[Dict]) -> Optional[bool]:
+                          primary_host: int,
+                          assigned_segs: List[Tuple[int, int]]) -> Optional[bool]:
         """
         Spread strategy: All segments on same primary_host must have DIFFERENT mirror_hosts.
         
@@ -669,50 +878,31 @@ class ConstraintPropagator:
         """
         changed = False
         
-        for group in mirror_groups:
-            primary_host = group['primary_host']
-            seg_ids = group['seg_ids']
+        used_mirrors = set(m for _, m in assigned_segs)
+        if len(used_mirrors) != len(assigned_segs):
+            return None  # Conflict detected
+        if len(used_mirrors) == 0:
+            return False
+
+        # Create mask of forbidden pairs
+        forbidden_bitset = self.bitset_utils.create_empty_domain()
+        for mirror_host in used_mirrors:
+            self.bitset_utils.add_pair(forbidden_bitset, primary_host, mirror_host)
+        
+        for seg_id in node.unassigned_by_ph[primary_host]:
+            domain = node.domains.get_domain(seg_id)
+            original_count = node.domains.domain_size(seg_id)
             
-            # Collect used mirrors for this primary
-            used_mirror_hosts = set()
-            for seg_id in seg_ids:
-                if seg_id in node.assignments:
-                    p_host, m_host = node.assignments[seg_id]
-                    if p_host == primary_host:
-                        used_mirror_hosts.add(m_host)
+            # Remove forbidden pairs
+            new_domain = domain.copy()
+            new_domain.andnot_inplace(forbidden_bitset)
             
-            # Remove used mirrors from unassigned domains
-            for seg_id in range(self.n_segments):
-                if seg_id not in node.assignments:
-                    before_size = len(node.domains.pairs[seg_id])
-                    node.domains.pairs[seg_id] = {
-                        (p_host, m_host) 
-                        for (p_host, m_host) in node.domains.pairs[seg_id]
-                        if p_host != primary_host or m_host not in used_mirror_hosts
-                    }
-                    if len(node.domains.pairs[seg_id]) == 0:
-                        return None
-                    if len(node.domains.pairs[seg_id]) < before_size:
-                        changed = True
+            if new_domain.is_empty():
+                return None
             
-            # Feasibility check: enough distinct mirrors available?
-            unassigned_on_primary = [
-                seg for seg in range(self.n_segments)
-                if seg not in node.assignments
-                and any(p == primary_host for (p, m) in node.domains.pairs[seg])
-            ]
-            
-            available_mirrors = set()
-            for seg_id in unassigned_on_primary:
-                for (p_host, m_host) in node.domains.pairs[seg_id]:
-                    if p_host == primary_host:
-                        available_mirrors.add(m_host)
-            
-            needed_count = len(used_mirror_hosts) + len(unassigned_on_primary)
-            total_count = len(used_mirror_hosts) + len(available_mirrors)
-            
-            if total_count < needed_count:
-                return None  # Not enough distinct mirrors
+            if new_domain.count_ones() < original_count:
+                node.domains.update_domain(seg_id, new_domain)
+                changed = True
         
         return changed
 
@@ -749,18 +939,17 @@ class BABSolver:
         # Target load per host including mirrors
         total_capacity = 2 * n_segments
         self.L_target = total_capacity // n_hosts_target
-        
-        # Pruning structures
-        self.nogood_store = NogoodStore(n_segments)
+        self.bitset_utils = BitsetUtils(n_hosts_target)
+        self.propagator = ConstraintPropagator(self)
         
         # Statistics
         self.nodes_explored = 0
         self.nodes_pruned = 0
-        self.nogood_prunes = 0
         self.bound_prunes = 0
         self.load_prunes = 0
         self.check_counter = 0
         self.check_interval = 50
+        
 
         # Best solution tracking
         self.initial_solution = GreedySolver(n_segments, n_hosts_target, n_hosts_initial,
@@ -775,18 +964,22 @@ class BABSolver:
         
         # Create root node
         root = SearchNode(
-            domains=SegmentDomain(self.n_segments, self.n_hosts),
+            domains=SegmentDomain(self.n_segments, self.bitset_utils),
             assignments={},
             depth=0,
+            unassigned=set(range(self.n_segments)),
+            unassigned_by_ph={h: list(range(self.n_segments)) for h in range(self.n_hosts)},
             min_costs={},
-            host_load=[0] * (self.n_hosts)
+            host_load=[0] * (self.n_hosts),
+            primary_load=[0] * (self.n_hosts),
+            mirror_load=[0] * (self.n_hosts)
         )
 
         self._initialize_bounds(root)
 
         # Initial propagation
-        propagator = ConstraintPropagator(self)
-        if not propagator.propagate(root):
+        
+        if not self.propagator.propagate(root):
             return None, float('inf')
         
         
@@ -818,10 +1011,8 @@ class BABSolver:
             return
         
         # Full constraint propagation
-        propagator = ConstraintPropagator(self)
-        if not propagator.propagate(node):
+        if not self.propagator.propagate(node):
             self.nodes_pruned += 1
-            self.nogood_store.add_nogood(node.assignments, node.depth)
             return
         
         # Compute tight lower bound
@@ -847,13 +1038,13 @@ class BABSolver:
         if seg_id is None:
             return
         
-        # Order placements to try (value ordering)
-        placements = self._order_placements_smart(seg_id, node)
+        domain = node.domains.get_domain(seg_id)        
+        for bit in domain.iter_set_bits():
+            primary_host, mirror_host = self.bitset_utils.bit_to_pair(bit)
         
-        # Branch on each placement
-        for (primary_host, mirror_host) in placements:
             # Quick feasibility check
             if not self._can_place(node, primary_host, mirror_host):
+                self.nodes_explored += 1
                 self.nodes_pruned += 1
                 self.load_prunes += 1
                 continue
@@ -889,15 +1080,13 @@ class BABSolver:
         mrv_candidates = []
 
         # Phase 1: Find all segments with minimum domain size
-        for seg_id in range(self.n_segments):
-            if seg_id not in node.assignments:
-                domain_size = len(node.domains.pairs[seg_id])
-
-                if domain_size < min_domain:
-                    min_domain = domain_size
-                    mrv_candidates = [seg_id]
-                elif domain_size == min_domain:
-                    mrv_candidates.append(seg_id)
+        for seg_id in node.unassigned:
+            domain_size = node.domains.domain_size(seg_id)
+            if domain_size < min_domain:
+                min_domain = domain_size
+                mrv_candidates = [seg_id]
+            elif domain_size == min_domain:
+                mrv_candidates.append(seg_id)
 
         if not mrv_candidates:
             return None
@@ -909,50 +1098,15 @@ class BABSolver:
         must_move_candidates = []
         for seg_id in mrv_candidates:
             original = (self.initial_primary[seg_id], self.initial_mirror[seg_id])
-            if original not in node.domains.pairs[seg_id]:
+            domain = node.domains.get_domain(seg_id)
+            if not self.bitset_utils.has_pair(domain, original[0], original[1]):
                 must_move_candidates.append(seg_id)
 
         if must_move_candidates:
-            return must_move_candidates[0]  # Return first must-move
+            return max(must_move_candidates, key=lambda s: node.min_costs.get(s, 0))
 
-        return min(mrv_candidates)
+        return max(mrv_candidates, key=lambda s: node.min_costs.get(s, 0))
     
-    def _order_placements_smart(self, seg_id: int, 
-                               node: SearchNode) -> List[Tuple[int, int]]:
-        """
-        Smart value ordering: Try best placements first
-        
-        Priority:
-        1. Original placement (cost 0)
-        2. Single movement (cost 1)
-        3. Better load balance
-        4. Less constraining for others
-        """
-        placements = list(node.domains.pairs[seg_id])
-        original_primary = self.initial_primary[seg_id]
-        original_mirror = self.initial_mirror[seg_id]
-        
-        scored_placements = []
-        for (primary_host, mirror_host) in placements:
-            # Movement cost
-            cost = (1 if primary_host != original_primary else 0) + \
-                   (1 if mirror_host != original_mirror else 0)
-            
-            # Load balance score
-            load_score = abs(node.host_load[primary_host] - self.L_target) + \
-                        abs(node.host_load[mirror_host] - self.L_target)
-            
-            # Constraining score (fewer future constraints is better)
-            potential_groups = DynamicMirrorGroups.get_potential_groups(
-                node, seg_id, primary_host, self.strategy
-            )
-            constraining_score = len(potential_groups)
-            
-            score = (cost, load_score, constraining_score)
-            scored_placements.append((score, primary_host, mirror_host))
-        
-        scored_placements.sort()
-        return [(p, m) for (_, p, m) in scored_placements]
     
     def _can_place(self, node: SearchNode, primary_host: int, mirror_host: int) -> bool:
         """Quick feasibility check before branching"""
@@ -968,19 +1122,18 @@ class BABSolver:
                      primary_host: int, mirror_host: int) -> Optional[SearchNode]:
         """Create child node with new assignment"""
         child = SearchNode(
-            domains=parent.domains.copy(),
+            domains=parent.domains.shallow_copy(),
             assignments=parent.assignments.copy(),
+            unassigned=parent.unassigned.copy(),
+            unassigned_by_ph=parent.unassigned_by_ph.copy(),
             depth=parent.depth + 1,
             host_load=parent.host_load.copy(),
+            primary_load=parent.primary_load.copy(),
+            mirror_load=parent.mirror_load.copy(),
             min_costs=parent.min_costs.copy()
         )
         
         child.assign_segment(seg_id, primary_host, mirror_host)
-        
-        # Update load
-        if len(child.host_load) > max(primary_host, mirror_host):
-            child.host_load[primary_host] += 1
-            child.host_load[mirror_host] += 1
         
         # Update child bounds
         if seg_id in child.min_costs:
@@ -1000,15 +1153,19 @@ class BABSolver:
         
         for seg_id in range(self.n_segments):
             if seg_id in node.assignments:
-                primary_host, mirror_host = node.assignments[seg_id]
-                if primary_host != self.initial_primary[seg_id]:
+                if node.assignments[seg_id][0] != self.initial_primary[seg_id]:
                     cost += 1
-                if mirror_host != self.initial_mirror[seg_id]:
+                if node.assignments[seg_id][1] != self.initial_mirror[seg_id]:
                     cost += 1
             else:
                 # If original not in domain, must move at least once
-                original = (self.initial_primary[seg_id], self.initial_mirror[seg_id])
-                if original not in node.domains.pairs[seg_id]:
+                original_primary = self.initial_primary[seg_id]
+                original_mirror = self.initial_mirror[seg_id]
+                
+                domain = node.domains.get_domain(seg_id)
+                
+                # If original placement not in domain, must move at least once
+                if not self.bitset_utils.has_pair(domain, original_primary, original_mirror):
                     cost += 1
         
         return cost
@@ -1024,15 +1181,16 @@ class BABSolver:
     
     def _min_cost_for_segment(self, seg_id: int, node: SearchNode) -> int:
         """Minimum movement cost for one segment"""
-        domain = node.domains.pairs[seg_id]
-        if not domain:
+        domain = node.domains.get_domain(seg_id)
+        placements = self.bitset_utils.bitset_to_pairs(domain)
+        if not placements:
             return 999  # Not a solution
         
         orig_p, orig_m = self.initial_primary[seg_id], self.initial_mirror[seg_id]
         
         return min(
             (0 if p == orig_p else 1) + (0 if m == orig_m else 1)
-            for p, m in domain
+            for p, m in placements
         )
     
     def _compute_lower_bound(self, node: SearchNode) -> int:
@@ -1078,7 +1236,6 @@ class BABSolver:
         print("=" * 70)
         print(f"Nodes explored:    {self.nodes_explored:,}")
         print(f"Nodes pruned:      {self.nodes_pruned:,}")
-        print(f"  Nogood prunes:   {self.nogood_prunes:,}")
         print(f"  Bound prunes:    {self.bound_prunes:,}")
         print(f"  Load prunes:     {self.load_prunes:,}")
         print(f"Pruning rate:      {self.nodes_pruned / max(1, self.nodes_explored) * 100:.1f}%")
@@ -1103,104 +1260,313 @@ class BABSolver:
         print(f"  Primary moves: {primary_moves}, Mirror moves: {mirror_moves}")
         print(f"  Load: {host_loads}")
 
-import random
 
-class ConfigGenerator:
-    """Generate test configurations"""
+from ortools.sat.python import cp_model
+
+class ILPSolver:
+    """
+    Solve using Integer Linear Programming with decommissioned host support
+    """
     
-    @staticmethod
-    def generate_balanced_grouped(n_segments: int, n_hosts: int) -> Tuple[List[int], List[int]]:
-        """Generate balanced GROUPED configuration"""
-        assert n_segments % n_hosts == 0, "Must be evenly divisible"
+    def __init__(self, n_segments, n_hosts_target, n_hosts_initial,
+                 initial_primary, initial_mirror, 
+                 strategy='grouped'):
+        """
+        Args:
+            n_segments: Number of segments
+            n_hosts_target: Number of hosts after decommissioning
+            n_hosts_initial: Number of hosts before decommissioning
+            initial_primary: List/dict of initial primary host assignments
+            initial_mirror: List/dict of initial mirror host assignments
+            decommissioned_hosts: Set of host indices that are being decommissioned
+            strategy: 'grouped', 'spread', or 'any'
+        """
+        self.n_segments = n_segments
+        self.n_hosts_initial = n_hosts_initial
+        self.n_hosts_target = n_hosts_target
+        self.initial_primary = initial_primary
+        self.initial_mirror = initial_mirror
+        self.strategy = strategy
         
-        segs_per_host = n_segments // n_hosts
+
+        self.decommissioned_hosts = set(range(n_hosts_initial)) - set(range(n_hosts_target))
         
-        # Assign primaries round-robin
-        primaries = []
-        for host_id in range(n_hosts):
-            primaries.extend([host_id] * segs_per_host)
+        self.active_hosts = set(range(n_hosts_target))
         
-        # Assign mirrors (grouped: all primaries on host_i → mirrors on host_(i+1))
-        mirrors = []
-        for seg_id in range(n_segments):
-            p_host = primaries[seg_id]
-            m_host = (p_host + 1) % n_hosts
-            mirrors.append(m_host)
+        # Target load per active host
+        self.L_target = (2 * n_segments) // n_hosts_target
         
-        return primaries, mirrors
+        # Count forced movements from decommissioned hosts
+        self.forced_movements = 0
+        for i in range(n_segments):
+            if initial_primary[i] in self.decommissioned_hosts:
+                self.forced_movements += 1
+            if initial_mirror[i] in self.decommissioned_hosts:
+                self.forced_movements += 1
+        
     
-    @staticmethod
-    def generate_balanced_spread(n_segments: int, n_hosts: int) -> Tuple[List[int], List[int]]:
-        """Generate balanced SPREAD configuration"""
-        assert n_segments % n_hosts == 0, "Must be evenly divisible"
+    def solve_with_ortools(self, time_limit=120):
+        """
+        Solve using Google OR-Tools CP-SAT solver
+        """
+        model = cp_model.CpModel()
         
-        segs_per_host = n_segments // n_hosts
         
-        # Assign primaries
-        primaries = []
-        for host_id in range(n_hosts):
-            primaries.extend([host_id] * segs_per_host)
+        # Variables (span ALL initial hosts)
         
-        # Assign mirrors (spread: distribute across different hosts)
-        mirrors = []
-        for host_id in range(n_hosts):
-            # Get segments on this host
-            start_idx = host_id * segs_per_host
+        # x[i][p] = 1 if segment i has primary on host p
+        x = {}
+        for i in range(self.n_segments):
+            for p in range(self.n_hosts_initial):
+                x[i, p] = model.NewBoolVar(f'x_{i}_{p}')
+        
+        # y[i][m] = 1 if segment i has mirror on host m
+        y = {}
+        for i in range(self.n_segments):
+            for m in range(self.n_hosts_initial):
+                y[i, m] = model.NewBoolVar(f'y_{i}_{m}')
+        
+        # Movement indicators (voluntary movements only)
+        mu_p_voluntary = {}  # primary moved voluntarily
+        mu_m_voluntary = {}  # mirror moved voluntarily
+        for i in range(self.n_segments):
+            mu_p_voluntary[i] = model.NewBoolVar(f'mu_p_vol_{i}')
+            mu_m_voluntary[i] = model.NewBoolVar(f'mu_m_vol_{i}')
+        
+        # Constraints
+        
+        # Each segment assigned to exactly one primary
+        for i in range(self.n_segments):
+            model.Add(sum(x[i, p] for p in range(self.n_hosts_initial)) == 1)
+        
+        # Each segment assigned to exactly one mirror
+        for i in range(self.n_segments):
+            model.Add(sum(y[i, m] for m in range(self.n_hosts_initial)) == 1)
+        
+        # Co-location prevention: primary != mirror
+        for i in range(self.n_segments):
+            for h in range(self.n_hosts_initial):
+                model.Add(x[i, h] + y[i, h] <= 1)
+        
+        # NEW: DECOMMISSIONING CONSTRAINTS
+        # No segments can be assigned to decommissioned hosts
+        for i in range(self.n_segments):
+            for h in self.decommissioned_hosts:
+                model.Add(x[i, h] == 0)
+                model.Add(y[i, h] == 0)
+        
+        # LOAD BALANCE (only on active hosts)
+        for h in self.active_hosts:
+            model.Add(
+                sum(x[i, h] for i in range(self.n_segments))  == self.L_target // 2)
+            model.Add(
+                sum(y[i, h] for i in range(self.n_segments)) == self.L_target // 2)
+        
+        # VOLUNTARY MOVEMENT TRACKING
+        for i in range(self.n_segments):
+            orig_p = self.initial_primary[i]
+            orig_m = self.initial_mirror[i]
             
-            # Available mirror hosts (not self)
-            available = [h for h in range(n_hosts) if h != host_id]
+            # Primary movement tracking
+            if orig_p in self.decommissioned_hosts:
+                # Forced movement - don't count it
+                model.Add(mu_p_voluntary[i] == 0)
+            else:
+                # Voluntary movement: mu_p[i] = 1 iff segment i moved primary
+                model.Add(mu_p_voluntary[i] == 1 - x[i, orig_p])
             
-            for i in range(segs_per_host):
-                m_host = available[i % len(available)]
-                mirrors.append(m_host)
+            # Mirror movement tracking
+            if orig_m in self.decommissioned_hosts:
+                # Forced movement - don't count it
+                model.Add(mu_m_voluntary[i] == 0)
+            else:
+                # Voluntary movement: mu_m[i] = 1 iff segment i moved mirror
+                model.Add(mu_m_voluntary[i] == 1 - y[i, orig_m])
         
-        return primaries, mirrors
-    
-    @staticmethod
-    def generate_unbalanced_grouped(n_segments: int, n_hosts: int, 
-                                   skew: float = 0.3) -> Tuple[List[int], List[int]]:
-        """Generate UNBALANCED GROUPED configuration"""
-        base = n_segments // n_hosts
+        # Strategy constraints (only on active hosts)
+        if self.strategy == 'grouped':
+            self._add_grouped_constraints(model, x, y)
+        elif self.strategy == 'spread':
+            self._add_spread_constraints(model, x, y)
         
-        # Create skewed distribution
-        loads = [base] * n_hosts
+        # Objective: Minimize VOLUNTARY movements only
+        model.Minimize(
+            sum(mu_p_voluntary[i] for i in range(self.n_segments)) +
+            sum(mu_m_voluntary[i] for i in range(self.n_segments))
+        )
         
-        # Transfer segments from last hosts to first hosts
-        transfer = int(base * skew)
-        if transfer > 0 and n_hosts >= 2:
-            loads[0] += transfer
-            loads[-1] -= transfer
+        # Solve
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = time_limit
+        solver.parameters.num_search_workers = 8  # Parallel solving
+        solver.parameters.log_search_progress = True
         
-        # Assign primaries
-        primaries = []
-        for host_id in range(n_hosts):
-            primaries.extend([host_id] * loads[host_id])
+        print(f"\nSolving ILP with OR-Tools (N={self.n_segments}, H_initial={self.n_hosts_initial}, H_target={self.n_hosts_target})...")
+        status = solver.Solve(model)
         
-        # Shuffle to randomize order
-        random.shuffle(primaries)
+        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            # Extract solution
+            solution = {}
+            for i in range(self.n_segments):
+                primary = next(p for p in range(self.n_hosts_initial) if solver.Value(x[i, p]) == 1)
+                mirror = next(m for m in range(self.n_hosts_initial) if solver.Value(y[i, m]) == 1)
+                solution[i] = (primary, mirror)
+            
+            voluntary_movements = int(solver.ObjectiveValue())
+            total_movements = voluntary_movements + self.forced_movements
+            
+            print(f"\n{'='*70}")
+            print(f"ILP SOLUTION FOUND")
+            print(f"{'='*70}")
+            print(f"Status:               {solver.StatusName(status)}")
+            print(f"Voluntary movements:  {voluntary_movements}")
+            print(f"Forced movements:     {self.forced_movements}")
+            print(f"Total movements:      {total_movements}")
+            print(f"Movement ratio:       {total_movements / (2 * self.n_segments) * 100:.1f}%")
+            print(f"Time:                 {solver.WallTime():.2f}s")
+            print(f"Branches:             {solver.NumBranches():,}")
+            print(f"Conflicts:            {solver.NumConflicts():,}")
+            print(f"{'='*70}")
+            
+            return solution, total_movements
+        else:
+            print(f"No solution found. Status: {solver.StatusName(status)}")
+            return None, float('inf'), float('inf')
         
-        # Assign mirrors (grouped)
-        mirrors = []
-        for seg_id in range(n_segments):
-            p_host = primaries[seg_id]
-            m_host = (p_host + 1) % n_hosts
-            mirrors.append(m_host)
+    def _add_grouped_constraints(self, model, x, y):
+        """
+        Grouped: all segments on same primary must use same mirror (only on active hosts)
+
+        Efficient approach using auxiliary variables:
+        - For each host h, introduce uses_mirror[h][m] = 1 if primary host h uses mirror host m
+        """
+        # Auxiliary variables: uses_mirror[h][m] = 1 if primary host h uses mirror host m
+        uses_mirror = {}
+        for h in self.active_hosts:
+            for m in self.active_hosts:
+                if m != h:  # Can't mirror on same host
+                    uses_mirror[h, m] = model.NewBoolVar(f'uses_mirror_{h}_{m}')
+
+        # Constraint 1: Each primary host uses AT MOST 1 mirror host
+        for h in self.active_hosts:
+            model.Add(sum(uses_mirror[h, m] for m in self.active_hosts if m != h) <= 1)
+
+        # Constraint 2: Link segment assignments to mirror usage
+        # If segment i has primary on h, then its mirror must be on h's designated mirror host
+        for i in range(self.n_segments):
+            for h in self.active_hosts:
+                for m in self.active_hosts:
+                    if m != h:
+                        model.Add(x[i, h] + y[i, m] <= uses_mirror[h, m] + 1)
+
+    def _add_spread_constraints(self, model, x, y):
+        """
+
+        """
+        # For each (primary, mirror) pair, at most 1 segment can use it
+        for h in self.active_hosts:
+            for m in self.active_hosts:
+                if m != h:  # Can't mirror on same host
+                    # At most 1 segment can use (primary=h, mirror=m)
+                    segments_using_pair = []
+                    for i in range(self.n_segments):
+                        # aux[i,h,m] = 1 iff segment i uses (primary=h, mirror=m)
+                        aux = model.NewBoolVar(f'pair_{i}_{h}_{m}')
+
+                        # aux = x[i,h] AND y[i,m]
+                        model.AddBoolAnd([x[i, h], y[i, m]]).OnlyEnforceIf(aux)
+                        model.AddBoolOr([x[i, h].Not(), y[i, m].Not()]).OnlyEnforceIf(aux.Not())
+
+                        segments_using_pair.append(aux)
+
+                    # At most 1 segment uses this (h,m) pair
+                    model.Add(sum(segments_using_pair) <= 1)
+
+    def validate_solution(self, solution):
+        """
+        Validate that the solution satisfies all constraints
+        """
+        errors = []
         
-        return primaries, mirrors
+        # Check no segments on decommissioned hosts
+        for seg_id, (prim, mirr) in solution.items():
+            if prim in self.decommissioned_hosts:
+                errors.append(f"Segment {seg_id} has primary on decommissioned host {prim}")
+            if mirr in self.decommissioned_hosts:
+                errors.append(f"Segment {seg_id} has mirror on decommissioned host {mirr}")
+        
+        # Check co-location
+        for seg_id, (prim, mirr) in solution.items():
+            if prim == mirr:
+                errors.append(f"Segment {seg_id} has co-located primary and mirror on host {prim}")
+        
+        # Check load balance on active hosts only
+        from collections import defaultdict
+        host_loads = defaultdict(int)
+        for seg_id, (prim, mirr) in solution.items():
+            host_loads[prim] += 1
+            host_loads[mirr] += 1
+        
+        for h in self.active_hosts:
+            if host_loads[h] != self.L_target:
+                errors.append(f"Active host {h} has load {host_loads[h]}, expected {self.L_target}")
+        
+        # Check decommissioned hosts have zero load
+        for h in self.decommissioned_hosts:
+            if host_loads[h] > 0:
+                errors.append(f"Decommissioned host {h} has non-zero load {host_loads[h]}")
+        
+        if errors:
+            print(f"\nValidation FAILED - {len(errors)} errors:")
+            for error in errors:
+                print(f"  ❌ {error}")
+            return False
+        else:
+            print("✅ Validation passed - all constraints satisfied")
+            return True
+
+    def print_host_distribution(self, solution):
+        """Print load distribution across all hosts"""
+        from collections import defaultdict
+        host_primaries = defaultdict(int)
+        host_mirrors = defaultdict(int)
+        
+        for seg_id, (prim, mirr) in solution.items():
+            host_primaries[prim] += 1
+            host_mirrors[mirr] += 1
+        
+        print(f"\n{'='*60}")
+        print(f"HOST LOAD DISTRIBUTION")
+        print(f"{'='*60}")
+        print(f"{'Host':>4} | {'Prim':>5} | {'Mirr':>5} | {'Total':>5} | Status")
+        print(f"{'-'*4}-+-{'-'*5}-+-{'-'*5}-+-{'-'*5}-+{'-'*15}")
+        
+        for h in range(self.n_hosts_initial):
+            prim_count = host_primaries[h]
+            mirr_count = host_mirrors[h]
+            total = prim_count + mirr_count
+            
+            if h in self.decommissioned_hosts:
+                status = "DECOMMISSIONED"
+            elif h in self.active_hosts:
+                status = "✓ ACTIVE" if total == self.L_target else f"⚠ UNBALANCED"
+            else:
+                status = "?"
+            
+            print(f"{h:4d} | {prim_count:5d} | {mirr_count:5d} | {total:5d} | {status}")
+        
+        print(f"{'='*60}")
 
 
 if __name__=='__main__':
     conf = ConfigGenerator.generate_unbalanced_grouped(1000, 50)
-    solver = BABSolver(1000, 40, 50, conf[0], conf[1],
-                       strategy='grouped', printing=True)
+    #solver = BABSolver(1000, 40, 50, conf[0], conf[1],
+    #                   strategy='grouped', printing=True)
     #conf = ConfigGenerator.generate_unbalanced_grouped(20, 5)
     #solver = BABSolver(20, 5, 5, conf[0], conf[1],
     #                   strategy='grouped', printing=True)
-    profiler = cProfile.Profile()
-    profiler.enable()
-    solution, cost = solver.solve()
-    profiler.disable()
-    stats = pstats.Stats(profiler)
-    stats.sort_stats('cumulative')
-    stats.print_stats(20)  # Top 20 functions
-    a = 5
+    #solution, cost = solver.solve()
+
+
+    ilp_solver = ILPSolver(1000, 40, 50, conf[0], conf[1], strategy='grouped')
+    solution, cost = ilp_solver.solve_with_ortools(time_limit=120)
