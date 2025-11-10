@@ -125,10 +125,10 @@ static const struct exclude_list_item excludeFiles[] =
 	{"postmaster.pid", false},
 	{"postmaster.opts", false},
 
-	GP_INTERNAL_AUTO_CONF_FILE_NAME,
+	{GP_INTERNAL_AUTO_CONF_FILE_NAME, false},
 
 	/* GPDB: Default gpbackup directory (top-level directory) */
-	"backups",
+	{"backups", false},
 
 	/* end of list */
 	{NULL, false}
