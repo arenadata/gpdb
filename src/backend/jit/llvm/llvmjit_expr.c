@@ -1842,13 +1842,13 @@ llvm_compile_expr(ExprState *state)
 			case EEOP_SCALARARRAYOP_FAST_INT:
 				build_EvalXFunc(b, mod, "ExecEvalScalarArrayOpFastInt",
 								v_state, v_econtext, op);
-				LLVMBuildBr(b, opblocks[i + 1]);
+				LLVMBuildBr(b, opblocks[opno + 1]);
 				break;
 
 			case EEOP_SCALARARRAYOP_FAST_STR:
 				build_EvalXFunc(b, mod, "ExecEvalScalarArrayOpFastStr",
 								v_state, v_econtext, op);
-				LLVMBuildBr(b, opblocks[i + 1]);
+				LLVMBuildBr(b, opblocks[opno + 1]);
 				break;
 
 			case EEOP_XMLEXPR:
@@ -1907,7 +1907,7 @@ llvm_compile_expr(ExprState *state)
 					LLVMBuildStore(b, v_group_id, v_resvaluep);
 					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
 
-					LLVMBuildBr(b, opblocks[i + 1]);
+					LLVMBuildBr(b, opblocks[opno + 1]);
 					break;
 				}
 
@@ -1926,7 +1926,7 @@ llvm_compile_expr(ExprState *state)
 					LLVMBuildStore(b, v_gset_id, v_resvaluep);
 					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
 
-					LLVMBuildBr(b, opblocks[i + 1]);
+					LLVMBuildBr(b, opblocks[opno + 1]);
 					break;
 				}
 
@@ -1945,7 +1945,7 @@ llvm_compile_expr(ExprState *state)
 					LLVMBuildStore(b, v_currentExprId, v_resvaluep);
 					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
 
-					LLVMBuildBr(b, opblocks[i + 1]);
+					LLVMBuildBr(b, opblocks[opno + 1]);
 					break;
 				}
 
@@ -1969,7 +1969,7 @@ llvm_compile_expr(ExprState *state)
 					LLVMBuildStore(b, v_rowcounter_new, v_resvaluep);
 					LLVMBuildStore(b, l_sbool_const(0), v_resnullp);
 
-					LLVMBuildBr(b, opblocks[i + 1]);
+					LLVMBuildBr(b, opblocks[opno + 1]);
 					break;
 				}
 
@@ -2316,7 +2316,7 @@ llvm_compile_expr(ExprState *state)
 										  b, v_pergroup_allaggs, TypeSizeT, ""),
 									  l_sizet_const(0), ""),
 						opblocks[jumpnull],
-						opblocks[i + 1]);
+						opblocks[opno + 1]);
 					break;
 				}
 
