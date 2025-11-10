@@ -1016,11 +1016,7 @@ create table atacc1 ( test int );
 insert into atacc1 (test) values (0);
 -- add a primary key column without a default (fails).
 alter table atacc1 add column test2 int primary key;
-<<<<<<< HEAD
 ERROR:  cannot add column with primary key constraint
-=======
-ERROR:  column "test2" of relation "atacc1" contains null values
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 -- now add a primary key column with a default (succeeds).
 alter table atacc1 add column test2 int default 0 primary key;
 ERROR:  cannot add column with primary key constraint
@@ -4396,7 +4392,6 @@ alter table at_test_sql_partop attach partition at_test_sql_partop_1 for values 
 drop table at_test_sql_partop;
 drop operator class at_test_sql_partop using btree;
 drop function at_test_sql_partop;
-<<<<<<< HEAD
 -- Test that altering owner of partition root should recurse into the child tables.
 create role atown_r1;
 create role atown_r2 in role atown_r1;
@@ -4434,7 +4429,6 @@ drop table atown_part;
 reset role;
 drop role atown_r1;
 drop role atown_r2;
-=======
 /* Test case for bug #16242 */
 -- We create a parent and child where the child has missing
 -- non-null attribute values, and arrange to pass them through
@@ -4470,7 +4464,6 @@ create trigger xtrig
   after update on bar1
   referencing old table as old
   for each statement execute procedure xtrig();
+ERROR:  Triggers for statements are not yet supported
 update bar1 set a = a + 1;
-INFO:  a=1, b=1
 /* End test case for bug #16242 */
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
