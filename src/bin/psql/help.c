@@ -667,13 +667,7 @@ helpSQL(const char *topic, unsigned short int pager)
 void
 print_copyright(void)
 {
-<<<<<<< HEAD
-	puts(
-		 "Greenplum Database version of PostgreSQL Database Management System\n"
-=======
-	puts("PostgreSQL Database Management System\n"
-		 "(formerly known as Postgres, then as Postgres95)\n\n"
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
+	puts("Greenplum Database version of PostgreSQL Database Management System\n"
 		 "Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group\n\n"
 		 "Portions Copyright (c) 2014-Present VMware, Inc. or its affiliates.\n\n"
 		 "Portions Copyright (c) 2011-2014 EMC\n\n"
