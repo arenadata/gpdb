@@ -235,7 +235,7 @@ static const struct exclude_list_item excludeFiles[] =
 	{"postmaster.opts", false},
 
 	/* GPDB: Default gpbackup directory (top-level directory) */
-	"backups",
+	{"backups", false},
 
 	/* end of list */
 	{NULL, false}
