@@ -105,40 +105,40 @@ CREATE INDEX spgist_pvactst ON pvactst USING spgist (p);
 -- VACUUM invokes parallel index cleanup
 SET min_parallel_index_scan_size to 0;
 VACUUM (PARALLEL 2) pvactst;
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL 2) pvactst;
                 ^
 -- VACUUM invokes parallel bulk-deletion
 UPDATE pvactst SET i = i WHERE i < 1000;
 VACUUM (PARALLEL 2) pvactst;
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL 2) pvactst;
                 ^
 UPDATE pvactst SET i = i WHERE i < 1000;
 VACUUM (PARALLEL 0) pvactst; -- disable parallel vacuum
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL 0) pvactst;
                 ^
 VACUUM (PARALLEL -1) pvactst; -- error
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL -1) pvactst;
                 ^
 VACUUM (PARALLEL 2, INDEX_CLEANUP FALSE) pvactst;
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL 2, INDEX_CLEANUP FALSE) pvactst;
                 ^
 VACUUM (PARALLEL 2, FULL TRUE) pvactst; -- error, cannot use both PARALLEL and FULL
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL 2, FULL TRUE) pvactst;
                 ^
 VACUUM (PARALLEL) pvactst; -- error, cannot use PARALLEL option without parallel degree
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL) pvactst;
                 ^
 CREATE TEMPORARY TABLE tmp (a int PRIMARY KEY);
 CREATE INDEX tmp_idx1 ON tmp (a);
 VACUUM (PARALLEL 1) tmp; -- disables parallel vacuum option
-ERROR:  VACUUM option "parallel"not supported in GPDB
+ERROR:  VACUUM option "parallel" not supported in GPDB
 LINE 1: VACUUM (PARALLEL 1) tmp;
                 ^
 RESET min_parallel_index_scan_size;
