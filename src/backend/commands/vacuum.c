@@ -189,6 +189,11 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 		}
 		else if (strcmp(opt->defname, "parallel") == 0)
 		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("VACUUM option \"%s\"not supported in GPDB", opt->defname),
+					 parser_errposition(pstate, opt->location)));
+
 			parallel_option = true;
 			if (opt->arg == NULL)
 			{
