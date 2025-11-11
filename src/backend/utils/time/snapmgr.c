@@ -253,6 +253,7 @@ typedef struct SerializedSnapshotData
 	CommandId	curcid;
 	TimestampTz whenTaken;
 	XLogRecPtr	lsn;
+	Size		distrSnapSize;
 } SerializedSnapshotData;
 
 Size
@@ -2280,6 +2281,10 @@ EstimateSnapshotSpace(Snapshot snap)
 		size = add_size(size,
 						mul_size(snap->subxcnt, sizeof(TransactionId)));
 
+	if (snap->haveDistribSnapshot)
+		size = add_size(size, DistributedSnapshot_SerializeSize(
+			&snap->distribSnapshotWithLocalMapping.ds));
+
 	return size;
 }
 
@@ -2305,6 +2310,10 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 	serialized_snapshot.curcid = snapshot->curcid;
 	serialized_snapshot.whenTaken = snapshot->whenTaken;
 	serialized_snapshot.lsn = snapshot->lsn;
+
+	serialized_snapshot.distrSnapSize = !snapshot->haveDistribSnapshot ? 0 :
+		DistributedSnapshot_SerializeSize(
+			&snapshot->distribSnapshotWithLocalMapping.ds);
 
 	/*
 	 * Ignore the SubXID array if it has overflowed, unless the snapshot was
@@ -2338,6 +2347,17 @@ SerializeSnapshot(Snapshot snapshot, char *start_address)
 		memcpy((TransactionId *) (start_address + subxipoff),
 			   snapshot->subxip, snapshot->subxcnt * sizeof(TransactionId));
 	}
+
+	if (snapshot->haveDistribSnapshot)
+	{
+		Size		dsoff = sizeof(SerializedSnapshotData) +
+			snapshot->xcnt * sizeof(TransactionId) +
+			snapshot->subxcnt * sizeof(TransactionId);
+
+		DistributedSnapshot_Serialize(
+			&snapshot->distribSnapshotWithLocalMapping.ds,
+			start_address + dsoff);
+	}
 }
 
 /*
@@ -2363,7 +2383,8 @@ RestoreSnapshot(char *start_address)
 	/* We allocate any XID arrays needed in the same palloc block. */
 	size = sizeof(SnapshotData)
 		+ serialized_snapshot.xcnt * sizeof(TransactionId)
-		+ serialized_snapshot.subxcnt * sizeof(TransactionId);
+		+ serialized_snapshot.subxcnt * sizeof(TransactionId)
+		+ serialized_snapshot.distrSnapSize;
 
 	/* Copy all required fields */
 	snapshot = (Snapshot) MemoryContextAlloc(TopTransactionContext, size);
@@ -2379,6 +2400,7 @@ RestoreSnapshot(char *start_address)
 	snapshot->curcid = serialized_snapshot.curcid;
 	snapshot->whenTaken = serialized_snapshot.whenTaken;
 	snapshot->lsn = serialized_snapshot.lsn;
+	snapshot->haveDistribSnapshot = serialized_snapshot.distrSnapSize > 0;
 
 	/* Copy XIDs, if present. */
 	if (serialized_snapshot.xcnt > 0)
@@ -2401,6 +2423,11 @@ RestoreSnapshot(char *start_address)
 	snapshot->regd_count = 0;
 	snapshot->active_count = 0;
 	snapshot->copied = true;
+
+	if (snapshot->haveDistribSnapshot)
+		DistributedSnapshot_Deserialize(
+			serialized_xids + serialized_snapshot.xcnt + serialized_snapshot.subxcnt,
+			&snapshot->distribSnapshotWithLocalMapping.ds);
 
 	return snapshot;
 }
