@@ -37,6 +37,11 @@ delete from gin_test_tbl where i @> array[2];
 vacuum gin_test_tbl;
 
 -- Test optimization of empty queries
+-- In a plan Orca can invert the order of operands in condition, so use matchsubs to fix it.
+-- start_matchsubs
+-- m/Recheck Cond: \(i @> '\{0\}'::integer\[\]\)/
+-- s/Recheck Cond: \(i @> '\{0\}'::integer\[\]\)/Recheck Cond: \('\{0\}'::integer\[\] <@ i\)/
+-- end_matchsubs
 create temp table t_gin_test_tbl(i int4[], j int4[]);
 create index on t_gin_test_tbl using gin (i, j);
 insert into t_gin_test_tbl
@@ -100,8 +105,8 @@ $$;
 -- check number of rows returned by index and removed by recheck
 select
   query,
-  js->0->'Plan'->'Plans'->0->'Actual Rows' as "return by index",
-  js->0->'Plan'->'Rows Removed by Index Recheck' as "removed by recheck",
+  js->0->'Plan'->'Actual Rows' as "return by index",
+  js->0->'Plan'->'Plans'->0->'Rows Removed by Index Recheck' as "removed by recheck",
   (res_index = res_heap) as "match"
 from
   (values
@@ -117,8 +122,8 @@ from
     ($$ i @> '{1}' and j @> '{10}' $$)
   ) q(query),
   lateral explain_query_json($$select * from t_gin_test_tbl where $$ || query) js,
-  lateral execute_text_query_index($$select string_agg((i, j)::text, ' ') from t_gin_test_tbl where $$ || query) res_index,
-  lateral execute_text_query_heap($$select string_agg((i, j)::text, ' ') from t_gin_test_tbl where $$ || query) res_heap;
+  lateral execute_text_query_index($$select string_agg((i, j)::text, ' ' order by i,j) from t_gin_test_tbl where $$ || query) res_index,
+  lateral execute_text_query_heap($$select string_agg((i, j)::text, ' ' order by i,j) from t_gin_test_tbl where $$ || query) res_heap;
 
 reset enable_seqscan;
 reset enable_bitmapscan;
