@@ -510,10 +510,7 @@ SELECT brin_summarize_range('brin_summarize_idx', 4294967295);
 SELECT brin_summarize_range('brin_summarize_idx', -1);
 ERROR:  block number out of range: -1  (seg0 slice1 127.0.0.1:7002 pid=11998)
 SELECT brin_summarize_range('brin_summarize_idx', 4294967296);
-<<<<<<< HEAD
 ERROR:  block number out of range: 4294967296  (seg0 slice1 127.0.0.1:7002 pid=11998)
-=======
-ERROR:  block number out of range: 4294967296
 -- test value merging in add_value
 CREATE TABLE brintest_2 (n numrange);
 CREATE INDEX brinidx_2 ON brintest_2 USING brin (n);
@@ -527,13 +524,9 @@ SELECT brin_desummarize_range('brinidx', 0);
 (1 row)
 
 SELECT brin_summarize_range('brinidx', 0);
- brin_summarize_range 
-----------------------
-                    1
-(1 row)
-
+ERROR:  Greenplum could not summarize indicated page range
+CONTEXT:  SQL function "brin_summarize_range" statement 1
 DROP TABLE brintest_2;
->>>>>>> a91e2fa94180f24dd68fb6c99136cda820e02089
 -- test brin cost estimates behave sanely based on correlation of values
 -- GPDB: use more rows, and a larger statistics sample, to get the same plan
 -- as in upstream.
