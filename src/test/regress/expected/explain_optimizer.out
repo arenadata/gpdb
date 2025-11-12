@@ -48,16 +48,16 @@ select explain_filter('explain select * from int8_tbl i8');
                               explain_filter                              
 --------------------------------------------------------------------------
  Gather Motion N:N  (slice1; segments: N)  (cost=N.N..N.N rows=N width=N)
-   ->  Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N)
- Optimizer: Postgres query optimizer
+   ->  Seq Scan on int8_tbl  (cost=N.N..N.N rows=N width=N)
+ Optimizer: Pivotal Optimizer (GPORCA)
 (3 rows)
 
 select explain_filter('explain (analyze) select * from int8_tbl i8');
                                                  explain_filter                                                 
 ----------------------------------------------------------------------------------------------------------------
  Gather Motion N:N  (slice1; segments: N)  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
-   ->  Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
- Optimizer: Postgres query optimizer
+   ->  Seq Scan on int8_tbl  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
+ Optimizer: Pivotal Optimizer (GPORCA)
  Planning Time: N.N ms
    (slice0)    Executor memory: 36K bytes.
    (slice1)    Executor memory: 37K bytes avg x N workers, 37K bytes max (seg0).
@@ -70,23 +70,22 @@ select explain_filter('explain (analyze, verbose) select * from int8_tbl i8');
 ----------------------------------------------------------------------------------------------------------------
  Gather Motion N:N  (slice1; segments: N)  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
    Output: q1, q2
-   ->  Seq Scan on public.int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
+   ->  Seq Scan on public.int8_tbl  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
          Output: q1, q2
- Optimizer: Postgres query optimizer
- Settings: optimizer = 'off'
+ Optimizer: Pivotal Optimizer (GPORCA)
  Planning Time: N.N ms
    (slice0)    Executor memory: 36K bytes.
    (slice1)    Executor memory: 36K bytes avg x N workers, 36K bytes max (seg0).
  Memory used:  NkB
  Execution Time: N.N ms
-(11 rows)
+(10 rows)
 
 select explain_filter('explain (analyze, buffers, format text) select * from int8_tbl i8');
                                                  explain_filter                                                 
 ----------------------------------------------------------------------------------------------------------------
  Gather Motion N:N  (slice1; segments: N)  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
-   ->  Seq Scan on int8_tbl i8  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
- Optimizer: Postgres query optimizer
+   ->  Seq Scan on int8_tbl  (cost=N.N..N.N rows=N width=N) (actual time=N.N..N.N rows=N loops=N)
+ Optimizer: Pivotal Optimizer (GPORCA)
  Planning Time: N.N ms
    (slice0)    Executor memory: 36K bytes.
    (slice1)    Executor memory: 36K bytes avg x N workers, 36K bytes max (seg0).
@@ -95,90 +94,90 @@ select explain_filter('explain (analyze, buffers, format text) select * from int
 (8 rows)
 
 select explain_filter('explain (analyze, buffers, format json) select * from int8_tbl i8');
-                explain_filter                
-----------------------------------------------
- [                                           +
-   {                                         +
-     "Plan": {                               +
-       "Node Type": "Gather Motion",         +
-       "Senders": N,                         +
-       "Receivers": N,                       +
-       "Slice": N,                           +
-       "Segments": N,                        +
-       "Gang Type": "primary reader",        +
-       "Parallel Aware": false,              +
-       "Startup Cost": N.N,                  +
-       "Total Cost": N.N,                    +
-       "Plan Rows": N,                       +
-       "Plan Width": N,                      +
-       "Actual Startup Time": N.N,           +
-       "Actual Total Time": N.N,             +
-       "Actual Rows": N,                     +
-       "Actual Loops": N,                    +
-       "Shared Hit Blocks": N,               +
-       "Shared Read Blocks": N,              +
-       "Shared Dirtied Blocks": N,           +
-       "Shared Written Blocks": N,           +
-       "Local Hit Blocks": N,                +
-       "Local Read Blocks": N,               +
-       "Local Dirtied Blocks": N,            +
-       "Local Written Blocks": N,            +
-       "Temp Read Blocks": N,                +
-       "Temp Written Blocks": N,             +
-       "Plans": [                            +
-         {                                   +
-           "Node Type": "Seq Scan",          +
-           "Parent Relationship": "Outer",   +
-           "Slice": N,                       +
-           "Segments": N,                    +
-           "Gang Type": "primary reader",    +
-           "Parallel Aware": false,          +
-           "Relation Name": "int8_tbl",      +
-           "Alias": "i8",                    +
-           "Startup Cost": N.N,              +
-           "Total Cost": N.N,                +
-           "Plan Rows": N,                   +
-           "Plan Width": N,                  +
-           "Actual Startup Time": N.N,       +
-           "Actual Total Time": N.N,         +
-           "Actual Rows": N,                 +
-           "Actual Loops": N,                +
-           "Shared Hit Blocks": N,           +
-           "Shared Read Blocks": N,          +
-           "Shared Dirtied Blocks": N,       +
-           "Shared Written Blocks": N,       +
-           "Local Hit Blocks": N,            +
-           "Local Read Blocks": N,           +
-           "Local Dirtied Blocks": N,        +
-           "Local Written Blocks": N,        +
-           "Temp Read Blocks": N,            +
-           "Temp Written Blocks": N          +
-         }                                   +
-       ]                                     +
-     },                                      +
-     "Optimizer": "Postgres query optimizer",+
-     "Planning Time": N.N,                   +
-     "Triggers": [                           +
-     ],                                      +
-     "Slice statistics": [                   +
-       {                                     +
-         "Slice": N,                         +
-         "Executor Memory": N                +
-       },                                    +
-       {                                     +
-         "Slice": N,                         +
-         "Executor Memory": {                +
-           "Average": N,                     +
-           "Workers": N,                     +
-           "Maximum Memory Used": N          +
-         }                                   +
-       }                                     +
-     ],                                      +
-     "Statement statistics": {               +
-       "Memory used": N                      +
-     },                                      +
-     "Execution Time": N.N                   +
-   }                                         +
+                 explain_filter                 
+------------------------------------------------
+ [                                             +
+   {                                           +
+     "Plan": {                                 +
+       "Node Type": "Gather Motion",           +
+       "Senders": N,                           +
+       "Receivers": N,                         +
+       "Slice": N,                             +
+       "Segments": N,                          +
+       "Gang Type": "primary reader",          +
+       "Parallel Aware": false,                +
+       "Startup Cost": N.N,                    +
+       "Total Cost": N.N,                      +
+       "Plan Rows": N,                         +
+       "Plan Width": N,                        +
+       "Actual Startup Time": N.N,             +
+       "Actual Total Time": N.N,               +
+       "Actual Rows": N,                       +
+       "Actual Loops": N,                      +
+       "Shared Hit Blocks": N,                 +
+       "Shared Read Blocks": N,                +
+       "Shared Dirtied Blocks": N,             +
+       "Shared Written Blocks": N,             +
+       "Local Hit Blocks": N,                  +
+       "Local Read Blocks": N,                 +
+       "Local Dirtied Blocks": N,              +
+       "Local Written Blocks": N,              +
+       "Temp Read Blocks": N,                  +
+       "Temp Written Blocks": N,               +
+       "Plans": [                              +
+         {                                     +
+           "Node Type": "Seq Scan",            +
+           "Parent Relationship": "Outer",     +
+           "Slice": N,                         +
+           "Segments": N,                      +
+           "Gang Type": "primary reader",      +
+           "Parallel Aware": false,            +
+           "Relation Name": "int8_tbl",        +
+           "Alias": "int8_tbl",                +
+           "Startup Cost": N.N,                +
+           "Total Cost": N.N,                  +
+           "Plan Rows": N,                     +
+           "Plan Width": N,                    +
+           "Actual Startup Time": N.N,         +
+           "Actual Total Time": N.N,           +
+           "Actual Rows": N,                   +
+           "Actual Loops": N,                  +
+           "Shared Hit Blocks": N,             +
+           "Shared Read Blocks": N,            +
+           "Shared Dirtied Blocks": N,         +
+           "Shared Written Blocks": N,         +
+           "Local Hit Blocks": N,              +
+           "Local Read Blocks": N,             +
+           "Local Dirtied Blocks": N,          +
+           "Local Written Blocks": N,          +
+           "Temp Read Blocks": N,              +
+           "Temp Written Blocks": N            +
+         }                                     +
+       ]                                       +
+     },                                        +
+     "Optimizer": "Pivotal Optimizer (GPORCA)",+
+     "Planning Time": N.N,                     +
+     "Triggers": [                             +
+     ],                                        +
+     "Slice statistics": [                     +
+       {                                       +
+         "Slice": N,                           +
+         "Executor Memory": N                  +
+       },                                      +
+       {                                       +
+         "Slice": N,                           +
+         "Executor Memory": {                  +
+           "Average": N,                       +
+           "Workers": N,                       +
+           "Maximum Memory Used": N            +
+         }                                     +
+       }                                       +
+     ],                                        +
+     "Statement statistics": {                 +
+       "Memory used": N                        +
+     },                                        +
+     "Execution Time": N.N                     +
+   }                                           +
  ]
 (1 row)
 
@@ -222,7 +221,7 @@ select explain_filter('explain (analyze, buffers, format xml) select * from int8
            <Gang-Type>primary reader</Gang-Type>           +
            <Parallel-Aware>false</Parallel-Aware>          +
            <Relation-Name>int8_tbl</Relation-Name>         +
-           <Alias>i8</Alias>                               +
+           <Alias>int8_tbl</Alias>                         +
            <Startup-Cost>N.N</Startup-Cost>                +
            <Total-Cost>N.N</Total-Cost>                    +
            <Plan-Rows>N</Plan-Rows>                        +
@@ -244,7 +243,7 @@ select explain_filter('explain (analyze, buffers, format xml) select * from int8
          </Plan>                                           +
        </Plans>                                            +
      </Plan>                                               +
-     <Optimizer>Postgres query optimizer</Optimizer>       +
+     <Optimizer>Pivotal Optimizer (GPORCA)</Optimizer>     +
      <Planning-Time>N.N</Planning-Time>                    +
      <Triggers>                                            +
      </Triggers>                                           +
@@ -271,74 +270,74 @@ select explain_filter('explain (analyze, buffers, format xml) select * from int8
 (1 row)
 
 select explain_filter('explain (analyze, buffers, format yaml) select * from int8_tbl i8');
-             explain_filter              
------------------------------------------
- - Plan:                                +
-     Node Type: "Gather Motion"         +
-     Senders: N                         +
-     Receivers: N                       +
-     Slice: N                           +
-     Segments: N                        +
-     Gang Type: "primary reader"        +
-     Parallel Aware: false              +
-     Startup Cost: N.N                  +
-     Total Cost: N.N                    +
-     Plan Rows: N                       +
-     Plan Width: N                      +
-     Actual Startup Time: N.N           +
-     Actual Total Time: N.N             +
-     Actual Rows: N                     +
-     Actual Loops: N                    +
-     Shared Hit Blocks: N               +
-     Shared Read Blocks: N              +
-     Shared Dirtied Blocks: N           +
-     Shared Written Blocks: N           +
-     Local Hit Blocks: N                +
-     Local Read Blocks: N               +
-     Local Dirtied Blocks: N            +
-     Local Written Blocks: N            +
-     Temp Read Blocks: N                +
-     Temp Written Blocks: N             +
-     Plans:                             +
-       - Node Type: "Seq Scan"          +
-         Parent Relationship: "Outer"   +
-         Slice: N                       +
-         Segments: N                    +
-         Gang Type: "primary reader"    +
-         Parallel Aware: false          +
-         Relation Name: "int8_tbl"      +
-         Alias: "i8"                    +
-         Startup Cost: N.N              +
-         Total Cost: N.N                +
-         Plan Rows: N                   +
-         Plan Width: N                  +
-         Actual Startup Time: N.N       +
-         Actual Total Time: N.N         +
-         Actual Rows: N                 +
-         Actual Loops: N                +
-         Shared Hit Blocks: N           +
-         Shared Read Blocks: N          +
-         Shared Dirtied Blocks: N       +
-         Shared Written Blocks: N       +
-         Local Hit Blocks: N            +
-         Local Read Blocks: N           +
-         Local Dirtied Blocks: N        +
-         Local Written Blocks: N        +
-         Temp Read Blocks: N            +
-         Temp Written Blocks: N         +
-   Optimizer: "Postgres query optimizer"+
-   Planning Time: N.N                   +
-   Triggers:                            +
-   Slice statistics:                    +
-     - Slice: N                         +
-       Executor Memory: N               +
-     - Slice: N                         +
-       Executor Memory:                 +
-         Average: N                     +
-         Workers: N                     +
-         Maximum Memory Used: N         +
-   Statement statistics:                +
-     Memory used: N                     +
+              explain_filter               
+-------------------------------------------
+ - Plan:                                  +
+     Node Type: "Gather Motion"           +
+     Senders: N                           +
+     Receivers: N                         +
+     Slice: N                             +
+     Segments: N                          +
+     Gang Type: "primary reader"          +
+     Parallel Aware: false                +
+     Startup Cost: N.N                    +
+     Total Cost: N.N                      +
+     Plan Rows: N                         +
+     Plan Width: N                        +
+     Actual Startup Time: N.N             +
+     Actual Total Time: N.N               +
+     Actual Rows: N                       +
+     Actual Loops: N                      +
+     Shared Hit Blocks: N                 +
+     Shared Read Blocks: N                +
+     Shared Dirtied Blocks: N             +
+     Shared Written Blocks: N             +
+     Local Hit Blocks: N                  +
+     Local Read Blocks: N                 +
+     Local Dirtied Blocks: N              +
+     Local Written Blocks: N              +
+     Temp Read Blocks: N                  +
+     Temp Written Blocks: N               +
+     Plans:                               +
+       - Node Type: "Seq Scan"            +
+         Parent Relationship: "Outer"     +
+         Slice: N                         +
+         Segments: N                      +
+         Gang Type: "primary reader"      +
+         Parallel Aware: false            +
+         Relation Name: "int8_tbl"        +
+         Alias: "int8_tbl"                +
+         Startup Cost: N.N                +
+         Total Cost: N.N                  +
+         Plan Rows: N                     +
+         Plan Width: N                    +
+         Actual Startup Time: N.N         +
+         Actual Total Time: N.N           +
+         Actual Rows: N                   +
+         Actual Loops: N                  +
+         Shared Hit Blocks: N             +
+         Shared Read Blocks: N            +
+         Shared Dirtied Blocks: N         +
+         Shared Written Blocks: N         +
+         Local Hit Blocks: N              +
+         Local Read Blocks: N             +
+         Local Dirtied Blocks: N          +
+         Local Written Blocks: N          +
+         Temp Read Blocks: N              +
+         Temp Written Blocks: N           +
+   Optimizer: "Pivotal Optimizer (GPORCA)"+
+   Planning Time: N.N                     +
+   Triggers:                              +
+   Slice statistics:                      +
+     - Slice: N                           +
+       Executor Memory: N                 +
+     - Slice: N                           +
+       Executor Memory:                   +
+         Average: N                       +
+         Workers: N                       +
+         Maximum Memory Used: N           +
+   Statement statistics:                  +
+     Memory used: N                       +
    Execution Time: N.N
 (1 row)
 
@@ -558,14 +557,13 @@ select jsonb_pretty(
              "Shared Written Blocks": 0                     +
          },                                                 +
          "Settings": {                                      +
-             "optimizer": "off",                            +
              "parallel_setup_cost": "0",                    +
              "parallel_tuple_cost": "0",                    +
              "min_parallel_table_scan_size": "0"            +
          },                                                 +
          "Triggers": [                                      +
          ],                                                 +
-         "Optimizer": "Postgres query optimizer",           +
+         "Optimizer": "Pivotal Optimizer (GPORCA)",         +
          "Planning Time": 0.0,                              +
          "Execution Time": 0.0,                             +
          "Slice statistics": [                              +

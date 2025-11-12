@@ -96,6 +96,10 @@ select jsonb_pretty(
   -- Also remove its sort-type fields, as those aren't 100% stable
   #- '{0,Plan,Plans,0,Sort Method}'
   #- '{0,Plan,Plans,0,Sort Space Type}'
+  -- Also remove jit and jit_above_cost as they vary in test environment
+  #- '{0,Settings,jit}'
+  #- '{0,Settings,jit_above_cost}'
+  #- '{0,Settings,optimizer_jit_above_cost}'
 );
 
 rollback;
