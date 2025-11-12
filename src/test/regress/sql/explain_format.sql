@@ -19,6 +19,11 @@
 -- m/^\s+optimizer_jit\w*:/
 -- end_matchignore
 
+-- start_ignore
+drop function if exists explain_filter(text);
+drop function if exists explain_filter_to_json(text);
+-- end_ignore
+
 -- To produce stable regression test output, it's usually necessary to
 -- ignore details such as exact costs or row counts.  These filter
 -- functions replace changeable output details with fixed strings.
