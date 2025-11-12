@@ -7,6 +7,7 @@ create or replace language plpython3u;
 -- the language exists already (we had a little bug at one point, where
 -- the "OR REPLACE" was not dispatched to segments, and this failed)
 create or replace language plpython3u;
+NOTICE:  extension "plpython3u" already exists, skipping
 --start_ignore
 drop schema if exists bfv_legacy cascade;
 NOTICE:  schema "bfv_legacy" does not exist, skipping

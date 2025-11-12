@@ -2,6 +2,10 @@
 -- SETUP: Helper functions for query plan verification
 --
 
+-- start_ignore
+drop extension if exists plpython3u;
+-- end_ignore
+
 -- The helper functions are written in python.
 create or replace language plpython3u;
 
