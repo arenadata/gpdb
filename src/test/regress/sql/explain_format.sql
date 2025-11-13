@@ -155,3 +155,5 @@ DROP TABLE apples;
 DROP TABLE box_locations;
 DROP TABLE jsonexplaintest;
 DROP TABLE jit_explain_output;
+DROP FUNCTION if exists explain_filter;
+DROP FUNCTION if exists explain_filter_to_json;
