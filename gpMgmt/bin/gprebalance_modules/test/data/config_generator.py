@@ -44,7 +44,7 @@ class SegmentConfig:
 
 class ClusterConfigGenerator:
     """
-    Generate Greenplum cluster configurations
+    Generate Greengage cluster configurations
     """
     
     def __init__(self, n_segments: int, n_hosts: int, strategy: MirroringStrategy,
