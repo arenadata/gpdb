@@ -3,7 +3,7 @@
 --
 
 -- start_ignore
-drop extension if exists plpython3u;
+drop extension if exists plpython3u cascade;
 -- end_ignore
 
 -- The helper functions are written in python.
