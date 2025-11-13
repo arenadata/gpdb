@@ -1,28 +1,14 @@
 import os
 import imp
+import sys
 
-
-from .gp_unittest import *
+from gppylib.test.unit.gp_unittest import *
 from mock import *
-from gppylib.gparray import Segment, GpArray
 from gppylib.db.dbconn import DbURL
-from gppylib.db import catalog
 from gppylib.gplog import *
 from gppylib.system.configurationInterface import GpConfigurationProvider
 from gppylib.system.environment import GpCoordinatorEnvironment
-from gppylib.db import dbconn
-import io
-import sys
-
-def initGparrayFromFile(basename):
-    filename = os.path.dirname(__file__) + \
-        "/data/ggrebalance/" + basename + ".array"
-    segdbs = []
-    with open(filename, 'r') as fp:
-        for line in fp:
-            if not line.lstrip().startswith('#'):
-                segdbs.append(Segment.initFromString(line))
-    return GpArray(segdbs, segdbs)
+from .config import initGparrayFromFile
 
 def rebalance_only(numsegs):
     def inner(func):
@@ -43,7 +29,7 @@ def check_query(conn, query):
 class GpTestRebalanceValidation(GpTestCase):
     def setUp(self):
         gprebalance_file = os.path.abspath(
-            os.path.dirname(__file__) + "/../../../ggrebalance")
+            os.path.dirname(__file__) + "/../../ggrebalance")
         self.subject = imp.load_source('ggrebalance', gprebalance_file)
         self.old_sys_argv = sys.argv
         sys.argv = []
@@ -97,17 +83,6 @@ class GpTestRebalanceValidation(GpTestCase):
             "Cluster is already balanced, no segment moves will be held.")
     
     @patch('ggrebalance.GpArray.initFromCatalog',
-           return_value=initGparrayFromFile("balanced_spread_24"))
-    @patch('os.path.exists', side_effect=lambda path: path not in ['/tmp/dirdoesnotexist/gparraydump'])
-    @patch('gppylib.db.dbconn.queryRow', side_effect=check_query)
-    @rebalance_only(numsegs = 24)
-    def test_already_balanced_spread(self, mockCatalog, mockOsPath, mockCursor):
-        with self.assertRaises(SystemExit):
-            self.subject.main(self.options, self.args, self.parser)
-        self.subject.logger.info.assert_any_call(
-            "Cluster is already balanced, no segment moves will be held.")
-    
-    @patch('ggrebalance.GpArray.initFromCatalog',
            return_value=initGparrayFromFile("seg_down"))
     @patch('os.path.exists', side_effect=lambda path: path not in ['/tmp/dirdoesnotexist/gparraydump'])
     @patch('gppylib.db.dbconn.queryRow', side_effect=check_query)
@@ -132,7 +107,17 @@ class GpTestRebalanceValidation(GpTestCase):
             'ggrebalance failed: --target_datadirs options should have format like '
             '"/data/primary/gpseg{content} , /data/mirror/gpseg{content}" \n\nExiting...')
     
-
+    @patch('ggrebalance.GpArray.initFromCatalog',
+           return_value=initGparrayFromFile("role_mismatch"))
+    @patch('os.path.exists', side_effect=lambda path: path not in ['/tmp/dirdoesnotexist/gparraydump'])
+    @patch('gppylib.db.dbconn.queryRow', side_effect=check_query)
+    @rebalance_only(numsegs = 4)
+    def test_role_mistmatch(self, mockCatalog, mockOsPath, mockCursor):
+        with self.assertRaises(SystemExit):
+            self.subject.main(self.options, self.args, self.parser)
+        self.subject.logger.error.assert_any_call(
+            "ggrebalance failed: Current role does not match preferred role for several segments. \n\nExiting...")
+    
 
 if __name__ == '__main__':
     run_tests()

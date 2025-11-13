@@ -178,43 +178,45 @@ class ShrinkPlan(Plan):
         
         return "\n".join(lines)
     
+class ConfigurationEncoder:
 
-def encode_configutaion(gparray: gparray.GpArray, 
-                        target_hosts: List[Host],
-                        strategy: str) -> Tuple[Encoding, HostMapping]:
-    """
-    The rebalance solvers work with abstract input segment configutation.
-    Each host must have an id in [0, n-1] interval, where n is a size
-    of full hosts set, including decommissioned and new hosts. We encode
-    segment placement as a vecor (h0, h1, ..., hj, ... hk), k - number of segments,
-    hj - host id, j - segment contentid. E.x. H0 = {p0, p1, p2, m3, m4, m5}
-    H1= {p3, p4, p5. m0, m1, m2}. We want to decommission H1 and add 2 new hosts H2
-    and H3. Thus, the configuration will be encoded as:
-    primaries (0, 0, 0, 3, 3, 3) mirrors (3, 3, 3, 0, 0, 0). Host id equal 3 corresponds
-    to H1, since we want the decommissioned hosts be out of interval [0, nt-1] nt <= n,
-    where nt - number of target hosts, which the rebalance should be performed on.
-    The initial host load can encoded as (6, 0, 0, 6). n = 4, nt = 3.
-                                          H0 H2 H3 H1
-    After rebalance we want to get the configuration such that the load (4, 4, 4, 0)
-    and mirroring strategy are achieved.
-    """
-    host_mapping = {}
-    sorted_hosts = sorted(target_hosts, key=lambda h: h.status)
-    for i, h in enumerate(sorted_hosts):
-        host_mapping[h] = i
-    primary_plcmnt = [0] * gparray.get_primary_count()
-    mirror_plcmnt = [0] * gparray.get_primary_count()
-    for pair in gparray.segmentPairs:
-        primary_plcmnt[pair.primaryDB.content] = host_mapping[pair.primaryDB.hostname]
-        mirror_plcmnt[pair.mirrorDB.content] = host_mapping[pair.mirrorDB.hostname]
-    n_initial = len(target_hosts)
-    n_target = sum([1 for h in target_hosts if h.status != HostStatus.DECOMMISSION])
-    return ((gparray.get_primary_count(),
-             n_target,
-             n_initial,
-             primary_plcmnt,
-             mirror_plcmnt,
-             strategy), host_mapping)
+    @staticmethod
+    def encode_configutaion(gparray: gparray.GpArray, 
+                            target_hosts: List[Host],
+                            strategy: str) -> Tuple[Encoding, HostMapping]:
+        """
+        The rebalance solvers work with abstract input segment configutation.
+        Each host must have an id in [0, n-1] interval, where n is a size
+        of full hosts set, including decommissioned and new hosts. We encode
+        segment placement as a vecor (h0, h1, ..., hj, ... hk), k - number of segments,
+        hj - host id, j - segment contentid. E.x. H0 = {p0, p1, p2, m3, m4, m5}
+        H1= {p3, p4, p5. m0, m1, m2}. We want to decommission H1 and add 2 new hosts H2
+        and H3. Thus, the configuration will be encoded as:
+        primaries (0, 0, 0, 3, 3, 3) mirrors (3, 3, 3, 0, 0, 0). Host id equal 3 corresponds
+        to H1, since we want the decommissioned hosts be out of interval [0, nt-1] nt <= n,
+        where nt - number of target hosts, which the rebalance should be performed on.
+        The initial host load can encoded as (6, 0, 0, 6). n = 4, nt = 3.
+                                              H0 H2 H3 H1
+        After rebalance we want to get the configuration such that the load (4, 4, 4, 0)
+        and mirroring strategy are achieved.
+        """
+        host_mapping = {}
+        sorted_hosts = sorted(target_hosts, key=lambda h: h.status)
+        for i, h in enumerate(sorted_hosts):
+            host_mapping[h.hostname] = i
+        primary_plcmnt = [0] * gparray.get_primary_count()
+        mirror_plcmnt = [0] * gparray.get_primary_count()
+        for pair in gparray.segmentPairs:
+            primary_plcmnt[pair.primaryDB.content] = host_mapping[pair.primaryDB.hostname]
+            mirror_plcmnt[pair.mirrorDB.content] = host_mapping[pair.mirrorDB.hostname]
+        n_initial = len(target_hosts)
+        n_target = sum([1 for h in target_hosts if h.status != HostStatus.DECOMMISSION])
+        return ((gparray.get_primary_count(),
+                 n_target,
+                 n_initial,
+                 primary_plcmnt,
+                 mirror_plcmnt,
+                 strategy), host_mapping)
 
 class Planner:
     """
@@ -231,8 +233,10 @@ class Planner:
             self.dir_template_p, self.dir_template_m = self.get_datadirs()
         else:
             self.dir_template_p, self.dir_template_m = PRIMARY_PATH, MIRROR_PATH
-        self.host_set_changed = False
-        self.target_hosts = self.get_target_hosts()
+        self.target_hosts, self.host_set_changed = Planner.get_target_hosts(self.virtual_gparray,
+                                                                            options,
+                                                                            self.dir_template_p,
+                                                                            self.dir_template_m)
     
     def plan(self) -> Plan:
         plan = None
@@ -242,10 +246,6 @@ class Planner:
             plan = self.plan_shrink()
         elif self.options.target_segment_count > self.gparray.get_segment_count():
             raise PlanningError("Expand is not supported yet")
-        elif self.options.target_segment_count == self.gparray.get_segment_count():
-            if self.options.skip_rebalance:
-                self.logger.info("Skipping rebalance. Nothing to be done")
-                return None
 
         if self.options.skip_rebalance:
             self.logger.info("Skipping rebalance")
@@ -253,7 +253,7 @@ class Planner:
         
         if not plan:
             plan = Plan()
-        rebalance_moves = self.plan_rebalance()
+        rebalance_moves = self.plan_moves()
         if rebalance_moves is None:
             self.logger.info("Cluster is already balanced, no segment moves will be held.")
         plan.setMoves(rebalance_moves)
@@ -273,12 +273,12 @@ class Planner:
             primary_seg = seg_pair.primaryDB
             if primary_seg.getSegmentContentId() >= self.options.target_segment_count:
                 shrinkedSegs.append(seg_pair)
-                self.removeSegPairFromArray(seg_pair)
+                self.remove_segpair_from_array(seg_pair)
         plan = ShrinkPlan(shrinkedSegs)
         plan.setTargetSegmentCount(self.options.target_segment_count)
         return plan
     
-    def removeSegPairFromArray(self, segPair: gparray.SegmentPair):
+    def remove_segpair_from_array(self, segPair: gparray.SegmentPair):
         """
         Removes the segment pair from gparray.
         """
@@ -293,25 +293,32 @@ class Planner:
                 segs_list = list(filter(lambda x: x.dbid != segPair.mirrorDB.dbid, 
                              segs_list))
         self.virtual_gparray.setSegmentsAsLoadedFromDb(segs_list)
-
-    def get_target_hosts(self) -> List[Host]:
+    
+    @staticmethod
+    def get_target_hosts(array: gparray.GpArray,
+                         options: Any,
+                         dir_template_p: str = PRIMARY_PATH,
+                         dir_template_m: str = MIRROR_PATH) -> Tuple[List[Host], bool]:
         """
         Form set of hosts where we need to rebalance segments on
         """
         hosts = {}
-        for seg in self.virtual_gparray.segmentPairs:
+        host_set_changed = False
+        for seg in array.segmentPairs:
             if seg.primaryDB.content >= 0:
-                hosts[seg.primaryDB.hostname] = Host(hostname=seg.primaryDB.hostname,\
-                                           address=seg.primaryDB.address,\
-                                           primary_datadirs=set(),\
-                                           mirror_datadirs=set(),\
-                                           status = HostStatus.ACTIVE)
-                hosts[seg.mirrorDB.hostname] = Host(hostname=seg.primaryDB.hostname,\
-                                           address=seg.primaryDB.address,\
-                                           primary_datadirs=set(),\
-                                           mirror_datadirs=set(),\
-                                           status = HostStatus.ACTIVE)
-        for pair in self.virtual_gparray.segmentPairs:
+                if seg.primaryDB.hostname not in hosts:
+                    hosts[seg.primaryDB.hostname] = Host(hostname=seg.primaryDB.hostname,\
+                                               address=seg.primaryDB.address,\
+                                               primary_datadirs=set(),\
+                                               mirror_datadirs=set(),\
+                                               status = HostStatus.ACTIVE)
+                if seg.mirrorDB.hostname not in hosts:
+                    hosts[seg.mirrorDB.hostname] = Host(hostname=seg.mirrorDB.hostname,\
+                                               address=seg.mirrorDB.address,\
+                                               primary_datadirs=set(),\
+                                               mirror_datadirs=set(),\
+                                               status = HostStatus.ACTIVE)
+        for pair in array.segmentPairs:
             primary = pair.primaryDB
             mirror = pair.mirrorDB
             hosts[primary.hostname].primary_datadirs.add(
@@ -319,37 +326,37 @@ class Planner:
             if mirror:
                 hosts[mirror.hostname].mirror_datadirs.add(
                     os.path.dirname(mirror.datadir))
-        if self.options.target_hosts:
-            hl = list(map(str.strip, self.options.target_hosts.split(',')))
+        if options.target_hosts:
+            hl = list(map(str.strip, options.target_hosts.split(',')))
             for host in hosts.keys():
                 if host not in hl:
                     hosts[host].status = HostStatus.DECOMMISSION
-                    self.host_set_changed = True
+                    host_set_changed = True
             for host in hl:
                 if host not in hosts:
                     hosts[host] = Host(hostname=host,\
                                        address=host,\
-                                       primary_datadirs={self.dir_template_p},\
-                                       mirror_datadirs={self.dir_template_m},\
+                                       primary_datadirs={dir_template_p},\
+                                       mirror_datadirs={dir_template_m},\
                                        status = HostStatus.NEW)
-                    self.host_set_changed = True
-        if self.options.add_hosts:
-            hl = list(map(str.strip, self.options.add_hosts.split(',')))
+                    host_set_changed = True
+        if options.add_hosts:
+            hl = list(map(str.strip, options.add_hosts.split(',')))
             for host in hl:
                 hosts[host] = Host(hostname=host,\
                                    address=host,\
-                                   primary_datadirs={self.dir_template_p},\
-                                   mirror_datadirs={self.dir_template_m},\
+                                   primary_datadirs={dir_template_p},\
+                                   mirror_datadirs={dir_template_m},\
                                    status = HostStatus.NEW)
-                self.host_set_changed = True
-        if self.options.remove_hosts:
-            hl = list(map(str.strip, self.options.target_hosts.split(',')))
+                host_set_changed = True
+        if options.remove_hosts:
+            hl = list(map(str.strip, options.remove_hosts.split(',')))
             for host in hosts.keys():
                 if host in hl:
                     hosts[host].status = HostStatus.DECOMMISSION
-                    self.host_set_changed = True
+                    host_set_changed = True
 
-        return hosts.values()
+        return hosts.values(), host_set_changed
     
     def get_datadirs(self) -> Tuple[str, str]:
         parts = self.options.target_datadirs.split(',')
@@ -372,10 +379,12 @@ class Planner:
         return tuple(cleaned_parts)
         
     
-    def plan_rebalance(self) -> List[LogicalMove]:
+    def plan_moves(self) -> List[LogicalMove]:
         self.logger.info("Validation of rebalance possibility")
+
         if not self.virtual_gparray.hasMirrors:
             raise ValidationError("Cluster has mirroring disabled. Can't proceed with rebalance")
+
         for pair in self.virtual_gparray.segmentPairs:
             prim = pair.primaryDB
             mir = pair.mirrorDB
@@ -388,26 +397,33 @@ class Planner:
         if total_hosts < 2:
             raise ValidationError("Cannot perform rebalance at 1 host")
         if total_primaries % total_hosts != 0:
-            raise ValidationError(f"Cannot evenly distribute {total_primaries} \
-                                  segments across {total_hosts} hosts.")
+            raise ValidationError(f"Cannot evenly distribute {total_primaries}"
+                                  f" segments across {total_hosts} hosts.")
+
         expected_per_host = total_primaries // total_hosts
         strat = self.options.mirror_mode
+
         if not strat:
             strat = self.get_mirroring_strat()
         
+        if strat == 'spread' and expected_per_host > total_hosts - 1:
+            raise ValidationError("Cannot provide spread mirroring. Specify other "
+                                  "mirroring strategy via -m option")
+
         if not self.host_set_changed\
             and self.already_balanced(expected_per_host):
             return None
         
-        conf, host_mapping = encode_configutaion(self.virtual_gparray, self.target_hosts, strat)
+        # dry movements are planned here
+        conf, host_mapping = ConfigurationEncoder.encode_configutaion(self.virtual_gparray, self.target_hosts, strat)
         id_to_host = {v: k for k, v in host_mapping.items()}
-        solution, cost = balancer.BABSolver(*conf).solve()
+        solution, cost = balancer.GreedySolver(*conf).solve()
         moves = []
         for pair in self.virtual_gparray.segmentPairs:
             prim = pair.primaryDB
             mir = pair.mirrorDB
             plcmnt = solution[prim.content]
-            # TODO - recource estimation, ports, directories, size planning
+            # TODO - resource estimation, ports, directories, size planning
             if host_mapping[prim.hostname] != plcmnt[0]:
                 cseg = CandidateSegment(prim, id_to_host[prim.hostname], None)
                 moves.append(LogicalMove(cseg, id_to_host[plcmnt[0]], id_to_host[plcmnt[0]].primary_datadirs[0], 7002))
@@ -420,7 +436,7 @@ class Planner:
 
         return moves
     
-    def already_balanced(self, load):
+    def already_balanced(self, load: int) -> bool:
         primaries_by_host = defaultdict(int)
         mirrors_by_host = defaultdict(int)
         for pair in self.virtual_gparray.segmentPairs:
