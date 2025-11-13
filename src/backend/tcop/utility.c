@@ -287,6 +287,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_PrepareStmt:
 		case T_UnlistenStmt:
 		case T_VariableSetStmt:
+		case T_RetrieveStmt:
 			{
 				/*
 				 * These modify only backend-local state, so they're OK to
