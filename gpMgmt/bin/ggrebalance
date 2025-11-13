@@ -138,8 +138,6 @@ def validate_options(options, args, parser):
         logger.error('Mirroring strategy %s is not supported' %
                      options.mirroring)
         parser.exit(1)
-    elif not options.mirror_mode:
-        logger.warning('ggrebalance will preserve exisitng mirroring strategy')
     elif options.skip_rebalance:
         logger.error("Can't use together options '--skip-rebalance' and '--mirror-mode'")
         parser.exit(1)
@@ -263,7 +261,7 @@ def main(options, args, parser):
             logger.info(f"Final plan:\n{shrink_plan}")
             sys.exit(0)
         
-        if isinstance(shrink_plan, ShrinkPlan):
+        if not shrink_plan or isinstance(shrink_plan, ShrinkPlan):
             gg_shrink.run(shrink_plan)
 
         sys.exit(0)

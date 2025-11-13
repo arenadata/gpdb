@@ -10,8 +10,8 @@ Feature: ggrebalance behave tests
          And segment information for content 3 is saved in context
          And all files in gpAdminLogs directory are deleted
         When the user runs "ggrebalance -x 4 --skip-rebalance"
-        Then ggrebalance should return a return code of 1
-         And ggrebalance should print "Target segment count (4) >= current segment count (4)." to logfile with latest timestamp
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Skipping rebalance" to logfile with latest timestamp
         When the user runs "ggrebalance -c"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance schema doesn't exist. Cleanup is not required." to logfile with latest timestamp
