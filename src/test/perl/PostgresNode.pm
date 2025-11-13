@@ -838,7 +838,7 @@ sub start
 		return 0;
 	}
 
-	$self->_update_pid(1);
+	$self->_update_pid(1, $params{fail_ok});
 	$ENV{PGOPTIONS}      = '-c gp_role=utility';
 	return 1;
 }
@@ -1102,7 +1102,7 @@ archive_command = '$copy_command'
 # Internal method
 sub _update_pid
 {
-	my ($self, $is_running) = @_;
+	my ($self, $is_running, $fail_ok) = @_;
 	my $name = $self->name;
 
 	#GPDB_12_MERGE_FIXME: somehow without this fails to find the pid file
@@ -1117,7 +1117,7 @@ sub _update_pid
 		close $pidfile;
 
 		# If we found a pidfile when there shouldn't be one, complain.
-		BAIL_OUT("postmaster.pid unexpectedly present") unless $is_running;
+		BAIL_OUT("postmaster.pid unexpectedly present") unless $is_running or $fail_ok;
 		return;
 	}
 
@@ -1125,7 +1125,7 @@ sub _update_pid
 	print "# No postmaster PID for node \"$name\"\n";
 
 	# Complain if we expected to find a pidfile.
-	BAIL_OUT("postmaster.pid unexpectedly not present") if $is_running;
+	BAIL_OUT("postmaster.pid unexpectedly not present") if $is_running and !$fail_ok;
 	return;
 }
 
