@@ -10,6 +10,10 @@
 -- ignore details such as exact costs or row counts.  These filter
 -- functions replace changeable output details with fixed strings.
 
+-- start_ignore
+drop function if exists explain_filter(text);
+drop function if exists explain_filter_to_json(text);
+-- end_ignore
 create function explain_filter(text) returns setof text
 language plpgsql as
 $$
