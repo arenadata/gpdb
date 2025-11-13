@@ -544,7 +544,7 @@ create table nulltest
            , col5 dcheck CHECK (col5 IN ('c', 'd'))
            );
 INSERT INTO nulltest DEFAULT VALUES;
-ERROR:  null value in column "col3" of relation "nulltest" violates not-null constraint  (seg0 127.0.0.1:7002 pid=20315)
+ERROR:  null value in column "col3" of relation "nulltest" violates not-null constraint
 DETAIL:  Failing row contains (null, null, null, null, null).
 INSERT INTO nulltest values ('a', 'b', 'c', 'd', 'c');  -- Good
 insert into nulltest values ('a', 'b', 'c', 'd', NULL);
