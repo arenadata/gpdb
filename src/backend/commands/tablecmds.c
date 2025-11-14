@@ -6316,8 +6316,10 @@ ATAocsWriteSegFileNewColumns(
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_NOT_NULL_VIOLATION),
-								 errmsg("column \"%s\" contains null values",
-										NameStr(attr->attname))));
+								 errmsg("column \"%s\" of relation \"%s\" contains null values",
+										NameStr(attr->attname),
+										RelationGetRelationName(idesc->rel)),
+								 errtablecol(idesc->rel, newval->attnum)));
 					}
 				}
 				foreach (l, tab->constraints)
@@ -6329,8 +6331,10 @@ ATAocsWriteSegFileNewColumns(
 							if(!ExecCheck(con->qualstate, econtext))
 								ereport(ERROR,
 										(errcode(ERRCODE_CHECK_VIOLATION),
-										 errmsg("check constraint \"%s\" is violated by some row",
-											con->name)));
+										 errmsg("check constraint \"%s\" of relation \"%s\" is violated by some row",
+												con->name,
+												RelationGetRelationName(idesc->rel)),
+										 errtableconstraint(idesc->rel, con->name)));
 							break;
 						case CONSTR_FOREIGN:
 							/* Nothing to do */
