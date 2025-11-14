@@ -1,5 +1,5 @@
 -- start_ignore
-DROP LANGUAGE IF EXISTS plpython3u;
+DROP EXTENSION IF EXISTS plpython3u CASCADE;
 DROP VIEW IF EXISTS busy;
 DROP VIEW IF EXISTS cancel_all;
 DROP TABLE IF EXISTS bigtable;
