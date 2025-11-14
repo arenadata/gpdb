@@ -3504,14 +3504,17 @@ select count(*) from test_trgm where t ~ '[qwerty]{2}-?[qwerty]{2}';
 -- check handling of indexquals that generate no searchable conditions
 explain (costs off)
 select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on test_trgm
-         Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
-         ->  Bitmap Index Scan on trgm_idx
-               Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
-(5 rows)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on test_trgm
+                     Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+                     ->  Bitmap Index Scan on trgm_idx
+                           Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
  count 
@@ -3521,14 +3524,17 @@ select count(*) from test_trgm where t like '%99%' and t like '%qwerty%';
 
 explain (costs off)
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on test_trgm
-         Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
-         ->  Bitmap Index Scan on trgm_idx
-               Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
-(5 rows)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on test_trgm
+                     Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+                     ->  Bitmap Index Scan on trgm_idx
+                           Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 select count(*) from test_trgm where t like '%99%' and t like '%qw%';
  count 
@@ -3542,14 +3548,17 @@ create index t_trgm_idx on t_test_trgm using gin (t gin_trgm_ops);
 insert into t_test_trgm values ('qwerty99'), ('qwerty01');
 explain (costs off)
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on t_test_trgm
-         Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
-         ->  Bitmap Index Scan on t_trgm_idx
-               Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
-(5 rows)
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on t_test_trgm
+                     Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+                     ->  Bitmap Index Scan on t_trgm_idx
+                           Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qwerty%'::text))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
  count 
@@ -3559,14 +3568,17 @@ select count(*) from t_test_trgm where t like '%99%' and t like '%qwerty%';
 
 explain (costs off)
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
-                               QUERY PLAN                                
--------------------------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on t_test_trgm
-         Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
-         ->  Bitmap Index Scan on t_trgm_idx
-               Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
-(5 rows)
+                                     QUERY PLAN                                      
+-------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on t_test_trgm
+                     Recheck Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+                     ->  Bitmap Index Scan on t_trgm_idx
+                           Index Cond: ((t ~~ '%99%'::text) AND (t ~~ '%qw%'::text))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 select count(*) from t_test_trgm where t like '%99%' and t like '%qw%';
  count 

@@ -350,14 +350,17 @@ SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
 -- Test optimization of non-empty GIN_SEARCH_MODE_ALL queries
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM test_tsvector WHERE a @@ '!qh';
-                     QUERY PLAN                      
------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on test_tsvector
-         Recheck Cond: (a @@ '!''qh'''::tsquery)
-         ->  Bitmap Index Scan on wowidx
-               Index Cond: (a @@ '!''qh'''::tsquery)
-(5 rows)
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on test_tsvector
+                     Recheck Cond: (a @@ '!''qh'''::tsquery)
+                     ->  Bitmap Index Scan on wowidx
+                           Index Cond: (a @@ '!''qh'''::tsquery)
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 SELECT count(*) FROM test_tsvector WHERE a @@ '!qh';
  count 
@@ -367,14 +370,17 @@ SELECT count(*) FROM test_tsvector WHERE a @@ '!qh';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM test_tsvector WHERE a @@ 'wr' AND a @@ '!qh';
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Aggregate
-   ->  Bitmap Heap Scan on test_tsvector
-         Recheck Cond: ((a @@ '''wr'''::tsquery) AND (a @@ '!''qh'''::tsquery))
-         ->  Bitmap Index Scan on wowidx
-               Index Cond: ((a @@ '''wr'''::tsquery) AND (a @@ '!''qh'''::tsquery))
-(5 rows)
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Bitmap Heap Scan on test_tsvector
+                     Recheck Cond: ((a @@ '''wr'''::tsquery) AND (a @@ '!''qh'''::tsquery))
+                     ->  Bitmap Index Scan on wowidx
+                           Index Cond: ((a @@ '''wr'''::tsquery) AND (a @@ '!''qh'''::tsquery))
+ Optimizer: Postgres query optimizer
+(8 rows)
 
 SELECT count(*) FROM test_tsvector WHERE a @@ 'wr' AND a @@ '!qh';
  count 

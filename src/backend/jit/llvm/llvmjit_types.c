@@ -124,6 +124,8 @@ void	   *referenced_functions[] =
 	ExecEvalRowNull,
 	ExecEvalSQLValueFunction,
 	ExecEvalScalarArrayOp,
+	ExecEvalScalarArrayOpFastInt,
+	ExecEvalScalarArrayOpFastStr,
 	ExecEvalSubPlan,
 	ExecEvalSubscriptingRef,
 	ExecEvalSubscriptingRefAssign,

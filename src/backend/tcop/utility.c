@@ -176,6 +176,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterTableMoveAllStmt:
 		case T_AlterTableSpaceOptionsStmt:
 		case T_AlterTableStmt:
+		case T_AlterTypeStmt:
 		case T_AlterUserMappingStmt:
 		case T_CommentStmt:
 		case T_CompositeTypeStmt:
@@ -287,6 +288,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_PrepareStmt:
 		case T_UnlistenStmt:
 		case T_VariableSetStmt:
+		case T_RetrieveStmt:
 			{
 				/*
 				 * These modify only backend-local state, so they're OK to
