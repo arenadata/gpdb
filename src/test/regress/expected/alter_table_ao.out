@@ -261,7 +261,7 @@ WITH (APPENDONLY=TRUE, ORIENTATION=column) distributed randomly;
 insert into aoco1 values('a', 1); 
 -- should fail (rewrite needs to do null checking) 
 alter table aoco1 add column col3 char(1) not null default NULL; 
-ERROR:  column "col3" contains null values  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=87838)
+ERROR:  column "col3" of relation "aoco1" contains null values  (seg0 usxxreddyr3mbp1.corp.emc.com:40000 pid=87838)
 alter table aoco1 add column c5 int check (c5 IS NOT NULL) default NULL;
 ERROR:  check constraint "aoco1_c5_check" of relation "aoco1" is violated by some row
 -- should fail (rewrite needs to do constraint checking) 
@@ -293,7 +293,7 @@ select * from aoco1;
 (2 rows)
 
 alter table aoco1 add column col4 char(1) not NULL default NULL;
-ERROR:  column "col4" contains null values  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=90925)
+ERROR:  column "col4" of relation "aoco1" contains null values  (seg1 usxxreddyr3mbp1.corp.emc.com:40001 pid=90925)
 select * from aoco1;
  col1 | col2 | col3 
 ------+------+------
