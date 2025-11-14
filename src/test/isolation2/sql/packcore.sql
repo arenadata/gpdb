@@ -9,6 +9,8 @@ DO LANGUAGE plpython3u $$
     import shutil
     import subprocess
 
+    curdir = os.getcwd()
+
     if sys.platform not in ('linux', 'linux2'):
         # packcore only works on linux
         return
@@ -94,6 +96,7 @@ stderr: {stderr}
     cores = glob.glob('/tmp/core.postgres.*')
     if not cores:
         # no postgres coredump found, skip the packcore tests
+        os.chdir(curdir)
         return
 
     corefile = cores[0]
@@ -115,5 +118,7 @@ stderr: {stderr}
     test_packcore([packcore,
                    '-b', postgres,
                    corefile])
+
+    os.chdir(curdir)
 $$;
 -- vi: sw=4 et :
