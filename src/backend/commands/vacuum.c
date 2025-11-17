@@ -147,7 +147,8 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 	params.truncate = VACOPT_TERNARY_DEFAULT;
 
 	/* By default parallel vacuum is enabled */
-	params.nworkers = 0;
+	/* VACUUM option "parallel" not supported in GPDB */
+	params.nworkers = -1;
 
 	/* Parse options list */
 	foreach(lc, vacstmt->options)
