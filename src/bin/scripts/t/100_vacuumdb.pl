@@ -3,7 +3,7 @@ use warnings;
 
 use PostgresNode;
 use TestLib;
-use Test::More tests => 45;
+use Test::More tests => 49;
 
 program_help_ok('vacuumdb');
 program_version_ok('vacuumdb');
@@ -48,6 +48,18 @@ $node->issues_sql_like(
 $node->command_fails(
 	[ 'vacuumdb', '--analyze-only', '--disable-page-skipping', 'postgres' ],
 	'--analyze-only and --disable-page-skipping specified together');
+# GPDB: VACUUM (PARALLEL ...) doesn't work on GPDB, skip.
+SKIP: {
+	skip "VACUUM (PARALLEL ...) not implemented on GPDB", 4;
+$node->issues_sql_like(
+	[ 'vacuumdb', '-P', 2, 'postgres' ],
+	qr/statement: VACUUM \(PARALLEL 2\).*;/,
+	'vacuumdb -P 2');
+$node->issues_sql_like(
+	[ 'vacuumdb', '-P', 0, 'postgres' ],
+	qr/statement: VACUUM \(PARALLEL 0\).*;/,
+	'vacuumdb -P 0');
+} # end SKIP
 $node->command_ok([qw(vacuumdb -Z --table=pg_am dbname=template1)],
 	'vacuumdb with connection string');
 
