@@ -25,12 +25,17 @@ class Host:
     """
     hostname: str
     address: str
-    primary_datadirs: Set[str]
-    mirror_datadirs: Set[str]
-    status: HostStatus
+    primary_datadirs: Set[str] = None
+    mirror_datadirs: Set[str] = None
+    status: HostStatus = None
 
     def __hash__(self):
-        return hash(self.hostname)
+        return hash((self.hostname, self.address))
+    
+    def __eq__(self, other):
+        if not isinstance(other, Host):
+            return NotImplemented
+        return self.hostname == other.hostname and self.address == other.address
 
     def __str__(self):
         pass

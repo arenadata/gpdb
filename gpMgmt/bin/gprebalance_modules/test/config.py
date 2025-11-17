@@ -20,7 +20,7 @@ def getEncoding(file, strat, target_hosts, add_hosts, remove_hosts):
     def inner(func):
         def wrapper(self, *args, **kwargs):
             gparray = initGparrayFromFile(file)
-            self.encoding = ConfigurationEncoder.encode_configutaion(gparray,
+            self.encoding = ConfigurationEncoder.encode_configuration(gparray,
                                                                      Planner.get_target_hosts(
                                                                      gparray,
                                                                      types.SimpleNamespace(target_hosts=target_hosts,

@@ -181,11 +181,11 @@ class ShrinkPlan(Plan):
 class ConfigurationEncoder:
 
     @staticmethod
-    def encode_configutaion(gparray: gparray.GpArray, 
+    def encode_configuration(gparray: gparray.GpArray, 
                             target_hosts: List[Host],
                             strategy: str) -> Tuple[Encoding, HostMapping]:
         """
-        The rebalance solvers work with abstract input segment configutation.
+        The rebalance solvers work with abstract input segment configuration.
         Each host must have an id in [0, n-1] interval, where n is a size
         of full hosts set, including decommissioned and new hosts. We encode
         segment placement as a vecor (h0, h1, ..., hj, ... hk), k - number of segments,
@@ -203,12 +203,14 @@ class ConfigurationEncoder:
         host_mapping = {}
         sorted_hosts = sorted(target_hosts, key=lambda h: h.status)
         for i, h in enumerate(sorted_hosts):
-            host_mapping[h.hostname] = i
+            host_mapping[h] = i
         primary_plcmnt = [0] * gparray.get_primary_count()
         mirror_plcmnt = [0] * gparray.get_primary_count()
         for pair in gparray.segmentPairs:
-            primary_plcmnt[pair.primaryDB.content] = host_mapping[pair.primaryDB.hostname]
-            mirror_plcmnt[pair.mirrorDB.content] = host_mapping[pair.mirrorDB.hostname]
+            primary_plcmnt[pair.primaryDB.content] = host_mapping[Host(hostname=pair.primaryDB.hostname,
+                                                                       address=pair.primaryDB.address)]
+            mirror_plcmnt[pair.mirrorDB.content] = host_mapping[Host(hostname=pair.mirrorDB.hostname,
+                                                                     address=pair.mirrorDB.address)]
         n_initial = len(target_hosts)
         n_target = sum([1 for h in target_hosts if h.status != HostStatus.DECOMMISSION])
         return ((gparray.get_primary_count(),
@@ -415,7 +417,7 @@ class Planner:
             return None
         
         # dry movements are planned here
-        conf, host_mapping = ConfigurationEncoder.encode_configutaion(self.virtual_gparray, self.target_hosts, strat)
+        conf, host_mapping = ConfigurationEncoder.encode_configuration(self.virtual_gparray, self.target_hosts, strat)
         id_to_host = {v: k for k, v in host_mapping.items()}
         solution, cost = balancer.GreedySolver(*conf).solve()
         moves = []
@@ -424,11 +426,11 @@ class Planner:
             mir = pair.mirrorDB
             plcmnt = solution[prim.content]
             # TODO - resource estimation, ports, directories, size planning
-            if host_mapping[prim.hostname] != plcmnt[0]:
-                cseg = CandidateSegment(prim, id_to_host[prim.hostname], None)
+            if host_mapping[Host(prim.hostname, prim.address)] != plcmnt[0]:
+                cseg = CandidateSegment(prim, [h for h in self.target_hosts if h == Host(prim.hostname, prim.address)][0], None)
                 moves.append(LogicalMove(cseg, id_to_host[plcmnt[0]], id_to_host[plcmnt[0]].primary_datadirs[0], 7002))
-            if host_mapping[mir.hostname] != plcmnt[1]:
-                cseg = CandidateSegment(mir, id_to_host[mir.hostname], None)
+            if host_mapping[Host(mir.hostname, mir.address)] != plcmnt[1]:
+                cseg = CandidateSegment(mir, [h for h in self.target_hosts if h == Host(mir.hostname, mir.address)][0], None)
                 moves.append(LogicalMove(cseg, id_to_host[plcmnt[1]], id_to_host[plcmnt[1]].mirror_datadirs[0], 7003))
         
         if len(moves) == 0:
