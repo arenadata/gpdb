@@ -195,7 +195,7 @@ class TestGreedySolver(GpTestCase):
         solution, cost = solver.solve()
 
         # initial solution gives 528
-        self.assertEqual(cost, 259)
+        self.assertEqual(cost, 330)
 
         self._validate_solition(solution, solver)
     
@@ -219,7 +219,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 107)
+        self.assertEqual(cost, 106)
 
         self._validate_solition(solution, solver)
     
@@ -258,21 +258,21 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 125)
+        self.assertEqual(cost, 84)
 
         self._validate_solition(solution, solver)
     
     @getEncoding('120_20_unbalanced_grouped', 'grouped', target_hosts=
                  "sdw1, sdw2, sdw3, sdw4, sdw5, sdw21, sdw22, sdw23, sdw24, sdw25",
                  add_hosts=None, remove_hosts=None)
-    def test_target_hosts_hosts(self):
+    def test_target_hosts(self):
         conf = self.encoding[0]
 
         solver = GreedySolver(*conf)
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 183)
+        self.assertEqual(cost, 176)
 
         self._validate_solition(solution, solver)
     

@@ -59,7 +59,7 @@ def parseargs():
     parser.add_option('-y', '--non-interactive-mode', dest="interactive", action='store_false', default=True,
                          help="non-interactive mode, do not require user input for confirmations, use defaults.")
     parser.add_option('--target-hosts', dest='target_hosts', metavar='<target_hosts>',
-                      help='Set of hostnames where rebalance will distirbute segments to')
+                      help='Set of hostnames where rebalance will distribute segments to')
     parser.add_option('--add-hosts', dest='add_hosts', metavar='<hosts_to_add>', 
                       help='Hosts extending the configuration')
     parser.add_option('--remove-hosts', dest='remove_hosts', metavar='<hosts_to_remove>', 
@@ -116,6 +116,31 @@ def validate_options(options, args, parser):
         logger.error("Can't use '--target-segment-count' together option '--clean' or '--rollback'")
         parser.exit(1)
     
+    if options.clean_required or options.rollback_required:
+        if options.target_hosts:
+            logger.error("Can't use '--target-hosts' with '--clean' or '--rollback'")
+            parser.exit(1)
+        
+        if options.add_hosts:
+            logger.error("Can't use '--add-hosts' with '--clean' or '--rollback'")
+            parser.exit(1)
+        
+        if options.remove_hosts:
+            logger.error("Can't use '--remove-hosts' with '--clean' or '--rollback'")
+            parser.exit(1)
+        
+        if options.mirror_mode:
+            logger.error("Can't use '--mirror-mode' with '--clean' or '--rollback'")
+            parser.exit(1)
+        
+        if options.skip_rebalance:
+            logger.error("Can't use '--skip-rebalance' with '--clean' or '--rollback'")
+            parser.exit(1)
+        
+        if options.target_datadirs:
+            logger.error("Can't use '--target-datadirs' with '--clean' or '--rollback'")
+            parser.exit(1)
+    
     if options.target_hosts:
         if options.add_hosts:
             logger.error("Can't use together options '--target-hosts' and '--add-hosts'")
@@ -138,7 +163,7 @@ def validate_options(options, args, parser):
         logger.error('Mirroring strategy %s is not supported' %
                      options.mirroring)
         parser.exit(1)
-    elif options.skip_rebalance:
+    elif options.mirror_mode and options.skip_rebalance:
         logger.error("Can't use together options '--skip-rebalance' and '--mirror-mode'")
         parser.exit(1)
 
@@ -253,16 +278,16 @@ def main(options, args, parser):
         # But for now we simply create a Plan object from the options directly.
         # We'll keep this stub till planner is ready.
         # If shrink_plan is None, we assume that we need to continue previous operation
-        shrink_plan = None
+        plan = None
         if options.target_segment_count != None:
-            shrink_plan = Planner(logger, dburl, gparray, options).plan()
+            plan = Planner(logger, dburl, gparray, options).plan()
         
         if options.target_segment_count != None and options.show_plan:
-            logger.info(f"Final plan:\n{shrink_plan}")
+            logger.info(f"Final plan:\n{plan}")
             sys.exit(0)
         
-        if not shrink_plan or isinstance(shrink_plan, ShrinkPlan):
-            gg_shrink.run(shrink_plan)
+        if plan is None or isinstance(plan, ShrinkPlan):
+            gg_shrink.run(plan)
 
         sys.exit(0)
     except Exception as e:

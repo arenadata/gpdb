@@ -8,7 +8,7 @@ from gppylib.gparray import Segment
 class HostStatus(IntEnum):
     ACTIVE = 1
     NEW = 2
-    DECOMMISSION = 3
+    DECOMMISSIONED = 3
 
 
 @dataclass

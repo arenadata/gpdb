@@ -212,7 +212,7 @@ class ConfigurationEncoder:
             mirror_plcmnt[pair.mirrorDB.content] = host_mapping[Host(hostname=pair.mirrorDB.hostname,
                                                                      address=pair.mirrorDB.address)]
         n_initial = len(target_hosts)
-        n_target = sum([1 for h in target_hosts if h.status != HostStatus.DECOMMISSION])
+        n_target = sum([1 for h in target_hosts if h.status != HostStatus.DECOMMISSIONED])
         return ((gparray.get_primary_count(),
                  n_target,
                  n_initial,
@@ -241,23 +241,24 @@ class Planner:
                                                                             self.dir_template_m)
     
     def plan(self) -> Plan:
-        plan = None
+        plan = Plan()
 
         self.validate_segment_status()
         if self.options.target_segment_count < self.gparray.get_segment_count():
             plan = self.plan_shrink()
+
         elif self.options.target_segment_count > self.gparray.get_segment_count():
             raise PlanningError("Expand is not supported yet")
 
         if self.options.skip_rebalance:
             self.logger.info("Skipping rebalance")
             return plan
-        
-        if not plan:
-            plan = Plan()
-        rebalance_moves = self.plan_moves()
+
+        rebalance_moves = self.form_moves()
+
         if rebalance_moves is None:
             self.logger.info("Cluster is already balanced, no segment moves will be held.")
+
         plan.setMoves(rebalance_moves)
         plan.setTargetSegmentCount(self.options.target_segment_count)
         return plan
@@ -332,7 +333,7 @@ class Planner:
             hl = list(map(str.strip, options.target_hosts.split(',')))
             for host in hosts.keys():
                 if host not in hl:
-                    hosts[host].status = HostStatus.DECOMMISSION
+                    hosts[host].status = HostStatus.DECOMMISSIONED
                     host_set_changed = True
             for host in hl:
                 if host not in hosts:
@@ -355,7 +356,7 @@ class Planner:
             hl = list(map(str.strip, options.remove_hosts.split(',')))
             for host in hosts.keys():
                 if host in hl:
-                    hosts[host].status = HostStatus.DECOMMISSION
+                    hosts[host].status = HostStatus.DECOMMISSIONED
                     host_set_changed = True
 
         return hosts.values(), host_set_changed
@@ -381,7 +382,7 @@ class Planner:
         return tuple(cleaned_parts)
         
     
-    def plan_moves(self) -> List[LogicalMove]:
+    def form_moves(self) -> List[LogicalMove]:
         self.logger.info("Validation of rebalance possibility")
 
         if not self.virtual_gparray.hasMirrors:
@@ -408,7 +409,7 @@ class Planner:
         if not strat:
             strat = self.get_mirroring_strat()
         
-        if strat == 'spread' and expected_per_host > total_hosts - 1:
+        if strat == SPREAD and expected_per_host > total_hosts - 1:
             raise ValidationError("Cannot provide spread mirroring. Specify other "
                                   "mirroring strategy via -m option")
 
