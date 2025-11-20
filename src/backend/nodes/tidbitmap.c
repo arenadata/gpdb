@@ -33,9 +33,14 @@
 
 #include "access/htup.h"
 #include "access/htup_details.h"
+<<<<<<< HEAD
 #include "access/bitmap.h"		/* XXX: remove once pull_stream is generic */
 #include "common/hashfn.h"
 #include "executor/instrument.h"	/* Instrumentation */
+=======
+#include "common/hashfn.h"
+#include "nodes/bitmapset.h"
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 #include "nodes/tidbitmap.h"
 #include "storage/lwlock.h"
 #include "utils/dsa.h"

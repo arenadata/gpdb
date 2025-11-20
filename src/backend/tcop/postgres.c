@@ -1748,8 +1748,8 @@ exec_simple_query(const char *query_string)
 	{
 		RawStmt    *parsetree = lfirst_node(RawStmt, parsetree_item);
 		bool		snapshot_set = false;
-		const char *commandTag;
-		char		completionTag[COMPLETION_TAG_BUFSIZE];
+		CommandTag	commandTag;
+		QueryCompletion qc;
 		MemoryContext per_parsetree_context = NULL;
 		List	   *querytree_list,
 				   *plantree_list;
@@ -1765,7 +1765,7 @@ exec_simple_query(const char *query_string)
 		 */
 		commandTag = CreateCommandTag(parsetree->stmt);
 
-		set_ps_display(commandTag, false);
+		set_ps_display(GetCommandTagName(commandTag));
 
 		BeginCommand(commandTag, dest);
 
@@ -1860,7 +1860,16 @@ exec_simple_query(const char *query_string)
 		plantree_list = pg_plan_queries(querytree_list,
 										CURSOR_OPT_PARALLEL_OK, NULL);
 
-		/* Done with the snapshot used for parsing/planning */
+		/*
+		 * Done with the snapshot used for parsing/planning.
+		 *
+		 * While it looks promising to reuse the same snapshot for query
+		 * execution (at least for simple protocol), unfortunately it causes
+		 * execution to use a snapshot that has been acquired before locking
+		 * any of the tables mentioned in the query.  This creates user-
+		 * visible anomalies, so refrain.  Refer to
+		 * https://postgr.es/m/flat/5075D8DF.6050500@fuzzy.cz for details.
+		 */
 		if (snapshot_set)
 			PopActiveSnapshot();
 
@@ -1936,7 +1945,7 @@ exec_simple_query(const char *query_string)
 						 true,
 						 receiver,
 						 receiver,
-						 completionTag);
+						 &qc);
 
 		receiver->rDestroy(receiver);
 
@@ -1996,7 +2005,7 @@ exec_simple_query(const char *query_string)
 		 * command the client sent, regardless of rewriting. (But a command
 		 * aborted by error will not send an EndCommand report at all.)
 		 */
-		EndCommand(completionTag, dest);
+		EndCommand(&qc, dest, false);
 
 		/* Now we may drop the per-parsetree context, if one was created. */
 		if (per_parsetree_context)
@@ -2058,7 +2067,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	MemoryContext oldcontext;
 	List	   *parsetree_list;
 	RawStmt    *raw_parse_tree;
-	const char *commandTag;
 	List	   *querytree_list;
 	CachedPlanSource *psrc;
 	bool		is_named;
@@ -2073,7 +2081,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	pgstat_report_activity(STATE_RUNNING, query_string);
 
-	set_ps_display("PARSE", false);
+	set_ps_display("PARSE");
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -2161,11 +2169,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		}
 
 		/*
-		 * Get the command name for possible use in status display.
-		 */
-		commandTag = CreateCommandTag(raw_parse_tree->stmt);
-
-		/*
 		 * If we are in an aborted transaction, reject all commands except
 		 * COMMIT/ROLLBACK.  It is important that this test occur before we
 		 * try to do parse analysis, rewrite, or planning, since all those
@@ -2185,7 +2188,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		 * Create the CachedPlanSource before we do parse analysis, since it
 		 * needs to see the unmodified raw parse tree.
 		 */
-		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
+		psrc = CreateCachedPlan(raw_parse_tree, query_string,
+								CreateCommandTag(raw_parse_tree->stmt));
 
 		/*
 		 * Set up a snapshot if parse analysis will need one.
@@ -2242,8 +2246,8 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	{
 		/* Empty input string.  This is legal. */
 		raw_parse_tree = NULL;
-		commandTag = NULL;
-		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
+		psrc = CreateCachedPlan(raw_parse_tree, query_string,
+								CMDTAG_UNKNOWN);
 		querytree_list = NIL;
 	}
 
@@ -2392,7 +2396,7 @@ exec_bind_message(StringInfo input_message)
 
 	pgstat_report_activity(STATE_RUNNING, psrc->query_string);
 
-	set_ps_display("BIND", false);
+	set_ps_display("BIND");
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -2765,7 +2769,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	DestReceiver *receiver;
 	Portal		portal;
 	bool		completed;
-	char		completionTag[COMPLETION_TAG_BUFSIZE];
+	QueryCompletion qc;
 	const char *sourceText;
 	const char *prepStmtName;
 	ParamListInfo portalParams;
@@ -2792,7 +2796,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 	 * If the original query was a null string, just return
 	 * EmptyQueryResponse.
 	 */
-	if (portal->commandTag == NULL)
+	if (portal->commandTag == CMDTAG_UNKNOWN)
 	{
 		Assert(portal->stmts == NIL);
 		NullCommand(dest);
@@ -2861,7 +2865,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 
 	pgstat_report_activity(STATE_RUNNING, sourceText);
 
-	set_ps_display(portal->commandTag, false);
+	set_ps_display(GetCommandTagName(portal->commandTag));
 
 	if (save_log_statement_stats)
 		ResetUsage();
@@ -2942,7 +2946,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 						  !execute_is_fetch && max_rows == FETCH_ALL,
 						  receiver,
 						  receiver,
-						  completionTag);
+						  &qc);
 
 	receiver->rDestroy(receiver);
 
@@ -2975,7 +2979,7 @@ exec_execute_message(const char *portal_name, int64 max_rows)
 		}
 
 		/* Send appropriate CommandComplete to client */
-		EndCommand(completionTag, dest);
+		EndCommand(&qc, dest, false);
 	}
 	else
 	{
@@ -5219,8 +5223,12 @@ PostgresMain(int argc, char *argv[],
 			}
 			if (IsAbortedTransactionBlockState())
 			{
+<<<<<<< HEAD
 				strncat(activity, "idle in transaction (aborted)", remain);
 				set_ps_display(activity, false);
+=======
+				set_ps_display("idle in transaction (aborted)");
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 				pgstat_report_activity(STATE_IDLEINTRANSACTION_ABORTED, NULL);
 
 				/* Start the idle-in-transaction timer */
@@ -5233,8 +5241,12 @@ PostgresMain(int argc, char *argv[],
 			}
 			else if (IsTransactionOrTransactionBlock())
 			{
+<<<<<<< HEAD
 				strncat(activity, "idle in transaction", remain);
 				set_ps_display(activity, false);
+=======
+				set_ps_display("idle in transaction");
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 				pgstat_report_activity(STATE_IDLEINTRANSACTION, NULL);
 
 				/* Start the idle-in-transaction timer */
@@ -5262,8 +5274,12 @@ PostgresMain(int argc, char *argv[],
 				pgstat_report_stat(false);
 				pgstat_report_queuestat();
 
+<<<<<<< HEAD
 				strncat(activity, "idle", remain);
 				set_ps_display(activity, false);
+=======
+				set_ps_display("idle");
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 				pgstat_report_activity(STATE_IDLE, NULL);
 			}
 
@@ -5696,7 +5712,7 @@ PostgresMain(int argc, char *argv[],
 
 				/* Report query to various monitoring facilities. */
 				pgstat_report_activity(STATE_FASTPATH, NULL);
-				set_ps_display("<FASTPATH>", false);
+				set_ps_display("<FASTPATH>");
 
 				elog((Debug_print_full_dtm ? LOG : DEBUG5), "Fast path function call.");
 

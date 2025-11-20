@@ -48,6 +48,7 @@
 
 #include "datatype/timestamp.h"
 #include "executor/execdesc.h"
+#include "tcop/cmdtag.h"
 #include "utils/plancache.h"
 #include "utils/resowner.h"
 
@@ -142,7 +143,8 @@ typedef struct PortalData
 
 	/* The query or queries the portal will execute */
 	const char *sourceText;		/* text of query (as of 8.4, never NULL) */
-	const char *commandTag;		/* command tag for original query */
+	CommandTag	commandTag;		/* command tag for original query */
+	QueryCompletion qc;			/* command completion data for executed query */
 	List	   *stmts;			/* list of PlannedStmts */
 	CachedPlan *cplan;			/* CachedPlan, if stmts are from one */
 
@@ -247,8 +249,12 @@ extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 							  const char *prepStmtName,
 							  const char *sourceText,
+<<<<<<< HEAD
 							  NodeTag	  sourceTag, /* GPDB */
 							  const char *commandTag,
+=======
+							  CommandTag commandTag,
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 							  List *stmts,
 							  CachedPlan *cplan);
 extern PlannedStmt *PortalGetPrimaryStmt(Portal portal);

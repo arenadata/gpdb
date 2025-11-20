@@ -11,6 +11,7 @@
  *
  * IDENTIFICATION
  *	  src/common/hashfn.c
+<<<<<<< HEAD
  *
  * NOTES
  *	  It is expected that every bit of a hash function's 32-bit result is
@@ -18,6 +19,8 @@
  *	  to poor performance of hash tables.  In most cases a hash
  *	  function should use hash_bytes() or its variant hash_bytes_uint32(),
  *	  or the wrappers hash_any() and hash_uint32 defined in hashfn.h.
+=======
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
  *
  * NOTES
  *	  It is expected that every bit of a hash function's 32-bit result is
@@ -29,6 +32,7 @@
  *-------------------------------------------------------------------------
  */
 
+<<<<<<< HEAD
 /*
  * GPDB: We carry a dependency on pthread_win32.h in elog.h, which causes
  * compilation errors when building Windows clients (as elog.h is included by
@@ -40,6 +44,8 @@
 #include "postgres.h"
 #endif
 
+=======
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 #include "common/hashfn.h"
 
 

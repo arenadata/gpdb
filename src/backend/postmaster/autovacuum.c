@@ -485,8 +485,8 @@ AutoVacLauncherMain(int argc, char *argv[])
 
 	am_autovacuum_launcher = true;
 
-	/* Identify myself via ps */
-	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_LAUNCHER), "", "", "");
+	MyBackendType = B_AUTOVAC_LAUNCHER;
+	init_ps_display(NULL);
 
 	ereport(DEBUG1,
 			(errmsg("autovacuum launcher started")));
@@ -1571,6 +1571,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 
 	am_autovacuum_worker = true;
 
+<<<<<<< HEAD
 	/* MPP-4990: Autovacuum always runs as utility-mode */
 	if (IS_QUERY_DISPATCHER())
 		Gp_role = GP_ROLE_DISPATCH;
@@ -1579,6 +1580,10 @@ AutoVacWorkerMain(int argc, char *argv[])
 
 	/* Identify myself via ps */
 	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_WORKER), "", "", "");
+=======
+	MyBackendType = B_AUTOVAC_WORKER;
+	init_ps_display(NULL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/* 
 	 * PreAuthDelay is a debugging aid for investigating problems in the 
@@ -1758,8 +1763,13 @@ AutoVacWorkerMain(int argc, char *argv[])
 		 */
 		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname, false);
 		SetProcessingMode(NormalProcessing);
+<<<<<<< HEAD
 		set_ps_display(dbname, false);
 		ereport(LOG,
+=======
+		set_ps_display(dbname);
+		ereport(DEBUG1,
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 				(errmsg("autovacuum: processing database \"%s\"", dbname)));
 
 #ifdef FAULT_INJECTOR
@@ -2167,9 +2177,10 @@ do_autovacuum(void)
 
 			/*
 			 * We just ignore it if the owning backend is still active and
-			 * using the temporary schema.
+			 * using the temporary schema.  Also, for safety, ignore it if the
+			 * namespace doesn't exist or isn't a temp namespace after all.
 			 */
-			if (!isTempNamespaceInUse(classForm->relnamespace))
+			if (checkTempNamespaceStatus(classForm->relnamespace) == TEMP_NAMESPACE_IDLE)
 			{
 				/*
 				 * The table seems to be orphaned -- although it might be that
@@ -2339,7 +2350,7 @@ do_autovacuum(void)
 			continue;
 		}
 
-		if (isTempNamespaceInUse(classForm->relnamespace))
+		if (checkTempNamespaceStatus(classForm->relnamespace) != TEMP_NAMESPACE_IDLE)
 		{
 			UnlockRelationOid(relid, AccessExclusiveLock);
 			continue;

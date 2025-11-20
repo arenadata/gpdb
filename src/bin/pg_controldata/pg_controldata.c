@@ -42,7 +42,12 @@ usage(const char *progname)
 	printf(_("  --gp-version   output Greenplum version information, then exit\n"));
 	printf(_("\nIf no data directory (DATADIR) is specified, "
 			 "the environment variable PGDATA\nis used.\n\n"));
+<<<<<<< HEAD
 	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
+=======
+	printf(_("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 

@@ -1251,6 +1251,7 @@ _copyAgg(const Agg *from)
 		COPY_POINTER_FIELD(grpCollations, from->numCols * sizeof(Oid));
 	}
 	COPY_SCALAR_FIELD(numGroups);
+	COPY_SCALAR_FIELD(transitionSpace);
 	COPY_BITMAPSET_FIELD(aggParams);
 	COPY_NODE_FIELD(groupingSets);
 	COPY_NODE_FIELD(chain);
@@ -4294,6 +4295,17 @@ _copyAlterOperatorStmt(const AlterOperatorStmt *from)
 	return newnode;
 }
 
+static AlterTypeStmt *
+_copyAlterTypeStmt(const AlterTypeStmt *from)
+{
+	AlterTypeStmt *newnode = makeNode(AlterTypeStmt);
+
+	COPY_NODE_FIELD(typeName);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
 static RuleStmt *
 _copyRuleStmt(const RuleStmt *from)
 {
@@ -6352,6 +6364,9 @@ copyObjectImpl(const void *from)
 			break;
 		case T_AlterOperatorStmt:
 			retval = _copyAlterOperatorStmt(from);
+			break;
+		case T_AlterTypeStmt:
+			retval = _copyAlterTypeStmt(from);
 			break;
 		case T_RuleStmt:
 			retval = _copyRuleStmt(from);

@@ -94,10 +94,9 @@ typedef struct
 
 typedef enum OidOptions
 {
-	zeroAsOpaque = 1,
-	zeroAsAny = 2,
-	zeroAsStar = 4,
-	zeroAsNone = 8
+	zeroIsError = 1,
+	zeroAsStar = 2,
+	zeroAsNone = 4
 } OidOptions;
 
 /* global decls */
@@ -137,8 +136,6 @@ static SimpleStringList funcid_string_list = {NULL, NULL};
 static SimpleOidList function_include_oids = {NULL, NULL};
 
 static SimpleOidList preassigned_oids = {NULL, NULL};
-
-char		g_opaque_type[10];	/* name for the opaque type */
 
 /* placeholders for the delimiters for comments */
 char		g_comment_start[10];
@@ -489,7 +486,6 @@ main(int argc, char **argv)
 
 	strcpy(g_comment_start, "-- ");
 	g_comment_end[0] = '\0';
-	strcpy(g_opaque_type, "opaque");
 
 	progname = get_progname(argv[0]);
 
@@ -1207,7 +1203,12 @@ help(const char *progname)
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
+<<<<<<< HEAD
 	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
+=======
+	printf(_("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 static void
@@ -4217,6 +4218,7 @@ getPublicationTables(Archive *fout, TableInfo tblinfo[], int numTables)
 						 "FROM pg_catalog.pg_publication_rel");
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
+<<<<<<< HEAD
 	ntups = PQntuples(res);
 
 	i_tableoid = PQfnumber(res, "tableoid");
@@ -4244,6 +4246,14 @@ getPublicationTables(Archive *fout, TableInfo tblinfo[], int numTables)
 			continue;
 		tbinfo = findTableByOid(prrelid);
 		if (tbinfo == NULL)
+=======
+		/*
+		 * Only regular and partitioned tables can be added to
+		 * publications.
+		 */
+		if (tbinfo->relkind != RELKIND_RELATION &&
+			tbinfo->relkind != RELKIND_PARTITIONED_TABLE)
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			continue;
 
 		/*
@@ -4521,7 +4531,11 @@ dumpSubscription(Archive *fout, const SubscriptionInfo *subinfo)
 static void
 append_depends_on_extension(Archive *fout,
 							PQExpBuffer create,
+<<<<<<< HEAD
 							const DumpableObject *dobj,
+=======
+							DumpableObject *dobj,
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 							const char *catalog,
 							const char *keyword,
 							const char *objname)
@@ -4563,6 +4577,7 @@ append_depends_on_extension(Archive *fout,
 }
 
 
+<<<<<<< HEAD
 static void
 binary_upgrade_set_namespace_oid(Archive *fout, PQExpBuffer upgrade_buffer,
 								 Oid pg_namespace_oid)
@@ -4603,6 +4618,8 @@ binary_upgrade_set_namespace_oid(Archive *fout, PQExpBuffer upgrade_buffer,
 	destroyPQExpBuffer(upgrade_query);
 }
 
+=======
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 static void
 binary_upgrade_set_type_oids_by_type_oid(Archive *fout,
 										 PQExpBuffer upgrade_buffer,
@@ -11273,7 +11290,7 @@ dumpBaseType(Archive *fout, const TypeInfo *tyinfo)
 	{
 		char	   *elemType;
 
-		elemType = getFormattedTypeName(fout, tyinfo->typelem, zeroAsOpaque);
+		elemType = getFormattedTypeName(fout, tyinfo->typelem, zeroIsError);
 		appendPQExpBuffer(q, ",\n    ELEMENT = %s", elemType);
 		free(elemType);
 	}
@@ -11293,22 +11310,22 @@ dumpBaseType(Archive *fout, const TypeInfo *tyinfo)
 		appendStringLiteralAH(q, typdelim, fout);
 	}
 
-	if (strcmp(typalign, "c") == 0)
+	if (*typalign == TYPALIGN_CHAR)
 		appendPQExpBufferStr(q, ",\n    ALIGNMENT = char");
-	else if (strcmp(typalign, "s") == 0)
+	else if (*typalign == TYPALIGN_SHORT)
 		appendPQExpBufferStr(q, ",\n    ALIGNMENT = int2");
-	else if (strcmp(typalign, "i") == 0)
+	else if (*typalign == TYPALIGN_INT)
 		appendPQExpBufferStr(q, ",\n    ALIGNMENT = int4");
-	else if (strcmp(typalign, "d") == 0)
+	else if (*typalign == TYPALIGN_DOUBLE)
 		appendPQExpBufferStr(q, ",\n    ALIGNMENT = double");
 
-	if (strcmp(typstorage, "p") == 0)
+	if (*typstorage == TYPSTORAGE_PLAIN)
 		appendPQExpBufferStr(q, ",\n    STORAGE = plain");
-	else if (strcmp(typstorage, "e") == 0)
+	else if (*typstorage == TYPSTORAGE_EXTERNAL)
 		appendPQExpBufferStr(q, ",\n    STORAGE = external");
-	else if (strcmp(typstorage, "x") == 0)
+	else if (*typstorage == TYPSTORAGE_EXTENDED)
 		appendPQExpBufferStr(q, ",\n    STORAGE = extended");
-	else if (strcmp(typstorage, "m") == 0)
+	else if (*typstorage == TYPSTORAGE_MAIN)
 		appendPQExpBufferStr(q, ",\n    STORAGE = main");
 
 	if (strcmp(typbyval, "t") == 0)
@@ -12144,11 +12161,18 @@ format_table_function_columns(Archive *fout, const FuncInfo *finfo, int nallargs
 		Oid			typid;
 		char	   *typname;
 
+<<<<<<< HEAD
 		/*
 		 * argmodes are checked in format_function_arguments, it isn't necessary
 		 * to check argmodes here again
 		 */
 		if (argmodes[j][0] == PROARGMODE_TABLE)
+=======
+		typid = allargtypes ? atooid(allargtypes[j]) : finfo->argtypes[j];
+		typname = getFormattedTypeName(fout, typid, zeroIsError);
+
+		if (argmodes)
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 		{
 			typid = allargtypes ? atooid(allargtypes[j]) : finfo->argtypes[j];
 			typname = getFormattedTypeName(fout, typid, zeroAsOpaque);
@@ -12196,7 +12220,7 @@ format_function_signature(Archive *fout, const FuncInfo *finfo, bool honor_quote
 			appendPQExpBufferStr(&fn, ", ");
 
 		typname = getFormattedTypeName(fout, finfo->argtypes[j],
-									   zeroAsOpaque);
+									   zeroIsError);
 		appendPQExpBufferStr(&fn, typname);
 		free(typname);
 	}
@@ -12470,7 +12494,7 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	else if (!is_returns_table_function(nallargs, argmodes))
 	{
 		rettypename = getFormattedTypeName(fout, finfo->prorettype,
-										   zeroAsOpaque);
+										   zeroIsError);
 		appendPQExpBuffer(q, " RETURNS %s%s",
 						  (proretset[0] == 't') ? "SETOF " : "",
 						  rettypename);
@@ -12656,6 +12680,12 @@ dumpFunc(Archive *fout, const FuncInfo *finfo)
 	append_depends_on_extension(fout, q, &finfo->dobj,
 								"pg_catalog.pg_proc", keyword,
 								qual_funcsig);
+
+	append_depends_on_extension(fout, q, &finfo->dobj,
+								"pg_catalog.pg_proc", keyword,
+								psprintf("%s.%s",
+										 fmtId(finfo->dobj.namespace->dobj.name),
+										 funcsig));
 
 	if (dopt->binary_upgrade)
 		binary_upgrade_extension_member(q, &finfo->dobj,
@@ -14188,7 +14218,7 @@ format_aggregate_signature(const AggInfo *agginfo, Archive *fout, bool honor_quo
 			char	   *typname;
 
 			typname = getFormattedTypeName(fout, agginfo->aggfn.argtypes[j],
-										   zeroAsOpaque);
+										   zeroIsError);
 
 			appendPQExpBuffer(&buf, "%s%s",
 							  (j > 0) ? ", " : "",
@@ -17017,6 +17047,14 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 										"MATERIALIZED VIEW" : "INDEX",
 										qualrelname);
 
+		/* Materialized views can depend on extensions */
+		if (tbinfo->relkind == RELKIND_MATVIEW)
+			append_depends_on_extension(fout, q, &tbinfo->dobj,
+										"pg_catalog.pg_class",
+										tbinfo->relkind == RELKIND_MATVIEW ?
+										"MATERIALIZED VIEW" : "INDEX",
+										qualrelname);
+
 		/*
 		 * in binary upgrade mode, update the catalog with any missing values
 		 * that might be present.
@@ -17313,17 +17351,17 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 			{
 				switch (tbinfo->attstorage[j])
 				{
-					case 'p':
+					case TYPSTORAGE_PLAIN:
 						storage = "PLAIN";
 						break;
-					case 'e':
+					case TYPSTORAGE_EXTERNAL:
 						storage = "EXTERNAL";
 						break;
-					case 'm':
-						storage = "MAIN";
-						break;
-					case 'x':
+					case TYPSTORAGE_EXTENDED:
 						storage = "EXTENDED";
+						break;
+					case TYPSTORAGE_MAIN:
+						storage = "MAIN";
 						break;
 					default:
 						storage = NULL;
@@ -19750,11 +19788,7 @@ getFormattedTypeName(Archive *fout, Oid oid, OidOptions opts)
 
 	if (oid == 0)
 	{
-		if ((opts & zeroAsOpaque) != 0)
-			return pg_strdup(g_opaque_type);
-		else if ((opts & zeroAsAny) != 0)
-			return pg_strdup("'any'");
-		else if ((opts & zeroAsStar) != 0)
+		if ((opts & zeroAsStar) != 0)
 			return pg_strdup("*");
 		else if ((opts & zeroAsNone) != 0)
 			return pg_strdup("NONE");

@@ -2295,7 +2295,12 @@ do_help(void)
 	printf(_("  demand     start service on demand\n"));
 #endif
 
+<<<<<<< HEAD
 	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
+=======
+	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 

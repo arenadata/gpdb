@@ -570,7 +570,10 @@ my %tests = (
 		like   => {%pgdump_runs},
 		unlike => {
 			data_only          => 1,
+<<<<<<< HEAD
 			extension_schema   => 1,
+=======
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			pg_dumpall_globals => 1,
 			section_data       => 1,
 			section_pre_data   => 1,
@@ -584,7 +587,10 @@ my %tests = (
 		like   => {%pgdump_runs},
 		unlike => {
 			data_only          => 1,
+<<<<<<< HEAD
 			extension_schema   => 1,
+=======
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			pg_dumpall_globals => 1,
 			section_data       => 1,
 			section_pre_data   => 1,

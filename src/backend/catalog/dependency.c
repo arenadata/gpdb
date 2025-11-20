@@ -81,7 +81,11 @@
 #include "parser/parsetree.h"
 #include "rewrite/rewriteRemove.h"
 #include "storage/lmgr.h"
+<<<<<<< HEAD
 #include "utils/builtins.h"
+=======
+#include "utils/acl.h"
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"

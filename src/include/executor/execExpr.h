@@ -231,11 +231,19 @@ typedef enum ExprEvalOp
 	EEOP_AGG_DESERIALIZE,
 	EEOP_AGG_STRICT_INPUT_CHECK_ARGS,
 	EEOP_AGG_STRICT_INPUT_CHECK_NULLS,
+<<<<<<< HEAD
 	EEOP_AGG_INIT_TRANS,
 	EEOP_AGG_STRICT_TRANS_CHECK,
 	EEOP_AGG_PLAIN_PERGROUP_NULLCHECK,
+=======
+	EEOP_AGG_PLAIN_PERGROUP_NULLCHECK,
+	EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL,
+	EEOP_AGG_PLAIN_TRANS_STRICT_BYVAL,
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 	EEOP_AGG_PLAIN_TRANS_BYVAL,
-	EEOP_AGG_PLAIN_TRANS,
+	EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF,
+	EEOP_AGG_PLAIN_TRANS_STRICT_BYREF,
+	EEOP_AGG_PLAIN_TRANS_BYREF,
 	EEOP_AGG_ORDERED_TRANS_DATUM,
 	EEOP_AGG_ORDERED_TRANS_TUPLE,
 
@@ -672,17 +680,14 @@ typedef struct ExprEvalStep
 			int			jumpnull;
 		}			agg_strict_input_check;
 
-		/* for EEOP_AGG_INIT_TRANS */
+		/* for EEOP_AGG_PLAIN_PERGROUP_NULLCHECK */
 		struct
 		{
-			AggStatePerTrans pertrans;
-			ExprContext *aggcontext;
-			int			setno;
-			int			transno;
 			int			setoff;
 			int			jumpnull;
-		}			agg_init_trans;
+		}			agg_plain_pergroup_nullcheck;
 
+<<<<<<< HEAD
 		/* for EEOP_AGG_PLAIN_PERGROUP_NULLCHECK */
 		struct
 		{
@@ -700,6 +705,10 @@ typedef struct ExprEvalStep
 		}			agg_strict_trans_check;
 
 		/* for EEOP_AGG_{PLAIN,ORDERED}_TRANS* */
+=======
+		/* for EEOP_AGG_PLAIN_TRANS_[INIT_][STRICT_]{BYVAL,BYREF} */
+		/* for EEOP_AGG_ORDERED_TRANS_{DATUM,TUPLE} */
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 		struct
 		{
 			AggStatePerTrans pertrans;
@@ -812,7 +821,8 @@ extern void ExecEvalWholeRowVar(ExprState *state, ExprEvalStep *op,
 extern void ExecEvalSysVar(ExprState *state, ExprEvalStep *op,
 						   ExprContext *econtext, TupleTableSlot *slot);
 
-extern void ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup);
+extern void ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup,
+							 ExprContext *aggcontext);
 extern Datum ExecAggTransReparent(AggState *aggstate, AggStatePerTrans pertrans,
 								  Datum newValue, bool newValueIsNull,
 								  Datum oldValue, bool oldValueIsNull);

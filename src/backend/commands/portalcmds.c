@@ -145,8 +145,12 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 	PortalDefineQuery(portal,
 					  NULL,
 					  queryString,
+<<<<<<< HEAD
 					  T_DeclareCursorStmt,
 					  "SELECT", /* cursor's query is always a SELECT */
+=======
+					  CMDTAG_SELECT,	/* cursor's query is always a SELECT */
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 					  list_make1(plan),
 					  NULL);
 
@@ -225,15 +229,14 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
  *
  *	stmt: parsetree node for command
  *	dest: where to send results
- *	completionTag: points to a buffer of size COMPLETION_TAG_BUFSIZE
- *		in which to store a command completion status string.
+ *	qc: where to store a command completion status data.
  *
- * completionTag may be NULL if caller doesn't want a status string.
+ * qc may be NULL if caller doesn't want status data.
  */
 void
 PerformPortalFetch(FetchStmt *stmt,
 				   DestReceiver *dest,
-				   char *completionTag)
+				   QueryCompletion *qc)
 {
 	Portal		portal;
 	uint64		nprocessed;
@@ -285,10 +288,9 @@ PerformPortalFetch(FetchStmt *stmt,
 								dest);
 
 	/* Return command status if wanted */
-	if (completionTag)
-		snprintf(completionTag, COMPLETION_TAG_BUFSIZE, "%s " UINT64_FORMAT,
-				 stmt->ismove ? "MOVE" : "FETCH",
-				 nprocessed);
+	if (qc)
+		SetQueryCompletion(qc, stmt->ismove ? CMDTAG_MOVE : CMDTAG_FETCH,
+						   nprocessed);
 }
 
 /*

@@ -2769,7 +2769,12 @@ help(void)
 	printf(_("The exit status is 0 if all tests passed, 1 if some tests failed, and 2\n"));
 	printf(_("if the tests could not be run for some reason.\n"));
 	printf(_("\n"));
+<<<<<<< HEAD
 	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
+=======
+	printf(_("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 int

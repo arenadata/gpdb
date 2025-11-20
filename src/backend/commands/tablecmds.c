@@ -163,6 +163,81 @@ static List *on_commits = NIL;
  * In GPDB, these are in nodes/altertablenodes.h
  */
 
+<<<<<<< HEAD
+=======
+#define AT_PASS_UNSET			-1	/* UNSET will cause ERROR */
+#define AT_PASS_DROP			0	/* DROP (all flavors) */
+#define AT_PASS_ALTER_TYPE		1	/* ALTER COLUMN TYPE */
+#define AT_PASS_OLD_INDEX		2	/* re-add existing indexes */
+#define AT_PASS_OLD_CONSTR		3	/* re-add existing constraints */
+/* We could support a RENAME COLUMN pass here, but not currently used */
+#define AT_PASS_ADD_COL			4	/* ADD COLUMN */
+#define AT_PASS_ADD_CONSTR		5	/* ADD constraints (initial examination) */
+#define AT_PASS_COL_ATTRS		6	/* set column attributes, eg NOT NULL */
+#define AT_PASS_ADD_INDEXCONSTR	7	/* ADD index-based constraints */
+#define AT_PASS_ADD_INDEX		8	/* ADD indexes */
+#define AT_PASS_ADD_OTHERCONSTR	9	/* ADD other constraints, defaults */
+#define AT_PASS_MISC			10	/* other stuff */
+#define AT_NUM_PASSES			11
+
+typedef struct AlteredTableInfo
+{
+	/* Information saved before any work commences: */
+	Oid			relid;			/* Relation to work on */
+	char		relkind;		/* Its relkind */
+	TupleDesc	oldDesc;		/* Pre-modification tuple descriptor */
+	/* Information saved by Phase 1 for Phase 2: */
+	List	   *subcmds[AT_NUM_PASSES]; /* Lists of AlterTableCmd */
+	/* Information saved by Phases 1/2 for Phase 3: */
+	List	   *constraints;	/* List of NewConstraint */
+	List	   *newvals;		/* List of NewColumnValue */
+	List	   *afterStmts;		/* List of utility command parsetrees */
+	bool		verify_new_notnull; /* T if we should recheck NOT NULL */
+	int			rewrite;		/* Reason for forced rewrite, if any */
+	Oid			newTableSpace;	/* new tablespace; 0 means no change */
+	bool		chgPersistence; /* T if SET LOGGED/UNLOGGED is used */
+	char		newrelpersistence;	/* if above is true */
+	Expr	   *partition_constraint;	/* for attach partition validation */
+	/* true, if validating default due to some other attach/detach */
+	bool		validate_default;
+	/* Objects to rebuild after completing ALTER TYPE operations */
+	List	   *changedConstraintOids;	/* OIDs of constraints to rebuild */
+	List	   *changedConstraintDefs;	/* string definitions of same */
+	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
+	List	   *changedIndexDefs;	/* string definitions of same */
+	char	   *replicaIdentityIndex;	/* index to reset as REPLICA IDENTITY */
+} AlteredTableInfo;
+
+/* Struct describing one new constraint to check in Phase 3 scan */
+/* Note: new NOT NULL constraints are handled elsewhere */
+typedef struct NewConstraint
+{
+	char	   *name;			/* Constraint name, or NULL if none */
+	ConstrType	contype;		/* CHECK or FOREIGN */
+	Oid			refrelid;		/* PK rel, if FOREIGN */
+	Oid			refindid;		/* OID of PK's index, if FOREIGN */
+	Oid			conid;			/* OID of pg_constraint entry, if FOREIGN */
+	Node	   *qual;			/* Check expr or CONSTR_FOREIGN Constraint */
+	ExprState  *qualstate;		/* Execution state for CHECK expr */
+} NewConstraint;
+
+/*
+ * Struct describing one new column value that needs to be computed during
+ * Phase 3 copy (this could be either a new column with a non-null default, or
+ * a column that we're changing the type of).  Columns without such an entry
+ * are just copied from the old table during ATRewriteTable.  Note that the
+ * expr is an expression over *old* table values, except when is_generated
+ * is true; then it is an expression over columns of the *new* tuple.
+ */
+typedef struct NewColumnValue
+{
+	AttrNumber	attnum;			/* which column */
+	Expr	   *expr;			/* expression to compute */
+	ExprState  *exprstate;		/* execution state */
+	bool		is_generated;	/* is it a GENERATED expression? */
+} NewColumnValue;
+
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 /*
  * Error-reporting support for RemoveRelations
  */
@@ -2538,14 +2613,14 @@ storage_name(char c)
 {
 	switch (c)
 	{
-		case 'p':
+		case TYPSTORAGE_PLAIN:
 			return "PLAIN";
-		case 'm':
-			return "MAIN";
-		case 'x':
-			return "EXTENDED";
-		case 'e':
+		case TYPSTORAGE_EXTERNAL:
 			return "EXTERNAL";
+		case TYPSTORAGE_EXTENDED:
+			return "EXTENDED";
+		case TYPSTORAGE_MAIN:
+			return "MAIN";
 		default:
 			return "???";
 	}
@@ -9231,13 +9306,13 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue, LOCKMODE loc
 	storagemode = strVal(newValue);
 
 	if (pg_strcasecmp(storagemode, "plain") == 0)
-		newstorage = 'p';
+		newstorage = TYPSTORAGE_PLAIN;
 	else if (pg_strcasecmp(storagemode, "external") == 0)
-		newstorage = 'e';
+		newstorage = TYPSTORAGE_EXTERNAL;
 	else if (pg_strcasecmp(storagemode, "extended") == 0)
-		newstorage = 'x';
+		newstorage = TYPSTORAGE_EXTENDED;
 	else if (pg_strcasecmp(storagemode, "main") == 0)
-		newstorage = 'm';
+		newstorage = TYPSTORAGE_MAIN;
 	else
 	{
 		ereport(ERROR,
@@ -9269,7 +9344,7 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue, LOCKMODE loc
 	 * safety check: do not allow toasted storage modes unless column datatype
 	 * is TOAST-aware.
 	 */
-	if (newstorage == 'p' || TypeIsToastable(attrtuple->atttypid))
+	if (newstorage == TYPSTORAGE_PLAIN || TypeIsToastable(attrtuple->atttypid))
 		attrtuple->attstorage = newstorage;
 	else
 		ereport(ERROR,
@@ -12192,7 +12267,7 @@ validateForeignKeyConstraint(char *conname,
 	while (table_scan_getnextslot(scan, ForwardScanDirection, slot))
 	{
 		LOCAL_FCINFO(fcinfo, 0);
-		TriggerData trigdata;
+		TriggerData trigdata = {0};
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -12211,8 +12286,6 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_relation = rel;
 		trigdata.tg_trigtuple = ExecFetchSlotHeapTuple(slot, false, NULL);
 		trigdata.tg_trigslot = slot;
-		trigdata.tg_newtuple = NULL;
-		trigdata.tg_newslot = NULL;
 		trigdata.tg_trigger = &trig;
 
 		fcinfo->context = (Node *) &trigdata;
@@ -13660,6 +13733,22 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 }
 
 /*
+ * Subroutine for ATExecAlterColumnType: remember that a replica identity
+ * needs to be reset.
+ */
+static void
+RememberReplicaIdentityForRebuilding(Oid indoid, AlteredTableInfo *tab)
+{
+	if (!get_index_isreplident(indoid))
+		return;
+
+	if (tab->replicaIdentityIndex)
+		elog(ERROR, "relation %u has multiple indexes marked as replica identity", tab->relid);
+
+	tab->replicaIdentityIndex = get_rel_name(indoid);
+}
+
+/*
  * Subroutine for ATExecAlterColumnType: remember that a constraint needs
  * to be rebuilt (which we might already know).
  */
@@ -13677,11 +13766,16 @@ RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab)
 	{
 		/* OK, capture the constraint's existing definition string */
 		char	   *defstring = pg_get_constraintdef_command(conoid);
+		Oid			indoid;
 
 		tab->changedConstraintOids = lappend_oid(tab->changedConstraintOids,
 												 conoid);
 		tab->changedConstraintDefs = lappend(tab->changedConstraintDefs,
 											 defstring);
+
+		indoid = get_constraint_index(conoid);
+		if (OidIsValid(indoid))
+			RememberReplicaIdentityForRebuilding(indoid, tab);
 	}
 }
 
@@ -13724,6 +13818,8 @@ RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab)
 												indoid);
 			tab->changedIndexDefs = lappend(tab->changedIndexDefs,
 											defstring);
+
+			RememberReplicaIdentityForRebuilding(indoid, tab);
 		}
 	}
 }
@@ -13846,6 +13942,24 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 
 		ObjectAddressSet(obj, RelationRelationId, oldId);
 		add_exact_object_address(&obj, objects);
+	}
+
+	/*
+	 * Queue up command to restore replica identity index marking
+	 */
+	if (tab->replicaIdentityIndex)
+	{
+		AlterTableCmd *cmd = makeNode(AlterTableCmd);
+		ReplicaIdentityStmt *subcmd = makeNode(ReplicaIdentityStmt);
+
+		subcmd->identity_type = REPLICA_IDENTITY_INDEX;
+		subcmd->name = tab->replicaIdentityIndex;
+		cmd->subtype = AT_ReplicaIdentity;
+		cmd->def = (Node *) subcmd;
+
+		/* do it after indexes and constraints */
+		tab->subcmds[AT_PASS_OLD_CONSTR] =
+			lappend(tab->subcmds[AT_PASS_OLD_CONSTR], cmd);
 	}
 
 	/*
@@ -20531,54 +20645,6 @@ out:
 }
 
 /*
- * isPartitionTrigger
- *		Subroutine for CloneRowTriggersToPartition: determine whether
- *		the given trigger has been cloned from another one.
- *
- * We use pg_depend as a proxy for this, since we don't have any direct
- * evidence.  This is an ugly hack to cope with a catalog deficiency.
- * Keep away from children.  Do not stare with naked eyes.  Do not propagate.
- */
-static bool
-isPartitionTrigger(Oid trigger_oid)
-{
-	Relation	pg_depend;
-	ScanKeyData key[2];
-	SysScanDesc scan;
-	HeapTuple	tup;
-	bool		found = false;
-
-	pg_depend = table_open(DependRelationId, AccessShareLock);
-
-	ScanKeyInit(&key[0], Anum_pg_depend_classid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(TriggerRelationId));
-	ScanKeyInit(&key[1], Anum_pg_depend_objid,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(trigger_oid));
-
-	scan = systable_beginscan(pg_depend, DependDependerIndexId,
-							  true, NULL, 2, key);
-	while ((tup = systable_getnext(scan)) != NULL)
-	{
-		Form_pg_depend dep = (Form_pg_depend) GETSTRUCT(tup);
-
-		if (dep->refclassid == TriggerRelationId)
-		{
-			found = true;
-			break;
-		}
-	}
-
-	systable_endscan(scan);
-	table_close(pg_depend, AccessShareLock);
-
-	return found;
-}
-
-/*
  * CloneRowTriggersToPartition
  *		subroutine for ATExecAttachPartition/DefineRelation to create row
  *		triggers on partitions
@@ -20620,11 +20686,10 @@ CloneRowTriggersToPartition(Relation parent, Relation partition)
 
 		/*
 		 * Internal triggers require careful examination.  Ideally, we don't
-		 * clone them.
-		 *
-		 * However, if our parent is a partitioned relation, there might be
-		 * internal triggers that need cloning.  In that case, we must skip
-		 * clone it if the trigger on parent depends on another trigger.
+		 * clone them.  However, if our parent is itself a partition, there
+		 * might be internal triggers that must not be skipped; for example,
+		 * triggers on our parent that are in turn clones from its parent (our
+		 * grandparent) are marked internal, yet they are to be cloned.
 		 *
 		 * Note we dare not verify that the other trigger belongs to an
 		 * ancestor relation of our parent, because that creates deadlock
@@ -20632,7 +20697,7 @@ CloneRowTriggersToPartition(Relation parent, Relation partition)
 		 */
 		if (trigForm->tgisinternal &&
 			(!parent->rd_rel->relispartition ||
-			 !isPartitionTrigger(trigForm->oid)))
+			 !OidIsValid(trigForm->tgparentid)))
 			continue;
 
 		/*

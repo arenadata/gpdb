@@ -263,7 +263,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 		AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt AlterEnumStmt
 		AlterFdwStmt AlterForeignServerStmt AlterGroupStmt
 		AlterObjectDependsStmt AlterObjectSchemaStmt AlterOwnerStmt
-		AlterOperatorStmt AlterSeqStmt AlterSystemStmt AlterTableStmt
+		AlterOperatorStmt AlterTypeStmt AlterSeqStmt AlterSystemStmt AlterTableStmt
 		AlterTblSpcStmt AlterExtensionStmt AlterExtensionContentsStmt AlterForeignTableStmt
 		AlterCompositeTypeStmt AlterUserMappingStmt
 		AlterRoleStmt AlterRoleSetStmt AlterPolicyStmt AlterStatsStmt
@@ -1296,6 +1296,7 @@ stmt :
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
 			| AlterOperatorStmt
+			| AlterTypeStmt
 			| AlterPolicyStmt
 			| AlterQueueStmt
 			| AlterResourceGroupStmt
@@ -12009,6 +12010,24 @@ operator_def_arg:
 			| qual_all_Op					{ $$ = (Node *)$1; }
 			| NumericOnly					{ $$ = (Node *)$1; }
 			| Sconst						{ $$ = (Node *)makeString($1); }
+		;
+
+/*****************************************************************************
+ *
+ * ALTER TYPE name SET define
+ *
+ * We repurpose ALTER OPERATOR's version of "definition" here
+ *
+ *****************************************************************************/
+
+AlterTypeStmt:
+			ALTER TYPE_P any_name SET '(' operator_def_list ')'
+				{
+					AlterTypeStmt *n = makeNode(AlterTypeStmt);
+					n->typeName = $3;
+					n->options = $6;
+					$$ = (Node *)n;
+				}
 		;
 
 /*****************************************************************************

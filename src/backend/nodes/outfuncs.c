@@ -1046,6 +1046,7 @@ _outAgg(StringInfo str, const Agg *node)
 	WRITE_OID_ARRAY(grpOperators, node->numCols);
 	WRITE_OID_ARRAY(grpCollations, node->numCols);
 	WRITE_LONG_FIELD(numGroups);
+	WRITE_UINT64_FIELD(transitionSpace);
 	WRITE_BITMAPSET_FIELD(aggParams);
 	WRITE_NODE_FIELD(groupingSets);
 	WRITE_NODE_FIELD(chain);
@@ -2486,6 +2487,7 @@ _outAggPath(StringInfo str, const AggPath *node)
 	WRITE_ENUM_FIELD(aggstrategy, AggStrategy);
 	WRITE_ENUM_FIELD(aggsplit, AggSplit);
 	WRITE_FLOAT_FIELD(numGroups, "%.0f");
+	WRITE_UINT64_FIELD(transitionSpace);
 	WRITE_NODE_FIELD(groupClause);
 	WRITE_NODE_FIELD(qual);
 	WRITE_BOOL_FIELD(streaming);
@@ -2524,6 +2526,7 @@ _outGroupingSetsPath(StringInfo str, const GroupingSetsPath *node)
 	WRITE_ENUM_FIELD(aggstrategy, AggStrategy);
 	WRITE_NODE_FIELD(rollups);
 	WRITE_NODE_FIELD(qual);
+	WRITE_UINT64_FIELD(transitionSpace);
 }
 
 static void

@@ -3457,7 +3457,7 @@ write_csvlog(ErrorData *edata)
 	appendStringInfoChar(&buf, '\n');
 
 	/* If in the syslogger process, try to write messages direct to file */
-	if (am_syslogger)
+	if (MyBackendType == B_LOGGER)
 		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_CSVLOG);
 	else
 		write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_CSVLOG);
@@ -4415,7 +4415,7 @@ send_message_to_server_log(ErrorData *edata)
 		 * catching stderr output, and we are not ourselves the syslogger.
 		 * Otherwise, just do a vanilla write to stderr.
 		 */
-		if (redirection_done && !am_syslogger)
+		if (redirection_done && MyBackendType != B_LOGGER)
 			write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_STDERR);
 #ifdef WIN32
 
@@ -4440,15 +4440,20 @@ send_message_to_server_log(ErrorData *edata)
 	}
 
 	/* If in the syslogger process, try to write messages direct to file */
+<<<<<<< HEAD
 	if (am_syslogger)
 		write_syslogger_file_binary(buf.data, buf.len, LOG_DESTINATION_STDERR);
 
 	pfree(prefix.data);
+=======
+	if (MyBackendType == B_LOGGER)
+		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_STDERR);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/* Write to CSV log if enabled */
 	if (Log_destination & LOG_DESTINATION_CSVLOG)
 	{
-		if (redirection_done || am_syslogger)
+		if (redirection_done || MyBackendType == B_LOGGER)
 		{
 			/*
 			 * send CSV data if it's safe to do so (syslogger doesn't need the

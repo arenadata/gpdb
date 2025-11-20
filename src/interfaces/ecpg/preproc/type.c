@@ -301,7 +301,11 @@ ECPGdump_a_type(FILE *o, const char *name, struct ECPGtype *type, const int brac
 					break;
 				default:
 					if (!IS_SIMPLE_TYPE(type->u.element->type))
+<<<<<<< HEAD
 						base_yyerror("internal error: unknown datatype, please report this to <bugs@greenplum.org>");
+=======
+						base_yyerror("internal error: unknown datatype, please report this to <" PACKAGE_BUGREPORT ">");
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 					ECPGdump_a_simple(o, name,
 									  type->u.element->type,
@@ -672,7 +676,11 @@ ECPGfree_type(struct ECPGtype *type)
 						break;
 					default:
 						if (!IS_SIMPLE_TYPE(type->u.element->type))
+<<<<<<< HEAD
 							base_yyerror("internal error: unknown datatype, please report this to <bugs@greenplum.org>");
+=======
+							base_yyerror("internal error: unknown datatype, please report this to <" PACKAGE_BUGREPORT ">");
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 						free(type->u.element);
 				}

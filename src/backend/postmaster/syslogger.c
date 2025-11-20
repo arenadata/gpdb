@@ -82,11 +82,6 @@ bool		Log_truncate_on_rotation = false;
 int			Log_file_mode = S_IRUSR | S_IWUSR;
 int         gp_log_format = 0; /* Text format */
 
-/*
- * Globally visible state (used by elog.c)
- */
-bool		am_syslogger = false;
-
 extern bool redirection_done;
 
 /*
@@ -272,12 +267,17 @@ SysLoggerMain(int argc, char *argv[])
 	syslogger_parseArgs(argc, argv);
 #endif							/* EXEC_BACKEND */
 
+<<<<<<< HEAD
 	am_syslogger = true;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 		init_ps_display("master logger process", "", "", "");
 	else
 		init_ps_display("logger process", "", "", "");
+=======
+	MyBackendType = B_LOGGER;
+	init_ps_display(NULL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/*
 	 * If we restarted, our stderr is already redirected into our own input
@@ -816,6 +816,11 @@ SysLogger_Start(void)
 	 * This means the postmaster must continue to hold the read end of the
 	 * pipe open, so we can pass it down to the reincarnated syslogger. This
 	 * is a bit klugy but we have little choice.
+	 *
+	 * Also note that we don't bother counting the pipe FDs by calling
+	 * Reserve/ReleaseExternalFD.  There's no real need to account for them
+	 * accurately in the postmaster or syslogger process, and both ends of the
+	 * pipe will wind up closed in all other postmaster children.
 	 */
 #ifndef WIN32
 	if (syslogPipe[0] < 0)
@@ -2066,8 +2071,14 @@ write_binary_to_file(const char *buffer, int count, FILE *fh)
 /*
  * Write binary data to the currently open logfile
  *
+<<<<<<< HEAD
  * On Windows the data arriving in the pipe already has CR/LF newlines,
  * so we must send it to the file without further translation.
+=======
+ * This is exported so that elog.c can call it when MyBackendType is B_LOGGER.
+ * This allows the syslogger process to record elog messages of its own,
+ * even though its stderr does not point at the syslog pipe.
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
  */
 void write_syslogger_file_binary(const char *buffer, int count, int destination)
 {

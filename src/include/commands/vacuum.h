@@ -18,8 +18,12 @@
 #include "catalog/pg_class.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+<<<<<<< HEAD
 #include "fmgr.h"
 #include "nodes/parsenodes.h"
+=======
+#include "parser/parse_node.h"
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 #include "storage/buf.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"

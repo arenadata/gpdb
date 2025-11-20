@@ -687,8 +687,14 @@ usage(void)
 		   "  -V, --version            output version information, then exit\n"
 		   "  -?, --help               show this help, then exit\n"
 		   "\n"
+<<<<<<< HEAD
 		   "Report bugs to <bugs@greenplum.org>.\n",
 		   progname, progname);
+=======
+		   "Report bugs to <%s>.\n"
+		   "%s home page: <%s>\n",
+		   progname, progname, PACKAGE_BUGREPORT, PACKAGE_NAME, PACKAGE_URL);
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 /* return whether str matches "^\s*[-+]?[0-9]+$" */

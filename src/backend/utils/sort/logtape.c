@@ -212,8 +212,13 @@ struct LogicalTapeSet
 	Size		freeBlocksLen;	/* current allocated length of freeBlocks[] */
 
 	/* The array of logical tapes. */
+<<<<<<< HEAD
 	int			nTapes;			/* # of logical tapes in set */
 	LogicalTape *tapes;			/* has nTapes nentries */
+=======
+	int				nTapes;	/* # of logical tapes in set */
+	LogicalTape	   *tapes;	/* has nTapes nentries */
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 };
 
 static void ltsWriteBlock(LogicalTapeSet *lts, long blocknum, void *buffer);
@@ -616,6 +621,7 @@ ltsConcatWorkerTapes(LogicalTapeSet *lts, TapeShare *shared,
 static void
 ltsInitTape(LogicalTape *lt)
 {
+<<<<<<< HEAD
 	lt->writing = true;
 	lt->frozen = false;
 	lt->dirty = false;
@@ -632,6 +638,21 @@ ltsInitTape(LogicalTape *lt)
 	lt->prealloc = NULL;
 	lt->nprealloc = 0;
 	lt->prealloc_size = 0;
+=======
+	lt->writing           = true;
+	lt->frozen            = false;
+	lt->dirty             = false;
+	lt->firstBlockNumber  = -1L;
+	lt->curBlockNumber    = -1L;
+	lt->nextBlockNumber   = -1L;
+	lt->offsetBlockNumber = 0L;
+	lt->buffer            = NULL;
+	lt->buffer_size       = 0;
+	/* palloc() larger than MaxAllocSize would fail */
+	lt->max_size          = MaxAllocSize;
+	lt->pos               = 0;
+	lt->nbytes            = 0;
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 /*
@@ -1102,6 +1123,7 @@ LogicalTapeFreeze(LogicalTapeSet *lts, int tapenum, TapeShare *share)
 void
 LogicalTapeSetExtend(LogicalTapeSet *lts, int nAdditional)
 {
+<<<<<<< HEAD
 	int			i;
 	int			nTapesOrig = lts->nTapes;
 
@@ -1109,6 +1131,15 @@ LogicalTapeSetExtend(LogicalTapeSet *lts, int nAdditional)
 
 	lts->tapes = (LogicalTape *) repalloc(lts->tapes,
 										  lts->nTapes * sizeof(LogicalTape));
+=======
+	int     i;
+	int		nTapesOrig = lts->nTapes;
+
+	lts->nTapes += nAdditional;
+
+	lts->tapes = (LogicalTape *) repalloc(
+		lts->tapes, lts->nTapes * sizeof(LogicalTape));
+>>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	for (i = nTapesOrig; i < lts->nTapes; i++)
 		ltsInitTape(&lts->tapes[i]);
