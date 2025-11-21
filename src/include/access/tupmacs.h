@@ -14,13 +14,8 @@
 #ifndef TUPMACS_H
 #define TUPMACS_H
 
-<<<<<<< HEAD
 #include "catalog/pg_magic_oid.h"
 #include "catalog/pg_type.h"
-=======
-#include "catalog/pg_type_d.h"	/* for TYPALIGN macros */
-
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 /*
  * Check a tuple's null bitmap to determine whether the attribute is null.
