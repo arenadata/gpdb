@@ -585,7 +585,7 @@ PACKAGE_TARNAME='greenplum-database'
 PACKAGE_VERSION='8.0.0-alpha.0'
 PACKAGE_STRING='Greenplum Database 8.0.0-alpha.0'
 PACKAGE_BUGREPORT='support@greenplum.org'
-PACKAGE_URL=''
+PACKAGE_URL='https://greengagedb.org/'
 
 ac_unique_file="src/backend/access/common/heaptuple.c"
 ac_default_prefix=/usr/local/gpdb
@@ -1667,6 +1667,7 @@ Use these variables to override the choices made by `configure' or to help
 it to find libraries and programs with nonstandard names/locations.
 
 Report bugs to <support@greenplum.org>.
+Greenplum Database home page: <https://greengagedb.org/>.
 _ACEOF
 ac_status=$?
 fi
@@ -22239,7 +22240,8 @@ $config_links
 Configuration commands:
 $config_commands
 
-Report bugs to <support@greenplum.org>."
+Report bugs to <support@greenplum.org>.
+Greenplum Database home page: <https://greengagedb.org/>."
 
 _ACEOF
 cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
