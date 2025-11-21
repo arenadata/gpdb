@@ -580,21 +580,12 @@ MFLAGS=
 MAKEFLAGS=
 
 # Identity of this package.
-<<<<<<< HEAD
 PACKAGE_NAME='Greenplum Database'
 PACKAGE_TARNAME='greenplum-database'
 PACKAGE_VERSION='8.0.0-alpha.0'
 PACKAGE_STRING='Greenplum Database 8.0.0-alpha.0'
 PACKAGE_BUGREPORT='support@greenplum.org'
 PACKAGE_URL=''
-=======
-PACKAGE_NAME='PostgreSQL'
-PACKAGE_TARNAME='postgresql'
-PACKAGE_VERSION='13devel'
-PACKAGE_STRING='PostgreSQL 13devel'
-PACKAGE_BUGREPORT='pgsql-bugs@lists.postgresql.org'
-PACKAGE_URL='https://www.postgresql.org/'
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 ac_unique_file="src/backend/access/common/heaptuple.c"
 ac_default_prefix=/usr/local/gpdb
@@ -1675,12 +1666,7 @@ Some influential environment variables:
 Use these variables to override the choices made by `configure' or to help
 it to find libraries and programs with nonstandard names/locations.
 
-<<<<<<< HEAD
 Report bugs to <support@greenplum.org>.
-=======
-Report bugs to <pgsql-bugs@lists.postgresql.org>.
-PostgreSQL home page: <https://www.postgresql.org/>.
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 _ACEOF
 ac_status=$?
 fi
@@ -2885,13 +2871,9 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-<<<<<<< HEAD
 PG_MAJORVERSION=`expr "$PG_PACKAGE_VERSION" : '\([0-9][0-9]*\)'`
-=======
-PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`
-PG_MINORVERSION=`expr "$PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`
+PG_MINORVERSION=`expr "$PG_PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`
 test -n "$PG_MINORVERSION" || PG_MINORVERSION=0
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 
 cat >>confdefs.h <<_ACEOF
@@ -2899,9 +2881,6 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-<<<<<<< HEAD
-PG_VERSION="$PG_PACKAGE_VERSION"
-=======
 cat >>confdefs.h <<_ACEOF
 #define PG_MAJORVERSION_NUM $PG_MAJORVERSION
 _ACEOF
@@ -2912,7 +2891,7 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+PG_VERSION="$PG_PACKAGE_VERSION"
 
 
 
@@ -21593,12 +21572,7 @@ _ACEOF
 
 # Supply a numeric version string for use by 3rd party add-ons
 # awk -F is a regex on some platforms, and not on others, so make "." a tab
-<<<<<<< HEAD
-PG_VERSION_NUM="`echo "$PG_PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
-tr '.' '	' |
-=======
 PG_VERSION_NUM="`echo $PG_MAJORVERSION $PG_MINORVERSION |
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 $AWK '{printf "%d%04d", $1, $2}'`"
 
 cat >>confdefs.h <<_ACEOF
@@ -22265,12 +22239,7 @@ $config_links
 Configuration commands:
 $config_commands
 
-<<<<<<< HEAD
 Report bugs to <support@greenplum.org>."
-=======
-Report bugs to <pgsql-bugs@lists.postgresql.org>.
-PostgreSQL home page: <https://www.postgresql.org/>."
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 _ACEOF
 cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
