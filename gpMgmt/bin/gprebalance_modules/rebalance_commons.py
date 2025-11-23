@@ -42,7 +42,8 @@ class Host:
 
 class SegmentSize:
     """
-    TBD
+    TODO. Should contain storage size of
+    segment instance with all tablespace info.
     """
     pass
 

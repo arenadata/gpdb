@@ -11,7 +11,7 @@ from copy import deepcopy
 from gppylib.db import dbconn
 import gppylib.gparray as gparray
 from gprebalance_modules.rebalance_commons import Host, HostStatus, CandidateSegment
-import gprebalance_modules.solver as balancer
+from gprebalance_modules.solver import GreedySolver, HostId, SolverConfig
 
 class ValidationError(Exception):
     pass
@@ -25,8 +25,7 @@ GROUPED = 'grouped'
 SPREAD = 'spread'
 ANY = 'any'
 
-Encoding = Tuple[int, int, int, List[int], List[int], str]
-HostMapping =  Dict[Host, int]
+HostMapping = Dict[Host, HostId]
 
 @dataclass
 class LogicalMove:
@@ -183,7 +182,7 @@ class ConfigurationEncoder:
     @staticmethod
     def encode_configuration(gparray: gparray.GpArray, 
                             target_hosts: List[Host],
-                            strategy: str) -> Tuple[Encoding, HostMapping]:
+                            strategy: str) -> Tuple[SolverConfig, HostMapping]:
         """
         The rebalance solvers work with abstract input segment configuration.
         Each host must have an id in [0, n-1] interval, where n is a size
@@ -213,12 +212,13 @@ class ConfigurationEncoder:
                                                                      address=pair.mirrorDB.address)]
         n_initial = len(target_hosts)
         n_target = sum([1 for h in target_hosts if h.status != HostStatus.DECOMMISSIONED])
-        return ((gparray.get_primary_count(),
-                 n_target,
-                 n_initial,
-                 primary_plcmnt,
-                 mirror_plcmnt,
-                 strategy), host_mapping)
+        conf = SolverConfig(gparray.get_primary_count(),
+                            n_target,
+                            n_initial,
+                            primary_plcmnt,
+                            mirror_plcmnt,
+                            strategy)
+        return (conf, host_mapping)
 
 class Planner:
     """
@@ -241,6 +241,26 @@ class Planner:
                                                                             self.dir_template_m)
     
     def plan(self) -> Plan:
+        # TODO Remove with future development. Temp code before state machine is implemented.
+        from gprebalance_modules.rebalance_schema import RebalanceSchema
+        conn = dbconn.connect(self.dburl, encoding='UTF8')
+        rebalance_schema = RebalanceSchema(conn)
+        if rebalance_schema.schemaExists():
+            self.logger.info("I AM HERER")
+            state_from_prev_run = rebalance_schema.getStateFromPreviousRun()
+            if state_from_prev_run in ['STATE_SHRINK_TABLES_DONE',
+                                       'STATE_SHRINK_CATALOG_STARTED',
+                                       'STATE_SHRINK_CATALOG_DONE',
+                                       'STATE_SHRINK_SEGMENTS_STOP_STARTED',
+                                       'STATE_SHRINK_SEGMENTS_STOP_DONE',
+                                       'STATE_SHRINK_DONE']:
+                plan = ShrinkPlan([])
+                plan.setTargetSegmentCount(self.options.target_segment_count)
+                conn.close()
+                return plan
+        conn.close()
+        
+        # Planning starts here
         plan = Plan()
 
         self.validate_segment_status()
@@ -312,14 +332,14 @@ class Planner:
                 if seg.primaryDB.hostname not in hosts:
                     hosts[seg.primaryDB.hostname] = Host(hostname=seg.primaryDB.hostname,\
                                                address=seg.primaryDB.address,\
-                                               primary_datadirs=set(),\
-                                               mirror_datadirs=set(),\
+                                               primary_datadirs={dir_template_p},\
+                                               mirror_datadirs={dir_template_m},\
                                                status = HostStatus.ACTIVE)
                 if seg.mirrorDB.hostname not in hosts:
                     hosts[seg.mirrorDB.hostname] = Host(hostname=seg.mirrorDB.hostname,\
                                                address=seg.mirrorDB.address,\
-                                               primary_datadirs=set(),\
-                                               mirror_datadirs=set(),\
+                                               primary_datadirs={dir_template_p},\
+                                               mirror_datadirs={dir_template_m},\
                                                status = HostStatus.ACTIVE)
         for pair in array.segmentPairs:
             primary = pair.primaryDB
@@ -418,9 +438,9 @@ class Planner:
             return None
         
         # dry movements are planned here
-        conf, host_mapping = ConfigurationEncoder.encode_configuration(self.virtual_gparray, self.target_hosts, strat)
+        config, host_mapping = ConfigurationEncoder.encode_configuration(self.virtual_gparray, self.target_hosts, strat)
         id_to_host = {v: k for k, v in host_mapping.items()}
-        solution, cost = balancer.GreedySolver(*conf).solve()
+        solution, cost = GreedySolver(config).solve()
         moves = []
         for pair in self.virtual_gparray.segmentPairs:
             prim = pair.primaryDB
@@ -446,6 +466,9 @@ class Planner:
             primaries_by_host[pair.primaryDB.hostname] += 1
             if pair.mirrorDB:
                 mirrors_by_host[pair.mirrorDB.hostname] += 1
+                # This is mirroring strategy violation
+                if pair.mirrorDB.hostname == pair.primaryDB.hostname:
+                    return False
         for n in primaries_by_host.values():
             if n != load:
                 return False

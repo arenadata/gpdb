@@ -267,8 +267,6 @@ class GGShrink:
 
     def run(self, shrinkPlan: ShrinkPlan) -> None:
         self.shrink_plan = shrinkPlan
-        if self.shrink_plan and len(self.shrink_plan.shrinked_segments) == 0:
-            return
         self.trigger('start')
 
     def get_state_after_interrupt(self, prev_state) -> str:

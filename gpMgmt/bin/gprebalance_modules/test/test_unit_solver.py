@@ -6,7 +6,6 @@ from gppylib.test.unit.gp_unittest import *
 from ..solver import GreedySolver
 from .config import getEncoding
 
-
 class TestGreedySolver(GpTestCase):
 
     def setUp(self):
@@ -86,7 +85,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_small_grouped_balanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -98,7 +97,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_small_spread_balanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -110,7 +109,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_small_grouped_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -123,13 +122,13 @@ class TestGreedySolver(GpTestCase):
         conf = self.encoding[0]
 
         with self.assertRaises(ValueError, msg='Cannot follow spread mirroring strategy') as cm:
-            solver = GreedySolver(*conf, run_improve=False)
+            solver = solver = GreedySolver(conf, run_improve=False)
     
     @getEncoding('40_8_unbalanced_spread', 'spread', None, None, None)
     def test_validity_small_spread_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -141,7 +140,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_medium_spread_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -153,7 +152,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_large_spread_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -165,7 +164,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_large_grouped_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -177,11 +176,10 @@ class TestGreedySolver(GpTestCase):
     def test_validity_large_spread_unbalanced_with_improve(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
-        # means didn't find any better
         self.assertEqual(cost, 337)
 
         self._validate_solition(solution, solver)
@@ -190,12 +188,12 @@ class TestGreedySolver(GpTestCase):
     def test_validity_large_grouped_unbalanced_with_improve(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
         # initial solution gives 528
-        self.assertEqual(cost, 330)
+        self.assertEqual(cost, 173)
 
         self._validate_solition(solution, solver)
     
@@ -203,11 +201,11 @@ class TestGreedySolver(GpTestCase):
     def test_strategy_change_medium_grouped_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 103)
+        self.assertEqual(cost, 102)
 
         self._validate_solition(solution, solver)
     
@@ -215,23 +213,11 @@ class TestGreedySolver(GpTestCase):
     def test_strategy_change_medium_spread_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 106)
-
-        self._validate_solition(solution, solver)
-    
-    @getEncoding('120_20_unbalanced_grouped', 'spread', None, None, None)
-    def test_strategy_change_medium_gropued_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(*conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 103)
+        self.assertEqual(cost, 107)
 
         self._validate_solition(solution, solver)
     
@@ -240,11 +226,11 @@ class TestGreedySolver(GpTestCase):
     def test_decomission_hosts(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 117)
+        self.assertEqual(cost, 124)
 
         self._validate_solition(solution, solver)
     
@@ -254,11 +240,11 @@ class TestGreedySolver(GpTestCase):
     def test_new_hosts(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 84)
+        self.assertEqual(cost, 105)
 
         self._validate_solition(solution, solver)
     
@@ -268,11 +254,11 @@ class TestGreedySolver(GpTestCase):
     def test_target_hosts(self):
         conf = self.encoding[0]
 
-        solver = GreedySolver(*conf)
+        solver = GreedySolver(conf)
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 176)
+        self.assertEqual(cost, 196)
 
         self._validate_solition(solution, solver)
     
