@@ -439,6 +439,7 @@ class Planner:
         # dry movements are planned here
         config, host_mapping = ConfigurationEncoder.encode_configuration(self.virtual_gparray, self.target_hosts, strat)
         id_to_host = {v: k for k, v in host_mapping.items()}
+        self.logger.info("Planning rebalance moves. Can take up to 60s.")
         solution, cost = GreedySolver(config).solve()
         moves = []
         for pair in self.virtual_gparray.segmentPairs:
