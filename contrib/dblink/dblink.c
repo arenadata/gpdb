@@ -307,10 +307,7 @@ dblink_connect(PG_FUNCTION_ARGS)
 		connstr = conname_or_str;
 
 	/* check password in connection string if not superuser */
-<<<<<<< HEAD
 	connstr = dblink_connstr_check(connstr);
-=======
-	dblink_connstr_check(connstr);
 
 	/*
 	 * We must obey fd.c's limit on non-virtual file descriptors.  Assume that
@@ -335,7 +332,6 @@ dblink_connect(PG_FUNCTION_ARGS)
 	}
 
 	/* OK to make connection */
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 	conn = PQconnectdb(connstr);
 
 	if (PQstatus(conn) == CONNECTION_BAD)
