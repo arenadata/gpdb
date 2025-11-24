@@ -27,6 +27,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbdisp_query.h"
+#include "cdb/cdbvars.h"
+
 /*
  * ----------------------------------------------------------------
  *		CastCreate
@@ -69,7 +72,8 @@ CastCreate(Oid sourcetypeid, Oid targettypeid, Oid funcid, char castcontext,
 						format_type_be(targettypeid))));
 
 	/* ready to go */
-	castid = GetNewOidWithIndex(relation, CastOidIndexId, Anum_pg_cast_oid);
+	castid = GetNewOidForCast(relation, CastOidIndexId, Anum_pg_cast_oid,
+							  sourcetypeid, targettypeid);
 	values[Anum_pg_cast_oid - 1] = ObjectIdGetDatum(castid);
 	values[Anum_pg_cast_castsource - 1] = ObjectIdGetDatum(sourcetypeid);
 	values[Anum_pg_cast_casttarget - 1] = ObjectIdGetDatum(targettypeid);
@@ -118,6 +122,16 @@ CastCreate(Oid sourcetypeid, Oid targettypeid, Oid funcid, char castcontext,
 	heap_freetuple(tuple);
 
 	table_close(relation, RowExclusiveLock);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
 
 	return myself;
 }
