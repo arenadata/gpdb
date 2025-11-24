@@ -300,7 +300,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 		RetrieveStmt
 
 /* GPDB-specific commands */
-%type <node>	AlterTypeStmt AlterQueueStmt AlterResourceGroupStmt
+%type <node>	AlterTypeStmtSetDefaultEnc AlterQueueStmt AlterResourceGroupStmt
 		CreateExternalStmt
 		CreateQueueStmt CreateResourceGroupStmt
 		DropQueueStmt DropResourceGroupStmt
@@ -1312,7 +1312,7 @@ stmt :
 			| AlterStatsStmt
 			| AlterTSConfigurationStmt
 			| AlterTSDictionaryStmt
-			| AlterTypeStmt
+			| AlterTypeStmtSetDefaultEnc
 			| AlterUserMappingStmt
 			| AnalyzeStmt
 			| CallStmt
@@ -11074,9 +11074,9 @@ reindex_option_elem:
  *
  * Used to set storage parameter defaults for types.
  */
-AlterTypeStmt: ALTER TYPE_P any_name SET DEFAULT ENCODING definition
+AlterTypeStmtSetDefaultEnc: ALTER TYPE_P any_name SET DEFAULT ENCODING definition
 				{
-					AlterTypeStmt *n = makeNode(AlterTypeStmt);
+					AlterTypeStmtSetDefaultEnc *n = makeNode(AlterTypeStmtSetDefaultEnc);
 
 					n->typeName = $3;
 					n->encoding = $7;

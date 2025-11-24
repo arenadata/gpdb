@@ -5301,9 +5301,9 @@ _outTableValueExpr(StringInfo str, const TableValueExpr *node)
 }
 
 static void
-_outAlterTypeStmt(StringInfo str, const AlterTypeStmt *node)
+_outAlterTypeStmtSetDefaultEnc(StringInfo str, const AlterTypeStmtSetDefaultEnc *node)
 {
-	WRITE_NODE_TYPE("ALTERTYPESTMT");
+	WRITE_NODE_TYPE("ALTERTYPESTMTSETDEFAULTENC");
 
 	WRITE_NODE_FIELD(typeName);
 	WRITE_NODE_FIELD(encoding);
@@ -6503,8 +6503,8 @@ outNode(StringInfo str, const void *obj)
 				_outDenyLoginPoint(str, obj);
 				break;
 
-			case T_AlterTypeStmt:
-				_outAlterTypeStmt(str, obj);
+			case T_AlterTypeStmtSetDefaultEnc:
+				_outAlterTypeStmtSetDefaultEnc(str, obj);
 				break;
 			case T_AlterExtensionStmt:
 				_outAlterExtensionStmt(str, obj);

@@ -193,12 +193,8 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	char	   *array_type;
 	Oid			array_oid;
 	Oid			typoid;
-<<<<<<< HEAD
-	Oid			resulttype;
 	Datum		typoptions = 0;
 	List	   *encoding = NIL;
-=======
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 	ListCell   *pl;
 	ObjectAddress address;
 
@@ -245,52 +241,7 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 	{
 		if (moveArrayTypeName(typoid, typeName, typeNamespace))
 			typoid = InvalidOid;
-<<<<<<< HEAD
-	}
-
-	/*
-	 * If it doesn't exist, create it as a shell, so that the OID is known for
-	 * use in the I/O function definitions.
-	 */
-	if (!OidIsValid(typoid))
-	{
-		address = TypeShellMake(typeName, typeNamespace, GetUserId());
-		typoid = address.objectId;
-		/* Make new shell type visible for modification below */
-		CommandCounterIncrement();
-
-		/*
-		 * If the command was a parameterless CREATE TYPE, we're done ---
-		 * creating the shell type was all we're supposed to do.
-		 */
-		if (parameters == NIL)
-		{
-			/* Must dispatch shell type creation */
-			if (Gp_role == GP_ROLE_DISPATCH)
-			{
-				DefineStmt * stmt = makeNode(DefineStmt);
-				stmt->kind = OBJECT_TYPE;
-				stmt->oldstyle = false; /*?*/
-				stmt->defnames = names;
-				stmt->args = NIL;
-				stmt->definition = NIL;
-				CdbDispatchUtilityStatement((Node *) stmt,
-											DF_CANCEL_ON_ERROR|
-											DF_WITH_SNAPSHOT|
-											DF_NEED_TWO_PHASE,
-											GetAssignedOidsForDispatch(),
-											NULL);
-			}
-			return address;
-		}
-	}
-	else
-	{
-		/* Complain if dummy CREATE TYPE and entry already exists */
-		if (parameters == NIL)
-=======
 		else
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("type \"%s\" already exists", typeName)));
@@ -308,6 +259,23 @@ DefineType(ParseState *pstate, List *names, List *parameters)
 					 errmsg("type \"%s\" already exists", typeName)));
 
 		address = TypeShellMake(typeName, typeNamespace, GetUserId());
+
+		/* Must dispatch shell type creation */
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			DefineStmt * stmt = makeNode(DefineStmt);
+			stmt->kind = OBJECT_TYPE;
+			stmt->oldstyle = false; /*?*/
+			stmt->defnames = names;
+			stmt->args = NIL;
+			stmt->definition = NIL;
+			CdbDispatchUtilityStatement((Node *) stmt,
+										DF_CANCEL_ON_ERROR|
+										DF_WITH_SNAPSHOT|
+										DF_NEED_TWO_PHASE,
+										GetAssignedOidsForDispatch(),
+										NULL);
+		}
 		return address;
 	}
 
@@ -3787,13 +3755,12 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 }
 
 /*
-<<<<<<< HEAD
  * Currently, we only land here if the user has issued:
  *
  * ALTER TYPE <typname> SET DEFAULT ENCODING (...)
  */
 void
-AlterType(AlterTypeStmt *stmt)
+AlterTypeSetDefaultEnc(AlterTypeStmtSetDefaultEnc *stmt)
 {
 	TypeName   *typname;
 	Oid			typid;
@@ -3832,7 +3799,9 @@ AlterType(AlterTypeStmt *stmt)
 									DF_NEED_TWO_PHASE,
 									NIL,
 									NULL);
-=======
+}
+
+/*
  * AlterType
  *		ALTER TYPE <type> SET (option = ...)
  *
@@ -4178,5 +4147,4 @@ AlterTypeRecurse(Oid typeOid, HeapTuple tup, Relation catalog,
 	}
 
 	systable_endscan(scan);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }

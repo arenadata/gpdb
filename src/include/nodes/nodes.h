@@ -517,7 +517,7 @@ typedef enum NodeTag
 	T_TableValueExpr,
 	T_DenyLoginInterval,
 	T_DenyLoginPoint,
-	T_AlterTypeStmt,
+	T_AlterTypeStmtSetDefaultEnc,
 	T_AlteredTableInfo,
 	T_NewConstraint,
 	T_NewColumnValue,
