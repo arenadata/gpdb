@@ -113,7 +113,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 21)
+        self.assertEqual(cost, 35)
 
         self._validate_solition(solution, solver)
 
@@ -132,7 +132,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 12)
+        self.assertEqual(cost, 15)
 
         self._validate_solition(solution, solver)
     
@@ -144,7 +144,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 20)
+        self.assertEqual(cost, 18)
 
         self._validate_solition(solution, solver)
 
@@ -156,7 +156,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 337)
+        self.assertEqual(cost, 238)
 
         self._validate_solition(solution, solver)
     
@@ -168,7 +168,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 528)
+        self.assertEqual(cost, 282)
 
         self._validate_solition(solution, solver)
     
@@ -192,8 +192,8 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        # initial solution gives 528
-        self.assertEqual(cost, 173)
+        # initial solution gives 282
+        self.assertEqual(cost, 186)
 
         self._validate_solition(solution, solver)
     
@@ -205,7 +205,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 102)
+        self.assertEqual(cost, 100)
 
         self._validate_solition(solution, solver)
     
@@ -217,7 +217,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 107)
+        self.assertEqual(cost, 106)
 
         self._validate_solition(solution, solver)
     
@@ -230,7 +230,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 124)
+        self.assertEqual(cost, 119)
 
         self._validate_solition(solution, solver)
     
@@ -244,7 +244,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 105)
+        self.assertEqual(cost, 115)
 
         self._validate_solition(solution, solver)
     
@@ -258,7 +258,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 196)
+        self.assertEqual(cost, 189)
 
         self._validate_solition(solution, solver)
     

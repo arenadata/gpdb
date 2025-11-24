@@ -113,8 +113,8 @@ class GreedySolver:
 
         # Optional improvement by ALNS.
         if self.run_improve:
-            # at least 5 iterations per segment
-            config = ALNSConfig(max_iterations=5 * self.n_segments)
+            # at least 10 iterations per segment
+            config = ALNSConfig(max_iterations=10 * self.n_segments)
             alns = ALNS(self, config)
             primary, mirror = alns.optimize(primary, mirror)
                    
@@ -164,7 +164,7 @@ class GreedySolver:
             )
             segment_order.append((must_move, -initial_load[orig_host], i))
         
-        segment_order.sort()
+        segment_order.sort(reverse=True)
         
         # Current primary load for each target host.
         current_load = [0] * self.n_hosts_target
