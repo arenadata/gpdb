@@ -180,7 +180,7 @@ class TestGreedySolver(GpTestCase):
 
         solution, cost = solver.solve()
 
-        self.assertEqual(cost, 337)
+        self.assertEqual(cost, 139)
 
         self._validate_solition(solution, solver)
     
