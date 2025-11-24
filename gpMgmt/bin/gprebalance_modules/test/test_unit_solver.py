@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple
 from collections import defaultdict
 
 from gppylib.test.unit.gp_unittest import *
-from ..solver import GreedySolver
+from ..solver import GreedySolver, Solution
 from .config import getEncoding
 
 class TestGreedySolver(GpTestCase):
@@ -11,13 +11,13 @@ class TestGreedySolver(GpTestCase):
     def setUp(self):
         random.seed(42)
     
-    def _validate_solution_allassign(self, solution: Dict[int, Tuple[int, int]], 
+    def _validate_solution_allassign(self, solution: Solution, 
                                      solver: GreedySolver) -> bool:
         if len(solution) != solver.n_segments:
             return False
 
         return True    
-    def _validate_solution_host_ids(self, solution: Dict[int, Tuple[int, int]], 
+    def _validate_solution_host_ids(self, solution: Solution, 
                                      solver: GreedySolver) -> bool:
         for seg_id, (primary, mirror) in solution.items():
             if not (0 <= primary < solver.n_hosts_target):
@@ -27,14 +27,14 @@ class TestGreedySolver(GpTestCase):
         
         return True
     
-    def _validate_solution_nocolocation(self, solution: Dict[int, Tuple[int, int]], 
+    def _validate_solution_nocolocation(self, solution: Solution, 
                                      solver: GreedySolver) -> bool:
         for seg_id, (primary, mirror) in solution.items():
             if primary == mirror:
                 return False
         return True
     
-    def _validate_solution_balance(self, solution: Dict[int, Tuple[int, int]], 
+    def _validate_solution_balance(self, solution: Solution, 
                                      solver: GreedySolver) -> bool:
         load = [0] * solver.n_hosts_target
         for seg_id, (primary, mirror) in solution.items():
@@ -47,7 +47,7 @@ class TestGreedySolver(GpTestCase):
         
         return True
     
-    def _validate_strategy(self, solution: Dict[int, Tuple[int, int]], 
+    def _validate_strategy(self, solution: Solution, 
                                      solver: GreedySolver):
         primary_to_mirrors = defaultdict(list)
         for seg_id, (primary, mirror) in solution.items():
@@ -64,7 +64,7 @@ class TestGreedySolver(GpTestCase):
                     return False
         return True
     
-    def _validate_solition(self, solution: Dict[int, Tuple[int, int]], 
+    def _validate_solition(self, solution: Solution, 
                                      solver: GreedySolver):
         self.assertTrue(self._validate_solution_allassign(solution, solver),
                         f"Missing segments. Expected {solver.n_segments}, got {len(solution)}")
