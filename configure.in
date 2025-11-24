@@ -17,16 +17,12 @@ dnl Read the Autoconf manual for details.
 dnl
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-<<<<<<< HEAD
 dnl The PACKAGE_VERSION from upstream PostgreSQL is maintained in the
 dnl PG_PACKAGE_VERSION variable, when merging make sure to update this
 dnl variable with the merge conflict from the AC_INIT() statement.
-AC_INIT([Greenplum Database], [8.0.0-alpha.0], [support@greenplum.org])
+AC_INIT([Greenplum Database], [8.0.0-alpha.0], [support@greenplum.org], [], [https://greengagedb.org/])
 [PG_PACKAGE_VERSION=13alpha0]
 AC_SUBST(PG_PACKAGE_VERSION)
-=======
-AC_INIT([PostgreSQL], [13devel], [pgsql-bugs@lists.postgresql.org], [], [https://www.postgresql.org/])
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 dnl m4_if(m4_defn([m4_PACKAGE_VERSION]), [2.69], [], [m4_fatal([Autoconf version 2.69 is required.
 dnl Untested combinations of 'autoconf' and PostgreSQL versions are not
@@ -38,13 +34,9 @@ AC_CONFIG_AUX_DIR(config)
 AC_PREFIX_DEFAULT(/usr/local/gpdb)
 AC_DEFINE_UNQUOTED(CONFIGURE_ARGS, ["$ac_configure_args"], [Saved arguments from configure])
 
-<<<<<<< HEAD
 [PG_MAJORVERSION=`expr "$PG_PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
-=======
-[PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\)'`]
-[PG_MINORVERSION=`expr "$PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`]
+[PG_MINORVERSION=`expr "$PG_PACKAGE_VERSION" : '.*\.\([0-9][0-9]*\)'`]
 test -n "$PG_MINORVERSION" || PG_MINORVERSION=0
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 AC_SUBST(PG_MAJORVERSION)
 AC_DEFINE_UNQUOTED(PG_MAJORVERSION, "$PG_MAJORVERSION", [PostgreSQL major version as a string])
 AC_DEFINE_UNQUOTED(PG_MAJORVERSION_NUM, $PG_MAJORVERSION, [PostgreSQL major version number])
@@ -95,11 +87,7 @@ PostgreSQL has apparently not been ported to your platform yet.
 To try a manual configuration, look into the src/template directory
 for a similar platform and use the '--with-template=' option.
 
-<<<<<<< HEAD
 Please also contact <bugs@greenplum.org> to see about
-=======
-Please also contact <]AC_PACKAGE_BUGREPORT[> to see about
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 rectifying this.  Include the above 'checking host system type...'
 line.
 *******************************************************************
@@ -2776,12 +2764,7 @@ AC_DEFINE_UNQUOTED(PG_VERSION_STR,
 
 # Supply a numeric version string for use by 3rd party add-ons
 # awk -F is a regex on some platforms, and not on others, so make "." a tab
-<<<<<<< HEAD
-[PG_VERSION_NUM="`echo "$PG_PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
-tr '.' '	' |
-=======
 [PG_VERSION_NUM="`echo $PG_MAJORVERSION $PG_MINORVERSION |
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 $AWK '{printf "%d%04d", $1, $2}'`"]
 AC_DEFINE_UNQUOTED(PG_VERSION_NUM, $PG_VERSION_NUM, [PostgreSQL version as a number])
 AC_SUBST(PG_VERSION_NUM)
