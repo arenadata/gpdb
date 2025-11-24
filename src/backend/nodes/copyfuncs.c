@@ -5355,10 +5355,10 @@ _copyTableValueExpr(const TableValueExpr *from)
 	return newnode;
 }
 
-static AlterTypeStmt *
-_copyAlterTypeStmt(const AlterTypeStmt *from)
+static AlterTypeStmtSetDefaultEnc *
+_copyAlterTypeStmtSetDefaultEnc(const AlterTypeStmtSetDefaultEnc *from)
 {
-	AlterTypeStmt *newnode = makeNode(AlterTypeStmt);
+	AlterTypeStmtSetDefaultEnc *newnode = makeNode(AlterTypeStmtSetDefaultEnc);
 
 	COPY_NODE_FIELD(typeName);
 	COPY_NODE_FIELD(encoding);
@@ -6818,8 +6818,8 @@ copyObjectImpl(const void *from)
 		case T_TableValueExpr:
 			retval = _copyTableValueExpr(from);
 			break;
-		case T_AlterTypeStmt:
-			retval = _copyAlterTypeStmt(from);
+		case T_AlterTypeStmtSetDefaultEnc:
+			retval = _copyAlterTypeStmtSetDefaultEnc(from);
 			break;
 
 		case T_DenyLoginInterval:

@@ -3464,20 +3464,17 @@ typedef struct AlterOwnerStmt
 	RoleSpec   *newowner;		/* the new owner */
 } AlterOwnerStmt;
 
-<<<<<<< HEAD
 /* ----------------------
  * ALTER TYPE ... SET DEFAULT ENCODING ()
  * ----------------------
  */
-typedef struct AlterTypeStmt
+typedef struct AlterTypeStmtSetDefaultEnc
 {
 	NodeTag		type;
 	List	   *typeName;
 	List	   *encoding;
-} AlterTypeStmt;
+} AlterTypeStmtSetDefaultEnc;
 
-=======
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 /* ----------------------
  *		Alter Operator Set ( this-n-that )
  * ----------------------

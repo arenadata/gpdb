@@ -176,6 +176,7 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_AlterTableSpaceOptionsStmt:
 		case T_AlterTableStmt:
 		case T_AlterTypeStmt:
+		case T_AlterTypeStmtSetDefaultEnc:
 		case T_AlterUserMappingStmt:
 		case T_CommentStmt:
 		case T_CompositeTypeStmt:
@@ -2043,8 +2044,8 @@ ProcessUtilitySlow(ParseState *pstate,
 				commandCollected = true;
 				break;
 
-			case T_AlterTypeStmt:
-				AlterType((AlterTypeStmt *) parsetree);
+			case T_AlterTypeStmtSetDefaultEnc:
+				AlterTypeSetDefaultEnc((AlterTypeStmtSetDefaultEnc *) parsetree);
 				break;
 
 			case T_DropStmt:
@@ -3573,7 +3574,7 @@ CreateCommandTag(Node *parsetree)
 			}
 			break;
 
-		case T_AlterTypeStmt:
+		case T_AlterTypeStmtSetDefaultEnc:
 			tag = "ALTER TYPE";
 			break;
 

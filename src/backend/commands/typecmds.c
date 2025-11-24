@@ -3787,13 +3787,12 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 }
 
 /*
-<<<<<<< HEAD
  * Currently, we only land here if the user has issued:
  *
  * ALTER TYPE <typname> SET DEFAULT ENCODING (...)
  */
 void
-AlterType(AlterTypeStmt *stmt)
+AlterTypeSetDefaultEnc(AlterTypeStmtSetDefaultEnc *stmt)
 {
 	TypeName   *typname;
 	Oid			typid;
@@ -3832,7 +3831,9 @@ AlterType(AlterTypeStmt *stmt)
 									DF_NEED_TWO_PHASE,
 									NIL,
 									NULL);
-=======
+}
+
+/*
  * AlterType
  *		ALTER TYPE <type> SET (option = ...)
  *
@@ -4178,5 +4179,4 @@ AlterTypeRecurse(Oid typeOid, HeapTuple tup, Relation catalog,
 	}
 
 	systable_endscan(scan);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
