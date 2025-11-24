@@ -6,10 +6,6 @@ from typing import NewType, Optional, Set, Dict, List, Tuple, Union
 from collections import defaultdict
 import time
 
-class TimeoutException(Exception):
-    """Raised when search time limit is exceeded"""
-    pass
-
 # 0 <= hostid <= n_hosts_initial
 HostId = NewType('HostId', int)
 # 0 <= contentid <= n_segments
@@ -120,12 +116,7 @@ class GreedySolver:
             # at least 5 iterations per segment
             config = ALNSConfig(max_iterations=5 * self.n_segments)
             alns = ALNS(self, config)
-            try:
-                primary, mirror =\
-                    alns.optimize(primary, mirror)
-            except TimeoutException as e:
-                if self.printing:
-                    print(f"\n Time limit reached ({config.timeout}s) at {str(e)} iteration")
+            primary, mirror = alns.optimize(primary, mirror)
                    
         solution: Solution = {
             ContentId(i): (HostId(primary[i]), HostId(mirror[i]))
@@ -1356,7 +1347,9 @@ class ALNS:
         
         for state.iteration in range(self.config.max_iterations):
             if self._timeout_reached():
-                raise TimeoutException(f"{state.iteration}")
+                if self.printing:
+                    print(f"\n Time limit reached ({self.config.timeout}s) at {state.iteration} iteration")
+                return state.best_primary, state.best_mirror
             
             new_primary, new_mirror, destroy_method, repair_method = self._generate_neighbor(state)
             
