@@ -140,16 +140,11 @@ extern core_yyscan_t scanner_init(const char *str,
 extern void scanner_finish(core_yyscan_t yyscanner);
 extern int	core_yylex(core_YYSTYPE *lvalp, YYLTYPE *llocp,
 					   core_yyscan_t yyscanner);
-<<<<<<< HEAD
-
 extern void	scanner_errposition(int location, core_yyscan_t yyscanner);
-=======
-extern int	scanner_errposition(int location, core_yyscan_t yyscanner);
 extern void setup_scanner_errposition_callback(ScannerCallbackState *scbstate,
 											   core_yyscan_t yyscanner,
 											   int location);
 extern void cancel_scanner_errposition_callback(ScannerCallbackState *scbstate);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 extern void scanner_yyerror(const char *message, core_yyscan_t yyscanner) pg_attribute_noreturn();
 
 #endif							/* SCANNER_H */
