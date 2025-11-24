@@ -249,12 +249,8 @@ extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 							  const char *prepStmtName,
 							  const char *sourceText,
-<<<<<<< HEAD
 							  NodeTag	  sourceTag, /* GPDB */
-							  const char *commandTag,
-=======
 							  CommandTag commandTag,
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 							  List *stmts,
 							  CachedPlan *cplan);
 extern PlannedStmt *PortalGetPrimaryStmt(Portal portal);
