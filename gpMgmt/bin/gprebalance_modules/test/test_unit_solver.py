@@ -109,7 +109,7 @@ class TestGreedySolver(GpTestCase):
     def test_validity_small_grouped_unbalanced(self):
         conf = self.encoding[0]
 
-        solver = solver = GreedySolver(conf, run_improve=False)
+        solver = GreedySolver(conf, run_improve=False)
 
         solution, cost = solver.solve()
 
@@ -122,7 +122,7 @@ class TestGreedySolver(GpTestCase):
         conf = self.encoding[0]
 
         with self.assertRaises(ValueError, msg='Cannot follow spread mirroring strategy') as cm:
-            solver = solver = GreedySolver(conf, run_improve=False)
+            solver = GreedySolver(conf, run_improve=False)
     
     @getEncoding('40_8_unbalanced_spread', 'spread', None, None, None)
     def test_validity_small_spread_unbalanced(self):

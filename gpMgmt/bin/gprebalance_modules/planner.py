@@ -92,16 +92,19 @@ class Plan:
     
     def __str__(self):
         lines = []
-        lines.append(f"Target Segment Count: {self.target_segment_count}")
-        
+
+        lines.append(f"\n{'BALANCE MOVES':-^80}")
         if self.moves:
-            lines.append(f"\nTotal Moves: {len(self.moves)}")
-            lines.append("-" * 80)
+            lines.append(f"Total moves planned: {len(self.moves)}")
+            lines.append("")
+            
             for idx, move in enumerate(self.moves, 1):
-                lines.append(f"\nMove #{idx}:")
-                lines.append(str(move))
+                lines.append(f"  [{idx}] {move}")
+                if idx < len(self.moves):
+                    lines.append("")
         else:
-            lines.append("\nNo moves planned.")
+            lines.append("  No data migration needed.")
+            
         
         return "\n".join(lines)
 
@@ -147,13 +150,13 @@ class ShrinkPlan(Plan):
                     lines.append(f"        Port:     {seg_pair.primaryDB.port}")
                 
                 # Mirror segment
-                if seg_pair.primaryDB:
+                if seg_pair.mirrorDB:
                     lines.append(f"      Mirror:")
-                    lines.append(f"        Content:  {seg_pair.primaryDB.content}")
-                    lines.append(f"        DbId:     {seg_pair.primaryDB.dbid}")
-                    lines.append(f"        Host:     {seg_pair.primaryDB.hostname}")
-                    lines.append(f"        Datadir:  {seg_pair.primaryDB.datadir}")
-                    lines.append(f"        Port:     {seg_pair.primaryDB.port}")
+                    lines.append(f"        Content:  {seg_pair.mirrorDB.content}")
+                    lines.append(f"        DbId:     {seg_pair.mirrorDB.dbid}")
+                    lines.append(f"        Host:     {seg_pair.mirrorDB.hostname}")
+                    lines.append(f"        Datadir:  {seg_pair.mirrorDB.datadir}")
+                    lines.append(f"        Port:     {seg_pair.mirrorDB.port}")
                 
                 if idx < len(self.shrinked_segments):
                     lines.append("")
@@ -161,17 +164,7 @@ class ShrinkPlan(Plan):
             lines.append("  No segments to remove.")
         
         # Moves section
-        lines.append(f"\n{'BALANCE MOVES':-^80}")
-        if self.moves:
-            lines.append(f"Total moves planned: {len(self.moves)}")
-            lines.append("")
-            
-            for idx, move in enumerate(self.moves, 1):
-                lines.append(f"  [{idx}] {move}")
-                if idx < len(self.moves):
-                    lines.append("")
-        else:
-            lines.append("  No data migration needed.")
+        lines.append(super().__str__())
         
         lines.append("\n" + "=" * 80)
         

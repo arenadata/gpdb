@@ -32,7 +32,7 @@ class SolverConfig:
     n_segments: int
     n_hosts_target: int
     n_hosts_initial: int
-    initial_primariy: List[HostId]
+    initial_primary: List[HostId]
     initial_mirror: List[HostId]
     strategy: str
 
@@ -68,7 +68,7 @@ class GreedySolver:
         self.n_segments = config.n_segments
         self.n_hosts_target = config.n_hosts_target
         self.n_hosts_initial = config.n_hosts_initial
-        self.initial_primary = config.initial_primariy
+        self.initial_primary = config.initial_primary
         self.initial_mirror = config.initial_mirror
         self.strategy = config.strategy
 
@@ -95,7 +95,7 @@ class GreedySolver:
         # Best known solution
         self.best_primary: List[HostId] | None = None
         self.best_mirror: List[HostId] | None = None
-    
+
     def solve(self) -> Tuple[Solution, Cost]:
         """
         Build an initial greedy solution and optionally improve it with ALNS.
@@ -169,7 +169,7 @@ class GreedySolver:
         # Current primary load for each target host.
         current_load = [0] * self.n_hosts_target
         
-        for must_move, _, seg_id in segment_order:
+        for _, _, seg_id in segment_order:
             orig_host = self.initial_primary[seg_id]
             
             # Try to keep on original host if possible
@@ -184,7 +184,7 @@ class GreedySolver:
             current_load[host] += 1
         
         return primary
-    
+
     # --------------------------------------------------------------------- #
     #  Phase 2: Mirrors
     # --------------------------------------------------------------------- #
@@ -212,6 +212,7 @@ class GreedySolver:
             self._assign_mirrors_any(primary, mirror, mirror_load)
         
         return mirror
+
     def _assign_mirrors_grouped(self,
                                 primary: List[HostId],
                                 mirror: List[HostId],
@@ -356,7 +357,7 @@ class GreedySolver:
             return current_mirror
 
         return None
-    
+
     def _assign_mirrors_spread(self,
                                primary: List[HostId],
                                mirror: List[HostId],
@@ -423,7 +424,7 @@ class GreedySolver:
                 mirror[seg] = best_host
                 mirror_load[best_host] += 1
                 used_in_group[p_host].add(best_host)
-    
+
     def _resolve_spread_deadlock_for_segment(self,
                                              seg: ContentId,
                                              primary: List[HostId],
@@ -538,7 +539,7 @@ class GreedySolver:
             (1 if mirror[i] != self.initial_mirror[i] else 0)
             for i in range(self.n_segments)
         )
-    
+
     def _validate_solution(self, solution: Solution) -> bool:
         """
         Validate that solution satisfies all constraints
@@ -583,6 +584,7 @@ class GreedySolver:
         
         return True
 
+
 @dataclass
 class ALNSConfig:
     """
@@ -595,6 +597,7 @@ class ALNSConfig:
     local_search_frequency: int = 5
     stagnation_threshold: int = 30
     restart_threshold: int = 20
+
 
 @dataclass
 class SearchState:
@@ -610,14 +613,14 @@ class SearchState:
     iteration: int = 0
     stagnation_count: int = 0
     last_improvement_iter: int = 0
-    
+
     def get_temperature(self, config: ALNSConfig) -> float:
         """
         Calculate current temperature.
         """
         temp = 1.0 * (config.temperature_decay ** self.iteration)
         return max(config.min_temperature, temp)
-    
+
     def get_destroy_size(self, config: ALNSConfig) -> float:
         """
         Calculate adaptive destroy size based on progress.
@@ -628,7 +631,7 @@ class SearchState:
             return random.uniform(0.15, 0.30)  # Early phase: explore
         else:
             return random.uniform(0.10, 0.20)  # Late phase: intensify
-    
+
     def update_best(self, primary: List[HostId], mirror: List[HostId], cost: Cost) -> bool:
         """
         Update best solution found.
@@ -640,13 +643,13 @@ class SearchState:
             self.last_improvement_iter = self.iteration
             return True
         return False
-    
+
     def should_restart(self, config: ALNSConfig) -> bool:
         """
         Check if search should restart from best.
         """
         return self.stagnation_count > config.stagnation_threshold
-    
+
     def restart_from_best(self):
         """
         Restart search from best solution.
@@ -656,17 +659,18 @@ class SearchState:
         self.current_cost = self.best_cost
         self.stagnation_count = 0
 
+
 class ALNSDestroyMethod(Enum):
     GROUP_DESTROY = 'group_destroy'
     BAD_SEGMENTS = 'bad_segments'
     SHAW_REMOVAL = 'shaw_removal'
     RANDOM_SEGMENTS = 'random_segments'
 
+
 class ALNSDestroyOperators:
     """
     Collection of destroy operators for ALNS.
     """
-    
     def __init__(self, n_segments: int, strategy: str, 
                  initial_primary: List[HostId],
                  initial_mirror: List[HostId]):
@@ -674,7 +678,7 @@ class ALNSDestroyOperators:
         self.strategy = strategy
         self.initial_primary = initial_primary
         self.initial_mirror = initial_mirror
-    
+
     def select_method(self, stagnation: int) -> ALNSDestroyMethod:
         """
         Select destroy method based on search state.
@@ -700,14 +704,14 @@ class ALNSDestroyOperators:
                  ALNSDestroyMethod.RANDOM_SEGMENTS],
                 weights=[0.4, 0.4, 0.2]
             )[0]
-    
+
     def destroy_random(self, destroy_size: float) -> Set[ContentId]:
         """
         Destroy random segments.
         """
         n_destroy = max(1, int(self.n_segments * destroy_size))
         return set(random.sample(range(self.n_segments), n_destroy))
-    
+
     def destroy_primary_groups(self, primary: List[HostId], mirror: List[HostId],
                               destroy_size: float) -> Set[ContentId]:
         """
@@ -722,7 +726,7 @@ class ALNSDestroyOperators:
         
         # Select groups probabilistically
         return self._select_groups_by_badness(groups, primary_badness, destroy_size)
-    
+
     def destroy_bad_segments(self, primary: List[HostId], mirror: List[HostId],
                             destroy_size: float) -> Set[ContentId]:
         """
@@ -746,7 +750,7 @@ class ALNSDestroyOperators:
             return self.destroy_random(destroy_size)
         
         return self._select_bad_segments_with_relatedness(bad_segments, primary, mirror, n_destroy)
-    
+
     def shaw_removal(self, primary: List[HostId], mirror: List[HostId],
                     destroy_size: float) -> Set[ContentId]:
         """
@@ -777,7 +781,7 @@ class ALNSDestroyOperators:
             destroyed.add(seg)
         
         return destroyed
-    
+
     def _calculate_group_badness(self, groups: Dict[HostId, List[ContentId]], 
                                 primary: List[HostId], mirror: List[HostId]) -> Dict[HostId, float]:
         """
@@ -795,7 +799,7 @@ class ALNSDestroyOperators:
             badness[p_host] = total_moved / len(segments) if segments else 0
         
         return badness
-    
+
     def _select_groups_by_badness(self, groups: Dict[HostId, List[ContentId]], 
                                  badness: Dict[HostId, float], 
                                  destroy_size: float) -> Set[ContentId]:
@@ -826,7 +830,7 @@ class ALNSDestroyOperators:
             destroyed = set(random.sample(list(destroyed), n_destroy))
         
         return destroyed
-    
+
     def _select_bad_segments_with_relatedness(self, bad_segments: List[Tuple[int, ContentId]], 
                                             primary: List[HostId], mirror: List[HostId],
                                             n_destroy: int) -> Set[ContentId]:
@@ -857,14 +861,16 @@ class ALNSDestroyOperators:
         
         return destroyed
 
+
 class ALNSRepairMethod(Enum):
     GREEDY_REPAIR = 'repair_greedy'
     CONSTRAINT_REPAIR = 'repair_constrained'
     REGRET_REPAIR = "repair_regret"
 
+
 class ALNSRepairOperators:
     """Repair operators for ALNS."""
-    
+
     def __init__(self, n_segments: int,
                  n_hosts: int, strategy: str,
                  initial_primary: List[HostId],
@@ -877,7 +883,7 @@ class ALNSRepairOperators:
         self.initial_mirror = initial_mirror
         self.target_load = target_load
         self._host_set = set(range(self.n_hosts))
-    
+
     def select_method(self, iteration: int, max_iterations: int) -> ALNSRepairMethod:
         """
         Select destroy method based on search state.
@@ -917,7 +923,7 @@ class ALNSRepairOperators:
                  ALNSRepairMethod.CONSTRAINT_REPAIR],
                 weights=[0.5, 0.3, 0.2]
             )[0]
-    
+
     def repair_greedy(self, primary: List[HostId], mirror: List[HostId],
                    destroyed: Set[ContentId]) -> Tuple[List[HostId], List[HostId]]:
         """
@@ -1007,7 +1013,7 @@ class ALNSRepairOperators:
                     primary_to_used_mirrors[best_p].add(best_m)
 
         return new_primary, new_mirror
-    
+
     def _get_valid_mirrors(self, 
                            primary_host: HostId, 
                            mirror_capacity: List[int],
@@ -1070,7 +1076,7 @@ class ALNSRepairOperators:
                     valid.add(m_host)
             
             return valid
-    
+
     def repair_most_constrained(self, primary: List[HostId], mirror: List[HostId],
                            destroyed: Set[ContentId]) -> Tuple[List[HostId], List[HostId]]:
         """
@@ -1181,7 +1187,7 @@ class ALNSRepairOperators:
             unassigned.remove(seg)
 
         return new_primary, new_mirror
-    
+
     def repair_regret(self, primary: List[HostId], mirror: List[HostId],
                   destroyed: Set[ContentId]) -> Tuple[List[HostId], List[HostId]]:
         """
@@ -1287,6 +1293,7 @@ class ALNSRepairOperators:
 
         return new_primary, new_mirror
 
+
 class ALNS:
     """
     Adaptive Large Neighborhood Search (ALNS) for refining segment
@@ -1323,7 +1330,7 @@ class ALNS:
             self.initial_primary, self.initial_mirror,
             self.solver.target_primary_load
         )
-    
+
     def optimize(self, 
                  primary: List[HostId],
                  mirror: List[HostId]) -> Tuple[List[HostId], List[HostId]]:
@@ -1385,7 +1392,7 @@ class ALNS:
             print(f"Final cost: {state.best_cost}")
         
         return state.best_primary, state.best_mirror
-    
+
     def _generate_neighbor(self, state: SearchState) -> Tuple[List[HostId], List[HostId],
                                                               ALNSDestroyMethod, ALNSRepairMethod]:
         """
@@ -1412,7 +1419,7 @@ class ALNS:
             new_primary, new_mirror = self._local_mirror_swap(new_primary, new_mirror)
         
         return new_primary, new_mirror, destroy_method, repair_method
-    
+
     def _apply_destroy(self, primary: List[HostId], mirror: List[HostId],
                       method: ALNSDestroyMethod, destroy_size: float) -> Set[ContentId]:
         """
@@ -1426,7 +1433,7 @@ class ALNS:
             return self.destroy_ops.shaw_removal(primary, mirror, destroy_size)
         else:  # RANDOM_SEGMENTS
             return self.destroy_ops.destroy_random(destroy_size)
-    
+
     # REPAIR
     def _apply_repair(self,
                       primary: List[HostId],
@@ -1495,9 +1502,8 @@ class ALNS:
                 best_cost = candidate_cost
         
         return primary, best_mirror
-    
+
     # UTILITIES
-    
     def _accept_move(self, current_cost: Cost, new_cost: Cost, temperature: float) -> bool:
         """
         Simulated Annealing acceptance criterion.
@@ -1510,14 +1516,14 @@ class ALNS:
             delta = (new_cost - current_cost) / self.n_segments
             delta_capped = min(delta, 5.0)
             return random.random() < math.exp(-delta_capped / temperature)
-    
+
     def _is_valid(self, primary: List[HostId], mirror: List[HostId]) -> bool:
         """
         Validation check.
         """
         solution = {i: (primary[i], mirror[i]) for i in range(self.n_segments)}
         return self.solver._validate_solution(solution)
-    
+
     def _timeout_reached(self) -> bool:
         """Check if time limit exceeded."""
         if self.start_time is None or self.config.timeout is None:
