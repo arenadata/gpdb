@@ -78,35 +78,10 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	handlerOid = LookupFuncName(stmt->plhandler, 0, NULL, false);
 	funcrettype = get_func_rettype(handlerOid);
 	if (funcrettype != LANGUAGE_HANDLEROID)
-<<<<<<< HEAD
-	{
-		/*
-		 * We allow OPAQUE just so we can load old dump files.  When we see a
-		 * handler function declared OPAQUE, change it to LANGUAGE_HANDLER.
-		 * (This is probably obsolete and removable?)
-		 */
-		if (funcrettype == OPAQUEOID)
-		{
-			if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(WARNING,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("changing return type of function %s from %s to %s",
-							NameListToString(stmt->plhandler),
-							"opaque", "language_handler")));
-			SetFunctionReturnType(handlerOid, LANGUAGE_HANDLEROID);
-		}
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("function %s must return type %s",
-							NameListToString(stmt->plhandler), "language_handler")));
-	}
-=======
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("function %s must return type %s",
 						NameListToString(stmt->plhandler), "language_handler")));
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/* validate the inline function */
 	if (stmt->plinline)
