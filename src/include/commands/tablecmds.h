@@ -126,4 +126,15 @@ extern void GpRenameChildPartitions(Relation targetrelation,
 									const char *oldparentrelname,
 									const char *newparentrelname);
 
+typedef struct AlteredTableInfo AlteredTableInfo;
+typedef struct NewConstraint NewConstraint;
+typedef struct NewColumnValue NewColumnValue;
+extern void AlterTableStmtSetTags(const AlterTableStmt *node);
+extern void OutAlteredTableInfo(StringInfo str, const AlteredTableInfo *node);
+extern void OutNewConstraint(StringInfo str, const NewConstraint *node);
+extern void OutNewColumnValue(StringInfo str, const NewColumnValue *node);
+extern AlteredTableInfo *ReadAlteredTableInfo(void);
+extern NewConstraint *ReadNewConstraint(void);
+extern NewColumnValue *ReadNewColumnValue(void);
+
 #endif							/* TABLECMDS_H */
