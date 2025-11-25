@@ -125,7 +125,6 @@
 #include "access/external.h"
 #include "catalog/aocatalog.h"
 #include "catalog/oid_dispatch.h"
-#include "nodes/altertablenodes.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
@@ -160,11 +159,17 @@ static List *on_commits = NIL;
 /*
  * State information for ALTER TABLE
  *
- * In GPDB, these are in nodes/altertablenodes.h
+ * The pending-work queue for an ALTER TABLE is a List of AlteredTableInfo
+ * structs, one for each table modified by the operation (the named table
+ * plus any child tables that are affected).  We save lists of subcommands
+ * to apply to this table (possibly modified by parse transformation steps);
+ * these lists will be executed in Phase 2.  If a Phase 3 step is needed,
+ * necessary information is stored in the constraints and newvals lists.
+ *
+ * Phase 2 is divided into multiple passes; subcommands are executed in
+ * a pass determined by subcommand type.
  */
 
-<<<<<<< HEAD
-=======
 #define AT_PASS_UNSET			-1	/* UNSET will cause ERROR */
 #define AT_PASS_DROP			0	/* DROP (all flavors) */
 #define AT_PASS_ALTER_TYPE		1	/* ALTER COLUMN TYPE */
@@ -182,6 +187,8 @@ static List *on_commits = NIL;
 
 typedef struct AlteredTableInfo
 {
+	NodeTag		type;
+
 	/* Information saved before any work commences: */
 	Oid			relid;			/* Relation to work on */
 	char		relkind;		/* Its relkind */
@@ -194,6 +201,9 @@ typedef struct AlteredTableInfo
 	List	   *afterStmts;		/* List of utility command parsetrees */
 	bool		verify_new_notnull; /* T if we should recheck NOT NULL */
 	int			rewrite;		/* Reason for forced rewrite, if any */
+	Oid 		newAccessMethod; /* new access method; 0 means no change */
+	bool		dist_opfamily_changed; /* T if changing datatype of distribution key column and new opclass is in different opfamily than old one */
+	Oid			new_opclass;		/* new opclass, if changing a distribution key column */
 	Oid			newTableSpace;	/* new tablespace; 0 means no change */
 	bool		chgPersistence; /* T if SET LOGGED/UNLOGGED is used */
 	char		newrelpersistence;	/* if above is true */
@@ -206,12 +216,15 @@ typedef struct AlteredTableInfo
 	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
 	List	   *changedIndexDefs;	/* string definitions of same */
 	char	   *replicaIdentityIndex;	/* index to reset as REPLICA IDENTITY */
+	List       *new_crsds; /* new column reference storage directives */
 } AlteredTableInfo;
 
 /* Struct describing one new constraint to check in Phase 3 scan */
 /* Note: new NOT NULL constraints are handled elsewhere */
 typedef struct NewConstraint
 {
+	NodeTag		type;
+
 	char	   *name;			/* Constraint name, or NULL if none */
 	ConstrType	contype;		/* CHECK or FOREIGN */
 	Oid			refrelid;		/* PK rel, if FOREIGN */
@@ -231,13 +244,14 @@ typedef struct NewConstraint
  */
 typedef struct NewColumnValue
 {
+	NodeTag		type;
+
 	AttrNumber	attnum;			/* which column */
 	Expr	   *expr;			/* expression to compute */
 	ExprState  *exprstate;		/* execution state */
 	bool		is_generated;	/* is it a GENERATED expression? */
 } NewColumnValue;
 
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 /*
  * Error-reporting support for RemoveRelations
  */
@@ -21423,4 +21437,167 @@ ATDetachCheckNoForeignKeyRefs(Relation partition)
 
 		table_close(rel, NoLock);
 	}
+}
+
+void
+AlterTableStmtSetTags(const AlterTableStmt *node)
+{
+	/*
+	 * AlteredTableInfos are not Nodes in upstream, so make sure the node tags
+	 * are set correctly before trying to serialize them.
+	 */
+	ListCell   *lc;
+	foreach(lc, node->wqueue)
+	{
+		AlteredTableInfo *e = (AlteredTableInfo *) lfirst(lc);
+		e->type = T_AlteredTableInfo;
+	}
+}
+
+void
+OutAlteredTableInfo(StringInfo str, const AlteredTableInfo *node)
+{
+	ListCell   *lc;
+
+	WRITE_NODE_TYPE("ALTEREDTABLEINFO");
+
+	WRITE_OID_FIELD(relid);
+	WRITE_CHAR_FIELD(relkind);
+	/* oldDesc is omitted */
+
+	for (int i = 0; i < AT_NUM_PASSES; i++)
+		WRITE_NODE_FIELD(subcmds[i]);
+
+	/*
+	 * These aren't Nodes in upstream, so make sure the node tags
+	 * are set correctly before trying to serialize them.
+	 */
+	foreach(lc, node->constraints)
+	{
+		NewConstraint *e = (NewConstraint *) lfirst(lc);
+		e->type = T_NewConstraint;
+	}
+	foreach(lc, node->newvals)
+	{
+		NewColumnValue *e = (NewColumnValue *) lfirst(lc);
+		e->type = T_NewColumnValue;
+	}
+
+	WRITE_NODE_FIELD(constraints);
+	WRITE_NODE_FIELD(newvals);
+	WRITE_NODE_FIELD(afterStmts);
+	WRITE_BOOL_FIELD(verify_new_notnull);
+	WRITE_INT_FIELD(rewrite);
+	WRITE_OID_FIELD(newAccessMethod);
+	WRITE_BOOL_FIELD(dist_opfamily_changed);
+	WRITE_OID_FIELD(new_opclass);
+	WRITE_OID_FIELD(newTableSpace);
+	WRITE_BOOL_FIELD(chgPersistence);
+	WRITE_CHAR_FIELD(newrelpersistence);
+	WRITE_NODE_FIELD(partition_constraint);
+	WRITE_BOOL_FIELD(validate_default);
+	WRITE_NODE_FIELD(changedConstraintOids);
+
+	/* node->changedConstraintDefs is a list of naked strings, so
+	 * we can't use WRITE_NODE_FIELD on it. Temporarily wrap them in Values.
+	 */
+	wrapStringList(node->changedConstraintDefs);
+	WRITE_NODE_FIELD(changedConstraintDefs);
+	/* unwrap them again */
+	unwrapStringList(node->changedConstraintDefs);
+
+	WRITE_NODE_FIELD(changedIndexOids);
+	wrapStringList(node->changedIndexDefs);
+	WRITE_NODE_FIELD(changedIndexDefs);
+	unwrapStringList(node->changedIndexDefs);
+}
+
+void
+OutNewConstraint(StringInfo str, const NewConstraint *node)
+{
+	WRITE_NODE_TYPE("NEWCONSTRAINT");
+
+	WRITE_STRING_FIELD(name);
+	WRITE_ENUM_FIELD(contype, ConstrType);
+	WRITE_OID_FIELD(refrelid);
+	WRITE_OID_FIELD(refindid);
+	WRITE_OID_FIELD(conid);
+	WRITE_NODE_FIELD(qual);
+	/* can't serialize qualstate */
+}
+
+void
+OutNewColumnValue(StringInfo str, const NewColumnValue *node)
+{
+	WRITE_NODE_TYPE("NEWCOLUMNVALUE");
+
+	WRITE_INT_FIELD(attnum);
+	WRITE_NODE_FIELD(expr);
+	/* can't serialize exprstate */
+	WRITE_BOOL_FIELD(is_generated);
+}
+
+AlteredTableInfo *
+ReadAlteredTableInfo(void)
+{
+	READ_LOCALS(AlteredTableInfo);
+
+	READ_OID_FIELD(relid);
+	READ_CHAR_FIELD(relkind);
+	/* oldDesc is omitted */
+
+	for (int i = 0; i < AT_NUM_PASSES; i++)
+		READ_NODE_FIELD(subcmds[i]);
+
+	READ_NODE_FIELD(constraints);
+	READ_NODE_FIELD(newvals);
+	READ_NODE_FIELD(afterStmts);
+	READ_BOOL_FIELD(verify_new_notnull);
+	READ_INT_FIELD(rewrite);
+	READ_OID_FIELD(newAccessMethod);
+	READ_BOOL_FIELD(dist_opfamily_changed);
+	READ_OID_FIELD(new_opclass);
+	READ_OID_FIELD(newTableSpace);
+	READ_BOOL_FIELD(chgPersistence);
+	READ_CHAR_FIELD(newrelpersistence);
+	READ_NODE_FIELD(partition_constraint);
+	READ_BOOL_FIELD(validate_default);
+	READ_NODE_FIELD(changedConstraintOids);
+	READ_NODE_FIELD(changedConstraintDefs);
+	/* The QD sends changedConstraintDefs wrapped in Values. Unwrap them. */
+	unwrapStringList(local_node->changedConstraintDefs);
+	READ_NODE_FIELD(changedIndexOids);
+	READ_NODE_FIELD(changedIndexDefs);
+	unwrapStringList(local_node->changedIndexDefs);
+
+	READ_DONE();
+}
+
+NewConstraint *
+ReadNewConstraint(void)
+{
+	READ_LOCALS(NewConstraint);
+
+	READ_STRING_FIELD(name);
+	READ_ENUM_FIELD(contype, ConstrType);
+	READ_OID_FIELD(refrelid);
+	READ_OID_FIELD(refindid);
+	READ_OID_FIELD(conid);
+	READ_NODE_FIELD(qual);
+	/* can't serialize qualstate */
+
+	READ_DONE();
+}
+
+NewColumnValue *
+ReadNewColumnValue(void)
+{
+	READ_LOCALS(NewColumnValue);
+
+	READ_INT_FIELD(attnum);
+	READ_NODE_FIELD(expr);
+	/* can't serialize exprstate */
+	READ_BOOL_FIELD(is_generated);
+
+	READ_DONE();
 }

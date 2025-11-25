@@ -1432,13 +1432,13 @@ _outNode(StringInfo str, void *obj)
 				_outAlterTableCmd(str, obj);
 				break;
 			case T_AlteredTableInfo:
-				_outAlteredTableInfo(str, obj);
+				OutAlteredTableInfo(str, obj);
 				break;
 			case T_NewConstraint:
-				_outNewConstraint(str, obj);
+				OutNewConstraint(str, obj);
 				break;
 			case T_NewColumnValue:
-				_outNewColumnValue(str, obj);
+				OutNewColumnValue(str, obj);
 				break;
 
 			case T_CreateRoleStmt:

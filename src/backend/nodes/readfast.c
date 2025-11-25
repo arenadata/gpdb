@@ -2225,13 +2225,13 @@ readNodeBinary(void)
 				return_value = _readAlterTableCmd();
 				break;
 			case T_AlteredTableInfo:
-				return_value = _readAlteredTableInfo();
+				return_value = ReadAlteredTableInfo();
 				break;
 			case T_NewConstraint:
-				return_value = _readNewConstraint();
+				return_value = ReadNewConstraint();
 				break;
 			case T_NewColumnValue:
-				return_value = _readNewColumnValue();
+				return_value = ReadNewColumnValue();
 				break;
 
 			case T_CreateRoleStmt:
