@@ -707,27 +707,10 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 	}
 	funcrettype = get_func_rettype(funcoid);
 	if (funcrettype != TRIGGEROID)
-<<<<<<< HEAD
-	{
-		/*
-		 * We allow OPAQUE just so we can load old dump files.  When we see a
-		 * trigger function declared OPAQUE, change it to TRIGGER.
-		 */
-		if (funcrettype == OPAQUEOID)
-		{
-			if (Gp_role != GP_ROLE_EXECUTE)
-			ereport(WARNING,
-					(errmsg("changing return type of function %s from %s to %s",
-							NameListToString(stmt->funcname),
-							"opaque", "trigger")));
-			SetFunctionReturnType(funcoid, TRIGGEROID);
-		}
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("function %s must return type %s",
-							NameListToString(stmt->funcname), "trigger")));
-	}
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("function %s must return type %s",
+						NameListToString(stmt->funcname), "trigger")));
 
 	/* Check GPDB limitations */
 	if (RelationIsAppendOptimized(rel) &&
@@ -763,12 +746,6 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 
 		return InvalidObjectAddress;
 	}
-=======
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				 errmsg("function %s must return type %s",
-						NameListToString(stmt->funcname), "trigger")));
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/*
 	 * If it's a user-entered CREATE CONSTRAINT TRIGGER command, make a
