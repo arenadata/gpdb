@@ -331,24 +331,14 @@ init_ps_display(const char *fixed_part)
 	if (*cluster_name == '\0')
 	{
 		snprintf(ps_buffer, ps_buffer_size,
-<<<<<<< HEAD
-				 PROGRAM_NAME_PREFIX "%5d, %s %s %s ",
-				 PostPortNumber, username, dbname, host_info);
-=======
-				 PROGRAM_NAME_PREFIX "%s ",
-				 fixed_part);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+				 PROGRAM_NAME_PREFIX "%5d, %s ",
+				 PostPortNumber, fixed_part);
 	}
 	else
 	{
 		snprintf(ps_buffer, ps_buffer_size,
-<<<<<<< HEAD
-				 PROGRAM_NAME_PREFIX "%5d, %s: %s %s %s ",
-				 PostPortNumber, cluster_name, username, dbname, host_info);
-=======
-				 PROGRAM_NAME_PREFIX "%s: %s ",
-				 cluster_name, fixed_part);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+				 PROGRAM_NAME_PREFIX "%5d, %s: %s ",
+				 PostPortNumber, cluster_name, fixed_part);
 	}
 
 	ps_buffer_cur_len = ps_buffer_fixed_size = strlen(ps_buffer);
@@ -374,16 +364,11 @@ void
 set_ps_display(const char *activity)
 {
 #ifndef PS_USE_NONE
-<<<<<<< HEAD
-	/* update_process_title=off disables updates, unless force = true */
 	char	   *cp = ps_buffer + ps_buffer_fixed_size;
 	char	   *ep = ps_buffer + ps_buffer_size;
 
-	if (!force && !update_process_title)
-=======
 	/* update_process_title=off disables updates */
 	if (!update_process_title)
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 		return;
 
 	/* no ps display for stand-alone backend */
