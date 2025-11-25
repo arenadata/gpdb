@@ -1571,19 +1571,14 @@ AutoVacWorkerMain(int argc, char *argv[])
 
 	am_autovacuum_worker = true;
 
-<<<<<<< HEAD
 	/* MPP-4990: Autovacuum always runs as utility-mode */
 	if (IS_QUERY_DISPATCHER())
 		Gp_role = GP_ROLE_DISPATCH;
 	else
 		Gp_role = GP_ROLE_UTILITY;
 
-	/* Identify myself via ps */
-	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_WORKER), "", "", "");
-=======
 	MyBackendType = B_AUTOVAC_WORKER;
 	init_ps_display(NULL);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/* 
 	 * PreAuthDelay is a debugging aid for investigating problems in the 
