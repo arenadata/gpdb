@@ -1620,7 +1620,6 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 		if (get_rel_relkind(rte->relid) == RELKIND_FOREIGN_TABLE)
 			continue;
 
-<<<<<<< HEAD
 		if (isTempNamespace(get_rel_namespace(rte->relid)))
 		{
 			ExecutorMarkTransactionDoesWrites();
@@ -1649,10 +1648,7 @@ ExecCheckXactReadOnly(PlannedStmt *plannedstmt)
 				continue;
         }
 
-		PreventCommandIfReadOnly(CreateCommandTag((Node *) plannedstmt));
-=======
 		PreventCommandIfReadOnly(CreateCommandName((Node *) plannedstmt));
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 	}
 
 	if (plannedstmt->commandType != CMD_SELECT || plannedstmt->hasModifyingCTE)
