@@ -78,67 +78,6 @@ typedef struct
 	bool		supported;
 } event_trigger_support_data;
 
-<<<<<<< HEAD
-typedef enum
-{
-	EVENT_TRIGGER_COMMAND_TAG_OK,
-	EVENT_TRIGGER_COMMAND_TAG_NOT_SUPPORTED,
-	EVENT_TRIGGER_COMMAND_TAG_NOT_RECOGNIZED
-} event_trigger_command_tag_check_result;
-
-/* XXX merge this with ObjectTypeMap? */
-static const event_trigger_support_data event_trigger_support[] = {
-	{"ACCESS METHOD", true},
-	{"AGGREGATE", true},
-	{"CAST", true},
-	{"CONSTRAINT", true},
-	{"COLLATION", true},
-	{"CONVERSION", true},
-	{"DATABASE", false},
-	{"DOMAIN", true},
-	{"EXTENSION", true},
-	{"EVENT TRIGGER", false},
-	{"FOREIGN DATA WRAPPER", true},
-	{"FOREIGN TABLE", true},
-	{"FUNCTION", true},
-	{"INDEX", true},
-	{"LANGUAGE", true},
-	{"MATERIALIZED VIEW", true},
-	{"OPERATOR", true},
-	{"OPERATOR CLASS", true},
-	{"OPERATOR FAMILY", true},
-	{"POLICY", true},
-	{"PROCEDURE", true},
-	{"PUBLICATION", true},
-	{"ROLE", false},
-	{"ROUTINE", true},
-	{"RULE", true},
-	{"SCHEMA", true},
-	{"SEQUENCE", true},
-	{"SERVER", true},
-	{"STATISTICS", true},
-	{"SUBSCRIPTION", true},
-	{"TABLE", true},
-	{"TABLESPACE", false},
-	{"TRANSFORM", true},
-	{"TRIGGER", true},
-	{"TEXT SEARCH CONFIGURATION", true},
-	{"TEXT SEARCH DICTIONARY", true},
-	{"TEXT SEARCH PARSER", true},
-	{"TEXT SEARCH TEMPLATE", true},
-	{"TYPE", true},
-	{"USER MAPPING", true},
-	{"VIEW", true},
-
-	/* GPDB additions */
-	{"EXTERNAL TABLE", true},
-	{"PROTOCOL", true},
-
-	{NULL, false}
-};
-
-=======
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 /* Support for dropped objects */
 typedef struct SQLDropObject
 {
