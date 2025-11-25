@@ -4946,20 +4946,11 @@ BackendInitialize(Port *port)
 	 */
 	initStringInfo(&ps_data);
 	if (am_walsender)
-<<<<<<< HEAD
-		init_ps_display(pgstat_get_backend_desc(B_WAL_SENDER), port->user_name, remote_ps_data,
-						update_process_title ? "authentication" : "");
-	else if (am_ftshandler)
-		init_ps_display("fts handler process", port->user_name, remote_ps_data,
-						update_process_title ? "authentication" : "");
-	else if (am_faulthandler)
-		init_ps_display("fault handler process", port->user_name, remote_ps_data,
-						update_process_title ? "authentication" : "");
-	else
-		init_ps_display(port->user_name, port->database_name, remote_ps_data,
-						update_process_title ? "authentication" : "");
-=======
 		appendStringInfo(&ps_data, "%s ", GetBackendTypeDesc(B_WAL_SENDER));
+	else if (am_ftshandler)
+		appendStringInfo(&ps_data, "%s ", GetBackendTypeDesc(B_FTS_HANDLER_PROCESS));
+	else if (am_faulthandler)
+		appendStringInfo(&ps_data, "%s ", GetBackendTypeDesc(B_FAULT_HADLER_PROCESS));
 	appendStringInfo(&ps_data, "%s ", port->user_name);
 	if (!am_walsender)
 		appendStringInfo(&ps_data, "%s ", port->database_name);
@@ -4971,7 +4962,6 @@ BackendInitialize(Port *port)
 	pfree(ps_data.data);
 
 	set_ps_display("initializing");
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/*
 	 * Disable the timeout, and prevent SIGTERM/SIGQUIT again.
