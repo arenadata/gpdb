@@ -4948,9 +4948,9 @@ BackendInitialize(Port *port)
 	if (am_walsender)
 		appendStringInfo(&ps_data, "%s ", GetBackendTypeDesc(B_WAL_SENDER));
 	else if (am_ftshandler)
-		appendStringInfoString(&ps_data, "fts handler process ");
+		appendStringInfo(&ps_data, "%s ", GetBackendTypeDesc(B_FTS_HANDLER_PROCESS));
 	else if (am_faulthandler)
-		appendStringInfoString(&ps_data, "fault handler process ");
+		appendStringInfo(&ps_data, "%s ", GetBackendTypeDesc(B_FAULT_HADLER_PROCESS));
 	appendStringInfo(&ps_data, "%s ", port->user_name);
 	if (!am_walsender)
 		appendStringInfo(&ps_data, "%s ", port->database_name);

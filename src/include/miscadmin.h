@@ -421,6 +421,8 @@ typedef enum BackendType
 	B_ARCHIVER,
 	B_STATS_COLLECTOR,
 	B_LOGGER,
+	B_FTS_HANDLER_PROCESS,
+	B_FAULT_HADLER_PROCESS,
 } BackendType;
 
 extern BackendType MyBackendType;

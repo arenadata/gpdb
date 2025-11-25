@@ -248,6 +248,12 @@ GetBackendTypeDesc(BackendType backendType)
 		case B_LOGGER:
 			backendDesc = "logger";
 			break;
+		case B_FTS_HANDLER_PROCESS:
+			backendDesc = "fts handler process";
+			break;
+		case B_FAULT_HADLER_PROCESS:
+			backendDesc = "fault handler process";
+			break;
 	}
 
 	return backendDesc;
