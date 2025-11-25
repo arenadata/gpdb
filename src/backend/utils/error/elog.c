@@ -3573,7 +3573,7 @@ gp_write_pipe_chunk(const char *buffer, int len)
 static inline void
 append_string_to_pipe_chunk(PipeProtoChunk *buffer, const char* input)
 {
-	if(am_syslogger)
+	if(MyBackendType == B_LOGGER)
 		return;
 
 	int len = 0;
@@ -4030,7 +4030,7 @@ write_message_to_server_log(int elevel,
 	GpErrorDataFixFields fix_fields;
 	static uint64 log_line_number = 0;
 
-	Assert(!am_syslogger);
+	Assert(MyBackendType != B_LOGGER);
 
 	buffer.hdr.zero = 0;
 	buffer.hdr.len = 0;
@@ -4169,7 +4169,7 @@ send_message_to_server_log(ErrorData *edata)
 		{
 			if (redirection_done)
 			{
-				if (!am_syslogger)
+				if (MyBackendType != B_LOGGER)
 					write_message_to_server_log(edata->elevel,
 												edata->sqlerrcode,
 												edata->message,
@@ -4426,29 +4426,24 @@ send_message_to_server_log(ErrorData *edata)
 		 * If stderr redirection is active, it was OK to write to stderr above
 		 * because that's really a pipe to the syslogger process.
 		 */
-		else if (pgwin32_is_service() && (!redirection_done || am_syslogger) )
+		else if (pgwin32_is_service() && (!redirection_done || MyBackendType == B_LOGGER) )
 			write_eventlog(edata->elevel, buf.data, buf.len);
 #endif
 			/* only use the chunking protocol if we know the syslogger should
 			 * be catching stderr output, and we are not ourselves the
 			 * syslogger. Otherwise, go directly to stderr.
 			 */
-			if (redirection_done && !am_syslogger)
+			if (redirection_done && MyBackendType != B_LOGGER)
 				write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_STDERR);
 			else
 				write_console(buf.data, buf.len);
 	}
 
 	/* If in the syslogger process, try to write messages direct to file */
-<<<<<<< HEAD
-	if (am_syslogger)
+	if (MyBackendType == B_LOGGER)
 		write_syslogger_file_binary(buf.data, buf.len, LOG_DESTINATION_STDERR);
 
 	pfree(prefix.data);
-=======
-	if (MyBackendType == B_LOGGER)
-		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_STDERR);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 	/* Write to CSV log if enabled */
 	if (Log_destination & LOG_DESTINATION_CSVLOG)
@@ -4851,7 +4846,7 @@ write_stderr(const char *fmt,...)
 
 		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
-		if (!am_syslogger)
+		if (MyBackendType != B_LOGGER)
 		{
 			/* Write the message in the CSV format */
 			write_message_to_server_log(LOG,
