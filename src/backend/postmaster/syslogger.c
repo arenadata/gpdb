@@ -2068,6 +2068,7 @@ write_binary_to_file(const char *buffer, int count, FILE *fh)
  *
  * On Windows the data arriving in the pipe already has CR/LF newlines,
  * so we must send it to the file without further translation.
+ *
  * This is exported so that elog.c can call it when MyBackendType is B_LOGGER.
  * This allows the syslogger process to record elog messages of its own,
  * even though its stderr does not point at the syslog pipe.
