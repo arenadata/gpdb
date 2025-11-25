@@ -42,11 +42,9 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
-=======
+
 static List *get_rel_publications(Oid relid);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 /*
  * Check if relation can be in given publication and throws appropriate
