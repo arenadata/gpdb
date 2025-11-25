@@ -177,10 +177,6 @@ help(const char *progname)
 	printf(_("  -w, --no-password         never prompt for password\n"));
 	printf(_("  -W, --password            force password prompt\n"));
 	printf(_("  --maintenance-db=DBNAME   alternate maintenance database\n"));
-<<<<<<< HEAD
-	printf(_("\nReport bugs to <bugs@greenplum.org>.\n"));
-=======
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
