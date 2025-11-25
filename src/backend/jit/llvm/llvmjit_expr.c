@@ -2176,7 +2176,6 @@ llvm_compile_expr(ExprState *state)
 					break;
 				}
 
-<<<<<<< HEAD
 			case EEOP_AGG_PLAIN_PERGROUP_NULLCHECK:
 				{
 					int				 jumpnull;
@@ -2216,10 +2215,8 @@ llvm_compile_expr(ExprState *state)
 					break;
 				}
 
-=======
 			case EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYVAL:
 			case EEOP_AGG_PLAIN_TRANS_STRICT_BYVAL:
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			case EEOP_AGG_PLAIN_TRANS_BYVAL:
 			case EEOP_AGG_PLAIN_TRANS_INIT_STRICT_BYREF:
 			case EEOP_AGG_PLAIN_TRANS_STRICT_BYREF:
