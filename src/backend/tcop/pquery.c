@@ -253,50 +253,22 @@ ProcessQuery(Portal portal,
 	 */
 	if (qc)
 	{
-<<<<<<< HEAD
-		Oid			lastOid;
-
 		switch (stmt->commandType)
 		{
 			case CMD_SELECT:
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "SELECT " UINT64_FORMAT,
-						 queryDesc->es_processed);
+				SetQueryCompletion(qc, CMDTAG_SELECT, queryDesc->es_processed);
 				break;
 			case CMD_INSERT:
-				/* lastoid doesn't exist anymore */
-				lastOid = InvalidOid;
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "INSERT %u " UINT64_FORMAT,
-						 lastOid, queryDesc->es_processed);
+				SetQueryCompletion(qc, CMDTAG_INSERT, queryDesc->es_processed);
 				break;
 			case CMD_UPDATE:
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "UPDATE " UINT64_FORMAT,
-						 queryDesc->es_processed);
+				SetQueryCompletion(qc, CMDTAG_UPDATE, queryDesc->es_processed);
 				break;
 			case CMD_DELETE:
-				snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-						 "DELETE " UINT64_FORMAT,
-						 queryDesc->es_processed);
-=======
-		switch (queryDesc->operation)
-		{
-			case CMD_SELECT:
-				SetQueryCompletion(qc, CMDTAG_SELECT, queryDesc->estate->es_processed);
-				break;
-			case CMD_INSERT:
-				SetQueryCompletion(qc, CMDTAG_INSERT, queryDesc->estate->es_processed);
-				break;
-			case CMD_UPDATE:
-				SetQueryCompletion(qc, CMDTAG_UPDATE, queryDesc->estate->es_processed);
-				break;
-			case CMD_DELETE:
-				SetQueryCompletion(qc, CMDTAG_DELETE, queryDesc->estate->es_processed);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+				SetQueryCompletion(qc, CMDTAG_DELETE, queryDesc->es_processed);
 				break;
 			default:
-				SetQueryCompletion(qc, CMDTAG_UNKNOWN, queryDesc->estate->es_processed);
+				SetQueryCompletion(qc, CMDTAG_UNKNOWN, queryDesc->es_processed);
 				break;
 		}
 	}
