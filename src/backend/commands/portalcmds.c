@@ -145,12 +145,8 @@ PerformCursorOpen(ParseState *pstate, DeclareCursorStmt *cstmt, ParamListInfo pa
 	PortalDefineQuery(portal,
 					  NULL,
 					  queryString,
-<<<<<<< HEAD
 					  T_DeclareCursorStmt,
-					  "SELECT", /* cursor's query is always a SELECT */
-=======
 					  CMDTAG_SELECT,	/* cursor's query is always a SELECT */
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 					  list_make1(plan),
 					  NULL);
 
