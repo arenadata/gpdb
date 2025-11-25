@@ -31,11 +31,8 @@
 #include "common/hashfn.h"
 #include "optimizer/optimizer.h"
 #include "utils/builtins.h"
-<<<<<<< HEAD
 
 #include "optimizer/cost.h"
-=======
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 
 /* Private state */
