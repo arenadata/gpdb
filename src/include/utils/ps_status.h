@@ -22,7 +22,8 @@ extern void set_ps_display(const char *activity);
 
 extern const char *get_ps_display(int *displen);
 
-/* CDB: Get the "username" string saved by init_ps_display().  */
+/* GPDB: Set/Get the "username" string.  */
+extern void set_ps_display_username(const char *username);
 extern const char *get_ps_display_username(void);
 extern const char *get_real_act_ps_display(int *displen);
 
