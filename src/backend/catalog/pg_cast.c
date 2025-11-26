@@ -27,6 +27,7 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#include "catalog/oid_dispatch.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
 
@@ -122,16 +123,6 @@ CastCreate(Oid sourcetypeid, Oid targettypeid, Oid funcid, char castcontext,
 	heap_freetuple(tuple);
 
 	table_close(relation, RowExclusiveLock);
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt,
-									DF_CANCEL_ON_ERROR|
-									DF_WITH_SNAPSHOT|
-									DF_NEED_TWO_PHASE,
-									GetAssignedOidsForDispatch(),
-									NULL);
-	}
 
 	return myself;
 }

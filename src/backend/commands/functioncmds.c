@@ -76,7 +76,6 @@
 #include "utils/typcache.h"
 
 #include "catalog/heap.h"
-#include "catalog/oid_dispatch.h"
 #include "cdb/cdbdisp_query.h"
 #include "cdb/cdbvars.h"
 
@@ -2105,6 +2104,17 @@ CreateCast(CreateCastStmt *stmt)
 
 	myself = CastCreate(sourcetypeid, targettypeid, funcid, castcontext,
 						castmethod, DEPENDENCY_NORMAL);
+
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt,
+									DF_CANCEL_ON_ERROR|
+									DF_WITH_SNAPSHOT|
+									DF_NEED_TWO_PHASE,
+									GetAssignedOidsForDispatch(),
+									NULL);
+	}
+
 	return myself;
 }
 
