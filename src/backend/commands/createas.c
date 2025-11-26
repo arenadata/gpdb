@@ -453,7 +453,6 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		/* run the plan to completion */
 		ExecutorRun(queryDesc, ForwardScanDirection, 0L, true);
 
-<<<<<<< HEAD
 		/* and clean up */
 		ExecutorFinish(queryDesc);
 		ExecutorEnd(queryDesc);
@@ -471,16 +470,9 @@ ExecCreateTableAs(ParseState *pstate, CreateTableAsStmt *stmt,
 		/* get object address that intorel_startup saved for us */
 		address = ((DR_intorel *) dest)->reladdr;
 
-		/* save the rowcount if we're given a completionTag to fill */
-		if (completionTag)
-			snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
-					 "SELECT " UINT64_FORMAT,
-					 queryDesc->es_processed);
-=======
 		/* save the rowcount if we're given a qc to fill */
 		if (qc)
-			SetQueryCompletion(qc, CMDTAG_SELECT, queryDesc->estate->es_processed);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+			SetQueryCompletion(qc, CMDTAG_SELECT, queryDesc->estate->es_processed)
 
 		/* MPP-14001: Running auto_stats */
 		if (Gp_role == GP_ROLE_DISPATCH)
