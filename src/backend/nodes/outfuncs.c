@@ -44,7 +44,7 @@
 #include "utils/rel.h"
 
 #include "cdb/cdbgang.h"
-#include "commands/tablecmds.h"
+#include "nodes/altertablenodes.h"
 
 
 /*
@@ -3396,7 +3396,12 @@ _outAlterTableStmt(StringInfo str, const AlterTableStmt *node)
 	 * AlteredTableInfos are not Nodes in upstream, so make sure the node tags
 	 * are set correctly before trying to serialize them.
 	 */
-	AlterTableStmtSetTags(node);
+	ListCell   *lc;
+	foreach(lc, node->wqueue)
+	{
+		AlteredTableInfo *e = (AlteredTableInfo *) lfirst(lc);
+		e->type = T_AlteredTableInfo;
+	}
 	WRITE_NODE_FIELD(wqueue);
 }
 
@@ -3446,6 +3451,89 @@ unwrapStringList(List *list)
 		lfirst(lc) = strVal(val);
 		pfree(val);
 	}
+}
+
+static void
+_outAlteredTableInfo(StringInfo str, const AlteredTableInfo *node)
+{
+	ListCell   *lc;
+
+	WRITE_NODE_TYPE("ALTEREDTABLEINFO");
+
+	WRITE_OID_FIELD(relid);
+	WRITE_CHAR_FIELD(relkind);
+	/* oldDesc is omitted */
+
+	for (int i = 0; i < AT_NUM_PASSES; i++)
+		WRITE_NODE_FIELD(subcmds[i]);
+
+	/*
+	 * These aren't Nodes in upstream, so make sure the node tags
+	 * are set correctly before trying to serialize them.
+	 */
+	foreach(lc, node->constraints)
+	{
+		NewConstraint *e = (NewConstraint *) lfirst(lc);
+		e->type = T_NewConstraint;
+	}
+	foreach(lc, node->newvals)
+	{
+		NewColumnValue *e = (NewColumnValue *) lfirst(lc);
+		e->type = T_NewColumnValue;
+	}
+
+	WRITE_NODE_FIELD(constraints);
+	WRITE_NODE_FIELD(newvals);
+	WRITE_NODE_FIELD(afterStmts);
+	WRITE_BOOL_FIELD(verify_new_notnull);
+	WRITE_INT_FIELD(rewrite);
+	WRITE_OID_FIELD(newAccessMethod);
+	WRITE_BOOL_FIELD(dist_opfamily_changed);
+	WRITE_OID_FIELD(new_opclass);
+	WRITE_OID_FIELD(newTableSpace);
+	WRITE_BOOL_FIELD(chgPersistence);
+	WRITE_CHAR_FIELD(newrelpersistence);
+	WRITE_NODE_FIELD(partition_constraint);
+	WRITE_BOOL_FIELD(validate_default);
+	WRITE_NODE_FIELD(changedConstraintOids);
+
+	/* node->changedConstraintDefs is a list of naked strings, so
+	 * we can't use WRITE_NODE_FIELD on it. Temporarily wrap them in Values.
+	 */
+	wrapStringList(node->changedConstraintDefs);
+	WRITE_NODE_FIELD(changedConstraintDefs);
+	/* unwrap them again */
+	unwrapStringList(node->changedConstraintDefs);
+
+	WRITE_NODE_FIELD(changedIndexOids);
+	wrapStringList(node->changedIndexDefs);
+	WRITE_NODE_FIELD(changedIndexDefs);
+	unwrapStringList(node->changedIndexDefs);
+}
+
+static void
+_outNewConstraint(StringInfo str, const NewConstraint *node)
+{
+	WRITE_NODE_TYPE("NEWCONSTRAINT");
+
+	WRITE_STRING_FIELD(name);
+	WRITE_ENUM_FIELD(contype, ConstrType);
+	WRITE_OID_FIELD(refrelid);
+	WRITE_OID_FIELD(refindid);
+	WRITE_OID_FIELD(conid);
+	WRITE_NODE_FIELD(qual);
+	/* can't serialize qualstate */
+}
+
+static void
+_outNewColumnValue(StringInfo str, const NewColumnValue *node)
+{
+	WRITE_NODE_TYPE("NEWCOLUMNVALUE");
+
+	WRITE_INT_FIELD(attnum);
+	WRITE_NODE_FIELD(expr);
+	/* can't serialize exprstate */
+	WRITE_BOOL_FIELD(is_generated);
 }
 
 static void
@@ -6090,13 +6178,13 @@ outNode(StringInfo str, const void *obj)
 				_outAlterTableCmd(str, obj);
 				break;
 			case T_AlteredTableInfo:
-				OutAlteredTableInfo(str, obj);
+				_outAlteredTableInfo(str, obj);
 				break;
 			case T_NewConstraint:
-				OutNewConstraint(str, obj);
+				_outNewConstraint(str, obj);
 				break;
 			case T_NewColumnValue:
-				OutNewColumnValue(str, obj);
+				_outNewColumnValue(str, obj);
 				break;
 
 			case T_CreateRoleStmt:
