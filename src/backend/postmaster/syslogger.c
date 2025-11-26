@@ -267,17 +267,12 @@ SysLoggerMain(int argc, char *argv[])
 	syslogger_parseArgs(argc, argv);
 #endif							/* EXEC_BACKEND */
 
-<<<<<<< HEAD
-	am_syslogger = true;
+	MyBackendType = B_LOGGER;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		init_ps_display("master logger process", "", "", "");
+		init_ps_display("master logger process");
 	else
-		init_ps_display("logger process", "", "", "");
-=======
-	MyBackendType = B_LOGGER;
-	init_ps_display(NULL);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+		init_ps_display("logger process");
 
 	/*
 	 * If we restarted, our stderr is already redirected into our own input
@@ -2071,14 +2066,12 @@ write_binary_to_file(const char *buffer, int count, FILE *fh)
 /*
  * Write binary data to the currently open logfile
  *
-<<<<<<< HEAD
  * On Windows the data arriving in the pipe already has CR/LF newlines,
  * so we must send it to the file without further translation.
-=======
+ *
  * This is exported so that elog.c can call it when MyBackendType is B_LOGGER.
  * This allows the syslogger process to record elog messages of its own,
  * even though its stderr does not point at the syslog pipe.
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
  */
 void write_syslogger_file_binary(const char *buffer, int count, int destination)
 {
@@ -2103,7 +2096,7 @@ void write_syslogger_file_binary(const char *buffer, int count, int destination)
 /*
  * Write text to the currently open logfile
  *
- * This is exported so that elog.c can call it when am_syslogger is true.
+ * This is exported so that elog.c can call it when MyBackendType is B_LOGGER.
  * This allows the syslogger process to record elog messages of its own,
  * even though its stderr does not point at the syslog pipe.
  */
