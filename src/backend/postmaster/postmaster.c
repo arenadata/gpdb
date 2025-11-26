@@ -4958,6 +4958,8 @@ BackendInitialize(Port *port)
 	if (port->remote_port[0] != '\0')
 		appendStringInfo(&ps_data, "(%s)", port->remote_port);
 
+	set_ps_display_username(port->user_name);
+
 	init_ps_display(ps_data.data);
 	pfree(ps_data.data);
 
