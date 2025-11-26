@@ -51,7 +51,7 @@
 #include "nodes/readfuncs.h"
 
 #include "cdb/cdbgang.h"
-#include "commands/tablecmds.h"
+#include "nodes/altertablenodes.h"
 #include "utils/builtins.h"
 
 /*
@@ -950,6 +950,71 @@ unwrapStringList(List *list)
 		lfirst(lc) = strVal(val);
 		pfree(val);
 	}
+}
+
+static AlteredTableInfo *
+_readAlteredTableInfo(void)
+{
+	READ_LOCALS(AlteredTableInfo);
+
+	READ_OID_FIELD(relid);
+	READ_CHAR_FIELD(relkind);
+	/* oldDesc is omitted */
+
+	for (int i = 0; i < AT_NUM_PASSES; i++)
+		READ_NODE_FIELD(subcmds[i]);
+
+	READ_NODE_FIELD(constraints);
+	READ_NODE_FIELD(newvals);
+	READ_NODE_FIELD(afterStmts);
+	READ_BOOL_FIELD(verify_new_notnull);
+	READ_INT_FIELD(rewrite);
+	READ_OID_FIELD(newAccessMethod);
+	READ_BOOL_FIELD(dist_opfamily_changed);
+	READ_OID_FIELD(new_opclass);
+	READ_OID_FIELD(newTableSpace);
+	READ_BOOL_FIELD(chgPersistence);
+	READ_CHAR_FIELD(newrelpersistence);
+	READ_NODE_FIELD(partition_constraint);
+	READ_BOOL_FIELD(validate_default);
+	READ_NODE_FIELD(changedConstraintOids);
+	READ_NODE_FIELD(changedConstraintDefs);
+	/* The QD sends changedConstraintDefs wrapped in Values. Unwrap them. */
+	unwrapStringList(local_node->changedConstraintDefs);
+	READ_NODE_FIELD(changedIndexOids);
+	READ_NODE_FIELD(changedIndexDefs);
+	unwrapStringList(local_node->changedIndexDefs);
+
+	READ_DONE();
+}
+
+static NewConstraint *
+_readNewConstraint(void)
+{
+	READ_LOCALS(NewConstraint);
+
+	READ_STRING_FIELD(name);
+	READ_ENUM_FIELD(contype, ConstrType);
+	READ_OID_FIELD(refrelid);
+	READ_OID_FIELD(refindid);
+	READ_OID_FIELD(conid);
+	READ_NODE_FIELD(qual);
+	/* can't serialize qualstate */
+
+	READ_DONE();
+}
+
+static NewColumnValue *
+_readNewColumnValue(void)
+{
+	READ_LOCALS(NewColumnValue);
+
+	READ_INT_FIELD(attnum);
+	READ_NODE_FIELD(expr);
+	/* can't serialize exprstate */
+	READ_BOOL_FIELD(is_generated);
+
+	READ_DONE();
 }
 
 static CreateRoleStmt *
@@ -4707,11 +4772,11 @@ parseNodeString(void)
 	else if (MATCHX("ALTERTABLECMD"))
 		return_value = _readAlterTableCmd();
 	else if (MATCHX("ALTEREDTABLEINFO"))
-		return_value = ReadAlteredTableInfo();
+		return_value = _readAlteredTableInfo();
 	else if (MATCHX("NEWCONSTRAINT"))
-		return_value = ReadNewConstraint();
+		return_value = _readNewConstraint();
 	else if (MATCHX("NEWCOLUMNVALUE"))
-		return_value = ReadNewColumnValue();
+		return_value = _readNewColumnValue();
 	else if (MATCHX("ALTERDATABASESTMT"))
 		return_value = _readAlterDatabaseStmt();
 	else if (MATCHX("ALTERTABLESTMT"))
