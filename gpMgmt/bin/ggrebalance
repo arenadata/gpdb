@@ -64,7 +64,7 @@ def parseargs():
                       help='Hosts extending the configuration')
     parser.add_option('-R', '--remove-hosts', dest='remove_hosts', metavar='<hosts_to_remove>', 
                       help='Decomissioned hosts')
-    parser.add_option('-m', '--mirror-mode', dest='mirror_mode', metavar='<mirror_mode>',
+    parser.add_option('-m', '--mirror-mode', dest='mirror_mode', metavar='<mirror_mode>', default='grouped',
                       help='Desirable mirroring strategy after rebalance.')
     parser.add_option('--skip-rebalance', dest='skip_rebalance', metavar='<skip_rebalance>', action='store_true', default=False,
                       help='Perform shrink or expand only.')

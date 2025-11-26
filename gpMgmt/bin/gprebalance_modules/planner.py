@@ -23,7 +23,6 @@ MIRROR_PATH = '/data/mirror/gpseg'
 
 GROUPED = 'grouped'
 SPREAD = 'spread'
-ANY = 'any'
 
 HostMapping = Dict[Host, HostId]
 
@@ -358,12 +357,13 @@ class Planner:
         if options.add_hosts:
             hl = list(map(str.strip, options.add_hosts.split(',')))
             for host in hl:
-                hosts[host] = Host(hostname=host,\
-                                   address=host,\
-                                   primary_datadirs={dir_template_p},\
-                                   mirror_datadirs={dir_template_m},\
-                                   status = HostStatus.NEW)
-                host_set_changed = True
+                if host not in hosts:
+                    hosts[host] = Host(hostname=host,\
+                                       address=host,\
+                                       primary_datadirs={dir_template_p},\
+                                       mirror_datadirs={dir_template_m},\
+                                       status = HostStatus.NEW)
+                    host_set_changed = True
         if options.remove_hosts:
             hl = list(map(str.strip, options.remove_hosts.split(',')))
             for host in hosts.keys():
@@ -392,8 +392,7 @@ class Planner:
             cleaned_parts.append(part)
 
         return tuple(cleaned_parts)
-        
-    
+
     def form_moves(self) -> List[LogicalMove]:
         self.logger.info("Validation of rebalance possibility")
 
@@ -417,9 +416,6 @@ class Planner:
 
         expected_per_host = total_primaries // total_hosts
         strat = self.options.mirror_mode
-
-        if not strat:
-            strat = self.get_mirroring_strat()
         
         if strat == SPREAD and expected_per_host > total_hosts - 1:
             raise ValidationError("Cannot provide spread mirroring. Specify other "
@@ -433,7 +429,9 @@ class Planner:
         config, host_mapping = ConfigurationEncoder.encode_configuration(self.virtual_gparray, self.target_hosts, strat)
         id_to_host = {v: k for k, v in host_mapping.items()}
         self.logger.info("Planning rebalance moves. Can take up to 60s.")
-        solution, cost = GreedySolver(config).solve()
+        planning_seed_value = int.from_bytes(os.urandom(16) , 'big')
+        self.logger.info(f"Running randomized plan improvement with seed:{planning_seed_value}")
+        solution, cost = GreedySolver(config, seed=planning_seed_value).solve()
         moves = []
         for pair in self.virtual_gparray.segmentPairs:
             prim = pair.primaryDB
@@ -442,10 +440,10 @@ class Planner:
             # TODO - resource estimation, ports, directories, size planning
             if host_mapping[Host(prim.hostname, prim.address)] != plcmnt[0]:
                 cseg = CandidateSegment(prim, [h for h in self.target_hosts if h == Host(prim.hostname, prim.address)][0], None)
-                moves.append(LogicalMove(cseg, id_to_host[plcmnt[0]], id_to_host[plcmnt[0]].primary_datadirs.pop(), 7002))
+                moves.append(LogicalMove(cseg, id_to_host[plcmnt[0]], next(iter(id_to_host[plcmnt[0]].primary_datadirs)) + str(prim.content), 7002))
             if host_mapping[Host(mir.hostname, mir.address)] != plcmnt[1]:
                 cseg = CandidateSegment(mir, [h for h in self.target_hosts if h == Host(mir.hostname, mir.address)][0], None)
-                moves.append(LogicalMove(cseg, id_to_host[plcmnt[1]], id_to_host[plcmnt[1]].mirror_datadirs.pop(), 7003))
+                moves.append(LogicalMove(cseg, id_to_host[plcmnt[1]], next(iter(id_to_host[plcmnt[1]].mirror_datadirs)) + str(mir.content), 7003))
         
         if len(moves) == 0:
             return None
@@ -469,27 +467,3 @@ class Planner:
             if n != load:
                 return False
         return True
-        
-    def get_mirroring_strat(self) -> str:
-        segments_by_host = defaultdict(list)
-
-        strat = None
-
-        for pair in self.virtual_gparray.segmentPairs:
-            segments_by_host[pair.primaryDB.hostname].append(pair.mirrorDB.hostname)
-        
-        for p_host, m_hosts in segments_by_host.items():
-            if len(set(m_hosts)) == 1:
-                    if not strat:
-                        strat = GROUPED
-                    elif strat != GROUPED:
-                        return ANY
-            elif len(set(m_hosts)) != len(m_hosts):
-                if not strat:
-                    strat = SPREAD
-                elif strat != SPREAD:
-                    return ANY
-            else:
-                return ANY
-        
-        return strat

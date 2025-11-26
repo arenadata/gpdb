@@ -25,15 +25,15 @@ class SolverConfig:
         n_segments: planned numsegments after shrink/expand
         n_hosts_target: target number of hosts
         n_hosts_initial: initial number of hosts
-        initial_primary: initial_primary[contentid] = hostid
-        initial_mirror: initial_primary[contentid] = hostid, 0 <= hostid <= n_hosts_initial
+        initial_primary_mapping: initial_primary_mapping[contentid] = hostid
+        initial_mirror_mapping: initial_mirror_mapping[contentid] = hostid, 0 <= hostid <= n_hosts_initial
         strategy: mirroring strategy
     """
     n_segments: int
     n_hosts_target: int
     n_hosts_initial: int
-    initial_primary: List[HostId]
-    initial_mirror: List[HostId]
+    initial_primary_mapping: List[HostId]
+    initial_mirror_mapping: List[HostId]
     strategy: str
 
 class GreedySolver:
@@ -58,28 +58,24 @@ class GreedySolver:
         - `strategy`:
             'grouped': all segments with same primary host share a single mirror host
             'spread' : all segments with same primary host have distinct mirror hosts
-            'any'    : no extra constraints beyond load and primary != mirror
     """
     def __init__(self, 
                  config: SolverConfig,
-                 run_improve = True,
-                 printing = False):
+                 run_improve: bool = True,
+                 printing: bool = False,
+                 seed: int = None):
         
         self.n_segments = config.n_segments
         self.n_hosts_target = config.n_hosts_target
         self.n_hosts_initial = config.n_hosts_initial
-        self.initial_primary = config.initial_primary
-        self.initial_mirror = config.initial_mirror
+        self.initial_primary_mapping = config.initial_primary_mapping
+        self.initial_mirror_mapping = config.initial_mirror_mapping
         self.strategy = config.strategy
 
         self.run_improve = run_improve
         self.printing = printing
         self.target_primary_load = self.n_segments // self.n_hosts_target
         self.target_load = 2 * self.n_segments // self.n_hosts_target
-
-        self.best_primary = None
-        self.best_mirror = None
-        self.best_cost = None
 
         if self.n_hosts_target < 2:
             raise ValueError("Cannot balance to single host")
@@ -93,8 +89,12 @@ class GreedySolver:
                 raise ValueError("Cannot follow spread mirroring strategy")
         
         # Best known solution
-        self.best_primary: List[HostId] | None = None
-        self.best_mirror: List[HostId] | None = None
+        self.best_primary_mapping: List[HostId] | None = None
+        self.best_mirror_mapping: List[HostId] | None = None
+        self.best_cost = None
+
+        # seed to use in ALNS
+        self.seed = seed
 
     def solve(self) -> Tuple[Solution, Cost]:
         """
@@ -106,29 +106,31 @@ class GreedySolver:
             the initial placement.
         """
         # Phase 1: Balance primaries
-        primary = self._balance_primaries()
-    
+        primary_mapping = self._balance_primaries()
+
         # Phase 2: Assign mirrors
-        mirror = self._assign_mirrors(primary)
+        mirror_mapping = self._assign_mirror_hosts(primary_mapping)
 
         # Optional improvement by ALNS.
         if self.run_improve:
             # at least 10 iterations per segment
             config = ALNSConfig(max_iterations=10 * self.n_segments)
             alns = ALNS(self, config)
-            primary, mirror = alns.optimize(primary, mirror)
+            if self.seed:
+                random.seed(self.seed)
+            primary_mapping, mirror_mapping = alns.optimize(primary_mapping, mirror_mapping)
                    
         solution: Solution = {
-            ContentId(i): (HostId(primary[i]), HostId(mirror[i]))
+            ContentId(i): (HostId(primary_mapping[i]), HostId(mirror_mapping[i]))
             for i in range(self.n_segments)
         }
         
-        cost = self._calculate_cost(primary, mirror)
+        cost = self._calculate_cost(primary_mapping, mirror_mapping)
 
         assert(self._validate_solution(solution))
 
-        self.best_mirror = mirror
-        self.best_primary = primary
+        self.best_primary_mapping = primary_mapping
+        self.best_mirror_mapping  = mirror_mapping
 
         return solution, cost
 
@@ -144,11 +146,11 @@ class GreedySolver:
                 * hosts not in target count,
                 * overloaded hosts.
         """
-        primary = [-1] * self.n_segments
+        primary_mapping = [-1] * self.n_segments
         
         # Count initial load only on target hosts.
         initial_load = [0] * self.n_hosts_initial
-        for p in self.initial_primary:
+        for p in self.initial_primary_mapping:
             if p < self.n_hosts_target:
                 initial_load[p] += 1
         
@@ -157,65 +159,75 @@ class GreedySolver:
         # then by descending load on their original host (move from heavier first).
         segment_order = []
         for i in range(self.n_segments):
-            orig_host = self.initial_primary[i]
+            orig_host = self.initial_primary_mapping[i]
             must_move = (
-                orig_host >= self.n_hosts_target
+                self.is_decomissioned(orig_host)
                 or initial_load[orig_host] > self.target_primary_load
             )
-            segment_order.append((must_move, -initial_load[orig_host], i))
+            segment_order.append((must_move, initial_load[orig_host], i))
         
-        segment_order.sort(reverse=True)
+        segment_order.sort(reverse=True, key=lambda x: (x[0], x[1]))
+
+        # Deficit
+        # Calculate how many segments each host needs to receive
+        deficit = []
+        for h in range(self.n_hosts_target):
+            if h < self.n_hosts_initial:
+                deficit.append(self.target_primary_load - initial_load[h])
+            else:
+                deficit.append(self.target_primary_load)
         
         # Current primary load for each target host.
         current_load = [0] * self.n_hosts_target
         
         for _, _, seg_id in segment_order:
-            orig_host = self.initial_primary[seg_id]
+            orig_host = self.initial_primary_mapping[seg_id]
             
             # Try to keep on original host if possible
-            if (orig_host < self.n_hosts_target and 
+            if (not self.is_decomissioned(orig_host) and 
                 current_load[orig_host] < self.target_primary_load):
                 host = orig_host
             else:
-                # Find least loaded host
-                host = min(range(self.n_hosts_target), key=lambda h: current_load[h])
+                # Find host with largest remaining deficit
+                host = max(range(self.n_hosts_target), key=lambda h: deficit[h])
 
-            primary[seg_id] = host
+            primary_mapping[seg_id] = host
             current_load[host] += 1
+            deficit[host] -= 1
         
-        return primary
+        return primary_mapping
+    
+    def is_decomissioned(self, host: HostId):
+        return host >= self.n_hosts_target
 
     # --------------------------------------------------------------------- #
     #  Phase 2: Mirrors
     # --------------------------------------------------------------------- #
-    def _assign_mirrors(self, primary: List[HostId]) -> List[HostId]:
+    def _assign_mirror_hosts(self, primary_mapping: List[HostId]) -> List[HostId]:
         """
         Assign mirror hosts for all segments, respecting:
             - load balance
-            - primary != mirror
-            - chosen mirroring strategy (grouped/spread/any)
-            - minimizing deviation from initial_mirror where possible.
+            - primary host != mirror host
+            - chosen mirroring strategy (grouped/spread)
+            - minimizing deviation from initial_mirror_mapping where possible.
         """
-        mirror = [-1] * self.n_segments
+        mirror_mapping = [-1] * self.n_segments
         mirror_load = [0] * self.n_hosts_target
 
         # Group segments by primary host
         groups: Dict[HostId, List[ContentId]] = defaultdict(list)
         for seg in range(self.n_segments):
-            groups[primary[seg]].append(seg)
+            groups[primary_mapping[seg]].append(seg)
 
         if self.strategy == 'grouped':
-            self._assign_mirrors_grouped(primary, mirror, mirror_load, groups)
+            self._assign_mirrors_grouped(mirror_mapping, mirror_load, groups)
         elif self.strategy == 'spread':
-            self._assign_mirrors_spread(primary, mirror, mirror_load, groups)
-        else:  # 'any'
-            self._assign_mirrors_any(primary, mirror, mirror_load)
+            self._assign_mirrors_spread(primary_mapping, mirror_mapping, mirror_load)
         
-        return mirror
+        return mirror_mapping
 
     def _assign_mirrors_grouped(self,
-                                primary: List[HostId],
-                                mirror: List[HostId],
+                                mirror_mapping: List[HostId],
                                 mirror_load: List[Load],
                                 groups: Dict[HostId, List[int]]):
         """
@@ -225,94 +237,111 @@ class GreedySolver:
         mirror host m_host (per-group mirroring).
         """
         # Track mirror choice for each primary host.
-        primary_to_mirror: Dict[HostId, HostId] = {}
+        phost_to_mhost: Dict[HostId, HostId] = {}
 
-        # Process larger groups first for better balance
-        sorted_groups = sorted(groups.items(), key=lambda item: len(item[1]), reverse=True)
+        preferences = self._compute_mirror_preferences(groups)
 
-        for p_host, segments in sorted_groups:
-            group_size = len(segments)
-            best_mirror = self._select_group_mirror(
+        sorted_p_hosts = sorted(groups.keys(),
+                                key=lambda p: -max(preferences[p].values(), default=0))
+
+        for p_host in sorted_p_hosts:
+            segments = groups[p_host]
+            best_mirror_host = self._select_group_mirror(
                 p_host=p_host,
                 segs=segments,
-                group_size=group_size,
-                mirror=mirror,
+                mirror_mapping=mirror_mapping,
                 mirror_load=mirror_load,
-                primary_to_mirror=primary_to_mirror,
+                phost_to_mhost=phost_to_mhost,
                 groups=groups,
+                preferences=preferences
             )
             # Assign the group to chosen mirror.
             for seg in segments:
-                mirror[seg] = best_mirror
-                mirror_load[best_mirror] += 1
+                mirror_mapping[seg] = best_mirror_host
+                mirror_load[best_mirror_host] += 1
 
-            primary_to_mirror[p_host] = best_mirror
+            phost_to_mhost[p_host] = best_mirror_host
+    
+    def _compute_mirror_preferences(self,
+                                    groups: Dict[HostId, List[ContentId]]) -> Dict[HostId, Dict[HostId, int]]:
+        """
+        Precompute uses (preferences) for each primary host -> possible mirror host.
+        Returns: {p_host: {m_host: use_count}}
+        """
+        preferences: Dict[HostId, Dict[HostId, int]] = defaultdict(lambda: defaultdict(int))
+        for p_host, segments in groups.items():
+            for seg in segments:
+                orig_mirror_host = self.initial_mirror_mapping[seg]
+                if orig_mirror_host < self.n_hosts_target and orig_mirror_host != p_host:
+                    preferences[p_host][orig_mirror_host] += 1
+        return preferences
 
     def _select_group_mirror(self,
                              p_host: HostId,
                              segs: List[ContentId],
-                             group_size: int,
-                             mirror: List[HostId],
+                             mirror_mapping: List[HostId],
                              mirror_load: List[Load],
-                             primary_to_mirror: Dict[HostId, HostId],
-                             groups: Dict[HostId, List[ContentId]]) -> HostId:
+                             phost_to_mhost: Dict[HostId, HostId],
+                             groups: Dict[HostId, List[ContentId]],
+                             preferences: Dict[HostId, Dict[HostId, int]]) -> HostId:
         """
         Pick a mirror host for a primary group (grouped strategy),
         with the following priority:
-            1. Most-voted original mirror host (with capacity).
-            2. Least loaded available host.
+            1. Most-used original mirror host.
+            2. Least loaded available host with least contention by other primaries.
             3. Swap another already-assigned group with current in
             case of conflict when the only mirror host is primary one.
         """    
-        # Count how many segments in this group "prefer" each original mirror.
-        mirror_votes: Dict[HostId, int] = defaultdict(int)
-        for seg in segs:
-            orig_mirror = self.initial_mirror[seg]
-            if orig_mirror < self.n_hosts_target and orig_mirror != p_host:
-                mirror_votes[orig_mirror] += 1
-        
-        best_mirror: HostId | None = None
 
-        # Priority 1: Most voted original mirror (if has capacity)
-        if mirror_votes:
-            candidates_with_capacity = [
-                (votes, host) for host, votes in mirror_votes.items()
-                if mirror_load[host] + group_size <= self.target_primary_load
-            ]
+        mirror_uses = preferences[p_host]
+        group_size = len(segs)
+        assigned_p_hosts = set(phost_to_mhost.keys())
+
+        best_mirror_host: HostId | None = None
+
+        # Priority 1: Most used original mirror host (if has capacity)
+        if mirror_uses:
+            candidates_with_capacity = []
+            for h, uses in mirror_uses.items():
+                if mirror_load[h] + group_size <= self.target_primary_load:
+                    # Contention: sum of uses from unassigned groups for this host
+                    contention = sum(preferences[other_p].get(h, 0) 
+                               for other_p in preferences 
+                               if other_p != p_host and other_p not in assigned_p_hosts)
+                    candidates_with_capacity.append((uses, contention, mirror_load[h], h))
             if candidates_with_capacity:
-                _, best_mirror = max(candidates_with_capacity, key=lambda x: x[0])
+                candidates_with_capacity.sort(key=lambda x: (-x[0], x[1], x[2], x[3]))
+                best_mirror_host = candidates_with_capacity[0][3]
 
         # Priority 2: Least loaded host
-        if best_mirror is None:
-            available_hosts = [
-                h for h in range(self.n_hosts_target)
-                if h != p_host
-                and mirror_load[h] + group_size <= self.target_primary_load
-            ]
+        if best_mirror_host is None:
+            available_hosts = []
+            for h in range(self.n_hosts_target):
+                if h != p_host and mirror_load[h] + group_size <= self.target_primary_load:
+                    contention = sum(preferences[other_p].get(h, 0) 
+                                    for other_p in preferences 
+                                    if other_p != p_host and other_p not in assigned_p_hosts)
+                    available_hosts.append((contention, mirror_load[h], h))
             if available_hosts:
-                best_mirror = min(available_hosts, key=lambda h: mirror_load[h])
+                best_mirror_host = min(available_hosts)[2]
 
         # Priority 3: DEADLOCK - Try swapping with already assigned group
-        if best_mirror is None:
-            best_mirror = self._swap_to_resolve_deadlock(
+        if best_mirror_host is None:
+            best_mirror_host = self._swap_to_resolve_deadlock(
                 blocked_p_host=p_host,
-                blocked_size=group_size,
                 mirror_load=mirror_load,
-                primary_to_mirror=primary_to_mirror,
+                phost_to_mhost=phost_to_mhost,
                 groups=groups,
-                mirror=mirror)
-            if best_mirror is None:
-                raise RuntimeError("Unable tp assign mirror host in grouped strategy")
+                mirror_mapping=mirror_mapping)
         
-        return best_mirror
+        return best_mirror_host
 
     def _swap_to_resolve_deadlock(self, 
                                 blocked_p_host: HostId,
-                                blocked_size: int, # size of the primary group at p_host
                                 mirror_load: List[Load],
-                                primary_to_mirror: Dict[HostId, HostId],
+                                phost_to_mhost: Dict[HostId, HostId],
                                 groups: Dict[HostId, List[ContentId]],
-                                mirror: List[HostId]):
+                                mirror_mapping: List[HostId]):
         """
         Resolve a deadlock in grouped mirroring by moving another
         mirror group to a different mirror.
@@ -325,44 +354,43 @@ class GreedySolver:
               blocked_p_host.
         """
 
-        for other_p_host, current_mirror in primary_to_mirror.items():
+        for other_p_host, current_mirror_host in phost_to_mhost.items():
             if other_p_host == blocked_p_host:
                 continue
             
             other_size = len(groups[other_p_host])
 
             # Find alternative mirror where to move other_p_host's mirror group
-            alternative_mirror = next(
+            alternative_mirror_host = next(
                 (h for h in range(self.n_hosts_target)
                  if h != other_p_host and  # Can't be other's primary
                     mirror_load[h] + other_size <= self.target_primary_load),
                 None
             )
 
-            if alternative_mirror is None:
+            if alternative_mirror_host is None:
                 continue 
             
-            space_after_move = mirror_load[current_mirror] - other_size
-            if space_after_move + blocked_size > self.target_primary_load:
+            space_after_move = mirror_load[current_mirror_host] - other_size
+            if space_after_move + len(groups[blocked_p_host]) > self.target_primary_load:
                 continue
             
             # Swap: move other_p_host to alternative_mirror
             for seg in groups[other_p_host]:
-                mirror[seg] = alternative_mirror
+                mirror_mapping[seg] = alternative_mirror_host
 
-            mirror_load[current_mirror] -= other_size
-            mirror_load[alternative_mirror] += other_size
-            primary_to_mirror[other_p_host] = alternative_mirror
+            mirror_load[current_mirror_host] -= other_size
+            mirror_load[alternative_mirror_host] += other_size
+            phost_to_mhost[other_p_host] = alternative_mirror_host
 
-            return current_mirror
+            return current_mirror_host
 
         return None
 
     def _assign_mirrors_spread(self,
-                               primary: List[HostId],
-                               mirror: List[HostId],
-                               mirror_load: List[Load],
-                               groups: Dict[HostId, List[ContentId]]):
+                               primary_mapping: List[HostId],
+                               mirror_mapping: List[HostId],
+                               mirror_load: List[Load]):
         """
         Spread strategy:
 
@@ -376,27 +404,27 @@ class GreedySolver:
         unassigned: List[ContentId] = []
 
         for seg in range(self.n_segments):
-            p_host = primary[seg]
-            orig_mirror = self.initial_mirror[seg]
+            p_host = primary_mapping[seg]
+            orig_mirror_host = self.initial_mirror_mapping[seg]
 
             # Check if original mirror is valid and available
             can_use_original = (
-                orig_mirror < self.n_hosts_target and
-                orig_mirror != p_host and
-                orig_mirror not in used_in_group[p_host] and
-                mirror_load[orig_mirror] < self.target_primary_load
+                orig_mirror_host < self.n_hosts_target and
+                orig_mirror_host != p_host and
+                orig_mirror_host not in used_in_group[p_host] and
+                mirror_load[orig_mirror_host] < self.target_primary_load
             )
 
             if can_use_original:
-                mirror[seg] = orig_mirror
-                mirror_load[orig_mirror] += 1
-                used_in_group[p_host].add(orig_mirror)
+                mirror_mapping[seg] = orig_mirror_host
+                mirror_load[orig_mirror_host] += 1
+                used_in_group[p_host].add(orig_mirror_host)
             else:
                 unassigned.append(seg)
 
         # Phase 2: Assign remaining segments with load balancing
         for seg in unassigned:
-            p_host = primary[seg]
+            p_host = primary_mapping[seg]
 
             available = [
                     h for h in range(self.n_hosts_target)
@@ -407,28 +435,25 @@ class GreedySolver:
             
             if available:
                 best_host =  min(available, key=lambda h: mirror_load[h])
-                mirror[seg] = best_host
+                mirror_mapping[seg] = best_host
                 mirror_load[best_host] += 1
                 used_in_group[p_host].add(best_host)
             else:
                 # Priority 3: DEADLOCK - try swap
                 best_host = self._resolve_spread_deadlock_for_segment(seg,
-                                                                      primary,
-                                                                      mirror,
+                                                                      primary_mapping,
+                                                                      mirror_mapping,
                                                                       mirror_load,
                                                                       used_in_group)
-                
-                if best_host is None:
-                    raise RuntimeError("Unable to resolve spread deadlock")
 
-                mirror[seg] = best_host
+                mirror_mapping[seg] = best_host
                 mirror_load[best_host] += 1
                 used_in_group[p_host].add(best_host)
 
     def _resolve_spread_deadlock_for_segment(self,
                                              seg: ContentId,
-                                             primary: List[HostId],
-                                             mirror: List[HostId],
+                                             primary_mapping: List[HostId],
+                                             mirror_mapping: List[HostId],
                                              mirror_load: List[Load],
                                              used_in_group: Dict[HostId, Set[HostId]],
                                              ) -> Optional[HostId]:
@@ -436,7 +461,7 @@ class GreedySolver:
         Attempt to resolve a deadlock for one segment in the spread strategy
         by relocating another segment's mirror to a host with capacity.
         """
-        p_host = primary[seg]
+        p_host = primary_mapping[seg]
 
         hosts_with_capacity = [
                 h for h in range(self.n_hosts_target)
@@ -454,10 +479,10 @@ class GreedySolver:
         for candidate_host in candidate_hosts:
             # Find segments currently using candidate_host as mirror
             for other_seg in range(self.n_segments):
-                if mirror[other_seg] != candidate_host:
+                if mirror_mapping[other_seg] != candidate_host:
                     continue
                 
-                other_p_host = primary[other_seg]
+                other_p_host = primary_mapping[other_seg]
                 # Check if other_seg can use p_host as mirror
                 for dest_host in hosts_with_capacity:
                     # Check if other_seg can move to dest_host
@@ -472,7 +497,7 @@ class GreedySolver:
                     mirror_load[candidate_host] -= 1
 
                     # Move other_seg to dest_host
-                    mirror[other_seg] = dest_host
+                    mirror_mapping[other_seg] = dest_host
                     used_in_group[other_p_host].add(dest_host)
                     mirror_load[dest_host] += 1
                     
@@ -480,63 +505,13 @@ class GreedySolver:
 
         return None
 
-    def _assign_mirrors_any(self,
-                             primary: List[HostId],
-                             mirror: List[HostId],
-                             mirror_load: List[Load]):
-        """
-        Any strategy:
-
-        Only constraints are:
-            - primary != mirror
-            - load
-        """
-        for seg in range(self.n_segments):
-            p_host = primary[seg]
-            orig_mirror = self.initial_mirror[seg]
-            # Get available hosts (not primary, has capacity)
-            available = [
-                h for h in range(self.n_hosts_target)
-                if h != p_host and mirror_load[h] < self.target_primary_load
-            ]
-            # Priority 1: Original mirror if available
-            if orig_mirror in available:
-                best_host = orig_mirror
-            elif available:
-                # Priority 2: Least loaded
-                best_host = min(available, key=lambda h: mirror_load[h])
-            else: #swap
-                candidate_hosts = [
-                    h for h in range(self.n_hosts_target)
-                    if h != p_host
-                ]
-                best_host  = None
-                for candidate_host in candidate_hosts:
-                    # Find segments currently using candidate_host as mirror
-                    for other_seg in range(self.n_segments):
-                        if mirror[other_seg] != candidate_host:
-                            continue
-                        mirror_load[candidate_host] -= 1
-
-                        # Move other_seg to dest_host
-                        mirror[other_seg] = p_host
-                        mirror_load[p_host] += 1
-                        best_host = candidate_host
-                        break
-
-                    if best_host:
-                        break
-
-            mirror[seg] = best_host
-            mirror_load[best_host] += 1
-
     def _calculate_cost(self, primary: List[HostId], mirror: List[HostId]) -> int:
         """
         Calculate movement cost
         """
         return sum(
-            (1 if primary[i] != self.initial_primary[i] else 0) +
-            (1 if mirror[i] != self.initial_mirror[i] else 0)
+            (1 if primary[i] != self.initial_primary_mapping[i] else 0) +
+            (1 if mirror[i] != self.initial_mirror_mapping[i] else 0)
             for i in range(self.n_segments)
         )
 
@@ -604,11 +579,11 @@ class SearchState:
     """
     Current search state and statistics.
     """
-    current_primary: List[HostId]
-    current_mirror: List[HostId]
+    current_primary_mapping: List[HostId]
+    current_mirror_mapping: List[HostId]
     current_cost: Cost
-    best_primary: List[HostId]
-    best_mirror: List[HostId]
+    best_primary_mapping: List[HostId]
+    best_mirror_mapping: List[HostId]
     best_cost: Cost
     iteration: int = 0
     stagnation_count: int = 0
@@ -632,13 +607,13 @@ class SearchState:
         else:
             return random.uniform(0.10, 0.20)  # Late phase: intensify
 
-    def update_best(self, primary: List[HostId], mirror: List[HostId], cost: Cost) -> bool:
+    def update_best(self, primary_mapping: List[HostId], mirror_mapping: List[HostId], cost: Cost) -> bool:
         """
         Update best solution found.
         """
         if cost < self.best_cost:
-            self.best_primary = primary[:]
-            self.best_mirror = mirror[:]
+            self.best_primary_mapping = primary_mapping[:]
+            self.best_mirror_mapping = mirror_mapping[:]
             self.best_cost = cost
             self.last_improvement_iter = self.iteration
             return True
@@ -654,8 +629,8 @@ class SearchState:
         """
         Restart search from best solution.
         """
-        self.current_primary = self.best_primary[:]
-        self.current_mirror = self.best_mirror[:]
+        self.current_primary_mapping = self.best_primary_mapping[:]
+        self.current_mirror_mapping = self.best_mirror_mapping[:]
         self.current_cost = self.best_cost
         self.stagnation_count = 0
 
@@ -873,14 +848,14 @@ class ALNSRepairOperators:
 
     def __init__(self, n_segments: int,
                  n_hosts: int, strategy: str,
-                 initial_primary: List[HostId],
-                 initial_mirror: List[HostId],
+                 initial_primary_mapping: List[HostId],
+                 initial_mirror_mapping: List[HostId],
                  target_load: Load):
         self.n_segments = n_segments
         self.n_hosts = n_hosts
         self.strategy = strategy
-        self.initial_primary = initial_primary
-        self.initial_mirror = initial_mirror
+        self.initial_primary_mapping = initial_primary_mapping
+        self.initial_mirror_mapping = initial_mirror_mapping
         self.target_load = target_load
         self._host_set = set(range(self.n_hosts))
 
@@ -924,51 +899,48 @@ class ALNSRepairOperators:
                 weights=[0.5, 0.3, 0.2]
             )[0]
 
-    def repair_greedy(self, primary: List[HostId], mirror: List[HostId],
+    def repair_greedy(self, primary_mapping: List[HostId], mirror_mapping: List[HostId],
                    destroyed: Set[ContentId]) -> Tuple[List[HostId], List[HostId]]:
         """
         Greedy: Assign each segment to cheapest valid option immediately.
         O(n * h²) complexity. Fast, reliable.
         """
-        new_primary = primary[:]
-        new_mirror = mirror[:]
+        new_primary_mapping = primary_mapping[:]
+        new_mirror_mapping = mirror_mapping[:]
 
         # Clear destroyed segments
         for seg in destroyed:
-            new_primary[seg] = -1
-            new_mirror[seg] = -1
+            new_primary_mapping[seg] = -1
+            new_mirror_mapping[seg] = -1
 
         # Initialize load tracker
         primary_capacity = [self.target_load] * self.n_hosts
         mirror_capacity = [self.target_load] * self.n_hosts
 
         for seg in range(self.n_segments):
-            if seg not in destroyed and new_primary[seg] != -1:
-                primary_capacity[new_primary[seg]] -= 1
-                mirror_capacity[new_mirror[seg]] -= 1
+            if seg not in destroyed and new_primary_mapping[seg] != -1:
+                primary_capacity[new_primary_mapping[seg]] -= 1
+                mirror_capacity[new_mirror_mapping[seg]] -= 1
 
         # Build constraint cache
         if self.strategy == 'grouped':
             primary_to_mirror = {}
             for seg in range(self.n_segments):
-                if seg not in destroyed and new_primary[seg] != -1:
-                    primary_to_mirror[new_primary[seg]] = new_mirror[seg]
+                if seg not in destroyed and new_primary_mapping[seg] != -1:
+                    primary_to_mirror[new_primary_mapping[seg]] = new_mirror_mapping[seg]
         elif self.strategy == 'spread':
             primary_to_used_mirrors = defaultdict(set)
             for seg in range(self.n_segments):
-                if seg not in destroyed and new_primary[seg] != -1:
-                    primary_to_used_mirrors[new_primary[seg]].add(new_mirror[seg])
-        else:
-            primary_to_mirror = {}
-            primary_to_used_mirrors = {}
+                if seg not in destroyed and new_primary_mapping[seg] != -1:
+                    primary_to_used_mirrors[new_primary_mapping[seg]].add(new_mirror_mapping[seg])
 
         # Shuffle to avoid bias
         destroyed_list = list(destroyed)
         random.shuffle(destroyed_list)
 
         for seg in destroyed_list:
-            orig_p = self.initial_primary[seg]
-            orig_m = self.initial_mirror[seg]
+            orig_p = self.initial_primary_mapping[seg]
+            orig_m = self.initial_mirror_mapping[seg]
             best_cost = float('inf')
             best_p, best_m = -1, -1
             # Try each primary
@@ -1002,8 +974,8 @@ class ALNSRepairOperators:
                 
             # Assign if found
             if best_p != -1:
-                new_primary[seg] = best_p
-                new_mirror[seg] = best_m
+                new_primary_mapping[seg] = best_p
+                new_mirror_mapping[seg] = best_m
                 primary_capacity[best_p] -= 1
                 mirror_capacity[best_m] -= 1
                 # Update cache
@@ -1012,7 +984,7 @@ class ALNSRepairOperators:
                 elif self.strategy == 'spread':
                     primary_to_used_mirrors[best_p].add(best_m)
 
-        return new_primary, new_mirror
+        return new_primary_mapping, new_mirror_mapping
 
     def _get_valid_mirrors(self, 
                            primary_host: HostId, 
@@ -1066,53 +1038,40 @@ class ALNSRepairOperators:
                     valid.add(m_host)
 
             return valid
-    
-        else:  # strategy == 'any'
-            # ANY STRATEGY: No constraints, just can't mirror to itself
-            
-            valid = set()
-            for m_host in range(self.n_hosts):
-                if m_host != primary_host and mirror_capacity[m_host] > 0:
-                    valid.add(m_host)
-            
-            return valid
 
-    def repair_most_constrained(self, primary: List[HostId], mirror: List[HostId],
+    def repair_most_constrained(self, primary_mapping: List[HostId], mirror_mapping: List[HostId],
                            destroyed: Set[ContentId]) -> Tuple[List[HostId], List[HostId]]:
         """
         Most Constrained: Assign segments with fewest valid options first.
         Useful for sread strategy.
         O(n**2 * h**2) complexity.
         """
-        new_primary = primary[:]
-        new_mirror = mirror[:]
+        new_primary_mapping = primary_mapping[:]
+        new_mirror_mapping = mirror_mapping[:]
 
         for seg in destroyed:
-            new_primary[seg] = -1
-            new_mirror[seg] = -1
+            new_primary_mapping[seg] = -1
+            new_mirror_mapping[seg] = -1
 
         primary_capacity = [self.target_load] * self.n_hosts
         mirror_capacity = [self.target_load] * self.n_hosts
 
         for seg in range(self.n_segments):
-            if seg not in destroyed and new_primary[seg] != -1:
-                primary_capacity[new_primary[seg]] -= 1
-                mirror_capacity[new_mirror[seg]] -= 1
+            if seg not in destroyed and new_primary_mapping[seg] != -1:
+                primary_capacity[new_primary_mapping[seg]] -= 1
+                mirror_capacity[new_mirror_mapping[seg]] -= 1
 
         # Build constraint cache
         if self.strategy == 'grouped':
             primary_to_mirror = {}
             for seg in range(self.n_segments):
-                if seg not in destroyed and new_primary[seg] != -1:
-                    primary_to_mirror[new_primary[seg]] = new_mirror[seg]
+                if seg not in destroyed and new_primary_mapping[seg] != -1:
+                    primary_to_mirror[new_primary_mapping[seg]] = new_mirror_mapping[seg]
         elif self.strategy == 'spread':
             primary_to_used_mirrors = defaultdict(set)
             for seg in range(self.n_segments):
-                if seg not in destroyed and new_primary[seg] != -1:
-                    primary_to_used_mirrors[new_primary[seg]].add(new_mirror[seg])
-        else:
-            primary_to_mirror = {}
-            primary_to_used_mirrors = {}
+                if seg not in destroyed and new_primary_mapping[seg] != -1:
+                    primary_to_used_mirrors[new_primary_mapping[seg]].add(new_mirror_mapping[seg])
 
         unassigned = set(destroyed)
 
@@ -1121,8 +1080,8 @@ class ALNSRepairOperators:
             candidates = []
 
             for seg in unassigned:
-                orig_p = self.initial_primary[seg]
-                orig_m = self.initial_mirror[seg]
+                orig_p = self.initial_primary_mapping[seg]
+                orig_m = self.initial_mirror_mapping[seg]
 
                 # Find ALL valid (primary, mirror) pairs for this segment
                 valid_options = []
@@ -1173,8 +1132,8 @@ class ALNSRepairOperators:
             best_p, best_m = assignment
 
             # Assign
-            new_primary[seg] = best_p
-            new_mirror[seg] = best_m
+            new_primary_mapping[seg] = best_p
+            new_mirror_mapping[seg] = best_m
             primary_capacity[best_p] -= 1
             mirror_capacity[best_m] -= 1
 
@@ -1186,43 +1145,40 @@ class ALNSRepairOperators:
 
             unassigned.remove(seg)
 
-        return new_primary, new_mirror
+        return new_primary_mapping, new_mirror_mapping
 
-    def repair_regret(self, primary: List[HostId], mirror: List[HostId],
+    def repair_regret(self, primary_mapping: List[HostId], mirror_mapping: List[HostId],
                   destroyed: Set[ContentId]) -> Tuple[List[HostId], List[HostId]]:
         """
         Regret: Assign segment with highest regret score (best - 2nd_best) first.
         O(n**2 * h**2) complexity.
         """
-        new_primary = primary[:]
-        new_mirror = mirror[:]
+        new_primary_mapping = primary_mapping[:]
+        new_mirror_mapping = mirror_mapping[:]
 
         for seg in destroyed:
-            new_primary[seg] = -1
-            new_mirror[seg] = -1
+            new_primary_mapping[seg] = -1
+            new_mirror_mapping[seg] = -1
 
         primary_capacity = [self.target_load] * self.n_hosts
         mirror_capacity = [self.target_load] * self.n_hosts
 
         for seg in range(self.n_segments):
-            if seg not in destroyed and new_primary[seg] != -1:
-                primary_capacity[new_primary[seg]] -= 1
-                mirror_capacity[new_mirror[seg]] -= 1
+            if seg not in destroyed and new_primary_mapping[seg] != -1:
+                primary_capacity[new_primary_mapping[seg]] -= 1
+                mirror_capacity[new_mirror_mapping[seg]] -= 1
 
         # Build constraint cache
         if self.strategy == 'grouped':
             primary_to_mirror = {}
             for seg in range(self.n_segments):
-                if seg not in destroyed and new_primary[seg] != -1:
-                    primary_to_mirror[new_primary[seg]] = new_mirror[seg]
+                if seg not in destroyed and new_primary_mapping[seg] != -1:
+                    primary_to_mirror[new_primary_mapping[seg]] = new_mirror_mapping[seg]
         elif self.strategy == 'spread':
             primary_to_used_mirrors = defaultdict(set)
             for seg in range(self.n_segments):
-                if seg not in destroyed and new_primary[seg] != -1:
-                    primary_to_used_mirrors[new_primary[seg]].add(new_mirror[seg])
-        else:
-            primary_to_mirror = {}
-            primary_to_used_mirrors = {}
+                if seg not in destroyed and new_primary_mapping[seg] != -1:
+                    primary_to_used_mirrors[new_primary_mapping[seg]].add(new_mirror_mapping[seg])
 
         unassigned = list(destroyed)
 
@@ -1233,8 +1189,8 @@ class ALNSRepairOperators:
 
             # Calculate regret for each unassigned segment
             for seg in unassigned:
-                orig_p = self.initial_primary[seg]
-                orig_m = self.initial_mirror[seg]
+                orig_p = self.initial_primary_mapping[seg]
+                orig_m = self.initial_mirror_mapping[seg]
 
                 # Find all valid options
                 options = []
@@ -1278,8 +1234,8 @@ class ALNSRepairOperators:
             # Assign the segment with highest regret
             _, best_p, best_m = best_assignment
 
-            new_primary[best_seg] = best_p
-            new_mirror[best_seg] = best_m
+            new_primary_mapping[best_seg] = best_p
+            new_mirror_mapping[best_seg] = best_m
             primary_capacity[best_p] -= 1
             mirror_capacity[best_m] -= 1
 
@@ -1291,7 +1247,7 @@ class ALNSRepairOperators:
 
             unassigned.remove(best_seg)
 
-        return new_primary, new_mirror
+        return new_primary_mapping, new_mirror_mapping
 
 
 class ALNS:
@@ -1315,38 +1271,38 @@ class ALNS:
         self.n_segments = solver.n_segments
         self.n_hosts = solver.n_hosts_target
         self.strategy = solver.strategy
-        self.initial_primary = solver.initial_primary
-        self.initial_mirror = solver.initial_mirror
+        self.initial_primary_mapping = solver.initial_primary_mapping
+        self.initial_mirror_mapping = solver.initial_mirror_mapping
         self.target_primary_load = solver.target_primary_load
         self.printing = solver.printing
     
         self.start_time = None
 
-        self.destroy_ops = ALNSDestroyOperators(self.n_segments, self.n_hosts,
-                                                self.initial_primary, self.initial_mirror)
+        self.destroy_ops = ALNSDestroyOperators(self.n_segments, self.strategy,
+                                                self.initial_primary_mapping, self.initial_mirror_mapping)
         
         self.repair_ops = ALNSRepairOperators(
             self.n_segments, self.n_hosts, self.strategy,
-            self.initial_primary, self.initial_mirror,
+            self.initial_primary_mapping, self.initial_mirror_mapping,
             self.solver.target_primary_load
         )
 
     def optimize(self, 
-                 primary: List[HostId],
-                 mirror: List[HostId]) -> Tuple[List[HostId], List[HostId]]:
+                 primary_mapping: List[HostId],
+                 mirror_mapping: List[HostId]) -> Tuple[List[HostId], List[HostId]]:
         """
         ALNS.
         Uses all destroy/repair strategies with SA acceptance.
         """
         self.start_time = time.time()
 
-        initial_cost = self.solver._calculate_cost(primary, mirror)
+        initial_cost = self.solver._calculate_cost(primary_mapping, mirror_mapping)
 
-        state = SearchState(current_primary=primary[:],
-                            current_mirror=mirror[:],
+        state = SearchState(current_primary_mapping=primary_mapping[:],
+                            current_mirror_mapping=mirror_mapping[:],
                             current_cost=initial_cost,
-                            best_primary=primary[:],
-                            best_mirror=mirror[:],
+                            best_primary_mapping=primary_mapping[:],
+                            best_mirror_mapping=mirror_mapping[:],
                             best_cost=initial_cost)
         
         if self.solver.printing:
@@ -1356,26 +1312,26 @@ class ALNS:
             if self._timeout_reached():
                 if self.printing:
                     print(f"\n Time limit reached ({self.config.timeout}s) at {state.iteration} iteration")
-                return state.best_primary, state.best_mirror
+                return state.best_primary_mapping, state.best_mirror_mapping
             
-            new_primary, new_mirror, destroy_method, repair_method = self._generate_neighbor(state)
+            new_primary_mapping, new_mirror_mapping, destroy_method, repair_method = self._generate_neighbor(state)
             
             # Validate
-            if not self._is_valid(new_primary, new_mirror):
+            if not self._is_valid(new_primary_mapping, new_mirror_mapping):
                 state.stagnation_count += 1
                 continue
 
-            new_cost = self.solver._calculate_cost(new_primary, new_mirror)
+            new_cost = self.solver._calculate_cost(new_primary_mapping, new_mirror_mapping)
             
             # SA acceptance
             if self._accept_move(state.current_cost, new_cost, state.get_temperature(self.config)):
                 # Accept move
-                state.current_primary = new_primary
-                state.current_mirror = new_mirror
+                state.current_primary_mapping = new_primary_mapping
+                state.current_mirror_mapping = new_mirror_mapping
                 state.current_cost = new_cost
                 state.stagnation_count = 0
 
-                if state.update_best(new_primary, new_mirror, new_cost):   
+                if state.update_best(new_primary_mapping, new_mirror_mapping, new_cost):   
                     if self.printing:
                         print(f"Iter {state.iteration} ({destroy_method.value}) "
                               f"({repair_method.value}): NEW BEST = {state.best_cost}")
@@ -1391,7 +1347,7 @@ class ALNS:
         if self.printing:
             print(f"Final cost: {state.best_cost}")
         
-        return state.best_primary, state.best_mirror
+        return state.best_primary_mapping, state.best_mirror_mapping
 
     def _generate_neighbor(self, state: SearchState) -> Tuple[List[HostId], List[HostId],
                                                               ALNSDestroyMethod, ALNSRepairMethod]:
@@ -1402,23 +1358,23 @@ class ALNS:
         destroy_method = self.destroy_ops.select_method(state.stagnation_count)
         
         # Apply destroy
-        destroyed = self._apply_destroy(state.current_primary, state.current_mirror, 
+        destroyed = self._apply_destroy(state.current_primary_mapping, state.current_mirror_mapping, 
                                       destroy_method, destroy_size)
         
         
         repair_method = self.repair_ops.select_method(state.iteration, self.config.max_iterations)
 
-        new_primary, new_mirror = self._apply_repair(state.current_primary,
-                                                     state.current_mirror,
+        new_primary_mapping, new_mirror_mapping = self._apply_repair(state.current_primary_mapping,
+                                                     state.current_mirror_mapping,
                                                      repair_method, destroyed)
         
         # Apply local search periodically
         if (self.strategy == 'grouped' and 
             state.stagnation_count < 10 and
             state.iteration % self.config.local_search_frequency == 0):
-            new_primary, new_mirror = self._local_mirror_swap(new_primary, new_mirror)
+            new_primary_mapping, new_mirror_mapping = self._local_mirror_swap(new_primary_mapping, new_mirror_mapping)
         
-        return new_primary, new_mirror, destroy_method, repair_method
+        return new_primary_mapping, new_mirror_mapping, destroy_method, repair_method
 
     def _apply_destroy(self, primary: List[HostId], mirror: List[HostId],
                       method: ALNSDestroyMethod, destroy_size: float) -> Set[ContentId]:
@@ -1443,65 +1399,65 @@ class ALNS:
         if method == ALNSRepairMethod.GREEDY_REPAIR:
             return self.repair_ops.repair_greedy(primary, mirror, destroyed)
         elif method == ALNSRepairMethod.CONSTRAINT_REPAIR:
-            return self.repair_ops.repair_greedy(primary, mirror, destroyed)
+            return self.repair_ops.repair_most_constrained(primary, mirror, destroyed)
         elif method == ALNSRepairMethod.REGRET_REPAIR:
-            return self.repair_ops.repair_greedy(primary, mirror, destroyed)
+            return self.repair_ops.repair_regret(primary, mirror, destroyed)
 
     # LOCAL SEARCH
-    def _local_mirror_swap(self, primary: List[HostId], mirror: List[HostId]) -> Tuple[List[HostId], List[HostId]]:
+    def _local_mirror_swap(self, primary_mapping: List[HostId],
+                           mirror_mapping: List[HostId]) -> Tuple[List[HostId], List[HostId]]:
         """
         Local search: swap mirror assignments between two primary groups.
         Only for grouped strategy.
         """
         if self.strategy != 'grouped':
-            return primary, mirror
+            return primary_mapping, mirror_mapping
         
         # Build primary -> mirror mapping
         groups = defaultdict(list)
-        primary_to_mirror = {}
+        ph_to_mh = {}
         
         for seg in range(self.n_segments):
-            p = primary[seg]
-            m = mirror[seg]
+            p = primary_mapping[seg]
+            m = mirror_mapping[seg]
             groups[p].append(seg)
-            primary_to_mirror[p] = m
+            ph_to_mh[p] = m
         
-        current_cost = self.solver._calculate_cost(primary, mirror)
-        best_primary = primary[:]
-        best_mirror = mirror[:]
+        current_cost = self.solver._calculate_cost(primary_mapping, mirror_mapping)
+        best_mirror_mapping = mirror_mapping[:]
         best_cost = current_cost
         
         # Try swapping mirrors between random pairs
         primaries = list(groups.keys())
         
         if len(primaries) < 2:
-            return primary, mirror
+            return primary_mapping, mirror_mapping
         
         attempts = min(20, len(primaries) * (len(primaries) - 1) // 2)
         
         for _ in range(attempts):
             p1, p2 = random.sample(primaries, 2)
-            m1 = primary_to_mirror[p1]
-            m2 = primary_to_mirror[p2]
+            m1 = ph_to_mh[p1]
+            m2 = ph_to_mh[p2]
             
             # Check if swap is valid (doesn't violate primary != mirror)
             if m1 == p2 or m2 == p1:
                 continue
             
             # Create candidate solution with swapped mirrors
-            candidate_mirror = mirror[:]
+            candidate_mirror_mapping = mirror_mapping[:]
             for seg in groups[p1]:
-                candidate_mirror[seg] = m2
+                candidate_mirror_mapping[seg] = m2
             for seg in groups[p2]:
-                candidate_mirror[seg] = m1
+                candidate_mirror_mapping[seg] = m1
             
-            candidate_cost = self.solver._calculate_cost(primary, candidate_mirror)
+            candidate_cost = self.solver._calculate_cost(primary_mapping, candidate_mirror_mapping)
             
             if candidate_cost < best_cost:
-                best_mirror = candidate_mirror
+                best_mirror_mapping = candidate_mirror_mapping
                 best_cost = candidate_cost
         
-        return primary, best_mirror
+        return primary_mapping, best_mirror_mapping
 
     # UTILITIES
     def _accept_move(self, current_cost: Cost, new_cost: Cost, temperature: float) -> bool:
@@ -1517,11 +1473,11 @@ class ALNS:
             delta_capped = min(delta, 5.0)
             return random.random() < math.exp(-delta_capped / temperature)
 
-    def _is_valid(self, primary: List[HostId], mirror: List[HostId]) -> bool:
+    def _is_valid(self, primary_mapping: List[HostId], mirror_mapping: List[HostId]) -> bool:
         """
         Validation check.
         """
-        solution = {i: (primary[i], mirror[i]) for i in range(self.n_segments)}
+        solution = {i: (primary_mapping[i], mirror_mapping[i]) for i in range(self.n_segments)}
         return self.solver._validate_solution(solution)
 
     def _timeout_reached(self) -> bool:
