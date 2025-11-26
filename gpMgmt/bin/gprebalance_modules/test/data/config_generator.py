@@ -365,7 +365,7 @@ class ClusterConfigGenerator:
             else:
                 return self.generate_balanced_spread()
         else:
-            skew_factor = random.uniform(0.3, 0.7)
+            skew_factor = random.uniform(0.3, 0.8)
             if self.strategy == MirroringStrategy.GROUPED:
                 return self.generate_unbalanced_grouped(skew_factor)
             else:
@@ -607,9 +607,9 @@ if __name__ == '__main__':
         # Interactive mode or show help
         print("Usage:")
         print("  Generate single config:")
-        print("    python generator.py -n 6 -m 3 -s grouped -b -o config.txt")
+        print("    python config_generator.py -n 6 -m 3 -s grouped -b -o config.txt")
         print("\n  Generate test suite:")
-        print("    python generator.py --generate-suite")
+        print("    python config_generator.py --generate-suite")
         print("\n  For help:")
         print("    python generator.py -h")
     else:
