@@ -1429,11 +1429,7 @@ cppline			{space}*#([^i][A-Za-z]*|{if}|{ifdef}|{ifndef}|{import})((\/\*[^*/]*\*+
 					}
 				}
 
-<<<<<<< HEAD
-<INITIAL>{other}|\n	{ mmfatal(PARSE_ERROR, "internal error: unreachable state; please report this to <bugs@greenplum.org>"); }
-=======
 <INITIAL>{other}|\n	{ mmfatal(PARSE_ERROR, "internal error: unreachable state; please report this to <%s>", PACKAGE_BUGREPORT); }
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 %%
 
