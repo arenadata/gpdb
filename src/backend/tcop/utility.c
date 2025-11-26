@@ -2752,18 +2752,14 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_DeclareCursorStmt:
-<<<<<<< HEAD
 			{
 				DeclareCursorStmt *stmt = (DeclareCursorStmt *) parsetree;
 
 				if (stmt->options & CURSOR_OPT_PARALLEL_RETRIEVE)
-					tag = "DECLARE PARALLEL RETRIEVE CURSOR";
+					tag = CMDTAG_DECLARE_PARALLEL_RETRIEVE_CURSOR;
 				else
-					tag = "DECLARE CURSOR";
+					tag = CMDTAG_DECLARE_CURSOR;
 			}
-=======
-			tag = CMDTAG_DECLARE_CURSOR;
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			break;
 
 		case T_ClosePortalStmt:
@@ -3585,12 +3581,8 @@ CreateCommandTag(Node *parsetree)
 		default:
 			elog(WARNING, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
-<<<<<<< HEAD
 			Assert(false);
-			tag = "???";
-=======
 			tag = CMDTAG_UNKNOWN;
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			break;
 	}
 
