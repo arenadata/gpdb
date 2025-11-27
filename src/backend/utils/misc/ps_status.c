@@ -277,8 +277,6 @@ init_ps_display(const char *fixed_part)
 	if (!fixed_part)
 		fixed_part = GetBackendTypeDesc(MyBackendType);
 
-	StrNCpy(ps_username, username, sizeof(ps_username));    /*CDB*/
-
 #ifndef PS_USE_NONE
 	/* no ps display for stand-alone backend */
 	if (!IsUnderPostmaster)
@@ -512,7 +510,13 @@ get_ps_display(int *displen)
 }
 
 
-/* CDB: Get the "username" string saved by init_ps_display().  */
+/* GPDB: Set/Get the "username" string.  */
+void
+set_ps_display_username(const char *username)
+{
+	StrNCpy(ps_username, username, sizeof(ps_username));
+}
+
 const char *
 get_ps_display_username(void)
 {
