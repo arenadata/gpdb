@@ -286,7 +286,7 @@ ResolveRecoveryConflictWithVirtualXIDs(VirtualTransactionId *waitlist,
 		/* Reset ps display if we changed it */
 		if (new_status)
 		{
-			set_ps_display(new_status, false);
+			set_ps_display(new_status);
 			pfree(new_status);
 		}
 

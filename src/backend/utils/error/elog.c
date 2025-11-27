@@ -5008,7 +5008,7 @@ elog_debug_linger(ErrorData *edata)
 				 "error exit in %dm %ds",
 				 minutes_left,
 				 seconds_left - minutes_left * 60);
-		set_ps_display(buf, true);
+		set_ps_display(buf);
 
 		/* Sleep. */
 		sleep_seconds = Min(seconds_left, setproctitle_seconds);
