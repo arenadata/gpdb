@@ -1592,6 +1592,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 				errmsg("Terminating the connection (DTM protocol command '%s' "
 					   "for gid=%s", loggingStr, gid)));
 
+	SetQueryCompletion(&qc, DtxProtocolCommandToCmdtag(dtxProtocolCommand), 0);
 	EndCommand(&qc, dest, false);
 }
 
@@ -5557,6 +5558,7 @@ PostgresMain(int argc, char *argv[],
 
 							BeginCommand(CMDTAG_BEGIN, dest);
 
+							SetQueryCompletion(&qc, CMDTAG_BEGIN, 0);
 							EndCommand(&qc, dest, false);
 
 						}
