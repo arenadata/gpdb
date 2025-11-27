@@ -336,10 +336,10 @@ class Planner:
             primary = pair.primaryDB
             mirror = pair.mirrorDB
             hosts[primary.hostname].primary_datadirs.add(
-                os.path.dirname(primary.datadir))
+                re.sub(r'\d+$', '',primary.datadir))
             if mirror:
                 hosts[mirror.hostname].mirror_datadirs.add(
-                    os.path.dirname(mirror.datadir))
+                    re.sub(r'\d+$', '',mirror.datadir))
         if options.target_hosts:
             hl = list(map(str.strip, options.target_hosts.split(',')))
             for host in hosts.keys():
@@ -416,6 +416,9 @@ class Planner:
 
         expected_per_host = total_primaries // total_hosts
         strat = self.options.mirror_mode
+
+        if not strat:
+            strat = GROUPED
         
         if strat == SPREAD and expected_per_host > total_hosts - 1:
             raise ValidationError("Cannot provide spread mirroring. Specify other "
