@@ -1305,8 +1305,8 @@ exec_mpp_query(const char *query_string,
 	 * All unpacked and checked.  Process the command.
 	 */
 	{
-		const char *commandTag;
-		char		completionTag[COMPLETION_TAG_BUFSIZE];
+		CommandTag	commandTag;
+		QueryCompletion qc;
 
 		Portal		portal;
 		DestReceiver *receiver;
@@ -1319,20 +1319,20 @@ exec_mpp_query(const char *query_string,
 		 * destination.
 		 */
 		if (commandType == CMD_UTILITY)
-			commandTag = "MPPEXEC UTILITY";
+			commandTag = CMDTAG_MPPEXEC_UTILITY;
 		else if (commandType == CMD_SELECT)
-			commandTag = "MPPEXEC SELECT";
+			commandTag = CMDTAG_MPPEXEC_SELECT;
 		else if (commandType == CMD_INSERT)
-			commandTag = "MPPEXEC INSERT";
+			commandTag = CMDTAG_MPPEXEC_INSERT;
 		else if (commandType == CMD_UPDATE)
-			commandTag = "MPPEXEC UPDATE";
+			commandTag = CMDTAG_MPPEXEC_UPDATE;
 		else if (commandType == CMD_DELETE)
-			commandTag = "MPPEXEC DELETE";
+			commandTag = CMDTAG_MPPEXEC_DELETE;
 		else
-			commandTag = "MPPEXEC";
+			commandTag = CMDTAG_MPPEXEC;
 
 
-		set_ps_display(commandTag);
+		set_ps_display(GetCommandTagName(commandTag));
 
 		BeginCommand(commandTag, dest);
 
@@ -1343,12 +1343,12 @@ exec_mpp_query(const char *query_string,
 		}
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1436,7 +1436,7 @@ exec_mpp_query(const char *query_string,
 						 portal->run_once,
 						 receiver,
 						 receiver,
-						 completionTag);
+						 &qc);
 
 		/*
 		 * If writer QE, sent current pgstat for tables to QD.
@@ -1458,12 +1458,12 @@ exec_mpp_query(const char *query_string,
 		finish_xact_command();
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1472,7 +1472,7 @@ exec_mpp_query(const char *query_string,
 		 * command the client sent, regardless of rewriting. (But a command
 		 * aborted by error will not send an EndCommand report at all.)
 		 */
-		EndCommand(completionTag, dest);
+		EndCommand(&qc, dest, false);
 	}							/* end loop over parsetrees */
 
 	/*
@@ -1536,7 +1536,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 							  DtxContextInfo *contextInfo)
 {
 	CommandDest dest = whereToSendOutput;
-	const char *commandTag = loggingStr;
+	QueryCompletion qc;
 
 	if (log_statement == LOGSTMT_ALL)
 		elog(LOG,"DTM protocol command '%s' for gid = %s", loggingStr, gid);
@@ -1544,7 +1544,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	set_ps_display(commandTag);
+	set_ps_display(loggingStr);
 
 	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
 		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
@@ -1566,7 +1566,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 			 Debug_dtm_action, DtxProtocolCommandToString(dtxProtocolCommand));
 	}
 
-	BeginCommand(commandTag, dest);
+	BeginCommand(DtxProtocolCommandToCmdtag(dtxProtocolCommand), dest);
 
 	performDtxProtocolCommand(dtxProtocolCommand, gid, contextInfo);
 
@@ -1592,7 +1592,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 				errmsg("Terminating the connection (DTM protocol command '%s' "
 					   "for gid=%s", loggingStr, gid)));
 
-	EndCommand(commandTag, dest);
+	EndCommand(&qc, dest, false);
 }
 
 static bool
@@ -1770,12 +1770,12 @@ exec_simple_query(const char *query_string)
 		BeginCommand(commandTag, dest);
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -1991,12 +1991,12 @@ exec_simple_query(const char *query_string)
 		}
 
 		if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_END_COMMAND &&
-			CheckDebugDtmActionSqlCommandTag(commandTag))
+			CheckDebugDtmActionSqlCommandTag(GetCommandTagName(commandTag)))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FAULT_INJECT),
 					 errmsg("Raise ERROR for debug_dtm_action = %d, commandTag = %s",
-							Debug_dtm_action, commandTag)));
+							Debug_dtm_action, GetCommandTagName(commandTag))));
 		}
 
 		/*
@@ -5542,6 +5542,7 @@ PostgresMain(int argc, char *argv[],
 						if (strncmp(query_string, "BEGIN", 5) == 0)
 						{
 							CommandDest dest = whereToSendOutput;
+							QueryCompletion qc;
 
 							/*
 							 * Special explicit BEGIN for COPY, etc.
@@ -5554,9 +5555,9 @@ PostgresMain(int argc, char *argv[],
 
 							set_ps_display("BEGIN");
 
-							BeginCommand("BEGIN", dest);
+							BeginCommand(CMDTAG_BEGIN, dest);
 
-							EndCommand("BEGIN", dest);
+							EndCommand(&qc, dest, false);
 
 						}
 						else
