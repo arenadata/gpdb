@@ -2652,7 +2652,7 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 			tag = CMDTAG_ALTER_STATISTICS;
 			break;
 		case OBJECT_EXTPROTOCOL:
-			tag = "ALTER PROTOCOL";
+			tag = CMDTAG_ALTER_PROTOCOL;
 			break;
 		default:
 			tag = CMDTAG_UNKNOWN;
@@ -2794,7 +2794,7 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_CreateExternalStmt:
-			tag = "CREATE EXTERNAL TABLE";
+			tag = CMDTAG_CREATE_EXTERNAL_TABLE;
 			break;
 
 		case T_CreateTableSpaceStmt:
@@ -2891,10 +2891,10 @@ CreateCommandTag(Node *parsetree)
 					tag = CMDTAG_DROP_SCHEMA;
 					break;
 				case OBJECT_TABLESPACE:
-					tag = "DROP TABLESPACE";
+					tag = CMDTAG_DROP_TABLESPACE;
 					break;
 				case OBJECT_EXTPROTOCOL:
-					tag = "DROP PROTOCOL";
+					tag = CMDTAG_DROP_PROTOCOL;
 					break;					
 				case OBJECT_TSPARSER:
 					tag = CMDTAG_DROP_TEXT_SEARCH_PARSER;
@@ -3077,7 +3077,7 @@ CreateCommandTag(Node *parsetree)
 					tag = CMDTAG_CREATE_TYPE;
 					break;
 				case OBJECT_EXTPROTOCOL:
-					tag = "CREATE PROTOCOL";
+					tag = CMDTAG_CREATE_PROTOCOL;
 					break;
 				case OBJECT_TSPARSER:
 					tag = CMDTAG_CREATE_TEXT_SEARCH_PARSER;
@@ -3288,27 +3288,27 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_CreateQueueStmt:
-			tag = "CREATE QUEUE";
+			tag = CMDTAG_CREATE_QUEUE;
 			break;
 
 		case T_AlterQueueStmt:
-			tag = "ALTER QUEUE";
+			tag = CMDTAG_ALTER_QUEUE;
 			break;
 
 		case T_DropQueueStmt:
-			tag = "DROP QUEUE";
+			tag = CMDTAG_DROP_QUEUE;
 			break;
 
 		case T_CreateResourceGroupStmt:
-			tag = "CREATE RESOURCE GROUP";
+			tag = CMDTAG_CREATE_RESOURCE_GROUP;
 			break;
 
 		case T_DropResourceGroupStmt:
-			tag = "DROP RESOURCE GROUP";
+			tag = CMDTAG_DROP_RESOURCE_GROUP;
 			break;
 
 		case T_AlterResourceGroupStmt:
-			tag = "ALTER RESOURCE GROUP";
+			tag = CMDTAG_ALTER_RESOURCE_GROUP;
 			break;
 
 		case T_CreateRoleStmt:
@@ -3571,11 +3571,11 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_AlterTypeStmtSetDefaultEnc:
-			tag = "ALTER TYPE";
+			tag = CMDTAG_ALTER_TYPE;
 			break;
 
 		case T_RetrieveStmt:
-			tag = "RETRIEVE";
+			tag = CMDTAG_RETRIEVE;
 			break;
 
 		default:
