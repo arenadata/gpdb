@@ -8,6 +8,7 @@
  */
 #include "postgres.h"
 
+#include "fmgr.h"
 #include "utils/fmgrtab.h"
 
 const FmgrBuiltin fmgr_builtins[] = { };

@@ -160,6 +160,9 @@ sub GenerateFiles
 	{
 		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\], \[([^\]]*)\], \[([^\]]+)\]/)
 		{
+			$self->{gpdbver} = $1;
+			$self->{gpdbmajorver} = substr $1, 0, 1;
+
 			$ac_init_found = 1;
 
 			$package_name      = $1;
@@ -444,8 +447,8 @@ sub GenerateFiles
 		PG_INT128_TYPE      => undef,
 		PG_INT64_TYPE       => 'long long int',
 		PG_KRB_SRVNAM       => qq{"postgres"},
-		GP_VERSION          => qq{"$package_version"},
-		GP_MAJORVERSION     => qq{"$majorver"},
+		GP_VERSION          => qq{"$self->{gpdbver}"},
+		GP_MAJORVERSION     => qq{"$self->{gpdbmajorver}"},
 		PG_MAJORVERSION     => qq{"$majorver"},
 		PG_MAJORVERSION_NUM => $majorver,
 		PG_MINORVERSION_NUM => $minorver,
