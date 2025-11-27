@@ -160,24 +160,16 @@ sub GenerateFiles
 	{
 		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\], \[([^\]]*)\], \[([^\]]+)\]/)
 		{
-<<<<<<< HEAD
-			$self->{gpdbver} = $1;
-			$self->{gpdbmajorver} = substr $1, 0, 1;
-=======
 			$ac_init_found = 1;
 
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			$package_name      = $1;
 			$package_bugreport = $3;
-<<<<<<< HEAD
+			#$package_tarname   = $4;
+			$package_url       = $5;
 		}
 		if (/\[PG_PACKAGE_VERSION=([^\]]+)\]/)
 		{
 			$package_version   = $1;
-=======
-			#$package_tarname   = $4;
-			$package_url       = $5;
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 
 			if ($package_version !~ /^(\d+)(?:\.(\d+))?/)
 			{
@@ -452,15 +444,11 @@ sub GenerateFiles
 		PG_INT128_TYPE      => undef,
 		PG_INT64_TYPE       => 'long long int',
 		PG_KRB_SRVNAM       => qq{"postgres"},
-<<<<<<< HEAD
-		GP_VERSION          => qq{"$self->{gpdbver}"},
-		GP_MAJORVERSION     => qq{"$self->{gpdbmajorver}"},
-		PG_MAJORVERSION     => qq{"$self->{majorver}"},
-=======
+		GP_VERSION          => qq{"$package_version"},
+		GP_MAJORVERSION     => qq{"$majorver"},
 		PG_MAJORVERSION     => qq{"$majorver"},
 		PG_MAJORVERSION_NUM => $majorver,
 		PG_MINORVERSION_NUM => $minorver,
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 		PG_PRINTF_ATTRIBUTE => undef,
 		PG_USE_STDBOOL      => 1,
 		PG_VERSION          => qq{"$package_version$extraver"},
