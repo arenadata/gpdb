@@ -248,6 +248,7 @@ SendFtsResponse(FtsResponse *response, CommandTag commandTag)
 	pq_sendint(&buf, response->RequestRetry, 1);
 
 	pq_endmessage(&buf);
+	SetQueryCompletion(&qc, commandTag, 0);
 	EndCommand(&qc, DestRemote, false);
 	pq_flush();
 }

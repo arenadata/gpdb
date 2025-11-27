@@ -974,6 +974,7 @@ HandleFaultMessage(const char* msg)
 	pq_sendint(&buf, len, 4);
 	pq_sendbytes(&buf, result, len);
 	pq_endmessage(&buf);
+	SetQueryCompletion(&qc, CMDTAG_FAULT, 0);
 	EndCommand(&qc, DestRemote, false);
 	pq_flush();
 }
