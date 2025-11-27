@@ -443,10 +443,10 @@ class Planner:
             # TODO - resource estimation, ports, directories, size planning
             if host_mapping[Host(prim.hostname, prim.address)] != plcmnt[0]:
                 cseg = CandidateSegment(prim, [h for h in self.target_hosts if h == Host(prim.hostname, prim.address)][0], None)
-                moves.append(LogicalMove(cseg, id_to_host[plcmnt[0]], next(iter(id_to_host[plcmnt[0]].primary_datadirs)) + str(prim.content), 7002))
+                moves.append(LogicalMove(cseg, id_to_host[plcmnt[0]], list(id_to_host[plcmnt[0]].primary_datadirs)[-1] + str(prim.content), 7002))
             if host_mapping[Host(mir.hostname, mir.address)] != plcmnt[1]:
                 cseg = CandidateSegment(mir, [h for h in self.target_hosts if h == Host(mir.hostname, mir.address)][0], None)
-                moves.append(LogicalMove(cseg, id_to_host[plcmnt[1]], next(iter(id_to_host[plcmnt[1]].mirror_datadirs)) + str(mir.content), 7003))
+                moves.append(LogicalMove(cseg, id_to_host[plcmnt[1]], list(id_to_host[plcmnt[1]].mirror_datadirs)[-1] + str(mir.content), 7003))
         
         if len(moves) == 0:
             return None

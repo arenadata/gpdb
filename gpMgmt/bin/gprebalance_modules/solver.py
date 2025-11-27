@@ -151,7 +151,7 @@ class GreedySolver:
         # Count initial load only on target hosts.
         initial_load = [0] * self.n_hosts_initial
         for p in self.initial_primary_mapping:
-            if p < self.n_hosts_target:
+            if not self.is_decomissioned(p):
                 initial_load[p] += 1
         
         # Segment processing order:
@@ -220,13 +220,14 @@ class GreedySolver:
             groups[primary_mapping[seg]].append(seg)
 
         if self.strategy == 'grouped':
-            self._assign_mirrors_grouped(mirror_mapping, mirror_load, groups)
+            self._assign_mirrors_grouped(primary_mapping, mirror_mapping, mirror_load, groups)
         elif self.strategy == 'spread':
             self._assign_mirrors_spread(primary_mapping, mirror_mapping, mirror_load)
-        
+
         return mirror_mapping
 
     def _assign_mirrors_grouped(self,
+                                primary_mapping: List[HostId],
                                 mirror_mapping: List[HostId],
                                 mirror_load: List[Load],
                                 groups: Dict[HostId, List[int]]):
@@ -248,13 +249,16 @@ class GreedySolver:
             segments = groups[p_host]
             best_mirror_host = self._select_group_mirror(
                 p_host=p_host,
-                segs=segments,
                 mirror_mapping=mirror_mapping,
                 mirror_load=mirror_load,
                 phost_to_mhost=phost_to_mhost,
                 groups=groups,
                 preferences=preferences
             )
+            # Fallback to straightforward assignment (shouldn't happen)
+            if best_mirror_host is None:
+                self._fill_naive_grouped(primary_mapping, mirror_mapping)
+                return
             # Assign the group to chosen mirror.
             for seg in segments:
                 mirror_mapping[seg] = best_mirror_host
@@ -262,6 +266,37 @@ class GreedySolver:
 
             phost_to_mhost[p_host] = best_mirror_host
     
+    def _fill_naive_grouped(self,
+                            primary_mapping: List[HostId],
+                            mirror_mapping: List[HostId]):
+        """
+        GROUPED: Mirrors from same primary host lie at the same host
+        """
+        for content, primary_host in enumerate(primary_mapping):
+            mirror_mapping[content] = (primary_host + 1) % self.n_hosts_target
+        
+    def _fill_naive_spread(self,
+                       primary_mapping: List[HostId],
+                       mirror_mapping: List[HostId]):
+        """
+        SPREAD: Mirrors from same primary host spread across different hosts
+        """
+        segments_per_primary = defaultdict(int)
+
+        for content_id, primary_host in enumerate(primary_mapping):
+            # Calculate local index within primary host's segments
+            local_idx = segments_per_primary[primary_host]
+            segments_per_primary[primary_host] += 1
+
+            # Formula: mirror = (primary + local_idx + 1) % n_hosts
+            mirror_host = (primary_host + 1 + local_idx) % self.n_hosts_target
+
+            # Ensure no colocation
+            if mirror_host == primary_host:
+                mirror_host = (mirror_host + 1) % self.n_hosts_target
+
+            mirror_mapping[content_id] = mirror_host
+
     def _compute_mirror_preferences(self,
                                     groups: Dict[HostId, List[ContentId]]) -> Dict[HostId, Dict[HostId, int]]:
         """
@@ -272,13 +307,12 @@ class GreedySolver:
         for p_host, segments in groups.items():
             for seg in segments:
                 orig_mirror_host = self.initial_mirror_mapping[seg]
-                if orig_mirror_host < self.n_hosts_target and orig_mirror_host != p_host:
+                if not self.is_decomissioned(orig_mirror_host) and orig_mirror_host != p_host:
                     preferences[p_host][orig_mirror_host] += 1
         return preferences
 
     def _select_group_mirror(self,
                              p_host: HostId,
-                             segs: List[ContentId],
                              mirror_mapping: List[HostId],
                              mirror_load: List[Load],
                              phost_to_mhost: Dict[HostId, HostId],
@@ -294,6 +328,7 @@ class GreedySolver:
         """    
 
         mirror_uses = preferences[p_host]
+        segs = groups[p_host]
         group_size = len(segs)
         assigned_p_hosts = set(phost_to_mhost.keys())
 
@@ -409,7 +444,7 @@ class GreedySolver:
 
             # Check if original mirror is valid and available
             can_use_original = (
-                orig_mirror_host < self.n_hosts_target and
+                not self.is_decomissioned(orig_mirror_host) and
                 orig_mirror_host != p_host and
                 orig_mirror_host not in used_in_group[p_host] and
                 mirror_load[orig_mirror_host] < self.target_primary_load
@@ -445,6 +480,10 @@ class GreedySolver:
                                                                       mirror_mapping,
                                                                       mirror_load,
                                                                       used_in_group)
+                
+                if best_host is None:
+                    self._fill_naive_spread(primary_mapping, mirror_mapping)
+                    return
 
                 mirror_mapping[seg] = best_host
                 mirror_load[best_host] += 1
