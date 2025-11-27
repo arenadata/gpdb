@@ -1203,12 +1203,8 @@ help(const char *progname)
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
-<<<<<<< HEAD
-	printf(_("Report bugs to <bugs@greenplum.org>.\n"));
-=======
 	printf(_("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 }
 
 static void
@@ -4218,7 +4214,6 @@ getPublicationTables(Archive *fout, TableInfo tblinfo[], int numTables)
 						 "FROM pg_catalog.pg_publication_rel");
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
-<<<<<<< HEAD
 	ntups = PQntuples(res);
 
 	i_tableoid = PQfnumber(res, "tableoid");
@@ -4246,14 +4241,6 @@ getPublicationTables(Archive *fout, TableInfo tblinfo[], int numTables)
 			continue;
 		tbinfo = findTableByOid(prrelid);
 		if (tbinfo == NULL)
-=======
-		/*
-		 * Only regular and partitioned tables can be added to
-		 * publications.
-		 */
-		if (tbinfo->relkind != RELKIND_RELATION &&
-			tbinfo->relkind != RELKIND_PARTITIONED_TABLE)
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 			continue;
 
 		/*
@@ -4531,11 +4518,7 @@ dumpSubscription(Archive *fout, const SubscriptionInfo *subinfo)
 static void
 append_depends_on_extension(Archive *fout,
 							PQExpBuffer create,
-<<<<<<< HEAD
 							const DumpableObject *dobj,
-=======
-							DumpableObject *dobj,
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 							const char *catalog,
 							const char *keyword,
 							const char *objname)
@@ -4577,7 +4560,6 @@ append_depends_on_extension(Archive *fout,
 }
 
 
-<<<<<<< HEAD
 static void
 binary_upgrade_set_namespace_oid(Archive *fout, PQExpBuffer upgrade_buffer,
 								 Oid pg_namespace_oid)
@@ -4618,8 +4600,6 @@ binary_upgrade_set_namespace_oid(Archive *fout, PQExpBuffer upgrade_buffer,
 	destroyPQExpBuffer(upgrade_query);
 }
 
-=======
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 static void
 binary_upgrade_set_type_oids_by_type_oid(Archive *fout,
 										 PQExpBuffer upgrade_buffer,
@@ -12161,18 +12141,11 @@ format_table_function_columns(Archive *fout, const FuncInfo *finfo, int nallargs
 		Oid			typid;
 		char	   *typname;
 
-<<<<<<< HEAD
 		/*
 		 * argmodes are checked in format_function_arguments, it isn't necessary
 		 * to check argmodes here again
 		 */
 		if (argmodes[j][0] == PROARGMODE_TABLE)
-=======
-		typid = allargtypes ? atooid(allargtypes[j]) : finfo->argtypes[j];
-		typname = getFormattedTypeName(fout, typid, zeroIsError);
-
-		if (argmodes)
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 		{
 			typid = allargtypes ? atooid(allargtypes[j]) : finfo->argtypes[j];
 			typname = getFormattedTypeName(fout, typid, zeroAsOpaque);

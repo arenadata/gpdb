@@ -150,13 +150,9 @@ void
 linkFile(const char *src, const char *dst,
 		 const char *schemaName, const char *relName)
 {
-<<<<<<< HEAD
 	report_progress(NULL, FILE_COPY, "Link \"%s\" to \"%s\"", src, dst);
 
-	if (pg_link_file(src, dst) < 0)
-=======
 	if (link(src, dst) < 0)
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
 		pg_fatal("error while creating link for relation \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
 				 schemaName, relName, src, dst, strerror(errno));
 }

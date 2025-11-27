@@ -5223,12 +5223,8 @@ PostgresMain(int argc, char *argv[],
 			}
 			if (IsAbortedTransactionBlockState())
 			{
-<<<<<<< HEAD
 				strncat(activity, "idle in transaction (aborted)", remain);
-				set_ps_display(activity, false);
-=======
-				set_ps_display("idle in transaction (aborted)");
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+				set_ps_display(activity);
 				pgstat_report_activity(STATE_IDLEINTRANSACTION_ABORTED, NULL);
 
 				/* Start the idle-in-transaction timer */
@@ -5241,12 +5237,8 @@ PostgresMain(int argc, char *argv[],
 			}
 			else if (IsTransactionOrTransactionBlock())
 			{
-<<<<<<< HEAD
 				strncat(activity, "idle in transaction", remain);
-				set_ps_display(activity, false);
-=======
-				set_ps_display("idle in transaction");
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+				set_ps_display(activity);
 				pgstat_report_activity(STATE_IDLEINTRANSACTION, NULL);
 
 				/* Start the idle-in-transaction timer */
@@ -5274,12 +5266,8 @@ PostgresMain(int argc, char *argv[],
 				pgstat_report_stat(false);
 				pgstat_report_queuestat();
 
-<<<<<<< HEAD
 				strncat(activity, "idle", remain);
-				set_ps_display(activity, false);
-=======
-				set_ps_display("idle");
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
+				set_ps_display(activity);
 				pgstat_report_activity(STATE_IDLE, NULL);
 			}
 
