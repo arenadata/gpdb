@@ -728,26 +728,6 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 	}
 
 	/*
-	 * If the command is a user-entered CREATE CONSTRAINT TRIGGER command that
-	 * references one of the built-in RI_FKey trigger functions, assume it is
-	 * from a dump of a pre-7.3 foreign key constraint, and take steps to
-	 * convert this legacy representation into a regular foreign key
-	 * constraint.  Ugly, but necessary for loading old dump files.
-	 */
-	if (stmt->isconstraint && !isInternal &&
-		list_length(stmt->args) >= 6 &&
-		(list_length(stmt->args) % 2) == 0 &&
-		RI_FKey_trigger_type(funcoid) != RI_TRIGGER_NONE)
-	{
-		/* Keep lock on target rel until end of xact */
-		table_close(rel, NoLock);
-
-		ConvertTriggerToFK(stmt, funcoid);
-
-		return InvalidObjectAddress;
-	}
-
-	/*
 	 * If it's a user-entered CREATE CONSTRAINT TRIGGER command, make a
 	 * corresponding pg_constraint entry.
 	 */
