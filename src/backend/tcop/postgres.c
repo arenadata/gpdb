@@ -1332,7 +1332,7 @@ exec_mpp_query(const char *query_string,
 			commandTag = "MPPEXEC";
 
 
-		set_ps_display(commandTag, false);
+		set_ps_display(commandTag);
 
 		BeginCommand(commandTag, dest);
 
@@ -1544,7 +1544,7 @@ exec_mpp_dtx_protocol_command(DtxProtocolCommand dtxProtocolCommand,
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"exec_mpp_dtx_protocol_command received the dtxProtocolCommand = %d (%s) gid = %s",
 		 dtxProtocolCommand, loggingStr, gid);
 
-	set_ps_display(commandTag, false);
+	set_ps_display(commandTag);
 
 	if (Debug_dtm_action == DEBUG_DTM_ACTION_FAIL_BEGIN_COMMAND &&
 		CheckDebugDtmActionProtocol(dtxProtocolCommand, contextInfo))
@@ -4748,7 +4748,7 @@ PostgresMain(int argc, char *argv[],
 	PostmasterPriority = getpriority(PRIO_PROCESS, 0);
 #endif
 
-	set_ps_display("startup", false);
+	set_ps_display("startup");
 
 	SetProcessingMode(InitProcessing);
 
@@ -5564,7 +5564,7 @@ PostgresMain(int argc, char *argv[],
 							// UNDONE: HACK
 							pgstat_report_activity(STATE_RUNNING, "BEGIN");
 
-							set_ps_display("BEGIN", false);
+							set_ps_display("BEGIN");
 
 							BeginCommand("BEGIN", dest);
 
