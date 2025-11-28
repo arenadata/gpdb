@@ -12148,7 +12148,7 @@ format_table_function_columns(Archive *fout, const FuncInfo *finfo, int nallargs
 		if (argmodes[j][0] == PROARGMODE_TABLE)
 		{
 			typid = allargtypes ? atooid(allargtypes[j]) : finfo->argtypes[j];
-			typname = getFormattedTypeName(fout, typid, zeroAsOpaque);
+			typname = getFormattedTypeName(fout, typid, zeroIsError);
 
 			/* column's name is always NOT NULL (checked in gram.y) */
 			appendPQExpBuffer(&fn, "%s%s %s",
