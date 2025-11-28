@@ -406,7 +406,7 @@ scan_directory(const char *basedir, const char *subdir, bool sizeonly)
 				 * directory.
 				 */
 				snprintf(tblspc_path, sizeof(tblspc_path), "%s/%s/%s",
-						 path, de->d_name, TABLESPACE_VERSION_DIRECTORY);
+						 path, de->d_name, GP_TABLESPACE_VERSION_DIRECTORY);
 
 				if (lstat(tblspc_path, &tblspc_st) < 0)
 				{
@@ -424,7 +424,7 @@ scan_directory(const char *basedir, const char *subdir, bool sizeonly)
 
 				/* Looks like a valid tablespace location */
 				dirsize += scan_directory(tblspc_path,
-										  TABLESPACE_VERSION_DIRECTORY,
+										  GP_TABLESPACE_VERSION_DIRECTORY,
 										  sizeonly);
 			}
 			else
