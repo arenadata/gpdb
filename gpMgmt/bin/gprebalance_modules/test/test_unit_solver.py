@@ -82,53 +82,28 @@ class TestGreedySolver(GpTestCase):
         self.assertTrue(self._validate_strategy(solution, solver),
                         "Grouped mirroring strategy is violated")
 
+    def perform_run(self, run_improve:bool, cost:int):
+        conf = self.encoding[0]
+        solver = GreedySolver(conf, run_improve=run_improve)
+        solution, cost = solver.solve()
+        self.assertEqual(cost, cost)
+        self._validate_solition(solution, solver)
+
     @getEncoding('35_7_balanced_grouped', 'grouped', None, None, None)
     def test_validity_small_grouped_balanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 0)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 0)
     
     @getEncoding('35_7_balanced_spread', 'spread', None, None, None)
     def test_validity_small_spread_balanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 0)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 0)
 
     @getEncoding('40_5_unbalanced_grouped', 'grouped', None, None, None)
     def test_validity_small_grouped_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 19)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 19)
     
     @getEncoding('40_5_unbalanced_grouped', 'grouped', None, None, None)
     def test_validity_small_grouped_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 18)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 18)
 
     @getEncoding('40_5_unbalanced_spread', 'spread', None, None, None)
     def test_validity_small_spread_neg(self):
@@ -139,263 +114,101 @@ class TestGreedySolver(GpTestCase):
     
     @getEncoding('40_8_unbalanced_spread', 'spread', None, None, None)
     def test_validity_small_spread_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 10)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 10)
     
     @getEncoding('40_8_unbalanced_spread', 'spread', None, None, None)
     def test_validity_small_spread_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 6)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 6)
     
     @getEncoding('120_20_unbalanced_spread', 'spread', None, None, None)
     def test_validity_medium_spread_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 10)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 10)
     
     @getEncoding('120_20_unbalanced_spread', 'spread', None, None, None)
     def test_validity_medium_spread_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 7)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 7)
 
     @getEncoding('1000_50_unbalanced_spread', 'spread', None, None, None)
     def test_validity_large_spread_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 124)
-
-        self._validate_solition(solution, solver)
+       self.perform_run(False, 124)
     
     @getEncoding('1000_50_unbalanced_spread', 'spread', None, None, None)
     def test_validity_large_spread_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-        
         # in more or less standart configurations with lightly skewed
         # distribution greedy initial solution is pretty-well generated.
         # it's expected that ALNS may not bring any impovements.
-        self.assertEqual(cost, 124)
+        self.perform_run(True, 124)
 
-        self._validate_solition(solution, solver)
-    
     @getEncoding('1000_50_unbalanced_grouped', 'grouped', None, None, None)
     def test_validity_large_grouped_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 140)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 140)
     
     @getEncoding('1000_50_unbalanced_grouped', 'grouped', None, None, None)
     def test_validity_large_grouped_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
         # in standart configurations with lightly skewed
         # distribution greedy initial solution is pretty-well generated.
         # it's expected that ALNS may not bring any impovements.
-        self.assertEqual(cost, 140)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 140)
     
     @getEncoding('120_20_unbalanced_grouped', 'spread', None, None, None)
     def test_strategy_change_medium_grouped_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 101)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 101)
     
     @getEncoding('120_20_unbalanced_grouped', 'spread', None, None, None)
     def test_strategy_change_medium_grouped_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 100)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 100)
     
     @getEncoding('120_20_unbalanced_spread', 'grouped', None, None, None)
     def test_strategy_change_medium_spread_unbalanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 106)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 106)
     
     @getEncoding('120_20_unbalanced_spread', 'grouped', None, None, None)
     def test_strategy_change_medium_spread_unbalanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 102)
-
-        self._validate_solition(solution, solver)
+       self.perform_run(True, 102)
     
     @getEncoding('120_20_unbalanced_grouped', 'grouped', target_hosts=None,
                  add_hosts=None, remove_hosts="sdw13, sdw14, sdw15, sdw16, sdw17, sdw18, sdw19, sdw20")
     def test_decomission_hosts(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 116)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 116)
 
     @getEncoding('120_20_unbalanced_grouped', 'grouped', target_hosts=None,
                  add_hosts=None, remove_hosts="sdw13, sdw14, sdw15, sdw16, sdw17, sdw18, sdw19, sdw20")
     def test_decomission_hosts_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 109)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 109)
     
     @getEncoding('1000_50_unbalanced_grouped', 'grouped', target_hosts=None,
                  add_hosts=None, remove_hosts=",".join(["sdw" + str(i) for i in range(20, 30)]))
     def test_decomission_hosts_large(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 470)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 470)
 
     @getEncoding('1000_50_unbalanced_grouped', 'grouped', target_hosts=None,
                  add_hosts=None, remove_hosts=",".join(["sdw" + str(i) for i in range(20, 30)]))
     def test_decomission_hosts_large_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 457)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 457)
     
     @getEncoding('1000_50_balanced_grouped', 'grouped', target_hosts=None,
     add_hosts=",".join(["sdw" + str(i) for i in range(51, 101)]),
     remove_hosts=None)
     def test_new_hosts_balanced(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        #optimal cost
-        self.assertEqual(cost, 1000)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 1000)
     
     @getEncoding('1000_50_balanced_grouped', 'grouped', target_hosts=None,
     add_hosts=",".join(["sdw" + str(i) for i in range(51, 101)]),
     remove_hosts=None)
     def test_new_hosts_balanced_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=True)
-
-        solution, cost = solver.solve()
-
-        #optimal cost
-        self.assertEqual(cost, 1000)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 1000)
     
     @getEncoding('120_20_unbalanced_grouped', 'grouped', target_hosts=
                  "sdw1, sdw2, sdw3, sdw4, sdw5, sdw21, sdw22, sdw23, sdw24, sdw25, sdw12, sdw13",
                  add_hosts=None, remove_hosts=None)
     def test_target_hosts(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf, run_improve=False)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 175)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(False, 175)
     
     @getEncoding('120_20_unbalanced_grouped', 'grouped', target_hosts=
                  "sdw1, sdw2, sdw3, sdw4, sdw5, sdw21, sdw22, sdw23, sdw24, sdw25, sdw12, sdw13",
                  add_hosts=None, remove_hosts=None)
     def test_target_hosts_with_improve(self):
-        conf = self.encoding[0]
-
-        solver = GreedySolver(conf)
-
-        solution, cost = solver.solve()
-
-        self.assertEqual(cost, 160)
-
-        self._validate_solition(solution, solver)
+        self.perform_run(True, 160)
 
 class TestGreedySolverFunc(GpTestCase):
     """

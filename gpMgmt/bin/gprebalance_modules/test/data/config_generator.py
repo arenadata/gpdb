@@ -611,6 +611,6 @@ if __name__ == '__main__':
         print("\n  Generate test suite:")
         print("    python config_generator.py --generate-suite")
         print("\n  For help:")
-        print("    python generator.py -h")
+        print("    python config_generator.py -h")
     else:
         main()
