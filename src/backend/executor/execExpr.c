@@ -3646,16 +3646,6 @@ ExecBuildAggTransCall(ExprState *state, AggState *aggstate,
 		Assert(as->d.agg_plain_pergroup_nullcheck.jumpnull == -1);
 		as->d.agg_plain_pergroup_nullcheck.jumpnull = state->steps_len;
 	}
-
-	/* fix up jumpnull */
-	if (adjust_jumpnull != -1)
-	{
-		ExprEvalStep *as = &state->steps[adjust_jumpnull];
-
-		Assert(as->opcode == EEOP_AGG_PLAIN_PERGROUP_NULLCHECK);
-		Assert(as->d.agg_plain_pergroup_nullcheck.jumpnull == -1);
-		as->d.agg_plain_pergroup_nullcheck.jumpnull = state->steps_len;
-	}
 }
 
 /*
