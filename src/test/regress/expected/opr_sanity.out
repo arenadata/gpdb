@@ -2182,6 +2182,7 @@ ORDER BY 1, 2, 3;
  btvarstrequalimage | text_ops         | text_ops         | text
  btvarstrequalimage | text_ops         | varchar_ops      | text
                     | array_ops        | array_ops        | anyarray
+                    | complex_ops      | complex_ops      | complex
                     | float_ops        | float4_ops       | real
                     | float_ops        | float8_ops       | double precision
                     | jsonb_ops        | jsonb_ops        | jsonb
