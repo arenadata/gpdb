@@ -225,7 +225,6 @@ select format_type('bpchar'::regtype, -1);
  bpchar
 (1 row)
 
-<<<<<<< HEAD
 -- Create & Drop type as non-superuser
 CREATE USER user_bob;
 NOTICE:  resource queue required -- using default resource queue "pg_default"
@@ -236,7 +235,6 @@ CREATE TYPE compfoo as (f1 int, f2 text);
 DROP TYPE compfoo;
 RESET SESSION AUTHORIZATION;
 DROP USER user_bob;
-=======
 --
 -- Test CREATE/ALTER TYPE using a type that's compatible with varchar,
 -- so we can re-use those support functions
@@ -315,4 +313,3 @@ drop cascades to function myvarcharout(myvarchar)
 drop cascades to function myvarcharsend(myvarchar)
 drop cascades to function myvarcharrecv(internal,oid,integer)
 drop cascades to type myvarchardom
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9

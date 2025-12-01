@@ -167,7 +167,7 @@ select format_type('bpchar'::regtype, null);
 -- this behavior difference is intentional
 select format_type('bpchar'::regtype, -1);
 
-<<<<<<< HEAD
+
 -- Create & Drop type as non-superuser
 CREATE USER user_bob;
 SET SESSION AUTHORIZATION user_bob;
@@ -176,7 +176,7 @@ CREATE TYPE compfoo as (f1 int, f2 text);
 DROP TYPE compfoo;
 RESET SESSION AUTHORIZATION;
 DROP USER user_bob;
-=======
+
 --
 -- Test CREATE/ALTER TYPE using a type that's compatible with varchar,
 -- so we can re-use those support functions
@@ -233,4 +233,3 @@ DROP FUNCTION myvarcharsend(myvarchar);  -- fail
 DROP TYPE myvarchar;  -- fail
 
 DROP TYPE myvarchar CASCADE;
->>>>>>> 4dbcb3f844eca4a401ce06aa2781bd9a9be433e9
