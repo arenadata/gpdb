@@ -85,8 +85,8 @@ class TestGreedySolver(GpTestCase):
     def perform_run(self, run_improve:bool, cost:int):
         conf = self.encoding[0]
         solver = GreedySolver(conf, run_improve=run_improve)
-        solution, cost = solver.solve()
-        self.assertEqual(cost, cost)
+        solution, actual_cost = solver.solve()
+        self.assertEqual(actual_cost, cost)
         self._validate_solition(solution, solver)
 
     @getEncoding('35_7_balanced_grouped', 'grouped', None, None, None)
