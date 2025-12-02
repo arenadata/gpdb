@@ -2306,6 +2306,7 @@ CREATE TABLE concur_clustered(i int);
 CREATE INDEX concur_clustered_i_idx ON concur_clustered(i);
 ALTER TABLE concur_clustered CLUSTER ON concur_clustered_i_idx;
 REINDEX TABLE CONCURRENTLY concur_clustered;
+ERROR:  REINDEX CONCURRENTLY is not supported
 SELECT indexrelid::regclass, indisclustered FROM pg_index
   WHERE indrelid = 'concur_clustered'::regclass;
        indexrelid       | indisclustered 
