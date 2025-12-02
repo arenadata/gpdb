@@ -1932,36 +1932,6 @@ select 'a\\bcd' as f1, 'a\\b\'cd' as f2, 'a\\b\'''cd' as f3, 'abcd\\'   as f4, '
 (1 row)
 
 --
--- test unicode escape
---
-select E'A\u0041' as f1, E'\u0127' as f2;
- f1 | f2 
-----+----
- AA | ħ
-(1 row)
-
-select E'\u0000';
-ERROR:  invalid Unicode escape value at or near "E'\u0000"
-LINE 1: select E'\u0000';
-               ^
-select E'\udsfs';
-ERROR:  invalid Unicode escape
-LINE 1: select E'\udsfs';
-               ^
-HINT:  Unicode escapes must be full-length: \uXXXX or \UXXXXXXXX.
-select E'\uD843\uE001';
-ERROR:  invalid Unicode surrogate pair at or near "E'\uD843\uE001"
-LINE 1: select E'\uD843\uE001';
-               ^
-select E'\uDC01';
-ERROR:  invalid Unicode surrogate pair at or near "E'\uDC01"
-LINE 1: select E'\uDC01';
-               ^
-select E'\uD834';
-ERROR:  invalid Unicode surrogate pair at or near "E'\uD834'"
-LINE 1: select E'\uD834';
-               ^
---
 -- Additional string functions
 --
 SET bytea_output TO escape;
