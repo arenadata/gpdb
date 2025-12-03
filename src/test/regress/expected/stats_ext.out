@@ -593,13 +593,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
 -- create statistics
@@ -720,13 +720,13 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
 -- check change of column type doesn't break it
