@@ -893,35 +893,14 @@ select sum(ss.tst::int) from
          random() as r
   from onek i where i.unique1 = o.unique1 ) ss
 where o.ten = 0;
-                                                                                         QUERY PLAN                                                                                          
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate
-   Output: sum((((hashed SubPlan 1)))::integer)
-   ->  Nested Loop
-         Output: ((hashed SubPlan 1))
-         ->  Seq Scan on public.onek o
-               Output: o.unique1, o.unique2, o.two, o.four, o.ten, o.twenty, o.hundred, o.thousand, o.twothousand, o.fivethous, o.tenthous, o.odd, o.even, o.stringu1, o.stringu2, o.string4
-               Filter: (o.ten = 0)
-         ->  Index Scan using onek_unique1 on public.onek i
-               Output: (hashed SubPlan 1), random()
-               Index Cond: (i.unique1 = o.unique1)
-               SubPlan 1
-                 ->  Seq Scan on public.int4_tbl
-                       Output: int4_tbl.f1
-                       Filter: (int4_tbl.f1 <= $0)
-(14 rows)
-
+ERROR:  correlated subquery with skip-level correlations is not supported
 select sum(ss.tst::int) from
   onek o cross join lateral (
   select i.ten in (select f1 from int4_tbl where f1 <= o.hundred) as tst,
          random() as r
   from onek i where i.unique1 = o.unique1 ) ss
 where o.ten = 0;
- sum 
------
- 100
-(1 row)
-
+ERROR:  correlated subquery with skip-level correlations is not supported
 --
 -- Test rescan of a SetOp node
 --
@@ -933,22 +912,31 @@ select count(*) from
     select * from onek i2 where i2.unique1 = o.unique2
   ) ss
 where o.ten = 1;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
  Aggregate
    ->  Nested Loop
-         ->  Seq Scan on onek o
-               Filter: (ten = 1)
-         ->  Subquery Scan on ss
-               ->  HashSetOp Except
-                     ->  Append
-                           ->  Subquery Scan on "*SELECT* 1"
-                                 ->  Index Scan using onek_unique1 on onek i1
-                                       Index Cond: (unique1 = o.unique1)
-                           ->  Subquery Scan on "*SELECT* 2"
-                                 ->  Index Scan using onek_unique1 on onek i2
-                                       Index Cond: (unique1 = o.unique2)
-(13 rows)
+         ->  Gather Motion 3:1  (slice1; segments: 3)
+               ->  Seq Scan on onek o
+                     Filter: (ten = 1)
+         ->  Materialize
+               ->  Subquery Scan on ss
+                     ->  HashSetOp Except
+                           ->  Append
+                                 ->  Subquery Scan on "*SELECT* 1"
+                                       ->  Result
+                                             Filter: (i1.unique1 = o.unique1)
+                                             ->  Materialize
+                                                   ->  Gather Motion 3:1  (slice2; segments: 3)
+                                                         ->  Seq Scan on onek i1
+                                 ->  Subquery Scan on "*SELECT* 2"
+                                       ->  Result
+                                             Filter: (i2.unique1 = o.unique2)
+                                             ->  Materialize
+                                                   ->  Gather Motion 3:1  (slice3; segments: 3)
+                                                         ->  Seq Scan on onek i2
+ Optimizer: Postgres query optimizer
+(22 rows)
 
 select count(*) from
   onek o cross join lateral (
@@ -976,19 +964,21 @@ select sum(o.four), sum(ss.a) from
     select * from x
   ) ss
 where o.ten = 1;
-                    QUERY PLAN                     
----------------------------------------------------
- Aggregate
-   ->  Nested Loop
-         ->  Seq Scan on onek o
-               Filter: (ten = 1)
-         ->  CTE Scan on x
-               CTE x
-                 ->  Recursive Union
-                       ->  Result
-                       ->  WorkTable Scan on x x_1
-                             Filter: (a < 10)
-(10 rows)
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Nested Loop
+                     ->  Seq Scan on onek o
+                           Filter: (ten = 1)
+                     ->  Materialize
+                           ->  Recursive Union
+                                 ->  Result
+                                 ->  WorkTable Scan on x
+                                       Filter: (a < 10)
+ Optimizer: Postgres query optimizer
+(12 rows)
 
 select sum(o.four), sum(ss.a) from
   onek o cross join lateral (
