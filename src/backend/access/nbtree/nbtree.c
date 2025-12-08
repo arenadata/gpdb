@@ -1443,7 +1443,7 @@ restart:
 		 */
 		if (minoff > maxoff)
 			delete_now = (blkno == orig_blkno);
-		else if callback == NULL
+		else if (callback == NULL)
 			stats->num_index_tuples += maxoff - minoff + 1;
 		else
 			stats->num_index_tuples += nhtidslive;
