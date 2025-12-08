@@ -1443,6 +1443,9 @@ restart:
 		 */
 		if (minoff > maxoff)
 			delete_now = (blkno == orig_blkno);
+		else if (callback == NULL)
+			/* GPDB_13_MERGE_FIXME: Commit 02c9386 has alternative fix */
+			stats->num_index_tuples += maxoff - minoff + 1;
 		else
 			stats->num_index_tuples += nhtidslive;
 
