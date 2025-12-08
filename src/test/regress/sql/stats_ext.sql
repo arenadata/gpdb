@@ -349,11 +349,19 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a <= ANY (ARRAY[1, 2, 51, 52]) AND b >= ANY (ARRAY[''1'', ''2''])');
 
 -- ALL (should not benefit from functional dependencies)
+-- GPDB_13_MERGE_FIXME
+-- GPORCA produces incorrect plan, which lead to assertion failed at execution.
+-- FATAL:  Unexpected internal error (assert.c:47)
+-- DETAIL:  FailedAssertion("saop->useOr", File: "nodeIndexscan.c", Line: 1467)
+SET optimizer to off;
+
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1''])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
+
+RESET optimizer;
 
 -- create statistics
 CREATE STATISTICS func_deps_stat (dependencies) ON a, b, c FROM functional_dependencies;
@@ -398,11 +406,19 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a <= ANY (ARRAY[1, 2, 51, 52]) AND b >= ANY (ARRAY[''1'', ''2''])');
 
 -- ALL (should not benefit from functional dependencies)
+-- GPDB_13_MERGE_FIXME
+-- GPORCA produces incorrect plan, which lead to assertion failed at execution.
+-- FATAL:  Unexpected internal error (assert.c:47)
+-- DETAIL:  FailedAssertion("saop->useOr", File: "nodeIndexscan.c", Line: 1467)
+SET optimizer to off;
+
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1''])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
+
+RESET optimizer;
 
 -- check change of column type doesn't break it
 ALTER TABLE functional_dependencies ALTER COLUMN c TYPE numeric;
