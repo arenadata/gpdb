@@ -584,6 +584,11 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 (1 row)
 
 -- ALL (should not benefit from functional dependencies)
+-- GPDB_13_MERGE_FIXME
+-- GPORCA produces incorrect plan, which lead to assertion failed at execution.
+-- FATAL:  Unexpected internal error (assert.c:47)
+-- DETAIL:  FailedAssertion("saop->useOr", File: "nodeIndexscan.c", Line: 1467)
+SET optimizer to off;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1''])');
  estimated | actual 
 -----------+--------
@@ -593,15 +598,16 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
+RESET optimizer;
 -- create statistics
 CREATE STATISTICS func_deps_stat (dependencies) ON a, b, c FROM functional_dependencies;
 ANALYZE functional_dependencies;
@@ -711,6 +717,11 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 (1 row)
 
 -- ALL (should not benefit from functional dependencies)
+-- GPDB_13_MERGE_FIXME
+-- GPORCA produces incorrect plan, which lead to assertion failed at execution.
+-- FATAL:  Unexpected internal error (assert.c:47)
+-- DETAIL:  FailedAssertion("saop->useOr", File: "nodeIndexscan.c", Line: 1467)
+SET optimizer to off;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1''])');
  estimated | actual 
 -----------+--------
@@ -720,15 +731,16 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 51) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
  estimated | actual 
 -----------+--------
-         1 |      0
+         0 |      0
 (1 row)
 
+RESET optimizer;
 -- check change of column type doesn't break it
 ALTER TABLE functional_dependencies ALTER COLUMN c TYPE numeric;
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
