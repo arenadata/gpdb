@@ -141,7 +141,6 @@ DROP TABLE ab1 CASCADE;
 NOTICE:  drop cascades to table ab1c
 -- Tests for stats with inheritance
 CREATE TABLE stxdinh(a int, b int);
-NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 CREATE TABLE stxdinh1() INHERITS(stxdinh);
 CREATE TABLE stxdinh2() INHERITS(stxdinh);
 INSERT INTO stxdinh SELECT mod(a,50), mod(a,100) FROM generate_series(0, 1999) a;
