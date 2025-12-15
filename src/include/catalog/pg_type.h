@@ -318,17 +318,15 @@ typedef FormData_pg_type *Form_pg_type;
 	 (typid) == ANYENUMOID || \
 	 (typid) == ANYRANGEOID)
 
-<<<<<<< HEAD
-/* Is a type OID suitable for describe callback functions? */
-#define TypeSupportsDescribe(typid)  \
-	((typid) == RECORDOID)
-=======
 #define IsPolymorphicTypeFamily2(typid)  \
 	((typid) == ANYCOMPATIBLEOID || \
 	 (typid) == ANYCOMPATIBLEARRAYOID || \
 	 (typid) == ANYCOMPATIBLENONARRAYOID || \
 	 (typid) == ANYCOMPATIBLERANGEOID)
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+
+/* Is a type OID suitable for describe callback functions? */
+#define TypeSupportsDescribe(typid)  \
+	((typid) == RECORDOID)
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
