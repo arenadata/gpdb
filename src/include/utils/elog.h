@@ -173,7 +173,6 @@ extern pthread_t main_tid;
 
 #define TEXTDOMAIN NULL
 
-<<<<<<< HEAD
 /*
  * the error or log report is only issued if the predicate is true.
  */
@@ -181,10 +180,6 @@ extern pthread_t main_tid;
 	do { \
 		if(p) ereport_domain(elevel, TEXTDOMAIN, __VA_ARGS__); \
 	} while (0)
-=======
-extern bool errstart(int elevel, const char *domain);
-extern void errfinish(const char *filename, int lineno, const char *funcname);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 extern bool errstart(int elevel, const char *domain);
 extern void errfinish(const char *filename, int lineno, const char *funcname);
