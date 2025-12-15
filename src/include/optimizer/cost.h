@@ -72,10 +72,7 @@ extern PGDLLIMPORT bool enable_bitmapscan;
 extern PGDLLIMPORT bool enable_tidscan;
 extern PGDLLIMPORT bool enable_sort;
 extern PGDLLIMPORT bool enable_hashagg;
-<<<<<<< HEAD
 extern PGDLLIMPORT bool enable_groupagg;
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 extern PGDLLIMPORT bool enable_hashagg_disk;
 extern PGDLLIMPORT bool enable_groupingsets_hash_disk;
 extern PGDLLIMPORT bool enable_nestloop;
