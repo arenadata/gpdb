@@ -668,12 +668,8 @@ fi
 
 # We already have this in Makefile.win32, but configure needs it too
 if test "$PORTNAME" = "win32"; then
-<<<<<<< HEAD
-  CPPFLAGS="$CPPFLAGS -I$srcdir/src/include/port/win32 -IgpAux/ext/win32/kfw-3-2-2/inc/krb5 -IgpAux/ext/win32/kfw-3-2-2/inc/krb5/gssapi -LgpAux/ext/win32/kfw-3-2-2/lib  -DEXEC_BACKEND -DUNSAFE_STAT_OK"
+  CPPFLAGS="$CPPFLAGS -I$srcdir/src/include/port/win32 -IgpAux/ext/win32/kfw-3-2-2/inc/krb5 -IgpAux/ext/win32/kfw-3-2-2/inc/krb5/gssapi -LgpAux/ext/win32/kfw-3-2-2/lib -DUNSAFE_STAT_OK"
 
-=======
-  CPPFLAGS="$CPPFLAGS -I$srcdir/src/include/port/win32"
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 fi
 
 # Now that we're done automatically adding stuff to C[XX]FLAGS, put back the
