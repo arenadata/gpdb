@@ -21,6 +21,8 @@
 
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
+#include "access/xlogarchive.h"
+#include "common/archive.h"
 #include "miscadmin.h"
 #include "postmaster/startup.h"
 #include "replication/walsender.h"
@@ -59,11 +61,8 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 					bool cleanupEnabled)
 {
 	char		xlogpath[MAXPGPATH];
-	char		xlogRestoreCmd[MAXPGPATH];
+	char	   *xlogRestoreCmd;
 	char		lastRestartPointFname[MAXPGPATH];
-	char	   *dp;
-	char	   *endp;
-	const char *sp;
 	int			rc;
 	struct stat stat_buf;
 	XLogSegNo	restartSegNo;
@@ -157,6 +156,7 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	else
 		XLogFileName(lastRestartPointFname, 0, 0L, wal_segment_size);
 
+<<<<<<< HEAD
 	/*
 	 * construct the command to be executed
 	 */
@@ -217,6 +217,15 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 		}
 	}
 	*dp = '\0';
+=======
+	/* Build the restore command to execute */
+	xlogRestoreCmd = BuildRestoreCommand(recoveryRestoreCommand,
+										 xlogpath, xlogfname,
+										 lastRestartPointFname);
+	if (xlogRestoreCmd == NULL)
+		elog(ERROR, "could not build restore command \"%s\"",
+			 recoveryRestoreCommand);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	ereport(DEBUG3,
 			(errmsg_internal("executing restore command \"%s\"",
@@ -233,6 +242,7 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	rc = system(xlogRestoreCmd);
 
 	PostRestoreCommand();
+	pfree(xlogRestoreCmd);
 
 	if (rc == 0)
 	{

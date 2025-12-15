@@ -281,9 +281,12 @@ typedef struct AggStatePerPhaseData
 
 	ExprState  *evaltrans;		/* evaluation of transition functions  */
 
+<<<<<<< HEAD
 	int		   *group_id;		/* on per gset */
 	int		   *gset_id;		/* on per gset */
 
+=======
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 	/* cached variants of the compiled expression */
 	ExprState  *evaltrans_cache
 				[2]		/* 0: outerops; 1: TTSOpsMinimalTuple */
@@ -319,11 +322,17 @@ extern void ExecReScanAgg(AggState *node);
 
 extern Size hash_agg_entry_size(int numAggs, Size tupleWidth,
 								Size transitionSpace);
+<<<<<<< HEAD
 extern void hash_agg_set_limits(AggState *aggstate, double hashentrysize, uint64 input_groups,
 								int used_bits, Size *mem_limit,
 								uint64 *ngroups_limit, int *num_partitions);
 
 extern void ExecSquelchAgg(AggState *aggstate);
 extern bool ReuseHashTable(AggState *node);
+=======
+extern void hash_agg_set_limits(double hashentrysize, uint64 input_groups,
+								int used_bits, Size *mem_limit,
+								uint64 *ngroups_limit, int *num_partitions);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 #endif							/* NODEAGG_H */

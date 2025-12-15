@@ -751,6 +751,7 @@ BitmapHeapScanState *
 ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 {
 	Relation	currentRelation;
+<<<<<<< HEAD
 	BitmapHeapScanState *bhsState;
 
 	/* check for unsupported flags */
@@ -782,6 +783,8 @@ ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int efl
 {
 	BitmapHeapScanState *scanstate;
 	int			io_concurrency;
+=======
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -814,8 +817,6 @@ ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int efl
 	scanstate->prefetch_iterator = NULL;
 	scanstate->prefetch_pages = 0;
 	scanstate->prefetch_target = 0;
-	/* may be updated below */
-	scanstate->prefetch_maximum = target_prefetch_pages;
 	scanstate->pscan_len = 0;
 	scanstate->initialized = false;
 	scanstate->shared_tbmiterator = NULL;
@@ -861,11 +862,10 @@ ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int efl
 		ExecInitQual(node->bitmapqualorig, (PlanState *) scanstate);
 
 	/*
-	 * Determine the maximum for prefetch_target.  If the tablespace has a
-	 * specific IO concurrency set, use that to compute the corresponding
-	 * maximum value; otherwise, we already initialized to the value computed
-	 * by the GUC machinery.
+	 * Maximum number of prefetches for the tablespace if configured, otherwise
+	 * the current value of the effective_io_concurrency GUC.
 	 */
+<<<<<<< HEAD
 	io_concurrency =
 			get_tablespace_io_concurrency(currentRelation->rd_rel->reltablespace);
 	if (io_concurrency != effective_io_concurrency)
@@ -875,6 +875,10 @@ ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int efl
 		if (ComputeIoConcurrency(io_concurrency, &maximum))
 			scanstate->prefetch_maximum = rint(maximum);
 	}
+=======
+	scanstate->prefetch_maximum =
+		get_tablespace_io_concurrency(currentRelation->rd_rel->reltablespace);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* Prefetching hasn't been implemented for AO tables */
 	if (RelationIsAppendOptimized(currentRelation))

@@ -136,6 +136,7 @@ extern int	recoveryTargetAction;
 extern int	recovery_min_apply_delay;
 extern char *PrimaryConnInfo;
 extern char *PrimarySlotName;
+extern bool wal_receiver_create_temp_slot;
 
 /* indirectly set via GUC system */
 extern TransactionId recoveryTargetXid;
@@ -294,6 +295,7 @@ extern XLogRecPtr GetXLogInsertRecPtr(void);
 extern XLogRecPtr GetXLogWriteRecPtr(void);
 extern bool RecoveryIsPaused(void);
 extern void SetRecoveryPause(bool recoveryPause);
+extern void StandbyParamErrorPauseRecovery(void);
 extern TimestampTz GetLatestXTime(void);
 extern TimestampTz GetCurrentChunkReplayStartTime(void);
 
@@ -323,12 +325,17 @@ extern XLogRecPtr GetFlushRecPtr(void);
 extern XLogRecPtr GetLastImportantRecPtr(void);
 extern void RemovePromoteSignalFiles(void);
 
+<<<<<<< HEAD
 extern void HandleStartupProcInterrupts(void);
 extern void StartupProcessMain(void);
+=======
+extern bool PromoteIsTriggered(void);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 extern bool CheckPromoteSignal(void);
 extern void WakeupRecovery(void);
 extern void SetWalWriterSleeping(bool sleeping);
 
+extern void StartupRequestWalReceiverRestart(void);
 extern void XLogRequestWalReceiverReply(void);
 
 extern void assign_max_wal_size(int newval, void *extra);

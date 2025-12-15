@@ -99,7 +99,12 @@ extern void ExplainOneUtility(Node *utilityStmt, IntoClause *into,
 extern void ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into,
 						   ExplainState *es, const char *queryString,
 						   ParamListInfo params, QueryEnvironment *queryEnv,
+<<<<<<< HEAD
 						   const instr_time *planduration, int cursorOptions);
+=======
+						   const instr_time *planduration,
+						   const BufferUsage *bufusage);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 extern void ExplainPrintPlan(ExplainState *es, QueryDesc *queryDesc);
 extern void ExplainPrintTriggers(ExplainState *es, QueryDesc *queryDesc);

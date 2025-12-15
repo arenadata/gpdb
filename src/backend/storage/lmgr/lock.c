@@ -193,6 +193,33 @@ typedef struct TwoPhaseLockRecord
  */
 static int	FastPathLocalUseCount = 0;
 
+/*
+ * Flag to indicate if the relation extension lock is held by this backend.
+ * This flag is used to ensure that while holding the relation extension lock
+ * we don't try to acquire a heavyweight lock on any other object.  This
+ * restriction implies that the relation extension lock won't ever participate
+ * in the deadlock cycle because we can never wait for any other heavyweight
+ * lock after acquiring this lock.
+ *
+ * Such a restriction is okay for relation extension locks as unlike other
+ * heavyweight locks these are not held till the transaction end.  These are
+ * taken for a short duration to extend a particular relation and then
+ * released.
+ */
+static bool IsRelationExtensionLockHeld PG_USED_FOR_ASSERTS_ONLY = false;
+
+/*
+ * Flag to indicate if the page lock is held by this backend.  We don't
+ * acquire any other heavyweight lock while holding the page lock except for
+ * relation extension.  However, these locks are never taken in reverse order
+ * which implies that page locks will also never participate in the deadlock
+ * cycle.
+ *
+ * Similar to relation extension, page locks are also held for a short
+ * duration, so imposing such a restriction won't hurt.
+ */
+static bool IsPageLockHeld PG_USED_FOR_ASSERTS_ONLY = false;
+
 /* Macros for manipulating proc->fpLockBits */
 #define FAST_PATH_BITS_PER_SLOT			3
 #define FAST_PATH_LOCKNUMBER_OFFSET		1
@@ -864,6 +891,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	}
 
 	/*
+<<<<<<< HEAD
 	 * lockHolder is the gang member that should hold and manage locks for this
 	 * transaction.  In Utility mode, or on the QD, it's always myself.
 	 *
@@ -905,6 +933,20 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			}
 		}
 	}
+=======
+	 * We don't acquire any other heavyweight lock while holding the relation
+	 * extension lock.  We do allow to acquire the same relation extension
+	 * lock more than once but that case won't reach here.
+	 */
+	Assert(!IsRelationExtensionLockHeld);
+
+	/*
+	 * We don't acquire any other heavyweight lock while holding the page lock
+	 * except for relation extension.
+	 */
+	Assert(!IsPageLockHeld ||
+		   (locktag->locktag_type == LOCKTAG_RELATION_EXTEND));
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/*
 	 * Prepare to emit a WAL record if acquisition of this lock needs to be
@@ -990,10 +1032,13 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			if (locallockp)
 				*locallockp = NULL;
 			if (reportMemoryError)
+			{
+				StandbyParamErrorPauseRecovery();
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of shared memory"),
 						 errhint("You might need to increase max_locks_per_transaction.")));
+			}
 			else
 				return LOCKACQUIRE_NOT_AVAIL;
 		}
@@ -1028,10 +1073,13 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		if (locallockp)
 			*locallockp = NULL;
 		if (reportMemoryError)
+		{
+			StandbyParamErrorPauseRecovery();
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory"),
 					 errhint("You might need to increase max_locks_per_transaction.")));
+		}
 		else
 			return LOCKACQUIRE_NOT_AVAIL;
 	}
@@ -1443,6 +1491,26 @@ SetupLockInTable(LockMethod lockMethodTable, PGPROC *proc,
 }
 
 /*
+ * Check and set/reset the flag that we hold the relation extension/page lock.
+ *
+ * It is callers responsibility that this function is called after
+ * acquiring/releasing the relation extension/page lock.
+ *
+ * Pass acquired as true if lock is acquired, false otherwise.
+ */
+static inline void
+CheckAndSetLockHeld(LOCALLOCK *locallock, bool acquired)
+{
+#ifdef USE_ASSERT_CHECKING
+	if (LOCALLOCK_LOCKTAG(*locallock) == LOCKTAG_RELATION_EXTEND)
+		IsRelationExtensionLockHeld = acquired;
+	else if (LOCALLOCK_LOCKTAG(*locallock) == LOCKTAG_PAGE)
+		IsPageLockHeld = acquired;
+
+#endif
+}
+
+/*
  * Subroutine to free a locallock entry
  */
 void
@@ -1477,6 +1545,11 @@ RemoveLocalLock(LOCALLOCK *locallock)
 					 (void *) &(locallock->tag),
 					 HASH_REMOVE, NULL))
 		elog(WARNING, "locallock table corrupted");
+
+	/*
+	 * Indicate that the lock is released for certain types of locks
+	 */
+	CheckAndSetLockHeld(locallock, false);
 }
 
 /*
@@ -1551,7 +1624,67 @@ LockCheckConflicts(LockMethod lockMethodTable,
 		myLocks = proclock->holdMask;
 		for (i = 1; i <= numLockModes; i++)
 		{
+<<<<<<< HEAD
 			if ((conflictMask & LOCKBIT_ON(i)) == 0)
+=======
+			conflictsRemaining[i] = 0;
+			continue;
+		}
+		conflictsRemaining[i] = lock->granted[i];
+		if (myLocks & LOCKBIT_ON(i))
+			--conflictsRemaining[i];
+		totalConflictsRemaining += conflictsRemaining[i];
+	}
+
+	/* If no conflicts remain, we get the lock. */
+	if (totalConflictsRemaining == 0)
+	{
+		PROCLOCK_PRINT("LockCheckConflicts: resolved (simple)", proclock);
+		return false;
+	}
+
+	/* If no group locking, it's definitely a conflict. */
+	if (proclock->groupLeader == MyProc && MyProc->lockGroupLeader == NULL)
+	{
+		Assert(proclock->tag.myProc == MyProc);
+		PROCLOCK_PRINT("LockCheckConflicts: conflicting (simple)",
+					   proclock);
+		return true;
+	}
+
+	/*
+	 * The relation extension or page lock conflict even between the group
+	 * members.
+	 */
+	if (LOCK_LOCKTAG(*lock) == LOCKTAG_RELATION_EXTEND ||
+		(LOCK_LOCKTAG(*lock) == LOCKTAG_PAGE))
+	{
+		PROCLOCK_PRINT("LockCheckConflicts: conflicting (group)",
+					   proclock);
+		return true;
+	}
+
+	/*
+	 * Locks held in conflicting modes by members of our own lock group are
+	 * not real conflicts; we can subtract those out and see if we still have
+	 * a conflict.  This is O(N) in the number of processes holding or
+	 * awaiting locks on this object.  We could improve that by making the
+	 * shared memory state more complex (and larger) but it doesn't seem worth
+	 * it.
+	 */
+	procLocks = &(lock->procLocks);
+	otherproclock = (PROCLOCK *)
+		SHMQueueNext(procLocks, procLocks, offsetof(PROCLOCK, lockLink));
+	while (otherproclock != NULL)
+	{
+		if (proclock != otherproclock &&
+			proclock->groupLeader == otherproclock->groupLeader &&
+			(otherproclock->holdMask & conflictMask) != 0)
+		{
+			int			intersectMask = otherproclock->holdMask & conflictMask;
+
+			for (i = 1; i <= numLockModes; i++)
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 			{
 				conflictsRemaining[i] = 0;
 				continue;
@@ -1849,6 +1982,9 @@ GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner)
 	locallock->numLockOwners++;
 	if (owner != NULL)
 		ResourceOwnerRememberLock(owner, locallock);
+
+	/* Indicate that the lock is acquired for certain types of locks. */
+	CheckAndSetLockHeld(locallock, true);
 }
 
 /*
@@ -3063,6 +3199,7 @@ FastPathGetRelationLockEntry(LOCALLOCK *locallock)
 		{
 			LWLockRelease(partitionLock);
 			LWLockRelease(&MyProc->backendLock);
+			StandbyParamErrorPauseRecovery();
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory"),
@@ -4551,6 +4688,7 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 	if (!lock)
 	{
 		LWLockRelease(partitionLock);
+		StandbyParamErrorPauseRecovery();
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
@@ -4617,6 +4755,7 @@ lock_twophase_recover(TransactionId xid, uint16 info,
 				elog(PANIC, "lock table corrupted");
 		}
 		LWLockRelease(partitionLock);
+		StandbyParamErrorPauseRecovery();
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory"),
@@ -4909,6 +5048,7 @@ VirtualXactLock(VirtualTransactionId vxid, bool wait)
 		{
 			LWLockRelease(partitionLock);
 			LWLockRelease(&proc->backendLock);
+			StandbyParamErrorPauseRecovery();
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory"),

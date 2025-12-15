@@ -2055,6 +2055,7 @@ BeginCopy(ParseState *pstate,
 		}
 
 		/* plan the query */
+<<<<<<< HEAD
 		int			cursorOptions = CURSOR_OPT_PARALLEL_OK;
 
 		/* GPDB: Pass the IGNORE EXTERNAL PARTITION option to the planner. */
@@ -2062,6 +2063,10 @@ BeginCopy(ParseState *pstate,
 			cursorOptions |= CURSOR_OPT_SKIP_FOREIGN_PARTITIONS;
 
 		plan = pg_plan_query(query, cursorOptions, NULL);
+=======
+		plan = pg_plan_query(query, pstate->p_sourcetext,
+							 CURSOR_OPT_PARALLEL_OK, NULL);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 		/*
 		 * With row level security and a user using "COPY relation TO", we

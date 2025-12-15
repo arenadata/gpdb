@@ -79,6 +79,7 @@
 #include "libpq/pqsignal.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "postmaster/bgworker.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "storage/ipc.h"
@@ -546,7 +547,10 @@ errfinish(const char *filename, int lineno, const char *funcname)
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
+<<<<<<< HEAD
 	saved_errno = edata->saved_errno;   /*CDB*/
+=======
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* Save the last few bits of error state into the stack entry */
 	if (filename)
@@ -1605,6 +1609,7 @@ getinternalerrposition(void)
 }
 
 /*
+<<<<<<< HEAD
  * CDB: errFatalReturn -- set flag indicating errfinish() should return
  * to the caller instead of calling proc_exit() after reporting a FATAL
  * error.  Allows termination by re-raising a signal in order to obtain
@@ -1625,6 +1630,8 @@ errFatalReturn(bool fatalReturn)
 
 
 /*
+=======
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
  * Functions to allow construction of error message strings separately from
  * the ereport() call itself.
  *
@@ -2935,6 +2942,23 @@ log_line_prefix(StringInfo buf, ErrorData *edata)
 										   padding > 0 ? padding : -padding);
 
 				break;
+			case 'b':
+				{
+					const char *backend_type_str;
+
+					if (MyProcPid == PostmasterPid)
+						backend_type_str = "postmaster";
+					else if (MyBackendType == B_BG_WORKER)
+						backend_type_str = MyBgworkerEntry->bgw_type;
+					else
+						backend_type_str = GetBackendTypeDesc(MyBackendType);
+
+					if (padding != 0)
+						appendStringInfo(buf, "%*s", padding, backend_type_str);
+					else
+						appendStringInfoString(buf, backend_type_str);
+					break;
+				}
 			case 'u':
 				if (MyProcPort)
 				{
@@ -3453,6 +3477,16 @@ write_csvlog(ErrorData *edata)
 	/* application name */
 	if (application_name)
 		appendCSVLiteral(&buf, application_name);
+
+	appendStringInfoChar(&buf, ',');
+
+	/* backend type */
+	if (MyProcPid == PostmasterPid)
+		appendCSVLiteral(&buf, "postmaster");
+	else if (MyBackendType == B_BG_WORKER)
+		appendCSVLiteral(&buf, MyBgworkerEntry->bgw_type);
+	else
+		appendCSVLiteral(&buf, GetBackendTypeDesc(MyBackendType));
 
 	appendStringInfoChar(&buf, '\n');
 

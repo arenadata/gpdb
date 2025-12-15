@@ -558,6 +558,7 @@ SET work_mem='64kB';
 -- Produce results with sorting.
 
 set enable_hashagg = false;
+<<<<<<< HEAD
 
 set jit_above_cost = 0;
 
@@ -586,11 +587,27 @@ select g100, g10, array_agg(g) as a, count(*) as c, max(g::text) as m from
   (select g/200 as g100, g/2000 as g10, g
    from generate_series(0,19999) g) s
 group by grouping sets (g100,g10);
+=======
+set jit_above_cost = 0;
+
+explain (costs off)
+select g100, g10, sum(g::numeric), count(*), max(g::text) from
+  (select g%1000 as g1000, g%100 as g100, g%10 as g10, g
+   from generate_series(0,1999) g) s
+group by cube (g1000, g100,g10);
+
+create table gs_group_1 as
+select g100, g10, sum(g::numeric), count(*), max(g::text) from
+  (select g%1000 as g1000, g%100 as g100, g%10 as g10, g
+   from generate_series(0,1999) g) s
+group by cube (g1000, g100,g10);
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 -- Produce results with hash aggregation.
 
 set enable_hashagg = true;
 set enable_sort = false;
+<<<<<<< HEAD
 set work_mem='64kB';
 
 set jit_above_cost = 0;
@@ -620,21 +637,40 @@ select g100, g10, array_agg(g) as a, count(*) as c, max(g::text) as m from
   (select g/200 as g100, g/2000 as g10, g
    from generate_series(0,19999) g) s
 group by grouping sets (g100,g10);
+=======
+
+explain (costs off)
+select g100, g10, sum(g::numeric), count(*), max(g::text) from
+  (select g%1000 as g1000, g%100 as g100, g%10 as g10, g
+   from generate_series(0,1999) g) s
+group by cube (g1000, g100,g10);
+
+create table gs_hash_1 as
+select g100, g10, sum(g::numeric), count(*), max(g::text) from
+  (select g%1000 as g1000, g%100 as g100, g%10 as g10, g
+   from generate_series(0,1999) g) s
+group by cube (g1000, g100,g10);
+
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 set enable_sort = true;
 set work_mem to default;
 
+<<<<<<< HEAD
 -- GPDB_12_MERGE_FIXME: the following comparison query has an ORCA plan that
 -- relies on "IS NOT DISTINCT FROM" Hash Join, a variant that we likely have
 -- lost during the merge with upstream Postgres 12. Disable ORCA for this query
 SET optimizer TO off;
 
+=======
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 -- Compare results
 
 (select * from gs_hash_1 except select * from gs_group_1)
   union all
 (select * from gs_group_1 except select * from gs_hash_1);
 
+<<<<<<< HEAD
 (select * from gs_hash_2 except select * from gs_group_2)
   union all
 (select * from gs_group_2 except select * from gs_hash_2);
@@ -672,5 +708,12 @@ select a, b, rank(b) within group (order by b nulls last)
 from (values (1,1),(1,4),(1,5),(3,1),(3,2)) v(a,b)
 group by rollup (a,b) order by a;
 
+=======
+drop table gs_group_1;
+drop table gs_hash_1;
+
+SET enable_groupingsets_hash_disk TO DEFAULT;
+
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 -- end
 reset optimizer_trace_fallback;

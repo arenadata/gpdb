@@ -307,15 +307,28 @@ typedef FormData_pg_type *Form_pg_type;
 
 /* Is a type OID a polymorphic pseudotype?	(Beware of multiple evaluation) */
 #define IsPolymorphicType(typid)  \
+	(IsPolymorphicTypeFamily1(typid) || \
+	 IsPolymorphicTypeFamily2(typid))
+
+/* Code not part of polymorphic type resolution should not use these macros: */
+#define IsPolymorphicTypeFamily1(typid)  \
 	((typid) == ANYELEMENTOID || \
 	 (typid) == ANYARRAYOID || \
 	 (typid) == ANYNONARRAYOID || \
 	 (typid) == ANYENUMOID || \
 	 (typid) == ANYRANGEOID)
 
+<<<<<<< HEAD
 /* Is a type OID suitable for describe callback functions? */
 #define TypeSupportsDescribe(typid)  \
 	((typid) == RECORDOID)
+=======
+#define IsPolymorphicTypeFamily2(typid)  \
+	((typid) == ANYCOMPATIBLEOID || \
+	 (typid) == ANYCOMPATIBLEARRAYOID || \
+	 (typid) == ANYCOMPATIBLENONARRAYOID || \
+	 (typid) == ANYCOMPATIBLERANGEOID)
+>>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 #endif							/* EXPOSE_TO_CLIENT_CODE */
 
