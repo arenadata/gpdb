@@ -43,17 +43,13 @@
 #define DEFAULT_RANGE_INEQ_SEL	(10 * DEFAULT_EQ_SEL)               /*CDB*/
 
 /* default selectivity estimate for pattern-match operators such as LIKE */
-<<<<<<< HEAD
 #define DEFAULT_MATCH_SEL	    (50 * DEFAULT_EQ_SEL)               /*CDB*/
-=======
-#define DEFAULT_MATCH_SEL	0.005
 
 /* default selectivity estimate for other matching operators */
 #define DEFAULT_MATCHING_SEL	0.010
 
 /* default number of distinct values in a table */
 #define DEFAULT_NUM_DISTINCT  200
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 /* default selectivity estimate for boolean and null test nodes */
 #define DEFAULT_UNK_SEL			DEFAULT_EQ_SEL                      /*CDB*/
