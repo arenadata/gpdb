@@ -325,12 +325,7 @@ extern XLogRecPtr GetFlushRecPtr(void);
 extern XLogRecPtr GetLastImportantRecPtr(void);
 extern void RemovePromoteSignalFiles(void);
 
-<<<<<<< HEAD
-extern void HandleStartupProcInterrupts(void);
-extern void StartupProcessMain(void);
-=======
 extern bool PromoteIsTriggered(void);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 extern bool CheckPromoteSignal(void);
 extern void WakeupRecovery(void);
 extern void SetWalWriterSleeping(bool sleeping);
