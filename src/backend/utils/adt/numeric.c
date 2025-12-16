@@ -8181,7 +8181,6 @@ div_var_fast(const NumericVar *var1, const NumericVar *var2,
 	 * root algorithm, where we typically divide a 2N-digit number by an
 	 * N-digit number, and only require a result with N digits of precision.
 	 */
-<<<<<<< HEAD
 	i = (div_ndigits + 1) * sizeof(int);
 	if (div_ndigits > NUMERIC_LOCAL_NMAX)
 	{
@@ -8192,12 +8191,8 @@ div_var_fast(const NumericVar *var1, const NumericVar *var2,
 		memset(tdiv, 0, i);
 		div = tdiv;
 	}
-	for (i = 0; i < var1ndigits; i++)
-=======
-	div = (int *) palloc0((div_ndigits + 1) * sizeof(int));
 	load_ndigits = Min(div_ndigits, var1ndigits);
 	for (i = 0; i < load_ndigits; i++)
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 		div[i + 1] = var1digits[i];
 
 	/*
