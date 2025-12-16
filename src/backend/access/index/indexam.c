@@ -61,14 +61,11 @@
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
 #include "storage/predicate.h"
+#include "utils/fmgroids.h"
 #include "utils/ruleutils.h"
 #include "utils/snapmgr.h"
-<<<<<<< HEAD
-#include "utils/fmgroids.h"
-=======
 #include "utils/syscache.h"
 
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
