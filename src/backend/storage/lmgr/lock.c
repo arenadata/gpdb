@@ -891,7 +891,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	}
 
 	/*
-<<<<<<< HEAD
 	 * lockHolder is the gang member that should hold and manage locks for this
 	 * transaction.  In Utility mode, or on the QD, it's always myself.
 	 *
@@ -933,7 +932,8 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			}
 		}
 	}
-=======
+
+	/*
 	 * We don't acquire any other heavyweight lock while holding the relation
 	 * extension lock.  We do allow to acquire the same relation extension
 	 * lock more than once but that case won't reach here.
@@ -946,7 +946,6 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 */
 	Assert(!IsPageLockHeld ||
 		   (locktag->locktag_type == LOCKTAG_RELATION_EXTEND));
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/*
 	 * Prepare to emit a WAL record if acquisition of this lock needs to be
