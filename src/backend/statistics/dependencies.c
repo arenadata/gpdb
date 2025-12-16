@@ -1073,7 +1073,8 @@ clauselist_apply_dependencies(PlannerInfo *root, List *clauses,
 		}
 
 		simple_sel = clauselist_selectivity_simple(root, attr_clauses, varRelid,
-												   jointype, sjinfo, NULL);
+												   jointype, sjinfo, NULL,
+												   false); /* no damping */
 		attr_sel[attidx++] = simple_sel;
 	}
 
@@ -1335,63 +1336,9 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 
 		dependencies[ndependencies++] = dependency;
 
-<<<<<<< HEAD
-			listidx++;
-
-			/*
-			 * Skip incompatible clauses, and ones we've already estimated on.
-			 */
-			if (!list_attnums[listidx])
-				continue;
-
-			/*
-			 * We expect the bitmaps ton contain a single attribute number.
-			 */
-			attnum = bms_singleton_member(list_attnums[listidx]);
-
-			/*
-			 * Technically we could find more than one clause for a given
-			 * attnum. Since these clauses must be equality clauses, we choose
-			 * to only take the selectivity estimate from the final clause in
-			 * the list for this attnum. If the attnum happens to be compared
-			 * to a different Const in another clause then no rows will match
-			 * anyway. If it happens to be compared to the same Const, then
-			 * ignoring the additional clause is just the thing to do.
-			 */
-			if (dependency_implies_attribute(dependency, attnum))
-			{
-				clause = (Node *) lfirst(l);
-
-				s2 = clause_selectivity(root, clause, varRelid, jointype,
-										sjinfo,
-										false); /* no damping */
-
-				/* mark this one as done, so we don't touch it again. */
-				*estimatedclauses = bms_add_member(*estimatedclauses, listidx);
-
-				/*
-				 * Mark that we've got and used the dependency on this clause.
-				 * We'll want to ignore this when looking for the next
-				 * strongest dependency above.
-				 */
-				clauses_attnums = bms_del_member(clauses_attnums, attnum);
-			}
-		}
-
-		/*
-		 * Now factor in the selectivity for all the "implied" clauses into
-		 * the final one, using this formula:
-		 *
-		 * P(a,b) = P(a) * (f + (1-f) * P(b))
-		 *
-		 * where 'f' is the degree of validity of the dependency.
-		 */
-		s1 *= (dependency->degree + (1 - dependency->degree) * s2);
-=======
 		/* Ignore dependencies using this implied attribute in later loops */
 		attnum = dependency->attributes[dependency->nattributes - 1];
 		clauses_attnums = bms_del_member(clauses_attnums, attnum);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 	}
 
 	/*
