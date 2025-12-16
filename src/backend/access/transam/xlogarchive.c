@@ -156,68 +156,6 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	else
 		XLogFileName(lastRestartPointFname, 0, 0L, wal_segment_size);
 
-<<<<<<< HEAD
-	/*
-	 * construct the command to be executed
-	 */
-	dp = xlogRestoreCmd;
-	endp = xlogRestoreCmd + MAXPGPATH - 1;
-	*endp = '\0';
-
-	for (sp = recoveryRestoreCommand; *sp; sp++)
-	{
-		if (*sp == '%')
-		{
-			switch (sp[1])
-			{
-				case 'p':
-					/* %p: relative path of target file */
-					sp++;
-					StrNCpy(dp, xlogpath, endp - dp);
-					make_native_path(dp);
-					dp += strlen(dp);
-					break;
-				case 'f':
-					/* %f: filename of desired file */
-					sp++;
-					StrNCpy(dp, xlogfname, endp - dp);
-					dp += strlen(dp);
-					break;
-				case 'r':
-					/* %r: filename of last restartpoint */
-					sp++;
-					StrNCpy(dp, lastRestartPointFname, endp - dp);
-					dp += strlen(dp);
-					break;
-				case 'c':
-					/* GPDB: %c: contentId of segment */
-					Assert(GpIdentity.segindex != UNINITIALIZED_GP_IDENTITY_VALUE);
-					sp++;
-					pg_ltoa(GpIdentity.segindex, contentid);
-					StrNCpy(dp, contentid, endp - dp);
-					dp += strlen(dp);
-					break;
-				case '%':
-					/* convert %% to a single % */
-					sp++;
-					if (dp < endp)
-						*dp++ = *sp;
-					break;
-				default:
-					/* otherwise treat the % as not special */
-					if (dp < endp)
-						*dp++ = *sp;
-					break;
-			}
-		}
-		else
-		{
-			if (dp < endp)
-				*dp++ = *sp;
-		}
-	}
-	*dp = '\0';
-=======
 	/* Build the restore command to execute */
 	xlogRestoreCmd = BuildRestoreCommand(recoveryRestoreCommand,
 										 xlogpath, xlogfname,
@@ -225,7 +163,6 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	if (xlogRestoreCmd == NULL)
 		elog(ERROR, "could not build restore command \"%s\"",
 			 recoveryRestoreCommand);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	ereport(DEBUG3,
 			(errmsg_internal("executing restore command \"%s\"",
