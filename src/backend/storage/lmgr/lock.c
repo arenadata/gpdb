@@ -1612,20 +1612,74 @@ LockCheckConflicts(LockMethod lockMethodTable,
 	 * After parallel execution feature is in, mpp session part should
 	 * change.
 	 */
-	 mppSessionId = proclock->tag.myProc->mppSessionId;
-	 if (mppSessionId == InvalidGpSessionId)
-	 {
-		/*
-		 * Rats.  Something conflicts.  But it could still be my own lock, or a
-		 * lock held by another member of my locking group.  First, figure out how
-		 * many conflicts remain after subtracting out any locks I hold myself.
-		 */
-		myLocks = proclock->holdMask;
+	mppSessionId = proclock->tag.myProc->mppSessionId;
+	if (mppSessionId != InvalidGpSessionId)
+	{
+		/* in mpp session */
+		otherLocks = 0;
 		for (i = 1; i <= numLockModes; i++)
 		{
-<<<<<<< HEAD
-			if ((conflictMask & LOCKBIT_ON(i)) == 0)
-=======
+			int				ourHolding = 0;
+			SHM_QUEUE	   *procLocks = &(lock->procLocks);
+			PROCLOCK	   *otherProclock =
+					(PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+											  offsetof(PROCLOCK, lockLink));
+			/*
+			 * Go through the proclock queue in the lock.  otherProclock
+			 * may be this process itself.
+			 */
+			while (otherProclock)
+			{
+				PGPROC	   *otherProc = otherProclock->tag.myProc;
+
+				/*
+				 * If processes in my session are holding the lock, mask
+				 * it out so that we won't be blocked by them.
+				 */
+				if (otherProc->mppSessionId == mppSessionId &&
+					otherProclock->holdMask & LOCKBIT_ON(i))
+					ourHolding++;
+
+				otherProclock =
+					(PROCLOCK *) SHMQueueNext(procLocks,
+											  &otherProclock->lockLink,
+											  offsetof(PROCLOCK, lockLink));
+			}
+			/*
+			 * I'll be blocked only if processes outside of the session are
+			 * holding conflicting locks.
+			 */
+			if (lock->granted[i] > ourHolding)
+				otherLocks |= LOCKBIT_ON(i);
+		}
+
+		/*
+		 * now check again for conflicts.  'otherLocks' describes the types of
+		 * locks held by other sessions.  If one of these conflicts with the kind
+		 * of lock that I want, there is a conflict and I have to sleep.
+		 */
+		if (!(lockMethodTable->conflictTab[lockmode] & otherLocks))
+		{
+			/* no conflict. OK to get the lock */
+			PROCLOCK_PRINT("LockCheckConflicts: resolved", proclock);
+			return false;
+		}
+
+		PROCLOCK_PRINT("LockCheckConflicts: conflicting", proclock);
+
+		return true;
+	}
+
+	/*
+	 * Rats.  Something conflicts.  But it could still be my own lock, or a
+	 * lock held by another member of my locking group.  First, figure out how
+	 * many conflicts remain after subtracting out any locks I hold myself.
+	 */
+	myLocks = proclock->holdMask;
+	for (i = 1; i <= numLockModes; i++)
+	{
+		if ((conflictMask & LOCKBIT_ON(i)) == 0)
+		{
 			conflictsRemaining[i] = 0;
 			continue;
 		}
@@ -1683,132 +1737,30 @@ LockCheckConflicts(LockMethod lockMethodTable,
 			int			intersectMask = otherproclock->holdMask & conflictMask;
 
 			for (i = 1; i <= numLockModes; i++)
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 			{
-				conflictsRemaining[i] = 0;
-				continue;
+				if ((intersectMask & LOCKBIT_ON(i)) != 0)
+				{
+					if (conflictsRemaining[i] <= 0)
+						elog(PANIC, "proclocks held do not match lock");
+					conflictsRemaining[i]--;
+					totalConflictsRemaining--;
+				}
 			}
-			conflictsRemaining[i] = lock->granted[i];
-			if (myLocks & LOCKBIT_ON(i))
-				--conflictsRemaining[i];
-			totalConflictsRemaining += conflictsRemaining[i];
-		}
 
-		/* If no conflicts remain, we get the lock. */
-		if (totalConflictsRemaining == 0)
-		{
-			PROCLOCK_PRINT("LockCheckConflicts: resolved (simple)", proclock);
-			return false;
+			if (totalConflictsRemaining == 0)
+			{
+				PROCLOCK_PRINT("LockCheckConflicts: resolved (group)",
+							   proclock);
+				return false;
+			}
 		}
-
-		/* If no group locking, it's definitely a conflict. */
-		if (proclock->groupLeader == MyProc && MyProc->lockGroupLeader == NULL)
-		{
-			Assert(proclock->tag.myProc == MyProc);
-			PROCLOCK_PRINT("LockCheckConflicts: conflicting (simple)",
-						   proclock);
-			return true;
-		}
-
-		/*
-		 * Locks held in conflicting modes by members of our own lock group are
-		 * not real conflicts; we can subtract those out and see if we still have
-		 * a conflict.  This is O(N) in the number of processes holding or
-		 * awaiting locks on this object.  We could improve that by making the
-		 * shared memory state more complex (and larger) but it doesn't seem worth
-		 * it.
-		 */
-		procLocks = &(lock->procLocks);
 		otherproclock = (PROCLOCK *)
-			SHMQueueNext(procLocks, procLocks, offsetof(PROCLOCK, lockLink));
-		while (otherproclock != NULL)
-		{
-			if (proclock != otherproclock &&
-				proclock->groupLeader == otherproclock->groupLeader &&
-				(otherproclock->holdMask & conflictMask) != 0)
-			{
-				int			intersectMask = otherproclock->holdMask & conflictMask;
+			SHMQueueNext(procLocks, &otherproclock->lockLink,
+						 offsetof(PROCLOCK, lockLink));
+	}
 
-				for (i = 1; i <= numLockModes; i++)
-				{
-					if ((intersectMask & LOCKBIT_ON(i)) != 0)
-					{
-						if (conflictsRemaining[i] <= 0)
-							elog(PANIC, "proclocks held do not match lock");
-						conflictsRemaining[i]--;
-						totalConflictsRemaining--;
-					}
-				}
-
-				if (totalConflictsRemaining == 0)
-				{
-					PROCLOCK_PRINT("LockCheckConflicts: resolved (group)",
-								   proclock);
-					return false;
-				}
-			}
-			otherproclock = (PROCLOCK *)
-				SHMQueueNext(procLocks, &otherproclock->lockLink,
-							 offsetof(PROCLOCK, lockLink));
-		}
-
-		/* Nope, it's a real conflict. */
-		PROCLOCK_PRINT("LockCheckConflicts: conflicting (group)", proclock);
-	 }
-	 else
-	 {
-	 	/* in mpp session */
-		otherLocks = 0;
-		for (i = 1; i <= numLockModes; i++)
-		{
-			int				ourHolding = 0;
-			SHM_QUEUE	   *procLocks = &(lock->procLocks);
-			PROCLOCK	   *otherProclock =
-					(PROCLOCK *) SHMQueueNext(procLocks, procLocks,
-											  offsetof(PROCLOCK, lockLink));
-			/*
-			 * Go through the proclock queue in the lock.  otherProclock
-			 * may be this process itself.
-			 */
-			while (otherProclock)
-			{
-				PGPROC	   *otherProc = otherProclock->tag.myProc;
-
-				/*
-				 * If processes in my session are holding the lock, mask
-				 * it out so that we won't be blocked by them.
-				 */
-				if (otherProc->mppSessionId == mppSessionId &&
-					otherProclock->holdMask & LOCKBIT_ON(i))
-					ourHolding++;
-
-				otherProclock =
-					(PROCLOCK *) SHMQueueNext(procLocks,
-											  &otherProclock->lockLink,
-											  offsetof(PROCLOCK, lockLink));
-			}
-			/*
-			 * I'll be blocked only if processes outside of the session are
-			 * holding conflicting locks.
-			 */
-			if (lock->granted[i] > ourHolding)
-				otherLocks |= LOCKBIT_ON(i);
-		}
-
-		/*
-		 * now check again for conflicts.  'otherLocks' describes the types of
-		 * locks held by other sessions.  If one of these conflicts with the kind
-		 * of lock that I want, there is a conflict and I have to sleep.
-		 */
-		if (!(lockMethodTable->conflictTab[lockmode] & otherLocks))
-		{
-			/* no conflict. OK to get the lock */
-			PROCLOCK_PRINT("LockCheckConflicts: resolved", proclock);
-			return false;
-		}
-
-		PROCLOCK_PRINT("LockCheckConflicts: conflicting", proclock);
-	 }
+	/* Nope, it's a real conflict. */
+	PROCLOCK_PRINT("LockCheckConflicts: conflicting (group)", proclock);
 
 	return true;
 }
