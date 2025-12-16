@@ -311,12 +311,11 @@ planner(Query *parse, const char *query_string, int cursorOptions,
 	instr_time	starttime, endtime;
 
 	if (planner_hook)
-<<<<<<< HEAD
 	{
 		if (gp_log_optimization_time)
 			INSTR_TIME_SET_CURRENT(starttime);
 
-		result = (*planner_hook) (parse, cursorOptions, boundParams);
+		result = (*planner_hook) (parse, query_string, cursorOptions, boundParams);
 
 		if (gp_log_optimization_time)
 		{
@@ -326,13 +325,8 @@ planner(Query *parse, const char *query_string, int cursorOptions,
 		}
 	}
 	else
-		result = standard_planner(parse, cursorOptions, boundParams);
-
-=======
-		result = (*planner_hook) (parse, query_string, cursorOptions, boundParams);
-	else
 		result = standard_planner(parse, query_string, cursorOptions, boundParams);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+
 	return result;
 }
 
@@ -5501,17 +5495,13 @@ create_distinct_paths(PlannerInfo *root,
 	else if (parse->hasDistinctOn || !enable_hashagg)
 		allow_hash = false;		/* policy-based decision not to hash */
 	else
-<<<<<<< HEAD
-		allow_hash = true;		/* default */
-=======
 	{
 		Size		hashentrysize = hash_agg_entry_size(
 			0, cheapest_input_path->pathtarget->width, 0);
 
 		allow_hash = enable_hashagg_disk ||
-			(hashentrysize * numDistinctRows <= work_mem * 1024L);
+			(hashentrysize * numDistinctRowsTotal <= work_mem * 1024L);
 	}
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	if (allow_hash && grouping_is_hashable(parse->distinctClause))
 	{
@@ -7501,10 +7491,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 			if (enable_hashagg_disk ||
 				hashaggtablesize < work_mem * 1024L)
-<<<<<<< HEAD
-			{
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 				add_path(grouped_rel, (Path *)
 						 create_agg_path(root,
 										 grouped_rel,
@@ -7517,7 +7503,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 										 havingQual,
 										 agg_final_costs,
 										 dNumGroups));
-			}
 		}
 	}
 
