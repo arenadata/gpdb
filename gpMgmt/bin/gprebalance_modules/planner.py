@@ -43,9 +43,9 @@ class LogicalMove:
         """Pretty print logical move"""
         
         # Source information
-        src_host = self.seg.hostname
-        src_datadir = self.seg.datadir
-        src_port = self.seg.port
+        src_host = self.seg.getSegmentHostName()
+        src_datadir = self.seg.getSegmentDataDirectory()
+        src_port = self.seg.getSegmentPort()
         
         # Destination information
         dst_host = self.dstHost.hostname
@@ -58,7 +58,7 @@ class LogicalMove:
             size_str = f" [{self.segment_size}]"
 
         return (
-            f"Move Segment(content={self.seg.content}, dbid={self.seg.dbid}, "
+            f"Move Segment(content={self.seg.getSegmentContentId()}, dbid={self.seg.getSegmentDbId()}, "
             f"role={self.seg.role}){size_str}\n"
             f"      From: {src_host}:{src_port} → {src_datadir}\n"
             f"      To:   {dst_host}:{dst_port} → {dst_datadir}"
@@ -246,19 +246,18 @@ class PortAllocator:
         Tracks separate port patterns for primaries and mirrors
         """
         # First pass: collect all ports by role
-        for seg in gparray.getDbList():
-            if seg.content >= 0:
-                hostname = seg.hostname
-                port = seg.port
-                
-                self.existing_ports_by_host[hostname].add(port)
-                
-                # Track ports by role (primary vs mirror)
-                primary_ports, mirror_ports = self.existing_ports_by_role[hostname]
-                if seg.isSegmentPrimary():
-                    primary_ports.add(port)
-                else:
-                    mirror_ports.add(port)
+        for seg in gparray.getSegDbList():
+            hostname = seg.getSegmentHostName()
+            port = seg.getSegmentPort()
+            
+            self.existing_ports_by_host[hostname].add(port)
+            
+            # Track ports by role (primary vs mirror)
+            primary_ports, mirror_ports = self.existing_ports_by_role[hostname]
+            if seg.isSegmentPrimary():
+                primary_ports.add(port)
+            else:
+                mirror_ports.add(port)
         
         # Second pass: determine base ports for each role
         for hostname in self.existing_ports_by_role.keys():
@@ -438,9 +437,8 @@ class Planner:
              remove_hosts options
         """
         existing_hosts = set()
-        for seg in self.gparray.getDbList():
-            if seg.content >= 0:
-                existing_hosts.add(seg.hostname)
+        for seg in self.gparray.getSegDbList():
+            existing_hosts.add(seg.getSegmentHostName())
         
         existing_hostname_list = list(existing_hosts)
         target_hostname_list = []
@@ -633,10 +631,10 @@ class Planner:
         for pair in array.segmentPairs:
             primary = pair.primaryDB
             mirror = pair.mirrorDB
-            primary_base = TemplateParser.remove_content_suffix(primary.datadir)
+            primary_base = TemplateParser.extract_parent_directory(primary.datadir)
             hosts[primary.hostname].datadir_info.existing_primary_datadirs.add(primary_base)
             if mirror:
-                mirror_base = TemplateParser.remove_content_suffix(mirror.datadir)
+                mirror_base = TemplateParser.extract_parent_directory(mirror.datadir)
                 hosts[mirror.hostname].datadir_info.existing_mirror_datadirs.add(mirror_base)
 
         host_set_changed = False

@@ -190,26 +190,20 @@ class TemplateParser:
         return primary_template, mirror_template
     
     @staticmethod
-    def extract_base_path(datadir: str) -> str:
+    def extract_parent_directory(datadir: str) -> str:
         """
-        Extract base path from an actual segment datadir
+        Extract parent directory from an actual segment datadir
+        
+        This handles arbitrary naming conventions by just getting the parent.
+
         Examples:
-        - /data/primary/gpseg0 -> /data/primary/gpseg{content}
-        - /data/primary/host1/gpseg0 -> /data/primary/host1/gpseg{content}
+            /data/primary/gpseg0 -> /data/primary
+
+        Returns:
+            Parent directory path (without trailing slash)
         """
-        # Remove trailing digits (content id)
-        match = re.match(r'^(.+?)(\d+)$', datadir)
-        if match:
-            return match.group(1) + '{content}'
-        return datadir + '{content}'
-    
-    @staticmethod
-    def remove_content_suffix(datadir: str) -> str:
-        """
-        Remove trailing content ID from datadir
-        /data/primary/gpseg0 -> /data/primary/gpseg
-        """
-        return re.sub(r'\d+$', '', datadir)
+        import os
+        return os.path.dirname(datadir.rstrip('/'))
     
     @staticmethod
     def instantiate_template(template: str, hostname: str = None, content: int = None) -> str:
@@ -540,29 +534,7 @@ class DiskSpaceChecker:
                 base64.urlsafe_b64decode(cmd.get_results().stdout))
         
         return filesystems
-    
-    def check_batch_usage(self, directories_by_host: Dict[str, List[str]]) -> Dict[str, Dict[str, int]]:
-        """
-        Check disk usage for multiple directories across multiple hosts
-        
-        Args:
-            directories_by_host: Dict mapping host address to list of directories
-        
-        Returns:
-            Dict mapping host address to dict of (directory -> usage_kb)
-        """
-        results = {}
-        
-        for hostaddr, directories in directories_by_host.items():
-            try:
-                usage = self.get_disk_usage(hostaddr, directories)
-                results[hostaddr] = usage
-            except Exception as e:
-                self.logger.error(f"Failed to get disk usage for host {hostaddr}: {e}")
-                raise
-        
-        return results
-    
+
     def check_batch_available_space(self, 
                                     directories_by_host: Dict[str, List[str]]) -> Dict[str, Dict[str, DiskSpaceInfo]]:
         """
@@ -585,25 +557,3 @@ class DiskSpaceChecker:
                 raise
         
         return results
-
-def get_filesystem_base_path(datadir: str) -> str:
-    """
-    Extract base filesystem path from datadir
-    
-    This is a heuristic that attempts to identify the mount point
-    or base directory for a datadir path.
-    
-    Examples:
-        /data1/primary/gpseg0 -> /data1
-        /data/primary/gpseg0 -> /data
-        /gpdata/seg0 -> /gpdata
-    
-    Args:
-        datadir: Full datadir path
-    """
-    parts = datadir.rstrip('/').split('/')
-    
-    # try to take first 2 path components for mount point
-    if len(parts) >= 3:
-        return '/' + parts[1] 
-    return '/'

@@ -150,27 +150,6 @@ class TestDiskSpaceChecker(GpTestCase):
         
         self.assertIn("Failed to check disk free", str(context.exception))
     
-    def test_check_batch_usage_success(self):
-        """Test batch disk usage check across multiple hosts"""
-        self.checker.get_disk_usage = Mock()
-        self.checker.get_disk_usage.side_effect = [
-            {'/data1/seg0': 1000000, '/data1/seg1': 2000000},
-            {'/data2/seg0': 1500000}
-        ]
-        
-        dirs_by_host = {
-            'sdw1': ['/data1/seg0', '/data1/seg1'],
-            'sdw2': ['/data2/seg0']
-        }
-        
-        result = self.checker.check_batch_usage(dirs_by_host)
-        
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result['sdw1']['/data1/seg0'], 1000000)
-        self.assertEqual(result['sdw2']['/data2/seg0'], 1500000)
-        
-        self.assertEqual(self.checker.get_disk_usage.call_count, 2)
-    
 class TestResourceEstimator(GpTestCase):
     """Test cases for ResourceEstimator using real GpArray configuration"""
     
@@ -259,8 +238,8 @@ class TestResourceEstimator(GpTestCase):
         """
         # Get primaries from sdw1: seg0, seg1, seg2
         segs_from_sdw1 = []
-        for seg in self.gparray.getDbList():
-            if seg.hostname == 'sdw1' and seg.isSegmentPrimary() and seg.content >= 0:
+        for seg in self.gparray.getSegDbList():
+            if seg.getSegmentHostName() == 'sdw1' and seg.isSegmentPrimary():
                 segs_from_sdw1.append(seg)
         
         self.assertEqual(len(segs_from_sdw1), 3)

@@ -77,7 +77,7 @@ def parseargs():
     parser.add_option('--target-datadirs-file', dest='target_datadirs_file', metavar='<target_datadirs_file>',
                       help='Target segment data directories passed as file. One datadir per line')
     parser.add_option('--add-hosts-file', dest='add_hosts_file', metavar='<add_hosts_file>',
-                      help='Hosts that user wants to add a cluster. One host per line')
+                      help='Hosts that user wants to add to a cluster. One host per line')
     parser.add_option('--remove-hosts-file', dest='remove_hosts_file', metavar='<remove_hosts_file>',
                       help='Hosts that user wants to remove from a cluster. One host per line')
     parser.add_option('--skip-resource-estimation', dest='skip_resource_estimation', metavar='<skip_resource_estimation>',
@@ -117,55 +117,41 @@ def validate_options(options, args, parser):
             'Invalid argument.  parallel value must be >= 1 and <= %d' % MAX_PARALLEL_WORKERS)
         parser.exit(1)
     
-    if options.target_segment_count < 1 or options.target_segment_count > MAX_SEGMENTS:
+    if options.target_segment_count and (
+        options.target_segment_count < 1
+        or options.target_segment_count > MAX_SEGMENTS):
         logger.error(
             'Invalid value of --target-segment-count. It must be >= 1 and <= %d' % MAX_SEGMENTS)
         parser.exit(1)
 
     incompatibility_rules = [
         # (condition_option, incompatible_options)
-        ('target_hosts', ['add_hosts', 'add_hosts_file', 'remove_hosts', 'remove_hosts_file',
-                          'target_hosts_file', 'clean_required', 'rollback_required']),
-        
-        ('target_hosts_file', ['add_hosts', 'add_hosts_file', 'remove_hosts', 'remove_hosts_file',
-                               'target_hosts', 'clean_required', 'rollback_required']),
+        ('target_hosts', ['add_hosts', 'add_hosts_file', 'remove_hosts', 'remove_hosts_file', 'target_hosts_file']),
+        ('target_hosts_file', ['add_hosts', 'add_hosts_file', 'remove_hosts', 'remove_hosts_file']),
+        ('add_hosts', ['add_hosts_file', 'remove_hosts', 'remove_hosts_file']),
+        ('add_hosts_file', ['remove_hosts', 'remove_hosts_file']),
+        ('remove_hosts', ['remove_hosts_file']),
 
-        ('target_datadirs', ['target_datadirs_file', 'clean_required', 'rollback_required']),
+        ('target_datadirs', ['target_datadirs_file']),
 
-        ('target_datadirs_file', ['target_datadirs', 'clean_required', 'rollback_required']),
+        ('skip_rebalance', ['mirror_mode']),
 
-        ('target_segment_count', ['clean_required', 'rollback_required']),
+        ('clean_required', [
+            'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
+            'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
+            'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
+            'verbose', 'skip_resource_estimation'
+        ]),
 
-        ('mirror_mode', ['clean_required', 'rollback_required', 'skip_rebalance']),
-
-        ('skip_rebalance', ['mirror_mode', 'clean_required', 'rollback_required']),
-
-        ('show_plan', ['clean_required', 'rollback_required']),
-
-        ('clean_required', ['verbose', 'quiet', 'log_dir', 'non_interactive_mode']),
-
-        ('rollback_required', ['verbose', 'quiet', 'duration', 'end', 'batch-size',
-                               'parallel', 'no_progress', 'hba_hostnames', 'log_dir',
-                               'replay_lag', 'non_interactive_mode']),
-
-        ('batch_size', ['clean_required']),
-        
-        ('parallel', ['clean_required']),
-
-        ('add_hosts', ['add_hosts_file', 'target_hosts', 'target_hosts_file', 'clean_required', 'rollback_required']),
-        
-        ('add_hosts_file', ['add_hosts', 'target_hosts', 'target_hosts_file', 
-         'clean_required', 'rollback_required'],),
-
-        ('remove_hosts', ['remove_hosts_file', 'target_hosts', 'target_hosts_file', 'clean_required', 'rollback_required']),
-        
-        ('remove_hosts_file', ['remove_hosts', 'target_hosts', 'target_hosts_file', 
-         'clean_required', 'rollback_required']),
-        
-        ('skip_resource_estimation', ['clean_required', 'rollback_required']),
+        ('rollback_required', [
+            'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
+            'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
+            'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
+            'skip_resource_estimation','verbose', 'duration', 'end'
+        ]),
     ]
 
-    def check_option(opt_name):
+    def option_is_set(opt_name):
         """Check if option is set"""
         if not hasattr(options, opt_name):
             return False
@@ -173,21 +159,21 @@ def validate_options(options, args, parser):
         return value is not None and value != False
     
     for rule in incompatibility_rules:
-        condition_opt, incompatible_opts = rule        
-        if check_option(condition_opt):
+        condition_opt, incompatible_opts = rule
+        if option_is_set(condition_opt):
             # Check if any incompatible option is set
             for incomp_opt in incompatible_opts:
-                if check_option(incomp_opt):
+                if option_is_set(incomp_opt):
                     error_msg = \
                     f"Can't use together options '--{condition_opt.replace('_', '-')}' and '--{incomp_opt.replace('_', '-')}'"
                     logger.error(error_msg)
                     parser.exit(1)
     
-    if (check_option('target_hosts') or check_option('add_hosts')) and not check_option('target_datadirs'):
+    if (option_is_set('target_hosts') or option_is_set('add_hosts')) and not option_is_set('target_datadirs'):
         logger.error("--target-datadirs option is required when using --target-hosts or --add-hosts")
         parser.exit(1)
 
-    if check_option('mirror_mode') and options.mirror_mode not in ('grouped', 'spread'):
+    if option_is_set('mirror_mode') and options.mirror_mode not in ('grouped', 'spread'):
         logger.error('Mirroring strategy %s is not supported' % options.mirror_mode)
         parser.exit(1)
 
