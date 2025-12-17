@@ -5018,6 +5018,7 @@ PgstatCollectorMain(int argc, char *argv[])
 
 				case PGSTAT_MTYPE_QUEUESTAT:  /* GPDB */
 					pgstat_recv_queuestat((PgStat_MsgQueuestat *) &msg, len);
+					break;
 
 				case PGSTAT_MTYPE_SLRU:
 					pgstat_recv_slru(&msg.msg_slru, len);
