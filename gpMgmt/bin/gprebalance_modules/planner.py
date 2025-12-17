@@ -12,6 +12,7 @@ from gppylib.db import dbconn
 import gppylib.gparray as gparray
 from gprebalance_modules.rebalance_commons import *
 from gprebalance_modules.solver import GreedySolver, HostId, SolverConfig
+from gppylib.commands.unix import PortIsAvailable
 
 class PlanningError(Exception):
     pass
@@ -216,7 +217,8 @@ class PortAllocator:
     Tracks existing ports and allocates new ones following the existing pattern
     """
     
-    def __init__(self, gparray: gparray.GpArray):
+    def __init__(self, gparray: gparray.GpArray, logger: Any,
+                 verify_ports: bool = False):
         """
         Initialize port allocator with existing segment information
         
@@ -236,6 +238,9 @@ class PortAllocator:
         self.existing_ports_by_role: Dict[str, Tuple[Set[int], Set[int]]] = defaultdict(
             lambda: (set(), set())
         )
+
+        self.logger = logger
+        self.verify_ports = verify_ports
         
         # Initialize from existing segments
         self._initialize_from_array(gparray)
@@ -270,15 +275,14 @@ class PortAllocator:
                 self.base_ports_by_host[hostname] = (primary_base, mirror_base)
     
     def allocate_port(self, 
-                     hostname: str, 
-                     current_port: int,
-                     is_mirror: bool,
-                     host_status: HostStatus) -> int:
+                      host: Host, 
+                      current_port: int,
+                      is_mirror: bool) -> int:
         """
         Allocate a port for a segment being moved to target host
         
         Args:
-            hostname: Target host
+            host: Target host
             current_port: Current port of segment on source host
             is_mirror: True if segment is a mirror, False if primary
             host_status: Status of target host (NEW or ACTIVE)
@@ -286,42 +290,44 @@ class PortAllocator:
         Returns:
             Port number to use on target host
         """
-        if host_status == HostStatus.NEW:
-            return self._allocate_port_new_host(hostname, current_port, is_mirror)
+        if host.status == HostStatus.NEW:
+            return self._allocate_port_new_host(host, current_port, is_mirror)
         else:
-            return self._allocate_port_existing_host(hostname, current_port, is_mirror)
+            return self._allocate_port_existing_host(host, current_port, is_mirror)
     
-    def _allocate_port_new_host(self, hostname: str, current_port: int, is_mirror: bool) -> int:
+    def _allocate_port_new_host(self, host: Host, current_port: int, is_mirror: bool) -> int:
         """
         Allocate port on a new host
         
         For new hosts, first primary/mirror establishes base port for that role.
         Subsequent segments of same role follow the established pattern.
         """
-        primary_base, mirror_base = self.base_ports_by_host.get(hostname, (None, None))
+        primary_base, mirror_base = self.base_ports_by_host.get(host.hostname, (None, None))
         
         # If this is the first segment of this role on new host
         if is_mirror and mirror_base is None:
             # Establish mirror base port
-            self.base_ports_by_host[hostname] = (primary_base, current_port)
-            self.planned_ports_by_host[hostname].add(current_port)
+            port = self._verify_and_allocate_port(host, current_port)
+            self.base_ports_by_host[host.hostname] = (primary_base, port)
+            self.planned_ports_by_host[host.hostname].add(port)
             # Track by role
-            _, mirror_ports = self.existing_ports_by_role[hostname]
-            mirror_ports.add(current_port)
-            return current_port
+            _, mirror_ports = self.existing_ports_by_role[host.hostname]
+            mirror_ports.add(port)
+            return port
         elif not is_mirror and primary_base is None:
             # Establish primary base port
-            self.base_ports_by_host[hostname] = (current_port, mirror_base)
-            self.planned_ports_by_host[hostname].add(current_port)
+            port = self._verify_and_allocate_port(host, current_port)
+            self.base_ports_by_host[host.hostname] = (port, mirror_base)
+            self.planned_ports_by_host[host.hostname].add(port)
             # Track by role
-            primary_ports, _ = self.existing_ports_by_role[hostname]
-            primary_ports.add(current_port)
-            return current_port
+            primary_ports, _ = self.existing_ports_by_role[host.hostname]
+            primary_ports.add(port)
+            return port
         
         # Base port for this role already established, find next available
-        return self._find_next_available_port(hostname, current_port, is_mirror)
+        return self._find_next_available_port(host, current_port, is_mirror)
     
-    def _allocate_port_existing_host(self, hostname: str, current_port: int, is_mirror: bool) -> int:
+    def _allocate_port_existing_host(self, host: Host, current_port: int, is_mirror: bool) -> int:
         """
         Allocate port on an existing host
         
@@ -329,12 +335,18 @@ class PortAllocator:
         following the pattern for this role (primary/mirror)
         """
         # Try to use the segment's current port if it's free
-        if self._is_port_available(hostname, current_port):
-            self.planned_ports_by_host[hostname].add(current_port)
+        if self._is_port_available(host.hostname, current_port):
+            if self.verify_ports:
+                if not self._check_port_on_host(host, current_port):
+                    self.logger.log(
+                            f"Port {current_port} on {host.hostname} appears in use, "
+                            f"finding alternative")
+                    return self._find_next_available_port(host, current_port, is_mirror)
+            self.planned_ports_by_host[host.hostname].add(current_port)
             return current_port
         
         # Port conflict - find next available port for this role
-        return self._find_next_available_port(hostname, current_port, is_mirror)
+        return self._find_next_available_port(host, current_port, is_mirror)
     
     def _is_port_available(self, hostname: str, port: int) -> bool:
         """
@@ -343,20 +355,92 @@ class PortAllocator:
         return (port not in self.existing_ports_by_host[hostname] and
                 port not in self.planned_ports_by_host[hostname])
     
-    def _find_next_available_port(self, hostname: str, preferred_port: int, is_mirror: bool) -> int:
+    def _check_port_on_host(self, host: Host, port: int) -> bool:
+        """
+        Verify port is actually available on the target host
+        """
+        if not self.verify_ports:
+            return True
+                
+        try:
+            cmd = PortIsAvailable(
+                name=f'check port {port} on {host.hostname}',
+                port=port,
+                ctxt=REMOTE,
+                remoteHost=host.address
+            )
+            cmd.run()
+            
+            is_available = cmd.is_port_available()
+            
+            if self.logger:
+                status = "available" if is_available else "in use"
+                self.logger.debug(f"Port {port} on {host.hostname}: {status}")
+            
+            return is_available
+            
+        except Exception as e:
+            self.logger.warning(
+                    f"Failed to verify port {port} on {host.hostname}: {e}. "
+                    f"Assuming available.")
+            # On error, assume available
+            return True
+    
+    def _verify_and_allocate_port(self, host: Host, preferred_port: int) -> int:
+        """
+        Verify port is available on host and allocate it
+        
+        If verification fails, find next available port.
+        """
+        if self._is_port_available(host.hostname, preferred_port):
+            if self.verify_ports and not self._check_port_on_host(host, preferred_port):
+                # Preferred port is actually in use, find alternative
+                self.logger.log(
+                        f"Preferred port {preferred_port} on {host.hostname} is in use, "
+                        f"searching for alternative"
+                    )
+                return self._find_verified_port(host, preferred_port + 1)
+            return preferred_port
+        
+        # Port not available in tracking, search from next
+        return self._find_verified_port(host, preferred_port + 1)
+    
+    def _find_verified_port(self, host: Host, start_port: int) -> int:
+        """
+        Find an available port starting from start_port, with optional verification
+        """
+        candidate_port = start_port
+        max_attempts = 1000
+        
+        for _ in range(max_attempts):
+            if self._is_port_available(host.hostname, candidate_port):
+                # Port available in tracking
+                if self.verify_ports:
+                    # Verify on actual host
+                    if self._check_port_on_host(host, candidate_port):
+                        return candidate_port
+                    else:
+                        # Port in use on host, mark and continue
+                        self.existing_ports_by_host[host.hostname].add(candidate_port)
+                        candidate_port += 1
+                        continue
+                else:
+                    # No verification, trust tracking
+                    return candidate_port
+            
+            candidate_port += 1
+        
+        raise PlanningError(
+            f"Cannot find available port on host {host.hostname} "
+            f"after {max_attempts} attempts starting from {start_port}"
+        )
+
+    def _find_next_available_port(self, host: Host, preferred_port: int, is_mirror: bool) -> int:
         """
         Find next available port following the pattern for this role
-        
-        Args:
-            hostname: Target hostname
-            preferred_port: Preferred port (used as fallback if no base exists)
-            is_mirror: True if allocating for mirror, False for primary
-        
-        Returns:
-            Next available port number
         """
         # Get base port for this role on this host
-        primary_base, mirror_base = self.base_ports_by_host.get(hostname, (None, None))
+        primary_base, mirror_base = self.base_ports_by_host.get(host.hostname, (None, None))
         
         if is_mirror:
             base_port = mirror_base if mirror_base is not None else preferred_port
@@ -365,31 +449,23 @@ class PortAllocator:
         
         # If no base port established yet, use preferred and establish it
         if is_mirror and mirror_base is None:
-            self.base_ports_by_host[hostname] = (primary_base, base_port)
+            self.base_ports_by_host[host.hostname] = (primary_base, base_port)
         elif not is_mirror and primary_base is None:
-            self.base_ports_by_host[hostname] = (base_port, mirror_base)
+            self.base_ports_by_host[host.hostname] = (base_port, mirror_base)
         
         # Search for available port starting from base
-        candidate_port = base_port
-        max_attempts = 10000  # Safety limit
+        candidate_port = self._find_verified_port(host, base_port)
+
+        self.planned_ports_by_host[host.hostname].add(candidate_port)
         
-        for _ in range(max_attempts):
-            if self._is_port_available(hostname, candidate_port):
-                self.planned_ports_by_host[hostname].add(candidate_port)
-                # Track by role
-                primary_ports, mirror_ports = self.existing_ports_by_role[hostname]
-                if is_mirror:
-                    mirror_ports.add(candidate_port)
-                else:
-                    primary_ports.add(candidate_port)
-                return candidate_port
-            candidate_port += 1
+        # Track by role
+        primary_ports, mirror_ports = self.existing_ports_by_role[host.hostname]
+        if is_mirror:
+            mirror_ports.add(candidate_port)
+        else:
+            primary_ports.add(candidate_port)
         
-        raise PlanningError(
-            f"Cannot find available port on host {hostname} for "
-            f"{'mirror' if is_mirror else 'primary'} after {max_attempts} attempts "
-            f"starting from {base_port}"
-        )
+        return candidate_port
 
 class Planner:
     """
@@ -728,7 +804,9 @@ class Planner:
         self.logger.debug(f"Solution: {solution}")
         self.logger.debug(f"Hosts: {id_to_host}")
 
-        port_allocator = PortAllocator(self.virtual_gparray)
+        port_allocator = PortAllocator(self.virtual_gparray,
+                                       self.logger,
+                                       not self.options.skip_resource_estimation)
         moves = []
         for seg in self.virtual_gparray.getSegDbList():
             is_mirror = seg.isSegmentMirror()
@@ -747,11 +825,9 @@ class Planner:
 
                 # Allocate port for this segment on target host
                 target_port = port_allocator.allocate_port(
-                    hostname=target_host.hostname,
-                    current_port=seg.port,
-                    is_mirror=is_mirror,
-                    host_status=target_host.status
-                )
+                    host=target_host,
+                    current_port=seg.getSegmentPort(),
+                    is_mirror=is_mirror)
 
                 moves.append(LogicalMove(seg, source_host, target_host, target_datadir, target_port))
 
