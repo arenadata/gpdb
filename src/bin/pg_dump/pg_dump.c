@@ -16576,7 +16576,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	bool		hasExternalPartitions = false;
 	char	   *ftoptions = NULL;
 	char	   *srvname = NULL;
-
+	char	   *foreign = "";
 
 	/* We had better have loaded per-column details about this table */
 	Assert(tbinfo->interesting);
@@ -16631,8 +16631,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 	}
 	else
 	{
-		char	   *foreign = "";
-
 		switch (tbinfo->relkind)
 		{
 			case RELKIND_FOREIGN_TABLE:
