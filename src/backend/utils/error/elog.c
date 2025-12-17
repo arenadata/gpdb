@@ -547,10 +547,7 @@ errfinish(const char *filename, int lineno, const char *funcname)
 
 	recursion_depth++;
 	CHECK_STACK_DEPTH();
-<<<<<<< HEAD
 	saved_errno = edata->saved_errno;   /*CDB*/
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* Save the last few bits of error state into the stack entry */
 	if (filename)
@@ -1609,7 +1606,6 @@ getinternalerrposition(void)
 }
 
 /*
-<<<<<<< HEAD
  * CDB: errFatalReturn -- set flag indicating errfinish() should return
  * to the caller instead of calling proc_exit() after reporting a FATAL
  * error.  Allows termination by re-raising a signal in order to obtain
@@ -1628,10 +1624,7 @@ errFatalReturn(bool fatalReturn)
 	return 0;					/* return value does not matter */
 }
 
-
 /*
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
  * Functions to allow construction of error message strings separately from
  * the ereport() call itself.
  *
