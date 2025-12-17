@@ -2484,6 +2484,7 @@ main(int argc, char **argv)
 				}
 
 				excludefroms[num_exclude_from++] = pg_strdup(optarg);
+				break;
 			case 4:
 				estimatesize = false;
 				break;
