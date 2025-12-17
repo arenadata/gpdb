@@ -69,8 +69,6 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	XLogRecPtr	restartRedoPtr;
 	TimeLineID	restartTli;
 
-	char        contentid[12];  /* sign, 10 digits and '\0' */
-
 	/*
 	 * Ignore restore_command when not in archive recovery (meaning
 	 * we are in crash recovery).
