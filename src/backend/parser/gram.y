@@ -18351,12 +18351,9 @@ unreserved_keyword:
 			| NFKC
 			| NFKD
 			| NO
-<<<<<<< HEAD
 			| NOCREATEEXTTABLE
 			| NOOVERCOMMIT
-=======
 			| NORMALIZED
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
