@@ -2283,14 +2283,11 @@ main(int argc, char **argv)
 		{"waldir", required_argument, NULL, 1},
 		{"no-slot", no_argument, NULL, 2},
 		{"no-verify-checksums", no_argument, NULL, 3},
-<<<<<<< HEAD
 		{"exclude", required_argument, NULL, 'E'},
 		{"force-overwrite", no_argument, NULL, 128},
 		{"target-gp-dbid", required_argument, NULL, 129},
 		{"exclude-from", required_argument, NULL, 130},
-=======
 		{"no-estimate-size", no_argument, NULL, 4},
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 		{NULL, 0, NULL, 0}
 	};
 	int			c;
@@ -2461,7 +2458,6 @@ main(int argc, char **argv)
 			case 3:
 				verify_checksums = false;
 				break;
-<<<<<<< HEAD
 			case 'E':
 				if (num_exclude >= MAX_EXCLUDE)
 				{
@@ -2488,10 +2484,8 @@ main(int argc, char **argv)
 				}
 
 				excludefroms[num_exclude_from++] = pg_strdup(optarg);
-=======
 			case 4:
 				estimatesize = false;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 				break;
 			default:
 
