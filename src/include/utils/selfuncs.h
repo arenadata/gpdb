@@ -48,9 +48,6 @@
 /* default selectivity estimate for other matching operators */
 #define DEFAULT_MATCHING_SEL	0.010
 
-/* default number of distinct values in a table */
-#define DEFAULT_NUM_DISTINCT  200
-
 /* default selectivity estimate for boolean and null test nodes */
 #define DEFAULT_UNK_SEL			DEFAULT_EQ_SEL                      /*CDB*/
 #define DEFAULT_NOT_UNK_SEL		(1.0 - DEFAULT_UNK_SEL)
