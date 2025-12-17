@@ -472,7 +472,6 @@ ExplainOneQuery(Query *query, int cursorOptions,
 		INSTR_TIME_SET_CURRENT(planduration);
 		INSTR_TIME_SUBTRACT(planduration, planstart);
 
-<<<<<<< HEAD
 		/*
 		 * GPDB_92_MERGE_FIXME: it really should be an optimizer's responsibility
 		 * to correctly set the into-clause and into-policy of the PlannedStmt.
@@ -480,10 +479,6 @@ ExplainOneQuery(Query *query, int cursorOptions,
 		if (into != NULL)
 			plan->intoClause = copyObject(into);
 
-		/* run it (if needed) and produce output */
-		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
-					   &planduration, cursorOptions);
-=======
 		/* calc differences of buffer counters. */
 		if (es->buffers)
 		{
@@ -493,8 +488,7 @@ ExplainOneQuery(Query *query, int cursorOptions,
 
 		/* run it (if needed) and produce output */
 		ExplainOnePlan(plan, into, es, queryString, params, queryEnv,
-					   &planduration, (es->buffers ? &bufusage : NULL));
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+					   &planduration, (es->buffers ? &bufusage : NULL), cursorOptions);
 	}
 }
 
@@ -588,11 +582,7 @@ void
 ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			   const char *queryString, ParamListInfo params,
 			   QueryEnvironment *queryEnv, const instr_time *planduration,
-<<<<<<< HEAD
-			   int cursorOptions)
-=======
-			   const BufferUsage *bufusage)
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+			   const BufferUsage *bufusage, int cursorOptions)
 {
 	DestReceiver *dest;
 	QueryDesc  *queryDesc;
@@ -717,13 +707,11 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	/* Create textual dump of plan tree */
 	ExplainPrintPlan(es, queryDesc);
 
-<<<<<<< HEAD
 	if (cursorOptions & CURSOR_OPT_PARALLEL_RETRIEVE)
 		ExplainParallelRetrieveCursor(es, queryDesc);
-=======
+
 	if (es->summary && (planduration || bufusage))
 		ExplainOpenGroup("Planning", "Planning", true, es);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	if (es->summary && planduration)
 	{
@@ -732,11 +720,10 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 		ExplainPropertyFloat("Planning Time", "ms", 1000.0 * plantime, 3, es);
 	}
 
-<<<<<<< HEAD
 	/* Print slice table */
 	if (es->slicetable)
 		ExplainPrintSliceTable(es, queryDesc);
-=======
+
 	/* Show buffer usage */
 	if (es->summary && bufusage)
 	{
@@ -749,7 +736,6 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 	if (es->summary && (planduration || bufusage))
 		ExplainCloseGroup("Planning", "Planning", true, es);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* Print info about runtime of triggers */
 	if (es->analyze)

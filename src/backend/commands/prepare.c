@@ -719,11 +719,7 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 
 		if (pstmt->commandType != CMD_UTILITY)
 			ExplainOnePlan(pstmt, into, es, query_string, paramLI, queryEnv,
-<<<<<<< HEAD
-						   &planduration, 0);
-=======
-						   &planduration, (es->buffers ? &bufusage : NULL));
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+						   &planduration, (es->buffers ? &bufusage : NULL), 0);
 		else
 			ExplainOneUtility(pstmt->utilityStmt, into, es, query_string,
 							  paramLI, queryEnv);
