@@ -156,11 +156,7 @@ main(int argc, char **argv)
 		}
 	}
 
-<<<<<<< HEAD
-	while ((c = getopt_long(argc, argv, "D:nNPRS:", long_options, &option_index)) != -1)
-=======
-	while ((c = getopt_long(argc, argv, "cD:nNPR", long_options, &option_index)) != -1)
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+	while ((c = getopt_long(argc, argv, "cD:nNPRS:", long_options, &option_index)) != -1)
 	{
 		switch (c)
 		{
@@ -420,12 +416,7 @@ main(int argc, char **argv)
 	if (showprogress)
 		pg_log_info("reading WAL in target");
 	extractPageMap(datadir_target, chkptrec, lastcommontliIndex,
-<<<<<<< HEAD
-				   ControlFile_target.checkPoint);
-=======
 				   ControlFile_target.checkPoint, restore_command);
-	filemap_finalize();
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/*
 	 * We have collected all information we need from both systems. Decide
