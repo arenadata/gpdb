@@ -207,7 +207,6 @@ static bool check_max_wal_senders(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_work_mem(int *newval, void **extra, GucSource source);
 static bool check_effective_io_concurrency(int *newval, void **extra, GucSource source);
 static bool check_client_connection_check_interval(int *newval, void **extra, GucSource source);
-static void assign_effective_io_concurrency(int newval, void *extra);
 static bool check_maintenance_io_concurrency(int *newval, void **extra, GucSource source);
 static void assign_pgstat_temp_directory(const char *newval, void *extra);
 static bool check_application_name(char **newval, void **extra, GucSource source);
