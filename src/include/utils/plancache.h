@@ -21,11 +21,12 @@
 #include "nodes/primnodes.h"
 #include "tcop/cmdtag.h"
 #include "utils/queryenvironment.h"
-#include "utils/resowner.h"
 
 
 /* Forward declaration, to avoid including parsenodes.h here */
 struct RawStmt;
+/* Forward declaration, to avoid including resowner.h here */
+typedef struct ResourceOwnerData *ResourceOwner;
 
 /* possible values for plan_cache_mode */
 typedef enum
