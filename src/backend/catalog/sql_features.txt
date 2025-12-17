@@ -206,13 +206,8 @@ F131	Grouped operations	03	Set functions supported in queries with grouped views
 F131	Grouped operations	04	Subqueries with GROUP BY and HAVING clauses and grouped views	YES	
 F131	Grouped operations	05	Single row SELECT with GROUP BY and HAVING clauses and grouped views	YES	
 F171	Multiple schemas per user			YES	
-<<<<<<< HEAD
-F181	Multiple module support			NO	
-F191	Referential delete actions			NO	
-=======
 F181	Multiple module support			YES	
-F191	Referential delete actions			YES	
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+F191	Referential delete actions			NO	
 F200	TRUNCATE TABLE statement			YES	
 F201	CAST function			YES	
 F202	TRUNCATE TABLE: identity column restart option			YES	
