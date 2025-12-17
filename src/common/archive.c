@@ -105,12 +105,14 @@ BuildRestoreCommand(const char *restoreCommand,
 					appendStringInfoString(&result,
 										   lastRestartPointFname);
 					break;
+#ifndef FRONTEND
 				case 'c':
 					/* GPDB: %c: contentId of segment */
 					Assert(GpIdentity.segindex != UNINITIALIZED_GP_IDENTITY_VALUE);
 					sp++;
 					appendStringInfo(&result, "%i", GpIdentity.segindex);
 					break;
+#endif
 				case '%':
 					/* convert %% to a single % */
 					sp++;
