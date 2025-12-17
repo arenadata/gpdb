@@ -23,6 +23,11 @@
 #include "lib/stringinfo.h"
 
 /*
+ * GPDB specific imports:
+ */
+#include "cdb/cdbvars.h"
+
+/*
  * BuildRestoreCommand
  *
  * Builds a restore command to retrieve a file from WAL archives, replacing
@@ -99,6 +104,12 @@ BuildRestoreCommand(const char *restoreCommand,
 					sp++;
 					appendStringInfoString(&result,
 										   lastRestartPointFname);
+					break;
+				case 'c':
+					/* GPDB: %c: contentId of segment */
+					Assert(GpIdentity.segindex != UNINITIALIZED_GP_IDENTITY_VALUE);
+					sp++;
+					appendStringInfo(&result, "%i", GpIdentity.segindex);
 					break;
 				case '%':
 					/* convert %% to a single % */
