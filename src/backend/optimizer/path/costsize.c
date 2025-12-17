@@ -134,16 +134,10 @@ bool		enable_bitmapscan = true;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_hashagg = true;
-<<<<<<< HEAD
 bool		enable_groupagg = true;
+bool		enable_hashagg_disk = true;
+bool		enable_groupingsets_hash_disk = false;
 bool		enable_nestloop = false;
-bool		enable_hashagg_disk = true;
-bool		enable_groupingsets_hash_disk = false;
-=======
-bool		enable_hashagg_disk = true;
-bool		enable_groupingsets_hash_disk = false;
-bool		enable_nestloop = true;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 bool		enable_material = true;
 bool		enable_mergejoin = false;
 bool		enable_hashjoin = true;
