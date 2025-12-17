@@ -2245,11 +2245,7 @@ create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath,
 					 NIL,
 					 subpath->startup_cost,
 					 subpath->total_cost,
-<<<<<<< HEAD
 					 (rel->rows / numsegments),
-=======
-					 rel->rows,
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 					 subpath->pathtarget->width);
 	}
 
@@ -2523,8 +2519,7 @@ create_unique_rowid_path(PlannerInfo *root,
 					 subpath->startup_cost,
 					 subpath->total_cost,
 					 (rel->rows / numsegments),
-					 false /* streaming */
-				);
+					 subpath->pathtarget->width);
 	}
 
 	if (all_btree && all_hash)
