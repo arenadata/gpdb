@@ -33,9 +33,9 @@ test_planner_hook(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	elog(LOG, "In test_planner_hook");
 
 	if (prev_planner_hook)
-		stmt = (*prev_planner_hook) (parse, cursorOptions, boundParams);
+		stmt = (*prev_planner_hook) (parse, NULL, cursorOptions, boundParams);
 	else
-		stmt = standard_planner(parse, cursorOptions, boundParams);
+		stmt = standard_planner(parse, NULL, cursorOptions, boundParams);
 
 	return stmt;
 }
