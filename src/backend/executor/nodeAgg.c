@@ -313,9 +313,6 @@
 #define HASHAGG_READ_BUFFER_SIZE BLCKSZ
 #define HASHAGG_WRITE_BUFFER_SIZE BLCKSZ
 
-/* minimum number of initial hash table buckets */
-#define HASHAGG_MIN_BUCKETS 256
-
 /*
  * Estimate chunk overhead as a constant 16 bytes. XXX: should this be
  * improved?
