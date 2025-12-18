@@ -155,6 +155,7 @@ extern double histogram_selectivity(VariableStatData *vardata, FmgrInfo *opproc,
 									Datum constval, bool varonleft,
 									int min_hist_size, int n_skip,
 									int *hist_size);
+/* GPDB: avoid C++ keyword "operator" for header include in gpopt C++ code */
 extern double generic_restriction_selectivity(PlannerInfo *root, Oid operOid,
 											  List *args, int varRelid,
 											  double default_selectivity);
