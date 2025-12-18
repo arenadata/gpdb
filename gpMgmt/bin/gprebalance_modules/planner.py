@@ -338,9 +338,7 @@ class PortAllocator:
         if self._is_port_available(host.hostname, current_port):
             if self.verify_ports:
                 if not self._check_port_on_host(host, current_port):
-                    self.logger.log(
-                            f"Port {current_port} on {host.hostname} appears in use, "
-                            f"finding alternative")
+                    self.logger.log(f"Port {current_port} on {host.hostname} appears in use, finding alternative")
                     return self._find_next_available_port(host, current_port, is_mirror)
             self.planned_ports_by_host[host.hostname].add(current_port)
             return current_port
@@ -380,9 +378,7 @@ class PortAllocator:
             return is_available
             
         except Exception as e:
-            self.logger.warning(
-                    f"Failed to verify port {port} on {host.hostname}: {e}. "
-                    f"Assuming available.")
+            self.logger.warning(f"Failed to verify port {port} on {host.hostname}: {e}. Assuming available.")
             # On error, assume available
             return True
     
@@ -395,10 +391,7 @@ class PortAllocator:
         if self._is_port_available(host.hostname, preferred_port):
             if self.verify_ports and not self._check_port_on_host(host, preferred_port):
                 # Preferred port is actually in use, find alternative
-                self.logger.log(
-                        f"Preferred port {preferred_port} on {host.hostname} is in use, "
-                        f"searching for alternative"
-                    )
+                self.logger.log(f"Preferred port {preferred_port} on {host.hostname} is in use, searching for alternative")
                 return self._find_verified_port(host, preferred_port + 1)
             return preferred_port
         
@@ -999,9 +992,7 @@ class ResourceEstimator:
             
             return tablespaces
         except Exception as e:
-            # Continue without tablespace sizes
-            self.logger.warning(f"Failed to query tablespace locations: {e}")
-            return {}
+            raise ResourceError(f"Failed to query tablespace locations: {e}")
     
     def _estimate_tablespace_sizes(self, 
                                    moves: List['LogicalMove'],
@@ -1059,8 +1050,6 @@ class ResourceEstimator:
         move_by_target = defaultdict(list)  # (hostname, target_datadir) -> list of moves
 
         for move in moves:
-            if not move.segment_size:
-                continue
             
             # Use the FULL target datadir path - let DiskFree find the mount point
             target_dir = move.target_datadir

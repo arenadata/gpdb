@@ -140,14 +140,14 @@ def validate_options(options, args, parser):
             'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
             'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
             'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
-            'verbose', 'skip_resource_estimation'
+            'skip_resource_estimation'
         ]),
 
         ('rollback_required', [
             'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
             'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
             'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
-            'skip_resource_estimation','verbose', 'duration', 'end'
+            'skip_resource_estimation', 'duration', 'end'
         ]),
     ]
 

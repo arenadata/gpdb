@@ -4,6 +4,7 @@ import base64
 from collections import defaultdict
 from dataclasses import dataclass
 import ipaddress
+import os
 import pickle
 import re
 import socket
@@ -125,8 +126,11 @@ class TemplateParser:
         - "/data/primary/gpseg{content}, /data/mirror/gpseg{content}" -> as is
         - "/data/primary, /data/mirror" -> adds gpseg{content}
         - "/data/primary/{hostname}, /data/mirror/{hostname}" -> adds gpseg{content}
+        - '"/data/primary", "/data/mirror"' -> removes quotes
+        - --target-datadirs="/dir1, /dir2" -> handles shell quoting
         """
-        parts = [p.strip() for p in input_str.split(',')]
+        # Split by comma, respecting quotes
+        parts = cls._split_respecting_quotes(input_str)
         
         if len(parts) != 2:
             raise ValidationError(
@@ -135,18 +139,80 @@ class TemplateParser:
                 'Available templated parameters: {hostname}, {content}'
             )
         
+        # Clean and normalize each part
         primary_template = cls._normalize_template(parts[0])
         mirror_template = cls._normalize_template(parts[1])
+        
+        # Validate templates
+        cls._validate_templates(primary_template, mirror_template)
         
         return primary_template, mirror_template
     
     @classmethod
+    def _split_respecting_quotes(cls, input_str: str) -> list:
+        """
+        Split input string by comma, respect quoted sections.
+
+        Handles cases like:
+        - "/dir1, /dir2" -> ["/dir1", "/dir2"]
+        - '"/di,r1/", "/dir2"' -> ["/di,r1/", "/dir2"]
+        """      
+        # Manual parsing: split by comma while respecting quotes
+        parts = []
+        current_part = []
+        in_double_quotes = False
+        in_single_quotes = False
+        i = 0
+        
+        while i < len(input_str):
+            char = input_str[i]
+            
+            # Track quote state
+            if char == '"' and not in_single_quotes:
+                in_double_quotes = not in_double_quotes
+                current_part.append(char)
+            elif char == "'" and not in_double_quotes:
+                in_single_quotes = not in_single_quotes
+                current_part.append(char)
+            elif char == ',' and not in_double_quotes and not in_single_quotes:
+                # Found unquoted comma - this is our delimiter
+                parts.append(''.join(current_part).strip())
+                current_part = []
+            else:
+                current_part.append(char)
+            
+            i += 1
+        
+        # Add the last part
+        if current_part:
+            parts.append(''.join(current_part).strip())
+        
+        # Clean up: remove empty parts
+        parts = [p for p in parts if p]
+        
+        return parts
+
+    @classmethod
     def _normalize_template(cls, path: str) -> str:
         """
-        Normalize a directory template path
+        Clean path from quotes and normalize template
         - If it contains placeholders, validate and return as-is
         - If it doesn't contain {content} placeholders, append gpseg{content}
         """
+
+        path = path.strip()
+        if len(path) >= 2:
+            if (path[0] == '"' and path[-1] == '"') or (path[0] == "'" and path[-1] == "'"):
+                path = path[1:-1].strip()
+
+        if not path:
+            raise ValidationError('Directory path cannot be empty')
+        
+        if not path.startswith('/'):
+            raise ValidationError(
+                f'Directory path must be absolute: {path}'
+            )
+
         placeholders = re.findall(cls.PLACEHOLDER_PATTERN, path)
         
         # Validate placeholders
@@ -164,6 +230,30 @@ class TemplateParser:
             return f'{path}/gpseg{{content}}'
         
         return path
+    
+    @classmethod
+    def _validate_templates(cls, primary_template: str, mirror_template: str) -> None:
+        """
+        Validate primary and mirror templates for common issues
+        """
+        # Check if templates are identical
+        if primary_template == mirror_template:
+            raise ValidationError(
+                'Primary and mirror templates cannot be identical. '
+                f'Both are: {primary_template}'
+            )
+        
+        # Validate both contain {content} placeholder
+        # (should always be true after normalization, but double-check)
+        if '{content}' not in primary_template:
+            raise ValidationError(
+                f'Primary template must contain {{content}} placeholder: {primary_template}'
+            )
+        
+        if '{content}' not in mirror_template:
+            raise ValidationError(
+                f'Mirror template must contain {{content}} placeholder: {mirror_template}'
+            )
     
     @classmethod
     def parse_datadirs_file(cls, filepath: str) -> Tuple[str, str]:
@@ -186,6 +276,8 @@ class TemplateParser:
         
         primary_template = cls._normalize_template(lines[0])
         mirror_template = cls._normalize_template(lines[1])
+
+        cls._validate_templates(primary_template, mirror_template)
         
         return primary_template, mirror_template
     
@@ -195,14 +287,13 @@ class TemplateParser:
         Extract parent directory from an actual segment datadir
         
         This handles arbitrary naming conventions by just getting the parent.
-
+        
         Examples:
             /data/primary/gpseg0 -> /data/primary
-
+        
         Returns:
             Parent directory path (without trailing slash)
         """
-        import os
         return os.path.dirname(datadir.rstrip('/'))
     
     @staticmethod
@@ -220,62 +311,127 @@ class TemplateParser:
 class HostResolver:
     """
     Utility class to resolve and match hostnames with IP addresses
+    Supports multiple IPs per hostname and maintains bidirectional mappings
     """
     def __init__(self):
-        self._hostname_to_ips = {}  # Cache for hostname -> IP mapping
-        self._ip_to_hostnames = {}  # Cache for IP -> hostname mapping
+        # hostname -> set of IP addresses
+        self._hostname_to_ips: Dict[str, Set[str]] = {}
+        # IP address -> hostname
+        self._ip_to_hostname: Dict[str, str] = {}
     
     def get_address(self, hostname: str) -> str:
-        return self._hostname_to_ips.get(hostname, hostname)
+        """
+        Get primary IP address for hostname
+        Returns first IP address or hostname if not resolved
+        """
+        ips = self._hostname_to_ips.get(hostname, set())
+        if ips:
+            # Return first IP (sorted for consistency)
+            return sorted(ips)[0]
+        return hostname
+    
+    def get_all_addresses(self, hostname: str) -> Set[str]:
+        """
+        Get all IP addresses associated with hostname
+        """
+        return self._hostname_to_ips.get(hostname, set())
     
     def get_hostname(self, ip: str) -> str:
-        return self._ip_to_hostnames.get(ip, ip)
+        """
+        Get hostname for IP address
+        Returns hostname or IP if not resolved
+        """
+        return self._ip_to_hostname.get(ip, ip)
     
-    def resolve_hostname(self, hostname: str) -> str:
+    def resolve_hostname(self, hostname: str) -> Optional[str]:
         """
         Resolve hostname to IP addresses
-        Returns IP address
-        """
-        if hostname in self._hostname_to_ips:
-            return self._hostname_to_ips[hostname]
+        Caches all IP addresses associated with hostname
         
-        ip = None
+        Returns:
+            Primary IP address (first one found), or None if resolution fails
+        """
+        # Already resolved
+        if hostname in self._hostname_to_ips:
+            return self.get_address(hostname)
+        
         try:
-            addr_info = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            # Get all addresses for this hostname (IPv4 and IPv6)
+            addr_info = socket.getaddrinfo(
+                hostname, 
+                None, 
+                socket.AF_UNSPEC,
+                socket.SOCK_STREAM
+            )
+            
+            ips = set()
             for info in addr_info:
                 ip = info[4][0]
-                self._hostname_to_ips[hostname] = ip
-                break
-        except (socket.gaierror, socket.error):
-            pass
-        
-        return ip
+                # For IPv6
+                if ':' in ip:
+                    ip = ip.split('%')[0]
+                ips.add(ip)
+            
+            if ips:
+                # Store hostname -> IPs mapping
+                self._hostname_to_ips[hostname] = ips
+                
+                # Store reverse mappings (IP -> hostname)
+                for ip in ips:
+                    self._ip_to_hostname[ip] = hostname
+                
+                # Return primary IP
+                return sorted(ips)[0]
+            else:
+                return None
+                
+        except (socket.gaierror, socket.error) as e:
+            return None
     
-    def resolve_ip(self, ip_str: str) -> str:
+    def resolve_ip(self, ip_str: str) -> Optional[str]:
         """
-        Reverse resolve IP to hostnames
-        Returns first corresponding hostname
-        """
-        if ip_str in self._ip_to_hostnames:
-            return self._ip_to_hostnames[ip_str]
+        Reverse resolve IP to hostname using remote command
         
-        hostname = None
+        Returns:
+            Hostname or None if resolution fails
+        """
+        # Already resolved
+        if ip_str in self._ip_to_hostname:
+            return self._ip_to_hostname[ip_str]
+        
         try:
             # Validate it's a valid IP first
             ipaddress.ip_address(ip_str)
-            # Reverse lookup
+            
+            # Get hostname from remote host
             cmd = Hostname('hostname', ctxt=REMOTE, remoteHost=ip_str)
             cmd.run()
+            
+            if not cmd.was_successful():
+                self._failed_ips.add(ip_str)
+                return None
+            
             hostname = cmd.get_hostname()
-            self._ip_to_hostnames[ip_str] = cmd.get_hostname()
-        except:
-            pass
-        
-        return hostname
+            
+            if hostname:
+                # Store reverse mapping
+                self._ip_to_hostname[ip_str] = hostname
+                
+                # Also store forward mapping
+                if hostname not in self._hostname_to_ips:
+                    self._hostname_to_ips[hostname] = set()
+                self._hostname_to_ips[hostname].add(ip_str)
+                
+                return hostname
+            else:
+                return None
+                
+        except (ValueError, Exception) as e:
+            return None
     
     def is_ip_address(self, host: str) -> bool:
         """
-        Check if string is a valid IP address
+        Check if string is a valid IP address (IPv4 or IPv6)
         """
         try:
             ipaddress.ip_address(host)
@@ -286,42 +442,85 @@ class HostResolver:
     def hosts_match(self, host1: str, host2: str) -> bool:
         """
         Check if two hosts match (considering hostname/IP resolution)
+        Handles cases where hosts are specified as hostname or IP
+
+        Returns:
+            True if hosts represent the same machine
         """
         # Direct match
         if host1 == host2:
             return True
         
+        host1_normalized = host1.split('%')[0] if ':' in host1 else host1
+        host2_normalized = host2.split('%')[0] if ':' in host2 else host2
+        
+        if host1_normalized == host2_normalized:
+            return True
+
         # Check if both are IPs
         is_ip1 = self.is_ip_address(host1)
         is_ip2 = self.is_ip_address(host2)
         
         if is_ip1 and is_ip2:
+            # Both are IPs - they don't match if not equal
             return False
         
-        # One is hostname, one is IP
+        # One or both are hostnames - resolve and compare
         if is_ip1 and not is_ip2:
             # host1 is IP, host2 is hostname
-            ips_of_host2 = self.resolve_hostname(host2)
+            # Resolve host2 to get its IPs
+            ips_of_host2 = self._hostname_to_ips.get(host2)
+            if not ips_of_host2:
+                # Try to resolve
+                self.resolve_hostname(host2)
+                ips_of_host2 = self._hostname_to_ips.get(host2)
+            
             if ips_of_host2:
                 return host1 in ips_of_host2
         
         if not is_ip1 and is_ip2:
             # host1 is hostname, host2 is IP
-            ips_of_host1 = self.resolve_hostname(host1)
+            # Resolve host1 to get its IPs
+            ips_of_host1 = self._hostname_to_ips.get(host1)
+            if not ips_of_host1:
+                # Try to resolve
+                self.resolve_hostname(host1)
+                ips_of_host1 = self._hostname_to_ips.get(host1)
+            
             if ips_of_host1:
                 return host2 in ips_of_host1
         
+        if not is_ip1 and not is_ip2:
+            # Both are hostnames
+            # Resolve both and check if they share any IPs
+            ips1 = self._hostname_to_ips.get(host1)
+            if not ips1:
+                self.resolve_hostname(host1)
+                ips1 = self._hostname_to_ips.get(host1, set())
+            
+            ips2 = self._hostname_to_ips.get(host2)
+            if not ips2:
+                self.resolve_hostname(host2)
+                ips2 = self._hostname_to_ips.get(host2, set())
+            
+            # Check if they share any IP addresses
+            if ips1 and ips2:
+                return bool(ips1 & ips2)
+        
         return False
     
-    def find_matching_hostname(self, target_host: str, existing_hosts: List[str]) -> str:
+    def find_matching_hostname(self, target_host: str, existing_hosts: List[str]) -> Optional[str]:
         """
         Find if target_host matches any existing host
-        Returns the matching existing host name, or None if no match
+        
+        Returns:
+            The matching existing host name, or None if no match
         """
         for existing_host in existing_hosts:
             if self.hosts_match(target_host, existing_host):
                 return existing_host
         return None
+
 
 def validate_ip_address(ip_str: str):
     try:
