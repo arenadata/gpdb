@@ -134,16 +134,10 @@ bool		enable_bitmapscan = true;
 bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_hashagg = true;
-<<<<<<< HEAD
 bool		enable_groupagg = true;
+bool		enable_hashagg_disk = true;
+bool		enable_groupingsets_hash_disk = false;
 bool		enable_nestloop = false;
-bool		enable_hashagg_disk = true;
-bool		enable_groupingsets_hash_disk = false;
-=======
-bool		enable_hashagg_disk = true;
-bool		enable_groupingsets_hash_disk = false;
-bool		enable_nestloop = true;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 bool		enable_material = true;
 bool		enable_mergejoin = false;
 bool		enable_hashjoin = true;
@@ -2486,11 +2480,7 @@ cost_agg(Path *path, PlannerInfo *root,
 		 */
 		hashentrysize = hash_agg_entry_size(
 			aggcosts->numAggs, input_width, aggcosts->transitionSpace);
-<<<<<<< HEAD
 		hash_agg_set_limits(NULL, hashentrysize, numGroups, 0, &mem_limit,
-=======
-		hash_agg_set_limits(hashentrysize, numGroups, 0, &mem_limit,
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 							&ngroups_limit, &num_partitions);
 
 		nbatches = Max( (numGroups * hashentrysize) / mem_limit,
