@@ -613,6 +613,7 @@ SELECT
     m.n_live_tup,
     m.n_dead_tup,
     m.n_mod_since_analyze,
+    m.n_ins_since_vacuum,
     s.last_vacuum,
     s.last_autovacuum,
     s.last_analyze,
