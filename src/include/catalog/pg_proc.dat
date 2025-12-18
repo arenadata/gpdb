@@ -874,12 +874,12 @@
   prorettype => 'table_am_handler', proargtypes => 'internal',
   prosrc => 'heap_tableam_handler' },
 
-{ oid => '4191', oid_symbol => 'AO_ROW_TABLE_AM_HANDLER_OID',
+{ oid => '4198', oid_symbol => 'AO_ROW_TABLE_AM_HANDLER_OID',
   descr => 'row-oriented append-optimized table access method handler',
   proname => 'ao_row_tableam_handler', provolatile => 'v',
   prorettype => 'table_am_handler', proargtypes => 'internal',
   prosrc => 'ao_row_tableam_handler' },
-{ oid => '4192', oid_symbol => 'AO_COLUMN_TABLE_AM_HANDLER_OID',
+{ oid => '4199', oid_symbol => 'AO_COLUMN_TABLE_AM_HANDLER_OID',
   descr => 'column-oriented append-optimized table access method handler',
   proname => 'ao_column_tableam_handler', provolatile => 'v',
   prorettype => 'table_am_handler', proargtypes => 'internal',
@@ -8844,7 +8844,7 @@
   proname => 'gtsvector_consistent', prorettype => 'bool',
   proargtypes => 'internal gtsvector int4 oid internal',
   prosrc => 'gtsvector_consistent_oldsig' },
-{ oid => '3434', descr => 'GiST tsvector support',
+{ oid => '6131', descr => 'GiST tsvector support',
   proname => 'gtsvector_options', prorettype => 'void', proisstrict => 'f',
   proargtypes => 'internal', prosrc => 'gtsvector_options' },
 
@@ -10956,7 +10956,14 @@
   proname => 'pg_partition_root', prorettype => 'regclass',
   proargtypes => 'regclass', prosrc => 'pg_partition_root' },
 
-<<<<<<< HEAD
+{ oid => '4350', descr => 'Unicode normalization',
+  proname => 'normalize', prorettype => 'text',
+  proargtypes => 'text text', prosrc => 'unicode_normalize_func' },
+
+{ oid => '4351', descr => 'check Unicode normalization',
+  proname => 'is_normalized', prorettype => 'bool',
+  proargtypes => 'text text', prosrc => 'unicode_is_normalized' },
+
 #
 # GPDB ADDITIONS START HERE
 #
@@ -11762,14 +11769,5 @@
 
 { oid => 5066, descr => 'itemwise add two integer arrays',
    proname => 'array_add', prorettype => '_int4', proargtypes => '_int4 _int4', prosrc => 'array_int4_add' },
-=======
-{ oid => '4350', descr => 'Unicode normalization',
-  proname => 'normalize', prorettype => 'text',
-  proargtypes => 'text text', prosrc => 'unicode_normalize_func' },
-
-{ oid => '4351', descr => 'check Unicode normalization',
-  proname => 'is_normalized', prorettype => 'bool',
-  proargtypes => 'text text', prosrc => 'unicode_is_normalized' },
 
 ]
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
