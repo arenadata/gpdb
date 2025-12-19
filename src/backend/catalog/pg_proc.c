@@ -38,11 +38,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
-<<<<<<< HEAD
-#include "parser/parse_expr.h"
-=======
 #include "parser/parse_coerce.h"
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 #include "parser/parse_type.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
