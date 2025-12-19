@@ -1,10 +1,6 @@
 import os
 import socket
-
-from pathlib import Path
-import sys
 import tempfile
-sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from gppylib.test.unit.gp_unittest import *
 from mock import *

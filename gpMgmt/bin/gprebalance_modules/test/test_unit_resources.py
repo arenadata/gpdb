@@ -515,6 +515,7 @@ class TestResourceEstimator(GpTestCase):
         
         self.assertIn("No disk space information for host sdw2", str(context.exception))
     
+    @patch('gprebalance_modules.planner.PortIsAvailable')
     @patch('gprebalance_modules.planner.DiskSpaceChecker')
     @patch('gprebalance_modules.planner.HostResolver.resolve_hostname')
     @patch('gprebalance_modules.planner.HostResolver.get_address')
@@ -522,7 +523,7 @@ class TestResourceEstimator(GpTestCase):
     @patch('gprebalance_modules.rebalance_schema.dbconn.queryRow', side_effect=check_query)
     @patch('gprebalance_modules.planner.dbconn')
     def test_planner_with_resource_estimation(self, mock_dbconn, mock_schema, mock_solver, 
-                                               mock_get_address, mock_resolve, mock_disk_check):
+                                               mock_get_address, mock_resolve, mock_disk_check, mock_port):
         """Test Planner integration with resource estimation"""
         # Setup resolver mocks
         mock_resolve.return_value = None
@@ -553,6 +554,8 @@ class TestResourceEstimator(GpTestCase):
         mock_solver_instance.solve.return_value = (solution, {})
         
         self.options.target_datadirs="/data/primary{content}, /data/mirror{content}"
+
+        mock_port.return_value._is_port_available.return_value = True
         # Create planner
         planner = Planner(
             logger=self.logger,
