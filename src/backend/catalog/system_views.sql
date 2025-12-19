@@ -613,6 +613,7 @@ SELECT
     m.n_live_tup,
     m.n_dead_tup,
     m.n_mod_since_analyze,
+    m.n_ins_since_vacuum,
     s.last_vacuum,
     s.last_autovacuum,
     s.last_analyze,
@@ -637,6 +638,7 @@ FROM
          case when d.policytype = 'r' then (sum(n_live_tup)/d.numsegments)::bigint else sum(n_live_tup) end n_live_tup,
          case when d.policytype = 'r' then (sum(n_dead_tup)/d.numsegments)::bigint else sum(n_dead_tup) end n_dead_tup,
          case when d.policytype = 'r' then (sum(n_mod_since_analyze)/d.numsegments)::bigint else sum(n_mod_since_analyze) end n_mod_since_analyze,
+         case when d.policytype = 'r' then (sum(n_ins_since_vacuum)/d.numsegments)::bigint else sum(n_ins_since_vacuum) end n_ins_since_vacuum,
          max(last_vacuum) as last_vacuum,
          max(last_autovacuum) as last_autovacuum,
          max(last_analyze) as last_analyze,
@@ -908,7 +910,6 @@ CREATE VIEW pg_stat_replication AS
         JOIN pg_stat_get_wal_senders() AS W ON (S.pid = W.pid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid);
 
-<<<<<<< HEAD
 CREATE FUNCTION gp_stat_get_master_replication() RETURNS SETOF RECORD AS
 $$
     SELECT pg_catalog.gp_execution_segment() AS gp_segment_id, *
@@ -968,7 +969,7 @@ CREATE VIEW gp_stat_replication AS
          spill_txns int8, spill_count int8, spill_bytes int8)
          ON G.gp_segment_id = R.gp_segment_id
     );
-=======
+
 CREATE VIEW pg_stat_slru AS
     SELECT
             s.name,
@@ -981,7 +982,6 @@ CREATE VIEW pg_stat_slru AS
             s.truncates,
             s.stats_reset
     FROM pg_stat_get_slru() s;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 CREATE VIEW pg_stat_wal_receiver AS
     SELECT
