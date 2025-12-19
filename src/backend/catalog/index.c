@@ -2428,11 +2428,8 @@ BuildIndexInfo(Relation index)
 								 &ii->ii_ExclusionStrats);
 	}
 
-<<<<<<< HEAD
 	ii->ii_Am = index->rd_rel->relam;
-=======
 	ii->ii_OpclassOptions = RelationGetIndexRawAttOptions(index);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	return ii;
 }
