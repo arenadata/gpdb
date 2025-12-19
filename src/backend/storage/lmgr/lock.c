@@ -938,7 +938,8 @@ LockAcquireExtended(const LOCKTAG *locktag,
 	 * extension lock.  We do allow to acquire the same relation extension
 	 * lock more than once but that case won't reach here.
 	 */
-	Assert(!IsRelationExtensionLockHeld);
+	/* GPDB_13_MERGE_FIXME: Rework this for AO-tables */
+	Assert(!IsRelationExtensionLockHeld || IS_QUERY_EXECUTOR_BACKEND());
 
 	/*
 	 * We don't acquire any other heavyweight lock while holding the page lock
