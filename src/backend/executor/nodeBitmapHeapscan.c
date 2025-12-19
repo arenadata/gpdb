@@ -751,7 +751,6 @@ BitmapHeapScanState *
 ExecInitBitmapHeapScan(BitmapHeapScan *node, EState *estate, int eflags)
 {
 	Relation	currentRelation;
-<<<<<<< HEAD
 	BitmapHeapScanState *bhsState;
 
 	/* check for unsupported flags */
@@ -782,9 +781,6 @@ ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int efl
 								   Relation currentRelation)
 {
 	BitmapHeapScanState *scanstate;
-	int			io_concurrency;
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* check for unsupported flags */
 	Assert(!(eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK)));
@@ -865,20 +861,8 @@ ExecInitBitmapHeapScanForPartition(BitmapHeapScan *node, EState *estate, int efl
 	 * Maximum number of prefetches for the tablespace if configured, otherwise
 	 * the current value of the effective_io_concurrency GUC.
 	 */
-<<<<<<< HEAD
-	io_concurrency =
-			get_tablespace_io_concurrency(currentRelation->rd_rel->reltablespace);
-	if (io_concurrency != effective_io_concurrency)
-	{
-		double		maximum;
-
-		if (ComputeIoConcurrency(io_concurrency, &maximum))
-			scanstate->prefetch_maximum = rint(maximum);
-	}
-=======
 	scanstate->prefetch_maximum =
 		get_tablespace_io_concurrency(currentRelation->rd_rel->reltablespace);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* Prefetching hasn't been implemented for AO tables */
 	if (RelationIsAppendOptimized(currentRelation))
