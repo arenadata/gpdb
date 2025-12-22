@@ -1,19 +1,6 @@
 --
 -- Tests for polymorphic SQL functions and aggregates based on them.
 -- Tests for other features related to function-calling have snuck in, too.
-<<<<<<< HEAD
--- In GPDB, rows can be returned from segments in any order. Normally, we
--- mask differences in result set order in regression tests with gpdiff.pl,
--- but the aggregates in this test file result in arrays that have elements
--- in random order. To fix, we force them in order with this function.
-create or replace function array_sort(x anyarray) returns anyarray as $$
-  select array_agg(x) from (select unnest($1) AS x order by x) as _;
-$$ language sql;
--- GPDB: the line right after Legend has been intentionally changed to not look
--- like a psql result set header, like it does in upstream. atmsort.pl got
--- confused by it and treated the whole comment as a result set, and re-ordered
--- it.
-=======
 --
 create function polyf(x anyelement) returns anyelement as $$
   select x + 1
@@ -161,10 +148,20 @@ LINE 2:   from polyf(11, array[1, 2.2], 42, 34.5);
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 drop function polyf(a anyelement, b anyarray,
                     c anycompatible, d anycompatible);
+-- In GPDB, rows can be returned from segments in any order. Normally, we
+-- mask differences in result set order in regression tests with gpdiff.pl,
+-- but the aggregates in this test file result in arrays that have elements
+-- in random order. To fix, we force them in order with this function.
+create or replace function array_sort(x anyarray) returns anyarray as $$
+  select array_agg(x) from (select unnest($1) AS x order by x) as _;
+$$ language sql;
+-- GPDB: the line right after Legend has been intentionally changed to not look
+-- like a psql result set header, like it does in upstream. atmsort.pl got
+-- confused by it and treated the whole comment as a result set, and re-ordered
+-- it.
 --
 -- Polymorphic aggregate tests
 --
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 -- Legend:
 -- ---------
 -- A = type is ANY
