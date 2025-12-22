@@ -95,7 +95,6 @@ select explain_filter('explain (analyze, buffers, format text) select * from int
 (8 rows)
 
 select explain_filter('explain (analyze, buffers, format json) select * from int8_tbl i8');
-<<<<<<< HEAD
                 explain_filter                
 ----------------------------------------------
  [                                           +
@@ -158,7 +157,19 @@ select explain_filter('explain (analyze, buffers, format json) select * from int
        ]                                     +
      },                                      +
      "Optimizer": "Postgres query optimizer",+
-     "Planning Time": N.N,                   +
+     "Planning": {                           +
+       "Planning Time": N.N,                 +
+       "Shared Hit Blocks": N,               +
+       "Shared Read Blocks": N,              +
+       "Shared Dirtied Blocks": N,           +
+       "Shared Written Blocks": N,           +
+       "Local Hit Blocks": N,                +
+       "Local Read Blocks": N,               +
+       "Local Dirtied Blocks": N,            +
+       "Local Written Blocks": N,            +
+       "Temp Read Blocks": N,                +
+       "Temp Written Blocks": N              +
+     },                                      +
      "Triggers": [                           +
      ],                                      +
      "Slice statistics": [                   +
@@ -180,58 +191,10 @@ select explain_filter('explain (analyze, buffers, format json) select * from int
      },                                      +
      "Execution Time": N.N                   +
    }                                         +
-=======
-           explain_filter           
-------------------------------------
- [                                 +
-   {                               +
-     "Plan": {                     +
-       "Node Type": "Seq Scan",    +
-       "Parallel Aware": false,    +
-       "Relation Name": "int8_tbl",+
-       "Alias": "i8",              +
-       "Startup Cost": N.N,        +
-       "Total Cost": N.N,          +
-       "Plan Rows": N,             +
-       "Plan Width": N,            +
-       "Actual Startup Time": N.N, +
-       "Actual Total Time": N.N,   +
-       "Actual Rows": N,           +
-       "Actual Loops": N,          +
-       "Shared Hit Blocks": N,     +
-       "Shared Read Blocks": N,    +
-       "Shared Dirtied Blocks": N, +
-       "Shared Written Blocks": N, +
-       "Local Hit Blocks": N,      +
-       "Local Read Blocks": N,     +
-       "Local Dirtied Blocks": N,  +
-       "Local Written Blocks": N,  +
-       "Temp Read Blocks": N,      +
-       "Temp Written Blocks": N    +
-     },                            +
-     "Planning": {                 +
-       "Planning Time": N.N,       +
-       "Shared Hit Blocks": N,     +
-       "Shared Read Blocks": N,    +
-       "Shared Dirtied Blocks": N, +
-       "Shared Written Blocks": N, +
-       "Local Hit Blocks": N,      +
-       "Local Read Blocks": N,     +
-       "Local Dirtied Blocks": N,  +
-       "Local Written Blocks": N,  +
-       "Temp Read Blocks": N,      +
-       "Temp Written Blocks": N    +
-     },                            +
-     "Triggers": [                 +
-     ],                            +
-     "Execution Time": N.N         +
-   }                               +
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
  ]
 (1 row)
 
 select explain_filter('explain (analyze, buffers, format xml) select * from int8_tbl i8');
-<<<<<<< HEAD
                        explain_filter                       
 ------------------------------------------------------------
  <explain xmlns="http://www.postgresql.org/N/explain">     +
@@ -294,7 +257,19 @@ select explain_filter('explain (analyze, buffers, format xml) select * from int8
        </Plans>                                            +
      </Plan>                                               +
      <Optimizer>Postgres query optimizer</Optimizer>       +
-     <Planning-Time>N.N</Planning-Time>                    +
+     <Planning>                                            +
+       <Planning-Time>N.N</Planning-Time>                  +
+       <Shared-Hit-Blocks>N</Shared-Hit-Blocks>            +
+       <Shared-Read-Blocks>N</Shared-Read-Blocks>          +
+       <Shared-Dirtied-Blocks>N</Shared-Dirtied-Blocks>    +
+       <Shared-Written-Blocks>N</Shared-Written-Blocks>    +
+       <Local-Hit-Blocks>N</Local-Hit-Blocks>              +
+       <Local-Read-Blocks>N</Local-Read-Blocks>            +
+       <Local-Dirtied-Blocks>N</Local-Dirtied-Blocks>      +
+       <Local-Written-Blocks>N</Local-Written-Blocks>      +
+       <Temp-Read-Blocks>N</Temp-Read-Blocks>              +
+       <Temp-Written-Blocks>N</Temp-Written-Blocks>        +
+     </Planning>                                           +
      <Triggers>                                            +
      </Triggers>                                           +
      <Slice-statistics>                                    +
@@ -316,58 +291,10 @@ select explain_filter('explain (analyze, buffers, format xml) select * from int8
      </Statement-statistics>                               +
      <Execution-Time>N.N</Execution-Time>                  +
    </Query>                                                +
-=======
-                     explain_filter                     
---------------------------------------------------------
- <explain xmlns="http://www.postgresql.org/N/explain"> +
-   <Query>                                             +
-     <Plan>                                            +
-       <Node-Type>Seq Scan</Node-Type>                 +
-       <Parallel-Aware>false</Parallel-Aware>          +
-       <Relation-Name>int8_tbl</Relation-Name>         +
-       <Alias>i8</Alias>                               +
-       <Startup-Cost>N.N</Startup-Cost>                +
-       <Total-Cost>N.N</Total-Cost>                    +
-       <Plan-Rows>N</Plan-Rows>                        +
-       <Plan-Width>N</Plan-Width>                      +
-       <Actual-Startup-Time>N.N</Actual-Startup-Time>  +
-       <Actual-Total-Time>N.N</Actual-Total-Time>      +
-       <Actual-Rows>N</Actual-Rows>                    +
-       <Actual-Loops>N</Actual-Loops>                  +
-       <Shared-Hit-Blocks>N</Shared-Hit-Blocks>        +
-       <Shared-Read-Blocks>N</Shared-Read-Blocks>      +
-       <Shared-Dirtied-Blocks>N</Shared-Dirtied-Blocks>+
-       <Shared-Written-Blocks>N</Shared-Written-Blocks>+
-       <Local-Hit-Blocks>N</Local-Hit-Blocks>          +
-       <Local-Read-Blocks>N</Local-Read-Blocks>        +
-       <Local-Dirtied-Blocks>N</Local-Dirtied-Blocks>  +
-       <Local-Written-Blocks>N</Local-Written-Blocks>  +
-       <Temp-Read-Blocks>N</Temp-Read-Blocks>          +
-       <Temp-Written-Blocks>N</Temp-Written-Blocks>    +
-     </Plan>                                           +
-     <Planning>                                        +
-       <Planning-Time>N.N</Planning-Time>              +
-       <Shared-Hit-Blocks>N</Shared-Hit-Blocks>        +
-       <Shared-Read-Blocks>N</Shared-Read-Blocks>      +
-       <Shared-Dirtied-Blocks>N</Shared-Dirtied-Blocks>+
-       <Shared-Written-Blocks>N</Shared-Written-Blocks>+
-       <Local-Hit-Blocks>N</Local-Hit-Blocks>          +
-       <Local-Read-Blocks>N</Local-Read-Blocks>        +
-       <Local-Dirtied-Blocks>N</Local-Dirtied-Blocks>  +
-       <Local-Written-Blocks>N</Local-Written-Blocks>  +
-       <Temp-Read-Blocks>N</Temp-Read-Blocks>          +
-       <Temp-Written-Blocks>N</Temp-Written-Blocks>    +
-     </Planning>                                       +
-     <Triggers>                                        +
-     </Triggers>                                       +
-     <Execution-Time>N.N</Execution-Time>              +
-   </Query>                                            +
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
  </explain>
 (1 row)
 
 select explain_filter('explain (analyze, buffers, format yaml) select * from int8_tbl i8');
-<<<<<<< HEAD
              explain_filter              
 -----------------------------------------
  - Plan:                                +
@@ -424,7 +351,18 @@ select explain_filter('explain (analyze, buffers, format yaml) select * from int
          Temp Read Blocks: N            +
          Temp Written Blocks: N         +
    Optimizer: "Postgres query optimizer"+
-   Planning Time: N.N                   +
+   Planning:                            +
+     Planning Time: N.N                 +
+     Shared Hit Blocks: N               +
+     Shared Read Blocks: N              +
+     Shared Dirtied Blocks: N           +
+     Shared Written Blocks: N           +
+     Local Hit Blocks: N                +
+     Local Read Blocks: N               +
+     Local Dirtied Blocks: N            +
+     Local Written Blocks: N            +
+     Temp Read Blocks: N                +
+     Temp Written Blocks: N             +
    Triggers:                            +
    Slice statistics:                    +
      - Slice: N                         +
@@ -436,46 +374,6 @@ select explain_filter('explain (analyze, buffers, format yaml) select * from int
          Maximum Memory Used: N         +
    Statement statistics:                +
      Memory used: N                     +
-=======
-        explain_filter         
--------------------------------
- - Plan:                      +
-     Node Type: "Seq Scan"    +
-     Parallel Aware: false    +
-     Relation Name: "int8_tbl"+
-     Alias: "i8"              +
-     Startup Cost: N.N        +
-     Total Cost: N.N          +
-     Plan Rows: N             +
-     Plan Width: N            +
-     Actual Startup Time: N.N +
-     Actual Total Time: N.N   +
-     Actual Rows: N           +
-     Actual Loops: N          +
-     Shared Hit Blocks: N     +
-     Shared Read Blocks: N    +
-     Shared Dirtied Blocks: N +
-     Shared Written Blocks: N +
-     Local Hit Blocks: N      +
-     Local Read Blocks: N     +
-     Local Dirtied Blocks: N  +
-     Local Written Blocks: N  +
-     Temp Read Blocks: N      +
-     Temp Written Blocks: N   +
-   Planning:                  +
-     Planning Time: N.N       +
-     Shared Hit Blocks: N     +
-     Shared Read Blocks: N    +
-     Shared Dirtied Blocks: N +
-     Shared Written Blocks: N +
-     Local Hit Blocks: N      +
-     Local Read Blocks: N     +
-     Local Dirtied Blocks: N  +
-     Local Written Blocks: N  +
-     Temp Read Blocks: N      +
-     Temp Written Blocks: N   +
-   Triggers:                  +
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
    Execution Time: N.N
 (1 row)
 
@@ -694,7 +592,19 @@ select jsonb_pretty(
              "Shared Dirtied Blocks": 0,                    +
              "Shared Written Blocks": 0                     +
          },                                                 +
-<<<<<<< HEAD
+         "Planning": {                                      +
+             "Planning Time": 0.0,                          +
+             "Local Hit Blocks": 0,                         +
+             "Temp Read Blocks": 0,                         +
+             "Local Read Blocks": 0,                        +
+             "Shared Hit Blocks": 0,                        +
+             "Shared Read Blocks": 0,                       +
+             "Temp Written Blocks": 0,                      +
+             "Local Dirtied Blocks": 0,                     +
+             "Local Written Blocks": 0,                     +
+             "Shared Dirtied Blocks": 0,                    +
+             "Shared Written Blocks": 0                     +
+         },                                                 +
          "Settings": {                                      +
              "optimizer": "off",                            +
              "parallel_setup_cost": "0",                    +
@@ -704,7 +614,6 @@ select jsonb_pretty(
          "Triggers": [                                      +
          ],                                                 +
          "Optimizer": "Postgres query optimizer",           +
-         "Planning Time": 0.0,                              +
          "Execution Time": 0.0,                             +
          "Slice statistics": [                              +
              {                                              +
@@ -724,24 +633,6 @@ select jsonb_pretty(
          "Statement statistics": {                          +
              "Memory used": 0                               +
          }                                                  +
-=======
-         "Planning": {                                      +
-             "Planning Time": 0.0,                          +
-             "Local Hit Blocks": 0,                         +
-             "Temp Read Blocks": 0,                         +
-             "Local Read Blocks": 0,                        +
-             "Shared Hit Blocks": 0,                        +
-             "Shared Read Blocks": 0,                       +
-             "Temp Written Blocks": 0,                      +
-             "Local Dirtied Blocks": 0,                     +
-             "Local Written Blocks": 0,                     +
-             "Shared Dirtied Blocks": 0,                    +
-             "Shared Written Blocks": 0                     +
-         },                                                 +
-         "Triggers": [                                      +
-         ],                                                 +
-         "Execution Time": 0.0                              +
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
      }                                                      +
  ]
 (1 row)
