@@ -165,25 +165,17 @@ SELECT count(*) FROM
 -- aggregation. Force spilling in both cases by setting work_mem low.
 --
 SET work_mem='64kB';
-<<<<<<< HEAD
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 -- Produce results with sorting.
 SET enable_hashagg=FALSE;
 SET optimizer_enable_hashagg=FALSE;
-=======
--- Produce results with sorting.
-SET enable_hashagg=FALSE;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 SET jit_above_cost=0;
 EXPLAIN (costs off)
 SELECT DISTINCT g%1000 FROM generate_series(0,9999) g;
                    QUERY PLAN                   
 ------------------------------------------------
  Unique
-<<<<<<< HEAD
    Group Key: ((g % 1000))
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
    ->  Sort
          Sort Key: ((g % 1000))
          ->  Function Scan on generate_series g
@@ -195,10 +187,7 @@ SET jit_above_cost TO DEFAULT;
 CREATE TABLE distinct_group_2 AS
 SELECT DISTINCT (g%1000)::text FROM generate_series(0,9999) g;
 SET enable_hashagg=TRUE;
-<<<<<<< HEAD
 SET optimizer_enable_hashagg=TRUE;
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 -- Produce results with hash aggregation.
 SET enable_sort=FALSE;
 SET jit_above_cost=0;
@@ -218,10 +207,7 @@ CREATE TABLE distinct_hash_2 AS
 SELECT DISTINCT (g%1000)::text FROM generate_series(0,9999) g;
 SET enable_sort=TRUE;
 SET work_mem TO DEFAULT;
-<<<<<<< HEAD
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 -- Compare results
 (SELECT * FROM distinct_hash_1 EXCEPT SELECT * FROM distinct_group_1)
   UNION ALL
