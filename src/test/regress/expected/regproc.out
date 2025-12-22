@@ -42,17 +42,13 @@ SELECT regtype('int4');
  integer
 (1 row)
 
-<<<<<<< HEAD
-SELECT to_regoper('-|-');
-=======
 SELECT regcollation('"POSIX"');
  regcollation 
 --------------
  "POSIX"
 (1 row)
 
-SELECT to_regoper('||/');
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+SELECT to_regoper('-|-');
  to_regoper 
 ------------
  -|-
@@ -131,17 +127,13 @@ SELECT regtype('pg_catalog.int4');
  integer
 (1 row)
 
-<<<<<<< HEAD
-SELECT to_regoper('pg_catalog.-|-');
-=======
 SELECT regcollation('pg_catalog."POSIX"');
  regcollation 
 --------------
  "POSIX"
 (1 row)
 
-SELECT to_regoper('pg_catalog.||/');
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+SELECT to_regoper('pg_catalog.-|-');
  to_regoper 
 ------------
  -|-
