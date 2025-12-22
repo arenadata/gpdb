@@ -204,7 +204,189 @@ explain (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
                ->  Index Scan using wowidx on test_tsvector
                      Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
                      Filter: (a @@ '''wr'' | ''qh'''::tsquery)
- Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
+ Optimizer: Pivotal Optimizer (GPORCA)
+(7 rows)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+ count 
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr&qh';
+ count 
+-------
+    17
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq&yt';
+ count 
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq|yt';
+ count 
+-------
+    98
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq&yt)|(wr&qh)';
+ count 
+-------
+    23
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq|yt)&(wr|qh)';
+ count 
+-------
+    39
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'w:*|q:*';
+ count 
+-------
+   494
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
+ count 
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
+ count 
+-------
+   508
+(1 row)
+
+-- Test siglen parameter of GiST tsvector_ops
+CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(foo=1));
+ERROR:  unrecognized parameter "foo"
+CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=0));
+ERROR:  value 0 out of bounds for option "siglen"
+DETAIL:  Valid values are between "1" and "8168".
+CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=2048));
+CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=100,foo='bar'));
+ERROR:  relation "wowidx1" already exists
+CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=100, siglen = 200));
+ERROR:  relation "wowidx1" already exists
+CREATE INDEX wowidx2 ON test_tsvector USING gist (a tsvector_ops(siglen=1));
+\d test_tsvector
+            Table "public.test_tsvector"
+ Column |   Type   | Collation | Nullable | Default 
+--------+----------+-----------+----------+---------
+ t      | text     |           |          | 
+ a      | tsvector |           |          | 
+Indexes:
+    "wowidx" gist (a)
+    "wowidx1" gist (a tsvector_ops (siglen='2048'))
+    "wowidx2" gist (a tsvector_ops (siglen='1'))
+Distributed by: (t)
+
+DROP INDEX wowidx;
+EXPLAIN (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Index Scan using wowidx1 on test_tsvector
+                     Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
+                     Filter: (a @@ '''wr'' | ''qh'''::tsquery)
+ Optimizer: Pivotal Optimizer (GPORCA)
+(7 rows)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+ count 
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'wr&qh';
+ count 
+-------
+    17
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq&yt';
+ count 
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'eq|yt';
+ count 
+-------
+    98
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq&yt)|(wr&qh)';
+ count 
+-------
+    23
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '(eq|yt)&(wr|qh)';
+ count 
+-------
+    39
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'w:*|q:*';
+ count 
+-------
+   494
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ any ('{wr,qh}');
+ count 
+-------
+   158
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ 'no_such_lexeme';
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
+ count 
+-------
+   508
+(1 row)
+
+DROP INDEX wowidx2;
+CREATE INDEX wowidx ON test_tsvector USING gist (a tsvector_ops(siglen=484));
+\d test_tsvector
+            Table "public.test_tsvector"
+ Column |   Type   | Collation | Nullable | Default 
+--------+----------+-----------+----------+---------
+ t      | text     |           |          | 
+ a      | tsvector |           |          | 
+Indexes:
+    "wowidx" gist (a tsvector_ops (siglen='484'))
+    "wowidx1" gist (a tsvector_ops (siglen='2048'))
+Distributed by: (t)
+
+EXPLAIN (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Finalize Aggregate
+   ->  Gather Motion 3:1  (slice1; segments: 3)
+         ->  Partial Aggregate
+               ->  Index Scan using wowidx1 on test_tsvector
+                     Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
+                     Filter: (a @@ '''wr'' | ''qh'''::tsquery)
+ Optimizer: Pivotal Optimizer (GPORCA)
 (7 rows)
 
 SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
@@ -275,12 +457,13 @@ CREATE INDEX wowidx ON test_tsvector USING gin (a);
 SET enable_seqscan=OFF;
 -- GIN only supports bitmapscan, so no need to test plain indexscan
 explain (costs off) SELECT count(*) FROM test_tsvector WHERE a @@ 'wr|qh';
-                          QUERY PLAN                           
----------------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-               ->  Seq Scan on test_tsvector
+               ->  Index Scan using wowidx1 on test_tsvector
+                     Index Cond: (a @@ '''wr'' | ''qh'''::tsquery)
                      Filter: (a @@ '''wr'' | ''qh'''::tsquery)
  Optimizer: Pivotal Optimizer (GPORCA) version 3.9.0
 (6 rows)
@@ -348,12 +531,13 @@ SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
 -- Test optimization of non-empty GIN_SEARCH_MODE_ALL queries
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM test_tsvector WHERE a @@ '!qh';
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                          
+-------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-               ->  Seq Scan on test_tsvector
+               ->  Index Scan using wowidx1 on test_tsvector
+                     Index Cond: (a @@ '!''qh'''::tsquery)
                      Filter: (a @@ '!''qh'''::tsquery)
  Optimizer: Pivotal Optimizer (GPORCA)
 (6 rows)
@@ -366,12 +550,13 @@ SELECT count(*) FROM test_tsvector WHERE a @@ '!qh';
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM test_tsvector WHERE a @@ 'wr' AND a @@ '!qh';
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
  Finalize Aggregate
    ->  Gather Motion 3:1  (slice1; segments: 3)
          ->  Partial Aggregate
-               ->  Seq Scan on test_tsvector
+               ->  Index Scan using wowidx1 on test_tsvector
+                     Index Cond: ((a @@ '''wr'''::tsquery) AND (a @@ '!''qh'''::tsquery))
                      Filter: ((a @@ '''wr'''::tsquery) AND (a @@ '!''qh'''::tsquery))
  Optimizer: Pivotal Optimizer (GPORCA)
 (6 rows)
