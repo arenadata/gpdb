@@ -1250,29 +1250,6 @@ set enable_hashagg = false;
 set jit_above_cost = 0;
 
 explain (costs off)
-<<<<<<< HEAD
-select g%100000 as c1, sum(g::numeric) as c2, count(*) as c3
-  from generate_series(0, 199999) g
-  group by g%100000;
-
-create table agg_group_1 as
-select g%100000 as c1, sum(g::numeric) as c2, count(*) as c3
-  from generate_series(0, 199999) g
-  group by g%100000;
-
-/*
- * create table agg_group_2 as
- * select * from
- *   (values (100), (300), (500)) as r(a),
- *   lateral (
- *     select (g/2)::numeric as c1,
- *            array_agg(g::numeric) as c2,
- *            count(*) as c3
- *     from generate_series(0, 1999) g
- *     where g < r.a
- *     group by g/2) as s;
- */
-=======
 select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
   from generate_series(0, 19999) g
   group by g%10000;
@@ -1282,6 +1259,7 @@ select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
   from generate_series(0, 19999) g
   group by g%10000;
 
+/* GPDB_13_MERGE_FIXME: enable this test
 create table agg_group_2 as
 select * from
   (values (100), (300), (500)) as r(a),
@@ -1292,7 +1270,7 @@ select * from
     from generate_series(0, 1999) g
     where g < r.a
     group by g/2) as s;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+*/
 
 set jit_above_cost to default;
 
@@ -1314,29 +1292,6 @@ set enable_sort = false;
 set jit_above_cost = 0;
 
 explain (costs off)
-<<<<<<< HEAD
-select g%100000 as c1, sum(g::numeric) as c2, count(*) as c3
-  from generate_series(0, 199999) g
-  group by g%100000;
-
-create table agg_hash_1 as
-select g%100000 as c1, sum(g::numeric) as c2, count(*) as c3
-  from generate_series(0, 199999) g
-  group by g%100000;
-
-/*
- * create table agg_hash_2 as
- * select * from
- *   (values (100), (300), (500)) as r(a),
- *   lateral (
- *     select (g/2)::numeric as c1,
- *            array_agg(g::numeric) as c2,
- *            count(*) as c3
- *     from generate_series(0, 1999) g
- *     where g < r.a
- *     group by g/2) as s;
- */
-=======
 select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
   from generate_series(0, 19999) g
   group by g%10000;
@@ -1346,6 +1301,7 @@ select g%10000 as c1, sum(g::numeric) as c2, count(*) as c3
   from generate_series(0, 19999) g
   group by g%10000;
 
+/* GPDB_13_MERGE_FIXME: enable this test
 create table agg_hash_2 as
 select * from
   (values (100), (300), (500)) as r(a),
@@ -1356,7 +1312,7 @@ select * from
     from generate_series(0, 1999) g
     where g < r.a
     group by g/2) as s;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+*/
 
 set jit_above_cost to default;
 
@@ -1379,17 +1335,11 @@ set work_mem to default;
   union all
 (select * from agg_group_1 except select * from agg_hash_1);
 
-<<<<<<< HEAD
-/*
- * (select * from agg_hash_2 except select * from agg_group_2)
- *   union all
- * (select * from agg_group_2 except select * from agg_hash_2);
- */
-=======
+/* GPDB_13_MERGE_FIXME: enable this test
 (select * from agg_hash_2 except select * from agg_group_2)
   union all
 (select * from agg_group_2 except select * from agg_hash_2);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
+*/
 
 (select * from agg_hash_3 except select * from agg_group_3)
   union all
@@ -1400,7 +1350,6 @@ set work_mem to default;
 (select * from agg_group_4 except select * from agg_hash_4);
 
 drop table agg_group_1;
-<<<<<<< HEAD
 --  drop table agg_group_2;
 drop table agg_group_3;
 drop table agg_group_4;
@@ -1411,12 +1360,3 @@ drop table agg_hash_4;
 
 -- fix github issue #12061 numsegments of general locus is not -1 on create_minmaxagg_path
 explain analyze select count(*) from pg_class,  (select count(*) >0 from  (select count(*) from pg_class where relname like 't%')x)y;
-=======
-drop table agg_group_2;
-drop table agg_group_3;
-drop table agg_group_4;
-drop table agg_hash_1;
-drop table agg_hash_2;
-drop table agg_hash_3;
-drop table agg_hash_4;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
