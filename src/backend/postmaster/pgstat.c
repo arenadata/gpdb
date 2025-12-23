@@ -4544,7 +4544,6 @@ pgstat_send_bgwriter(void)
 	MemSet(&BgWriterStats, 0, sizeof(BgWriterStats));
 }
 
-<<<<<<< HEAD
 /*
  * pgstat_send_qd_tabstats() -
  *
@@ -4783,7 +4782,7 @@ pgstat_combine_from_qe(CdbDispatchResults *results, int writerSliceIndex)
 		}
 	}
 }
-=======
+
 /* ----------
  * pgstat_send_slru() -
  *
@@ -4824,7 +4823,6 @@ pgstat_send_slru(void)
 	}
 }
 
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 /* ----------
  * PgstatCollectorMain() -
@@ -5018,13 +5016,12 @@ PgstatCollectorMain(int argc, char *argv[])
 					pgstat_recv_bgwriter(&msg.msg_bgwriter, len);
 					break;
 
-<<<<<<< HEAD
 				case PGSTAT_MTYPE_QUEUESTAT:  /* GPDB */
 					pgstat_recv_queuestat((PgStat_MsgQueuestat *) &msg, len);
-=======
+					break;
+
 				case PGSTAT_MTYPE_SLRU:
 					pgstat_recv_slru(&msg.msg_slru, len);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 					break;
 
 				case PGSTAT_MTYPE_FUNCSTAT:
@@ -5549,13 +5546,10 @@ pgstat_read_statsfiles(Oid onlydb, bool permanent, bool deep)
 	int32		format_id;
 	bool		found;
 	const char *statfile = permanent ? PGSTAT_STAT_PERMANENT_FILENAME : pgstat_stat_filename;
-<<<<<<< HEAD
 	PgStat_StatQueueEntry queuebuf;	/* GPDB */
 	PgStat_StatQueueEntry *queueentry; /* GPDB */
 	HTAB	   *queuehash = NULL;  /* GPDB */
-=======
 	int			i;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/*
 	 * The tables will live in pgStatLocalContext.
