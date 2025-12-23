@@ -1180,18 +1180,6 @@ PostmasterMain(int argc, char *argv[])
 	LocalProcessControlFile(false);
 
 	/*
-<<<<<<< HEAD
-	 * Initialize SSL library, if specified.
-	 */
-#ifdef USE_SSL
-	if (EnableSSL)
-	{
-		(void) secure_initialize(true);
-		LoadedSSL = true;
-	}
-#endif
-
-	/*
 	 * CDB: gpdb auxilary process like fts probe, dtx recovery process is
 	 * essential, we need to load them ahead of custom shared preload libraries
 	 * to avoid exceeding max_worker_processes.
@@ -1199,8 +1187,6 @@ PostmasterMain(int argc, char *argv[])
 	load_auxiliary_libraries();
 
 	/*
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 	 * Register the apply launcher.  Since it registers a background worker,
 	 * it needs to be called before InitializeMaxBackends(), and it's probably
 	 * a good idea to call it before any modules had chance to take the
