@@ -663,13 +663,13 @@ AppendOptimizedDropDeadSegments(Relation aorel, Bitmapset *segnos)
 	/*
 	 * drop segments in batch with concurrent-safety
 	 */
-	LockRelationForExtension(aorel, ExclusiveLock);
+	LockRelation(aorel, ExclusiveLock);
 
 	segno = -1;
 	while ((segno = bms_next_member(segnos, segno)) >= 0)
 		AppendOptimizedDropDeadSegment(aorel, segno);
 	
-	UnlockRelationForExtension(aorel, ExclusiveLock);
+	UnlockRelation(aorel, ExclusiveLock);
 }
 
 /*
@@ -696,7 +696,7 @@ AppendOptimizedTruncateToEOF(Relation aorel)
 	 * The algorithm below for choosing a target segment is not concurrent-safe.
 	 * Grab a lock to serialize.
 	 */
-	LockRelationForExtension(aorel, ExclusiveLock);
+	LockRelation(aorel, ExclusiveLock);
 
 	GetAppendOnlyEntryAuxOids(aorel->rd_id, appendOnlyMetaDataSnapshot,
 							  &segrelid, NULL, NULL, NULL, NULL);
@@ -756,7 +756,7 @@ AppendOptimizedTruncateToEOF(Relation aorel)
 		}
 	}
 	systable_endscan(aoscan);
-	UnlockRelationForExtension(aorel, ExclusiveLock);
+	UnlockRelation(aorel, ExclusiveLock);
 	table_close(pg_aoseg_rel, AccessShareLock);
 	UnregisterSnapshot(appendOnlyMetaDataSnapshot);
 }
