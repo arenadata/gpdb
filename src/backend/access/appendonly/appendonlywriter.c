@@ -160,7 +160,7 @@ LockSegnoForWrite(Relation rel, int segno)
 	 * The algorithm below for choosing a target segment is not concurrent-safe.
 	 * Grab a lock to serialize.
 	 */
-	LockRelation(rel, ExclusiveLock);
+	LockDatabaseObject(RelationGetRelid(rel), 0, 0, ExclusiveLock);
 
 	appendOnlyMetaDataSnapshot = RegisterSnapshot(GetCatalogSnapshot(InvalidOid));
 	GetAppendOnlyEntryAuxOids(rel->rd_id, appendOnlyMetaDataSnapshot,
@@ -265,7 +265,7 @@ LockSegnoForWrite(Relation rel, int segno)
 	/* OK, we have the aoseg tuple locked for us. */
 	systable_endscan(aoscan);
 
-	UnlockRelation(rel, ExclusiveLock);
+	UnlockDatabaseObject(RelationGetRelid(rel), 0, 0, ExclusiveLock);
 
 	table_close(pg_aoseg_rel, AccessShareLock);
 
@@ -423,7 +423,7 @@ choose_segno_internal(Relation rel, List *avoid_segnos, choose_segno_mode mode)
 	 * The algorithm below for choosing a target segment is not concurrent-safe.
 	 * Grab a lock to serialize.
 	 */
-	LockRelation(rel, ExclusiveLock);
+	LockDatabaseObject(RelationGetRelid(rel), 0, 0, ExclusiveLock);
 
 	/*
 	 * Obtain the snapshot that is taken at the beginning of the transaction.
@@ -602,7 +602,7 @@ choose_segno_internal(Relation rel, List *avoid_segnos, choose_segno_mode mode)
 		chosen_segno = choose_new_segfile(rel, used, avoid_segnos);
 	}
 
-	UnlockRelation(rel, ExclusiveLock);
+	UnlockDatabaseObject(RelationGetRelid(rel), 0, 0, ExclusiveLock);
 
 	if (Debug_appendonly_print_segfile_choice && chosen_segno != -1)
 		ereport(LOG,
