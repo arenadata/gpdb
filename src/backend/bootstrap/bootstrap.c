@@ -337,6 +337,9 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			case CheckpointerProcess:
 				statmsg = pgstat_get_backend_desc(B_CHECKPOINTER);
 				break;
+			case LflTestReaderProcess:
+				statmsg = pgstat_get_backend_desc(B_LFL_TEST_READER);
+				break;
 			case WalWriterProcess:
 				statmsg = pgstat_get_backend_desc(B_WAL_WRITER);
 				break;
@@ -481,6 +484,10 @@ AuxiliaryProcessMain(int argc, char *argv[])
 
 		case WalReceiverProcess:
 			WalReceiverMain();
+			proc_exit(1);
+
+		case LflTestReaderProcess:
+			LflTestReaderMain();
 			proc_exit(1);
 
 		default:

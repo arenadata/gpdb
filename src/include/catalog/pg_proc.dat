@@ -11268,6 +11268,9 @@
 { oid => 6089, descr => 'Returns the optimizer and gpos library versions',
    proname => 'gp_opt_version', prorettype => 'text', proargtypes => '', prosrc => 'gp_opt_version' },
 
+{ oid => 6090, descr => 'test performance of lfl',
+   proexeclocation => 'i',
+   proname => 'lfl_test_perf', prorows => '1000', proisstrict => 'f', proretset => 't', provolatile => 'v', proparallel => 's', prorettype => 'record', proargtypes => 'text int4 int4', proallargtypes => 'text,int4,int4,int8,int4,int4,text,int4,int4,int4', proargmodes => '{i,i,i,o,o,o,o,o,o,o}', proargnames => '{list_type,test_elem_num,batch_size,start_ts,elem_num,duration_us,list_type,sess_id,segment,batch_size}',  prosrc => 'lfl_test_perf' },
 
 # functions for the complex data type
 { oid => 6460, descr => 'I/O',

@@ -24,6 +24,7 @@
 #include "access/subtrans.h"
 #include "access/twophase.h"
 #include "access/distributedlog.h"
+#include "catalog/storage_pending.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbvars.h"
 #include "commands/async.h"
@@ -100,6 +101,321 @@ RequestAddinShmemSpace(Size size)
 	total_addin_request = add_size(total_addin_request, size);
 }
 
+LFL_PDL_ShmemArrayStruct * LFL_PDL_ShmemArray = NULL;
+
+static dsa_area *
+LFL_PDL_AttachDsa()
+{
+	MemoryContext oldcxt;
+
+	static dsa_area *pendingDeleteDsa = NULL;	/* ptr to DSA area attached by
+											 * current process */
+
+	if (pendingDeleteDsa)
+		return pendingDeleteDsa;
+
+	/*
+	 * Keep the DSA area ptr in TopMemoryContext to avoid excessive
+	 * attach/detach at every add/remove
+	 */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	pendingDeleteDsa = dsa_attach_in_place(LFL_PDL_ShmemArray->dsa_mem, NULL);
+	MemoryContextSwitchTo(oldcxt);
+
+	/* pin mappings, so they can survive res owner life end */
+	dsa_pin_mapping(pendingDeleteDsa);
+	/* Set up a process-exit hook to clean up */
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) LFL_PDL_ShmemArray->dsa_mem);
+
+	elog(DEBUG3, "Pending delete DSA attached");
+
+	return pendingDeleteDsa;
+}
+
+static Size
+LFL_PDL_ShmemSize(void)
+{
+	Size		size;
+
+	/* dsa initialized over flexible static dsa_mem */
+	size = offsetof(LFL_PDL_ShmemArrayStruct, dsa_mem);
+
+	/* dsa initialized over flexible static dsa_mem */
+	size = add_size(size, dsa_minimum_size());
+
+	return size;
+}
+
+/*
+ * Initialize pending delete shmem struct.
+ */
+static void
+LFL_PDL_ShmemInit(void)
+{
+	Size		size;
+	bool		found;
+	int 		i;
+
+	size = LFL_PDL_ShmemSize();
+
+	LFL_PDL_ShmemArray = (LFL_PDL_ShmemArrayStruct *)
+			ShmemInitStruct("LFL Pending Deletes Array",
+							size,
+							&found);
+
+	if (!found)
+	{
+		dsa_area *dsa = dsa_create_in_place(
+				LFL_PDL_ShmemArray->dsa_mem,
+				dsa_minimum_size(),
+				LWTRANCHE_PENDING_DELETE_DSA_LFL,
+				NULL
+		);
+
+		LFL_PDL_ShmemArray->lock_free_list_array =
+				(lock_free_list *) ShmemAlloc(MaxBackends * sizeof(lock_free_list));
+
+		MemSet(LFL_PDL_ShmemArray->lock_free_list_array, 0,
+			   MaxBackends * sizeof(lock_free_list));
+
+		for (i = 0; i < MaxBackends; i++) {
+			lock_free_list_init(&LFL_PDL_ShmemArray->lock_free_list_array[i],
+								&LFL_PDL_AttachDsa);
+		}
+
+		/*
+		 * segments will be released by dsm_postmaster_shutdown(), but keep it
+		 * clean anyway
+		 */
+		on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) LFL_PDL_ShmemArray->dsa_mem);
+
+		/*
+		 * we don't need dsa ptr here, all future dsa calls will be in
+		 * backends
+		 */
+		dsa_detach(dsa);
+
+		elog(DEBUG3, "LFL Pending delete shared memory initialized.");
+	}
+}
+
+void PdlLflAttachToBackend()
+{
+	elog(LOG, "[RELOG] PdlLflAttachToBackend backend ID %d", MyBackendId);
+	lock_free_list_attach_to_writer(&LFL_PDL_ShmemArray->lock_free_list_array[MyBackendId]);
+}
+
+
+/*
+ * ===============================================
+ * Draft implementation of list with locks.
+ * Functions below are used only for comparison testing of performance.
+ * ===============================================
+ */
+
+/* A struct to track pending deletes. Placed in static shared memory area. */
+typedef struct OLD_PDL_ShmemStruct
+{
+	dsa_pointer pdl_head;		/* ptr to list head of OLD_PDL_ListNode */
+	size_t		pdl_count;		/* count of OLD_PDL_ListNode nodes */
+	char		dsa_mem[FLEXIBLE_ARRAY_MEMBER]; /* a minimal memory area which
+												 * can be used for dsa
+												 * initialization */
+}			OLD_PDL_ShmemStruct;
+
+/*
+ * Shared pending delete list node.
+ * Doubly linked list provides O(1) remove.
+ */
+typedef struct OLD_PDL_ListNode
+{
+	void *value;
+	dsa_pointer next;
+	dsa_pointer prev;
+}			OLD_PDL_ListNode;
+
+static OLD_PDL_ShmemStruct * OLD_PDL_Shmem = NULL;	/* shared pending delete
+																 * state  */
+
+dsa_pointer
+OLD_PDL_LinkNode(void * value);
+
+void
+OLD_PDL_UnlinkNode(dsa_pointer cur);
+
+/*
+ * Calculate size for pending delete shmem.
+ * The flexible array member should fit DSA.
+ */
+static Size
+OLD_PDL_ShmemSize(void)
+{
+	Size		size;
+
+	size = offsetof(OLD_PDL_ShmemStruct, dsa_mem);
+	/* dsa initialized over flexible static dsa_mem */
+	size = add_size(size, dsa_minimum_size());
+
+	return size;
+}
+
+static void
+OLD_PDL_ShmemInit(void)
+{
+	Size		size = OLD_PDL_ShmemSize();
+	bool		found;
+
+	OLD_PDL_Shmem = (OLD_PDL_ShmemStruct *)
+		ShmemInitStruct("OLD_PDL_Shmem",
+						size,
+						&found);
+
+	if (!found)
+	{
+		dsa_area   *dsa = dsa_create_in_place(OLD_PDL_Shmem->dsa_mem,
+											  dsa_minimum_size(),
+											  LWTRANCHE_PENDING_DELETE_DSA_OLD_PDL,
+											  NULL);
+
+		/*
+		 * we can't allocate memory segments inside postmaster, so list will
+		 * be initialized at runtime
+		 */
+		elog(LOG, "OLD PDL shared memory initialized.");
+
+		/*
+		 * segments will be released by dsm_postmaster_shutdown(), but keep it
+		 * clean anyway
+		 */
+		on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) OLD_PDL_Shmem->dsa_mem);
+
+		/*
+		 * we don't need dsa ptr here, all future dsa calls will be in
+		 * backends
+		 */
+		dsa_detach(dsa);
+	}
+}
+
+/*
+ * Attach dsa once per process.
+ */
+static dsa_area *
+OLD_PDL_AttachDsa(void)
+{
+	MemoryContext oldcxt;
+
+	static dsa_area *pendingDeleteDsa = NULL;	/* ptr to DSA area attached by
+											 * current process */
+
+	if (pendingDeleteDsa)
+		return pendingDeleteDsa;
+
+	/*
+	 * Keep the DSA area ptr in TopMemoryContext to avoid excessive
+	 * attach/detach at every add/remove
+	 */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	pendingDeleteDsa = dsa_attach_in_place(OLD_PDL_Shmem->dsa_mem, NULL);
+	MemoryContextSwitchTo(oldcxt);
+
+	/* pin mappings, so they can survive res owner life end */
+	dsa_pin_mapping(pendingDeleteDsa);
+	/* disconnect from dsa on shmem exit */
+	on_shmem_exit(dsa_on_shmem_exit_release_in_place, (Datum) OLD_PDL_Shmem->dsa_mem);
+
+	elog(DEBUG3, "Pending delete DSA attached");
+
+	return pendingDeleteDsa;
+}
+
+/*
+ * Prepend shared list with new pending delete node.
+ */
+dsa_pointer
+OLD_PDL_LinkNode(void * value)
+{
+	dsa_area *dsa = OLD_PDL_AttachDsa();
+	dsa_pointer cur = dsa_allocate(dsa, sizeof(OLD_PDL_ListNode));
+
+	dsa_pointer head;
+	OLD_PDL_ListNode *cur_node;
+
+	cur_node = (OLD_PDL_ListNode *) dsa_get_address(dsa, cur);
+
+	cur_node->value = value;
+
+	LWLockAcquire(PendingDeleteLock, LW_EXCLUSIVE);
+
+	head = OLD_PDL_Shmem->pdl_head;
+	cur_node->next = head;
+	cur_node->prev = InvalidDsaPointer;
+	if (DsaPointerIsValid(head))
+	{
+		OLD_PDL_ListNode *head_node = (OLD_PDL_ListNode *) dsa_get_address(dsa, head);
+
+		head_node->prev = cur;
+	}
+	OLD_PDL_Shmem->pdl_head = cur;
+	OLD_PDL_Shmem->pdl_count++;
+
+	LWLockRelease(PendingDeleteLock);
+
+	elog(DEBUG2, "Pending delete rel added to shmem.");
+
+	return cur;
+}
+
+/*
+ * Remove pending delete node from shared list
+ * cur - ptr to node which is already linked to list
+ */
+void
+OLD_PDL_UnlinkNode(dsa_pointer cur)
+{
+	dsa_area *dsa = OLD_PDL_AttachDsa();
+	dsa_pointer head;
+	OLD_PDL_ListNode *cur_node;
+
+	cur_node = dsa_get_address(dsa, cur);
+
+	LWLockAcquire(PendingDeleteLock, LW_EXCLUSIVE);
+
+	head = OLD_PDL_Shmem->pdl_head;
+
+	if (DsaPointerIsValid(cur_node->next))
+	{
+		OLD_PDL_ListNode *next_node = dsa_get_address(dsa, cur_node->next);
+
+		next_node->prev = cur_node->prev;
+	}
+
+	if (DsaPointerIsValid(cur_node->prev))
+	{
+		OLD_PDL_ListNode *prev_node = dsa_get_address(dsa, cur_node->prev);
+
+		prev_node->next = cur_node->next;
+	}
+
+	if (cur == head)
+		OLD_PDL_Shmem->pdl_head = cur_node->next;
+
+	OLD_PDL_Shmem->pdl_count--;
+
+	LWLockRelease(PendingDeleteLock);
+
+	dsa_free(dsa, cur);
+
+	elog(DEBUG2, "Pending delete rel removed from shmem.");
+}
+
+
+/*
+ * ===============================================
+ * End.
+ * ===============================================
+ */
+
 
 /*
  * CreateSharedMemoryAndSemaphores
@@ -160,6 +476,15 @@ CreateSharedMemoryAndSemaphores(int port)
 		size = add_size(size, SharedSnapshotShmemSize());
 		if (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY)
 			size = add_size(size, FtsShmemSize());
+
+		/* size of pending delete nodes struct */
+		size = add_size(size, OLD_PDL_ShmemSize());
+
+		/* size of pending delete nodes struct */
+		size = add_size(size, LFL_PDL_ShmemSize());
+
+		/* keep it before call to LWLockShmemSize() */
+		size = add_size(size, PdlShmemSize());
 
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, XLOGShmemSize());
@@ -407,6 +732,10 @@ CreateSharedMemoryAndSemaphores(int port)
 	
 	if (Gp_role == GP_ROLE_DISPATCH)
 		ParallelCursorCountInit();
+
+	OLD_PDL_ShmemInit();
+	LFL_PDL_ShmemInit();
+	PdlShmemInit();
 
 	/*
 	 * Now give loadable modules a chance to set up their shmem allocations

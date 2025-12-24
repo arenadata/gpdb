@@ -28,6 +28,7 @@
 #include "cdb/cdblocaldistribxact.h"  /* LocalDistribXactData */
 #include "cdb/cdbtm.h"  /* TMGXACT */
 #include "dsm.h"
+#include "utils/dsa.h"
 
 /*
  * Each backend advertises up to PGPROC_MAX_CACHED_SUBXIDS TransactionIds

@@ -291,7 +291,8 @@ static pid_t StartupPID = 0,
 			AutoVacPID = 0,
 			PgArchPID = 0,
 			PgStatPID = 0,
-			SysLoggerPID = 0;
+			SysLoggerPID = 0,
+			LflTestReaderPid = 0;
 
 /* Startup process's status */
 typedef enum
@@ -661,6 +662,7 @@ static void ShmemBackendArrayRemove(Backend *bn);
 #define StartArchiver()			StartChildProcess(ArchiverProcess)
 #define StartBackgroundWriter() StartChildProcess(BgWriterProcess)
 #define StartCheckpointer()		StartChildProcess(CheckpointerProcess)
+#define StartLflTestReader()	StartChildProcess(LflTestReaderProcess)
 #define StartWalWriter()		StartChildProcess(WalWriterProcess)
 #define StartWalReceiver()		StartChildProcess(WalReceiverProcess)
 
@@ -2091,6 +2093,8 @@ ServerLoop(void)
 				CheckpointerPID = StartCheckpointer();
 			if (BgWriterPID == 0)
 				BgWriterPID = StartBackgroundWriter();
+			if (LflTestReaderPid == 0)
+				LflTestReaderPid = StartLflTestReader();
 		}
 
 		/*

@@ -53,8 +53,10 @@
 #include "storage/condition_variable.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
+#include "storage/lock_free_list.h"
 #include "storage/lwlock.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
 #include "storage/shmem.h"
 #include "storage/smgr.h"
 #include "storage/spin.h"
@@ -62,6 +64,9 @@
 #include "utils/guc.h"
 #include "utils/memutils.h"
 #include "utils/resowner.h"
+
+#include "cdb/cdbvars.h"
+#include "catalog/storage_pending.h"
 
 
 /*----------
@@ -184,6 +189,7 @@ static void ReqCheckpointHandler(SIGNAL_ARGS);
 static void chkpt_sigusr1_handler(SIGNAL_ARGS);
 static void ReqShutdownHandler(SIGNAL_ARGS);
 
+static List *GetPendingDeletesLists(void);
 
 /*
  * Main entry point for checkpointer process
@@ -574,6 +580,77 @@ CheckpointerMain(void)
 						 WL_LATCH_SET | WL_TIMEOUT | WL_EXIT_ON_PM_DEATH,
 						 cur_timeout * 1000L /* convert to ms */ ,
 						 WAIT_EVENT_CHECKPOINTER_MAIN);
+	}
+}
+
+static bool shutdown_lfl_reader_requested = false;
+static void ReqLflShutdownHandler(SIGNAL_ARGS)
+{
+	shutdown_lfl_reader_requested = true;
+}
+
+void
+LflTestReaderMain()
+{
+	pqsignal(SIGHUP, SIG_IGN);	/* set flag to read config file */
+	pqsignal(SIGINT, SIG_IGN); /* request checkpoint */
+	pqsignal(SIGTERM, SIG_IGN); /* ignore SIGTERM */
+	pqsignal(SIGQUIT, chkpt_quickdie);	/* hard crash time */
+	pqsignal(SIGALRM, SIG_IGN);
+	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGUSR1, SIG_IGN);
+	pqsignal(SIGUSR2, ReqLflShutdownHandler);	/* request shutdown */
+
+	/*
+	 * Reset some signals that are accepted by postmaster but not here
+	 */
+	pqsignal(SIGCHLD, SIG_DFL);
+
+	/* We allow SIGQUIT (quickdie) at all times */
+	sigdelset(&BlockSig, SIGQUIT);
+
+	/*
+	 * Unblock signals (they were blocked when the postmaster forked us)
+	 */
+	PG_SETMASK(&UnBlockSig);
+
+	if (Gp_role == GP_ROLE_DISPATCH || IsRoleMirror())
+		proc_exit(0);
+
+	/*
+	 * Loop forever
+	 */
+	for (;;)
+	{
+		if (shutdown_lfl_reader_requested)
+		{
+			proc_exit(0);
+		}
+
+		List *pending_deletes_lists = GetPendingDeletesLists();
+
+		if (list_length(pending_deletes_lists) > 0)
+		{
+			ListCell *c;
+			foreach(c, pending_deletes_lists)
+			{
+				lock_free_list *ls = (lock_free_list *)lfirst(c);
+				dsa_area *area = lock_free_list_get_associated_area(ls);
+				lock_free_list_cell * cell;
+				for (cell = lock_free_list_first(ls);
+					 cell != NULL;
+					 cell = lock_free_list_next(ls, cell))
+				{
+					dsa_pointer payload_dsa = lock_free_list_get_value(cell);
+					PendingRelXactDelete *xrelnode = (PendingRelXactDelete *)dsa_get_address(area, payload_dsa);
+					elog(LOG, "[RELOG][READER][LFL-PDL] <%u>", xrelnode->xid);
+				}
+			}
+		}
+
+		PdlDump();
+
+		pg_usleep(100);
 	}
 }
 
@@ -1391,4 +1468,27 @@ FirstCallSinceLastCheckpoint(void)
 	ckpt_done = new_done;
 
 	return FirstCall;
+}
+
+static List *
+GetPendingDeletesLists(void)
+{
+	List *list = NIL;
+
+	for (int i = 0; i < MaxBackends; i++)
+	{
+		if (LFL_PDL_ShmemArray->lock_free_list_array[i].lf_procpid != InvalidPid &&
+				LFL_PDL_ShmemArray->lock_free_list_array[i].count > 0)
+		{
+			list = lappend(list, (void*) &LFL_PDL_ShmemArray->lock_free_list_array[i]);
+
+			elog(LOG, "GetPendingDeletesLists, got active pid: %d",
+				 LFL_PDL_ShmemArray->lock_free_list_array[i].lf_procpid);
+
+			elog(LOG, "GetPendingDeletesLists, count: %d",
+				 LFL_PDL_ShmemArray->lock_free_list_array[i].count);
+		}
+	}
+
+	return list;
 }

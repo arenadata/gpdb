@@ -714,6 +714,9 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* Now that we have a BackendId, we can participate in ProcSignal */
 	ProcSignalInit(MyBackendId);
 
+	/* Attach this backend to pending deletes list  */
+	PdlLflAttachToBackend();
+
 	/*
 	 * Also set up timeout handlers needed for backend operation.  We need
 	 * these in every case except bootstrap.

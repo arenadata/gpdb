@@ -3097,6 +3097,9 @@ pgstat_bestart(void)
 			case CheckpointerProcess:
 				lbeentry.st_backendType = B_CHECKPOINTER;
 				break;
+			case LflTestReaderProcess:
+				lbeentry.st_backendType = B_LFL_TEST_READER;
+				break;
 			case WalWriterProcess:
 				lbeentry.st_backendType = B_WAL_WRITER;
 				break;
@@ -4568,6 +4571,9 @@ pgstat_get_backend_desc(BackendType backendType)
 			break;
 		case B_CHECKPOINTER:
 			backendDesc = "checkpointer";
+			break;
+		case B_LFL_TEST_READER:
+			backendDesc = "lfl_test_reader";
 			break;
 		case B_STARTUP:
 			backendDesc = "startup";

@@ -28,7 +28,7 @@ OBJS += pg_extprotocol.o \
        pg_appendonly.o \
        oid_dispatch.o aocatalog.o storage_tablespace.o storage_database.o \
        storage_tablespace_twophase.o storage_tablespace_xact.o \
-       gp_partition_template.o
+       gp_partition_template.o storage_pending.o
 
 
 BKIFILES = postgres.bki postgres.description postgres.shdescription

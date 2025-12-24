@@ -523,6 +523,9 @@ RegisterLWLockTranches(void)
 	LWLockRegisterTranche(LWTRANCHE_PARALLEL_APPEND, "parallel_append");
 	LWLockRegisterTranche(LWTRANCHE_PARALLEL_HASH_JOIN, "parallel_hash_join");
 	LWLockRegisterTranche(LWTRANCHE_SXACT, "serializable_xact");
+	LWLockRegisterTranche(LWTRANCHE_PENDING_DELETE_DSA_OLD_PDL, "old pending delete");
+	LWLockRegisterTranche(LWTRANCHE_PENDING_DELETE_DSA_LFL, "lfl pending delete");
+	LWLockRegisterTranche(LWTRANCHE_PENDING_DELETE_DSA_PDL, "pending delete");
 
 	/* Register named tranches. */
 	for (i = 0; i < NamedLWLockTrancheRequests; i++)

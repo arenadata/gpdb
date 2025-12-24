@@ -16,6 +16,8 @@
 #include "postgres.h"
 
 #include "nodes/pg_list.h"
+#include "port/atomics.h"
+#include "storage/ipc.h"
 
 
 /*
@@ -1352,3 +1354,4 @@ length(const List *list)
 {
 	return list_length(list);
 }
+
