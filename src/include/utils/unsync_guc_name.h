@@ -303,8 +303,6 @@
 		"lo_compat_privileges",
 		"log_autostats",
 		"log_autovacuum_min_duration",
-		"log_parameter_max_length",
-		"log_parameter_max_length_on_error",
 		"log_checkpoints",
 		"log_connections",
 		"log_destination",
