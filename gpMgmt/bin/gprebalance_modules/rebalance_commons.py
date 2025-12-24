@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import base64
-from collections import defaultdict
 from dataclasses import dataclass
 import ipaddress
 import os
@@ -308,6 +307,13 @@ class TemplateParser:
             result = result.replace('{content}', str(content))
         return result
 
+def is_ip_address(ip_str: str):
+    try:
+        ipaddress.ip_address(ip_str)
+        return True
+    except ValueError:
+        return False
+
 class HostResolver:
     """
     Utility class to resolve and match hostnames with IP addresses
@@ -408,7 +414,6 @@ class HostResolver:
             cmd.run()
             
             if not cmd.was_successful():
-                self._failed_ips.add(ip_str)
                 return None
             
             hostname = cmd.get_hostname()
@@ -429,16 +434,6 @@ class HostResolver:
         except (ValueError, Exception) as e:
             return None
     
-    def is_ip_address(self, host: str) -> bool:
-        """
-        Check if string is a valid IP address (IPv4 or IPv6)
-        """
-        try:
-            ipaddress.ip_address(host)
-            return True
-        except ValueError:
-            return False
-    
     def hosts_match(self, host1: str, host2: str) -> bool:
         """
         Check if two hosts match (considering hostname/IP resolution)
@@ -458,8 +453,8 @@ class HostResolver:
             return True
 
         # Check if both are IPs
-        is_ip1 = self.is_ip_address(host1)
-        is_ip2 = self.is_ip_address(host2)
+        is_ip1 = is_ip_address(host1)
+        is_ip2 = is_ip_address(host2)
         
         if is_ip1 and is_ip2:
             # Both are IPs - they don't match if not equal
@@ -521,14 +516,6 @@ class HostResolver:
                 return existing_host
         return None
 
-
-def validate_ip_address(ip_str: str):
-    try:
-        ipaddress.ip_address(ip_str)
-        return True
-    except ValueError:
-        return False
-
 def validate_hostname(hostname:str):
     if len(hostname) > 255:
         raise ValidationError(f"Hostname '{hostname}' exceeds maximum length of 255 characters")
@@ -558,7 +545,7 @@ def validate_hosts_basic(hosts: str, option_name: str):
             raise ValidationError(f" --{option_name}: Duplicate host '{host}' found")
         seen_hosts.add(host)
         
-        if validate_ip_address(host):
+        if is_ip_address(host):
             has_ip = True
             continue
         has_hostname = True
@@ -713,24 +700,17 @@ class DiskSpaceChecker:
 
         """
         filesystems = []
-        # DiskFree handles multiple dirs in one command
-        pool = WorkerPool(numWorkers=1)
         
-        try:
-            cmd = DiskFree(hostaddr, directories)
-            pool.addCommand(cmd)
-            pool.join()
-        finally:
-            pool.haltWork()
-            pool.joinWorkers()
+        cmd = DiskFree(hostaddr, directories)
+
+        cmd.run()
         
-        for cmd in pool.getCompletedItems():
-            if not cmd.was_successful():
-                raise Exception(f"Failed to check disk free on target segment: {cmd.get_results().stderr}")
+        if not cmd.was_successful():
+            raise Exception(f"Failed to check disk free on target segment: {cmd.get_results().stderr}")
             
-            # Decode the pickled result
-            filesystems = pickle.loads(
-                base64.urlsafe_b64decode(cmd.get_results().stdout))
+        # Decode the pickled result
+        filesystems = pickle.loads(
+            base64.urlsafe_b64decode(cmd.get_results().stdout))
         
         return filesystems
 

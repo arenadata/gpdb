@@ -4,7 +4,7 @@ import tempfile
 
 from gppylib.test.unit.gp_unittest import *
 from mock import *
-from gprebalance_modules.rebalance_commons import HostResolver, TemplateParser, ValidationError
+from gprebalance_modules.rebalance_commons import HostResolver, TemplateParser, ValidationError, is_ip_address
 
 class TestHostResolver(GpTestCase):
     """
@@ -18,24 +18,24 @@ class TestHostResolver(GpTestCase):
         self.resolver = None
     
     def test_is_ip_address_valid_ipv4(self):
-        self.assertTrue(self.resolver.is_ip_address('192.168.1.1'))
-        self.assertTrue(self.resolver.is_ip_address('10.0.0.1'))
-        self.assertTrue(self.resolver.is_ip_address('255.255.255.255'))
-        self.assertTrue(self.resolver.is_ip_address('0.0.0.0'))
+        self.assertTrue(is_ip_address('192.168.1.1'))
+        self.assertTrue(is_ip_address('10.0.0.1'))
+        self.assertTrue(is_ip_address('255.255.255.255'))
+        self.assertTrue(is_ip_address('0.0.0.0'))
     
     def test_is_ip_address_valid_ipv6(self):
-        self.assertTrue(self.resolver.is_ip_address('2001:0db8:85a3::8a2e:0370:7334'))
-        self.assertTrue(self.resolver.is_ip_address('::1'))
-        self.assertTrue(self.resolver.is_ip_address('fe80::1'))
-        self.assertTrue(self.resolver.is_ip_address('::'))
+        self.assertTrue(is_ip_address('2001:0db8:85a3::8a2e:0370:7334'))
+        self.assertTrue(is_ip_address('::1'))
+        self.assertTrue(is_ip_address('fe80::1'))
+        self.assertTrue(is_ip_address('::'))
     
     def test_is_ip_address_invalid(self):
-        self.assertFalse(self.resolver.is_ip_address('hostname'))
-        self.assertFalse(self.resolver.is_ip_address('not-an-ip'))
-        self.assertFalse(self.resolver.is_ip_address('999.999.999.999'))
-        self.assertFalse(self.resolver.is_ip_address('192.168.1'))
-        self.assertFalse(self.resolver.is_ip_address(''))
-        self.assertFalse(self.resolver.is_ip_address('192.168.1.1.1'))
+        self.assertFalse(is_ip_address('hostname'))
+        self.assertFalse(is_ip_address('not-an-ip'))
+        self.assertFalse(is_ip_address('999.999.999.999'))
+        self.assertFalse(is_ip_address('192.168.1'))
+        self.assertFalse(is_ip_address(''))
+        self.assertFalse(is_ip_address('192.168.1.1.1'))
     
     @patch('socket.getaddrinfo')
     def test_resolve_hostname_success_ipv4(self, mock_getaddrinfo):

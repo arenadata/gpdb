@@ -1,8 +1,9 @@
 from gppylib.test.unit.gp_unittest import *
 from mock import *
 
-from gprebalance_modules.planner import ResourceEstimator, ResourceError, LogicalMove, Planner
+from gprebalance_modules.planner import ResourceEstimator, ResourceError, LogicalMove, Planner, PortAllocator, PlanningError
 from gppylib.db.dbconn import DbURL
+from gppylib import gparray
 from gprebalance_modules.test.config import initGparrayFromFile
 from gprebalance_modules.rebalance_commons import (
     SegmentSize, 
@@ -132,19 +133,15 @@ class TestDiskSpaceChecker(GpTestCase):
         self.assertEqual(result['/data1/primary/gpseg0'].available_kb, 10485760)
         self.assertEqual(result['/data1/primary/gpseg0'].available_gb, 10.0)
     
-    @patch('gprebalance_modules.rebalance_commons.WorkerPool')
     @patch('gprebalance_modules.rebalance_commons.DiskFree')
-    def test_get_available_space_command_failure(self, mock_disk_free_class, mock_pool_class):
+    def test_get_available_space_command_failure(self, mock_disk_free_class):
         """Test available space command failure"""
-        mock_pool = Mock()
-        mock_pool_class.return_value = mock_pool
         
         cmd = Mock()
+        mock_disk_free_class.return_value = cmd
         cmd.was_successful.return_value = False
         cmd.get_results.return_value.stderr = "No such file or directory"
-        
-        mock_pool.getCompletedItems.return_value = [cmd]
-        
+                
         with self.assertRaises(Exception) as context:
             self.checker.get_available_space('sdw1', ['/data1/primary/gpseg0'])
         
@@ -634,6 +631,535 @@ class TestResourceEstimator(GpTestCase):
         
         # Verify warning was logged
         self.logger.warning.assert_any_call("Skipping resource estimation")
+
+class TestPortAllocator(GpTestCase):
+    """
+    Unit tests for PortAllocator class
+    """
+    
+    def setUp(self):
+        self.logger = Mock()
+        
+    def _create_mock_segment(self, dbid, content, hostname, port, role='p', preferred_role='p'):
+        """
+        Helper to create mock segment
+        """
+        seg = Mock(spec=gparray.Segment)
+        seg.dbid = dbid
+        seg.content = content
+        seg.hostname = hostname
+        seg.datadir = f'/data{content}/seg{content}'
+        seg.port = port
+        seg.role = role
+        seg.preferred_role = preferred_role
+        
+        seg.getSegmentDbId.return_value = dbid
+        seg.getSegmentContentId.return_value = content
+        seg.getSegmentHostName.return_value = hostname
+        seg.getSegmentDataDirectory.return_value = seg.datadir
+        seg.getSegmentPort.return_value = port
+        seg.isSegmentPrimary.return_value = (role == 'p')
+        seg.isSegmentMirror.return_value = (role == 'm')
+        
+        return seg
+    
+    def _create_mock_gparray(self, segments):
+        """
+        Helper to create mock GpArray
+        """
+        array = Mock(spec=gparray.GpArray)
+        array.getSegDbList.return_value = segments
+        return array
+    
+    def test_initialization_simple(self):
+        """
+        Test basic initialization with simple segment configuration
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_mock_segment(2, 0, 'host2', 6000, 'm'),
+            self._create_mock_segment(3, 1, 'host1', 6001, 'p'),
+            self._create_mock_segment(4, 1, 'host2', 6001, 'm'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger)
+        
+        # Verify existing ports tracked
+        self.assertIn(6000, allocator.existing_ports_by_host['host1'])
+        self.assertIn(6001, allocator.existing_ports_by_host['host1'])
+        self.assertIn(6000, allocator.existing_ports_by_host['host2'])
+        self.assertIn(6001, allocator.existing_ports_by_host['host2'])
+        
+        # Verify base ports detected
+        self.assertEqual(allocator.base_ports_by_host['host1'], (6000, None))
+        self.assertEqual(allocator.base_ports_by_host['host2'], (None, 6000))
+    
+    def test_initialization_with_primaries_and_mirrors(self):
+        """
+        Test initialization with both primaries and mirrors on same host
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_mock_segment(2, 1, 'host1', 6001, 'p'),
+            self._create_mock_segment(3, 0, 'host2', 7000, 'm'),
+            self._create_mock_segment(4, 1, 'host2', 7001, 'm'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger)
+        
+        # Host1 has primaries
+        primary_ports, mirror_ports = allocator.existing_ports_by_role['host1']
+        self.assertEqual(primary_ports, {6000, 6001})
+        self.assertEqual(mirror_ports, set())
+        
+        # Host2 has mirrors
+        primary_ports, mirror_ports = allocator.existing_ports_by_role['host2']
+        self.assertEqual(primary_ports, set())
+        self.assertEqual(mirror_ports, {7000, 7001})
+        
+        # Base ports
+        self.assertEqual(allocator.base_ports_by_host['host1'], (6000, None))
+        self.assertEqual(allocator.base_ports_by_host['host2'], (None, 7000))
+    
+    def test_allocate_port_existing_host_port_available(self):
+        """
+        Test allocating port on existing host when current port is available
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_mock_segment(2, 1, 'host1', 6001, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        host = Host(hostname='host2', address='10.0.0.2', status=HostStatus.ACTIVE)
+        
+        # Allocate port 7000 on host2 (doesn't exist in cluster yet)
+        allocated_port = allocator.allocate_port(host, current_port=7000, is_mirror=False)
+        
+        self.assertEqual(allocated_port, 7000)
+        self.assertIn(7000, allocator.planned_ports_by_host['host2'])
+    
+    def test_allocate_port_existing_host_port_conflict(self):
+        """
+        Test allocating port on existing host when current port conflicts
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_mock_segment(2, 1, 'host1', 6001, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.ACTIVE)
+        
+        # Try to allocate port 6000 which is already used
+        allocated_port = allocator.allocate_port(host, current_port=6000, is_mirror=False)
+        
+        # Should get next available port
+        self.assertNotEqual(allocated_port, 6000)
+        self.assertGreaterEqual(allocated_port, 6000)
+        self.assertIn(allocated_port, allocator.planned_ports_by_host['host1'])
+    
+    def test_allocate_port_new_host_first_primary(self):
+        """
+        Test allocating first primary port on new host
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        new_host = Host(hostname='host2', address='10.0.0.2', status=HostStatus.NEW)
+        
+        # Allocate first primary on new host
+        allocated_port = allocator.allocate_port(new_host, current_port=6000, is_mirror=False)
+        
+        self.assertEqual(allocated_port, 6000)
+        self.assertEqual(allocator.base_ports_by_host['host2'], (6000, None))
+        self.assertIn(6000, allocator.planned_ports_by_host['host2'])
+    
+    def test_allocate_port_new_host_first_mirror(self):
+        """
+        Test allocating first mirror port on new host
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        new_host = Host(hostname='host2', address='10.0.0.2', status=HostStatus.NEW)
+        
+        # Allocate first mirror on new host
+        allocated_port = allocator.allocate_port(new_host, current_port=7000, is_mirror=True)
+        
+        self.assertEqual(allocated_port, 7000)
+        self.assertEqual(allocator.base_ports_by_host['host2'], (None, 7000))
+        self.assertIn(7000, allocator.planned_ports_by_host['host2'])
+    
+    def test_allocate_port_new_host_subsequent_primaries(self):
+        """
+        Test allocating subsequent primary ports on new host follow pattern
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        new_host = Host(hostname='host2', address='10.0.0.2', status=HostStatus.NEW)
+        
+        # Allocate first primary
+        port1 = allocator.allocate_port(new_host, current_port=6000, is_mirror=False)
+        self.assertEqual(port1, 6000)
+        
+        # Allocate second primary - should follow pattern
+        port2 = allocator.allocate_port(new_host, current_port=6001, is_mirror=False)
+        self.assertEqual(port2, 6001)
+        
+        # Allocate third primary
+        port3 = allocator.allocate_port(new_host, current_port=6002, is_mirror=False)
+        self.assertEqual(port3, 6002)
+    
+    def test_allocate_port_new_host_mirrors_separate_from_primaries(self):
+        """
+        Test that mirrors and primaries maintain separate port ranges on new host
+        """
+        segments = []
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        new_host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        
+        # Allocate primaries starting at 6000
+        port_p1 = allocator.allocate_port(new_host, current_port=6000, is_mirror=False)
+        port_p2 = allocator.allocate_port(new_host, current_port=6001, is_mirror=False)
+        
+        # Allocate mirrors starting at 7000
+        port_m1 = allocator.allocate_port(new_host, current_port=7000, is_mirror=True)
+        port_m2 = allocator.allocate_port(new_host, current_port=7001, is_mirror=True)
+        
+        self.assertEqual(port_p1, 6000)
+        self.assertEqual(port_p2, 6001)
+        self.assertEqual(port_m1, 7000)
+        self.assertEqual(port_m2, 7001)
+        
+        # Verify base ports
+        self.assertEqual(allocator.base_ports_by_host['host1'], (6000, 7000))
+    
+    def test_is_port_available(self):
+        """
+        Test port availability checking
+        """
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger)
+        
+        # Port 6000 is used
+        self.assertFalse(allocator._is_port_available('host1', 6000))
+        
+        # Port 6001 is free
+        self.assertTrue(allocator._is_port_available('host1', 6001))
+        
+        # Mark 6001 as planned
+        allocator.planned_ports_by_host['host1'].add(6001)
+        self.assertFalse(allocator._is_port_available('host1', 6001))
+    
+    @patch('gprebalance_modules.planner.PortIsAvailable')
+    def test_check_port_on_host_available(self, mock_port_is_available):
+        """Test actual port verification on host when port is available"""
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=True)
+        
+        # Mock PortIsAvailable command
+        mock_cmd = Mock()
+        mock_cmd.is_port_available.return_value = True
+        mock_port_is_available.return_value = mock_cmd
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        result = allocator._check_port_on_host(host, 6000)
+        
+        self.assertTrue(result)
+        mock_cmd.run.assert_called_once()
+    
+    @patch('gprebalance_modules.planner.PortIsAvailable')
+    def test_check_port_on_host_in_use(self, mock_port_is_available):
+        """Test actual port verification when port is in use"""
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=True)
+        
+        # Mock PortIsAvailable command
+        mock_cmd = Mock()
+        mock_cmd.is_port_available.return_value = False
+        mock_port_is_available.return_value = mock_cmd
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        result = allocator._check_port_on_host(host, 6000)
+        
+        self.assertFalse(result)
+    
+    @patch('gprebalance_modules.planner.PortIsAvailable')
+    def test_check_port_on_host_verification_disabled(self, mock_port_is_available):
+        """Test that verification is skipped when disabled"""
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        result = allocator._check_port_on_host(host, 6000)
+        
+        # Should return True without checking
+        self.assertTrue(result)
+        mock_port_is_available.assert_not_called()
+    
+    @patch('gprebalance_modules.planner.PortIsAvailable')
+    def test_verify_and_allocate_port_preferred_available(self, mock_port_is_available):
+        """Test verify_and_allocate when preferred port is available"""
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=True)
+        
+        # Mock port as available
+        mock_cmd = Mock()
+        mock_cmd.is_port_available.return_value = True
+        mock_port_is_available.return_value = mock_cmd
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        allocated = allocator._verify_and_allocate_port(host, 6000)
+        
+        self.assertEqual(allocated, 6000)
+    
+    @patch('gprebalance_modules.planner.PortIsAvailable')
+    def test_verify_and_allocate_port_preferred_in_use(self, mock_port_is_available):
+        """
+        Test verify_and_allocate when preferred port is in use
+        """
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=True)
+        
+        # Mock first port as in use, second as available
+        def mock_is_available_side_effect():
+            call_count = [0]
+            def side_effect():
+                call_count[0] += 1
+                return call_count[0] > 1
+            return side_effect
+        
+        mock_cmd = Mock()
+        mock_cmd.is_port_available.side_effect = mock_is_available_side_effect()
+        mock_port_is_available.return_value = mock_cmd
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        allocated = allocator._verify_and_allocate_port(host, 6000)
+        
+        # Should get next port
+        self.assertEqual(allocated, 6001)
+        self.assertIn(6000, allocator.existing_ports_by_host['host1'])  # Marked as used
+    
+    def test_find_next_available_port_with_base(self):
+        """Test finding next available port with established base"""
+        segments = [
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_mock_segment(2, 1, 'host1', 6001, 'p'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.ACTIVE)
+        
+        # Find next primary port (base is 6000)
+        next_port = allocator._find_next_available_port(host, 6000, is_mirror=False)
+        
+        # Should skip 6000, 6001 and return 6002
+        self.assertEqual(next_port, 6002)
+    
+    def test_find_verified_port_max_attempts(self):
+        """Test that finding port fails after max attempts"""
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        
+        # Fill up many ports
+        for i in range(1000):
+            allocator.existing_ports_by_host['host1'].add(6000 + i)
+        
+        # Should raise error after max attempts
+        with self.assertRaises(PlanningError) as ctx:
+            allocator._find_verified_port(host, 6000)
+        
+        self.assertIn("Cannot find available port", str(ctx.exception))
+        self.assertIn("after 1000 attempts", str(ctx.exception))
+    
+    def test_complex_scenario_mixed_roles(self):
+        """
+        Test complex scenario with primaries and mirrors on same host
+        """
+        segments = [
+            # Host1: primaries on 6000-6002
+            self._create_mock_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_mock_segment(2, 1, 'host1', 6001, 'p'),
+            self._create_mock_segment(3, 2, 'host1', 6002, 'p'),
+            # Host1: mirrors on 7000-7001
+            self._create_mock_segment(4, 3, 'host1', 7000, 'm'),
+            self._create_mock_segment(5, 4, 'host1', 7001, 'm'),
+        ]
+        
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        host1 = Host(hostname='host1', address='10.0.0.1', status=HostStatus.ACTIVE)
+        
+        # Allocate new primary (should get 6003)
+        port_p = allocator.allocate_port(host1, current_port=6003, is_mirror=False)
+        self.assertEqual(port_p, 6003)
+        
+        # Allocate new mirror (should get 7002)
+        port_m = allocator.allocate_port(host1, current_port=7002, is_mirror=True)
+        self.assertEqual(port_m, 7002)
+        
+        # Verify role separation maintained
+        primary_ports, mirror_ports = allocator.existing_ports_by_role['host1']
+        self.assertIn(6003, primary_ports)
+        self.assertIn(7002, mirror_ports)
+    
+    def test_empty_gparray(self):
+        """Test initialization with empty gparray"""
+        segments = []
+        gparray_mock = self._create_mock_gparray(segments)
+        allocator = PortAllocator(gparray_mock, self.logger)
+        
+        self.assertEqual(len(allocator.existing_ports_by_host), 0)
+        self.assertEqual(len(allocator.base_ports_by_host), 0)
+        
+        # Should still be able to allocate on new host
+        new_host = Host(hostname='host1', address='10.0.0.1', status=HostStatus.NEW)
+        port = allocator.allocate_port(new_host, current_port=6000, is_mirror=False)
+        self.assertEqual(port, 6000)
+
+class TestPortAllocatorIntegration(GpTestCase):
+    """Integration tests simulating realistic rebalance scenarios"""
+    
+    def setUp(self):
+        self.logger = Mock()
+    
+    def _create_segment(self, dbid, content, hostname, port, role='p'):
+        """Helper to create mock segment"""
+        seg = Mock(spec=gparray.Segment)
+        seg.dbid = dbid
+        seg.content = content
+        seg.hostname = hostname
+        seg.datadir = f'/data{content}/seg{content}'
+        seg.port = port
+        seg.role = role
+        seg.preferred_role = role
+        
+        seg.getSegmentDbId.return_value = dbid
+        seg.getSegmentContentId.return_value = content
+        seg.getSegmentHostName.return_value = hostname
+        seg.getSegmentDataDirectory.return_value = seg.datadir
+        seg.getSegmentPort.return_value = port
+        seg.isSegmentPrimary.return_value = (role == 'p')
+        seg.isSegmentMirror.return_value = (role == 'm')
+        
+        return seg
+    
+    def test_expansion_scenario(self):
+        """Test port allocation during cluster expansion (add new host)"""
+        # Initial: 2 hosts with 2 primaries each
+        segments = [
+            self._create_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_segment(2, 1, 'host1', 6001, 'p'),
+            self._create_segment(3, 0, 'host2', 7000, 'm'),
+            self._create_segment(4, 1, 'host2', 7001, 'm'),
+        ]
+        
+        gparray_mock = Mock(spec=gparray.GpArray)
+        gparray_mock.getSegDbList.return_value = segments
+        
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        # Add new host3 - move some mirrors there
+        new_host = Host(hostname='host3', address='10.0.0.3', status=HostStatus.NEW)
+        
+        # Move mirror of content 0 to new host
+        port1 = allocator.allocate_port(new_host, current_port=7000, is_mirror=True)
+        self.assertEqual(port1, 7000)  # Establishes base
+        
+        # Move mirror of content 1 to new host
+        port2 = allocator.allocate_port(new_host, current_port=7001, is_mirror=True)
+        self.assertEqual(port2, 7001)  # Follows pattern
+    
+    def test_shrink_scenario(self):
+        """Test port allocation during cluster shrink (remove host)"""
+        # Initial: 3 hosts
+        segments = [
+            self._create_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_segment(2, 1, 'host2', 6000, 'p'),
+            self._create_segment(3, 2, 'host3', 6000, 'p'),
+            self._create_segment(4, 0, 'host2', 7000, 'm'),
+            self._create_segment(5, 1, 'host3', 7000, 'm'),
+            self._create_segment(6, 2, 'host1', 7000, 'm'),
+        ]
+        
+        gparray_mock = Mock(spec=gparray.GpArray)
+        gparray_mock.getSegDbList.return_value = segments
+        
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        # Remove host3 - redistribute its segments
+        host1 = Host(hostname='host1', address='10.0.0.1', status=HostStatus.ACTIVE)
+        host2 = Host(hostname='host2', address='10.0.0.2', status=HostStatus.ACTIVE)
+        
+        # Move content 2 primary from host3 to host1
+        port_p = allocator.allocate_port(host1, current_port=6000, is_mirror=False)
+        self.assertEqual(port_p, 6001)  # 6000 in use, get next
+        
+        # Move content 2 mirror from host1 to host2
+        port_m = allocator.allocate_port(host2, current_port=7000, is_mirror=True)
+        self.assertEqual(port_m, 7001)  # 7000 in use, get next
+    
+    def test_rebalance_after_failure(self):
+        """Test rebalance scenario after segment failure and recovery"""
+        # Scenario: segment recovered with different port, need to rebalance
+        segments = [
+            self._create_segment(1, 0, 'host1', 6000, 'p'),
+            self._create_segment(2, 1, 'host1', 6001, 'p'),
+            self._create_segment(3, 2, 'host1', 6002, 'p'),
+            self._create_segment(4, 0, 'host2', 7000, 'm'),
+            self._create_segment(5, 1, 'host2', 7001, 'm'),
+            self._create_segment(6, 2, 'host2', 7999, 'm'),  # Recovered with odd port
+        ]
+        
+        gparray_mock = Mock(spec=gparray.GpArray)
+        gparray_mock.getSegDbList.return_value = segments
+        
+        allocator = PortAllocator(gparray_mock, self.logger, verify_ports=False)
+        
+        # Rebalance: move content 2 mirror back to proper port
+        host2 = Host(hostname='host2', address='10.0.0.2', status=HostStatus.ACTIVE)
+        
+        # Try to use 7002 (following pattern)
+        port = allocator.allocate_port(host2, current_port=7002, is_mirror=True)
+        self.assertEqual(port, 7002)  # Should be available
 
 if __name__ == '__main__':
     run_tests()

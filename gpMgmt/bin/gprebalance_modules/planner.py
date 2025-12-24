@@ -338,9 +338,15 @@ class PortAllocator:
         if self._is_port_available(host.hostname, current_port):
             if self.verify_ports:
                 if not self._check_port_on_host(host, current_port):
-                    self.logger.log(f"Port {current_port} on {host.hostname} appears in use, finding alternative")
+                    self.logger.info(f"Port {current_port} on {host.hostname} "
+                                     "appears in use, finding alternative")
                     return self._find_next_available_port(host, current_port, is_mirror)
             self.planned_ports_by_host[host.hostname].add(current_port)
+            primary_ports, mirror_ports = self.existing_ports_by_role[host.hostname]
+            if is_mirror:
+                mirror_ports.add(current_port)
+            else:
+                primary_ports.add(current_port)
             return current_port
         
         # Port conflict - find next available port for this role
@@ -391,7 +397,9 @@ class PortAllocator:
         if self._is_port_available(host.hostname, preferred_port):
             if self.verify_ports and not self._check_port_on_host(host, preferred_port):
                 # Preferred port is actually in use, find alternative
-                self.logger.log(f"Preferred port {preferred_port} on {host.hostname} is in use, searching for alternative")
+                self.logger.info(f"Preferred port {preferred_port} on {host.hostname} "
+                                 "is in use, searching for alternative")
+                self.existing_ports_by_host[host.hostname].add(preferred_port)
                 return self._find_verified_port(host, preferred_port + 1)
             return preferred_port
         
@@ -530,7 +538,7 @@ class Planner:
 
             for host in hosts_list:
                 # Resolve IP to hostname if needed
-                if self.resolver.is_ip_address(host):
+                if is_ip_address(host):
                     hostname = self.resolver.resolve_ip(host)
                     if not hostname:
                         raise ValidationError(f"{option_name}: Cannot resolve IP {host}")
@@ -1127,21 +1135,20 @@ class ResourceEstimator:
                     'available_gb': available_gb,
                 })
 
-            if insufficient_space:
-                error_lines = ["Insufficient disk space for rebalance operation:\n"]
-    
-                for issue in insufficient_space:
-                    error_lines.append(
-                        f"  Host: {issue['hostname']}\n"
-                        f"    Filesystem: {issue['filesystem']}\n"
-                        f"    Target directories: {', '.join(issue['target_dirs'])}\n"
-                        f"    Segments to move: {issue['num_segments']}\n"
-                        f"    Required: {issue['required_gb']:.2f} GB\n"
-                        f"    Available: {issue['available_gb']:.2f} GB\n"
-                    )
+        if insufficient_space:
+            error_lines = ["Insufficient disk space for rebalance operation:\n"]
 
+            for issue in insufficient_space:
                 error_lines.append(
-                    f"\nNote: Estimates include {int(DISK_SPACE_SAFETY_MARGIN * 100)}% safety margin"
+                    f"  Host: {issue['hostname']}\n"
+                    f"    Filesystem: {issue['filesystem']}\n"
+                    f"    Target directories: {', '.join(issue['target_dirs'])}\n"
+                    f"    Segments to move: {issue['num_segments']}\n"
+                    f"    Required: {issue['required_gb']:.2f} GB\n"
+                    f"    Available: {issue['available_gb']:.2f} GB\n"
                 )
 
-                raise ResourceError(''.join(error_lines))
+            error_lines.append(
+                f"\nNote: Estimates include {int(DISK_SPACE_SAFETY_MARGIN * 100)}% safety margin"
+            )
+            raise ResourceError(''.join(error_lines))
