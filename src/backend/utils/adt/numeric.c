@@ -8181,7 +8181,6 @@ div_var_fast(const NumericVar *var1, const NumericVar *var2,
 	 * root algorithm, where we typically divide a 2N-digit number by an
 	 * N-digit number, and only require a result with N digits of precision.
 	 */
-<<<<<<< HEAD
 	i = (div_ndigits + 1) * sizeof(int);
 	if (div_ndigits > NUMERIC_LOCAL_NMAX)
 	{
@@ -8192,12 +8191,8 @@ div_var_fast(const NumericVar *var1, const NumericVar *var2,
 		memset(tdiv, 0, i);
 		div = tdiv;
 	}
-	for (i = 0; i < var1ndigits; i++)
-=======
-	div = (int *) palloc0((div_ndigits + 1) * sizeof(int));
 	load_ndigits = Min(div_ndigits, var1ndigits);
 	for (i = 0; i < load_ndigits; i++)
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 		div[i + 1] = var1digits[i];
 
 	/*
@@ -8744,17 +8739,12 @@ sqrt_var(const NumericVar *arg, NumericVar *result, int rscale)
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_POWER_FUNCTION),
 				 errmsg("cannot take square root of a negative number")));
 
-<<<<<<< HEAD
-	/* Copy arg in case it is the same var as result */
-	init_var_from_var(arg, &tmp_arg);
-=======
 	init_var(&s_var);
 	init_var(&r_var);
 	init_var(&a0_var);
 	init_var(&a1_var);
 	init_var(&q_var);
 	init_var(&u_var);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/*
 	 * The result weight is half the input weight, rounded towards minus
@@ -8765,10 +8755,6 @@ sqrt_var(const NumericVar *arg, NumericVar *result, int rscale)
 	else
 		res_weight = -((-arg->weight - 1) / 2 + 1);
 
-<<<<<<< HEAD
-	init_var_from_var(result, &last_val);
-	quick_init_var(&tmp_val);
-=======
 	/*
 	 * Number of NBASE digits to compute.  To ensure correct rounding, compute
 	 * at least 1 extra decimal digit.  We explicitly allow rscale to be
@@ -8780,7 +8766,6 @@ sqrt_var(const NumericVar *arg, NumericVar *result, int rscale)
 	else
 		res_ndigits = res_weight + 1 - (-rscale - 1) / DEC_DIGITS;
 	res_ndigits = Max(res_ndigits, 1);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/*
 	 * Number of source NBASE digits logically required to produce a result
