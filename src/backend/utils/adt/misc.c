@@ -241,58 +241,17 @@ pg_tablespace_databases(PG_FUNCTION_ARGS)
 
 	if (tablespaceOid == GLOBALTABLESPACE_OID)
 	{
-<<<<<<< HEAD
-		MemoryContext oldcontext;
-		Oid			tablespaceOid = PG_GETARG_OID(0);
-
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-		fctx = palloc(sizeof(ts_db_fctx));
-
-		if (tablespaceOid == GLOBALTABLESPACE_OID)
-		{
-			fctx->dirdesc = NULL;
-			ereport(WARNING,
-					(errmsg("global tablespace never has databases")));
-		}
-		else
-		{
-			if (tablespaceOid == DEFAULTTABLESPACE_OID)
-				fctx->location = psprintf("base");
-			else
-				fctx->location = psprintf("pg_tblspc/%u/%s", tablespaceOid,
-										  GP_TABLESPACE_VERSION_DIRECTORY);
-
-			fctx->dirdesc = AllocateDir(fctx->location);
-
-			if (!fctx->dirdesc)
-			{
-				/* the only expected error is ENOENT */
-				if (errno != ENOENT)
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not open directory \"%s\": %m",
-									fctx->location)));
-				ereport(WARNING,
-						(errmsg("%u is not a tablespace OID", tablespaceOid)));
-			}
-		}
-		funcctx->user_fctx = fctx;
-		MemoryContextSwitchTo(oldcontext);
-=======
 		ereport(WARNING,
 				(errmsg("global tablespace never has databases")));
 		/* return empty tuplestore */
 		return (Datum) 0;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 	}
 
 	if (tablespaceOid == DEFAULTTABLESPACE_OID)
 		location = psprintf("base");
 	else
 		location = psprintf("pg_tblspc/%u/%s", tablespaceOid,
-							TABLESPACE_VERSION_DIRECTORY);
+							GP_TABLESPACE_VERSION_DIRECTORY);
 
 	dirdesc = AllocateDir(location);
 
