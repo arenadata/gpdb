@@ -361,15 +361,9 @@ ScanPgRelation(Oid targetRelId, bool indexOK, bool force_non_historic)
 	 * need to register the snapshot.
 	 */
 	if (force_non_historic)
-<<<<<<< HEAD
 		snapshot = GetNonHistoricCatalogSnapshot(
 			RelationRelationId,
 			DistributedTransactionContext);
-	else
-		snapshot = GetCatalogSnapshot(RelationRelationId);
-=======
-		snapshot = GetNonHistoricCatalogSnapshot(RelationRelationId);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	pg_class_scan = systable_beginscan(pg_class_desc, ClassOidIndexId,
 									   indexOK && criticalRelcachesBuilt,
