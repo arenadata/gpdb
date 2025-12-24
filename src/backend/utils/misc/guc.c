@@ -206,12 +206,8 @@ static bool check_autovacuum_max_workers(int *newval, void **extra, GucSource so
 static bool check_max_wal_senders(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_work_mem(int *newval, void **extra, GucSource source);
 static bool check_effective_io_concurrency(int *newval, void **extra, GucSource source);
-<<<<<<< HEAD
 static bool check_client_connection_check_interval(int *newval, void **extra, GucSource source);
-static void assign_effective_io_concurrency(int newval, void *extra);
-=======
 static bool check_maintenance_io_concurrency(int *newval, void **extra, GucSource source);
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 static void assign_pgstat_temp_directory(const char *newval, void *extra);
 static bool check_application_name(char **newval, void **extra, GucSource source);
 static void assign_application_name(const char *newval, void *extra);
