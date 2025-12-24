@@ -486,11 +486,8 @@ static void add_cast_to(StringInfo buf, Oid typid);
 static char *generate_qualified_type_name(Oid typid);
 static text *string_to_text(char *str);
 static char *flatten_reloptions(Oid relid);
-<<<<<<< HEAD
-=======
 static void get_reloptions(StringInfo buf, Datum reloptions);
 
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 #define only_marker(rte)  ((rte)->inh ? "" : "ONLY ")
 
 
@@ -10988,7 +10985,6 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 }
 
 /*
-<<<<<<< HEAD
  * Like get_opclass_name(), but with special treatment for gp_use_legacy_hashops=on
  */
 static void
@@ -11034,8 +11030,7 @@ get_opclass_name_for_distribution_key(Oid opclass, Oid actual_datatype,
 	}
 }
 
-
-=======
+/*
  * generate_opclass_name
  *		Compute the name to display for a opclass specified by OID
  *
@@ -11052,7 +11047,6 @@ generate_opclass_name(Oid opclass)
 	return &buf.data[1];	/* get_opclass_name() prepends space */
 }
 
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 /*
  * processIndirection - take care of array and subfield assignment
  *
