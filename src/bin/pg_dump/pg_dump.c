@@ -6723,7 +6723,6 @@ getTables(Archive *fout, int *numTables)
 	i_checkoption = PQfnumber(res, "checkoption");
 	i_toastreloptions = PQfnumber(res, "toast_reloptions");
 	i_reloftype = PQfnumber(res, "reloftype");
-	i_foreignserver = PQfnumber(res, "foreignserver");
 	i_amname = PQfnumber(res, "amname");
 	i_is_identity_sequence = PQfnumber(res, "is_identity_sequence");
 	i_relacl = PQfnumber(res, "relacl");
@@ -6811,7 +6810,6 @@ getTables(Archive *fout, int *numTables)
 			tblinfo[i].reloftype = NULL;
 		else
 			tblinfo[i].reloftype = pg_strdup(PQgetvalue(res, i, i_reloftype));
-		tblinfo[i].foreign_server = atooid(PQgetvalue(res, i, i_foreignserver));
 		if (PQgetisnull(res, i, i_amname))
 			tblinfo[i].amname = NULL;
 		else
@@ -17634,8 +17632,6 @@ dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo)
 
 	qualrelname = pg_strdup(fmtQualifiedDumpable(tbinfo));
 
-	foreign = tbinfo->relkind == RELKIND_FOREIGN_TABLE ? "FOREIGN " : "";
-
 	/*
 	 * GPDB: Upstream uses ALTER TABLE ONLY below. If the table
 	 * is the parent of a GPDB partitioning hierarchy, the default
@@ -17643,6 +17639,8 @@ dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo)
 	 * this, we use ALTER TABLE instead when acting on a partition
 	 * parent.
 	 */
+	foreign = tbinfo->relkind == RELKIND_FOREIGN_TABLE ? "FOREIGN " : "";
+
 	appendPQExpBuffer(q,
 					  "ALTER %sTABLE %s%s ALTER COLUMN %s SET DEFAULT %s;\n",
 					  foreign, tbinfo->parparent ? "" : "ONLY ", qualrelname,
