@@ -306,8 +306,8 @@ select count(*) from testhstore where h ?& ARRAY['public','disabled'];
 
 drop index hidx;
 create index hidx on testhstore using gist(h gist_hstore_ops(siglen=0));
-create index hidx on testhstore using gist(h gist_hstore_ops(siglen=2025));
-create index hidx on testhstore using gist(h gist_hstore_ops(siglen=2024));
+create index hidx on testhstore using gist(h gist_hstore_ops(siglen=8169));
+create index hidx on testhstore using gist(h gist_hstore_ops(siglen=8168));
 set enable_seqscan=off;
 
 select count(*) from testhstore where h @> 'wait=>NULL';
