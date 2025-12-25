@@ -91,7 +91,7 @@ SELECT count(*) FROM test_tsvector WHERE a @@ '!no_such_lexeme';
 -- Test siglen parameter of GiST tsvector_ops
 CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(foo=1));
 CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=0));
-CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=2048));
+CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=8169));
 CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=100,foo='bar'));
 CREATE INDEX wowidx1 ON test_tsvector USING gist (a tsvector_ops(siglen=100, siglen = 200));
 
