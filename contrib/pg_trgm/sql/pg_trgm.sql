@@ -48,8 +48,8 @@ select count(*) from test_trgm where t ~ '[qwerty]{2}-?[qwerty]{2}';
 
 drop index trgm_idx;
 create index trgm_idx on test_trgm using gist (t gist_trgm_ops(siglen=0));
-create index trgm_idx on test_trgm using gist (t gist_trgm_ops(siglen=2025));
-create index trgm_idx on test_trgm using gist (t gist_trgm_ops(siglen=2024));
+create index trgm_idx on test_trgm using gist (t gist_trgm_ops(siglen=8169));
+create index trgm_idx on test_trgm using gist (t gist_trgm_ops(siglen=8168));
 set enable_seqscan=off;
 
 select t,similarity(t,'qwertyu0988') as sml from test_trgm where t % 'qwertyu0988' order by sml desc, t;
