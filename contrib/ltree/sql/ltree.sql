@@ -326,8 +326,8 @@ SELECT * FROM ltreetest WHERE t ? '{23.*.1,23.*.2}' order by t asc;
 
 drop index tstidx;
 create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=0));
-create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=2025));
-create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=2024));
+create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=8169));
+create index tstidx on ltreetest using gist (t gist_ltree_ops(siglen=8168));
 
 SELECT count(*) FROM ltreetest WHERE t <  '12.3';
 SELECT count(*) FROM ltreetest WHERE t <= '12.3';
@@ -370,14 +370,13 @@ SELECT count(*) FROM _ltreetest WHERE t ~ '23.*.1' ;
 SELECT count(*) FROM _ltreetest WHERE t ~ '23.*.2' ;
 SELECT count(*) FROM _ltreetest WHERE t ? '{23.*.1,23.*.2}' ;
 
-<<<<<<< HEAD
 -- Test that has all opclasses
 select opcname,amname from pg_opclass opc,  pg_am am  where am.oid=opc.opcmethod and opcintype='ltree'::regtype;
-=======
+
 drop index _tstidx;
 create index _tstidx on _ltreetest using gist (t gist__ltree_ops(siglen=0));
-create index _tstidx on _ltreetest using gist (t gist__ltree_ops(siglen=2025));
-create index _tstidx on _ltreetest using gist (t gist__ltree_ops(siglen=2024));
+create index _tstidx on _ltreetest using gist (t gist__ltree_ops(siglen=8169));
+create index _tstidx on _ltreetest using gist (t gist__ltree_ops(siglen=8168));
 
 SELECT count(*) FROM _ltreetest WHERE t @> '1.1.1' ;
 SELECT count(*) FROM _ltreetest WHERE t <@ '1.1.1' ;
@@ -388,4 +387,3 @@ SELECT count(*) FROM _ltreetest WHERE t ~ '23.*{1}.1' ;
 SELECT count(*) FROM _ltreetest WHERE t ~ '23.*.1' ;
 SELECT count(*) FROM _ltreetest WHERE t ~ '23.*.2' ;
 SELECT count(*) FROM _ltreetest WHERE t ? '{23.*.1,23.*.2}' ;
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
