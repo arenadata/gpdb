@@ -372,7 +372,7 @@ class TestResourceEstimator(GpTestCase):
         
         estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
         
-        # Mock disk checker - 20GB availabl
+        # Mock disk checker - 20GB available
         estimator.disk_checker.check_batch_available_space = Mock(return_value={
             '172.20.0.7': {
                 '/data/primary0': DiskSpaceInfo(
