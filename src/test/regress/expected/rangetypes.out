@@ -1570,8 +1570,7 @@ DETAIL:  A result of type anyrange requires at least one input of type anyrange.
 create function table_fail(i anyelement) returns table(i anyelement, r anyrange)
   as $$ select $1, '[1,10]' $$ language sql;
 ERROR:  cannot determine result data type
-<<<<<<< HEAD
-DETAIL:  A function returning "anyrange" must have at least one "anyrange" argument.
+DETAIL:  A result of type anyrange requires at least one input of type anyrange.
 --
 -- DISTRIBUTED BY
 --
@@ -1623,6 +1622,3 @@ select * from distribute_by_text_range where tr = '[aaa,aab)'::textrange3;
  [aaa,aab)
 (1 row)
 
-=======
-DETAIL:  A result of type anyrange requires at least one input of type anyrange.
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
