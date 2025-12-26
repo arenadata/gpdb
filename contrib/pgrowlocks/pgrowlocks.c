@@ -75,20 +75,6 @@ pgrowlocks(PG_FUNCTION_ARGS)
 	TableScanDesc scan;
 	HeapScanDesc hscan;
 	HeapTuple	tuple;
-<<<<<<< HEAD
-	TupleDesc	tupdesc;
-	AttInMetadata *attinmeta;
-	Datum		result;
-	MyData	   *mydata;
-
-	if (SRF_IS_FIRSTCALL())
-	{
-		text	   *relname;
-		RangeVar   *relrv;
-		MemoryContext oldcontext;
-		AclResult	aclresult;
-		Relation	rel;
-=======
 	MemoryContext oldcontext;
 	AclResult	aclresult;
 	char	  **values;
@@ -102,7 +88,6 @@ pgrowlocks(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("materialize mode required, but it is not allowed in this context")));
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 	/* The tupdesc and tuplestore must be created in ecxt_per_query_memory */
 	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
