@@ -1048,107 +1048,209 @@ class ResourceEstimator:
         """
         Validate that target hosts have sufficient disk space
 
-        Raises:
-            ResourceError: If insufficient space available
+        Groups all space requirements by filesystem to handle cases where
+        datadirs and tablespaces share the same underlying filesystem.
         """
         self.logger.info("Validating available disk space on target hosts...")
 
-        # Group target datadirs by host (use FULL paths, not base paths)
+        # Collect all directories we need to check
         dirs_by_host = defaultdict(set)
-        move_by_target = defaultdict(list)  # (hostname, target_datadir) -> list of moves
+
+        # Track what each directory is used for (for better error reporting)
+        # (hostname, dir) -> moves in 'datadirs' if dir is datadir
+        # moves moves in 'tablespaces' if dir is tablespace
+        dir_usage = defaultdict(lambda: {'datadirs': [], 'tablespaces': []})
 
         for move in moves:
-            
-            # Use the FULL target datadir path - let DiskFree find the mount point
-            target_dir = move.target_datadir
+            if not move.segment_size:
+                continue
 
-            # Group by host
-            dirs_by_host[move.dstHost.address].add(target_dir)
+            target_host = move.dstHost.hostname
+            target_addr = move.dstHost.address
+            target_datadir = move.target_datadir
 
-            # Track moves for this target
-            key = (move.dstHost.hostname, target_dir)
-            move_by_target[key].append(move)
+            # Track datadir
+            dirs_by_host[target_addr].add(target_datadir)
+            dir_usage[(target_host, target_datadir)]['datadirs'].append(move)
+
+            # Track tablespace directories
+            if move.segment_size.tablespace_usage:
+                for tblspace_path, _ in move.segment_size.tablespace_usage.items():
+                    # Extract base path (remove /dbid suffix)
+                    base_tblspace_path = os.path.dirname(tblspace_path)
+
+                    dirs_by_host[target_addr].add(base_tblspace_path)
+                    dir_usage[(target_host, base_tblspace_path)]['tablespaces'].append(move)
 
         # Convert sets to lists for DiskFree
         dirs_by_host = {host: list(dirs) for host, dirs in dirs_by_host.items()}
 
         # Check available space in batch
-        # DiskFree will return FileSystem objects with the actual mount points
         try:
             space_info_by_host = self.disk_checker.check_batch_available_space(dirs_by_host)
         except Exception as e:
             raise ResourceError(f"Failed to check available disk space: {e}")
 
-        # Now aggregate by actual filesystem (from DiskFree results)
-        # Group moves by (hostname, filesystem_name)
-        moves_by_filesystem = defaultdict(list)
-        filesystem_space = {}  # (hostname, filesystem) -> DiskSpaceInfo
+        # Group directories by filesystem and aggregate space requirements
+        self.logger.info("Aggregating space requirements by filesystem...")
+        issues = self._validate_filesystem_requirements(
+            dir_usage=dir_usage,
+            space_info_by_host=space_info_by_host
+        )
 
-        for (hostname, target_dir), target_moves in move_by_target.items():
-            host_address = target_moves[0].dstHost.address
-
-            if host_address not in space_info_by_host:
-                raise ResourceError(f"No disk space information for host {hostname}")
-
-            space_info = space_info_by_host[host_address].get(target_dir)
-
-            if not space_info:
-                raise ResourceError(f"No disk space information for {hostname}:{target_dir}")
-
-            # Group by the filesystem returned by df
-            fs_key = (hostname, space_info.filesystem)
-            moves_by_filesystem[fs_key].extend(target_moves)
-            filesystem_space[fs_key] = space_info
-
-        # Validate each filesystem
-        insufficient_space = []
-
-        for (hostname, filesystem), fs_moves in moves_by_filesystem.items():
-            # Calculate total required space for this filesystem
-            required_kb = 0
-            for move in fs_moves:
-                if move.segment_size:
-                    required_kb += int(move.segment_size.total_size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
-
-            # Get available space
-            space_info = filesystem_space[(hostname, filesystem)]
-            available_kb = space_info.available_kb
-            required_gb = required_kb / 1024 / 1024
-            available_gb = available_kb / 1024 / 1024
-
-            self.logger.debug(
-                f"Host {hostname}, filesystem {filesystem}: "
-                f"Required {required_gb:.2f} GB, Available {available_gb:.2f} GB "
-                f"({len(fs_moves)} segments)"
-            )
-
-            if available_kb < required_kb:
-                # Collect target directories for this filesystem
-                target_dirs = list(set(move.target_datadir for move in fs_moves))
-
-                insufficient_space.append({
-                    'hostname': hostname,
-                    'filesystem': filesystem,
-                    'target_dirs': target_dirs,
-                    'num_segments': len(fs_moves),
-                    'required_gb': required_gb,
-                    'available_gb': available_gb,
-                })
-
-        if insufficient_space:
+        # Report all issues
+        if issues:
             error_lines = ["Insufficient disk space for rebalance operation:\n"]
 
-            for issue in insufficient_space:
-                error_lines.append(
-                    f"  Host: {issue['hostname']}\n"
-                    f"    Filesystem: {issue['filesystem']}\n"
-                    f"    Target directories: {', '.join(issue['target_dirs'])}\n"
-                    f"    Segments to move: {issue['num_segments']}\n"
-                    f"    Required: {issue['required_gb']:.2f} GB\n"
-                    f"    Available: {issue['available_gb']:.2f} GB\n"
-                )
+            for issue in issues:
+                error_lines.append(self._format_space_issue(issue))
 
             error_lines.append(
                 f"\nNote: Estimates include {int(DISK_SPACE_SAFETY_MARGIN * 100)}% safety margin"
             )
             raise ResourceError(''.join(error_lines))
+
+        self.logger.info("Disk space validation completed successfully")
+
+    def _validate_filesystem_requirements(self,
+                                          dir_usage: Dict[Tuple[str, str], Dict],
+                                          space_info_by_host: Dict[str, Dict[str, DiskSpaceInfo]]) -> List[Dict]:
+        """
+        Validate space requirements aggregated by filesystem
+
+        This correctly handles cases where datadirs and tablespaces share the same filesystem.
+
+        Args:
+            dir_usage: Dict mapping (hostname, directory) -> {'datadirs': [moves], 'tablespaces': [moves]}
+            space_info_by_host: Space information from DiskSpaceChecker
+
+        Returns:
+            List of issue dicts for filesystems with insufficient space
+        """
+        # Group by filesystem
+        filesystem_requirements = defaultdict(lambda: {
+            'required_kb': 0,
+            'datadir_moves': set(),
+            'tablespace_moves': set(),
+            'datadirs': set(),
+            'tablespaces': set(),
+            'space_info': None
+        })
+
+        for (hostname, directory), usage in dir_usage.items():
+            # Find the host address for this hostname
+            host_address = None
+            for moves_list in [usage['datadirs'], usage['tablespaces']]:
+                if moves_list:
+                    host_address = moves_list[0].dstHost.address
+                    break
+                
+            if not host_address:
+                continue
+
+            if host_address not in space_info_by_host:
+                raise ResourceError(f"No disk space information for host {hostname}")
+
+            space_info = space_info_by_host[host_address].get(directory)
+            if not space_info:
+                raise ResourceError(
+                    f"No disk space information for {hostname}:{directory}"
+                )
+
+            # Group by filesystem
+            fs_key = (hostname, space_info.filesystem)
+            fs_data = filesystem_requirements[fs_key]
+            fs_data['space_info'] = space_info
+
+            # Process datadir moves
+            for move in usage['datadirs']:
+                if not move.segment_size:
+                    continue
+
+                # Only count each move once per filesystem
+                if move.seg.dbid not in fs_data['datadir_moves']:
+                    fs_data['datadir_moves'].add(move.seg.dbid)
+                    fs_data['datadirs'].add(directory)
+                    size_kb = move.segment_size.datadir_size_kb
+                    fs_data['required_kb'] += int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+
+            # Process tablespace moves
+            for move in usage['tablespaces']:
+                if not move.segment_size or not move.segment_size.tablespace_usage:
+                    continue
+                
+                # Extract tablespace sizes that belong to this directory
+                for tbl_path, size_kb in move.segment_size.tablespace_usage.items():
+                    tbl_base_path = os.path.dirname(tbl_path)
+
+                    if tbl_base_path == directory:
+                        # Use a unique key to avoid double-counting the same tablespace
+                        tbl_key = (move.seg.dbid, tbl_path)
+
+                        if tbl_key not in fs_data['tablespace_moves']:
+                            fs_data['tablespace_moves'].add(tbl_key)
+                            fs_data['tablespaces'].add(directory)
+                            fs_data['required_kb'] += int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+
+        # Validate each filesystem
+        issues = []
+
+        for (hostname, filesystem), fs_data in filesystem_requirements.items():
+            required_kb = fs_data['required_kb']
+            available_kb = fs_data['space_info'].available_kb
+
+            required_gb = required_kb / 1024 / 1024
+            available_gb = available_kb / 1024 / 1024
+
+            # Count unique segments
+            unique_segments = len(fs_data['datadir_moves']) + len({dbid for dbid, _ in fs_data['tablespace_moves']})
+
+            self.logger.debug(
+                f"Filesystem {filesystem} on {hostname}: "
+                f"Required {required_gb:.2f} GB, Available {available_gb:.2f} GB "
+                f"({unique_segments} segments, "
+                f"{len(fs_data['datadirs'])} datadirs, "
+                f"{len(fs_data['tablespaces'])} tablespace dirs)"
+            )
+
+            if available_kb < required_kb:
+                all_dirs = sorted(fs_data['datadirs'].union(fs_data['tablespaces']))
+
+                issues.append({
+                    'type': 'filesystem',
+                    'hostname': hostname,
+                    'filesystem': filesystem,
+                    'target_dirs': all_dirs,
+                    'num_datadirs': len(fs_data['datadirs']),
+                    'num_tablespaces': len(fs_data['tablespaces']),
+                    'num_segments': unique_segments,
+                    'required_gb': required_gb,
+                    'available_gb': available_gb,
+                })
+
+        return issues
+
+    def _format_space_issue(self, issue: Dict) -> str:
+        """
+        Format a space issue for error reporting
+        """
+        issue_type = issue.get('type', 'unknown').upper()
+
+        # Build directory breakdown
+        dir_info = []
+        if issue.get('num_datadirs', 0) > 0:
+            dir_info.append(f"{issue['num_datadirs']} datadir(s)")
+        if issue.get('num_tablespaces', 0) > 0:
+            dir_info.append(f"{issue['num_tablespaces']} tablespace(s)")
+
+        dir_breakdown = ', '.join(dir_info) if dir_info else 'unknown'
+
+        return (
+            f"\n  [{issue_type}] Host: {issue['hostname']}\n"
+            f"    Filesystem: {issue['filesystem']}\n"
+            f"    Directories: {dir_breakdown}\n"
+            f"    Paths: {', '.join(issue['target_dirs'])}\n"
+            f"    Segments affected: {issue['num_segments']}\n"
+            f"    Required: {issue['required_gb']:.2f} GB\n"
+            f"    Available: {issue['available_gb']:.2f} GB\n"
+        )

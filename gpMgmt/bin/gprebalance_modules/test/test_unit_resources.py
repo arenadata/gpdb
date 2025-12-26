@@ -351,6 +351,7 @@ class TestResourceEstimator(GpTestCase):
         self.assertEqual(moves[0].segment_size.total_size_kb, expected_total)
     
     def test_validate_target_space_sufficient(self):
+        """Test validation passes when sufficient space is available"""
         # Get primary seg0
         seg0 = None
         for seg in self.gparray.getDbList():
@@ -371,7 +372,7 @@ class TestResourceEstimator(GpTestCase):
         
         estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
         
-        # Mock disk checker - 20GB available (plenty of space)
+        # Mock disk checker - 20GB availabl
         estimator.disk_checker.check_batch_available_space = Mock(return_value={
             '172.20.0.7': {
                 '/data/primary0': DiskSpaceInfo(
@@ -395,6 +396,7 @@ class TestResourceEstimator(GpTestCase):
         self.assertIn('/data/primary0', call_args['172.20.0.7'])
     
     def test_validate_target_space_insufficient(self):
+        """Test validation fails when insufficient space for datadir"""
         # Get primary seg0
         seg0 = None
         for seg in self.gparray.getDbList():
@@ -415,7 +417,7 @@ class TestResourceEstimator(GpTestCase):
         
         estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
         
-        # Mock disk checker - only 2GB available (insufficient)
+        # Mock disk checker - only 2GB available
         estimator.disk_checker.check_batch_available_space = Mock(return_value={
             '172.20.0.7': {
                 '/data/primary0': DiskSpaceInfo(
@@ -433,8 +435,10 @@ class TestResourceEstimator(GpTestCase):
         error_msg = str(context.exception)
         self.assertIn("Insufficient disk space", error_msg)
         self.assertIn("sdw2", error_msg)
+        self.assertIn("/data/primary0", error_msg)
     
     def test_validate_multiple_moves_same_filesystem_insufficient(self):
+        """Test validation aggregates space requirements on same filesystem"""
         # Get primaries from sdw1
         segs_from_sdw1 = []
         for seg in self.gparray.getDbList():
@@ -468,12 +472,12 @@ class TestResourceEstimator(GpTestCase):
             '172.20.0.7': {
                 '/data/primary0': DiskSpaceInfo(
                     filesystem='/dev/sdb1',
-                    available_kb=8388608,
+                    available_kb=8388608,  # 8GB
                     directory='/data/primary0'
                 ),
                 '/data/primary1': DiskSpaceInfo(
-                    filesystem='/dev/sdb1',
-                    available_kb=8388608,
+                    filesystem='/dev/sdb1',  # Same filesystem
+                    available_kb=8388608,  # 8GB (same)
                     directory='/data/primary1'
                 )
             }
@@ -482,9 +486,69 @@ class TestResourceEstimator(GpTestCase):
         with self.assertRaises(ResourceError) as context:
             estimator._validate_target_space(moves)
         
-        self.assertIn("Insufficient disk space", str(context.exception))
+        error_msg = str(context.exception)
+        self.assertIn("Insufficient disk space", error_msg)
+        # Both directories should be mentioned
+        self.assertIn("/data/primary0", error_msg)
+        self.assertIn("/data/primary1", error_msg)
+        # Should show aggregated requirement (~11GB) vs available (8GB)
+        self.assertIn("11", error_msg)
+        self.assertIn("8", error_msg)
+    
+    def test_validate_multiple_moves_same_filesystem_sufficient(self):
+        """Test validation passes when aggregated space is sufficient"""
+        # Get primaries from sdw1
+        segs_from_sdw1 = []
+        for seg in self.gparray.getDbList():
+            if seg.hostname == 'sdw1' and seg.isSegmentPrimary() and seg.content < 2:
+                segs_from_sdw1.append(seg)
+        
+        moves = [
+            LogicalMove(
+                seg=segs_from_sdw1[0],
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(datadir_size_kb=5242880)  # 5GB
+            ),
+            LogicalMove(
+                seg=segs_from_sdw1[1],
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary1',
+                target_port=7001,
+                segment_size=SegmentSize(datadir_size_kb=5242880)  # 5GB
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Total needed: (5GB + 5GB) * 1.1 = 11GB
+        # Available: 15GB (sufficient)
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=15728640,  # 15GB
+                    directory='/data/primary0'
+                ),
+                '/data/primary1': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same filesystem
+                    available_kb=15728640,  # 15GB (same)
+                    directory='/data/primary1'
+                )
+            }
+        })
+        
+        # Should not raise
+        try:
+            estimator._validate_target_space(moves)
+        except ResourceError:
+            self.fail("ResourceError raised when space is sufficient")
     
     def test_validate_target_space_no_space_info(self):
+        """Test validation fails when no space info is available"""
         seg0 = None
         for seg in self.gparray.getDbList():
             if seg.content == 0 and seg.isSegmentPrimary():
@@ -511,6 +575,451 @@ class TestResourceEstimator(GpTestCase):
             estimator._validate_target_space(moves)
         
         self.assertIn("No disk space information for host sdw2", str(context.exception))
+    
+    def test_validate_tablespace_space_sufficient(self):
+        """Test validation succeeds when tablespace has sufficient space on separate filesystem"""
+        seg0 = None
+        for seg in self.gparray.getDbList():
+            if seg.content == 0 and seg.isSegmentPrimary():
+                seg0 = seg
+                break
+        
+        moves = [
+            LogicalMove(
+                seg=seg0,
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=2097152,  # 2GB
+                    tablespace_usage={'/tablespace1/2': 1048576}  # 1GB
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Mock sufficient space for both datadir and tablespace on different filesystems
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=20971520,  # 20GB
+                    directory='/data/primary0'
+                ),
+                '/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdc1',  # Different filesystem
+                    available_kb=10485760,  # 10GB
+                    directory='/tablespace1'
+                )
+            }
+        })
+        
+        # Should not raise exception
+        try:
+            estimator._validate_target_space(moves)
+        except ResourceError:
+            self.fail("ResourceError raised when space is sufficient")
+    
+    def test_validate_tablespace_space_insufficient(self):
+        """Test validation fails when tablespace has insufficient space"""
+        seg0 = None
+        for seg in self.gparray.getDbList():
+            if seg.content == 0 and seg.isSegmentPrimary():
+                seg0 = seg
+                break
+        
+        moves = [
+            LogicalMove(
+                seg=seg0,
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=2097152,  # 2GB
+                    tablespace_usage={'/tablespace1/2': 10485760}  # 10GB
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Mock sufficient space for datadir but insufficient for tablespace
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=20971520,  # 20GB
+                    directory='/data/primary0'
+                ),
+                '/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdc1',
+                    available_kb=1048576,  # Only 1GB available
+                    directory='/tablespace1'
+                )
+            }
+        })
+        
+        with self.assertRaises(ResourceError) as context:
+            estimator._validate_target_space(moves)
+        
+        error_msg = str(context.exception)
+        self.assertIn("Insufficient disk space", error_msg)
+        self.assertIn("/tablespace1", error_msg)
+    
+    def test_validate_multiple_tablespaces_different_filesystems(self):
+        """Test validation with multiple tablespaces on different filesystems"""
+        seg0 = None
+        for seg in self.gparray.getDbList():
+            if seg.content == 0 and seg.isSegmentPrimary():
+                seg0 = seg
+                break
+        
+        moves = [
+            LogicalMove(
+                seg=seg0,
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=2097152,  # 2GB
+                    tablespace_usage={
+                        '/tablespace1/2': 3145728,  # 3GB
+                        '/tablespace2/2': 4194304   # 4GB
+                    }
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Mock space - datadir OK, tablespace1 OK, tablespace2 insufficient
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=20971520,  # 20GB
+                    directory='/data/primary0'
+                ),
+                '/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdc1',
+                    available_kb=10485760,  # 10GB - sufficient
+                    directory='/tablespace1'
+                ),
+                '/tablespace2': DiskSpaceInfo(
+                    filesystem='/dev/sdd1',
+                    available_kb=2097152,  # Only 2GB - insufficient
+                    directory='/tablespace2'
+                )
+            }
+        })
+        
+        with self.assertRaises(ResourceError) as context:
+            estimator._validate_target_space(moves)
+        
+        error_msg = str(context.exception)
+        self.assertIn("Insufficient disk space", error_msg)
+        # Only tablespace2 should be in error
+        self.assertIn("/tablespace2", error_msg)
+    
+    def test_validate_tablespace_same_filesystem_as_datadir_insufficient(self):
+        """Test when tablespace and datadir share the same filesystem - insufficient space"""
+        seg0 = None
+        for seg in self.gparray.getDbList():
+            if seg.content == 0 and seg.isSegmentPrimary():
+                seg0 = seg
+                break
+        
+        moves = [
+            LogicalMove(
+                seg=seg0,
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=5242880,  # 5GB
+                    tablespace_usage={'/data/tablespace1/2': 5242880}  # 5GB
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Both datadir and tablespace on same filesystem /dev/sdb1
+        # Total needed: (5GB + 5GB) * 1.1 = 11GB
+        # Available: only 8GB (insufficient)
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=8388608,  # 8GB
+                    directory='/data/primary0'
+                ),
+                '/data/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same filesystem!
+                    available_kb=8388608,  # 8GB (same as above - shared filesystem!)
+                    directory='/data/tablespace1'
+                )
+            }
+        })
+        
+        with self.assertRaises(ResourceError) as context:
+            estimator._validate_target_space(moves)
+        
+        error_msg = str(context.exception)
+        self.assertIn("Insufficient disk space", error_msg)
+        # Should show BOTH directories since they're on the same filesystem
+        self.assertIn("/data/primary0", error_msg)
+        self.assertIn("/data/tablespace1", error_msg)
+        # Should show it needs ~11GB but only has 8GB
+        self.assertIn("11", error_msg)
+        self.assertIn("8", error_msg)
+    
+    def test_validate_tablespace_same_filesystem_as_datadir_sufficient(self):
+        """Test when tablespace and datadir share filesystem with sufficient space"""
+        seg0 = None
+        for seg in self.gparray.getDbList():
+            if seg.content == 0 and seg.isSegmentPrimary():
+                seg0 = seg
+                break
+        
+        moves = [
+            LogicalMove(
+                seg=seg0,
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=5242880,  # 5GB
+                    tablespace_usage={'/data/tablespace1/2': 5242880}  # 5GB
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Both on same filesystem, need 11GB, have 20GB - should pass
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=20971520,  # 20GB
+                    directory='/data/primary0'
+                ),
+                '/data/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same filesystem
+                    available_kb=20971520,  # 20GB (same)
+                    directory='/data/tablespace1'
+                )
+            }
+        })
+        
+        # Should not raise exception
+        try:
+            estimator._validate_target_space(moves)
+        except ResourceError:
+            self.fail("ResourceError raised when space is sufficient")
+    
+    def test_validate_complex_overlapping_filesystems(self):
+        """Test multiple segments with overlapping filesystem usage"""
+        segs = [seg for seg in self.gparray.getDbList() 
+                if seg.isSegmentPrimary() and seg.content < 2]
+        
+        moves = [
+            # Seg 0: datadir on /dev/sdb1, tablespace on /dev/sdc1
+            LogicalMove(
+                seg=segs[0],
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=3145728,  # 3GB
+                    tablespace_usage={'/tablespace1/2': 2097152}  # 2GB
+                )
+            ),
+            # Seg 1: datadir on /dev/sdb1 (SAME as seg0 datadir), 
+            #        tablespace on /dev/sdb1 (SAME filesystem!)
+            LogicalMove(
+                seg=segs[1],
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary1',
+                target_port=7001,
+                segment_size=SegmentSize(
+                    datadir_size_kb=4194304,  # 4GB
+                    tablespace_usage={'/data/tblspace2/3': 3145728}  # 3GB
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # /dev/sdb1: needs (3GB + 4GB + 3GB) * 1.1 = 11GB, has 12GB - PASS
+        # /dev/sdc1: needs 2GB * 1.1 = 2.2GB, has 5GB - PASS
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=12582912,  # 12GB
+                    directory='/data/primary0'
+                ),
+                '/data/primary1': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same as primary0
+                    available_kb=12582912,
+                    directory='/data/primary1'
+                ),
+                '/data/tblspace2': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same filesystem!
+                    available_kb=12582912,
+                    directory='/data/tblspace2'
+                ),
+                '/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdc1',  # Different filesystem
+                    available_kb=5242880,  # 5GB
+                    directory='/tablespace1'
+                )
+            }
+        })
+        
+        # Should not raise
+        try:
+            estimator._validate_target_space(moves)
+        except ResourceError:
+            self.fail("ResourceError raised when space is sufficient")
+    
+    def test_validate_complex_overlapping_filesystems_insufficient(self):
+        """Test multiple segments with overlapping filesystems - insufficient space"""
+        segs = [seg for seg in self.gparray.getDbList() 
+                if seg.isSegmentPrimary() and seg.content < 2]
+        
+        moves = [
+            # Seg 0: datadir on /dev/sdb1, tablespace on /dev/sdc1
+            LogicalMove(
+                seg=segs[0],
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(
+                    datadir_size_kb=3145728,  # 3GB
+                    tablespace_usage={'/tablespace1/2': 2097152}  # 2GB
+                )
+            ),
+            # Seg 1: datadir on /dev/sdb1, tablespace on /dev/sdb1 (SAME filesystem!)
+            LogicalMove(
+                seg=segs[1],
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary1',
+                target_port=7001,
+                segment_size=SegmentSize(
+                    datadir_size_kb=4194304,  # 4GB
+                    tablespace_usage={'/data/tblspace2/3': 3145728}  # 3GB
+                )
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # /dev/sdb1: needs (3GB + 4GB + 3GB) * 1.1 = 11GB, has only 9GB - FAIL
+        # /dev/sdc1: needs 2GB * 1.1 = 2.2GB, has 5GB - PASS
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=9437184,  # 9GB - insufficient!
+                    directory='/data/primary0'
+                ),
+                '/data/primary1': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same as primary0
+                    available_kb=9437184,
+                    directory='/data/primary1'
+                ),
+                '/data/tblspace2': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same filesystem!
+                    available_kb=9437184,
+                    directory='/data/tblspace2'
+                ),
+                '/tablespace1': DiskSpaceInfo(
+                    filesystem='/dev/sdc1',  # Different filesystem
+                    available_kb=5242880,  # 5GB - sufficient
+                    directory='/tablespace1'
+                )
+            }
+        })
+        
+        with self.assertRaises(ResourceError) as context:
+            estimator._validate_target_space(moves)
+        
+        error_msg = str(context.exception)
+        self.assertIn("Insufficient disk space", error_msg)
+        # Should show all three directories on /dev/sdb1
+        self.assertIn("/data/primary0", error_msg)
+        self.assertIn("/data/primary1", error_msg)
+        self.assertIn("/data/tblspace2", error_msg)
+        # Should show aggregated requirement (~11GB) vs available (9GB)
+        self.assertIn("11", error_msg)
+        self.assertIn("9", error_msg)
+    
+    def test_validate_no_double_counting_same_segment(self):
+        """Test that the same segment is not double-counted on same filesystem"""
+        seg0 = None
+        for seg in self.gparray.getDbList():
+            if seg.content == 0 and seg.isSegmentPrimary():
+                seg0 = seg
+                break
+        
+        # Create two moves for the same segment (shouldn't happen in reality, 
+        # but tests deduplication logic)
+        moves = [
+            LogicalMove(
+                seg=seg0,
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0',
+                target_port=7000,
+                segment_size=SegmentSize(datadir_size_kb=5242880)  # 5GB
+            ),
+            LogicalMove(
+                seg=seg0,  # Same segment!
+                srcHost=Host('sdw1', '172.20.0.6', status=HostStatus.ACTIVE),
+                dstHost=Host('sdw2', '172.20.0.7', status=HostStatus.ACTIVE),
+                target_datadir='/data/primary0_copy',
+                target_port=7001,
+                segment_size=SegmentSize(datadir_size_kb=5242880)  # 5GB
+            )
+        ]
+        
+        estimator = ResourceEstimator(self.logger, self.conn, self.gparray)
+        
+        # Both on same filesystem
+        # Should only count once: 5GB * 1.1 = 5.5GB, not 11GB
+        estimator.disk_checker.check_batch_available_space = Mock(return_value={
+            '172.20.0.7': {
+                '/data/primary0': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',
+                    available_kb=6291456,  # 6GB
+                    directory='/data/primary0'
+                ),
+                '/data/primary0_copy': DiskSpaceInfo(
+                    filesystem='/dev/sdb1',  # Same filesystem
+                    available_kb=6291456,
+                    directory='/data/primary0_copy'
+                )
+            }
+        })
+        
+        # Should NOT raise - only needs 5.5GB, has 6GB
+        try:
+            estimator._validate_target_space(moves)
+        except ResourceError:
+            self.fail("ResourceError raised - segment was double-counted!")
     
     @patch('gprebalance_modules.planner.PortIsAvailable')
     @patch('gprebalance_modules.planner.DiskSpaceChecker')
@@ -607,7 +1116,8 @@ class TestResourceEstimator(GpTestCase):
     @patch('gprebalance_modules.rebalance_schema.dbconn.queryRow', side_effect=check_query)
     @patch('gprebalance_modules.planner.HostResolver.resolve_hostname')
     @patch('gprebalance_modules.planner.HostResolver.get_address')
-    def test_planner_skips_resource_estimation_when_requested(self, mock_get_address, mock_resolve, mock_schema, mock_conn):
+    def test_planner_skips_resource_estimation_when_requested(self, mock_get_address, 
+                                                              mock_resolve, mock_schema, mock_conn):
         """Test Planner skips resource estimation when skip_resource_estimation=True"""
         mock_resolve.return_value = None
         def address_side_effect(hostname):
