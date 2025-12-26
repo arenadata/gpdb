@@ -25,16 +25,14 @@ SUBDIRS = \
 		  unsafe_tests \
 		  worker_spi
 
-<<<<<<< HEAD
 # GPDB subdirs
 SUBDIRS += test_planner
-=======
+
 ifeq ($(with_openssl),yes)
 SUBDIRS += ssl_passphrase_callback
 else
 ALWAYS_SUBDIRS += ssl_passphrase_callback
 endif
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 $(recurse)
 $(recurse_always)
