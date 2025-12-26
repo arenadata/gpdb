@@ -104,7 +104,6 @@ drop function polyf(a anyelement, b anyarray,
                     c anycompatible, d anycompatible);
 
 
-<<<<<<< HEAD
 -- In GPDB, rows can be returned from segments in any order. Normally, we
 -- mask differences in result set order in regression tests with gpdiff.pl,
 -- but the aggregates in this test file result in arrays that have elements
@@ -118,11 +117,9 @@ $$ language sql;
 -- confused by it and treated the whole comment as a result set, and re-ordered
 -- it.
 
-=======
 --
 -- Polymorphic aggregate tests
 --
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 -- Legend:
 -- ---------
 -- A = type is ANY
