@@ -55,10 +55,7 @@ SET work_mem='64kB';
 -- Produce results with sorting.
 
 SET enable_hashagg=FALSE;
-<<<<<<< HEAD
 SET optimizer_enable_hashagg=FALSE;
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 SET jit_above_cost=0;
 
@@ -74,10 +71,7 @@ CREATE TABLE distinct_group_2 AS
 SELECT DISTINCT (g%1000)::text FROM generate_series(0,9999) g;
 
 SET enable_hashagg=TRUE;
-<<<<<<< HEAD
 SET optimizer_enable_hashagg=TRUE;
-=======
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 -- Produce results with hash aggregation.
 
