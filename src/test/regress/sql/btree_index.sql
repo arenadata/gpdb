@@ -186,7 +186,6 @@ VACUUM delete_test_table;
 -- need to insert some rows to cause the fast root page to split.
 INSERT INTO delete_test_table SELECT i, 1, 2, 3 FROM generate_series(1,1000) i;
 
-<<<<<<< HEAD
 --
 -- GPDB: Test correctness of B-tree stats in consecutively VACUUM.
 --
@@ -229,7 +228,6 @@ SELECT reltuples FROM pg_class WHERE relname='btree_stats_tbl';
 -- inspect the state of the stats on segments
 SELECT gp_segment_id, relname, reltuples FROM gp_dist_random('pg_class') WHERE relname = 'btree_stats_idx';
 SELECT reltuples FROM pg_class WHERE relname='btree_stats_idx';
-=======
+
 -- Test unsupported btree opclass parameters
 create index on btree_tall_tbl (id int4_ops(foo=1));
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
