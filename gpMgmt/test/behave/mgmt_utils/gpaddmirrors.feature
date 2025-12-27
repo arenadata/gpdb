@@ -21,8 +21,8 @@ Feature: Tests for gpaddmirrors
         When gpaddmirrors adds 3 mirrors with additional args "<args>"
         Then gpaddmirrors should only spawn up to <coordinator_workers> workers in WorkerPool
         And check if gpaddmirrors ran "$GPHOME/sbin/gpsegsetuprecovery.py" 1 times with args "-b <segHost_workers>"
-        And check if gpaddmirrors ran "$GPHOME/sbin/gpsegrecovery.py" 1 times with args "-b <segHost_workers>"
-        And check if gpaddmirrors ran "$GPHOME/sbin/gpsegrecovery.py" 1 times with args "-b <segHost_workers>"
+        And check if gpaddmirrors ran "$GPHOME/sbin/gpsegrecovery.py" 2 times with args "-b <segHost_workers>"
+        And check if gpaddmirrors ran "$GPHOME/sbin/gpsegrecovery.py" 2 times with args "-b <segHost_workers>"
         And an FTS probe is triggered
         And the segments are synchronized
         And verify the database has mirrors

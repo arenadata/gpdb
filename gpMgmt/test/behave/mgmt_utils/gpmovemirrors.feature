@@ -203,7 +203,6 @@ Feature: Tests for gpmovemirrors
     And edit the input file to recover mirror with content 0 to a new directory on remote host with mode 0700
     And edit the input file to recover mirror with content 1 to a new directory on remote host with mode 0700
     When the user asynchronously runs gpmovemirrors with input file and additional args " " and the process is saved
-    And the user waits until mirror on content 0,1 is down
     And the user suspend the walsender on the primary on content 0
     Then the user waits until recovery_progress.file is created in gpAdminLogs and verifies its format
     And verify that lines from recovery_progress.file are present in segment progress files in gpAdminLogs
@@ -227,7 +226,6 @@ Feature: Tests for gpmovemirrors
     And edit the input file to recover mirror with content 1 to a new directory on remote host with mode 0700
     And edit the input file to recover mirror with content 2 to a new directory on remote host with mode 0700
     When the user asynchronously runs gpmovemirrors with input file and additional args " " and the process is saved
-    And the user waits until mirror on content 0,1,2 is down
     And the user suspend the walsender on the primary on content 0
     Then the user waits until recovery_progress.file is created in gpAdminLogs and verifies its format
     And verify that lines from recovery_progress.file are present in segment progress files in gpAdminLogs

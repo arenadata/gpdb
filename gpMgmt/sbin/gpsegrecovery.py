@@ -5,7 +5,7 @@ import signal
 from contextlib import closing
 
 from gppylib.recoveryinfo import RecoveryErrorType
-from gppylib.commands.pg import PgBaseBackup, PgRewind, PgReplicationSlot
+from gppylib.commands.pg import PgBaseBackup, PgRewind, PgReplicationSlot, PgReplicationSlotCopy
 from gppylib.commands.unix import Rsync
 from recovery_base import RecoveryBase, set_recovery_cmd_results
 from gppylib.commands.base import Command, LOCAL
@@ -60,6 +60,72 @@ class FullRecovery(Command):
 
         self.error_type = RecoveryErrorType.START_ERROR
         start_segment(self.recovery_info, self.logger, self.era)
+
+class FullRecovery2Phase(Command):
+    def __init__(self, name, recovery_info, forceoverwrite, logger, era, maxRate, is_only_basebackup, is_only_start):
+        self.name = name
+        self.recovery_info = recovery_info
+        self.replicationSlotName = 'internal_wal_replication_slot'
+        self.replicationSlotNameTemp = 'internal_wal_replication_slot_temp'
+        self.forceoverwrite = forceoverwrite
+        self.era = era
+        self.maxRate = maxRate
+        # FIXME test for this cmdstr. also what should this cmdstr be ?
+        cmdStr = ''
+        #cmdstr = 'TODO? : {} {}'.format(str(recovery_info), self.verbose)
+        Command.__init__(self, self.name, cmdStr)
+        #FIXME this logger has to come after the init and is duplicated in all the 4 classes
+        self.logger = logger
+        self.error_type = RecoveryErrorType.DEFAULT_ERROR
+        self.is_only_basebackup = is_only_basebackup
+        self.is_only_start = is_only_start
+
+    @set_recovery_cmd_results
+    def run(self):
+        self.logger.info("[RELOG] Running FullRecovery2Phase")
+        if self.is_only_basebackup:
+            self.logger.info("[RELOG] Only pg_basebackup")
+            self.error_type = RecoveryErrorType.BASEBACKUP_ERROR
+            cmd = PgBaseBackup(self.recovery_info.target_datadir,
+                               self.recovery_info.source_hostname,
+                               str(self.recovery_info.source_port),
+                               create_slot=True,
+                               replication_slot_name=self.replicationSlotNameTemp,
+                               forceoverwrite=self.forceoverwrite,
+                               target_gp_dbid=self.recovery_info.target_segment_dbid,
+                               progress_file=self.recovery_info.progress_file,
+                               max_rate=self.maxRate)
+            self.logger.info("Running pg_basebackup with progress output temporarily in %s" % self.recovery_info.progress_file)
+            self.logger.info("[RELOG] pg_basebackup - start")
+            cmd.run(validateAfter=True)
+            self.logger.info("[RELOG] pg_basebackup - end")
+            self.error_type = RecoveryErrorType.DEFAULT_ERROR
+            self.logger.info("Successfully ran pg_basebackup for dbid: {}".format(
+                self.recovery_info.target_segment_dbid))
+        if self.is_only_start:
+            # 3. drop replication slot 'internal_wal_replication_slot'
+            self.logger.info("[RELOG] drop old slot")
+            oldSlot = PgReplicationSlot(self.recovery_info.source_hostname, str(self.recovery_info.source_port), self.replicationSlotName)
+            if oldSlot.slot_exists():
+                oldSlot.drop_slot()
+
+            # 4. select pg_copy_physical_replication_slot('internal_wal_replication_slot_temp', 'internal_wal_replication_slot', false);
+            self.logger.info("[RELOG] Create a new replication slot")
+            tempSlot = PgReplicationSlot(self.recovery_info.source_hostname, str(self.recovery_info.source_port), self.replicationSlotNameTemp)
+            newSlot = PgReplicationSlotCopy(tempSlot, self.replicationSlotName)
+            newSlot.do_copy()
+
+            self.logger.info("[RELOG] Only start of segments")
+            # Updating port number on conf after recovery
+            self.error_type = RecoveryErrorType.UPDATE_ERROR
+            update_port_in_conf(self.recovery_info, self.logger)
+            update_replication_slot_in_conf(self.recovery_info, self.logger, self.replicationSlotName)
+            self.error_type = RecoveryErrorType.START_ERROR
+            start_segment(self.recovery_info, self.logger, self.era)
+
+            # 6. Drop temp replication slot
+            self.logger.info("[RELOG] drop temp replication slot")
+            tempSlot.drop_slot()
 
 
 class IncrementalRecovery(Command):
@@ -364,6 +430,14 @@ def update_port_in_conf(recovery_info, logger):
                                       'port', recovery_info.target_port, optType='number')
     modifyConfCmd.run(validateAfter=True)
 
+def update_replication_slot_in_conf(recovery_info, logger, slot):
+    logger.info("Updating %s/postgresql.auto.conf" % recovery_info.target_datadir)
+    modifyConfCmd = ModifyConfSetting('Updating %s/postgresql.auto.conf' % recovery_info.target_datadir,
+                                      "{}/{}".format(recovery_info.target_datadir, 'postgresql.auto.conf'),
+                                      'primary_slot_name', slot, optType='string')
+    modifyConfCmd.run(validateAfter=True)
+
+
 
 #FIXME we may not need this class
 class SegRecovery(object):
@@ -396,12 +470,22 @@ class SegRecovery(object):
         cmd_list = []
         for seg_recovery_info in seg_recovery_info_list:
             if seg_recovery_info.is_full_recovery:
-                cmd = FullRecovery(name='Run pg_basebackup',
-                                   recovery_info=seg_recovery_info,
-                                   forceoverwrite=forceoverwrite,
-                                   logger=logger,
-                                   era=era,
-                                   maxRate=maxRate)
+                if seg_recovery_info.is_only_basebackup or seg_recovery_info.is_only_start:
+                    cmd = FullRecovery2Phase(name='Run 2-phase pg_basebackup',
+                                             recovery_info=seg_recovery_info,
+                                             forceoverwrite=forceoverwrite,
+                                             logger=logger,
+                                             era=era,
+                                             maxRate=maxRate,
+                                             is_only_basebackup=seg_recovery_info.is_only_basebackup,
+                                             is_only_start=seg_recovery_info.is_only_start)
+                else:
+                    cmd = FullRecovery(name='Run pg_basebackup',
+                                       recovery_info=seg_recovery_info,
+                                       forceoverwrite=forceoverwrite,
+                                       logger=logger,
+                                       era=era,
+                                       maxRate=maxRate)
             elif seg_recovery_info.is_differential_recovery:
                 cmd = DifferentialRecovery(name='Run rsync',
                                            recovery_info=seg_recovery_info,
