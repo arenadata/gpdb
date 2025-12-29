@@ -927,7 +927,7 @@ CREATE TABLE errtst_parent (
     shdata int not null,
     data int NOT NULL DEFAULT 0,
     CONSTRAINT shdata_small CHECK(shdata < 3)
-) PARTITION BY RANGE (partid);
+) PARTITION BY RANGE (partid) DISTRIBUTED BY (partid);
 
 -- fast defaults lead to attribute mapping being used in one
 -- direction, but not the other
@@ -935,7 +935,7 @@ CREATE TABLE errtst_child_fastdef (
     partid int not null,
     shdata int not null,
     CONSTRAINT shdata_small CHECK(shdata < 3)
-);
+) DISTRIBUTED BY (partid);
 
 -- no remapping in either direction necessary
 CREATE TABLE errtst_child_plaindef (
@@ -944,7 +944,7 @@ CREATE TABLE errtst_child_plaindef (
     data int NOT NULL DEFAULT 0,
     CONSTRAINT shdata_small CHECK(shdata < 3),
     CHECK(data < 10)
-);
+) DISTRIBUTED BY (partid);
 
 -- remapping in both direction
 CREATE TABLE errtst_child_reorder (
@@ -953,7 +953,7 @@ CREATE TABLE errtst_child_reorder (
     partid int not null,
     CONSTRAINT shdata_small CHECK(shdata < 3),
     CHECK(data < 10)
-);
+) DISTRIBUTED BY (partid);
 
 ALTER TABLE errtst_child_fastdef ADD COLUMN data int NOT NULL DEFAULT 0;
 ALTER TABLE errtst_child_fastdef ADD CONSTRAINT errtest_child_fastdef_data_check CHECK (data < 10);
