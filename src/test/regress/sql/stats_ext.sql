@@ -1,6 +1,5 @@
 -- Generic extended statistics support
 
-<<<<<<< HEAD
 
 -- By default, Greenplum computes selectivity slightly differently from
 -- upstream. Disable selectivity damping for these tests, so that we get
@@ -8,16 +7,11 @@
 set gp_selectivity_damping_for_scans = off;
 set gp_selectivity_damping_for_joins = off;
 
--- We will be checking execution plans without/with statistics, so
--- let's make sure we get simple non-parallel plans. Also set the
--- work_mem low so that we can use small amounts of data.
-=======
 --
 -- Note: tables for which we check estimated row counts should be created
 -- with autovacuum_enabled = off, so that we don't have unstable results
 -- from auto-analyze happening when we didn't expect it.
 --
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 
 -- check the number of estimated/actual rows in the top node
 create function check_estimated_rows(text) returns table (estimated int, actual int)
@@ -455,15 +449,11 @@ SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE 
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a IN (1, 2, 51, 52) AND b = ALL (ARRAY[''1'', ''2''])');
 
-<<<<<<< HEAD
 RESET optimizer;
 
--- check change of column type doesn't break it
-=======
 -- changing the type of column c causes its single-column stats to be dropped,
--- giving a default estimate of 0.005 * 5000 = 25 for (c = 1); check multiple
+-- giving a default estimate of 0.001 * 5000 = 5 for (c = 1); check multiple
 -- clauses estimated with functional dependencies does not exceed this
->>>>>>> ed7a5095716ee498ecc406e1b8d5ab92c7662d10
 ALTER TABLE functional_dependencies ALTER COLUMN c TYPE numeric;
 
 SELECT * FROM check_estimated_rows('SELECT * FROM functional_dependencies WHERE a = 1 AND b = ''1'' AND c = 1');
