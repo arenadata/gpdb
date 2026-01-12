@@ -883,6 +883,19 @@ select div(12345678901234567890, 123);
 select div(12345678901234567890, 123) * 123 + 12345678901234567890 % 123;
 
 --
+-- Test some corner cases for square root
+--
+
+select sqrt(1.000000000000003::numeric);
+select sqrt(1.000000000000004::numeric);
+select sqrt(96627521408608.56340355805::numeric);
+select sqrt(96627521408608.56340355806::numeric);
+select sqrt(515549506212297735.073688290367::numeric);
+select sqrt(515549506212297735.073688290368::numeric);
+select sqrt(8015491789940783531003294973900306::numeric);
+select sqrt(8015491789940783531003294973900307::numeric);
+
+--
 -- Test code path for raising to integer powers
 --
 
@@ -1073,3 +1086,28 @@ select trim_scale(1e100);
 -- cases that need carry propagation
 SELECT SUM(9999::numeric) FROM generate_series(1, 100000);
 SELECT SUM((-9999)::numeric) FROM generate_series(1, 100000);
+
+--
+-- Tests for GCD()
+--
+SELECT a, b, gcd(a, b), gcd(a, -b), gcd(-b, a), gcd(-b, -a)
+FROM (VALUES (0::numeric, 0::numeric),
+             (0::numeric, numeric 'NaN'),
+             (0::numeric, 46375::numeric),
+             (433125::numeric, 46375::numeric),
+             (43312.5::numeric, 4637.5::numeric),
+             (4331.250::numeric, 463.75000::numeric)) AS v(a, b);
+
+--
+-- Tests for LCM()
+--
+SELECT a,b, lcm(a, b), lcm(a, -b), lcm(-b, a), lcm(-b, -a)
+FROM (VALUES (0::numeric, 0::numeric),
+             (0::numeric, numeric 'NaN'),
+             (0::numeric, 13272::numeric),
+             (13272::numeric, 13272::numeric),
+             (423282::numeric, 13272::numeric),
+             (42328.2::numeric, 1327.2::numeric),
+             (4232.820::numeric, 132.72000::numeric)) AS v(a, b);
+
+SELECT lcm(9999 * (10::numeric)^131068 + (10::numeric^131068 - 1), 2); -- overflow

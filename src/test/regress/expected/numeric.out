@@ -1580,6 +1580,57 @@ select div(12345678901234567890, 123) * 123 + 12345678901234567890 % 123;
 (1 row)
 
 --
+-- Test some corner cases for square root
+--
+select sqrt(1.000000000000003::numeric);
+       sqrt        
+-------------------
+ 1.000000000000001
+(1 row)
+
+select sqrt(1.000000000000004::numeric);
+       sqrt        
+-------------------
+ 1.000000000000002
+(1 row)
+
+select sqrt(96627521408608.56340355805::numeric);
+        sqrt         
+---------------------
+ 9829929.87811248648
+(1 row)
+
+select sqrt(96627521408608.56340355806::numeric);
+        sqrt         
+---------------------
+ 9829929.87811248649
+(1 row)
+
+select sqrt(515549506212297735.073688290367::numeric);
+          sqrt          
+------------------------
+ 718017761.766585921184
+(1 row)
+
+select sqrt(515549506212297735.073688290368::numeric);
+          sqrt          
+------------------------
+ 718017761.766585921185
+(1 row)
+
+select sqrt(8015491789940783531003294973900306::numeric);
+       sqrt        
+-------------------
+ 89529278953540017
+(1 row)
+
+select sqrt(8015491789940783531003294973900307::numeric);
+       sqrt        
+-------------------
+ 89529278953540018
+(1 row)
+
+--
 -- Test code path for raising to integer powers
 --
 select 10.0 ^ -2147483648 as rounds_to_zero;
@@ -2220,3 +2271,47 @@ SELECT SUM((-9999)::numeric) FROM generate_series(1, 100000);
  -999900000
 (1 row)
 
+--
+-- Tests for GCD()
+--
+SELECT a, b, gcd(a, b), gcd(a, -b), gcd(-b, a), gcd(-b, -a)
+FROM (VALUES (0::numeric, 0::numeric),
+             (0::numeric, numeric 'NaN'),
+             (0::numeric, 46375::numeric),
+             (433125::numeric, 46375::numeric),
+             (43312.5::numeric, 4637.5::numeric),
+             (4331.250::numeric, 463.75000::numeric)) AS v(a, b);
+    a     |     b     |   gcd   |   gcd   |   gcd   |   gcd   
+----------+-----------+---------+---------+---------+---------
+        0 |         0 |       0 |       0 |       0 |       0
+        0 |       NaN |     NaN |     NaN |     NaN |     NaN
+        0 |     46375 |   46375 |   46375 |   46375 |   46375
+   433125 |     46375 |     875 |     875 |     875 |     875
+  43312.5 |    4637.5 |    87.5 |    87.5 |    87.5 |    87.5
+ 4331.250 | 463.75000 | 8.75000 | 8.75000 | 8.75000 | 8.75000
+(6 rows)
+
+--
+-- Tests for LCM()
+--
+SELECT a,b, lcm(a, b), lcm(a, -b), lcm(-b, a), lcm(-b, -a)
+FROM (VALUES (0::numeric, 0::numeric),
+             (0::numeric, numeric 'NaN'),
+             (0::numeric, 13272::numeric),
+             (13272::numeric, 13272::numeric),
+             (423282::numeric, 13272::numeric),
+             (42328.2::numeric, 1327.2::numeric),
+             (4232.820::numeric, 132.72000::numeric)) AS v(a, b);
+    a     |     b     |     lcm      |     lcm      |     lcm      |     lcm      
+----------+-----------+--------------+--------------+--------------+--------------
+        0 |         0 |            0 |            0 |            0 |            0
+        0 |       NaN |          NaN |          NaN |          NaN |          NaN
+        0 |     13272 |            0 |            0 |            0 |            0
+    13272 |     13272 |        13272 |        13272 |        13272 |        13272
+   423282 |     13272 |     11851896 |     11851896 |     11851896 |     11851896
+  42328.2 |    1327.2 |    1185189.6 |    1185189.6 |    1185189.6 |    1185189.6
+ 4232.820 | 132.72000 | 118518.96000 | 118518.96000 | 118518.96000 | 118518.96000
+(7 rows)
+
+SELECT lcm(9999 * (10::numeric)^131068 + (10::numeric^131068 - 1), 2); -- overflow
+ERROR:  value overflows numeric format

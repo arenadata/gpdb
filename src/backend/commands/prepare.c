@@ -196,7 +196,7 @@ void
 ExecuteQuery(ParseState *pstate,
 			 ExecuteStmt *stmt, IntoClause *intoClause,
 			 ParamListInfo params,
-			 DestReceiver *dest, char *completionTag)
+			 DestReceiver *dest, QueryCompletion *qc)
 {
 	PreparedStatement *entry;
 	CachedPlan *cplan;
@@ -308,7 +308,7 @@ ExecuteQuery(ParseState *pstate,
 	 */
 	PortalStart(portal, paramLI, eflags, GetActiveSnapshot(), NULL);
 
-	(void) PortalRun(portal, count, false, true, dest, dest, completionTag);
+	(void) PortalRun(portal, count, false, true, dest, dest, qc);
 
 	PortalDrop(portal, false);
 
@@ -638,7 +638,11 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	EState	   *estate = NULL;
 	instr_time	planstart;
 	instr_time	planduration;
+	BufferUsage bufusage_start,
+				bufusage;
 
+	if (es->buffers)
+		bufusage_start = pgBufferUsage;
 	INSTR_TIME_SET_CURRENT(planstart);
 
 	/* Look it up in the hash table */
@@ -699,6 +703,13 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 	INSTR_TIME_SET_CURRENT(planduration);
 	INSTR_TIME_SUBTRACT(planduration, planstart);
 
+	/* calc differences of buffer counters. */
+	if (es->buffers)
+	{
+		memset(&bufusage, 0, sizeof(BufferUsage));
+		BufferUsageAccumDiff(&bufusage, &pgBufferUsage, &bufusage_start);
+	}
+
 	plan_list = cplan->stmt_list;
 
 	/* Explain each query */
@@ -708,7 +719,7 @@ ExplainExecuteQuery(ExecuteStmt *execstmt, IntoClause *into, ExplainState *es,
 
 		if (pstmt->commandType != CMD_UTILITY)
 			ExplainOnePlan(pstmt, into, es, query_string, paramLI, queryEnv,
-						   &planduration, 0);
+						   &planduration, (es->buffers ? &bufusage : NULL), 0);
 		else
 			ExplainOneUtility(pstmt->utilityStmt, into, es, query_string,
 							  paramLI, queryEnv);
@@ -833,6 +844,7 @@ build_regtype_array(Oid *param_types, int num_params)
 		tmp_ary[i] = ObjectIdGetDatum(param_types[i]);
 
 	/* XXX: this hardcodes assumptions about the regtype type */
-	result = construct_array(tmp_ary, num_params, REGTYPEOID, 4, true, 'i');
+	result = construct_array(tmp_ary, num_params, REGTYPEOID,
+							 4, true, TYPALIGN_INT);
 	return PointerGetDatum(result);
 }

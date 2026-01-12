@@ -15,6 +15,12 @@
  * WalRcv->receivedUpto variable in shared memory, to inform the startup
  * process of how far it can proceed with XLOG replay.
  *
+ * A WAL receiver cannot directly load GUC parameters used when establishing
+ * its connection to the primary. Instead it relies on parameter values
+ * that are passed down by the startup process when streaming is requested.
+ * This applies, for example, to the replication slot and the connection
+ * string to be used for the connection with the primary.
+ *
  * If the primary server ends streaming, but doesn't disconnect, walreceiver
  * goes into "waiting" mode, and waits for the startup process to give new
  * instructions. The startup process will treat that the same as
@@ -49,6 +55,7 @@
 #include "access/timeline.h"
 #include "access/transam.h"
 #include "access/xlog_internal.h"
+#include "access/xlogarchive.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_type.h"
 #include "common/ip.h"
@@ -64,6 +71,7 @@
 #include "storage/pmsignal.h"
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/pg_lsn.h"
@@ -74,8 +82,11 @@
 #include "storage/fd.h"
 
 
-/* GUC variables */
-bool		wal_receiver_create_temp_slot;
+/*
+ * GUC variables.  (Other variables that affect walreceiver are in xlog.c
+ * because they're passed down from the startup process, for better
+ * synchronization.)
+ */
 int			wal_receiver_status_interval;
 int			wal_receiver_timeout;
 bool		hot_standby_feedback;
@@ -87,14 +98,13 @@ WalReceiverFunctionsType *WalReceiverFunctions = NULL;
 #define NAPTIME_PER_CYCLE 100	/* max sleep time between cycles (100ms) */
 
 /*
- * These variables are used similarly to openLogFile/SegNo/Off,
+ * These variables are used similarly to openLogFile/SegNo,
  * but for walreceiver to write the XLOG. recvFileTLI is the TimeLineID
  * corresponding the filename of recvFile.
  */
 static int	recvFile = -1;
 static TimeLineID recvFileTLI = 0;
 static XLogSegNo recvSegNo = 0;
-static uint32 recvOff = 0;
 
 /*
  * Flags set by interrupt handlers of walreceiver for later service in the
@@ -242,6 +252,12 @@ WalReceiverMain(void)
 	startpoint = walrcv->receiveStart;
 	startpointTLI = walrcv->receiveStartTLI;
 
+	/*
+	 * At most one of is_temp_slot and slotname can be set; otherwise,
+	 * RequestXLogStreaming messed up.
+	 */
+	Assert(!is_temp_slot || (slotname[0] == '\0'));
+
 	/* Initialise to a sanish value */
 	walrcv->lastMsgSendTime =
 		walrcv->lastMsgReceiptTime = walrcv->latestWalEndTime = now;
@@ -355,42 +371,21 @@ WalReceiverMain(void)
 		WalRcvFetchTimeLineHistoryFiles(startpointTLI, primaryTLI);
 
 		/*
-		 * Create temporary replication slot if no slot name is configured or
-		 * the slot from the previous run was temporary, unless
-		 * wal_receiver_create_temp_slot is disabled.  We also need to handle
-		 * the case where the previous run used a temporary slot but
-		 * wal_receiver_create_temp_slot was changed in the meantime.  In that
-		 * case, we delete the old slot name in shared memory.  (This would
-		 * all be a bit easier if we just didn't copy the slot name into
-		 * shared memory, since we won't need it again later, but then we
-		 * can't see the slot name in the stats views.)
+		 * Create temporary replication slot if requested, and update slot
+		 * name in shared memory.  (Note the slot name cannot already be set
+		 * in this case.)
 		 */
-		if (slotname[0] == '\0' || is_temp_slot)
+		if (is_temp_slot)
 		{
-			bool		changed = false;
+			snprintf(slotname, sizeof(slotname),
+					 "pg_walreceiver_%lld",
+					 (long long int) walrcv_get_backend_pid(wrconn));
 
-			if (wal_receiver_create_temp_slot)
-			{
-				snprintf(slotname, sizeof(slotname),
-						 "pg_walreceiver_%lld",
-						 (long long int) walrcv_get_backend_pid(wrconn));
+			walrcv_create_slot(wrconn, slotname, true, 0, NULL);
 
-				walrcv_create_slot(wrconn, slotname, true, 0, NULL);
-				changed = true;
-			}
-			else if (slotname[0] != '\0')
-			{
-				slotname[0] = '\0';
-				changed = true;
-			}
-
-			if (changed)
-			{
-				SpinLockAcquire(&walrcv->mutex);
-				strlcpy(walrcv->slotname, slotname, NAMEDATALEN);
-				walrcv->is_temp_slot = wal_receiver_create_temp_slot;
-				SpinLockRelease(&walrcv->mutex);
-			}
+			SpinLockAcquire(&walrcv->mutex);
+			strlcpy(walrcv->slotname, slotname, NAMEDATALEN);
+			SpinLockRelease(&walrcv->mutex);
 		}
 
 		/*
@@ -672,8 +667,7 @@ WalRcvWaitForStartPosition(XLogRecPtr *startpoint, TimeLineID *startpointTLI)
 	walrcv->receiveStartTLI = 0;
 	SpinLockRelease(&walrcv->mutex);
 
-	if (update_process_title)
-		set_ps_display("idle", false);
+	set_ps_display("idle");
 
 	/*
 	 * nudge startup process to notice that we've stopped streaming and are
@@ -692,7 +686,11 @@ WalRcvWaitForStartPosition(XLogRecPtr *startpoint, TimeLineID *startpointTLI)
 			   walrcv->walRcvState == WALRCV_STOPPING);
 		if (walrcv->walRcvState == WALRCV_RESTARTING)
 		{
-			/* we don't expect primary_conninfo to change */
+			/*
+			 * No need to handle changes in primary_conninfo or
+			 * primary_slotname here. Startup process will signal us to
+			 * terminate in case those change.
+			 */
 			*startpoint = walrcv->receiveStart;
 			*startpointTLI = walrcv->receiveStartTLI;
 			walrcv->walRcvState = WALRCV_STREAMING;
@@ -721,7 +719,7 @@ WalRcvWaitForStartPosition(XLogRecPtr *startpoint, TimeLineID *startpointTLI)
 		snprintf(activitymsg, sizeof(activitymsg), "restarting at %X/%X",
 				 (uint32) (*startpoint >> 32),
 				 (uint32) *startpoint);
-		set_ps_display(activitymsg, false);
+		set_ps_display(activitymsg);
 	}
 }
 
@@ -951,7 +949,6 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr)
 			use_existent = true;
 			recvFile = XLogFileInit(recvSegNo, &use_existent, true);
 			recvFileTLI = ThisTimeLineID;
-			recvOff = 0;
 		}
 
 		/* Calculate the start offset of the received logs */
@@ -962,29 +959,10 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr)
 		else
 			segbytes = nbytes;
 
-		/* Need to seek in the file? */
-		if (recvOff != startoff)
-		{
-			if (lseek(recvFile, (off_t) startoff, SEEK_SET) < 0)
-			{
-				char		xlogfname[MAXFNAMELEN];
-				int			save_errno = errno;
-
-				XLogFileName(xlogfname, recvFileTLI, recvSegNo, wal_segment_size);
-				errno = save_errno;
-				ereport(PANIC,
-						(errcode_for_file_access(),
-						 errmsg("could not seek in log segment %s to offset %u: %m",
-								xlogfname, startoff)));
-			}
-
-			recvOff = startoff;
-		}
-
 		/* OK to write the logs */
 		errno = 0;
 
-		byteswritten = write(recvFile, buf, segbytes);
+		byteswritten = pg_pwrite(recvFile, buf, segbytes, (off_t) startoff);
 		if (byteswritten <= 0)
 		{
 			char		xlogfname[MAXFNAMELEN];
@@ -1001,13 +979,12 @@ XLogWalRcvWrite(char *buf, Size nbytes, XLogRecPtr recptr)
 					(errcode_for_file_access(),
 					 errmsg("could not write to log segment %s "
 							"at offset %u, length %lu: %m",
-							xlogfname, recvOff, (unsigned long) segbytes)));
+							xlogfname, startoff, (unsigned long) segbytes)));
 		}
 
 		/* Update state for write */
 		recptr += byteswritten;
 
-		recvOff += byteswritten;
 		nbytes -= byteswritten;
 		buf += byteswritten;
 
@@ -1079,7 +1056,7 @@ XLogWalRcvFlush(bool dying)
 			snprintf(activitymsg, sizeof(activitymsg), "streaming %X/%X",
 					 (uint32) (LogstreamResult.Write >> 32),
 					 (uint32) LogstreamResult.Write);
-			set_ps_display(activitymsg, false);
+			set_ps_display(activitymsg);
 		}
 
 		/* Also let the master know that we made some progress */

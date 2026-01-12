@@ -168,6 +168,8 @@ int			autovacuum_work_mem = -1;
 int			autovacuum_naptime;
 int			autovacuum_vac_thresh;
 double		autovacuum_vac_scale;
+int			autovacuum_vac_ins_thresh;
+double		autovacuum_vac_ins_scale;
 int			autovacuum_anl_thresh;
 double		autovacuum_anl_scale;
 int			autovacuum_freeze_max_age;
@@ -485,8 +487,8 @@ AutoVacLauncherMain(int argc, char *argv[])
 
 	am_autovacuum_launcher = true;
 
-	/* Identify myself via ps */
-	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_LAUNCHER), "", "", "");
+	MyBackendType = B_AUTOVAC_LAUNCHER;
+	init_ps_display(NULL);
 
 	ereport(DEBUG1,
 			(errmsg("autovacuum launcher started")));
@@ -1577,8 +1579,8 @@ AutoVacWorkerMain(int argc, char *argv[])
 	else
 		Gp_role = GP_ROLE_UTILITY;
 
-	/* Identify myself via ps */
-	init_ps_display(pgstat_get_backend_desc(B_AUTOVAC_WORKER), "", "", "");
+	MyBackendType = B_AUTOVAC_WORKER;
+	init_ps_display(NULL);
 
 	/* 
 	 * PreAuthDelay is a debugging aid for investigating problems in the 
@@ -1758,7 +1760,7 @@ AutoVacWorkerMain(int argc, char *argv[])
 		 */
 		InitPostgres(NULL, dbid, NULL, InvalidOid, dbname, false);
 		SetProcessingMode(NormalProcessing);
-		set_ps_display(dbname, false);
+		set_ps_display(dbname);
 		ereport(LOG,
 				(errmsg("autovacuum: processing database \"%s\"", dbname)));
 
@@ -2167,9 +2169,10 @@ do_autovacuum(void)
 
 			/*
 			 * We just ignore it if the owning backend is still active and
-			 * using the temporary schema.
+			 * using the temporary schema.  Also, for safety, ignore it if the
+			 * namespace doesn't exist or isn't a temp namespace after all.
 			 */
-			if (!isTempNamespaceInUse(classForm->relnamespace))
+			if (checkTempNamespaceStatus(classForm->relnamespace) == TEMP_NAMESPACE_IDLE)
 			{
 				/*
 				 * The table seems to be orphaned -- although it might be that
@@ -2339,7 +2342,7 @@ do_autovacuum(void)
 			continue;
 		}
 
-		if (isTempNamespaceInUse(classForm->relnamespace))
+		if (checkTempNamespaceStatus(classForm->relnamespace) != TEMP_NAMESPACE_IDLE)
 		{
 			UnlockRelationOid(relid, AccessExclusiveLock);
 			continue;
@@ -2992,6 +2995,8 @@ table_recheck_autovac(Oid relid, HTAB *table_toast_map,
 			(!wraparound ? VACOPT_SKIP_LOCKED : 0);
 		tab->at_params.index_cleanup = VACOPT_TERNARY_DEFAULT;
 		tab->at_params.truncate = VACOPT_TERNARY_DEFAULT;
+		/* As of now, we don't support parallel vacuum for autovacuum */
+		tab->at_params.nworkers = -1;
 		tab->at_params.freeze_min_age = freeze_min_age;
 		tab->at_params.freeze_table_age = freeze_table_age;
 		tab->at_params.multixact_freeze_min_age = multixact_freeze_min_age;
@@ -3073,16 +3078,20 @@ relation_needs_vacanalyze(Oid relid,
 
 	/* constants from reloptions or GUC variables */
 	int			vac_base_thresh,
+				vac_ins_base_thresh,
 				anl_base_thresh;
 	float4		vac_scale_factor,
+				vac_ins_scale_factor,
 				anl_scale_factor;
 
 	/* thresholds calculated from above constants */
 	float4		vacthresh,
+				vacinsthresh,
 				anlthresh;
 
 	/* number of vacuum (resp. analyze) tuples at this time */
 	float4		vactuples,
+				instuples,
 				anltuples;
 
 	/* freeze parameters */
@@ -3114,6 +3123,15 @@ relation_needs_vacanalyze(Oid relid,
 	vac_base_thresh = (relopts && relopts->vacuum_threshold >= 0)
 		? relopts->vacuum_threshold
 		: autovacuum_vac_thresh;
+
+	vac_ins_scale_factor = (relopts && relopts->vacuum_ins_scale_factor >= 0)
+		? relopts->vacuum_ins_scale_factor
+		: autovacuum_vac_ins_scale;
+
+	/* -1 is used to disable insert vacuums */
+	vac_ins_base_thresh = (relopts && relopts->vacuum_ins_threshold >= -1)
+		? relopts->vacuum_ins_threshold
+		: autovacuum_vac_ins_thresh;
 
 	anl_scale_factor = (relopts && relopts->analyze_scale_factor >= 0)
 		? relopts->analyze_scale_factor
@@ -3169,9 +3187,11 @@ relation_needs_vacanalyze(Oid relid,
 	{
 		reltuples = classForm->reltuples;
 		vactuples = tabentry->n_dead_tuples;
+		instuples = tabentry->inserts_since_vacuum;
 		anltuples = tabentry->changes_since_analyze;
 
 		vacthresh = (float4) vac_base_thresh + vac_scale_factor * reltuples;
+		vacinsthresh = (float4) vac_ins_base_thresh + vac_ins_scale_factor * reltuples;
 		anlthresh = (float4) anl_base_thresh + anl_scale_factor * reltuples;
 
 		/*
@@ -3179,12 +3199,18 @@ relation_needs_vacanalyze(Oid relid,
 		 * reset, because if that happens, the last vacuum and analyze counts
 		 * will be reset too.
 		 */
-		elog(DEBUG3, "%s: vac: %.0f (threshold %.0f), anl: %.0f (threshold %.0f)",
-			 NameStr(classForm->relname),
-			 vactuples, vacthresh, anltuples, anlthresh);
+		if (vac_ins_base_thresh >= 0)
+			elog(DEBUG3, "%s: vac: %.0f (threshold %.0f), ins: %.0f (threshold %.0f), anl: %.0f (threshold %.0f)",
+				 NameStr(classForm->relname),
+				 vactuples, vacthresh, instuples, vacinsthresh, anltuples, anlthresh);
+		else
+			elog(DEBUG3, "%s: vac: %.0f (threshold %.0f), ins: (disabled), anl: %.0f (threshold %.0f)",
+				 NameStr(classForm->relname),
+				 vactuples, vacthresh, anltuples, anlthresh);
 
 		/* Determine if this table needs vacuum or analyze. */
-		*dovacuum = force_vacuum || (vactuples > vacthresh);
+		*dovacuum = force_vacuum || (vactuples > vacthresh) ||
+					(vac_ins_base_thresh >= 0 && instuples > vacinsthresh);
 		*doanalyze = (anltuples > anlthresh);
 	}
 	else

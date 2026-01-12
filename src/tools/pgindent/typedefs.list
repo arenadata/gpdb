@@ -537,6 +537,7 @@ DropSubscriptionStmt
 DropTableSpaceStmt
 DropUserMappingStmt
 DropdbStmt
+DummyAmEnum
 DummyIndexOptions
 DumpComponents
 DumpId
@@ -642,7 +643,6 @@ ExtensibleNodeEntry
 ExtensibleNodeMethods
 ExtensionControlFile
 ExtensionInfo
-ExtensionMemberId
 ExtensionVersionInfo
 FDWCollateState
 FD_SET
@@ -840,6 +840,8 @@ GISTBuildState
 GISTENTRY
 GISTInsertStack
 GISTInsertState
+GISTIntArrayBigOptions
+GISTIntArrayOptions
 GISTNodeBuffer
 GISTNodeBufferPage
 GISTPageOpaque
@@ -907,10 +909,13 @@ GinVacuumState
 GistBufferingMode
 GistBulkDeleteResult
 GistEntryVector
+GistHstoreOptions
 GistInetKey
 GistNSN
+GistOptBufferingMode
 GistSplitUnion
 GistSplitVector
+GistTsVectorOptions
 GistVacState
 GlobalTransaction
 GrantRoleStmt
@@ -1217,7 +1222,11 @@ LPVOID
 LPWSTR
 LSEG
 LUID
+LVDeadTuples
+LVParallelState
 LVRelStats
+LVShared
+LVSharedIndStats
 LWLock
 LWLockHandle
 LWLockMinimallyPadded
@@ -1298,6 +1307,8 @@ LogicalRepWorkerId
 LogicalRewriteMappingData
 LogicalTape
 LogicalTapeSet
+LtreeGistOptions
+LtreeSignature
 MAGIC
 MBuf
 MCVItem
@@ -2357,8 +2368,6 @@ TBlockState
 TIDBitmap
 TM_FailureData
 TM_Result
-ToastAttrInfo
-ToastTupleContext
 TOKEN_DEFAULT_DACL
 TOKEN_INFORMATION_CLASS
 TOKEN_PRIVILEGES
@@ -2454,6 +2463,8 @@ Timestamp
 TimestampTz
 TmFromChar
 TmToChar
+ToastAttrInfo
+ToastTupleContext
 TocEntry
 TokenAuxData
 TokenizedLine
@@ -2473,6 +2484,7 @@ TrgmArcInfo
 TrgmBound
 TrgmColor
 TrgmColorInfo
+TrgmGistOptions
 TrgmNFA
 TrgmPackArcInfo
 TrgmPackedArc
@@ -2561,6 +2573,7 @@ UserMapping
 UserOpts
 VacAttrStats
 VacAttrStatsP
+VacErrPhase
 VacOptTernaryValue
 VacuumParams
 VacuumRelation
@@ -2588,6 +2601,7 @@ VariableSubstituteHook
 VersionedQuery
 Vfd
 ViewCheckOption
+ViewOptCheckOption
 ViewOptions
 ViewStmt
 VirtualTransactionId
@@ -2856,8 +2870,6 @@ ec_member_foreign_arg
 ec_member_matches_arg
 emit_log_hook_type
 eval_const_expressions_context
-event_trigger_command_tag_check_result
-event_trigger_support_data
 exec_thread_arg
 execution_state
 explain_get_index_name_hook_type
@@ -2869,6 +2881,7 @@ file_action_t
 file_entry_t
 file_type_t
 filemap_t
+fill_string_relopt
 finalize_primnode_context
 find_dependent_phvs_context
 find_expr_references_context
@@ -2992,6 +3005,8 @@ leaf_item
 line_t
 lineno_t
 list_qsort_comparator
+local_relopt
+local_relopts
 locale_t
 locate_agg_of_level_context
 locate_var_of_level_context
@@ -3102,6 +3117,7 @@ pgssHashKey
 pgssJumbleState
 pgssLocationLen
 pgssSharedState
+pgssStoreKind
 pgssVersion
 pgstat_page
 pgstattuple_type
@@ -3180,6 +3196,8 @@ regmatch_t
 regoff_t
 regproc
 relopt_bool
+relopt_enum
+relopt_enum_elt_def
 relopt_gen
 relopt_int
 relopt_kind
@@ -3188,6 +3206,7 @@ relopt_real
 relopt_string
 relopt_type
 relopt_value
+relopts_validator
 remoteConn
 remoteConnHashEnt
 remoteDep

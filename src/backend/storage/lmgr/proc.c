@@ -1061,7 +1061,7 @@ ProcKill(int code, Datum arg)
 
 	/*
 	 * Detach from any lock group of which we are a member.  If the leader
-	 * exist before all other group members, it's PGPROC will remain allocated
+	 * exist before all other group members, its PGPROC will remain allocated
 	 * until the last group process exits; that process must return the
 	 * leader's PGPROC to the appropriate list.
 	 */
@@ -1290,7 +1290,13 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 
 	/*
 	 * If group locking is in use, locks held by members of my locking group
-	 * need to be included in myHeldLocks.
+	 * need to be included in myHeldLocks.  This is not required for relation
+	 * extension or page locks which conflict among group members. However,
+	 * including them in myHeldLocks will give group members the priority to
+	 * get those locks as compared to other backends which are also trying to
+	 * acquire those locks.  OTOH, we can avoid giving priority to group
+	 * members for that kind of locks, but there doesn't appear to be a clear
+	 * advantage of the same.
 	 */
 	if (leader != NULL)
 	{

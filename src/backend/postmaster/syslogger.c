@@ -82,11 +82,6 @@ bool		Log_truncate_on_rotation = false;
 int			Log_file_mode = S_IRUSR | S_IWUSR;
 int         gp_log_format = 0; /* Text format */
 
-/*
- * Globally visible state (used by elog.c)
- */
-bool		am_syslogger = false;
-
 extern bool redirection_done;
 
 /*
@@ -272,12 +267,12 @@ SysLoggerMain(int argc, char *argv[])
 	syslogger_parseArgs(argc, argv);
 #endif							/* EXEC_BACKEND */
 
-	am_syslogger = true;
+	MyBackendType = B_LOGGER;
 
 	if (Gp_role == GP_ROLE_DISPATCH)
-		init_ps_display("master logger process", "", "", "");
+		init_ps_display("master logger process");
 	else
-		init_ps_display("logger process", "", "", "");
+		init_ps_display("logger process");
 
 	/*
 	 * If we restarted, our stderr is already redirected into our own input
@@ -816,6 +811,11 @@ SysLogger_Start(void)
 	 * This means the postmaster must continue to hold the read end of the
 	 * pipe open, so we can pass it down to the reincarnated syslogger. This
 	 * is a bit klugy but we have little choice.
+	 *
+	 * Also note that we don't bother counting the pipe FDs by calling
+	 * Reserve/ReleaseExternalFD.  There's no real need to account for them
+	 * accurately in the postmaster or syslogger process, and both ends of the
+	 * pipe will wind up closed in all other postmaster children.
 	 */
 #ifndef WIN32
 	if (syslogPipe[0] < 0)
@@ -823,7 +823,7 @@ SysLogger_Start(void)
 		if (pipe(syslogPipe) < 0)
 			ereport(FATAL,
 					(errcode_for_socket_access(),
-					 (errmsg("could not create pipe for syslog: %m"))));
+					 errmsg("could not create pipe for syslog: %m")));
 	}
 #else
 	if (!syslogPipe[0])
@@ -837,7 +837,7 @@ SysLogger_Start(void)
 		if (!CreatePipe(&syslogPipe[0], &syslogPipe[1], &sa, 32768))
 			ereport(FATAL,
 					(errcode_for_file_access(),
-					 (errmsg("could not create pipe for syslog: %m"))));
+					 errmsg("could not create pipe for syslog: %m")));
 	}
 #endif
 
@@ -2068,6 +2068,10 @@ write_binary_to_file(const char *buffer, int count, FILE *fh)
  *
  * On Windows the data arriving in the pipe already has CR/LF newlines,
  * so we must send it to the file without further translation.
+ *
+ * This is exported so that elog.c can call it when MyBackendType is B_LOGGER.
+ * This allows the syslogger process to record elog messages of its own,
+ * even though its stderr does not point at the syslog pipe.
  */
 void write_syslogger_file_binary(const char *buffer, int count, int destination)
 {
@@ -2092,7 +2096,7 @@ void write_syslogger_file_binary(const char *buffer, int count, int destination)
 /*
  * Write text to the currently open logfile
  *
- * This is exported so that elog.c can call it when am_syslogger is true.
+ * This is exported so that elog.c can call it when MyBackendType is B_LOGGER.
  * This allows the syslogger process to record elog messages of its own,
  * even though its stderr does not point at the syslog pipe.
  */

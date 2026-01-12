@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use PostgresNode;
 use TestLib;
-use Test::More tests => 32;
+use Test::More tests => 35;
 
 # Initialize master node
 my $node_master = get_new_node('master');
@@ -208,7 +208,9 @@ $node_standby_2->append_conf('postgresql.conf',
 	"primary_slot_name = $slotname_2");
 $node_standby_2->append_conf('postgresql.conf',
 	"wal_receiver_status_interval = 1");
-$node_standby_2->restart;
+# should be able change primary_slot_name without restart
+# will wait effect in get_slot_xmins above
+$node_standby_2->reload;
 
 # Fetch xmin columns from slot's pg_replication_slots row, after waiting for
 # given boolean condition to be true to ensure we've reached a quiescent state
@@ -344,3 +346,46 @@ is($catalog_xmin, '',
 is($xmin, '', 'xmin of cascaded slot null with hs feedback reset');
 is($catalog_xmin, '',
 	'catalog xmin of cascaded slot still null with hs_feedback reset');
+
+note "check change primary_conninfo without restart";
+$node_standby_2->append_conf('postgresql.conf',
+	"primary_slot_name = ''");
+$node_standby_2->enable_streaming($node_master);
+$node_standby_2->reload;
+
+# be sure do not streaming from cascade
+$node_standby_1->stop;
+
+my $newval = $node_master->safe_psql('postgres',
+'INSERT INTO replayed(val) SELECT coalesce(max(val),0) + 1 AS newval FROM replayed RETURNING val'
+);
+$node_master->wait_for_catchup($node_standby_2, 'replay',
+	$node_master->lsn('insert'));
+my $is_replayed = $node_standby_2->safe_psql('postgres',
+	qq[SELECT 1 FROM replayed WHERE val = $newval]);
+is($is_replayed, qq(1), "standby_2 didn't replay master value $newval");
+
+# Test physical slot advancing and its durability.  Create a new slot on
+# the primary, not used by any of the standbys. This reserves WAL at creation.
+my $phys_slot = 'phys_slot';
+$node_master->safe_psql('postgres',
+	"SELECT pg_create_physical_replication_slot('$phys_slot', true);");
+$node_master->psql('postgres', "
+	CREATE TABLE tab_phys_slot (a int);
+	INSERT INTO tab_phys_slot VALUES (generate_series(1,10));");
+my $current_lsn = $node_master->safe_psql('postgres',
+	"SELECT pg_current_wal_lsn();");
+chomp($current_lsn);
+my $psql_rc = $node_master->psql('postgres',
+	"SELECT pg_replication_slot_advance('$phys_slot', '$current_lsn'::pg_lsn);");
+is($psql_rc, '0', 'slot advancing with physical slot');
+my $phys_restart_lsn_pre = $node_master->safe_psql('postgres',
+	"SELECT restart_lsn from pg_replication_slots WHERE slot_name = '$phys_slot';");
+chomp($phys_restart_lsn_pre);
+# Slot advance should persist across clean restarts.
+$node_master->restart;
+my $phys_restart_lsn_post = $node_master->safe_psql('postgres',
+	"SELECT restart_lsn from pg_replication_slots WHERE slot_name = '$phys_slot';");
+chomp($phys_restart_lsn_post);
+ok(($phys_restart_lsn_pre cmp $phys_restart_lsn_post) == 0,
+	"physical slot advance persists across restarts");

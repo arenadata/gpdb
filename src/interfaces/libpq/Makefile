@@ -45,11 +45,6 @@ OBJS = \
 	pqexpbuffer.o \
 	fe-auth.o
 
-# src/backend/utils/mb
-OBJS += \
-	encnames.o \
-	wchar.o
-
 ifeq ($(with_openssl),yes)
 OBJS += \
 	fe-secure-common.o \
@@ -90,29 +85,18 @@ endif
 ifeq ($(PORTNAME), win32)
 SHLIB_LINK += -L../../../../gpAux/ext/win32/kfw-3-2-2/lib -L../../../src/bin/gpfdist/ext/lib -lgssapi32 -lshell32 -lws2_32 -lsecur32 $(filter -leay32 -lssleay32 -lcomerr32 -lkrb5_32, $(LIBS))
 endif
+SHLIB_PREREQS = submake-libpgport
 
 SHLIB_EXPORTS = exports.txt
 
 all: all-lib
-
-all-lib: | submake-libpgport
 
 # Shared library stuff
 include $(top_srcdir)/src/Makefile.shlib
 backend_src = $(top_srcdir)/src/backend
 
 
-# We use a few backend modules verbatim, but since we need
-# to compile with appropriate options to build a shared lib, we can't
-# use the same object files built for the backend.
-# Instead, symlink the source files in here and build our own object files.
-# When you add a file here, remember to add it in the "clean" target below.
-
-encnames.c wchar.c: % : $(backend_src)/utils/mb/%
-	rm -f $@ && $(LN_S) $< .
-
-
-# Make dependencies on pg_config_paths.h visible, too.
+# Make dependencies on pg_config_paths.h visible in all builds.
 fe-connect.o: fe-connect.c $(top_builddir)/src/port/pg_config_paths.h
 fe-misc.o: fe-misc.c $(top_builddir)/src/port/pg_config_paths.h
 
@@ -144,8 +128,6 @@ clean distclean: clean-lib
 	rm -f $(OBJS) pthread.h
 # Might be left over from a Win32 client-only build
 	rm -f pg_config_paths.h
-# Remove files we (may have) symlinked in from other places
-	rm -f encnames.c wchar.c
 
 maintainer-clean: distclean
 	$(MAKE) -C test $@

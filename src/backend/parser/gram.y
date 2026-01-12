@@ -263,7 +263,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 		AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt AlterEnumStmt
 		AlterFdwStmt AlterForeignServerStmt AlterGroupStmt
 		AlterObjectDependsStmt AlterObjectSchemaStmt AlterOwnerStmt
-		AlterOperatorStmt AlterSeqStmt AlterSystemStmt AlterTableStmt
+		AlterOperatorStmt AlterTypeStmt AlterSeqStmt AlterSystemStmt AlterTableStmt
 		AlterTblSpcStmt AlterExtensionStmt AlterExtensionContentsStmt AlterForeignTableStmt
 		AlterCompositeTypeStmt AlterUserMappingStmt
 		AlterRoleStmt AlterRoleSetStmt AlterPolicyStmt AlterStatsStmt
@@ -300,7 +300,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 		RetrieveStmt
 
 /* GPDB-specific commands */
-%type <node>	AlterTypeStmt AlterQueueStmt AlterResourceGroupStmt
+%type <node>	AlterTypeStmtSetDefaultEnc AlterQueueStmt AlterResourceGroupStmt
 		CreateExternalStmt
 		CreateQueueStmt CreateResourceGroupStmt
 		DropQueueStmt DropResourceGroupStmt
@@ -498,6 +498,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 %type <list>	substr_list trim_list
 %type <list>	opt_interval interval_second
 %type <node>	overlay_placing substr_from substr_for
+%type <str>		unicode_normal_form
 
 %type <boolean> opt_instead
 %type <boolean> opt_unique opt_concurrently opt_verbose opt_full
@@ -553,7 +554,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 %type <alias>	alias_clause opt_alias_clause
 %type <list>	func_alias_clause
 %type <sortby>	sortby
-%type <ielem>	index_elem
+%type <ielem>	index_elem index_elem_options
 %type <node>	table_ref
 %type <jexpr>	joined_table
 %type <range>	relation_expr
@@ -759,7 +760,8 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 	MAPPING MATCH MATERIALIZED MAXVALUE MEMORY_LIMIT MEMORY_SHARED_QUOTA MEMORY_SPILL_RATIO
 	METHOD MINUTE_P MINVALUE MODE MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NONE
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NFC NFD NFKC NFKD NO NONE
+	NORMALIZE NORMALIZED
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
@@ -1296,6 +1298,7 @@ stmt :
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
 			| AlterOperatorStmt
+			| AlterTypeStmt
 			| AlterPolicyStmt
 			| AlterQueueStmt
 			| AlterResourceGroupStmt
@@ -1311,7 +1314,7 @@ stmt :
 			| AlterStatsStmt
 			| AlterTSConfigurationStmt
 			| AlterTSDictionaryStmt
-			| AlterTypeStmt
+			| AlterTypeStmtSetDefaultEnc
 			| AlterUserMappingStmt
 			| AnalyzeStmt
 			| CallStmt
@@ -6818,14 +6821,17 @@ NumericOnly_list:	NumericOnly						{ $$ = list_make1($1); }
 CreatePLangStmt:
 			CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
 			{
-				CreatePLangStmt *n = makeNode(CreatePLangStmt);
-				n->replace = $2;
-				n->plname = $6;
-				/* parameters are all to be supplied by system */
-				n->plhandler = NIL;
-				n->plinline = NIL;
-				n->plvalidator = NIL;
-				n->pltrusted = false;
+				/*
+				 * We now interpret parameterless CREATE LANGUAGE as
+				 * CREATE EXTENSION.  "OR REPLACE" is silently translated
+				 * to "IF NOT EXISTS", which isn't quite the same, but
+				 * seems more useful than throwing an error.  We just
+				 * ignore TRUSTED, as the previous code would have too.
+				 */
+				CreateExtensionStmt *n = makeNode(CreateExtensionStmt);
+				n->if_not_exists = $2;
+				n->extname = $6;
+				n->options = NIL;
 				$$ = (Node *)n;
 			}
 			| CREATE opt_or_replace opt_trusted opt_procedural LANGUAGE NonReservedWord_or_Sconst
@@ -6951,7 +6957,7 @@ DropTableSpaceStmt: DROP TABLESPACE name
  *
  *		QUERY:
  *             CREATE EXTENSION extension
- *             [ WITH ] [ SCHEMA schema ] [ VERSION version ] [ FROM oldversion ]
+ *             [ WITH ] [ SCHEMA schema ] [ VERSION version ]
  *
  *****************************************************************************/
 
@@ -6991,7 +6997,10 @@ create_extension_opt_item:
 				}
 			| FROM NonReservedWord_or_Sconst
 				{
-					$$ = makeDefElem("old_version", (Node *)makeString($2), @1);
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("CREATE EXTENSION ... FROM is no longer supported"),
+							 parser_errposition(@1)));
 				}
 			| CASCADE
 				{
@@ -10027,43 +10036,53 @@ index_params:	index_elem							{ $$ = list_make1($1); }
 			| index_params ',' index_elem			{ $$ = lappend($1, $3); }
 		;
 
+
+index_elem_options:
+	opt_collate opt_class opt_asc_desc opt_nulls_order
+		{
+			$$ = makeNode(IndexElem);
+			$$->name = NULL;
+			$$->expr = NULL;
+			$$->indexcolname = NULL;
+			$$->collation = $1;
+			$$->opclass = $2;
+			$$->opclassopts = NIL;
+			$$->ordering = $3;
+			$$->nulls_ordering = $4;
+		}
+	| opt_collate any_name reloptions opt_asc_desc opt_nulls_order
+		{
+			$$ = makeNode(IndexElem);
+			$$->name = NULL;
+			$$->expr = NULL;
+			$$->indexcolname = NULL;
+			$$->collation = $1;
+			$$->opclass = $2;
+			$$->opclassopts = $3;
+			$$->ordering = $4;
+			$$->nulls_ordering = $5;
+		}
+	;
+
 /*
  * Index attributes can be either simple column references, or arbitrary
  * expressions in parens.  For backwards-compatibility reasons, we allow
  * an expression that's just a function call to be written without parens.
  */
-index_elem:	ColId opt_collate opt_class opt_asc_desc opt_nulls_order
+index_elem: ColId index_elem_options
 				{
-					$$ = makeNode(IndexElem);
+					$$ = $2;
 					$$->name = $1;
-					$$->expr = NULL;
-					$$->indexcolname = NULL;
-					$$->collation = $2;
-					$$->opclass = $3;
-					$$->ordering = $4;
-					$$->nulls_ordering = $5;
 				}
-			| func_expr_windowless opt_collate opt_class opt_asc_desc opt_nulls_order
+			| func_expr_windowless index_elem_options
 				{
-					$$ = makeNode(IndexElem);
-					$$->name = NULL;
+					$$ = $2;
 					$$->expr = $1;
-					$$->indexcolname = NULL;
-					$$->collation = $2;
-					$$->opclass = $3;
-					$$->ordering = $4;
-					$$->nulls_ordering = $5;
 				}
-			| '(' a_expr ')' opt_collate opt_class opt_asc_desc opt_nulls_order
+			| '(' a_expr ')' index_elem_options
 				{
-					$$ = makeNode(IndexElem);
-					$$->name = NULL;
+					$$ = $4;
 					$$->expr = $2;
-					$$->indexcolname = NULL;
-					$$->collation = $4;
-					$$->opclass = $5;
-					$$->ordering = $6;
-					$$->nulls_ordering = $7;
 				}
 		;
 
@@ -11067,9 +11086,9 @@ reindex_option_elem:
  *
  * Used to set storage parameter defaults for types.
  */
-AlterTypeStmt: ALTER TYPE_P any_name SET DEFAULT ENCODING definition
+AlterTypeStmtSetDefaultEnc: ALTER TYPE_P any_name SET DEFAULT ENCODING definition
 				{
-					AlterTypeStmt *n = makeNode(AlterTypeStmt);
+					AlterTypeStmtSetDefaultEnc *n = makeNode(AlterTypeStmtSetDefaultEnc);
 
 					n->typeName = $3;
 					n->encoding = $7;
@@ -12003,6 +12022,24 @@ operator_def_arg:
 			| qual_all_Op					{ $$ = (Node *)$1; }
 			| NumericOnly					{ $$ = (Node *)$1; }
 			| Sconst						{ $$ = (Node *)makeString($1); }
+		;
+
+/*****************************************************************************
+ *
+ * ALTER TYPE name SET define
+ *
+ * We repurpose ALTER OPERATOR's version of "definition" here
+ *
+ *****************************************************************************/
+
+AlterTypeStmt:
+			ALTER TYPE_P any_name SET '(' operator_def_list ')'
+				{
+					AlterTypeStmt *n = makeNode(AlterTypeStmt);
+					n->typeName = $3;
+					n->options = $6;
+					$$ = (Node *)n;
+				}
 		;
 
 /*****************************************************************************
@@ -16243,6 +16280,22 @@ a_expr:		c_expr									{ $$ = $1; }
 												 list_make1($1), @2),
 									 @2);
 				}
+			| a_expr IS NORMALIZED								%prec IS
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("is_normalized"), list_make1($1), @2);
+				}
+			| a_expr IS unicode_normal_form NORMALIZED			%prec IS
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("is_normalized"), list_make2($1, makeStringConst($3, @3)), @2);
+				}
+			| a_expr IS NOT NORMALIZED							%prec IS
+				{
+					$$ = makeNotExpr((Node *) makeFuncCall(SystemFuncName("is_normalized"), list_make1($1), @2), @2);
+				}
+			| a_expr IS NOT unicode_normal_form NORMALIZED		%prec IS
+				{
+					$$ = makeNotExpr((Node *) makeFuncCall(SystemFuncName("is_normalized"), list_make2($1, makeStringConst($4, @4)), @2), @2);
+				}
 			| DEFAULT
 				{
 					/*
@@ -16718,6 +16771,14 @@ func_expr_common_subexpr:
 			| EXTRACT '(' extract_list ')'
 				{
 					$$ = (Node *) makeFuncCall(SystemFuncName("date_part"), $3, @1);
+				}
+			| NORMALIZE '(' a_expr ')'
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("normalize"), list_make1($3), @1);
+				}
+			| NORMALIZE '(' a_expr ',' unicode_normal_form ')'
+				{
+					$$ = (Node *) makeFuncCall(SystemFuncName("normalize"), list_make2($3, makeStringConst($5, @5)), @1);
 				}
 			| OVERLAY '(' overlay_list ')'
 				{
@@ -17415,6 +17476,13 @@ extract_arg:
 			| MINUTE_P								{ $$ = "minute"; }
 			| SECOND_P								{ $$ = "second"; }
 			| Sconst								{ $$ = $1; }
+		;
+
+unicode_normal_form:
+			NFC										{ $$ = "nfc"; }
+			| NFD									{ $$ = "nfd"; }
+			| NFKC									{ $$ = "nfkc"; }
+			| NFKD									{ $$ = "nfkd"; }
 		;
 
 /* OVERLAY() arguments
@@ -18278,9 +18346,14 @@ unreserved_keyword:
 			| NEW
 			| NEWLINE
 			| NEXT
+			| NFC
+			| NFD
+			| NFKC
+			| NFKD
 			| NO
 			| NOCREATEEXTTABLE
 			| NOOVERCOMMIT
+			| NORMALIZED
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
@@ -18787,6 +18860,7 @@ col_name_keyword:
 			| NATIONAL
 			| NCHAR
 			| NONE
+			| NORMALIZE
 			| NULLIF
 			| NUMERIC
 			| OUT_P

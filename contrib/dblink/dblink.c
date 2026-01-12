@@ -200,12 +200,38 @@ dblink_get_conn(char *conname_or_str,
 		if (connstr == NULL)
 			connstr = conname_or_str;
 		dblink_connstr_check(connstr);
+
+		/*
+		 * We must obey fd.c's limit on non-virtual file descriptors.  Assume
+		 * that a PGconn represents one long-lived FD.  (Doing this here also
+		 * ensures that VFDs are closed if needed to make room.)
+		 */
+		if (!AcquireExternalFD())
+		{
+#ifndef WIN32					/* can't write #if within ereport() macro */
+			ereport(ERROR,
+					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+					 errmsg("could not establish connection"),
+					 errdetail("There are too many open files on the local server."),
+					 errhint("Raise the server's max_files_per_process and/or \"ulimit -n\" limits.")));
+#else
+			ereport(ERROR,
+					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+					 errmsg("could not establish connection"),
+					 errdetail("There are too many open files on the local server."),
+					 errhint("Raise the server's max_files_per_process setting.")));
+#endif
+		}
+
+		/* OK to make connection */
 		conn = PQconnectdb(connstr);
+
 		if (PQstatus(conn) == CONNECTION_BAD)
 		{
 			char	   *msg = pchomp(PQerrorMessage(conn));
 
 			PQfinish(conn);
+			ReleaseExternalFD();
 			ereport(ERROR,
 					(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
 					 errmsg("could not establish connection"),
@@ -282,12 +308,37 @@ dblink_connect(PG_FUNCTION_ARGS)
 
 	/* check password in connection string if not superuser */
 	connstr = dblink_connstr_check(connstr);
+
+	/*
+	 * We must obey fd.c's limit on non-virtual file descriptors.  Assume that
+	 * a PGconn represents one long-lived FD.  (Doing this here also ensures
+	 * that VFDs are closed if needed to make room.)
+	 */
+	if (!AcquireExternalFD())
+	{
+#ifndef WIN32					/* can't write #if within ereport() macro */
+		ereport(ERROR,
+				(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+				 errmsg("could not establish connection"),
+				 errdetail("There are too many open files on the local server."),
+				 errhint("Raise the server's max_files_per_process and/or \"ulimit -n\" limits.")));
+#else
+		ereport(ERROR,
+				(errcode(ERRCODE_SQLCLIENT_UNABLE_TO_ESTABLISH_SQLCONNECTION),
+				 errmsg("could not establish connection"),
+				 errdetail("There are too many open files on the local server."),
+				 errhint("Raise the server's max_files_per_process setting.")));
+#endif
+	}
+
+	/* OK to make connection */
 	conn = PQconnectdb(connstr);
 
 	if (PQstatus(conn) == CONNECTION_BAD)
 	{
 		msg = pchomp(PQerrorMessage(conn));
 		PQfinish(conn);
+		ReleaseExternalFD();
 		if (rconn)
 			pfree(rconn);
 
@@ -312,7 +363,10 @@ dblink_connect(PG_FUNCTION_ARGS)
 	else
 	{
 		if (pconn->conn)
+		{
 			PQfinish(pconn->conn);
+			ReleaseExternalFD();
+		}
 		pconn->conn = conn;
 	}
 
@@ -346,6 +400,7 @@ dblink_disconnect(PG_FUNCTION_ARGS)
 		dblink_conn_not_avail(conname);
 
 	PQfinish(conn);
+	ReleaseExternalFD();
 	if (rconn)
 	{
 		deleteConnection(conname);
@@ -780,7 +835,10 @@ dblink_record_internal(FunctionCallInfo fcinfo, bool is_async)
 	{
 		/* if needed, close the connection to the database */
 		if (freeconn)
+		{
 			PQfinish(conn);
+			ReleaseExternalFD();
+		}
 	}
 	PG_END_TRY();
 
@@ -905,8 +963,7 @@ materializeResult(FunctionCallInfo fcinfo, PGconn *conn, PGresult *res)
 			if (!is_sql_cmd)
 				nestlevel = applyRemoteGucs(conn);
 
-			oldcontext = MemoryContextSwitchTo(
-											   rsinfo->econtext->ecxt_per_query_memory);
+			oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
 			tupstore = tuplestore_begin_heap(true, false, work_mem);
 			rsinfo->setResult = tupstore;
 			rsinfo->setDesc = tupdesc;
@@ -1027,8 +1084,7 @@ materializeQueryResult(FunctionCallInfo fcinfo,
 							   TEXTOID, -1, 0);
 			attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-			oldcontext = MemoryContextSwitchTo(
-											   rsinfo->econtext->ecxt_per_query_memory);
+			oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
 			tupstore = tuplestore_begin_heap(true, false, work_mem);
 			rsinfo->setResult = tupstore;
 			rsinfo->setDesc = tupdesc;
@@ -1460,7 +1516,10 @@ dblink_exec(PG_FUNCTION_ARGS)
 	{
 		/* if needed, close the connection to the database */
 		if (freeconn)
+		{
 			PQfinish(conn);
+			ReleaseExternalFD();
+		}
 	}
 	PG_END_TRY();
 
@@ -2565,6 +2624,7 @@ createNewConnection(const char *name, remoteConn *rconn)
 	if (found)
 	{
 		PQfinish(rconn->conn);
+		ReleaseExternalFD();
 		pfree(rconn);
 
 		ereport(ERROR,
@@ -2606,6 +2666,7 @@ dblink_security_check(PGconn *conn, remoteConn *rconn)
 		if (!PQconnectionUsedPassword(conn))
 		{
 			PQfinish(conn);
+			ReleaseExternalFD();
 			if (rconn)
 				pfree(rconn);
 

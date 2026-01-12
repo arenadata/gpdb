@@ -272,7 +272,6 @@
 #include "utils/datum.h"
 #include "utils/dynahash.h"
 #include "utils/expandeddatum.h"
-#include "utils/faultinjector.h"
 #include "utils/logtape.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -282,6 +281,7 @@
 #include "cdb/cdbexplain.h"
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "optimizer/walkers.h"
+#include "utils/faultinjector.h"
 
 /*
  * Control how many partitions are created when spilling HashAgg to
@@ -478,7 +478,10 @@ static void ExecEagerFreeAgg(AggState *node);
 static void
 select_current_set(AggState *aggstate, int setno, bool is_hash)
 {
-	/* when changing this, also adapt ExecInterpExpr() and friends */
+	/*
+	 * When changing this, also adapt ExecAggPlainTransByVal() and
+	 * ExecAggPlainTransByRef().
+	 */
 	if (is_hash)
 		aggstate->curaggcontext = aggstate->hashcontext;
 	else
@@ -652,8 +655,7 @@ initialize_aggregate(AggState *aggstate, AggStatePerTrans pertrans,
 	{
 		MemoryContext oldContext;
 
-		oldContext = MemoryContextSwitchTo(
-										   aggstate->curaggcontext->ecxt_per_tuple_memory);
+		oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 		pergroupstate->transValue = datumCopy(pertrans->initValue,
 											  pertrans->transtypeByVal,
 											  pertrans->transtypeLen);
@@ -759,8 +761,7 @@ advance_transition_function(AggState *aggstate,
 			 * We must copy the datum into aggcontext if it is pass-by-ref. We
 			 * do not need to pfree the old transValue, since it's NULL.
 			 */
-			oldContext = MemoryContextSwitchTo(
-											   aggstate->curaggcontext->ecxt_per_tuple_memory);
+			oldContext = MemoryContextSwitchTo(aggstate->curaggcontext->ecxt_per_tuple_memory);
 			pergroupstate->transValue = datumCopy(fcinfo->args[1].value,
 												  pertrans->transtypeByVal,
 												  pertrans->transtypeLen);
@@ -1693,32 +1694,14 @@ find_hash_columns(AggState *aggstate)
  * Estimate per-hash-table-entry overhead.
  */
 Size
-hash_agg_entry_size(int numTrans, Size tupleWidth, Size transitionSpace)
+hash_agg_entry_size(int numAggs, Size tupleWidth, Size transitionSpace)
 {
-	Size    tupleChunkSize;
-	Size    pergroupChunkSize;
-	Size    transitionChunkSize;
-	Size    tupleSize	 = (MAXALIGN(SizeofMinimalTupleHeader) +
-							tupleWidth);
-	Size    pergroupSize = numTrans * sizeof(AggStatePerGroupData);
-
-	tupleChunkSize = CHUNKHDRSZ + tupleSize;
-
-	if (pergroupSize > 0)
-		pergroupChunkSize = CHUNKHDRSZ + pergroupSize;
-	else
-		pergroupChunkSize = 0;
-
-	if (transitionSpace > 0)
-		transitionChunkSize = CHUNKHDRSZ + transitionSpace;
-	else
-		transitionChunkSize = 0;
-
 	return
-		sizeof(TupleHashEntryData) +
-		tupleChunkSize +
-		pergroupChunkSize +
-		transitionChunkSize;
+		MAXALIGN(SizeofMinimalTupleHeader) +
+		MAXALIGN(tupleWidth) +
+		MAXALIGN(sizeof(TupleHashEntryData) +
+				 numAggs * sizeof(AggStatePerGroupData)) +
+		transitionSpace;
 }
 
 /*
@@ -1770,9 +1753,8 @@ hashagg_recompile_expressions(AggState *aggstate, bool minslot, bool nullcheck)
 			aggstate->ss.ps.outeropsfixed = true;
 		}
 
-		phase->evaltrans_cache[i][j] = ExecBuildAggTrans(aggstate, phase,
-														 dosort, dohash,
-														 nullcheck);
+		phase->evaltrans_cache[i][j] = ExecBuildAggTrans(
+			aggstate, phase, dosort, dohash, nullcheck);
 
 		/* change back */
 		aggstate->ss.ps.outerops = outerops;
@@ -3418,8 +3400,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 * The output of the tuplesort, and the output from the outer child
 		 * might not use the same type of slot. In most cases the child will
 		 * be a Sort, and thus return a TTSOpsMinimalTuple type slot - but the
-		 * input can also be be presorted due an index, in which case it could
-		 * be a different type of slot.
+		 * input can also be presorted due an index, in which case it could be
+		 * a different type of slot.
 		 *
 		 * XXX: For efficiency it would be good to instead/additionally
 		 * generate expressions with corresponding settings of outerops* for
@@ -3701,7 +3683,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		aggstate->hash_pergroup = pergroups;
 
 		aggstate->hashentrysize = hash_agg_entry_size(
-			aggstate->numtrans, outerplan->plan_width, 0);
+			aggstate->numtrans, outerplan->plan_width, node->transitionSpace);
 
 		/*
 		 * Consider all of the grouping sets together when setting the limits

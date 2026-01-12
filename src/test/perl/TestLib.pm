@@ -83,9 +83,10 @@ our @EXPORT = qw(
   command_checks_all
 
   $windows_os
+  $use_unix_sockets
 );
 
-our ($windows_os, $tmp_check, $log_path, $test_logfile);
+our ($windows_os, $use_unix_sockets, $tmp_check, $log_path, $test_logfile);
 
 BEGIN
 {
@@ -117,6 +118,11 @@ BEGIN
 		require Win32API::File;
 		Win32API::File->import(qw(createFile OsFHandleOpen CloseHandle));
 	}
+
+	# Specifies whether to use Unix sockets for test setups.  On
+	# Windows we don't use them by default since it's not universally
+	# supported, but it can be overridden if desired.
+	$use_unix_sockets = (!$windows_os || defined $ENV{PG_TEST_USE_UNIX_SOCKETS});
 }
 
 =pod
@@ -183,8 +189,13 @@ INIT
 END
 {
 
-	# Preserve temporary directory for this test on failure
-	$File::Temp::KEEP_ALL = 1 unless all_tests_passing();
+	# Test files have several ways of causing prove_check to fail:
+	# 1. Exit with a non-zero status.
+	# 2. Call ok(0) or similar, indicating that a constituent test failed.
+	# 3. Deviate from the planned number of tests.
+	#
+	# Preserve temporary directories after (1) and after (2).
+	$File::Temp::KEEP_ALL = 1 unless $? == 0 && all_tests_passing();
 }
 
 =pod

@@ -144,7 +144,8 @@ usage(unsigned short int pager)
 	fprintf(output, _("\nFor more information, type \"\\?\" (for internal commands) or \"\\help\" (for SQL\n"
 					  "commands) from within psql, or consult the psql section in the PostgreSQL\n"
 					  "documentation.\n\n"));
-	fprintf(output, _("Report bugs to <bugs@greenplum.org>.\n"));
+	fprintf(output, _("Report bugs to <%s>.\n"), PACKAGE_BUGREPORT);
+	fprintf(output, _("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
 
 	ClosePager(output);
 }
@@ -228,6 +229,10 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\d[S+]  NAME           describe table, view, sequence, or index\n"));
 	fprintf(output, _("  \\da[S]  [PATTERN]      list aggregates\n"));
 	fprintf(output, _("  \\dA[+]  [PATTERN]      list access methods\n"));
+	fprintf(output, _("  \\dAc[+] [AMPTRN [TYPEPTRN]] list operator classes\n"));
+	fprintf(output, _("  \\dAf[+] [AMPTRN [TYPEPTRN]] list operator families\n"));
+	fprintf(output, _("  \\dAo[+] [AMPTRN [OPFPTRN]] list operators of operator families\n"));
+	fprintf(output, _("  \\dAp    [AMPTRN [OPFPTRN]] list procedures of operator families\n"));
 	fprintf(output, _("  \\db[+]  [PATTERN]      list tablespaces\n"));
 	fprintf(output, _("  \\dc[S+] [PATTERN]      list conversions\n"));
 	fprintf(output, _("  \\dC[+]  [PATTERN]      list casts\n"));
@@ -667,8 +672,7 @@ helpSQL(const char *topic, unsigned short int pager)
 void
 print_copyright(void)
 {
-	puts(
-		 "Greenplum Database version of PostgreSQL Database Management System\n"
+	puts("Greenplum Database version of PostgreSQL Database Management System\n"
 		 "Portions Copyright (c) 1996-2020, PostgreSQL Global Development Group\n\n"
 		 "Portions Copyright (c) 2014-Present VMware, Inc. or its affiliates.\n\n"
 		 "Portions Copyright (c) 2011-2014 EMC\n\n"
@@ -688,6 +692,5 @@ print_copyright(void)
 		 "INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY\n"
 		 "AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS\n"
 		 "ON AN \"AS IS\" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATIONS TO\n"
-		 "PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.\n"
-		);
+		 "PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.\n");
 }

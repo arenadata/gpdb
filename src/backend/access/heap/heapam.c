@@ -41,6 +41,7 @@
 #include "access/multixact.h"
 #include "access/parallel.h"
 #include "access/relscan.h"
+#include "access/subtrans.h"
 #include "access/sysattr.h"
 #include "access/tableam.h"
 #include "access/transam.h"
@@ -499,8 +500,8 @@ heapgetpage(TableScanDesc sscan, BlockNumber page)
 				}
 			}
 
-			CheckForSerializableConflictOut(valid, scan->rs_base.rs_rd,
-											&loctup, buffer, snapshot);
+			HeapCheckForSerializableConflictOut(valid, scan->rs_base.rs_rd,
+												&loctup, buffer, snapshot);
 
 			if (valid)
 				scan->rs_vistuples[ntup++] = lineoff;
@@ -724,9 +725,9 @@ heapgettup(HeapScanDesc scan,
 													 snapshot,
 													 scan->rs_cbuf);
 
-				CheckForSerializableConflictOut(valid, scan->rs_base.rs_rd,
-												tuple, scan->rs_cbuf,
-												snapshot);
+				HeapCheckForSerializableConflictOut(valid, scan->rs_base.rs_rd,
+													tuple, scan->rs_cbuf,
+													snapshot);
 
 				if (valid && key != NULL)
 					HeapKeyTest(tuple, RelationGetDescr(scan->rs_base.rs_rd),
@@ -1533,9 +1534,10 @@ heap_fetch(Relation relation,
 	valid = HeapTupleSatisfiesVisibility(relation, tuple, snapshot, buffer);
 
 	if (valid)
-		PredicateLockTuple(relation, tuple, snapshot);
+		PredicateLockTID(relation, &(tuple->t_self), snapshot,
+						 HeapTupleHeaderGetXmin(tuple->t_data));
 
-	CheckForSerializableConflictOut(valid, relation, tuple, buffer, snapshot);
+	HeapCheckForSerializableConflictOut(valid, relation, tuple, buffer, snapshot);
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
@@ -1666,13 +1668,14 @@ heap_hot_search_buffer(ItemPointer tid, Relation relation, Buffer buffer,
 		{
 			/* If it's visible per the snapshot, we must return it */
 			valid = HeapTupleSatisfiesVisibility(relation, heapTuple, snapshot, buffer);
-			CheckForSerializableConflictOut(valid, relation, heapTuple,
-											buffer, snapshot);
+			HeapCheckForSerializableConflictOut(valid, relation, heapTuple,
+												buffer, snapshot);
 
 			if (valid)
 			{
 				ItemPointerSetOffsetNumber(tid, offnum);
-				PredicateLockTuple(relation, heapTuple, snapshot);
+				PredicateLockTID(relation, &heapTuple->t_self, snapshot,
+								 HeapTupleHeaderGetXmin(heapTuple->t_data));
 				if (all_dead)
 					*all_dead = false;
 				return true;
@@ -1806,7 +1809,7 @@ heap_get_latest_tid(TableScanDesc sscan,
 		 * candidate.
 		 */
 		valid = HeapTupleSatisfiesVisibility(relation, &tp, snapshot, buffer);
-		CheckForSerializableConflictOut(valid, relation, &tp, buffer, snapshot);
+		HeapCheckForSerializableConflictOut(valid, relation, &tp, buffer, snapshot);
 		if (valid)
 			*tid = ctid;
 
@@ -1970,7 +1973,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	 * lock "gaps" as index page locks do.  So we don't need to specify a
 	 * buffer when making the call, which makes for a faster check.
 	 */
-	CheckForSerializableConflictIn(relation, NULL, InvalidBuffer);
+	CheckForSerializableConflictIn(relation, NULL, InvalidBlockNumber);
 
 	/* NO EREPORT(ERROR) from here till changes are logged */
 	START_CRIT_SECTION();
@@ -2236,7 +2239,7 @@ heap_multi_insert(Relation relation, TupleTableSlot **slots, int ntuples,
 	 * lock "gaps" as index page locks do.  So we don't need to specify a
 	 * buffer when making the call, which makes for a faster check.
 	 */
-	CheckForSerializableConflictIn(relation, NULL, InvalidBuffer);
+	CheckForSerializableConflictIn(relation, NULL, InvalidBlockNumber);
 
 	ndone = 0;
 	while (ndone < ntuples)
@@ -2265,6 +2268,14 @@ heap_multi_insert(Relation relation, TupleTableSlot **slots, int ntuples,
 		 * Put that on the page, and then as many other tuples as fit.
 		 */
 		RelationPutHeapTuple(relation, buffer, heaptuples[ndone], false);
+
+		/*
+		 * Note that heap_multi_insert is not used for catalog tuples yet,
+		 * but this will cover the gap once that is the case.
+		 */
+		if (needwal && need_cids)
+			log_heap_new_cid(relation, heaptuples[ndone]);
+
 		for (nthispage = 1; ndone + nthispage < ntuples; nthispage++)
 		{
 			HeapTuple	heaptup = heaptuples[ndone + nthispage];
@@ -2427,7 +2438,7 @@ heap_multi_insert(Relation relation, TupleTableSlot **slots, int ntuples,
 	 * lock "gaps" as index page locks do.  So we don't need to specify a
 	 * buffer when making the call.
 	 */
-	CheckForSerializableConflictIn(relation, NULL, InvalidBuffer);
+	CheckForSerializableConflictIn(relation, NULL, InvalidBlockNumber);
 
 	/*
 	 * If tuples are cachable, mark them for invalidation from the caches in
@@ -2763,7 +2774,7 @@ l1:
 	 * being visible to the scan (i.e., an exclusive buffer content lock is
 	 * continuously held from this point until the tuple delete is visible).
 	 */
-	CheckForSerializableConflictIn(relation, &tp, buffer);
+	CheckForSerializableConflictIn(relation, tid, BufferGetBlockNumber(buffer));
 
 	/* replace cid with a combo cid if necessary */
 	HeapTupleHeaderAdjustCmax(tp.t_data, &cid, &iscombo);
@@ -3684,7 +3695,7 @@ l2:
 	 * will include checking the relation level, there is no benefit to a
 	 * separate check for the new tuple.
 	 */
-	CheckForSerializableConflictIn(relation, &oldtup, buffer);
+	CheckForSerializableConflictIn(relation, otid, BufferGetBlockNumber(buffer));
 
 	/*
 	 * At this point newbuf and buffer are both pinned and locked, and newbuf
@@ -4395,8 +4406,7 @@ l3:
 
 				/* if the xmax changed in the meantime, start over */
 				if (xmax_infomask_changed(tuple->t_data->t_infomask, infomask) ||
-					!TransactionIdEquals(
-										 HeapTupleHeaderGetRawXmax(tuple->t_data),
+					!TransactionIdEquals(HeapTupleHeaderGetRawXmax(tuple->t_data),
 										 xwait))
 					goto l3;
 				/* otherwise, we're good */
@@ -7110,7 +7120,6 @@ heap_compute_xid_horizon_for_tuples(Relation rel,
 	Page		hpage;
 #ifdef USE_PREFETCH
 	XidHorizonPrefetchState prefetch_state;
-	int			io_concurrency;
 	int			prefetch_distance;
 #endif
 
@@ -7133,24 +7142,15 @@ heap_compute_xid_horizon_for_tuples(Relation rel,
 	/*
 	 * Compute the prefetch distance that we will attempt to maintain.
 	 *
-	 * We don't use the regular formula to determine how much to prefetch
-	 * here, but instead just add a constant to effective_io_concurrency.
-	 * That's because it seems best to do some prefetching here even when
-	 * effective_io_concurrency is set to 0, but if the DBA thinks it's OK to
-	 * do more prefetching for other operations, then it's probably OK to do
-	 * more prefetching in this case, too. It may be that this formula is too
-	 * simplistic, but at the moment there is no evidence of that or any idea
-	 * about what would work better.
-	 *
 	 * Since the caller holds a buffer lock somewhere in rel, we'd better make
 	 * sure that isn't a catalog relation before we call code that does
 	 * syscache lookups, to avoid risk of deadlock.
 	 */
 	if (IsCatalogRelation(rel))
-		io_concurrency = effective_io_concurrency;
+		prefetch_distance = maintenance_io_concurrency;
 	else
-		io_concurrency = get_tablespace_io_concurrency(rel->rd_rel->reltablespace);
-	prefetch_distance = Min((io_concurrency) + 10, MAX_IO_CONCURRENCY);
+		prefetch_distance =
+			get_tablespace_maintenance_io_concurrency(rel->rd_rel->reltablespace);
 
 	/* Start prefetching. */
 	xid_horizon_prefetch_buffer(rel, &prefetch_state, prefetch_distance);
@@ -9172,4 +9172,94 @@ heap_mask(char *pagedata, BlockNumber blkno)
 				memset(page_item + len, MASK_MARKER, padlen);
 		}
 	}
+}
+
+/*
+ * HeapCheckForSerializableConflictOut
+ *		We are reading a tuple which has been modified.  If it is visible to
+ *		us but has been deleted, that indicates a rw-conflict out.  If it's
+ *		not visible and was created by a concurrent (overlapping)
+ *		serializable transaction, that is also a rw-conflict out,
+ *
+ * We will determine the top level xid of the writing transaction with which
+ * we may be in conflict, and check for overlap with our own transaction.
+ * If the transactions overlap (i.e., they cannot see each other's writes),
+ * then we have a conflict out.
+ *
+ * This function should be called just about anywhere in heapam.c where a
+ * tuple has been read. The caller must hold at least a shared lock on the
+ * buffer, because this function might set hint bits on the tuple. There is
+ * currently no known reason to call this function from an index AM.
+ */
+void
+HeapCheckForSerializableConflictOut(bool visible, Relation relation,
+									HeapTuple tuple, Buffer buffer,
+									Snapshot snapshot)
+{
+	TransactionId xid;
+	HTSV_Result htsvResult;
+
+	if (!CheckForSerializableConflictOutNeeded(relation, snapshot))
+		return;
+
+	/*
+	 * Check to see whether the tuple has been written to by a concurrent
+	 * transaction, either to create it not visible to us, or to delete it
+	 * while it is visible to us.  The "visible" bool indicates whether the
+	 * tuple is visible to us, while HeapTupleSatisfiesVacuum checks what else
+	 * is going on with it.
+	 */
+	htsvResult = HeapTupleSatisfiesVacuum(relation, tuple, TransactionXmin, buffer);
+	switch (htsvResult)
+	{
+		case HEAPTUPLE_LIVE:
+			if (visible)
+				return;
+			xid = HeapTupleHeaderGetXmin(tuple->t_data);
+			break;
+		case HEAPTUPLE_RECENTLY_DEAD:
+			if (!visible)
+				return;
+			xid = HeapTupleHeaderGetUpdateXid(tuple->t_data);
+			break;
+		case HEAPTUPLE_DELETE_IN_PROGRESS:
+			xid = HeapTupleHeaderGetUpdateXid(tuple->t_data);
+			break;
+		case HEAPTUPLE_INSERT_IN_PROGRESS:
+			xid = HeapTupleHeaderGetXmin(tuple->t_data);
+			break;
+		case HEAPTUPLE_DEAD:
+			return;
+		default:
+
+			/*
+			 * The only way to get to this default clause is if a new value is
+			 * added to the enum type without adding it to this switch
+			 * statement.  That's a bug, so elog.
+			 */
+			elog(ERROR, "unrecognized return value from HeapTupleSatisfiesVacuum: %u", htsvResult);
+
+			/*
+			 * In spite of having all enum values covered and calling elog on
+			 * this default, some compilers think this is a code path which
+			 * allows xid to be used below without initialization. Silence
+			 * that warning.
+			 */
+			xid = InvalidTransactionId;
+	}
+
+	Assert(TransactionIdIsValid(xid));
+	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
+
+	/*
+	 * Find top level xid.  Bail out if xid is too early to be a conflict, or
+	 * if it's our own xid.
+	 */
+	if (TransactionIdEquals(xid, GetTopTransactionIdIfAny()))
+		return;
+	xid = SubTransGetTopmostTransaction(xid);
+	if (TransactionIdPrecedes(xid, TransactionXmin))
+		return;
+
+	CheckForSerializableConflictOut(relation, xid, snapshot);
 }

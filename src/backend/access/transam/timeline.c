@@ -37,6 +37,7 @@
 #include "access/timeline.h"
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
+#include "access/xlogarchive.h"
 #include "access/xlogdefs.h"
 #include "pgstat.h"
 #include "storage/fd.h"
@@ -429,7 +430,7 @@ writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 	 * Perform the rename using link if available, paranoidly trying to avoid
 	 * overwriting an existing file (there shouldn't be one).
 	 */
-	durable_link_or_rename(tmppath, path, ERROR);
+	durable_rename_excl(tmppath, path, ERROR);
 
 	/* The history file can be archived immediately. */
 	if (XLogArchivingActive())
@@ -507,7 +508,7 @@ writeTimeLineHistoryFile(TimeLineID tli, char *content, int size)
 	 * Perform the rename using link if available, paranoidly trying to avoid
 	 * overwriting an existing file (there shouldn't be one).
 	 */
-	durable_link_or_rename(tmppath, path, ERROR);
+	durable_rename_excl(tmppath, path, ERROR);
 }
 
 /*

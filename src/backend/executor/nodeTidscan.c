@@ -144,9 +144,8 @@ TidListEval(TidScanState *tidstate)
 	 */
 	if (tidstate->ss.ss_currentScanDesc == NULL)
 		tidstate->ss.ss_currentScanDesc =
-			table_beginscan(tidstate->ss.ss_currentRelation,
-							tidstate->ss.ps.state->es_snapshot,
-							0, NULL);
+			table_beginscan_tid(tidstate->ss.ss_currentRelation,
+							tidstate->ss.ps.state->es_snapshot);
 	scan = tidstate->ss.ss_currentScanDesc;
 
 	/*
@@ -209,7 +208,7 @@ TidListEval(TidScanState *tidstate)
 				continue;
 			itemarray = DatumGetArrayTypeP(arraydatum);
 			deconstruct_array(itemarray,
-							  TIDOID, sizeof(ItemPointerData), false, 's',
+							  TIDOID, sizeof(ItemPointerData), false, TYPALIGN_SHORT,
 							  &ipdatums, &ipnulls, &ndatums);
 			if (numTids + ndatums > numAllocTids)
 			{

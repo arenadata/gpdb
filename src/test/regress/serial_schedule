@@ -52,6 +52,7 @@ test: opr_sanity
 test: misc_sanity
 test: comments
 test: expressions
+test: unicode
 test: create_function_1
 test: create_type
 test: create_table
@@ -199,6 +200,7 @@ test: indexing
 test: partition_aggregate
 test: partition_info
 test: tuplesort
+test: explain
 test: event_trigger
 test: fast_default
 test: stats

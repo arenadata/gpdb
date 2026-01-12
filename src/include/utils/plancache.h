@@ -19,10 +19,14 @@
 #include "lib/ilist.h"
 #include "nodes/params.h"
 #include "nodes/primnodes.h"
+#include "tcop/cmdtag.h"
 #include "utils/queryenvironment.h"
+
 
 /* Forward declaration, to avoid including parsenodes.h here */
 struct RawStmt;
+/* Forward declaration, to avoid including resowner.h here */
+typedef struct ResourceOwnerData *ResourceOwner;
 
 /* possible values for plan_cache_mode */
 typedef enum
@@ -96,7 +100,7 @@ typedef struct CachedPlanSource
 	int			magic;			/* should equal CACHEDPLANSOURCE_MAGIC */
 	struct RawStmt *raw_parse_tree; /* output of raw_parser(), or NULL */
 	const char *query_string;	/* source text of query */
-	const char *commandTag;		/* command tag (a constant!), or NULL */
+	CommandTag	commandTag;		/* 'nuff said */
 	NodeTag		sourceTag;		/* GPDB: Original statement NodeTag */
 	Oid		   *param_types;	/* array of parameter type OIDs, or NULL */
 	int			num_params;		/* length of param_types array */
@@ -188,10 +192,10 @@ extern void ResetPlanCache(void);
 
 extern CachedPlanSource *CreateCachedPlan(struct RawStmt *raw_parse_tree,
 										  const char *query_string,
-										  const char *commandTag);
+										  CommandTag commandTag);
 extern CachedPlanSource *CreateOneShotCachedPlan(struct RawStmt *raw_parse_tree,
 												 const char *query_string,
-												 const char *commandTag);
+												 CommandTag commandTag);
 extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   List *querytree_list,
 							   MemoryContext querytree_context,
@@ -222,6 +226,13 @@ extern CachedPlan *GetCachedPlan(CachedPlanSource *plansource,
 								 QueryEnvironment *queryEnv,
 								 IntoClause *intoClause);
 extern void ReleaseCachedPlan(CachedPlan *plan, bool useResOwner);
+
+extern bool CachedPlanAllowsSimpleValidityCheck(CachedPlanSource *plansource,
+												CachedPlan *plan,
+												ResourceOwner owner);
+extern bool CachedPlanIsSimplyValid(CachedPlanSource *plansource,
+									CachedPlan *plan,
+									ResourceOwner owner);
 
 extern CachedExpression *GetCachedExpression(Node *expr);
 extern void FreeCachedExpression(CachedExpression *cexpr);

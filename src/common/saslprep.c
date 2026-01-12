@@ -27,12 +27,6 @@
 
 #include "common/saslprep.h"
 #include "common/unicode_norm.h"
-
-/*
- * Note: The functions in this file depend on functions from
- * src/backend/utils/mb/wchar.c, so in order to use this in frontend
- * code, you will need to link that in, too.
- */
 #include "mb/pg_wchar.h"
 
 /*
@@ -1162,7 +1156,7 @@ pg_saslprep(const char *input, char **output)
 	 * 2) Normalize -- Normalize the result of step 1 using Unicode
 	 * normalization.
 	 */
-	output_chars = unicode_normalize_kc(input_chars);
+	output_chars = unicode_normalize(UNICODE_NFKC, input_chars);
 	if (!output_chars)
 		goto oom;
 

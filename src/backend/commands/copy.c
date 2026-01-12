@@ -54,6 +54,7 @@
 #include "storage/fd.h"
 #include "storage/execute_pipe.h"
 #include "tcop/tcopprot.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -1254,7 +1255,6 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 		/* check read-only transaction and parallel mode */
 		if (XactReadOnly && !rel->rd_islocaltemp)
 			PreventCommandIfReadOnly("COPY FROM");
-		PreventCommandIfParallelMode("COPY FROM");
 
 		cstate = BeginCopyFrom(pstate, rel, stmt->filename, stmt->is_program,
 							   NULL, NULL, stmt->attlist, options);
@@ -2061,7 +2061,7 @@ BeginCopy(ParseState *pstate,
 		if (cstate->skip_foreign_partitions)
 			cursorOptions |= CURSOR_OPT_SKIP_FOREIGN_PARTITIONS;
 
-		plan = pg_plan_query(query, cursorOptions, NULL);
+		plan = pg_plan_query(query, pstate->p_sourcetext, cursorOptions, NULL);
 
 		/*
 		 * With row level security and a user using "COPY relation TO", we
@@ -4538,7 +4538,7 @@ CopyFrom(CopyState cstate)
 				/* Compute stored generated columns */
 				if (resultRelInfo->ri_RelationDesc->rd_att->constr &&
 					resultRelInfo->ri_RelationDesc->rd_att->constr->has_generated_stored)
-					ExecComputeStoredGenerated(estate, myslot);
+					ExecComputeStoredGenerated(estate, myslot, CMD_INSERT);
 
 				/*
 				 * If the target is a plain table, check the constraints of
