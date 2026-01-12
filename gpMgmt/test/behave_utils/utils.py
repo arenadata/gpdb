@@ -319,7 +319,7 @@ def check_table_exists(context, dbname, table_name, table_type=None, host=None, 
         else:
             SQL_format = """
                 SELECT oid, relkind, amname, reloptions \
-                FROM pg_class, pg_am a \
+                FROM pg_class c, pg_am a \
                 WHERE relname = E'%s' AND a.oid = c.relam;\
                 """
             SQL = SQL_format % (escape_string(table_name))
