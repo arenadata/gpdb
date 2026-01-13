@@ -672,7 +672,7 @@ SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configura
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
 -- Wait for primary on segment 0 to recover after panics
-SELECT connectSeg(600, port, hostname) FROM gp_segment_configuration WHERE content = 0 and preferred_role = 'p';
+SELECT connectSeg(600, port, hostname) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
@@ -744,7 +744,7 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
 -- Wait for primary on segment 0 to recover after panics
-SELECT connectSeg(600, port, hostname) FROM gp_segment_configuration WHERE content = 0 and preferred_role = 'p';
+SELECT connectSeg(600, port, hostname) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
