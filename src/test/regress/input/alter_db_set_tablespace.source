@@ -126,6 +126,10 @@ for dbid, datadir in db_instances.items():
 return rows
 $fn$;
 
+CREATE OR REPLACE FUNCTION wait_for_primaries_to_restart() RETURNS BOOLEAN AS $$
+	SELECT count(gp_segment_id) > 0 FROM gp_dist_random('pg_tablespace');
+$$ LANGUAGE sql;
+
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 -- Tests for ALTER DATABASE SET TABLESPACE adhere to the following format. A
@@ -655,8 +659,8 @@ SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configura
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
--- Wait for primaries to recover after panics
-SELECT count(gp_segment_id) > 0 FROM gp_dist_random('pg_tablespace');
+-- Wait for primary on segment 0 to recover after panics
+SELECT wait_for_primaries_to_restart();
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
@@ -726,6 +730,9 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
 
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
+
+-- Wait for primary on segment 0 to recover after panics
+SELECT wait_for_primaries_to_restart();
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');

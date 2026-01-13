@@ -114,6 +114,9 @@ for dbid, datadir in db_instances.items():
 
 return rows
 $fn$;
+CREATE OR REPLACE FUNCTION wait_for_primaries_to_restart() RETURNS BOOLEAN AS $$
+	SELECT count(gp_segment_id) > 0 FROM gp_dist_random('pg_tablespace');
+$$ LANGUAGE sql;
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Tests for ALTER DATABASE SET TABLESPACE adhere to the following format. A
 -- scenario is provided for each test with a table that compactly specifies
@@ -1068,10 +1071,10 @@ SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configura
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 1802)
 ERROR:  fault triggered, fault name:'start_prepare' fault type:'panic'  (seg0 127.0.0.1:25432 pid=61308)
--- Wait for primaries to recover after panics
-SELECT count(gp_segment_id) > 0 FROM gp_dist_random('pg_tablespace');
- ?column? 
-----------
+-- Wait for primary on segment 0 to recover after panics
+SELECT wait_for_primaries_to_restart();
+ wait_for_primaries_to_restart 
+-------------------------------
  t
 (1 row)
 
@@ -1211,6 +1214,13 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 3078)
 ERROR:  fault triggered, fault name:'after_xlog_xact_prepare_flushed' fault type:'panic'  (seg0 127.0.0.1:25432 pid=78007)
+-- Wait for primary on segment 0 to recover after panics
+SELECT wait_for_primaries_to_restart();
+ wait_for_primaries_to_restart 
+-------------------------------
+ t
+(1 row)
+
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
  gp_segment_id | db_name  |    tablespace_name     
@@ -1276,12 +1286,13 @@ SELECT force_mirrors_to_catch_up();
 
 -- Final cleanup
 DROP SCHEMA adst CASCADE;
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 6 other objects
 DETAIL:  drop cascades to function get_tablespace_version_directory_name()
 drop cascades to function setup_tablespace_location_dir_for_test(text)
 drop cascades to function setup()
 drop cascades to function list_db_tablespace(text,text)
 drop cascades to function stat_db_objects(text,text)
+drop cascades to function wait_for_primaries_to_restart()
 SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration;
  gp_inject_fault 
 -----------------
