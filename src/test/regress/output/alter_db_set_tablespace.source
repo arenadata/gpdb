@@ -114,21 +114,6 @@ for dbid, datadir in db_instances.items():
 
 return rows
 $fn$;
-CREATE OR REPLACE FUNCTION connectSeg(n int, port int, hostname text) RETURNS bool AS $$
-import os
-import subprocess
-import time
-for i in range(n):
-    try:
-        subprocess.run(["psql", "-h", str(hostname), "-p", str(port), "postgres", "-Xc", "select 1;"],
-                       env={"PGOPTIONS": "-c gp_role=utility", "PATH": os.getenv("PATH")},
-                       check=True)
-        return True
-    except Exception as e:
-        time.sleep(1)
-raise Exception("wait connection timeout")
-$$
-LANGUAGE plpython3u;
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Tests for ALTER DATABASE SET TABLESPACE adhere to the following format. A
 -- scenario is provided for each test with a table that compactly specifies
@@ -1083,13 +1068,8 @@ SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configura
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 1802)
 ERROR:  fault triggered, fault name:'start_prepare' fault type:'panic'  (seg0 127.0.0.1:25432 pid=61308)
--- Wait for primary on segment 0 to recover after panics
-SELECT connectSeg(600, port, hostname) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
- connectseg 
-------------
- t
-(1 row)
-
+\c
+SET search_path TO adst,public;
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
  gp_segment_id | db_name  |    tablespace_name     
@@ -1226,13 +1206,8 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 3078)
 ERROR:  fault triggered, fault name:'after_xlog_xact_prepare_flushed' fault type:'panic'  (seg0 127.0.0.1:25432 pid=78007)
--- Wait for primary on segment 0 to recover after panics
-SELECT connectSeg(600, port, hostname) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
- connectseg 
-------------
- t
-(1 row)
-
+\c
+SET search_path TO adst,public;
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
  gp_segment_id | db_name  |    tablespace_name     
@@ -1298,13 +1273,12 @@ SELECT force_mirrors_to_catch_up();
 
 -- Final cleanup
 DROP SCHEMA adst CASCADE;
-NOTICE:  drop cascades to 6 other objects
+NOTICE:  drop cascades to 5 other objects
 DETAIL:  drop cascades to function get_tablespace_version_directory_name()
 drop cascades to function setup_tablespace_location_dir_for_test(text)
 drop cascades to function setup()
 drop cascades to function list_db_tablespace(text,text)
 drop cascades to function stat_db_objects(text,text)
-drop cascades to function connectseg(integer,integer,text)
 SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration;
  gp_inject_fault 
 -----------------
