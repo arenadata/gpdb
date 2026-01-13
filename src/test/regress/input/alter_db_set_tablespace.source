@@ -651,23 +651,15 @@ SELECT gp_inject_fault('after_drop_database_directories', 'sleep', c.dbid) FROM 
 
 -- And introduce a panic on a primary directly before the primary writes the XLOG_XACT_PREPARE record during the dispatch of the PREPARE TRANSACTION command.
 SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configuration WHERE role = 'p' AND content = 0;
--- start_ignore
-\!gpconfig -c log_min_messages -v debug
-\!gpstop -u
--- end_ignore
 
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
 -- Wait for primary on segment 0 to recover after panics
-\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready' 2>/dev/null; do sleep 1; done"
+SELECT force_mirrors_to_catch_up();
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
--- start_ignore
-\!gpconfig -r log_min_messages
-\!gpstop -u
--- end_ignore
 
 -- Ensure that the mirrors including the standby master have removed the dboid dir under the target tablespace, except the mirror of the panicked primary.
 SELECT gp_wait_until_triggered_fault('after_drop_database_directories', 1, dbid) FROM gp_segment_configuration WHERE role='m' AND content!=0;
@@ -736,7 +728,7 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
 -- Wait for primary on segment 0 to recover after panics
-\! PORT=$(psql -At -d regression -c "SELECT port FROM gp_segment_configuration WHERE content = 0 and role = 'p'") && timeout 10 bash -c "while ! PGOPTIONS='-c gp_role=utility' psql -p $PORT -d regression -Xc 'SELECT true AS ready' 2>/dev/null; do sleep 1; done"
+SELECT force_mirrors_to_catch_up();
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
