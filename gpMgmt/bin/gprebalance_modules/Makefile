@@ -11,7 +11,7 @@ rebalance_status.py \
 shrink.py planner.py \
 rebalance_commons.py \
 rebalance_schema.py \
-solver.py
+solver.py ggrebalanceSM.py
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)/gprebalance_modules'

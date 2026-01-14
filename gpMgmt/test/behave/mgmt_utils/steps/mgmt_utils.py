@@ -1603,6 +1603,15 @@ def impl(context, filter):
     Given the user runs psql with "-c 'BEGIN; CREATE TEMP TABLE tempt(a int); COMMIT'" against database "postgres"
     ''')
 
+@given('the cluster configuration has {segment_count} segments where "{filter}"')
+@when('the cluster configuration has {segment_count} segments where "{filter}"')
+@then('the cluster configuration has {segment_count} segments where "{filter}"')
+def impl(context, segment_count, filter):
+    sql = "SELECT count(*) FROM gp_segment_configuration WHERE %s" % filter
+    with closing(dbconn.connect(dbconn.DbURL(), unsetSearchPath=False)) as conn:
+        row = dbconn.queryRow(conn, sql)
+    if int(row[0]) != int(segment_count):
+        raise Exception(f"Expected {segment_count} segments, but got {row[0]}")
 
 @given('the cluster configuration is saved for "{when}"')
 @then('the cluster configuration is saved for "{when}"')
