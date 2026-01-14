@@ -272,6 +272,7 @@ test: vacuum_full_heap_bitmapindex
 test: instr_in_shmem_verify
 # check autostats
 test: autostats
+test: alter_db_set_tablespace
 test: enable_autovacuum
 
 test: ao_checksum_corruption AOCO_Compression AORO_Compression table_statistics
@@ -282,7 +283,6 @@ test: fts_error
 test: psql_gp_commands pg_resetwal dropdb_check_shared_buffer_cache gp_upgrade_cornercases
 
 test: temp_relation
-test: alter_db_set_tablespace
 
 # This cannot run in parallel because other tests could increment the Oid
 # counters and make the Oid counter observations hardcoded in the answer file

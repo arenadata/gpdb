@@ -989,16 +989,6 @@ SELECT force_mirrors_to_catch_up();
  
 (1 row)
 
-alter system set autovacuum = off;
-select gp_segment_id, pg_reload_conf() from gp_id union select gp_segment_id, pg_reload_conf() from gp_dist_random('gp_id');
- gp_segment_id | pg_reload_conf 
----------------+----------------
-             2 | t
-             1 | t
-             0 | t
-            -1 | t
-(4 rows)
-
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Scenario: A panic just before XLOG_XACT_PREPARE on primary
 --
@@ -1304,13 +1294,3 @@ SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration;
 \! gpconfig -r create_restartpoint_on_ckpt_record_replay --skipvalidation;
 \! gpstop -u;
 -- end_ignore
-alter system reset autovacuum;
-select gp_segment_id, pg_reload_conf() from gp_id union select gp_segment_id, pg_reload_conf() from gp_dist_random('gp_id');
- gp_segment_id | pg_reload_conf 
----------------+----------------
-             2 | t
-             1 | t
-             0 | t
-            -1 | t
-(4 rows)
-
