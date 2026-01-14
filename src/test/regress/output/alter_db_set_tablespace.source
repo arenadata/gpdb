@@ -989,6 +989,16 @@ SELECT force_mirrors_to_catch_up();
  
 (1 row)
 
+alter system set autovacuum = off;
+select gp_segment_id, pg_reload_conf() from gp_id union select gp_segment_id, pg_reload_conf() from gp_dist_random('gp_id');
+ gp_segment_id | pg_reload_conf 
+---------------+----------------
+             2 | t
+             1 | t
+             0 | t
+            -1 | t
+(4 rows)
+
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Scenario: A panic just before XLOG_XACT_PREPARE on primary
 --
@@ -1064,13 +1074,10 @@ SELECT gp_inject_fault('start_prepare', 'panic', dbid) FROM gp_segment_configura
  Success:
 (1 row)
 
--- not recycle idle QEs to avoid the flaky test where restarting primary takes a long time.
-SET gp_vmem_idle_resource_timeout TO 0;
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 1802)
 ERROR:  fault triggered, fault name:'start_prepare' fault type:'panic'  (seg0 127.0.0.1:25432 pid=61308)
-RESET gp_vmem_idle_resource_timeout;
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
  gp_segment_id | db_name  |    tablespace_name     
@@ -1203,13 +1210,10 @@ SELECT gp_inject_fault('after_xlog_xact_prepare_flushed', 'panic', dbid) FROM gp
  Success:
 (1 row)
 
--- not recycle idle QEs to avoid the flaky test where restarting primary takes a long time.
-SET gp_vmem_idle_resource_timeout TO 0;
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 WARNING:  Any temporary tables for this session have been dropped because the gang was disconnected (session id = 3078)
 ERROR:  fault triggered, fault name:'after_xlog_xact_prepare_flushed' fault type:'panic'  (seg0 127.0.0.1:25432 pid=78007)
-RESET gp_vmem_idle_resource_timeout;
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
 SELECT * FROM list_db_tablespace('alter_db', 'adst_source_tablespace');
  gp_segment_id | db_name  |    tablespace_name     
@@ -1300,3 +1304,13 @@ SELECT gp_inject_fault('all', 'reset', dbid) FROM gp_segment_configuration;
 \! gpconfig -r create_restartpoint_on_ckpt_record_replay --skipvalidation;
 \! gpstop -u;
 -- end_ignore
+alter system reset autovacuum;
+select gp_segment_id, pg_reload_conf() from gp_id union select gp_segment_id, pg_reload_conf() from gp_dist_random('gp_id');
+ gp_segment_id | pg_reload_conf 
+---------------+----------------
+             2 | t
+             1 | t
+             0 | t
+            -1 | t
+(4 rows)
+
