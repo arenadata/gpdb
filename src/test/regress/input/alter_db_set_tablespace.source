@@ -658,6 +658,9 @@ SET gp_vmem_idle_resource_timeout TO 0;
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
+-- start_ignore
+RESET gp_vmem_idle_resource_timeout;
+-- end_ignore
 RESET gp_vmem_idle_resource_timeout;
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
@@ -732,6 +735,9 @@ SET gp_vmem_idle_resource_timeout TO 0;
 -- When we execute an ALTER DATABASE SET TABLESPACE command on alter_db and the panic is triggered
 ALTER DATABASE alter_db SET TABLESPACE adst_destination_tablespace;
 
+-- start_ignore
+RESET gp_vmem_idle_resource_timeout;
+-- end_ignore
 RESET gp_vmem_idle_resource_timeout;
 
 -- Then the tablespace for the database remains to be the source tablespace in all segments and the master.
