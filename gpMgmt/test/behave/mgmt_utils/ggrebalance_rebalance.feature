@@ -17,12 +17,12 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         When the user runs "ggrebalance -B <batch_size> -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
-         And the cluster configuration has 3 segments where "hostname='sdw1' and content > -1 and role = 'p'"
-         And the cluster configuration has 3 segments where "hostname='sdw1' and content > -1 and role = 'm'"
-         And the cluster configuration has 3 segments where "hostname='sdw2' and content > -1 and role = 'p'"
-         And the cluster configuration has 3 segments where "hostname='sdw2' and content > -1 and role = 'm'"
-         And the cluster configuration has 0 segments where "hostname='sdw3' and content > -1 and role = 'p'"
-         And the cluster configuration has 0 segments where "hostname='sdw3' and content > -1 and role = 'm'"
+         And the cluster configuration has 3 segments where "hostname='sdw1' and content > -1 and role = 'p' and status = 'u'"
+         And the cluster configuration has 3 segments where "hostname='sdw1' and content > -1 and role = 'm' and status = 'u'"
+         And the cluster configuration has 3 segments where "hostname='sdw2' and content > -1 and role = 'p' and status = 'u'"
+         And the cluster configuration has 3 segments where "hostname='sdw2' and content > -1 and role = 'm' and status = 'u'"
+         And the cluster configuration has 0 segments where "hostname='sdw3' and content > -1 and role = 'p' and status = 'u'"
+         And the cluster configuration has 0 segments where "hostname='sdw3' and content > -1 and role = 'm' and status = 'u'"
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 6, row count = 100
@@ -36,12 +36,12 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         When the user runs "ggrebalance -B <batch_size> -x 6 --add-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
-         And the cluster configuration has 2 segments where "hostname='sdw1' and content > -1 and role = 'p'"
-         And the cluster configuration has 2 segments where "hostname='sdw1' and content > -1 and role = 'm'"
-         And the cluster configuration has 2 segments where "hostname='sdw2' and content > -1 and role = 'p'"
-         And the cluster configuration has 2 segments where "hostname='sdw2' and content > -1 and role = 'm'"
-         And the cluster configuration has 2 segments where "hostname='sdw3' and content > -1 and role = 'p'"
-         And the cluster configuration has 2 segments where "hostname='sdw3' and content > -1 and role = 'm'"
+         And the cluster configuration has 2 segments where "hostname='sdw1' and content > -1 and role = 'p' and status = 'u'"
+         And the cluster configuration has 2 segments where "hostname='sdw1' and content > -1 and role = 'm' and status = 'u'"
+         And the cluster configuration has 2 segments where "hostname='sdw2' and content > -1 and role = 'p' and status = 'u'"
+         And the cluster configuration has 2 segments where "hostname='sdw2' and content > -1 and role = 'm' and status = 'u'"
+         And the cluster configuration has 2 segments where "hostname='sdw3' and content > -1 and role = 'p' and status = 'u'"
+         And the cluster configuration has 2 segments where "hostname='sdw3' and content > -1 and role = 'm' and status = 'u'"
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 6, row count = 100

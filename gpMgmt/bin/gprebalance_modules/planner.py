@@ -589,7 +589,7 @@ class Planner:
         conn = dbconn.connect(self.dburl, encoding='UTF8')
         rebalance_schema = RebalanceSchema(conn)
         if rebalance_schema.schemaExists():
-            state_from_prev_run = rebalance_schema.getStateFromPreviousRun()
+            state_from_prev_run = rebalance_schema.getShrinkStateFromPreviousRun()
             if state_from_prev_run in ['STATE_SHRINK_TABLES_DONE',
                                        'STATE_SHRINK_CATALOG_STARTED',
                                        'STATE_SHRINK_CATALOG_DONE',

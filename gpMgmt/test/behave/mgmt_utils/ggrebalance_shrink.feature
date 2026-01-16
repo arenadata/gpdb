@@ -7,7 +7,7 @@ Feature: ggrebalance behave tests
          And a cluster is created with mirrors on "cdw" and "sdw1"
          And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
-         And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
+         And set fault inject "on_enter_STATE_SETUP_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
@@ -40,7 +40,7 @@ Feature: ggrebalance behave tests
          And a cluster is created with mirrors on "cdw" and "sdw1"
          And segment information for content 1 is saved in context
          And all files in gpAdminLogs directory are deleted
-         And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end"
+         And set fault inject "on_enter_STATE_SETUP_SCHEMA_STARTED_end"
          And database "test_db_1" exists
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
@@ -107,8 +107,8 @@ Feature: ggrebalance behave tests
 
     Examples:
         | fault_name                                                                  |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_begin                               |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_end                                 |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                               |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                 |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
@@ -171,7 +171,7 @@ Feature: ggrebalance behave tests
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
          And all files in gpAdminLogs directory are deleted
-         And set fault inject "on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_begin"
+         And set fault inject "on_enter_STATE_SETUP_SCHEMA_STARTED_begin"
          And database "test_db_1" exists
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
@@ -226,9 +226,9 @@ Feature: ggrebalance behave tests
 
     Examples:
         | fault_name                                                                  |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end                              |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_begin                               |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_end                                 |
+        | on_enter_STATE_SETUP_SCHEMA_STARTED_end                              |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                               |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                 |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
@@ -319,9 +319,9 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_2.test_table_4" with data in "test_db_2" is equal to segment count = 2, row count = 300
     Examples:
         | fault_name                                                                  |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_STARTED_end                              |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_begin                               |
-        | on_enter_STATE_SETUP_SHRINK_SCHEMA_DONE_end                                 |
+        | on_enter_STATE_SETUP_SCHEMA_STARTED_end                              |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                               |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                 |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |

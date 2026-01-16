@@ -41,7 +41,6 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Skipping rebalance" to logfile with latest timestamp
         When the user runs "ggrebalance -c"
         Then ggrebalance should return a return code of 0
-         And ggrebalance should print "Rebalance schema doesn't exist. Cleanup is not required." to logfile with latest timestamp
         When the user runs "ggrebalance -c"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance schema doesn't exist. Cleanup is not required." to logfile with latest timestamp
