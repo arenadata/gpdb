@@ -18,7 +18,7 @@ except ImportError as e:
 
 class GGRebalanceMainSM:
 
-    states = [
+    states_not_logged = [
         'STATE_START',
         'STATE_OPTIONS_VALIDATION',
         'STATE_CLEANUP',
@@ -26,6 +26,11 @@ class GGRebalanceMainSM:
         'STATE_PLANNING_STARTED',
         'STATE_PLANNING_DONE',
         'STATE_CHECK_PREVIOUS_RUN',
+        'STATE_END',
+        'STATE_ERROR'
+    ]
+
+    states_logged = [
         'STATE_SETUP_SCHEMA_STARTED',
         'STATE_SETUP_SCHEMA_DONE',
         'STATE_EXECUTOR_STARTED',
@@ -34,8 +39,6 @@ class GGRebalanceMainSM:
         'STATE_SHRINK_DONE',
         'STATE_REBALANCE_STARTED',
         'STATE_REBALANCE_DONE',
-        'STATE_END',
-        'STATE_ERROR'
     ]
 
     transitions = [
@@ -134,7 +137,7 @@ class GGRebalanceMainSM:
 
         self.machine = Machine(model = self,
                                queued=True,
-                               states = self.states,
+                               states = self.states_not_logged + self.states_logged,
                                transitions = self.transitions,
                                initial = 'STATE_START',
                                before_state_change = 'on_every_state')
@@ -152,13 +155,13 @@ class GGRebalanceMainSM:
 
 
     def on_every_state(self) -> None:
-        self.logger.info('MAIN - on_every_state')
+        self.logger.info(f'MAIN - on_every_state ({self.state})')
 
         #if self.shutdown_requested:
         #    self.logger.info('Rebalance was interrupted')
         #    raise Exception('Rebalance was interrupted')
-
-        self.rebalance_schema.storeMainState(self.state)
+        if self.state in self.states_logged:
+            self.rebalance_schema.storeMainState(self.state)
 
     def run(self) -> None:
         self.trigger('start')
