@@ -143,7 +143,7 @@ class GGRebalanceMainSM:
                                before_state_change = 'on_every_state')
 
         self.gg_shrink = GGShrink(self.logger, self.dburl, self.options, gpEnv, self.gparray, gpArrayDumpFilename)
-        self.gg_rebalance = RebalanceSM(self.logger, self.dburl, self.options)
+        self.gg_rebalance = RebalanceSM(self.logger, self.dburl, self.options, self.gparray)
 
         # Note: the plan for a shrink later will be provided by the planner component.
         # But for now we simply create a Plan object from the options directly.
@@ -212,7 +212,8 @@ class GGRebalanceMainSM:
     @wrap_state_func_with_faults
     def on_enter_STATE_ROLLBACK(self) -> None:
         self.logger.info(f'MAIN STATE: {self.state}')
-        self.gg_shrink.rollback()
+        self.plan = self.rebalance_schema.retrieveSavedPlan()
+        self.gg_shrink.rollback(self.plan)
         self.trigger('move_to_STATE_END')
 
     @wrap_state_func_with_faults
@@ -266,6 +267,8 @@ class GGRebalanceMainSM:
                 self.trigger('move_to_STATE_ERROR')
                 return
 
+            self.plan = self.rebalance_schema.retrieveSavedPlan()
+
             self.trigger('move_to_STATE_EXECUTOR_STARTED')
 
     @wrap_state_func_with_faults
@@ -290,15 +293,13 @@ class GGRebalanceMainSM:
     def on_enter_STATE_EXECUTOR_STARTED(self) -> None:
         self.logger.info(f'MAIN STATE: {self.state}')
 
-        shrink_state_from_prev_run = self.rebalance_schema.getShrinkStateFromPreviousRun()
-        if not self.gg_shrink.state_is_final(shrink_state_from_prev_run):
-            self.trigger('move_to_STATE_SHRINK_STARTED')
-        else:
-            self.trigger('move_to_STATE_REBALANCE_STARTED')
-            #if not self.options.skip_rebalance:
-            #    rebalance_state_from_prev_run = self.rebalance_schema.getRebalanceStateFromPreviousRun()
-            #    if not self.gg_rebalance.state_is_final(rebalance_state_from_prev_run):
-            #        self.trigger('move_to_STATE_REBALANCE_STARTED')
+        if isinstance(self.plan, ShrinkPlan):
+            shrink_state_from_prev_run = self.rebalance_schema.getShrinkStateFromPreviousRun()
+            if not self.gg_shrink.state_is_final(shrink_state_from_prev_run):
+                self.trigger('move_to_STATE_SHRINK_STARTED')
+                return
+
+        self.trigger('move_to_STATE_REBALANCE_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_EXECUTOR_DONE(self) -> None:
@@ -309,8 +310,7 @@ class GGRebalanceMainSM:
     def on_enter_STATE_SHRINK_STARTED(self) -> None:
         self.logger.info(f'MAIN STATE: {self.state}')
 
-        if self.plan is None or isinstance(self.plan, ShrinkPlan):
-            self.gg_shrink.run(self.plan)
+        self.gg_shrink.run(self.plan)
 
         self.trigger('move_to_STATE_SHRINK_DONE')
 

@@ -239,6 +239,28 @@ class GGShrink:
         self.shrink_plan = shrinkPlan
         self.trigger('start')
 
+    def rollback(self, shrinkPlan: ShrinkPlan) -> None:
+        self.shrink_plan = shrinkPlan
+        if not self.rebalance_schema.schemaExists():
+            self.logger.info("Rebalance schema doesn't exist. Can't perform rollback.")
+            self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+            return
+        else:
+            state_from_prev_run = self.rebalance_schema.getShrinkStateFromPreviousRun()
+            if state_from_prev_run != STATE_NOT_DEFINED:
+                # check maybe the state is the final one
+                if self.state_is_final(state_from_prev_run):
+                    self.logger.info("Previous run was completed successfully. Can't perform rollback.")
+                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                    return
+
+                if not self.state_can_rollback(state_from_prev_run) or self.is_gp_segment_configuration_shrinked():
+                    self.logger.info("Can't perform rollback as the catalog is already updated")
+                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
+                    return
+
+        self.trigger('start')
+
     def get_state_after_interrupt(self, prev_state) -> str:
         prev_idx = self.states_main_shrink_flow.index(prev_state)
         lower = self.states_main_shrink_flow.index('STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
@@ -302,27 +324,6 @@ class GGShrink:
         if os.path.exists(self.gparray_dump_file):
             os.remove(self.gparray_dump_file)
 
-    def rollback(self) -> None:
-        if not self.rebalance_schema.schemaExists():
-            self.logger.info("Rebalance schema doesn't exist. Can't perform rollback.")
-            self.trigger('move_to_STATE_END_FROM_ROLLBACK')
-            return
-        else:
-            state_from_prev_run = self.rebalance_schema.getShrinkStateFromPreviousRun()
-            if state_from_prev_run != STATE_NOT_DEFINED:
-                # check maybe the state is the final one
-                if self.state_is_final(state_from_prev_run):
-                    self.logger.info("Previous run was completed successfully. Can't perform rollback.")
-                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
-                    return
-
-                if not self.state_can_rollback(state_from_prev_run) or self.is_gp_segment_configuration_shrinked():
-                    self.logger.info("Can't perform rollback as the catalog is already updated")
-                    self.trigger('move_to_STATE_END_FROM_ROLLBACK')
-                    return
-
-        self.trigger('start')
-
     def state_is_final(self, state: str) -> bool:
         return state == self.states_main_shrink_flow[-1]
 
@@ -340,14 +341,8 @@ class GGShrink:
                 self.logger.info(f"Previous run was completed successfully. Can't perform rollback.")
                 self.trigger('move_to_STATE_END_FROM_ROLLBACK')
         else:
-            self.shrink_plan = self.rebalance_schema.retrieveSavedPlan()
-            if self.shrink_plan == None:
-                self.logger.error('No saved plan found. Try to execute cleanup.')
-                self.trigger('move_to_STATE_ERROR')
-                return
-
             if state_from_prev_run in self.states_rollback_flow:
-                self.logger.info('Continue interrupted rollback operation...')
+                self.logger.info('Continue interrupted shrink rollback operation...')
                 self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
                 try:
                     next_state = self.states_rollback_flow[ self.states_rollback_flow.index(state_from_prev_run) + 1 ]
@@ -365,7 +360,7 @@ class GGShrink:
                     self.trigger('move_to_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED')
                     return
 
-                self.logger.info('Continue interrupted operation...')
+                self.logger.info('Continue interrupted shrink operation...')
                 self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
                 try:
                     next_state = self.get_state_after_interrupt(state_from_prev_run)

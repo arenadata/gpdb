@@ -9,15 +9,20 @@ try:
     from gppylib.commands.gp import GpMoveMirrors
     from gppylib.system.environment import *
     from gprebalance_modules.planner import *
-    from gprebalance_modules.rebalance_schema import RebalanceSchema
+    from gprebalance_modules.rebalance_schema import RebalanceSchema, STATE_NOT_DEFINED
     from gppylib.fault_injection import *
 except ImportError as e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
 class RebalanceSM:
 
-    states = [
-        'STATE_REBALANCE_START',
+    states_not_logged = [
+        'STATE_REBALANCE_INIT',
+        'STATE_CHECK_PREVIOUS_RUN'
+    ]
+
+    states_main_rebalance_flow = [
+        'STATE_REBALANCE_STARTED',
         'STATE_REBALANCE_MOVE_MIRRORS_STARTED',
         'STATE_REBALANCE_MOVE_MIRRORS_DONE',
         'STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED',
@@ -32,7 +37,17 @@ class RebalanceSM:
     transitions = [
         {
             'trigger': 'start',
-            'source': 'STATE_REBALANCE_START',
+            'source': 'STATE_REBALANCE_INIT',
+            'dest': 'STATE_CHECK_PREVIOUS_RUN'
+        },
+        {
+            'trigger': 'move_to_STATE_REBALANCE_STARTED',
+            'source': 'STATE_CHECK_PREVIOUS_RUN',
+            'dest': 'STATE_REBALANCE_STARTED'
+        },
+        {
+            'trigger': 'move_to_STATE_REBALANCE_MOVE_MIRRORS_STARTED',
+            'source': 'STATE_REBALANCE_STARTED',
             'dest': 'STATE_REBALANCE_MOVE_MIRRORS_STARTED'
         },
         {
@@ -78,21 +93,23 @@ class RebalanceSM:
     ]
 
 
-    def __init__(self, logger: Any, dburl: dbconn.DbURL, options: Any):
+    def __init__(self, logger: Any, dburl: dbconn.DbURL, options: Any, gpArray: gparray.GpArray):
         self.logger = logger
         self.dburl = dburl
         self.options = options
         self.shutdown_requested = False
+        self.gparray = gpArray
         self.conn = dbconn.connect(
             self.dburl, encoding='UTF8', allowSystemTableMods=True)
 
+        # TODO: move schema creation upper
         self.rebalance_schema = RebalanceSchema(self.conn)
 
         self.machine = Machine(model = self,
                                queued=True,
-                               states = self.states,
+                               states = self.states_main_rebalance_flow + self.states_not_logged,
                                transitions = self.transitions,
-                               initial = 'STATE_REBALANCE_START',
+                               initial = 'STATE_REBALANCE_INIT',
                                before_state_change = 'on_every_state')
 
     def on_every_state(self) -> None:
@@ -102,7 +119,8 @@ class RebalanceSM:
             self.logger.info('Rebalance was interrupted')
             raise Exception('Rebalance was interrupted')
 
-        self.rebalance_schema.storeRebalanceState(self.state)
+        if self.state in self.states_main_rebalance_flow:
+            self.rebalance_schema.storeRebalanceState(self.state)
 
     def run(self, plan: Plan) -> None:
         self.rebalance_plan = plan
@@ -125,7 +143,7 @@ class RebalanceSM:
 
     def process_moves(self, moves: List[LogicalMove]):
         filename = self.create_config_file(moves)
-        gpmovemirrors_options = f' -i {filename}'
+        gpmovemirrors_options = f'-a -i {filename}'
 
         if self.options.batch_size is not None:
             batch_size = self.options.batch_size
@@ -135,12 +153,15 @@ class RebalanceSM:
                 batch_size = MAX_COORDINATOR_NUM_WORKERS
             gpmovemirrors_options += f' -B {batch_size}'
 
+        # TODO: handle continue after interruption in the middle of gpmovemirrors and right after it ended its work
         try:
+            self.logger.info(f'REBALANCE - Running gpmovemirrors {gpmovemirrors_options}')
             cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
             cmd.run(validateAfter=True)
         except Exception as e:
             error_msg = f"Error in gpmovemirrors process: {str(e)}"
             self.logger.error(error_msg)
+            raise Exception(error_msg)
 
         # TODO: cleanup config files        
 
@@ -156,6 +177,8 @@ class RebalanceSM:
                        f"content IN ({seg_list}) AND preferred_role = 't'")
         dbconn.execSQL(self.conn, "COMMIT")
 
+        # TODO: check failure in the middle here
+
         # TODO: refactor
         # TODO: specify log file location?...
         recoversegOptions = "-r -a"
@@ -166,12 +189,25 @@ class RebalanceSM:
             error_msg = f"Error in gprecoverseg process: {str(e)}"
             self.logger.error(error_msg)
 
+    def lookup_seg(self, seg: Segment) -> bool:
+        """ Look up the segment gpdb by address, port, and dataDirectory """
+        # TODO: should we add more checks? equalIgnoringModeAndStatus()?
+        for db in self.gparray.getDbList():
+            if (seg.getSegmentHostName() == db.getSegmentHostName() and
+                seg.getSegmentPort() == db.getSegmentPort() and
+                seg.getSegmentDataDirectory() == db.getSegmentDataDirectory()):
+                return True
+        return False
+
     def create_config_file(self, moves: List[LogicalMove]) -> str:
         # TODO: do we really want to use /tmp location?
         filename = f'/tmp/ggrebalance_move_config_pid{os.getpid()}'
         with open(filename, 'w') as fp:
             for move in moves:
                 segment_current_info = move.seg
+                if not self.lookup_seg(segment_current_info):
+                    self.logger.info(f'Skip segment for gpmovemirrors: {str(segment_current_info)}')
+                    continue
                 cfg_line = f'{segment_current_info.getSegmentHostName()}|{segment_current_info.getSegmentPort()}|{segment_current_info.getSegmentDataDirectory()} '
                 cfg_line += f'{move.dstHost.hostname}|{move.target_port}|{move.target_datadir}\n'
                 fp.write(cfg_line)
@@ -182,9 +218,40 @@ class RebalanceSM:
         self.shutdown_requested = True
 
     def state_is_final(self, state: str) -> bool:
-        return state == self.states[-1]
+        return state == self.states_main_rebalance_flow[-1]
+
+    def get_state_after_interrupt(self, prev_state) -> str:
+        prev_idx = self.states_main_rebalance_flow.index(prev_state)
+        return self.states_main_rebalance_flow[prev_idx + 1]
 
     # state callbacks start here
+
+    @wrap_state_func_with_faults
+    def on_enter_STATE_CHECK_PREVIOUS_RUN(self) -> None:
+        self.logger.info('Rebalance - STATE_CHECK_PREVIOUS_RUN')
+
+        state_from_prev_run = self.rebalance_schema.getRebalanceStateFromPreviousRun()
+
+        if state_from_prev_run == STATE_NOT_DEFINED:
+            self.trigger('move_to_STATE_REBALANCE_STARTED')
+        elif self.state_is_final(state_from_prev_run):
+            self.logger.info('Cluster is already rebalanced...')
+        else:
+            # TODO: handle if we need to supply '-C' to gpmovemirrors
+            self.logger.info('Continue interrupted rebalance operation...')
+            self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
+            try:
+                next_state = self.get_state_after_interrupt(state_from_prev_run)
+            except:
+                self.logger.error("Can't determine next state. Try to execute cleanup.")
+                self.trigger('move_to_STATE_ERROR')
+                return
+            # use auto to_«state» method to recover
+            self.trigger(f'to_{next_state}')
+
+    @wrap_state_func_with_faults
+    def on_enter_STATE_REBALANCE_STARTED(self) -> None:
+        self.trigger('move_to_STATE_REBALANCE_MOVE_MIRRORS_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED(self) -> None:

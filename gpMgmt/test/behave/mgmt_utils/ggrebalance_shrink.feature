@@ -107,8 +107,8 @@ Feature: ggrebalance behave tests
 
     Examples:
         | fault_name                                                                  |
-        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                               |
-        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                 |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                                      |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                        |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
@@ -226,9 +226,9 @@ Feature: ggrebalance behave tests
 
     Examples:
         | fault_name                                                                  |
-        | on_enter_STATE_SETUP_SCHEMA_STARTED_end                              |
-        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                               |
-        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                 |
+        | on_enter_STATE_SETUP_SCHEMA_STARTED_end                                     |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                                      |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                        |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
@@ -319,9 +319,9 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_2.test_table_4" with data in "test_db_2" is equal to segment count = 2, row count = 300
     Examples:
         | fault_name                                                                  |
-        | on_enter_STATE_SETUP_SCHEMA_STARTED_end                              |
-        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                               |
-        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                 |
+        | on_enter_STATE_SETUP_SCHEMA_STARTED_end                                     |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_begin                                      |
+        | on_enter_STATE_SETUP_SCHEMA_DONE_end                                        |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_begin |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED_end   |
         | on_enter_STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_DONE_begin    |
