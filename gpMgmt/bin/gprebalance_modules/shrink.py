@@ -211,19 +211,18 @@ class GGShrink:
         }
     ]
 
-    def __init__(self, logger: Any, dburl: dbconn.DbURL, options: Any, gpEnv: GpCoordinatorEnvironment, gpArray: gparray.GpArray, gpArrayDumpFilename: str) -> None:
+    def __init__(self, conn: dbconn.Connection,
+                 schema: RebalanceSchema, logger: Any, options: Any, gpEnv: GpCoordinatorEnvironment, gpArray: gparray.GpArray, gpArrayDumpFilename: str) -> None:
         self.logger = logger
-        self.dburl = dburl
         self.options = options
         self.gpEnv = gpEnv
-        self.conn = dbconn.connect(
-            self.dburl, encoding='UTF8', allowSystemTableMods=True)
+        self.conn = conn
         self.shutdown_requested = False
         self.workers_for_tables_rebalance = None
         self.workers_for_segment_stop = None
         self.gparray = gpArray
         self.gparray_dump_file = gpArrayDumpFilename
-        self.rebalance_schema = RebalanceSchema(self.conn)
+        self.rebalance_schema = schema
         self.shrink_plan = None
         self.needs_repopulate = False
         self.dumped_gparray = gparray.GpArray.initFromFile(self.gparray_dump_file) if os.path.exists(self.gparray_dump_file) else None
@@ -538,7 +537,7 @@ class GGShrink:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_END(self) -> None:
-        self.conn.close()
+        pass
 
     @wrap_state_func_with_faults
     def on_enter_STATE_ERROR(self) -> None:

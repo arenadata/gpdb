@@ -78,7 +78,6 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | 64         |
         | 128        |
 
-
     Scenario: test 1.2. rebalance - check rebalance after shrink.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
@@ -114,7 +113,6 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         When the user runs "ggrebalance -x 3"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Cluster is already balanced, no segment moves will be held." to logfile with latest timestamp
-
 
     Scenario Outline: test 1.3. rebalance - interrupt and continue.
         Given the database is not running
@@ -160,7 +158,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_begin                              |
         | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_end                                |
         | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_begin |
-#failed        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_end   |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_end   |
         | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_begin    |
         | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_end      |
         | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_begin                         |
@@ -171,6 +169,8 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_end   |
         | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_begin    |
         | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_end      |
+        | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   |
+        | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   |
         | on_enter_STATE_REBALANCE_DONE_begin                                           |
         | on_enter_STATE_REBALANCE_DONE_end                                             |
 

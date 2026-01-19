@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from transitions import Machine
+from enum import Enum
 
 try:
     from gppylib.commands.unix import *
@@ -93,17 +94,17 @@ class RebalanceSM:
     ]
 
 
-    def __init__(self, logger: Any, dburl: dbconn.DbURL, options: Any, gpArray: gparray.GpArray):
+    class RoleSwapDirection(Enum):
+        PRIMARY_TO_MIRROR = 1
+        MIRROR_TO_PRIMARY = 2
+
+    def __init__(self, conn: dbconn.Connection, schema: RebalanceSchema, logger: Any, options: Any, gpArray: gparray.GpArray):
         self.logger = logger
-        self.dburl = dburl
         self.options = options
         self.shutdown_requested = False
         self.gparray = gpArray
-        self.conn = dbconn.connect(
-            self.dburl, encoding='UTF8', allowSystemTableMods=True)
-
-        # TODO: move schema creation upper
-        self.rebalance_schema = RebalanceSchema(self.conn)
+        self.conn = conn
+        self.rebalance_schema = schema
 
         self.machine = Machine(model = self,
                                queued=True,
@@ -137,7 +138,7 @@ class RebalanceSM:
             else:
                 self.moves_mirrors.append(move)
         
-        self.primary_segids_to_move = [move.seg.getSegmentContentId() for move in self.moves_primaries]
+        self.primary_segments_to_move = [move.seg for move in self.moves_primaries]
 
         self.trigger('start')
 
@@ -153,7 +154,7 @@ class RebalanceSM:
                 batch_size = MAX_COORDINATOR_NUM_WORKERS
             gpmovemirrors_options += f' -B {batch_size}'
 
-        # TODO: handle continue after interruption in the middle of gpmovemirrors and right after it ended its work
+        # TODO: handle continue after interruption in the middle of gpmovemirrors
         try:
             self.logger.info(f'REBALANCE - Running gpmovemirrors {gpmovemirrors_options}')
             cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
@@ -165,29 +166,97 @@ class RebalanceSM:
 
         # TODO: cleanup config files        
 
-    def execute_role_swaps(self, segids: List[SegmentId]):
+    def execute_role_swaps(self, segments_to_move: List[Segment], direction: RoleSwapDirection):
         """Execute multiple role swaps in single gprecoverseg -r call"""
-        dbconn.execSQL(self.conn, "BEGIN")
+
+        assert (len(segments_to_move) > 0)
+
+        segids = [segment.getSegmentContentId() for segment in segments_to_move]
+        dbids = [segment.getSegmentDbId() for segment in segments_to_move]
+
         seg_list = ', '.join(str(seg) for seg in segids)
-        dbconn.execSQL(self.conn, "UPDATE gp_segment_configuration SET preferred_role = 't' WHERE "
-                       f"content IN ({seg_list}) AND preferred_role = 'm'")
-        dbconn.execSQL(self.conn, "UPDATE gp_segment_configuration SET preferred_role = 'm' WHERE "
-                       f"content IN ({seg_list}) AND preferred_role = 'p'")
-        dbconn.execSQL(self.conn, "UPDATE gp_segment_configuration SET preferred_role = 'p' WHERE "
-                       f"content IN ({seg_list}) AND preferred_role = 't'")
+        dbid_list = ', '.join(str(dbid) for dbid in dbids)
+
+        dbconn.execSQL(self.conn, "BEGIN")
+
+        # check the current status of 'preferred_role' and 'role' for all requested dbids
+        # in order to recover properly from the previous interrupted run (if any)
+
+        cnt_preferred_role_p = \
+            int(dbconn.queryRow(self.conn,
+                f"SELECT COUNT(1) FROM gp_segment_configuration WHERE preferred_role = 'p' AND dbid IN ({dbid_list})")[0])
+        cnt_role_p = \
+            int(dbconn.queryRow(self.conn,
+                f"SELECT COUNT(1) FROM gp_segment_configuration WHERE role = 'p' AND dbid IN ({dbid_list})")[0])
+        cnt_preferred_role_m = \
+            int(dbconn.queryRow(self.conn,
+                f"SELECT COUNT(1) FROM gp_segment_configuration WHERE preferred_role = 'm' AND dbid IN ({dbid_list})")[0])
+        cnt_role_m = \
+            int(dbconn.queryRow(self.conn,
+                f"SELECT COUNT(1) FROM gp_segment_configuration WHERE role = 'm' AND dbid IN ({dbid_list})")[0])
+
+        self.logger.info(f"[DEBUG] dbid_list = ({dbid_list}) cnt_preferred_role_p = {cnt_preferred_role_p}, cnt_role_p = {cnt_role_p}, cnt_preferred_role_m = {cnt_preferred_role_m}, cnt_role_m = {cnt_role_m}")
+
+        # if some have 'preferred_role'='p' and some have 'preferred_role'='m' - shouldn't happen, error out, needs to be resolved manually.
+        # also some sanity check that there are no other values in catalog except 'm' and 'p' for 'preferred_role'.
+        if ((cnt_preferred_role_p > 0 and cnt_preferred_role_m > 0) or
+             (cnt_preferred_role_p + cnt_preferred_role_m != len(segids))):
+            raise Exception("Error in catalog configuration: "
+                            f"for dbid list ({dbid_list}) "
+                            f"{cnt_preferred_role_p} have 'p' preferred role, and "
+                            f"{cnt_preferred_role_m} have 'm' preferred role")
+
+        is_catalog_update_required = False
+        is_gprecoverseg_required = False
+
+        if direction == self.RoleSwapDirection.PRIMARY_TO_MIRROR:
+            # if all have 'preferred_role'='p' - it is our first run, need to update catalog and launch gprecoverseg
+            if cnt_preferred_role_p == len(segids):
+                is_catalog_update_required = True
+                is_gprecoverseg_required = True
+            else:
+                # if all have 'preferred_role'='m' and not all have 'role'='m' - previous gprecoverseg was interrupted, need to launch it again
+                if cnt_role_m != cnt_preferred_role_m:
+                    is_gprecoverseg_required = True
+                # if all have 'preferred_role'='m' and 'role'='m' - we've done everything on previous interrupted run, nothing to do
+        else:
+            # moving back in MIRROR_TO_PRIMARY direction
+            # if all have 'preferred_role'='m' - it is our first run, need to update catalog and launch gprecoverseg
+            if cnt_preferred_role_m == len(segids):
+                is_catalog_update_required = True
+                is_gprecoverseg_required = True
+            else:
+                # if all have 'preferred_role'='p' and not all have 'role'='p' - previous gprecoverseg was interrupted, need to launch it again
+                if cnt_role_p != cnt_preferred_role_p:
+                    is_gprecoverseg_required = True
+                # if all have 'preferred_role'='p' and 'role'='p' - we've done everything on previous interrupted run, nothing to do
+
+        if is_catalog_update_required:
+            dbconn.execSQL(self.conn, "UPDATE gp_segment_configuration SET preferred_role = 't' WHERE "
+                           f"content IN ({seg_list}) AND preferred_role = 'm'")
+            dbconn.execSQL(self.conn, "UPDATE gp_segment_configuration SET preferred_role = 'm' WHERE "
+                           f"content IN ({seg_list}) AND preferred_role = 'p'")
+            dbconn.execSQL(self.conn, "UPDATE gp_segment_configuration SET preferred_role = 'p' WHERE "
+                           f"content IN ({seg_list}) AND preferred_role = 't'")
+
         dbconn.execSQL(self.conn, "COMMIT")
 
-        # TODO: check failure in the middle here
+        # TODO: check failure during gprecoverseg with some delay (and also during movemirrors)
+        if direction == self.RoleSwapDirection.PRIMARY_TO_MIRROR:
+            inject_fault('FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR')
+        else:
+            inject_fault('FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY')
 
-        # TODO: refactor
         # TODO: specify log file location?...
-        recoversegOptions = "-r -a"
-        try:
-            cmd = GpRecoverSeg("Running gprecoverseg", options=recoversegOptions)
-            cmd.run(validateAfter=True)
-        except Exception as e:
-            error_msg = f"Error in gprecoverseg process: {str(e)}"
-            self.logger.error(error_msg)
+        if is_gprecoverseg_required:
+            recoversegOptions = "-r -a"
+            try:
+                cmd = GpRecoverSeg("Running gprecoverseg", options=recoversegOptions)
+                cmd.run(validateAfter=True)
+            except Exception as e:
+                error_msg = f"Error in gprecoverseg process: {str(e)}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
 
     def lookup_seg(self, seg: Segment) -> bool:
         """ Look up the segment gpdb by address, port, and dataDirectory """
@@ -237,7 +306,6 @@ class RebalanceSM:
         elif self.state_is_final(state_from_prev_run):
             self.logger.info('Cluster is already rebalanced...')
         else:
-            # TODO: handle if we need to supply '-C' to gpmovemirrors
             self.logger.info('Continue interrupted rebalance operation...')
             self.logger.info(f"Previous run stopped after state '{state_from_prev_run}', trying to continue from the next state...")
             try:
@@ -262,14 +330,14 @@ class RebalanceSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE(self) -> None:
-        if self.primary_segids_to_move:
+        if self.primary_segments_to_move:
             self.trigger('move_to_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED')
         else:
             self.trigger('move_to_STATE_REBALANCE_DONE')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED(self) -> None:
-        self.execute_role_swaps(self.primary_segids_to_move)
+        self.execute_role_swaps(self.primary_segments_to_move, self.RoleSwapDirection.PRIMARY_TO_MIRROR)
         self.trigger('move_to_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE')
 
     @wrap_state_func_with_faults
@@ -289,7 +357,7 @@ class RebalanceSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED(self) -> None:
-        self.execute_role_swaps(self.primary_segids_to_move)
+        self.execute_role_swaps(self.primary_segments_to_move, self.RoleSwapDirection.MIRROR_TO_PRIMARY)
         self.trigger('move_to_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE')
 
     @wrap_state_func_with_faults
@@ -298,6 +366,6 @@ class RebalanceSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_DONE(self) -> None:
-        self.conn.close()
+        pass
 
     # state callbacks end here

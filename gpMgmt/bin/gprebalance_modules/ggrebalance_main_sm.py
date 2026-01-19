@@ -142,8 +142,8 @@ class GGRebalanceMainSM:
                                initial = 'STATE_START',
                                before_state_change = 'on_every_state')
 
-        self.gg_shrink = GGShrink(self.logger, self.dburl, self.options, gpEnv, self.gparray, gpArrayDumpFilename)
-        self.gg_rebalance = RebalanceSM(self.logger, self.dburl, self.options, self.gparray)
+        self.gg_shrink = GGShrink(self.conn, self.rebalance_schema, self.logger, self.options, gpEnv, self.gparray, gpArrayDumpFilename)
+        self.gg_rebalance = RebalanceSM(self.conn, self.rebalance_schema, self.logger, self.options, self.gparray)
 
         # Note: the plan for a shrink later will be provided by the planner component.
         # But for now we simply create a Plan object from the options directly.
