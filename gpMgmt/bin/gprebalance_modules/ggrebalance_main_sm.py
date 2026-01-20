@@ -300,7 +300,6 @@ class GGRebalanceMainSM:
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_STARTED(self) -> None:
         if self.plan is not None and self.plan.getMoves() is not None:
-            # TODO: what if plan is None? for ex., if we recovered after interruption during shrink?...
             self.gg_rebalance.run(self.plan)
             self.logger.info('Rebalance is complete')
 

@@ -126,8 +126,6 @@ class RebalanceSM:
         if not self.rebalance_plan.getMoves():
             return
 
-        # TODO: we actually change the order of moves.
-        # what if it confuses the user?...
         self.moves_primaries = []
         self.moves_mirrors = []
         for move in self.rebalance_plan.getMoves():
@@ -243,7 +241,6 @@ class RebalanceSM:
         else:
             inject_fault('FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY')
 
-        # TODO: specify log file location?...
         if is_gprecoverseg_required:
             recoverseg_options = "-r -a"
             try:
@@ -258,7 +255,6 @@ class RebalanceSM:
 
     def lookup_seg(self, seg: Segment) -> bool:
         """ Look up the segment gpdb by address, port, and dataDirectory """
-        # TODO: should we add more checks? equalIgnoringModeAndStatus()?
         for db in self.gparray.getDbList():
             if (seg.getSegmentHostName() == db.getSegmentHostName() and
                 seg.getSegmentPort() == db.getSegmentPort() and
