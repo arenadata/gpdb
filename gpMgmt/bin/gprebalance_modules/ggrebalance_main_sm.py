@@ -163,8 +163,6 @@ class GGRebalanceMainSM:
         self.main_state_from_prev_run = self.rebalance_schema.getMainStateFromPreviousRun()
 
     def on_every_state(self) -> None:
-        self.logger.info(f'MAIN - on_every_state ({self.state})')
-
         if self.state in self.states_logged:
             self.rebalance_schema.storeMainState(self.state)
 
@@ -192,7 +190,6 @@ class GGRebalanceMainSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_OPTIONS_VALIDATION(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         if self.options.clean_required:
             self.trigger('move_to_STATE_CLEANUP')
         elif self.options.rollback_required:
@@ -202,11 +199,9 @@ class GGRebalanceMainSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_CLEANUP(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Cleanup is not required.")
         else:
-            self.logger.info(f">> self.main_state_from_prev_run  {self.main_state_from_prev_run}")
             # TODO: rework this ugly check
             self.gg_shrink.cleanup(self.main_state_from_prev_run == 'STATE_EXECUTOR_DONE' or self.main_state_from_prev_run == 'STATE_ROLLBACK')
             self.rebalance_schema.dropSchema()
@@ -215,15 +210,12 @@ class GGRebalanceMainSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_ROLLBACK(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         self.plan = self.rebalance_schema.retrieveSavedPlan()
         self.gg_shrink.rollback(self.plan)
         self.trigger('move_to_STATE_END')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_PLANNING_STARTED(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
-
         if self.options.target_segment_count != None:
             self.plan = Planner(self.logger, self.dburl, self.gparray, self.options).plan()
 
@@ -234,12 +226,10 @@ class GGRebalanceMainSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_PLANNING_DONE(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         self.trigger('move_to_STATE_CHECK_PREVIOUS_RUN')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_CHECK_PREVIOUS_RUN(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         if not self.rebalance_schema.schemaExists():
             if self.plan == None:
                 self.logger.error("Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan.")
@@ -257,7 +247,6 @@ class GGRebalanceMainSM:
             # In this case we already have a plan saved in the schema,
             # and we'll continue (or rollback) according to it.
             # Or, if everything is complete, just exit.
-            self.logger.info(f'main_state_from_prev_run {self.main_state_from_prev_run}')
             if self.main_state_from_prev_run == 'STATE_EXECUTOR_DONE':
                 self.logger.info('Previous run was completed successfully. Please execute cleanup before a new run.')
                 return
@@ -275,56 +264,40 @@ class GGRebalanceMainSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SCHEMA_STARTED(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
-
         # Create schema and status tables.
         # It will also save plan in order to use it for recovering after interruption
         self.rebalance_schema.createSchema(self.plan)
-
         self.trigger('move_to_STATE_SETUP_SCHEMA_DONE')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SETUP_SCHEMA_DONE(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
-
         self.logger.info(f'Created "{self.rebalance_schema.getSchemaName()}" schema')
-
         self.trigger('move_to_STATE_EXECUTOR_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_EXECUTOR_STARTED(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
-
         if isinstance(self.plan, ShrinkPlan):
             shrink_state_from_prev_run = self.rebalance_schema.getShrinkStateFromPreviousRun()
             if not self.gg_shrink.state_is_final(shrink_state_from_prev_run):
                 self.trigger('move_to_STATE_SHRINK_STARTED')
                 return
-
         self.trigger('move_to_STATE_REBALANCE_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_EXECUTOR_DONE(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         self.trigger('move_to_STATE_END')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_STARTED(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
-
         self.gg_shrink.run(self.plan)
-
         self.trigger('move_to_STATE_SHRINK_DONE')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_SHRINK_DONE(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         self.trigger('move_to_STATE_REBALANCE_STARTED')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_STARTED(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
-
         if self.plan is not None and self.plan.getMoves() is not None:
             # TODO: what if plan is None? for ex., if we recovered after interruption during shrink?...
             self.gg_rebalance.run(self.plan)
@@ -334,12 +307,10 @@ class GGRebalanceMainSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_DONE(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         self.trigger('move_to_STATE_EXECUTOR_DONE')
 
     @wrap_state_func_with_faults
     def on_enter_STATE_END(self) -> None:
-        self.logger.info(f'MAIN STATE: {self.state}')
         self.conn.close()
 
     @wrap_state_func_with_faults

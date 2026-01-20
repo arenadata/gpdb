@@ -115,8 +115,6 @@ class RebalanceSM:
                                before_state_change = 'on_every_state')
 
     def on_every_state(self) -> None:
-        self.logger.info('REBALANCE - on_every_state')
-
         if self.shutdown_requested:
             self.logger.info('Rebalance was interrupted')
             raise Exception('Rebalance was interrupted')
@@ -156,7 +154,6 @@ class RebalanceSM:
             gpmovemirrors_options += f' -B {batch_size}'
 
         try:
-            self.logger.info(f'REBALANCE - Running gpmovemirrors {gpmovemirrors_options}')
             self.cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
             self.cmd.run(validateAfter=True)
         except Exception as e:
@@ -197,8 +194,6 @@ class RebalanceSM:
         cnt_role_m = \
             int(dbconn.queryRow(self.conn,
                 f"SELECT COUNT(1) FROM gp_segment_configuration WHERE role = 'm' AND dbid IN ({dbid_list})")[0])
-
-        self.logger.info(f"[DEBUG] dbid_list = ({dbid_list}) cnt_preferred_role_p = {cnt_preferred_role_p}, cnt_role_p = {cnt_role_p}, cnt_preferred_role_m = {cnt_preferred_role_m}, cnt_role_m = {cnt_role_m}")
 
         # if some have 'preferred_role'='p' and some have 'preferred_role'='m' - shouldn't happen, error out, needs to be resolved manually.
         # also some sanity check that there are no other values in catalog except 'm' and 'p' for 'preferred_role'.
@@ -301,8 +296,6 @@ class RebalanceSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_CHECK_PREVIOUS_RUN(self) -> None:
-        self.logger.info('Rebalance - STATE_CHECK_PREVIOUS_RUN')
-
         state_from_prev_run = self.rebalance_schema.getRebalanceStateFromPreviousRun()
 
         if state_from_prev_run == STATE_NOT_DEFINED:
