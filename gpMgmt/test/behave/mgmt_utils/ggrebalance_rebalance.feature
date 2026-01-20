@@ -1,7 +1,7 @@
 @ggrebalance_rebalance
 Feature: ggrebalance behave tests (rebalance scenarios)
 
-    Scenario Outline: test 1.1. rebalance - check scenario, when we remove/add a host and rebalance the cluster (with different batch size).
+    Scenario Outline: test 1. rebalance - check scenario, when we remove/add a host and rebalance the cluster (with different batch size).
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3"
@@ -78,7 +78,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | 64         |
         | 128        |
 
-    Scenario: test 1.2. rebalance - check rebalance after shrink.
+    Scenario: test 2. rebalance - check rebalance after shrink.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3"
@@ -114,7 +114,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Cluster is already balanced, no segment moves will be held." to logfile with latest timestamp
 
-    Scenario Outline: test 1.3. rebalance - interrupt and continue.
+    Scenario Outline: 3. rebalance - interrupt and continue.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3"

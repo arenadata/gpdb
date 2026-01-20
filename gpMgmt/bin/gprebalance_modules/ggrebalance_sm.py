@@ -93,7 +93,6 @@ class RebalanceSM:
         }
     ]
 
-
     class RoleSwapDirection(Enum):
         PRIMARY_TO_MIRROR = 1
         MIRROR_TO_PRIMARY = 2

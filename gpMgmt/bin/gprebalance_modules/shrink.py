@@ -291,8 +291,8 @@ class GGShrink:
         if self.state in self.states_main_shrink_flow + self.states_rollback_flow:
             self.rebalance_schema.storeShrinkState(self.state)
 
-    def cleanup(self, prev_run_complete: bool) -> None:
-        if not prev_run_complete:
+    def cleanup(self, prev_run_was_complete: bool) -> None:
+        if not prev_run_was_complete:
             self.logger.warning("ggrebalance hasn't finished shrink process properly. Previous run was interrupted. "
                                 "Some unbalanced tables can still exist.")
 

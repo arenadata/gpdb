@@ -202,8 +202,9 @@ class GGRebalanceMainSM:
         if not self.rebalance_schema.schemaExists():
             self.logger.info(f"Rebalance schema doesn't exist. Cleanup is not required.")
         else:
-            # TODO: rework this ugly check
-            self.gg_shrink.cleanup(self.main_state_from_prev_run == 'STATE_EXECUTOR_DONE' or self.main_state_from_prev_run == 'STATE_ROLLBACK')
+            prev_run_was_complete = (self.main_state_from_prev_run == 'STATE_EXECUTOR_DONE' or
+                                     self.main_state_from_prev_run == 'STATE_ROLLBACK')
+            self.gg_shrink.cleanup(prev_run_was_complete)
             self.rebalance_schema.dropSchema()
             self.logger.info('Cleanup is complete')
         self.trigger('move_to_STATE_END')

@@ -1,7 +1,7 @@
 @ggrebalance_basics
 Feature: ggrebalance behave tests
 
-    Scenario Outline: Validate incompatible option combinations
+    Scenario Outline: test 1. validate incompatible option combinations
         Given a standard local demo cluster is running
         When the user runs "ggrebalance <options>"
         Then ggrebalance should return a return code of 1
@@ -28,7 +28,7 @@ Feature: ggrebalance behave tests
           | -c --show-plan                                              | Can't use together options '--clean-required' and '--show-plan'         | stub     |
           | -c --skip-resource-estimation                               | Can't use together options '--clean-required' and '--skip-resource-estimation' |  the database is not running |
 
-    Scenario: test 1.1 ggrebalance simple scenarios
+    Scenario: test 2. ggrebalance simple scenarios
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1, sdw2"
@@ -64,7 +64,7 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
 
-    Scenario: test 1.2. check cleanup after the target segment count was updated
+    Scenario: test 3. check cleanup after the target segment count was updated
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"

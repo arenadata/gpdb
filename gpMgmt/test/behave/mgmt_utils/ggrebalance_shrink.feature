@@ -34,7 +34,7 @@ Feature: ggrebalance behave tests
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 1, row count = 100
 
-    Scenario Outline: test 1.3. shrink - check continue after interrupted state
+    Scenario Outline: test 1.2. shrink - check continue after interrupted state
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
@@ -96,7 +96,7 @@ Feature: ggrebalance behave tests
         | fault_rebalance_table_test_db_2.test_schema_2.test_table_1                  |
         | fault_segment_stop_dbid_3                                                   |
 
-    Scenario Outline: test 1.4. test shrink continue after cluster restart
+    Scenario Outline: test 1.3. test shrink continue after cluster restart
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
