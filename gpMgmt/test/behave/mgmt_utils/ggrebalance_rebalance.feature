@@ -128,11 +128,14 @@ Feature: ggrebalance behave tests (rebalance scenarios)
          And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
          And all files in gpAdminLogs directory are deleted
          And set fault inject "<fault_name>"
+         And set fault inject delay <fault_delay_ms> ms
         When the user runs "ggrebalance -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
          And unset fault inject
+         And unset fault inject delay
          And all files in gpAdminLogs directory are deleted
+         And the gprecoverseg lock directory is removed
         When the user runs "ggrebalance"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
@@ -150,27 +153,33 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 6, row count = 100
 
     Examples:
-        | fault_name                                                                    |
-        | on_enter_STATE_REBALANCE_STARTED_begin                                        |
-        | on_enter_STATE_REBALANCE_STARTED_end                                          |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_begin                           |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_end                             |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_begin                              |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_end                                |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_begin |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_end   |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_begin    |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_end      |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_begin                         |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_end                           |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_DONE_begin                            |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_DONE_end                              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_begin |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_end   |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_begin    |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_end      |
-        | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   |
-        | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   |
-        | on_enter_STATE_REBALANCE_DONE_begin                                           |
-        | on_enter_STATE_REBALANCE_DONE_end                                             |
+        | fault_name                                                                    | fault_delay_ms |
+        | on_enter_STATE_REBALANCE_STARTED_begin                                        | 0              |
+        | on_enter_STATE_REBALANCE_STARTED_end                                          | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_begin                           | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_end                             | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_begin                              | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_end                                | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_begin | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_end   | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_begin    | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_end      | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_begin                         | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_end                           | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_DONE_begin                            | 0              |
+        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_DONE_end                              | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_begin | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_end   | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_begin    | 0              |
+        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_end      | 0              |
+        | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   | 0              |
+        | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 0              |
+        | on_enter_STATE_REBALANCE_DONE_begin                                           | 0              |
+        | on_enter_STATE_REBALANCE_DONE_end                                             | 0              |
+        | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   | 1500           |
+        | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   | 3000           |
+        | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 1500           |
+        | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 3000           |
+        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_begin                           | 3000           |
+        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_begin                         | 3000           |
 

@@ -4470,6 +4470,18 @@ def impl(context, fault):
 def impl(context):
     os.environ['GPMGMT_FAULT_POINT'] = ""
 
+@given('set fault inject delay {delay} ms')
+@then('set fault inject delay {delay} ms')
+@when('set fault inject delay {delay} ms')
+def impl(context, delay):
+    os.environ['GPMGMT_FAULT_DELAY_MS'] = delay
+
+@given('unset fault inject delay')
+@then('unset fault inject delay')
+@when('unset fault inject delay')
+def impl(context):
+    os.environ['GPMGMT_FAULT_DELAY_MS'] = ""
+
 @given('stub')
 def impl(context):
     pass

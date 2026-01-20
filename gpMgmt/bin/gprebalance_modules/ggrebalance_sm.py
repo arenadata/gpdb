@@ -105,6 +105,7 @@ class RebalanceSM:
         self.gparray = gpArray
         self.conn = conn
         self.rebalance_schema = schema
+        self.cmd = None
 
         self.machine = Machine(model = self,
                                queued=True,
@@ -154,17 +155,19 @@ class RebalanceSM:
                 batch_size = MAX_COORDINATOR_NUM_WORKERS
             gpmovemirrors_options += f' -B {batch_size}'
 
-        # TODO: handle continue after interruption in the middle of gpmovemirrors
         try:
             self.logger.info(f'REBALANCE - Running gpmovemirrors {gpmovemirrors_options}')
-            cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
-            cmd.run(validateAfter=True)
+            self.cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
+            self.cmd.run(validateAfter=True)
         except Exception as e:
             error_msg = f"Error in gpmovemirrors process: {str(e)}"
             self.logger.error(error_msg)
             raise Exception(error_msg)
+        finally:
+            self.cmd = None
 
-        # TODO: cleanup config files        
+        if os.path.exists(filename):
+            os.remove(filename)
 
     def execute_role_swaps(self, segments_to_move: List[Segment], direction: RoleSwapDirection):
         """Execute multiple role swaps in single gprecoverseg -r call"""
@@ -241,7 +244,6 @@ class RebalanceSM:
 
         dbconn.execSQL(self.conn, "COMMIT")
 
-        # TODO: check failure during gprecoverseg with some delay (and also during movemirrors)
         if direction == self.RoleSwapDirection.PRIMARY_TO_MIRROR:
             inject_fault('FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR')
         else:
@@ -249,14 +251,16 @@ class RebalanceSM:
 
         # TODO: specify log file location?...
         if is_gprecoverseg_required:
-            recoversegOptions = "-r -a"
+            recoverseg_options = "-r -a"
             try:
-                cmd = GpRecoverSeg("Running gprecoverseg", options=recoversegOptions)
-                cmd.run(validateAfter=True)
+                self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
+                self.cmd.run(validateAfter=True)
             except Exception as e:
                 error_msg = f"Error in gprecoverseg process: {str(e)}"
                 self.logger.error(error_msg)
                 raise Exception(error_msg)
+            finally:
+                self.cmd = None
 
     def lookup_seg(self, seg: Segment) -> bool:
         """ Look up the segment gpdb by address, port, and dataDirectory """
@@ -269,7 +273,6 @@ class RebalanceSM:
         return False
 
     def create_config_file(self, moves: List[LogicalMove]) -> str:
-        # TODO: do we really want to use /tmp location?
         filename = f'/tmp/ggrebalance_move_config_pid{os.getpid()}'
         with open(filename, 'w') as fp:
             for move in moves:
@@ -283,8 +286,9 @@ class RebalanceSM:
         return filename
 
     def shutdown(self) -> None:
-        self.logger.info('Rebalance - shutdown_requested set to True')
         self.shutdown_requested = True
+        if self.cmd != None:
+            self.cmd.cancel()
 
     def state_is_final(self, state: str) -> bool:
         return state == self.states_main_rebalance_flow[-1]

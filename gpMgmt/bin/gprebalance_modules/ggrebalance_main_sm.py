@@ -6,12 +6,11 @@ try:
     from gppylib.commands.unix import *
     from gppylib.commands.gp import *
     from gppylib.gplog import *
-    from gppylib.commands.gp import GpMoveMirrors
     from gppylib.system.environment import *
     from gprebalance_modules.planner import *
     from gprebalance_modules.rebalance_schema import RebalanceSchema
     from gppylib.fault_injection import *
-    from gprebalance_modules.shrink import GGShrink, DBNAME
+    from gprebalance_modules.shrink import GGShrink
     from gprebalance_modules.ggrebalance_sm import RebalanceSM
 except ImportError as e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
@@ -128,10 +127,25 @@ class GGRebalanceMainSM:
         self.logger = logger
         self.dburl = dburl
         self.options = options
-        self.shutdown_requested = False
         self.gparray = gpArray
         self.conn = dbconn.connect(
             self.dburl, encoding='UTF8', allowSystemTableMods=True)
+
+        # check if some of the segments are down - it can happen if we're recovering from an
+        # interrupted state, and such segments are left by the interrupted gprecoverseg
+        self.cmd = None
+        dbconn.execSQL(self.conn, "SELECT gp_request_fts_probe_scan()")
+        if 0 != int(dbconn.queryRow(self.conn, f"SELECT COUNT(1) FROM gp_segment_configuration WHERE status='d'")[0]):
+            recoverseg_options = "-a"
+            try:
+                self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
+                self.cmd.run(validateAfter=True)
+            except Exception as e:
+                error_msg = f"Error in gprecoverseg process: {str(e)}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+            finally:
+                self.cmd = None
 
         self.rebalance_schema = RebalanceSchema(self.conn)
 
@@ -145,21 +159,12 @@ class GGRebalanceMainSM:
         self.gg_shrink = GGShrink(self.conn, self.rebalance_schema, self.logger, self.options, gpEnv, self.gparray, gpArrayDumpFilename)
         self.gg_rebalance = RebalanceSM(self.conn, self.rebalance_schema, self.logger, self.options, self.gparray)
 
-        # Note: the plan for a shrink later will be provided by the planner component.
-        # But for now we simply create a Plan object from the options directly.
-        # We'll keep this stub till planner is ready.
-        # If shrink_plan is None, we assume that we need to continue previous operation
-        # TODO: remove the comment above?
         self.plan = None
         self.main_state_from_prev_run = self.rebalance_schema.getMainStateFromPreviousRun()
-
 
     def on_every_state(self) -> None:
         self.logger.info(f'MAIN - on_every_state ({self.state})')
 
-        #if self.shutdown_requested:
-        #    self.logger.info('Rebalance was interrupted')
-        #    raise Exception('Rebalance was interrupted')
         if self.state in self.states_logged:
             self.rebalance_schema.storeMainState(self.state)
 
@@ -167,21 +172,20 @@ class GGRebalanceMainSM:
         self.trigger('start')
 
     def shutdown(self) -> None:
-        self.logger.info('GGRebalanceMainSM -  SHUTDOWN')
         need_exit = True
-        #self.shutdown_requested = True
+
         if self.gg_shrink is not None:
-            print('[RELOG] - gg_shrink.shutdown()')
             self.gg_shrink.shutdown()
             need_exit = False
 
         if self.gg_rebalance is not None:
-            print('[RELOG] - gg_rebalance.shutdown()')
             self.gg_rebalance.shutdown()
             need_exit = False
 
+        if self.cmd != None:
+            self.cmd.cancel()
+
         if need_exit:
-            print('[RELOG] - sig_handler exit()')
             sys.exit(1)
 
     # state callbacks start here
@@ -225,8 +229,6 @@ class GGRebalanceMainSM:
 
         if self.options.target_segment_count != None and self.options.show_plan:
             self.logger.info(f"Final plan:\n{self.plan}")
-            #TODO: remove exit?
-            sys.exit(0)
 
         self.trigger('move_to_STATE_PLANNING_DONE')
 
@@ -324,7 +326,7 @@ class GGRebalanceMainSM:
         self.logger.info(f'MAIN STATE: {self.state}')
 
         if self.plan is not None and self.plan.getMoves() is not None:
-            # what if plan is None? for ex., if we recovered after interruption during shrink?...
+            # TODO: what if plan is None? for ex., if we recovered after interruption during shrink?...
             self.gg_rebalance.run(self.plan)
             self.logger.info('Rebalance is complete')
 
@@ -338,7 +340,6 @@ class GGRebalanceMainSM:
     @wrap_state_func_with_faults
     def on_enter_STATE_END(self) -> None:
         self.logger.info(f'MAIN STATE: {self.state}')
-        #TODO: get rid of other connections?...
         self.conn.close()
 
     @wrap_state_func_with_faults
