@@ -154,8 +154,8 @@ class RebalanceSM:
             self.cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
             self.cmd.run(validateAfter=True)
         except Exception as e:
-            error_msg = f"Error in gpmovemirrors process: {str(e)}"
-            self.logger.error(error_msg)
+            logger.error(str(e))
+            error_msg = f"Failed to execute 'gpmovemirrors {gpmovemirrors_options}'"
             raise Exception(error_msg)
         finally:
             self.cmd = None
@@ -247,8 +247,8 @@ class RebalanceSM:
                 self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
                 self.cmd.run(validateAfter=True)
             except Exception as e:
-                error_msg = f"Error in gprecoverseg process: {str(e)}"
-                self.logger.error(error_msg)
+                logger.error(str(e))
+                error_msg = f"Failed to execute 'gprecoverseg {recoverseg_options}'"
                 raise Exception(error_msg)
             finally:
                 self.cmd = None

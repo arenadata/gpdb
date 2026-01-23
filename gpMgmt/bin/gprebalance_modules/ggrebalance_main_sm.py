@@ -131,22 +131,6 @@ class GGRebalanceMainSM:
         self.conn = dbconn.connect(
             self.dburl, encoding='UTF8', allowSystemTableMods=True)
 
-        # check if some of the segments are down - it can happen if we're recovering from an
-        # interrupted state, and such segments are left by the interrupted gprecoverseg
-        self.cmd = None
-        dbconn.execSQL(self.conn, "SELECT gp_request_fts_probe_scan()")
-        if 0 != int(dbconn.queryRow(self.conn, f"SELECT COUNT(1) FROM gp_segment_configuration WHERE status='d'")[0]):
-            recoverseg_options = "-a"
-            try:
-                self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
-                self.cmd.run(validateAfter=True)
-            except Exception as e:
-                error_msg = f"Error in gprecoverseg process: {str(e)}"
-                self.logger.error(error_msg)
-                raise Exception(error_msg)
-            finally:
-                self.cmd = None
-
         self.rebalance_schema = RebalanceSchema(self.conn)
 
         self.machine = Machine(model = self,
@@ -179,9 +163,6 @@ class GGRebalanceMainSM:
         if self.gg_rebalance is not None:
             self.gg_rebalance.shutdown()
             need_exit = False
-
-        if self.cmd != None:
-            self.cmd.cancel()
 
         if need_exit:
             sys.exit(1)

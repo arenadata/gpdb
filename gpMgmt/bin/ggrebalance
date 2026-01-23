@@ -230,12 +230,41 @@ def remove_pid_file(coordinator_data_directory: str):
         pass
 
 gg_main_rebalance_SM = None
+cmd_recoverseg = None
 
 def sig_handler(sig, arg):
     if gg_main_rebalance_SM is not None:
         gg_main_rebalance_SM.shutdown()
     else:
+        if cmd_recoverseg != None:
+            cmd_recoverseg.cancel()
         sys.exit(1)
+
+def check_down_segments(logger: Any, dburl: dbconn.DbURL):
+    # check if some of the segments are down - it can happen if we're recovering from an
+    # interrupted state, and such segments are left by the interrupted gprecoverseg
+    conn = dbconn.connect(dburl, encoding='UTF8', allowSystemTableMods=True)
+    dbconn.execSQL(conn, "SELECT gp_request_fts_probe_scan()")
+    cnt_primaries_down = int(dbconn.queryRow(conn, f"SELECT COUNT(1) FROM gp_segment_configuration WHERE role = 'p' AND status = 'd'")[0])
+    cnt_mirrors_down = int(dbconn.queryRow(conn, f"SELECT COUNT(1) FROM gp_segment_configuration WHERE role = 'm' AND status = 'd'")[0])
+    conn.close()
+
+    if cnt_primaries_down != 0:
+        raise Exception('Detected some primary segments are down, please recover manually')
+
+    if cnt_mirrors_down != 0:
+        logger.info("Some mirrors are down, trying to recover them, it may take some time...")
+        recoverseg_options = "-a -F"
+        global cmd_recoverseg
+        try:
+            cmd_recoverseg = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
+            cmd_recoverseg.run(validateAfter=True)
+        except Exception as e:
+            logger.error(str(e))
+            error_msg = f"Failed to execute 'gprecoverseg {recoverseg_options}'"
+            raise Exception(error_msg)
+        finally:
+            cmd_recoverseg = None
 
 def main(options, args, parser):
     try:
@@ -268,6 +297,8 @@ def main(options, args, parser):
         create_pid_file(options.coordinator_data_directory)
 
         gparray_dump_filename = options.coordinator_data_directory + '/gparraydump'
+
+        check_down_segments(logger, dburl)
 
         logger.info('Init gparray from catalog')
         try:
