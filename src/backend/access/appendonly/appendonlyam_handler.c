@@ -24,6 +24,7 @@
 #include "access/tsmapi.h"
 #include "access/tuptoaster.h"
 #include "access/xact.h"
+#include "appendonly_vacuum.h"
 #include "catalog/aoseg.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
@@ -1160,21 +1161,6 @@ appendonly_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 	/* drop old relation, and close new one */
 	RelationDropStorage(rel);
 	smgrclose(dstrel);
-}
-
-static void
-appendonly_vacuum_rel(Relation onerel, VacuumParams *params,
-					  BufferAccessStrategy bstrategy)
-{
-	/*
-	 * We VACUUM an AO_ROW table through multiple phases. vacuum_rel()
-	 * orchestrates the phases and calls itself again for each phase, so we
-	 * get here for every phase. ao_vacuum_rel() is a wrapper of dedicated
-	 * ao_vacuum_rel_*() functions for the specific phases.
-	 */
-	ao_vacuum_rel(onerel, params, bstrategy);
-	
-	return;
 }
 
 static void
@@ -2448,7 +2434,7 @@ static const TableAmRoutine ao_row_methods = {
 	.relation_copy_for_cluster = appendonly_relation_copy_for_cluster,
 	.relation_add_columns = appendonly_relation_add_columns,
 	.relation_rewrite_columns = appendonly_relation_rewrite_columns,
-	.relation_vacuum = appendonly_vacuum_rel,
+	.relation_vacuum = ao_vacuum_rel,
 	.scan_analyze_next_block = appendonly_scan_analyze_next_block,
 	.scan_analyze_next_tuple = appendonly_scan_analyze_next_tuple,
 	.relation_acquire_sample_rows = appendonly_acquire_sample_rows,

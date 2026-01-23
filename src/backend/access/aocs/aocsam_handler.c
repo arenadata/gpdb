@@ -14,6 +14,7 @@
  */
 #include "postgres.h"
 
+#include "../appendonly/appendonly_vacuum.h"
 #include "access/aomd.h"
 #include "access/appendonlywriter.h"
 #include "access/heapam.h"
@@ -1396,21 +1397,6 @@ aoco_relation_copy_data(Relation rel, const RelFileNode *newrnode)
 	/* drop old relation, and close new one */
 	RelationDropStorage(rel);
 	smgrclose(dstrel);
-}
-
-static void
-aoco_vacuum_rel(Relation onerel, VacuumParams *params,
-                      BufferAccessStrategy bstrategy)
-{
-	/*
-	 * We VACUUM an AO_COLUMN table through multiple phases. vacuum_rel()
-	 * orchestrates the phases and calls itself again for each phase, so we
-	 * get here for every phase. ao_vacuum_rel() is a wrapper of dedicated
-	 * ao_vacuum_rel_*() functions for the specific phases.
-	 */
-	ao_vacuum_rel(onerel, params, bstrategy);
-
-	return;
 }
 
 static void
@@ -2806,7 +2792,7 @@ static const TableAmRoutine ao_column_methods = {
 	.relation_copy_for_cluster = aoco_relation_copy_for_cluster,
 	.relation_add_columns = aoco_relation_add_columns,
 	.relation_rewrite_columns = aoco_relation_rewrite_columns,
-	.relation_vacuum = aoco_vacuum_rel,
+	.relation_vacuum = ao_vacuum_rel,
 	.scan_analyze_next_block = aoco_scan_analyze_next_block,
 	.scan_analyze_next_tuple = aoco_scan_analyze_next_tuple,
 	.relation_acquire_sample_rows = aoco_acquire_sample_rows,

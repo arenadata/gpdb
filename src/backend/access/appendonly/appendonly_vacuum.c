@@ -123,6 +123,7 @@
 #include "access/multixact.h"
 #include "access/visibilitymap.h"
 #include "access/xact.h"
+#include "appendonly_vacuum.h"
 #include "catalog/pg_appendonly.h"
 #include "cdb/cdbappendonlyam.h"
 #include "cdb/cdbtm.h"
@@ -163,6 +164,7 @@ static void ao_vacuum_rel_recycle_dead_segments(Relation onerel, VacuumParams *p
 												BufferAccessStrategy bstrategy, AOVacuumRelStats *vacrelstats);
 static AOVacuumRelStats *init_vacrelstats(void);
 static void cleanup_vacrelstats(AOVacuumRelStats **vacrelstatsp);
+static void scan_index(Relation indrel, Relation aorel, int elevel, BufferAccessStrategy vac_strategy);
 
 static void
 ao_vacuum_rel_pre_cleanup(Relation onerel, VacuumParams *params, BufferAccessStrategy bstrategy, AOVacuumRelStats *vacrelstats)
@@ -781,7 +783,7 @@ cleanup_vacrelstats(AOVacuumRelStats **vacrelstats)
  *
  * We use this when we have no deletions to do.
  */
-void
+static void
 scan_index(Relation indrel, Relation aorel, int elevel, BufferAccessStrategy vac_strategy)
 {
 	IndexBulkDeleteResult *stats;

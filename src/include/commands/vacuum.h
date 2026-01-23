@@ -373,10 +373,6 @@ extern int gp_acquire_sample_rows_func(Relation onerel, int elevel,
 /* in commands/vacuumlazy.c */
 extern void lazy_vacuum_rel_heap(Relation onerel,
 							VacuumParams *params, BufferAccessStrategy bstrategy);
-extern void scan_index(Relation indrel, Relation aorel, int elevel, BufferAccessStrategy bstrategy);
-
-/* in commands/vacuum_ao.c */
-extern void ao_vacuum_rel(Relation rel, VacuumParams *params, BufferAccessStrategy bstrategy);
 
 extern bool std_typanalyze(VacAttrStats *stats);
 
