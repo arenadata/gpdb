@@ -156,22 +156,20 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | fault_name                                                                    | fault_delay_ms |
         | on_enter_STATE_REBALANCE_STARTED_begin                                        | 0              |
         | on_enter_STATE_REBALANCE_STARTED_end                                          | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_begin                           | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_end                             | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_begin                              | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_DONE_end                                | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_begin | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_STARTED_end   | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_begin    | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_PRIMARY_TO_MIRROR_DONE_end      | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_begin                         | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_end                           | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_DONE_begin                            | 0              |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_DONE_end                              | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_begin | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_STARTED_end   | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_begin    | 0              |
-        | on_enter_STATE_REBALANCE_SWAP_PREFERRED_ROLES_MIRROR_TO_PRIMARY_DONE_end      | 0              |
+        | on_enter_STATE_REBALANCE_PREPARE_MOVES_STARTED_begin                          | 0              |
+        | on_enter_STATE_REBALANCE_PREPARE_MOVES_STARTED_end                            | 0              |
+        | on_enter_STATE_REBALANCE_PREPARE_MOVES_DONE_begin                             | 0              |
+        | on_enter_STATE_REBALANCE_PREPARE_MOVES_DONE_end                               | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_STARTED_begin                              | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_STARTED_end                                | 0              |
+        | on_enter_STATE_REBALANCE_MOVES_SUCCEEDED_begin                                | 0              |
+        | on_enter_STATE_REBALANCE_MOVES_SUCCEEDED_end                                  | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_STARTED_begin  | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_STARTED_end    | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE_begin     | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE_end       | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_DONE_begin                                 | 0              |
+        | on_enter_STATE_REBALANCE_EXECUTION_DONE_end                                   | 0              |
         | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   | 0              |
         | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 0              |
         | on_enter_STATE_REBALANCE_DONE_begin                                           | 0              |
@@ -180,8 +178,8 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | FAULT_BEFORE_GPRECOVERSEG_PRIMARY_TO_MIRROR                                   | 3000           |
         | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 1500           |
         | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 3000           |
-        | on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_begin                           | 3000           |
-        | on_enter_STATE_REBALANCE_MOVE_PRIMARIES_STARTED_begin                         | 3000           |
+        | on_enter_STATE_REBALANCE_EXECUTION_STARTED_begin                              | 3000           |
+        | on_enter_STATE_REBALANCE_EXECUTION_STARTED_begin                              | 3000           |
 
     Scenario: 4. rebalance - check rebalance after interrupted shrink.
         Given the database is not running
@@ -232,7 +230,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
          And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
          And all files in gpAdminLogs directory are deleted
-         And set fault inject "on_enter_STATE_REBALANCE_MOVE_MIRRORS_STARTED_end"
+         And set fault inject "on_enter_STATE_REBALANCE_EXECUTION_STARTED_begin"
         When the user runs "ggrebalance -x 4 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
