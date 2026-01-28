@@ -179,7 +179,6 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 1500           |
         | FAULT_BEFORE_GPRECOVERSEG_MIRROR_TO_PRIMARY                                   | 3000           |
         | on_enter_STATE_REBALANCE_EXECUTION_STARTED_begin                              | 3000           |
-        | on_enter_STATE_REBALANCE_EXECUTION_STARTED_begin                              | 3000           |
 
     Scenario: 4. rebalance - check rebalance after interrupted shrink.
         Given the database is not running

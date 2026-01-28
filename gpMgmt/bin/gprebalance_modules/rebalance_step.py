@@ -6,7 +6,7 @@ from gprebalance_modules.planner import *
 
 class RebalanceStep:
     class Status(Enum):
-        APPROVE_REQUIERED = 1
+        APPROVE_REQUIRED = 1
         PLANNED = 2
         IN_PROGRESS = 3
         ERROR = 4
@@ -27,6 +27,9 @@ class RebalanceStep:
 
     def getId(self):
         return self.id
+
+    def setId(self, id: int):
+        self.id = id
 
     def getStatus(self):
         return self.status
@@ -53,7 +56,7 @@ class RebalanceStepMoveMirror(RebalanceStep):
 class RebalanceStepSwitchoverToMirror(RebalanceStep):
     def __init__(self, id: int, move: LogicalMove):
         super().__init__(id, move)
-        self.status = self.Status.APPROVE_REQUIERED
+        self.status = self.Status.APPROVE_REQUIRED
 
     def __str__(self):
         return (
@@ -63,7 +66,7 @@ class RebalanceStepSwitchoverToMirror(RebalanceStep):
 class RebalanceStepSwitchoverToPrimary(RebalanceStep):
     def __init__(self, id: int, move: LogicalMove):
         super().__init__(id, move)
-        self.status = self.Status.APPROVE_REQUIERED
+        self.status = self.Status.APPROVE_REQUIRED
 
     def __str__(self):
         return (

@@ -140,8 +140,8 @@ class RebalanceSM:
         filename = self.create_config_file(moves)
         gpmovemirrors_options = f'-a -i {filename}'
 
-        if self.options.batch_size is not None:
-            batch_size = self.options.batch_size
+        if self.options.parallel is not None:
+            batch_size = self.options.parallel
             # gpmovemirrors has its own limitation for batch size,
             # need to consider it here.
             if batch_size > MAX_COORDINATOR_NUM_WORKERS:
@@ -329,22 +329,43 @@ class RebalanceSM:
             raise Exception('Rebalance executor was launched with a plan without segment movements')
 
         rebalance_steps = []
-        id = 0
         for move in self.rebalance_plan.getMoves():
             if move.seg.isSegmentPrimary():
-                rebalance_steps.append(RebalanceStepSwitchoverToMirror(id, move))
-                id += 1
-                rebalance_steps.append(RebalanceStepMoveMirror(id, move))
-                id += 1
-                rebalance_steps.append(RebalanceStepSwitchoverToPrimary(id, move))
-                id += 1
-            else:
-                rebalance_steps.append(RebalanceStepMoveMirror(id, move))
-                id += 1
+                step_switch_to_mirror = RebalanceStepSwitchoverToMirror(0, move)
+                step_move = RebalanceStepMoveMirror(0, move)
+                step_switch_to_primary = RebalanceStepSwitchoverToPrimary(0, move)
+                if (len(rebalance_steps) > 0 and
+                    isinstance(rebalance_steps[-1], RebalanceStepSwitchoverToPrimary)):
+                    # if current last element of the list is related to primary movement,
+                    # try to combine the steps with the same steps of preceding primary movement,
+                    # so they can be executed together is parallel.
+                    condition = lambda x: isinstance(x, RebalanceStepSwitchoverToMirror)
+                    last_idx_switch_to_mirror = \
+                        len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
+                    rebalance_steps.insert(last_idx_switch_to_mirror, step_switch_to_mirror)
 
-        # TODO: remove this dump
-        #for step in rebalance_steps:
-        #    self.logger.info(str(step))
+                    condition = lambda x: isinstance(x, RebalanceStepMoveMirror)
+                    last_idx_move = \
+                        len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
+                    rebalance_steps.insert(last_idx_move, step_move)
+
+                    condition = lambda x: isinstance(x, RebalanceStepSwitchoverToPrimary)
+                    last_idx_switch_to_primary = \
+                        len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
+                    rebalance_steps.insert(last_idx_switch_to_primary, step_switch_to_primary)
+                    pass
+                else:
+                    # simply add to the end of the list
+                    rebalance_steps.append(step_switch_to_mirror)
+                    rebalance_steps.append(step_move)
+                    rebalance_steps.append(step_switch_to_primary)
+            else:
+                rebalance_steps.append(RebalanceStepMoveMirror(0, move))
+
+        id = 0
+        for step in rebalance_steps:
+            step.setId(id)
+            id += 1
 
         self.rebalance_schema.saveExecutionSteps(rebalance_steps)
 
@@ -366,43 +387,48 @@ class RebalanceSM:
         # Bring them back to PLANNED state, so we can try to process them again.
         self.reset_in_progress_execution_steps()
 
-        rebalance_steps = self.rebalance_schema.getExecutionSteps([RebalanceStep.Status.PLANNED, RebalanceStep.Status.APPROVE_REQUIERED])
+        steps_to_execute = self.rebalance_schema.getExecutionSteps([RebalanceStep.Status.PLANNED, RebalanceStep.Status.APPROVE_REQUIRED])
 
-        if len(rebalance_steps) > 0:
+        if len(steps_to_execute) > 0:
 
-            if rebalance_steps[0].getStatus() == RebalanceStep.Status.APPROVE_REQUIERED:
+            if steps_to_execute[0].getStatus() == RebalanceStep.Status.APPROVE_REQUIRED:
                 self.trigger('move_to_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_STARTED')
                 return
 
-            moves = []
-            switchover_step = None
-            for step in rebalance_steps:
-                if step.getStatus() == RebalanceStep.Status.APPROVE_REQUIERED:
+            current_batch = []
+            for step in steps_to_execute:
+                # fill current batch until we found a step that requires approve
+                # (it will be handled the next time we enter this state),
+                # or till the type of RebalanceStep changes.
+                if step.getStatus() == RebalanceStep.Status.APPROVE_REQUIRED:
+                    break;
+                if len(current_batch) > 0 and (type(current_batch[0]) is not type(step)):
                     break;
 
                 step.setStatus(RebalanceStep.Status.IN_PROGRESS)
                 self.rebalance_schema.updateExecutionStep(step)
-                moves.append(step.getMove())
-                if not isinstance(step, RebalanceStepMoveMirror):
-                    switchover_step = step
-                    break;
+                current_batch.append(step)
 
-            if switchover_step != None:
-                direction = self.RoleSwapDirection.PRIMARY_TO_MIRROR
-                if not isinstance(switchover_step, RebalanceStepSwitchoverToMirror):
-                    direction = self.RoleSwapDirection.MIRROR_TO_PRIMARY
-                self.logger.info(f'Rebalance - start role swap {str(direction)}, segment {str(step.getMove().seg)}')
-                self.execute_role_swaps([step.getMove().seg], direction)
-                self.logger.info('Rebalance - end role swap')
-            else:
+            if isinstance(current_batch[0], RebalanceStepMoveMirror):
                 self.logger.info('Rebalance - start moving segments:')
+                moves = [step.getMove() for step in current_batch]
                 for move in moves:
                     self.logger.info(str(move))
                 self.process_moves(moves)
                 self.logger.info('Rebalance - end moving segments')
+            else:
+                direction = self.RoleSwapDirection.PRIMARY_TO_MIRROR
+                if not isinstance(current_batch[0], RebalanceStepSwitchoverToMirror):
+                    direction = self.RoleSwapDirection.MIRROR_TO_PRIMARY
+                segments = [step.getMove().seg for step in current_batch]
+                self.logger.info(f'Rebalance - start role swap {str(direction)} for segments:')
+                for segment in segments:
+                    self.logger.info(str(segment))
+                self.execute_role_swaps(segments, direction)
+                self.logger.info('Rebalance - end role swap')
 
             # TODO: check the errored segments
-            for step in rebalance_steps:
+            for step in steps_to_execute:
                 if step.getStatus() == RebalanceStep.Status.IN_PROGRESS:
                     step.setStatus(RebalanceStep.Status.DONE)
                     self.rebalance_schema.updateExecutionStep(step)
@@ -419,17 +445,20 @@ class RebalanceSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_STARTED(self) -> None:
-        rebalance_steps = self.rebalance_schema.getExecutionSteps([RebalanceStep.Status.PLANNED, RebalanceStep.Status.APPROVE_REQUIERED])
 
-        assert len(rebalance_steps) > 0
+        # Approve all consequent steps that require approval
+        steps = self.rebalance_schema.getExecutionSteps([RebalanceStep.Status.PLANNED, RebalanceStep.Status.APPROVE_REQUIRED])
 
-        step_to_approve = rebalance_steps[0]
+        assert len(steps) > 0
 
-        # TODO: we'll need to add logic here to get approval from the user in the interactive mode,
-        # once we start implementing the interactive mode.
-        # In non-interactive mode we assume that the switchover is always approved.
-        step_to_approve.setStatus(RebalanceStep.Status.PLANNED)
-        self.rebalance_schema.updateExecutionStep(step_to_approve)
+        for step in steps:
+            if step.getStatus() != RebalanceStep.Status.APPROVE_REQUIRED:
+                break;
+            # TODO: we'll need to add logic here to get approval from the user in the interactive mode,
+            # once we start implementing the interactive mode.
+            # In non-interactive mode we assume that the switchover is always approved.
+            step.setStatus(RebalanceStep.Status.PLANNED)
+            self.rebalance_schema.updateExecutionStep(step)
 
         self.trigger('move_to_STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE')
 
