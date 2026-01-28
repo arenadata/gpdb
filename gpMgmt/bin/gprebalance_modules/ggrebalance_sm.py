@@ -291,6 +291,12 @@ class RebalanceSM:
 
         return self.states_main_rebalance_flow[prev_idx + 1]
 
+    def reset_in_progress_execution_steps(self) -> None:
+        in_progress_steps = self.rebalance_schema.getExecutionSteps([RebalanceStep.Status.IN_PROGRESS])
+        for step in in_progress_steps:
+            step.setStatus(RebalanceStep.Status.PLANNED)
+            self.rebalance_schema.updateExecutionStep(step)
+
     # state callbacks start here
 
     @wrap_state_func_with_faults
@@ -355,6 +361,11 @@ class RebalanceSM:
             self.trigger('move_to_STATE_REBALANCE_EXECUTION_DONE')
             return
 
+        # In normal execution we shouldn't have IN_PROGRESS steps at this moment.
+        # If they are presented, it means they are left from previous interrupted run.
+        # Bring them back to PLANNED state, so we can try to process them again.
+        self.reset_in_progress_execution_steps()
+
         rebalance_steps = self.rebalance_schema.getExecutionSteps([RebalanceStep.Status.PLANNED, RebalanceStep.Status.APPROVE_REQUIERED])
 
         if len(rebalance_steps) > 0:
@@ -369,7 +380,6 @@ class RebalanceSM:
                 if step.getStatus() == RebalanceStep.Status.APPROVE_REQUIERED:
                     break;
 
-                # TODO: if we re-enter - some may be already IN_PROGRESS, so will will not see them in this list...
                 step.setStatus(RebalanceStep.Status.IN_PROGRESS)
                 self.rebalance_schema.updateExecutionStep(step)
                 moves.append(step.getMove())
