@@ -422,10 +422,9 @@ class RebalanceSM:
             for step in steps_to_execute:
                 # fill current batch until we found a step that requires approve
                 # (it will be handled the next time we enter this state),
-                # or till the type of RebalanceStep changes.
-                if step.getStatus() == RebalanceStep.Status.APPROVE_REQUIRED:
-                    break;
-                if len(current_batch) > 0 and (type(current_batch[0]) is not type(step)):
+                if (step.getStatus() == RebalanceStep.Status.APPROVE_REQUIRED or
+                    # or till the type of RebalanceStep changes.
+                    (len(current_batch) > 0 and (type(current_batch[0]) is not type(step)))):
                     break;
 
                 step.setStatus(RebalanceStep.Status.IN_PROGRESS)
