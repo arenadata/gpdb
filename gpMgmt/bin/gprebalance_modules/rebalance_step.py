@@ -15,21 +15,21 @@ class RebalanceStep:
         CANCELLED = 7
         DONE = 8
 
-    def __init__(self, id: int, move: LogicalMove):
-        self.id = id
+    def __init__(self, move: LogicalMove):
+        self.move_order = -1
         self.move = move
         self.status = self.Status.PLANNED
 
     def __str__(self):
         return (
-            f"id: {self.getId()}, status: {self.getStatus()}"
+            f"Rebalance step with move_order: {self.getMoveOrder()}, status: {self.getStatus()}"
         )
 
-    def getId(self):
-        return self.id
+    def getMoveOrder(self):
+        return self.move_order
 
-    def setId(self, id: int):
-        self.id = id
+    def setMoveOrder(self, move_order: int):
+        self.move_order = move_order
 
     def getStatus(self):
         return self.status
@@ -44,33 +44,33 @@ class RebalanceStep:
         return pickle.dumps(self)
 
 class RebalanceStepMoveMirror(RebalanceStep):
-    def __init__(self, id: int, move: LogicalMove):
-        super().__init__(id, move)
+    def __init__(self, move: LogicalMove):
+        super().__init__(move)
 
     def __str__(self):
         return (
-            f"RebalanceStepMoveMirror - {super().__str__()}:\n"
+            f"{super().__str__()}, type: RebalanceStepMoveMirror:\n"
             f"{str(self.move)}"
         )
 
 class RebalanceStepSwitchoverToMirror(RebalanceStep):
-    def __init__(self, id: int, move: LogicalMove):
-        super().__init__(id, move)
+    def __init__(self, move: LogicalMove):
+        super().__init__(move)
         self.status = self.Status.APPROVE_REQUIRED
 
     def __str__(self):
         return (
-            f"RebalanceStepSwitchoverToMirror - {super().__str__()}"
+            f"{super().__str__()}, type: RebalanceStepSwitchoverToMirror, DBID {str(self.move.seg.getSegmentDbId())}"
         )
 
 class RebalanceStepSwitchoverToPrimary(RebalanceStep):
-    def __init__(self, id: int, move: LogicalMove):
-        super().__init__(id, move)
+    def __init__(self, move: LogicalMove):
+        super().__init__(move)
         self.status = self.Status.APPROVE_REQUIRED
 
     def __str__(self):
         return (
-            f"RebalanceStepSwitchoverToPrimary - {super().__str__()}"
+            f"{super().__str__()}, type: RebalanceStepSwitchoverToPrimary, DBID {str(self.move.seg.getSegmentDbId())}"
         )
 
 def deserializeStep(input: bytes) -> RebalanceStep:

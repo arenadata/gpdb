@@ -43,7 +43,7 @@ class RebalanceSM:
         },
         {
             'trigger': 'move_to_STATE_REBALANCE_STARTED',
-            'source': ['STATE_CHECK_PREVIOUS_RUN', 'STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE'],
+            'source': 'STATE_CHECK_PREVIOUS_RUN',
             'dest': 'STATE_REBALANCE_STARTED'
         },
         {
@@ -291,9 +291,9 @@ class RebalanceSM:
         return state == self.states_main_rebalance_flow[-1]
 
     def get_state_after_interrupt(self, prev_state) -> str:
-        if prev_state == 'STATE_REBALANCE_EXECUTION_STARTED' or \
-           prev_state == 'STATE_REBALANCE_EXECUTION_SUCCEEDED' or \
-           prev_state == 'STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE':
+        if (prev_state == 'STATE_REBALANCE_EXECUTION_STARTED' or
+            prev_state == 'STATE_REBALANCE_EXECUTION_SUCCEEDED' or
+            prev_state == 'STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE'):
             return 'STATE_REBALANCE_EXECUTION_STARTED'
 
         prev_idx = self.states_main_rebalance_flow.index(prev_state)
@@ -337,15 +337,27 @@ class RebalanceSM:
         if not self.rebalance_plan.getMoves():
             raise Exception('Rebalance executor was launched with a plan without segment movements')
 
+        # In the loop below we create a list of rebalance execution steps from the plan's list of moves.
+        # Mirror's movemenet is simply translated into single step.
+        # But primary's movement is translated into 3 steps:
+        #   1st is switchover with the mirror;
+        #   2nd is movement itself;
+        #   3rd is the back switchover.
+        # If there are several consequent primary movements, we assume that they can ve done in parallel,
+        # and, to allow batch processing for them, we re-order their steps to combine together
+        # the respective switchover and movement steps.
         rebalance_steps = []
         for move in self.rebalance_plan.getMoves():
-            if move.seg.isSegmentPrimary():
-                step_switch_to_mirror = RebalanceStepSwitchoverToMirror(0, move)
-                step_move = RebalanceStepMoveMirror(0, move)
-                step_switch_to_primary = RebalanceStepSwitchoverToPrimary(0, move)
+            if move.seg.isSegmentMirror():
+                rebalance_steps.append(RebalanceStepMoveMirror(move))
+            else:
+                step_switch_to_mirror = RebalanceStepSwitchoverToMirror(move)
+                step_move = RebalanceStepMoveMirror(move)
+                step_switch_to_primary = RebalanceStepSwitchoverToPrimary(move)
+
                 if (len(rebalance_steps) > 0 and
                     isinstance(rebalance_steps[-1], RebalanceStepSwitchoverToPrimary)):
-                    # if current last element of the list is related to primary movement,
+                    # If current last element of the list is related to primary movement,
                     # try to combine the steps with the same steps of preceding primary movement,
                     # so they can be executed together is parallel.
                     condition = lambda x: isinstance(x, RebalanceStepSwitchoverToMirror)
@@ -362,21 +374,23 @@ class RebalanceSM:
                     last_idx_switch_to_primary = \
                         len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
                     rebalance_steps.insert(last_idx_switch_to_primary, step_switch_to_primary)
-                    pass
                 else:
                     # simply add to the end of the list
                     rebalance_steps.append(step_switch_to_mirror)
                     rebalance_steps.append(step_move)
                     rebalance_steps.append(step_switch_to_primary)
-            else:
-                rebalance_steps.append(RebalanceStepMoveMirror(0, move))
 
-        id = 0
+        self.logger.info('Saving following rebalance execution steps:')
+
+        move_order = 0
         for step in rebalance_steps:
-            step.setId(id)
-            id += 1
+            step.setMoveOrder(move_order)
+            move_order += 1
+            self.logger.info(str(step))
 
         self.rebalance_schema.saveExecutionSteps(rebalance_steps)
+
+        self.logger.info('Saved rebalance execution steps')
 
         self.trigger('move_to_STATE_REBALANCE_PREPARE_MOVES_DONE')
 
@@ -436,7 +450,9 @@ class RebalanceSM:
                 self.execute_role_swaps(segments, direction)
                 self.logger.info('Rebalance - end role swap')
 
-            # TODO: check the errored segments
+            # TODO: check the errored segments here, once we implement rollback for the rebalance.
+            # For now if some error happened, the entire tool will halt its work, so if we reached this point
+            # just mark all steps as done.
             for step in steps_to_execute:
                 if step.getStatus() == RebalanceStep.Status.IN_PROGRESS:
                     step.setStatus(RebalanceStep.Status.DONE)

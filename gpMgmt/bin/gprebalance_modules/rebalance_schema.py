@@ -45,6 +45,7 @@ class RebalanceSchema:
                        f'''CREATE TABLE {self.schema_name}.{self.saved_plan}
                        (plan BYTEA)
                        DISTRIBUTED REPLICATED''')
+
         self.savePlan(plan)
 
         dbconn.execSQL(self.conn, 'COMMIT')
@@ -153,20 +154,20 @@ class RebalanceSchema:
 
         dbconn.execSQL(self.conn,
                        f'''CREATE TABLE {self.schema_name}.{self.segment_move_steps}
-                       (move_id INT NOT NULL UNIQUE, status TEXT, step BYTEA)
+                       (move_order INT NOT NULL UNIQUE, status TEXT, step BYTEA)
                        DISTRIBUTED REPLICATED''')
         
         for step in steps:
             dbconn.execSQL(self.conn,
                        f'''INSERT INTO {self.schema_name}.{self.segment_move_steps}
-                       VALUES ({step.getId()}, '{str(step.getStatus())}', '\\x{step.serializeStep().hex()}')''')
+                       VALUES ({step.getMoveOrder()}, '{str(step.getStatus())}', '\\x{step.serializeStep().hex()}')''')
 
         dbconn.execSQL(self.conn, 'COMMIT')
 
     def updateExecutionStep(self, step: RebalanceStep) -> None:
         dbconn.execSQL(self.conn,
                        f'''UPDATE {self.schema_name}.{self.segment_move_steps}
-                       SET status='{str(step.getStatus())}', step='\\x{step.serializeStep().hex()}' WHERE move_id = {step.getId()}''')
+                       SET status='{str(step.getStatus())}', step='\\x{step.serializeStep().hex()}' WHERE move_order = {step.getMoveOrder()}''')
 
     def allExecutionStepsAreDone(self) -> bool:
         row = dbconn.queryRow(self.conn,
@@ -183,7 +184,7 @@ class RebalanceSchema:
             filter = f" WHERE status IN ({status_list})"
 
         cursor = dbconn.query(self.conn,
-                              f'SELECT step FROM {self.schema_name}.{self.segment_move_steps} {filter} ORDER BY move_id')
+                              f'SELECT step FROM {self.schema_name}.{self.segment_move_steps} {filter} ORDER BY move_order')
         for row in cursor:
             result.append(deserializeStep(row[0]))
 
