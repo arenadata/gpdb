@@ -241,6 +241,15 @@ class RebalanceSM:
 
         if is_gprecoverseg_required:
             recoverseg_options = "-r -a"
+
+            if self.options.parallel is not None:
+                batch_size = self.options.parallel
+                # gprecoverseg has its own limitation for batch size,
+                # need to consider it here.
+                if batch_size > MAX_COORDINATOR_NUM_WORKERS:
+                    batch_size = MAX_COORDINATOR_NUM_WORKERS
+                recoverseg_options += f' -B {batch_size}'
+
             try:
                 self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
                 self.cmd.run(validateAfter=True)
