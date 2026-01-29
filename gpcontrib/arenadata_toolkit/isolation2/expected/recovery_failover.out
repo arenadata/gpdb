@@ -1,9 +1,5 @@
 -- This test triggers failover of content 1 and checks
 -- the correct tracking state behaviour after recovery
-!\retcode gpconfig -c shared_preload_libraries -v "$(psql -At -c "SELECT array_to_string(array_append(string_to_array(current_setting('shared_preload_libraries'), ','), 'arenadata_toolkit'), ',')" postgres)";
-(exited with code 0)
-!\retcode gpconfig -c arenadata_toolkit.tracking_worker_naptime_sec -v '5';
-(exited with code 1)
 !\retcode gpconfig -c gp_fts_probe_retries -v 2 --masteronly;
 (exited with code 0)
 -- Allow extra time for mirror promotion to complete recovery
@@ -11,7 +7,7 @@
 (exited with code 0)
 !\retcode gpconfig -c gp_gang_creation_retry_timer -v 1000 --skipvalidation --masteronly;
 (exited with code 0)
-!\retcode gpstop -raq -M fast;
+!\retcode gpstop -u;
 (exited with code 0)
 
 CREATE EXTENSION IF NOT EXISTS arenadata_toolkit;
