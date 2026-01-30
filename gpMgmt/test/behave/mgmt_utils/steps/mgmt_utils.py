@@ -2854,7 +2854,7 @@ def _create_working_directory(context, working_directory, mode=''):
         os.mkdir(context.working_directory)
 
 
-def _create_cluster(context, coordinator_host, segment_host_list, hba_hostnames='0', with_mirrors=False, mirroring_configuration='group'):
+def _create_cluster(context, coordinator_host, segment_host_list, hba_hostnames='0', with_mirrors=False, mirroring_configuration='group', number_of_segments=2):
     if segment_host_list == "":
         segment_host_list = []
     else:
@@ -2876,7 +2876,10 @@ def _create_cluster(context, coordinator_host, segment_host_list, hba_hostnames=
     except:
         pass
 
-    testcluster = TestCluster(hosts=[coordinator_host]+segment_host_list, base_dir=context.working_directory,hba_hostnames=hba_hostnames)
+    testcluster = TestCluster(hosts=[coordinator_host]+segment_host_list,
+                              base_dir=context.working_directory,
+                              hba_hostnames=hba_hostnames,
+                              number_of_segments=number_of_segments)
     testcluster.reset_cluster()
     testcluster.create_cluster(with_mirrors=with_mirrors, mirroring_configuration=mirroring_configuration)
     context.gpexpand_mirrors_enabled = with_mirrors
@@ -2900,6 +2903,10 @@ def impl(context, coordinator_host, segment_host_list):
 @given('a cluster is created with "{mirroring_configuration}" segment mirroring on "{coordinator_host}" and "{segment_host_list}"')
 def impl(context, mirroring_configuration, coordinator_host, segment_host_list):
     _create_cluster(context, coordinator_host, segment_host_list, with_mirrors=True, mirroring_configuration=mirroring_configuration)
+
+@given('a cluster is created with mirrors on "{coordinator_host}" and "{segment_host_list}", with {number_of_segments} segments on each')
+def impl(context, coordinator_host, segment_host_list, number_of_segments):
+    _create_cluster(context, coordinator_host, segment_host_list, with_mirrors=True, mirroring_configuration='group', number_of_segments=int(number_of_segments))
 
 @given('the user runs gpexpand interview to add {num_of_segments} new segment and {num_of_hosts} new host "{hostnames}"')
 @when('the user runs gpexpand interview to add {num_of_segments} new segment and {num_of_hosts} new host "{hostnames}"')
