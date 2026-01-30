@@ -35,7 +35,7 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
          And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
          And all files in gpAdminLogs directory are deleted
-        When the user runs "ggrebalance  -n 1 -x 6 --mirror-mode grouped -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        When the user runs "ggrebalance -n 1 -x 6 --mirror-mode grouped -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
          And verify that mirror segments are in "group" configuration
@@ -57,7 +57,7 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
          And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
          And all files in gpAdminLogs directory are deleted
-        When the user runs "ggrebalance  -n 1 -x 6 --mirror-mode spread -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        When the user runs "ggrebalance -n 1 -x 6 --mirror-mode spread -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
          And verify that mirror segments are in "spread" configuration
@@ -65,3 +65,12 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 6, row count = 100
+
+    Scenario: test 5. Check rebalance against coordinator-only mode.
+        Given the database is not running
+         And the user runs "gpstart -ma"
+         And "gpstart -ma" should return a return code of 0
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -x 1"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "System was started in single node mode - only utility mode connections are allowed" to logfile with latest timestamp
