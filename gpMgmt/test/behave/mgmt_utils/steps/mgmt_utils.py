@@ -977,19 +977,21 @@ def impl(context, filename):
         os.remove(filename)
 
 
-def create_table_file_locally(context, filename, table_list, location=os.getcwd()):
-    tables = table_list.split('|')
+def create_value_list_file_locally(context, filename, value_list, location=os.getcwd()):
+    values = value_list.split('|')
     file_path = os.path.join(location, filename)
     with open(file_path, 'w') as fp:
-        for t in tables:
+        for t in values:
             fp.write(t + '\n')
     context.filename = file_path
 
 
-@given('there is a file "{filename}" with tables "{table_list}"')
-@then('there is a file "{filename}" with tables "{table_list}"')
-def impl(context, filename, table_list):
-    create_table_file_locally(context, filename, table_list)
+@given('there is a file "{filename}" with tables "{list}"')
+@then('there is a file "{filename}" with tables "{list}"')
+@given('there is a file "{filename}" with hosts "{list}"')
+@then('there is a file "{filename}" with hosts "{list}"')
+def impl(context, filename, list):
+    create_value_list_file_locally(context, filename, list)
 
 
 @given('the row "{row_values}" is inserted into "{table}" in "{dbname}"')
