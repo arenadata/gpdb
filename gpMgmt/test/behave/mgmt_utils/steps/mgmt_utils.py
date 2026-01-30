@@ -2897,6 +2897,10 @@ def impl(context, coordinator_host, segment_host_list, hba_hostnames):
 def impl(context, coordinator_host, segment_host_list):
     _create_cluster(context, coordinator_host, segment_host_list, with_mirrors=True, mirroring_configuration='group')
 
+@given('a cluster is created without mirrors on "{coordinator_host}" and "{segment_host_list}"')
+def impl(context, coordinator_host, segment_host_list):
+    _create_cluster(context, coordinator_host, segment_host_list, with_mirrors=False)
+
 @given('a cluster is created with "{mirroring_configuration}" segment mirroring on "{coordinator_host}" and "{segment_host_list}"')
 def impl(context, mirroring_configuration, coordinator_host, segment_host_list):
     _create_cluster(context, coordinator_host, segment_host_list, with_mirrors=True, mirroring_configuration=mirroring_configuration)
