@@ -1,9 +1,3 @@
--- start_ignore
---Setup the extension for tracking functionality support.
-\! gpconfig -c shared_preload_libraries -v "$(psql -At -c "SELECT array_to_string(array_append(string_to_array(current_setting('shared_preload_libraries'), ','), 'arenadata_toolkit'), ',')" postgres)"
-\! gpstop -raq -M fast
-\c
--- end_ignore
 -- start_matchsubs
 --
 -- m/ERROR:  \[arenadata_toolkit\] exceeded maximum number of tracked databases \(track_files\.c:\d+\)/
