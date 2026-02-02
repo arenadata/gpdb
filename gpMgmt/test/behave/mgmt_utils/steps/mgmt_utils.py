@@ -990,6 +990,8 @@ def create_value_list_file_locally(context, filename, value_list, location=os.ge
 @then('there is a file "{filename}" with tables "{list}"')
 @given('there is a file "{filename}" with hosts "{list}"')
 @then('there is a file "{filename}" with hosts "{list}"')
+@given('there is a file "{filename}" with datadirs "{list}"')
+@then('there is a file "{filename}" with datadirs "{list}"')
 def impl(context, filename, list):
     create_value_list_file_locally(context, filename, list)
 
