@@ -188,3 +188,49 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 4, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 4, row count = 100
          And the temporary file "/tmp/ggrebalance_remove_hosts" is removed
+
+    Scenario: test 10. Check rebalance with '--target-datadirs' plain paths (without template substitution).
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3", with 2 segments on each
+         And database "test_db_1" exists
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And database "test_db_2" exists
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -x 6 --remove-hosts sdw3 --target-datadirs '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs_new/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs_new/dbfast_mirror'"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
+         And the cluster configuration has some segments where "datadir like '/home/gpadmin/gpdb\_src/gpAux/gpdemo/datadirs\_new/dbfast/gpseg_'"
+         And the cluster configuration has some segments where "datadir like '/home/gpadmin/gpdb\_src/gpAux/gpdemo/datadirs\_new/dbfast_mirror/gpseg_'"
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 6, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 6, row count = 100
+         And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 6, row count = 100
+         And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 6, row count = 100
+
+    Scenario: test 11. Check rebalance with '--target-datadirs' {content} and {hostname} substitution.
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3", with 2 segments on each
+         And database "test_db_1" exists
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And database "test_db_2" exists
+         And schema "test_schema_2" exists in "test_db_2"
+         And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
+         And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -x 6 --remove-hosts sdw3 --target-datadirs '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs_new/dbfast/new_seg{content}_on_host_{hostname}, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs_new/dbfast_mirror/new_seg{content}_on_host_{hostname}'"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
+         And the cluster configuration has some segments where "datadir like '/home/gpadmin/gpdb\_src/gpAux/gpdemo/datadirs\_new/dbfast/new\_seg_\_on\_host\_sdw_'"
+         And the cluster configuration has some segments where "datadir like '/home/gpadmin/gpdb\_src/gpAux/gpdemo/datadirs\_new/dbfast\_mirror/new\_seg_\_on\_host\_sdw_'"
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 6, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 6, row count = 100
+         And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 6, row count = 100
+         And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 6, row count = 100

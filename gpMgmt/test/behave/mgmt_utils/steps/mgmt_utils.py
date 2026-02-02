@@ -1612,7 +1612,10 @@ def impl(context, segment_count, filter):
     sql = "SELECT count(*) FROM gp_segment_configuration WHERE %s" % filter
     with closing(dbconn.connect(dbconn.DbURL(), unsetSearchPath=False)) as conn:
         row = dbconn.queryRow(conn, sql)
-    if int(row[0]) != int(segment_count):
+    if segment_count == 'some':
+        if int(row[0]) == 0:
+            raise Exception(f"Expected some segments, but got 0")
+    elif int(row[0]) != int(segment_count):
         raise Exception(f"Expected {segment_count} segments, but got {row[0]}")
 
 @given('the cluster configuration is saved for "{when}"')
