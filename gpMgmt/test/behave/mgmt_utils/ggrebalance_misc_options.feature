@@ -259,3 +259,47 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 6, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 6, row count = 100
          And the temporary file "/tmp/ggrebalance_target_datadirs" is removed
+
+    Scenario: test 13. Check ggrebalance launch when pid file (or any other mark) for other tool exists.
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3"
+         And all files in gpAdminLogs directory are deleted
+        When we run a sample background script to generate a pid on "coordinator" segment
+         And a sample ggrebalance.pid file is created using the background pid in the coordinator_data_directory
+         And the user runs "ggrebalance -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance is already running." to logfile with latest timestamp
+         And the background pid is killed on "coordinator" segment
+         And a sample ggrebalance.pid file is removed from the coordinator_data_directory
+         And all files in gpAdminLogs directory are deleted
+        When we run a sample background script to generate a pid on "coordinator" segment
+         And a sample gpexpand.pid file is created using the background pid in the coordinator_data_directory
+         And the user runs "ggrebalance -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "gpexpand is already running." to logfile with latest timestamp
+         And the background pid is killed on "coordinator" segment
+         And a sample gpexpand.pid file is removed from the coordinator_data_directory
+         And all files in gpAdminLogs directory are deleted
+        When schema "gpexpand" exists in "postgres"
+         And the user runs "ggrebalance -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "gpexpand schema exists. Assuming gpexpand is already running." to logfile with latest timestamp
+         And schema "gpexpand" is removed in "postgres"
+         And all files in gpAdminLogs directory are deleted
+        When we run a sample background script to generate a pid on "coordinator" segment
+         And a sample gpexpand.status file is created using the background pid in the coordinator_data_directory
+         And the user runs "ggrebalance -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "gpexpand.status file exists. Assuming gpexpand is already running." to logfile with latest timestamp
+         And the background pid is killed on "coordinator" segment
+         And a sample gpexpand.status file is removed from the coordinator_data_directory
+         And all files in gpAdminLogs directory are deleted
+        When we run a sample background script to generate a pid on "coordinator" segment
+         And a sample gprecoverseg.lock directory is created using the background pid in coordinator_data_directory
+         And the user runs "ggrebalance -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "gprecoverseg is already running." to logfile with latest timestamp
+         And the background pid is killed on "coordinator" segment
+         And the gprecoverseg lock directory is removed
+         And all files in gpAdminLogs directory are deleted

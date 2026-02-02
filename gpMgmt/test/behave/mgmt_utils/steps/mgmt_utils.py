@@ -963,12 +963,20 @@ def impl(context, tname, dbname, nrows):
     check_row_count(context, tname, dbname, int(nrows))
 
 @given('schema "{schema_list}" exists in "{dbname}"')
+@when('schema "{schema_list}" exists in "{dbname}"')
 @then('schema "{schema_list}" exists in "{dbname}"')
 def impl(context, schema_list, dbname):
     schemas = [s.strip() for s in schema_list.split(',')]
     for s in schemas:
         drop_schema_if_exists(context, s.strip(), dbname)
         create_schema(context, s.strip(), dbname)
+
+@given('schema "{schema_list}" is removed in "{dbname}"')
+@then('schema "{schema_list}" is removed in "{dbname}"')
+def impl(context, schema_list, dbname):
+    schemas = [s.strip() for s in schema_list.split(',')]
+    for s in schemas:
+        drop_schema_if_exists(context, s.strip(), dbname)
 
 
 @then('the temporary file "{filename}" is removed')
@@ -1687,6 +1695,30 @@ def impl(context, seg):
     cmd = Command(name="remove pid", cmdStr='rm -rf /tmp/bgpid', remoteHost=hostname, ctxt=REMOTE)
     cmd.run(validateAfter=True)
 
+
+@given('a sample {lock_file} file is created using the background pid in the coordinator_data_directory')
+@when('a sample {lock_file} file is created using the background pid in the coordinator_data_directory')
+@then('a sample {lock_file} file is created using the background pid in the coordinator_data_directory')
+def impl(context, lock_file):
+    if 'bg_pid' in context:
+        bg_pid = context.bg_pid
+        if not unix.check_pid(bg_pid):
+            raise Exception("The background process with PID {} is not running.".format(bg_pid))
+    else:
+        bg_pid = ""
+
+    utility_pidfile = os.path.join(get_coordinatordatadir(), lock_file)
+
+    with open(utility_pidfile, 'w') as f:
+        f.write(bg_pid)
+
+@given('a sample {lock_file} file is removed from the coordinator_data_directory')
+@when('a sample {lock_file} file is removed from the coordinator_data_directory')
+@then('a sample {lock_file} file is removed from the coordinator_data_directory')
+def impl(context, lock_file):
+    utility_pidfile = os.path.join(get_coordinatordatadir(), lock_file)
+    if os.path.exists(utility_pidfile):
+        os.remove(utility_pidfile)
 
 @when('{process} is killed on mirror with content {contentids}')
 @then('{process} is killed on mirror with content {contentids}')
