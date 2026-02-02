@@ -115,8 +115,18 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
          And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
          And all files in gpAdminLogs directory are deleted
-         And there is a file "/tmp/ggrebalance_target_hosts" with hosts "sdw2|sdw3"
-        When the user runs "ggrebalance -x 4 --target-hosts-file /tmp/ggrebalance_target_hosts -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        When there is a file "/tmp/ggrebalance_target_hosts" with hosts " "
+         And the user runs "ggrebalance -x 4 --target-hosts-file /tmp/ggrebalance_target_hosts -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "Empty '/tmp/ggrebalance_target_hosts' file" to logfile with latest timestamp
+         And the temporary file "/tmp/ggrebalance_target_hosts" is removed
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -x 4 --target-hosts-file /tmp/ggrebalance_non_existing_file -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "No such file or directory: '/tmp/ggrebalance_non_existing_file'" to logfile with latest timestamp
+         And all files in gpAdminLogs directory are deleted
+        When there is a file "/tmp/ggrebalance_target_hosts" with hosts "sdw2|sdw3"
+         And the user runs "ggrebalance -x 4 --target-hosts-file /tmp/ggrebalance_target_hosts -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
          And the cluster configuration has 0 segments where "hostname='sdw1' and content > -1 and role = 'p' and status = 'u'"

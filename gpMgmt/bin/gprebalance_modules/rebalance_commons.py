@@ -558,10 +558,14 @@ def get_hosts_from_file(file, option_name) -> str:
     with open(file, 'r') as fp:
         i = 0
         for line in fp:
-            i += 1
             if i >= 1000:
                 raise ValidationError(f" --{option_name} contains more than 1000 hosts")
-            hosts.append(line.strip())
+            hostname = line.strip()
+            if hostname != '':
+                hosts.append(line.strip())
+                i += 1
+    if len(hosts) == 0:
+        raise Exception(f"Empty '{file}' file")
     return ", ".join(hosts)
 
 @dataclass
