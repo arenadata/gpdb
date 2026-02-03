@@ -313,3 +313,30 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And the background pid is killed on "coordinator" segment
          And the gprecoverseg lock directory is removed
          And all files in gpAdminLogs directory are deleted
+
+    Scenario: test 14.  Check ggrebalance if pg_basebackup is already running
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3", with 1 segments on each
+         And all the segments are running
+         And the segments are synchronized
+         And all files in gpAdminLogs directory are deleted
+         And the information of contents 0,1,2 is saved
+         And user immediately stops all mirror processes for content 0,1,2
+         And user can start transactions
+         And the user suspend the walsender on the primary on content 0
+         And the user asynchronously runs "gprecoverseg -aF" and the process is saved
+         And the user just waits until recovery_progress.file is created in gpAdminLogs
+         And user waits until gp_stat_replication table has no pg_basebackup entries for content 1,2
+         And an FTS probe is triggered
+         And the user waits until mirror on content 1,2 is up
+         And verify that mirror on content 0 is down
+         And the gprecoverseg lock directory is removed
+         And user immediately stops all mirror processes for content 1,2
+         And the user waits until mirror on content 1,2 is down
+        When the user runs "ggrebalance"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "Segments {0} have running pg_basebackup." to logfile with latest timestamp
+         And the user reset the walsender on the primary on content 0
+         And the user waits until saved async process is completed
+         And verify that mirror on content 0 is up

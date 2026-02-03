@@ -16,6 +16,7 @@ try:
     from gprebalance_modules.shrink import GGShrink, DBNAME
     from gprebalance_modules.ggrebalance_main_sm import GGRebalanceMainSM
     from gprebalance_modules.planner import *
+    from gppylib.programs.clsRecoverSegment_triples import get_segments_with_running_basebackup
 except ImportError as e:
     sys.exit('ERROR: Cannot import modules.  Please check that you have sourced greenplum_path.sh.  Detail: ' + str(e))
 
@@ -220,6 +221,12 @@ def check_running_gputils(dburl: dbconn.DbURL, coordinator_data_directory: str):
     if is_gprecoverseg_running():
         logger.error(
             '''gprecoverseg is already running.''')
+        sys.exit(1)
+
+    segments_with_running_basebackup = get_segments_with_running_basebackup()
+    if len(segments_with_running_basebackup) > 0:
+        logger.error(
+            f'''Segments {segments_with_running_basebackup} have running pg_basebackup.''')
         sys.exit(1)
 
 
