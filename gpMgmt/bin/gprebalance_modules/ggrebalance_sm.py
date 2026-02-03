@@ -292,7 +292,7 @@ class RebalanceSM:
 
     def get_state_after_interrupt(self, prev_state) -> str:
         if (prev_state == 'STATE_REBALANCE_EXECUTION_STARTED' or
-            prev_state == 'STATE_REBALANCE_EXECUTION_SUCCEEDED' or
+            prev_state == 'STATE_REBALANCE_MOVES_SUCCEEDED' or
             prev_state == 'STATE_REBALANCE_EXECUTION_AWAITING_SWITCHOVER_APPROVE_DONE'):
             return 'STATE_REBALANCE_EXECUTION_STARTED'
 
@@ -314,7 +314,7 @@ class RebalanceSM:
         #   1st is switchover with the mirror;
         #   2nd is movement itself;
         #   3rd is the back switchover.
-        # If there are several consequent primary movements, we assume that they can ve done in parallel,
+        # If there are several consequent primary movements, we assume that they can be done in parallel,
         # and, to allow batch processing for them, we re-order their steps to combine together
         # the respective switchover and movement steps.
         rebalance_steps = []
