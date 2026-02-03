@@ -432,7 +432,7 @@ class RebalanceSM:
                 if (step.getStatus() == RebalanceStep.Status.APPROVE_REQUIRED or
                     # or till the type of RebalanceStep changes.
                     (len(current_batch) > 0 and (type(current_batch[0]) is not type(step)))):
-                    break;
+                    break
 
                 step.setStatus(RebalanceStep.Status.IN_PROGRESS)
                 self.rebalance_schema.updateExecutionStep(step)
@@ -484,7 +484,7 @@ class RebalanceSM:
 
         for step in steps:
             if step.getStatus() != RebalanceStep.Status.APPROVE_REQUIRED:
-                break;
+                break
             # TODO: we'll need to add logic here to get approval from the user in the interactive mode,
             # once we start implementing the interactive mode.
             # In non-interactive mode we assume that the switchover is always approved.
