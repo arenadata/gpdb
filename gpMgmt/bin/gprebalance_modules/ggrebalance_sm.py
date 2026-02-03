@@ -306,6 +306,54 @@ class RebalanceSM:
             step.setStatus(RebalanceStep.Status.PLANNED)
             self.rebalance_schema.updateExecutionStep(step)
 
+    @staticmethod
+    def convert_moves_to_rebalance_steps(moves: List[LogicalMove]) -> List[RebalanceStep]:
+        # In the loop below we create a list of rebalance execution steps from the plan's list of moves.
+        # Mirror's movemenet is simply translated into single step.
+        # But primary's movement is translated into 3 steps:
+        #   1st is switchover with the mirror;
+        #   2nd is movement itself;
+        #   3rd is the back switchover.
+        # If there are several consequent primary movements, we assume that they can ve done in parallel,
+        # and, to allow batch processing for them, we re-order their steps to combine together
+        # the respective switchover and movement steps.
+        rebalance_steps = []
+
+        batch_mirror_steps = []
+        batch_primary_steps = [[],[],[]]
+
+        def fill_rebalance_steps():
+            nonlocal rebalance_steps
+            nonlocal batch_mirror_steps
+            nonlocal batch_primary_steps
+            assert not (len(batch_mirror_steps) > 0 and len(batch_primary_steps[0]) > 0)
+            if len(batch_mirror_steps) > 0:
+                rebalance_steps = rebalance_steps + batch_mirror_steps
+            if len(batch_primary_steps[0]) > 0:
+                flattened_batch_primary_steps = [step for sublist in batch_primary_steps for step in sublist]
+                rebalance_steps = rebalance_steps + flattened_batch_primary_steps
+            # clear the batches
+            batch_mirror_steps = []
+            batch_primary_steps = [[],[],[]]
+
+        prev_move = None
+        for move in moves:
+            # if the move type switched, fill rebalance_steps with the content of
+            # previously gathered batches
+            if prev_move != None and prev_move.seg.getSegmentRole() != move.seg.getSegmentRole():
+                fill_rebalance_steps()
+            prev_move = move
+            # add steps to the current batch
+            if move.seg.isSegmentMirror():
+                batch_mirror_steps.append(RebalanceStepMoveMirror(move))
+            else:
+                batch_primary_steps[0].append(RebalanceStepSwitchoverToMirror(move))
+                batch_primary_steps[1].append(RebalanceStepMoveMirror(move))
+                batch_primary_steps[2].append(RebalanceStepSwitchoverToPrimary(move))
+        fill_rebalance_steps() # fill what's left
+
+        return rebalance_steps
+
     # state callbacks start here
 
     @wrap_state_func_with_faults
@@ -337,48 +385,7 @@ class RebalanceSM:
         if not self.rebalance_plan.getMoves():
             raise Exception('Rebalance executor was launched with a plan without segment movements')
 
-        # In the loop below we create a list of rebalance execution steps from the plan's list of moves.
-        # Mirror's movemenet is simply translated into single step.
-        # But primary's movement is translated into 3 steps:
-        #   1st is switchover with the mirror;
-        #   2nd is movement itself;
-        #   3rd is the back switchover.
-        # If there are several consequent primary movements, we assume that they can ve done in parallel,
-        # and, to allow batch processing for them, we re-order their steps to combine together
-        # the respective switchover and movement steps.
-        rebalance_steps = []
-        for move in self.rebalance_plan.getMoves():
-            if move.seg.isSegmentMirror():
-                rebalance_steps.append(RebalanceStepMoveMirror(move))
-            else:
-                step_switch_to_mirror = RebalanceStepSwitchoverToMirror(move)
-                step_move = RebalanceStepMoveMirror(move)
-                step_switch_to_primary = RebalanceStepSwitchoverToPrimary(move)
-
-                if (len(rebalance_steps) > 0 and
-                    isinstance(rebalance_steps[-1], RebalanceStepSwitchoverToPrimary)):
-                    # If current last element of the list is related to primary movement,
-                    # try to combine the steps with the same steps of preceding primary movement,
-                    # so they can be executed together is parallel.
-                    condition = lambda x: isinstance(x, RebalanceStepSwitchoverToMirror)
-                    last_idx_switch_to_mirror = \
-                        len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
-                    rebalance_steps.insert(last_idx_switch_to_mirror, step_switch_to_mirror)
-
-                    condition = lambda x: isinstance(x, RebalanceStepMoveMirror)
-                    last_idx_move = \
-                        len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
-                    rebalance_steps.insert(last_idx_move, step_move)
-
-                    condition = lambda x: isinstance(x, RebalanceStepSwitchoverToPrimary)
-                    last_idx_switch_to_primary = \
-                        len(rebalance_steps) - next(i for i, x in enumerate(reversed(rebalance_steps)) if condition(x))
-                    rebalance_steps.insert(last_idx_switch_to_primary, step_switch_to_primary)
-                else:
-                    # simply add to the end of the list
-                    rebalance_steps.append(step_switch_to_mirror)
-                    rebalance_steps.append(step_move)
-                    rebalance_steps.append(step_switch_to_primary)
+        rebalance_steps = self.convert_moves_to_rebalance_steps(self.rebalance_plan.getMoves())
 
         self.logger.info('Saving following rebalance execution steps:')
 
