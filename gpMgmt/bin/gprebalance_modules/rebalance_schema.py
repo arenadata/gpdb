@@ -160,18 +160,18 @@ class RebalanceSchema:
         for step in steps:
             dbconn.execSQL(self.conn,
                        f'''INSERT INTO {self.schema_name}.{self.segment_move_steps}
-                       VALUES ({step.getMoveOrder()}, '{str(step.getStatus())}', '\\x{step.serializeStep().hex()}')''')
+                       VALUES ({step.getMoveOrder()}, '{step.getStatus().name}', '\\x{step.serializeStep().hex()}')''')
 
         dbconn.execSQL(self.conn, 'COMMIT')
 
     def updateExecutionStep(self, step: RebalanceStep) -> None:
         dbconn.execSQL(self.conn,
                        f'''UPDATE {self.schema_name}.{self.segment_move_steps}
-                       SET status='{str(step.getStatus())}', step='\\x{step.serializeStep().hex()}' WHERE move_order = {step.getMoveOrder()}''')
+                       SET status='{step.getStatus().name}', step='\\x{step.serializeStep().hex()}' WHERE move_order = {step.getMoveOrder()}''')
 
     def allExecutionStepsAreDone(self) -> bool:
         row = dbconn.queryRow(self.conn,
-                              f"SELECT count(1) FROM {self.schema_name}.{self.segment_move_steps} WHERE status <> '{str(RebalanceStep.Status.DONE)}'")
+                              f"SELECT count(1) FROM {self.schema_name}.{self.segment_move_steps} WHERE status <> '{RebalanceStep.Status.DONE.name}'")
         not_done_count = int(row[0])
         return not_done_count == 0
 
@@ -180,7 +180,7 @@ class RebalanceSchema:
 
         filter = ""
         if len(status_filter) > 0:
-            status_list = ', '.join("'" +  str(status)+ "'" for status in status_filter)
+            status_list = ', '.join("'" +  status.name + "'" for status in status_filter)
             filter = f" WHERE status IN ({status_list})"
 
         cursor = dbconn.query(self.conn,
