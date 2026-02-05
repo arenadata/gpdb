@@ -12,7 +12,7 @@ shrink.py planner.py \
 rebalance_commons.py \
 rebalance_schema.py \
 solver.py ggrebalance_sm.py \
-ggrebalance_main_sm.py
+ggrebalance_main_sm.py rebalance_step.py
 
 installdirs:
 	$(MKDIR_P) '$(DESTDIR)$(bindir)/gprebalance_modules'
