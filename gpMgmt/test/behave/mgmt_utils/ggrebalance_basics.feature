@@ -78,3 +78,29 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Reset numsegments to default is done." to logfile with latest timestamp
          And ggrebalance should print "Cleanup is complete" to logfile with latest timestamp
+
+    Scenario: test TBD-1. rebalance - check log directory option. TBD - move to 'options' test suite
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3"
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -l "/tmp/ggrebalance_logs" -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 0
+         And gpAdminLogs directory has no "ggrebalance*" files
+         And gpAdminLogs directory has no "gpmovemirrors*" files
+         And gpAdminLogs directory has no "gprecoverseg*" files
+         And "/tmp/ggrebalance_logs" directory has "ggrebalance*" files
+         And "/tmp/ggrebalance_logs" directory has "gpmovemirrors*" files
+         And "/tmp/ggrebalance_logs" directory has "gprecoverseg*" files
+         And all files in "/tmp/ggrebalance_logs" directory are deleted
+        When the user runs "ggrebalance -c"
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -l "/tmp/ggrebalance logs" -x 6 --add-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 0
+         And gpAdminLogs directory has no "ggrebalance*" files
+         And gpAdminLogs directory has no "gpmovemirrors*" files
+         And gpAdminLogs directory has no "gprecoverseg*" files
+         And "/tmp/ggrebalance logs" directory has "ggrebalance*" files
+         And "/tmp/ggrebalance logs" directory has "gpmovemirrors*" files
+         And "/tmp/ggrebalance logs" directory has "gprecoverseg*" files
+         And all files in "/tmp/ggrebalance logs" directory are deleted

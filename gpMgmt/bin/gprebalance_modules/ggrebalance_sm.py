@@ -147,7 +147,8 @@ class RebalanceSM:
             if batch_size > MAX_COORDINATOR_NUM_WORKERS:
                 batch_size = MAX_COORDINATOR_NUM_WORKERS
             gpmovemirrors_options += f' -B {batch_size}'
-
+            if self.options.logfile_directory != None:
+                gpmovemirrors_options = gpmovemirrors_options + f' -l "{str(self.options.logfile_directory)}"'
         try:
             self.cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
             self.cmd.run(validateAfter=True)
@@ -249,7 +250,8 @@ class RebalanceSM:
                 if batch_size > MAX_COORDINATOR_NUM_WORKERS:
                     batch_size = MAX_COORDINATOR_NUM_WORKERS
                 recoverseg_options += f' -B {batch_size}'
-
+                if self.options.logfile_directory != None:
+                    recoverseg_options = recoverseg_options + f' -l "{str(self.options.logfile_directory)}"'
             try:
                 self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)
                 self.cmd.run(validateAfter=True)
