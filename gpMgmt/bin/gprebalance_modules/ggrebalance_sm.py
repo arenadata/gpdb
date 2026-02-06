@@ -250,6 +250,8 @@ class RebalanceSM:
                 if batch_size > MAX_COORDINATOR_NUM_WORKERS:
                     batch_size = MAX_COORDINATOR_NUM_WORKERS
                 recoverseg_options += f' -B {batch_size}'
+                if self.options.replay_lag != None:
+                    recoverseg_options = recoverseg_options + f' --replay-lag {self.options.replay_lag}'
                 if self.options.logfile_directory != None:
                     recoverseg_options = recoverseg_options + f' -l "{str(self.options.logfile_directory)}"'
             try:

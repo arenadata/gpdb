@@ -88,6 +88,8 @@ def parseargs():
     parser.add_option('-a', '--analyze', dest="analyze", action='store_true', default=False,
                       help='Run ANALYZE after rebalance tables redistribution.' +
                            'Ignored if no shrink or expand had been performed.')
+    parser.add_option('--replay-lag', dest="replay_lag", type="float",
+                      help='Replay lag(in GBs) allowed on mirror when rebalancing the segments.')
     parser.add_option('-v', '--verbose', action='store_true', default=False,
                       help='debug output.')
 
@@ -146,7 +148,7 @@ def validate_options(options, args, parser):
             'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
             'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
             'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
-            'skip_resource_estimation', 'analyze'
+            'skip_resource_estimation', 'analyze', 'replay_lag'
         ]),
 
         ('rollback_required', [

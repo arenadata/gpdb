@@ -27,6 +27,7 @@ Feature: ggrebalance behave tests
           | -c --skip-rebalance                                         | Can't use together options '--clean-required' and '--skip-rebalance'    | stub     |
           | -c --show-plan                                              | Can't use together options '--clean-required' and '--show-plan'         | stub     |
           | -c --analyze                                                | Can't use together options '--clean-required' and '--analyze'           | stub     |
+          | -c --replay-lag 1                                           | Can't use together options '--clean-required' and '--replay-lag'        | stub     |
           | -c --skip-resource-estimation                               | Can't use together options '--clean-required' and '--skip-resource-estimation' |  the database is not running |
 
     Scenario: test 2. ggrebalance simple scenarios
@@ -132,3 +133,13 @@ Feature: ggrebalance behave tests
         Then validate that following rows are in the stored rows
           |  analyzed_tables_cnt  |
           |  2                    |
+
+    Scenario: test TBD-3. Check that '--replay-lag' option takes effect.
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1, sdw2, sdw3"
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance --replay-lag 0 -x 6 --remove-hosts sdw3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 1
+         And gprecoverseg should print "0 bytes of wal is still to be replayed on mirror with dbid.*, let mirror catchup on replay then trigger rebalance" regex to logfile
+         And all files in gpAdminLogs directory are deleted
