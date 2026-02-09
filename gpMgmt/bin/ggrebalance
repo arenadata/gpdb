@@ -90,7 +90,7 @@ def parseargs():
                       help='Run ANALYZE after rebalance tables redistribution.' +
                            'Ignored if no shrink or expand had been performed.')
     parser.add_option('--hba-hostnames', dest="hba_hostnames", action='store_true', default=False,
-                      help='TBD')
+                      help='Use host names when updating the pg_hba.conf file.')
     parser.add_option('--replay-lag', dest="replay_lag", type="float",
                       help='Replay lag(in GBs) allowed on mirror when rebalancing the segments.')
     parser.add_option('-v', '--verbose', action='store_true', default=False,
