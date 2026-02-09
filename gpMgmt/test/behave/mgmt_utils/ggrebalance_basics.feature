@@ -28,6 +28,7 @@ Feature: ggrebalance behave tests
           | -c --show-plan                                              | Can't use together options '--clean-required' and '--show-plan'         | stub     |
           | -c --analyze                                                | Can't use together options '--clean-required' and '--analyze'           | stub     |
           | -c --replay-lag 1                                           | Can't use together options '--clean-required' and '--replay-lag'        | stub     |
+          | -c --hba-hostnames                                          | Can't use together options '--clean-required' and '--hba-hostnames'     | stub     |
           | -c --skip-resource-estimation                               | Can't use together options '--clean-required' and '--skip-resource-estimation' |  the database is not running |
 
     Scenario: test 2. ggrebalance simple scenarios
@@ -143,3 +144,23 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 1
          And gprecoverseg should print "0 bytes of wal is still to be replayed on mirror with dbid.*, let mirror catchup on replay then trigger rebalance" regex to logfile
          And all files in gpAdminLogs directory are deleted
+
+    Scenario: test TBD-4-1. Check '--hba-hostnames' option.
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance --hba-hostnames -x 2 --add-hosts sdw2 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
+         And pg_hba file "/data/gpdata/ggrebalance/data/primary/gpseg0/pg_hba.conf" on host "sdw1" contains entries for "sdw2"
+
+    Scenario: test TBD-4-2. Check absence of '--hba-hostnames' option.
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And all files in gpAdminLogs directory are deleted
+        When the user runs "ggrebalance -x 2 --add-hosts sdw2 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
+         And pg_hba file "/data/gpdata/ggrebalance/data/primary/gpseg0/pg_hba.conf" on host "sdw1" contains only cidr addresses

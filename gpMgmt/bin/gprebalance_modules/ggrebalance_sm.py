@@ -147,6 +147,8 @@ class RebalanceSM:
             if batch_size > MAX_COORDINATOR_NUM_WORKERS:
                 batch_size = MAX_COORDINATOR_NUM_WORKERS
             gpmovemirrors_options += f' -B {batch_size}'
+            if self.options.hba_hostnames:
+                gpmovemirrors_options = gpmovemirrors_options + ' --hba-hostnames'
             if self.options.logfile_directory != None:
                 gpmovemirrors_options = gpmovemirrors_options + f' -l "{str(self.options.logfile_directory)}"'
         try:
