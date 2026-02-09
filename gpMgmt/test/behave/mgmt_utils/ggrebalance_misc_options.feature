@@ -448,7 +448,7 @@ Feature: ggrebalance behave tests (misc options scenarios)
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
          And pg_hba file "/data/gpdata/ggrebalance/data/primary/gpseg0/pg_hba.conf" on host "sdw1" contains entries for "sdw2"
 
-    Scenario: test 18-2. Check absence of '--hba-hostnames' option.
+    Scenario: test 18-2. Check without '--hba-hostnames' option.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And a cluster is created with mirrors on "cdw" and "sdw1"
