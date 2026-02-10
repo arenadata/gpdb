@@ -149,7 +149,7 @@ class RebalanceSM:
             gpmovemirrors_options += f' -B {batch_size}'
             if self.options.hba_hostnames:
                 gpmovemirrors_options = gpmovemirrors_options + ' --hba-hostnames'
-            if self.options.logfile_directory != None:
+            if self.options.logfile_directory is not None:
                 gpmovemirrors_options = gpmovemirrors_options + f' -l "{str(self.options.logfile_directory)}"'
         try:
             self.cmd = GpMoveMirrors("Running gpmovemirrors", options=gpmovemirrors_options)
@@ -252,9 +252,9 @@ class RebalanceSM:
                 if batch_size > MAX_COORDINATOR_NUM_WORKERS:
                     batch_size = MAX_COORDINATOR_NUM_WORKERS
                 recoverseg_options += f' -B {batch_size}'
-                if self.options.replay_lag != None:
+                if self.options.replay_lag is not None:
                     recoverseg_options = recoverseg_options + f' --replay-lag {self.options.replay_lag}'
-                if self.options.logfile_directory != None:
+                if self.options.logfile_directory is not None:
                     recoverseg_options = recoverseg_options + f' -l "{str(self.options.logfile_directory)}"'
             try:
                 self.cmd = GpRecoverSeg("Running gprecoverseg", options=recoverseg_options)

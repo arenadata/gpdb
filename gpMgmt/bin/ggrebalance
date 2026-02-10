@@ -282,7 +282,7 @@ def check_down_segments(logger: Any, options: Any, dburl: dbconn.DbURL):
     if cnt_mirrors_down != 0:
         logger.info("Some mirrors are down, trying to recover them, it may take some time...")
         recoverseg_options = "-a -F"
-        if options.logfile_directory != None:
+        if options.logfile_directory is not None:
             recoverseg_options = recoverseg_options + f' -l "{str(options.logfile_directory)}"'
         global cmd_recoverseg
         try:
