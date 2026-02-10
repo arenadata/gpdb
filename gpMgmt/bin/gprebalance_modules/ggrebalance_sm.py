@@ -20,7 +20,8 @@ class RebalanceSM:
 
     states_not_logged = [
         'STATE_REBALANCE_INIT',
-        'STATE_CHECK_PREVIOUS_RUN'
+        'STATE_CHECK_PREVIOUS_RUN',
+        'STATE_ERROR'
     ]
 
     states_main_rebalance_flow = [
@@ -85,6 +86,11 @@ class RebalanceSM:
             'trigger': 'move_to_STATE_REBALANCE_DONE',
             'source': 'STATE_REBALANCE_EXECUTION_DONE',
             'dest': 'STATE_REBALANCE_DONE'
+        },
+        {
+            'trigger': 'move_to_STATE_ERROR',
+            'source': '*',
+            'dest': 'STATE_ERROR'
         }
     ]
 
@@ -506,5 +512,9 @@ class RebalanceSM:
     @wrap_state_func_with_faults
     def on_enter_STATE_REBALANCE_DONE(self) -> None:
         pass
+
+    @wrap_state_func_with_faults
+    def on_enter_STATE_ERROR(self) -> None:
+        raise Exception('Rebalance execution SM entered STATE_ERROR')
 
     # state callbacks end here
