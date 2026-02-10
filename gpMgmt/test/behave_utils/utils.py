@@ -430,11 +430,14 @@ def create_external_partition(context, tablename, dbname, port, filename):
 
 
 def create_partition(context, tablename, storage_type, dbname, compression_type=None, partition=True, rowcount=1094,
-                     with_data=True, with_desc=False, host=None, port=0, user=None):
+                     with_data=True, with_desc=False, host=None, port=0, user=None, unlogged=False):
     interval = '1 year'
 
     table_definition = 'Column1 int, Column2 varchar(20), Column3 date'
-    create_table_str = "Create table " + tablename + "(" + table_definition + ")"
+    create_table_str = "Create table "
+    if unlogged:
+        create_table_str = "Create unlogged table "
+    create_table_str = create_table_str + tablename + "(" + table_definition + ")"
     storage_type_dict = {'ao': 'row', 'co': 'column'}
 
     part_table = " Distributed Randomly Partition by list(Column2) \
@@ -732,11 +735,11 @@ def validate_local_path(path):
 
 
 def populate_regular_table_data(context, tabletype, table_name, dbname, compression_type=None, rowcount=1094,
-                                with_data=False, with_desc=False, host=None, port=0, user=None):
+                                with_data=False, with_desc=False, host=None, port=0, user=None, unlogged=False):
     create_database_if_not_exists(context, dbname, host=host, port=port, user=user)
     drop_table_if_exists(context, table_name=table_name, dbname=dbname, host=host, port=port, user=user)
     create_partition(context, table_name, tabletype, dbname, compression_type=compression_type, partition=False,
-                     rowcount=rowcount, with_data=with_data, with_desc=with_desc, host=host, port=port, user=user)
+                     rowcount=rowcount, with_data=with_data, with_desc=with_desc, host=host, port=port, user=user, unlogged=unlogged)
 
 
 def is_process_running(proc_name, host=None):

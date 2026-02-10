@@ -644,6 +644,7 @@ class GGShrink:
                                       JOIN pg_namespace n ON c.relnamespace = n.oid
                                       JOIN gp_distribution_policy p ON c.oid = p.localoid
                                       WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
+                                      c.relpersistence != 't' AND
                                       p.numsegments {cmp} {self.shrink_plan.getTargetSegmentCount()} AND
                                       n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema.getSchemaName()}')''')
                 for schema_name, rel_name in cursor:

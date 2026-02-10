@@ -512,3 +512,36 @@ Feature: ggrebalance behave tests
         | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_SHRINKED_TABLES_DONE_end                 |
         | fault_rebalance_table_test_db_2.test_schema_2.test_table_1 | on_enter_STATE_SHRINK_ROLLBACK_DROP_SCHEMA_START_begin                  |
 
+    Scenario: test 4. shrink - check different table types
+        Given the database is not running
+         And a working directory of the test as '/data/gpdata/ggrebalance'
+         And a cluster is created with mirrors on "cdw" and "sdw1"
+         And segment information for content 1 is saved in context
+         And all files in gpAdminLogs directory are deleted
+         And database "test_db_1" exists
+         And schema "test_schema_1" exists in "test_db_1"
+         And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a long-run session starts
+         And sql "CREATE TEMP TABLE temp_table(a int)" is executed in a long-run session
+         And set fault inject "on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end"
+        When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1 --skip-rebalance"
+        Then ggrebalance should return a return code of 1
+         And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
+         And unset fault inject
+         And a long-run session ends
+        When execute following sql in db "postgres" and store result in the context
+            """
+            select count(1) as temp_tables_for_redistribute from ggrebalance.table_rebalance_status_detail where schema_name LIKE 'pg\_temp\_%';
+            """
+        Then validate that following rows are in the stored rows
+          |  temp_tables_for_redistribute  |
+          |  0                             |
+        When the user runs "ggrebalance --parallel 1 --batch-size 1"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
+         And verify no segment running for saved segment information
+         And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100

@@ -1490,6 +1490,27 @@ def stop_segments_immediate(context, where_clause):
 def impl(context):
     wait_for_unblocked_transactions(context, 600)
 
+@given('a long-run session starts')
+@when('a long-run session starts')
+@then('a long-run session starts')
+def impl(context):
+    dbname = 'gptest'
+    context.long_run_conn = dbconn.connect(dbconn.DbURL(dbname=dbname), unsetSearchPath=False)
+
+@given('a long-run session ends')
+@when('a long-run session ends')
+@then('a long-run session ends')
+def impl(context):
+    if context.long_run_conn != None:
+        context.long_run_conn.close()
+    context.long_run_conn = None
+
+@given('sql "{sql}" is executed in a long-run session')
+@when('sql "{sql}" is executed in a long-run session')
+@then('sql "{sql}" is executed in a long-run session')
+def impl(context, sql):
+    dbconn.execSQL(context.long_run_conn, sql)
+
 @given('below sql is executed in "{dbname}" db')
 @when('below sql is executed in "{dbname}" db')
 def impl(context, dbname):
@@ -2338,6 +2359,11 @@ def impl(context):
 def impl(context, tabletype, tablename, dbname, numrows):
     populate_regular_table_data(context, tabletype, tablename, dbname, compression_type=None, with_data=True, rowcount=int(numrows))
 
+@given('there is an unlogged "{tabletype}" table "{tablename}" in "{dbname}" with "{numrows}" rows')
+@then('there is an unlogged "{tabletype}" table "{tablename}" in "{dbname}" with "{numrows}" rows')
+@when('there is an unlogged "{tabletype}" table "{tablename}" in "{dbname}" with "{numrows}" rows')
+def impl(context, tabletype, tablename, dbname, numrows):
+    populate_regular_table_data(context, tabletype, tablename, dbname, compression_type=None, with_data=True, rowcount=int(numrows), unlogged=True)
 
 @given('there is a "{tabletype}" table "{tablename}" in "{dbname}" with data')
 @then('there is a "{tabletype}" table "{tablename}" in "{dbname}" with data')
