@@ -383,9 +383,6 @@ Feature: ggrebalance behave tests (misc options scenarios)
         Then validate that following rows are in the stored rows
           |  not_analyzed_tables_cnt  |
           |  2                        |
-        When the user runs "ggrebalance -x 3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
-        Then ggrebalance should return a return code of 0
-         And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
         When execute following sql in db "test_db_1" and store result in the context
             """
             SELECT COUNT(1) AS analyzed_tables_cnt FROM pg_stat_all_tables WHERE last_analyze IS NOT NULL AND relname IN ('test_table_1', 'test_table_2');
@@ -393,6 +390,9 @@ Feature: ggrebalance behave tests (misc options scenarios)
         Then validate that following rows are in the stored rows
           |  analyzed_tables_cnt  |
           |  0                    |
+        When the user runs "ggrebalance -x 3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
+        Then ggrebalance should return a return code of 0
+         And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
         When execute following sql in db "test_db_1" and store result in the context
             """
             SELECT COUNT(1) AS not_analyzed_tables_cnt FROM pg_stat_all_tables WHERE last_analyze IS NULL AND relname IN ('test_table_1', 'test_table_2');
@@ -400,6 +400,13 @@ Feature: ggrebalance behave tests (misc options scenarios)
         Then validate that following rows are in the stored rows
           |  not_analyzed_tables_cnt  |
           |  2                        |
+        When execute following sql in db "test_db_1" and store result in the context
+            """
+            SELECT COUNT(1) AS analyzed_tables_cnt FROM pg_stat_all_tables WHERE last_analyze IS NOT NULL AND relname IN ('test_table_1', 'test_table_2');
+            """
+        Then validate that following rows are in the stored rows
+          |  analyzed_tables_cnt  |
+          |  0                    |
 
     Scenario: test 16.2. Check with '--analyze' option.
         Given the database is not running
@@ -417,9 +424,23 @@ Feature: ggrebalance behave tests (misc options scenarios)
         Then validate that following rows are in the stored rows
           |  not_analyzed_tables_cnt  |
           |  2                        |
+        When execute following sql in db "test_db_1" and store result in the context
+            """
+            SELECT COUNT(1) AS analyzed_tables_cnt FROM pg_stat_all_tables WHERE last_analyze IS NOT NULL AND relname IN ('test_table_1', 'test_table_2');
+            """
+        Then validate that following rows are in the stored rows
+          |  analyzed_tables_cnt  |
+          |  0                    |
         When the user runs "ggrebalance --analyze -x 3 -d '/home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast, /home/gpadmin/gpdb_src/gpAux/gpdemo/datadirs/dbfast_mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
+        When execute following sql in db "test_db_1" and store result in the context
+            """
+            SELECT COUNT(1) AS not_analyzed_tables_cnt FROM pg_stat_all_tables WHERE last_analyze IS NULL AND relname IN ('test_table_1', 'test_table_2');
+            """
+        Then validate that following rows are in the stored rows
+          |  not_analyzed_tables_cnt  |
+          |  0                        |
         When execute following sql in db "test_db_1" and store result in the context
             """
             SELECT COUNT(1) AS analyzed_tables_cnt FROM pg_stat_all_tables WHERE last_analyze IS NOT NULL AND relname IN ('test_table_1', 'test_table_2');
