@@ -643,15 +643,18 @@ class GGShrink:
             dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
             with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
                 cursor = dbconn.query(conn,
-                                      f'''SELECT n.nspname, c.relname, c.relkind
+                                      f'''SELECT n.nspname, c.relname, c.relkind, pe.writable is not null as external_writable
                                       FROM pg_class c
                                       JOIN pg_namespace n ON c.relnamespace = n.oid
                                       JOIN gp_distribution_policy p ON c.oid = p.localoid
-                                      WHERE c.relkind IN ('r', 'p', 'm') AND c.relispartition = FALSE AND
+                                      LEFT JOIN pg_exttable pe on (c.oid=pe.reloid and pe.writable)
+                                      WHERE c.relkind IN ('r', 'p', 'm', 'f') AND c.relispartition = FALSE AND
                                       c.relpersistence != 't' AND
                                       p.numsegments {cmp} {self.shrink_plan.getTargetSegmentCount()} AND
                                       n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema.getSchemaName()}')''')
-                for schema_name, rel_name, rel_kind in cursor:
+                for schema_name, rel_name, rel_kind, external_writable in cursor:
+                    if rel_kind == 'f' and not external_writable:
+                        continue
                     self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name, rel_kind, status)
 
         dbconn.execSQL(self.conn, 'COMMIT')
