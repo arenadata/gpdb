@@ -523,6 +523,7 @@ Feature: ggrebalance behave tests
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
          And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
          And a long-run session starts
          And sql "CREATE TEMP TABLE temp_table(a int)" is executed in a long-run session
          And set fault inject "on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_end"
@@ -545,3 +546,4 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100

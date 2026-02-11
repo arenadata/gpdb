@@ -587,12 +587,14 @@ class GGShrink:
                      db_name: str,
                      schema_name: str,
                      rel_name: str,
+                     rel_kind: str,
                      target_segment_count: int,
                      table_status_after_rebalance: str) -> None:
             self.shrink = shrink
             self.db_name = db_name
             self.schema_name = schema_name
             self.rel_name = rel_name
+            self.rel_kind = rel_kind
             self.target_segment_count = target_segment_count
             self.table_status_after_rebalance = table_status_after_rebalance
             SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
@@ -613,6 +615,8 @@ class GGShrink:
                 dbconn.execSQL(conn,
                                f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
                                REBALANCE {self.target_segment_count}''')
+                if self.rel_kind == 'm':
+                    dbconn.execSQL(conn, f'REFRESH MATERIALIZED VIEW "{self.schema_name}"."{self.rel_name}"')
                 self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
                 dbconn.execSQL(conn, 'COMMIT')
             self.shrink.logger.info(f'Complete table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
@@ -639,16 +643,16 @@ class GGShrink:
             dburl = dbconn.DbURL(dbname=db, port=self.gpEnv.getCoordinatorPort())
             with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
                 cursor = dbconn.query(conn,
-                                      f'''SELECT n.nspname, c.relname
+                                      f'''SELECT n.nspname, c.relname, c.relkind
                                       FROM pg_class c
                                       JOIN pg_namespace n ON c.relnamespace = n.oid
                                       JOIN gp_distribution_policy p ON c.oid = p.localoid
-                                      WHERE c.relkind IN ('r', 'p') AND c.relispartition = FALSE AND
+                                      WHERE c.relkind IN ('r', 'p', 'm') AND c.relispartition = FALSE AND
                                       c.relpersistence != 't' AND
                                       p.numsegments {cmp} {self.shrink_plan.getTargetSegmentCount()} AND
                                       n.nspname NOT IN ('pg_catalog', 'information_schema', '{self.rebalance_schema.getSchemaName()}')''')
-                for schema_name, rel_name in cursor:
-                    self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name, status)
+                for schema_name, rel_name, rel_kind in cursor:
+                    self.rebalance_schema.addTableToRebalance(db, schema_name, rel_name, rel_kind, status)
 
         dbconn.execSQL(self.conn, 'COMMIT')
 
@@ -660,11 +664,12 @@ class GGShrink:
         if cursor.rowcount > 0:
             self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
 
-            for db_name, schema_name, rel_name in cursor:
+            for db_name, schema_name, rel_name, rel_kind in cursor:
                 task = self.TableRebalanceTask(self,
                                                db_name,
                                                schema_name,
                                                rel_name,
+                                               rel_kind,
                                                target_segment_count,
                                                target_status)
                 self.workers_for_tables_rebalance.addCommand(task)

@@ -38,7 +38,7 @@ class RebalanceSchema:
                        DISTRIBUTED REPLICATED''')
         dbconn.execSQL(self.conn,
                        f'''CREATE TABLE {self.schema_name}.{self.table_rebalance_status_detail}
-                       (db_name TEXT, schema_name TEXT, rel_name TEXT, status TEXT,
+                       (db_name TEXT, schema_name TEXT, rel_name TEXT, rel_kind CHAR, status TEXT,
                        CONSTRAINT unique_fqn UNIQUE (db_name, schema_name, rel_name))
                        DISTRIBUTED REPLICATED''')
         dbconn.execSQL(self.conn,
@@ -133,10 +133,10 @@ class RebalanceSchema:
                        f'''DELETE FROM {self.schema_name}.{self.table_rebalance_status_detail}
                        WHERE (status = '{status}')''')
 
-    def addTableToRebalance(self, db: str, schema_name: str, rel_name: str, status: str) -> None:
+    def addTableToRebalance(self, db: str, schema_name: str, rel_name: str, rel_kind: str, status: str) -> None:
         dbconn.execSQL(self.conn,
                        f'''INSERT INTO {self.schema_name}.{self.table_rebalance_status_detail}
-                       VALUES ('{db}', '{schema_name}', '{rel_name}', '{status}')''')
+                       VALUES ('{db}', '{schema_name}', '{rel_name}', '{rel_kind}', '{status}')''')
 
     def setStatusForTableToRebalance(self, db: str, schema_name: str, rel_name: str, status: str) -> None:
         dbconn.execSQL(self.conn,
@@ -144,7 +144,7 @@ class RebalanceSchema:
                        WHERE db_name = '{db}' AND schema_name = '{schema_name}' AND rel_name = '{rel_name}';''')
 
     def getTablesToRebalanceWithStatus(self, status: str) -> cursor:
-        return dbconn.query(self.conn, f"""SELECT db_name, schema_name, rel_name FROM
+        return dbconn.query(self.conn, f"""SELECT db_name, schema_name, rel_name, rel_kind FROM
                             {self.schema_name}.{self.table_rebalance_status_detail} WHERE status = '{status}'""")
 
     def saveExecutionSteps(self, steps: List[RebalanceStep]) -> None:
