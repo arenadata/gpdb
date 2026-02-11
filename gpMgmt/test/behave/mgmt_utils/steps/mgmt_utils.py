@@ -2384,6 +2384,12 @@ def impl(context, tabletype, tablename, dbname):
 def impl(context, tabletype, table_name, dbname):
     create_partition(context, tablename=table_name, storage_type=tabletype, dbname=dbname, with_data=True)
 
+@given('there is a "{tabletype}" partition table "{table_name}" in "{dbname}" with "{numrows}" rows')
+@then('there is a "{tabletype}" partition table "{table_name}" in "{dbname}" with "{numrows}" rows')
+@when('there is a "{tabletype}" partition table "{table_name}" in "{dbname}" with "{numrows}" rows')
+def impl(context, tabletype, table_name, dbname, numrows):
+    create_partition(context, tablename=table_name, storage_type=tabletype, dbname=dbname, with_data=True, rowcount=int(numrows))
+
 @given('there is a view without columns in "{dbname}"')
 @then('there is a view without columns in "{dbname}"')
 @when('there is a view without columns in "{dbname}"')

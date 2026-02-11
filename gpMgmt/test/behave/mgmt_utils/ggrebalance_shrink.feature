@@ -522,6 +522,8 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
          And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
          And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
          And a long-run session starts
@@ -545,5 +547,7 @@ Feature: ggrebalance behave tests
          And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
