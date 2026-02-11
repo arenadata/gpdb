@@ -515,6 +515,6 @@ class RebalanceSM:
 
     @wrap_state_func_with_faults
     def on_enter_STATE_ERROR(self) -> None:
-        raise Exception('Rebalance execution SM entered STATE_ERROR')
+        raise Exception('Rebalance execution entered STATE_ERROR')
 
     # state callbacks end here
