@@ -12,6 +12,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -29,6 +35,11 @@ Feature: ggrebalance behave tests
          And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         Then the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -45,6 +56,14 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         #And a long-run session starts
+         #And sql "CREATE TEMP TABLE temp_table(a int)" is executed in a long-run session
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -53,6 +72,14 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
          And unset fault inject
+         #And a long-run session ends
+        When execute following sql in db "postgres" and store result in the context
+            """
+            select count(1) as temp_tables_for_redistribute from ggrebalance.table_rebalance_status_detail where schema_name LIKE 'pg\_temp\_%';
+            """
+        Then validate that following rows are in the stored rows
+          |  temp_tables_for_redistribute  |
+          |  0                             |
         When the user runs "ggrebalance -x 1 --parallel 1 --batch-size 1 --skip-rebalance"
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "Can't start a new operation, because the previous one was interrupted" to logfile with latest timestamp
@@ -65,6 +92,11 @@ Feature: ggrebalance behave tests
          And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         Then the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -106,6 +138,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -123,6 +161,12 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
          And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         Then the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 1, row count = 1094
          And ggrebalance should return a return code of 0
@@ -142,6 +186,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -157,6 +207,11 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 0
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         Then the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -172,6 +227,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -185,6 +246,11 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Rollback is complete" to logfile with latest timestamp
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         Then the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -221,6 +287,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -238,6 +310,11 @@ Feature: ggrebalance behave tests
          And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         Then the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -261,6 +338,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -279,6 +362,11 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Rollback is complete" to logfile with latest timestamp
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         Then the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 2, row count = 200
@@ -314,6 +402,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -333,6 +427,11 @@ Feature: ggrebalance behave tests
          And verify no segment running for saved segment information
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
+         Then the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -353,6 +452,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -371,6 +476,11 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Rollback is complete" to logfile with latest timestamp
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         Then the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -414,6 +524,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -432,6 +548,11 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Rebalance schema doesn't exists and no shrink plan is supplied. Please specify shrink plan." to logfile with latest timestamp
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         Then the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -456,6 +577,12 @@ Feature: ggrebalance behave tests
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
          And there is a "ao" table "test_schema_1.test_table_2" in "test_db_1" with "100" rows
+         And there is a "heap" partition table "test_schema_1.part_test_table_1" in "test_db_1" with "100" rows
+         And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
+         And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
+         And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
+         And database "gptest" exists
+         And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
          And schema "test_schema_2" exists in "test_db_2"
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
@@ -478,6 +605,11 @@ Feature: ggrebalance behave tests
          And ggrebalance should print "Rollback is complete" to logfile with latest timestamp
          And distribution information from table "test_schema_1.test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
+         Then the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 2, row count = 200
