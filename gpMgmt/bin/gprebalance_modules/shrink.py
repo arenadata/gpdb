@@ -591,8 +591,7 @@ class GGShrink:
                      rel_name: str,
                      rel_kind: str,
                      target_segment_count: int,
-                     table_status_after_rebalance: str,
-                     mat_view_refresh: bool) -> None:
+                     table_status_after_rebalance: str) -> None:
             self.shrink = shrink
             self.db_name = db_name
             self.schema_name = schema_name
@@ -600,10 +599,7 @@ class GGShrink:
             self.rel_kind = rel_kind
             self.target_segment_count = target_segment_count
             self.table_status_after_rebalance = table_status_after_rebalance
-            self.mat_view_refresh = mat_view_refresh
-            if self.mat_view_refresh:
-                assert rel_kind == 'm'
-            SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
+            super().__init__(f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
 
         # decorator to inject a fault before running TableRebalanceTask for a specific {db_name, schema_name, rel_name}
         def wrap_table_rebalance_with_faults(fun):
@@ -626,7 +622,8 @@ class GGShrink:
                 return False
             return True
 
-        def rebalance_table(self) -> None:
+        @wrap_table_rebalance_with_faults
+        def run(self) -> None:
             self.shrink.logger.info(f'Start table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
             if self.db_exists(self.shrink.rebalance_schema.conn, self.db_name):
                 dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
@@ -651,7 +648,25 @@ class GGShrink:
             self.shrink.logger.info(f'Complete table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
-        def refresh_mat_view(self) -> None:
+    class MatViewRefreshTask(TableRebalanceTask):
+        def __init__(self,
+                     shrink: 'GGShrink',
+                     db_name: str,
+                     schema_name: str,
+                     rel_name: str,
+                     target_segment_count: int,
+                     table_status_after_rebalance: str) -> None:
+            super().__init__(shrink, db_name, schema_name, rel_name, 'm', target_segment_count, table_status_after_rebalance)
+
+        # decorator to inject a fault before running MatViewRefreshTask for a specific {db_name, schema_name, rel_name}
+        def wrap_refresh_matview_with_faults(fun):
+            def func_with_faults(self):
+                inject_fault(f'fault_refresh_matview_{self.db_name}.{self.schema_name}.{self.rel_name}')
+                fun(self)
+            return func_with_faults
+
+        @wrap_refresh_matview_with_faults
+        def run(self) -> None:
             self.shrink.logger.info(f'Start matview refresh for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
             if self.db_exists(self.shrink.rebalance_schema.conn, self.db_name):
                 dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
@@ -668,13 +683,6 @@ class GGShrink:
             self.shrink.logger.info(f'Complete matview refresh for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
-        @wrap_table_rebalance_with_faults
-        def run(self) -> None:
-            if not self.mat_view_refresh:
-                self.rebalance_table()
-            else:
-                self.refresh_mat_view()
-
 
     def prepare_shrink_schema(self, is_rollback: bool) -> None:
         status = 'done' if is_rollback else 'none'
@@ -685,7 +693,8 @@ class GGShrink:
         # cleanup list of tables that require rebalance
         # for the case we re-enter this state after we were interrupted right after it
         self.rebalance_schema.clearTablesToRebalanceWithStatus(status)
-        self.rebalance_schema.clearTablesToRebalanceWithStatus('mv_refresh_required')
+        if is_rollback:
+            self.rebalance_schema.clearTablesToRebalanceWithStatus('mv_refresh_required')
 
         cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database')
         databases_to_process = []
@@ -717,7 +726,7 @@ class GGShrink:
     def rebalance_tables(self, original_status: str, target_status: str, target_segment_count: int) -> None:
         cursor = self.rebalance_schema.getTablesToRebalanceWithStatus(original_status)
 
-        self.logger.info(f'Tables to process {cursor.rowcount}')
+        self.logger.info(f'Tables to rebalance: {cursor.rowcount}')
 
         if cursor.rowcount > 0:
             self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
@@ -729,8 +738,7 @@ class GGShrink:
                                                rel_name,
                                                rel_kind,
                                                target_segment_count,
-                                               target_status,
-                                               False)
+                                               target_status)
                 self.workers_for_tables_rebalance.addCommand(task)
 
             print_progress(self.workers_for_tables_rebalance, interval=1)
@@ -746,20 +754,18 @@ class GGShrink:
 
         cursor = self.rebalance_schema.getTablesToRebalanceWithStatus('mv_refresh_required')
 
-        self.logger.info(f'Tables to process {cursor.rowcount}')
+        self.logger.info(f'Materialized views to refresh: {cursor.rowcount}')
 
         if cursor.rowcount > 0:
             self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
 
             for db_name, schema_name, rel_name, rel_kind in cursor:
-                task = self.TableRebalanceTask(self,
+                task = self.MatViewRefreshTask(self,
                                                db_name,
                                                schema_name,
                                                rel_name,
-                                               rel_kind,
                                                target_segment_count,
-                                               target_status,
-                                               True)
+                                               target_status)
                 self.workers_for_tables_rebalance.addCommand(task)
 
             print_progress(self.workers_for_tables_rebalance, interval=1)
@@ -769,7 +775,7 @@ class GGShrink:
 
             for task in self.workers_for_tables_rebalance.getCompletedItems():
                 if not task.was_successful():
-                    raise Exception(f'Failed to do ALTER REBALANCE: {task.get_results().stderr}')
+                    raise Exception(f'Failed to do REFRESH for a materialized view: {task.get_results().stderr}')
 
             self.workers_for_tables_rebalance = None
 

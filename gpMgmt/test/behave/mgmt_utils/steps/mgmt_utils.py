@@ -1582,6 +1582,11 @@ def get_opened_files(filename, pidfile):
 def impl(context, tablename, dbname):
     drop_table_if_exists(context, table_name=tablename, dbname=dbname)
 
+@when('materialized view "{viewname}" is dropped in "{dbname}"')
+@then('materialized view "{viewname}" is dropped in "{dbname}"')
+@given('materialized view "{viewname}" is dropped in "{dbname}"')
+def impl(context, viewname, dbname):
+    drop_materialized_view_if_exists(context, view_name=viewname, dbname=dbname)
 
 @given('all the segments are running')
 @when('all the segments are running')

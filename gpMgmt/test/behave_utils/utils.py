@@ -358,6 +358,10 @@ def drop_table(context, table_name, dbname, host=None, port=0, user=None):
     if check_table_exists(context, table_name=table_name, dbname=dbname, host=host, port=port, user=user):
         raise Exception('Unable to successfully drop the table %s' % table_name)
 
+def drop_materialized_view_if_exists(context, view_name, dbname, host=None, port=0, user=None):
+    SQL = 'drop materialized view if exists %s' % view_name
+    with closing(dbconn.connect(dbconn.DbURL(hostname=host, port=port, username=user, dbname=dbname), unsetSearchPath=False)) as conn:
+        dbconn.execSQL(conn, SQL)
 
 def check_schema_exists(context, schema_name, dbname):
     schema_check_sql = "select * from pg_namespace where nspname='%s';" % schema_name
