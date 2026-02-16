@@ -224,7 +224,6 @@ class GGShrink:
         self.gparray_dump_file = gpArrayDumpFilename
         self.rebalance_schema = schema
         self.shrink_plan = None
-        self.needs_repopulate = False
         self.dumped_gparray = gparray.GpArray.initFromFile(self.gparray_dump_file) if os.path.exists(self.gparray_dump_file) else None
 
         self.machine = Machine(model = self,
@@ -276,7 +275,6 @@ class GGShrink:
             # means that target rebalance numsegments is reset, and new tables are created at old segment count
             if bool(row[0]) is False:
                 self.logger.info("Cluster restarted after previous run, trying to repopulate the relation queue")
-                self.needs_repopulate = True
                 return 'STATE_BACKUP_CATALOG_AND_UPDATE_TARGET_SEGMENT_COUNT_STARTED'
         
         return self.states_main_shrink_flow[prev_idx + 1]
@@ -614,30 +612,59 @@ class GGShrink:
                 fun(self)
             return func_with_faults
 
+        def table_exists(self, conn: dbconn.Connection, schema_name: str, rel_name: str) -> bool:
+            if dbconn.querySingleton(conn, f"""
+                SELECT count(1)
+                FROM pg_class c JOIN pg_namespace n ON c.relnamespace = n.oid
+                WHERE c.relname = '{rel_name}' AND n.nspname = '{schema_name}' AND c.relnamespace = n.oid
+                """) == 0:
+                return False
+            return True
+
+        def db_exists(self, conn: dbconn.Connection, db_name: str) -> bool:
+            if dbconn.querySingleton(conn, f"""SELECT count(*) FROM pg_database WHERE datname = '{db_name}'""") == 0:
+                return False
+            return True
+
         def rebalance_table(self) -> None:
             self.shrink.logger.info(f'Start table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
-            dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
-            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
-                dbconn.execSQL(conn, 'BEGIN')
-                dbconn.execSQL(conn,
-                               f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
-                               REBALANCE {self.target_segment_count}''')
-                if self.rel_kind == 'm':
-                    self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, 'mv_refresh_required')
-                else:
-                    self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
-                dbconn.execSQL(conn, 'COMMIT')
+            if self.db_exists(self.shrink.rebalance_schema.conn, self.db_name):
+                dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
+                with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+                    dbconn.execSQL(conn, 'BEGIN')
+
+                    table_exists = self.table_exists(conn, self.schema_name, self.rel_name)
+                    if table_exists:
+                        dbconn.execSQL(conn,
+                                    f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
+                                    REBALANCE {self.target_segment_count}''')
+                    else:
+                        self.shrink.logger.info(f'''Table "{self.db_name}"."{self.schema_name}"."{self.rel_name}" doesn't exist, skipping actual rebalance''')
+
+                    if self.rel_kind == 'm' and table_exists:
+                        self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, 'mv_refresh_required')
+                    else:
+                        self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
+                    dbconn.execSQL(conn, 'COMMIT')
+            else:
+                self.shrink.logger.info(f'''DB "{self.db_name}" doesn't exist, skipping actual rebalance for "{self.schema_name}"."{self.rel_name}"''')
             self.shrink.logger.info(f'Complete table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
         def refresh_mat_view(self) -> None:
             self.shrink.logger.info(f'Start matview refresh for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
-            dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
-            with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
-                dbconn.execSQL(conn, 'BEGIN')
-                dbconn.execSQL(conn, f'REFRESH MATERIALIZED VIEW "{self.schema_name}"."{self.rel_name}"')
-                self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
-                dbconn.execSQL(conn, 'COMMIT')
+            if self.db_exists(self.shrink.rebalance_schema.conn, self.db_name):
+                dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
+                with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
+                    dbconn.execSQL(conn, 'BEGIN')
+                    if self.table_exists(conn, self.schema_name, self.rel_name):
+                        dbconn.execSQL(conn, f'REFRESH MATERIALIZED VIEW "{self.schema_name}"."{self.rel_name}"')
+                    else:
+                        self.shrink.logger.info(f'''Materialized view "{self.db_name}"."{self.schema_name}"."{self.rel_name}" doesn't exist, skipping actual REFRESH''')
+                    self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
+                    dbconn.execSQL(conn, 'COMMIT')
+            else:
+                self.shrink.logger.info(f'''DB "{self.db_name}" doesn't exist, skipping actual REFRESH for "{self.schema_name}"."{self.rel_name}"''')
             self.shrink.logger.info(f'Complete matview refresh for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
