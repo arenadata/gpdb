@@ -60,8 +60,8 @@ Feature: ggrebalance behave tests
          And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
          And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
          And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
-         #And a long-run session starts
-         #And sql "CREATE TEMP TABLE temp_table(a int)" is executed in a long-run session
+         And a long-run session starts
+         And sql "CREATE TEMP TABLE temp_table(a int)" is executed in a long-run session
          And database "gptest" exists
          And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
@@ -72,7 +72,7 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
          And unset fault inject
-         #And a long-run session ends
+         And a long-run session ends
         When execute following sql in db "postgres" and store result in the context
             """
             select count(1) as temp_tables_for_redistribute from ggrebalance.table_rebalance_status_detail where schema_name LIKE 'pg\_temp\_%';

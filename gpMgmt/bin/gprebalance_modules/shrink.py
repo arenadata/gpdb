@@ -442,29 +442,27 @@ class GGShrink:
             gp_array = self.gparray
         
         segments_to_stop = gp_array.get_segment_count() - self.shrink_plan.getTargetSegmentCount()
-        segments_to_stop = segments_to_stop * 2 # consider mirrors
         self.workers_for_segment_stop = WorkerPool(numWorkers=min(segments_to_stop, self.options.batch_size))
 
-        for seg_pair in gp_array.getSegmentList():
-            primary_seg = seg_pair.primaryDB
-            mirror_seg = seg_pair.mirrorDB
-            if primary_seg.getSegmentContentId() >= self.shrink_plan.getTargetSegmentCount():
-                if primary_seg.isSegmentUp():
-                    cmd = self.SegmentStopAfterShrink(self, primary_seg)
+        # Stop primaries first, and mirrors after primaries
+        seg_roles = [gparray.ROLE_PRIMARY, gparray.ROLE_MIRROR]
+        for seg_role in seg_roles:
+            self.logger.info(f"Prepare to stop segments with role '{seg_role}'")
+            for seg in gp_array.getSegDbList():
+                if (seg.getSegmentContentId() >= self.shrink_plan.getTargetSegmentCount() and
+                    seg.getSegmentRole() == seg_role and seg.isSegmentUp()):
+                    cmd = self.SegmentStopAfterShrink(self, seg)
                     self.workers_for_segment_stop.addCommand(cmd)
-
-                if mirror_seg != None and mirror_seg.isSegmentUp():
-                    cmd = self.SegmentStopAfterShrink(self, mirror_seg)
-                    self.workers_for_segment_stop.addCommand(cmd)
-
-        print_progress(self.workers_for_segment_stop, interval=1)
+            if self.shutdown_requested:
+                break
+            print_progress(self.workers_for_segment_stop, interval=1)
 
         self.workers_for_segment_stop.haltWork()
         self.workers_for_segment_stop.joinWorkers()
 
         for task in self.workers_for_segment_stop.getCompletedItems():
             if not task.was_successful():
-                raise Exception('Failed to stop segments')
+                self.logger.warning('Failed to stop segments')
 
         self.workers_for_segment_stop = None
 
@@ -564,7 +562,11 @@ class GGShrink:
         # decorator to inject a fault before running SegmentStopAfterShrink for a specific dbid
         def wrap_segment_stop_with_faults(fun):
             def func_with_faults(self):
-                inject_fault(f'fault_segment_stop_dbid_{self.segment.getSegmentDbId()}')
+                try:
+                    inject_fault(f'fault_segment_stop_dbid_{self.segment.getSegmentDbId()}')
+                except Exception as e:
+                    os.kill(os.getpid(), signal.SIGINT)
+                    return
                 fun(self)
             return func_with_faults
 
