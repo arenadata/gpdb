@@ -95,6 +95,8 @@ def parseargs():
                       help='Replay lag(in GBs) allowed on mirror when rebalancing the segments.')
     parser.add_option('-v', '--verbose', action='store_true', default=False,
                       help='debug output.')
+    parser.add_option('--inplace-swap-roles', dest="inplace_swap_roles", action='store_true', default=False,
+                      help='Allows to place primary and mirror at the same host during rebalance.')
 
     # Parse the command line arguments
     options, args = parser.parse_args()
@@ -151,14 +153,14 @@ def validate_options(options, args, parser):
             'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
             'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
             'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
-            'skip_resource_estimation', 'analyze', 'replay_lag', 'hba_hostnames'
+            'skip_resource_estimation', 'analyze', 'replay_lag', 'hba_hostnames', 'inplace_swap_roles'
         ]),
 
         ('rollback_required', [
             'target_hosts', 'target_hosts_file', 'add_hosts', 'add_hosts_file',
             'remove_hosts', 'remove_hosts_file', 'target_datadirs', 'target_datadirs_file',
             'target_segment_count', 'mirror_mode', 'skip_rebalance', 'show_plan',
-            'skip_resource_estimation', 'duration', 'end'
+            'skip_resource_estimation', 'duration', 'end', 'inplace_swap_roles'
         ]),
     ]
 

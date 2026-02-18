@@ -286,7 +286,8 @@ class RebalanceSM:
         with open(filename, 'w') as fp:
             for move in moves:
                 segment_current_info = move.seg
-                if not self.lookup_seg(segment_current_info):
+                is_swap_phase3 = (move.swap_metadata is not None and move.swap_metadata.get('phase') == 3)
+                if not is_swap_phase3 and not self.lookup_seg(segment_current_info):
                     self.logger.info(f'Skip segment for gpmovemirrors: {str(segment_current_info)}')
                     continue
                 cfg_line = f'{segment_current_info.getSegmentHostName()}|{segment_current_info.getSegmentPort()}|{segment_current_info.getSegmentDataDirectory()} '
@@ -329,6 +330,10 @@ class RebalanceSM:
         # If there are several consequent primary movements, we assume that they can be done in parallel,
         # and, to allow batch processing for them, we re-order their steps to combine together
         # the respective switchover and movement steps.
+        # If there is a pair of moves, where primary and mirror just swap hosts, we use 3rd intermediate
+        # host to avoid primary and mirror coexistence (if --inplace-swap-roles if not set). Mirror is moved
+        # to that host, then primary is moved to its destination, finally mirror is moved from intermediate
+        # to target host.
         rebalance_steps = []
 
         batch_mirror_steps = []
@@ -347,13 +352,31 @@ class RebalanceSM:
             # clear the batches
             batch_mirror_steps = []
             batch_primary_steps = [[],[],[]]
+        
+        def is_swap_phase3(move: LogicalMove) -> bool:
+            return (move.swap_metadata is not None and 
+                    move.swap_metadata.get('phase') == 3)
 
         prev_move = None
         for move in moves:
+            current_is_phase3 = is_swap_phase3(move)
+
+            # Flush batches when:
+            # 1. Role type changes (mirror <-> primary)
+            # 2. We're entering swap phase 3 (need separate batch after all primaries)
+            should_flush = False
+
             # if the move type switched, fill rebalance_steps with the content of
             # previously gathered batches
-            if prev_move != None and prev_move.seg.getSegmentRole() != move.seg.getSegmentRole():
+            if prev_move is not None:
+                prev_is_phase3 = is_swap_phase3(prev_move)
+                role_changed = prev_move.seg.getSegmentRole() != move.seg.getSegmentRole()
+                entering_phase3 = (not prev_is_phase3) and current_is_phase3
+                should_flush = role_changed or entering_phase3
+            
+            if should_flush:
                 fill_rebalance_steps()
+
             prev_move = move
             # add steps to the current batch
             if move.seg.isSegmentMirror():
