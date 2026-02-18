@@ -39,7 +39,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -96,7 +96,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -167,7 +167,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 1, row count = 1094
 
@@ -216,7 +216,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
-         Then the numsegments of table "ext_test" is 2
+         And the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -255,7 +255,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
-         Then the numsegments of table "ext_test" is 2
+         And the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -320,7 +320,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -372,7 +372,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
-         Then the numsegments of table "ext_test" is 2
+         And the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 2, row count = 200
@@ -438,7 +438,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -487,7 +487,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
-         Then the numsegments of table "ext_test" is 2
+         And the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -559,7 +559,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
-         Then the numsegments of table "ext_test" is 2
+         And the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
@@ -616,7 +616,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 2, row count = 100
-         Then the numsegments of table "ext_test" is 2
+         And the numsegments of table "ext_test" is 2
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 2, row count = 100
          And distribution information from table "test_schema_2.test_table_3" with data in "test_db_2" is equal to segment count = 2, row count = 200
@@ -693,7 +693,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
 
     Scenario: test 5. test shrink continue, when a table planned for rebalance was dropped
         Given the database is not running
@@ -730,7 +730,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
 
     Scenario: test 5.1. test shrink continue, when a mat view planned for rebalance was dropped
@@ -774,7 +774,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
          And distribution information from table "test_schema_2.test_table_1" with data in "test_db_2" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_2.test_table_2" with data in "test_db_2" is equal to segment count = 1, row count = 100
 
@@ -813,7 +813,7 @@ Feature: ggrebalance behave tests
          And distribution information from table "test_schema_1.part_test_table_2" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.unlogged_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
          And distribution information from table "test_schema_1.mv_test_table_1" with data in "test_db_1" is equal to segment count = 1, row count = 100
-         Then the numsegments of table "ext_test" is 1
+         And the numsegments of table "ext_test" is 1
 
     Scenario: test 7. test shrink, when a table, planned for rebalance, is dropped in a parallel transaction, committed after the start of table redistribution
         Given the database is not running
