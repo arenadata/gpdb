@@ -637,6 +637,9 @@ class GGShrink:
                         dbconn.execSQL(conn,
                                     f'''ALTER TABLE "{self.schema_name}"."{self.rel_name}"
                                     REBALANCE {self.target_segment_count}''')
+                        if self.rel_kind != 'm' and self.shrink.options.analyze:
+                            dbconn.execSQL(conn,
+                                           f'''ANALYZE "{self.schema_name}"."{self.rel_name}"''')
                     else:
                         self.shrink.logger.info(f'''Table "{self.db_name}"."{self.schema_name}"."{self.rel_name}" doesn't exist, skipping actual rebalance''')
 
@@ -692,6 +695,9 @@ class GGShrink:
                     dbconn.execSQL(conn, 'BEGIN')
                     if self.table_exists(conn, self.schema_name, self.rel_name):
                         dbconn.execSQL(conn, f'REFRESH MATERIALIZED VIEW "{self.schema_name}"."{self.rel_name}"')
+                        if self.shrink.options.analyze:
+                            dbconn.execSQL(conn,
+                                           f'''ANALYZE "{self.schema_name}"."{self.rel_name}"''')
                     else:
                         self.shrink.logger.info(f'''Materialized view "{self.db_name}"."{self.schema_name}"."{self.rel_name}" doesn't exist, skipping actual REFRESH''')
                     self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
