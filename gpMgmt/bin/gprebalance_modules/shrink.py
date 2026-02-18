@@ -444,7 +444,8 @@ class GGShrink:
         segments_to_stop = gp_array.get_segment_count() - self.shrink_plan.getTargetSegmentCount()
         self.workers_for_segment_stop = WorkerPool(numWorkers=min(segments_to_stop, self.options.batch_size))
 
-        # Stop primaries first, and mirrors after primaries
+        # Stop primaries first, and mirrors after primaries,
+        # to avoid hanging replication processes
         seg_roles = [gparray.ROLE_PRIMARY, gparray.ROLE_MIRROR]
         for seg_role in seg_roles:
             self.logger.info(f"Prepare to stop segments with role '{seg_role}'")
@@ -586,6 +587,8 @@ class GGShrink:
                 self.shrink.logger.info(f'Stopped shrinked segment {str(self.segment)}')
 
     class TableRebalanceTask(SQLCommand):
+        STATUS_MAT_VIEW_REFRESH_REQUIRED = 'mv_refresh_required'
+
         def __init__(self,
                      shrink: 'GGShrink',
                      db_name: str,
@@ -644,7 +647,7 @@ class GGShrink:
                         self.shrink.logger.info(f'''Table "{self.db_name}"."{self.schema_name}"."{self.rel_name}" doesn't exist, skipping actual rebalance''')
 
                     if self.rel_kind == 'm' and table_exists:
-                        self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, 'mv_refresh_required')
+                        self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.STATUS_MAT_VIEW_REFRESH_REQUIRED)
                     else:
                         self.shrink.rebalance_schema.setStatusForTableToRebalance(self.db_name, self.schema_name, self.rel_name, self.table_status_after_rebalance)
                     dbconn.execSQL(conn, 'COMMIT')
@@ -654,7 +657,10 @@ class GGShrink:
             self.set_results(CommandResult(0, b'', b'', True, False))
 
         def run(self) -> None:
-            # give 2 attempts to process a table.
+            # Give 2 attempts to process a table. It is needed, when, for example,
+            # other session opens a transaction after we have created the rebalance table
+            # list, drops the table before we started to rebalance it, and commits the
+            # transaction when we've started to rebalance the table.
             attempt_max_cnt = 2
             for i in range(attempt_max_cnt):
                 attempt = i + 1
@@ -718,7 +724,7 @@ class GGShrink:
         # for the case we re-enter this state after we were interrupted right after it
         self.rebalance_schema.clearTablesToRebalanceWithStatus(status)
         if is_rollback:
-            self.rebalance_schema.clearTablesToRebalanceWithStatus('mv_refresh_required')
+            self.rebalance_schema.clearTablesToRebalanceWithStatus(self.TableRebalanceTask.STATUS_MAT_VIEW_REFRESH_REQUIRED)
 
         cursor = dbconn.query(self.conn, 'SELECT datname FROM pg_database')
         databases_to_process = []
@@ -776,7 +782,9 @@ class GGShrink:
 
             self.workers_for_tables_rebalance = None
 
-        cursor = self.rebalance_schema.getTablesToRebalanceWithStatus('mv_refresh_required')
+        # Process refresh of mat views separately from table rebalancing,
+        # as doing it in parallel may provide not full data refresh.
+        cursor = self.rebalance_schema.getTablesToRebalanceWithStatus(self.TableRebalanceTask.STATUS_MAT_VIEW_REFRESH_REQUIRED)
 
         self.logger.info(f'Materialized views to refresh: {cursor.rowcount}')
 
