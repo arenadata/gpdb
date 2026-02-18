@@ -605,9 +605,9 @@ class GGShrink:
 
         # decorator to inject a fault before running TableRebalanceTask for a specific {db_name, schema_name, rel_name}
         def wrap_table_rebalance_with_faults(fun):
-            def func_with_faults(self):
+            def func_with_faults(self, attempt: int):
                 inject_fault(f'fault_rebalance_table_{self.db_name}.{self.schema_name}.{self.rel_name}')
-                fun(self)
+                fun(self, attempt)
             return func_with_faults
 
         def table_exists(self, conn: dbconn.Connection, schema_name: str, rel_name: str) -> bool:
@@ -625,8 +625,8 @@ class GGShrink:
             return True
 
         @wrap_table_rebalance_with_faults
-        def run(self) -> None:
-            self.shrink.logger.info(f'Start table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
+        def process_table(self, attempt: int) -> None:
+            self.shrink.logger.info(f'Start table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments (attempt {attempt})')
             if self.db_exists(self.shrink.rebalance_schema.conn, self.db_name):
                 dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
                 with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:
@@ -650,6 +650,22 @@ class GGShrink:
             self.shrink.logger.info(f'Complete table rebalance for "{self.db_name}"."{self.schema_name}"."{self.rel_name}"')
             self.set_results(CommandResult(0, b'', b'', True, False))
 
+        def run(self) -> None:
+            # give 2 attempts to process a table.
+            attempt_max_cnt = 2
+            for i in range(attempt_max_cnt):
+                attempt = i + 1
+                try:
+                    self.process_table(attempt)
+                except Exception as e:
+                    if attempt < attempt_max_cnt:
+                        logger.warning(f"{str(e)}")
+                    else:
+                        logger.error(f"{str(e)}")
+                        raise Exception(f'Failed to process the db object for {attempt_max_cnt} attempts')
+                    continue
+                break
+
     class MatViewRefreshTask(TableRebalanceTask):
         def __init__(self,
                      shrink: 'GGShrink',
@@ -662,14 +678,14 @@ class GGShrink:
 
         # decorator to inject a fault before running MatViewRefreshTask for a specific {db_name, schema_name, rel_name}
         def wrap_refresh_matview_with_faults(fun):
-            def func_with_faults(self):
+            def func_with_faults(self, attempt: int):
                 inject_fault(f'fault_refresh_matview_{self.db_name}.{self.schema_name}.{self.rel_name}')
-                fun(self)
+                fun(self, attempt)
             return func_with_faults
 
         @wrap_refresh_matview_with_faults
-        def run(self) -> None:
-            self.shrink.logger.info(f'Start matview refresh for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments')
+        def process_table(self, attempt: int) -> None:
+            self.shrink.logger.info(f'Start matview refresh for "{self.db_name}"."{self.schema_name}"."{self.rel_name}" to {self.target_segment_count} segments (attempt {attempt})')
             if self.db_exists(self.shrink.rebalance_schema.conn, self.db_name):
                 dburl = dbconn.DbURL(dbname=self.db_name, port=self.shrink.gpEnv.getCoordinatorPort())
                 with closing(dbconn.connect(dburl, encoding='UTF8')) as conn:

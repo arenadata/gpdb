@@ -39,6 +39,7 @@ from gppylib.commands.base import Command, REMOTE
 from gppylib import pgconf
 from gppylib.commands.gp import get_coordinatordatadir
 from gppylib.parseutils import canonicalize_address
+from gppylib import fault_injection
 
 coordinator_data_dir = gp.get_coordinatordatadir()
 if coordinator_data_dir is None:
@@ -659,6 +660,16 @@ def impl(context, kill_process_name, log_msg, logfile_name):
               "then ps ux | grep bin/%s |awk '{print $2}' | xargs kill -2 ;break 2; " \
               "fi; done" % (log_msg, logfile_name, kill_process_name)
     run_async_command(context, command)
+
+@given('the user waits till {process_name} prints "{log_msg}" in the logs')
+@when('the user waits till {process_name} prints "{log_msg}" in the logs')
+@then('the user waits till {process_name} prints "{log_msg}" in the logs')
+def impl(context, process_name, log_msg):
+    command = "while sleep 0.1; " \
+              "do if grep -E --quiet %s  ~/gpAdminLogs/%s*log ; " \
+              "then break 2; " \
+              "fi; done" % (log_msg, process_name)
+    run_cmd(command)
 
 @given('the user asynchronously sets up to end {process_name} process with {signal_name}')
 @when('the user asynchronously sets up to end {process_name} process with {signal_name}')
@@ -4547,25 +4558,39 @@ def step_impl(context, address):
 @then('set fault inject "{fault}"')
 @when('set fault inject "{fault}"')
 def impl(context, fault):
-    os.environ['GPMGMT_FAULT_POINT'] = fault
+    os.environ[fault_injection.GPMGMT_FAULT_POINT] = fault
 
 @given('unset fault inject')
 @then('unset fault inject')
 @when('unset fault inject')
 def impl(context):
-    os.environ['GPMGMT_FAULT_POINT'] = ""
+    os.environ[fault_injection.GPMGMT_FAULT_POINT] = ""
+    os.environ[fault_injection.GPMGMT_FAULT_TYPE] = ""
+    os.environ[fault_injection.GPMGMT_FAULT_FILE_FLAG] = ""
+    if os.path.exists(context.fault_flag_filename):
+        os.remove(context.fault_flag_filename)
 
 @given('set fault inject delay {delay} ms')
 @then('set fault inject delay {delay} ms')
 @when('set fault inject delay {delay} ms')
 def impl(context, delay):
-    os.environ['GPMGMT_FAULT_DELAY_MS'] = delay
+    os.environ[fault_injection.GPMGMT_FAULT_DELAY_MS] = delay
+
+@given('set fault inject type to suspend')
+@then('set fault inject type to suspend')
+@when('set fault inject type to suspend')
+def impl(context):
+    os.environ[fault_injection.GPMGMT_FAULT_TYPE] = fault_injection.GPMGMT_FAULT_TYPE_SYSPEND
+    context.fault_flag_filename = "/tmp/ggrebalance_fault_suspend_flag"
+    with open(context.fault_flag_filename, "w"):
+        pass
+    os.environ[fault_injection.GPMGMT_FAULT_FILE_FLAG] = context.fault_flag_filename
 
 @given('unset fault inject delay')
 @then('unset fault inject delay')
 @when('unset fault inject delay')
 def impl(context):
-    os.environ['GPMGMT_FAULT_DELAY_MS'] = ""
+    os.environ[fault_injection.GPMGMT_FAULT_DELAY_MS] = ""
 
 @given('stub')
 def impl(context):
