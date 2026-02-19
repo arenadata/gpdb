@@ -4549,3 +4549,10 @@ def impl(context):
 @given('stub')
 def impl(context):
     pass
+
+@given('the temporary file "{filename}" is created with content')
+@then('the temporary file "{filename}" is created  with content')
+@when('the temporary file "{filename}" is created  with content')
+def impl(context, filename):
+    with open(filename, 'w') as f:
+        f.write(context.text + '\n')

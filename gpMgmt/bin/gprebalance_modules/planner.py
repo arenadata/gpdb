@@ -824,83 +824,11 @@ class Planner:
         else:
             self.logger.warning("Skipping resource estimation")
 
-        # Detect swaps
         if not self.options.inplace_swap_roles:
             swap_pairs = self.detect_swap_pairs(moves)
-        else:
-            swap_pairs = None
-        if swap_pairs:
-            self.logger.info(f"Detected {len(swap_pairs)} primary-mirror pairs which just swap hosts")
-            active_hosts_count = len([h for h in self.target_hosts 
-                                 if h.status in [HostStatus.ACTIVE, HostStatus.NEW]])
-            if active_hosts_count < 3:
-                raise ValidationError(
-                    "Cannot safely perform primary-mirror swaps with less than 3 hosts. "
-                    "Need intermediate host to avoid primary and mirror coexistence." )
-
-            swap_move_ids = set()
-            for prim_move, mir_move in swap_pairs:
-                swap_move_ids.add(prim_move.seg.getSegmentDbId())
-                swap_move_ids.add(mir_move.seg.getSegmentDbId())
-
-            # Track intermediate host usage for better distribution
-            used_intermediate_hosts = {}
-
-            # Decompose swaps with intermediate host selection
-            swap_phase1_moves = []
-            swap_phase2_moves = []
-            swap_phase3_moves = []
-
-            for prim_move, mir_move in swap_pairs:
-                content_id = prim_move.seg.getSegmentContentId()
-                try:
-                    # Select intermediate host
-                    intermediate_host = self.select_intermediate_host(
-                        prim_move, 
-                        mir_move,
-                        used_intermediate_hosts,
-                        resource_estimator  # Pass the estimator with cached filesystem data
-                    )
-
-                    # Decompose into 3 phases
-                    phase1, phase2, phase3 = self.decompose_swap(
-                        prim_move, 
-                        mir_move,
-                        intermediate_host,
-                        port_allocator
-                    )
-
-                    swap_phase1_moves.append(phase1)
-                    swap_phase2_moves.append(phase2)
-                    swap_phase3_moves.append(phase3)
-
-                except Exception as e:
-                    raise PlanningError(f"Failed to plan swap for content {content_id}: {e}")
-            
-            # Collect non-swap moves
-            non_swap_mirror_moves = []
-            non_swap_primary_moves = []
-        
-            for move in moves:
-                if move.seg.getSegmentDbId() not in swap_move_ids:
-                    if move.seg.isSegmentPrimary():
-                        non_swap_primary_moves.append(move)
-                    else:
-                        non_swap_mirror_moves.append(move)
-            
-            moves_with_swap = []
-            # Batch 1: All initial mirror moves (regular + phase1)
-            moves_with_swap.extend(non_swap_mirror_moves)
-            moves_with_swap.extend(swap_phase1_moves)
-
-            # Batch 2: All primary moves (regular + phase2)
-            moves_with_swap.extend(non_swap_primary_moves)
-            moves_with_swap.extend(swap_phase2_moves)
-
-            # Batch 3: Phase 3 mirrors (must execute last)
-            moves_with_swap.extend(swap_phase3_moves)
-
-            final_moves = moves_with_swap
+            if swap_pairs:
+                self.logger.info(f"Detected {len(swap_pairs)} primary-mirror pairs which just swap hosts")
+                final_moves = self.handle_swaps(swap_pairs, moves, port_allocator, resource_estimator)
         else:
             final_moves = moves
         
@@ -1037,7 +965,8 @@ class Planner:
         if not candidates:
             raise PlanningError(
                 f"No intermediate host available for swap of content {content_id}. "
-                f"Need at least 3 hosts to perform swaps safely."
+                f"Need at least 3 hosts to perform swaps safely. Or you may allow "
+                f"primary-mirror coexistence by --inplace-swap-roles."
             )
         
         # Get mirror size for space check
@@ -1205,6 +1134,70 @@ class Planner:
         )
         
         return phase1_move, phase2_move, phase3_move
+    
+    def handle_swaps(self,
+                     swap_pairs: List[Tuple[LogicalMove, LogicalMove]],
+                     moves: List[LogicalMove],
+                     port_allocator: PortAllocator,
+                     resource_estimator: 'ResourceEstimator'
+                     ) -> List[LogicalMove]:
+        swap_move_ids = set()
+        # Track intermediate host usage for better distribution
+        used_intermediate_hosts = {}
+        # Decompose swaps with intermediate host selection
+        swap_phase1_moves = []
+        swap_phase2_moves = []
+        swap_phase3_moves = []
+
+        for prim_move, mir_move in swap_pairs:
+            content_id = prim_move.seg.getSegmentContentId()
+            swap_move_ids.add(prim_move.seg.getSegmentDbId())
+            swap_move_ids.add(mir_move.seg.getSegmentDbId())
+            try:
+                # Select intermediate host
+                intermediate_host = self.select_intermediate_host(
+                    prim_move, 
+                    mir_move,
+                    used_intermediate_hosts,
+                    resource_estimator  # Pass the estimator with cached filesystem data
+                )
+                # Decompose into 3 phases
+                phase1, phase2, phase3 = self.decompose_swap(
+                    prim_move, 
+                    mir_move,
+                    intermediate_host,
+                    port_allocator
+                )
+                swap_phase1_moves.append(phase1)
+                swap_phase2_moves.append(phase2)
+                swap_phase3_moves.append(phase3)
+            except Exception as e:
+                raise PlanningError(f"Failed to plan swap for content {content_id}: {e}")
+        
+        # Collect non-swap moves
+        non_swap_mirror_moves = []
+        non_swap_primary_moves = []
+    
+        for move in moves:
+            if move.seg.getSegmentDbId() not in swap_move_ids:
+                if move.seg.isSegmentPrimary():
+                    non_swap_primary_moves.append(move)
+                else:
+                    non_swap_mirror_moves.append(move)
+
+        moves_with_swap = []
+        # Batch 1: All initial mirror moves (regular + phase1)
+        moves_with_swap.extend(non_swap_mirror_moves)
+        moves_with_swap.extend(swap_phase1_moves)
+
+        # Batch 2: All primary moves (regular + phase2)
+        moves_with_swap.extend(non_swap_primary_moves)
+        moves_with_swap.extend(swap_phase2_moves)
+
+        # Batch 3: Phase 3 mirrors (must execute last)
+        moves_with_swap.extend(swap_phase3_moves)
+
+        return moves_with_swap
 
 class ResourceEstimator:
     """
@@ -1630,25 +1623,6 @@ class ResourceEstimator:
         if fs_key in self.filesystem_allocations:
             return self.filesystem_allocations[fs_key]['required_kb']
         return 0
-    
-    def get_available_space_for_directory(self, hostname: str, host_address: str, directory: str) -> Optional[int]:
-        """
-        Get available space for a directory, accounting for already-allocated space
-            
-        Returns:
-            Available space in KB after accounting for allocations, or None if not found
-        """
-        if host_address not in self.space_info_by_host:
-            return None
-        
-        space_info = self.space_info_by_host[host_address].get(directory)
-        if not space_info:
-            return None
-        
-        raw_available_kb = space_info.available_kb
-        allocated_kb = self.get_allocated_space_for_filesystem(hostname, space_info.filesystem)
-        
-        return raw_available_kb - allocated_kb
     
     def check_and_reserve_space(self, hostname: str, host_address: str, directory: str, required_kb: int) -> Tuple[bool, int, str]:
         """

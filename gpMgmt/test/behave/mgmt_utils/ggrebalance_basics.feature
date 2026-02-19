@@ -19,6 +19,7 @@ Feature: ggrebalance behave tests
           | --target-datadirs '/data/p/gpseg{content},/data/m/gpseg{content}' --target-datadirs-file /tmp/datadirs.txt | Can't use together options '--target-datadirs' and '--target-datadirs-file' | stub |
           | --mirror-mode grouped --skip-rebalance                      | Can't use together options '--skip-rebalance' and '--mirror-mode'     | stub       |
           | -m spread --skip-rebalance                                  | Can't use together options '--skip-rebalance' and '--mirror-mode'     | stub       |
+          | --skip-rebalance --inplace-swap-roles                       | Can't use together options '--skip-rebalance' and '--inplace-swap-roles'     | stub     |
           | -c --target-hosts sdw1,sdw2                                 | Can't use together options '--clean-required' and '--target-hosts'    | stub       |
           | -c --add-hosts sdw3                                         | Can't use together options '--clean-required' and '--add-hosts'       | stub       |
           | -c --target-datadirs '/data/p/gpseg{content},/data/m/gpseg{content}' | Can't use together options '--clean-required' and '--target-datadirs'   | stub    |
@@ -29,6 +30,7 @@ Feature: ggrebalance behave tests
           | -c --analyze                                                | Can't use together options '--clean-required' and '--analyze'           | stub     |
           | -c --replay-lag 1                                           | Can't use together options '--clean-required' and '--replay-lag'        | stub     |
           | -c --hba-hostnames                                          | Can't use together options '--clean-required' and '--hba-hostnames'     | stub     |
+          | -c --inplace-swap-roles                                         | Can't use together options '--clean-required' and '--inplace-swap-roles'     | stub     |
           | -c --skip-resource-estimation                               | Can't use together options '--clean-required' and '--skip-resource-estimation' |  the database is not running |
 
     Scenario: test 2. ggrebalance simple scenarios
