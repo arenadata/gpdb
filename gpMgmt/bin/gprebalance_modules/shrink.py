@@ -600,7 +600,7 @@ class GGShrink:
             self.rel_name = rel_name
             self.target_segment_count = target_segment_count
             self.table_status_after_rebalance = table_status_after_rebalance
-            super().__init__(f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
+            SQLCommand.__init__(self, f'task rebalance for {self.db_name}.{self.schema_name}.{self.rel_name}')
 
         # decorator to inject a fault before running TableRebalanceTask for a specific {db_name, schema_name, rel_name}
         def wrap_table_rebalance_with_faults(fun):
@@ -708,7 +708,7 @@ class GGShrink:
     def rebalance_tables(self, original_status: str, target_status: str, target_segment_count: int) -> None:
         cursor = self.rebalance_schema.getTablesToRebalanceWithStatus(original_status)
 
-        self.logger.info(f'Tables to rebalance: {cursor.rowcount}')
+        self.logger.info(f'Tables to process {cursor.rowcount}')
 
         if cursor.rowcount > 0:
             self.workers_for_tables_rebalance = WorkerPool(numWorkers=min(cursor.rowcount, self.options.parallel))
