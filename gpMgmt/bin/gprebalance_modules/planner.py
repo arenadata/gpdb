@@ -824,11 +824,15 @@ class Planner:
         else:
             self.logger.warning("Skipping resource estimation")
 
+        # Detect swaps
+        swap_pairs = None
+
         if not self.options.inplace_swap_roles:
             swap_pairs = self.detect_swap_pairs(moves)
-            if swap_pairs:
-                self.logger.info(f"Detected {len(swap_pairs)} primary-mirror pairs which just swap hosts")
-                final_moves = self.handle_swaps(swap_pairs, moves, port_allocator, resource_estimator)
+
+        if swap_pairs:
+            self.logger.info(f"Detected {len(swap_pairs)} primary-mirror pairs which just swap hosts")
+            final_moves = self.handle_swaps(swap_pairs, moves, port_allocator, resource_estimator)
         else:
             final_moves = moves
         

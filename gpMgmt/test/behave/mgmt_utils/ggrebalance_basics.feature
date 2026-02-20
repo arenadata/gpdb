@@ -31,7 +31,16 @@ Feature: ggrebalance behave tests
           | -c --replay-lag 1                                           | Can't use together options '--clean-required' and '--replay-lag'        | stub     |
           | -c --hba-hostnames                                          | Can't use together options '--clean-required' and '--hba-hostnames'     | stub     |
           | -c --inplace-swap-roles                                         | Can't use together options '--clean-required' and '--inplace-swap-roles'     | stub     |
-          | -c --skip-resource-estimation                               | Can't use together options '--clean-required' and '--skip-resource-estimation' |  the database is not running |
+          | -c --skip-resource-estimation                               | Can't use together options '--clean-required' and '--skip-resource-estimation' | stub |
+          | -r --target-hosts sdw1,sdw2                                 | Can't use together options '--rollback-required' and '--target-hosts'    | stub       |
+          | -r --add-hosts sdw3                                         | Can't use together options '--rollback-required' and '--add-hosts'       | stub       |
+          | -r --target-datadirs '/data/p/gpseg{content},/data/m/gpseg{content}' | Can't use together options '--rollback-required' and '--target-datadirs'   | stub    |
+          | -r -x 2                                                     | Can't use together options '--rollback-required' and '--target-segment-count' | stub    |
+          | -r --mirror-mode grouped                                    | Can't use together options '--rollback-required' and '--mirror-mode'       | stub     |
+          | -r --skip-rebalance                                         | Can't use together options '--rollback-required' and '--skip-rebalance'    | stub     |
+          | -r --show-plan                                              | Can't use together options '--rollback-required' and '--show-plan'         | stub     |
+          | -r --inplace-swap-roles                                         | Can't use together options '--rollback-required' and '--inplace-swap-roles'     | stub     |
+          | -r --skip-resource-estimation                               | Can't use together options '--rollback-required' and '--skip-resource-estimation' |  the database is not running |
 
     Scenario: test 2. ggrebalance simple scenarios
         Given the database is not running
