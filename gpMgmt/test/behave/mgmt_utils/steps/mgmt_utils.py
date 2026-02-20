@@ -157,6 +157,8 @@ def impl(context, query, db, contentids):
 
 
 @given('the user connects to "{dbname}" with named connection "{cname}"')
+@when('the user connects to "{dbname}" with named connection "{cname}"')
+@then('the user connects to "{dbname}" with named connection "{cname}"')
 def impl(context, dbname, cname):
     if not hasattr(context, 'named_conns'):
         context.named_conns = {}
@@ -198,11 +200,14 @@ def impl(conetxt, tabname):
 
 
 @given('the user executes "{sql}" with named connection "{cname}"')
+@when('the user executes "{sql}" with named connection "{cname}"')
+@then('the user executes "{sql}" with named connection "{cname}"')
 def impl(context, cname, sql):
     conn = context.named_conns[cname]
     dbconn.execSQL(conn, sql)
 
 
+@when('the user drops the named connection "{cname}"')
 @then('the user drops the named connection "{cname}"')
 def impl(context, cname):
     if cname in context.named_conns:
@@ -1500,27 +1505,6 @@ def stop_segments_immediate(context, where_clause):
 @then('user can start transactions')
 def impl(context):
     wait_for_unblocked_transactions(context, 600)
-
-@given('a long-run session starts')
-@when('a long-run session starts')
-@then('a long-run session starts')
-def impl(context):
-    dbname = 'gptest'
-    context.long_run_conn = dbconn.connect(dbconn.DbURL(dbname=dbname), unsetSearchPath=False)
-
-@given('a long-run session ends')
-@when('a long-run session ends')
-@then('a long-run session ends')
-def impl(context):
-    if context.long_run_conn != None:
-        context.long_run_conn.close()
-    context.long_run_conn = None
-
-@given('sql "{sql}" is executed in a long-run session')
-@when('sql "{sql}" is executed in a long-run session')
-@then('sql "{sql}" is executed in a long-run session')
-def impl(context, sql):
-    dbconn.execSQL(context.long_run_conn, sql)
 
 @given('below sql is executed in "{dbname}" db')
 @when('below sql is executed in "{dbname}" db')

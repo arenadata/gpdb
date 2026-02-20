@@ -60,8 +60,8 @@ Feature: ggrebalance behave tests
          And there is a "ao" partition table "test_schema_1.part_test_table_2" in "test_db_1" with "100" rows
          And there is an unlogged "heap" table "test_schema_1.unlogged_test_table_1" in "test_db_1" with "100" rows
          And a materialized view "test_schema_1.mv_test_table_1" exists on table "test_schema_1.test_table_1"
-         And a long-run session starts
-         And sql "CREATE TEMP TABLE temp_table(a int)" is executed in a long-run session
+         And the user connects to "gptest" with named connection "test_connection"
+         And the user executes "CREATE TEMP TABLE temp_table(a int);" with named connection "test_connection"
          And database "gptest" exists
          And the user create a writable external table with name "ext_test"
          And database "test_db_2" exists
@@ -72,7 +72,7 @@ Feature: ggrebalance behave tests
         Then ggrebalance should return a return code of 1
          And ggrebalance should print "ggrebalance failed" to logfile with latest timestamp
          And unset fault inject
-         And a long-run session ends
+         And the user drops the named connection "test_connection"
         When execute following sql in db "postgres" and store result in the context
             """
             select count(1) as temp_tables_for_redistribute from ggrebalance.table_rebalance_status_detail where schema_name LIKE 'pg\_temp\_%';
@@ -785,13 +785,13 @@ Feature: ggrebalance behave tests
          And set fault inject type to suspend
         When the user asynchronously runs "ggrebalance -x 1 --skip-rebalance" and the process is saved
          And the user waits till ggrebalance prints "Updated target segment count to 1" in the logs
-         And a long-run session starts
-         And sql "BEGIN; DROP TABLE test_table_1;" is executed in a long-run session
+         And the user connects to "gptest" with named connection "test_connection"
+         And the user executes "BEGIN; DROP TABLE test_table_1;" with named connection "test_connection"
          And unset fault inject
          And the user waits till ggrebalance prints "Start table rebalance for \"gptest\".\"public\".\"test_table_1\" to 1 segments" in the logs
          And waiting "5" seconds
-         And sql "COMMIT;" is executed in a long-run session
-         And a long-run session ends
+         And the user executes "COMMIT;" with named connection "test_connection"
+         And the user drops the named connection "test_connection"
         Then the async process finished with a return code of 0
          And ggrebalance should print "Shrink is complete" to logfile with latest timestamp
          And verify no segment running for saved segment information
