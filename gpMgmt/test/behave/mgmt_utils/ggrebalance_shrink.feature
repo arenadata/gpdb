@@ -784,11 +784,11 @@ Feature: ggrebalance behave tests
          And set fault inject "on_enter_STATE_PREPARE_SHRINK_SCHEMA_STARTED_begin"
          And set fault inject type to suspend
         When the user asynchronously runs "ggrebalance -x 1 --skip-rebalance" and the process is saved
-         And the user waits till ggrebalance prints "Updated target segment count to 1" in the logs
+         And the user waits till ggrebalance prints "Updated target segment count to 1" in the logs (with timeout of "60" sec)
          And the user connects to "gptest" with named connection "test_connection"
          And the user executes "BEGIN; DROP TABLE test_table_1;" with named connection "test_connection"
          And unset fault inject
-         And the user waits till ggrebalance prints "Start table rebalance for \"gptest\".\"public\".\"test_table_1\" to 1 segments" in the logs
+         And the user waits till ggrebalance prints "Start table rebalance for \"gptest\".\"public\".\"test_table_1\" to 1 segments" in the logs (with timeout of "60" sec)
          And waiting "5" seconds
          And the user executes "COMMIT;" with named connection "test_connection"
          And the user drops the named connection "test_connection"

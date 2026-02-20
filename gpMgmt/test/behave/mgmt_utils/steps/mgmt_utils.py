@@ -666,15 +666,30 @@ def impl(context, kill_process_name, log_msg, logfile_name):
               "fi; done" % (log_msg, logfile_name, kill_process_name)
     run_async_command(context, command)
 
-@given('the user waits till {process_name} prints "{log_msg}" in the logs')
-@when('the user waits till {process_name} prints "{log_msg}" in the logs')
-@then('the user waits till {process_name} prints "{log_msg}" in the logs')
-def impl(context, process_name, log_msg):
-    command = "while sleep 0.1; " \
-              "do if grep -E --quiet %s  ~/gpAdminLogs/%s*log ; " \
-              "then break 2; " \
-              "fi; done" % (log_msg, process_name)
-    run_cmd(command)
+@given('the user waits till {process_name} prints "{log_msg}" in the logs (with timeout of "{timeout}" sec)')
+@when('the user waits till {process_name} prints "{log_msg}" in the logs (with timeout of "{timeout}" sec)')
+@then('the user waits till {process_name} prints "{log_msg}" in the logs (with timeout of "{timeout}" sec)')
+def impl(context, process_name, log_msg, timeout):
+    poll_period = 0.1
+    max_iteration_cnt = int(int(timeout) / poll_period)
+    command = f"""
+    ITERATION=0
+    MAX_ITERATION_CNT={max_iteration_cnt}
+    while sleep {poll_period}; do
+        if grep -E --quiet '{log_msg}'  ~/gpAdminLogs/{process_name}*log ;
+            then break 2;
+        fi;
+
+        ITERATION=$((ITERATION + 1))
+        if [ $ITERATION -ge $MAX_ITERATION_CNT ]; then
+            echo "Timeout after {timeout} seconds waiting for '{log_msg}' in {process_name} logs"
+            exit 1
+        fi
+    done
+    """
+    rc, _, error = run_cmd(command)
+    if rc:
+        raise Exception(error)
 
 @given('the user asynchronously sets up to end {process_name} process with {signal_name}')
 @when('the user asynchronously sets up to end {process_name} process with {signal_name}')
