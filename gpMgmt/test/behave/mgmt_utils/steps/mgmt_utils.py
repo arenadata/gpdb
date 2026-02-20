@@ -4582,7 +4582,7 @@ def impl(context):
     os.environ[fault_injection.GPMGMT_FAULT_POINT] = ""
     os.environ[fault_injection.GPMGMT_FAULT_TYPE] = ""
     os.environ[fault_injection.GPMGMT_FAULT_FILE_FLAG] = ""
-    if os.path.exists(context.fault_flag_filename):
+    if hasattr(context, 'fault_flag_filename') and os.path.exists(context.fault_flag_filename):
         os.remove(context.fault_flag_filename)
 
 @given('set fault inject delay {delay} ms')

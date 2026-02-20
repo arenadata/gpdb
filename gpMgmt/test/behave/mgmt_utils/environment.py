@@ -123,8 +123,6 @@ def before_scenario(context, scenario):
     if 'gpssh-exkeys' in context.feature.tags:
         context.gpssh_exkeys_context = GpsshExkeysMgmtContext(context)
 
-    context.fault_flag_filename = ""
-
     tags_to_skip = ['gpexpand', 'gpaddmirrors', 'gpstate', 'gpmovemirrors',
                     'gpconfig', 'gpssh-exkeys', 'gpstop', 'gpinitsystem', 'cross_subnet',
                     'gplogfilter', 'ggrebalance_basics', 'ggrebalance_shrink', 'ggrebalance_rebalance', 'ggrebalance_misc_options']
