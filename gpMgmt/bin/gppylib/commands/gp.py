@@ -71,13 +71,13 @@ def get_postmaster_pid_locally(datadir):
         return -1
 
 def getPostmasterPID(hostname, datadir):
-    cmdStr="echo 'START_CMD_OUTPUT';ps -ef | grep postgres | grep -v grep | awk '{print $2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
+    cmdStr="echo 'START_CMD_OUTPUT';ps -ef | grep postgres | grep -v grep | awk '{print \$2}' | grep \\`cat %s/postmaster.pid | head -1\\` || echo -1" % (datadir)
     name="get postmaster pid"
     cmd=Command(name,cmdStr,ctxt=REMOTE,remoteHost=hostname)
     try:
         cmd.run(validateAfter=True)
         sout=cmd.get_results().stdout.lstrip(' ')
-        return int(sout.split('START_CMD_OUTPUT\n')[1].split()[1])
+        return int(sout.split('START_CMD_OUTPUT\n')[1].split()[0])
     except:
         return -1
 
