@@ -17515,7 +17515,7 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 	}
 	else
 	{
-		ATExecRebalanceTableCTAS(rootCmd, rel, cmd, 0);
+		ATExecRebalanceTableCTAS(rootCmd, rel, cmd, getgpsegmentCount());
 	}
 
 	/* Update numsegments to cluster size */
@@ -17827,8 +17827,7 @@ ATExecRebalanceTableCTAS(AlterTableCmd *rootCmd, Relation rel,
 
 		/* Step (b) - build CTAS */
 		distby = make_distributedby_for_rel(rel);
-		distby->numsegments =
-			(targetNumSegments > 0) ? targetNumSegments : getgpsegmentCount();
+		distby->numsegments = targetNumSegments;
 
 		queryDesc = build_ctas_with_dist(rel, distby,
 						untransformRelOptions(get_rel_opts(rel)),
