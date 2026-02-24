@@ -682,7 +682,7 @@ def impl(context, process_name, log_msg, timeout):
 
         ITERATION=$((ITERATION + 1))
         if [ $ITERATION -ge $MAX_ITERATION_CNT ]; then
-            echo "Timeout after {timeout} seconds waiting for '{log_msg}' in {process_name} logs"
+            echo "Timeout after {timeout} seconds waiting for '{log_msg}' in {process_name} logs" >&2
             exit 1
         fi
     done
