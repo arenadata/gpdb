@@ -513,7 +513,9 @@ static void ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd
 
 static void ATRepackTable(Relation origTable, AlteredTableInfo *tab);
 static void ATExecExpandPartitionTablePrepare(Relation rel);
-static void ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd);
+static void ATExecRebalanceTableCTAS(AlterTableCmd *rootCmd,
+                                     Relation rel, AlterTableCmd *cmd,
+                                     int targetNumSegments);
 
 static void ATExecSetDistributedBy(Relation rel, Node *node,
 								   AlterTableCmd *cmd);
@@ -17513,7 +17515,7 @@ ATExecExpandTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 	}
 	else
 	{
-		ATExecExpandTableCTAS(rootCmd, rel, cmd);
+		ATExecRebalanceTableCTAS(rootCmd, rel, cmd, getgpsegmentCount());
 	}
 
 	/* Update numsegments to cluster size */
@@ -17651,11 +17653,6 @@ ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 		 * child partitions.
 		 */
 	}
-	else if (rel->rd_rel->relkind == RELKIND_MATVIEW)
-	{
-		ereport((Gp_role == GP_ROLE_EXECUTE) ? DEBUG1 : NOTICE,
-				(errmsg("Materialized view requires REFRESH after rebalance")));
-	}
 	else if (rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 	{
 		if (rel_is_external_table(relid))
@@ -17676,6 +17673,18 @@ ATExecRebalanceTable(List **wqueue, Relation rel, AlterTableCmd *cmd)
 			/* Skip expanding foreign table, since data is not located inside gpdb */
 			return;
 		}
+	}
+	else if (rel->rd_rel->relkind == RELKIND_MATVIEW)
+	{
+		/*
+		 * We can't insert data directly to an existing matview,
+		 * therefore the approach from ATExecShrinkTable() is not suitable,
+		 * and we use CTAS method for matviews.
+		 */
+		AlteredTableInfo	*tab = linitial(*wqueue);
+		AlterTableCmd		*rootCmd =
+			(AlterTableCmd *)linitial(tab->subcmds[AT_PASS_MISC]);
+		ATExecRebalanceTableCTAS(rootCmd, rel, cmd, targetNumSegments);
 	}
 	else
 	{
@@ -17778,7 +17787,8 @@ ATExecExpandPartitionTablePrepare(Relation rel)
 }
 
 static void
-ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd)
+ATExecRebalanceTableCTAS(AlterTableCmd *rootCmd, Relation rel,
+						 AlterTableCmd *cmd, int targetNumSegments)
 {
 	RangeVar			*tmprv;
 	Oid					tmprelid;
@@ -17817,7 +17827,7 @@ ATExecExpandTableCTAS(AlterTableCmd *rootCmd, Relation rel, AlterTableCmd *cmd)
 
 		/* Step (b) - build CTAS */
 		distby = make_distributedby_for_rel(rel);
-		distby->numsegments = getgpsegmentCount();
+		distby->numsegments = targetNumSegments;
 
 		queryDesc = build_ctas_with_dist(rel, distby,
 						untransformRelOptions(get_rel_opts(rel)),
