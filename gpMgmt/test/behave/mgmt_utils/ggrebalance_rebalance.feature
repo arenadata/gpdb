@@ -356,7 +356,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
          And there is a "heap" table "test_schema_2.test_table_1" in "test_db_2" with "100" rows
          And there is a "ao" table "test_schema_2.test_table_2" in "test_db_2" with "100" rows
          And all files in gpAdminLogs directory are deleted
-        When the user runs ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'"
+        When the user runs "ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'"
         Then ggrebalance should return a return code of 0
          And ggrebalance should print "Rebalance is complete" to logfile with latest timestamp
          And the cluster configuration has 1 segments where "hostname='sdw1' and content = 2 and role = 'm' and status = 'u'"
