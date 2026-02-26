@@ -1600,29 +1600,6 @@ class ResourceEstimator:
             f"    Available: {issue['available_gb']:.2f} GB\n"
         )
     
-    def _get_space_info_for_directory(self, host_address: str, directory: str) -> Optional[DiskSpaceInfo]:
-        """
-        Get space info for a directory, checking both exact match and parent directory
-
-        Args:
-            host_address: Host address
-            directory: Directory path (can be full segment path or parent template path)
-
-        Returns:
-            DiskSpaceInfo if found, None otherwise
-        """
-        if host_address not in self.space_info_by_host:
-            return None
-    
-        # Try exact match first
-        if directory in self.space_info_by_host[host_address]:
-            return self.space_info_by_host[host_address][directory]
-    
-        # Try parent directory
-        parent_dir = TemplateParser.extract_parent_directory(directory)
-        if parent_dir in self.space_info_by_host[host_address]:
-            return self.space_info_by_host[host_address][parent_dir]
-    
     def get_allocated_space_for_filesystem(self, hostname: str, filesystem: str) -> int:
         """
         Get the space already allocated to a specific filesystem
