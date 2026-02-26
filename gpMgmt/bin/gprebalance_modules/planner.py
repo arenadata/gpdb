@@ -1741,15 +1741,5 @@ class ResourceEstimator:
             if not space_info:
                 continue
             fs_key = (hostname, space_info.filesystem)
-            req = self.filesystem_allocations[fs_key].remove_datadir
-
-        for fs, release_kb in fs_to_release.items():
-            fs_key = (hostname, fs)
-            if fs_key not in self.filesystem_allocations:
-                continue
-            req = self.filesystem_allocations[fs_key]
-            req.required_kb = max(0, req.required_kb - release_kb)
-    
-    def shutdown(self):
-        if self.conn:
-            self.conn.close()
+            self.filesystem_allocations[fs_key].remove_datadir(dbid)
+            self.filesystem_allocations[fs_key].remove_tablespaces(dbid)
