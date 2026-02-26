@@ -1,7 +1,6 @@
 from gppylib.test.unit.gp_unittest import *
 from mock import *
 
-
 from gprebalance_modules.planner import ResourceEstimator, ResourceError, LogicalMove, Planner, PortAllocator, PlanningError
 from gppylib.db.dbconn import DbURL
 from gppylib import gparray

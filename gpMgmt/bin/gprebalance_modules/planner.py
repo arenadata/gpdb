@@ -5,6 +5,7 @@ import copy
 import os
 import pickle
 from typing import Any, Tuple, List, Dict
+from contextlib import closing
 from dataclasses import dataclass, field
 from copy import deepcopy
 import math
@@ -809,44 +810,33 @@ class Planner:
         
         resource_estimator = None
 
-        try:
-            if not self.options.skip_resource_estimation:
-                try:
-                    conn = dbconn.connect(self.dburl, encoding='UTF8')
-                    resource_estimator = ResourceEstimator(
-                            self.logger, 
-                            conn, 
-                            self.virtual_gparray,
-                            batch_size=getattr(self.options, 'batch_size', 16)
-                            )
-                    resource_estimator.estimate_and_validate_moves(moves)
-                except ResourceError as e:
-                        raise PlanningError(f"Resource validation failed: {e}")
-            else:
-                self.logger.warning("Skipping resource estimation")
-
-            # Detect swaps
-            swap_pairs = None
-
-            if not self.options.inplace_swap_roles:
-                swap_pairs = self.detect_swap_pairs(moves)
-
-            if swap_pairs:
-                self.logger.info(f"Detected {len(swap_pairs)} primary-mirror pairs which just swap hosts")
-                final_moves = self.handle_swaps(swap_pairs, moves, port_allocator, resource_estimator)
-            else:
-                final_moves = moves
-
-            if resource_estimator:
-                self.logger.info(
-                    f"Estimated total data to move: "
-                    f"{resource_estimator.total_gb(final_moves):.2f} GB"
-                )
-        except:
-            raise
-        finally:
-            if resource_estimator:
-                resource_estimator.shutdown()
+        if not self.options.skip_resource_estimation:
+            try:
+                resource_estimator = ResourceEstimator(
+                        self.logger, 
+                        self.dburl, 
+                        self.virtual_gparray,
+                        batch_size=getattr(self.options, 'batch_size', 16)
+                        )
+                resource_estimator.estimate_and_validate_moves(moves)
+            except ResourceError as e:
+                    raise PlanningError(f"Resource validation failed: {e}")
+        else:
+            self.logger.warning("Skipping resource estimation")
+        # Detect swaps
+        swap_pairs = None
+        if not self.options.inplace_swap_roles:
+            swap_pairs = self.detect_swap_pairs(moves)
+        if swap_pairs:
+            self.logger.info(f"Detected {len(swap_pairs)} primary-mirror pairs which just swap hosts")
+            final_moves = self.handle_swaps(swap_pairs, moves, port_allocator, resource_estimator)
+        else:
+            final_moves = moves
+        if resource_estimator:
+            self.logger.info(
+                f"Estimated total data to move: "
+                f"{resource_estimator.total_gb(final_moves):.2f} GB"
+            )
 
         return final_moves
     
@@ -995,15 +985,13 @@ class Planner:
                 try:
                     intermediate_datadir = self._get_datadir_for_segment(
                         host, content_id, is_mirror=True)
-                    
-                    int_tablespace_dirs = {os.path.dirname(dir) for dir in (mirror_move.segment_size.tablespace_usage or {})}
 
                     has_space, available_space_kb, filesystems = \
                         resource_estimator.check_and_reserve_space(
                             hostname=host.hostname,
                             host_address=host.address,
                             data_directory=intermediate_datadir,
-                            tablespace_dirs=int_tablespace_dirs,
+                            dbid=mirror_move.seg.dbid,
                             required_size=mirror_move.segment_size
                             )
 
@@ -1024,7 +1012,7 @@ class Planner:
                         f"  Required: {mirror_size_kb / 1024 / 1024:.2f} GB"
                         )
                 except Exception as e:
-                    self.logger.debug(f"Could not check space on {host.hostname}: {e}")
+                    self.logger.error(f"Could not check space on {host.hostname}: {e}")
                     has_space = False
             
             if not has_space:
@@ -1072,12 +1060,13 @@ class Planner:
 
         for host, _, _, _ in scored_candidates:
             if host.hostname != selected_host.hostname:
+                dirs = [self._get_datadir_for_segment(host, content_id, is_mirror=True)]
+                dirs += [os.path.dirname(dir) for dir in (required_size.tablespace_usage or {})]
                 resource_estimator.release_reserved_space(
                     hostname=host.hostname,
                     host_address=host.address,
-                    data_directory=self._get_datadir_for_segment(host, content_id, is_mirror=True),
-                    tablespace_dirs={os.path.dirname(dir) for dir in (mirror_move.segment_size.tablespace_usage or {})},
-                    required_size=mirror_move.segment_size,
+                    dirs_to_release=dirs,
+                    dbid=mirror_move.seg.dbid
                     )
         
         return selected_host
@@ -1232,41 +1221,59 @@ class FilesystemRequirement:
     """
     space_info: DiskSpaceInfo
     required_kb: int = 0
-    # dbids of segments whose datadir contributes to this filesystem
-    datadir_dbids: Set[int] = field(default_factory=set)
-    # (dbid, tbl_path) pairs contributing to this filesystem
-    tablespace_keys: Set[Tuple[int, str]] = field(default_factory=set)
-    # actual directory paths (for error reporting)
-    datadir_paths: Set[str] = field(default_factory=set)
+    # dbids and datadirs, which contribute to this filesystem
+    dbid_datadirs: Dict[int, Tuple[str, int]] = field(default_factory=dict)
+    # dict(dbid, dict(tablespace_base, size_kb)) contributing to this filesystem
+    dbid_tablespaces: Dict[int, Dict[str, int]] = field(default_factory=dict)
+    # tablespace_base/dbid for error msgs
     tablespace_paths: Set[str] = field(default_factory=set)
 
-    def add_datadir(self, dbid: int, directory: str, size_kb: float) -> None:
+    def add_datadir(self, dbid: int, directory: str, size_kb: int) -> None:
         """
-        Add a datadir contribution if not already counted.
+        Add a datadir contribution.
         """
-        if dbid not in self.datadir_dbids:
-            self.datadir_dbids.add(dbid)
-            self.datadir_paths.add(directory)
-            self.required_kb += int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+        request = int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+        self.dbid_datadirs[dbid] = (directory, request)
+        self.required_kb += request
 
-    def add_tablespace(self, dbid: int, tbl_path: str, directory: str, size_kb: float) -> None:
+    def add_tablespace(self, dbid: int, tbl_path: str, tbl_base: str, size_kb: int) -> None:
         """
-        Add a tablespace contribution if not already counted.
+        Add a tablespace contribution.
         """
-        key = (dbid, tbl_path)
-        if key not in self.tablespace_keys:
-            self.tablespace_keys.add(key)
-            self.tablespace_paths.add(directory)
-            self.required_kb += int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+        request = int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+        self.tablespace_paths.add(tbl_path)
+        if dbid not in self.dbid_tablespaces:
+            self.dbid_tablespaces[dbid] = defaultdict(int)
+        self.dbid_tablespaces[dbid][tbl_base] += request
+        self.required_kb += request
+    
+    def remove_datadir(self, dbid: int) -> None:
+        if dbid in self.dbid_datadirs:
+            item = self.dbid_datadirs.pop(dbid)
+            self.required_kb -= item[1]
+
+    def remove_tablespaces(self, dbid: int) -> None:
+        if dbid in self.dbid_tablespaces:
+            tblsps = self.dbid_tablespaces.pop(dbid)
+            for _, size in tblsps.items():
+                self.required_kb -= size
 
     @property
     def available_kb(self) -> int:
         return self.space_info.available_kb
+    
+    @property
+    def datadir_paths(self) -> Set[str]:
+        """for error reporting"""
+        paths = {}
+        for _, item in self.dbid_datadirs.items():
+            paths.add(item[0])
+        return paths
 
     @property
     def unique_segment_count(self) -> int:
-        tablespace_dbids = {dbid for dbid, _ in self.tablespace_keys}
-        return len(self.datadir_dbids) + len(tablespace_dbids - self.datadir_dbids)
+        return len(self.dbid_datadirs) + \
+            len(set(self.dbid_tablespaces.keys()) - set(self.dbid_datadirs.keys()))
 
 class ResourceEstimator:
     """
@@ -1276,7 +1283,7 @@ class ResourceEstimator:
     using DiskSpaceChecker for invoking remote disk operations.
     """
     
-    def __init__(self, logger: Any, conn: Any, gparray: gparray.GpArray, batch_size: int = 16):
+    def __init__(self, logger: Any, dburl: dbconn.DbURL, gparray: gparray.GpArray, batch_size: int = 16):
         """
         Initialize resource estimator
         
@@ -1287,7 +1294,7 @@ class ResourceEstimator:
             batch_size: Number of parallel operations
         """
         self.logger = logger
-        self.conn = conn
+        self.dburl = dburl
         self.gparray = gparray
         self.disk_checker = DiskSpaceChecker(logger, batch_size)
         # Cache filesystem allocation data after validation
@@ -1352,6 +1359,7 @@ class ResourceEstimator:
         Returns:
             Dict mapping dbid to list of tablespace paths
         """
+
         if not dbids:
             return {}
         
@@ -1376,13 +1384,14 @@ class ResourceEstimator:
         """
         
         try:
-            cursor = dbconn.query(self.conn, tablespace_location_sql)
-            tablespaces = defaultdict(list)
-            
-            for dbid, loc in cursor:
-                tablespaces[dbid].append(loc)
-            
-            return tablespaces
+            with closing(dbconn.connect(self.dburl, encoding='UTF8')) as conn:
+                cursor = dbconn.query(conn, tablespace_location_sql)
+                tablespaces = defaultdict(list)
+
+                for dbid, loc in cursor:
+                    tablespaces[dbid].append(loc)
+
+                return tablespaces
         except Exception as e:
             raise ResourceError(f"Failed to query tablespace locations: {e}")
     
@@ -1559,21 +1568,23 @@ class ResourceEstimator:
             self.logger.warning(f"Could not check space for {hostname}:{directory}: {e}")
             return None
 
-    def _reserve_space(
-        self,
-        fs_key: Tuple[str, str],
-        space_info: DiskSpaceInfo,
-        directory: str,
-        required_kb: int,
-    ) -> None:
+    def _reserve_space(self,
+                       fs_key: Tuple[str, str],
+                       space_info: DiskSpaceInfo,
+                       directory: str,
+                       required_kb: int,
+                       dbid: int,
+                       is_tablespace: bool) -> None:
         hostname, filesystem = fs_key
         if fs_key not in self.filesystem_allocations:
             self.filesystem_allocations[fs_key] = FilesystemRequirement(space_info=space_info)
-        self.filesystem_allocations[fs_key].required_kb += required_kb
-        self.filesystem_allocations[fs_key].datadir_paths.add(directory)
+        if is_tablespace:
+            self.filesystem_allocations[fs_key].add_tablespace(dbid, directory + '/' + str(dbid), directory, required_kb)
+        else:
+             self.filesystem_allocations[fs_key].add_datadir(dbid, directory, required_kb)
         total_allocated = self.filesystem_allocations[fs_key].required_kb
         self.logger.debug(
-            f"Reserved {required_kb / 1024 / 1024:.2f} GB on {hostname}:{filesystem} — "
+            f"Reserved {required_kb / 1024 / 1024:.2f} GB on {hostname}:{filesystem} - "
             f"total allocated: {total_allocated / 1024 / 1024:.2f} GB"
         )
 
@@ -1600,6 +1611,29 @@ class ResourceEstimator:
             f"    Available: {issue['available_gb']:.2f} GB\n"
         )
     
+    def _get_space_info_for_directory(self, host_address: str, directory: str) -> Optional[DiskSpaceInfo]:
+        """
+        Get space info for a directory, checking both exact match and parent directory
+
+        Args:
+            host_address: Host address
+            directory: Directory path (can be full segment path or parent template path)
+
+        Returns:
+            DiskSpaceInfo if found, None otherwise
+        """
+        if host_address not in self.space_info_by_host:
+            return None
+    
+        # Try exact match first
+        if directory in self.space_info_by_host[host_address]:
+            return self.space_info_by_host[host_address][directory]
+    
+        # Try parent directory
+        parent_dir = TemplateParser.extract_parent_directory(directory)
+        if parent_dir in self.space_info_by_host[host_address]:
+            return self.space_info_by_host[host_address][parent_dir]
+    
     def get_allocated_space_for_filesystem(self, hostname: str, filesystem: str) -> int:
         """
         Get the space already allocated to a specific filesystem
@@ -1616,10 +1650,10 @@ class ResourceEstimator:
                                 hostname: str,
                                 host_address: str,
                                 data_directory: str,
-                                tablespace_dirs: Set[str],
+                                dbid: int,
                                 required_size: SegmentSize) -> Tuple[bool, int, str]:
         """
-        Check if a data and tablespaces direcotries have enough space
+        Check if a data and tablespaces directories have enough space
         and reserve it if available.
         
         This updates the cached filesystem allocations to account for
@@ -1629,18 +1663,18 @@ class ResourceEstimator:
             hostname: Target hostname
             host_address: Target host address
             data_directory: Target directory path
-            tablespace_dirs: Target tablespace paths
+            dbid: segment dbid
             requied_size: Required space in SegmentSize
             
         Returns:
             (has_space, min_available_kb, comma_separated_filesystems)            
         """
         dirs_to_check = [(data_directory, required_size.datadir_size_kb)]
-        tbl_usage = required_size.tablespace_usage or {}
+        tablespace_dirs = {os.path.dirname(dir) for dir in (required_size.tablespace_usage or {})}
         for tbl_dir in tablespace_dirs:
             # Sum all tablespace paths that live under this dir
             tbl_size_kb = sum(size_kb
-                for tbl_path, size_kb in tbl_usage.items()
+                for tbl_path, size_kb in required_size.tablespace_usage.items()
                 if os.path.dirname(tbl_path) == tbl_dir)
             dirs_to_check.append((tbl_dir, tbl_size_kb))
         
@@ -1673,12 +1707,15 @@ class ResourceEstimator:
                 )
                 return False, min(fs_available.values()), ', '.join(fs_requirements)
 
-        for fs, required_kb in fs_requirements.items():
+        for directory, size_kb in dirs_to_check:
+            space_info = self._get_or_fetch_space_info(hostname, host_address, directory)
             self._reserve_space(
-                fs_key=(hostname, fs),
-                space_info=fs_space_info[fs],
-                directory=data_directory,
+                fs_key=(hostname, space_info.filesystem),
+                space_info=space_info,
+                directory=directory,
                 required_kb=required_kb,
+                dbid=dbid,
+                is_tablespace=(directory in tablespace_dirs)
             )
 
         return True, min(fs_available.values()), ', '.join(fs_requirements)
@@ -1686,9 +1723,8 @@ class ResourceEstimator:
     def release_reserved_space(self,
                                hostname: str,
                                host_address: str,
-                               data_directory: str,
-                               tablespace_dirs: Set[str],
-                               required_size: SegmentSize) -> None:
+                               dirs_to_release: List[str],
+                               dbid:int) -> None:
         """
         Release space previously reserved by check_and_reserve_space.
 
@@ -1697,31 +1733,15 @@ class ResourceEstimator:
         Args:
             hostname:        Host whose allocations should be reduced
             host_address:    Host address (used for cache lookup)
-            data_directory:  Datadir path that was reserved
-            tablespace_dirs: Tablespace base paths that were reserved (may be empty)
-            required_size:   The same SegmentSize that was passed to check_and_reserve_space
+            dirs_to_release: List of directories for release
+            dbid: segment dbid
         """
-        dirs_to_release: List[Tuple[str, int]] = [
-            (data_directory, required_size.datadir_size_kb)
-        ]
-        tbl_usage = required_size.tablespace_usage or {}
-        for tbl_dir in tablespace_dirs:
-            tbl_size_kb = sum(
-                size_kb
-                for tbl_path, size_kb in tbl_usage.items()
-                if os.path.dirname(tbl_path) == tbl_dir
-            )
-            dirs_to_release.append((tbl_dir, tbl_size_kb))
-
-        # Mirror the aggregation logic from check_and_reserve_space so we
-        # release exactly what was reserved per filesystem.
-        fs_to_release: Dict[str, int] = defaultdict(int)
-        for directory, size_kb in dirs_to_release:
+        for directory in dirs_to_release:
             space_info = self._get_or_fetch_space_info(hostname, host_address, directory)
             if not space_info:
                 continue
-            fs = space_info.filesystem
-            fs_to_release[fs] += int(size_kb * (1 + DISK_SPACE_SAFETY_MARGIN))
+            fs_key = (hostname, space_info.filesystem)
+            req = self.filesystem_allocations[fs_key].remove_datadir
 
         for fs, release_kb in fs_to_release.items():
             fs_key = (hostname, fs)
