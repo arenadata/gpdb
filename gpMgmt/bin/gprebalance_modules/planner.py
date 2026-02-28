@@ -1005,11 +1005,11 @@ class Planner:
                         continue
                     else:
                         self.logger.debug(
-                        f"Host {host.hostname}: viable candidate\n"
-                        f"  Directory: {intermediate_datadir}\n"
-                        f"  Filesystem: {filesystems}\n"
-                        f"  Available: {available_space_kb / 1024 / 1024:.2f} GB\n"
-                        f"  Required: {mirror_size_kb / 1024 / 1024:.2f} GB"
+                            f"Host {host.hostname}: viable candidate\n"
+                            f"  Directory: {intermediate_datadir}\n"
+                            f"  Filesystem: {filesystems}\n"
+                            f"  Available: {available_space_kb / 1024 / 1024:.2f} GB\n"
+                            f"  Required: {mirror_size_kb / 1024 / 1024:.2f} GB"
                         )
                 except Exception as e:
                     self.logger.error(f"Could not check space on {host.hostname}: {e}")
@@ -1052,11 +1052,11 @@ class Planner:
             used_intermediate_hosts.get(selected_host.hostname, 0) + 1
         
         self.logger.info(
-        f"Selected intermediate host {selected_host.hostname} for content {content_id}\n"
-        f"  Score: {selected_score:.1f}\n"
-        f"  Filesystems: {selected_fs}\n"
-        f"  Available: {selected_space / 1024 / 1024:.2f} GB\n"
-        f"  Required: {mirror_size_kb / 1024 / 1024:.2f} GB")
+            f"Selected intermediate host {selected_host.hostname} for content {content_id}\n"
+            f"  Score: {selected_score:.1f}\n"
+            f"  Filesystems: {selected_fs}\n"
+            f"  Available: {selected_space / 1024 / 1024:.2f} GB\n"
+            f"  Required: {mirror_size_kb / 1024 / 1024:.2f} GB")
 
         for host, _, _, _ in scored_candidates:
             if host.hostname != selected_host.hostname:
