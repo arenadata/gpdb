@@ -252,7 +252,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 4, row count = 100
 
-    Scenario Outline: 6. rebalance - case when mirror and primary swap their hosts.
+        Scenario Outline: 6. rebalance - case when mirror and primary swap their hosts.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'mkdir -p /data/gpdata/ggrebalance/primary'"
@@ -284,7 +284,8 @@ Feature: ggrebalance behave tests (rebalance scenarios)
          """
         When initialize a cluster using "/tmp/rebalance_s6"
         Then the temporary file "/tmp/rebalance_s6" is removed
-        Given the user runs command "export COORDINATOR_DATA_DIRECTORY=/data/gpdata/ggrebalance/gpseg-1"
+        Given the environment variable "COORDINATOR_DATA_DIRECTORY" is set to "/data/gpdata/ggrebalance/gpseg-1"
+         And coordinator data directory is updated
          And database "test_db_1" exists
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
@@ -307,12 +308,14 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 6, row count = 100
         Given the database is not running
         Given the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'rm -rf /data/gpdata/ggrebalance/primary'"
-        And the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'rm -rf /data/gpdata/ggrebalance/mirror'"
+         And the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'rm -rf /data/gpdata/ggrebalance/mirror'"
+        Then <restore_env>
+         And coordinator data directory is updated 
 
         Examples: inplace swap and using 3rd host
-        | command    |
-        |"ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'"|
-        |"ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'  --inplace-swap-roles"|
+        | command    | restore_env|
+        |"ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'"|stub|
+        |"ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'  --inplace-swap-roles"|"COORDINATOR_DATA_DIRECTORY" environment variable should be restored|
     
      Scenario: 7. rebalance - case with multiple swaps.
         Given the database is not running
@@ -346,7 +349,8 @@ Feature: ggrebalance behave tests (rebalance scenarios)
          """
         When initialize a cluster using "/tmp/rebalance_s6"
         Then the temporary file "/tmp/rebalance_s6" is removed
-        Given the user runs command "export COORDINATOR_DATA_DIRECTORY=/data/gpdata/ggrebalance/gpseg-1"
+        Given the environment variable "COORDINATOR_DATA_DIRECTORY" is set to "/data/gpdata/ggrebalance/gpseg-1"
+         And coordinator data directory is updated
          And database "test_db_1" exists
          And schema "test_schema_1" exists in "test_db_1"
          And there is a "heap" table "test_schema_1.test_table_1" in "test_db_1" with "100" rows
@@ -372,3 +376,5 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         Given the database is not running
         Given the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'rm -rf /data/gpdata/ggrebalance/primary'"
         And the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'rm -rf /data/gpdata/ggrebalance/mirror'"
+        Then "COORDINATOR_DATA_DIRECTORY" environment variable should be restored
+         And coordinator data directory is updated
