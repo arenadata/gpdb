@@ -1265,7 +1265,7 @@ class FilesystemRequirement:
     @property
     def datadir_paths(self) -> Set[str]:
         """for error reporting"""
-        paths = {}
+        paths = set()
         for _, item in self.dbid_datadirs.items():
             paths.add(item[0])
         return paths
@@ -1289,7 +1289,7 @@ class ResourceEstimator:
         
         Args:
             logger: Logger instance
-            conn: Database connection
+            dburl: Database url
             gparray: Current GpArray configuration
             batch_size: Number of parallel operations
         """
