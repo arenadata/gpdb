@@ -252,7 +252,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         When there is a "heap" table "test_schema_1.test_table_3" in "test_db_1" with "100" rows
         Then distribution information from table "test_schema_1.test_table_3" with data in "test_db_1" is equal to segment count = 4, row count = 100
 
-        Scenario Outline: 6. rebalance - case when mirror and primary swap their hosts.
+    Scenario Outline: 6. rebalance - case when mirror and primary swap their hosts.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'mkdir -p /data/gpdata/ggrebalance/primary'"
@@ -317,7 +317,7 @@ Feature: ggrebalance behave tests (rebalance scenarios)
         |"ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'"|stub|
         |"ggrebalance -x 6 -d '/data/gpdata/ggrebalance/primary, /data/gpdata/ggrebalance/mirror'  --inplace-swap-roles"|"COORDINATOR_DATA_DIRECTORY" environment variable should be restored|
     
-     Scenario: 7. rebalance - case with multiple swaps.
+    Scenario: 7. rebalance - case with multiple swaps.
         Given the database is not running
          And a working directory of the test as '/data/gpdata/ggrebalance'
          And the user runs command "gpssh -h sdw1 -h sdw2 -h sdw3 -e 'mkdir -p /data/gpdata/ggrebalance/primary'"

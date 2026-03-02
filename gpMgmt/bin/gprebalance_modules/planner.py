@@ -987,11 +987,10 @@ class Planner:
                         host, content_id, is_mirror=True)
 
                     has_space, available_space_kb, filesystems = \
-                        resource_estimator.check_and_reserve_space(
+                        resource_estimator.check_space(
                             hostname=host.hostname,
                             host_address=host.address,
                             data_directory=intermediate_datadir,
-                            dbid=mirror_move.seg.dbid,
                             required_size=mirror_move.segment_size
                             )
 
@@ -1057,17 +1056,15 @@ class Planner:
             f"  Filesystems: {selected_fs}\n"
             f"  Available: {selected_space / 1024 / 1024:.2f} GB\n"
             f"  Required: {mirror_size_kb / 1024 / 1024:.2f} GB")
-
-        for host, _, _, _ in scored_candidates:
-            if host.hostname != selected_host.hostname:
-                dirs = [self._get_datadir_for_segment(host, content_id, is_mirror=True)]
-                dirs += [os.path.dirname(dir) for dir in (required_size.tablespace_usage or {})]
-                resource_estimator.release_reserved_space(
-                    hostname=host.hostname,
-                    host_address=host.address,
-                    dirs_to_release=dirs,
-                    dbid=mirror_move.seg.dbid
-                    )
+        
+        if resource_estimator:
+            resource_estimator.reserve_space(
+                hostname=host.hostname,
+                host_address=host.address,
+                data_directory=self._get_datadir_for_segment(host, content_id, is_mirror=True),
+                dbid=mirror_move.seg.dbid,
+                required_size=mirror_move.segment_size
+            )
         
         return selected_host
     
@@ -1440,7 +1437,7 @@ class ResourceEstimator:
         Check that every target filesystem has enough free space.
 
         Builds filesystem_allocations as a side effect so that
-        check_and_reserve_space() can later account for committed space.
+        reserve_space() can later account for committed space.
         Raises ResourceError listing all filesystems with insufficient space.
         """
         self._fetch_target_space_info(moves)
@@ -1587,7 +1584,33 @@ class ResourceEstimator:
             f"Reserved {required_kb / 1024 / 1024:.2f} GB on {hostname}:{filesystem} - "
             f"total allocated: {total_allocated / 1024 / 1024:.2f} GB"
         )
-
+    
+    def reserve_space(self,
+                      hostname: str,
+                      host_address: str,
+                      data_directory: str,
+                      dbid: int,
+                      required_size: SegmentSize) -> None:
+        
+        dirs_to_reserve = [(data_directory, required_size.datadir_size_kb)]
+        tablespace_dirs = {os.path.dirname(dir) for dir in (required_size.tablespace_usage or {})}
+        for tbl_dir in tablespace_dirs:
+            # Sum all tablespace paths that live under this dir
+            tbl_size_kb = sum(size_kb
+                for tbl_path, size_kb in required_size.tablespace_usage.items()
+                if os.path.dirname(tbl_path) == tbl_dir)
+            dirs_to_reserve.append((tbl_dir, tbl_size_kb))
+        for directory, size_kb in dirs_to_reserve:
+            space_info = self._get_or_fetch_space_info(hostname, host_address, directory)
+            self._reserve_space(
+                fs_key=(hostname, space_info.filesystem),
+                space_info=space_info,
+                directory=directory,
+                required_kb=size_kb,
+                dbid=dbid,
+                is_tablespace=(directory in tablespace_dirs)
+            )
+        
     def _format_space_issue(self, issue: Dict) -> str:
         """
         Format a space issue for error reporting
@@ -1646,24 +1669,18 @@ class ResourceEstimator:
             return self.filesystem_allocations[fs_key]['required_kb']
         return 0
     
-    def check_and_reserve_space(self,
-                                hostname: str,
-                                host_address: str,
-                                data_directory: str,
-                                dbid: int,
-                                required_size: SegmentSize) -> Tuple[bool, int, str]:
+    def check_space(self,
+                    hostname: str,
+                    host_address: str,
+                    data_directory: str,
+                    required_size: SegmentSize) -> Tuple[bool, int, str]:
         """
-        Check if a data and tablespaces directories have enough space
-        and reserve it if available.
-        
-        This updates the cached filesystem allocations to account for
-        the new reservation.
+        Check if a data and tablespaces directories have enough space.
         
         Args:
             hostname: Target hostname
             host_address: Target host address
             data_directory: Target directory path
-            dbid: segment dbid
             requied_size: Required space in SegmentSize
             
         Returns:
@@ -1707,39 +1724,4 @@ class ResourceEstimator:
                 )
                 return False, min(fs_available.values()), ', '.join(fs_requirements)
 
-        for directory, size_kb in dirs_to_check:
-            space_info = self._get_or_fetch_space_info(hostname, host_address, directory)
-            self._reserve_space(
-                fs_key=(hostname, space_info.filesystem),
-                space_info=space_info,
-                directory=directory,
-                required_kb=required_kb,
-                dbid=dbid,
-                is_tablespace=(directory in tablespace_dirs)
-            )
-
         return True, min(fs_available.values()), ', '.join(fs_requirements)
-    
-    def release_reserved_space(self,
-                               hostname: str,
-                               host_address: str,
-                               dirs_to_release: List[str],
-                               dbid:int) -> None:
-        """
-        Release space previously reserved by check_and_reserve_space.
-
-        Called when an intermediate host candidate is rejected..
-
-        Args:
-            hostname:        Host whose allocations should be reduced
-            host_address:    Host address (used for cache lookup)
-            dirs_to_release: List of directories for release
-            dbid: segment dbid
-        """
-        for directory in dirs_to_release:
-            space_info = self._get_or_fetch_space_info(hostname, host_address, directory)
-            if not space_info:
-                continue
-            fs_key = (hostname, space_info.filesystem)
-            self.filesystem_allocations[fs_key].remove_datadir(dbid)
-            self.filesystem_allocations[fs_key].remove_tablespaces(dbid)
