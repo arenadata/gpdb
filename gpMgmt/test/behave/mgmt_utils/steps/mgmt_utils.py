@@ -46,9 +46,7 @@ from gppylib import pgconf
 from gppylib.parseutils import canonicalize_address
 
 default_locale = None
-master_data_dir = os.environ.get('MASTER_DATA_DIRECTORY')
-if master_data_dir is None:
-    raise Exception('Please set MASTER_DATA_DIRECTORY in environment')
+master_data_dir = None
 
 def show_all_installed(gphome):
     x = platform.linux_distribution()
@@ -80,15 +78,24 @@ def create_local_demo_cluster(context, extra_config='', with_mirrors='true', wit
         num_primaries = os.getenv('NUM_PRIMARY_MIRROR_PAIRS', 3)
 
     os.environ['PGPORT'] = '15432'
+    demoDir = os.path.abspath("%s/../gpAux/gpdemo" % os.getcwd())
+    global master_data_dir
+    master_data_dir = "%s/datadirs/qddir/demoDataDir-1" % demoDir
+    os.environ['MASTER_DATA_DIRECTORY'] = master_data_dir
+
     cmd = """
         cd ../gpAux/gpdemo &&
         export DEMO_PORT_BASE={port_base} &&
         export NUM_PRIMARY_MIRROR_PAIRS={num_primary_mirror_pairs} &&
+        export PGPORT={pgport} &&
+        export MASTER_DATA_DIRECTORY={master_data_dir} &&
         export WITH_STANDBY={with_standby} &&
         export WITH_MIRRORS={with_mirrors} &&
         ./demo_cluster.sh -d && ./demo_cluster.sh -c &&
         {extra_config} ./demo_cluster.sh
     """.format(port_base=os.getenv('PORT_BASE', 15432),
+               pgport=os.getenv('PGPORT', 15432),
+               master_data_dir=os.getenv('MASTER_DATA_DIRECTORY', master_data_dir),
                num_primary_mirror_pairs=num_primaries,
                with_mirrors=with_mirrors,
                with_standby=with_standby,
@@ -150,10 +157,6 @@ def impl(context, checksum_toggle):
 
 @given('the cluster is generated with "{num_primaries}" primaries only')
 def impl(context, num_primaries):
-    os.environ['PGPORT'] = '15432'
-    demoDir = os.path.abspath("%s/../gpAux/gpdemo" % os.getcwd())
-    os.environ['MASTER_DATA_DIRECTORY'] = "%s/datadirs/qddir/demoDataDir-1" % demoDir
-
     create_local_demo_cluster(context, with_mirrors='false', with_standby='false', num_primaries=num_primaries)
 
     context.gpexpand_mirrors_enabled = False
@@ -283,19 +286,27 @@ def impl(context, checksum_toggle):
             is_ok = False
 
     if not is_ok:
-        stop_database(context)
+        stop_database_if_started(context)
 
         os.environ['PGPORT'] = '15432'
         port_base = os.getenv('PORT_BASE', 15432)
+        demoDir = os.path.abspath("%s/../gpAux/gpdemo" % os.getcwd())
+        global master_data_dir
+        master_data_dir = "%s/datadirs/qddir/demoDataDir-1" % demoDir
+        os.environ['MASTER_DATA_DIRECTORY'] = master_data_dir
 
         cmd = """
         cd ../gpAux/gpdemo; \
             export DEMO_PORT_BASE={port_base} && \
             export NUM_PRIMARY_MIRROR_PAIRS={num_primary_mirror_pairs} && \
+            export PGPORT={pgport} &&
+            export MASTER_DATA_DIRECTORY={master_data_dir} &&
             export WITH_MIRRORS={with_mirrors} && \
             ./demo_cluster.sh -d && ./demo_cluster.sh -c && \
             env EXTRA_CONFIG="HEAP_CHECKSUM={checksum_toggle}" ./demo_cluster.sh
         """.format(port_base=port_base,
+                   pgport=os.getenv('PGPORT', 15432),
+                   master_data_dir=os.getenv('MASTER_DATA_DIRECTORY', master_data_dir),
                    num_primary_mirror_pairs=os.getenv('NUM_PRIMARY_MIRROR_PAIRS', 3),
                    with_mirrors='true',
                    checksum_toggle=checksum_toggle)
@@ -2196,6 +2207,29 @@ def impl(context, dbname):
     drop_database_if_exists(context, dbname)
     create_database(context, dbname)
 
+@given('database with special characters "{dbname}" is created if not exists')
+@when('database with special characters "{dbname}" is created if not exists')
+@then('database with special characters "{dbname}" is created if not exists')
+def impl(context, dbname):
+    context.exception = None    
+    if not check_db_exists(dbname.replace("'", "''")):
+        createdb_cmd = 'psql -d postgres -c \'CREATE DATABASE "%s";\'' % dbname.replace('"', '""')
+        run_command(context, createdb_cmd)
+    if context.exception:
+        raise context.exception
+
+@given('database with special characters "{dbname}" is dropped if exists')
+@when('database with special characters "{dbname}" is dropped if exists')
+@then('database with special characters "{dbname}" is dropped if exists')
+def impl(context, dbname):
+    context.exception = None    
+    if check_db_exists(dbname.replace("'", "''")):
+        dropdb_cmd = 'psql -d postgres -c \'DROP DATABASE "%s";\'' % dbname.replace('"', '""')
+        run_command(context, dropdb_cmd)
+    if context.exception:
+        raise context.exception
+
+
 @then('validate gpcheckcat logs contain skipping ACL and Owner tests')
 def imp(context):
     dirname = 'gpAdminLogs'
@@ -2513,6 +2547,30 @@ def impl(context, sql, boolean):
         if _str2bool(result) != _str2bool(boolean):
             raise Exception("sql output '%s' is not same as '%s'" % (result, boolean))
 
+@then('wait until the history of database with special characters "{dbname}" appears')
+def impl(context, dbname):
+    escape_dbname = dbname.replace('"', '\\"')
+    cmd = Command(name='psql', cmdStr='psql --tuples-only -d gpperfmon -c "select count(*) > 0 from queries_history where db=\'%s\';"' % escape_dbname)
+    start_time = current_time = datetime.now()
+    result = None
+    while (current_time - start_time).seconds < 120:
+        cmd.run()
+        if cmd.get_return_code() != 0:
+            break
+        result = cmd.get_stdout()
+        if _str2bool(result):
+            break
+        time.sleep(2)
+        current_time = datetime.now()
+
+    if cmd.get_return_code() != 0:
+        context.ret_code = cmd.get_return_code()
+        context.error_message = 'psql internal error: %s' % cmd.get_stderr()
+        check_return_code(context, 0)
+    else:
+        if not _str2bool(result):
+            raise Exception("history of '%s' did not appear" % (dbname))
+
 @then('check that the result from boolean sql "{sql}" is "{boolean}"')
 def impl(context, sql, boolean):
     cmd = Command(name='psql', cmdStr='psql --tuples-only -d gpperfmon -c "%s"' % sql)
@@ -2634,6 +2692,14 @@ def impl(context):
     raise Exception("File: %s is empty" % gpdb_alert_file_path_src)
 
 
+@given("_queries_tail.dat is not clogged")
+def impl(context):
+    filename = '%s/gpperfmon/data/_queries_tail.dat' % os.getenv("MASTER_DATA_DIRECTORY")
+    with open(filename, 'w') as f:
+        f.truncate()
+    filename = '%s/gpperfmon/data/queries_tail.dat' % os.getenv("MASTER_DATA_DIRECTORY")
+    with open(filename, 'w') as f:
+        f.truncate()
 
 @then('the file with the fake timestamp no longer exists')
 def impl(context):
@@ -3053,15 +3119,17 @@ def _create_working_directory(context, working_directory, mode=''):
         os.mkdir(context.working_directory)
 
 
-def _create_cluster(context, master_host, segment_host_list, hba_hostnames='0', with_mirrors=False, mirroring_configuration='group'):
+def _create_cluster(context, master_host, segment_host_list, hba_hostnames='0', with_mirrors=False, mirroring_configuration='group', datadir_prefix='data', port_base='20500', mirror_port_base='21500'):
     if segment_host_list == "":
         segment_host_list = []
     else:
         segment_host_list = segment_host_list.split(",")
 
     global master_data_dir
-    master_data_dir = os.path.join(context.working_directory, 'data/master/gpseg-1')
+    master_data_dir = os.path.join(context.working_directory, datadir_prefix, 'master', 'gpseg-1')
     os.environ['MASTER_DATA_DIRECTORY'] = master_data_dir
+    os.environ['PGPORT'] = '10300'
+    context.datadir_prefix = datadir_prefix
 
     try:
         with dbconn.connect(dbconn.DbURL(dbname='template1'), unsetSearchPath=False) as conn:
@@ -3076,7 +3144,7 @@ def _create_cluster(context, master_host, segment_host_list, hba_hostnames='0', 
     except:
         pass
 
-    testcluster = TestCluster(hosts=[master_host]+segment_host_list, base_dir=context.working_directory,hba_hostnames=hba_hostnames)
+    testcluster = TestCluster(hosts=[master_host]+segment_host_list, base_dir=context.working_directory, hba_hostnames=hba_hostnames, datadir_prefix=datadir_prefix, port_base=port_base, mirror_port_base=mirror_port_base)
     testcluster.reset_cluster()
     testcluster.create_cluster(with_mirrors=with_mirrors, mirroring_configuration=mirroring_configuration)
     context.gpexpand_mirrors_enabled = with_mirrors
@@ -3096,6 +3164,10 @@ def impl(context, master_host, segment_host_list, hba_hostnames):
 @given('a cluster is created with mirrors on "{master_host}" and "{segment_host_list}"')
 def impl(context, master_host, segment_host_list):
     _create_cluster(context, master_host, segment_host_list, with_mirrors=True, mirroring_configuration='group')
+
+@given('a cluster is created with mirrors on "{master_host}" and "{segment_host_list}" from fixture')
+def impl(context, master_host, segment_host_list):
+    _create_cluster(context, master_host, segment_host_list, with_mirrors=True, mirroring_configuration='group', datadir_prefix='', port_base='20000', mirror_port_base='21000')
 
 @given('a cluster is created with "{mirroring_configuration}" segment mirroring on "{master_host}" and "{segment_host_list}"')
 def impl(context, mirroring_configuration, master_host, segment_host_list):
@@ -3241,15 +3313,11 @@ sdw1|sdw1|21502|/data/gpdata/gpexpand/data/mirror/gpseg2|8|2|m"""
 
 @given('the master pid has been saved')
 def impl(context):
-    data_dir = os.path.join(context.working_directory,
-                            'data/master/gpseg-1')
-    context.master_pid = gp.get_postmaster_pid_locally(data_dir)
+    context.master_pid = gp.get_postmaster_pid_locally(master_data_dir)
 
 @then('verify that the master pid has not been changed')
 def impl(context):
-    data_dir = os.path.join(context.working_directory,
-                            'data/master/gpseg-1')
-    current_master_pid = gp.get_postmaster_pid_locally(data_dir)
+    current_master_pid = gp.get_postmaster_pid_locally(master_data_dir)
     if context.master_pid == current_master_pid:
         return
 
@@ -3467,9 +3535,9 @@ def make_temp_dir(context, tmp_base_dir, mode=''):
 def impl(context, hostnames):
     hosts = hostnames.split(',')
     if hasattr(context, "working_directory"):
-        reset_hosts(hosts, context.working_directory)
+        reset_hosts(hosts, context.working_directory, context.datadir_prefix)
     if hasattr(context, "temp_base_dir"):
-        reset_hosts(hosts, context.temp_base_dir)
+        reset_hosts(hosts, context.temp_base_dir, context.datadir_prefix)
 
 
 @given('user has created expansiontest tables')
@@ -4198,7 +4266,7 @@ def impl(context):
      cmd.run(validateAfter=True)
      hostname = cmd.get_stdout()
      # Update entry in current /etc/hosts file to add new host-address
-     cmd = Command(name='update hostlist with new hostname', cmdStr="sudo sed 's/%s/%s__1 %s/g' </etc/hosts >> /tmp/hosts; sudo cp -f /tmp/hosts /etc/hosts;rm /tmp/hosts"
+     cmd = Command(name='update hostlist with new hostname', cmdStr="sudo sed 's/%s/%s__1 %s/g' </etc/hosts >> /tmp/hosts && sudo cp -f /tmp/hosts /etc/hosts && rm /tmp/hosts"
                                                         %(hostname, hostname, hostname))
      cmd.run(validateAfter=True)
 
@@ -4271,7 +4339,7 @@ def impl(context):
 @then('restore /etc/hosts file and cleanup hostlist file')
 @when('restore /etc/hosts file and cleanup hostlist file')
 def impl(context):
-    cmd = "sudo mv -f /tmp/hosts_orig /etc/hosts; rm -f /tmp/clusterConfigFile-1; rm -f /tmp/hostfile--1"
+    cmd = "sudo cp -f /tmp/hosts_orig /etc/hosts && sudo rm /tmp/hosts_orig && rm -f /tmp/clusterConfigFile-1 && rm -f /tmp/hostfile--1"
     context.execute_steps(u'''Then the user runs command "%s"''' % cmd)
 
 @given('create a gpcheckperf input host file')
@@ -4357,13 +4425,13 @@ arguments="\$@"
 # Insert data into table and run checkpoint just before syncing pg_control
 if [[ "\$arguments" == *"pg_xlog"* ]]
 then
-    ssh cdw "source /usr/local/greengage-db-devel/greengage_path.sh; psql -c 'INSERT INTO test_recoverseg SELECT generate_series(1, 1000)' -d postgres -p 5432 -h cdw"
+    ssh cdw "source /usr/local/greengage-db-devel/greengage_path.sh; psql -c 'INSERT INTO test_recoverseg SELECT generate_series(1, 1000)' -d postgres -p {port} -h cdw"
     # run checkpoint
-    ssh cdw "source /usr/local/greengage-db-devel/greengage_path.sh; psql -c "CHECKPOINT" -d postgres -p 5432 -h cdw"
+    ssh cdw "source /usr/local/greengage-db-devel/greengage_path.sh; psql -c 'CHECKPOINT' -d postgres -p {port} -h cdw"
 fi
 /usr/bin/rsync \$arguments
 EOL
-"""
+""".format(port=os.environ.get("PGPORT"))
     clear_cmd_cache_script = """
 cat >/tmp/clear_cmd_cache.py <<EOL
 #!/usr/bin/env python
@@ -4496,6 +4564,15 @@ def impl(context, logdir, stage):
         if attempt == num_retries:
             raise Exception('Timed out after {} retries'.format(num_retries))
 
+@when('add {seconds} seconds sleep after first table expand')
+def impl(context, seconds):
+    create_fault_query = "CREATE EXTENSION IF NOT EXISTS gp_inject_fault;"
+    execute_sql(context.dbname, create_fault_query)
+    # We use the reindex_relation fault injector to simulate a long table
+    # expansion time because during the expansion of the table, we reindex
+    # the relation files.
+    inject_fault_query = "SELECT gp_inject_fault('reindex_relation', 'sleep', '', '', '', 1, 1, {}, 2);".format(seconds)
+    execute_sql(context.dbname, inject_fault_query)
 
 def verify_elements_in_file(filename, elements):
     with open(filename, 'r') as file:
