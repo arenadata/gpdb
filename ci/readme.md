@@ -8,6 +8,12 @@ Change directory to gpdb sources destination. Make sure that directry doesn't co
 docker build -t gpdb6_regress:latest -f ci/Dockerfile.ubuntu .
 ```
 
+To build an image based on Ubuntu 24.04, specify the version in build args:
+
+```bash
+docker build -t gpdb6_regress:latest --build-arg OS_VERSION=24.04 -f ci/Dockerfile.ubuntu .
+```
+
 There are two additional options in [Dockerfile](./Dockerfile) to passthrough urls for [sigar](https://github.com/hyperic/sigar) packages:
 
 * `--build-arg sigar=https://path_to_sigar.rpm` for package with sigar library
