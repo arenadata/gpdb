@@ -41,6 +41,14 @@ run_feature() {
   else
     local project="${feature}_demo"
   fi
+
+  if [[ $feature == "gpexpand" ]]; then
+    mkdir -p ${PWD}/sqldump
+    wget -nv https://downloads.adsw.io/misc/dump.sql.xz -O ${PWD}/sqldump/dump.sql.xz
+
+    xz -d ${PWD}/sqldump/dump.sql.xz
+  fi
+
   echo "Started $feature behave tests on cluster $cluster and project $project"
   bash ci/scripts/init_containers.sh $project
 
