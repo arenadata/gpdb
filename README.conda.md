@@ -7,6 +7,7 @@ features provided by Anaconda.  Note that GPDB only supports Python 2.7 now.
 Although plpython might be built with Python 3.x, other Python tools in GPDB
 won't work with Python 3.x.
 
+
 You can try following steps to run Anaconda with GPDB from source code.
 
 ## Install Anaconda. 
