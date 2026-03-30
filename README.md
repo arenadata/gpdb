@@ -1,3 +1,4 @@
+#
 **Concourse Pipeline** [![Concourse Build Status](https://prod.ci.gpdb.pivotal.io/api/v1/teams/main/pipelines/gpdb_main/badge)](https://prod.ci.gpdb.pivotal.io/teams/main/pipelines/gpdb_main) |
 **Travis Build** [![Travis Build Status](https://travis-ci.org/greenplum-db/gpdb.svg?branch=main)](https://travis-ci.org/greenplum-db/gpdb)
 
@@ -43,6 +44,7 @@ Follow [these macOS steps](README.macOS.md) for getting your system ready for GP
 Follow [appropriate linux steps](README.Linux.md) for getting your system ready for GPDB
 
 ### Build the database
+
 
 ```
 # Initialize and update submodules in the repository
