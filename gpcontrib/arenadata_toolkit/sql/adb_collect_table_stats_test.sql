@@ -152,7 +152,7 @@ select pg_sleep(5);
 select arenadata_toolkit.adb_collect_table_stats();
 
 select table_name,
-	   abs(extract(epoch from now() - modifiedtime)) > 2 as same_time
+	   abs(extract(epoch from now() - modifiedtime)) > 2 as not_same_time
 FROM arenadata_toolkit.db_files_current
 where table_name = 'part_table'
 ORDER BY oid;
