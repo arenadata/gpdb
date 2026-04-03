@@ -405,15 +405,15 @@ select arenadata_toolkit.adb_collect_table_stats();
 (1 row)
 
 select table_name,
-	   abs(extract(epoch from now() - modifiedtime)) < 2 as same_time
+	   abs(extract(epoch from now() - modifiedtime)) > 2 as same_time
 FROM arenadata_toolkit.db_files_current
 where table_name = 'part_table'
 ORDER BY oid;
  table_name | same_time 
 ------------+-----------
- part_table | f
- part_table | f
- part_table | f
+ part_table | t
+ part_table | t
+ part_table | t
 (3 rows)
 
 -- Cleanup
