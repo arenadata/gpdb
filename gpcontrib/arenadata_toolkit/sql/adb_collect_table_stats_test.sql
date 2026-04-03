@@ -147,6 +147,16 @@ FROM arenadata_toolkit.db_files_current
 where table_name LIKE 'part_table%'
 ORDER BY oid;
 
+select pg_sleep(5);
+
+select arenadata_toolkit.adb_collect_table_stats();
+
+select table_name,
+	   abs(extract(epoch from now() - modifiedtime)) < 2 as same_time
+FROM arenadata_toolkit.db_files_current
+where table_name = 'part_table'
+ORDER BY oid;
+
 -- Cleanup
 DROP TABLE part_table, part_table_bigint, public.db_files_history;
 DROP FUNCTION remove_partition_from_db_files_history();
