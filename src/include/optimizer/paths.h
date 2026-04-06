@@ -108,14 +108,7 @@ extern bool have_join_order_restriction(PlannerInfo *root,
 										RelOptInfo *rel1, RelOptInfo *rel2);
 extern bool have_dangerous_phv(PlannerInfo *root,
 							   Relids outer_relids, Relids inner_params);
-<<<<<<< HEAD
 extern void mark_dummy_rel(PlannerInfo *root, RelOptInfo *rel);
-extern bool have_partkey_equi_join(RelOptInfo *joinrel,
-								   RelOptInfo *rel1, RelOptInfo *rel2,
-								   JoinType jointype, List *restrictlist);
-=======
-extern void mark_dummy_rel(RelOptInfo *rel);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 /*
  * equivclass.c
