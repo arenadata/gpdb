@@ -5980,15 +5980,14 @@ copyObjectImpl(const void *from)
 		case T_Sort:
 			retval = _copySort(from);
 			break;
-<<<<<<< HEAD
-=======
 		case T_IncrementalSort:
 			retval = _copyIncrementalSort(from);
 			break;
+#ifdef NOT_USED
 		case T_Group:
 			retval = _copyGroup(from);
 			break;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 		case T_Agg:
 			retval = _copyAgg(from);
 			break;

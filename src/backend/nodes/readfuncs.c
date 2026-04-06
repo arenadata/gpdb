@@ -4721,13 +4721,12 @@ parseNodeString(void)
 		return_value = _readMaterial();
 	else if (MATCH("SORT", 4))
 		return_value = _readSort();
-<<<<<<< HEAD
-=======
 	else if (MATCH("INCREMENTALSORT", 15))
 		return_value = _readIncrementalSort();
+#ifdef NOT_USED
 	else if (MATCH("GROUP", 5))
 		return_value = _readGroup();
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 	else if (MATCH("AGG", 3))
 		return_value = _readAgg();
 	else if (MATCH("TupleSplit", 10))
