@@ -392,6 +392,30 @@ ORDER BY oid;
  part_table_1_prt_2_2_prt_2_3_prt_2_4_prt_2_5_prt_sub_prt2 | arenadata_toolkit | part_table         | arenadata_toolkit   |     32768
 (199 rows)
 
+select pg_sleep(5);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+select arenadata_toolkit.adb_collect_table_stats();
+ adb_collect_table_stats 
+-------------------------
+ 
+(1 row)
+
+select table_name,
+	   abs(extract(epoch from now() - modifiedtime)) > 2 as not_same_time
+FROM arenadata_toolkit.db_files_current
+where table_name = 'part_table'
+ORDER BY oid;
+ table_name | not_same_time 
+------------+---------------
+ part_table | t
+ part_table | t
+ part_table | t
+(3 rows)
+
 -- Cleanup
 DROP TABLE part_table, part_table_bigint, public.db_files_history;
 DROP FUNCTION remove_partition_from_db_files_history();
