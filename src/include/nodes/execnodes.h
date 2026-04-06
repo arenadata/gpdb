@@ -2420,13 +2420,12 @@ typedef struct SortState
 	bool		am_worker;		/* are we a worker? */
 	SharedSortInfo *shared_info;	/* one entry per worker */
 
-<<<<<<< HEAD
 	bool		delayEagerFree;		/* is it safe to free memory used by this node,
 									 * when this node has outputted its last row? */
 	TuplesortInstrumentation sortstats; /* holds stats, if the Sort is eagerly free'd */
 
 } SortState;
-=======
+
 /* ----------------
  *	 Instrumentation information for IncrementalSort
  * ----------------
@@ -2502,7 +2501,6 @@ typedef struct GroupState
 	ExprState  *eqfunction;		/* equality function */
 	bool		grp_done;		/* indicates completion of Group scan */
 } GroupState;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 /* ---------------------
  *	AggState information
