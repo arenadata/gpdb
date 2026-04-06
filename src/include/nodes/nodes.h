@@ -94,11 +94,10 @@ typedef enum NodeTag
 	T_HashJoin,
 	T_Material,
 	T_Sort,
-<<<<<<< HEAD
-=======
 	T_IncrementalSort,
+#ifdef NOT_USED /* Group nodes are not used in GPDB */
 	T_Group,
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 	T_Agg,
 	T_TupleSplit,
 	T_WindowAgg,
@@ -171,11 +170,10 @@ typedef enum NodeTag
 	T_HashJoinState,
 	T_MaterialState,
 	T_SortState,
-<<<<<<< HEAD
-=======
 	T_IncrementalSortState,
+#ifdef NOT_USED /* GroupState nodes are not used in GPDB */
 	T_GroupState,
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 	T_AggState,
 	T_TupleSplitState,
 	T_WindowAggState,
