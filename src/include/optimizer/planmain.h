@@ -92,16 +92,12 @@ extern Agg *make_agg(List *tlist, List *qual,
 					 int numGroupCols, AttrNumber *grpColIdx, Oid *grpOperators, Oid *grpCollations,
 					 List *groupingSets, List *chain, double dNumGroups,
 					 Size transitionSpace, Plan *lefttree);
-<<<<<<< HEAD
-extern Limit *make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount);
-extern TupleSplit *make_tup_split(List *tlist, List *dqa_info_lst, int numGroupCols,
-								  AttrNumber *grpColIdx, Plan *lefttree);
-=======
 extern Limit *make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 						 LimitOption limitOption, int uniqNumCols,
 						 AttrNumber *uniqColIdx, Oid *uniqOperators,
 						 Oid *uniqCollations);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+extern TupleSplit *make_tup_split(List *tlist, List *dqa_info_lst, int numGroupCols,
+								  AttrNumber *grpColIdx, Plan *lefttree);
 
 /*
  * prototypes for plan/initsplan.c
