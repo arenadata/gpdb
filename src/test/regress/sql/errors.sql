@@ -380,8 +380,10 @@ NOT
 NULL);
 
 -- Check that stack depth detection mechanism works and
--- max_stack_depth is not set too high
+-- max_stack_depth is not set too high.  The full error report is not
+-- very stable, so show only SQLSTATE and primary error message.
 create function infinite_recurse() returns int as
+<<<<<<< HEAD
 'select infinite_recurse()' language sql CONTAINS SQL;
 \set VERBOSITY terse
 -- start_matchsubs
@@ -395,3 +397,9 @@ create function infinite_recurse() returns int as
 select infinite_recurse();
 -- end_ignore
 select 1; -- test that this works
+=======
+'select infinite_recurse()' language sql;
+\set VERBOSITY sqlstate
+select infinite_recurse();
+\echo :LAST_ERROR_MESSAGE
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452

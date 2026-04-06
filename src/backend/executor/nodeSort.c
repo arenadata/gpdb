@@ -115,10 +115,16 @@ ExecSort(PlanState *pstate)
 											  plannode->sortOperators,
 											  plannode->collations,
 											  plannode->nullsFirst,
+<<<<<<< HEAD
 											  PlanStateOperatorMemKB((PlanState *) node),
 											  NULL,
 											  node->randomAccess);
 
+=======
+											  work_mem,
+											  NULL,
+											  node->randomAccess);
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		if (node->bounded)
 			tuplesort_set_bound(tuplesortstate, node->bound);
 		node->tuplesortstate = (void *) tuplesortstate;

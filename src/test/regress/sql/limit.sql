@@ -37,6 +37,7 @@ select * from int8_tbl limit (case when random() < 0.5 then null::bigint end);
 select * from int8_tbl offset (case when random() < 0.5 then null::bigint end);
 
 -- Test assorted cases involving backwards fetch from a LIMIT plan node
+<<<<<<< HEAD
 -- Disable backward scan test which is not supported in this version of Greenplum Database
 /*
  * begin;
@@ -75,6 +76,53 @@ select * from int8_tbl offset (case when random() < 0.5 then null::bigint end);
  * 
  * rollback;
  */
+=======
+begin;
+
+declare c1 cursor for select * from int8_tbl limit 10;
+fetch all in c1;
+fetch 1 in c1;
+fetch backward 1 in c1;
+fetch backward all in c1;
+fetch backward 1 in c1;
+fetch all in c1;
+
+declare c2 cursor for select * from int8_tbl limit 3;
+fetch all in c2;
+fetch 1 in c2;
+fetch backward 1 in c2;
+fetch backward all in c2;
+fetch backward 1 in c2;
+fetch all in c2;
+
+declare c3 cursor for select * from int8_tbl offset 3;
+fetch all in c3;
+fetch 1 in c3;
+fetch backward 1 in c3;
+fetch backward all in c3;
+fetch backward 1 in c3;
+fetch all in c3;
+
+declare c4 cursor for select * from int8_tbl offset 10;
+fetch all in c4;
+fetch 1 in c4;
+fetch backward 1 in c4;
+fetch backward all in c4;
+fetch backward 1 in c4;
+fetch all in c4;
+
+declare c5 cursor for select * from int8_tbl order by q1 fetch first 2 rows with ties;
+fetch all in c5;
+fetch 1 in c5;
+fetch backward 1 in c5;
+fetch backward 1 in c5;
+fetch all in c5;
+fetch backward all in c5;
+fetch all in c5;
+fetch backward all in c5;
+
+rollback;
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 -- Stress test for variable LIMIT in conjunction with bounded-heap sorting
 
@@ -147,3 +195,41 @@ select sum(tenthous) as s1, sum(tenthous) + random()*0 as s2
 
 select sum(tenthous) as s1, sum(tenthous) + random()*0 as s2
   from tenk1 group by thousand order by thousand limit 3;
+
+--
+-- FETCH FIRST
+-- Check the WITH TIES clause
+--
+
+SELECT  thousand
+		FROM onek WHERE thousand < 5
+		ORDER BY thousand FETCH FIRST 2 ROW WITH TIES;
+
+SELECT  thousand
+		FROM onek WHERE thousand < 5
+		ORDER BY thousand FETCH FIRST 1 ROW WITH TIES;
+
+SELECT  thousand
+		FROM onek WHERE thousand < 5
+		ORDER BY thousand FETCH FIRST 2 ROW ONLY;
+-- should fail
+SELECT ''::text AS two, unique1, unique2, stringu1
+		FROM onek WHERE unique1 > 50
+		FETCH FIRST 2 ROW WITH TIES;
+
+-- test ruleutils
+CREATE VIEW limit_thousand_v_1 AS SELECT thousand FROM onek WHERE thousand < 995
+		ORDER BY thousand FETCH FIRST 5 ROWS WITH TIES OFFSET 10;
+\d+ limit_thousand_v_1
+CREATE VIEW limit_thousand_v_2 AS SELECT thousand FROM onek WHERE thousand < 995
+		ORDER BY thousand OFFSET 10 FETCH FIRST 5 ROWS ONLY;
+\d+ limit_thousand_v_2
+CREATE VIEW limit_thousand_v_3 AS SELECT thousand FROM onek WHERE thousand < 995
+		ORDER BY thousand FETCH FIRST NULL ROWS WITH TIES;		-- fails
+CREATE VIEW limit_thousand_v_3 AS SELECT thousand FROM onek WHERE thousand < 995
+		ORDER BY thousand FETCH FIRST (NULL+1) ROWS WITH TIES;
+\d+ limit_thousand_v_3
+CREATE VIEW limit_thousand_v_4 AS SELECT thousand FROM onek WHERE thousand < 995
+		ORDER BY thousand FETCH FIRST NULL ROWS ONLY;
+\d+ limit_thousand_v_4
+-- leave these views

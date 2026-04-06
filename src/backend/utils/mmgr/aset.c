@@ -55,6 +55,7 @@
 
 #include "miscadmin.h"
 
+<<<<<<< HEAD
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
 
@@ -68,6 +69,8 @@
 #error "If CDB_PALLOC_TAGS is defined, CDB_PALLOC_CALLER_ID must be defined too"
 #endif
 
+=======
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 /*--------------------
  * Chunk freelist k holds chunks of size 1 << (k + ALLOC_MINBITS),
  * for k = 0 .. ALLOCSET_NUM_FREELISTS-1.
@@ -397,21 +400,6 @@ static const MemoryContextMethods AllocSetMethods = {
 #endif
 };
 
-/* ----------
- * Debug macros
- * ----------
- */
-#ifdef HAVE_ALLOCINFO
-#define AllocFreeInfo(_cxt, _chunk) \
-			fprintf(stderr, "AllocFree: %s: %p, %zu\n", \
-				(_cxt)->header.name, (_chunk), (_chunk)->size)
-#define AllocAllocInfo(_cxt, _chunk) \
-			fprintf(stderr, "AllocAlloc: %s: %p, %zu\n", \
-				(_cxt)->header.name, (_chunk), (_chunk)->size)
-#else
-#define AllocFreeInfo(_cxt, _chunk)
-#define AllocAllocInfo(_cxt, _chunk)
-#endif
 
 /* ----------
  * AllocSetFreeIndex -
@@ -945,8 +933,6 @@ AllocSetAlloc(MemoryContext context, Size size)
 			set->blocks = block;
 		}
 
-		AllocAllocInfo(set, chunk);
-
 		/* Ensure any padding bytes are marked NOACCESS. */
 		VALGRIND_MAKE_MEM_NOACCESS((char *) AllocChunkGetPointer(chunk) + size,
 								   chunk_size - size);
@@ -985,8 +971,6 @@ AllocSetAlloc(MemoryContext context, Size size)
 		/* fill the allocated space with junk */
 		randomize_mem((char *) AllocChunkGetPointer(chunk), size);
 #endif
-
-		AllocAllocInfo(set, chunk);
 
 		/* Ensure any padding bytes are marked NOACCESS. */
 		VALGRIND_MAKE_MEM_NOACCESS((char *) AllocChunkGetPointer(chunk) + size,
@@ -1149,8 +1133,6 @@ AllocSetAlloc(MemoryContext context, Size size)
 	randomize_mem((char *) AllocChunkGetPointer(chunk), size);
 #endif
 
-	AllocAllocInfo(set, chunk);
-
 	/* Ensure any padding bytes are marked NOACCESS. */
 	VALGRIND_MAKE_MEM_NOACCESS((char *) AllocChunkGetPointer(chunk) + size,
 							   chunk_size - size);
@@ -1176,6 +1158,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 	/* Allow access to private part of chunk header. */
 	VALGRIND_MAKE_MEM_DEFINED(chunk, ALLOCCHUNK_PRIVATE_LEN);
 
+<<<<<<< HEAD
 	AllocFreeInfo(set, chunk);
 
 	MEMORY_ACCOUNT_DEC_ALLOCATED(set, chunk->size);
@@ -1193,6 +1176,8 @@ AllocSetFree(MemoryContext context, void *pointer)
 	*/
 #endif
 
+=======
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < chunk->size)

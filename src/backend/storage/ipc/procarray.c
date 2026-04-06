@@ -489,6 +489,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 			ProcArrayGroupClearXid(proc, latestXid);
 	}
 
+<<<<<<< HEAD
 	/*
 	 * If we have no XID, we don't need to lock, since we won't affect
 	 * anyone else's calculation of a snapshot.  We might change their
@@ -500,6 +501,14 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 	 */
 	Assert(!TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
 	Assert(!TransactionIdIsValid(allTmGxact[proc->pgprocno].gxid));
+=======
+		proc->lxid = InvalidLocalTransactionId;
+		pgxact->xmin = InvalidTransactionId;
+		/* must be cleared with xid/xmin: */
+		pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
+		proc->delayChkpt = false; /* be sure this is cleared in abort */
+		proc->recoveryConflictPending = false;
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	proc->lxid = InvalidLocalTransactionId;
 	pgxact->xmin = InvalidTransactionId;
@@ -528,7 +537,7 @@ ProcArrayEndTransactionInternal(PGPROC *proc, PGXACT *pgxact,
 	pgxact->xmin = InvalidTransactionId;
 	/* must be cleared with xid/xmin: */
 	pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-	pgxact->delayChkpt = false; /* be sure this is cleared in abort */
+	proc->delayChkpt = false; /* be sure this is cleared in abort */
 	proc->recoveryConflictPending = false;
 
 	/* Clear the subtransaction-XID cache too while holding the lock */
@@ -694,7 +703,7 @@ ProcArrayClearTransaction(PGPROC *proc)
 
 	/* redundant, but just in case */
 	pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-	pgxact->delayChkpt = false;
+	proc->delayChkpt = false;
 
 	/* Clear the subtransaction-XID cache too */
 	pgxact->nxids = 0;
@@ -3028,7 +3037,7 @@ GetOldestSafeDecodingTransactionId(bool catalogOnly)
  * delaying checkpoint because they have critical actions in progress.
  *
  * Constructs an array of VXIDs of transactions that are currently in commit
- * critical sections, as shown by having delayChkpt set in their PGXACT.
+ * critical sections, as shown by having delayChkpt set in their PGPROC.
  *
  * Returns a palloc'd array that should be freed by the caller.
  * *nvxids is the number of valid entries.
@@ -3059,9 +3068,8 @@ GetVirtualXIDsDelayingChkpt(int *nvxids)
 	{
 		int			pgprocno = arrayP->pgprocnos[index];
 		PGPROC	   *proc = &allProcs[pgprocno];
-		PGXACT	   *pgxact = &allPgXact[pgprocno];
 
-		if (pgxact->delayChkpt)
+		if (proc->delayChkpt)
 		{
 			VirtualTransactionId vxid;
 
@@ -3099,12 +3107,11 @@ HaveVirtualXIDsDelayingChkpt(VirtualTransactionId *vxids, int nvxids)
 	{
 		int			pgprocno = arrayP->pgprocnos[index];
 		PGPROC	   *proc = &allProcs[pgprocno];
-		PGXACT	   *pgxact = &allPgXact[pgprocno];
 		VirtualTransactionId vxid;
 
 		GET_VXID_FROM_PGPROC(vxid, *proc);
 
-		if (pgxact->delayChkpt && VirtualTransactionIdIsValid(vxid))
+		if (proc->delayChkpt && VirtualTransactionIdIsValid(vxid))
 		{
 			int			i;
 
@@ -4543,14 +4550,7 @@ KnownAssignedXidsAdd(TransactionId from_xid, TransactionId to_xid,
 		 * If it still won't fit then we're out of memory
 		 */
 		if (head + nxids > pArray->maxKnownAssignedXids)
-		{
-			StandbyParamErrorPauseRecovery();
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of shared memory"),
-					 errdetail("There are no more KnownAssignedXids slots."),
-					 errhint("You might need to increase max_connections.")));
-		}
+			elog(ERROR, "too many KnownAssignedXids");
 	}
 
 	/* Now we can insert the xids into the space starting at head */

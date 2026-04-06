@@ -163,6 +163,82 @@ static List *on_commits = NIL;
  * In GPDB, these are in nodes/altertablenodes.h
  */
 
+<<<<<<< HEAD
+=======
+#define AT_PASS_UNSET			-1	/* UNSET will cause ERROR */
+#define AT_PASS_DROP			0	/* DROP (all flavors) */
+#define AT_PASS_ALTER_TYPE		1	/* ALTER COLUMN TYPE */
+#define AT_PASS_OLD_INDEX		2	/* re-add existing indexes */
+#define AT_PASS_OLD_CONSTR		3	/* re-add existing constraints */
+/* We could support a RENAME COLUMN pass here, but not currently used */
+#define AT_PASS_ADD_COL			4	/* ADD COLUMN */
+#define AT_PASS_ADD_CONSTR		5	/* ADD constraints (initial examination) */
+#define AT_PASS_COL_ATTRS		6	/* set column attributes, eg NOT NULL */
+#define AT_PASS_ADD_INDEXCONSTR	7	/* ADD index-based constraints */
+#define AT_PASS_ADD_INDEX		8	/* ADD indexes */
+#define AT_PASS_ADD_OTHERCONSTR	9	/* ADD other constraints, defaults */
+#define AT_PASS_MISC			10	/* other stuff */
+#define AT_NUM_PASSES			11
+
+typedef struct AlteredTableInfo
+{
+	/* Information saved before any work commences: */
+	Oid			relid;			/* Relation to work on */
+	char		relkind;		/* Its relkind */
+	TupleDesc	oldDesc;		/* Pre-modification tuple descriptor */
+	/* Information saved by Phase 1 for Phase 2: */
+	List	   *subcmds[AT_NUM_PASSES]; /* Lists of AlterTableCmd */
+	/* Information saved by Phases 1/2 for Phase 3: */
+	List	   *constraints;	/* List of NewConstraint */
+	List	   *newvals;		/* List of NewColumnValue */
+	List	   *afterStmts;		/* List of utility command parsetrees */
+	bool		verify_new_notnull; /* T if we should recheck NOT NULL */
+	int			rewrite;		/* Reason for forced rewrite, if any */
+	Oid			newTableSpace;	/* new tablespace; 0 means no change */
+	bool		chgPersistence; /* T if SET LOGGED/UNLOGGED is used */
+	char		newrelpersistence;	/* if above is true */
+	Expr	   *partition_constraint;	/* for attach partition validation */
+	/* true, if validating default due to some other attach/detach */
+	bool		validate_default;
+	/* Objects to rebuild after completing ALTER TYPE operations */
+	List	   *changedConstraintOids;	/* OIDs of constraints to rebuild */
+	List	   *changedConstraintDefs;	/* string definitions of same */
+	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
+	List	   *changedIndexDefs;	/* string definitions of same */
+	char	   *replicaIdentityIndex;	/* index to reset as REPLICA IDENTITY */
+	char	   *clusterOnIndex;	/* index to use for CLUSTER */
+} AlteredTableInfo;
+
+/* Struct describing one new constraint to check in Phase 3 scan */
+/* Note: new NOT NULL constraints are handled elsewhere */
+typedef struct NewConstraint
+{
+	char	   *name;			/* Constraint name, or NULL if none */
+	ConstrType	contype;		/* CHECK or FOREIGN */
+	Oid			refrelid;		/* PK rel, if FOREIGN */
+	Oid			refindid;		/* OID of PK's index, if FOREIGN */
+	Oid			conid;			/* OID of pg_constraint entry, if FOREIGN */
+	Node	   *qual;			/* Check expr or CONSTR_FOREIGN Constraint */
+	ExprState  *qualstate;		/* Execution state for CHECK expr */
+} NewConstraint;
+
+/*
+ * Struct describing one new column value that needs to be computed during
+ * Phase 3 copy (this could be either a new column with a non-null default, or
+ * a column that we're changing the type of).  Columns without such an entry
+ * are just copied from the old table during ATRewriteTable.  Note that the
+ * expr is an expression over *old* table values, except when is_generated
+ * is true; then it is an expression over columns of the *new* tuple.
+ */
+typedef struct NewColumnValue
+{
+	AttrNumber	attnum;			/* which column */
+	Expr	   *expr;			/* expression to compute */
+	ExprState  *exprstate;		/* execution state */
+	bool		is_generated;	/* is it a GENERATED expression? */
+} NewColumnValue;
+
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 /*
  * Error-reporting support for RemoveRelations
  */
@@ -525,6 +601,7 @@ static void QueuePartitionConstraintValidation(List **wqueue, Relation scanrel,
 											   List *partConstraint,
 											   bool validate_default);
 static void CloneRowTriggersToPartition(Relation parent, Relation partition);
+static void DropClonedTriggersFromPartition(Oid partitionId);
 static ObjectAddress ATExecDetachPartition(Relation rel, RangeVar *name);
 static ObjectAddress ATExecAttachPartitionIdx(List **wqueue, Relation rel,
 											  RangeVar *name);
@@ -3128,12 +3205,55 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 				def->is_local = true;
 				/* Merge of NOT NULL constraints = OR 'em together */
 				def->is_not_null |= newdef->is_not_null;
+
+				/*
+				 * Check for conflicts related to generated columns.
+				 *
+				 * If the parent column is generated, the child column must be
+				 * unadorned and will be made a generated column.  (We could
+				 * in theory allow the child column definition specifying the
+				 * exact same generation expression, but that's a bit
+				 * complicated to implement and doesn't seem very useful.)  We
+				 * also check that the child column doesn't specify a default
+				 * value or identity, which matches the rules for a single
+				 * column in parse_util.c.
+				 */
+				if (def->generated)
+				{
+					if (newdef->generated)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+								 errmsg("child column \"%s\" specifies generation expression",
+										def->colname),
+								 errhint("Omit the generation expression in the definition of the child table column to inherit the generation expression from the parent table.")));
+					if (newdef->raw_default && !newdef->generated)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+								 errmsg("column \"%s\" inherits from generated column but specifies default",
+										def->colname)));
+					if (newdef->identity)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+								 errmsg("column \"%s\" inherits from generated column but specifies identity",
+										def->colname)));
+				}
+				/*
+				 * If the parent column is not generated, then take whatever
+				 * the child column definition says.
+				 */
+				else
+				{
+					if (newdef->generated)
+						def->generated = newdef->generated;
+				}
+
 				/* If new def has a default, override previous default */
 				if (newdef->raw_default != NULL)
 				{
 					def->raw_default = newdef->raw_default;
 					def->cooked_default = newdef->cooked_default;
 				}
+
 			}
 			else
 			{
@@ -3219,11 +3339,19 @@ MergeAttributes(List *schema, List *supers, char relpersistence,
 			ColumnDef  *def = lfirst(entry);
 
 			if (def->cooked_default == &bogus_marker)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
-						 errmsg("column \"%s\" inherits conflicting default values",
-								def->colname),
-						 errhint("To resolve the conflict, specify a default explicitly.")));
+			{
+				if (def->generated)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+							 errmsg("column \"%s\" inherits conflicting generation expressions",
+									def->colname)));
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
+							 errmsg("column \"%s\" inherits conflicting default values",
+									def->colname),
+							 errhint("To resolve the conflict, specify a default explicitly.")));
+			}
 		}
 	}
 
@@ -6607,19 +6735,14 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 		newrel = NULL;
 
 	/*
-	 * Prepare a BulkInsertState and options for table_tuple_insert. Because
-	 * we're building a new heap, we can skip WAL-logging and fsync it to disk
-	 * at the end instead (unless WAL-logging is required for archiving or
-	 * streaming replication). The FSM is empty too, so don't bother using it.
+	 * Prepare a BulkInsertState and options for table_tuple_insert.  The FSM
+	 * is empty, so don't bother using it.
 	 */
 	if (newrel)
 	{
 		mycid = GetCurrentCommandId(true);
 		bistate = GetBulkInsertState();
-
 		ti_options = TABLE_INSERT_SKIP_FSM;
-		if (!XLogIsNeeded())
-			ti_options |= TABLE_INSERT_SKIP_WAL;
 	}
 	else
 	{
@@ -9228,6 +9351,7 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue, LOCKMODE loc
 	Form_pg_attribute attrtuple;
 	AttrNumber	attnum;
 	ObjectAddress address;
+	ListCell   *lc;
 
 	Assert(IsA(newValue, String));
 	storagemode = strVal(newValue);
@@ -9286,6 +9410,52 @@ ATExecSetStorage(Relation rel, const char *colName, Node *newValue, LOCKMODE loc
 							  attrtuple->attnum);
 
 	heap_freetuple(tuple);
+
+	/*
+	 * Apply the change to indexes as well (only for simple index columns,
+	 * matching behavior of index.c ConstructTupleDescriptor()).
+	 */
+	foreach(lc, RelationGetIndexList(rel))
+	{
+		Oid         indexoid = lfirst_oid(lc);
+		Relation    indrel;
+		AttrNumber	indattnum = 0;
+
+		indrel = index_open(indexoid, lockmode);
+
+		for (int i = 0; i < indrel->rd_index->indnatts; i++)
+		{
+			if (indrel->rd_index->indkey.values[i] == attnum)
+			{
+				indattnum = i + 1;
+				break;
+			}
+		}
+
+		if (indattnum == 0)
+		{
+			index_close(indrel, lockmode);
+			continue;
+		}
+
+		tuple = SearchSysCacheCopyAttNum(RelationGetRelid(indrel), indattnum);
+
+		if (HeapTupleIsValid(tuple))
+		{
+			attrtuple = (Form_pg_attribute) GETSTRUCT(tuple);
+			attrtuple->attstorage = newstorage;
+
+			CatalogTupleUpdate(attrelation, &tuple->t_self, tuple);
+
+			InvokeObjectPostAlterHook(RelationRelationId,
+									  RelationGetRelid(rel),
+									  attrtuple->attnum);
+
+			heap_freetuple(tuple);
+		}
+
+		index_close(indrel, lockmode);
+	}
 
 	table_close(attrelation, RowExclusiveLock);
 
@@ -9613,14 +9783,19 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 
 	/*
 	 * If TryReuseIndex() stashed a relfilenode for us, we used it for the new
-	 * index instead of building from scratch.  The DROP of the old edition of
-	 * this index will have scheduled the storage for deletion at commit, so
-	 * cancel that pending deletion.
+	 * index instead of building from scratch.  Restore associated fields.
+	 * This may store InvalidSubTransactionId in both fields, in which case
+	 * relcache.c will assume it can rebuild the relcache entry.  Hence, do
+	 * this after the CCI that made catalog rows visible to any rebuild.  The
+	 * DROP of the old edition of this index will have scheduled the storage
+	 * for deletion at commit, so cancel that pending deletion.
 	 */
 	if (OidIsValid(stmt->oldNode))
 	{
 		Relation	irel = index_open(address.objectId, NoLock);
 
+		irel->rd_createSubid = stmt->oldCreateSubid;
+		irel->rd_firstRelfilenodeSubid = stmt->oldFirstRelfilenodeSubid;
 		RelationPreserveStorage(irel->rd_node, true);
 		index_close(irel, NoLock);
 	}
@@ -10962,7 +11137,7 @@ CloneFkReferenced(Relation parentRel, Relation partitionRel)
 								   conpfeqop,
 								   conppeqop,
 								   conffeqop);
-		Assert(numfks == attmap->maplen);
+
 		for (int i = 0; i < numfks; i++)
 			mapped_confkey[i] = attmap->attnums[confkey[i] - 1];
 
@@ -13676,6 +13851,21 @@ RememberReplicaIdentityForRebuilding(Oid indoid, AlteredTableInfo *tab)
 }
 
 /*
+ * Subroutine for ATExecAlterColumnType: remember any clustered index.
+ */
+static void
+RememberClusterOnForRebuilding(Oid indoid, AlteredTableInfo *tab)
+{
+	if (!get_index_isclustered(indoid))
+		return;
+
+	if (tab->clusterOnIndex)
+		elog(ERROR, "relation %u has multiple clustered indexes", tab->relid);
+
+	tab->clusterOnIndex = get_rel_name(indoid);
+}
+
+/*
  * Subroutine for ATExecAlterColumnType: remember that a constraint needs
  * to be rebuilt (which we might already know).
  */
@@ -13700,9 +13890,18 @@ RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab)
 		tab->changedConstraintDefs = lappend(tab->changedConstraintDefs,
 											 defstring);
 
+		/*
+		 * For the index of a constraint, if any, remember if it is used for
+		 * the table's replica identity or if it is a clustered index, so that
+		 * ATPostAlterTypeCleanup() can queue up commands necessary to restore
+		 * those properties.
+		 */
 		indoid = get_constraint_index(conoid);
 		if (OidIsValid(indoid))
+		{
 			RememberReplicaIdentityForRebuilding(indoid, tab);
+			RememberClusterOnForRebuilding(indoid, tab);
+		}
 	}
 }
 
@@ -13746,7 +13945,13 @@ RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab)
 			tab->changedIndexDefs = lappend(tab->changedIndexDefs,
 											defstring);
 
+			/*
+			 * Remember if this index is used for the table's replica identity
+			 * or if it is a clustered index, so that ATPostAlterTypeCleanup()
+			 * can queue up commands necessary to restore those properties.
+			 */
 			RememberReplicaIdentityForRebuilding(indoid, tab);
+			RememberClusterOnForRebuilding(indoid, tab);
 		}
 	}
 }
@@ -13883,6 +14088,21 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		subcmd->name = tab->replicaIdentityIndex;
 		cmd->subtype = AT_ReplicaIdentity;
 		cmd->def = (Node *) subcmd;
+
+		/* do it after indexes and constraints */
+		tab->subcmds[AT_PASS_OLD_CONSTR] =
+			lappend(tab->subcmds[AT_PASS_OLD_CONSTR], cmd);
+	}
+
+	/*
+	 * Queue up command to restore marking of index used for cluster.
+	 */
+	if (tab->clusterOnIndex)
+	{
+		AlterTableCmd *cmd = makeNode(AlterTableCmd);
+
+		cmd->subtype = AT_ClusterOn;
+		cmd->name = tab->clusterOnIndex;
 
 		/* do it after indexes and constraints */
 		tab->subcmds[AT_PASS_OLD_CONSTR] =
@@ -14171,7 +14391,11 @@ TryReuseIndex(Oid oldId, IndexStmt *stmt)
 
 		/* If it's a partitioned index, there is no storage to share. */
 		if (irel->rd_rel->relkind != RELKIND_PARTITIONED_INDEX)
+		{
 			stmt->oldNode = irel->rd_node.relNode;
+			stmt->oldCreateSubid = irel->rd_createSubid;
+			stmt->oldFirstRelfilenodeSubid = irel->rd_firstRelfilenodeSubid;
+		}
 		index_close(irel, NoLock);
 	}
 }
@@ -14438,7 +14662,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 		case RELKIND_AOVISIMAP:
 			if (recursing)
 				break;
-			/* FALL THRU */
+			/* FALLTHROUGH */
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
@@ -15284,12 +15508,16 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode)
 
 	table_close(pg_class, RowExclusiveLock);
 
+<<<<<<< HEAD
 	/* MPP-6929: metadata tracking */
 	if ((Gp_role == GP_ROLE_DISPATCH) && MetaTrackValidKindNsp(rel->rd_rel))
 		MetaTrackUpdObject(RelationRelationId,
 						   RelationGetRelid(rel),
 						   GetUserId(),
 						   "ALTER", "SET TABLESPACE");
+=======
+	RelationAssumeNewRelfilenode(rel);
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	relation_close(rel, NoLock);
 
@@ -20827,6 +21055,9 @@ ATExecDetachPartition(Relation rel, RangeVar *name)
 	}
 	table_close(classRel, RowExclusiveLock);
 
+	/* Drop any triggers that were cloned on creation/attach. */
+	DropClonedTriggersFromPartition(RelationGetRelid(partRel));
+
 	/*
 	 * Detach any foreign keys that are inherited.  This includes creating
 	 * additional action triggers.
@@ -20876,7 +21107,7 @@ ATExecDetachPartition(Relation rel, RangeVar *name)
 	list_free_deep(fks);
 
 	/*
-	 * Any sub-constrains that are in the referenced-side of a larger
+	 * Any sub-constraints that are in the referenced-side of a larger
 	 * constraint have to be removed.  This partition is no longer part of the
 	 * key space of the constraint.
 	 */
@@ -20915,6 +21146,66 @@ ATExecDetachPartition(Relation rel, RangeVar *name)
 	table_close(partRel, NoLock);
 
 	return address;
+}
+
+/*
+ * DropClonedTriggersFromPartition
+ *		subroutine for ATExecDetachPartition to remove any triggers that were
+ *		cloned to the partition when it was created-as-partition or attached.
+ *		This undoes what CloneRowTriggersToPartition did.
+ */
+static void
+DropClonedTriggersFromPartition(Oid partitionId)
+{
+	ScanKeyData skey;
+	SysScanDesc	scan;
+	HeapTuple	trigtup;
+	Relation	tgrel;
+	ObjectAddresses *objects;
+
+	objects = new_object_addresses();
+
+	/*
+	 * Scan pg_trigger to search for all triggers on this rel.
+	 */
+	ScanKeyInit(&skey, Anum_pg_trigger_tgrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(partitionId));
+	tgrel = table_open(TriggerRelationId, RowExclusiveLock);
+	scan = systable_beginscan(tgrel, TriggerRelidNameIndexId,
+							  true, NULL, 1, &skey);
+	while (HeapTupleIsValid(trigtup = systable_getnext(scan)))
+	{
+		Form_pg_trigger pg_trigger = (Form_pg_trigger) GETSTRUCT(trigtup);
+		ObjectAddress trig;
+
+		/* Ignore triggers that weren't cloned */
+		if (!OidIsValid(pg_trigger->tgparentid))
+			continue;
+
+		/*
+		 * This is ugly, but necessary: remove the dependency markings on the
+		 * trigger so that it can be removed.
+		 */
+		deleteDependencyRecordsForClass(TriggerRelationId, pg_trigger->oid,
+										TriggerRelationId,
+										DEPENDENCY_PARTITION_PRI);
+		deleteDependencyRecordsForClass(TriggerRelationId, pg_trigger->oid,
+										RelationRelationId,
+										DEPENDENCY_PARTITION_SEC);
+
+		/* remember this trigger to remove it below */
+		ObjectAddressSet(trig, TriggerRelationId, pg_trigger->oid);
+		add_exact_object_address(&trig, objects);
+	}
+
+	/* make the dependency removal visible to the deletion below */
+	CommandCounterIncrement();
+	performMultipleDeletions(objects, DROP_RESTRICT, PERFORM_DELETION_INTERNAL);
+
+	/* done */
+	free_object_addresses(objects);
+	systable_endscan(scan);
+	table_close(tgrel, RowExclusiveLock);
 }
 
 /*

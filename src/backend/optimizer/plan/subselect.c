@@ -3181,7 +3181,11 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 		case T_Hash:
 		case T_Material:
 		case T_Sort:
+<<<<<<< HEAD
 		case T_ShareInputScan:
+=======
+		case T_IncrementalSort:
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		case T_Unique:
 		case T_SetOp:
 		case T_SplitUpdate:

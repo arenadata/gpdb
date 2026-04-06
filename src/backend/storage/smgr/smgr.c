@@ -39,10 +39,39 @@
  * For example, disk quota extension will use these hooks to
  * detect active tables.
  */
+<<<<<<< HEAD
 file_create_hook_type file_create_hook = NULL;
 file_extend_hook_type file_extend_hook = NULL;
 file_truncate_hook_type file_truncate_hook = NULL;
 file_unlink_hook_type file_unlink_hook = NULL;
+=======
+typedef struct f_smgr
+{
+	void		(*smgr_init) (void);	/* may be NULL */
+	void		(*smgr_shutdown) (void);	/* may be NULL */
+	void		(*smgr_open) (SMgrRelation reln);
+	void		(*smgr_close) (SMgrRelation reln, ForkNumber forknum);
+	void		(*smgr_create) (SMgrRelation reln, ForkNumber forknum,
+								bool isRedo);
+	bool		(*smgr_exists) (SMgrRelation reln, ForkNumber forknum);
+	void		(*smgr_unlink) (RelFileNodeBackend rnode, ForkNumber forknum,
+								bool isRedo);
+	void		(*smgr_extend) (SMgrRelation reln, ForkNumber forknum,
+								BlockNumber blocknum, char *buffer, bool skipFsync);
+	bool		(*smgr_prefetch) (SMgrRelation reln, ForkNumber forknum,
+								  BlockNumber blocknum);
+	void		(*smgr_read) (SMgrRelation reln, ForkNumber forknum,
+							  BlockNumber blocknum, char *buffer);
+	void		(*smgr_write) (SMgrRelation reln, ForkNumber forknum,
+							   BlockNumber blocknum, char *buffer, bool skipFsync);
+	void		(*smgr_writeback) (SMgrRelation reln, ForkNumber forknum,
+								   BlockNumber blocknum, BlockNumber nblocks);
+	BlockNumber (*smgr_nblocks) (SMgrRelation reln, ForkNumber forknum);
+	void		(*smgr_truncate) (SMgrRelation reln, ForkNumber forknum,
+								  BlockNumber nblocks);
+	void		(*smgr_immedsync) (SMgrRelation reln, ForkNumber forknum);
+} f_smgr;
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 static const f_smgr smgrsw[] = {
 	/* magnetic disk */
@@ -393,6 +422,7 @@ smgrcreate(SMgrRelation reln, ForkNumber forknum, bool isRedo)
 }
 
 /*
+<<<<<<< HEAD
  *		smgrcreate_ao() -- Create a new AO relation segment.
  *		Given a RelFileNode, cause the underlying disk file for the
  *		AO segment to be created.
@@ -406,6 +436,40 @@ smgrcreate_ao(RelFileNodeBackend rnode, int32 segmentFileNum, bool isRedo)
 	mdcreate_ao(rnode, segmentFileNum, isRedo);
 	if (file_create_hook)
 		(*file_create_hook)(rnode);
+=======
+ *	smgrdosyncall() -- Immediately sync all forks of all given relations
+ *
+ *		All forks of all given relations are synced out to the store.
+ *
+ *		This is equivalent to FlushRelationBuffers() for each smgr relation,
+ *		then calling smgrimmedsync() for all forks of each relation, but it's
+ *		significantly quicker so should be preferred when possible.
+ */
+void
+smgrdosyncall(SMgrRelation *rels, int nrels)
+{
+	int			i = 0;
+	ForkNumber	forknum;
+
+	if (nrels == 0)
+		return;
+
+	FlushRelationsAllBuffers(rels, nrels);
+
+	/*
+	 * Sync the physical file(s).
+	 */
+	for (i = 0; i < nrels; i++)
+	{
+		int			which = rels[i]->smgr_which;
+
+		for (forknum = 0; forknum <= MAX_FORKNUM; forknum++)
+		{
+			if (smgrsw[which].smgr_exists(rels[i], forknum))
+				smgrsw[which].smgr_immedsync(rels[i], forknum);
+		}
+	}
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 /*
@@ -509,11 +573,19 @@ smgrextend(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum,
 
 /*
  *	smgrprefetch() -- Initiate asynchronous read of the specified block of a relation.
+ *
+ *		In recovery only, this can return false to indicate that a file
+ *		doesn't	exist (presumably it has been dropped by a later WAL
+ *		record).
  */
-void
+bool
 smgrprefetch(SMgrRelation reln, ForkNumber forknum, BlockNumber blocknum)
 {
+<<<<<<< HEAD
 	(*reln->storageManager).smgr_prefetch(reln, forknum, blocknum);
+=======
+	return smgrsw[reln->smgr_which].smgr_prefetch(reln, forknum, blocknum);
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 /*
