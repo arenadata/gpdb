@@ -777,22 +777,6 @@ static inline void planner_subplan_put_plan(struct PlannerInfo *root, SubPlan *s
  *								 this relation that are partitioned tables
  *								 themselves, in hierarchical order
  *
-<<<<<<< HEAD
- * Note: A base relation always has only one set of partition keys, but a join
- * relation may have as many sets of partition keys as the number of relations
- * being joined. partexprs and nullable_partexprs are arrays containing
- * part_scheme->partnatts elements each. Each of these elements is a list of
- * partition key expressions.  For a base relation each list in partexprs
- * contains only one expression and nullable_partexprs is not populated. For a
- * join relation, partexprs and nullable_partexprs contain partition key
- * expressions from non-nullable and nullable relations resp. Lists at any
- * given position in those arrays together contain as many elements as the
- * number of joining relations.
- *
- * GPDB: Even if the relation is distributed, 'rows', 'tuples' and 'pages' are
- * totals are across all segments. Divide by cdbpolicy->numsegments to get the
- * sizes of a distributed scan node.
-=======
  * The partexprs and nullable_partexprs arrays each contain
  * part_scheme->partnatts elements.  Each of the elements is a list of
  * partition key expressions.  For partitioned base relations, there is one
@@ -805,7 +789,10 @@ static inline void planner_subplan_put_plan(struct PlannerInfo *root, SubPlan *s
  * Furthermore, FULL JOINs add extra nullable_partexprs expressions
  * corresponding to COALESCE expressions of the left and right join columns,
  * to simplify matching join clauses to those lists.
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+ *
+ * GPDB: Even if the relation is distributed, 'rows', 'tuples' and 'pages' are
+ * totals are across all segments. Divide by cdbpolicy->numsegments to get the
+ * sizes of a distributed scan node.
  *----------
  */
 typedef enum RelOptKind
@@ -939,11 +926,11 @@ typedef struct RelOptInfo
 									 * by partition_bounds_merge() */
 	List	   *partition_qual; /* Partition constraint, if not the root */
 	struct RelOptInfo **part_rels;	/* Array of RelOptInfos of partitions,
-<<<<<<< HEAD
-									 * stored in the same order of bounds */
-	List	  **partexprs;		/* Non-nullable partition key expressions. */
-	List	  **nullable_partexprs; /* Nullable partition key expressions. */
-	List	   *partitioned_child_rels; /* List of RT indexes. */
+									 * stored in the same order as bounds */
+	Relids		all_partrels;	/* Relids set of all partition relids */
+	List	  **partexprs;		/* Non-nullable partition key expressions */
+	List	  **nullable_partexprs; /* Nullable partition key expressions */
+	List	   *partitioned_child_rels; /* List of RT indexes */
 
 	/*
 	 * In a subquery, if this base relation contains quals that must
@@ -953,13 +940,6 @@ typedef struct RelOptInfo
 	 */
 	List	   *upperrestrictinfo;		/* RestrictInfo structures (if base
 										 * rel) */
-=======
-									 * stored in the same order as bounds */
-	Relids		all_partrels;	/* Relids set of all partition relids */
-	List	  **partexprs;		/* Non-nullable partition key expressions */
-	List	  **nullable_partexprs; /* Nullable partition key expressions */
-	List	   *partitioned_child_rels; /* List of RT indexes */
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 } RelOptInfo;
 
 /*
