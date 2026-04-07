@@ -418,6 +418,7 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 
 		case T_Agg:
 			result = (PlanState *) ExecInitAgg((Agg *) node,
+											   estate, eflags);
 			break;
 
 		case T_IncrementalSort:
