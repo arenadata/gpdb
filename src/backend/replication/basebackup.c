@@ -71,7 +71,8 @@ typedef struct
 	bool		includewal;
 	uint32		maxrate;
 	bool		sendtblspcmapfile;
-<<<<<<< HEAD
+	backup_manifest_option manifest;
+	pg_checksum_type manifest_checksum_type;
 	HTAB	   *exclude;
 } basebackup_options;
 
@@ -79,16 +80,9 @@ typedef struct
 static bool match_exclude_list(char *path, HTAB *exclude);
 
 static int64 sendDir(const char *path, int basepathlen, bool sizeonly,
-					 List *tablespaces, bool sendtblspclinks, HTAB *exclude);
-=======
-	backup_manifest_option manifest;
-	pg_checksum_type manifest_checksum_type;
-} basebackup_options;
-
-static int64 sendDir(const char *path, int basepathlen, bool sizeonly,
 					 List *tablespaces, bool sendtblspclinks,
-					 backup_manifest_info *manifest, const char *spcoid);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+					 backup_manifest_info *manifest, const char *spcoid,
+					 HTAB *exclude);
 static bool sendFile(const char *readfilename, const char *tarfilename,
 					 struct stat *statbuf, bool missing_ok, Oid dboid,
 					 backup_manifest_info *manifest, const char *spcoid);
@@ -388,14 +382,10 @@ perform_base_backup(basebackup_options *opt)
 
 		/* Add a node for the base directory at the end */
 		ti = palloc0(sizeof(tablespaceinfo));
-<<<<<<< HEAD
-		ti->size = opt->progress ? sendDir(".", 1, true, tablespaces, true, opt->exclude) : -1;
-=======
 		if (opt->progress)
-			ti->size = sendDir(".", 1, true, tablespaces, true, NULL, NULL);
+			ti->size = sendDir(".", 1, true, tablespaces, true, NULL, NULL, opt->exclude);
 		else
 			ti->size = -1;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		tablespaces = lappend(tablespaces, ti);
 
 		/*
@@ -483,22 +473,14 @@ perform_base_backup(basebackup_options *opt)
 				 */
 				if (tblspc_map_file && opt->sendtblspcmapfile)
 				{
-<<<<<<< HEAD
-					sendFileWithContent(TABLESPACE_MAP, tblspc_map_file->data);
-					sendDir(".", 1, false, tablespaces, false, opt->exclude);
-				}
-				else
-					sendDir(".", 1, false, tablespaces, true, opt->exclude);
-=======
 					sendFileWithContent(TABLESPACE_MAP, tblspc_map_file->data,
 										&manifest);
 					sendDir(".", 1, false, tablespaces, false,
-							&manifest, NULL);
+							&manifest, NULL, opt->exclude);
 				}
 				else
 					sendDir(".", 1, false, tablespaces, true,
-							&manifest, NULL);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+							&manifest, NULL, opt->exclude);
 
 				/* ... and pg_control after everything else. */
 				if (lstat(XLOG_CONTROL_FILE, &statbuf) != 0)
@@ -861,7 +843,6 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 	bool		o_manifest_checksums = false;
 
 	MemSet(opt, 0, sizeof(*opt));
-<<<<<<< HEAD
 
 	/*
 	 * The exclude hash table is only created if EXCLUDE options are specified.
@@ -869,10 +850,8 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 	 * NULL.
 	 */
 	opt->exclude = NULL;
-=======
 	opt->manifest = MANIFEST_OPTION_NO;
 	opt->manifest_checksum_type = CHECKSUM_TYPE_CRC32C;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	foreach(lopt, options)
 	{
@@ -1044,7 +1023,6 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 	}
 	if (opt->label == NULL)
 		opt->label = "base backup";
-<<<<<<< HEAD
 
 	if (opt->exclude)
 		hash_freeze(opt->exclude);
@@ -1061,7 +1039,7 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 			opt->fastcheckpoint ? "true" : "false",
 			opt->nowait ? "true" : "false",
 			opt->includewal ? "true" : "false");
-=======
+
 	if (opt->manifest == MANIFEST_OPTION_NO)
 	{
 		if (o_manifest_checksums)
@@ -1070,7 +1048,6 @@ parse_basebackup_options(List *options, basebackup_options *opt)
 					 errmsg("manifest checksums require a backup manifest")));
 		opt->manifest_checksum_type = CHECKSUM_TYPE_NONE;
 	}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 
@@ -1304,15 +1281,13 @@ sendFileWithContent(const char *filename, const char *content,
 		update_basebackup_progress(pad);
 	}
 
-<<<<<<< HEAD
 	elogif(debug_basebackup, LOG,
 			"basebackup send file -- Sent file '%s' with content \n%s.",
 			filename, content);
-=======
+
 	pg_checksum_update(&checksum_ctx, (uint8 *) content, len);
 	AddFileToBackupManifest(manifest, NULL, filename, len,
 							(pg_time_t) statbuf.st_mtime, &checksum_ctx);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 /*
@@ -1359,12 +1334,8 @@ sendTablespace(char *path, char *spcoid, bool sizeonly,
 						   sizeonly);
 
 	/* Send all the files in the tablespace version directory */
-<<<<<<< HEAD
-	size += sendDir(pathbuf, strlen(path), sizeonly, NIL, true, NULL);
-=======
 	size += sendDir(pathbuf, strlen(path), sizeonly, NIL, true, manifest,
-					spcoid);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+					spcoid, NULL);
 
 	return size;
 }
@@ -1401,12 +1372,8 @@ match_exclude_list(char *path, HTAB *exclude)
  */
 static int64
 sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
-<<<<<<< HEAD
-		bool sendtblspclinks, HTAB *exclude)
-=======
 		bool sendtblspclinks, backup_manifest_info *manifest,
-		const char *spcoid)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+		const char *spcoid, HTAB *exclude)
 {
 	DIR		   *dir;
 	struct dirent *de;
@@ -1695,12 +1662,8 @@ sendDir(const char *path, int basepathlen, bool sizeonly, List *tablespaces,
 				skip_this_dir = true;
 
 			if (!skip_this_dir)
-<<<<<<< HEAD
-				size += sendDir(pathbuf, basepathlen, sizeonly, tablespaces, sendtblspclinks, exclude);
-=======
 				size += sendDir(pathbuf, basepathlen, sizeonly, tablespaces,
-								sendtblspclinks, manifest, spcoid);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+								sendtblspclinks, manifest, spcoid, exclude);
 		}
 		else if (S_ISREG(statbuf.st_mode))
 		{
