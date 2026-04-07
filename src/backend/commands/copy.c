@@ -3813,19 +3813,6 @@ CopyFrom(CopyState cstate)
 		(cstate->rel->rd_createSubid != InvalidSubTransactionId ||
 		 cstate->rel->rd_firstRelfilenodeSubid != InvalidSubTransactionId))
 		ti_options |= TABLE_INSERT_SKIP_FSM;
-<<<<<<< HEAD
-		/*
-		 * The optimization to skip WAL has been disabled in GPDB. wal_level
-		 * is hardcoded to 'archive' in GPDB, so it wouldn't have any effect
-		 * anyway.
-		 */
-#if 0
-		if (!XLogIsNeeded())
-			ti_options |= TABLE_INSERT_SKIP_WAL;
-#endif
-	}
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	/*
 	 * Optimize if new relfilenode was created in this subxact or one of its
