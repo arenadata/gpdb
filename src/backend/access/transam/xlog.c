@@ -9595,12 +9595,8 @@ CreateCheckPoint(int flags)
 	 * prevent the disk holding the xlog from growing full.
 	 */
 	XLByteToSeg(RedoRecPtr, _logSegNo, wal_segment_size);
-<<<<<<< HEAD
 	KeepLogSeg(recptr, &_logSegNo, PriorRedoPtr);
-=======
-	KeepLogSeg(recptr, &_logSegNo);
 	InvalidateObsoleteReplicationSlots(_logSegNo);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	_logSegNo--;
 	RemoveOldXlogFiles(_logSegNo, RedoRecPtr, recptr);
 
@@ -9984,12 +9980,8 @@ CreateRestartPoint(int flags)
 	receivePtr = GetWalRcvFlushRecPtr(NULL, NULL);
 	replayPtr = GetXLogReplayRecPtr(&replayTLI);
 	endptr = (receivePtr < replayPtr) ? replayPtr : receivePtr;
-<<<<<<< HEAD
 	KeepLogSeg(endptr, &_logSegNo, InvalidXLogRecPtr);
-=======
-	KeepLogSeg(endptr, &_logSegNo);
 	InvalidateObsoleteReplicationSlots(_logSegNo);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	_logSegNo--;
 
 	/*
