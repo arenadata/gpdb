@@ -416,20 +416,21 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 												estate, eflags);
 			break;
 
-<<<<<<< HEAD
 		case T_Agg:
 			result = (PlanState *) ExecInitAgg((Agg *) node,
-=======
+			break;
+
 		case T_IncrementalSort:
 			result = (PlanState *) ExecInitIncrementalSort((IncrementalSort *) node,
 														   estate, eflags);
 			break;
 
+#ifdef NOT_USED /* Group nodes are not used in GPDB */
 		case T_Group:
 			result = (PlanState *) ExecInitGroup((Group *) node,
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 												 estate, eflags);
 			break;
+#endif
 
 		case T_TupleSplit:
 			result = (PlanState *) ExecInitTupleSplit((TupleSplit *) node,
@@ -954,17 +955,16 @@ ExecEndNode(PlanState *node)
 			ExecEndSort((SortState *) node);
 			break;
 
-<<<<<<< HEAD
-=======
 		case T_IncrementalSortState:
 			ExecEndIncrementalSort((IncrementalSortState *) node);
 			break;
 
+#ifdef NOT_USED /* GroupState nodes are not used in GPDB */
 		case T_GroupState:
 			ExecEndGroup((GroupState *) node);
 			break;
+#endif
 
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		case T_AggState:
 			ExecEndAgg((AggState *) node);
 			break;
