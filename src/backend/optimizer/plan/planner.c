@@ -7344,6 +7344,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			Path	   *path_original = path;
 			bool		is_sorted;
 			int			presorted_keys;
+			double		dNumGroups;
 
 			is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
 													 path->pathkeys,
@@ -7351,8 +7352,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 			if (path == cheapest_path || is_sorted)
 			{
-				double		dNumGroups;
-
 				/*
 				 * Sort the cheapest-total path if it isn't already sorted.
 				 * This also adds a Motion to redistribute it if needed.
@@ -7519,6 +7518,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				Path	   *path_original = path;
 				bool		is_sorted;
 				int			presorted_keys;
+				double		dNumGroups;
 
 				is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
 														 path->pathkeys,
@@ -7585,6 +7585,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
+#endif
 
 				/*
 				 * Now we may consider incremental sort on this path, but only
@@ -7614,7 +7615,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 															 presorted_keys,
 															 -1.0);
 
-				if (parse->hasAggs)
+				//if (parse->hasAggs)
 					add_path(grouped_rel, (Path *)
 							 create_agg_path(root,
 											 grouped_rel,
@@ -7626,6 +7627,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											 havingQual,
 											 agg_final_costs,
 											 dNumGroups));
+#if 0 /* Group nodes are not used in GPDB */
 				else
 					add_path(grouped_rel, (Path *)
 							 create_group_path(root,
