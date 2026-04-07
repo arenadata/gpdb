@@ -674,19 +674,16 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 	 * Nothing more to do if we are not managing a sync standby or there are
 	 * not enough synchronous standbys.
 	 */
-<<<<<<< HEAD
 	if (IS_QUERY_DISPATCHER())
 	{
-		if (list_length(sync_standbys) == 0)
+		if (num_standbys == 0)
+		{
+			pfree(sync_standbys);
 			return false;
+		}
 	}
 	else if (!(*am_sync) ||
-		SyncRepConfig == NULL ||
-		list_length(sync_standbys) < SyncRepConfig->num_sync)
-=======
-	if (!(*am_sync) ||
 		num_standbys < SyncRepConfig->num_sync)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	{
 		pfree(sync_standbys);
 		return false;
@@ -827,26 +824,20 @@ cmp_lsn(const void *a, const void *b)
 int
 SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 {
-<<<<<<< HEAD
-	List	   *result = NIL;
-	bool		syncStandbyPresent;
-	int			i;
-	volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
-								 * rearrangement */
-	Assert(LWLockHeldByMe(SyncRepLock));
-=======
 	int			i;
 	int			n;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	/* Create result array */
 	*standbys = (SyncRepStandbyData *)
 		palloc(max_wal_senders * sizeof(SyncRepStandbyData));
 
-	/* GPDB_12_MERGE_FIXME: Should this be in SyncRepGetSyncStandbysQuorum()
-	 * instead? */
 	if (IS_QUERY_DISPATCHER())
 	{
+		bool		syncStandbyPresent;
+		int			i;
+		volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
+									 * rearrangement */
+
 		for (i = 0; i < max_wal_senders; i++)
 		{
 			walsnd = &WalSndCtl->walsnds[i];
@@ -859,10 +850,14 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 
 			if (syncStandbyPresent)
 			{
-				result = lappend_int(result, i);
-				if (am_sync)
-					*am_sync = true;
-				return result;
+				SpinLockAcquire(&walsnd->mutex);
+				standbys[0]->pid = walsnd->pid;
+				standbys[0]->write = walsnd->write;
+				standbys[0]->flush = walsnd->flush;
+				standbys[0]->apply = walsnd->apply;
+				standbys[0]->sync_standby_priority = walsnd->sync_standby_priority;
+				SpinLockRelease(&walsnd->mutex);
+				return 1;
 			}
 		}
 	}
