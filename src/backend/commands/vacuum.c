@@ -136,13 +136,9 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 	bool		freeze = false;
 	bool		full = false;
 	bool		disable_page_skipping = false;
-<<<<<<< HEAD
 	bool		rootonly = false;
 	bool		fullscan = false;
 	int			ao_phase = 0;
-	bool		parallel_option = false;
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	ListCell   *lc;
 
 	/* Set default value */
@@ -193,7 +189,6 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 		}
 		else if (strcmp(opt->defname, "parallel") == 0)
 		{
-<<<<<<< HEAD
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("VACUUM option \"parallel\" not supported in GPDB"),
@@ -202,9 +197,6 @@ ExecVacuum(ParseState *pstate, VacuumStmt *vacstmt, bool isTopLevel, bool auto_s
 #if 0
 			/* VACUUM option "parallel" not supported in GPDB */
 
-			parallel_option = true;
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 			if (opt->arg == NULL)
 			{
 				ereport(ERROR,
