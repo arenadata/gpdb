@@ -7516,12 +7516,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			foreach(lc, partially_grouped_rel->pathlist)
 			{
 				Path	   *path = (Path *) lfirst(lc);
-<<<<<<< HEAD
-				double		dNumGroups;
-				bool		is_sorted;
-
-				is_sorted = pathkeys_contained_in(root->group_pathkeys, path->pathkeys);
-=======
 				Path	   *path_original = path;
 				bool		is_sorted;
 				int			presorted_keys;
@@ -7529,16 +7523,11 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
 														 path->pathkeys,
 														 &presorted_keys);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 				/*
 				 * Insert a Sort node, if required. But there's no point in
 				 * sorting anything but the cheapest path.
 				 */
-<<<<<<< HEAD
-				if (!is_sorted && path != partially_grouped_rel->cheapest_total_path)
-					continue;
-=======
 				if (!is_sorted)
 				{
 					if (path != partially_grouped_rel->cheapest_total_path)
@@ -7549,7 +7538,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													 root->group_pathkeys,
 													 -1.0);
 				}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 				path = cdb_prepare_path_for_sorted_agg(root,
 													   is_sorted,
@@ -7597,9 +7585,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
-<<<<<<< HEAD
-#endif
-=======
 
 				/*
 				 * Now we may consider incremental sort on this path, but only
@@ -7649,7 +7634,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 			}
 		}
 	}
