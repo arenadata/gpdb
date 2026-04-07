@@ -382,18 +382,6 @@ cluster_rel(Oid tableOid, Oid indexOid, int options, bool printError)
 				pgstat_progress_end_command();
 				return false;
 			}
-<<<<<<< HEAD
-			indexForm = (Form_pg_index) GETSTRUCT(tuple);
-			if (!indexForm->indisclustered)
-			{
-				ReleaseSysCache(tuple);
-				relation_close(OldHeap, AccessExclusiveLock);
-				pgstat_progress_end_command();
-				return false;
-			}
-			ReleaseSysCache(tuple);
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		}
 	}
 
