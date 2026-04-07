@@ -128,12 +128,9 @@ static void show_sortorder_options(StringInfo buf, Node *sortexpr,
 static void show_tablesample(TableSampleClause *tsc, PlanState *planstate,
 							 List *ancestors, ExplainState *es);
 static void show_sort_info(SortState *sortstate, ExplainState *es);
-<<<<<<< HEAD
 static void show_windowagg_keys(WindowAggState *waggstate, List *ancestors, ExplainState *es);
-=======
 static void show_incremental_sort_info(IncrementalSortState *incrsortstate,
 									   ExplainState *es);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 static void show_hash_info(HashState *hashstate, ExplainState *es);
 static void show_hashagg_info(AggState *hashstate, ExplainState *es);
 static void show_tidbitmap_info(BitmapHeapScanState *planstate,
@@ -1708,17 +1705,17 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		case T_Sort:
 			pname = sname = "Sort";
 			break;
-<<<<<<< HEAD
 		case T_TupleSplit:
 			pname = "TupleSplit";
-=======
+			break;
 		case T_IncrementalSort:
 			pname = sname = "Incremental Sort";
 			break;
+#ifdef NOT_USED /* Group nodes are not used in GPDB */
 		case T_Group:
 			pname = sname = "Group";
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 			break;
+#endif
 		case T_Agg:
 			{
 				Agg		   *agg = (Agg *) plan;
@@ -2685,15 +2682,11 @@ ExplainNode(PlanState *planstate, List *ancestors,
 		}
 	}
 
-<<<<<<< HEAD
 	/* Show executor statistics */
 	if (planstate->instrument && planstate->instrument->need_cdb)
 		cdbexplain_showExecStats(planstate, es);
 
-	/* Show buffer usage */
-=======
 	/* Show buffer/WAL usage */
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	if (es->buffers && planstate->instrument)
 		show_buffer_usage(es, &planstate->instrument->bufusage);
 	if (es->wal && planstate->instrument)
@@ -2998,17 +2991,9 @@ static void
 show_sort_keys(SortState *sortstate, List *ancestors, ExplainState *es)
 {
 	Sort	   *plan = (Sort *) sortstate->ss.ps.plan;
-	const char *SortKeystr;
 
-<<<<<<< HEAD
-	SortKeystr = "Sort Key";
-
-	show_sort_group_keys((PlanState *) sortstate, SortKeystr,
-						 plan->numCols, plan->sortColIdx,
-=======
 	show_sort_group_keys((PlanState *) sortstate, "Sort Key",
 						 plan->numCols, 0, plan->sortColIdx,
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 						 plan->sortOperators, plan->collations,
 						 plan->nullsFirst,
 						 ancestors, es);
@@ -3326,17 +3311,8 @@ show_sort_group_keys(PlanState *planstate, const char *qlabel,
 	}
 
 	ExplainPropertyList(qlabel, result, es);
-<<<<<<< HEAD
-
-	/*
-	 * GPDB_90_MERGE_FIXME: handle rollup times printing
-	 * if (rollup_gs_times > 1)
-	 *	appendStringInfo(es->str, " (%d times)", rollup_gs_times);
-	 */
-=======
 	if (nPresortedKeys > 0)
 		ExplainPropertyList("Presorted Key", resultPresorted, es);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 /*
