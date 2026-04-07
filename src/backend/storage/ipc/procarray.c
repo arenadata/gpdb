@@ -489,7 +489,6 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 			ProcArrayGroupClearXid(proc, latestXid);
 	}
 
-<<<<<<< HEAD
 	/*
 	 * If we have no XID, we don't need to lock, since we won't affect
 	 * anyone else's calculation of a snapshot.  We might change their
@@ -501,20 +500,12 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 	 */
 	Assert(!TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
 	Assert(!TransactionIdIsValid(allTmGxact[proc->pgprocno].gxid));
-=======
-		proc->lxid = InvalidLocalTransactionId;
-		pgxact->xmin = InvalidTransactionId;
-		/* must be cleared with xid/xmin: */
-		pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-		proc->delayChkpt = false; /* be sure this is cleared in abort */
-		proc->recoveryConflictPending = false;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	proc->lxid = InvalidLocalTransactionId;
 	pgxact->xmin = InvalidTransactionId;
 	/* must be cleared with xid/xmin: */
 	pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-	pgxact->delayChkpt = false;		/* be sure this is cleared in abort */
+	proc->delayChkpt = false;		/* be sure this is cleared in abort */
 	proc->recoveryConflictPending = false;
 
 	Assert(pgxact->nxids == 0);
