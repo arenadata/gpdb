@@ -1492,14 +1492,10 @@ backtrack:
 		 * (doesn't seem worth adding more complexity to deal with that).
 		 */
 		if (minoff > maxoff)
-<<<<<<< HEAD
-			delete_now = (blkno == orig_blkno);
+			attempt_pagedel = (blkno == scanblkno);
 		else if (callback == NULL)
 			/* GPDB_13_MERGE_FIXME: Commit 02c9386 has alternative fix */
 			stats->num_index_tuples += maxoff - minoff + 1;
-=======
-			attempt_pagedel = (blkno == scanblkno);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		else
 			stats->num_index_tuples += nhtidslive;
 
