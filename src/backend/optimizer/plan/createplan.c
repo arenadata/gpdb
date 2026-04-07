@@ -127,8 +127,12 @@ static Plan *create_projection_plan(PlannerInfo *root,
 									int flags);
 static Plan *inject_projection_plan(Plan *subplan, List *tlist, bool parallel_safe);
 static Sort *create_sort_plan(PlannerInfo *root, SortPath *best_path, int flags);
+<<<<<<< HEAD
+=======
 static IncrementalSort *create_incrementalsort_plan(PlannerInfo *root,
 													IncrementalSortPath *best_path, int flags);
+static Group *create_group_plan(PlannerInfo *root, GroupPath *best_path);
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 static Unique *create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path,
 										int flags);
 static Agg *create_agg_plan(PlannerInfo *root, AggPath *best_path);
@@ -2255,6 +2259,8 @@ create_sort_plan(PlannerInfo *root, SortPath *best_path, int flags)
 }
 
 /*
+<<<<<<< HEAD
+=======
  * create_incrementalsort_plan
  *
  *	  Do the same as create_sort_plan, but create IncrementalSort plan.
@@ -2281,6 +2287,46 @@ create_incrementalsort_plan(PlannerInfo *root, IncrementalSortPath *best_path,
 }
 
 /*
+ * create_group_plan
+ *
+ *	  Create a Group plan for 'best_path' and (recursively) plans
+ *	  for its subpaths.
+ */
+static Group *
+create_group_plan(PlannerInfo *root, GroupPath *best_path)
+{
+	Group	   *plan;
+	Plan	   *subplan;
+	List	   *tlist;
+	List	   *quals;
+
+	/*
+	 * Group can project, so no need to be terribly picky about child tlist,
+	 * but we do need grouping columns to be available
+	 */
+	subplan = create_plan_recurse(root, best_path->subpath, CP_LABEL_TLIST);
+
+	tlist = build_path_tlist(root, &best_path->path);
+
+	quals = order_qual_clauses(root, best_path->qual);
+
+	plan = make_group(tlist,
+					  quals,
+					  list_length(best_path->groupClause),
+					  extract_grouping_cols(best_path->groupClause,
+											subplan->targetlist),
+					  extract_grouping_ops(best_path->groupClause),
+					  extract_grouping_collations(best_path->groupClause,
+												  subplan->targetlist),
+					  subplan);
+
+	copy_generic_path_info(&plan->plan, (Path *) best_path);
+
+	return plan;
+}
+
+/*
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
  * create_upper_unique_plan
  *
  *	  Create a Unique plan for 'best_path' and (recursively) plans
