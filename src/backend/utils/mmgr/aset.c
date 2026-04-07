@@ -55,10 +55,6 @@
 
 #include "miscadmin.h"
 
-<<<<<<< HEAD
-/* Define this to detail debug alloc information */
-/* #define HAVE_ALLOCINFO */
-
 #ifdef CDB_PALLOC_CALLER_ID
 #define CDB_MCXT_WHERE(context) (context)->callerFile, (context)->callerLine
 #else
@@ -69,8 +65,6 @@
 #error "If CDB_PALLOC_TAGS is defined, CDB_PALLOC_CALLER_ID must be defined too"
 #endif
 
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 /*--------------------
  * Chunk freelist k holds chunks of size 1 << (k + ALLOC_MINBITS),
  * for k = 0 .. ALLOCSET_NUM_FREELISTS-1.
@@ -1158,9 +1152,6 @@ AllocSetFree(MemoryContext context, void *pointer)
 	/* Allow access to private part of chunk header. */
 	VALGRIND_MAKE_MEM_DEFINED(chunk, ALLOCCHUNK_PRIVATE_LEN);
 
-<<<<<<< HEAD
-	AllocFreeInfo(set, chunk);
-
 	MEMORY_ACCOUNT_DEC_ALLOCATED(set, chunk->size);
 
 #ifdef USE_ASSERT_CHECKING
@@ -1176,8 +1167,6 @@ AllocSetFree(MemoryContext context, void *pointer)
 	*/
 #endif
 
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 #ifdef MEMORY_CONTEXT_CHECKING
 	/* Test for someone scribbling on unused space in chunk */
 	if (chunk->requested_size < chunk->size)
