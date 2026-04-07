@@ -3781,12 +3781,9 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
 			 *
 			 * See src/backend/storage/page/README for longer discussion.
 			 */
-<<<<<<< HEAD
-			if (RecoveryInProgress() || IsInitProcessingMode())
-=======
 			if (RecoveryInProgress() ||
+				IsInitProcessingMode() ||
 				RelFileNodeSkippingWAL(bufHdr->tag.rnode))
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 				return;
 
 			/*
