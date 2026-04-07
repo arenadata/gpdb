@@ -10155,7 +10155,12 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 	XLByteToSeg(recptr, currSegNo, wal_segment_size);
 	segno = currSegNo;
 
-<<<<<<< HEAD
+	/*
+	 * Calculate how many segments are kept by slots first, adjusting for
+	 * max_slot_wal_keep_size.
+	 */
+	keep = XLogGetReplicationSlotMinimumLSN();
+
 #ifdef FAULT_INJECTOR
 	/*
 	 * Let the WAL still needed be removed.  This is used to test if WAL sender
@@ -10169,23 +10174,24 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 	}
 #endif
 
-	/* compute limit for wal_keep_segments first */
-	if (wal_keep_segments > 0)
-	{
-		/* avoid underflow, don't go below 1 */
-		if (segno <= wal_keep_segments)
-			segno = 1;
-		else
-			segno = segno - wal_keep_segments;
-		setvalue = true;
-=======
-	/*
-	 * Calculate how many segments are kept by slots first, adjusting for
-	 * max_slot_wal_keep_size.
-	 */
-	keep = XLogGetReplicationSlotMinimumLSN();
 	if (keep != InvalidXLogRecPtr)
 	{
+		/*
+		 * GPDB never uses restart_lsn as lowest cut-off point. Instead always
+		 * will use Checkpoint redo location prior to restart_lsn as cut-off
+		 * point.
+		 */
+		if (max_slot_wal_keep_size_mb > 0 && !XLogRecPtrIsInvalid(PriorRedoPtr))
+		{
+			if (PriorRedoPtr < keep)
+			{
+				keep = PriorRedoPtr;
+				CkptRedoBeforeMinLSN = PriorRedoPtr;
+			}
+			else if (!XLogRecPtrIsInvalid(CkptRedoBeforeMinLSN))
+				keep = CkptRedoBeforeMinLSN;
+		}
+
 		XLByteToSeg(keep, segno, wal_segment_size);
 
 		/* Cap by max_slot_wal_keep_size ... */
@@ -10198,54 +10204,25 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 
 			if (currSegNo - segno > slot_keep_segs)
 				segno = currSegNo - slot_keep_segs;
+
+			setvalue = true;
 		}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	}
 
 	/* but, keep at least wal_keep_segments if that's set */
 	if (wal_keep_segments > 0 && currSegNo - segno < wal_keep_segments)
 	{
-<<<<<<< HEAD
-		XLogSegNo	slotSegNo;
-
-		/*
-		 * GPDB never uses restart_lsn as lowest cut-off point. Instead always
-		 * will use Checkpoint redo location prior to restart_lsn as cut-off
-		 * point.
-		 */
-		if (!XLogRecPtrIsInvalid(PriorRedoPtr))
-		{
-			if (PriorRedoPtr < keep)
-			{
-				keep = PriorRedoPtr;
-				CkptRedoBeforeMinLSN = PriorRedoPtr;
-			}
-			else if (!XLogRecPtrIsInvalid(CkptRedoBeforeMinLSN))
-				keep = CkptRedoBeforeMinLSN;
-		}
-
-		XLByteToSeg(keep, slotSegNo, wal_segment_size);
-
-		if (slotSegNo <= 0)
-			segno = 1;
-		else if (slotSegNo < segno)
-			segno = slotSegNo;
-		setvalue = true;
-	}
-
-	/* don't delete WAL segments newer than the calculated segment */
-	if (setvalue && segno < *logSegNo)
-=======
 		/* avoid underflow, don't go below 1 */
 		if (currSegNo <= wal_keep_segments)
 			segno = 1;
 		else
 			segno = currSegNo - wal_keep_segments;
+
+		setvalue = true;
 	}
 
 	/* don't delete WAL segments newer than the calculated segment */
-	if (XLogRecPtrIsInvalid(*logSegNo) || segno < *logSegNo)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+	if (setvalue && (XLogRecPtrIsInvalid(*logSegNo) || segno < *logSegNo))
 		*logSegNo = segno;
 }
 
