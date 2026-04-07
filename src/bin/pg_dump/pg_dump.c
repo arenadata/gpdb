@@ -4118,36 +4118,21 @@ getPublications(Archive *fout, int *numPublications)
 	if (fout->remoteVersion >= 130000)
 		appendPQExpBuffer(query,
 						  "SELECT p.tableoid, p.oid, p.pubname, "
-<<<<<<< HEAD
 						  "p.pubowner, "
-						  "p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate, false AS pubviaroot "
-						  "FROM pg_publication p");
-	else
-		appendPQExpBuffer(query,
-						  "SELECT p.tableoid, p.oid, p.pubname, "
-						  "p.pubowner, "
-						  "p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, false AS pubtruncate, false AS pubviaroot "
-						  "FROM pg_publication p");
-=======
-						  "(%s p.pubowner) AS rolname, "
 						  "p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate, p.pubviaroot "
-						  "FROM pg_publication p",
-						  username_subquery);
+						  "FROM pg_publication p");
 	else if (fout->remoteVersion >= 110000)
 		appendPQExpBuffer(query,
 						  "SELECT p.tableoid, p.oid, p.pubname, "
-						  "(%s p.pubowner) AS rolname, "
+						  "p.pubowner, "
 						  "p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, p.pubtruncate, false AS pubviaroot "
-						  "FROM pg_publication p",
-						  username_subquery);
+						  "FROM pg_publication p");
 	else
 		appendPQExpBuffer(query,
 						  "SELECT p.tableoid, p.oid, p.pubname, "
-						  "(%s p.pubowner) AS rolname, "
+						  "p.pubowner, "
 						  "p.puballtables, p.pubinsert, p.pubupdate, p.pubdelete, false AS pubtruncate, false AS pubviaroot "
-						  "FROM pg_publication p",
-						  username_subquery);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+						  "FROM pg_publication p");
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
 
@@ -9830,7 +9815,6 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 
 	if (fout->remoteVersion >= 90200)
 	{
-<<<<<<< HEAD
 		/*
 		 * Global entries (with defaclnamespace=0) replace the hard-wired
 		 * default ACL for their object type.  We should dump them as deltas
@@ -9849,41 +9833,6 @@ getDefaultACLs(Archive *fout, int *numDefaultACLs)
 							 "acldefault(CASE WHEN defaclobjtype = 'S' "
 							 "THEN 's'::\"char\" ELSE defaclobjtype END, "
 							 "defaclrole) ELSE '{}' END AS acldefault ");
-=======
-		PQExpBuffer acl_subquery = createPQExpBuffer();
-		PQExpBuffer racl_subquery = createPQExpBuffer();
-		PQExpBuffer initacl_subquery = createPQExpBuffer();
-		PQExpBuffer initracl_subquery = createPQExpBuffer();
-
-		buildACLQueries(acl_subquery, racl_subquery, initacl_subquery,
-						initracl_subquery, "defaclacl", "defaclrole",
-						"CASE WHEN defaclobjtype = 'S' THEN 's' ELSE defaclobjtype END::\"char\"",
-						dopt->binary_upgrade);
-
-		appendPQExpBuffer(query, "SELECT d.oid, d.tableoid, "
-						  "(%s d.defaclrole) AS defaclrole, "
-						  "d.defaclnamespace, "
-						  "d.defaclobjtype, "
-						  "%s AS defaclacl, "
-						  "%s AS rdefaclacl, "
-						  "%s AS initdefaclacl, "
-						  "%s AS initrdefaclacl "
-						  "FROM pg_default_acl d "
-						  "LEFT JOIN pg_init_privs pip ON "
-						  "(d.oid = pip.objoid "
-						  "AND pip.classoid = 'pg_default_acl'::regclass "
-						  "AND pip.objsubid = 0) ",
-						  username_subquery,
-						  acl_subquery->data,
-						  racl_subquery->data,
-						  initacl_subquery->data,
-						  initracl_subquery->data);
-
-		destroyPQExpBuffer(acl_subquery);
-		destroyPQExpBuffer(racl_subquery);
-		destroyPQExpBuffer(initacl_subquery);
-		destroyPQExpBuffer(initracl_subquery);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	}
 	else
 		appendPQExpBufferStr(query,
