@@ -1894,7 +1894,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	bool		all_visible_cleared = false;
 	bool		needwal;
 
-	needwal = !(options & HEAP_INSERT_SKIP_WAL) && RelationNeedsWAL(relation);
+	needwal = RelationNeedsWAL(relation);
 	gp_expand_protect_catalog_changes(relation);
 
 #ifdef FAULT_INJECTOR
@@ -1964,11 +1964,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	MarkBufferDirty(buffer);
 
 	/* XLOG stuff */
-<<<<<<< HEAD
 	if (needwal)
-=======
-	if (RelationNeedsWAL(relation))
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	{
 		xl_heap_insert xlrec;
 		xl_heap_header xlhdr;
