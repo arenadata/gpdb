@@ -10087,7 +10087,7 @@ GetWALAvailability(XLogRecPtr targetLSN)
 
 	/* calculate oldest segment currently needed by slots */
 	XLByteToSeg(targetLSN, targetSeg, wal_segment_size);
-	KeepLogSeg(currpos, &oldestSlotSeg);
+	KeepLogSeg(currpos, &oldestSlotSeg, InvalidXLogRecPtr);
 
 	/*
 	 * Find the oldest extant segment file. We get 1 until checkpoint removes
@@ -13130,7 +13130,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 						elogif(debug_xlog_record_read, LOG,
 							   "xlog page read -- There is enough xlog data to be "
 							   "read (receivedupto %X/%X, requestedrec %X/%X)",
-							   (uint32) (receivedUpto >> 32), (uint32) receivedUpto,
+							   (uint32) (flushedUpto >> 32), (uint32) flushedUpto,
 							   (uint32) (RecPtr >> 32), (uint32) RecPtr);
 
 						/*
