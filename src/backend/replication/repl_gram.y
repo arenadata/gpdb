@@ -218,12 +218,11 @@ base_backup_opt:
 				  $$ = makeDefElem("noverify_checksums",
 								   (Node *)makeInteger(true), -1);
 				}
-<<<<<<< HEAD
 			| K_EXCLUDE SCONST
 				{
 				  $$ = makeDefElem("exclude",
 						  (Node *) makeString($2), -1);
-=======
+				}
 			| K_MANIFEST SCONST
 				{
 				  $$ = makeDefElem("manifest",
@@ -233,7 +232,6 @@ base_backup_opt:
 				{
 				  $$ = makeDefElem("manifest_checksums",
 								   (Node *)makeString($2), -1);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 				}
 			;
 
