@@ -356,17 +356,8 @@
  * Enable tracing of syncscan operations (see also the trace_syncscan GUC var).
  */
 /* #define TRACE_SYNCSCAN */
-<<<<<<< HEAD
 
 /*
  * Disable tuplesort_set_bound feature; see also optimize_bounded_sort GUC var.
  */
 /* #define DEBUG_BOUNDED_SORT */
-
-/*
- * Other debug #defines (documentation, anyone?)
- */
-/* #define HEAPDEBUGALL */
-/* #define ACLDEBUG */
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
