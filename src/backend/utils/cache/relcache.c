@@ -3234,7 +3234,6 @@ AtEOXact_cleanup(Relation relation, bool isCommit)
 #endif
 
 	/*
-<<<<<<< HEAD
 	 * QE-readers aren't properly enrolled in transactions, they
 	 * just get the snapshot which corresponds -- so here, where
 	 * we are maintaining their relcache, we want to just clean
@@ -3248,10 +3247,7 @@ AtEOXact_cleanup(Relation relation, bool isCommit)
 	}
 
 	/*
-	 * Is it a relation created in the current transaction?
-=======
 	 * Is the relation live after this transaction ends?
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	 *
 	 * During commit, clear the relcache entry if it is preserved after
 	 * relation drop, in order not to orphan the entry.  During rollback,
