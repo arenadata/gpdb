@@ -127,12 +127,11 @@ static Plan *create_projection_plan(PlannerInfo *root,
 									int flags);
 static Plan *inject_projection_plan(Plan *subplan, List *tlist, bool parallel_safe);
 static Sort *create_sort_plan(PlannerInfo *root, SortPath *best_path, int flags);
-<<<<<<< HEAD
-=======
 static IncrementalSort *create_incrementalsort_plan(PlannerInfo *root,
 													IncrementalSortPath *best_path, int flags);
+#ifdef NOT_USED /* Group nodes are not used in GPDB */
 static Group *create_group_plan(PlannerInfo *root, GroupPath *best_path);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 static Unique *create_upper_unique_plan(PlannerInfo *root, UpperUniquePath *best_path,
 										int flags);
 static Agg *create_agg_plan(PlannerInfo *root, AggPath *best_path);
@@ -301,13 +300,8 @@ static Plan *prepare_sort_from_pathkeys(Plan *lefttree, List *pathkeys,
 static EquivalenceMember *find_ec_member_for_tle(EquivalenceClass *ec,
 												 TargetEntry *tle,
 												 Relids relids);
-<<<<<<< HEAD
-=======
-static Sort *make_sort_from_pathkeys(Plan *lefttree, List *pathkeys,
-									 Relids relids);
 static IncrementalSort *make_incrementalsort_from_pathkeys(Plan *lefttree,
 														   List *pathkeys, Relids relids, int nPresortedCols);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 static Sort *make_sort_from_groupcols(List *groupcls,
 									  AttrNumber *grpColIdx,
 									  Plan *lefttree);
@@ -532,18 +526,17 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
 											 (SortPath *) best_path,
 											 flags);
 			break;
-<<<<<<< HEAD
-=======
 		case T_IncrementalSort:
 			plan = (Plan *) create_incrementalsort_plan(root,
 														(IncrementalSortPath *) best_path,
 														flags);
 			break;
+#ifdef NOT_USED /* Group nodes are not used in GPDB */
 		case T_Group:
 			plan = (Plan *) create_group_plan(root,
 											  (GroupPath *) best_path);
 			break;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 		case T_Agg:
 			if (IsA(best_path, GroupingSetsPath))
 				plan = create_groupingsets_plan(root,
@@ -2265,8 +2258,6 @@ create_sort_plan(PlannerInfo *root, SortPath *best_path, int flags)
 }
 
 /*
-<<<<<<< HEAD
-=======
  * create_incrementalsort_plan
  *
  *	  Do the same as create_sort_plan, but create IncrementalSort plan.
@@ -2292,6 +2283,7 @@ create_incrementalsort_plan(PlannerInfo *root, IncrementalSortPath *best_path,
 	return plan;
 }
 
+#ifdef NOT_USED /* Group nodes are not used in GPDB */
 /*
  * create_group_plan
  *
@@ -2330,9 +2322,9 @@ create_group_plan(PlannerInfo *root, GroupPath *best_path)
 
 	return plan;
 }
+#endif
 
 /*
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
  * create_upper_unique_plan
  *
  *	  Create a Unique plan for 'best_path' and (recursively) plans
@@ -2691,14 +2683,10 @@ create_minmaxagg_plan(PlannerInfo *root, MinMaxAggPath *best_path)
 
 		plan = (Plan *) make_limit(plan,
 								   subparse->limitOffset,
-<<<<<<< HEAD
-								   subparse->limitCount);
-		plan->flow = plan->lefttree->flow;
-=======
 								   subparse->limitCount,
 								   subparse->limitOption,
 								   0, NULL, NULL, NULL);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+		plan->flow = plan->lefttree->flow;
 
 		/* Must apply correct cost/width data to Limit node */
 		plan->startup_cost = mminfo->path->startup_cost;
@@ -6972,7 +6960,6 @@ make_sort(Plan *lefttree, int numCols,
 }
 
 /*
-<<<<<<< HEAD
  * add_sort_cost --- basic routine to accumulate Sort cost into a
  * plan node representing the input cost.
  *
@@ -6996,7 +6983,9 @@ add_sort_cost(PlannerInfo *root, Plan *input, double limit_tuples)
 	input->total_cost = sort_path.total_cost;
 
 	return input;
-=======
+}
+
+/*
  * make_incrementalsort --- basic routine to build an IncrementalSort plan node
  *
  * Caller must have built the sortColIdx, sortOperators, collations, and
@@ -7025,7 +7014,6 @@ make_incrementalsort(Plan *lefttree, int numCols, int nPresortedCols,
 	node->sort.nullsFirst = nullsFirst;
 
 	return node;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 /*
