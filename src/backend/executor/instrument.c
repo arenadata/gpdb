@@ -55,11 +55,7 @@ InstrAlloc(int n, int instrument_options)
 
 	/* initialize all fields to zeroes, then modify as needed */
 	instr = palloc0(n * sizeof(Instrumentation));
-<<<<<<< HEAD
-	if (instrument_options & (INSTRUMENT_BUFFERS | INSTRUMENT_TIMER | INSTRUMENT_CDB))
-=======
-	if (instrument_options & (INSTRUMENT_BUFFERS | INSTRUMENT_TIMER | INSTRUMENT_WAL))
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+	if (instrument_options & (INSTRUMENT_BUFFERS | INSTRUMENT_TIMER | INSTRUMENT_WAL | INSTRUMENT_CDB))
 	{
 		bool		need_buffers = (instrument_options & INSTRUMENT_BUFFERS) != 0;
 		bool		need_wal = (instrument_options & INSTRUMENT_WAL) != 0;
@@ -277,7 +273,6 @@ BufferUsageAccumDiff(BufferUsage *dst,
 						  add->blk_write_time, sub->blk_write_time);
 }
 
-<<<<<<< HEAD
 /* Calculate number slots from gp_instrument_shmem_size */
 Size
 InstrShmemNumSlots(void)
@@ -547,7 +542,8 @@ gp_gettmid(int32* tmid)
 	if (time == -1)
 		elog(PANIC, "time_t converted from PgStartTime is too large");
 	*tmid = time;
-=======
+}
+
 /* helper functions for WAL usage accumulation */
 static void
 WalUsageAdd(WalUsage *dst, WalUsage *add)
@@ -563,5 +559,4 @@ WalUsageAccumDiff(WalUsage *dst, const WalUsage *add, const WalUsage *sub)
 	dst->wal_bytes += add->wal_bytes - sub->wal_bytes;
 	dst->wal_records += add->wal_records - sub->wal_records;
 	dst->wal_fpi += add->wal_fpi - sub->wal_fpi;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
