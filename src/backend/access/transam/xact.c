@@ -3121,7 +3121,6 @@ PrepareTransaction(void)
 	PreCommit_on_commit_actions();
 
 	AtEOXact_DispatchOids(true);
-
 	/*
 	 * Synchronize files that are created and not WAL-logged during this
 	 * transaction. This must happen before EndPrepare(), so that we don't see
@@ -3504,7 +3503,6 @@ AbortTransaction(void)
 	AfterTriggerEndXact(false); /* 'false' means it's abort */
 	AtAbort_EndpointExecState();
 	AtAbort_Portals();
-
 	AtAbort_DispatcherState();
 	AtEOXact_SharedSnapshot();
 
@@ -3515,7 +3513,6 @@ AbortTransaction(void)
 	AtEOXact_DispatchOids(false);
 
 	smgrDoPendingSyncs(false, is_parallel_worker);
-
 	AtEOXact_LargeObject(false);
 	AtAbort_Notify();
 	AtEOXact_RelationMap(false, is_parallel_worker);
