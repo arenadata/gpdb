@@ -3009,13 +3009,13 @@ show_windowagg_keys(WindowAggState *waggstate, List *ancestors, ExplainState *es
 	if ( window->partNumCols > 0 )
 	{
 		show_sort_group_keys((PlanState *) outerPlanState(waggstate), "Partition By",
-							 window->partNumCols, window->partColIdx,
+							 window->partNumCols, 0, window->partColIdx,
 							 NULL, NULL, NULL,
 							 ancestors, es);
 	}
 
 	show_sort_group_keys((PlanState *) outerPlanState(waggstate), "Order By",
-						 window->ordNumCols, window->ordColIdx,
+						 window->ordNumCols, 0, window->ordColIdx,
 						 NULL, NULL, NULL,
 						 ancestors, es);
 	ancestors = list_delete_first(ancestors);
@@ -3093,7 +3093,7 @@ show_tuple_split_keys(TupleSplitState *tstate, List *ancestors,
 
 	if (plan->numCols > 0)
 		show_sort_group_keys(outerPlanState(tstate), "Group Key",
-							 plan->numCols, plan->grpColIdx,
+							 plan->numCols, 0, plan->grpColIdx,
 							 NULL, NULL, NULL,
 							 ancestors, es);
 
