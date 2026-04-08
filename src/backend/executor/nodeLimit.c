@@ -525,9 +525,8 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	 */
 	limitstate->ps.ps_ProjInfo = NULL;
 
-<<<<<<< HEAD
 	limitstate->expect_rescan = ((eflags & EXEC_FLAG_REWIND) != 0);
-=======
+
 	/*
 	 * Initialize the equality evaluation, to detect ties.
 	 */
@@ -547,7 +546,6 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 														node->uniqCollations,
 														&limitstate->ps);
 	}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	return limitstate;
 }
