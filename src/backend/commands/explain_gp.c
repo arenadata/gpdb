@@ -857,7 +857,7 @@ cdbexplain_collectStatsFromNode(PlanState *planstate, CdbExplain_SendStatCtx *ct
 		HashState *hashstate = (HashState *) planstate;
 
 		if (hashstate->hashtable)
-			ExecHashGetInstrumentation(&si->hashstats, hashstate->hashtable);
+			ExecHashAccumInstrumentation(&si->hashstats, hashstate->hashtable);
 	}
 }								/* cdbexplain_collectStatsFromNode */
 
