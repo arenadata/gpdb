@@ -7350,6 +7350,17 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			int			presorted_keys;
 			double		dNumGroups;
 
+			/*
+			 * dNumGroupsTotal is the total number of groups across all segments. If the
+			 * Aggregate is distributed, then the number of groups in one segment
+			 * is only a fraction of the total.
+			 */
+			if (CdbPathLocus_IsPartitioned(path->locus))
+				dNumGroups = clamp_row_est(dNumGroupsTotal /
+										   CdbPathLocus_NumSegments(path->locus));
+			else
+				dNumGroups = dNumGroupsTotal;
+
 			is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
 													 path->pathkeys,
 													 &presorted_keys);
@@ -7369,17 +7380,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 													   -1.0,
 													   parse->groupClause,
 													   gd ? gd->rollups : NIL);
-
-				/*
-				 * dNumGroupsTotal is the total number of groups across all segments. If the
-				 * Aggregate is distributed, then the number of groups in one segment
-				 * is only a fraction of the total.
-				 */
-				if (CdbPathLocus_IsPartitioned(path->locus))
-					dNumGroups = clamp_row_est(dNumGroupsTotal /
-											   CdbPathLocus_NumSegments(path->locus));
-				else
-					dNumGroups = dNumGroupsTotal;
 
 				/* Now decide what to stick atop it */
 				if (parse->groupingSets)
