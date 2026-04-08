@@ -3484,7 +3484,7 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 	if (!ns)
 		return;
 
-	for (i = 0; i < NUM_SORT_METHOD; i++)
+	for (i = 0; i < NUM_TUPLESORTMETHODS; i++)
 	{
 		CdbExplain_Agg	*agg;
 		const char *sortMethod;
