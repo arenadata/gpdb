@@ -1887,7 +1887,7 @@ cost_tuplesort(Cost *startup_cost, Cost *run_cost,
 	double		input_bytes = relation_byte_size(tuples, width);
 	double		output_bytes;
 	double		output_tuples;
-	long		sort_mem_bytes = (long) global_work_mem(root);
+	long		sort_mem_bytes = (long) global_work_mem(NULL);
 
 	/*
 	 * We want to be sure the cost of a sort is never estimated as zero, even
