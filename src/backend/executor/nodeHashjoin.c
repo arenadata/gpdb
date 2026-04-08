@@ -1657,31 +1657,25 @@ ExecReScanHashJoin(HashJoinState *node)
 		else
 		{
 			/* must destroy and rebuild hash table */
-<<<<<<< HEAD
 			if (!node->hj_HashTable->eagerlyReleased)
 			{
-				HashState  *hashState = (HashState *) innerPlanState(node);
+				HashState  *hashNode = castNode(HashState, innerPlanState(node));
 
-				ExecHashTableDestroy(hashState, node->hj_HashTable);
+				Assert(hashNode->hashtable == node->hj_HashTable);
+				/* accumulate stats from old hash table, if wanted */
+				/* (this should match ExecShutdownHash) */
+				if (hashNode->ps.instrument && !hashNode->hinstrument)
+					hashNode->hinstrument = (HashInstrumentation *)
+						palloc0(sizeof(HashInstrumentation));
+				if (hashNode->hinstrument)
+					ExecHashAccumInstrumentation(hashNode->hinstrument,
+												hashNode->hashtable);
+				/* for safety, be sure to clear child plan node's pointer too */
+				hashNode->hashtable = NULL;
+
+				ExecHashTableDestroy(hashNode, node->hj_HashTable);
 			}
 			pfree(node->hj_HashTable);
-=======
-			HashState  *hashNode = castNode(HashState, innerPlanState(node));
-
-			Assert(hashNode->hashtable == node->hj_HashTable);
-			/* accumulate stats from old hash table, if wanted */
-			/* (this should match ExecShutdownHash) */
-			if (hashNode->ps.instrument && !hashNode->hinstrument)
-				hashNode->hinstrument = (HashInstrumentation *)
-					palloc0(sizeof(HashInstrumentation));
-			if (hashNode->hinstrument)
-				ExecHashAccumInstrumentation(hashNode->hinstrument,
-											 hashNode->hashtable);
-			/* for safety, be sure to clear child plan node's pointer too */
-			hashNode->hashtable = NULL;
-
-			ExecHashTableDestroy(node->hj_HashTable);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 			node->hj_HashTable = NULL;
 			node->hj_JoinState = HJ_BUILD_HASHTABLE;
 
