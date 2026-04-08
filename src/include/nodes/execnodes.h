@@ -2937,14 +2937,11 @@ typedef struct LimitState
 	LimitStateCond lstate;		/* state machine status, as above */
 	int64		position;		/* 1-based index of last tuple returned */
 	TupleTableSlot *subSlot;	/* tuple last obtained from subplan */
-<<<<<<< HEAD
 
 	bool		expect_rescan;
-=======
 	ExprState  *eqfunction;		/* tuple equality qual in case of WITH TIES
 								 * option */
 	TupleTableSlot *last_slot;	/* slot for evaluation of ties */
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 } LimitState;
 
 /*
