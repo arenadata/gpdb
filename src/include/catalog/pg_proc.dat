@@ -11175,7 +11175,7 @@
 
 
 # MPP Aggregate -- array_sum -- special for prospective customer. 
-{ oid => 5067, descr => 'array sum aggregate',
+{ oid => 8067, descr => 'array sum aggregate',
    proname => 'array_sum', prokind => 'a', proisstrict => 'f',
    prorettype => '_int4', proargtypes => '_int4',
    prosrc => 'aggregate_dummy' },
@@ -11241,7 +11241,7 @@
 # 3241-324? reserved for unpivot, see pivot.c 
 
 # Greenplum MPP exposed internally-defined functions. 
-{ oid => 5065, descr => 'view mpp pgdatabase state',
+{ oid => 8065, descr => 'view mpp pgdatabase state',
    proname => 'gp_pgdatabase', prorows => '1000', proisstrict => 'f', proretset => 't', provolatile => 'v', prorettype => 'record', proargtypes => '', prosrc => 'gp_pgdatabase__' },
 
 { oid => 6022, descr => 'segment executing function',
@@ -11351,13 +11351,13 @@
    proname => 'gp_acquire_sample_rows', prorows => '1000', proretset => 't', provolatile => 'v', proparallel => 'u', prorettype => 'record', proargtypes => 'oid int4 bool', prosrc => 'gp_acquire_sample_rows', proexeclocation => 's' },
 
 # Backoff related
-{ oid => 5040, descr => 'change weight of all the backends for a given session id',
+{ oid => 8040, descr => 'change weight of all the backends for a given session id',
    proname => 'gp_adjust_priority', provolatile => 'v', proparallel => 'u', prorettype => 'int4', proargtypes => 'int4 int4 int4', prosrc => 'gp_adjust_priority_int' },
 
-{ oid => 5041, descr => 'change weight of all the backends for a given session id',
+{ oid => 8041, descr => 'change weight of all the backends for a given session id',
    proname => 'gp_adjust_priority', provolatile => 'v', proparallel => 'u', prorettype => 'int4', proargtypes => 'int4 int4 text', prosrc => 'gp_adjust_priority_value' },
 
-{ oid => 5042, descr => 'list priorities of backends',
+{ oid => 8042, descr => 'list priorities of backends',
    proname => 'gp_list_backend_priorities', prorows => '1000', proisstrict => 'f', proretset => 't', provolatile => 'v', proparallel => 'u', prorettype => 'record', proargtypes => '', prosrc => 'gp_list_backend_priorities' },
 
 # Functions to deal with SREH error logs
@@ -11382,37 +11382,37 @@
    prosrc => 'gp_truncate_persistent_error_log' },
 
 # Segment and master administration functions, see utils/gp/segadmin.c
-{ oid => 5046, descr => 'Perform the catalog operations necessary for adding a new standby',
+{ oid => 8046, descr => 'Perform the catalog operations necessary for adding a new standby',
    proname => 'gp_add_master_standby', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'int2', proargtypes => 'text text text', prosrc => 'gp_add_master_standby' },
 
-{ oid => 5038, descr => 'Perform the catalog operations necessary for adding a new standby',
+{ oid => 8038, descr => 'Perform the catalog operations necessary for adding a new standby',
    proname => 'gp_add_master_standby', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'int2', proargtypes => 'text text text int4', prosrc => 'gp_add_master_standby_port' },
 
-{ oid => 5047, descr => 'Remove a master standby from the system catalog',
+{ oid => 8047, descr => 'Remove a master standby from the system catalog',
    proname => 'gp_remove_master_standby', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'bool', proargtypes => '', prosrc => 'gp_remove_master_standby' },
 
-{ oid => 5039, descr => 'Perform the catalog operations necessary for adding a new primary segment',
+{ oid => 8039, descr => 'Perform the catalog operations necessary for adding a new primary segment',
    proname => 'gp_add_segment_primary', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'int2', proargtypes => 'text text int4 text', prosrc => 'gp_add_segment_primary' },
 
-{ oid => 5048, descr => 'Perform the catalog operations necessary for adding a new segment mirror',
+{ oid => 8048, descr => 'Perform the catalog operations necessary for adding a new segment mirror',
    proname => 'gp_add_segment_mirror', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'int2', proargtypes => 'int2 text text int4 text', prosrc => 'gp_add_segment_mirror' },
 
-{ oid => 5049, descr => 'Remove a segment mirror from the system catalog',
+{ oid => 8049, descr => 'Remove a segment mirror from the system catalog',
    proname => 'gp_remove_segment_mirror', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'bool', proargtypes => 'int2', prosrc => 'gp_remove_segment_mirror' },
 
-{ oid => 5050, descr => 'Perform the catalog operations necessary for adding a new segment',
+{ oid => 8050, descr => 'Perform the catalog operations necessary for adding a new segment',
    proname => 'gp_add_segment', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'int2', proargtypes => 'int2 int2 char char char char int4 text text text', prosrc => 'gp_add_segment' },
 
-{ oid => 5080, descr => 'Lock catalog changes for gpexpand',
+{ oid => 8080, descr => 'Lock catalog changes for gpexpand',
    proname => 'gp_expand_lock_catalog', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'void', proargtypes => '', prosrc => 'gp_expand_lock_catalog' },
 
-{ oid => 5081, descr => 'bump gpexpand version',
+{ oid => 8081, descr => 'bump gpexpand version',
    proname => 'gp_expand_bump_version', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'void', proargtypes => '', prosrc => 'gp_expand_bump_version' },
 
-{ oid => 5051, descr => 'Remove a primary segment from the system catalog',
+{ oid => 8051, descr => 'Remove a primary segment from the system catalog',
    proname => 'gp_remove_segment', proisstrict => 'f', provolatile => 'v', proparallel => 'r', prorettype => 'bool', proargtypes => 'int2', prosrc => 'gp_remove_segment' },
 
-{ oid => 5035, descr => 'Request a FTS probe scan and wait for response',
+{ oid => 8035, descr => 'Request a FTS probe scan and wait for response',
    proname => 'gp_request_fts_probe_scan', prorows => '1000', proretset => 't', 
    proisstrict => 'f', provolatile => 'v', prorettype => 'bool', proargtypes => '', prosrc => 'gp_request_fts_probe_scan', proexeclocation => 'c' },
 
@@ -11600,58 +11600,58 @@
 { oid => 5031, descr => 'natural logarithm',
    proname => 'ln', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_ln' },
 
-{ oid => 5032, descr => 'base 10 logarithm',
+{ oid => 8032, descr => 'base 10 logarithm',
    proname => 'log', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_log10' },
 
-{ oid => 5033, descr => 'logarithm base arg1 of arg2',
+{ oid => 8033, descr => 'logarithm base arg1 of arg2',
    proname => 'log', prorettype => 'complex', proargtypes => 'complex complex', prosrc => 'complex_log' },
 
-{ oid => 5053, descr => 'acos',
+{ oid => 8053, descr => 'acos',
    proname => 'acos', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_acos' },
 
-{ oid => 5082, descr => 'asin',
+{ oid => 8082, descr => 'asin',
    proname => 'asin', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_asin' },
 
-{ oid => 5083, descr => 'atan',
+{ oid => 8083, descr => 'atan',
    proname => 'atan', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_atan' },
 
-{ oid => 5084, descr => 'cos',
+{ oid => 8084, descr => 'cos',
    proname => 'cos', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_cos' },
 
-{ oid => 5052, descr => 'cot',
+{ oid => 8052, descr => 'cot',
    proname => 'cot', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_cot' },
 
-{ oid => 5054, descr => 'sin',
+{ oid => 8054, descr => 'sin',
    proname => 'sin', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_sin' },
 
-{ oid => 5055, descr => 'tan',
+{ oid => 8055, descr => 'tan',
    proname => 'tan', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_tan' },
 
-{ oid => 5056, descr => 'dot product',
+{ oid => 8056, descr => 'dot product',
    proname => 'dotproduct', prorettype => 'complex', proargtypes => '_complex _complex', prosrc => 'complex_dot_product' },
 
-{ oid => 5057, descr => '(internal) type cast from float8 to complex',
+{ oid => 8057, descr => '(internal) type cast from float8 to complex',
    proname => 'float82complex', prorettype => 'complex', proargtypes => 'float8', prosrc => 'float82complex' },
 
-{ oid => 5058, descr => '(internal) type cast from float4 to complex',
+{ oid => 8058, descr => '(internal) type cast from float4 to complex',
    proname => 'float42complex', prorettype => 'complex', proargtypes => 'float4', prosrc => 'float42complex' },
 
-{ oid => 5059, descr => '(internal) type cast from int8 to complex',
+{ oid => 8059, descr => '(internal) type cast from int8 to complex',
    proname => 'int82complex', prorettype => 'complex', proargtypes => 'int8', prosrc => 'int82complex' },
 
-{ oid => 5060, descr => '(internal) type cast from int4 to complex',
+{ oid => 8060, descr => '(internal) type cast from int4 to complex',
    proname => 'int42complex', prorettype => 'complex', proargtypes => 'int4', prosrc => 'int42complex' },
 
-{ oid => 5061, descr => '(internal) type cast from int2 to complex',
+{ oid => 8061, descr => '(internal) type cast from int2 to complex',
    proname => 'int22complex', prorettype => 'complex', proargtypes => 'int2', prosrc => 'int22complex' },
 
-{ oid => 5062, descr => 'exponentiation (x^y)',
+{ oid => 8062, descr => 'exponentiation (x^y)',
    proname => 'power', prorettype => 'complex', proargtypes => 'complex complex', prosrc => 'complex_pow' },
 
-{ oid => 5063, descr => 'squre root',
+{ oid => 8063, descr => 'squre root',
    proname => 'sqrt', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_sqrt' },
 
-{ oid => 5064, descr => 'cube root',
+{ oid => 8064, descr => 'cube root',
    proname => 'cbrt', prorettype => 'complex', proargtypes => 'complex', prosrc => 'complex_cbrt' },
 
 { oid => 7597, descr => '(internal) type cast from numeric to complex',
@@ -11844,7 +11844,7 @@
 { oid => 6130, oid_symbol => 'MEDIAN_TIMESTAMPTZ_OID', descr => 'median',
    proname => 'median', prokind => 'a', proisstrict => 'f', prorettype => 'timestamptz', proargtypes => 'float8 timestamptz', prosrc => 'aggregate_dummy' },
 
-{ oid => 5066, descr => 'itemwise add two integer arrays',
+{ oid => 8066, descr => 'itemwise add two integer arrays',
    proname => 'array_add', prorettype => '_int4', proargtypes => '_int4 _int4', prosrc => 'array_int4_add' },
 
 ]
