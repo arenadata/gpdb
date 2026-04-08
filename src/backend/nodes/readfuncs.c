@@ -778,6 +778,8 @@ _readIndexStmt(void)
 	READ_STRING_FIELD(idxcomment);
 	READ_OID_FIELD(indexOid);
 	READ_OID_FIELD(oldNode);
+	READ_UINT_FIELD(oldCreateSubid);
+	READ_UINT_FIELD(oldFirstRelfilenodeSubid);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
