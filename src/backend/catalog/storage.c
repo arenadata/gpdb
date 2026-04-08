@@ -715,7 +715,8 @@ smgrDoPendingSyncs(bool isCommit, bool isParallelWorker)
 		BlockNumber total_blocks = 0;
 		SMgrRelation srel;
 
-		srel = smgropen(pendingsync->rnode, InvalidBackendId);
+		srel = smgropen(pendingsync->rnode, InvalidBackendId,
+						pending->relnode.smgr_which);
 
 		/*
 		 * We emit newpage WAL records for smaller relations.
