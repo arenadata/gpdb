@@ -2800,15 +2800,15 @@ CommitTransaction(void)
 	 */
 	PreCommit_on_commit_actions();
 
+	/* This can still fail */
+	AtEOXact_DispatchOids(true);
+
 	/*
 	 * Synchronize files that are created and not WAL-logged during this
 	 * transaction. This must happen before AtEOXact_RelationMap(), so that we
 	 * don't see committed-but-broken files after a crash.
 	 */
 	smgrDoPendingSyncs(true, is_parallel_worker);
-
-	/* This can still fail */
-	AtEOXact_DispatchOids(true);
 
 	/* close large objects before lower-level cleanup */
 	AtEOXact_LargeObject(true);
@@ -3120,14 +3120,14 @@ PrepareTransaction(void)
 	 */
 	PreCommit_on_commit_actions();
 
+	AtEOXact_DispatchOids(true);
+
 	/*
 	 * Synchronize files that are created and not WAL-logged during this
 	 * transaction. This must happen before EndPrepare(), so that we don't see
 	 * committed-but-broken files after a crash and COMMIT PREPARED.
 	 */
 	smgrDoPendingSyncs(true, false);
-
-	AtEOXact_DispatchOids(true);
 
 	/* close large objects before lower-level cleanup */
 	AtEOXact_LargeObject(true);
@@ -3504,7 +3504,6 @@ AbortTransaction(void)
 	AfterTriggerEndXact(false); /* 'false' means it's abort */
 	AtAbort_EndpointExecState();
 	AtAbort_Portals();
-	smgrDoPendingSyncs(false, is_parallel_worker);
 
 	AtAbort_DispatcherState();
 	AtEOXact_SharedSnapshot();
@@ -3514,6 +3513,8 @@ AbortTransaction(void)
 		AtAbort_ResScheduler();
 
 	AtEOXact_DispatchOids(false);
+
+	smgrDoPendingSyncs(false, is_parallel_worker);
 
 	AtEOXact_LargeObject(false);
 	AtAbort_Notify();
