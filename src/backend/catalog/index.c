@@ -3829,11 +3829,8 @@ reindex_relation(Oid relid, int flags, int options)
 	List	   *indexIds;
 	char		persistence;
 	bool		result;
-<<<<<<< HEAD
-	bool relIsAO = false;
-=======
+	bool		relIsAO = false;
 	ListCell   *indexId;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	int			i;
 
 	/*
