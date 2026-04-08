@@ -2471,14 +2471,10 @@ InitWalSenderSlot(void)
 			walsnd->writeLag = -1;
 			walsnd->flushLag = -1;
 			walsnd->applyLag = -1;
-<<<<<<< HEAD
-			walsnd->state = WALSNDSTATE_STARTUP;
+			walsnd->sync_standby_priority = 0;
 			/* Will be decided in hand-shake */
 			walsnd->xlogCleanUpTo = InvalidXLogRecPtr;
 			walsnd->caughtup_within_range = false;
-=======
-			walsnd->sync_standby_priority = 0;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 			walsnd->latch = &MyProc->procLatch;
 			walsnd->replyTime = 0;
 			walsnd->spillTxns = 0;
@@ -3760,13 +3756,8 @@ pg_stat_get_wal_senders(PG_FUNCTION_ARGS)
 			 */
 			if (priority == 0)
 				values[10] = CStringGetTextDatum("async");
-<<<<<<< HEAD
-			else if (list_member_int(sync_standbys, i))
-				values[10] = (IS_QUERY_DISPATCHER() || SyncRepConfig->syncrep_method == SYNC_REP_PRIORITY) ?
-=======
 			else if (is_sync_standby)
-				values[10] = SyncRepConfig->syncrep_method == SYNC_REP_PRIORITY ?
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+				values[10] = (IS_QUERY_DISPATCHER() || SyncRepConfig->syncrep_method == SYNC_REP_PRIORITY) ?
 					CStringGetTextDatum("sync") : CStringGetTextDatum("quorum");
 			else
 				values[10] = CStringGetTextDatum("potential");
