@@ -19,16 +19,12 @@
 #include "storage/smgr.h"
 #include "utils/relcache.h"
 
-<<<<<<< HEAD
-extern SMgrRelation RelationCreateStorage(RelFileNode rnode,
-										  char relpersistence,
-										  SMgrImpl smgr_which);
-=======
 /* GUC variables */
 extern int	wal_skip_threshold;
 
-extern SMgrRelation RelationCreateStorage(RelFileNode rnode, char relpersistence);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+extern SMgrRelation RelationCreateStorage(RelFileNode rnode,
+										  char relpersistence,
+										  SMgrImpl smgr_which);
 extern void RelationDropStorage(Relation rel);
 extern void RelationPreserveStorage(RelFileNode rnode, bool atCommit);
 extern void RelationPreTruncate(Relation rel);
@@ -45,12 +41,8 @@ extern void RestorePendingSyncs(char *startAddress);
  * naming
  */
 extern void smgrDoPendingDeletes(bool isCommit);
-<<<<<<< HEAD
-extern int	smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr);
-=======
 extern void smgrDoPendingSyncs(bool isCommit, bool isParallelWorker);
-extern int	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+extern int	smgrGetPendingDeletes(bool forCommit, RelFileNodePendingDelete **ptr);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
 extern void PostPrepare_smgr(void);
