@@ -774,26 +774,8 @@ tuplesort_begin_common(int workMem, SortCoordinate coordinate,
 	 * Initial size of array must be more than ALLOCSET_SEPARATE_THRESHOLD;
 	 * see comments in grow_memtuples().
 	 */
-<<<<<<< HEAD
-	state->memtupsize = Max(1024,
-							ALLOCSET_SEPARATE_THRESHOLD / sizeof(SortTuple) + 1);
-
-	state->growmemtuples = true;
-	state->totalNumTuples  = 0; /*CDB*/
-	state->slabAllocatorUsed = false;
-	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
-
-	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
-
-	/* workMem must be large enough for the minimal memtuples array */
-	if (LACKMEM(state))
-		elog(ERROR, "insufficient memory allowed for sort");
-
-	state->currentRun = 0;
-=======
 	state->memtupsize = INITIAL_MEMTUPSIZE;
 	state->memtuples = NULL;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	/*
 	 * After all of the other non-parallel-related state, we setup all of the
@@ -869,6 +851,7 @@ tuplesort_begin_batch(Tuplesortstate *state)
 	state->tapeset = NULL;
 
 	state->memtupcount = 0;
+	state->totalNumTuples  = 0; /*CDB*/
 
 	/*
 	 * Initial size of array must be more than ALLOCSET_SEPARATE_THRESHOLD;
@@ -3431,25 +3414,13 @@ tuplesort_get_stats(Tuplesortstate *state,
 	 * GPDB: we have such accounting in memory contexts, so we store the
 	 * memory usage in 'workmemused'.
 	 */
-<<<<<<< HEAD
-	if (state->tapeset)
-	{
-		stats->spaceType = SORT_SPACE_TYPE_DISK;
-		stats->spaceUsed = LogicalTapeSetBlocks(state->tapeset) * (BLCKSZ / 1024);
-	}
-	else
-	{
-		stats->spaceType = SORT_SPACE_TYPE_MEMORY;
-		stats->spaceUsed = (state->allowedMem - state->availMem + 1023) / 1024;
-	}
 	if (state->instrument)
 	{
 		stats->workmemused = state->instrument->workmemused;
 		stats->execmemused = state->instrument->execmemused;
 	}
-=======
+
 	tuplesort_updatemax(state);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	if (state->isMaxSpaceDisk)
 		stats->spaceType = SORT_SPACE_TYPE_DISK;
