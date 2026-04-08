@@ -4350,6 +4350,7 @@ create_incremental_sort_path(PlannerInfo *root,
 		subpath->parallel_safe;
 	pathnode->path.parallel_workers = subpath->parallel_workers;
 	pathnode->path.pathkeys = pathkeys;
+	pathnode->path.locus = subpath->locus;
 
 	pathnode->subpath = subpath;
 
