@@ -279,6 +279,7 @@ static int	common_prefix_cmp(const void *a, const void *b);
 static Path *create_preliminary_limit_path(PlannerInfo *root, RelOptInfo *rel,
 										   Path *subpath,
 										   Node *limitOffset, Node *limitCount,
+										   LimitOption limitOption,
 										   int64 offset_est, int64 count_est);
 static Path *create_scatter_path(PlannerInfo *root, List *scatterClause, Path *path);
 
@@ -2876,6 +2877,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 				path = (Path *) create_preliminary_limit_path(root, final_rel, path,
 															  parse->limitOffset,
 															  parse->limitCount,
+															  parse->limitOption,
 															  offset_est, count_est);
 			}
 
@@ -7079,6 +7081,7 @@ static Path *
 create_preliminary_limit_path(PlannerInfo *root, RelOptInfo *rel,
 							  Path *subpath,
 							  Node *limitOffset, Node *limitCount,
+							  LimitOption limitOption,
 							  int64 offset_est, int64 count_est)
 {
 	Node	   *precount = copyObject(limitCount);
@@ -7127,6 +7130,7 @@ create_preliminary_limit_path(PlannerInfo *root, RelOptInfo *rel,
 		result_path = (Path *) create_limit_path(root, rel, subpath,
 												 NULL, /* limitOffset */
 												 precount,	/* limitCount */
+												 limitOption,
 												 -1, offset_est + count_est);
 	}
 	else
