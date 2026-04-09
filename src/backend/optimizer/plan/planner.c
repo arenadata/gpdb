@@ -7539,11 +7539,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				{
 					if (path != partially_grouped_rel->cheapest_total_path)
 						continue;
-					path = (Path *) create_sort_path(root,
-													 grouped_rel,
-													 path,
-													 root->group_pathkeys,
-													 -1.0);
 				}
 
 				path = cdb_prepare_path_for_sorted_agg(root,
