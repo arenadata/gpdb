@@ -778,8 +778,6 @@ _readIndexStmt(void)
 	READ_STRING_FIELD(idxcomment);
 	READ_OID_FIELD(indexOid);
 	READ_OID_FIELD(oldNode);
-	READ_UINT_FIELD(oldCreateSubid);
-	READ_UINT_FIELD(oldFirstRelfilenodeSubid);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
@@ -4723,12 +4721,13 @@ parseNodeString(void)
 		return_value = _readMaterial();
 	else if (MATCH("SORT", 4))
 		return_value = _readSort();
+<<<<<<< HEAD
+=======
 	else if (MATCH("INCREMENTALSORT", 15))
 		return_value = _readIncrementalSort();
-#ifdef NOT_USED
 	else if (MATCH("GROUP", 5))
 		return_value = _readGroup();
-#endif
+>>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	else if (MATCH("AGG", 3))
 		return_value = _readAgg();
 	else if (MATCH("TupleSplit", 10))
