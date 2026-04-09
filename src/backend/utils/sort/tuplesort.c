@@ -4862,10 +4862,10 @@ tuplesort_finalize_stats(Tuplesortstate *state,
 	{
 		double  workmemused;
 
-		workmemused = MemoryContextGetPeakSpace(state->sortcontext);
+		workmemused = MemoryContextGetPeakSpace(state->maincontext);
 		if (state->instrument->workmemused < workmemused)
 			state->instrument->workmemused = workmemused;
-		state->instrument->execmemused += MemoryContextGetPeakSpace(state->sortcontext);
+		state->instrument->execmemused += MemoryContextGetPeakSpace(state->maincontext);
 	}
 	tuplesort_get_stats(state, stats);
 }
