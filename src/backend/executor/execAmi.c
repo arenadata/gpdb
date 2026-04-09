@@ -311,17 +311,16 @@ ExecReScan(PlanState *node)
 			ExecReScanSort((SortState *) node);
 			break;
 
-<<<<<<< HEAD
-=======
 		case T_IncrementalSortState:
 			ExecReScanIncrementalSort((IncrementalSortState *) node);
 			break;
 
+#ifdef NOT_USED /* GroupState nodes are not used in GPDB */
 		case T_GroupState:
 			ExecReScanGroup((GroupState *) node);
 			break;
+#endif
 
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		case T_AggState:
 			ExecReScanAgg((AggState *) node);
 			break;
