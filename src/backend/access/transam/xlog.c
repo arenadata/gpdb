@@ -9595,12 +9595,8 @@ CreateCheckPoint(int flags)
 	 * prevent the disk holding the xlog from growing full.
 	 */
 	XLByteToSeg(RedoRecPtr, _logSegNo, wal_segment_size);
-<<<<<<< HEAD
 	KeepLogSeg(recptr, &_logSegNo, PriorRedoPtr);
-=======
-	KeepLogSeg(recptr, &_logSegNo);
 	InvalidateObsoleteReplicationSlots(_logSegNo);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	_logSegNo--;
 	RemoveOldXlogFiles(_logSegNo, RedoRecPtr, recptr);
 
@@ -9984,12 +9980,8 @@ CreateRestartPoint(int flags)
 	receivePtr = GetWalRcvFlushRecPtr(NULL, NULL);
 	replayPtr = GetXLogReplayRecPtr(&replayTLI);
 	endptr = (receivePtr < replayPtr) ? replayPtr : receivePtr;
-<<<<<<< HEAD
 	KeepLogSeg(endptr, &_logSegNo, InvalidXLogRecPtr);
-=======
-	KeepLogSeg(endptr, &_logSegNo);
 	InvalidateObsoleteReplicationSlots(_logSegNo);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	_logSegNo--;
 
 	/*
@@ -10095,7 +10087,7 @@ GetWALAvailability(XLogRecPtr targetLSN)
 
 	/* calculate oldest segment currently needed by slots */
 	XLByteToSeg(targetLSN, targetSeg, wal_segment_size);
-	KeepLogSeg(currpos, &oldestSlotSeg);
+	KeepLogSeg(currpos, &oldestSlotSeg, InvalidXLogRecPtr);
 
 	/*
 	 * Find the oldest extant segment file. We get 1 until checkpoint removes
@@ -10163,7 +10155,12 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 	XLByteToSeg(recptr, currSegNo, wal_segment_size);
 	segno = currSegNo;
 
-<<<<<<< HEAD
+	/*
+	 * Calculate how many segments are kept by slots first, adjusting for
+	 * max_slot_wal_keep_size.
+	 */
+	keep = XLogGetReplicationSlotMinimumLSN();
+
 #ifdef FAULT_INJECTOR
 	/*
 	 * Let the WAL still needed be removed.  This is used to test if WAL sender
@@ -10177,45 +10174,8 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 	}
 #endif
 
-	/* compute limit for wal_keep_segments first */
-	if (wal_keep_segments > 0)
-	{
-		/* avoid underflow, don't go below 1 */
-		if (segno <= wal_keep_segments)
-			segno = 1;
-		else
-			segno = segno - wal_keep_segments;
-		setvalue = true;
-=======
-	/*
-	 * Calculate how many segments are kept by slots first, adjusting for
-	 * max_slot_wal_keep_size.
-	 */
-	keep = XLogGetReplicationSlotMinimumLSN();
 	if (keep != InvalidXLogRecPtr)
 	{
-		XLByteToSeg(keep, segno, wal_segment_size);
-
-		/* Cap by max_slot_wal_keep_size ... */
-		if (max_slot_wal_keep_size_mb >= 0)
-		{
-			XLogRecPtr	slot_keep_segs;
-
-			slot_keep_segs =
-				ConvertToXSegs(max_slot_wal_keep_size_mb, wal_segment_size);
-
-			if (currSegNo - segno > slot_keep_segs)
-				segno = currSegNo - slot_keep_segs;
-		}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
-	}
-
-	/* but, keep at least wal_keep_segments if that's set */
-	if (wal_keep_segments > 0 && currSegNo - segno < wal_keep_segments)
-	{
-<<<<<<< HEAD
-		XLogSegNo	slotSegNo;
-
 		/*
 		 * GPDB never uses restart_lsn as lowest cut-off point. Instead always
 		 * will use Checkpoint redo location prior to restart_lsn as cut-off
@@ -10232,28 +10192,36 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 				keep = CkptRedoBeforeMinLSN;
 		}
 
-		XLByteToSeg(keep, slotSegNo, wal_segment_size);
-
-		if (slotSegNo <= 0)
-			segno = 1;
-		else if (slotSegNo < segno)
-			segno = slotSegNo;
+		XLByteToSeg(keep, segno, wal_segment_size);
 		setvalue = true;
+
+		/* Cap by max_slot_wal_keep_size ... */
+		if (max_slot_wal_keep_size_mb >= 0)
+		{
+			XLogRecPtr	slot_keep_segs;
+
+			slot_keep_segs =
+				ConvertToXSegs(max_slot_wal_keep_size_mb, wal_segment_size);
+
+			if (currSegNo - segno > slot_keep_segs)
+				segno = currSegNo - slot_keep_segs;
+		}
 	}
 
-	/* don't delete WAL segments newer than the calculated segment */
-	if (setvalue && segno < *logSegNo)
-=======
+	/* but, keep at least wal_keep_segments if that's set */
+	if (wal_keep_segments > 0 && currSegNo - segno < wal_keep_segments)
+	{
 		/* avoid underflow, don't go below 1 */
 		if (currSegNo <= wal_keep_segments)
 			segno = 1;
 		else
 			segno = currSegNo - wal_keep_segments;
+
+		setvalue = true;
 	}
 
 	/* don't delete WAL segments newer than the calculated segment */
-	if (XLogRecPtrIsInvalid(*logSegNo) || segno < *logSegNo)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+	if (setvalue && (XLogRecPtrIsInvalid(*logSegNo) || segno < *logSegNo))
 		*logSegNo = segno;
 }
 
@@ -13160,8 +13128,8 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 					{
 						elogif(debug_xlog_record_read, LOG,
 							   "xlog page read -- There is enough xlog data to be "
-							   "read (receivedupto %X/%X, requestedrec %X/%X)",
-							   (uint32) (receivedUpto >> 32), (uint32) receivedUpto,
+							   "read (flushedUpto %X/%X, requestedrec %X/%X)",
+							   (uint32) (flushedUpto >> 32), (uint32) flushedUpto,
 							   (uint32) (RecPtr >> 32), (uint32) RecPtr);
 
 						/*
