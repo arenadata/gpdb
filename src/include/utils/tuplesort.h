@@ -79,6 +79,7 @@ typedef enum
 } TuplesortMethod;
 
 #define NUM_TUPLESORTMETHODS 4
+#define NUM_SORT_METHOD (NUM_TUPLESORTMETHODS + 1)
 
 typedef enum
 {
