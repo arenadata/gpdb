@@ -13128,7 +13128,7 @@ WaitForWALToBecomeAvailable(XLogRecPtr RecPtr, bool randAccess,
 					{
 						elogif(debug_xlog_record_read, LOG,
 							   "xlog page read -- There is enough xlog data to be "
-							   "read (receivedupto %X/%X, requestedrec %X/%X)",
+							   "read (flushedUpto %X/%X, requestedrec %X/%X)",
 							   (uint32) (flushedUpto >> 32), (uint32) flushedUpto,
 							   (uint32) (RecPtr >> 32), (uint32) RecPtr);
 
