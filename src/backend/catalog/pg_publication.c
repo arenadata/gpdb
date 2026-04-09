@@ -42,13 +42,8 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
-<<<<<<< HEAD
 #include "catalog/oid_dispatch.h"
 
-static List *get_rel_publications(Oid relid);
-
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 /*
  * Check if relation can be in given publication and throws appropriate
  * error if not.
