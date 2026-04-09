@@ -10181,7 +10181,7 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 		 * will use Checkpoint redo location prior to restart_lsn as cut-off
 		 * point.
 		 */
-		if (max_slot_wal_keep_size_mb > 0 && !XLogRecPtrIsInvalid(PriorRedoPtr))
+		if (!XLogRecPtrIsInvalid(PriorRedoPtr))
 		{
 			if (PriorRedoPtr < keep)
 			{
@@ -10193,6 +10193,7 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 		}
 
 		XLByteToSeg(keep, segno, wal_segment_size);
+		setvalue = true;
 
 		/* Cap by max_slot_wal_keep_size ... */
 		if (max_slot_wal_keep_size_mb >= 0)
@@ -10204,8 +10205,6 @@ KeepLogSeg(XLogRecPtr recptr, XLogSegNo *logSegNo, XLogRecPtr PriorRedoPtr)
 
 			if (currSegNo - segno > slot_keep_segs)
 				segno = currSegNo - slot_keep_segs;
-
-			setvalue = true;
 		}
 	}
 
