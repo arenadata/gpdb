@@ -879,10 +879,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 		dbatch = ceil(inner_rel_bytes / (hash_table_bytes - bucket_bytes));
 		dbatch = Min(dbatch, max_pointers);
 		minbatch = (int) dbatch;
-<<<<<<< HEAD
-		nbatch = 2;
-		while (nbatch < minbatch)
-			nbatch <<= 1;
+		nbatch = pg_nextpower2_32(Max(2, minbatch));
 
 		/*
 		 * Check to see if we're capping the number of workfiles we allow per
@@ -917,9 +914,6 @@ ExecChooseHashTableSize(double ntuples, int tupwidth, bool useskew,
 				nbatch = nbatch_lower;
 			}
 		}
-=======
-		nbatch = pg_nextpower2_32(Max(2, minbatch));
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	}
 	else
 	{
