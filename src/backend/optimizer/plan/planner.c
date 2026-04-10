@@ -7478,6 +7478,11 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			/* Now decide what to stick atop it */
 			if (parse->groupingSets)
 			{
+				/*
+				 * the last param of consider_groupingsets_paths should be
+				 * dNumGroupsTotal. In consider_groupingsets_paths it will
+				 * calculate dNumGroups in one segment.
+				 */
 				consider_groupingsets_paths(root, grouped_rel,
 											path, true, can_hash,
 											gd, agg_costs, dNumGroupsTotal);
@@ -7674,6 +7679,10 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		{
 			/*
 			 * Try for a hash-only groupingsets path over unsorted input.
+			 *
+			 * the last param of consider_groupingsets_paths should be
+			 * dNumGroupsTotal. In consider_groupingsets_paths it will
+			 * calculate dNumGroups in one segment.
 			 */
 			consider_groupingsets_paths(root, grouped_rel,
 										cheapest_path, false, true,
