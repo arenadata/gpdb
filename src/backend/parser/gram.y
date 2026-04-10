@@ -263,11 +263,8 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 	PartitionSpec		*partspec;
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
-<<<<<<< HEAD
 	DistributionKeyElem *dkelem;
-=======
 	struct SelectLimit	*selectlimit;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 }
 
 %type <node>	stmt schema_stmt
