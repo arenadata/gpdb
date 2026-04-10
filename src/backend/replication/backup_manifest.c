@@ -60,7 +60,7 @@ InitializeBackupManifest(backup_manifest_info *manifest,
 	if (want_manifest == MANIFEST_OPTION_NO)
 		manifest->buffile = NULL;
 	else
-		manifest->buffile = BufFileCreateTemp(false);
+		manifest->buffile = BufFileCreateTemp("InitializeBackupManifest", false);
 	manifest->checksum_type = manifest_checksum_type;
 	pg_sha256_init(&manifest->manifest_ctx);
 	manifest->manifest_size = UINT64CONST(0);
