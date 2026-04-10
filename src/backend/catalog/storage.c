@@ -400,10 +400,7 @@ RelationPreTruncate(Relation rel)
 	pending = hash_search(pendingSyncHash, &(rel->rd_smgr->smgr_rnode.node),
 						  HASH_FIND, NULL);
 	if (pending)
-	{
 		pending->is_truncated = true;
-		pending->relnode.smgr_which = rel->rd_smgr->smgr_which;
-	}
 }
 
 /*
