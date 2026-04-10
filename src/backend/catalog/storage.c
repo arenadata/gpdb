@@ -69,7 +69,7 @@ typedef struct PendingRelDelete
 
 typedef struct PendingRelSync
 {
-	RelFileNode rnode;
+	RelFileNodePendingSync relnode;
 	bool		is_truncated;	/* Has the file experienced truncation? */
 } PendingRelSync;
 
@@ -82,7 +82,7 @@ HTAB	   *pendingSyncHash = NULL;
  *		Queue an at-commit fsync.
  */
 static void
-AddPendingSync(const RelFileNode *rnode)
+AddPendingSync(const RelFileNode *rnode, SMgrImpl smgr_which)
 {
 	PendingRelSync *pending;
 	bool		found;
@@ -102,6 +102,7 @@ AddPendingSync(const RelFileNode *rnode)
 	pending = hash_search(pendingSyncHash, rnode, HASH_ENTER, &found);
 	Assert(!found);
 	pending->is_truncated = false;
+	pending->relnode.smgr_which = smgr_which;
 }
 
 /*
@@ -164,7 +165,7 @@ RelationCreateStorage(RelFileNode rnode, char relpersistence, SMgrImpl smgr_whic
 	if (relpersistence == RELPERSISTENCE_PERMANENT && !XLogIsNeeded())
 	{
 		Assert(backend == InvalidBackendId);
-		AddPendingSync(&rnode);
+		AddPendingSync(&rnode, smgr_which);
 	}
 
 	return srel;
@@ -399,7 +400,10 @@ RelationPreTruncate(Relation rel)
 	pending = hash_search(pendingSyncHash, &(rel->rd_smgr->smgr_rnode.node),
 						  HASH_FIND, NULL);
 	if (pending)
+	{
 		pending->is_truncated = true;
+		pending->relnode.smgr_which = rel->rd_smgr->smgr_which;
+	}
 }
 
 /*
@@ -532,8 +536,8 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 	HASH_SEQ_STATUS scan;
 	PendingRelSync *sync;
 	PendingRelDelete *delete;
-	RelFileNode *src;
-	RelFileNode *dest = (RelFileNode *) startAddress;
+	RelFileNodePendingSync *src;
+	RelFileNodePendingSync *dest = (RelFileNodePendingSync *) startAddress;
 
 	if (!pendingSyncHash)
 		goto terminate;
@@ -549,7 +553,7 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 	/* collect all rnodes from pending syncs */
 	hash_seq_init(&scan, pendingSyncHash);
 	while ((sync = (PendingRelSync *) hash_seq_search(&scan)))
-		(void) hash_search(tmphash, &sync->rnode, HASH_ENTER, NULL);
+		(void) hash_search(tmphash, &sync->relnode.node, HASH_ENTER, NULL);
 
 	/* remove deleted rnodes */
 	for (delete = pendingDeletes; delete != NULL; delete = delete->next)
@@ -558,13 +562,13 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 							   HASH_REMOVE, NULL);
 
 	hash_seq_init(&scan, tmphash);
-	while ((src = (RelFileNode *) hash_seq_search(&scan)))
+	while ((src = (RelFileNodePendingSync *) hash_seq_search(&scan)))
 		*dest++ = *src;
 
 	hash_destroy(tmphash);
 
 terminate:
-	MemSet(dest, 0, sizeof(RelFileNode));
+	MemSet(dest, 0, sizeof(RelFileNodePendingSync));
 }
 
 /*
@@ -578,11 +582,11 @@ terminate:
 void
 RestorePendingSyncs(char *startAddress)
 {
-	RelFileNode *rnode;
+	RelFileNodePendingSync *relnode;
 
 	Assert(pendingSyncHash == NULL);
-	for (rnode = (RelFileNode *) startAddress; rnode->relNode != 0; rnode++)
-		AddPendingSync(rnode);
+	for (relnode = (RelFileNodePendingSync *) startAddress; relnode->node.relNode != 0; relnode++)
+		AddPendingSync(&relnode->node, relnode->smgr_which);
 }
 
 /*
@@ -715,8 +719,8 @@ smgrDoPendingSyncs(bool isCommit, bool isParallelWorker)
 		BlockNumber total_blocks = 0;
 		SMgrRelation srel;
 
-		srel = smgropen(pendingsync->rnode, InvalidBackendId,
-						pending->relnode.smgr_which);
+		srel = smgropen(pendingsync->relnode.node, InvalidBackendId,
+						pendingsync->relnode.smgr_which);
 
 		/*
 		 * We emit newpage WAL records for smaller relations.
