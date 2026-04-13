@@ -879,11 +879,11 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 			if (state != WALSNDSTATE_STREAMING &&
 				state != WALSNDSTATE_STOPPING)
 				continue;
-
-			/* Must be synchronous */
-			if (stby->sync_standby_priority == 0)
-				continue;
 		}
+
+		/* Must be synchronous */
+		if (stby->sync_standby_priority == 0)
+			continue;
 
 		/* Must have a valid flush position */
 		if (XLogRecPtrIsInvalid(stby->flush))
