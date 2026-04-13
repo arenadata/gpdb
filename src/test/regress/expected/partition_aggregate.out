@@ -1118,7 +1118,6 @@ SET max_parallel_workers_per_gather TO 2;
 -- is not partial agg safe.
 EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
-<<<<<<< HEAD
                                          QUERY PLAN                                         
 --------------------------------------------------------------------------------------------
  Gather Motion 3:1  (slice1; segments: 3)
@@ -1132,33 +1131,6 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                      ->  Sort
                            Sort Key: pagg_tab_ml.a
                            ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
-=======
-                                      QUERY PLAN                                      
---------------------------------------------------------------------------------------
- Sort
-   Sort Key: pagg_tab_ml.a, (sum(pagg_tab_ml.b)), (array_agg(DISTINCT pagg_tab_ml.c))
-   ->  Gather
-         Workers Planned: 2
-         ->  Parallel Append
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
-               ->  GroupAggregate
-                     Group Key: pagg_tab_ml.a
-                     Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
-                     ->  Sort
-                           Sort Key: pagg_tab_ml.a
-                           ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
-               ->  GroupAggregate
-                     Group Key: pagg_tab_ml_5.a
-                     Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
-                     ->  Sort
-                           Sort Key: pagg_tab_ml_5.a
-                           ->  Append
-                                 ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
-                                 ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
-<<<<<<< HEAD
- Optimizer: Postgres query optimizer
-(28 rows)
-=======
                ->  GroupAggregate
                      Group Key: pagg_tab_ml_2.a
                      Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
@@ -1167,8 +1139,16 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                            ->  Append
                                  ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
                                  ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
-(27 rows)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+               ->  GroupAggregate
+                     Group Key: pagg_tab_ml_5.a
+                     Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
+                     ->  Sort
+                           Sort Key: pagg_tab_ml_5.a
+                           ->  Append
+                                 ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
+                                 ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
+ Optimizer: Postgres query optimizer
+(28 rows)
 
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
  a  | sum  |  array_agg  | count 
@@ -1198,11 +1178,13 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                      Sort Key: pagg_tab_ml.a
                      ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
          ->  GroupAggregate
-               Group Key: pagg_tab_ml.a
-               Filter: (avg(pagg_tab_ml.b) < '3'::numeric)
+               Group Key: pagg_tab_ml_2.a
+               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
                ->  Sort
-                     Sort Key: pagg_tab_ml.a
-                     ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
+                     Sort Key: pagg_tab_ml_2.a
+                     ->  Append
+                           ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
+                           ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
          ->  GroupAggregate
                Group Key: pagg_tab_ml_5.a
                Filter: (avg(pagg_tab_ml_5.b) < '3'::numeric)
@@ -1211,18 +1193,7 @@ SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HA
                      ->  Append
                            ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_5
                            ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_6
-<<<<<<< HEAD
  Optimizer: Postgres query optimizer
-=======
-         ->  GroupAggregate
-               Group Key: pagg_tab_ml_2.a
-               Filter: (avg(pagg_tab_ml_2.b) < '3'::numeric)
-               ->  Sort
-                     Sort Key: pagg_tab_ml_2.a
-                     ->  Append
-                           ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_2
-                           ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_3
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 (25 rows)
 
 -- Full aggregation at level 1 as GROUP BY clause matches with PARTITION KEY
@@ -1451,7 +1422,6 @@ SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
                Group Key: pagg_tab_ml.b
                ->  Sort
                      Sort Key: pagg_tab_ml.b
-<<<<<<< HEAD
                      ->  Redistribute Motion 3:3  (slice2; segments: 3)
                            Hash Key: pagg_tab_ml.b
                            ->  Append
@@ -1472,25 +1442,6 @@ SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
                                        ->  Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
  Optimizer: Postgres query optimizer
 (27 rows)
-=======
-                     ->  Parallel Append
-                           ->  Partial HashAggregate
-                                 Group Key: pagg_tab_ml.b
-                                 ->  Parallel Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
-                           ->  Partial HashAggregate
-                                 Group Key: pagg_tab_ml_3.b
-                                 ->  Parallel Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
-                           ->  Partial HashAggregate
-                                 Group Key: pagg_tab_ml_1.b
-                                 ->  Parallel Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
-                           ->  Partial HashAggregate
-                                 Group Key: pagg_tab_ml_4.b
-                                 ->  Parallel Seq Scan on pagg_tab_ml_p3_s2 pagg_tab_ml_4
-                           ->  Partial HashAggregate
-                                 Group Key: pagg_tab_ml_2.b
-                                 ->  Parallel Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
-(24 rows)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
  b |  sum  | count 
@@ -1517,7 +1468,6 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
                      Filter: (avg(pagg_tab_ml.b) > '7'::numeric)
                      ->  Seq Scan on pagg_tab_ml_p1 pagg_tab_ml
                ->  HashAggregate
-<<<<<<< HEAD
                      Group Key: pagg_tab_ml_1.a, pagg_tab_ml_1.b, pagg_tab_ml_1.c
                      Filter: (avg(pagg_tab_ml_1.b) > '7'::numeric)
                      ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
@@ -1526,15 +1476,9 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
                      Filter: (avg(pagg_tab_ml_2.b) > '7'::numeric)
                      ->  Seq Scan on pagg_tab_ml_p2_s2 pagg_tab_ml_2
                ->  HashAggregate
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
                      Group Key: pagg_tab_ml_3.a, pagg_tab_ml_3.b, pagg_tab_ml_3.c
                      Filter: (avg(pagg_tab_ml_3.b) > '7'::numeric)
                      ->  Seq Scan on pagg_tab_ml_p3_s1 pagg_tab_ml_3
-               ->  HashAggregate
-                     Group Key: pagg_tab_ml_1.a, pagg_tab_ml_1.b, pagg_tab_ml_1.c
-                     Filter: (avg(pagg_tab_ml_1.b) > '7'::numeric)
-                     ->  Seq Scan on pagg_tab_ml_p2_s1 pagg_tab_ml_1
                ->  HashAggregate
                      Group Key: pagg_tab_ml_4.a, pagg_tab_ml_4.b, pagg_tab_ml_4.c
                      Filter: (avg(pagg_tab_ml_4.b) > '7'::numeric)
