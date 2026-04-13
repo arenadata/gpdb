@@ -721,6 +721,9 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 									  SyncRepConfig->num_sync);
 	}
 
+	if (IS_QUERY_DISPATCHER())
+		*am_sync = true;
+
 	pfree(sync_standbys);
 	return true;
 }
