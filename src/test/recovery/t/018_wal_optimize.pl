@@ -11,7 +11,7 @@ use warnings;
 
 use PostgresNode;
 use TestLib;
-use Test::More tests => 34;
+use Test::More tests => 30;
 
 sub check_orphan_relfilenodes
 {
@@ -87,22 +87,24 @@ wal_skip_threshold = 0
 		"SELECT count(*), min(id) FROM trunc_ins;");
 	is($result, qq(1|2), "wal_level = $wal_level, TRUNCATE INSERT");
 
+	# PREPARE TRANSACTION is not supported in GPDB
+	#
 	# Same for prepared transaction.
 	# Tuples inserted after the truncation should be seen.
-	$node->safe_psql(
-		'postgres', "
-		BEGIN;
-		CREATE TABLE twophase (id serial PRIMARY KEY);
-		INSERT INTO twophase VALUES (DEFAULT);
-		TRUNCATE twophase;
-		INSERT INTO twophase VALUES (DEFAULT);
-		PREPARE TRANSACTION 't';
-		COMMIT PREPARED 't';");
-	$node->stop('immediate');
-	$node->start;
-	$result = $node->safe_psql('postgres',
-		"SELECT count(*), min(id) FROM trunc_ins;");
-	is($result, qq(1|2), "wal_level = $wal_level, TRUNCATE INSERT PREPARE");
+	# $node->safe_psql(
+	# 	'postgres', "
+	# 	BEGIN;
+	# 	CREATE TABLE twophase (id serial PRIMARY KEY);
+	# 	INSERT INTO twophase VALUES (DEFAULT);
+	# 	TRUNCATE twophase;
+	# 	INSERT INTO twophase VALUES (DEFAULT);
+	# 	PREPARE TRANSACTION 't';
+	# 	COMMIT PREPARED 't';");
+	# $node->stop('immediate');
+	# $node->start;
+	# $result = $node->safe_psql('postgres',
+	# 	"SELECT count(*), min(id) FROM trunc_ins;");
+	# is($result, qq(1|2), "wal_level = $wal_level, TRUNCATE INSERT PREPARE");
 
 	# Writing WAL at end of xact, instead of syncing.
 	$node->safe_psql(
@@ -321,40 +323,42 @@ wal_skip_threshold = 0
 	$result = $node->safe_psql('postgres', "SELECT count(*) FROM ins_trig;");
 	is($result, qq(9), "wal_level = $wal_level, COPY with INSERT triggers");
 
+	# Triggers for statements are not supported in
+	#
 	# Test consistency of INSERT, COPY and TRUNCATE in same transaction block
 	# with TRUNCATE triggers.
-	$node->safe_psql(
-		'postgres', "
-		BEGIN;
-		CREATE TABLE trunc_trig (id serial PRIMARY KEY, id2 text);
-		CREATE FUNCTION trunc_trig_before_stat_trig() RETURNS trigger
-		  LANGUAGE plpgsql as \$\$
-		  BEGIN
-			INSERT INTO trunc_trig VALUES (DEFAULT, 'triggered stat before');
-			RETURN NULL;
-		  END; \$\$;
-		CREATE FUNCTION trunc_trig_after_stat_trig() RETURNS trigger
-		  LANGUAGE plpgsql as \$\$
-		  BEGIN
-			INSERT INTO trunc_trig VALUES (DEFAULT, 'triggered stat before');
-			RETURN NULL;
-		  END; \$\$;
-		CREATE TRIGGER trunc_trig_before_stat_truncate
-		  BEFORE TRUNCATE ON trunc_trig
-		  FOR EACH STATEMENT EXECUTE PROCEDURE trunc_trig_before_stat_trig();
-		CREATE TRIGGER trunc_trig_after_stat_truncate
-		  AFTER TRUNCATE ON trunc_trig
-		  FOR EACH STATEMENT EXECUTE PROCEDURE trunc_trig_after_stat_trig();
-		INSERT INTO trunc_trig VALUES (DEFAULT, 1);
-		TRUNCATE trunc_trig;
-		COPY trunc_trig FROM '$copy_file' DELIMITER ',';
-		COMMIT;");
-	$node->stop('immediate');
-	$node->start;
-	$result =
-	  $node->safe_psql('postgres', "SELECT count(*) FROM trunc_trig;");
-	is($result, qq(4),
-		"wal_level = $wal_level, TRUNCATE COPY with TRUNCATE triggers");
+	# $node->safe_psql(
+	# 	'postgres', "
+	# 	BEGIN;
+	# 	CREATE TABLE trunc_trig (id serial PRIMARY KEY, id2 text);
+	# 	CREATE FUNCTION trunc_trig_before_stat_trig() RETURNS trigger
+	# 	  LANGUAGE plpgsql as \$\$
+	# 	  BEGIN
+	# 		INSERT INTO trunc_trig VALUES (DEFAULT, 'triggered stat before');
+	# 		RETURN NULL;
+	# 	  END; \$\$;
+	# 	CREATE FUNCTION trunc_trig_after_stat_trig() RETURNS trigger
+	# 	  LANGUAGE plpgsql as \$\$
+	# 	  BEGIN
+	# 		INSERT INTO trunc_trig VALUES (DEFAULT, 'triggered stat before');
+	# 		RETURN NULL;
+	# 	  END; \$\$;
+	# 	CREATE TRIGGER trunc_trig_before_stat_truncate
+	# 	  BEFORE TRUNCATE ON trunc_trig
+	# 	  FOR EACH STATEMENT EXECUTE PROCEDURE trunc_trig_before_stat_trig();
+	# 	CREATE TRIGGER trunc_trig_after_stat_truncate
+	# 	  AFTER TRUNCATE ON trunc_trig
+	# 	  FOR EACH STATEMENT EXECUTE PROCEDURE trunc_trig_after_stat_trig();
+	# 	INSERT INTO trunc_trig VALUES (DEFAULT, 1);
+	# 	TRUNCATE trunc_trig;
+	# 	COPY trunc_trig FROM '$copy_file' DELIMITER ',';
+	# 	COMMIT;");
+	# $node->stop('immediate');
+	# $node->start;
+	# $result =
+	#   $node->safe_psql('postgres', "SELECT count(*) FROM trunc_trig;");
+	# is($result, qq(4),
+	# 	"wal_level = $wal_level, TRUNCATE COPY with TRUNCATE triggers");
 
 	# Test redo of temp table creation.
 	$node->safe_psql(
