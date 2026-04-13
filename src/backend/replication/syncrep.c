@@ -896,10 +896,10 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 		stby->walsnd_index = i;
 		stby->is_me = (walsnd == MyWalSnd);
 		n++;
-	}
 
-	if (IS_QUERY_DISPATCHER())
-		return n;
+		if (IS_QUERY_DISPATCHER())
+			return n;
+	}
 
 	/*
 	 * In quorum mode, we return all the candidates.  In priority mode, if we
