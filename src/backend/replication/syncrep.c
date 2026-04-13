@@ -653,9 +653,12 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 	*applyPtr = InvalidXLogRecPtr;
 	*am_sync = false;
 
-	/* Quick out if not even configured to be synchronous */
-	if (!IS_QUERY_DISPATCHER() && SyncRepConfig == NULL)
-		return false;
+	if (!IS_QUERY_DISPATCHER())
+	{
+		/* Quick out if not even configured to be synchronous */
+		if (SyncRepConfig == NULL)
+			return false;
+	}
 
 	/* Get standbys that are considered as synchronous at this moment */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
