@@ -663,13 +663,16 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 	/* Get standbys that are considered as synchronous at this moment */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
 
-	/* Am I among the candidate sync standbys? */
-	for (i = 0; i < num_standbys; i++)
+	if (!IS_QUERY_DISPATCHER())
 	{
-		if (sync_standbys[i].is_me)
+		/* Am I among the candidate sync standbys? */
+		for (i = 0; i < num_standbys; i++)
 		{
-			*am_sync = true;
-			break;
+			if (sync_standbys[i].is_me)
+			{
+				*am_sync = true;
+				break;
+			}
 		}
 	}
 
