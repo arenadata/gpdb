@@ -6,11 +6,7 @@ use File::Basename qw(basename dirname);
 use File::Path qw(rmtree);
 use PostgresNode;
 use TestLib;
-<<<<<<< HEAD
-use Test::More tests => 107 + 15;
-=======
-use Test::More tests => 109;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+use Test::More tests => 109 + 15;
 
 program_help_ok('pg_basebackup');
 program_version_ok('pg_basebackup');
@@ -168,13 +164,8 @@ rmtree("$tempdir/backup");
 
 $node->command_ok(
 	[
-<<<<<<< HEAD
-		'pg_basebackup', '-D', "$tempdir/backup2", '--waldir',
-		"$tempdir/xlog2", '--target-gp-dbid', '123'
-=======
 		'pg_basebackup', '-D', "$tempdir/backup2", '--no-manifest',
-		'--waldir', "$tempdir/xlog2"
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+		'--waldir', "$tempdir/xlog2", '--target-gp-dbid', '123'
 	],
 	'separate xlog directory');
 ok(-f "$tempdir/backup2/PG_VERSION", 'backup was created');
