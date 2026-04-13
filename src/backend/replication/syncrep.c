@@ -849,7 +849,7 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 									 * rearrangement */
 		SyncRepStandbyData *stby;
 		WalSndState state;		/* not included in SyncRepStandbyData */
-		bool		caughtup_within_range;
+		bool		caughtup_within_range = false;
 
 		walsnd = &WalSndCtl->walsnds[i];
 		stby = *standbys + n;
