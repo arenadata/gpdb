@@ -7651,10 +7651,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 		{
 			/*
 			 * Try for a hash-only groupingsets path over unsorted input.
-			 *
-			 * the last param of consider_groupingsets_paths should be
-			 * dNumGroupsTotal. In consider_groupingsets_paths it will
-			 * calculate dNumGroups in one segment.
 			 */
 			consider_groupingsets_paths(root, grouped_rel,
 										cheapest_path, false, true,
@@ -8073,6 +8069,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 			}
 		}
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 		/*
 		 * Consider incremental sort on all partial paths, if enabled.
 		 *
@@ -8107,7 +8104,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 															 presorted_keys,
 															 -1.0);
 
-				//if (parse->hasAggs)
+				if (parse->hasAggs)
 					add_path(partially_grouped_rel, (Path *)
 							 create_agg_path(root,
 											 partially_grouped_rel,
@@ -8115,12 +8112,10 @@ create_partial_grouping_paths(PlannerInfo *root,
 											 partially_grouped_rel->reltarget,
 											 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
 											 AGGSPLIT_INITIAL_SERIAL,
-											 false,
 											 parse->groupClause,
 											 NIL,
 											 agg_partial_costs,
 											 dNumPartialGroups));
-#if 0 /* Group nodes are not used in GPDB */
 				else
 					add_path(partially_grouped_rel, (Path *)
 							 create_group_path(root,
@@ -8129,10 +8124,9 @@ create_partial_grouping_paths(PlannerInfo *root,
 											   parse->groupClause,
 											   NIL,
 											   dNumPartialGroups));
-#endif
 			}
 		}
-
+#endif
 	}
 
 	if (can_sort && cheapest_partial_path != NULL)
