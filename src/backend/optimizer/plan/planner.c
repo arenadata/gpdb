@@ -8181,6 +8181,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 #endif
 			}
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 			/*
 			 * Now we may consider incremental sort on this path, but only
 			 * when the path is not already sorted and when incremental sort
@@ -8209,7 +8210,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 														 presorted_keys,
 														 -1.0);
 
-			//if (parse->hasAggs)
+			if (parse->hasAggs)
 				add_partial_path(partially_grouped_rel, (Path *)
 								 create_agg_path(root,
 												 partially_grouped_rel,
@@ -8217,12 +8218,10 @@ create_partial_grouping_paths(PlannerInfo *root,
 												 partially_grouped_rel->reltarget,
 												 parse->groupClause ? AGG_SORTED : AGG_PLAIN,
 												 AGGSPLIT_INITIAL_SERIAL,
-												 false,
 												 parse->groupClause,
 												 NIL,
 												 agg_partial_costs,
 												 dNumPartialPartialGroups));
-#if 0 /* Group nodes are not used in GPDB */
 			else
 				add_partial_path(partially_grouped_rel, (Path *)
 								 create_group_path(root,
