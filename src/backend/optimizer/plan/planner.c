@@ -7472,7 +7472,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											path, true, can_hash,
 											gd, agg_costs, dNumGroups);
 			}
-			else if (parse->hasAggs || parse->groupClause)
+			else if (parse->hasAggs)
 			{
 				/*
 				 * We have aggregation, possibly with plain GROUP BY. Make
