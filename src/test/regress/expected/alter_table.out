@@ -2061,6 +2061,8 @@ drop table another;
 begin;
 create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
 alter table skip_wal_skip_rewrite_index alter c type varchar(20);
+ERROR:  cannot alter column with primary key or unique constraint
+HINT:  DROP the constraint first, and recreate it after the ALTER
 commit;
 -- table's row type
 create table tab1 (a int, b text);
@@ -4496,30 +4498,28 @@ update bar1 set a = a + 1;
 -- Test that ALTER TABLE rewrite preserves a clustered index
 -- for normal indexes and indexes on constraints.
 create table alttype_cluster (a int);
-alter table alttype_cluster add primary key (a);
 create index alttype_cluster_ind on alttype_cluster (a);
 alter table alttype_cluster cluster on alttype_cluster_ind;
 -- Normal index remains clustered.
 select indexrelid::regclass, indisclustered from pg_index
   where indrelid = 'alttype_cluster'::regclass
   order by indexrelid::regclass::text;
-      indexrelid      | indisclustered 
-----------------------+----------------
- alttype_cluster_ind  | t
- alttype_cluster_pkey | f
-(2 rows)
+     indexrelid      | indisclustered 
+---------------------+----------------
+ alttype_cluster_ind | t
+(1 row)
 
 alter table alttype_cluster alter a type bigint;
 select indexrelid::regclass, indisclustered from pg_index
   where indrelid = 'alttype_cluster'::regclass
   order by indexrelid::regclass::text;
-      indexrelid      | indisclustered 
-----------------------+----------------
- alttype_cluster_ind  | t
- alttype_cluster_pkey | f
-(2 rows)
+     indexrelid      | indisclustered 
+---------------------+----------------
+ alttype_cluster_ind | t
+(1 row)
 
 -- Constraint index remains clustered.
+alter table alttype_cluster add primary key (a);
 alter table alttype_cluster cluster on alttype_cluster_pkey;
 select indexrelid::regclass, indisclustered from pg_index
   where indrelid = 'alttype_cluster'::regclass
@@ -4531,6 +4531,8 @@ select indexrelid::regclass, indisclustered from pg_index
 (2 rows)
 
 alter table alttype_cluster alter a type int;
+ERROR:  cannot alter column with primary key or unique constraint
+HINT:  DROP the constraint first, and recreate it after the ALTER
 select indexrelid::regclass, indisclustered from pg_index
   where indrelid = 'alttype_cluster'::regclass
   order by indexrelid::regclass::text;
