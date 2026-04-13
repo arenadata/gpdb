@@ -307,17 +307,14 @@ explain_ExecutorStart(QueryDesc *queryDesc, int eflags)
 				queryDesc->instrument_options |= INSTRUMENT_ROWS;
 			if (auto_explain_log_buffers)
 				queryDesc->instrument_options |= INSTRUMENT_BUFFERS;
-<<<<<<< HEAD
+			if (auto_explain_log_wal)
+				queryDesc->instrument_options |= INSTRUMENT_WAL;
 
 			queryDesc->instrument_options |= INSTRUMENT_CDB;
 
 			INSTR_TIME_SET_CURRENT(starttime);
 			queryDesc->showstatctx = cdbexplain_showExecStatsBegin(queryDesc,
 																   starttime);
-=======
-			if (auto_explain_log_wal)
-				queryDesc->instrument_options |= INSTRUMENT_WAL;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 		}
 	}
 
