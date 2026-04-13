@@ -1040,7 +1040,8 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_incrementalsort,
-		true,
+		/* GPDB_13_MERGE_FIXME: enable incremental sort */
+		false,
 		NULL, NULL, NULL
 	},
 	{
