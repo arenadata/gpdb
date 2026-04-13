@@ -7588,6 +7588,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   dNumGroups));
 #endif
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 				/*
 				 * Now we may consider incremental sort on this path, but only
 				 * when the path is not already sorted and when incremental
@@ -7627,7 +7628,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 															 presorted_keys,
 															 -1.0);
 
-				//if (parse->hasAggs)
+				if (parse->hasAggs)
 					add_path(grouped_rel, (Path *)
 							 create_agg_path(root,
 											 grouped_rel,
@@ -7640,7 +7641,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											 havingQual,
 											 agg_final_costs,
 											 dNumGroups));
-#if 0 /* Group nodes are not used in GPDB */
 				else
 					add_path(grouped_rel, (Path *)
 							 create_group_path(root,
