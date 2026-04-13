@@ -7436,6 +7436,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				}
 			}
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 			/*
 			 * Now we may consider incremental sort on this path, but only
 			 * when the path is not already sorted and when incremental sort
@@ -7450,17 +7451,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			/* no shared prefix, no point in building incremental sort */
 			if (presorted_keys == 0)
 				continue;
-
-			/*
-			 * dNumGroupsTotal is the total number of groups across all segments. If the
-			 * Aggregate is distributed, then the number of groups in one segment
-			 * is only a fraction of the total.
-			 */
-			if (CdbPathLocus_IsPartitioned(path->locus))
-				dNumGroups = clamp_row_est(dNumGroupsTotal /
-										   CdbPathLocus_NumSegments(path->locus));
-			else
-				dNumGroups = dNumGroupsTotal;
 
 			/*
 			 * We should have already excluded pathkeys of length 1 because
@@ -7478,14 +7468,9 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			/* Now decide what to stick atop it */
 			if (parse->groupingSets)
 			{
-				/*
-				 * the last param of consider_groupingsets_paths should be
-				 * dNumGroupsTotal. In consider_groupingsets_paths it will
-				 * calculate dNumGroups in one segment.
-				 */
 				consider_groupingsets_paths(root, grouped_rel,
 											path, true, can_hash,
-											gd, agg_costs, dNumGroupsTotal);
+											gd, agg_costs, dNumGroups);
 			}
 			else if (parse->hasAggs || parse->groupClause)
 			{
@@ -7506,7 +7491,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 										 agg_costs,
 										 dNumGroups));
 			}
-#if 0 /* Group nodes are not used in GPDB */
 			else if (parse->groupClause)
 			{
 				/*
@@ -7521,12 +7505,12 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 										   havingQual,
 										   dNumGroups));
 			}
-#endif
 			else
 			{
 				/* Other cases should have been handled above */
 				Assert(false);
 			}
+#endif
 		}
 
 		/*
