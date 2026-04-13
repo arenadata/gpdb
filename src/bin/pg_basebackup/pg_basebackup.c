@@ -2034,9 +2034,8 @@ BaseBackup(void)
 	if (maxrate > 0)
 		maxrate_clause = psprintf("MAX_RATE %u", maxrate);
 
-<<<<<<< HEAD
 	exclude_list = build_exclude_list();
-=======
+
 	if (manifest)
 	{
 		if (manifest_force_encode)
@@ -2047,7 +2046,6 @@ BaseBackup(void)
 			manifest_checksums_clause = psprintf("MANIFEST_CHECKSUMS '%s'",
 												 manifest_checksums);
 	}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	if (verbose)
 		pg_log_info("initiating base backup, waiting for checkpoint to complete");
@@ -2062,11 +2060,7 @@ BaseBackup(void)
 	}
 
 	basebkp =
-<<<<<<< HEAD
-		psprintf("BASE_BACKUP LABEL '%s' %s %s %s %s %s %s %s %s",
-=======
-		psprintf("BASE_BACKUP LABEL '%s' %s %s %s %s %s %s %s %s %s",
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+		psprintf("BASE_BACKUP LABEL '%s' %s %s %s %s %s %s %s %s %s %s",
 				 escaped_label,
 				 estimatesize ? "PROGRESS" : "",
 				 includewal == FETCH_WAL ? "WAL" : "",
@@ -2075,15 +2069,12 @@ BaseBackup(void)
 				 maxrate_clause ? maxrate_clause : "",
 				 format == 't' ? "TABLESPACE_MAP" : "",
 				 verify_checksums ? "" : "NOVERIFY_CHECKSUMS",
-<<<<<<< HEAD
+				 manifest_clause ? manifest_clause : "",
+				 manifest_checksums_clause,
 				 exclude_list);
 
 	if (exclude_list[0] != '\0')
 		free(exclude_list);
-=======
-				 manifest_clause ? manifest_clause : "",
-				 manifest_checksums_clause);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	if (PQsendQuery(conn, basebkp) == 0)
 	{
