@@ -831,37 +831,6 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 	*standbys = (SyncRepStandbyData *)
 		palloc(max_wal_senders * sizeof(SyncRepStandbyData));
 
-	if (IS_QUERY_DISPATCHER())
-	{
-		bool		syncStandbyPresent;
-		int			i;
-		volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
-									 * rearrangement */
-
-		for (i = 0; i < max_wal_senders; i++)
-		{
-			walsnd = &WalSndCtl->walsnds[i];
-			SpinLockAcquire(&walsnd->mutex);
-			syncStandbyPresent = (walsnd->pid != 0)
-				&& ((walsnd->state == WALSNDSTATE_STREAMING)
-				|| (walsnd->state == WALSNDSTATE_CATCHUP &&
-				walsnd->caughtup_within_range));
-			SpinLockRelease(&walsnd->mutex);
-
-			if (syncStandbyPresent)
-			{
-				SpinLockAcquire(&walsnd->mutex);
-				standbys[0]->pid = walsnd->pid;
-				standbys[0]->write = walsnd->write;
-				standbys[0]->flush = walsnd->flush;
-				standbys[0]->apply = walsnd->apply;
-				standbys[0]->sync_standby_priority = walsnd->sync_standby_priority;
-				SpinLockRelease(&walsnd->mutex);
-				return 1;
-			}
-		}
-	}
-
 	/* Quick exit if sync replication is not requested */
 	if (SyncRepConfig == NULL)
 		return 0;
@@ -872,6 +841,7 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 	{
 		volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
 									 * rearrangement */
+		volatile bool caughtup_within_range;
 		SyncRepStandbyData *stby;
 		WalSndState state;		/* not included in SyncRepStandbyData */
 
@@ -885,24 +855,40 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 		stby->flush = walsnd->flush;
 		stby->apply = walsnd->apply;
 		stby->sync_standby_priority = walsnd->sync_standby_priority;
+		if (IS_QUERY_DISPATCHER())
+			caughtup_within_range = walsnd->caughtup_within_range;
 		SpinLockRelease(&walsnd->mutex);
 
 		/* Must be active */
 		if (stby->pid == 0)
 			continue;
 
-		/* Must be streaming or stopping */
-		if (state != WALSNDSTATE_STREAMING &&
-			state != WALSNDSTATE_STOPPING)
-			continue;
+		if (IS_QUERY_DISPATCHER())
+		{
+			/* Must be streaming or catchup */
+			if (state != WALSNDSTATE_STREAMING &&
+				state != WALSNDSTATE_CATCHUP)
+				continue;
 
-		/* Must be synchronous */
-		if (stby->sync_standby_priority == 0)
-			continue;
+			/* Must be in range */
+			if (!walsnd->caughtup_within_range)
+				continue;
+		}
+		else
+		{
+			/* Must be streaming or stopping */
+			if (state != WALSNDSTATE_STREAMING &&
+				state != WALSNDSTATE_STOPPING)
+				continue;
 
-		/* Must have a valid flush position */
-		if (XLogRecPtrIsInvalid(stby->flush))
-			continue;
+			/* Must be synchronous */
+			if (stby->sync_standby_priority == 0)
+				continue;
+
+			/* Must have a valid flush position */
+			if (XLogRecPtrIsInvalid(stby->flush))
+				continue;
+		}
 
 		/* OK, it's a candidate */
 		stby->walsnd_index = i;
