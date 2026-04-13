@@ -831,9 +831,12 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 	*standbys = (SyncRepStandbyData *)
 		palloc(max_wal_senders * sizeof(SyncRepStandbyData));
 
-	/* Quick exit if sync replication is not requested */
-	if (SyncRepConfig == NULL)
-		return 0;
+	if (!IS_QUERY_DISPATCHER())
+	{
+		/* Quick exit if sync replication is not requested */
+		if (SyncRepConfig == NULL)
+			return 0;
+	}
 
 	/* Collect raw data from shared memory */
 	n = 0;
@@ -841,9 +844,9 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 	{
 		volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
 									 * rearrangement */
-		volatile bool caughtup_within_range;
 		SyncRepStandbyData *stby;
 		WalSndState state;		/* not included in SyncRepStandbyData */
+		bool		caughtup_within_range;
 
 		walsnd = &WalSndCtl->walsnds[i];
 		stby = *standbys + n;
@@ -865,13 +868,9 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 
 		if (IS_QUERY_DISPATCHER())
 		{
-			/* Must be streaming or catchup */
+			/* Must be streaming or catchup in range */
 			if (state != WALSNDSTATE_STREAMING &&
-				state != WALSNDSTATE_CATCHUP)
-				continue;
-
-			/* Must be in range */
-			if (!walsnd->caughtup_within_range)
+				(state != WALSNDSTATE_CATCHUP || !caughtup_within_range))
 				continue;
 		}
 		else
@@ -884,11 +883,11 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 			/* Must be synchronous */
 			if (stby->sync_standby_priority == 0)
 				continue;
-
-			/* Must have a valid flush position */
-			if (XLogRecPtrIsInvalid(stby->flush))
-				continue;
 		}
+
+		/* Must have a valid flush position */
+		if (XLogRecPtrIsInvalid(stby->flush))
+			continue;
 
 		/* OK, it's a candidate */
 		stby->walsnd_index = i;
