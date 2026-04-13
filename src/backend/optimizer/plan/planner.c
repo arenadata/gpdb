@@ -7348,7 +7348,6 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			Path	   *path_original = path;
 			bool		is_sorted;
 			int			presorted_keys;
-			double		dNumGroups;
 
 			is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
 													 path->pathkeys,
@@ -7356,6 +7355,8 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 
 			if (path == cheapest_path || is_sorted)
 			{
+				double		dNumGroups;
+
 				/*
 				 * Sort the cheapest-total path if it isn't already sorted.
 				 * This also adds a Motion to redistribute it if needed.
