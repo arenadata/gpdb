@@ -138,10 +138,7 @@ $primary->poll_query_until('postgres',
 # Test standby with archive_mode = on.
 my $standby1 = get_new_node('standby');
 $standby1->init_from_backup($primary, 'backup', has_restoring => 1);
-$standby1->append_conf('postgresql.conf', qq(
-autovacuum = off
-wal_keep_segments = 0
-));
+$standby1->append_conf('postgresql.conf', "archive_mode = on");
 my $standby1_data = $standby1->data_dir;
 $standby1->start;
 
