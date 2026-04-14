@@ -653,20 +653,26 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 	*applyPtr = InvalidXLogRecPtr;
 	*am_sync = false;
 
-	/* Quick out if not even configured to be synchronous */
-	if (SyncRepConfig == NULL)
-		return false;
+	if (!IS_QUERY_DISPATCHER())
+	{
+		/* Quick out if not even configured to be synchronous */
+		if (SyncRepConfig == NULL)
+			return false;
+	}
 
 	/* Get standbys that are considered as synchronous at this moment */
 	num_standbys = SyncRepGetCandidateStandbys(&sync_standbys);
 
-	/* Am I among the candidate sync standbys? */
-	for (i = 0; i < num_standbys; i++)
+	if (!IS_QUERY_DISPATCHER())
 	{
-		if (sync_standbys[i].is_me)
+		/* Am I among the candidate sync standbys? */
+		for (i = 0; i < num_standbys; i++)
 		{
-			*am_sync = true;
-			break;
+			if (sync_standbys[i].is_me)
+			{
+				*am_sync = true;
+				break;
+			}
 		}
 	}
 
@@ -674,19 +680,16 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 	 * Nothing more to do if we are not managing a sync standby or there are
 	 * not enough synchronous standbys.
 	 */
-<<<<<<< HEAD
 	if (IS_QUERY_DISPATCHER())
 	{
-		if (list_length(sync_standbys) == 0)
+		if (num_standbys == 0)
+		{
+			pfree(sync_standbys);
 			return false;
+		}
 	}
 	else if (!(*am_sync) ||
-		SyncRepConfig == NULL ||
-		list_length(sync_standbys) < SyncRepConfig->num_sync)
-=======
-	if (!(*am_sync) ||
 		num_standbys < SyncRepConfig->num_sync)
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	{
 		pfree(sync_standbys);
 		return false;
@@ -717,6 +720,9 @@ SyncRepGetSyncRecPtr(XLogRecPtr *writePtr, XLogRecPtr *flushPtr,
 									  sync_standbys, num_standbys,
 									  SyncRepConfig->num_sync);
 	}
+
+	if (IS_QUERY_DISPATCHER())
+		*am_sync = true;
 
 	pfree(sync_standbys);
 	return true;
@@ -827,49 +833,19 @@ cmp_lsn(const void *a, const void *b)
 int
 SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 {
-<<<<<<< HEAD
-	List	   *result = NIL;
-	bool		syncStandbyPresent;
-	int			i;
-	volatile WalSnd *walsnd;	/* Use volatile pointer to prevent code
-								 * rearrangement */
-	Assert(LWLockHeldByMe(SyncRepLock));
-=======
 	int			i;
 	int			n;
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 	/* Create result array */
 	*standbys = (SyncRepStandbyData *)
 		palloc(max_wal_senders * sizeof(SyncRepStandbyData));
 
-	/* GPDB_12_MERGE_FIXME: Should this be in SyncRepGetSyncStandbysQuorum()
-	 * instead? */
-	if (IS_QUERY_DISPATCHER())
+	if (!IS_QUERY_DISPATCHER())
 	{
-		for (i = 0; i < max_wal_senders; i++)
-		{
-			walsnd = &WalSndCtl->walsnds[i];
-			SpinLockAcquire(&walsnd->mutex);
-			syncStandbyPresent = (walsnd->pid != 0)
-				&& ((walsnd->state == WALSNDSTATE_STREAMING)
-				|| (walsnd->state == WALSNDSTATE_CATCHUP &&
-				walsnd->caughtup_within_range));
-			SpinLockRelease(&walsnd->mutex);
-
-			if (syncStandbyPresent)
-			{
-				result = lappend_int(result, i);
-				if (am_sync)
-					*am_sync = true;
-				return result;
-			}
-		}
+		/* Quick exit if sync replication is not requested */
+		if (SyncRepConfig == NULL)
+			return 0;
 	}
-
-	/* Quick exit if sync replication is not requested */
-	if (SyncRepConfig == NULL)
-		return 0;
 
 	/* Collect raw data from shared memory */
 	n = 0;
@@ -879,6 +855,7 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 									 * rearrangement */
 		SyncRepStandbyData *stby;
 		WalSndState state;		/* not included in SyncRepStandbyData */
+		bool		caughtup_within_range = false;
 
 		walsnd = &WalSndCtl->walsnds[i];
 		stby = *standbys + n;
@@ -890,16 +867,28 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 		stby->flush = walsnd->flush;
 		stby->apply = walsnd->apply;
 		stby->sync_standby_priority = walsnd->sync_standby_priority;
+		if (IS_QUERY_DISPATCHER())
+			caughtup_within_range = walsnd->caughtup_within_range;
 		SpinLockRelease(&walsnd->mutex);
 
 		/* Must be active */
 		if (stby->pid == 0)
 			continue;
 
-		/* Must be streaming or stopping */
-		if (state != WALSNDSTATE_STREAMING &&
-			state != WALSNDSTATE_STOPPING)
-			continue;
+		if (IS_QUERY_DISPATCHER())
+		{
+			/* Must be streaming or catchup in range */
+			if (state != WALSNDSTATE_STREAMING &&
+				(state != WALSNDSTATE_CATCHUP || !caughtup_within_range))
+				continue;
+		}
+		else
+		{
+			/* Must be streaming or stopping */
+			if (state != WALSNDSTATE_STREAMING &&
+				state != WALSNDSTATE_STOPPING)
+				continue;
+		}
 
 		/* Must be synchronous */
 		if (stby->sync_standby_priority == 0)
@@ -913,7 +902,13 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 		stby->walsnd_index = i;
 		stby->is_me = (walsnd == MyWalSnd);
 		n++;
+
+		if (IS_QUERY_DISPATCHER())
+			return n;
 	}
+
+	if (IS_QUERY_DISPATCHER())
+		return n;
 
 	/*
 	 * In quorum mode, we return all the candidates.  In priority mode, if we
