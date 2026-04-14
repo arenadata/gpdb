@@ -85,18 +85,13 @@ usage(const char *progname)
 	printf(_("  -D, --target-pgdata=DIRECTORY  existing data directory to modify\n"));
 	printf(_("      --source-pgdata=DIRECTORY  source data directory to synchronize with\n"));
 	printf(_("      --source-server=CONNSTR    source server to synchronize with\n"));
-<<<<<<< HEAD
-	printf(_("  -R, --write-recovery-conf      write configuration for replication\n"
-			 "                                 (requires --source-server)\n"));
-	printf(_("  -S, --slot=SLOTNAME            replication slot to use\n"));
-=======
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 	printf(_("  -n, --dry-run                  stop before modifying anything\n"));
 	printf(_("  -N, --no-sync                  do not wait for changes to be written\n"
 			 "                                 safely to disk\n"));
 	printf(_("  -P, --progress                 write progress messages\n"));
 	printf(_("  -R, --write-recovery-conf      write configuration for replication\n"
 			 "                                 (requires --source-server)\n"));
+	printf(_("  -S, --slot=SLOTNAME            replication slot to use\n"));
 	printf(_("      --debug                    write a lot of debug messages\n"));
 	printf(_("      --no-ensure-shutdown       do not automatically fix unclean shutdown\n"));
 	printf(_("  -V, --version                  output version information, then exit\n"));
