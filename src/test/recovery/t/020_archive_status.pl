@@ -12,7 +12,10 @@ my $primary = get_new_node('master');
 $primary->init(
 	has_archiving    => 1,
 	allows_streaming => 1);
-$primary->append_conf('postgresql.conf', 'autovacuum = off');
+$primary->append_conf('postgresql.conf', qq(
+autovacuum = off
+wal_keep_segments = 0
+));
 $primary->start;
 my $primary_data = $primary->data_dir;
 
@@ -137,7 +140,10 @@ $primary->poll_query_until('postgres',
 # Test standby with archive_mode = on.
 my $standby1 = get_new_node('standby');
 $standby1->init_from_backup($primary, 'backup', has_restoring => 1);
-$standby1->append_conf('postgresql.conf', "archive_mode = on");
+$standby1->append_conf('postgresql.conf', qq(
+autovacuum = off
+wal_keep_segments = 0
+));
 my $standby1_data = $standby1->data_dir;
 $standby1->start;
 
