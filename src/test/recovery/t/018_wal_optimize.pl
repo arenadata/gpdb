@@ -87,6 +87,9 @@ wal_skip_threshold = 0
 		"SELECT count(*), min(id) FROM trunc_ins;");
 	is($result, qq(1|2), "wal_level = $wal_level, TRUNCATE INSERT");
 
+	# GPDB: PREPARE TRANSACTION is not supported on GPDB, skip
+	SKIP: {
+		skip "PREPARE TRANSACTION not implemented on GPDB", 1;
 	# Same for prepared transaction.
 	# Tuples inserted after the truncation should be seen.
 	$node->safe_psql(
@@ -103,6 +106,7 @@ wal_skip_threshold = 0
 	$result = $node->safe_psql('postgres',
 		"SELECT count(*), min(id) FROM trunc_ins;");
 	is($result, qq(1|2), "wal_level = $wal_level, TRUNCATE INSERT PREPARE");
+	} # end SKIP
 
 	# Writing WAL at end of xact, instead of syncing.
 	$node->safe_psql(
@@ -321,6 +325,9 @@ wal_skip_threshold = 0
 	$result = $node->safe_psql('postgres', "SELECT count(*) FROM ins_trig;");
 	is($result, qq(9), "wal_level = $wal_level, COPY with INSERT triggers");
 
+	# GPDB: Triggers for statements are not supported on GPDB, skip
+	SKIP: {
+		skip "Triggers for statements not implemented on GPDB", 1;
 	# Test consistency of INSERT, COPY and TRUNCATE in same transaction block
 	# with TRUNCATE triggers.
 	$node->safe_psql(
@@ -355,6 +362,7 @@ wal_skip_threshold = 0
 	  $node->safe_psql('postgres', "SELECT count(*) FROM trunc_trig;");
 	is($result, qq(4),
 		"wal_level = $wal_level, TRUNCATE COPY with TRUNCATE triggers");
+	} # end SKIP
 
 	# Test redo of temp table creation.
 	$node->safe_psql(
