@@ -231,12 +231,14 @@ extern SortPath *create_sort_path(PlannerInfo *root,
 								  Path *subpath,
 								  List *pathkeys,
 								  double limit_tuples);
+#if 0 /* Group nodes are not used in GPDB */
 extern GroupPath *create_group_path(PlannerInfo *root,
 									RelOptInfo *rel,
 									Path *subpath,
 									List *groupClause,
 									List *qual,
 									double numGroups);
+#endif
 extern UpperUniquePath *create_upper_unique_path(PlannerInfo *root,
                                                  RelOptInfo *rel,
                                                  Path *subpath,

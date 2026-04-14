@@ -279,6 +279,7 @@ static int	common_prefix_cmp(const void *a, const void *b);
 static Path *create_preliminary_limit_path(PlannerInfo *root, RelOptInfo *rel,
 										   Path *subpath,
 										   Node *limitOffset, Node *limitCount,
+										   LimitOption limitOption,
 										   int64 offset_est, int64 count_est);
 static Path *create_scatter_path(PlannerInfo *root, List *scatterClause, Path *path);
 
@@ -2876,6 +2877,7 @@ grouping_planner(PlannerInfo *root, bool inheritance_update,
 				path = (Path *) create_preliminary_limit_path(root, final_rel, path,
 															  parse->limitOffset,
 															  parse->limitCount,
+															  parse->limitOption,
 															  offset_est, count_est);
 			}
 
@@ -7079,6 +7081,7 @@ static Path *
 create_preliminary_limit_path(PlannerInfo *root, RelOptInfo *rel,
 							  Path *subpath,
 							  Node *limitOffset, Node *limitCount,
+							  LimitOption limitOption,
 							  int64 offset_est, int64 count_est)
 {
 	Node	   *precount = copyObject(limitCount);
@@ -7127,6 +7130,7 @@ create_preliminary_limit_path(PlannerInfo *root, RelOptInfo *rel,
 		result_path = (Path *) create_limit_path(root, rel, subpath,
 												 NULL, /* limitOffset */
 												 precount,	/* limitCount */
+												 limitOption,
 												 -1, offset_est + count_est);
 	}
 	else
@@ -7433,6 +7437,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				}
 			}
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 			/*
 			 * Now we may consider incremental sort on this path, but only
 			 * when the path is not already sorted and when incremental sort
@@ -7505,6 +7510,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 				/* Other cases should have been handled above */
 				Assert(false);
 			}
+#endif
 		}
 
 		/*
@@ -7516,40 +7522,24 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 			foreach(lc, partially_grouped_rel->pathlist)
 			{
 				Path	   *path = (Path *) lfirst(lc);
-<<<<<<< HEAD
-				double		dNumGroups;
-				bool		is_sorted;
-
-				is_sorted = pathkeys_contained_in(root->group_pathkeys, path->pathkeys);
-=======
 				Path	   *path_original = path;
 				bool		is_sorted;
 				int			presorted_keys;
+				double		dNumGroups;
 
 				is_sorted = pathkeys_count_contained_in(root->group_pathkeys,
 														 path->pathkeys,
 														 &presorted_keys);
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 				/*
 				 * Insert a Sort node, if required. But there's no point in
 				 * sorting anything but the cheapest path.
 				 */
-<<<<<<< HEAD
-				if (!is_sorted && path != partially_grouped_rel->cheapest_total_path)
-					continue;
-=======
 				if (!is_sorted)
 				{
 					if (path != partially_grouped_rel->cheapest_total_path)
 						continue;
-					path = (Path *) create_sort_path(root,
-													 grouped_rel,
-													 path,
-													 root->group_pathkeys,
-													 -1.0);
 				}
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
 
 				path = cdb_prepare_path_for_sorted_agg(root,
 													   is_sorted,
@@ -7597,10 +7587,9 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
-<<<<<<< HEAD
 #endif
-=======
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 				/*
 				 * Now we may consider incremental sort on this path, but only
 				 * when the path is not already sorted and when incremental
@@ -7649,7 +7638,7 @@ add_paths_to_grouping_rel(PlannerInfo *root, RelOptInfo *input_rel,
 											   parse->groupClause,
 											   havingQual,
 											   dNumGroups));
->>>>>>> 3e9744465dbe51822c7d76baca1f934d54ba9452
+#endif
 			}
 		}
 	}
@@ -8080,6 +8069,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 			}
 		}
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 		/*
 		 * Consider incremental sort on all partial paths, if enabled.
 		 *
@@ -8136,7 +8126,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 											   dNumPartialGroups));
 			}
 		}
-
+#endif
 	}
 
 	if (can_sort && cheapest_partial_path != NULL)
@@ -8191,6 +8181,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 #endif
 			}
 
+#if 0 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 			/*
 			 * Now we may consider incremental sort on this path, but only
 			 * when the path is not already sorted and when incremental sort
@@ -8239,6 +8230,7 @@ create_partial_grouping_paths(PlannerInfo *root,
 												   parse->groupClause,
 												   NIL,
 												   dNumPartialPartialGroups));
+#endif
 		}
 	}
 
