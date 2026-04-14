@@ -907,6 +907,9 @@ SyncRepGetCandidateStandbys(SyncRepStandbyData **standbys)
 			return n;
 	}
 
+	if (IS_QUERY_DISPATCHER())
+		return n;
+
 	/*
 	 * In quorum mode, we return all the candidates.  In priority mode, if we
 	 * have too many candidates then return only the num_sync ones of highest
