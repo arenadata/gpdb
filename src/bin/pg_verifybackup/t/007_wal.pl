@@ -14,7 +14,8 @@ my $master = get_new_node('master');
 $master->init(allows_streaming => 1);
 $master->start;
 my $backup_path = $master->backup_dir . '/test_wal';
-$master->command_ok(['pg_basebackup', '-D', $backup_path, '--no-sync' ],
+$master->command_ok(['pg_basebackup', '-D', $backup_path, '--no-sync',
+					'--target-gp-dbid', '1'],
 					"base backup ok");
 
 # Rename pg_wal.
