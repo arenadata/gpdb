@@ -12,10 +12,8 @@ my $primary = get_new_node('master');
 $primary->init(
 	has_archiving    => 1,
 	allows_streaming => 1);
-$primary->append_conf('postgresql.conf', qq(
-autovacuum = off
-wal_keep_segments = 0
-));
+$primary->append_conf('postgresql.conf', 'autovacuum = off');
+$primary->append_conf('postgresql.conf', 'wal_keep_segments = 0');
 $primary->start;
 my $primary_data = $primary->data_dir;
 
