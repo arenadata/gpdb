@@ -47,7 +47,7 @@ select * from (select * from tenk1 order by four) t order by four, ten;
 
 reset work_mem;
 WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
-create table t(a integer, b integer);
+create table t(a integer, b integer) distributed replicated;
 create or replace function explain_analyze_without_memory(query text)
 returns table (out_line text) language plpgsql
 as
@@ -151,7 +151,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -200,7 +200,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -250,7 +250,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -301,7 +301,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -384,7 +384,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -472,7 +472,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -546,14 +546,14 @@ select explain_analyze_without_memory('select * from (select * from t order by a
                         explain_analyze_without_memory                         
 -------------------------------------------------------------------------------
  Limit (actual rows=55 loops=1)
-   ->  Gather Motion 3:1  (slice1; segments: 3) (actual rows=55 loops=1)
+   ->  Gather Motion 1:1  (slice1; segments: 1) (actual rows=55 loops=1)
          Merge Key: a, b
          ->  Limit (actual rows=55 loops=1)
                ->  Sort (actual rows=55 loops=1)
                      Sort Key: a, b
                      Sort Method:  top-N heapsort  Memory: NNkB
-                     Executor Memory: NNkB  Segments: 3  Max: NNkB (segment 0)
-                     ->  Seq Scan on t (actual rows=400 loops=1)
+                     Executor Memory: NNkB  Segments: 1  Max: NNkB (segment 0)
+                     ->  Seq Scan on t (actual rows=1000 loops=1)
  Optimizer: Pivotal Optimizer (GPORCA)
 (10 rows)
 
@@ -578,7 +578,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -669,21 +669,21 @@ begin;
 set local enable_hashjoin = off;
 set local enable_mergejoin = off;
 set local enable_material = off;
-/* GPDB_13_MERGE_FIXME: enable incremental sort */
--- set local enable_sort = off;
+set local enable_sort = off;
 explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
                          QUERY PLAN                         
 ------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   ->  Hash Left Join
-         Hash Cond: (t.a = t_1.a)
+ Hash Left Join
+   Hash Cond: (t.a = t_1.a)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          ->  Seq Scan on t
                Filter: (a = ANY ('{1,2}'::integer[]))
-         ->  Hash
+   ->  Hash
+         ->  Gather Motion 1:1  (slice2; segments: 1)
                ->  Seq Scan on t t_1
                      Filter: (a = ANY ('{1,2}'::integer[]))
  Optimizer: Pivotal Optimizer (GPORCA)
-(9 rows)
+(10 rows)
 
 select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
  a | b | a | b 
@@ -698,17 +698,16 @@ select explain_analyze_without_memory('select * from (select * from t order by a
                         explain_analyze_without_memory                         
 -------------------------------------------------------------------------------
  Limit (actual rows=70 loops=1)
-   ->  Gather Motion 3:1  (slice1; segments: 3) (actual rows=70 loops=1)
+   ->  Gather Motion 1:1  (slice1; segments: 1) (actual rows=70 loops=1)
          Merge Key: a, b
          ->  Limit (actual rows=70 loops=1)
                ->  Sort (actual rows=70 loops=1)
                      Sort Key: a, b
                      Sort Method:  top-N heapsort  Memory: NNkB
-                     Sort Method:  quicksort  Memory: NNkB
-                     Executor Memory: NNkB  Segments: 3  Max: NNkB (segment 2)
-                     ->  Seq Scan on t (actual rows=996 loops=1)
+                     Executor Memory: NNkB  Segments: 1  Max: NNkB (segment 0)
+                     ->  Seq Scan on t (actual rows=1000 loops=1)
  Optimizer: Pivotal Optimizer (GPORCA)
-(11 rows)
+(10 rows)
 
 select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from (select * from t order by a) s order by a, b limit 70'));
  jsonb_pretty 
@@ -731,7 +730,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -780,7 +779,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -830,7 +829,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -881,7 +880,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -964,7 +963,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -1052,7 +1051,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -1101,7 +1100,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -1151,7 +1150,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -1202,7 +1201,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
@@ -1285,7 +1284,7 @@ explain (costs off) select * from (select * from t order by a) s order by a, b l
                    QUERY PLAN                   
 ------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
+   ->  Gather Motion 1:1  (slice1; segments: 1)
          Merge Key: a, b
          ->  Limit
                ->  Sort
