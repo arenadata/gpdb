@@ -13,7 +13,7 @@ $master->init(allows_streaming => 1);
 $master->start;
 my $backup_path = $master->backup_dir . '/test_encoding';
 $master->command_ok(['pg_basebackup', '-D', $backup_path, '--no-sync',
-					'--manifest-force-encode' ],
+					'--manifest-force-encode', '--target-gp-dbid', '1'],
 					"backup ok with forced hex encoding");
 
 my $manifest = slurp_file("$backup_path/backup_manifest");
