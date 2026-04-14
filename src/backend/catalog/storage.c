@@ -518,7 +518,7 @@ EstimatePendingSyncsSpace(void)
 	long		entries;
 
 	entries = pendingSyncHash ? hash_get_num_entries(pendingSyncHash) : 0;
-	return mul_size(1 + entries, sizeof(RelFileNode));
+	return mul_size(1 + entries, sizeof(RelFileNodePendingSync));
 }
 
 /*
