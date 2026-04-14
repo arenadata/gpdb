@@ -16,7 +16,7 @@ explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten;
 reset work_mem;
 
-create table t(a integer, b integer);
+create table t(a integer, b integer) distributed replicated;
 
 create or replace function explain_analyze_without_memory(query text)
 returns table (out_line text) language plpgsql
@@ -156,8 +156,7 @@ begin;
 set local enable_hashjoin = off;
 set local enable_mergejoin = off;
 set local enable_material = off;
-/* GPDB_13_MERGE_FIXME: enable incremental sort */
--- set local enable_sort = off;
+set local enable_sort = off;
 explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
 select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
 rollback;
