@@ -540,7 +540,7 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 		goto terminate;
 
 	/* Create temporary hash to collect active relfilenodes */
-	ctl.keysize = sizeof(RelFileNodePendingSync);
+	ctl.keysize = sizeof(RelFileNode);
 	ctl.entrysize = sizeof(RelFileNodePendingSync);
 	ctl.hcxt = CurrentMemoryContext;
 	tmphash = hash_create("tmp relfilenodes",
@@ -550,12 +550,15 @@ SerializePendingSyncs(Size maxSize, char *startAddress)
 	/* collect all rnodes from pending syncs */
 	hash_seq_init(&scan, pendingSyncHash);
 	while ((sync = (PendingRelSync *) hash_seq_search(&scan)))
-		(void) hash_search(tmphash, &sync->relnode, HASH_ENTER, NULL);
+	{
+		RelFileNodePendingSync *relnode = hash_search(tmphash, &sync->relnode.node, HASH_ENTER, NULL);
+		relnode->smgr_which = sync->relnode.smgr_which;
+	}
 
 	/* remove deleted rnodes */
 	for (delete = pendingDeletes; delete != NULL; delete = delete->next)
 		if (delete->atCommit)
-			(void) hash_search(tmphash, (void *) &delete->relnode,
+			(void) hash_search(tmphash, (void *) &delete->relnode.node,
 							   HASH_REMOVE, NULL);
 
 	hash_seq_init(&scan, tmphash);
