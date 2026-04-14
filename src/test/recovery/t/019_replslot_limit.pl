@@ -183,7 +183,7 @@ $node_master->stop('immediate');
 $node_standby->stop('immediate');
 
 my $node_master2 = get_new_node('master2');
-$node_master2->init(allows_streaming => 1);
+$node_master2->init(allows_streaming => 1, extra => ['--wal-segsize=16']);
 $node_master2->append_conf(
 	'postgresql.conf', qq(
 min_wal_size = 32MB
@@ -205,7 +205,7 @@ $node_master2->start;
 
 $node_standby = get_new_node('standby_2');
 $node_standby->init_from_backup($node_master2, $backup_name,
-	has_streaming => 1);
+	has_streaming => 1, extra => ['--wal-segsize=16']);
 $node_standby->append_conf('postgresql.conf', "primary_slot_name = 'rep1'");
 $node_standby->start;
 my @result =
