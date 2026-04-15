@@ -16,7 +16,7 @@ explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten;
 reset work_mem;
 
-create table t(a integer, b integer) distributed replicated;
+create table t(a integer, b integer);
 
 create or replace function explain_analyze_without_memory(query text)
 returns table (out_line text) language plpgsql

@@ -2,58 +2,48 @@
 -- be slower than plain sort, so it should not be used.
 explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: tenk1.four, tenk1.ten
+            QUERY PLAN             
+-----------------------------------
+ Sort
+   Sort Key: tenk1.four, tenk1.ten
    ->  Sort
-         Sort Key: tenk1.four, tenk1.ten
-         ->  Sort
-               Sort Key: tenk1.four
-               ->  Seq Scan on tenk1
- Optimizer: Postgres query optimizer
-(8 rows)
+         Sort Key: tenk1.four
+         ->  Seq Scan on tenk1
+(5 rows)
 
 -- When there is a LIMIT clause, incremental sort is beneficial because
 -- it only has to sort some of the groups, and not the entire table.
 explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten
 limit 1;
-                     QUERY PLAN                      
------------------------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         Merge Key: tenk1.four, tenk1.ten
-         ->  Limit
-               ->  Sort
-                     Sort Key: tenk1.four, tenk1.ten
-                     ->  Sort
-                           Sort Key: tenk1.four
-                           ->  Seq Scan on tenk1
- Optimizer: Postgres query optimizer
-(10 rows)
+   ->  Incremental Sort
+         Sort Key: tenk1.four, tenk1.ten
+         Presorted Key: tenk1.four
+         ->  Sort
+               Sort Key: tenk1.four
+               ->  Seq Scan on tenk1
+(7 rows)
 
 -- When work_mem is not enough to sort the entire table, incremental sort
 -- may be faster if individual groups still fit into work_mem.
 set work_mem to '2MB';
-WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
 explain (costs off)
 select * from (select * from tenk1 order by four) t order by four, ten;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: tenk1.four, tenk1.ten
+            QUERY PLAN             
+-----------------------------------
+ Incremental Sort
+   Sort Key: tenk1.four, tenk1.ten
+   Presorted Key: tenk1.four
    ->  Sort
-         Sort Key: tenk1.four, tenk1.ten
-         ->  Sort
-               Sort Key: tenk1.four
-               ->  Seq Scan on tenk1
- Optimizer: Postgres query optimizer
-(8 rows)
+         Sort Key: tenk1.four
+         ->  Seq Scan on tenk1
+(6 rows)
 
 reset work_mem;
-WARNING:  "work_mem": setting is deprecated, and may be removed in a future release.
-create table t(a integer, b integer) distributed replicated;
+create table t(a integer, b integer);
 create or replace function explain_analyze_without_memory(query text)
 returns table (out_line text) language plpgsql
 as
@@ -154,18 +144,16 @@ $$;
 insert into t(a, b) select i/100 + 1, i + 1 from generate_series(0, 999) n(i);
 analyze t;
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 31;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 31;
  a | b  
@@ -204,18 +192,16 @@ select * from (select * from t order by a) s order by a, b limit 31;
 (31 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 32;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 32;
  a | b  
@@ -255,18 +241,16 @@ select * from (select * from t order by a) s order by a, b limit 32;
 (32 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 33;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 33;
  a | b  
@@ -307,18 +291,16 @@ select * from (select * from t order by a) s order by a, b limit 33;
 (33 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 65;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 65;
  a | b  
@@ -391,18 +373,16 @@ select * from (select * from t order by a) s order by a, b limit 65;
 (65 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 66;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 66;
  a | b  
@@ -480,18 +460,16 @@ delete from t;
 insert into t(a, b) select i/50 + 1, i + 1 from generate_series(0, 999) n(i);
 analyze t;
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 55;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 55;
  a | b  
@@ -555,27 +533,48 @@ select * from (select * from t order by a) s order by a, b limit 55;
 
 -- Test EXPLAIN ANALYZE with only a fullsort group.
 select explain_analyze_without_memory('select * from (select * from t order by a) s order by a, b limit 55');
-                        explain_analyze_without_memory                         
--------------------------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1) (actual rows=55 loops=1)
-   Merge Key: t.a, t.b
-   ->  Limit (actual rows=55 loops=1)
-         ->  Sort (actual rows=55 loops=1)
-               Sort Key: t.a, t.b
-               Sort Method:  top-N heapsort  Memory: NNkB
-               Executor Memory: NNkB  Segments: 1  Max: NNkB (segment 0)
-               ->  Sort (actual rows=1000 loops=1)
-                     Sort Key: t.a
-                     Sort Method:  quicksort  Memory: NNkB
-                     Executor Memory: NNkB  Segments: 1  Max: NNkB (segment 0)
-                     ->  Seq Scan on t (actual rows=1000 loops=1)
- Optimizer: Postgres query optimizer
-(13 rows)
+                                        explain_analyze_without_memory                                         
+---------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=55 loops=1)
+   ->  Incremental Sort (actual rows=55 loops=1)
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
+         Full-sort Groups: 2  Sort Methods: top-N heapsort, quicksort  Average Memory: NNkB  Peak Memory: NNkB
+         ->  Sort (actual rows=101 loops=1)
+               Sort Key: t.a
+               Sort Method: quicksort  Memory: NNkB
+               ->  Seq Scan on t (actual rows=1000 loops=1)
+(9 rows)
 
 select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from (select * from t order by a) s order by a, b limit 55'));
- jsonb_pretty 
---------------
- [           +
+                  jsonb_pretty                   
+-------------------------------------------------
+ [                                              +
+     {                                          +
+         "Sort Key": [                          +
+             "t.a",                             +
+             "t.b"                              +
+         ],                                     +
+         "Node Type": "Incremental Sort",       +
+         "Actual Rows": 55,                     +
+         "Actual Loops": 1,                     +
+         "Presorted Key": [                     +
+             "t.a"                              +
+         ],                                     +
+         "Parallel Aware": false,               +
+         "Full-sort Groups": {                  +
+             "Group Count": 2,                  +
+             "Sort Methods Used": [             +
+                 "top-N heapsort",              +
+                 "quicksort"                    +
+             ],                                 +
+             "Sort Space Memory": {             +
+                 "Peak Sort Space Used": "NN",  +
+                 "Average Sort Space Used": "NN"+
+             }                                  +
+         },                                     +
+         "Parent Relationship": "Outer"         +
+     }                                          +
  ]
 (1 row)
 
@@ -590,18 +589,16 @@ delete from t;
 insert into t(a, b) select (case when i < 5 then i else 9 end), i from generate_series(1, 1000) n(i);
 analyze t;
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 70;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 70;
  a | b  
@@ -687,23 +684,19 @@ set local enable_mergejoin = off;
 set local enable_material = off;
 set local enable_sort = off;
 explain (costs off) select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
-                         QUERY PLAN                         
-------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   ->  Merge Left Join
-         Merge Cond: (t.a = t_1.a)
+                   QUERY PLAN                   
+------------------------------------------------
+ Nested Loop Left Join
+   Join Filter: (t_1.a = t.a)
+   ->  Seq Scan on t
+         Filter: (a = ANY ('{1,2}'::integer[]))
+   ->  Incremental Sort
+         Sort Key: t_1.a, t_1.b
+         Presorted Key: t_1.a
          ->  Sort
-               Sort Key: t.a
-               ->  Seq Scan on t
-                     Filter: (a = ANY ('{1,2}'::integer[]))
-         ->  Materialize
-               ->  Sort
-                     Sort Key: t_1.a, t_1.b
-                     ->  Sort
-                           Sort Key: t_1.a
-                           ->  Seq Scan on t t_1
- Optimizer: Postgres query optimizer
-(14 rows)
+               Sort Key: t_1.a
+               ->  Seq Scan on t t_1
+(10 rows)
 
 select * from t left join (select * from (select * from t order by a) v order by a, b) s on s.a = t.a where t.a in (1, 2);
  a | b | a | b 
@@ -715,27 +708,59 @@ select * from t left join (select * from (select * from t order by a) v order by
 rollback;
 -- Test EXPLAIN ANALYZE with both fullsort and presorted groups.
 select explain_analyze_without_memory('select * from (select * from t order by a) s order by a, b limit 70');
-                        explain_analyze_without_memory                         
--------------------------------------------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1) (actual rows=70 loops=1)
-   Merge Key: t.a, t.b
-   ->  Limit (actual rows=70 loops=1)
-         ->  Sort (actual rows=70 loops=1)
-               Sort Key: t.a, t.b
-               Sort Method:  top-N heapsort  Memory: NNkB
-               Executor Memory: NNkB  Segments: 1  Max: NNkB (segment 0)
-               ->  Sort (actual rows=1000 loops=1)
-                     Sort Key: t.a
-                     Sort Method:  quicksort  Memory: NNkB
-                     Executor Memory: NNkB  Segments: 1  Max: NNkB (segment 0)
-                     ->  Seq Scan on t (actual rows=1000 loops=1)
- Optimizer: Postgres query optimizer
-(13 rows)
+                                         explain_analyze_without_memory                                         
+----------------------------------------------------------------------------------------------------------------
+ Limit (actual rows=70 loops=1)
+   ->  Incremental Sort (actual rows=70 loops=1)
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
+         Full-sort Groups: 1  Sort Method: quicksort  Average Memory: NNkB  Peak Memory: NNkB
+         Pre-sorted Groups: 5  Sort Methods: top-N heapsort, quicksort  Average Memory: NNkB  Peak Memory: NNkB
+         ->  Sort (actual rows=1000 loops=1)
+               Sort Key: t.a
+               Sort Method: quicksort  Memory: NNkB
+               ->  Seq Scan on t (actual rows=1000 loops=1)
+(10 rows)
 
 select jsonb_pretty(explain_analyze_inc_sort_nodes_without_memory('select * from (select * from t order by a) s order by a, b limit 70'));
- jsonb_pretty 
---------------
- [           +
+                  jsonb_pretty                   
+-------------------------------------------------
+ [                                              +
+     {                                          +
+         "Sort Key": [                          +
+             "t.a",                             +
+             "t.b"                              +
+         ],                                     +
+         "Node Type": "Incremental Sort",       +
+         "Actual Rows": 70,                     +
+         "Actual Loops": 1,                     +
+         "Presorted Key": [                     +
+             "t.a"                              +
+         ],                                     +
+         "Parallel Aware": false,               +
+         "Full-sort Groups": {                  +
+             "Group Count": 1,                  +
+             "Sort Methods Used": [             +
+                 "quicksort"                    +
+             ],                                 +
+             "Sort Space Memory": {             +
+                 "Peak Sort Space Used": "NN",  +
+                 "Average Sort Space Used": "NN"+
+             }                                  +
+         },                                     +
+         "Pre-sorted Groups": {                 +
+             "Group Count": 5,                  +
+             "Sort Methods Used": [             +
+                 "top-N heapsort",              +
+                 "quicksort"                    +
+             ],                                 +
+             "Sort Space Memory": {             +
+                 "Peak Sort Space Used": "NN",  +
+                 "Average Sort Space Used": "NN"+
+             }                                  +
+         },                                     +
+         "Parent Relationship": "Outer"         +
+     }                                          +
  ]
 (1 row)
 
@@ -750,18 +775,16 @@ delete from t;
 insert into t(a, b) select i / 10, i from generate_series(1, 1000) n(i);
 analyze t;
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 31;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 31;
  a | b  
@@ -800,18 +823,16 @@ select * from (select * from t order by a) s order by a, b limit 31;
 (31 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 32;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 32;
  a | b  
@@ -851,18 +872,16 @@ select * from (select * from t order by a) s order by a, b limit 32;
 (32 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 33;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 33;
  a | b  
@@ -903,18 +922,16 @@ select * from (select * from t order by a) s order by a, b limit 33;
 (33 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 65;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 65;
  a | b  
@@ -987,18 +1004,16 @@ select * from (select * from t order by a) s order by a, b limit 65;
 (65 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 66;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 66;
  a | b  
@@ -1076,18 +1091,16 @@ delete from t;
 insert into t(a, b) select i, i from generate_series(1, 1000) n(i);
 analyze t;
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 31;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 31;
  a  | b  
@@ -1126,18 +1139,16 @@ select * from (select * from t order by a) s order by a, b limit 31;
 (31 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 32;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 32;
  a  | b  
@@ -1177,18 +1188,16 @@ select * from (select * from t order by a) s order by a, b limit 32;
 (32 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 33;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 33;
  a  | b  
@@ -1229,18 +1238,16 @@ select * from (select * from t order by a) s order by a, b limit 33;
 (33 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 65;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 65;
  a  | b  
@@ -1313,18 +1320,16 @@ select * from (select * from t order by a) s order by a, b limit 65;
 (65 rows)
 
 explain (costs off) select * from (select * from t order by a) s order by a, b limit 66;
-                QUERY PLAN                
-------------------------------------------
- Gather Motion 1:1  (slice1; segments: 1)
-   Merge Key: t.a, t.b
-   ->  Limit
+           QUERY PLAN            
+---------------------------------
+ Limit
+   ->  Incremental Sort
+         Sort Key: t.a, t.b
+         Presorted Key: t.a
          ->  Sort
-               Sort Key: t.a, t.b
-               ->  Sort
-                     Sort Key: t.a
-                     ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(9 rows)
+               Sort Key: t.a
+               ->  Seq Scan on t
+(7 rows)
 
 select * from (select * from t order by a) s order by a, b limit 66;
  a  | b  
@@ -1411,56 +1416,56 @@ create index on t (a);
 analyze t;
 set enable_incrementalsort = off;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
-                   QUERY PLAN                   
-------------------------------------------------
+                      QUERY PLAN                      
+------------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         Merge Key: a, b, (sum(c))
-         ->  Limit
-               ->  Sort
-                     Sort Key: a, b, (sum(c))
-                     ->  HashAggregate
+   ->  Sort
+         Sort Key: a, b, (sum(c))
+         ->  Finalize HashAggregate
+               Group Key: a, b
+               ->  Gather
+                     Workers Planned: 2
+                     ->  Partial HashAggregate
                            Group Key: a, b
-                           ->  Seq Scan on t
- Optimizer: Postgres query optimizer
+                           ->  Parallel Seq Scan on t
 (10 rows)
 
 set enable_incrementalsort = on;
 explain (costs off) select a,b,sum(c) from t group by 1,2 order by 1,2,3 limit 1;
-                   QUERY PLAN                   
-------------------------------------------------
+                              QUERY PLAN                              
+----------------------------------------------------------------------
  Limit
-   ->  Gather Motion 3:1  (slice1; segments: 3)
-         Merge Key: a, b, (sum(c))
-         ->  Limit
-               ->  Sort
-                     Sort Key: a, b, (sum(c))
-                     ->  HashAggregate
-                           Group Key: a, b
-                           ->  Seq Scan on t
- Optimizer: Postgres query optimizer
-(10 rows)
+   ->  Incremental Sort
+         Sort Key: a, b, (sum(c))
+         Presorted Key: a, b
+         ->  GroupAggregate
+               Group Key: a, b
+               ->  Gather Merge
+                     Workers Planned: 2
+                     ->  Incremental Sort
+                           Sort Key: a, b
+                           Presorted Key: a
+                           ->  Parallel Index Scan using t_a_idx on t
+(12 rows)
 
 -- Incremental sort vs. set operations with varno 0
 set enable_hashagg to off;
 explain (costs off) select * from t union select * from t order by 1,3;
-                               QUERY PLAN                               
-------------------------------------------------------------------------
- Gather Motion 3:1  (slice1; segments: 3)
-   Merge Key: t.a, t.c
-   ->  Incremental Sort
-         Sort Key: t.a, t.c
-         Presorted Key: t.a
-         ->  Unique
-               Group Key: t.a, t.b, t.c
-               ->  Sort
-                     Sort Key: t.a, t.b, t.c
-                     ->  Redistribute Motion 3:3  (slice2; segments: 3)
-                           Hash Key: t.a, t.b, t.c
-                           ->  Append
-                                 ->  Seq Scan on t
-                                 ->  Seq Scan on t t_1
- Optimizer: Postgres query optimizer
-(15 rows)
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Incremental Sort
+   Sort Key: t.a, t.c
+   Presorted Key: t.a
+   ->  Unique
+         ->  Sort
+               Sort Key: t.a, t.b, t.c
+               ->  Append
+                     ->  Gather
+                           Workers Planned: 2
+                           ->  Parallel Seq Scan on t
+                     ->  Gather
+                           Workers Planned: 2
+                           ->  Parallel Seq Scan on t t_1
+(13 rows)
 
 drop table t;
