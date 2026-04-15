@@ -3485,7 +3485,9 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		if (j >= NUM_SORT_SPACE_TYPE)
 			continue;
 
-		sortMethod = tuplesort_method_name(i);
+		TuplesortMethod tuplesortMethod = (i > 0 ? 1 << (i - 1) : 0);
+
+		sortMethod = tuplesort_method_name(tuplesortMethod);
 		spaceType = tuplesort_space_type_name(j);
 
 		if (es->format == EXPLAIN_FORMAT_TEXT)
