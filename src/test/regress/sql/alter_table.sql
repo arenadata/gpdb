@@ -2960,7 +2960,6 @@ update bar1 set a = a + 1;
 -- Test that ALTER TABLE rewrite preserves a clustered index
 -- for normal indexes and indexes on constraints.
 create table alttype_cluster (a int);
-alter table alttype_cluster add primary key (a);
 create index alttype_cluster_ind on alttype_cluster (a);
 alter table alttype_cluster cluster on alttype_cluster_ind;
 -- Normal index remains clustered.
@@ -2972,6 +2971,7 @@ select indexrelid::regclass, indisclustered from pg_index
   where indrelid = 'alttype_cluster'::regclass
   order by indexrelid::regclass::text;
 -- Constraint index remains clustered.
+alter table alttype_cluster add primary key (a);
 alter table alttype_cluster cluster on alttype_cluster_pkey;
 select indexrelid::regclass, indisclustered from pg_index
   where indrelid = 'alttype_cluster'::regclass
