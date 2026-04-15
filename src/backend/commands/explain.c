@@ -3460,7 +3460,7 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 	if (!ns)
 		return;
 
-	for (i = 0; i < NUM_TUPLESORTMETHODS; i++)
+	for (i = 0; i < NUM_SORT_METHOD; i++)
 	{
 		CdbExplain_Agg	*agg;
 		const char *sortMethod;
@@ -3485,7 +3485,9 @@ show_sort_info(SortState *sortstate, ExplainState *es)
 		if (j >= NUM_SORT_SPACE_TYPE)
 			continue;
 
-		sortMethod = tuplesort_method_name(i);
+		TuplesortMethod tuplesortMethod = (i > 0 ? 1 << (i - 1) : 0);
+
+		sortMethod = tuplesort_method_name(tuplesortMethod);
 		spaceType = tuplesort_space_type_name(j);
 
 		if (es->format == EXPLAIN_FORMAT_TEXT)

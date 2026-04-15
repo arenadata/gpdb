@@ -127,7 +127,7 @@ typedef struct CdbExplain_NodeSummary
 	/* Used for DynamicSeqScan, DynamicIndexScan and DynamicBitmapHeapScan */
 	CdbExplain_Agg totalPartTableScanned;
 	/* Summary of space used by sort */
-	CdbExplain_Agg sortSpaceUsed[NUM_SORT_SPACE_TYPE][NUM_TUPLESORTMETHODS];
+	CdbExplain_Agg sortSpaceUsed[NUM_SORT_SPACE_TYPE][NUM_SORT_METHOD];
 
 	/* insts array info */
 	int			segindex0;		/* segment id of insts[0] */
@@ -984,7 +984,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	CdbExplain_DepStatAcc peakmemused;
 	CdbExplain_DepStatAcc vmem_reserved;
 	CdbExplain_DepStatAcc totalPartTableScanned;
-	CdbExplain_DepStatAcc sortSpaceUsed[NUM_SORT_SPACE_TYPE][NUM_TUPLESORTMETHODS];
+	CdbExplain_DepStatAcc sortSpaceUsed[NUM_SORT_SPACE_TYPE][NUM_SORT_METHOD];
 	int			imsgptr;
 	int			nInst;
 
@@ -1009,7 +1009,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	cdbexplain_depStatAcc_init0(&workmemwanted);
 	cdbexplain_depStatAcc_init0(&totalWorkfileCreated);
 	cdbexplain_depStatAcc_init0(&totalPartTableScanned);
-	for (int i = 0; i < NUM_TUPLESORTMETHODS; i++)
+	for (int i = 0; i < NUM_SORT_METHOD; i++)
 		for (int j = 0; j < NUM_SORT_SPACE_TYPE; j++)
 			cdbexplain_depStatAcc_init0(&sortSpaceUsed[j][i]);
 
@@ -1050,11 +1050,14 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 		cdbexplain_depStatAcc_upd(&workmemwanted, rsi->workmemwanted, rsh, rsi, nsi);
 		cdbexplain_depStatAcc_upd(&totalWorkfileCreated, (rsi->workfileCreated ? 1 : 0), rsh, rsi, nsi);
 		cdbexplain_depStatAcc_upd(&totalPartTableScanned, rsi->numPartScanned, rsh, rsi, nsi);
-		Assert(rsi->sortstats.sortMethod < NUM_TUPLESORTMETHODS);
+		int sortMethod = rsi->sortstats.sortMethod;
+		if (sortMethod != SORT_TYPE_STILL_IN_PROGRESS)
+			sortMethod = pg_rightmost_one_pos32(sortMethod) + 1;
+		Assert(sortMethod < NUM_SORT_METHOD);
 		Assert(rsi->sortstats.spaceType < NUM_SORT_SPACE_TYPE);
 		if (rsi->sortstats.sortMethod != SORT_TYPE_STILL_IN_PROGRESS)
 		{
-			cdbexplain_depStatAcc_upd(&sortSpaceUsed[rsi->sortstats.spaceType][rsi->sortstats.sortMethod],
+			cdbexplain_depStatAcc_upd(&sortSpaceUsed[rsi->sortstats.spaceType][sortMethod],
 									  (double) rsi->sortstats.spaceUsed, rsh, rsi, nsi);
 		}
 
@@ -1070,7 +1073,7 @@ cdbexplain_depositStatsToNode(PlanState *planstate, CdbExplain_RecvStatCtx *ctx)
 	ns->workmemwanted = workmemwanted.agg;
 	ns->totalWorkfileCreated = totalWorkfileCreated.agg;
 	ns->totalPartTableScanned = totalPartTableScanned.agg;
-	for (int i = 0; i < NUM_TUPLESORTMETHODS; i++)
+	for (int i = 0; i < NUM_SORT_METHOD; i++)
 		for (int j = 0; j < NUM_SORT_SPACE_TYPE; j++)
 			ns->sortSpaceUsed[j][i] = sortSpaceUsed[j][i].agg;
 
