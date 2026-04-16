@@ -1334,6 +1334,7 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 								 stmt->filename, stmt->is_program,
 								 stmt->attlist, options);
 
+<<<<<<< HEAD
 			/*
 			 * "copy t to file on segment"					CopyDispatchOnSegment
 			 * "copy (select * from t) to file on segment"	CopyToQueryOnSegment
@@ -1373,6 +1374,10 @@ DoCopy(ParseState *pstate, const CopyStmt *stmt,
 	/* Issue automatic ANALYZE if conditions are satisfied (MPP-4082). */
 	if (Gp_role == GP_ROLE_DISPATCH && is_from)
 		auto_stats(AUTOSTATS_CMDTYPE_COPY, relid, *processed, false /* inFunction */);
+=======
+	if (rel != NULL)
+		table_close(rel, NoLock);
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 }
 
 /*

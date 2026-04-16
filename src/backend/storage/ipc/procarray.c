@@ -281,8 +281,6 @@ CreateSharedProcArray(void)
 							mul_size(sizeof(bool), TOTAL_MAX_CACHED_SUBXIDS),
 							&found);
 	}
-
-	LWLockRegisterTranche(LWTRANCHE_PROC, "proc");
 }
 
 /*
@@ -489,6 +487,7 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 			ProcArrayGroupClearXid(proc, latestXid);
 	}
 
+<<<<<<< HEAD
 	/*
 	 * If we have no XID, we don't need to lock, since we won't affect
 	 * anyone else's calculation of a snapshot.  We might change their
@@ -500,6 +499,14 @@ ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid)
 	 */
 	Assert(!TransactionIdIsValid(allPgXact[proc->pgprocno].xid));
 	Assert(!TransactionIdIsValid(allTmGxact[proc->pgprocno].gxid));
+=======
+		proc->lxid = InvalidLocalTransactionId;
+		pgxact->xmin = InvalidTransactionId;
+		/* must be cleared with xid/xmin: */
+		pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
+		proc->delayChkpt = false;	/* be sure this is cleared in abort */
+		proc->recoveryConflictPending = false;
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	proc->lxid = InvalidLocalTransactionId;
 	pgxact->xmin = InvalidTransactionId;
@@ -528,7 +535,7 @@ ProcArrayEndTransactionInternal(PGPROC *proc, PGXACT *pgxact,
 	pgxact->xmin = InvalidTransactionId;
 	/* must be cleared with xid/xmin: */
 	pgxact->vacuumFlags &= ~PROC_VACUUM_STATE_MASK;
-	proc->delayChkpt = false; /* be sure this is cleared in abort */
+	proc->delayChkpt = false;	/* be sure this is cleared in abort */
 	proc->recoveryConflictPending = false;
 
 	/* Clear the subtransaction-XID cache too while holding the lock */

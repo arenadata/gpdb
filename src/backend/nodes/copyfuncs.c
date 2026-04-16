@@ -126,7 +126,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_NODE_FIELD(paramExecTypes);
 	COPY_NODE_FIELD(utilityStmt);
 	COPY_LOCATION_FIELD(stmt_location);
-	COPY_LOCATION_FIELD(stmt_len);
+	COPY_SCALAR_FIELD(stmt_len);
 
 	COPY_SCALAR_FIELD(numSlices);
 	newnode->slices = palloc(from->numSlices * sizeof(PlanSlice));
@@ -3666,9 +3666,13 @@ _copyQuery(const Query *from)
 	COPY_NODE_FIELD(constraintDeps);
 	COPY_NODE_FIELD(withCheckOptions);
 	COPY_LOCATION_FIELD(stmt_location);
+<<<<<<< HEAD
 	COPY_LOCATION_FIELD(stmt_len);
 	COPY_SCALAR_FIELD(parentStmtType);
 	COPY_NODE_FIELD(intoPolicy);
+=======
+	COPY_SCALAR_FIELD(stmt_len);
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	return newnode;
 }
@@ -3680,7 +3684,7 @@ _copyRawStmt(const RawStmt *from)
 
 	COPY_NODE_FIELD(stmt);
 	COPY_LOCATION_FIELD(stmt_location);
-	COPY_LOCATION_FIELD(stmt_len);
+	COPY_SCALAR_FIELD(stmt_len);
 
 	return newnode;
 }

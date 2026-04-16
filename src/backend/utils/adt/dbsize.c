@@ -1126,8 +1126,9 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	relform = (Form_pg_class) GETSTRUCT(tuple);
 
-	switch (relform->relkind)
+	if (RELKIND_HAS_STORAGE(relform->relkind))
 	{
+<<<<<<< HEAD
 		case RELKIND_RELATION:
 		case RELKIND_MATVIEW:
 		case RELKIND_INDEX:
@@ -1148,6 +1149,18 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 			/* no storage, return NULL */
 			result = InvalidOid;
 			break;
+=======
+		if (relform->relfilenode)
+			result = relform->relfilenode;
+		else				/* Consult the relation mapper */
+			result = RelationMapOidToFilenode(relid,
+											  relform->relisshared);
+	}
+	else
+	{
+		/* no storage, return NULL */
+		result = InvalidOid;
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	}
 
 	ReleaseSysCache(tuple);
@@ -1206,8 +1219,26 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	relform = (Form_pg_class) GETSTRUCT(tuple);
 
-	switch (relform->relkind)
+	if (RELKIND_HAS_STORAGE(relform->relkind))
 	{
+		/* This logic should match RelationInitPhysicalAddr */
+		if (relform->reltablespace)
+			rnode.spcNode = relform->reltablespace;
+		else
+			rnode.spcNode = MyDatabaseTableSpace;
+		if (rnode.spcNode == GLOBALTABLESPACE_OID)
+			rnode.dbNode = InvalidOid;
+		else
+			rnode.dbNode = MyDatabaseId;
+		if (relform->relfilenode)
+			rnode.relNode = relform->relfilenode;
+		else				/* Consult the relation mapper */
+			rnode.relNode = RelationMapOidToFilenode(relid,
+													 relform->relisshared);
+	}
+	else
+	{
+<<<<<<< HEAD
 		case RELKIND_RELATION:
 		case RELKIND_MATVIEW:
 		case RELKIND_INDEX:
@@ -1235,12 +1266,13 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 			break;
 
 		default:
+=======
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			/* no storage, return NULL */
 			rnode.relNode = InvalidOid;
 			/* some compilers generate warnings without these next two lines */
 			rnode.dbNode = InvalidOid;
 			rnode.spcNode = InvalidOid;
-			break;
 	}
 
 	if (!OidIsValid(rnode.relNode))

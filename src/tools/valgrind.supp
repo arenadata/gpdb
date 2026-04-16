@@ -45,7 +45,7 @@
 	padding_XLogRecData_CRC
 	Memcheck:Value8
 
-	fun:pg_comp_crc32c
+	fun:pg_comp_crc32c*
 	fun:XLogRecordAssemble
 }
 
@@ -89,7 +89,7 @@
 {
 	padding_twophase_CRC
 	Memcheck:Value8
-	fun:pg_comp_crc32c
+	fun:pg_comp_crc32c*
 	fun:EndPrepare
 }
 
@@ -175,6 +175,7 @@
 	fun:IsBinaryCoercible
 }
 
+<<<<<<< HEAD
 # Python's allocator does some low-level tricks for efficiency. Those
 # can be disabled for better instrumentation; but few people testing
 # postgres will have such a build of python. So add broad
@@ -254,6 +255,8 @@
 }
 
 
+=======
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 # Python's allocator does some low-level tricks for efficiency. Those
 # can be disabled for better instrumentation; but few people testing
 # postgres will have such a build of python. So add broad

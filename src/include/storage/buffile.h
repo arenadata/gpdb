@@ -45,8 +45,12 @@ extern BufFile *BufFileCreateTemp(char *operation_name, bool interXact);
 extern BufFile *BufFileCreateTempInSet(char *operation_name, bool interXact, struct workfile_set *work_set);
 extern void BufFileClose(BufFile *file);
 extern size_t BufFileRead(BufFile *file, void *ptr, size_t size);
+<<<<<<< HEAD
 extern size_t BufFileWrite(BufFile *file, void *ptr, size_t size);
 
+=======
+extern void BufFileWrite(BufFile *file, void *ptr, size_t size);
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 extern int	BufFileSeek(BufFile *file, int fileno, off_t offset, int whence);
 extern void BufFileTell(BufFile *file, int *fileno, off_t *offset);
 extern int	BufFileSeekBlock(BufFile *file, int64 blknum);

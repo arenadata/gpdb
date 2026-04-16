@@ -284,6 +284,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString,
 	return namespaceId;
 }
 
+<<<<<<< HEAD
 /*
  * Guts of schema deletion.
  */
@@ -316,6 +317,8 @@ RemoveSchemaById(Oid schemaOid)
 		MetaTrackDropObject(NamespaceRelationId, schemaOid);
 }
 
+=======
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 /*
  * Rename schema

@@ -1040,7 +1040,13 @@ hash_search_with_hash_value(HTAB *hashp,
 			return NULL;
 
 		case HASH_ENTER_NULL:
+<<<<<<< HEAD
 			/* FALLTHROUGH */
+=======
+			/* ENTER_NULL does not work with palloc-based allocator */
+			Assert(hashp->alloc != DynaHashAlloc);
+			/* FALL THRU */
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 		case HASH_ENTER:
 			/* Return existing element if found, else create one */
@@ -1721,7 +1727,10 @@ hash_corrupted(HTAB *hashp)
 int
 my_log2(long num)
 {
-	/* guard against too-large input, which would be invalid for pg_ceil_log2_*() */
+	/*
+	 * guard against too-large input, which would be invalid for
+	 * pg_ceil_log2_*()
+	 */
 	if (num > LONG_MAX / 2)
 		num = LONG_MAX / 2;
 

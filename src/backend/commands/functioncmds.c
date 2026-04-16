@@ -1879,7 +1879,7 @@ CreateCast(CreateCastStmt *stmt)
 	char		castmethod;
 	HeapTuple	tuple;
 	AclResult	aclresult;
-	ObjectAddress	myself;
+	ObjectAddress myself;
 
 	sourcetypeid = typenameTypeId(NULL, stmt->sourcetype);
 	targettypeid = typenameTypeId(NULL, stmt->targettype);
@@ -2117,32 +2117,6 @@ CreateCast(CreateCastStmt *stmt)
 	}
 
 	return myself;
-}
-
-void
-DropCastById(Oid castOid)
-{
-	Relation	relation;
-	ScanKeyData scankey;
-	SysScanDesc scan;
-	HeapTuple	tuple;
-
-	relation = table_open(CastRelationId, RowExclusiveLock);
-
-	ScanKeyInit(&scankey,
-				Anum_pg_cast_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(castOid));
-	scan = systable_beginscan(relation, CastOidIndexId, true,
-							  NULL, 1, &scankey);
-
-	tuple = systable_getnext(scan);
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for cast %u", castOid);
-	CatalogTupleDelete(relation, &tuple->t_self);
-
-	systable_endscan(scan);
-	table_close(relation, RowExclusiveLock);
 }
 
 
@@ -2434,6 +2408,7 @@ get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok)
 }
 
 
+<<<<<<< HEAD
 void
 DropTransformById(Oid transformOid)
 {
@@ -2466,6 +2441,8 @@ DropTransformById(Oid transformOid)
 }
 
 
+=======
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 /*
  * Subroutine for ALTER FUNCTION/AGGREGATE SET SCHEMA/RENAME
  *

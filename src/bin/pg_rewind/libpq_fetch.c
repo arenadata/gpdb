@@ -23,9 +23,13 @@
 #include "pg_rewind.h"
 #include "port/pg_bswap.h"
 
+<<<<<<< HEAD
 #include "pqexpbuffer.h"
 
 PGconn *conn = NULL;
+=======
+PGconn	   *conn = NULL;
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 /*
  * Files are fetched max CHUNKSIZE bytes at a time.

@@ -115,6 +115,7 @@ distclean maintainer-clean:
 	@rm -rf autom4te.cache/
 	rm -f config.cache config.log config.status GNUmakefile
 
+<<<<<<< HEAD
 installcheck-resgroup:
 	$(MAKE) -C src/test/isolation2 $@
 
@@ -127,6 +128,11 @@ destroy-demo-cluster:
 
 check-tests installcheck installcheck-parallel installcheck-tests: CHECKPREP_TOP=src/test/regress
 check-tests installcheck installcheck-parallel installcheck-tests: submake-generated-headers
+=======
+check-tests: | temp-install
+check check-tests installcheck installcheck-parallel installcheck-tests: CHECKPREP_TOP=src/test/regress
+check check-tests installcheck installcheck-parallel installcheck-tests: submake-generated-headers
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	$(MAKE) -C src/test/regress $@
 
 check:
@@ -143,6 +149,7 @@ check:
 	  . $(prefix)/greenplum_path.sh && . $(top_builddir)/gpAux/gpdemo/gpdemo-env.sh && $(MAKE) -C $(top_builddir) installcheck; \
 	fi
 
+<<<<<<< HEAD
 $(call recurse,check-world,src/test src/pl src/interfaces/ecpg contrib src/bin gpcontrib,check)
 $(call recurse,checkprep,  src/test src/pl src/interfaces/ecpg contrib src/bin gpcontrib)
 
@@ -198,6 +205,10 @@ $(call recurse,installcheck-world,src/bin/pg_upgrade,check)
 unittest-check:
 	$(MAKE) CFLAGS=-DUNITTEST -C src/backend unittest-check
 	$(MAKE) CFLAGS=-DUNITTEST -C src/bin unittest-check
+=======
+$(call recurse,installcheck-world,src/test src/pl src/interfaces/ecpg contrib src/bin,installcheck)
+$(call recurse,install-tests,src/test/regress,install-tests)
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
 	./config.status $@

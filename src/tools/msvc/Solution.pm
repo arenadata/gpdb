@@ -64,7 +64,8 @@ sub DeterminePlatform
 		# Examine CL help output to determine if we are in 32 or 64-bit mode.
 		my $output = `cl /? 2>&1`;
 		$? >> 8 == 0 or die "cl command not found";
-		$self->{platform} = ($output =~ /^\/favor:<.+AMD64/m) ? 'x64' : 'Win32';
+		$self->{platform} =
+		  ($output =~ /^\/favor:<.+AMD64/m) ? 'x64' : 'Win32';
 	}
 	else
 	{
@@ -143,9 +144,14 @@ sub GetOpenSSLVersion
 
 sub GenerateFiles
 {
+<<<<<<< HEAD
 	my $self = shift;
 	my $buildclient = shift;
 	my $bits = $self->{platform} eq 'Win32' ? 32 : 64;
+=======
+	my $self          = shift;
+	my $bits          = $self->{platform} eq 'Win32' ? 32 : 64;
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	my $ac_init_found = 0;
 	my $package_name;
 	my $package_version;
@@ -158,7 +164,8 @@ sub GenerateFiles
 	  || confess("Could not open configure.in for reading\n");
 	while (<$c>)
 	{
-		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\], \[([^\]]*)\], \[([^\]]+)\]/)
+		if (/^AC_INIT\(\[([^\]]+)\], \[([^\]]+)\], \[([^\]]+)\], \[([^\]]*)\], \[([^\]]+)\]/
+		  )
 		{
 			$self->{gpdbver} = $1;
 			$self->{gpdbmajorver} = substr $1, 0, 1;
@@ -168,11 +175,15 @@ sub GenerateFiles
 			$package_name      = $1;
 			$package_bugreport = $3;
 			#$package_tarname   = $4;
+<<<<<<< HEAD
 			$package_url       = $5;
 		}
 		if (/\[PG_PACKAGE_VERSION=([^\]]+)\]/)
 		{
 			$package_version   = $1;
+=======
+			$package_url = $5;
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 			if ($package_version !~ /^(\d+)(?:\.(\d+))?/)
 			{
@@ -503,8 +514,8 @@ sub GenerateFiles
 		inline            => '__inline',
 		pg_restrict       => '__restrict',
 		# not defined, because it'd conflict with __declspec(restrict)
-		restrict  => undef,
-		typeof    => undef,);
+		restrict => undef,
+		typeof   => undef,);
 
 	if ($self->{options}->{uuid})
 	{
@@ -537,9 +548,10 @@ sub GenerateFiles
 		}
 	}
 
-	$self->GenerateConfigHeader('src/include/pg_config.h', \%define, 1);
+	$self->GenerateConfigHeader('src/include/pg_config.h',     \%define, 1);
 	$self->GenerateConfigHeader('src/include/pg_config_ext.h', \%define, 0);
-	$self->GenerateConfigHeader('src/interfaces/ecpg/include/ecpg_config.h', \%define, 0);
+	$self->GenerateConfigHeader('src/interfaces/ecpg/include/ecpg_config.h',
+		\%define, 0);
 
 	$self->GenerateDefFile(
 		"src/interfaces/libpq/libpqdll.def",
@@ -844,8 +856,8 @@ sub GenerateConfigHeader
 
 	my $config_header_in = $config_header . '.in';
 
-	if (IsNewer($config_header, $config_header_in) ||
-		IsNewer($config_header, __FILE__))
+	if (   IsNewer($config_header, $config_header_in)
+		|| IsNewer($config_header, __FILE__))
 	{
 		my %defines_copy = %$defines;
 
@@ -867,7 +879,8 @@ sub GenerateConfigHeader
 				{
 					if (defined $defines->{$macro})
 					{
-						print $o "#${ws}define $macro ", $defines->{$macro}, "\n";
+						print $o "#${ws}define $macro ", $defines->{$macro},
+						  "\n";
 					}
 					else
 					{
@@ -877,7 +890,8 @@ sub GenerateConfigHeader
 				}
 				else
 				{
-					croak "undefined symbol: $macro at $config_header line $.";
+					croak
+					  "undefined symbol: $macro at $config_header line $.";
 				}
 			}
 			else

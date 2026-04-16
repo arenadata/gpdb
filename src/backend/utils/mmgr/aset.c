@@ -679,7 +679,7 @@ AllocSetReset(MemoryContext context)
 	AllocSet	set = (AllocSet) context;
 	AllocBlock	block;
 	Size		keepersize PG_USED_FOR_ASSERTS_ONLY
-		= set->keeper->endptr - ((char *) set);
+	= set->keeper->endptr - ((char *) set);
 
 	AssertArg(AllocSetIsValid(set));
 
@@ -725,7 +725,7 @@ AllocSetReset(MemoryContext context)
 		else
 		{
 			/* Normal case, release the block */
-			context->mem_allocated -= block->endptr - ((char*) block);
+			context->mem_allocated -= block->endptr - ((char *) block);
 
 #ifdef CLOBBER_FREED_MEMORY
 			wipe_mem(block, block->freeptr - ((char *) block));
@@ -754,7 +754,7 @@ AllocSetDelete(MemoryContext context, MemoryContext parent)
 	AllocSet	set = (AllocSet) context;
 	AllocBlock	block = set->blocks;
 	Size		keepersize PG_USED_FOR_ASSERTS_ONLY
-		= set->keeper->endptr - ((char *) set);
+	= set->keeper->endptr - ((char *) set);
 
 	AssertArg(AllocSetIsValid(set));
 
@@ -1202,7 +1202,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 		if (block->next)
 			block->next->prev = block->prev;
 
-		context->mem_allocated -= block->endptr - ((char*) block);
+		context->mem_allocated -= block->endptr - ((char *) block);
 
 #ifdef CLOBBER_FREED_MEMORY
 		wipe_mem(block, block->freeptr - ((char *) block));
@@ -1332,7 +1332,11 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 
 		/* Do the realloc */
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
+<<<<<<< HEAD
 		oldblksize = UserPtr_GetUserPtrSize(block);
+=======
+		oldblksize = block->endptr - ((char *) block);
+>>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 		block = (AllocBlock) gp_realloc(block, blksize);
 		if (block == NULL)
