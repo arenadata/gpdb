@@ -112,7 +112,6 @@ CreateAccessMethod(CreateAmStmt *stmt)
 
 	recordDependencyOnCurrentExtension(&myself, false);
 
-<<<<<<< HEAD
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt,
@@ -122,9 +121,8 @@ CreateAccessMethod(CreateAmStmt *stmt)
 									GetAssignedOidsForDispatch(),
 									NULL);
 	}
-=======
+
 	InvokeObjectPostCreateHook(AccessMethodRelationId, amoid, 0);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	table_close(rel, RowExclusiveLock);
 
