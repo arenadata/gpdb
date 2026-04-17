@@ -49,8 +49,7 @@ ReplicationOriginLock				40
 MultiXactTruncationLock				41
 OldSnapshotTimeMapLock				42
 LogicalRepWorkerLock				43
-<<<<<<< HEAD
-CLogTruncationLock					44
+XactTruncationLock					44
 
 # Additional individual locks in GPDB
 SharedSnapshotLock					45
@@ -68,6 +67,3 @@ ShareInputScanLock				56
 FTSReplicationStatusLock			57
 GxidBumpLock						58
 ParallelCursorEndpointLock			59
-=======
-XactTruncationLock					44
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
