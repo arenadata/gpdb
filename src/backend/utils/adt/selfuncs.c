@@ -201,7 +201,8 @@ static bool get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 static void get_stats_slot_range(AttStatsSlot *sslot,
 								 Oid opfuncoid, FmgrInfo *opproc,
 								 Oid collation, int16 typLen, bool typByVal,
-								 Datum *min, Datum *max, bool *p_have_data);
+								 Datum *min, Datum *max, bool *p_have_data,
+								 Oid atttype);
 static bool get_actual_variable_range(PlannerInfo *root,
 									  VariableStatData *vardata,
 									  Oid sortop, Oid collation,
@@ -5648,11 +5649,7 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 	Oid			opfuncoid;
 	FmgrInfo	opproc;
 	AttStatsSlot sslot;
-<<<<<<< HEAD
-	int			i;
 	HeapTuple	tp = getStatsTuple(vardata);
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	/*
 	 * XXX It's very tempting to try to use the actual column min and max, if
@@ -5695,7 +5692,6 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 						 STATISTIC_KIND_HISTOGRAM, sortop,
 						 ATTSTATSSLOT_VALUES))
 	{
-<<<<<<< HEAD
 		/*
 		 * GPDB: GPDB allows users to modify pg_statistics.stavalues with
 		 * UPDATEs (PostgreSQL complaints about the table row type not
@@ -5710,10 +5706,7 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 			elog(ERROR, "invalid histogram of type %s, for attribute of type %s",
 				 format_type_be(sslot.valuetype), format_type_be(vardata->atttype));
 
-		if (sslot.nvalues > 0)
-=======
 		if (sslot.stacoll == collation && sslot.nvalues > 0)
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 		{
 			tmin = datumCopy(sslot.values[0], typByVal, typLen);
 			tmax = datumCopy(sslot.values[sslot.nvalues - 1], typByVal, typLen);
@@ -5735,7 +5728,8 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 	{
 		get_stats_slot_range(&sslot, opfuncoid, &opproc,
 							 collation, typLen, typByVal,
-							 &tmin, &tmax, &have_data);
+							 &tmin, &tmax, &have_data,
+							 vardata->atttype);
 		free_attstatsslot(&sslot);
 	}
 
@@ -5748,52 +5742,10 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 						 STATISTIC_KIND_MCV, InvalidOid,
 						 ATTSTATSSLOT_VALUES))
 	{
-<<<<<<< HEAD
-		bool		tmin_is_mcv = false;
-		bool		tmax_is_mcv = false;
-		FmgrInfo	opproc;
-
-		fmgr_info(opfuncoid, &opproc);
-
-		/*
-		 * GPDB: See the identical check, above, for histogram data.
-		 */
-		if (!IsBinaryCoercible(sslot.valuetype, vardata->atttype))
-			elog(ERROR, "invalid MCV array of type %s, for attribute of type %s",
-				 format_type_be(sslot.valuetype), format_type_be(vardata->atttype));
-
-		for (i = 0; i < sslot.nvalues; i++)
-		{
-			if (!have_data)
-			{
-				tmin = tmax = sslot.values[i];
-				tmin_is_mcv = tmax_is_mcv = have_data = true;
-				continue;
-			}
-			if (DatumGetBool(FunctionCall2Coll(&opproc,
-											   sslot.stacoll,
-											   sslot.values[i], tmin)))
-			{
-				tmin = sslot.values[i];
-				tmin_is_mcv = true;
-			}
-			if (DatumGetBool(FunctionCall2Coll(&opproc,
-											   sslot.stacoll,
-											   tmax, sslot.values[i])))
-			{
-				tmax = sslot.values[i];
-				tmax_is_mcv = true;
-			}
-		}
-		if (tmin_is_mcv)
-			tmin = datumCopy(tmin, typByVal, typLen);
-		if (tmax_is_mcv)
-			tmax = datumCopy(tmax, typByVal, typLen);
-=======
 		get_stats_slot_range(&sslot, opfuncoid, &opproc,
 							 collation, typLen, typByVal,
-							 &tmin, &tmax, &have_data);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+							 &tmin, &tmax, &have_data,
+							 vardata->atttype);
 		free_attstatsslot(&sslot);
 	}
 
@@ -5811,7 +5763,8 @@ get_variable_range(PlannerInfo *root, VariableStatData *vardata,
 static void
 get_stats_slot_range(AttStatsSlot *sslot, Oid opfuncoid, FmgrInfo *opproc,
 					 Oid collation, int16 typLen, bool typByVal,
-					 Datum *min, Datum *max, bool *p_have_data)
+					 Datum *min, Datum *max, bool *p_have_data,
+					 Oid atttype)
 {
 	Datum		tmin = *min;
 	Datum		tmax = *max;
@@ -5822,6 +5775,13 @@ get_stats_slot_range(AttStatsSlot *sslot, Oid opfuncoid, FmgrInfo *opproc,
 	/* Look up the comparison function, if we didn't already do so */
 	if (opproc->fn_oid != opfuncoid)
 		fmgr_info(opfuncoid, opproc);
+
+	/*
+	 * GPDB: See the identical check, above, for histogram data.
+	 */
+	if (!IsBinaryCoercible(sslot->valuetype, atttype))
+		elog(ERROR, "invalid MCV array of type %s, for attribute of type %s",
+			 format_type_be(sslot->valuetype), format_type_be(atttype));
 
 	/* Scan all the slot's values */
 	for (int i = 0; i < sslot->nvalues; i++)
