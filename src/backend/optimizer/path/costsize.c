@@ -136,15 +136,9 @@ bool		enable_sort = true;
 /* GPDB_13_MERGE_FIXME: enable incremental sort */
 bool		enable_incrementalsort = false;
 bool		enable_hashagg = true;
-<<<<<<< HEAD
 bool		enable_groupagg = true;
-bool		enable_hashagg_disk = true;
-bool		enable_groupingsets_hash_disk = false;
-bool		enable_nestloop = false;
-=======
 bool		hashagg_avoid_disk_plan = true;
 bool		enable_nestloop = true;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 bool		enable_material = true;
 bool		enable_mergejoin = false;
 bool		enable_hashjoin = true;
