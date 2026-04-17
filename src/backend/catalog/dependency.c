@@ -1274,7 +1274,7 @@ MetaTrackDropObjectById(const ObjectAddress *object)
 			 * Remove all persistent error logs belonging to the the schema.
 			 */
 			PersistentErrorLogDelete(MyDatabaseId, object->objectId, NULL);
-			/* FALLTHROUGH */
+			/* FALL THRU */
 		case OCLASS_TRANSFORM:
 			if (Gp_role == GP_ROLE_DISPATCH)
 				MetaTrackDropObject(object->classId, object->objectId);
