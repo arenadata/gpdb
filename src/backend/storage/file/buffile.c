@@ -665,7 +665,6 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 	size_t		nread = 0;
 	size_t		nthistime;
 
-<<<<<<< HEAD
 	switch (file->state)
 	{
 		case BFS_RANDOM_ACCESS:
@@ -681,15 +680,7 @@ BufFileRead(BufFile *file, void *ptr, size_t size)
 			return BufFileLoadCompressedBuffer(file, ptr, size);
 	}
 
-	if (file->dirty)
-	{
-		if (BufFileFlush(file) != 0)
-			return 0;			/* could not flush... */
-		Assert(!file->dirty);
-	}
-=======
 	BufFileFlush(file);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	while (size > 0)
 	{
