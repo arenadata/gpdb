@@ -1519,12 +1519,7 @@ ExecHashJoinSaveTuple(PlanState *ps, MinimalTuple tuple, uint32 hashvalue,
 					  HashJoinTable hashtable, BufFile **fileptr,
 					  MemoryContext bfCxt)
 {
-<<<<<<< HEAD
-	BufFile	   *file = *fileptr;
-	size_t		written;
-=======
 	BufFile    *file = *fileptr;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	if (hashtable->work_set == NULL)
 	{
@@ -1562,26 +1557,8 @@ ExecHashJoinSaveTuple(PlanState *ps, MinimalTuple tuple, uint32 hashvalue,
 		MemoryContextSwitchTo(oldcxt);
 	}
 
-<<<<<<< HEAD
-	written = BufFileWrite(file, (void *) &hashvalue, sizeof(uint32));
-	if (written != sizeof(uint32))
-	{
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to temporary file: %m")));
-	}
-
-	written = BufFileWrite(file, (void *) tuple, tuple->t_len);
-	if (written != tuple->t_len)
-	{
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to temporary file: %m")));
-	}
-=======
 	BufFileWrite(file, (void *) &hashvalue, sizeof(uint32));
 	BufFileWrite(file, (void *) tuple, tuple->t_len);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 }
 
 /*
