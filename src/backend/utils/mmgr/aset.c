@@ -1332,11 +1332,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 
 		/* Do the realloc */
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
-<<<<<<< HEAD
 		oldblksize = UserPtr_GetUserPtrSize(block);
-=======
-		oldblksize = block->endptr - ((char *) block);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 		block = (AllocBlock) gp_realloc(block, blksize);
 		if (block == NULL)
