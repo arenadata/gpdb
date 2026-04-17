@@ -775,7 +775,7 @@ BufFileWrite(BufFile *file, void *ptr, size_t size)
 
 		case BFS_COMPRESSED_WRITING:
 			BufFileDumpCompressedBuffer(file, ptr, size);
-			return size;
+			return;
 
 		case BFS_SEQUENTIAL_READING:
 		case BFS_COMPRESSED_READING:
