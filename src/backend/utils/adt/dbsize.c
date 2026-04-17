@@ -1128,28 +1128,6 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 
 	if (RELKIND_HAS_STORAGE(relform->relkind))
 	{
-<<<<<<< HEAD
-		case RELKIND_RELATION:
-		case RELKIND_MATVIEW:
-		case RELKIND_INDEX:
-		case RELKIND_SEQUENCE:
-		case RELKIND_TOASTVALUE:
-		case RELKIND_AOSEGMENTS:
-		case RELKIND_AOBLOCKDIR:
-		case RELKIND_AOVISIMAP:
-			/* okay, these have storage */
-			if (relform->relfilenode)
-				result = relform->relfilenode;
-			else				/* Consult the relation mapper */
-				result = RelationMapOidToFilenode(relid,
-												  relform->relisshared);
-			break;
-
-		default:
-			/* no storage, return NULL */
-			result = InvalidOid;
-			break;
-=======
 		if (relform->relfilenode)
 			result = relform->relfilenode;
 		else				/* Consult the relation mapper */
@@ -1160,7 +1138,6 @@ pg_relation_filenode(PG_FUNCTION_ARGS)
 	{
 		/* no storage, return NULL */
 		result = InvalidOid;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	}
 
 	ReleaseSysCache(tuple);
@@ -1238,36 +1215,6 @@ pg_relation_filepath(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-<<<<<<< HEAD
-		case RELKIND_RELATION:
-		case RELKIND_MATVIEW:
-		case RELKIND_INDEX:
-		case RELKIND_SEQUENCE:
-		case RELKIND_TOASTVALUE:
-		case RELKIND_AOSEGMENTS:
-		case RELKIND_AOVISIMAP:
-		case RELKIND_AOBLOCKDIR:
-			/* okay, these have storage */
-
-			/* This logic should match RelationInitPhysicalAddr */
-			if (relform->reltablespace)
-				rnode.spcNode = relform->reltablespace;
-			else
-				rnode.spcNode = MyDatabaseTableSpace;
-			if (rnode.spcNode == GLOBALTABLESPACE_OID)
-				rnode.dbNode = InvalidOid;
-			else
-				rnode.dbNode = MyDatabaseId;
-			if (relform->relfilenode)
-				rnode.relNode = relform->relfilenode;
-			else				/* Consult the relation mapper */
-				rnode.relNode = RelationMapOidToFilenode(relid,
-														 relform->relisshared);
-			break;
-
-		default:
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			/* no storage, return NULL */
 			rnode.relNode = InvalidOid;
 			/* some compilers generate warnings without these next two lines */
