@@ -5588,26 +5588,7 @@ numeric_stddev_internal(NumericAggState *state,
 	accum_sum_final(&(state->sumX), &vsumX);
 	accum_sum_final(&(state->sumX2), &vsumX2);
 
-<<<<<<< HEAD
-	/*
-	 * Sample stddev and variance are undefined when N <= 1; population stddev
-	 * is undefined when N == 0. Return NULL in either case.
-	 */
-	if (sample)
-		comp = &const_one;
-	else
-		comp = &const_zero;
-
-	if (cmp_var(&vN, comp) <= 0)
-	{
-		*is_null = true;
-		return NULL;
-	}
-
 	quick_init_var(&vNminus1);
-=======
-	init_var(&vNminus1);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	sub_var(&vN, &const_one, &vNminus1);
 
 	/* compute rscale for mul_var calls */

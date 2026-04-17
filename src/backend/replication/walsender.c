@@ -2598,21 +2598,13 @@ WalSndSegmentOpen(XLogReaderState *state, XLogSegNo nextSegNo,
 			*tli_p = sendTimeLineNextTLI;
 	}
 
-<<<<<<< HEAD
-	XLogFilePath(path, *tli_p, nextSegNo, segcxt->ws_segsize);
-	fd = BasicOpenFile(path, O_RDONLY | PG_BINARY);
-	if (fd >= 0)
-		return fd;
-	
-	/* Report xlog missing failure to gp_stat_replication view (67d4843). */
-	WalSndCtl->error = WALSNDERROR_WALREAD;
-=======
 	XLogFilePath(path, *tli_p, nextSegNo, state->segcxt.ws_segsize);
 	state->seg.ws_file = BasicOpenFile(path, O_RDONLY | PG_BINARY);
 	if (state->seg.ws_file >= 0)
 		return;
 
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+	/* Report xlog missing failure to gp_stat_replication view (67d4843). */
+	WalSndCtl->error = WALSNDERROR_WALREAD;
 	/*
 	 * If the file is not found, assume it's because the standby asked for a
 	 * too old WAL segment that has already been removed or recycled.

@@ -141,16 +141,11 @@ CancelRequested()
 
 #define CHECK_FOR_INTERRUPTS() \
 do { \
-<<<<<<< HEAD
-	if (InterruptPending) \
+	if (unlikely(InterruptPending)) \
 		ProcessInterrupts(__FILE__, __LINE__); \
 	BackoffBackendTick(); \
 	ReportOOMConsumption(); \
 	RedZoneHandler_DetectRunawaySession();\
-=======
-	if (unlikely(InterruptPending)) \
-		ProcessInterrupts(); \
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 } while(0)
 
 #else							/* WIN32 */
@@ -159,13 +154,8 @@ do { \
 do { \
 	if (unlikely(UNBLOCKED_SIGNAL_QUEUE())) \
 		pgwin32_dispatch_queued_signals(); \
-<<<<<<< HEAD
-	if (InterruptPending) \
-		ProcessInterrupts(__FILE__, __LINE__); \
-=======
 	if (unlikely(InterruptPending)) \
-		ProcessInterrupts(); \
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+		ProcessInterrupts(__FILE__, __LINE__); \
 } while(0)
 #endif							/* WIN32 */
 

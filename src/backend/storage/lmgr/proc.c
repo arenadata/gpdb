@@ -2106,7 +2106,7 @@ ProcSendSignal(int pid)
  *	separate from its standard lock relatives - in the interest of not
  *	introducing new bugs or performance regressions into the lock code.
  */
-int
+ProcWaitStatus
 ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 {
 	LOCK	   *lock = locallock->lock;
@@ -2135,7 +2135,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 	MyProc->waitProcLock = (PROCLOCK *) proclock;
 	MyProc->waitLockMode = lockmode;
 
-	MyProc->waitStatus = STATUS_WAITING;	/* initialize result for error */
+	MyProc->waitStatus = PROC_WAIT_STATUS_WAITING;	/* initialize result for error */
 
 	/* Now check the status of the self lock footgun. */
 	selflock = ResCheckSelfDeadLock(lock, proclock, incrementSet);
@@ -2192,7 +2192,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 		CHECK_FOR_INTERRUPTS();
 
 		/*
-		 * waitStatus could change from STATUS_WAITING to something else
+		 * waitStatus could change from PROC_WAIT_STATUS_WAITING to something else
 		 * asynchronously.  Read it just once per loop to prevent surprising
 		 * behavior (such as missing log messages).
 		 */
@@ -2306,7 +2306,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 												lockHoldersNum, lock_holders_sbuf.data, lock_waiters_sbuf.data))));
 			}
 
-			if (myWaitStatus == STATUS_WAITING)
+			if (myWaitStatus == PROC_WAIT_STATUS_WAITING)
 				ereport(LOG,
 						(errmsg("process %d still waiting for %s on %s after %ld.%03d ms",
 								MyProcPid, modename, buf.data, msecs, usecs),
@@ -2348,7 +2348,7 @@ ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet)
 			pfree(lock_holders_sbuf.data);
 			pfree(lock_waiters_sbuf.data);
 		}
-	} while (myWaitStatus == STATUS_WAITING);
+	} while (myWaitStatus == PROC_WAIT_STATUS_WAITING);
 
 	if (LockTimeout > 0)
 	{
@@ -2419,7 +2419,7 @@ ResLockWaitCancel(void)
 	if (MyProc->links.next != NULL)
 	{
 		/* We could not have been granted the lock yet */
-		Assert(MyProc->waitStatus == STATUS_WAITING);
+		Assert(MyProc->waitStatus == PROC_WAIT_STATUS_WAITING);
 
 		/* We should only be trying to cancel resource locks */
 		Assert(LOCALLOCK_LOCKMETHOD(*lockAwaited) == RESOURCE_LOCKMETHOD);

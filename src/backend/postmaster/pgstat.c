@@ -3998,7 +3998,9 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 		case WAIT_EVENT_SYNC_REP:
 			event_name = "SyncRep";
 			break;
-<<<<<<< HEAD
+		case WAIT_EVENT_XACT_GROUP_UPDATE:
+			event_name = "XactGroupUpdate";
+			break;
 
 		case WAIT_EVENT_INTERCONNECT:
 			event_name = "Interconnect";
@@ -4017,10 +4019,6 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 			break;
 		case WAIT_EVENT_DTX_RECOVERY:
 			event_name = "DtxRecovery";
-=======
-		case WAIT_EVENT_XACT_GROUP_UPDATE:
-			event_name = "XactGroupUpdate";
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			break;
 			/* no default case, so that compiler will warn */
 	}
