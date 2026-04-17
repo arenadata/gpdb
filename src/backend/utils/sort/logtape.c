@@ -627,21 +627,12 @@ ltsInitTape(LogicalTape *lt)
 	lt->buffer = NULL;
 	lt->buffer_size = 0;
 	/* palloc() larger than MaxAllocSize would fail */
-<<<<<<< HEAD
-	lt->max_size          = MaxAllocSize;
-	lt->pos               = 0;
-	lt->nbytes            = 0;
-	lt->prealloc          = NULL;
-	lt->nprealloc         = 0;
-	lt->prealloc_size     = 0;
-=======
 	lt->max_size = MaxAllocSize;
 	lt->pos = 0;
 	lt->nbytes = 0;
 	lt->prealloc = NULL;
 	lt->nprealloc = 0;
 	lt->prealloc_size = 0;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 }
 
 /*
