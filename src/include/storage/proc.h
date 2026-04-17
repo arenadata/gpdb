@@ -402,7 +402,7 @@ extern PGPROC *AuxiliaryPidGetProc(int pid);
 extern void BecomeLockGroupLeader(void);
 extern bool BecomeLockGroupMember(PGPROC *leader, int pid);
 
-extern int ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet);
+extern ProcWaitStatus ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock, void *incrementSet);
 
 extern void ResLockWaitCancel(void);
 extern bool ProcCanSetMppSessionId(void);
