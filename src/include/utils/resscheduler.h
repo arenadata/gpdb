@@ -142,7 +142,7 @@ extern int				ResLockCheckLimit(LOCK *lock, PROCLOCK *proclock,
 extern ResQueue			GetResQueueFromLock(LOCK *lock);
 
 extern void				ResProcLockRemoveSelfAndWakeup(LOCK *lock);
-extern PGPROC 			*ResProcWakeup(PGPROC *proc, int waitStatus);
+extern PGPROC 			*ResProcWakeup(PGPROC *proc, ProcWaitStatus waitStatus);
 extern void				ResRemoveFromWaitQueue(PGPROC *proc, uint32 hashcode);
 extern bool				ResCheckSelfDeadLock(LOCK *lock, PROCLOCK *proclock, ResPortalIncrement *incSet);
 

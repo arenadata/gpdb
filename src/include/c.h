@@ -1156,11 +1156,7 @@ typedef union PGAlignedXLogBlock
 #define STATUS_OK				(0)
 #define STATUS_ERROR			(-1)
 #define STATUS_EOF				(-2)
-<<<<<<< HEAD
 #define STATUS_FOUND			(1)
-#define STATUS_WAITING			(2)
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 /*
  * gettext support
