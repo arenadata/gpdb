@@ -1108,10 +1108,9 @@ LockAcquireExtended(const LOCKTAG *locktag,
 			found_conflict = true;
 		else
 			found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
-										lock, proclock);
+												lock, proclock);
 	}
 	else
-<<<<<<< HEAD
 	{
 		/*
 		 * We are a reader, check waitMask conflict only if the writer doesn't
@@ -1143,7 +1142,7 @@ LockAcquireExtended(const LOCKTAG *locktag,
 		{
 			/* Writer holds the same lock, bypass waitMask check. */
 			found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
-										lock, proclock);
+												lock, proclock);
 		}
 		else
 		{
@@ -1159,13 +1158,9 @@ LockAcquireExtended(const LOCKTAG *locktag,
 				found_conflict = true;
 			else
 				found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
-											lock, proclock);
+													lock, proclock);
 		}
 	}
-=======
-		found_conflict = LockCheckConflicts(lockMethodTable, lockmode,
-											lock, proclock);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	if (!found_conflict)
 	{
