@@ -1288,8 +1288,7 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 	ListCell   *l;
 	Bitmapset **list_attnums;
 	int			listidx;
-<<<<<<< HEAD
-	Selectivity	sel = 1.0;
+	Selectivity sel = 1.0;
 	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 
 	/*
@@ -1301,9 +1300,6 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 	 */
 	if (rte->inh && rte->relkind != RELKIND_PARTITIONED_TABLE)
 		return 1.0;
-=======
-	Selectivity sel = 1.0;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	/* check if there's any stats that might be useful for us. */
 	if (!has_stats_of_kind(rel->statlist, STATS_EXT_MCV))
@@ -1394,12 +1390,8 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 		 * from MCV list to improve it.
 		 */
 		simple_sel = clauselist_selectivity_simple(root, stat_clauses, varRelid,
-<<<<<<< HEAD
 												   jointype, sjinfo, NULL,
 												   false); /* no damping */
-=======
-												   jointype, sjinfo, NULL);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 		/*
 		 * Now compute the multi-column estimate from the MCV list, along with
