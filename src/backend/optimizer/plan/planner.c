@@ -5498,13 +5498,8 @@ create_distinct_paths(PlannerInfo *root,
 	{
 		Size		hashentrysize = hash_agg_entry_size(0, cheapest_input_path->pathtarget->width, 0);
 
-<<<<<<< HEAD
-		allow_hash = enable_hashagg_disk ||
-			(hashentrysize * numDistinctRowsTotal <= work_mem * 1024L);
-=======
 		allow_hash = !hashagg_avoid_disk_plan ||
-			(hashentrysize * numDistinctRows <= work_mem * 1024L);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+			(hashentrysize * numDistinctRowsTotal <= work_mem * 1024L);
 	}
 
 	if (allow_hash && grouping_is_hashable(parse->distinctClause))
