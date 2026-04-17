@@ -49,14 +49,11 @@ static bool ValidXLogRecordHeader(XLogReaderState *state, XLogRecPtr RecPtr,
 static bool ValidXLogRecord(XLogReaderState *state, XLogRecord *record,
 							XLogRecPtr recptr);
 static void ResetDecoder(XLogReaderState *state);
-<<<<<<< HEAD
 static bool zstd_decompress_backupblock(const char *source, int32 slen,
 										char *dest, int32 rawsize,
 										char *errormessage);
-=======
 static void WALOpenSegmentInit(WALOpenSegment *seg, WALSegmentContext *segcxt,
 							   int segsize, const char *waldir);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 /* size of the buffer allocated for error message. */
 #define MAX_ERRORMSG_LEN 1000
