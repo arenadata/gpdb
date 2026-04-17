@@ -11,14 +11,11 @@
  *
  *-------------------------------------------------------------------------
  */
-<<<<<<< HEAD
-=======
 #ifndef PG_TAR_H
 #define PG_TAR_H
 
 #define		TAR_BLOCK_SIZE	512
 
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 enum tarError
 {
 	TAR_OK = 0,
@@ -33,9 +30,6 @@ extern enum tarError tarCreateHeader(char *h, const char *filename,
 extern uint64 read_tar_number(const char *s, int len);
 extern void print_tar_number(char *s, int len, uint64 val);
 extern int	tarChecksum(char *header);
-<<<<<<< HEAD
-extern uint64 read_tar_number(const char *s, int len);
-=======
 
 /*
  * Compute the number of padding bytes required for an entry in a tar
@@ -49,4 +43,3 @@ tarPaddingBytesRequired(size_t len)
 }
 
 #endif
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
