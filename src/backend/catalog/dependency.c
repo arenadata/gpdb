@@ -1509,17 +1509,6 @@ doDeletion(const ObjectAddress *object, int flags)
 			RemoveExtensionById(object->objectId);
 			break;
 
-<<<<<<< HEAD
-		case OCLASS_EVENT_TRIGGER:
-			RemoveEventTriggerById(object->objectId);
-			break;
-
-		case OCLASS_EXTPROTOCOL:
-			RemoveExtProtocolById(object->objectId);
-			break;
-
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 		case OCLASS_POLICY:
 			RemovePolicyById(object->objectId);
 			break;
@@ -1548,6 +1537,7 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_EVENT_TRIGGER:
 		case OCLASS_PUBLICATION:
 		case OCLASS_TRANSFORM:
+		case OCLASS_EXTPROTOCOL:
 			DropObjectById(object);
 			break;
 
