@@ -142,12 +142,7 @@ extern ObjectAddress AlterForeignServer(AlterForeignServerStmt *stmt);
 extern ObjectAddress CreateUserMapping(CreateUserMappingStmt *stmt);
 extern ObjectAddress AlterUserMapping(AlterUserMappingStmt *stmt);
 extern Oid	RemoveUserMapping(DropUserMappingStmt *stmt);
-<<<<<<< HEAD
-extern void RemoveUserMappingById(Oid umId);
 extern void CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid, bool skip_permission_check);
-=======
-extern void CreateForeignTable(CreateForeignTableStmt *stmt, Oid relid);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 extern void ImportForeignSchema(ImportForeignSchemaStmt *stmt);
 extern Datum transformGenericOptions(Oid catalogId,
 									 Datum oldOptions,
