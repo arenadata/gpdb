@@ -76,14 +76,11 @@ typedef struct
 	HTAB	   *exclude;
 } basebackup_options;
 
-<<<<<<< HEAD
 
 static bool match_exclude_list(char *path, HTAB *exclude);
 
-=======
 static int64 sendTablespace(char *path, char *oid, bool sizeonly,
 							struct backup_manifest_info *manifest);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 static int64 sendDir(const char *path, int basepathlen, bool sizeonly,
 					 List *tablespaces, bool sendtblspclinks,
 					 backup_manifest_info *manifest, const char *spcoid,
@@ -343,26 +340,7 @@ perform_base_backup(basebackup_options *opt)
 								 PROGRESS_BASEBACKUP_PHASE_WAIT_CHECKPOINT);
 	startptr = do_pg_start_backup(opt->label, opt->fastcheckpoint, &starttli,
 								  labelfile, &tablespaces,
-<<<<<<< HEAD
-								  tblspc_map_file,
-								  opt->progress, opt->sendtblspcmapfile);
-	Assert(!XLogRecPtrIsInvalid(startptr));
-
-	elogif(!debug_basebackup, LOG,
-		   "basebackup perform -- "
-		   "Basebackup start xlog location = %X/%X",
-		   (uint32) (startptr >> 32), (uint32) startptr);
-
-	/*
-	 * Set xlogCleanUpTo so that checkpoint process knows
-	 * which old xlog files should not be cleaned
-	 */
-	WalSndSetXLogCleanUpTo(startptr);
-
-	SIMPLE_FAULT_INJECTOR("base_backup_post_create_checkpoint");
-=======
 								  tblspc_map_file, opt->sendtblspcmapfile);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	/*
 	 * Once do_pg_start_backup has been called, ensure that any failure causes
@@ -391,14 +369,7 @@ perform_base_backup(basebackup_options *opt)
 
 		/* Add a node for the base directory at the end */
 		ti = palloc0(sizeof(tablespaceinfo));
-<<<<<<< HEAD
-		if (opt->progress)
-			ti->size = sendDir(".", 1, true, tablespaces, true, NULL, NULL, opt->exclude);
-		else
-			ti->size = -1;
-=======
 		ti->size = -1;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 		tablespaces = lappend(tablespaces, ti);
 
 		/*
@@ -732,18 +703,14 @@ perform_base_backup(basebackup_options *opt)
 						 errmsg("unexpected WAL file size \"%s\"", walFileName)));
 			}
 
-<<<<<<< HEAD
 			elogif(debug_basebackup, LOG,
 				   "basebackup perform -- Sent xlog file %s", walFileName);
 
-			/* wal_segment_size is a multiple of 512, so no need for padding */
-=======
 			/*
 			 * wal_segment_size is a multiple of TAR_BLOCK_SIZE, so no need
 			 * for padding.
 			 */
 			Assert(wal_segment_size % TAR_BLOCK_SIZE == 0);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 			FreeFile(fp);
 
