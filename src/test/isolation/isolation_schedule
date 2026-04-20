@@ -52,7 +52,6 @@
 #############################################################
 
 test: read-only-anomaly
-<<<<<<< HEAD
 #test: read-only-anomaly-2
 #test: read-only-anomaly-3
 #test: read-write-unique
@@ -72,28 +71,7 @@ test: read-only-anomaly
 #test: multiple-row-versions
 #test: index-only-scan
 #test: predicate-lock-hot-tuple
-=======
-test: read-only-anomaly-2
-test: read-only-anomaly-3
-test: read-write-unique
-test: read-write-unique-2
-test: read-write-unique-3
-test: read-write-unique-4
-test: simple-write-skew
-test: receipt-report
-test: temporal-range-integrity
-test: project-manager
-test: classroom-scheduling
-test: total-cash
-test: referential-integrity
-test: ri-trigger
-test: partial-index
-test: two-ids
-test: multiple-row-versions
-test: index-only-scan
-test: predicate-lock-hot-tuple
-test: update-conflict-out
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+#test: update-conflict-out
 test: deadlock-simple
 test: deadlock-hard
 test: deadlock-soft
