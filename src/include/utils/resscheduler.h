@@ -20,6 +20,7 @@
 #include "executor/execdesc.h"
 #include "nodes/plannodes.h"
 #include "storage/lock.h"
+#include "storage/proc.h"
 #include "tcop/dest.h"
 #include "cdb/memquota.h"
 #include "utils/portal.h"
