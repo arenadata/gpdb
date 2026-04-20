@@ -313,15 +313,6 @@
 #define HASHAGG_READ_BUFFER_SIZE BLCKSZ
 #define HASHAGG_WRITE_BUFFER_SIZE BLCKSZ
 
-<<<<<<< HEAD
-/*
- * Estimate chunk overhead as a constant 16 bytes. XXX: should this be
- * improved?
- */
-#define CHUNKHDRSZ 16
-
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 /*
  * Estimate chunk overhead as a constant 16 bytes. XXX: should this be
  * improved?
@@ -427,18 +418,11 @@ static void hashagg_recompile_expressions(AggState *aggstate, bool minslot,
 static long hash_choose_num_buckets(double hashentrysize,
 									long estimated_nbuckets,
 									Size memory);
-<<<<<<< HEAD
-static int hash_choose_num_partitions(AggState *aggstate,
-									  uint64 input_groups,
-									  double hashentrysize,
-									  int used_bits,
-									  int *log2_npartittions);
-=======
-static int	hash_choose_num_partitions(uint64 input_groups,
+static int	hash_choose_num_partitions(AggState *aggstate,
+									   uint64 input_groups,
 									   double hashentrysize,
 									   int used_bits,
 									   int *log2_npartittions);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 static AggStatePerGroup lookup_hash_entry(AggState *aggstate, uint32 hash,
 										  bool *in_hash_table);
 static void lookup_hash_entries(AggState *aggstate);
@@ -1813,21 +1797,16 @@ hash_agg_set_limits(AggState *aggstate, double hashentrysize, uint64 input_group
 					Size *mem_limit, uint64 *ngroups_limit,
 					int *num_partitions)
 {
-<<<<<<< HEAD
-	int npartitions;
-	Size partition_mem;
-	uint64 strict_memlimit = work_mem;
+	int			npartitions;
+	Size		partition_mem;
+	uint64		strict_memlimit = work_mem;
 
 	if (aggstate)
 	{
-		uint64 operator_mem = PlanStateOperatorMemKB((PlanState *) aggstate);
+		uint64		operator_mem = PlanStateOperatorMemKB((PlanState *) aggstate);
 		if (operator_mem < strict_memlimit)
 			strict_memlimit = operator_mem;
 	}
-=======
-	int			npartitions;
-	Size		partition_mem;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	/* if not expected to spill, use all of work_mem */
 	if (input_groups * hashentrysize < strict_memlimit * 1024L)
@@ -2030,25 +2009,18 @@ static int
 hash_choose_num_partitions(AggState *aggstate, uint64 input_groups, double hashentrysize,
 						   int used_bits, int *log2_npartitions)
 {
-<<<<<<< HEAD
-	Size	mem_wanted;
-	int		partition_limit;
-	int		npartitions;
-	int		partition_bits;
-	uint64	strict_memlimit = work_mem;
-
-	if (aggstate)
-	{
-		uint64 operator_mem = PlanStateOperatorMemKB((PlanState *) aggstate);
-		if (operator_mem < strict_memlimit)
-			strict_memlimit = operator_mem;
-	}
-=======
 	Size		mem_wanted;
 	int			partition_limit;
 	int			npartitions;
 	int			partition_bits;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+	uint64		strict_memlimit = work_mem;
+
+	if (aggstate)
+	{
+		uint64		operator_mem = PlanStateOperatorMemKB((PlanState *) aggstate);
+		if (operator_mem < strict_memlimit)
+			strict_memlimit = operator_mem;
+	}
 
 	/*
 	 * Avoid creating so many partitions that the memory requirements of the
@@ -2767,13 +2739,8 @@ agg_refill_hash_table(AggState *aggstate)
 				 * that we don't assign tapes that will never be used.
 				 */
 				spill_initialized = true;
-<<<<<<< HEAD
 				hashagg_spill_init(aggstate, &spill, tapeinfo, batch->used_bits,
-					   ngroups_estimate, aggstate->hashentrysize);
-=======
-				hashagg_spill_init(&spill, tapeinfo, batch->used_bits,
 								   ngroups_estimate, aggstate->hashentrysize);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			}
 			/* no memory for a new group, spill */
 			hashagg_spill_tuple(&spill, slot, hash);
@@ -3049,13 +3016,8 @@ hashagg_spill_init(AggState *aggstate, HashAggSpill *spill, HashTapeInfo *tapein
 	int			npartitions;
 	int			partition_bits;
 
-<<<<<<< HEAD
-	npartitions = hash_choose_num_partitions(aggstate,
-		input_groups, hashentrysize, used_bits, &partition_bits);
-=======
-	npartitions = hash_choose_num_partitions(input_groups, hashentrysize,
+	npartitions = hash_choose_num_partitions(aggstate, input_groups, hashentrysize,
 											 used_bits, &partition_bits);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	spill->partitions = palloc0(sizeof(int) * npartitions);
 	spill->ntuples = palloc0(sizeof(int64) * npartitions);
