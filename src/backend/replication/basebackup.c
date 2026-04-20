@@ -401,7 +401,7 @@ perform_base_backup(basebackup_options *opt)
 
 				if (tmp->path == NULL)
 					tmp->size = sendDir(".", 1, true, tablespaces, true, NULL,
-										NULL);
+										NULL, opt->exclude);
 				else
 					tmp->size = sendTablespace(tmp->path, tmp->oid, true,
 											   NULL);
