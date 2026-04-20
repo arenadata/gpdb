@@ -3666,13 +3666,9 @@ _copyQuery(const Query *from)
 	COPY_NODE_FIELD(constraintDeps);
 	COPY_NODE_FIELD(withCheckOptions);
 	COPY_LOCATION_FIELD(stmt_location);
-<<<<<<< HEAD
-	COPY_LOCATION_FIELD(stmt_len);
+	COPY_SCALAR_FIELD(stmt_len);
 	COPY_SCALAR_FIELD(parentStmtType);
 	COPY_NODE_FIELD(intoPolicy);
-=======
-	COPY_SCALAR_FIELD(stmt_len);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	return newnode;
 }
