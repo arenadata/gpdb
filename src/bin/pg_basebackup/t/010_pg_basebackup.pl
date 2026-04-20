@@ -164,14 +164,10 @@ rmtree("$tempdir/backup");
 
 $node->command_ok(
 	[
-<<<<<<< HEAD
-		'pg_basebackup', '-D', "$tempdir/backup2", '--no-manifest',
-		'--waldir', "$tempdir/xlog2", '--target-gp-dbid', '123'
-=======
 		'pg_basebackup',    '-D',
 		"$tempdir/backup2", '--no-manifest',
-		'--waldir',         "$tempdir/xlog2"
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+		'--waldir',         "$tempdir/xlog2",
+		'--target-gp-dbid', '123'
 	],
 	'separate xlog directory');
 ok(-f "$tempdir/backup2/PG_VERSION",       'backup was created');
