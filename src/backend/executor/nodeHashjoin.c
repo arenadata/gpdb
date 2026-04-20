@@ -1335,34 +1335,8 @@ ExecHashJoinNewBatch(HashJoinState *hjstate)
 
 	if (!ExecHashJoinReloadHashTable(hjstate))
 	{
-<<<<<<< HEAD
 		/* We no longer continue as we couldn't load the batch */
 		return false;
-=======
-		if (BufFileSeek(innerFile, 0, 0L, SEEK_SET))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not rewind hash-join temporary file")));
-
-		while ((slot = ExecHashJoinGetSavedTuple(hjstate,
-												 innerFile,
-												 &hashvalue,
-												 hjstate->hj_HashTupleSlot)))
-		{
-			/*
-			 * NOTE: some tuples may be sent to future batches.  Also, it is
-			 * possible for hashtable->nbatch to be increased here!
-			 */
-			ExecHashTableInsert(hashtable, slot, hashvalue);
-		}
-
-		/*
-		 * after we build the hash table, the inner batch file is no longer
-		 * needed
-		 */
-		BufFileClose(innerFile);
-		hashtable->innerBatchFile[curbatch] = NULL;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	}
 
 	/*
