@@ -1486,13 +1486,9 @@ sub psql
 	my $replication       = $params{replication};
 	my $timeout           = undef;
 	my $timeout_exception = 'psql timed out';
-<<<<<<< HEAD
 
 	local $ENV{PGOPTIONS} = '-c gp_role=utility';
 
-	my @psql_params =
-	  ('psql', '-XAtq', '-d', $self->connstr($dbname), '-f', '-');
-=======
 	my @psql_params       = (
 		'psql',
 		'-XAtq',
@@ -1501,7 +1497,6 @@ sub psql
 		  . (defined $replication ? " replication=$replication" : ""),
 		'-f',
 		'-');
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	# If the caller wants an array and hasn't passed stdout/stderr
 	# references, allocate temporary ones to capture them so we
