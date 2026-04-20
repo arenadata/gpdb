@@ -99,7 +99,7 @@ SubTransGetData(TransactionId xid, SubTransData* subData)
 		subData->topMostParent = xid;
 	}
 
-	LWLockRelease(SubtransControlLock);
+	LWLockRelease(SubtransSLRULock);
 
 	return;
 }
@@ -163,28 +163,7 @@ SubTransGetParent(TransactionId xid)
 	SubTransData subData;
 	SubTransGetData(xid, &subData);
 
-<<<<<<< HEAD
 	return subData.parent;
-=======
-	/* Can't ask about stuff that might not be around anymore */
-	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
-
-	/* Bootstrap and frozen XIDs have no parent */
-	if (!TransactionIdIsNormal(xid))
-		return InvalidTransactionId;
-
-	/* lock is acquired by SimpleLruReadPage_ReadOnly */
-
-	slotno = SimpleLruReadPage_ReadOnly(SubTransCtl, pageno, xid);
-	ptr = (TransactionId *) SubTransCtl->shared->page_buffer[slotno];
-	ptr += entryno;
-
-	parent = *ptr;
-
-	LWLockRelease(SubtransSLRULock);
-
-	return parent;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 }
 
 /*
