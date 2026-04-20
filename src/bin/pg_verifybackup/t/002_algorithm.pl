@@ -16,15 +16,10 @@ $master->start;
 for my $algorithm (qw(bogus none crc32c sha224 sha256 sha384 sha512))
 {
 	my $backup_path = $master->backup_dir . '/' . $algorithm;
-<<<<<<< HEAD
-	my @backup = ('pg_basebackup', '-D', $backup_path,
-				  '--manifest-checksums', $algorithm,
-				  '--no-sync', '--target-gp-dbid', '1');
-=======
 	my @backup      = (
 		'pg_basebackup', '-D', $backup_path,
-		'--manifest-checksums', $algorithm, '--no-sync');
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+		'--manifest-checksums', $algorithm, '--no-sync',
+		'--target-gp-dbid', '1');
 	my @verify = ('pg_verifybackup', '-e', $backup_path);
 
 	# A backup with a bogus algorithm should fail.
