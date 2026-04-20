@@ -323,7 +323,6 @@ ProcessSyncRequests(void)
 	{
 		int			failures;
 
-<<<<<<< HEAD
 #ifdef FAULT_INJECTOR
 		if (entry->cycle_ctr != sync_cycle_ctr && !entry->canceled &&
 			(SIMPLE_FAULT_INJECTOR("fsync_counter") == FaultInjectorTypeSkip
@@ -358,8 +357,6 @@ ProcessSyncRequests(void)
 		}
 #endif
 
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 		/*
 		 * If the entry is new then don't process it this time; it is new.
 		 * Note "continue" bypasses the hash-remove call at the bottom of the
@@ -421,11 +418,7 @@ ProcessSyncRequests(void)
 					processed++;
 
 					if (log_checkpoints)
-<<<<<<< HEAD
-						elog(DEBUG1, "checkpoint sync: number=%d file=%s time=%.3f msec",
-=======
 						elog(DEBUG1, "checkpoint sync: number=%d file=%s time=%.3f ms",
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 							 processed,
 							 path,
 							 (double) elapsed / 1000);
