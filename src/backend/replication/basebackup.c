@@ -341,6 +341,20 @@ perform_base_backup(basebackup_options *opt)
 	startptr = do_pg_start_backup(opt->label, opt->fastcheckpoint, &starttli,
 								  labelfile, &tablespaces,
 								  tblspc_map_file, opt->sendtblspcmapfile);
+	Assert(!XLogRecPtrIsInvalid(startptr));
+
+	elogif(!debug_basebackup, LOG,
+		   "basebackup perform -- "
+		   "Basebackup start xlog location = %X/%X",
+		   (uint32) (startptr >> 32), (uint32) startptr);
+
+	/*
+	 * Set xlogCleanUpTo so that checkpoint process knows
+	 * which old xlog files should not be cleaned
+	 */
+	WalSndSetXLogCleanUpTo(startptr);
+
+	SIMPLE_FAULT_INJECTOR("base_backup_post_create_checkpoint");
 
 	/*
 	 * Once do_pg_start_backup has been called, ensure that any failure causes
