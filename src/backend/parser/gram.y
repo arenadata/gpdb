@@ -686,12 +686,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 
 %type <boolean> opt_if_not_exists
 %type <ival>	generated_when override_kind
-<<<<<<< HEAD
 %type <partspec>	PartitionSpec OptFirstPartitionSpec OptSecondPartitionSpec
-%type <str>			part_strategy
-=======
-%type <partspec>	PartitionSpec OptPartitionSpec
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 %type <partelem>	part_elem
 %type <list>		part_params
 %type <partboundspec> PartitionBoundSpec
@@ -1380,12 +1375,8 @@ stmt :
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
-<<<<<<< HEAD
-			| DropPLangStmt
 			| DropQueueStmt
 			| DropResourceGroupStmt
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			| DropStmt
 			| DropSubscriptionStmt
 			| DropTableSpaceStmt
@@ -5478,9 +5469,8 @@ OptFirstPartitionSpec: PartitionSpec opt_list_subparts OptTabPartitionSpec
 				}
 		;
 
-<<<<<<< HEAD
 OptSecondPartitionSpec:
-			PARTITION_TAIL BY part_strategy '(' part_params ')' opt_list_subparts OptTabPartitionSpec
+			PARTITION_TAIL BY ColId '(' part_params ')' opt_list_subparts OptTabPartitionSpec
 				{
 					PartitionSpec *n = makeNode(PartitionSpec);
 
@@ -5507,10 +5497,7 @@ OptSecondPartitionSpec:
 				}
 		;
 
-PartitionSpec: PARTITION  BY part_strategy '(' part_params ')'
-=======
-PartitionSpec: PARTITION BY ColId '(' part_params ')'
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+PartitionSpec: PARTITION  BY ColId '(' part_params ')'
 				{
 					PartitionSpec *n = makeNode(PartitionSpec);
 
@@ -6053,7 +6040,7 @@ opt_list_subparts: TabSubPartition { $$ = $1; }
 
 
 TabSubPartitionBy: SUBPARTITION BY
-			part_strategy '(' part_params ')'
+			ColId '(' part_params ')'
 				{
 					PartitionSpec *n = makeNode(PartitionSpec);
 
@@ -8974,45 +8961,6 @@ CommentStmt:
 				}
 		;
 
-<<<<<<< HEAD
-/* object types taking any_name */
-comment_type_any_name:
-			COLUMN								{ $$ = OBJECT_COLUMN; }
-			| INDEX								{ $$ = OBJECT_INDEX; }
-			| SEQUENCE							{ $$ = OBJECT_SEQUENCE; }
-			| STATISTICS						{ $$ = OBJECT_STATISTIC_EXT; }
-			| TABLE								{ $$ = OBJECT_TABLE; }
-			| VIEW								{ $$ = OBJECT_VIEW; }
-			| MATERIALIZED VIEW					{ $$ = OBJECT_MATVIEW; }
-			| COLLATION							{ $$ = OBJECT_COLLATION; }
-			| CONVERSION_P						{ $$ = OBJECT_CONVERSION; }
-			| FOREIGN TABLE						{ $$ = OBJECT_FOREIGN_TABLE; }
-			| TEXT_P SEARCH CONFIGURATION		{ $$ = OBJECT_TSCONFIGURATION; }
-			| TEXT_P SEARCH DICTIONARY			{ $$ = OBJECT_TSDICTIONARY; }
-			| TEXT_P SEARCH PARSER				{ $$ = OBJECT_TSPARSER; }
-			| TEXT_P SEARCH TEMPLATE			{ $$ = OBJECT_TSTEMPLATE; }
-		;
-
-/* object types taking name */
-comment_type_name:
-			ACCESS METHOD						{ $$ = OBJECT_ACCESS_METHOD; }
-			| DATABASE							{ $$ = OBJECT_DATABASE; }
-			| EVENT TRIGGER						{ $$ = OBJECT_EVENT_TRIGGER; }
-			| EXTENSION							{ $$ = OBJECT_EXTENSION; }
-			| FOREIGN DATA_P WRAPPER			{ $$ = OBJECT_FDW; }
-			| opt_procedural LANGUAGE			{ $$ = OBJECT_LANGUAGE; }
-			| PUBLICATION						{ $$ = OBJECT_PUBLICATION; }
-			| ROLE								{ $$ = OBJECT_ROLE; }
-			| SCHEMA							{ $$ = OBJECT_SCHEMA; }
-			| SERVER							{ $$ = OBJECT_FOREIGN_SERVER; }
-			| SUBSCRIPTION						{ $$ = OBJECT_SUBSCRIPTION; }
-			| TABLESPACE						{ $$ = OBJECT_TABLESPACE; }
-			| RESOURCE QUEUE                    { $$ = OBJECT_RESQUEUE; }
-			| RESOURCE GROUP_P					{ $$ = OBJECT_RESGROUP; }
-		;
-
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 comment_text:
 			Sconst								{ $$ = $1; }
 			| NULL_P							{ $$ = NULL; }
