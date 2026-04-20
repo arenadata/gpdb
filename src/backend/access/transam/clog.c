@@ -693,39 +693,39 @@ CLOGScanForPrevStatus(
 		if (lowXid == InvalidTransactionId)
 			lowXid = FirstNormalTransactionId;
 
-		LWLockAcquire(CLogControlLock, LW_EXCLUSIVE);
+		LWLockAcquire(XactSLRULock, LW_EXCLUSIVE);
 
 		/*
 		 * Peek to see if page exists.
 		 */
-		if (!SimpleLruDoesPhysicalPageExist(ClogCtl, pageno))
+		if (!SimpleLruDoesPhysicalPageExist(XactCtl, pageno))
 		{
-			LWLockRelease(CLogControlLock);
+			LWLockRelease(XactSLRULock);
 
 			*indexXid = InvalidTransactionId;
 			*status = TRANSACTION_STATUS_IN_PROGRESS;	// Set it to something.
 			return false;
 		}
 			
-		slotno = SimpleLruReadPage(ClogCtl, pageno, false, highXid);
+		slotno = SimpleLruReadPage(XactCtl, pageno, false, highXid);
 
 		for (xid = highXid; xid >= lowXid; xid--)
 		{
 			byteno = TransactionIdToByte(xid);
 			bshift = TransactionIdToBIndex(xid) * CLOG_BITS_PER_XACT;
-			byteptr = ClogCtl->shared->page_buffer[slotno] + byteno;
+			byteptr = XactCtl->shared->page_buffer[slotno] + byteno;
 			*status = (*byteptr >> bshift) & CLOG_XACT_BITMASK;
 
 			if (*status != TRANSACTION_STATUS_IN_PROGRESS)
 			{
-				LWLockRelease(CLogControlLock);
+				LWLockRelease(XactSLRULock);
 
 				*indexXid = xid;
 				return true;
 			}
 		}
 
-		LWLockRelease(CLogControlLock);
+		LWLockRelease(XactSLRULock);
 
 		if (lowXid == FirstNormalTransactionId)
 		{
