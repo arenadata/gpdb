@@ -89,6 +89,7 @@
 #include "catalog/pg_compression.h"
 #include "catalog/pg_extprotocol.h"
 #include "commands/tablespace.h"
+#include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
 #include "commands/extprotocolcmds.h"
 #include "commands/tablecmds.h"
