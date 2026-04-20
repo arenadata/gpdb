@@ -763,14 +763,9 @@ convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const ch
 {
 	char		testtablespace[MAXPGPATH];
 	char		indir[MAXPGPATH];
-<<<<<<< HEAD
 	char		cgroup_mnt_point[MAXPGPATH];
 	replacements repls;
-	struct stat st;
-	int			ret;
-=======
 	char		outdir_sub[MAXPGPATH];
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	char	  **name;
 	char	  **names;
 	int			count = 0;
@@ -793,20 +788,12 @@ convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const ch
 		/* Error logged in pgfnames */
 		exit(2);
 
-<<<<<<< HEAD
-	/* also create the output directory if not present */
-	if (!directory_exists(dest_subdir))
-		make_directory(dest_subdir);
-
-	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", tablespacedir);
-=======
 	/* Create the "dest" subdirectory if not present */
 	snprintf(outdir_sub, MAXPGPATH, "%s/%s", dest_dir, dest_subdir);
 	if (!directory_exists(outdir_sub))
 		make_directory(outdir_sub);
 
-	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", outputdir);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", tablespacedir);
 
 #ifdef WIN32
 
