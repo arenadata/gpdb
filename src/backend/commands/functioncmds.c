@@ -2408,41 +2408,6 @@ get_transform_oid(Oid type_id, Oid lang_id, bool missing_ok)
 }
 
 
-<<<<<<< HEAD
-void
-DropTransformById(Oid transformOid)
-{
-	Relation	relation;
-	ScanKeyData scankey;
-	SysScanDesc scan;
-	HeapTuple	tuple;
-
-	relation = table_open(TransformRelationId, RowExclusiveLock);
-
-	ScanKeyInit(&scankey,
-				Anum_pg_transform_oid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(transformOid));
-	scan = systable_beginscan(relation, TransformOidIndexId, true,
-							  NULL, 1, &scankey);
-
-	tuple = systable_getnext(scan);
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "could not find tuple for transform %u", transformOid);
-	CatalogTupleDelete(relation, &tuple->t_self);
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		MetaTrackDropObject(TransformRelationId, transformOid);
-	}
-
-	systable_endscan(scan);
-	table_close(relation, RowExclusiveLock);
-}
-
-
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 /*
  * Subroutine for ALTER FUNCTION/AGGREGATE SET SCHEMA/RENAME
  *

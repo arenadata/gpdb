@@ -1264,6 +1264,27 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 	pfree(logdetail.data);
 }
 
+static void
+MetaTrackDropObjectById(const ObjectAddress *object)
+{
+	switch (getObjectClass(object))
+	{
+		case OCLASS_SCHEMA:
+			/*
+			 * Remove all persistent error logs belonging to the the schema.
+			 */
+			PersistentErrorLogDelete(MyDatabaseId, object->objectId, NULL);
+			/* FALL THRU */
+		case OCLASS_TRANSFORM:
+			if (Gp_role == GP_ROLE_DISPATCH)
+				MetaTrackDropObject(object->classId, object->objectId);
+			break;
+
+		default:
+			break;
+	}
+}
+
 /*
  * Drop an object by OID.  Works for most catalogs, if no special processing
  * is needed.
@@ -1291,6 +1312,8 @@ DropObjectById(const ObjectAddress *object)
 
 		CatalogTupleDelete(rel, &tup->t_self);
 
+		MetaTrackDropObjectById(object);
+
 		ReleaseSysCache(tup);
 	}
 	else
@@ -1313,6 +1336,8 @@ DropObjectById(const ObjectAddress *object)
 				 get_object_class_descr(object->classId), object->objectId);
 
 		CatalogTupleDelete(rel, &tup->t_self);
+
+		MetaTrackDropObjectById(object);
 
 		systable_endscan(scan);
 	}
@@ -1509,17 +1534,6 @@ doDeletion(const ObjectAddress *object, int flags)
 			RemoveExtensionById(object->objectId);
 			break;
 
-<<<<<<< HEAD
-		case OCLASS_EVENT_TRIGGER:
-			RemoveEventTriggerById(object->objectId);
-			break;
-
-		case OCLASS_EXTPROTOCOL:
-			RemoveExtProtocolById(object->objectId);
-			break;
-
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 		case OCLASS_POLICY:
 			RemovePolicyById(object->objectId);
 			break;
@@ -1548,6 +1562,7 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_EVENT_TRIGGER:
 		case OCLASS_PUBLICATION:
 		case OCLASS_TRANSFORM:
+		case OCLASS_EXTPROTOCOL:
 			DropObjectById(object);
 			break;
 
