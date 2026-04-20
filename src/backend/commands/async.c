@@ -2011,12 +2011,8 @@ asyncQueueReadAllNotifications(void)
 			 * and possibly transmitting them to our frontend.  Copy only the
 			 * part of the page we will actually inspect.
 			 */
-<<<<<<< HEAD
-			slotno = SimpleLruReadPage_ReadOnly(AsyncCtl, curpage, InvalidTransactionId);
-=======
 			slotno = SimpleLruReadPage_ReadOnly(NotifyCtl, curpage,
 												InvalidTransactionId);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			if (curpage == QUEUE_POS_PAGE(head))
 			{
 				/* we only want to read as far as head */
