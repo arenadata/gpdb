@@ -362,17 +362,13 @@ _readQuery(void)
 	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(constraintDeps);
-<<<<<<< HEAD
     READ_NODE_FIELD(withCheckOptions);
-    local_node->intoPolicy = NULL;
-    READ_BOOL_FIELD(parentStmtType);
     READ_LOCATION_FIELD(stmt_location);
-    READ_LOCATION_FIELD(stmt_len);
-=======
-	READ_NODE_FIELD(withCheckOptions);
-	READ_LOCATION_FIELD(stmt_location);
 	READ_INT_FIELD(stmt_len);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+    READ_BOOL_FIELD(parentStmtType);
+
+	/* Don't deserialize policy */
+    local_node->intoPolicy = NULL;
 
 	READ_DONE();
 }

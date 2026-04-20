@@ -366,9 +366,8 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 #endif /* COMPILING_BINARY_FUNCS */
 	WRITE_NODE_FIELD(paramExecTypes);
 	WRITE_NODE_FIELD(utilityStmt);
-<<<<<<< HEAD
-    WRITE_LOCATION_FIELD(stmt_location);
-    WRITE_LOCATION_FIELD(stmt_len);
+	WRITE_LOCATION_FIELD(stmt_location);
+	WRITE_INT_FIELD(stmt_len);
 
 	WRITE_INT_ARRAY(subplan_sliceIds, list_length(node->subplans));
 
@@ -472,10 +471,6 @@ _outOidAssignment(StringInfo str, const OidAssignment *node)
 	WRITE_OID_FIELD(keyOid1);
 	WRITE_OID_FIELD(keyOid2);
 	WRITE_OID_FIELD(oid);
-=======
-	WRITE_LOCATION_FIELD(stmt_location);
-	WRITE_INT_FIELD(stmt_len);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 }
 
 /*
@@ -4421,14 +4416,10 @@ _outQuery(StringInfo str, const Query *node)
 	WRITE_NODE_FIELD(constraintDeps);
 	WRITE_NODE_FIELD(withCheckOptions);
 	WRITE_LOCATION_FIELD(stmt_location);
-<<<<<<< HEAD
-	WRITE_LOCATION_FIELD(stmt_len);
+	WRITE_INT_FIELD(stmt_len);
 	WRITE_BOOL_FIELD(parentStmtType);
 
 	/* Don't serialize policy */
-=======
-	WRITE_INT_FIELD(stmt_len);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 }
 #endif /* COMPILING_BINARY_FUNCS */
 
