@@ -4228,12 +4228,8 @@ _complete_from_query(const char *simple_query,
 			 */
 			if (strcmp(schema_query->catname,
 					   "pg_catalog.pg_class c") == 0 &&
-<<<<<<< HEAD
 				strncmp(text, "pg_", 3) != 0 &&
 				strncmp(text, "gp_", 3) != 0)
-=======
-				strncmp(text, "pg_", 3) != 0)
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			{
 				appendPQExpBufferStr(&query_buffer,
 									 " AND c.relnamespace <> (SELECT oid FROM"
