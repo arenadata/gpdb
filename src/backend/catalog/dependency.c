@@ -1290,7 +1290,7 @@ MetaTrackDropObjectById(const ObjectAddress *object)
  * Drop an object by OID.  Works for most catalogs, if no special processing
  * is needed.
  */
-static void
+void
 DropObjectById(const ObjectAddress *object)
 {
 	int			cacheId;
