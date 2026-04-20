@@ -606,25 +606,6 @@ static const ObjectPropertyType ObjectProperty[] =
 		InvalidAttrNumber,		/* no ACL (same as relation) */
 		OBJECT_STATISTIC_EXT,
 		true
-<<<<<<< HEAD
-	}
-
-
-	/* GPDB additions */
-	,
-	{
-		ExtprotocolRelationId,
-		ExtprotocolOidIndexId,
-		EXTPROTOCOLOID,
-		EXTPROTOCOLNAME,
-		Anum_pg_extprotocol_oid,
-		Anum_pg_extprotocol_ptcname,
-		InvalidAttrNumber,
-		Anum_pg_extprotocol_ptcowner,
-		Anum_pg_extprotocol_ptcacl,
-		OBJECT_EXTPROTOCOL,
-		true
-=======
 	},
 	{
 		"user mapping",
@@ -639,7 +620,22 @@ static const ObjectPropertyType ObjectProperty[] =
 		InvalidAttrNumber,
 		OBJECT_USER_MAPPING,
 		false
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+	},
+
+	/* GPDB additions */
+	{
+		"ext protocol",
+		ExtprotocolRelationId,
+		ExtprotocolOidIndexId,
+		EXTPROTOCOLOID,
+		EXTPROTOCOLNAME,
+		Anum_pg_extprotocol_oid,
+		Anum_pg_extprotocol_ptcname,
+		InvalidAttrNumber,
+		Anum_pg_extprotocol_ptcowner,
+		Anum_pg_extprotocol_ptcacl,
+		OBJECT_EXTPROTOCOL,
+		true
 	},
 };
 
