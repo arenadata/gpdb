@@ -14,14 +14,9 @@ my $master = get_new_node('master');
 $master->init(allows_streaming => 1);
 $master->start;
 my $backup_path = $master->backup_dir . '/test_wal';
-<<<<<<< HEAD
-$master->command_ok(['pg_basebackup', '-D', $backup_path, '--no-sync',
-					'--target-gp-dbid', '1'],
-					"base backup ok");
-=======
-$master->command_ok([ 'pg_basebackup', '-D', $backup_path, '--no-sync' ],
+$master->command_ok([ 'pg_basebackup', '-D', $backup_path, '--no-sync',
+					'--target-gp-dbid', '1' ],
 	"base backup ok");
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 # Rename pg_wal.
 my $original_pg_wal  = $backup_path . '/pg_wal';

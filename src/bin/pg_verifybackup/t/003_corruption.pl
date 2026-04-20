@@ -109,23 +109,15 @@ for my $scenario (@scenario)
 		# it. Tell it not to.
 		# See https://www.msys2.org/wiki/Porting/#filesystem-namespaces
 		local $ENV{MSYS2_ARG_CONV_EXCL} = $source_ts_prefix;
-<<<<<<< HEAD
-		$master->command_ok(['pg_basebackup', '-D', $backup_path, '--no-sync',
-							'-T', "${source_ts_path}=${backup_ts_path}",
-							'--target-gp-dbid', '1'],
-							"base backup ok");
-		command_ok(['pg_verifybackup', $backup_path ],
-				   "intact backup verified");
-=======
 		$master->command_ok(
 			[
 				'pg_basebackup', '-D', $backup_path, '--no-sync',
-				'-T', "${source_ts_path}=${backup_ts_path}"
+				'-T', "${source_ts_path}=${backup_ts_path}",
+				'--target-gp-dbid', '1'
 			],
 			"base backup ok");
 		command_ok([ 'pg_verifybackup', $backup_path ],
 			"intact backup verified");
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 		# Mutilate the backup in some way.
 		$scenario->{'mutilate'}->($backup_path);
