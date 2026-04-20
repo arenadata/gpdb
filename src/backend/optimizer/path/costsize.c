@@ -2636,15 +2636,9 @@ cost_agg(Path *path, PlannerInfo *root,
 		 * than or equal to one, all groups are expected to fit in memory;
 		 * otherwise we expect to spill.
 		 */
-<<<<<<< HEAD
-		hashentrysize = hash_agg_entry_size(
-			aggcosts->numAggs, input_width, aggcosts->transitionSpace);
-		hash_agg_set_limits(NULL, hashentrysize, numGroups, 0, &mem_limit,
-=======
 		hashentrysize = hash_agg_entry_size(aggcosts->numAggs, input_width,
 											aggcosts->transitionSpace);
-		hash_agg_set_limits(hashentrysize, numGroups, 0, &mem_limit,
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+		hash_agg_set_limits(NULL, hashentrysize, numGroups, 0, &mem_limit,
 							&ngroups_limit, &num_partitions);
 
 		nbatches = Max((numGroups * hashentrysize) / mem_limit,
