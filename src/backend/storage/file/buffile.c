@@ -835,7 +835,7 @@ BufFileFlush(BufFile *file)
 		case BFS_SEQUENTIAL_READING:
 		case BFS_COMPRESSED_READING:
 			/* no-op. */
-			return 0;
+			return;
 	}
 
 	if (file->dirty)
