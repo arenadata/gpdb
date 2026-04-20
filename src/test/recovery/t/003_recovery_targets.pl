@@ -157,15 +157,13 @@ $node_standby->init_from_backup(
 $node_standby->append_conf('postgresql.conf',
 	"recovery_target_name = 'does_not_exist'");
 
-<<<<<<< HEAD
 $node_standby->start(fail_ok => 1);
-=======
+
 run_log(
 	[
 		'pg_ctl',               '-D', $node_standby->data_dir, '-l',
 		$node_standby->logfile, 'start'
 	]);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 # wait up to 180s for postgres to terminate
 foreach my $i (0 .. 1800)
