@@ -5035,7 +5035,7 @@ setFPHoldTillEndXact(Oid relid)
 	bool result = false;
 	PGPROC *proc = MyProc;
 
-	LWLockAcquire(&proc->backendLock, LW_EXCLUSIVE);
+	LWLockAcquire(&proc->fpInfoLock, LW_EXCLUSIVE);
 
 	for (f = 0; f < FP_LOCK_SLOTS_PER_BACKEND; ++f)
 	{
@@ -5051,7 +5051,7 @@ setFPHoldTillEndXact(Oid relid)
 		break;
 	}
 
-	LWLockRelease(&proc->backendLock);
+	LWLockRelease(&proc->fpInfoLock);
 
 	return result;
 }
