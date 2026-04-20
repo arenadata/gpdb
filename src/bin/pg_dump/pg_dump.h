@@ -708,19 +708,6 @@ typedef struct _SubscriptionInfo
 } SubscriptionInfo;
 
 /*
-<<<<<<< HEAD
-=======
- * We build an array of these with an entry for each object that is an
- * extension member according to pg_depend.
- */
-typedef struct _extensionMemberId
-{
-	CatalogId	catId;			/* tableoid+oid of some member object */
-	ExtensionInfo *ext;			/* owning extension */
-} ExtensionMemberId;
-
-/*
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
  *	common utility functions
  */
 

@@ -133,19 +133,12 @@ static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
 static SimpleStringList foreign_servers_include_patterns = {NULL, NULL};
 static SimpleOidList foreign_servers_include_oids = {NULL, NULL};
 
-<<<<<<< HEAD
 static SimpleStringList relid_string_list = {NULL, NULL};
 static SimpleStringList funcid_string_list = {NULL, NULL};
 static SimpleOidList function_include_oids = {NULL, NULL};
 
 static SimpleOidList preassigned_oids = {NULL, NULL};
 
-/* placeholders for the delimiters for comments */
-char		g_comment_start[10];
-char		g_comment_end[10];
-
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 static const CatalogId nilCatalogId = {0, 0};
 
 const char *EXT_PARTITION_NAME_POSTFIX = "_external_partition__";
@@ -4324,12 +4317,8 @@ getPublicationTables(Archive *fout, TableInfo tblinfo[], int numTables)
 		TableInfo  *tbinfo;
 
 		/*
-<<<<<<< HEAD
 		 * Ignore any entries for which we aren't interested in either the
 		 * publication or the rel.
-=======
-		 * Only regular and partitioned tables can be added to publications.
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 		 */
 		pubinfo = findPublicationByOid(prpubid);
 		if (pubinfo == NULL)
@@ -7701,37 +7690,7 @@ getConstraints(Archive *fout, TableInfo tblinfo[], int numTables)
 		 */
 		if (tbinfo == NULL || tbinfo->dobj.catId.oid != conrelid)
 		{
-<<<<<<< HEAD
 			while (++curtblindx < numTables)
-=======
-			TableInfo  *reftable;
-
-			constrinfo[j].dobj.objType = DO_FK_CONSTRAINT;
-			constrinfo[j].dobj.catId.tableoid = atooid(PQgetvalue(res, j, i_contableoid));
-			constrinfo[j].dobj.catId.oid = atooid(PQgetvalue(res, j, i_conoid));
-			AssignDumpId(&constrinfo[j].dobj);
-			constrinfo[j].dobj.name = pg_strdup(PQgetvalue(res, j, i_conname));
-			constrinfo[j].dobj.namespace = tbinfo->dobj.namespace;
-			constrinfo[j].contable = tbinfo;
-			constrinfo[j].condomain = NULL;
-			constrinfo[j].contype = 'f';
-			constrinfo[j].condef = pg_strdup(PQgetvalue(res, j, i_condef));
-			constrinfo[j].confrelid = atooid(PQgetvalue(res, j, i_confrelid));
-			constrinfo[j].conindex = 0;
-			constrinfo[j].condeferrable = false;
-			constrinfo[j].condeferred = false;
-			constrinfo[j].conislocal = true;
-			constrinfo[j].separate = true;
-
-			/*
-			 * Restoring an FK that points to a partitioned table requires
-			 * that all partition indexes have been attached beforehand.
-			 * Ensure that happens by making the constraint depend on each
-			 * index partition attach object.
-			 */
-			reftable = findTableByOid(constrinfo[j].confrelid);
-			if (reftable && reftable->relkind == RELKIND_PARTITIONED_TABLE)
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 			{
 				tbinfo = &tblinfo[curtblindx];
 				if (tbinfo->dobj.catId.oid == conrelid)
@@ -14364,10 +14323,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 	PGresult   *res;
 	int			i_agginitval;
 	int			i_aggminitval;
-<<<<<<< HEAD
-=======
-	int			i_proparallel;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	const char *aggtransfn;
 	const char *aggfinalfn;
 	const char *aggcombinefn;
@@ -14403,7 +14358,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 
 	if (!fout->is_prepared[PREPQUERY_DUMPAGG])
 	{
-<<<<<<< HEAD
 		/* Set up query for aggregate-specific details */
 		appendPQExpBufferStr(query,
 							 "PREPARE dumpAgg(pg_catalog.oid) AS\n");
@@ -14482,124 +14436,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 		ExecuteSqlStatement(fout, query->data);
 
 		fout->is_prepared[PREPQUERY_DUMPAGG] = true;
-=======
-		appendPQExpBuffer(query, "SELECT aggtransfn, "
-						  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
-						  "aggcombinefn, aggserialfn, aggdeserialfn, aggmtransfn, "
-						  "aggminvtransfn, aggmfinalfn, aggmtranstype::pg_catalog.regtype, "
-						  "aggfinalextra, aggmfinalextra, "
-						  "aggfinalmodify, aggmfinalmodify, "
-						  "aggsortop, "
-						  "aggkind, "
-						  "aggtransspace, agginitval, "
-						  "aggmtransspace, aggminitval, "
-						  "pg_catalog.pg_get_function_arguments(p.oid) AS funcargs, "
-						  "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs, "
-						  "p.proparallel "
-						  "FROM pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
-						  "WHERE a.aggfnoid = p.oid "
-						  "AND p.oid = '%u'::pg_catalog.oid",
-						  agginfo->aggfn.dobj.catId.oid);
-	}
-	else if (fout->remoteVersion >= 90600)
-	{
-		appendPQExpBuffer(query, "SELECT aggtransfn, "
-						  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
-						  "aggcombinefn, aggserialfn, aggdeserialfn, aggmtransfn, "
-						  "aggminvtransfn, aggmfinalfn, aggmtranstype::pg_catalog.regtype, "
-						  "aggfinalextra, aggmfinalextra, "
-						  "'0' AS aggfinalmodify, '0' AS aggmfinalmodify, "
-						  "aggsortop, "
-						  "aggkind, "
-						  "aggtransspace, agginitval, "
-						  "aggmtransspace, aggminitval, "
-						  "pg_catalog.pg_get_function_arguments(p.oid) AS funcargs, "
-						  "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs, "
-						  "p.proparallel "
-						  "FROM pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
-						  "WHERE a.aggfnoid = p.oid "
-						  "AND p.oid = '%u'::pg_catalog.oid",
-						  agginfo->aggfn.dobj.catId.oid);
-	}
-	else if (fout->remoteVersion >= 90400)
-	{
-		appendPQExpBuffer(query, "SELECT aggtransfn, "
-						  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
-						  "'-' AS aggcombinefn, '-' AS aggserialfn, "
-						  "'-' AS aggdeserialfn, aggmtransfn, aggminvtransfn, "
-						  "aggmfinalfn, aggmtranstype::pg_catalog.regtype, "
-						  "aggfinalextra, aggmfinalextra, "
-						  "'0' AS aggfinalmodify, '0' AS aggmfinalmodify, "
-						  "aggsortop, "
-						  "aggkind, "
-						  "aggtransspace, agginitval, "
-						  "aggmtransspace, aggminitval, "
-						  "pg_catalog.pg_get_function_arguments(p.oid) AS funcargs, "
-						  "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs "
-						  "FROM pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
-						  "WHERE a.aggfnoid = p.oid "
-						  "AND p.oid = '%u'::pg_catalog.oid",
-						  agginfo->aggfn.dobj.catId.oid);
-	}
-	else if (fout->remoteVersion >= 80400)
-	{
-		appendPQExpBuffer(query, "SELECT aggtransfn, "
-						  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
-						  "'-' AS aggcombinefn, '-' AS aggserialfn, "
-						  "'-' AS aggdeserialfn, '-' AS aggmtransfn, "
-						  "'-' AS aggminvtransfn, '-' AS aggmfinalfn, "
-						  "0 AS aggmtranstype, false AS aggfinalextra, "
-						  "false AS aggmfinalextra, "
-						  "'0' AS aggfinalmodify, '0' AS aggmfinalmodify, "
-						  "aggsortop, "
-						  "'n' AS aggkind, "
-						  "0 AS aggtransspace, agginitval, "
-						  "0 AS aggmtransspace, NULL AS aggminitval, "
-						  "pg_catalog.pg_get_function_arguments(p.oid) AS funcargs, "
-						  "pg_catalog.pg_get_function_identity_arguments(p.oid) AS funciargs "
-						  "FROM pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
-						  "WHERE a.aggfnoid = p.oid "
-						  "AND p.oid = '%u'::pg_catalog.oid",
-						  agginfo->aggfn.dobj.catId.oid);
-	}
-	else if (fout->remoteVersion >= 80100)
-	{
-		appendPQExpBuffer(query, "SELECT aggtransfn, "
-						  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
-						  "'-' AS aggcombinefn, '-' AS aggserialfn, "
-						  "'-' AS aggdeserialfn, '-' AS aggmtransfn, "
-						  "'-' AS aggminvtransfn, '-' AS aggmfinalfn, "
-						  "0 AS aggmtranstype, false AS aggfinalextra, "
-						  "false AS aggmfinalextra, "
-						  "'0' AS aggfinalmodify, '0' AS aggmfinalmodify, "
-						  "aggsortop, "
-						  "'n' AS aggkind, "
-						  "0 AS aggtransspace, agginitval, "
-						  "0 AS aggmtransspace, NULL AS aggminitval "
-						  "FROM pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
-						  "WHERE a.aggfnoid = p.oid "
-						  "AND p.oid = '%u'::pg_catalog.oid",
-						  agginfo->aggfn.dobj.catId.oid);
-	}
-	else
-	{
-		appendPQExpBuffer(query, "SELECT aggtransfn, "
-						  "aggfinalfn, aggtranstype::pg_catalog.regtype, "
-						  "'-' AS aggcombinefn, '-' AS aggserialfn, "
-						  "'-' AS aggdeserialfn, '-' AS aggmtransfn, "
-						  "'-' AS aggminvtransfn, '-' AS aggmfinalfn, "
-						  "0 AS aggmtranstype, false AS aggfinalextra, "
-						  "false AS aggmfinalextra, "
-						  "'0' AS aggfinalmodify, '0' AS aggmfinalmodify, "
-						  "0 AS aggsortop, "
-						  "'n' AS aggkind, "
-						  "0 AS aggtransspace, agginitval, "
-						  "0 AS aggmtransspace, NULL AS aggminitval "
-						  "FROM pg_catalog.pg_aggregate a, pg_catalog.pg_proc p "
-						  "WHERE a.aggfnoid = p.oid "
-						  "AND p.oid = '%u'::pg_catalog.oid",
-						  agginfo->aggfn.dobj.catId.oid);
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	}
 
 	printfPQExpBuffer(query,
@@ -14610,10 +14446,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 
 	i_agginitval = PQfnumber(res, "agginitval");
 	i_aggminitval = PQfnumber(res, "aggminitval");
-<<<<<<< HEAD
-=======
-	i_proparallel = PQfnumber(res, "proparallel");
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	aggtransfn = PQgetvalue(res, 0, PQfnumber(res, "aggtransfn"));
 	aggfinalfn = PQgetvalue(res, 0, PQfnumber(res, "aggfinalfn"));
@@ -14635,10 +14467,7 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 	aggmtransspace = PQgetvalue(res, 0, PQfnumber(res, "aggmtransspace"));
 	agginitval = PQgetvalue(res, 0, i_agginitval);
 	aggminitval = PQgetvalue(res, 0, i_aggminitval);
-<<<<<<< HEAD
 	proparallel = PQgetvalue(res, 0, PQfnumber(res, "proparallel"));
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 	if (fout->remoteVersion >= 80400)
 	{
@@ -14657,14 +14486,6 @@ dumpAgg(Archive *fout, const AggInfo *agginfo)
 
 	aggsig_tag = format_aggregate_signature(agginfo, fout, false);
 
-<<<<<<< HEAD
-=======
-	if (i_proparallel != -1)
-		proparallel = PQgetvalue(res, 0, PQfnumber(res, "proparallel"));
-	else
-		proparallel = NULL;
-
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	/* identify default modify flag for aggkind (must match DefineAggregate) */
 	defaultfinalmodify = (aggkind == AGGKIND_NORMAL) ? AGGMODIFY_READ_ONLY : AGGMODIFY_READ_WRITE;
 	/* replace omitted flags for old versions */
