@@ -2328,6 +2328,7 @@ SELECT indexrelid::regclass, indisreplident FROM pg_index
 (1 row)
 
 REINDEX TABLE CONCURRENTLY concur_replident;
+ERROR:  REINDEX CONCURRENTLY is not supported
 SELECT indexrelid::regclass, indisreplident FROM pg_index
   WHERE indrelid = 'concur_replident'::regclass;
        indexrelid       | indisreplident 
