@@ -3,12 +3,13 @@
 CREATE TABLE tid_tab (a int);
 
 -- min() and max() for TIDs
-INSERT INTO tid_tab VALUES (1), (2);
-SELECT min(ctid) FROM tid_tab;
-SELECT max(ctid) FROM tid_tab;
+INSERT INTO tid_tab VALUES (0), (1), (2);
+SELECT gp_segment_id, min(ctid) FROM tid_tab GROUP BY gp_segment_id;
+SELECT gp_segment_id, max(ctid) FROM tid_tab GROUP BY gp_segment_id;
 TRUNCATE tid_tab;
 
 -- Tests for currtid() and currtid2() with various relation kinds
+-- Not supported in GPDB
 
 -- Materialized view
 CREATE MATERIALIZED VIEW tid_matview AS SELECT a FROM tid_tab;
