@@ -163,82 +163,6 @@ static List *on_commits = NIL;
  * In GPDB, these are in nodes/altertablenodes.h
  */
 
-<<<<<<< HEAD
-=======
-#define AT_PASS_UNSET			-1	/* UNSET will cause ERROR */
-#define AT_PASS_DROP			0	/* DROP (all flavors) */
-#define AT_PASS_ALTER_TYPE		1	/* ALTER COLUMN TYPE */
-#define AT_PASS_OLD_INDEX		2	/* re-add existing indexes */
-#define AT_PASS_OLD_CONSTR		3	/* re-add existing constraints */
-/* We could support a RENAME COLUMN pass here, but not currently used */
-#define AT_PASS_ADD_COL			4	/* ADD COLUMN */
-#define AT_PASS_ADD_CONSTR		5	/* ADD constraints (initial examination) */
-#define AT_PASS_COL_ATTRS		6	/* set column attributes, eg NOT NULL */
-#define AT_PASS_ADD_INDEXCONSTR	7	/* ADD index-based constraints */
-#define AT_PASS_ADD_INDEX		8	/* ADD indexes */
-#define AT_PASS_ADD_OTHERCONSTR	9	/* ADD other constraints, defaults */
-#define AT_PASS_MISC			10	/* other stuff */
-#define AT_NUM_PASSES			11
-
-typedef struct AlteredTableInfo
-{
-	/* Information saved before any work commences: */
-	Oid			relid;			/* Relation to work on */
-	char		relkind;		/* Its relkind */
-	TupleDesc	oldDesc;		/* Pre-modification tuple descriptor */
-	/* Information saved by Phase 1 for Phase 2: */
-	List	   *subcmds[AT_NUM_PASSES]; /* Lists of AlterTableCmd */
-	/* Information saved by Phases 1/2 for Phase 3: */
-	List	   *constraints;	/* List of NewConstraint */
-	List	   *newvals;		/* List of NewColumnValue */
-	List	   *afterStmts;		/* List of utility command parsetrees */
-	bool		verify_new_notnull; /* T if we should recheck NOT NULL */
-	int			rewrite;		/* Reason for forced rewrite, if any */
-	Oid			newTableSpace;	/* new tablespace; 0 means no change */
-	bool		chgPersistence; /* T if SET LOGGED/UNLOGGED is used */
-	char		newrelpersistence;	/* if above is true */
-	Expr	   *partition_constraint;	/* for attach partition validation */
-	/* true, if validating default due to some other attach/detach */
-	bool		validate_default;
-	/* Objects to rebuild after completing ALTER TYPE operations */
-	List	   *changedConstraintOids;	/* OIDs of constraints to rebuild */
-	List	   *changedConstraintDefs;	/* string definitions of same */
-	List	   *changedIndexOids;	/* OIDs of indexes to rebuild */
-	List	   *changedIndexDefs;	/* string definitions of same */
-	char	   *replicaIdentityIndex;	/* index to reset as REPLICA IDENTITY */
-	char	   *clusterOnIndex; /* index to use for CLUSTER */
-} AlteredTableInfo;
-
-/* Struct describing one new constraint to check in Phase 3 scan */
-/* Note: new NOT NULL constraints are handled elsewhere */
-typedef struct NewConstraint
-{
-	char	   *name;			/* Constraint name, or NULL if none */
-	ConstrType	contype;		/* CHECK or FOREIGN */
-	Oid			refrelid;		/* PK rel, if FOREIGN */
-	Oid			refindid;		/* OID of PK's index, if FOREIGN */
-	Oid			conid;			/* OID of pg_constraint entry, if FOREIGN */
-	Node	   *qual;			/* Check expr or CONSTR_FOREIGN Constraint */
-	ExprState  *qualstate;		/* Execution state for CHECK expr */
-} NewConstraint;
-
-/*
- * Struct describing one new column value that needs to be computed during
- * Phase 3 copy (this could be either a new column with a non-null default, or
- * a column that we're changing the type of).  Columns without such an entry
- * are just copied from the old table during ATRewriteTable.  Note that the
- * expr is an expression over *old* table values, except when is_generated
- * is true; then it is an expression over columns of the *new* tuple.
- */
-typedef struct NewColumnValue
-{
-	AttrNumber	attnum;			/* which column */
-	Expr	   *expr;			/* expression to compute */
-	ExprState  *exprstate;		/* execution state */
-	bool		is_generated;	/* is it a GENERATED expression? */
-} NewColumnValue;
-
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 /*
  * Error-reporting support for RemoveRelations
  */
@@ -6118,12 +6042,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		}
 		/*
 		 * We only need to rewrite the table if at least one column needs to
-<<<<<<< HEAD
-		 * be recomputed, we are adding/removing the OID column, or we are
-		 * changing its persistence or access method.
-=======
-		 * be recomputed, or we are changing its persistence.
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
+		 * be recomputed, or we are changing its persistence or access method.
 		 *
 		 * There are two reasons for requiring a rewrite when changing
 		 * persistence: on one hand, we need to ensure that the buffers
