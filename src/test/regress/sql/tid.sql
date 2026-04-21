@@ -1,11 +1,11 @@
 -- tests for functions related to TID handling
 
-CREATE TABLE tid_tab (a int);
+CREATE TABLE tid_tab (a int, b int default 0) distributed by (b);
 
 -- min() and max() for TIDs
-INSERT INTO tid_tab VALUES (0), (1), (2);
-SELECT gp_segment_id, min(ctid) FROM tid_tab GROUP BY gp_segment_id;
-SELECT gp_segment_id, max(ctid) FROM tid_tab GROUP BY gp_segment_id;
+INSERT INTO tid_tab VALUES (1), (2);
+SELECT min(ctid) FROM tid_tab;
+SELECT max(ctid) FROM tid_tab;
 TRUNCATE tid_tab;
 
 -- Tests for currtid() and currtid2() with various relation kinds

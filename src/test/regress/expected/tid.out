@@ -1,20 +1,26 @@
 -- tests for functions related to TID handling
-CREATE TABLE tid_tab (a int);
+CREATE TABLE tid_tab (a int, b int default 0) distributed by (b);
 -- min() and max() for TIDs
-INSERT INTO tid_tab VALUES (0), (1), (2);
-SELECT gp_segment_id, min(ctid) FROM tid_tab GROUP BY gp_segment_id;
- gp_segment_id |  min  
----------------+-------
-             0 | (0,1)
-             1 | (0,1)
-(2 rows)
+INSERT INTO tid_tab VALUES (1), (2);
+SELECT min(ctid) FROM tid_tab;
+NOTICE:  SELECT uses system-defined column "tid_tab.ctid" without the necessary companion column "tid_tab.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+NOTICE:  SELECT uses system-defined column "tid_tab.ctid" without the necessary companion column "tid_tab.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+  min  
+-------
+ (0,1)
+(1 row)
 
-SELECT gp_segment_id, max(ctid) FROM tid_tab GROUP BY gp_segment_id;
- gp_segment_id |  max  
----------------+-------
-             0 | (0,1)
-             1 | (0,2)
-(2 rows)
+SELECT max(ctid) FROM tid_tab;
+NOTICE:  SELECT uses system-defined column "tid_tab.ctid" without the necessary companion column "tid_tab.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+NOTICE:  SELECT uses system-defined column "tid_tab.ctid" without the necessary companion column "tid_tab.gp_segment_id"
+HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column.
+  max  
+-------
+ (0,2)
+(1 row)
 
 TRUNCATE tid_tab;
 -- Tests for currtid() and currtid2() with various relation kinds
