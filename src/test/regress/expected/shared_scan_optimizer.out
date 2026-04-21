@@ -122,7 +122,6 @@ END
 $$;
 -- This should only ERROR and should not SIGSEGV
 SELECT col_mismatch_func1();
-NOTICE:  An ERROR must have happened. Stopping a Shared Scan.
 ERROR:  structure of query does not match function result type
 DETAIL:  Number of returned columns (3) does not match expected column count (2).
 CONTEXT:  SQL statement "WITH cte AS (SELECT * FROM t1 WHERE random() < 0.1 LIMIT 10) SELECT a, 1 , 1 FROM cte JOIN t2 USING (a)"
@@ -167,7 +166,6 @@ END
 $$;
 -- This should only ERROR and should not SIGSEGV
 SELECT col_mismatch_func2();
-NOTICE:  An ERROR must have happened. Stopping a Shared Scan.
 ERROR:  structure of query does not match function result type
 DETAIL:  Number of returned columns (3) does not match expected column count (2).
 CONTEXT:  SQL statement "WITH cte AS (SELECT * FROM t1 WHERE random() < 0.1 ORDER BY b LIMIT 10) SELECT a, 1 , 1 FROM cte JOIN t2 USING (a)"
