@@ -1335,7 +1335,7 @@ select (g/2)::numeric as c1, sum(7::int4) as c2, count(*) as c3
   from agg_data_2k group by g/2;
 
 create table agg_group_4 as
-select (g/2)::numeric as c1, array_agg(g::numeric) as c2, count(*) as c3
+select (g/2)::numeric as c1, array_agg(g::numeric order by g) as c2, count(*) as c3
   from agg_data_2k group by g/2;
 
 -- Produce results with hash aggregation
@@ -1373,7 +1373,7 @@ select (g/2)::numeric as c1, sum(7::int4) as c2, count(*) as c3
   from agg_data_2k group by g/2;
 
 create table agg_hash_4 as
-select (g/2)::numeric as c1, array_agg(g::numeric) as c2, count(*) as c3
+select (g/2)::numeric as c1, array_agg(g::numeric order by g) as c2, count(*) as c3
   from agg_data_2k group by g/2;
 
 set enable_sort = true;
