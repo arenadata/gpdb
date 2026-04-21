@@ -144,7 +144,6 @@ ERROR:  operator does not exist: time with time zone + time with time zone
 LINE 1: SELECT f1 + time with time zone '00:01' AS "Illegal" FROM TI...
                   ^
 HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
-<<<<<<< HEAD
 -- basic sanity of sample timezones
 set timezone = 'America/New_York';
 SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as NYC;
@@ -187,7 +186,8 @@ SELECT TIMESTAMP WITH TIME ZONE 'epoch' + 1407545520 * INTERVAL '1 second' as Ca
           casablanca          
 ------------------------------
  Sat Aug 09 01:52:00 2014 +01
-=======
+(1 row)
+
 --
 -- test EXTRACT
 --
@@ -247,6 +247,5 @@ SELECT EXTRACT(EPOCH       FROM TIME WITH TIME ZONE '2020-05-26 13:30:25.575401-
   date_part   
 --------------
  63025.575401
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 (1 row)
 
