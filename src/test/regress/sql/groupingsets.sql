@@ -558,7 +558,9 @@ select g%1000 as g1000, g%100 as g100, g%10 as g10, g
 
 analyze gs_data_1;
 alter table gs_data_1 set (autovacuum_enabled = 'false');
+SET allow_system_table_mods = true;
 update pg_class set reltuples = 10 where relname='gs_data_1';
+RESET allow_system_table_mods;
 
 SET work_mem='64kB';
 
@@ -607,9 +609,6 @@ RESET optimizer;
 drop table gs_group_1;
 drop table gs_hash_1;
 
-<<<<<<< HEAD
-SET enable_groupingsets_hash_disk TO DEFAULT;
-
 select a, rank(a+3) within group (order by b nulls last)
 from (values (1,1),(1,4),(1,5),(3,1),(3,2)) v(a,b)
 group by rollup (a) order by a;
@@ -626,7 +625,5 @@ select a, b, rank(b) within group (order by b nulls last)
 from (values (1,1),(1,4),(1,5),(3,1),(3,2)) v(a,b)
 group by rollup (a,b) order by a;
 
-=======
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 -- end
 reset optimizer_trace_fallback;
