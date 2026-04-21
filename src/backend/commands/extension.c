@@ -3475,6 +3475,8 @@ ExecAlterExtensionContentsStmt_internal(AlterExtensionContentsStmt *stmt,
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_SUBSCRIPTION:
 		case OBJECT_TABLESPACE:
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("cannot add an object of this type to an extension")));
