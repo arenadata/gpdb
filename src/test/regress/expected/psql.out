@@ -5109,9 +5109,8 @@ List of access methods
 (8 rows)
 
 \dAp * pg_catalog.uuid_ops
-<<<<<<< HEAD
-                         List of procedures of operator families
-   AM   | Operator family | Left arg type | Right arg type | Number |     Proc name      
+                     List of support functions of operator families
+   AM   | Operator family | Left arg type | Right arg type | Number |      Function      
 --------+-----------------+---------------+----------------+--------+--------------------
  bitmap | uuid_ops        | uuid          | uuid           |      1 | uuid_cmp
  bitmap | uuid_ops        | uuid          | uuid           |      2 | uuid_sortsupport
@@ -5122,15 +5121,4 @@ List of access methods
  hash   | uuid_ops        | uuid          | uuid           |      1 | uuid_hash
  hash   | uuid_ops        | uuid          | uuid           |      2 | uuid_hash_extended
 (8 rows)
-=======
-                     List of support functions of operator families
-  AM   | Operator family | Left arg type | Right arg type | Number |      Function      
--------+-----------------+---------------+----------------+--------+--------------------
- btree | uuid_ops        | uuid          | uuid           |      1 | uuid_cmp
- btree | uuid_ops        | uuid          | uuid           |      2 | uuid_sortsupport
- btree | uuid_ops        | uuid          | uuid           |      4 | btequalimage
- hash  | uuid_ops        | uuid          | uuid           |      1 | uuid_hash
- hash  | uuid_ops        | uuid          | uuid           |      2 | uuid_hash_extended
-(5 rows)
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
