@@ -1,3 +1,8 @@
+-- start_matchignore
+-- m/NOTICE:  SELECT uses system-defined column "tid_tab.ctid" without the necessary companion column "tid_tab.gp_segment_id"/
+-- m/HINT:  To uniquely identify a row within a distributed table, use the "gp_segment_id" column together with the "ctid" column./
+-- end_matchignore
+
 -- tests for functions related to TID handling
 
 CREATE TABLE tid_tab (a int, b int default 0) distributed by (b);
