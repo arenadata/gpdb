@@ -1236,18 +1236,12 @@ setup_config(void)
 							  "#update_process_title = off");
 #endif
 
-	/*
-	 * Change password_encryption setting to md5 if md5 was chosen as an
-	 * authentication method, unless scram-sha-256 was also chosen.
-	 */
-	if ((strcmp(authmethodlocal, "md5") == 0 &&
-		 strcmp(authmethodhost, "scram-sha-256") != 0) ||
-		(strcmp(authmethodhost, "md5") == 0 &&
-		 strcmp(authmethodlocal, "scram-sha-256") != 0))
+	if (strcmp(authmethodlocal, "scram-sha-256") == 0 ||
+		strcmp(authmethodhost, "scram-sha-256") == 0)
 	{
 		conflines = replace_token(conflines,
-								  "#password_encryption = scram-sha-256",
-								  "password_encryption = md5");
+								  "#password_encryption = md5",
+								  "password_encryption = scram-sha-256");
 	}
 
 	/*
@@ -2618,7 +2612,12 @@ check_need_password(const char *authmethodlocal, const char *authmethodhost)
 		 strcmp(authmethodhost, "scram-sha-256") == 0) &&
 		!(pwprompt || pwfilename))
 	{
-		pg_log_error("must specify a password for the superuser to enable password authentication");
+		pg_log_error("must specify a password for the superuser to enable %s authentication",
+					 (strcmp(authmethodlocal, "md5") == 0 ||
+					  strcmp(authmethodlocal, "password") == 0 ||
+					  strcmp(authmethodlocal, "scram-sha-256") == 0)
+					 ? authmethodlocal
+					 : authmethodhost);
 		exit(1);
 	}
 }
