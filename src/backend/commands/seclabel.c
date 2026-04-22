@@ -72,6 +72,7 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_DEFACL:
 		case OBJECT_DOMCONSTRAINT:
 		case OBJECT_EXTENSION:
+		case OBJECT_EXTPROTOCOL:
 		case OBJECT_FDW:
 		case OBJECT_FOREIGN_SERVER:
 		case OBJECT_INDEX:
@@ -80,6 +81,8 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_OPFAMILY:
 		case OBJECT_POLICY:
 		case OBJECT_PUBLICATION_REL:
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
 		case OBJECT_RULE:
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_TABCONSTRAINT:
@@ -90,8 +93,6 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
-		case OBJECT_RESQUEUE:
-		case OBJECT_RESGROUP:
 			return false;
 
 			/*
