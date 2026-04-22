@@ -8738,6 +8738,8 @@ object_type_name:
 			| ROLE									{ $$ = OBJECT_ROLE; }
 			| SUBSCRIPTION							{ $$ = OBJECT_SUBSCRIPTION; }
 			| TABLESPACE							{ $$ = OBJECT_TABLESPACE; }
+			| RESOURCE QUEUE						{ $$ = OBJECT_RESQUEUE; }
+			| RESOURCE GROUP_P						{ $$ = OBJECT_RESGROUP; }
 		;
 
 drop_type_name:
