@@ -144,14 +144,9 @@ sub GetOpenSSLVersion
 
 sub GenerateFiles
 {
-<<<<<<< HEAD
-	my $self = shift;
-	my $buildclient = shift;
-	my $bits = $self->{platform} eq 'Win32' ? 32 : 64;
-=======
 	my $self          = shift;
+	my $buildclient   = shift;
 	my $bits          = $self->{platform} eq 'Win32' ? 32 : 64;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 	my $ac_init_found = 0;
 	my $package_name;
 	my $package_version;
@@ -175,15 +170,11 @@ sub GenerateFiles
 			$package_name      = $1;
 			$package_bugreport = $3;
 			#$package_tarname   = $4;
-<<<<<<< HEAD
-			$package_url       = $5;
+			$package_url = $5;
 		}
 		if (/\[PG_PACKAGE_VERSION=([^\]]+)\]/)
 		{
 			$package_version   = $1;
-=======
-			$package_url = $5;
->>>>>>> 1fa092913d260056b1aaf627ebc9cd9655c3a27c
 
 			if ($package_version !~ /^(\d+)(?:\.(\d+))?/)
 			{
