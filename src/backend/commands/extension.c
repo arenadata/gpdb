@@ -3471,6 +3471,8 @@ ExecAlterExtensionContentsStmt_internal(AlterExtensionContentsStmt *stmt,
 		case OBJECT_EXTENSION:
 		case OBJECT_INDEX:
 		case OBJECT_PUBLICATION:
+		case OBJECT_RESQUEUE:
+		case OBJECT_RESGROUP:
 		case OBJECT_ROLE:
 		case OBJECT_STATISTIC_EXT:
 		case OBJECT_SUBSCRIPTION:
