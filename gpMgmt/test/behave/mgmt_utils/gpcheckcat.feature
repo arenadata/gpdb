@@ -635,6 +635,18 @@ Feature: gpcheckcat tests
         And the user runs "dropdb check_dependency_error"
         And the user runs "psql -c "DROP ROLE foo""
 
+    Scenario: gpcheckcat should not report inconsistency because of scram-sha-256 passwords
+        Given database "check_scram_passwords" is dropped and recreated
+        And the user runs "psql -d check_scram_passwords -c "SET password_encryption = 'scram-sha-256'; CREATE ROLE foo PASSWORD 'bar';""
+        Then psql should return a return code of 0
+        When the user runs "gpcheckcat inconsistent"
+        Then gpcheckcat should return a return code of 0
+        And gpcheckcat should not print "SUMMARY REPORT: FAILED" to stdout
+        And gpcheckcat should not print "inconsistent_pg_authid" to stdout
+        And gpcheckcat should print "Found no catalog issue" to stdout
+        And the user runs "dropdb check_scram_passwords"
+        And the user runs "psql -c "DROP ROLE foo""
+
 
 ########################### @concourse_cluster tests ###########################
 # The @concourse_cluster tag denotes the scenario that requires a remote cluster
