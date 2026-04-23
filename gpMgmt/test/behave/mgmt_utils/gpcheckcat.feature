@@ -639,7 +639,7 @@ Feature: gpcheckcat tests
         Given database "check_scram_passwords" is dropped and recreated
         And the user runs "psql -d check_scram_passwords -c "SET password_encryption = 'scram-sha-256'; CREATE ROLE foo PASSWORD 'bar';""
         Then psql should return a return code of 0
-        When the user runs "gpcheckcat inconsistent"
+        When the user runs "gpcheckcat check_scram_passwords"
         Then gpcheckcat should return a return code of 0
         And gpcheckcat should not print "SUMMARY REPORT: FAILED" to stdout
         And gpcheckcat should not print "inconsistent_pg_authid" to stdout
