@@ -357,6 +357,8 @@ class GPCatalog():
 
         # GG-424 : Inconsistent rolpassword
         # rolpassword is inconsistent if scram-sha-256 encryption is used.
+        # Salt is generated locally on each segment, so the hashes are
+        # inconsistent between segments.
         self._tables['pg_authid']._setKnownDifferences("rolpassword")
 
     def _validate(self):
